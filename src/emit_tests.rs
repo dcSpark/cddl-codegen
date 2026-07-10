@@ -1042,6 +1042,15 @@ fn choice_construct_reject(
                 let Some(bounds) = arg_ty.config.bounds else {
                     continue;
                 };
+                // the `[+ T]` / `{+ k => v}` shapes enforce their bound in the TYPE
+                // (`NonEmptyVec`/`NonEmptyMap`): the ctor takes the restricted type, so an
+                // out-of-bounds arg is UNREPRESENTABLE — minting one would panic at the arg's
+                // own `try_from(..).unwrap()`, not exercise the ctor (the same skip
+                // `record_deser_reject` applies). Rejection via the TryFrom door is covered by
+                // the hand-written fixture tests.
+                if arg_ty.is_type_enforced_non_empty() {
+                    continue;
+                }
                 (
                     bound_cases(types, arg_ty, bounds, kind == MeasureKind::Len),
                     "RangeCheck",

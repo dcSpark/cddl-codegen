@@ -7,15 +7,17 @@ expression: content
 #![allow(clippy::too_many_arguments)]
 
 pub mod error;
+pub mod non_empty;
 pub mod ordered_hash_map;
 extern crate derivative;
 pub mod cbor_encodings;
 pub mod serialization;
 
 use crate::generated::error::*;
+use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::ordered_hash_map::OrderedHashMap;
 use crate::generated::serialization::{LenEncoding, StringEncoding};
-use cbor_encodings::{FixedValueArm0Encoding, MultiFieldArm0Encoding};
+use cbor_encodings::{FixedValueArm0Encoding, MultiFieldArm0Encoding, NonemptyArm0Encoding};
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 
@@ -136,6 +138,57 @@ impl MultiFieldArm0 {
             x,
             encodings: None,
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum NonemptyArm {
+    NonemptyArm0(NonemptyArm0),
+    Zz {
+        zz: String,
+        zz_encoding: StringEncoding,
+        zz_key_encoding: StringEncoding,
+        len_encoding: LenEncoding,
+    },
+}
+
+impl NonemptyArm {
+    pub fn new_nonempty_arm0(f0: NonEmptyVec<u64>, f1: u64) -> Result<Self, DeserializeError> {
+        Ok(Self::NonemptyArm0(NonemptyArm0::new(f0, f1)?))
+    }
+
+    pub fn new_zz(zz: String) -> Self {
+        Self::Zz {
+            zz,
+            zz_encoding: StringEncoding::default(),
+            zz_key_encoding: StringEncoding::default(),
+            len_encoding: LenEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct NonemptyArm0 {
+    pub f0: NonEmptyVec<u64>,
+    pub f1: u64,
+    pub encodings: Option<NonemptyArm0Encoding>,
+}
+
+impl NonemptyArm0 {
+    pub fn new(f0: NonEmptyVec<u64>, f1: u64) -> Result<Self, DeserializeError> {
+        if f1 > 10 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: f1 as isize,
+                min: None,
+                max: Some(10),
+            }
+            .into());
+        }
+        Ok(Self {
+            f0,
+            f1,
+            encodings: None,
+        })
     }
 }
 

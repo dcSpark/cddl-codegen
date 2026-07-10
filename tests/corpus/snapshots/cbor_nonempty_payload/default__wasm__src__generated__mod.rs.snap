@@ -1,0 +1,166 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+
+use cddl_lib::non_empty::NonEmptyVec;
+use cddl_lib::non_empty_map::NonEmptyMap;
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapTextToU64(BTreeMap<String, u64>);
+
+#[wasm_bindgen]
+impl MapTextToU64 {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: String, value: u64) -> Option<u64> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: String) -> Option<u64> {
+        self.0.get(&key).copied()
+    }
+
+    pub fn keys(&self) -> Vec<String> {
+        self.0.keys().cloned().collect::<Vec<_>>()
+    }
+}
+
+impl From<BTreeMap<String, u64>> for MapTextToU64 {
+    fn from(native: BTreeMap<String, u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapTextToU64> for BTreeMap<String, u64> {
+    fn from(wasm: MapTextToU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BTreeMap<String, u64>> for MapTextToU64 {
+    fn as_ref(&self) -> &BTreeMap<String, u64> {
+        &self.0
+    }
+}
+
+/// `{+ k => v}` (`MapTextToU64`): at least one entry, enforced by the `NonEmptyMap` representation. Enter via `try_from` (the single checked door — the CBOR decoder routes through the same door) or `new(first_key, first_value)`. `insert` can never violate the bound; removal is checked in the core type.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonEmptyMapTextToU64(NonEmptyMap<String, u64>);
+
+#[wasm_bindgen]
+impl NonEmptyMapTextToU64 {
+    pub fn new(first_key: String, first_value: u64) -> Self {
+        Self(NonEmptyMap::new(first_key, first_value))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: String, value: u64) -> Option<u64> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: String) -> Option<u64> {
+        self.0.get(&key).copied()
+    }
+
+    pub fn keys(&self) -> Vec<String> {
+        self.0.keys().cloned().collect::<Vec<_>>()
+    }
+
+    pub fn try_from(map: &MapTextToU64) -> Result<NonEmptyMapTextToU64, JsError> {
+        let inner: BTreeMap<String, u64> = map.clone().into();
+        NonEmptyMap::try_from(inner)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<NonEmptyMap<String, u64>> for NonEmptyMapTextToU64 {
+    fn from(native: NonEmptyMap<String, u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonEmptyMapTextToU64> for NonEmptyMap<String, u64> {
+    fn from(wasm: NonEmptyMapTextToU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyMap<String, u64>> for NonEmptyMapTextToU64 {
+    fn as_ref(&self) -> &NonEmptyMap<String, u64> {
+        &self.0
+    }
+}
+
+/// `[+ u64]`: at least one element, enforced by the `NonEmptyVec` representation. Enter via `try_from` (the single checked door — the CBOR decoder routes through the same door) or `new(first)`. `add` can never violate the bound; removal is checked in the core type.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonEmptyU64List(NonEmptyVec<u64>);
+
+#[wasm_bindgen]
+impl NonEmptyU64List {
+    pub fn new(first: u64) -> Self {
+        Self(NonEmptyVec::new(first))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) {
+        self.0.push(elem);
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<NonEmptyU64List, JsError> {
+        NonEmptyVec::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<NonEmptyVec<u64>> for NonEmptyU64List {
+    fn from(native: NonEmptyVec<u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonEmptyU64List> for NonEmptyVec<u64> {
+    fn from(wasm: NonEmptyU64List) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyVec<u64>> for NonEmptyU64List {
+    fn as_ref(&self) -> &NonEmptyVec<u64> {
+        &self.0
+    }
+}
+
+pub type WrappedNonempty = NonEmptyU64List;
+
+pub type WrappedNonemptyMap = NonEmptyMapTextToU64;

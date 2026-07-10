@@ -11,8 +11,19 @@
 ;                     first member KEY type (text "a"), not the first value type (uint).
 ;   fixed_value_arm — an arm carrying a fixed-value entry (1: 5) plus a non-fixed one; embeds as
 ;                     an ordinary map-rep record (the array-only embed panic is fixed).
+;   nonempty_arm    — a `[+ T]` field inside an arm beside a runtime-checked `.le` bound. The arm
+;                     ctor takes the type-enforced NonEmptyVec, so the emit-tests construct-reject
+;                     minter must SKIP that arg (an out-of-bounds value is unrepresentable — minting
+;                     one panics at the arg's own try_from(..).unwrap() instead of exercising the
+;                     ctor) while keeping the sibling `.le` bound's boundary/reject cases.
+;                     Regression pinned: the minter emitted `NonEmptyVec::try_from(vec![0; 0])
+;                     .unwrap()` as a below-min ctor case, panicking the emitted reject test
+;                     (surfaced by the recombination layer-2 sweep). Lives here rather than in
+;                     occurrence.cddl because the sibling VALUE bound would trip that fixture's
+;                     no-element-value-RangeCheck needle (`corpus_occurrence_bounds_enforced`).
 text_keyed = { a: uint // b: tstr }
 uint_keyed = { 1: uint // 2: tstr }
 mixed_key_types = { 1: uint // b: tstr }
 multi_field_arm = { a: uint, x: tstr // b: tstr }
 fixed_value_arm = { 1: 5, 2: uint // 3: tstr }
+nonempty_arm = { f0: [+ uint], f1: uint .le 10 // zz: tstr }

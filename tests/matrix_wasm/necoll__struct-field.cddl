@@ -1,0 +1,3 @@
+; cell: necoll x struct-field
+nums = [+ uint]
+holder = [field0: nums]

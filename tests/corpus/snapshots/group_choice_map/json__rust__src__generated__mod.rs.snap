@@ -7,9 +7,11 @@ expression: content
 #![allow(clippy::too_many_arguments)]
 
 pub mod error;
+pub mod non_empty;
 pub mod serialization;
 
 use crate::generated::error::*;
+use crate::generated::non_empty::NonEmptyVec;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 
@@ -81,6 +83,42 @@ pub struct MultiFieldArm0 {
 impl MultiFieldArm0 {
     pub fn new(a: u64, x: String) -> Self {
         Self { a, x }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub enum NonemptyArm {
+    NonemptyArm0(NonemptyArm0),
+    Zz(String),
+}
+
+impl NonemptyArm {
+    pub fn new_nonempty_arm0(f0: NonEmptyVec<u64>, f1: u64) -> Result<Self, DeserializeError> {
+        Ok(Self::NonemptyArm0(NonemptyArm0::new(f0, f1)?))
+    }
+
+    pub fn new_zz(zz: String) -> Self {
+        Self::Zz(zz)
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct NonemptyArm0 {
+    pub f0: NonEmptyVec<u64>,
+    pub f1: u64,
+}
+
+impl NonemptyArm0 {
+    pub fn new(f0: NonEmptyVec<u64>, f1: u64) -> Result<Self, DeserializeError> {
+        if f1 > 10 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: f1 as isize,
+                min: None,
+                max: Some(10),
+            }
+            .into());
+        }
+        Ok(Self { f0, f1 })
     }
 }
 

@@ -1,0 +1,2 @@
+; cell: nemap x anonb (reference from module b)
+bholder = [field0: { + uint => text }]

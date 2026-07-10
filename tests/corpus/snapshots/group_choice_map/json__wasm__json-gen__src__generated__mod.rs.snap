@@ -24,6 +24,8 @@ pub fn export_schemas() {
     gen_json_schema!(cddl_lib::MixedKeyTypes);
     gen_json_schema!(cddl_lib::MultiFieldArm);
     gen_json_schema!(cddl_lib::MultiFieldArm0);
+    gen_json_schema!(cddl_lib::NonemptyArm);
+    gen_json_schema!(cddl_lib::NonemptyArm0);
     gen_json_schema!(cddl_lib::TextKeyed);
     gen_json_schema!(cddl_lib::UintKeyed);
 }

@@ -648,6 +648,18 @@ impl GenerationScope {
                         self.wasm(types, ident)
                             .push_type_alias(TypeAlias::new(ident, wasm_target).vis("pub").clone());
                     }
+                    // A type-alias BASE can carry an inline `[+ T]` / `{+ k => v}` shape that only
+                    // this alias reaches — e.g. `x = bytes .cbor [+ uint]` classifies as a plain
+                    // alias (not a `RustStructType::Array`), so the rust_structs minting walk below
+                    // never visits it, while the wasm alias line above names the restricted wrapper
+                    // (`pub type X = NonEmptyU64List;`). Mint the wrappers the base needs here; the
+                    // dedup-to-named and `already_generated` guards inside apply as everywhere else,
+                    // so a base whose shape a named rule owns dedups instead of double-minting.
+                    // (Found by the recombination wasm sweep: rc1205's `NonEmptyU64List` was
+                    // referenced but never emitted — E0425 with generation exit 0.)
+                    if cli.wasm {
+                        self.ensure_non_empty_wrappers(types, &alias_info.base_type, cli);
+                    }
                 }
             }
         }

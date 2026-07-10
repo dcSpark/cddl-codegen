@@ -72,6 +72,22 @@ const SHAPES: Record<string, Shape> = {
   talias: { defs: ["ta = text"], ty: "ta" },
   coll: { defs: ["nums = [* uint]"], ty: "nums", anonForm: "[* uint]", anonBallast: true },
   collmap: { defs: ["mp = { * uint => text }"], ty: "mp", anonForm: "{ * uint => text }", anonBallast: true },
+  // RESTRICTED non-empty list over an EXPOSABLE element (`[+ uint]` -> `NonEmptyVec<u64>`, the
+  // two-type-constraint feature). Placement mirrors `coll`: the element is transparent, so module `a`
+  // is alias-only (no serialization) and the shape needs no cross-module structural element wrapper —
+  // gated here to confirm the `NonEmptyVec` alias imports cross-module the same as a bare `Vec`.
+  necoll: { defs: ["nums = [+ uint]"], ty: "nums", anonForm: "[+ uint]", anonBallast: true },
+  // RESTRICTED non-empty list over a NON-exposable (record) element (`[+ foo]`) — the `+` analogue of
+  // `collrec`. Mints the loose structural wrapper (`FooList`) AND the restricted wrapper cross-module,
+  // so it hits the SAME `mark_refs` Array-arm structural-wrapper placement class as `collrec` (the
+  // ROOT_SCOPE hard-code — the remaining issue-138 half; cddl-matrix/ROADMAP.md § findings). Both
+  // reference modes are known-red (MULTIFILE_MATRIX_SKIP, citing that finding); the single-file anon
+  // control is green (like `collrec`/`cborwrap`, the anon form references the named `foo` cross-module).
+  necollrec: { defs: ["foo = [a0: uint]", "recs = [+ foo]"], ty: "recs", anonForm: "[+ foo]" },
+  // RESTRICTED non-empty map (`{+ k => v}` -> `NonEmptyMap<K, V>`) — the `+` analogue of `collmap`.
+  // Placement mirrors `collmap` (the map arm is sole-owner-aware), so both reference modes are green;
+  // module `a` is table-alias-only, so it carries `anonBallast` like `collmap`.
+  nemap: { defs: ["mp = { + uint => text }"], ty: "mp", anonForm: "{ + uint => text }", anonBallast: true },
   passthru: { defs: ["nums = [* uint]", "pt = nums"], ty: "pt" },
   passthrumap: { defs: ["mp = { * uint => text }", "ptm = mp"], ty: "ptm" },
   struct: { defs: ["st = [a: uint, b: text]"], ty: "st" },
@@ -132,7 +148,7 @@ const MODES: Record<string, Mode> = {
 // `anonForm` key would silently drop a shape from `anon` (TS excess-property check catches an unknown
 // key at the literal, but not a value dropped by a downstream filter) — pin the derived set so any
 // grid shrink/growth is an explicit reviewed edit, exactly like EXPECTED_CELLS below.
-const EXPECTED_ANON_SHAPES = ["bwrap", "cborwrap", "coll", "collmap", "collrec", "nullable", "tag"];
+const EXPECTED_ANON_SHAPES = ["bwrap", "cborwrap", "coll", "collmap", "collrec", "necoll", "necollrec", "nemap", "nullable", "tag"];
 const anonShapes = Object.keys(SHAPES)
   .filter((k) => SHAPES[k].anonForm)
   .sort();
@@ -143,7 +159,7 @@ if (JSON.stringify(anonShapes) !== JSON.stringify(EXPECTED_ANON_SHAPES))
   );
 
 // Same idiom for the `anonb` subset (exactly the alias/table-only-module `anon` shapes — see `anonBallast`).
-const EXPECTED_ANONB_SHAPES = ["coll", "collmap", "nullable"];
+const EXPECTED_ANONB_SHAPES = ["coll", "collmap", "necoll", "nemap", "nullable"];
 const anonbShapes = Object.keys(SHAPES)
   .filter((k) => SHAPES[k].anonBallast)
   .sort();
@@ -183,7 +199,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 48; // 19 shapes × {named, unref} = 38 + 7 anon-form shapes × {anon} + 3 anonb shapes × {anonb} -> 48
+const EXPECTED_CELLS = 59; // 22 shapes × {named, unref} = 44 + 10 anon-form shapes × {anon} + 5 anonb shapes × {anonb} -> 59
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `multifile grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,

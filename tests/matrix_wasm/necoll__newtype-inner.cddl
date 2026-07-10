@@ -1,0 +1,3 @@
+; cell: necoll x newtype-inner
+nums = [+ uint]
+holder = nums ; @newtype

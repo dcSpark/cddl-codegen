@@ -1,0 +1,4 @@
+; cell: necollrec x gchoice-variant
+foo = [a0: uint]
+recs = [+ foo]
+holder = [ f0: recs // f1: nint ]
