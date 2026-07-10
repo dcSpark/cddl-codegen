@@ -255,7 +255,7 @@ impl<'a> IntermediateTypes<'a> {
                 .fields
                 .iter()
                 .any(|f| f.rust_type.contains_non_empty_array()),
-            RustStructType::Table { domain, range } => {
+            RustStructType::Table { domain, range, .. } => {
                 domain.contains_non_empty_array() || range.contains_non_empty_array()
             }
             RustStructType::Wrapper { wrapped, .. } => wrapped.contains_non_empty_array(),
@@ -273,8 +273,73 @@ impl<'a> IntermediateTypes<'a> {
         })
     }
 
+    /// Whether ANY generated type uses the `{+ k => v}` NonEmptyMap shape, so `export`/import wiring
+    /// can pull in the `non_empty_map` runtime module + `NonEmptyMap` import only for crates that need
+    /// it (keeping every non-`+`-table crate's output byte-identical). Covers named `{+ …}` table
+    /// rules (via their registered alias base_type, whose `RustType` carries the map bounds) and
+    /// inline/nested occurrences on record fields, table range, wrappers, and enum variants.
+    pub fn uses_non_empty_map(&self) -> bool {
+        if self
+            .type_aliases
+            .values()
+            .any(|a| a.base_type.contains_non_empty_map())
+        {
+            return true;
+        }
+        self.rust_structs.values().any(|rs| match rs.variant() {
+            RustStructType::Table { bounds, range, .. } => {
+                *bounds == Some((Some(1), None)) || range.contains_non_empty_map()
+            }
+            RustStructType::Array { element_type, .. } => element_type.contains_non_empty_map(),
+            RustStructType::Record(record) => record
+                .fields
+                .iter()
+                .any(|f| f.rust_type.contains_non_empty_map()),
+            RustStructType::Wrapper { wrapped, .. } => wrapped.contains_non_empty_map(),
+            RustStructType::GroupChoice { variants, .. }
+            | RustStructType::TypeChoice { variants } => variants.iter().any(|v| match &v.data {
+                EnumVariantData::RustType(t) => t.contains_non_empty_map(),
+                EnumVariantData::Inlined(rec) => rec
+                    .fields
+                    .iter()
+                    .any(|f| f.rust_type.contains_non_empty_map()),
+            }),
+            RustStructType::CStyleEnum { .. }
+            | RustStructType::Extern
+            | RustStructType::RawBytesType => false,
+        })
+    }
+
     pub fn rust_structs(&self) -> &BTreeMap<RustIdent, RustStruct> {
         &self.rust_structs
+    }
+
+    /// The NAMED `{+ k => v}` table rule that owns the wasm surface for an inline `{+ k => v}` of the
+    /// same domain/range, if any — the design doc's inline-dedup-to-named rule (the spec author's
+    /// chosen name wins over a synthesized `NonEmptyMapKToV`). Domain/range equality is alias-resolved
+    /// so spelling differences can't defeat the dedup. Deterministic (`rust_structs` is a `BTreeMap`).
+    pub fn non_empty_map_named_owner(
+        &self,
+        key: &RustType,
+        value: &RustType,
+    ) -> Option<&RustIdent> {
+        let key_resolved = key.clone().resolve_aliases();
+        let value_resolved = value.clone().resolve_aliases();
+        self.rust_structs
+            .iter()
+            .find_map(|(ident, rs)| match rs.variant() {
+                RustStructType::Table {
+                    domain,
+                    range,
+                    bounds,
+                } if *bounds == Some((Some(1), None))
+                    && domain.clone().resolve_aliases() == key_resolved
+                    && range.clone().resolve_aliases() == value_resolved =>
+                {
+                    Some(ident)
+                }
+                _ => None,
+            })
     }
 
     /// The NAMED `[+ elem]` rule that owns the wasm surface for an inline `[+ elem]` of the same
@@ -326,7 +391,7 @@ impl<'a> IntermediateTypes<'a> {
                 RustStructType::Record(record) => {
                     record.fields.iter().for_each(|fl| walk(&fl.rust_type, f))
                 }
-                RustStructType::Table { domain, range } => {
+                RustStructType::Table { domain, range, .. } => {
                     walk(domain, f);
                     walk(range, f);
                 }
@@ -368,6 +433,30 @@ impl<'a> IntermediateTypes<'a> {
                 bounds,
             }) if *bounds != Some((Some(1), None))
                 && element_type.clone().resolve_aliases() == *element_resolved
+        )
+    }
+
+    /// Whether rule `name` provides a COMPATIBLE loose table wrapper for `(key, value)` (a plain
+    /// `{* k => v}` Table rust struct of the same domain/range — its wasm class IS the loose `MapKToV`
+    /// builder the `{+ …}` restricted wrapper's `try_from` source needs, so it is shared, not a
+    /// collision). Non-empty tables are excluded (their class is the restricted wrapper, not the
+    /// loose builder).
+    fn provides_compatible_loose_table(
+        &self,
+        name: &str,
+        key_resolved: &RustType,
+        value_resolved: &RustType,
+    ) -> bool {
+        let ident = RustIdent::new(CDDLIdent::new(name));
+        matches!(
+            self.rust_structs.get(&ident).map(|rs| rs.variant()),
+            Some(RustStructType::Table {
+                domain,
+                range,
+                bounds,
+            }) if *bounds != Some((Some(1), None))
+                && domain.clone().resolve_aliases() == *key_resolved
+                && range.clone().resolve_aliases() == *value_resolved
         )
     }
 
@@ -417,7 +506,19 @@ impl<'a> IntermediateTypes<'a> {
     pub fn table_shape_sole_owners(&self) -> BTreeMap<String, RustIdent> {
         let mut owners: BTreeMap<String, Vec<RustIdent>> = BTreeMap::new();
         for (ident, rust_struct) in self.rust_structs() {
-            if let RustStructType::Table { domain, range } = rust_struct.variant() {
+            if let RustStructType::Table {
+                domain,
+                range,
+                bounds,
+            } = rust_struct.variant()
+            {
+                // A non-empty `{+ k => v}` table does NOT own the loose structural `MapKToV` shape —
+                // its JS class is the distinct restricted `NonEmptyMapKToV` (or rule-ident) wrapper.
+                // Excluding it keeps anonymous plain `{* k => v}` uses of the same shape from being
+                // (wrongly) folded onto the restricted class.
+                if *bounds == Some((Some(1), None)) {
+                    continue;
+                }
                 let structural = ConceptualRustType::name_for_wasm_map(domain, range).to_string();
                 owners.entry(structural).or_default().push(ident.clone());
             }
@@ -586,7 +687,7 @@ impl<'a> IntermediateTypes<'a> {
                         &field.rust_type,
                     )
                 }),
-                RustStructType::Table { domain, range } => {
+                RustStructType::Table { domain, range, .. } => {
                     mark_refs(
                         &mut refs,
                         self,
@@ -841,7 +942,11 @@ impl<'a> IntermediateTypes<'a> {
         cli: &Cli,
     ) {
         match &rust_struct.variant {
-            RustStructType::Table { domain, range } => {
+            RustStructType::Table {
+                domain,
+                range,
+                bounds,
+            } => {
                 // we must provide the keys type to return
                 self.create_and_register_array_type(
                     parent_visitor,
@@ -852,6 +957,12 @@ impl<'a> IntermediateTypes<'a> {
                 let mut map_type: RustType =
                     ConceptualRustType::Map(Box::new(domain.clone()), Box::new(range.clone()))
                         .into();
+                if let Some(bounds) = bounds {
+                    // the occurrence-count bounds ride the alias so every embed site of the named
+                    // table enforces them (deserialize routes through the NonEmptyMap TryFrom door),
+                    // exactly like the `Array` arm below
+                    map_type = map_type.with_bounds(*bounds);
+                }
                 if let Some(tag) = rust_struct.tag {
                     map_type = map_type.tag(tag);
                 }
@@ -1076,6 +1187,10 @@ impl<'a> IntermediateTypes<'a> {
             for msg in self.non_empty_wrapper_name_collisions() {
                 self.record_rejection(msg);
             }
+            // NonEmptyMap wasm-wrapper name collisions — the map-side twin of the above.
+            for msg in self.non_empty_map_wrapper_name_collisions() {
+                self.record_rejection(msg);
+            }
         }
         // Surface any rejection recorded DURING finalize (e.g. the float-key check above, which can
         // only run post-generic-resolution). Without this the entry-point check at the top of
@@ -1219,6 +1334,135 @@ impl<'a> IntermediateTypes<'a> {
                 check_loose_need(
                     element_type,
                     &format!("the named `[+ …]` rule '{ident}'"),
+                    &mut msgs,
+                );
+            }
+        }
+
+        msgs.into_iter().collect()
+    }
+
+    /// Detect wasm-class name conflicts the `{+ k => v}` (NonEmptyMap) emission would otherwise turn
+    /// into a non-compiling wasm crate — the map-side twin of `non_empty_wrapper_name_collisions`.
+    /// The loose table builder is always `MapKToV` (`name_for_wasm_map`); a map is never directly
+    /// exposable, so (unlike arrays) the loose builder is ALWAYS the `try_from` source. Three classes:
+    ///
+    /// 1. An inline `{+ k => v}` with no named owner (see `non_empty_map_named_owner`) mints a
+    ///    synthesized `NonEmptyMapKToV` class: a user rule claiming that ident collides.
+    /// 2. A restricted wrapper (inline-synth or named non-self-named) needs the loose `MapKToV`
+    ///    builder as its `try_from` source: a user rule claiming that ident with any shape OTHER than
+    ///    a same-shape plain `{* k => v}` table rule (which IS the builder, shared) collides.
+    /// 3. A self-named rule (`map_k_to_v = {+ k => v}` — the rule ident IS the loose-builder name)
+    ///    legitimately claims the name for its RESTRICTED wrapper (it emits with no `try_from`;
+    ///    construction is `new(first_key, first_value)` + `insert`), but then no OTHER use may need
+    ///    the loose `MapKToV` builder: a plain `{* k => v}` use or an anonymous same-shape map would
+    ///    reference a class of the wrong shape.
+    fn non_empty_map_wrapper_name_collisions(&self) -> Vec<String> {
+        let mut msgs = BTreeSet::new();
+
+        // collect every inline nonempty map shape + every loose-builder need from PLAIN map shapes
+        let mut inline_non_empty: Vec<RustType> = Vec::new();
+        // loose MapKToV classes needed by plain (non-`+`) uses: name -> a use description
+        let mut plain_loose_needs: BTreeMap<String, String> = BTreeMap::new();
+        self.visit_all_rust_types(&mut |rt| {
+            if rt.is_non_empty_map() {
+                inline_non_empty.push(rt.clone());
+            } else if let ConceptualRustType::Map(k, v) = &rt.conceptual_type {
+                plain_loose_needs.insert(
+                    ConceptualRustType::name_for_wasm_map(k, v).to_string(),
+                    "a plain (`*`-occurrence) map use".to_owned(),
+                );
+            }
+        });
+        // named plain tables mint their loose `MapKToV` class too (Table structs aren't visited as
+        // Map RustTypes); exclude non-empty tables (their class is the restricted wrapper)
+        for rs in self.rust_structs.values() {
+            if let RustStructType::Table {
+                domain,
+                range,
+                bounds,
+            } = rs.variant()
+                && *bounds != Some((Some(1), None))
+            {
+                plain_loose_needs.insert(
+                    ConceptualRustType::name_for_wasm_map(domain, range).to_string(),
+                    "a plain (`*`-occurrence) table rule".to_owned(),
+                );
+            }
+        }
+
+        // shared leg: the loose-builder need of a restricted map wrapper (synthesized or named)
+        let check_loose_need =
+            |key: &RustType, value: &RustType, needed_by: &str, msgs: &mut BTreeSet<String>| {
+                let loose = ConceptualRustType::name_for_wasm_map(key, value).to_string();
+                if self.wasm_ident_claimed_by_user_rule(&loose)
+                    && !self.provides_compatible_loose_table(
+                        &loose,
+                        &key.clone().resolve_aliases(),
+                        &value.clone().resolve_aliases(),
+                    )
+                {
+                    msgs.insert(format!(
+                        "name collision: rule '{loose}' claims the ident the loose '{loose}' table \
+                     builder needs as the `try_from` source of {needed_by} — rename the rule (or \
+                     make it `{{* …}}` of the same key/value, which IS that builder)"
+                    ));
+                }
+            };
+
+        // (1) + (2) for inline `{+ k => v}` shapes that actually mint a synthesized class
+        for rt in &inline_non_empty {
+            let ConceptualRustType::Map(k, v) = &rt.conceptual_type else {
+                unreachable!("is_non_empty_map implies a Map conceptual type");
+            };
+            if self.non_empty_map_named_owner(k, v).is_some() {
+                continue; // dedups to the named rule's class — nothing synthesized, no conflict
+            }
+            let restricted = rt.non_empty_wasm_map_wrapper_name(self);
+            if self.wasm_ident_claimed_by_user_rule(&restricted) {
+                msgs.insert(format!(
+                    "name collision: rule '{restricted}' collides with the '{restricted}' wasm \
+                     wrapper generated for an inline `{{+ …}}` map occurrence — rename the rule to \
+                     avoid shadowing the restricted NonEmptyMap wrapper"
+                ));
+            }
+            check_loose_need(
+                k,
+                v,
+                &format!("the inline `{{+ …}}` wrapper '{restricted}'"),
+                &mut msgs,
+            );
+        }
+
+        // (2) + (3) for named `{+ k => v}` table rules
+        for (ident, rs) in self.rust_structs.iter() {
+            let RustStructType::Table {
+                domain,
+                range,
+                bounds,
+            } = rs.variant()
+            else {
+                continue;
+            };
+            if *bounds != Some((Some(1), None)) {
+                continue;
+            }
+            let loose = ConceptualRustType::name_for_wasm_map(domain, range).to_string();
+            if loose == ident.to_string() {
+                // self-named rule: it owns the ident as its RESTRICTED class (no try_from); any
+                // OTHER use needing the loose builder of this shape now has no class to name
+                if let Some(need) = plain_loose_needs.get(&loose) {
+                    msgs.insert(format!(
+                        "name collision: rule '{ident}' (`{{+ …}}`) claims the ident that {need} of \
+                         the same key/value needs for its loose '{loose}' table wrapper — rename \
+                         the rule so the loose builder class can exist"
+                    ));
+                }
+            } else {
+                check_loose_need(
+                    domain,
+                    range,
+                    &format!("the named `{{+ …}}` rule '{ident}'"),
                     &mut msgs,
                 );
             }
@@ -2181,16 +2425,27 @@ impl RustType {
             && self.config.bounds == Some((Some(1), None))
     }
 
-    /// Like `is_non_empty_array` but alias-resolving: true for a field that *references* a named
-    /// `[+ …]` rule (an `Alias` whose target is the `[+ T]` array) as well as an inline `[+ T]`.
-    /// Used only for the ENFORCEMENT decision (skip the ctor/setter length check, don't make new()
-    /// fallible) — the enforcement lives in the member TYPE (`NonEmptyVec`, whether inline or the
-    /// alias target). Naming stays on the RAW `is_non_empty_array` so an aliased field keeps its
-    /// rule-derived wrapper name rather than synthesizing a `NonEmpty*List`.
+    /// The `{+ k => v}` occurrence shape — lower bound exactly 1, no upper bound — on a homogeneous
+    /// MAP (table). The map-side twin of `is_non_empty_array`: this becomes `NonEmptyMap<K, V>`, whose
+    /// single `TryFrom<{table_type}>` door enforces non-emptiness at the type level. Matches the RAW
+    /// conceptual type (not alias-resolved) so a field referencing a named `{+ …}` rule keeps the
+    /// alias name (whose target is already `NonEmptyMap`) rather than re-inlining the container.
+    pub fn is_non_empty_map(&self) -> bool {
+        matches!(self.conceptual_type, ConceptualRustType::Map(_, _))
+            && self.config.bounds == Some((Some(1), None))
+    }
+
+    /// Like `is_non_empty_array`/`is_non_empty_map` but alias-resolving and covering BOTH containers:
+    /// true for an inline `[+ T]` / `{+ k => v}` and for a field that *references* a named `[+ …]` /
+    /// `{+ …}` rule (an `Alias` whose target is the non-empty container). Used only for the
+    /// ENFORCEMENT decision (skip the ctor/setter length check, don't make new() fallible) — the
+    /// enforcement lives in the member TYPE (`NonEmptyVec`/`NonEmptyMap`, whether inline or the alias
+    /// target). Naming stays on the RAW `is_non_empty_*` so an aliased field keeps its rule-derived
+    /// wrapper name rather than synthesizing a structural one.
     pub fn is_type_enforced_non_empty(&self) -> bool {
         matches!(
             self.conceptual_type.resolve_alias_shallow(),
-            ConceptualRustType::Array(_)
+            ConceptualRustType::Array(_) | ConceptualRustType::Map(_, _)
         ) && self.config.bounds == Some((Some(1), None))
     }
 
@@ -2206,6 +2461,23 @@ impl RustType {
             }
             ConceptualRustType::Map(k, v) => {
                 k.contains_non_empty_array() || v.contains_non_empty_array()
+            }
+            _ => false,
+        }
+    }
+
+    /// Whether this type, at ANY nesting level, contains the `{+ k => v}` NonEmptyMap shape (so the
+    /// crate needs the `non_empty_map` runtime module + import). Recurses into container inners.
+    pub fn contains_non_empty_map(&self) -> bool {
+        if self.is_non_empty_map() {
+            return true;
+        }
+        match &self.conceptual_type {
+            ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
+                inner.contains_non_empty_map()
+            }
+            ConceptualRustType::Map(k, v) => {
+                k.contains_non_empty_map() || v.contains_non_empty_map()
             }
             _ => false,
         }
@@ -2249,6 +2521,21 @@ impl RustType {
         }
     }
 
+    /// The wasm-boundary name of the restricted map wrapper for a `{+ k => v}` table. When a NAMED
+    /// `{+ k => v}` rule of the same domain/range exists, the inline use DEDUPS to that rule's class
+    /// (the spec author's name wins — see `IntermediateTypes::non_empty_map_named_owner`); otherwise a
+    /// `NonEmpty<MapKToV>` class is synthesized (`NonEmptyMapTextToUint` for `{+ text => uint}`). The
+    /// map-side twin of `non_empty_wasm_wrapper_name`. Named `{+ …}` rules keep their rule ident.
+    pub fn non_empty_wasm_map_wrapper_name(&self, types: &IntermediateTypes) -> String {
+        match &self.conceptual_type {
+            ConceptualRustType::Map(k, v) => match types.non_empty_map_named_owner(k, v) {
+                Some(owner) => owner.to_string(),
+                None => format!("NonEmpty{}", ConceptualRustType::name_for_wasm_map(k, v)),
+            },
+            _ => unreachable!("non_empty_wasm_map_wrapper_name on a non-map: {:?}", self),
+        }
+    }
+
     // --- Bounds-aware type-naming/boundary wrappers (RustType level) -------------------------------
     // `RustType` Derefs to `ConceptualRustType`, but `config.bounds` lives on `RustType`, so the
     // conceptual `*_ct` methods below can't see the `[+ T]` shape. These inherent methods consult
@@ -2271,6 +2558,11 @@ impl RustType {
             ConceptualRustType::Optional(inner) => {
                 format!("Option<{}>", inner.for_rust_member(types, from_wasm, cli))
             }
+            ConceptualRustType::Map(k, v) if self.is_non_empty_map() => format!(
+                "NonEmptyMap<{}, {}>",
+                k.for_rust_member(types, from_wasm, cli),
+                v.for_rust_member(types, from_wasm, cli)
+            ),
             _ => self
                 .conceptual_type
                 .for_rust_member_ct(types, from_wasm, cli),
@@ -2286,6 +2578,9 @@ impl RustType {
     pub fn for_wasm_member(&self, types: &IntermediateTypes) -> String {
         if self.is_non_empty_array() {
             return self.non_empty_wasm_wrapper_name(types);
+        }
+        if self.is_non_empty_map() {
+            return self.non_empty_wasm_map_wrapper_name(types);
         }
         match &self.conceptual_type {
             ConceptualRustType::Optional(inner) => {
@@ -2305,6 +2600,9 @@ impl RustType {
         if self.is_non_empty_array() {
             return format!("&{}", self.non_empty_wasm_wrapper_name(types));
         }
+        if self.is_non_empty_map() {
+            return format!("&{}", self.non_empty_wasm_map_wrapper_name(types));
+        }
         match &self.conceptual_type {
             ConceptualRustType::Optional(inner) => {
                 format!("Option<{}>", inner.for_wasm_param_impl_rt(types))
@@ -2317,6 +2615,9 @@ impl RustType {
     fn for_wasm_param_impl_rt(&self, types: &IntermediateTypes) -> String {
         if self.is_non_empty_array() {
             return self.non_empty_wasm_wrapper_name(types);
+        }
+        if self.is_non_empty_map() {
+            return self.non_empty_wasm_map_wrapper_name(types);
         }
         self.conceptual_type.for_wasm_param_impl(types, true)
     }
@@ -3513,6 +3814,12 @@ pub enum RustStructType {
     Table {
         domain: RustType,
         range: RustType,
+        /// occurrence-count bounds (`+` / `n*m`) — a min-cardinality constraint on the table itself.
+        /// Only the `+` / `1*` shape `(Some(1), None)` is honored (→ `NonEmptyMap`); every other
+        /// count-permitting marker is rejected at parse time (see `parse_group_type`), so in practice
+        /// this is `None` (unbounded `*` table) or `Some((Some(1), None))` (non-empty table). Rides
+        /// the registered alias's `RustType` so embed sites enforce it, exactly like `Array` bounds.
+        bounds: Option<(Option<i128>, Option<i128>)>,
     },
     Array {
         element_type: RustType,
@@ -3567,12 +3874,17 @@ impl RustStruct {
         rule_metadata: Option<&RuleMetadata>,
         domain: RustType,
         range: RustType,
+        bounds: Option<(Option<i128>, Option<i128>)>,
     ) -> Self {
         Self {
             ident,
             tag,
             config: RustStructConfig::from(rule_metadata),
-            variant: RustStructType::Table { domain, range },
+            variant: RustStructType::Table {
+                domain,
+                range,
+                bounds,
+            },
         }
     }
 
@@ -3863,7 +4175,7 @@ impl RustStruct {
                     .conceptual_type
                     .visit_types_excluding(types, f, already_visited)
             }),
-            RustStructType::Table { domain, range } => {
+            RustStructType::Table { domain, range, .. } => {
                 domain
                     .conceptual_type
                     .visit_types_excluding(types, f, already_visited);
@@ -4156,7 +4468,7 @@ impl GenericInstance {
                     field.rust_type = Self::resolve_type(&resolved_args, &field.rust_type);
                 }
             }
-            RustStructType::Table { domain, range } => {
+            RustStructType::Table { domain, range, .. } => {
                 *domain = Self::resolve_type(&resolved_args, domain);
                 *range = Self::resolve_type(&resolved_args, range);
             }

@@ -181,6 +181,14 @@ pub struct MapWithDefaultsEncoding {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct NemPreserveEncoding {
+    pub len_encoding: LenEncoding,
+    pub m_encoding: LenEncoding,
+    pub m_key_encodings: BTreeMap<u64, Option<cbor_event::Sz>>,
+    pub m_value_encodings: BTreeMap<u64, StringEncoding>,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct NevPreserveEncoding {
     pub len_encoding: LenEncoding,
     pub pts_encoding: LenEncoding,

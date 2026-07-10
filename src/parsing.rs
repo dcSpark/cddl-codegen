@@ -1464,8 +1464,12 @@ enum GroupParsingType {
     /// (`+` / `n*m`) — a LENGTH constraint belonging to the enclosing array type, kept separate
     /// from the element so it can never be misread as an element VALUE bound.
     HomogenousArray(RustType, Option<(Option<i128>, Option<i128>)>),
-    /// Pairs are the same e.g. field:{ *text => uint }
-    HomogenousMap(RustType, RustType),
+    /// Pairs are the same e.g. field:{ *text => uint }. The third field is the occurrence-count
+    /// bounds (a min-cardinality constraint on the table itself). Only `None` (unbounded `*` table)
+    /// and `Some((Some(1), None))` (non-empty `+` / `1*` table → `NonEmptyMap`) ever occur; every
+    /// other count-permitting marker is rejected gracefully at the detection arm (silent widening is
+    /// the bug being removed), so this never carries an unhonored bound.
+    HomogenousMap(RustType, RustType, Option<(Option<i128>, Option<i128>)>),
     /// Fields are different - needs new struct created e.g. field: [a: uint, b: bstr]
     /// This case covers both maps and arrays
     Heterogenous,
@@ -1643,49 +1647,94 @@ fn parse_group_type<'a>(
                                     // fixed-value key: fall through to the 1-element struct path
                                     // (identical to the `MemberKey::Value` arm below).
                                 } else {
-                                    // A NON-fixed key with NO occurrence indicator occurs EXACTLY
-                                    // ONCE (RFC 8610 §2.1/§3.2); table-detecting it to a 0..N map
-                                    // silently WIDENS that occurrence — the generated decoder
-                                    // wrongly accepts e.g. an empty map (a certified
-                                    // over-acceptance, formerly pinned on the
-                                    // tstr_arrow_nooccur matrix row). Reject gracefully with the
-                                    // explicit-`*` remedy. NOT applied in the InlineGroup table
-                                    // arm below: there the semantic occurrence is the inline
-                                    // group's own marker (`{ * (k => v) }`), and the inner
-                                    // entry's missing occur means nothing. Fixed keys above must
-                                    // keep falling through — `{ 1 => uint }` is RFC-equal to the
-                                    // colon spelling and correctly routes to the record path.
-                                    if ge.occur.is_none() {
-                                        // cite the rule by its SOURCE spelling when we have one
-                                        // (the user is looking at their CDDL, not our output);
-                                        // anonymous nested maps describe the entry instead.
-                                        let site = match rule_name {
-                                            Some(name) => format!(
-                                                "rule `{}`",
-                                                types
-                                                    .source_rule_name(name)
-                                                    .map(str::to_owned)
-                                                    .unwrap_or_else(|| name.to_string())
-                                            ),
-                                            None => "inline map".to_owned(),
-                                        };
-                                        let value = &ge.entry_type;
-                                        types.record_rejection(format!(
-                                            "{site}: the map entry `{t1} => {value}` has no \
-                                             occurrence indicator, which per RFC 8610 means the \
-                                             entry occurs exactly once; treating it as a 0..N \
-                                             table would silently widen that occurrence (the \
-                                             generated decoder would wrongly accept e.g. an \
-                                             empty map). For a table, spell the occurrence \
-                                             explicitly: `{{ * {t1} => {value} }}`."
-                                        ));
-                                        // keep parsing on the harmless table path — the rejection
-                                        // surfaces as a graceful Err at `finalize`, and nothing
-                                        // may panic in between.
-                                    }
+                                    // A NON-fixed arrow map entry's occurrence marker determines the
+                                    // table cardinality. Only two markers are honored; every other
+                                    // count-permitting marker is rejected gracefully rather than
+                                    // silently WIDENED to a 0..N table (the generated decoder would
+                                    // wrongly accept out-of-window maps — a certified over-acceptance
+                                    // class). NOT applied in the InlineGroup table arm below: there
+                                    // the semantic occurrence is the inline group's own marker
+                                    // (`{ * (k => v) }`), and the inner entry's missing occur means
+                                    // nothing. Fixed keys above keep falling through — `{ 1 => uint }`
+                                    // is RFC-equal to the colon spelling and routes to the record path.
+                                    //
+                                    //   (none)   — RFC 8610 exactly-once; widening to 0..N is the bug
+                                    //   `*`/`0*` — unbounded 0..N table (bounds `None`), unchanged
+                                    //   `+`/`1*` — non-empty table (`NonEmptyMap`), bounds (Some(1),None)
+                                    //   else     — bounded (`?` / `n*m` / `*n` / `n*` / `0*n`): reject
+                                    //
+                                    // cite the rule by its SOURCE spelling when we have one (the user
+                                    // is looking at their CDDL, not our output); anonymous nested maps
+                                    // describe the entry instead.
+                                    let site = match rule_name {
+                                        Some(name) => format!(
+                                            "rule `{}`",
+                                            types
+                                                .source_rule_name(name)
+                                                .map(str::to_owned)
+                                                .unwrap_or_else(|| name.to_string())
+                                        ),
+                                        None => "inline map".to_owned(),
+                                    };
+                                    let value = &ge.entry_type;
+                                    let occ_bounds = ge.occur.as_ref().map(|o| match o.occur {
+                                        Occur::ZeroOrMore { .. } => (None, None),
+                                        Occur::Exact { lower, upper, .. } => (
+                                            lower.filter(|l| *l != 0).map(|i| i as i128),
+                                            upper.map(|i| i as i128),
+                                        ),
+                                        Occur::Optional { .. } => (None, Some(1)),
+                                        Occur::OneOrMore { .. } => (Some(1), None),
+                                    });
+                                    let table_bounds = match occ_bounds {
+                                        None => {
+                                            types.record_rejection(format!(
+                                                "{site}: the map entry `{t1} => {value}` has no \
+                                                 occurrence indicator, which per RFC 8610 means the \
+                                                 entry occurs exactly once; treating it as a 0..N \
+                                                 table would silently widen that occurrence (the \
+                                                 generated decoder would wrongly accept e.g. an \
+                                                 empty map). For a table, spell the occurrence \
+                                                 explicitly: `{{ * {t1} => {value} }}` (unbounded) \
+                                                 or `{{ + {t1} => {value} }}` (at least one entry)."
+                                            ));
+                                            None
+                                        }
+                                        // `*` / `0*`: the unbounded table this crate has always
+                                        // generated (bounds carry no min/max).
+                                        Some((None, None)) => None,
+                                        // `+` / `1*`: a non-empty table — `NonEmptyMap`, enforced via
+                                        // the single `TryFrom` door (wire + API report identical
+                                        // errors), exactly like `[+ T]` arrays.
+                                        Some((Some(1), None)) => Some((Some(1), None)),
+                                        // `?` / `n*m` / `*n` / `n*` (n≥2) / `0*n`: a real bounded
+                                        // cardinality this phase does not honor. Widening it to 0..N
+                                        // is the over-acceptance bug being removed; reject gracefully.
+                                        Some(_) => {
+                                            types.record_rejection(format!(
+                                                "{site}: the map entry `{t1} => {value}` has a \
+                                                 bounded occurrence marker (`?` / `n*m` / `*n` / \
+                                                 `n*` with n≥2 / `0*n`), which this version does not \
+                                                 honor as a real table cardinality; treating it as a \
+                                                 0..N table would silently widen the bound (the \
+                                                 generated decoder would wrongly accept out-of-window \
+                                                 maps). Use `*` for an unbounded table \
+                                                 (`{{ * {t1} => {value} }}`), or `+` for a non-empty \
+                                                 table (`{{ + {t1} => {value} }}`)."
+                                            ));
+                                            None
+                                        }
+                                    };
+                                    // keep parsing on the harmless table path — any rejection above
+                                    // surfaces as a graceful Err at `finalize`, and nothing may panic
+                                    // in between.
                                     let value_type =
                                         rust_type(types, parent_visitor, &ge.entry_type, cli);
-                                    return GroupParsingType::HomogenousMap(key_type, value_type);
+                                    return GroupParsingType::HomogenousMap(
+                                        key_type,
+                                        value_type,
+                                        table_bounds,
+                                    );
                                 }
                             }
                             Some(MemberKey::Value { .. }) => {
@@ -1739,7 +1788,12 @@ fn parse_group_type<'a>(
                                 ) {
                                     let value_type =
                                         rust_type(types, parent_visitor, &ge.entry_type, cli);
-                                    return GroupParsingType::HomogenousMap(key_type, value_type);
+                                    // `{ * (k => v) }`: the inline group's own `*` marker is the
+                                    // cardinality (unbounded); the inner entry carries no honored
+                                    // bound of its own here.
+                                    return GroupParsingType::HomogenousMap(
+                                        key_type, value_type, None,
+                                    );
                                 }
                             }
                         }
@@ -2147,7 +2201,7 @@ fn rust_type_from_type2(
                                 None => array_type,
                             }
                         }
-                        GroupParsingType::HomogenousMap(_, _) => unreachable!(),
+                        GroupParsingType::HomogenousMap(_, _, _) => unreachable!(),
                         GroupParsingType::Heterogenous => {
                             let rule_metadata = RuleMetadata::from(
                                 get_comment_after(parent_visitor, &CDDLType::from(type2), None)
@@ -2213,14 +2267,23 @@ fn rust_type_from_type2(
                         cli,
                     ) {
                         // Table map - homogenous key/value types
-                        GroupParsingType::HomogenousMap(key_type, value_type) => {
+                        GroupParsingType::HomogenousMap(key_type, value_type, bounds) => {
                             // Generate a MapTToV for a { t => v } table-type map as we are an anonymous type
                             // defined as part of another type if we're in this level of parsing.
                             // We also can't have plain groups unlike arrays, so don't try and generate those
                             // for general map types we can though but not for tables
                             //let table_type_ident = RustIdent::new(CDDLIdent::new(format!("Map{}To{}", key_type.for_wasm_member(), value_type.for_wasm_member())));
                             //types.register_rust_struct(RustStruct::new_table(table_type_ident, None, key_type.clone(), value_type.clone()));
-                            ConceptualRustType::Map(Box::new(key_type), Box::new(value_type)).into()
+                            // An inline `{+ k => v}` field carries the non-empty bound on its own
+                            // RustType (mirroring the inline `[+ T]` array arm), so `for_rust_member`
+                            // renders `NonEmptyMap<K, V>` and deserialize routes through its TryFrom.
+                            let map_type: RustType =
+                                ConceptualRustType::Map(Box::new(key_type), Box::new(value_type))
+                                    .into();
+                            match bounds {
+                                Some(bounds) => map_type.with_bounds(bounds),
+                                None => map_type,
+                            }
                         }
                         _ => unimplemented!("TODO: non-table types as types: {:?}", group),
                     }
@@ -2723,7 +2786,7 @@ fn parse_group_choice(
                     )
                 }
             }
-            GroupParsingType::HomogenousMap(key_type, value_type) => {
+            GroupParsingType::HomogenousMap(key_type, value_type, bounds) => {
                 // Same registration gap as the array arm above: a plain group used as a table key or
                 // value (`pair = (int, tstr)`, `a = { * int => pair }`) must be registered as a concrete
                 // Array-rep rust struct — a CBOR map value can only be one item, so the group is encoded
@@ -2742,13 +2805,12 @@ fn parse_group_choice(
                 }
                 if rule_metadata.newtype.is_some() {
                     // generate newtype over map
-                    RustStruct::new_wrapper(
-                        name.clone(),
-                        tag,
-                        Some(&rule_metadata),
-                        ConceptualRustType::Map(Box::new(key_type), Box::new(value_type)).into(),
-                        None,
-                    )
+                    let mut map_type: RustType =
+                        ConceptualRustType::Map(Box::new(key_type), Box::new(value_type)).into();
+                    if let Some(bounds) = bounds {
+                        map_type = map_type.with_bounds(bounds);
+                    }
+                    RustStruct::new_wrapper(name.clone(), tag, Some(&rule_metadata), map_type, None)
                 } else {
                     // Table map - homogeneous key/value types
                     RustStruct::new_table(
@@ -2757,6 +2819,7 @@ fn parse_group_choice(
                         Some(&rule_metadata),
                         key_type,
                         value_type,
+                        bounds,
                     )
                 }
             }

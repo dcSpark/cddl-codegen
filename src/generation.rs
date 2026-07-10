@@ -589,6 +589,18 @@ impl GenerationScope {
                             elem.for_rust_member(types, false, cli)
                         ));
                     }
+                    // map-side twin: a named `{+ k => v}` rule's alias quotes the occurrence too.
+                    if alias_info.base_type.is_non_empty_map()
+                        && let ConceptualRustType::Map(k, v) = &alias_info.base_type.conceptual_type
+                    {
+                        type_alias.doc(format!(
+                            "`{{+ {} => {}}}`: at least one entry, enforced at the `NonEmptyMap` \
+                             `TryFrom` door (the CBOR decoder routes through the same door, so \
+                             wire-side and API-side rejection are identical).",
+                            k.for_rust_member(types, false, cli),
+                            v.for_rust_member(types, false, cli)
+                        ));
+                    }
                     self.rust(types, ident).push_type_alias(type_alias);
                 }
                 if alias_info.gen_wasm_alias {
@@ -692,7 +704,10 @@ impl GenerationScope {
                                 self.ensure_non_empty_wrappers(types, &field.rust_type, cli);
                             }
                         }
-                        RustStructType::Table { domain, range } => {
+                        RustStructType::Table { domain, range, .. } => {
+                            // the named table's OWN restricted wrapper (`{+ k => v}`) is minted in
+                            // the variant match below (under the rule ident); here just mint wrappers
+                            // its domain/range need (nested `{+ …}` in a key or value position)
                             self.ensure_non_empty_wrappers(types, domain, cli);
                             self.ensure_non_empty_wrappers(types, range, cli);
                         }
@@ -738,8 +753,23 @@ impl GenerationScope {
                             cli,
                         );
                     }
-                    RustStructType::Table { domain, range } => {
-                        if cli.wasm {
+                    RustStructType::Table {
+                        domain,
+                        range,
+                        bounds,
+                    } => {
+                        if cli.wasm && *bounds == Some((Some(1), None)) {
+                            // named `{+ k => v}` rule: its JS class is the RESTRICTED wrapper
+                            // (wrapping core::NonEmptyMap) under the rule ident, not the loose table
+                            // wrapper — the map-side twin of the named `[+ T]` array arm.
+                            self.generate_non_empty_map_type(
+                                types,
+                                domain.clone(),
+                                range.clone(),
+                                rust_ident,
+                                cli,
+                            );
+                        } else if cli.wasm {
                             let map_ident = ConceptualRustType::name_for_wasm_map(domain, range);
                             if table_shape_sole_owner.get(&map_ident.to_string())
                                 == Some(rust_ident)
@@ -963,6 +993,10 @@ impl GenerationScope {
             // non-`+` crate's output byte-identical
             if types.uses_non_empty_vec() {
                 self.rust_lib().raw("pub mod non_empty;");
+            }
+            // only crates that actually use `{+ k => v}` pull in the NonEmptyMap runtime
+            if types.uses_non_empty_map() {
+                self.rust_lib().raw("pub mod non_empty_map;");
             }
         }
         if cli.preserve_encodings {
@@ -1188,6 +1222,13 @@ impl GenerationScope {
                     None,
                 );
             }
+            if types.uses_non_empty_map() {
+                content.push_import(
+                    format!("{}::non_empty_map", cli.common_import_rust()),
+                    "NonEmptyMap",
+                    None,
+                );
+            }
         }
 
         // serialization
@@ -1297,6 +1338,13 @@ impl GenerationScope {
                     content.push_import(
                         format!("{}::non_empty", cli.common_import_wasm()),
                         "NonEmptyVec",
+                        None,
+                    );
+                }
+                if types.uses_non_empty_map() {
+                    content.push_import(
+                        format!("{}::non_empty_map", cli.common_import_wasm()),
+                        "NonEmptyMap",
                         None,
                     );
                 }
@@ -1593,6 +1641,39 @@ impl GenerationScope {
                 std::fs::write(
                     rust_dir.join("rust/src/generated/non_empty.rs"),
                     rustfmt_generated_string(&non_empty_rs)?.as_ref(),
+                )?;
+            }
+
+            // non_empty_map.rs (the NonEmptyMap runtime) — only for crates that use `{+ k => v}`. Its
+            // inner map is `table_type(cli)`: the BTreeMap default is authored verbatim, and under
+            // --preserve-encodings a targeted substitution swaps it for `OrderedHashMap` (import +
+            // type token + the extra `Hash + Eq` key bound the hash-map flavor requires), following
+            // the ordered_hash_map flavoring precedent. Iteration stays deterministic either way.
+            if types.uses_non_empty_map() {
+                let mut non_empty_map_rs =
+                    std::fs::read_to_string(cli.static_dir.join("non_empty_map.rs"))?;
+                if cli.json_serde_derives {
+                    non_empty_map_rs.push_str(&std::fs::read_to_string(
+                        cli.static_dir.join("non_empty_map_json.rs"),
+                    )?);
+                }
+                if cli.json_schema_export {
+                    non_empty_map_rs.push_str(&std::fs::read_to_string(
+                        cli.static_dir.join("non_empty_map_schemars.rs"),
+                    )?);
+                }
+                if cli.preserve_encodings {
+                    non_empty_map_rs = non_empty_map_rs
+                        .replace(
+                            "use std::collections::BTreeMap;",
+                            "use super::ordered_hash_map::OrderedHashMap;",
+                        )
+                        .replace("K: Ord", "K: Ord + core::hash::Hash + Eq")
+                        .replace("BTreeMap", "OrderedHashMap");
+                }
+                std::fs::write(
+                    rust_dir.join("rust/src/generated/non_empty_map.rs"),
+                    rustfmt_generated_string(&non_empty_map_rs)?.as_ref(),
                 )?;
             }
         }
@@ -3976,7 +4057,15 @@ impl GenerationScope {
                             }
                         }
                         deser_code.content.push_block(deser_loop);
-                        if let Some(bounds) = &type_cfg.bounds {
+                        if type_cfg.bounds == Some((Some(1), None)) {
+                            // `{+ k => v}`: route the collected map through the SAME `TryFrom` door the
+                            // API uses, so the wire side and API side report the identical RangeCheck
+                            // error ("0 not at least 1") and can never drift. The encoding vars stay
+                            // keyed off the field (untouched below) — only the value var is rebound.
+                            deser_code.content.line(&format!(
+                                "let {table_var} = NonEmptyMap::try_from({table_var})?;"
+                            ));
+                        } else if let Some(bounds) = &type_cfg.bounds {
                             // we use cargo fmt after so it's okay if we just use .line() here
                             deser_code.content.line(&bounds_check_if_block(
                                 bounds,
@@ -4478,6 +4567,275 @@ impl GenerationScope {
         wrapper.push(self, types);
     }
 
+    /// Emit the RESTRICTED table wrapper for a `{+ k => v}` map — the wasm twin of the loose table
+    /// wrapper (`codegen_table_type`), but wrapping `core::NonEmptyMap<K, V>` instead of the raw map.
+    /// Created via `try_from(&MapKToV)` (borrow + clone, so the source loose wrapper stays valid) or
+    /// `new(first_key, first_value)`; `insert` stays infallible (an insert can't break a `>= 1`
+    /// bound); removal is checked in the core type. `wrapper_ident` is the JS class name — the
+    /// synthesized `NonEmptyMapKToV` for inline maps, or the rule ident for a named `{+ …}`. The
+    /// accessor bodies mirror `codegen_table_type` (delegating to `self.0`, whose `NonEmptyMap`
+    /// method surface matches the raw map's `len`/`insert`/`get`/`keys`).
+    #[allow(clippy::too_many_lines)]
+    fn generate_non_empty_map_type(
+        &mut self,
+        types: &IntermediateTypes,
+        key_type: RustType,
+        value_type: RustType,
+        wrapper_ident: &RustIdent,
+        cli: &Cli,
+    ) {
+        // mint any NonEmpty wrappers the key/value themselves need (nested `{+ …}`) first
+        self.ensure_non_empty_wrappers(types, &key_type, cli);
+        self.ensure_non_empty_wrappers(types, &value_type, cli);
+        if !self.already_generated.insert(wrapper_ident.clone()) {
+            return;
+        }
+        let inner_map =
+            ConceptualRustType::name_for_rust_map(types, &key_type, &value_type, true, cli);
+        let inner_type = format!("NonEmptyMap<{}>", {
+            // strip the leading table-type token (`BTreeMap<K, V>` / `OrderedHashMap<K, V>`) to reuse
+            // the same `K, V` spelling, keeping the wrapper's inner in lockstep with the rust field.
+            let open = inner_map.find('<').expect("map type has generics");
+            let close = inner_map.rfind('>').expect("map type has generics");
+            inner_map[open + 1..close].to_owned()
+        });
+        // the loose structural table wrapper (`MapKToV`) is the `try_from` source; when its ident
+        // coincides with THIS wrapper's ident (a self-named rule like `map_text_to_uint = {+ …}`),
+        // the loose builder cannot exist — the rule legitimately owns the ident for its restricted
+        // class (collision-checked in finalize), so the wrapper emits WITHOUT `try_from` and is built
+        // incrementally (`new(first_key, first_value)` + `insert`).
+        let loose_ident = ConceptualRustType::name_for_wasm_map(&key_type, &value_type);
+        let self_named = loose_ident.to_string() == wrapper_ident.to_string();
+
+        let mut wrapper = create_base_wasm_struct(self, wrapper_ident, false, cli);
+        let map_wasm = ConceptualRustType::name_for_wasm_map(&key_type, &value_type);
+        let entry_doc = if self_named {
+            "The rule name coincides with the loose builder name, so no `try_from` source class \
+             exists — build incrementally from the first entry (`new(first_key, first_value)` + \
+             `insert`)."
+        } else {
+            "Enter via `try_from` (the single checked door — the CBOR decoder routes through the \
+             same door) or `new(first_key, first_value)`."
+        };
+        wrapper.s.doc(format!(
+            "`{{+ k => v}}` (`{map_wasm}`): at least one entry, enforced by the `NonEmptyMap` \
+             representation. {entry_doc} `insert` can never violate the bound; removal is checked \
+             in the core type."
+        ));
+        wrapper.s.tuple_field(None, &inner_type);
+        // new(first_key, first_value) — always valid (length 1)
+        let mut new_func = codegen::Function::new("new");
+        new_func
+            .vis("pub")
+            .ret("Self")
+            .arg("first_key", key_type.for_wasm_param(types))
+            .arg("first_value", value_type.for_wasm_param(types))
+            .line(format!(
+                "Self(NonEmptyMap::new({}, {}))",
+                ToWasmBoundaryOperations::format(
+                    key_type
+                        .from_wasm_boundary_clone(types, "first_key", false)
+                        .into_iter()
+                ),
+                ToWasmBoundaryOperations::format(
+                    value_type
+                        .from_wasm_boundary_clone(types, "first_value", false)
+                        .into_iter()
+                )
+            ));
+        wrapper.s_impl.push_fn(new_func);
+        // len
+        wrapper
+            .s_impl
+            .new_fn("len")
+            .vis("pub")
+            .ret("usize")
+            .arg_ref_self()
+            .line("self.0.len()");
+        // insert / get / has / keys mirror codegen_table_type's accessor bodies (single source of the
+        // nullable-value flattening convention) — see there for the rationale comments.
+        let value_nullable = matches!(
+            value_type.conceptual_type.resolve_alias_shallow(),
+            ConceptualRustType::Optional(_)
+        );
+        let map_value_ret = || {
+            if value_nullable {
+                value_type.for_wasm_return(types)
+            } else {
+                format!("Option<{}>", value_type.for_wasm_return(types))
+            }
+        };
+        let value_flatten = if value_nullable { ".flatten()" } else { "" };
+        let value_nullable_inner_exposable =
+            match value_type.conceptual_type.resolve_alias_shallow() {
+                ConceptualRustType::Optional(inner) => {
+                    inner.conceptual_type.directly_wasm_exposable_ct(types)
+                }
+                _ => false,
+            };
+        let mut insert_func = codegen::Function::new("insert");
+        insert_func
+            .vis("pub")
+            .arg_mut_self()
+            .arg("key", key_type.for_wasm_param(types))
+            .arg("value", value_type.for_wasm_param(types))
+            .ret(map_value_ret());
+        if value_nullable {
+            insert_func.doc("Returns the displaced value, or None if the key was absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).");
+        }
+        insert_func.line(format!(
+            "self.0.insert({}, {}){}",
+            ToWasmBoundaryOperations::format(
+                key_type
+                    .from_wasm_boundary_clone(types, "key", false)
+                    .into_iter()
+            ),
+            ToWasmBoundaryOperations::format(
+                value_type
+                    .from_wasm_boundary_clone(types, "value", false)
+                    .into_iter()
+            ),
+            if value_nullable {
+                if value_nullable_inner_exposable {
+                    value_flatten.to_owned()
+                } else {
+                    format!("{value_flatten}.map(Into::into)")
+                }
+            } else if value_type.directly_wasm_exposable(types) {
+                String::new()
+            } else {
+                ".map(Into::into)".to_owned()
+            }
+        ));
+        wrapper.s_impl.push_fn(insert_func);
+        // get
+        let get_ret_modifier = if value_type.is_copy(types) {
+            ""
+        } else if value_nullable {
+            if value_nullable_inner_exposable {
+                ".cloned()"
+            } else {
+                ".map(|v| v.clone().map(Into::into))"
+            }
+        } else if value_type.directly_wasm_exposable(types) {
+            ".cloned()"
+        } else {
+            ".map(|v| v.clone().into())"
+        };
+        let mut getter = codegen::Function::new("get");
+        getter
+            .arg_ref_self()
+            .arg("key", key_type.for_wasm_param(types))
+            .ret(map_value_ret())
+            .vis("pub");
+        if value_nullable {
+            getter.doc("Returns None if the key is absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).");
+        }
+        let copied_or = |modifier: &str| {
+            if value_type.is_copy(types) {
+                ".copied()".to_owned()
+            } else {
+                modifier.to_owned()
+            }
+        };
+        if key_type.directly_wasm_exposable(types) {
+            getter.line(format!(
+                "self.0.get({}){}{}",
+                key_type.from_wasm_boundary_ref(types, "key"),
+                copied_or(get_ret_modifier),
+                value_flatten
+            ));
+        } else {
+            getter.line(format!(
+                "self.0.get({}.as_ref()){}{}",
+                key_type.from_wasm_boundary_ref(types, "key"),
+                copied_or(get_ret_modifier),
+                value_flatten
+            ));
+        }
+        wrapper.s_impl.push_fn(getter);
+        if value_nullable {
+            let mut has_func = codegen::Function::new("has");
+            has_func
+                .arg_ref_self()
+                .arg("key", key_type.for_wasm_param(types))
+                .ret("bool")
+                .vis("pub")
+                .doc("Returns whether the key is present, distinguishing an absent key from a present-but-null value (both of which `get` reports as None).");
+            if key_type.directly_wasm_exposable(types) {
+                has_func.line(format!(
+                    "self.0.get({}).is_some()",
+                    key_type.from_wasm_boundary_ref(types, "key")
+                ));
+            } else {
+                has_func.line(format!(
+                    "self.0.get({}.as_ref()).is_some()",
+                    key_type.from_wasm_boundary_ref(types, "key")
+                ));
+            }
+            wrapper.s_impl.push_fn(has_func);
+        }
+        // keys
+        let keys_type = ConceptualRustType::Array(Box::new(key_type.clone()));
+        let mut keys = codegen::Function::new("keys");
+        keys.arg_ref_self()
+            .ret(keys_type.for_wasm_return_ct(types))
+            .vis("pub");
+        let key_clone = if key_type.is_copy(types) {
+            ".keys().copied()"
+        } else {
+            ".keys().cloned()"
+        };
+        if keys_type.directly_wasm_exposable_ct(types) {
+            keys.line(format!("self.0{key_clone}.collect::<Vec<_>>()"));
+        } else {
+            keys.line(format!(
+                "{}(self.0{key_clone}.collect::<Vec<_>>())",
+                keys_type.for_wasm_return_ct(types)
+            ));
+        }
+        wrapper.s_impl.push_fn(keys);
+        // try_from: the single checked door from the loose table wrapper to the restricted wrapper.
+        // It BORROWS (and clones) so the source loose `MapKToV` remains valid on the JS side, and the
+        // throw happens here — right at the conversion, not inside a parent constructor.
+        if !self_named {
+            // ensure the loose builder exists as the `try_from` source. Inline maps already mint the
+            // structural `MapKToV` via the visitor (idempotent with our mint through
+            // `already_generated`), and a named `{+ …}` rule may not have — so mint it here. EXCEPT
+            // when a PLAIN table rule of the same shape is the SOLE OWNER of `MapKToV`: then the loose
+            // builder is that owner's class exposed as a `pub type MapKToV = <Owner>;` alias (emitted
+            // by `mint_sole_owner_table`), and minting a second `pub struct MapKToV` here would clash
+            // with that alias (E0428). The alias resolves to the owner, whose conversion methods make
+            // `map.clone().into()` work, so sharing it is both correct and necessary.
+            let shape_has_sole_owner = types
+                .table_shape_sole_owners()
+                .contains_key(&loose_ident.to_string());
+            if !shape_has_sole_owner {
+                codegen_table_type(
+                    self,
+                    types,
+                    &loose_ident,
+                    key_type.clone(),
+                    value_type.clone(),
+                    false,
+                    cli,
+                );
+            }
+            wrapper
+                .s_impl
+                .new_fn("try_from")
+                .vis("pub")
+                .ret(format!("Result<{wrapper_ident}, JsError>"))
+                .arg("map", format!("&{loose_ident}"))
+                .line(format!("let inner: {inner_map} = map.clone().into();"))
+                .line(
+                    "NonEmptyMap::try_from(inner).map(Self).map_err(|e| JsError::new(&e.to_string()))",
+                );
+        }
+        wrapper.add_conversion_methods(&inner_type, cli);
+        wrapper.push(self, types);
+    }
+
     /// Recursively mint the restricted `NonEmpty*List` wrappers a type (at any nesting level) needs.
     /// Named `[+ …]` rules mint their own wrapper under the rule ident elsewhere, so this only fires
     /// on INLINE array shapes (conceptual `Array` carrying the `(Some(1), None)` bounds) that do NOT
@@ -4502,8 +4860,28 @@ impl GenerationScope {
                 self.ensure_non_empty_wrappers(types, inner, cli)
             }
             ConceptualRustType::Map(k, v) => {
-                self.ensure_non_empty_wrappers(types, k, cli);
-                self.ensure_non_empty_wrappers(types, v, cli);
+                if rt.is_non_empty_map() {
+                    // dedup-to-named: an inline `{+ k => v}` whose shape has a NAMED `{+ …}` table
+                    // rule uses that rule's class (minted by the rule's own variant-match) — nothing
+                    // synthesized here. Its key/value still get their own nested wrappers.
+                    self.ensure_non_empty_wrappers(types, k, cli);
+                    self.ensure_non_empty_wrappers(types, v, cli);
+                    if types.non_empty_map_named_owner(k, v).is_none() {
+                        let ident = RustIdent::new(CDDLIdent::new(
+                            rt.non_empty_wasm_map_wrapper_name(types),
+                        ));
+                        self.generate_non_empty_map_type(
+                            types,
+                            (**k).clone(),
+                            (**v).clone(),
+                            &ident,
+                            cli,
+                        );
+                    }
+                } else {
+                    self.ensure_non_empty_wrappers(types, k, cli);
+                    self.ensure_non_empty_wrappers(types, v, cli);
+                }
             }
             _ => (),
         }
@@ -5896,7 +6274,7 @@ fn mint_sole_owner_table(
                 .get(owner)
                 .expect("sole owner of a table shape must be a rust struct");
             match owner_struct.variant() {
-                RustStructType::Table { domain, range } => (domain.clone(), range.clone()),
+                RustStructType::Table { domain, range, .. } => (domain.clone(), range.clone()),
                 _ => unreachable!("sole owner of a table shape must be a Table rust struct"),
             }
         };
@@ -5925,6 +6303,15 @@ fn codegen_table_type(
     cli: &Cli,
 ) {
     assert!(cli.wasm);
+    // Idempotency guard, unified with the array wrappers' `already_generated`: the loose structural
+    // `MapKToV` builder can be requested BOTH by the wasm-wrapper visitor (a plain `{* k => v}` use)
+    // AND directly by `generate_non_empty_map_type` (as a `{+ k => v}` wrapper's `try_from` source);
+    // without a shared guard those two paths would double-define the class (E0428). The callers' own
+    // dedup sets (`wasm_wrappers_generated` / `generated`) remain — this only ADDS protection, so
+    // every existing single-mint path stays byte-identical (the guard passes on first request).
+    if !gen_scope.already_generated.insert(name.clone()) {
+        return;
+    }
     // No `tag` parameter: this emits ONLY the wasm wrapper class (accessors + delegation). When the
     // shape has a CBOR tag (`#6.n({ ... })`), the tag is owned entirely by the rust crate's type,
     // which this wrapper's single tuple field holds (via `rust_crate_struct_from_wasm` when

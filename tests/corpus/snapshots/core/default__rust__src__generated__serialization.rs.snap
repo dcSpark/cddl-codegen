@@ -2896,6 +2896,474 @@ impl Deserialize for MapWithDefaults {
     }
 }
 
+impl cbor_event::se::Serialize for NemHolder {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_map(cbor_event::Len::Len(
+            3 + match &self.maybe {
+                Some(_) => 1,
+                None => 0,
+            },
+        ))?;
+        if let Some(field) = &self.maybe {
+            serializer.write_text("maybe")?;
+            serializer.write_map(cbor_event::Len::Len(field.len() as u64))?;
+            for (key, value) in field.iter() {
+                serializer.write_unsigned_integer(*key)?;
+                serializer.write_text(value)?;
+            }
+        }
+        serializer.write_text("named")?;
+        serializer.write_map(cbor_event::Len::Len(self.named.len() as u64))?;
+        for (key, value) in self.named.iter() {
+            serializer.write_text(key)?;
+            value.serialize(serializer)?;
+        }
+        serializer.write_text("plain")?;
+        serializer.write_map(cbor_event::Len::Len(self.plain.len() as u64))?;
+        for (key, value) in self.plain.iter() {
+            serializer.write_text(key)?;
+            serializer.write_unsigned_integer(*value)?;
+        }
+        serializer.write_text("inline")?;
+        serializer.write_map(cbor_event::Len::Len(self.inline.len() as u64))?;
+        for (key, value) in self.inline.iter() {
+            serializer.write_text(key)?;
+            serializer.write_unsigned_integer(*value)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for NemHolder {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(3)?;
+            let mut maybe = None;
+            let mut named = None;
+            let mut plain = None;
+            let mut inline = None;
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Uint(
+                            raw.unsigned_integer()?,
+                        ))
+                        .into())
+                    }
+                    cbor_event::Type::Text => match raw.text()?.as_str() {
+                        "maybe" => {
+                            if maybe.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "maybe".into(),
+                                ))
+                                .into());
+                            }
+                            maybe = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    read_len.read_elems(1)?;
+                                    let mut maybe_table = BTreeMap::new();
+                                    let maybe_len = raw.map()?;
+                                    while match maybe_len {
+                                        cbor_event::Len::Len(n) => (maybe_table.len() as u64) < n,
+                                        cbor_event::Len::Indefinite => true,
+                                    } {
+                                        if matches!(maybe_len, cbor_event::Len::Indefinite)
+                                            && raw.cbor_type()? == cbor_event::Type::Special
+                                            && raw.special_break()?
+                                        {
+                                            break;
+                                        }
+                                        let maybe_key = raw.unsigned_integer()?;
+                                        let maybe_value = raw.text()?;
+                                        if maybe_table.insert(maybe_key, maybe_value).is_some() {
+                                            return Err(DeserializeFailure::DuplicateKey(
+                                                Key::Uint(maybe_key),
+                                            )
+                                            .into());
+                                        }
+                                    }
+                                    let maybe_table = NonEmptyMap::try_from(maybe_table)?;
+                                    Ok(maybe_table)
+                                })()
+                                .map_err(|e| e.annotate("maybe"))?,
+                            );
+                        }
+                        "named" => {
+                            if named.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "named".into(),
+                                ))
+                                .into());
+                            }
+                            named = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    let mut named_table = BTreeMap::new();
+                                    let named_len = raw.map()?;
+                                    while match named_len {
+                                        cbor_event::Len::Len(n) => (named_table.len() as u64) < n,
+                                        cbor_event::Len::Indefinite => true,
+                                    } {
+                                        if matches!(named_len, cbor_event::Len::Indefinite)
+                                            && raw.cbor_type()? == cbor_event::Type::Special
+                                            && raw.special_break()?
+                                        {
+                                            break;
+                                        }
+                                        let named_key = raw.text()?;
+                                        let named_value = NemVal::deserialize(raw)?;
+                                        if named_table
+                                            .insert(named_key.clone(), named_value)
+                                            .is_some()
+                                        {
+                                            return Err(DeserializeFailure::DuplicateKey(
+                                                Key::Str(named_key),
+                                            )
+                                            .into());
+                                        }
+                                    }
+                                    let named_table = NonEmptyMap::try_from(named_table)?;
+                                    Ok(named_table)
+                                })()
+                                .map_err(|e| e.annotate("named"))?,
+                            );
+                        }
+                        "plain" => {
+                            if plain.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "plain".into(),
+                                ))
+                                .into());
+                            }
+                            plain = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    let mut plain_table = BTreeMap::new();
+                                    let plain_len = raw.map()?;
+                                    while match plain_len {
+                                        cbor_event::Len::Len(n) => (plain_table.len() as u64) < n,
+                                        cbor_event::Len::Indefinite => true,
+                                    } {
+                                        if matches!(plain_len, cbor_event::Len::Indefinite)
+                                            && raw.cbor_type()? == cbor_event::Type::Special
+                                            && raw.special_break()?
+                                        {
+                                            break;
+                                        }
+                                        let plain_key = raw.text()?;
+                                        let plain_value = raw.unsigned_integer()?;
+                                        if plain_table
+                                            .insert(plain_key.clone(), plain_value)
+                                            .is_some()
+                                        {
+                                            return Err(DeserializeFailure::DuplicateKey(
+                                                Key::Str(plain_key),
+                                            )
+                                            .into());
+                                        }
+                                    }
+                                    Ok(plain_table)
+                                })()
+                                .map_err(|e| e.annotate("plain"))?,
+                            );
+                        }
+                        "inline" => {
+                            if inline.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "inline".into(),
+                                ))
+                                .into());
+                            }
+                            inline = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    let mut inline_table = BTreeMap::new();
+                                    let inline_len = raw.map()?;
+                                    while match inline_len {
+                                        cbor_event::Len::Len(n) => (inline_table.len() as u64) < n,
+                                        cbor_event::Len::Indefinite => true,
+                                    } {
+                                        if matches!(inline_len, cbor_event::Len::Indefinite)
+                                            && raw.cbor_type()? == cbor_event::Type::Special
+                                            && raw.special_break()?
+                                        {
+                                            break;
+                                        }
+                                        let inline_key = raw.text()?;
+                                        let inline_value = raw.unsigned_integer()?;
+                                        if inline_table
+                                            .insert(inline_key.clone(), inline_value)
+                                            .is_some()
+                                        {
+                                            return Err(DeserializeFailure::DuplicateKey(
+                                                Key::Str(inline_key),
+                                            )
+                                            .into());
+                                        }
+                                    }
+                                    let inline_table = NonEmptyMap::try_from(inline_table)?;
+                                    Ok(inline_table)
+                                })()
+                                .map_err(|e| e.annotate("inline"))?,
+                            );
+                        }
+                        unknown_key => {
+                            return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                unknown_key.to_owned(),
+                            ))
+                            .into())
+                        }
+                    },
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                        }
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                    }
+                }
+                read += 1;
+            }
+            let inline = match inline {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("inline")))
+                            .into(),
+                    )
+                }
+            };
+            let plain = match plain {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("plain")))
+                            .into(),
+                    )
+                }
+            };
+            let named = match named {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("named")))
+                            .into(),
+                    )
+                }
+            };
+            read_len.finish()?;
+            Ok(Self {
+                inline,
+                maybe,
+                plain,
+                named,
+            })
+        })()
+        .map_err(|e| e.annotate("NemHolder"))
+    }
+}
+
+impl cbor_event::se::Serialize for NemVal {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_map(cbor_event::Len::Len(1))?;
+        serializer.write_text("v")?;
+        serializer.write_unsigned_integer(self.v)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for NemVal {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let mut v = None;
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Uint(
+                            raw.unsigned_integer()?,
+                        ))
+                        .into())
+                    }
+                    cbor_event::Type::Text => match raw.text()?.as_str() {
+                        "v" => {
+                            if v.is_some() {
+                                return Err(
+                                    DeserializeFailure::DuplicateKey(Key::Str("v".into())).into()
+                                );
+                            }
+                            v = Some(
+                                Ok(raw.unsigned_integer()?)
+                                    .map_err(|e: DeserializeError| e.annotate("v"))?,
+                            );
+                        }
+                        unknown_key => {
+                            return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                unknown_key.to_owned(),
+                            ))
+                            .into())
+                        }
+                    },
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                        }
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                    }
+                }
+                read += 1;
+            }
+            let v = match v {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("v")))
+                            .into(),
+                    )
+                }
+            };
+            Ok(Self { v })
+        })()
+        .map_err(|e| e.annotate("NemVal"))
+    }
+}
+
+impl cbor_event::se::Serialize for NemWire {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_map(cbor_event::Len::Len(1))?;
+        serializer.write_text("m")?;
+        serializer.write_map(cbor_event::Len::Len(self.m.len() as u64))?;
+        for (key, value) in self.m.iter() {
+            serializer.write_unsigned_integer(*key)?;
+            serializer.write_unsigned_integer(*value)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for NemWire {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let mut m = None;
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Uint(
+                            raw.unsigned_integer()?,
+                        ))
+                        .into())
+                    }
+                    cbor_event::Type::Text => match raw.text()?.as_str() {
+                        "m" => {
+                            if m.is_some() {
+                                return Err(
+                                    DeserializeFailure::DuplicateKey(Key::Str("m".into())).into()
+                                );
+                            }
+                            m = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    let mut m_table = BTreeMap::new();
+                                    let m_len = raw.map()?;
+                                    while match m_len {
+                                        cbor_event::Len::Len(n) => (m_table.len() as u64) < n,
+                                        cbor_event::Len::Indefinite => true,
+                                    } {
+                                        if matches!(m_len, cbor_event::Len::Indefinite)
+                                            && raw.cbor_type()? == cbor_event::Type::Special
+                                            && raw.special_break()?
+                                        {
+                                            break;
+                                        }
+                                        let m_key = raw.unsigned_integer()?;
+                                        let m_value = raw.unsigned_integer()?;
+                                        if m_table.insert(m_key, m_value).is_some() {
+                                            return Err(DeserializeFailure::DuplicateKey(
+                                                Key::Uint(m_key),
+                                            )
+                                            .into());
+                                        }
+                                    }
+                                    let m_table = NonEmptyMap::try_from(m_table)?;
+                                    Ok(m_table)
+                                })()
+                                .map_err(|e| e.annotate("m"))?,
+                            );
+                        }
+                        unknown_key => {
+                            return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                unknown_key.to_owned(),
+                            ))
+                            .into())
+                        }
+                    },
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                        }
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                    }
+                }
+                read += 1;
+            }
+            let m = match m {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("m")))
+                            .into(),
+                    )
+                }
+            };
+            Ok(Self { m })
+        })()
+        .map_err(|e| e.annotate("NemWire"))
+    }
+}
+
 impl cbor_event::se::Serialize for NevBar {
     fn serialize<'se, W: Write>(
         &self,

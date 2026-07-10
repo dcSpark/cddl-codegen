@@ -386,3 +386,19 @@ nev_holder2 = {
   pts_inline: [+ nev_pt],
   qs: nev_q_list,
 }
+
+; --- WI-2: NonEmptyMap two-type enforcement for the `+`/`1*` occurrence on tables ---
+; `{+ k => v}` becomes NonEmptyMap<K, V> (invalid empty state unrepresentable, one TryFrom door).
+; `{* k => v}` stays a bare table map; every other count-permitting marker is rejected at parse time.
+nem_val = { v: uint }
+; a NAMED `{+ k => v}` rule with struct values gains `pub type NemNamed = NonEmptyMap<String, NemVal>`
+nem_named = {+ tstr => nem_val}
+nem_holder = {
+  inline: {+ tstr => uint},        ; inline {+ k => v}  -> NonEmptyMap<String, u64>
+  ? maybe: {+ uint => tstr},       ; optional           -> Option<NonEmptyMap<u64, String>>
+  plain: {* tstr => uint},         ; control (stays a bare BTreeMap<String, u64>)
+  named: nem_named,                ; reference to the named `{+ ...}` rule (dedups its wasm class)
+}
+; single-field map-record whose deserialize routes an empty wire map through the same TryFrom door as
+; the API (identical RangeCheck error at both doors)
+nem_wire = { m: {+ uint => uint} }

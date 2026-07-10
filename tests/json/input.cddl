@@ -23,3 +23,7 @@ table_holder = [t: table]
 ; WI-1: a `[+ uint]` field exercises the serde/schemars leg — NonEmptyVec serializes as a plain JSON
 ; array, and JSON deserialize routes through the same TryFrom door (empty array rejected).
 nev_json = { xs: [+ uint] }
+
+; WI-2: a `{+ tstr => uint}` field exercises the serde/schemars leg — NonEmptyMap serializes as a
+; plain JSON object, and JSON deserialize routes through the same TryFrom door (empty object rejected).
+nem_json = { xs: {+ tstr => uint} }

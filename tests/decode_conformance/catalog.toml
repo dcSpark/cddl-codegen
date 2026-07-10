@@ -2308,120 +2308,6 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
-id = "contain.occurrence-target.memberkey.type1.bounded_table"
-axis = "containment"
-example = "m = { 2*3 tstr => uint }"
-spec = "__probe_holder = [0, m]\nm = { 2*3 tstr => uint }"
-mode = "holder"
-type_name = "ProbeHolder"
-
-[[row.vector]]
-hex = "8200a0"
-source = "hand"
-expect = "accept"
-class = "over-acceptance"
-reason = "Empty map against `{ 2*3 tstr => uint }` (below the lower bound of 2): spec-INVALID (both oracles reject), but cddl-codegen table-detects the count-permitting marker to an unbounded 0..N BTreeMap (HomogenousMap carries no bounds) and WRONGLY accepts it — the widened-occurrence-marker table class, cddl-matrix/ROADMAP.md § findings. Promotion flow: when the decoder honors the marker as map-size bounds (or rejects the spelling gracefully), this pin flips (decoder now REJECTS) — promote it to class=\"constraint\" + expect_err and move the row id from EXPECTED_ENFORCE_OVERACCEPTS to EXPECTED_ENFORCE_YES in query_q4_directional.ts."
-
-[[row.vector]]
-hex = "8200a1616101"
-source = "hand"
-expect = "accept"
-class = "over-acceptance"
-reason = "One-entry map against `{ 2*3 tstr => uint }` (below the lower bound of 2): spec-INVALID (both oracles reject), but the count-permitting marker is table-detected to an unbounded 0..N BTreeMap and the entry is WRONGLY accepted — the widened-occurrence-marker table class, cddl-matrix/ROADMAP.md § findings. Promotion flow: decoder honors the lower bound → pin flips to REJECT, promote to class=\"constraint\" + expect_err, move the row id to EXPECTED_ENFORCE_YES in query_q4_directional.ts."
-
-[[row.vector]]
-hex = "8200a26757696c6d612773190a1b6666616c6c6f771904ad"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a2686b69646e61706564190c5b69737469636b70696e731910a1"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a26966616d697368696e6719020d614519068c"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a26a70656e6f6c6f6769737419121369636976696c697a657319024c"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a26c636f6d6d656d6f7261746564191010697061747465726e2773190dfc"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a26e707265666572656e7469616c6c79190fba6448616c651902c7"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a367737563636573731909206c756e666f7267697661626c6519036168646f776e746f776e1832"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a36864656c6976657273190b6568666f637573736573190c2868526170756e7a656c190ed5"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a3686b65796e6f7465641905426857616c64656d6172190fbb6c70656a6f7261746976652773190644"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a36966696e657373652773190c736974726176656c6f67731901c16667656e646572190936"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a461610161620261630361640a"
-source = "hand"
-expect = "accept"
-class = "over-acceptance"
-reason = "Four-entry map against `{ 2*3 tstr => uint }` (above the upper bound of 3): spec-INVALID (both oracles reject), but the count-permitting marker is table-detected to an unbounded 0..N BTreeMap and all four entries are WRONGLY accepted — the widened-occurrence-marker table class, cddl-matrix/ROADMAP.md § findings. Promotion flow: decoder honors the upper bound → pin flips to REJECT, promote to class=\"constraint\" + expect_err, move the row id to EXPECTED_ENFORCE_YES in query_q4_directional.ts."
-
-[[row]]
-id = "contain.occurrence-target.memberkey.type1.optional_table"
-axis = "containment"
-example = "m = { ? tstr => uint }"
-spec = "__probe_holder = [0, m]\nm = { ? tstr => uint }"
-mode = "holder"
-type_name = "ProbeHolder"
-
-[[row.vector]]
-hex = "8200a166636f70696e67190110"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a166676e61742773191096"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a167686f6f63682773190de1"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a16b76616363696e6174696e671902dd"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "8200a2616101616202"
-source = "hand"
-expect = "accept"
-class = "over-acceptance"
-reason = "Two-entry map against `{ ? tstr => uint }` (`?` permits at most one entry): spec-INVALID (both oracles reject), but cddl-codegen table-detects the count-permitting marker to an unbounded 0..N BTreeMap (HomogenousMap carries no bounds) and WRONGLY accepts both entries — the widened-occurrence-marker table class, cddl-matrix/ROADMAP.md § findings. The above-bound direction is the row's ONLY violation class — `?` permits absence, so there is no below-bound violation. Separately, the rust oracle @ 2c7548e over-rejects the spec-VALID empty map, so the row's legal empty-map accept candidate is dropped at mint (README gap #9, draft/rust-cddl-optional-entry-empty-map-gap.md). Promotion flow: decoder honors the upper bound → pin flips to REJECT, promote to class=\"constraint\" + expect_err, move the row id from EXPECTED_ENFORCE_OVERACCEPTS to EXPECTED_ENFORCE_YES in query_q4_directional.ts."
-
-[[row]]
 id = "contain.occurrence-target.memberkey.type1.plus_table"
 axis = "containment"
 example = "m = { + tstr => uint }"
@@ -2432,9 +2318,10 @@ type_name = "ProbeHolder"
 [[row.vector]]
 hex = "8200a0"
 source = "hand"
-expect = "accept"
-class = "over-acceptance"
-reason = "Empty map against `{ + tstr => uint }` (`+` requires at least one entry): spec-INVALID (both oracles reject), but cddl-codegen table-detects the count-permitting marker to an unbounded 0..N BTreeMap (HomogenousMap carries no bounds) and WRONGLY accepts it — the widened-occurrence-marker table class, cddl-matrix/ROADMAP.md § findings. Promotion flow: when the decoder honors the marker as map-size bounds (or rejects the spelling gracefully), this pin flips (decoder now REJECTS) — promote it to class=\"constraint\" + expect_err and move the row id from EXPECTED_ENFORCE_OVERACCEPTS to EXPECTED_ENFORCE_YES in query_q4_directional.ts."
+expect = "reject"
+class = "constraint"
+reason = "Empty map against `{ + tstr => uint }` (`+` requires at least one entry): spec-INVALID (both oracles reject), and cddl-codegen now decodes `m` as NonEmptyMap<String, u64> whose single TryFrom door rejects the empty map with the same RangeCheck the API raises — the widened-occurrence-marker over-acceptance class (cddl-matrix/ROADMAP.md § findings) is CLOSED for `+`, honored as a non-empty table."
+expect_err = "0 not at least 1"
 
 [[row.vector]]
 hex = "8200a26a696e63657074696f6e731912366875707374617274731911e9"

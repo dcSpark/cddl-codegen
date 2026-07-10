@@ -218,12 +218,23 @@ fn rust_scoped(mv: &MintValue, scoped: &ScopeMap) -> String {
             }
         }
         MintValue::Array { elem: None, .. } => "vec![]".to_owned(),
-        MintValue::Map { key, val, count } => {
+        MintValue::Map {
+            key,
+            val,
+            count,
+            non_empty,
+        } => {
             let k = map_key_expr(key);
-            format!(
-                "(0u64..{count}).map(|__i| ({k}, {})).collect()",
-                rust_scoped(val, scoped)
-            )
+            let v = rust_scoped(val, scoped);
+            if *non_empty {
+                // build via new(first_key, first_value) + insert (flavor-agnostic; a bare
+                // `try_from(collect())` can't infer the inner map type — see emit_tests.rs).
+                format!(
+                    "{{ let mut __m = {{ let __i = 0u64; NonEmptyMap::new({k}, {v}) }}; for __i in 1u64..{count} {{ __m.insert({k}, {v}); }} __m }}"
+                )
+            } else {
+                format!("(0u64..{count}).map(|__i| ({k}, {v})).collect()")
+            }
         }
         MintValue::DefaultMap => "Default::default()".to_owned(),
         MintValue::Record {
@@ -491,11 +502,31 @@ fn wasm_collection_build(
             }
             Some(format!("{{ {body} l }}"))
         }
-        (ConceptualRustType::Map(_k, v), MintValue::Map { key, val, count }) => {
+        (
+            ConceptualRustType::Map(_k, v),
+            MintValue::Map {
+                key, val, count, ..
+            },
+        ) => {
             // cheaply-minted map keys are always primitives crossing by value (see `materialize`),
             // so synthesize each of the `count` distinct keys as a literal; `insert` takes the value
             // via `for_wasm_param`, so `wasm_arg` gives it the same boundary treatment.
             let val_expr = wasm_arg(types, val, v, scoped, cli)?;
+            if field_ty.is_type_enforced_non_empty() {
+                // restricted wrapper: `new(first_key, first_value)` seeds the first entry (no empty
+                // state), `insert` the rest. `count` is >= 1 for a `{+ k => v}` shape.
+                let mut body = format!(
+                    "let mut m = {wrapper}::new({}, {val_expr});",
+                    map_key_literal(key, 0)
+                );
+                for i in 1..*count {
+                    body.push_str(&format!(
+                        " m.insert({}, {val_expr});",
+                        map_key_literal(key, i)
+                    ));
+                }
+                return Some(format!("{{ {body} m }}"));
+            }
             let mut body = format!("let mut m = {wrapper}::new();");
             for i in 0..*count {
                 body.push_str(&format!(

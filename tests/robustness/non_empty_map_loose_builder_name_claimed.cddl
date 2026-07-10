@@ -1,0 +1,9 @@
+; WI-2 (NonEmptyMap): an inline/named `{+ bar => baz}` with non-exposable key/value needs the loose
+; `MapBarToBaz` table builder class as its `try_from` source; a user rule of a DIFFERENT shape
+; claiming that ident is rejected gracefully under --wasm=true (emitting both would define the class
+; twice — E0428 — or hand `try_from` a wrapper of the wrong shape). A rule that IS `{* bar => baz}`
+; of the same key/value is compatible (it IS the builder) and does not reject.
+bar = [x: uint]
+baz = [y: uint]
+map_bar_to_baz = [z: uint]
+holder = { m: {+ bar => baz} }

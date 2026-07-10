@@ -119,11 +119,14 @@ pub(crate) enum MintValue {
         count: i128,
         non_empty: bool,
     },
-    /// a map of `count` entries with synthesized keys
+    /// a map of `count` entries with synthesized keys. When `non_empty` the target type is
+    /// `NonEmptyMap<K, V>` (`{+ k => v}`), so it is built through the single TryFrom door
+    /// (`NonEmptyMap::try_from(map).unwrap()`, the collect target inferred from the sole impl).
     Map {
         key: MapKey,
         val: Box<MintValue>,
         count: i128,
+        non_empty: bool,
     },
     /// `Default::default()` — an empty inline-map field minted for an unmintable element (loud skip)
     DefaultMap,
@@ -183,17 +186,31 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
             }
         }
         MintValue::Array { elem: None, .. } => "vec![]".to_owned(),
-        MintValue::Map { key, val, count } => {
+        MintValue::Map {
+            key,
+            val,
+            count,
+            non_empty,
+        } => {
             let k = match key {
                 MapKey::Int(p) => format!("__i as {p}"),
                 MapKey::Str => "__i.to_string()".to_owned(),
                 MapKey::Bytes => "vec![__i as u8]".to_owned(),
                 MapKey::Bool => "__i == 1".to_owned(),
             };
-            format!(
-                "(0u64..{count}).map(|__i| ({k}, {})).collect()",
-                render_rust(val)
-            )
+            let v = render_rust(val);
+            if *non_empty {
+                // build via `new(first_key, first_value)` + `insert` (flavor-agnostic and
+                // unambiguous). A bare `try_from((..).collect())` can't infer the collect target here:
+                // the reflexive `TryFrom<Self>` blanket competes with `TryFrom<{table_type}>`, so the
+                // `{table_type}` (BTreeMap / OrderedHashMap) is not uniquely determined. `new` never
+                // names the inner map type, so it compiles under every profile.
+                format!(
+                    "{{ let mut __m = {{ let __i = 0u64; NonEmptyMap::new({k}, {v}) }}; for __i in 1u64..{count} {{ __m.insert({k}, {v}); }} __m }}"
+                )
+            } else {
+                format!("(0u64..{count}).map(|__i| ({k}, {v})).collect()")
+            }
         }
         MintValue::DefaultMap => "Default::default()".to_owned(),
         MintValue::Record {
@@ -479,7 +496,7 @@ fn struct_uses_custom_ser_inner(
             .iter()
             .any(|f| field_uses_custom_ser(types, f, visited)),
         RustStructType::Wrapper { wrapped, .. } => type_uses_custom_ser(types, wrapped, visited),
-        RustStructType::Table { domain, range } => {
+        RustStructType::Table { domain, range, .. } => {
             type_uses_custom_ser(types, domain, visited)
                 || type_uses_custom_ser(types, range, visited)
         }
@@ -1524,7 +1541,24 @@ pub(crate) fn mint_struct(
         // inline `{ * k => v }` map *fields* already mint one entry via materialize_at, so the map
         // element wire path is still exercised there. Named-table standalone element coverage is
         // owned at the embed site by verify.ts's synthetic-holder probe (cddl-matrix/README.md).
-        RustStructType::Table { .. } => Some(MintValue::TableEmpty { ident: name }),
+        RustStructType::Table {
+            domain,
+            range,
+            bounds,
+        } => {
+            if *bounds == Some((Some(1), None)) {
+                // a non-empty table: `TableEmpty` (`Foo::new()`) is invalid — the `NonEmptyMap` alias
+                // has no zero-arg ctor. Mint one entry through the Map path (routed through the same
+                // `NonEmptyMap::try_from` door). Named tables are skipped from STANDALONE round-trips
+                // (transparent alias), so this only feeds an embed site that references the rule.
+                let map_ty: RustType =
+                    ConceptualRustType::Map(Box::new(domain.clone()), Box::new(range.clone()))
+                        .into();
+                materialize_at(types, &map_ty.with_bounds((Some(1), None)), 1, depth + 1)
+            } else {
+                Some(MintValue::TableEmpty { ident: name })
+            }
+        }
         RustStructType::Array {
             element_type,
             bounds,
@@ -1692,6 +1726,7 @@ fn materialize_at(
                 key,
                 val: Box::new(val),
                 count: measure,
+                non_empty: ty.is_type_enforced_non_empty(),
             })
         }
         _ => None,

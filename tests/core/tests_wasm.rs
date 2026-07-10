@@ -395,3 +395,58 @@ fn wasm_non_empty_named_free_selfnamed_and_dedup() {
     assert_eq!(back.qs().len(), 2);
     assert_eq!(back.qs().get(1).a(), 8);
 }
+
+// --- WI-2: NonEmptyMap wasm two-wrapper pattern (`{+ k => v}`) ---
+// The restricted wrapper (`NonEmptyMapTextToU64`) is created only via `try_from` (borrow + clone, so
+// the loose builder survives) or `new(first_key, first_value)`; the throw lands at `try_from`, not
+// inside a parent ctor. Parent `new` takes the pre-checked `&NonEmpty*` wrappers by reference. The
+// empty-input THROW isn't asserted here because `try_from` builds a `JsError` on the error path, and
+// `JsError::new` panics on the host target used by these tests (no JS runtime) — that rejection is
+// covered rust-side via the same TryFrom door (`non_empty_map_wire_rejects_empty_same_error`).
+#[test]
+fn wasm_non_empty_map_try_from_and_source_survives() {
+    // the loose table wrapper IS the builder
+    let mut loose = MapTextToU64::new();
+    loose.insert("a".to_string(), 1);
+    let mut inline = NonEmptyMapTextToU64::try_from(&loose)
+        .ok()
+        .expect("non-empty loose map converts");
+    // the source loose map stays valid after the (borrowing) conversion
+    loose.insert("b".to_string(), 2);
+    assert_eq!(loose.len(), 2);
+    assert_eq!(inline.len(), 1);
+    // insert on the restricted wrapper is infallible (a growth can't break the >= 1 bound)
+    inline.insert("c".to_string(), 3);
+    assert_eq!(inline.len(), 2);
+    assert_eq!(inline.get("c".to_string()), Some(3));
+}
+
+#[test]
+fn wasm_non_empty_map_holder_parent_new_takes_wrappers_and_roundtrips() {
+    let inline = NonEmptyMapTextToU64::new("x".to_string(), 7);
+    let mut plain = MapTextToU64::new();
+    plain.insert("p".to_string(), 9);
+    // named `{+ tstr => nem_val}`: non-exposable value -> try_from the loose MapTextToNemVal builder
+    let mut named_loose = MapTextToNemVal::new();
+    named_loose.insert("k".to_string(), &NemVal::new(3));
+    let named = NemNamed::try_from(&named_loose)
+        .ok()
+        .expect("NemNamed::try_from");
+    // parent `new` is NOT a throw site for these container constraints
+    let holder = NemHolder::new(&inline, &plain, &named);
+    let bytes = holder.to_cbor_bytes();
+    let back = NemHolder::from_cbor_bytes(&bytes)
+        .ok()
+        .expect("NemHolder round-trip");
+    assert_eq!(back.to_cbor_bytes(), bytes);
+    // read the restricted accessors back
+    assert_eq!(back.inline().len(), 1);
+    assert_eq!(back.inline().get("x".to_string()), Some(7));
+    assert_eq!(back.named().len(), 1);
+    assert_eq!(back.named().get("k".to_string()).unwrap().v(), 3);
+    assert_eq!(back.plain().len(), 1);
+    assert!(back.maybe().is_none());
+    // the named wrapper's new(first_key, first_value) path (no try_from needed)
+    let n2 = NemNamed::new("z".to_string(), &NemVal::new(5));
+    assert_eq!(n2.get("z".to_string()).unwrap().v(), 5);
+}

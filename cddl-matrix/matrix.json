@@ -2147,34 +2147,14 @@
         "status": "unsupported"
       },
       {
-        "emission": {
-          "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
-            "status": "supported"
-          },
-          "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
-            "status": "supported"
-          }
-        },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=n/a (nothing minted); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.occurrence-target.memberkey.type1.bounded_table",
-        "status": "supported"
+        "status": "unsupported"
       },
       {
-        "emission": {
-          "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
-            "status": "supported"
-          },
-          "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
-            "status": "supported"
-          }
-        },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=n/a (nothing minted); wasm compiles (no minted wasm surface); accepts 4 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.occurrence-target.memberkey.type1.optional_table",
-        "status": "supported"
+        "status": "unsupported"
       },
       {
         "emission": {
