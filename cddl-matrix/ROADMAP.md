@@ -45,6 +45,18 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
   supports it; wire it into `project_corpus.ts` if a consumer wants the complete matrix view.
+- **Annotation-evidence ↔ decode-catalog coherence lint.** A supported row's committed evidence
+  carries a decode-foreign corroboration clause ("accepts N foreign spec-derived vector(s)" / "no
+  committed decode vectors"), but nothing cross-checks it against the committed catalog: the clause
+  is probe-written by the full `verify.ts` run, so a scoped `--mint-decode-foreign --only=<row>`
+  run AFTER the probe leaves a factually wrong committed string until the next full run (proven
+  instance: the `record_array_tagged` row minted 10 vectors while its evidence still read "no
+  committed decode vectors" — caught by review, fixed by a second full run; every gate stayed
+  green because none compares the two files). The lint is cheap and mechanical — for each supported
+  row, assert the evidence clause's presence/count matches the catalog's committed vectors — and
+  belongs in `project_decode_conformance.ts --check` (it already parses both inputs). Until built,
+  the working rule is ordering: mint BEFORE the full verify run (the no-occurrence-arrow close-out
+  did this), or re-run verify after a scoped mint.
 
 ## F4 / F5 follow-ons (only when their consumer exists)
 
@@ -140,6 +152,17 @@ are ledgered here (that's what the probe/gate error messages point at).
   `draft/rust-cddl-bignint-key-validator-gap.md`): remove `cbor_bignint_table` from
   `ir_conformance_corpus`'s `RUST_ORACLE_SKIP` (re-arming its rust conformance half), prune README
   gap #6, and delete that draft.
+- When a rust `cddl` fix ships TAG-typed map-key validation: the validator evaluates a tagged
+  Type1 member key (`{ * #6.24(uint) => tstr }`) against the WHOLE map instead of the entry keys
+  (`expected tagged data #6.24(uint), got Map(...)` on spec-valid `{24(5): "x"}`; ruby accepts —
+  the member-key walk repositions onto entry keys for the key classes it special-cases but not for
+  `Type2::TaggedData`; minimal two-file differential repro, suspected `src/validator/cbor.rs` site,
+  and prune steps in `draft/rust-cddl-tag-map-key-gap.md`, local note; no upstream issue filed yet).
+  This is what keeps `contain.map-key.type2.tag` `pinned_reason`-vectorless (spelling-independent —
+  re-confirmed under the `*` respell during the no-occurrence-arrow close-out). On a fixed oracle:
+  re-mint the row (`--mint-decode-foreign --only=contain.map-key.type2.tag`), re-run the full
+  `verify.ts` in the same change so the evidence picks up the corroboration clause, and prune the
+  draft + this entry.
 - The `cbor_event` close-outs (f16 mis-decode, length-prefix over-allocation) are entries in the
   list below — each names its prune/re-mint steps.
 
