@@ -7904,6 +7904,11 @@ fn comment_preserve_lexer_round_trip_over_corpus() {
             "tests/json/input.cddl",
             &["--json-serde-derives=true", "--json-schema-export=true"],
         ),
+        // Generator-comment-rich shapes: `--emit-tests` stamps TRAILING `// <cddl>` comments and the
+        // comment DSL emits `///` doc blocks — both must self-cancel (not spam compile_error blocks
+        // or read as user comments; the exact regression the first-principles design review found).
+        ("tests/core/input.cddl", &["--emit-tests=true"]),
+        ("tests/comment-dsl/input.cddl", &[]),
     ];
     for (profile, flags) in cases {
         let input_path = format!("{}/{profile}", env!("CARGO_MANIFEST_DIR"));

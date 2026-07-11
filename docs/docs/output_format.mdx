@@ -80,9 +80,11 @@ halves so your hand edits to the crate root survive regeneration:
   comments you add to a generated `.rs` are carried across regeneration** by symbol identity (which
   named item they sit in/above) — a comment on an unchanged item transfers, and a comment whose
   anchor changed too much becomes a `compile_error!` block (loud, never a silent drop) so you review
-  it. This never affects the generated code tokens; pass `--no-preserve-comments` to turn it off and
-  clobber pristine. Trailing (end-of-line) comments are not carried in v1 — move them to their own
-  line to preserve them.
+  it. Outside those tagged blocks this never affects the generated code tokens; pass
+  `--no-preserve-comments` to turn it off and clobber pristine. Two carve-outs: trailing
+  (end-of-line) comments are not carried in v1 — move them to their own line — and `///` doc text
+  on tool-documented items is tool-owned (it flows from your CDDL/`@doc`; hand edits to it are
+  dropped, so edit the CDDL instead).
 - **User-owned: the crate root `src/lib.rs` (seeded once, then never touched).** On a first export the
   tool seeds a thin root:
 

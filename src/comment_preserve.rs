@@ -13,13 +13,26 @@
 //!   token index (the dominant case);
 //! * per-item — the file changed elsewhere, but the named item holding the comment is unchanged, so
 //!   the comment transfers within it, or the comment sits above a still-present item;
-//! * unique-statement — the item's body changed, but the exact statement the comment annotates still
-//!   appears exactly once, so the comment re-attaches above it;
+//! * unique-statement — the item's body changed, but the exact statement the comment annotates
+//!   appears exactly once on BOTH sides (unique-in-new alone would let a deleted duplicate's comment
+//!   silently re-attach to the survivor), so the comment re-attaches above it;
 //! * otherwise the comment fails loudly.
+//!
+//! The generator itself emits comments into these trees — the header banner, the static prelude
+//! merged into `serialization.rs`, `.doc()`-rendered `///` blocks, `--emit-tests` trailing stamps —
+//! so "old comment absent from new at the aligned anchor" does NOT imply "user comment". Three rules
+//! keep tool text from being resurrected or duplicated: positional self-cancel (an old comment `new`
+//! carries at the same anchor is the generator's), insertion-point dedup (a comment re-anchoring to
+//! where `new` already carries the identical text is a shifted generator comment — skip), and doc
+//! ownership (an anchor `new` documents is tool-owned: an old `///`/`//!` block there is stale tool
+//! output, dropped rather than preserved — the user channel for doc text is the CDDL/`@doc` DSL).
+//! Residual: a generator `//` comment whose TEXT changes between tool versions is indistinguishable
+//! from user text and fails loudly — noisy-but-safe, once per upgrade.
 //!
 //! v1 scope is own-line comments (only whitespace before them on their line). A user-added trailing
 //! (end-of-line) comment is detected but not re-placed — it fails loudly with a hint to move it to
-//! its own line — so the never-silent property holds without a trailing-anchor flavor.
+//! its own line — so the never-silent property holds without a trailing-anchor flavor. Generator
+//! trailing comments (`--emit-tests`) cancel by exact text against `new`'s trailing set.
 //!
 //! The lexer is string-aware by necessity, not thoroughness: Rust string/raw-string literals span
 //! lines, so a line can begin with `//` while inside a literal; a comment cannot be classified
@@ -594,9 +607,10 @@ fn find_subsequence(hay: &[CodeTok], needle: &[CodeTok]) -> Vec<usize> {
     res
 }
 
-/// The token run from `rel` to the end of its statement within `toks`: through the `;` at the same
-/// delimiter nesting, or up to the `}`/`)`/`]` that closes the enclosing block (exclusive). This is
-/// the anchor the unique-statement tier searches for in the regenerated item.
+/// The token run from `rel` to the end of its statement within `toks`: through the `;` (or the `,`
+/// of a struct-literal field / match arm) at the same delimiter nesting, or up to the `}`/`)`/`]`
+/// that closes the enclosing block (exclusive). This is the anchor the unique-statement tier
+/// searches for in the regenerated item.
 fn statement_run<'a>(toks: &'a [CodeTok<'a>], rel: usize) -> &'a [CodeTok<'a>] {
     let base: i32 = toks[..rel].iter().map(|t| delim_delta(t.text)).sum();
     let mut d = base;
@@ -612,13 +626,19 @@ fn statement_run<'a>(toks: &'a [CodeTok<'a>], rel: usize) -> &'a [CodeTok<'a>] {
             }
             d -= 1;
             j += 1;
-        } else if tx == ";" && d == base {
+        } else if (tx == ";" || tx == ",") && d == base {
             return &toks[rel..=j];
         } else {
             j += 1;
         }
     }
     &toks[rel..]
+}
+
+/// Doc comments (`///`, `//!`) are the generator's domain wherever it emits them — their text flows
+/// from the CDDL and the `@doc` DSL, so an anchor `new` documents is tool-owned.
+fn is_doc_comment(text: &str) -> bool {
+    text.starts_with("///") || text.starts_with("//!")
 }
 
 fn escape_for_rust_string(s: &str) -> String {
@@ -722,16 +742,38 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
         .map(|(_, t)| *t)
         .collect();
 
-    // The generator's own comments (the CODEGEN_HEADER banner) appear identically in `new` at the
-    // same anchor, so they self-cancel: exclude any old comment `new` already carries at that anchor.
+    // The generator's own comments (the CODEGEN_HEADER banner, static-prelude comments, `.doc()`
+    // renderings, …) appear identically in `new` at the same anchor, so they self-cancel: exclude
+    // any old comment `new` already carries at that anchor. The same set drives the insertion-point
+    // dedup below (a generator comment whose anchor merely SHIFTED re-anchors to exactly where `new`
+    // already carries it — inserting there would duplicate it).
     let new_comment_keys: BTreeSet<(usize, &str)> = new_lex
         .comments
         .iter()
         .filter(|c| c.own_line)
         .map(|c| (c.anchor, c.text))
         .collect();
+    // Trailing comments the generator emits (`--emit-tests` stamps `// <cddl>` after test lines).
+    // Trailing anchors shift with any edit, so generator-trailing cancellation is by exact text, not
+    // position — the residual risk (a user trailing comment textually identical to a generator one
+    // elsewhere is skipped) is documented in the design notes.
+    let new_trailing_texts: BTreeSet<&str> = new_lex
+        .comments
+        .iter()
+        .filter(|c| !c.own_line)
+        .map(|c| c.text)
+        .collect();
+    // Anchors where `new` carries a doc comment: those positions are tool-owned (docs flow from the
+    // CDDL/`@doc` DSL), so an old doc block re-anchoring there is stale tool output, not user text.
+    let new_doc_anchors: BTreeSet<usize> = new_lex
+        .comments
+        .iter()
+        .filter(|c| c.own_line && is_doc_comment(c.text))
+        .map(|c| c.anchor)
+        .collect();
 
-    // Split old comments into: trailing (fail loudly) and own-line user comments (candidates).
+    // Split old comments into: trailing (fail loudly unless generator-owned) and own-line user
+    // comments (candidates).
     let mut trailing: Vec<&str> = Vec::new();
     let mut user_comments: Vec<Comment> = Vec::new();
     for (ci, cm) in old_lex.comments.iter().enumerate() {
@@ -739,12 +781,14 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
             continue;
         }
         if !cm.own_line {
-            trailing.push(cm.text);
+            if !new_trailing_texts.contains(cm.text) {
+                trailing.push(cm.text);
+            }
             continue;
         }
         let anchor = kept_before[cm.anchor];
         if new_comment_keys.contains(&(anchor, cm.text)) {
-            continue; // generator comment (header) — already present in new
+            continue; // generator comment — already present in new at the same position
         }
         user_comments.push(Comment { anchor, ..*cm });
     }
@@ -774,17 +818,16 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
             .or_default()
             .push(i);
     }
-    // occurrence index of each old item among same-keyed old items.
+    // occurrence index of each old item among same-keyed old items, plus per-key totals (occurrence
+    // matching is only sound when the same-key counts agree on both sides).
     let mut old_occ = vec![0usize; old_items.len()];
-    {
-        let mut counts: BTreeMap<(&str, &str), usize> = BTreeMap::new();
-        for (i, it) in old_items.iter().enumerate() {
-            let c = counts
-                .entry((it.kind.as_str(), it.name.as_str()))
-                .or_default();
-            old_occ[i] = *c;
-            *c += 1;
-        }
+    let mut old_key_counts: BTreeMap<(&str, &str), usize> = BTreeMap::new();
+    for (i, it) in old_items.iter().enumerate() {
+        let c = old_key_counts
+            .entry((it.kind.as_str(), it.name.as_str()))
+            .or_default();
+        old_occ[i] = *c;
+        *c += 1;
     }
 
     for cm in &user_comments {
@@ -803,10 +846,25 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
                 &new_items,
                 &new_by_key,
                 &old_occ,
+                &old_key_counts,
             )
         };
         match target {
-            Ok(Some(t)) => {
+            Ok(t) => {
+                let t = t.unwrap_or(new_lex.code.len());
+                // Insertion-point dedup: a generator comment whose anchor shifted (any edit earlier
+                // in the file) re-anchors to exactly where `new` already carries the identical
+                // comment — inserting would duplicate it.
+                if new_comment_keys.contains(&(t, cm.text)) {
+                    order += 1;
+                    continue;
+                }
+                // Doc ownership: `new` documents this anchor, so an old doc block here is stale
+                // tool output (the user channel for doc text is the CDDL/`@doc` DSL) — drop it.
+                if is_doc_comment(cm.text) && new_doc_anchors.contains(&t) {
+                    order += 1;
+                    continue;
+                }
                 let (offset, indent) = if t >= new_lex.code.len() {
                     (new.len(), "")
                 } else {
@@ -817,13 +875,6 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
                     offset,
                     order,
                     text: format!("{indent}{}\n", cm.text),
-                });
-            }
-            Ok(None) => {
-                insertions.push(Insertion {
-                    offset: new.len(),
-                    order,
-                    text: format!("{}\n", cm.text),
                 });
             }
             Err(reason) => unplaceable.push((reason, cm.text.to_owned())),
@@ -916,52 +967,74 @@ fn place_tier2(
     new_items: &[Item],
     new_by_key: &BTreeMap<(&str, &str), Vec<usize>>,
     old_occ: &[usize],
+    old_key_counts: &BTreeMap<(&str, &str), usize>,
 ) -> Result<Option<usize>, String> {
     let oi = match old_items.iter().position(|it| it.start <= a && a < it.end) {
         Some(oi) => oi,
         None => return Err("It could not be attached to any generated item.".to_owned()),
     };
     let item = &old_items[oi];
-    let ni = new_by_key
-        .get(&(item.kind.as_str(), item.name.as_str()))
-        .and_then(|v| v.get(old_occ[oi]).copied());
-    let ni = match ni {
-        Some(ni) => ni,
-        None => {
-            return Err(format!(
-                "It was attached to `{} {}`, which no longer exists in the regenerated code.",
-                item.kind, item.name
-            ));
-        }
-    };
+    let key = (item.kind.as_str(), item.name.as_str());
+    let group = new_by_key.get(&key).map(Vec::as_slice).unwrap_or(&[]);
+    if group.is_empty() {
+        return Err(format!(
+            "It was attached to `{} {}`, which no longer exists in the regenerated code.",
+            item.kind, item.name
+        ));
+    }
+    // Occurrence matching is only sound when the same-key counts agree: with a same-keyed item added
+    // or removed, "the Nth `impl Foo`" may denote a different item on each side.
+    if group.len() != old_key_counts.get(&key).copied().unwrap_or(0) {
+        return Err(format!(
+            "It was attached to `{} {}`, but the number of same-named items changed in the \
+             regenerated code.",
+            item.kind, item.name
+        ));
+    }
+    let ni = group[old_occ[oi]];
     let nitem = &new_items[ni];
+    let old_slice = &old_code[item.start..item.end];
+    let new_slice = &new_code[nitem.start..nitem.end];
+    let unchanged = code_eq(old_slice, new_slice);
 
     // Comment sitting above the item (its first token): re-attach above the matched item even if the
-    // body changed — such a comment is about the item, not a body line.
+    // body changed — such a comment is about the item, not a body line. Exception: with several
+    // same-keyed items whose bodies changed, occurrence order is the only tiebreak and a canonical
+    // reorder would silently retarget the comment — refuse.
     if a == item.start {
+        if group.len() > 1 && !unchanged {
+            return Err(format!(
+                "It sat above one of {} same-named `{} {}` items whose generated code changed, so \
+                 its owner cannot be re-identified.",
+                group.len(),
+                item.kind,
+                item.name
+            ));
+        }
         return Ok(Some(nitem.start));
     }
 
-    let old_slice = &old_code[item.start..item.end];
-    let new_slice = &new_code[nitem.start..nitem.end];
     let rel = a - item.start;
 
     // Per-item identity: the item's body is unchanged → transfer at the same relative index.
-    if code_eq(old_slice, new_slice) {
+    if unchanged {
         return Ok(Some(nitem.start + rel));
     }
 
-    // Unique-statement tier: the annotated statement must still appear exactly once.
+    // Unique-statement tier: the annotated statement must appear exactly once on BOTH sides. Unique
+    // in `new` alone is not enough: with two identical old statements (one deleted), the survivor is
+    // unique in `new` and the deleted line's comment would silently re-attach to it.
     let run = statement_run(old_slice, rel);
-    let matches = find_subsequence(new_slice, run);
-    if matches.len() == 1 {
-        Ok(Some(nitem.start + matches[0]))
-    } else {
-        Err(format!(
-            "It was attached inside `{} {}`, whose generated code changed.",
-            item.kind, item.name
-        ))
+    if find_subsequence(old_slice, run).len() == 1 {
+        let matches = find_subsequence(new_slice, run);
+        if matches.len() == 1 {
+            return Ok(Some(nitem.start + matches[0]));
+        }
     }
+    Err(format!(
+        "It was attached inside `{} {}`, whose generated code changed.",
+        item.kind, item.name
+    ))
 }
 
 #[cfg(test)]
@@ -1195,6 +1268,136 @@ mod tests {
             attr_idx < block_idx,
             "inner attribute must stay above the fail-loudly block:\n{out}"
         );
+    }
+
+    #[test]
+    fn deleted_duplicate_statement_fails_loudly_not_retargets() {
+        // Two identical statements (x's and y's); the comment annotates the SECOND (y). The regen
+        // removes y, leaving the run unique in `new` — unique-in-new alone would silently re-attach
+        // y's comment to x's line. It must fail loudly instead.
+        let old = format!(
+            "{HEADER}impl Foo {{\n    fn de(&self) {{\n        read_elems(1);\n        // about y\n        read_elems(1);\n    }}\n}}\n"
+        );
+        let new = format!(
+            "{HEADER}impl Foo {{\n    fn de(&self) {{\n        read_elems(1);\n    }}\n}}\n"
+        );
+        let out = run(&old, &new);
+        assert!(
+            out.contains("compile_error!"),
+            "must fail loudly, not retarget to the surviving duplicate:\n{out}"
+        );
+        assert!(out.contains("about y"), "original comment dropped:\n{out}");
+    }
+
+    #[test]
+    fn generator_trailing_comment_cancels_by_text() {
+        // `--emit-tests` stamps trailing comments; identical text in `new`'s trailing set means the
+        // generator owns it — no compile_error spam, byte-identical no-op.
+        let src = format!("{HEADER}fn t() {{\n    check(x); // u8_wrapper = uint .lt 256\n}}\n");
+        let res = preserve(&src, &src).unwrap();
+        assert!(!res.changed, "generator trailing comment must self-cancel");
+        assert_eq!(res.content, src);
+    }
+
+    #[test]
+    fn shifted_generator_comment_not_duplicated() {
+        // A generator own-line comment AFTER a code change: its anchor index shifts, so positional
+        // self-cancel misses it — insertion-point dedup must keep it from duplicating.
+        let old = format!(
+            "{HEADER}pub struct A {{\n    pub a: u64,\n}}\n\nimpl B {{\n    // have to redefine so it's visible in WASM\n    fn f(&self) {{\n        go();\n    }}\n}}\n"
+        );
+        // A gained a field (code change BEFORE the generator comment); the comment is still emitted.
+        let new = format!(
+            "{HEADER}pub struct A {{\n    pub a: u64,\n    pub b: u64,\n}}\n\nimpl B {{\n    // have to redefine so it's visible in WASM\n    fn f(&self) {{\n        go();\n    }}\n}}\n"
+        );
+        let out = run(&old, &new);
+        assert_eq!(
+            out.matches("have to redefine").count(),
+            1,
+            "shifted generator comment duplicated:\n{out}"
+        );
+        assert!(!out.contains("compile_error!"), "spurious failure:\n{out}");
+    }
+
+    #[test]
+    fn stale_tool_doc_dropped_user_doc_on_undocumented_item_kept() {
+        // Item's tool docs changed text (e.g. the CDDL shape in the doc changed): the old block must
+        // NOT be preserved next to the new one — the anchor is tool-owned. A user /// on an item the
+        // tool does NOT document is preserved.
+        let old = format!(
+            "{HEADER}/// `[+ u64]`: at least one element\npub struct A {{\n    pub a: u64,\n}}\n\n/// my own note\npub struct B {{\n    pub b: u64,\n}}\n"
+        );
+        let new = format!(
+            "{HEADER}/// `[+ u32]`: at least one element\npub struct A {{\n    pub a: u64,\n}}\n\npub struct B {{\n    pub b: u64,\n}}\n"
+        );
+        let out = run(&old, &new);
+        assert!(
+            !out.contains("u64]`: at least"),
+            "stale tool doc resurrected:\n{out}"
+        );
+        assert_eq!(
+            out.matches("at least one element").count(),
+            1,
+            "doc block duplicated:\n{out}"
+        );
+        assert!(
+            out.contains("/// my own note"),
+            "user doc on undocumented item lost:\n{out}"
+        );
+        assert!(!out.contains("compile_error!"), "spurious failure:\n{out}");
+    }
+
+    #[test]
+    fn same_key_count_change_fails_loudly() {
+        // `impl A` count went from one to two: "the Nth impl A" is ambiguous — refuse.
+        let old = format!(
+            "{HEADER}impl A {{\n    // note\n    fn f(&self) {{\n        go();\n    }}\n}}\n"
+        );
+        let new = format!(
+            "{HEADER}impl A {{\n    fn f(&self) {{\n        go();\n    }}\n}}\n\nimpl A {{\n    fn g(&self) {{\n        go();\n    }}\n}}\n"
+        );
+        let out = run(&old, &new);
+        assert!(out.contains("compile_error!"), "must fail loudly:\n{out}");
+        assert!(
+            out.contains("same-named items changed"),
+            "wrong reason:\n{out}"
+        );
+    }
+
+    #[test]
+    fn preceding_comment_on_reordered_same_key_items_fails_loudly() {
+        // Two same-keyed items whose bodies BOTH changed: occurrence order is the only tiebreak, so
+        // a preceding comment must refuse rather than trust the ordering.
+        let old = format!(
+            "{HEADER}// mine\nimpl A {{\n    fn f(&self) {{\n        one();\n    }}\n}}\n\nimpl A {{\n    fn g(&self) {{\n        two();\n    }}\n}}\n"
+        );
+        let new = format!(
+            "{HEADER}impl A {{\n    fn g2(&self) {{\n        two2();\n    }}\n}}\n\nimpl A {{\n    fn f2(&self) {{\n        one2();\n    }}\n}}\n"
+        );
+        let out = run(&old, &new);
+        assert!(out.contains("compile_error!"), "must fail loudly:\n{out}");
+        assert!(out.contains("mine"), "original comment dropped:\n{out}");
+    }
+
+    #[test]
+    fn comma_terminated_statement_reanchors() {
+        // A comment above a struct-literal field: the run ends at the field's `,`, so an unrelated
+        // body change elsewhere in the item does not orphan it.
+        let old = format!(
+            "{HEADER}impl A {{\n    fn f() -> Self {{\n        Self {{\n            // picked for x\n            x: compute_x(),\n            y: 0,\n        }}\n    }}\n}}\n"
+        );
+        let new = format!(
+            "{HEADER}impl A {{\n    fn f() -> Self {{\n        Self {{\n            x: compute_x(),\n            y: 1,\n        }}\n    }}\n}}\n"
+        );
+        let out = run(&old, &new);
+        assert!(
+            out.contains("// picked for x"),
+            "comma-terminated statement comment lost:\n{out}"
+        );
+        assert!(!out.contains("compile_error!"), "spurious failure:\n{out}");
+        let idx_c = out.find("// picked for x").unwrap();
+        let idx_s = out.find("x: compute_x()").unwrap();
+        assert!(idx_c < idx_s, "comment must sit above its field:\n{out}");
     }
 
     #[test]

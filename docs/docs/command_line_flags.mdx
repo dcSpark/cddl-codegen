@@ -313,9 +313,11 @@ A comment that cannot be safely re-placed — its item vanished, its statement c
 compile_error!("cddl-codegen could not preserve a user comment across regeneration.\n…\nOriginal comment:\n// your note");
 ```
 
-so the generated crate fails to build with your original comment in the message; you re-place or discard it and delete the block. The block carries forward verbatim on every regeneration until you delete it, so the trapped comment is never lost. This overlay contributes only comment bytes to the output — never a generated code token — and running the tool twice equals running it once.
+so the generated crate fails to build with your original comment in the message; you re-place or discard it and delete the block. The block carries forward verbatim on every regeneration until you delete it, so the trapped comment is never lost. Outside these tagged blocks the overlay contributes only comment bytes to the output — never a code token — and running the tool twice equals running it once.
 
-**v1 scope:** own-line comments only (`//`, `///`/`//!`, and `/* */` blocks that occupy their own lines). A user-added **trailing** (end-of-line) comment fails loudly with a hint to move it to its own line, after which it is preserved. If the existing file cannot be lexed (e.g. a hand edit left an unterminated string), regeneration is a hard error naming the file rather than a silent clobber.
+**Doc comments are tool-owned where the tool documents.** `///`/`//!` text on generated items flows from your CDDL and the `@doc` comment DSL — edit it there, not in the output. A hand edit to a tool-emitted doc block is dropped on regeneration (the one deliberate silent drop: stale tool docs and user-edited tool docs are indistinguishable). A doc comment you add to a position the tool does **not** document is preserved like any other comment.
+
+**v1 scope:** own-line comments only (`//`, `///`/`//!`, and `/* */` blocks that occupy their own lines). A user-added **trailing** (end-of-line) comment fails loudly with a hint to move it to its own line, after which it is preserved (tool-emitted trailing comments, e.g. `--emit-tests` stamps, are recognized and ignored). If the existing file cannot be lexed (e.g. a hand edit left an unterminated string) or read, regeneration is a hard error naming the file rather than a silent clobber. A file that *stops being generated* (removed/renamed type or scope) is orphaned on disk with a stderr warning — comments there are not carried anywhere.
 
 Pass `--no-preserve-comments` to skip the overlay entirely and clobber each generated file with pristine output.
 
