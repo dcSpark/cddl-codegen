@@ -1692,13 +1692,18 @@ impl GenerationScope {
         // static files copied/assembled verbatim (only when we own the common types)
         if cli.export_static_files() {
             // error.rs (read + preserve-aware write rather than fs::copy, so user comments in it
-            // get the same overlay as every other generated-tree file)
+            // get the same overlay as every other generated-tree file). rustfmt'd like its three
+            // sibling statics — the content handed to the overlay MUST be rustfmt-stable, because
+            // a preserve-rewrite is written rustfmt'd: raw content whose rustfmt form differs by a
+            // token (the static's block-arm trailing comma) would make run N+1's fresh tokens
+            // mismatch run N's written tokens and trap an already-placed comment with no input
+            // change (pinned by `comment_preservation_static_files_rustfmt_stable`).
             let error_path = rust_dir.join("rust/src/generated/error.rs");
             let error_rs = std::fs::read_to_string(cli.static_dir.join("error.rs"))?;
             write_rs_with_preserve(
                 &error_path,
                 "rust/src/generated/error.rs",
-                &error_rs,
+                rustfmt_generated_string(&error_rs)?.as_ref(),
                 cli.preserve_comments,
             )?;
             written_generated_rs.insert(error_path);
