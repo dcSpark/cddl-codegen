@@ -1,1 +1,16 @@
 extern_crate_foo = _CDDL_CODEGEN_EXTERN_TYPE_
+
+; A cross-crate extern type used ONLY by collection rules that live inside this stub (never by the
+; consumer's own spec). It pins the R1 bugfix: a table/array rule DEFINED INSIDE an extern-deps stub
+; must not mint any collection wrapper in the consumer. Its keys-list / array wrapper would be
+; `ExternCrateBazList` and its map class `MapExternCrateBazToU64` — none of which appear in the
+; consumer's own spec, so any such wrapper (or `use ...ExternCrateBaz`) in the consumer output would
+; be minted purely by these stub rules, which the consumer does not own.
+extern_crate_baz = _CDDL_CODEGEN_EXTERN_TYPE_
+
+; Table rule inside the stub: pre-fix its keys-list synthesis mints `ExternCrateBazList` in the
+; consumer's wasm output (the R1 bug). Post-fix nothing is emitted for it beyond the type alias.
+extern_tbl = { * extern_crate_baz => uint }
+
+; Array rule inside the stub (the Array-arm analogue): pre-fix the rule itself is an array wrapper.
+extern_arr = [* extern_crate_baz]
