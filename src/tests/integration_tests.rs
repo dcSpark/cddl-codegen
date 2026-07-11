@@ -5754,6 +5754,214 @@ fn extern_deps_wasm_unknown_dep_errors() {
     );
 }
 
+/// Whether the `wasm32-unknown-unknown` target is installed (the honest link gate in
+/// `extern_wrapper_index_defers_to_dep` needs it). House pattern: assert in CI, skip loudly locally.
+fn wasm32_target_installed() -> bool {
+    std::process::Command::new("rustup")
+        .args(["target", "list", "--installed"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).contains("wasm32-unknown-unknown"))
+        .unwrap_or(false)
+}
+
+/// R3b–e of the extern-wrapper-dedup feature: a consumer whose spec uses list/map shapes over a
+/// dependency's extern types DEFERS to the dep's committed `--extern-wrapper-index` instead of
+/// re-minting wrappers the dep already owns (a wasm duplicate-symbol link error otherwise). This is
+/// a bespoke harness (not `run_test`) because it must (1) capture the CLI's stderr to pin the
+/// "candidate not in the dep index" warning, (2) run the honest link gate — `cargo build --target
+/// wasm32-unknown-unknown` — which is where duplicate `#[wasm_bindgen]` classes actually fail, and
+/// (3) assert the pre-fix RED (deferral OFF ⇒ the same link fails with `duplicate symbol`) so the
+/// gate provably distinguishes the two states.
+///
+/// The dep stand-in is a DEDICATED wasm-clean pair `index-dep-crate` (plain rust, no wasm-bindgen —
+/// so its wasm crate is wasm32-linkable) / `index-dep-crate-wasm` (the wasm wrappers + a
+/// `collections` index listing IdxFooList, MapU64ToIdxFoo — NOT MapIdxFooToIdxFoo). It is separate
+/// from `extern-dep-crate`, whose rust crate carries its own `#[wasm_bindgen]` types (the
+/// single-crate convention `extern_deps` needs) and so cannot be wasm32-linked against a `-wasm`
+/// crate that redefines them. The consumer spec (`tests/extern-deps-wasm-index/inputs`) has a list
+/// and a map whose wrappers ARE in the index (deferred), an all-extern map NOT in the index (local,
+/// with a warning), and a mixed map — both maps keyed by `idx_foo`, whose keys-list IdxFooList IS in
+/// the index (local class, but keys() builds the deferred keys-list via `.into()` — R3d). The spec is
+/// deliberately free of plain `int`/`i64` (the unrelated i64::MIN/MAX-in-isize bug breaks any such
+/// crate on wasm32) so the link gate isolates the duplicate-symbol property.
+#[test]
+fn extern_wrapper_index_defers_to_dep() {
+    use std::str::FromStr;
+    let test_path = std::path::PathBuf::from_str("tests/extern-deps-wasm-index").unwrap();
+    let index_file = "tests/index-dep-crate-wasm/src/collections.rs";
+    // Generate the consumer into `export/` (gitignored) with the deferral flag; capture stderr.
+    let export = test_path.join("export");
+    let _ = std::fs::remove_dir_all(&export);
+    let generate = tool_cmd("cargo")
+        .arg("run")
+        .arg("--")
+        .arg("--input=tests/extern-deps-wasm-index/inputs")
+        .arg("--output=tests/extern-deps-wasm-index/export")
+        .arg("--wasm=true")
+        .arg("--preserve-encodings=true")
+        .arg("--common-import-override=index_dep_crate")
+        .arg("--extern-wasm-crate=index_dep_crate=index_dep_crate_wasm")
+        .arg(format!(
+            "--extern-wrapper-index=index_dep_crate={index_file}"
+        ))
+        .output()
+        .unwrap();
+    let gen_stderr = String::from_utf8_lossy(&generate.stderr);
+    if !generate.status.success() {
+        eprintln!("generate stderr:\n{gen_stderr}");
+    }
+    assert!(generate.status.success());
+    // (b) The all-extern map NOT in the index is minted locally with a warning naming it.
+    assert!(
+        gen_stderr.contains("MapIdxFooToIdxFoo")
+            && gen_stderr.contains("absent from its --extern-wrapper-index"),
+        "expected a 'candidate not in index' warning for MapIdxFooToIdxFoo, got stderr:\n{gen_stderr}"
+    );
+
+    let wasm_mod = std::fs::read_to_string(export.join("wasm/src/generated/mod.rs")).unwrap();
+    let wasm_index =
+        std::fs::read_to_string(export.join("wasm/src/generated/collections.rs")).unwrap();
+    // (a) Deferred wrappers: imported (plain `use`, never `pub use`) from the dep's collections
+    // module, with NO local class, and absent from the consumer's OWN index (R3e).
+    assert!(
+        wasm_mod.contains("use index_dep_crate_wasm::collections::")
+            && wasm_mod.contains("IdxFooList"),
+        "consumer must import the deferred IdxFooList from the dep's collections module"
+    );
+    // R3e: deferred wrappers are brought in by a PLAIN `use`, never re-exported.
+    assert!(
+        !wasm_mod.contains("pub use index_dep_crate_wasm::collections::"),
+        "deferred wrappers must be imported with a plain `use`, never `pub use` (R3e)"
+    );
+    for deferred in ["pub struct IdxFooList", "pub struct MapU64ToIdxFoo"] {
+        assert!(
+            !wasm_mod.contains(deferred),
+            "deferred wrapper must NOT be minted locally: found `{deferred}`"
+        );
+    }
+    for deferred_name in ["IdxFooList", "MapU64ToIdxFoo"] {
+        assert!(
+            !wasm_index.contains(deferred_name),
+            "deferred wrapper `{deferred_name}` must be excluded from the consumer's own collections.rs (R3e)"
+        );
+    }
+    // (b)/(c) Local classes for the not-in-index and mixed maps DO appear, and their keys() build the
+    // deferred keys-list via `.into()` (R3d) rather than tuple-struct syntax.
+    assert!(wasm_mod.contains("pub struct MapIdxFooToIdxFoo"));
+    assert!(wasm_mod.contains("pub struct MapIdxFooToLocalThing"));
+    assert!(
+        wasm_mod.contains("self.0.keys().cloned().collect::<Vec<_>>().into()"),
+        "R3d: a local map keyed by the extern type must construct the deferred keys-list via .into()"
+    );
+    // The consumer's own index lists exactly the wrappers it mints itself.
+    assert!(wasm_index.contains("MapIdxFooToIdxFoo"));
+    assert!(wasm_index.contains("MapIdxFooToLocalThing"));
+
+    // Wire the dep crates into the generated manifests (rust needs the rust dep; wasm needs both).
+    let append_dep_manifests = |export_dir: &std::path::Path| {
+        use std::io::Write;
+        let mut rust_toml = std::fs::OpenOptions::new()
+            .append(true)
+            .open(export_dir.join("rust/Cargo.toml"))
+            .unwrap();
+        rust_toml
+            .write_all(b"\nindex-dep-crate = { path = \"../../../index-dep-crate\" }\n")
+            .unwrap();
+        let mut wasm_toml = std::fs::OpenOptions::new()
+            .append(true)
+            .open(export_dir.join("wasm/Cargo.toml"))
+            .unwrap();
+        wasm_toml
+            .write_all(b"\nindex-dep-crate = { path = \"../../../index-dep-crate\" }\nindex-dep-crate-wasm = { path = \"../../../index-dep-crate-wasm\" }\n")
+            .unwrap();
+    };
+    append_dep_manifests(&export);
+
+    // Append the behavioral round-trip into the wasm crate's generated root and run it natively.
+    {
+        use std::io::Write;
+        let mut wasm_gen_mod = std::fs::OpenOptions::new()
+            .append(true)
+            .open(export.join("wasm/src/generated/mod.rs"))
+            .unwrap();
+        let tests_wasm = std::fs::read_to_string(test_path.join("tests_wasm.rs")).unwrap();
+        wasm_gen_mod.write_all(b"\n\n").unwrap();
+        wasm_gen_mod.write_all(tests_wasm.as_bytes()).unwrap();
+    }
+    let wasm_dir = export.join("wasm");
+    let cargo_test_wasm = tool_cmd("cargo")
+        .arg("test")
+        .current_dir(&wasm_dir)
+        .output()
+        .unwrap();
+    if !cargo_test_wasm.status.success() {
+        eprintln!(
+            "wasm test stderr:\n{}\nstdout:\n{}",
+            String::from_utf8_lossy(&cargo_test_wasm.stderr),
+            String::from_utf8_lossy(&cargo_test_wasm.stdout)
+        );
+    }
+    assert!(cargo_test_wasm.status.success());
+
+    // The honest link gate. GREEN: the consumer wasm crate (with the dep's wasm crate linked in)
+    // builds for wasm32-unknown-unknown. RED: regenerating WITHOUT the deferral flag re-mints the
+    // dep-owned wrappers locally, so the same link fails with `duplicate symbol`.
+    if !wasm32_target_installed() {
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "wasm32-unknown-unknown is required to run extern_wrapper_index_defers_to_dep's link gate in CI"
+        );
+        eprintln!(
+            "skipping extern_wrapper_index_defers_to_dep link gate: wasm32-unknown-unknown target not installed"
+        );
+        return;
+    }
+    let green = tool_cmd("cargo")
+        .args(["build", "--target", "wasm32-unknown-unknown"])
+        .current_dir(&wasm_dir)
+        .output()
+        .unwrap();
+    if !green.status.success() {
+        eprintln!(
+            "wasm32 GREEN link stderr:\n{}",
+            String::from_utf8_lossy(&green.stderr)
+        );
+    }
+    assert!(
+        green.status.success(),
+        "the deferring consumer wasm crate must link for wasm32-unknown-unknown"
+    );
+
+    // RED: same spec, deferral OFF -> local re-mints -> duplicate-symbol link failure.
+    let red_export = test_path.join("export_nodefer");
+    let _ = std::fs::remove_dir_all(&red_export);
+    let generate_red = tool_cmd("cargo")
+        .arg("run")
+        .arg("--")
+        .arg("--input=tests/extern-deps-wasm-index/inputs")
+        .arg("--output=tests/extern-deps-wasm-index/export_nodefer")
+        .arg("--wasm=true")
+        .arg("--preserve-encodings=true")
+        .arg("--common-import-override=index_dep_crate")
+        .arg("--extern-wasm-crate=index_dep_crate=index_dep_crate_wasm")
+        .output()
+        .unwrap();
+    assert!(generate_red.status.success());
+    append_dep_manifests(&red_export);
+    let red = tool_cmd("cargo")
+        .args(["build", "--target", "wasm32-unknown-unknown"])
+        .current_dir(red_export.join("wasm"))
+        .output()
+        .unwrap();
+    let red_stderr = String::from_utf8_lossy(&red.stderr);
+    assert!(
+        !red.status.success() && red_stderr.contains("duplicate symbol"),
+        "without deferral the consumer must fail the wasm32 link with a duplicate symbol; \
+         status_success={}, stderr:\n{red_stderr}",
+        red.status.success()
+    );
+}
+
 /// The opt-in recursion depth guard (`--deserialize-depth-limit`). A terminable recursive type
 /// (`tests/corpus/recursive.cddl`: `tree = [value: uint, children: [* tree]]`) compiles a
 /// recursive-descent deserializer with no intrinsic depth bound — ~100k-deep hostile CBOR recurses

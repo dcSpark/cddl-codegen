@@ -151,6 +151,21 @@ pub struct Cli {
     /// rust crate name for both passes (the single-crate convention).
     #[clap(long = "extern-wasm-crate", value_parser)]
     pub extern_wasm_crate: Vec<String>,
+
+    /// Point the consumer at a dependency's committed collection-wrapper index
+    /// (`generated/collections.rs`, emitted by every wasm run) so it DEFERS to the dep's wasm
+    /// wrappers instead of re-minting them (a wasm duplicate-symbol link error otherwise). For each
+    /// collection wrapper the consumer would mint whose element/key/value types are all extern types
+    /// of `<dep>`, if the wrapper's structurally-derived name appears in `<dep>`'s index the consumer
+    /// emits a plain `use <dep_wasm>::collections::<Name>;` (routed through `--extern-wasm-crate`)
+    /// instead of a local class; an all-extern wrapper NOT in the index is minted locally with an
+    /// stderr warning; mixed-element wrappers are always local and silent. Repeatable; each value is
+    /// `<dep>=<path/to/collections.rs>` (e.g.
+    /// `--extern-wrapper-index cml_core=../cml-core/wasm/src/generated/collections.rs`). Regenerate
+    /// the dep BEFORE the consumer — the index is committed generated output and part of the dep's
+    /// cross-crate interface.
+    #[clap(long = "extern-wrapper-index", value_parser)]
+    pub extern_wrapper_index: Vec<String>,
 }
 
 impl Cli {
@@ -175,6 +190,29 @@ impl Cli {
                 );
             }
             map.insert(dep.to_owned(), wasm_crate.replace('-', "_"));
+        }
+        map
+    }
+
+    /// Parsed `--extern-wrapper-index` mappings: extern-deps directory name -> path to the dep's
+    /// committed `collections.rs` index file. BTreeMap (never HashMap) for deterministic output.
+    /// Malformed values are a hard error, mirroring `extern_wasm_crate_map`.
+    pub fn extern_wrapper_index_files(&self) -> std::collections::BTreeMap<String, String> {
+        let mut map = std::collections::BTreeMap::new();
+        for entry in &self.extern_wrapper_index {
+            let (dep, path) = entry.split_once('=').unwrap_or_else(|| {
+                panic!(
+                    "--extern-wrapper-index value must be <dep>=<path/to/collections.rs>, got: {entry:?}"
+                )
+            });
+            let dep = dep.trim();
+            let path = path.trim();
+            if dep.is_empty() || path.is_empty() {
+                panic!(
+                    "--extern-wrapper-index value must be <dep>=<path/to/collections.rs> with both sides non-empty, got: {entry:?}"
+                );
+            }
+            map.insert(dep.to_owned(), path.to_owned());
         }
         map
     }

@@ -218,6 +218,29 @@ cddl-codegen --input=example --output=export --common-import-override=cml_core -
 
 <br/><br/>
 
+:::info `--extern-wrapper-index`
+Points the consumer at a dependency's committed collection-wrapper index so it **defers** to the dependency's wasm wrappers instead of re-minting them. Repeatable; each value is `<dep>=<path/to/collections.rs>` (a malformed value, a `<dep>` that names no extern dependency, or an index file with a line that is not `pub use …::<Name>;` / blank / `//`-comment, aborts generation).
+
+Every wasm-emitting run writes `wasm/src/generated/collections.rs` — a self-validating index of one `pub use crate::…::<Wrapper>;` line per collection-wrapper class the crate mints (see [Output format](./output_format)). Point this flag at a dependency's copy of that file. For each wrapper the consumer would mint whose element / key / value types are **all** extern types of `<dep>`, if its structurally-derived name appears in `<dep>`'s index the consumer emits a plain `use <dep_wasm>::collections::<Name>;` (routed through `--extern-wasm-crate`, or the dep's rust crate name when unmapped) instead of a local class. Two crates each defining the same `#[wasm_bindgen]` wrapper would otherwise fail to link a single wasm cdylib with a `duplicate symbol: __wbg_<wrapper>_free`.
+
+- An all-extern wrapper of one dependency whose name is **absent** from that dep's index is minted locally, with an stderr warning naming it (a dep-side inventory change that shifts ownership back to the consumer is then loud in the regen log).
+- A **mixed-element** wrapper (a consumer type, or types from more than one dependency) is always minted locally and silently — it can only live in the consumer.
+
+The consumer's own `collections.rs` lists only the wrappers it mints itself; deferred wrappers are brought in by a plain private `use` (never re-exported), so they never enter the consumer's public API and each crate's index is a precise inventory of what it owns — which is exactly what *its* consumers point `--extern-wrapper-index` at.
+
+**Regeneration order:** the dependency must be (re)generated **before** the consumer — the index is committed generated output and part of the dependency's cross-crate interface, so it must reflect the dependency's current wrapper inventory when the consumer reads it. This matches the existing multi-crate regeneration pattern (a driver script regenerating crates in dependency order).
+
+Typically paired with `--extern-wasm-crate` (which supplies the `<dep_wasm>` crate name the deferred `use` is qualified through). All flags default off; output with no new flags is byte-identical to before.
+
+```bash
+cddl-codegen --input=example --output=export --common-import-override=cml_core \
+  --extern-wasm-crate=cml_core=cml_core_wasm \
+  --extern-wrapper-index=cml_core=../cml-core/wasm/src/generated/collections.rs
+```
+:::
+
+<br/><br/>
+
 :::info `--wasm-cbor-json-api-macro`
 If it is passed in, it will call the supplied externally defined macro on each exported type, instead of manually exporting the functions for to/from CBOR bytes + to/from JSON API.
 

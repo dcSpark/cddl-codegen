@@ -548,9 +548,17 @@ impl<'a> IntermediateTypes<'a> {
     }
 
     /// For each scope, which other scopes are referenced, and which structs are referenced
+    ///
+    /// `deferred` (wasm pass only) maps every collection-wrapper ident the consumer is NOT minting —
+    /// because a mapped dependency's `--extern-wrapper-index` already owns it — to that dependency's
+    /// `collections` module scope. A deferred wrapper's referencing sites import it from there (a
+    /// plain `use <dep_wasm>::collections::<Name>;` after the `--extern-wasm-crate` remap) from EVERY
+    /// using scope, root included, since the class no longer lives locally. Empty for the rust pass
+    /// and whenever `--extern-wrapper-index` is unused, so output is byte-identical without the flag.
     pub fn scope_references(
         &self,
         wasm: bool,
+        deferred: &BTreeMap<RustIdent, ModuleScope>,
     ) -> BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>> {
         // we only want to mark TOP-LEVEL references without recursing into those types
         // which is why we don't use visit_types() here
@@ -574,11 +582,34 @@ impl<'a> IntermediateTypes<'a> {
                     .insert(rust_ident.clone());
             }
         }
+        // Register the import of a DEFERRED keys-list wrapper into `emit_scope` (the module a locally
+        // minted map class is emitted in — root or the sole owner's). A map's `keys()` accessor names
+        // the keys-list wrapper; when that wrapper is deferred to a dependency it must be imported
+        // where the map class lives, from the dep's `collections` module. No-op when the keys-list is
+        // not deferred (its class is local, same module). Independent of `current_scope`: it follows
+        // the map class, not the using site.
+        fn register_deferred_keys_list(
+            refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
+            types: &IntermediateTypes,
+            deferred: &BTreeMap<RustIdent, ModuleScope>,
+            emit_scope: &ModuleScope,
+            key: &RustType,
+        ) {
+            let keys_ident = RustIdent::new(CDDLIdent::new(key.name_as_wasm_array(types)));
+            if let Some(dep_scope) = deferred.get(&keys_ident) {
+                refs.entry(emit_scope.to_owned())
+                    .or_default()
+                    .entry(dep_scope.clone())
+                    .or_default()
+                    .insert(keys_ident);
+            }
+        }
         fn mark_refs(
             refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
             types: &IntermediateTypes,
             wasm: bool,
             sole_owners: &BTreeMap<String, RustIdent>,
+            deferred: &BTreeMap<RustIdent, ModuleScope>,
             current_scope: &ModuleScope,
             ty: &RustType,
         ) {
@@ -598,13 +629,38 @@ impl<'a> IntermediateTypes<'a> {
                     // Only the conceptual type drives ref-marking, so wrap the alias target (a bare
                     // `ConceptualRustType`) in a throwaway `RustType`.
                     let alias_target = RustType::new((**alias_ty).clone());
-                    mark_refs(refs, types, wasm, sole_owners, current_scope, &alias_target);
+                    mark_refs(
+                        refs,
+                        types,
+                        wasm,
+                        sole_owners,
+                        deferred,
+                        current_scope,
+                        &alias_target,
+                    );
                 }
                 ConceptualRustType::Rust(rust_ident) => {
                     set_ref(refs, types, current_scope, rust_ident)
                 }
                 ConceptualRustType::Array(elem_ty) => {
-                    if wasm
+                    let deferred_wrapper = (wasm && !elem_ty.directly_wasm_exposable(types))
+                        .then(|| {
+                            let ident =
+                                RustIdent::new(CDDLIdent::new(elem_ty.name_as_wasm_array(types)));
+                            deferred.get(&ident).map(|scope| (ident, scope))
+                        })
+                        .flatten();
+                    if let Some((arr_wrapper_ident, dep_scope)) = deferred_wrapper {
+                        // Deferred to a dependency's `--extern-wrapper-index`: the list wrapper class
+                        // no longer lives locally, so import it from the dep's `collections` module
+                        // from EVERY using scope (root included) and do NOT recurse into the element
+                        // (both wrapper and element are the dependency's).
+                        refs.entry(current_scope.to_owned())
+                            .or_default()
+                            .entry(dep_scope.clone())
+                            .or_default()
+                            .insert(arr_wrapper_ident);
+                    } else if wasm
                         && !elem_ty.directly_wasm_exposable(types)
                         && *current_scope != *ROOT_SCOPE
                     {
@@ -624,16 +680,48 @@ impl<'a> IntermediateTypes<'a> {
                         // so the element ref has to be registered FROM root. Recurse (not a single
                         // `set_ref`) so a nested anonymous wrapper — also root-emitted, its
                         // `current_scope != ROOT` guard failing here — resolves its own element too.
-                        mark_refs(refs, types, wasm, sole_owners, &ROOT_SCOPE, elem_ty);
+                        mark_refs(
+                            refs,
+                            types,
+                            wasm,
+                            sole_owners,
+                            deferred,
+                            &ROOT_SCOPE,
+                            elem_ty,
+                        );
                     } else {
-                        mark_refs(refs, types, wasm, sole_owners, current_scope, elem_ty);
+                        mark_refs(
+                            refs,
+                            types,
+                            wasm,
+                            sole_owners,
+                            deferred,
+                            current_scope,
+                            elem_ty,
+                        );
                     }
                 }
                 ConceptualRustType::Fixed(_) | ConceptualRustType::Primitive(_) => {
                     // nothing to import
                 }
                 ConceptualRustType::Map(key, value) => {
-                    if wasm && *current_scope != *ROOT_SCOPE {
+                    let map_wrapper_ident = ConceptualRustType::name_for_wasm_map(key, value);
+                    let map_deferred = if wasm {
+                        deferred.get(&map_wrapper_ident)
+                    } else {
+                        None
+                    };
+                    if let Some(dep_scope) = map_deferred {
+                        // The whole map wrapper is deferred to a dependency's
+                        // `--extern-wrapper-index`: import it from the dep's `collections` module from
+                        // every using scope (root included); wrapper, key, and value are all the
+                        // dependency's, so don't recurse.
+                        refs.entry(current_scope.to_owned())
+                            .or_default()
+                            .entry(dep_scope.clone())
+                            .or_default()
+                            .insert(map_wrapper_ident);
+                    } else if wasm && *current_scope != *ROOT_SCOPE {
                         // Resolve the map wrapper's import scope the SAME way emission decides
                         // placement (`table_shape_sole_owners` / `mint_sole_owner_table`): a shape
                         // with a sole named owner has its class + structural `pub type MapKToV`
@@ -643,7 +731,6 @@ impl<'a> IntermediateTypes<'a> {
                         // same-shape table used cross-module from a non-owner scope.
                         // (The Array arm's owner-resolution is still a TODO — no red cell pins it —
                         // issue: https://github.com/dcSpark/cddl-codegen/issues/138)
-                        let map_wrapper_ident = ConceptualRustType::name_for_wasm_map(key, value);
                         let import_scope = sole_owners
                             .get(&map_wrapper_ident.to_string())
                             .map_or_else(|| ROOT_SCOPE.clone(), |owner| types.scope(owner).clone());
@@ -654,6 +741,11 @@ impl<'a> IntermediateTypes<'a> {
                                 .or_default()
                                 .insert(map_wrapper_ident);
                         }
+                        // The locally minted map class's `keys()` accessor names the keys-list
+                        // wrapper; when THAT is deferred (an extern key whose list the dep owns), it
+                        // must be imported where the map class lives (`import_scope`), not the using
+                        // site — the map class stays local while its keys-list is borrowed.
+                        register_deferred_keys_list(refs, types, deferred, &import_scope, key);
                         // The wrapper's emitted code names its KEY and VALUE types bare in its
                         // EMISSION scope (`import_scope` — the sole owner's module or root, resolved
                         // the SAME way emission places the wrapper), which is not this using scope,
@@ -662,16 +754,44 @@ impl<'a> IntermediateTypes<'a> {
                         // drops the same-scope refs, and for a sole-owner NAMED table this just
                         // re-records what the `Table` struct-walk arm already did (refs are a
                         // `BTreeSet`, so it's a no-op).
-                        mark_refs(refs, types, wasm, sole_owners, &import_scope, key);
-                        mark_refs(refs, types, wasm, sole_owners, &import_scope, value);
+                        mark_refs(refs, types, wasm, sole_owners, deferred, &import_scope, key);
+                        mark_refs(
+                            refs,
+                            types,
+                            wasm,
+                            sole_owners,
+                            deferred,
+                            &import_scope,
+                            value,
+                        );
                     } else {
-                        mark_refs(refs, types, wasm, sole_owners, current_scope, key);
-                        mark_refs(refs, types, wasm, sole_owners, current_scope, value);
+                        // ROOT_SCOPE (or the rust pass): the map class is emitted here, but its
+                        // `keys()` accessor still borrows a deferred keys-list, which must be imported
+                        // into THIS (the emission) scope.
+                        if wasm {
+                            register_deferred_keys_list(refs, types, deferred, current_scope, key);
+                        }
+                        mark_refs(refs, types, wasm, sole_owners, deferred, current_scope, key);
+                        mark_refs(
+                            refs,
+                            types,
+                            wasm,
+                            sole_owners,
+                            deferred,
+                            current_scope,
+                            value,
+                        );
                     }
                 }
-                ConceptualRustType::Optional(inner_ty) => {
-                    mark_refs(refs, types, wasm, sole_owners, current_scope, inner_ty)
-                }
+                ConceptualRustType::Optional(inner_ty) => mark_refs(
+                    refs,
+                    types,
+                    wasm,
+                    sole_owners,
+                    deferred,
+                    current_scope,
+                    inner_ty,
+                ),
             }
         }
         for rust_struct in self.rust_structs().values() {
@@ -682,6 +802,7 @@ impl<'a> IntermediateTypes<'a> {
                     self,
                     wasm,
                     &table_shape_sole_owners,
+                    deferred,
                     current_scope,
                     element_type,
                 ),
@@ -693,6 +814,7 @@ impl<'a> IntermediateTypes<'a> {
                             self,
                             wasm,
                             &table_shape_sole_owners,
+                            deferred,
                             current_scope,
                             ty,
                         ),
@@ -703,6 +825,7 @@ impl<'a> IntermediateTypes<'a> {
                                     self,
                                     wasm,
                                     &table_shape_sole_owners,
+                                    deferred,
                                     current_scope,
                                     &field.rust_type,
                                 )
@@ -716,6 +839,7 @@ impl<'a> IntermediateTypes<'a> {
                         self,
                         wasm,
                         &table_shape_sole_owners,
+                        deferred,
                         current_scope,
                         &field.rust_type,
                     )
@@ -726,6 +850,7 @@ impl<'a> IntermediateTypes<'a> {
                         self,
                         wasm,
                         &table_shape_sole_owners,
+                        deferred,
                         current_scope,
                         domain,
                     );
@@ -734,6 +859,7 @@ impl<'a> IntermediateTypes<'a> {
                         self,
                         wasm,
                         &table_shape_sole_owners,
+                        deferred,
                         current_scope,
                         range,
                     );
@@ -743,6 +869,7 @@ impl<'a> IntermediateTypes<'a> {
                     self,
                     wasm,
                     &table_shape_sole_owners,
+                    deferred,
                     current_scope,
                     wrapped,
                 ),
