@@ -506,6 +506,14 @@ impl<'a> IntermediateTypes<'a> {
     pub fn table_shape_sole_owners(&self) -> BTreeMap<String, RustIdent> {
         let mut owners: BTreeMap<String, Vec<RustIdent>> = BTreeMap::new();
         for (ident, rust_struct) in self.rust_structs() {
+            // A table rule defined inside an extern-deps stub (non-exported scope) describes a
+            // dep-owned type and must never be recorded as the owner of a structural map shape: the
+            // sole-owner class is minted in the owner's scope, and a non-exported scope emits
+            // nothing, so a consumer's OWN anonymous use of the same shape would silently lose its
+            // wrapper. Only crate-owned table rules can own a shape.
+            if !self.scope(ident).export() {
+                continue;
+            }
             if let RustStructType::Table {
                 domain,
                 range,
@@ -964,13 +972,23 @@ impl<'a> IntermediateTypes<'a> {
                 range,
                 bounds,
             } => {
-                // we must provide the keys type to return
-                self.create_and_register_array_type(
-                    parent_visitor,
-                    domain.clone(),
-                    &domain.conceptual_type.name_as_wasm_array_ct(self),
-                    cli,
-                );
+                // Synthesize the keys-list array wrapper only for a table rule the crate OWNS. A
+                // table rule defined inside an extern-deps stub (non-exported scope) describes a
+                // type the DEPENDENCY owns; the synthesized keys-list wrapper defaults to
+                // ROOT_SCOPE (it is never `mark_scope`'d) and would therefore be minted in the
+                // CONSUMER's own output — an alias/`#[wasm_bindgen]` class the consumer neither
+                // owns nor references from its own spec, duplicating a wrapper the dep exports. The
+                // `register_type_alias` below still runs unconditionally so the ident resolves as a
+                // type for cross-crate references.
+                if self.scope(&rust_struct.ident).export() {
+                    // we must provide the keys type to return
+                    self.create_and_register_array_type(
+                        parent_visitor,
+                        domain.clone(),
+                        &domain.conceptual_type.name_as_wasm_array_ct(self),
+                        cli,
+                    );
+                }
                 let mut map_type: RustType =
                     ConceptualRustType::Map(Box::new(domain.clone()), Box::new(range.clone()))
                         .into();
