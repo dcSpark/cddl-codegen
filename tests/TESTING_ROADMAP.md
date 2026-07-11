@@ -289,11 +289,12 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
      mask needs an unrelated emission to APPEAR, which no mutant simulates). A second proxy-witness
      needle instance is the signal to design a detector for that flavor too, same policy.
    - **`--extern-wrapper-index` deferral boundaries — NonEmpty structural wrappers are not defer
-     candidates.** The deferral (pinned by `extern_wrapper_index_defers_to_dep`) covers the loose
-     `{Elem}List` / `Map{K}To{V}` emitters only: `generate_non_empty_array_type` /
-     `generate_non_empty_map_type` never consult `try_defer_wrapper`, so a dep index listing a
-     `NonEmpty*` wrapper plus a consumer spelling the same anonymous `[+ extern]` / `{+ k => v}`
-     shape re-mints it (duplicate-symbol link error, exactly the class the flag exists to remove);
+     candidates.** The deferral (pinned by `extern_wrapper_index_defers_to_dep`) covers only the
+     loose list/map wrapper emitters (`generate_array_type` / `codegen_table_type`):
+     `generate_non_empty_array_type` / `generate_non_empty_map_type` never consult
+     `try_defer_wrapper`, so a dep index listing a `NonEmptyVec`/`NonEmptyMap`-backed wrapper plus
+     a consumer spelling the same anonymous nonempty list/table shape over that dep's extern
+     element re-mints it (duplicate-symbol link error, exactly the class the flag exists to remove);
      conversely `codegen_table_type` defers a structural map even when it was requested as a
      NonEmpty wrapper's `try_from` source, which would dangle that source type. Both need the
      opt-in flag AND an exotic cross-crate nonempty shape no consumer has spelled; extend
