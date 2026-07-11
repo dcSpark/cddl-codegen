@@ -108,6 +108,21 @@ cddl-codegen --input=example --output=export --binary-wrappers true
 
 <br/><br/>
 
+:::info `--no-synthesized-rust-collection-aliases`
+Suppresses emission of Rust `pub type` aliases for generator-**synthesized** collection wrappers — currently a table rule's auto-named keys-list, e.g. `pub type FooList = Vec<Foo>;` minted for `tbl = { * foo => uint }`. Off by default.
+
+Rule-declared aliases are never suppressed, even when structurally transparent: an explicitly authored `foo_list = [* foo]` or `signature = bytes .size 32` is a human-written name and always stays. The suppression is emission-only — generated code references collections structurally (`Vec<Foo>`), never through the alias, so no field type or serialization changes, and the crate still compiles. Wasm-side wrappers and aliases are untouched.
+
+This is a flag rather than a default change because it removes public API (the crate's own synthesized aliases, not just extern-element ones) that existing consumers may depend on.
+
+Possible values: true, false
+```bash
+cddl-codegen --input=example --output=export --no-synthesized-rust-collection-aliases true
+```
+:::
+
+<br/><br/>
+
 :::info `--preserve-encodings` 
 
 Preserves CBOR encoding upon deserialization e.g. definite vs indefinite, map ordering. For each module this will also create a `cbor_encodings.rs` file to potentially store any structs for storing these encodings. This option is useful if you need to preserve the deserialized format for round-tripping (e.g. hashes) or if you want to modify the format to coincide with a specific tool for hashing.

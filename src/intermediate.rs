@@ -74,6 +74,12 @@ pub struct AliasInfo {
     /// (bare `Map`/`Vec`) `base_type` would mint the inline-only `MapU64To…`/`…List` name that only
     /// exists for anonymous members. `None` = emit `for_wasm_member(base_type)` as before.
     pub wasm_alias_target: Option<RustIdent>,
+    /// `true` only for a generator-SYNTHESIZED collection wrapper's rust alias — currently the
+    /// keys-list array a table rule mints (`create_and_register_array_type`). Distinguishes it from
+    /// an authored `foo_list = [* foo]` / `tbl = { * a => b }`, which reach the same `new_manual`
+    /// Array/Table registration arms and therefore CANNOT be told apart by `rule_metadata` (both are
+    /// `None`). Gates `--no-synthesized-rust-collection-aliases`: rule-declared names always survive.
+    pub synthesized_collection: bool,
 }
 
 impl AliasInfo {
@@ -84,6 +90,7 @@ impl AliasInfo {
             gen_wasm_alias,
             rule_metadata: None,
             wasm_alias_target: None,
+            synthesized_collection: false,
         }
     }
 
@@ -96,6 +103,7 @@ impl AliasInfo {
             gen_wasm_alias,
             rule_metadata: Some(rule_metadata),
             wasm_alias_target: None,
+            synthesized_collection: false,
         }
     }
 
@@ -1071,9 +1079,22 @@ impl<'a> IntermediateTypes<'a> {
             // 2 separate types (array wrapper -> tag wrapper struct)
             self.register_rust_struct(
                 parent_visitor,
-                RustStruct::new_array(array_type_ident, None, None, element_type.clone(), None),
+                RustStruct::new_array(
+                    array_type_ident.clone(),
+                    None,
+                    None,
+                    element_type.clone(),
+                    None,
+                ),
                 cli,
             );
+            // register_rust_struct's Array arm just registered this keys-list's transparent rust
+            // alias (`pub type XxxList = Vec<Elem>;`) via `new_manual` — indistinguishable from an
+            // authored `foo_list = [* foo]` by provenance alone. Mark it here (the sole synthesis
+            // site) so `--no-synthesized-rust-collection-aliases` can suppress only it.
+            if let Some(alias) = self.type_aliases.get_mut(&array_type_ident.into()) {
+                alias.synthesized_collection = true;
+            }
         }
         ConceptualRustType::Array(Box::new(element_type)).into()
     }

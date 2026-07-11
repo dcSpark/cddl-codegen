@@ -131,6 +131,17 @@ pub struct Cli {
     #[clap(long, value_parser)]
     pub wasm_list_macro: Option<String>,
 
+    /// Suppress emission of RUST `pub type` aliases for generator-SYNTHESIZED collection wrappers
+    /// (currently the auto-named keys-list of a table rule, e.g. `pub type FooList = Vec<Foo>;`
+    /// minted for `tbl = { * foo => uint }`). Rule-declared aliases are NEVER suppressed, even when
+    /// structurally transparent — an explicitly authored `foo_list = [* foo]` or `signature = bytes
+    /// .size 32` is a human-written name and always stays. Emission-only: generated code references
+    /// collections structurally (`Vec<Foo>`), never via the alias, so no field type or serialization
+    /// changes. Wasm-side wrappers/aliases are untouched. Off by default — the aliases are public API
+    /// some downstreams may depend on.
+    #[clap(long, value_parser, action = clap::ArgAction::Set, default_value_t = false)]
+    pub no_synthesized_rust_collection_aliases: bool,
+
     /// Map an `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>` dependency to the crate that holds its
     /// wasm-bindgen wrappers, for deps whose wasm bindings live in a separate crate (the layout
     /// cddl-codegen itself generates: `<dep>` / `<dep>-wasm`). In the wasm pass, imports and

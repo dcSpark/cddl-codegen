@@ -631,7 +631,10 @@ impl GenerationScope {
             // only generate user-defined ones
             if let AliasIdent::Rust(ident) = alias_ident {
                 // also make sure not to generate it if we instead generated a binary wrapper type
-                if alias_info.gen_rust_alias {
+                if alias_info.gen_rust_alias
+                    && !(cli.no_synthesized_rust_collection_aliases
+                        && alias_info.synthesized_collection)
+                {
                     let mut type_alias = TypeAlias::new(
                         ident,
                         alias_info.base_type.for_rust_member(types, false, cli),
