@@ -119,17 +119,14 @@ Fable 5 is the session orchestrator. The following should be inline in the main 
 
 - Never use Haiku
 - Do not choose Sonnet 5 manually (only when Claude Code itself selects it or, or is used by tool)
-- `codex` (via skill) for any investigation/implementation that is mostly mechanical
 - Opus 4.8 for implementing anything with a clear implementation plan
 
 For workflows:
 - Always pass an explicit `model:` in normal `agent()` calls to avoid auto-inheriting Fable as the model.
-- Exception: for Codex inside a workflow, use `agentType: 'codex:codex-rescue'` instead of `model:`, because `agent()` only accepts Anthropic models directly.
 - Never fan out multiple Fable agents without explicit user permission. A single Fable workflow agent also needs separate permission. If Fable is really needed, prefer using it inline.
 - Generally avoid running tests in parallel agents unless explicitly intended, since this can happen accidentally when using multiple parallel high-capability agents for implementation.
 
-For sessions that spawn their own sub-agents (an orchestrating session, or a subagent delegating to
-codex/Opus):
+For sessions that spawn their own sub-agents (an orchestrating session, or a subagent delegating to Opus):
 - **Never end your turn to "stand by" for a sub-agent's completion** — a stopped agent is only
   resumed by an explicit message from its spawner, so "armed watchers"/"completion callbacks" never
   fire and the session stalls until a human (or the coordinator) manually nudges it. Poll the
@@ -140,23 +137,7 @@ codex/Opus):
   transcript does NOT mean stalled/done — nothing is written for the whole duration of a long
   foreground tool call (a `check.ts local` run is silent for ~4 min), so before invoking recovery,
   check the last entry's type (a trailing `tool_use` = mid-call) and for live build processes.
-  Same rationale as the foreground rule for
-  multi-minute gates above.
-- The codex background runner can die silently mid-task (log stalls, pid dead, status stuck
-  `running`) — detection signal + recovery procedure: `draft/codex-background-runner-silent-death.md`.
-- Two codex-sandbox filesystem facts to bake into delegation prompts (each cost a failed step when
-  learned): `.git` is mounted READ-ONLY (a codex agent cannot commit — tell it to leave work in the
-  worktree and commit after in-session review), and `~/.npm` is read-only too, so npm-backed gates
-  (the `test` gate's json2ts/wasm steps) need `npm_config_cache=/tmp/<something>` in the agent's
-  environment or the local tier fails on EROFS mid-verification.
-- The codex plugin runs write tasks under codex's `workspace-write` sandbox regardless of
-  `~/.codex/config.toml`'s `sandbox_mode` (the companion hard-codes the per-job sandbox), and
-  workspace-write turns network OFF unless the config's
-  `[sandbox_workspace_write] network_access = true` is set — it is on this machine (verified by an
-  in-sandbox crates.io probe). If a codex report shows registry/npm fetch failures
-  (`index.crates.io` / npm unreachable) on dependency-resolving gates (generated-crate `cargo
-  test`, the replay gate, check.ts's `test` gate), that flag has regressed: fix the config and
-  re-run those gates in-session rather than treating the delegated work as verified.
+  Same rationale as the foreground rule for multi-minute gates above.
 
 
 ## Markdown formatting
