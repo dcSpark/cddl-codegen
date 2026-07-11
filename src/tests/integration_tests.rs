@@ -301,6 +301,32 @@ const MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)] = &[
         "E0425: as nemap__named — `Mp::try_from` names the root-minted loose `MapU64ToText` bare from \
          module `a` (cddl-matrix/ROADMAP.md § findings)",
     ),
+    // --- The MAP keys-list class: a sole-owner table in a non-root module whose KEY is non-exposable
+    // (`tbl = { * foo => text }` with record `foo`). The table's wasm class is minted in module `a`
+    // and its `keys()` accessor names the root-minted keys-list wrapper (`FooList`) bare — but that
+    // wrapper is synthesized at ROOT_SCOPE and never imported into module `a`. `collmap`
+    // (`{ * uint => text }`) has an exposable key so its `keys()` returns a bare `Vec` and can never
+    // probe this. All three modes red because module `a` always declares `tbl` (E0425 in the wasm
+    // crate; cddl-matrix/ROADMAP.md § findings — the keys-list Map-arm entry).
+    (
+        "tblrec__anon",
+        &["E0425"],
+        "E0425: the sole-owner table `tbl`'s wasm class (module `a`) names the root-minted keys-list \
+         `FooList` bare in `keys()`, but `FooList` is never imported into module `a` \
+         (cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
+        "tblrec__named",
+        &["E0425"],
+        "E0425: as tblrec__anon — the non-root `tbl` class names the root-minted `FooList` bare \
+         (cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
+        "tblrec__unref",
+        &["E0425"],
+        "E0425: as tblrec__anon — module `a`'s `tbl` class names the root-minted `FooList` bare \
+         (cddl-matrix/ROADMAP.md § findings)",
+    ),
 ];
 
 /// Per-profile round-trip skips for `wasm_matrix_roundtrips` ONLY (never consulted by
@@ -382,6 +408,25 @@ const MULTIFILE_ROUNDTRIP_SKIP: &[(&str, &str)] = &[
     (
         "nemap__unref",
         "wasm crate never compiles: as nemap__named (E0425 class pinned by MULTIFILE_MATRIX_SKIP; \
+         cddl-matrix/ROADMAP.md § findings)",
+    ),
+    // The non-root non-exposable-key table cells: the wasm crate never compiles (the `tbl` class
+    // names the root-minted keys-list `FooList` bare without importing it — E0425 class pinned by
+    // MULTIFILE_MATRIX_SKIP), so `cargo test` can never go green (cddl-matrix/ROADMAP.md § findings).
+    (
+        "tblrec__anon",
+        "wasm crate never compiles: the non-root `tbl` class names the root-minted keys-list \
+         `FooList` bare in `keys()` (E0425 class pinned by MULTIFILE_MATRIX_SKIP; \
+         cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
+        "tblrec__named",
+        "wasm crate never compiles: as tblrec__anon (E0425 class pinned by MULTIFILE_MATRIX_SKIP; \
+         cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
+        "tblrec__unref",
+        "wasm crate never compiles: as tblrec__anon (E0425 class pinned by MULTIFILE_MATRIX_SKIP; \
          cddl-matrix/ROADMAP.md § findings)",
     ),
 ];

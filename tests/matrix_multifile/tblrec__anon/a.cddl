@@ -1,0 +1,3 @@
+; cell: tblrec x anon (shape defs, module a)
+foo = [a0: uint]
+tbl = { * foo => text }
