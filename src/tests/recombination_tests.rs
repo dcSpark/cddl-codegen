@@ -46,6 +46,7 @@
 //! accidentally-empty ingredients file fails loud rather than passing vacuously.
 
 use crate::cli::Cli;
+use crate::tests::gate_cache;
 use crate::tests::identifier_hazard_tests::hazards;
 use crate::tests::integration_tests::{checkout_hash, tool_cmd};
 use crate::tests::robustness_tests::with_thread_silenced_panics;
@@ -1114,6 +1115,8 @@ fn gen_and_exec(
     exec_args: &[&str],
     crate_subdir: &str,
     cargo_subcmd: &str,
+    cache_run: &mut usize,
+    cache_hit: &mut usize,
 ) -> Result<(), String> {
     let spec_path = out.with_extension("cddl");
     std::fs::create_dir_all(out.parent().unwrap()).ok();
@@ -1136,15 +1139,37 @@ fn gen_and_exec(
     if !crate_dir.exists() {
         return Err(format!("no {crate_subdir} crate at {crate_dir:?}"));
     }
-    let run = tool_cmd("cargo")
-        .arg(cargo_subcmd)
-        .current_dir(&crate_dir)
-        .env("CARGO_TARGET_DIR", target_dir)
-        .output()
-        .unwrap();
-    if run.status.success() {
+    let argv_for_key = vec![
+        format!("cwd={crate_subdir}"),
+        "cargo".to_string(),
+        cargo_subcmd.to_string(),
+    ];
+    let manifest_subpaths = vec![std::path::PathBuf::from(crate_subdir).join("Cargo.toml")];
+    let mut run_output = None;
+    let outcome = gate_cache::run_cached(
+        "recombination.gen_and_exec",
+        out.file_name().and_then(|n| n.to_str()).unwrap_or("batch"),
+        out,
+        &manifest_subpaths,
+        &argv_for_key,
+        || {
+            let run = tool_cmd("cargo")
+                .arg(cargo_subcmd)
+                .current_dir(&crate_dir)
+                .env("CARGO_TARGET_DIR", target_dir)
+                .output()
+                .unwrap();
+            let success = run.status.success();
+            run_output = Some(run);
+            success
+        },
+    );
+    *cache_run += outcome.ran();
+    *cache_hit += outcome.cached();
+    if outcome.success() {
         Ok(())
     } else {
+        let run = run_output.unwrap();
         Err(format!(
             "cargo {cargo_subcmd} failed\n{}\n{}",
             String::from_utf8_lossy(&run.stdout),
@@ -1274,7 +1299,9 @@ fn run_layer2_profile(p: &Layer2Profile) {
 
     let mut findings: Vec<String> = Vec::new();
     let mut executed = 0usize;
-    let run_batch = |spec: &str, out: &std::path::Path| {
+    let mut cache_run = 0usize;
+    let mut cache_hit = 0usize;
+    let mut run_batch = |spec: &str, out: &std::path::Path| {
         gen_and_exec(
             spec,
             out,
@@ -1283,6 +1310,8 @@ fn run_layer2_profile(p: &Layer2Profile) {
             p.exec_args,
             p.crate_subdir,
             p.cargo_subcmd,
+            &mut cache_run,
+            &mut cache_hit,
         )
     };
     for (bi, batch) in batches.iter().enumerate() {
@@ -1318,6 +1347,12 @@ fn run_layer2_profile(p: &Layer2Profile) {
         }
     }
     let _ = std::fs::remove_dir_all(&root);
+    if gate_cache::enabled() {
+        println!(
+            "recombination {} gate-cache: {cache_run} run, {cache_hit} cached",
+            p.name
+        );
+    }
 
     println!(
         "recombination {} layer 2: classified ok={} graceful={} panic={}; {} batches / {} compositions executed ({} known-bad excluded) in {:?}",
