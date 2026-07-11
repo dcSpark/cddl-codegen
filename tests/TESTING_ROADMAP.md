@@ -54,7 +54,6 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
 
 ## Recommended next steps, in priority order
 
-0. (highest priority) see draft/cddl-codegen-extern-wrapper-dedup-feature-request.md (remove this line when the feature is shipped. Note it may have cascading implications on some other roadmap items)
 1. (pending maintainer action) **Complete the `cargo-mutants` sweep and triage the survivors.** The system is built and its
    invocation pinned (`.cargo/mutants.toml` + `tests/README.md` § "Mutation testing": emit-core
    scope, behavioral-only scoring via a nextest filterset excluding `snapshot_tests` — snapshot
@@ -289,9 +288,26 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
      `, cbor_event::Len::Indefinite)` pattern (mutation testing cannot see this flavor either: the
      mask needs an unrelated emission to APPEAR, which no mutant simulates). A second proxy-witness
      needle instance is the signal to design a detector for that flavor too, same policy.
+   - **`--extern-wrapper-index` deferral boundaries — NonEmpty structural wrappers are not defer
+     candidates.** The deferral (pinned by `extern_wrapper_index_defers_to_dep`) covers the loose
+     `{Elem}List` / `Map{K}To{V}` emitters only: `generate_non_empty_array_type` /
+     `generate_non_empty_map_type` never consult `try_defer_wrapper`, so a dep index listing a
+     `NonEmpty*` wrapper plus a consumer spelling the same anonymous `[+ extern]` / `{+ k => v}`
+     shape re-mints it (duplicate-symbol link error, exactly the class the flag exists to remove);
+     conversely `codegen_table_type` defers a structural map even when it was requested as a
+     NonEmpty wrapper's `try_from` source, which would dangle that source type. Both need the
+     opt-in flag AND an exotic cross-crate nonempty shape no consumer has spelled; extend
+     `try_defer_wrapper` into the NonEmpty emitters (and exempt `try_from`-source mints) when one
+     does. Related name-interaction note: a USER rule claiming a dep-indexed structural name is
+     never deferred (the rule-declared guard), so it duplicate-symbols at link — the synthesized-name
+     interaction sweep (item above) owns that family.
    - **Extern-deps wasm-boundary surface: compile-gated, not behavior/packaging-gated.** The
      split-dep cell (`integration_tests::extern_deps_wasm`, `--extern-wasm-crate`) proves the
-     generated wasm crate *builds* against a mapped dep wasm crate; three layers above "it builds"
+     generated wasm crate *builds* against a mapped dep wasm crate; the sibling index fixture
+     narrows this: `extern_wrapper_index_defers_to_dep` (`tests/extern-deps-wasm-index`) now runs a
+     cross-crate behavioral wasm round-trip (`tests_wasm.rs` through deferred dep classes) AND a
+     real `wasm32-unknown-unknown` link build (the only gate compiling any generated crate for the
+     actual wasm target). For the ORIGINAL fixture three layers above "it builds"
      stay unprobed: (a) wasm-side behavioral round-trips through the cross-crate wrappers — the
      fixture ships no `tests_wasm.rs`, so a semantically wrong boundary conversion (`get`/`add`
      through the dep's `From` impls) compiles green; the existing behavioral floor
