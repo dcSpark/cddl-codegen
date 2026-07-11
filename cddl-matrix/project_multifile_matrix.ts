@@ -108,6 +108,15 @@ const SHAPES: Record<string, Shape> = {
   // the shape was enumerated AFTER review found the hole — the single-file anon control is green
   // (like cborwrap, the anon form references the named `foo` cross-module).
   collrec: { defs: ["foo = [a0: uint]", "recs = [* foo]"], ty: "recs", anonForm: "[* foo]" },
+  // Table keyed by a NON-exposable (record) key (`{ * foo => text }`) in a non-root module. The
+  // sole-owner table class is emitted in module `a`, and its `keys()` accessor names the root-minted
+  // keys-list wrapper (`FooList`) bare — but that wrapper is minted at ROOT_SCOPE and, until the
+  // mark_refs keys-list registration lands, never imported into module `a` (E0425). `collmap`
+  // (`{ * uint => text }`) has an EXPOSABLE key, so its `keys()` returns a bare `Vec<u64>` and can
+  // never probe this class. Module `a` emits serialization (the `foo` record), so no anonBallast is
+  // needed (like `collrec`); the single-file anon control is green (root scope has no cross-module
+  // import to dangle).
+  tblrec: { defs: ["foo = [a0: uint]", "tbl = { * foo => text }"], ty: "tbl", anonForm: "{ * foo => text }" },
   tag: { defs: ["tg = #6.10(uint)"], ty: "tg", anonForm: "#6.10(uint)" },
   bwrap: { defs: ["bw = bytes .size (0..32)"], ty: "bw", anonForm: "bytes .size (0..32)" },
   cenum: { defs: ["fe = 0 / 1 / 2"], ty: "fe" },
@@ -148,7 +157,7 @@ const MODES: Record<string, Mode> = {
 // `anonForm` key would silently drop a shape from `anon` (TS excess-property check catches an unknown
 // key at the literal, but not a value dropped by a downstream filter) — pin the derived set so any
 // grid shrink/growth is an explicit reviewed edit, exactly like EXPECTED_CELLS below.
-const EXPECTED_ANON_SHAPES = ["bwrap", "cborwrap", "coll", "collmap", "collrec", "necoll", "necollrec", "nemap", "nullable", "tag"];
+const EXPECTED_ANON_SHAPES = ["bwrap", "cborwrap", "coll", "collmap", "collrec", "necoll", "necollrec", "nemap", "nullable", "tag", "tblrec"];
 const anonShapes = Object.keys(SHAPES)
   .filter((k) => SHAPES[k].anonForm)
   .sort();
@@ -199,7 +208,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 59; // 22 shapes × {named, unref} = 44 + 10 anon-form shapes × {anon} + 5 anonb shapes × {anonb} -> 59
+const EXPECTED_CELLS = 62; // 23 shapes × {named, unref} = 46 + 11 anon-form shapes × {anon} + 5 anonb shapes × {anonb} -> 62
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `multifile grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,
