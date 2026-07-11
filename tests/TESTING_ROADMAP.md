@@ -54,6 +54,7 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
 
 ## Recommended next steps, in priority order
 
+0. (highest priority) see draft/cddl-codegen-extern-wrapper-dedup-feature-request.md (remove this line when the feature is shipped. Note it may have cascading implications on some other roadmap items)
 1. (pending maintainer action) **Complete the `cargo-mutants` sweep and triage the survivors.** The system is built and its
    invocation pinned (`.cargo/mutants.toml` + `tests/README.md` § "Mutation testing": emit-core
    scope, behavioral-only scoring via a nextest filterset excluding `snapshot_tests` — snapshot
