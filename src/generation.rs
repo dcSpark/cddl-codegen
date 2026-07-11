@@ -41,14 +41,46 @@ pub(crate) fn is_header_stamped_path(path: &str) -> bool {
         && (path.starts_with("rust/src/generated/") || path.starts_with("wasm/src/generated/"))
 }
 
-/// True for a `.rs` file under one of the tool-owned generated trees (rust, wasm, json-gen). These
-/// are the files the comment-preservation overlay may run on; the seed-once crate roots, `main.rs`,
-/// and every `Cargo.toml` live outside these trees and are deliberately untouched.
+/// True for a `.rs` file the comment-preservation overlay runs on: the tool-owned generated trees
+/// (rust, wasm, json-gen) plus the json-gen `main.rs`, which is regenerated wholesale every run
+/// (it is NOT seed-once, unlike the three `lib.rs` roots — those and every `Cargo.toml` are the
+/// files deliberately outside the overlay).
 pub(crate) fn is_preservable_generated_path(path: &str) -> bool {
-    path.ends_with(".rs")
-        && (path.starts_with("rust/src/generated/")
-            || path.starts_with("wasm/src/generated/")
-            || path.starts_with("wasm/json-gen/src/generated/"))
+    path == "wasm/json-gen/src/main.rs"
+        || (path.ends_with(".rs")
+            && (path.starts_with("rust/src/generated/")
+                || path.starts_with("wasm/src/generated/")
+                || path.starts_with("wasm/json-gen/src/generated/")))
+}
+
+/// The preserve-or-clobber write every overlay-covered `.rs` goes through — the common write loop
+/// and the four static runtime files (`error.rs`, `ordered_hash_map.rs`, `non_empty.rs`,
+/// `non_empty_map.rs`) alike, so the "all generated trees uniformly" promise holds. An existing
+/// file that cannot be read (not UTF-8) or lexed is a hard error naming the file, never a silent
+/// clobber. Only content that actually received an insertion pays the extra rustfmt pass.
+fn write_rs_with_preserve(
+    path: &std::path::Path,
+    rel_path: &str,
+    content: &str,
+    preserve: bool,
+) -> std::io::Result<()> {
+    if preserve && path.exists() {
+        let existing = std::fs::read_to_string(path).map_err(|e| {
+            std::io::Error::other(format!(
+                "{rel_path}: cannot read the existing generated file for comment preservation: \
+                 {e}. Fix or delete the file, or pass --no-preserve-comments."
+            ))
+        })?;
+        let preserved = crate::comment_preserve::preserve(&existing, content)
+            .map_err(|e| std::io::Error::other(format!("{rel_path}: {e}")))?;
+        if preserved.changed {
+            std::fs::write(path, rustfmt_generated_string(&preserved.content)?.as_ref())?;
+        } else {
+            std::fs::write(path, content)?;
+        }
+        return Ok(());
+    }
+    std::fs::write(path, content)
 }
 
 /// Recursively collect every `.rs` file under `dir` (absent dir = no files). Drives the stale-file
@@ -1649,35 +1681,26 @@ impl GenerationScope {
             // third bounded exception to the no-prior-output invariant: prior output contributes ONLY
             // comment bytes and `cddl-codegen:unpreserved-comment` compile_error blocks — never a
             // code token OUTSIDE those tagged blocks — and run-twice-equals-run-once still holds
-            // (see `comment_preserve`). Files that
-            // received an insertion get one extra rustfmt pass to normalize the raw insertion.
-            if cli.preserve_comments && is_preservable_generated_path(rel_path) && path.exists() {
-                // An unreadable existing file (e.g. not UTF-8) is a hard error, not a silent
-                // clobber — the same policy as an unlexable one (see `comment_preserve`).
-                let existing = std::fs::read_to_string(&path).map_err(|e| {
-                    std::io::Error::other(format!(
-                        "{rel_path}: cannot read the existing generated file for comment \
-                         preservation: {e}. Fix or delete the file, or pass \
-                         --no-preserve-comments."
-                    ))
-                })?;
-                let preserved = crate::comment_preserve::preserve(&existing, content)
-                    .map_err(|e| std::io::Error::other(format!("{rel_path}: {e}")))?;
-                if preserved.changed {
-                    std::fs::write(path, rustfmt_generated_string(&preserved.content)?.as_ref())?;
-                } else {
-                    std::fs::write(path, content)?;
-                }
-                continue;
+            // (see `comment_preserve`).
+            if is_preservable_generated_path(rel_path) {
+                write_rs_with_preserve(&path, rel_path, content, cli.preserve_comments)?;
+            } else {
+                std::fs::write(path, content)?;
             }
-            std::fs::write(path, content)?;
         }
 
         // static files copied/assembled verbatim (only when we own the common types)
         if cli.export_static_files() {
-            // error.rs
+            // error.rs (read + preserve-aware write rather than fs::copy, so user comments in it
+            // get the same overlay as every other generated-tree file)
             let error_path = rust_dir.join("rust/src/generated/error.rs");
-            std::fs::copy(cli.static_dir.join("error.rs"), &error_path)?;
+            let error_rs = std::fs::read_to_string(cli.static_dir.join("error.rs"))?;
+            write_rs_with_preserve(
+                &error_path,
+                "rust/src/generated/error.rs",
+                &error_rs,
+                cli.preserve_comments,
+            )?;
             written_generated_rs.insert(error_path);
 
             // ordered_hash_map.rs
@@ -1695,9 +1718,11 @@ impl GenerationScope {
                     )?);
                 }
                 let ohm_path = rust_dir.join("rust/src/generated/ordered_hash_map.rs");
-                std::fs::write(
+                write_rs_with_preserve(
                     &ohm_path,
+                    "rust/src/generated/ordered_hash_map.rs",
                     rustfmt_generated_string(&ordered_hash_map_rs)?.as_ref(),
+                    cli.preserve_comments,
                 )?;
                 written_generated_rs.insert(ohm_path);
             }
@@ -1718,7 +1743,12 @@ impl GenerationScope {
                     )?);
                 }
                 let ne_path = rust_dir.join("rust/src/generated/non_empty.rs");
-                std::fs::write(&ne_path, rustfmt_generated_string(&non_empty_rs)?.as_ref())?;
+                write_rs_with_preserve(
+                    &ne_path,
+                    "rust/src/generated/non_empty.rs",
+                    rustfmt_generated_string(&non_empty_rs)?.as_ref(),
+                    cli.preserve_comments,
+                )?;
                 written_generated_rs.insert(ne_path);
             }
 
@@ -1750,9 +1780,11 @@ impl GenerationScope {
                         .replace("BTreeMap", "OrderedHashMap");
                 }
                 let nem_path = rust_dir.join("rust/src/generated/non_empty_map.rs");
-                std::fs::write(
+                write_rs_with_preserve(
                     &nem_path,
+                    "rust/src/generated/non_empty_map.rs",
                     rustfmt_generated_string(&non_empty_map_rs)?.as_ref(),
+                    cli.preserve_comments,
                 )?;
                 written_generated_rs.insert(nem_path);
             }
