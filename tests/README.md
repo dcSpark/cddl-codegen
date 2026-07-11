@@ -55,8 +55,10 @@ CI can neither drift away from the fast tier nor grow work that bypasses the reg
 systematic catch for the disease the runner cures — a gate that exists but is in nobody's habit — so
 a new manual gate or IOU stub is a conscious registry edit, not a silent omission.
 
-Wall times above are warm-cache, measured on the dev machine; a cold build adds the one-time
-dependency + test-binary compile.
+Wall times above are warm-cache, measured on the dev machine, and assume NO gate-cache hits (the
+uncached worst case — a touch-everything change); after a run on unchanged trees the heavy gates
+mostly skip (see the next section). A cold build adds the one-time dependency + test-binary
+compile.
 
 ### The gate cache (memoize-and-skip for nested cargo)
 

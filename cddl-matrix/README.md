@@ -457,7 +457,13 @@ numbers** — same robustness rule as the COVERAGE.md docs.
   (its released-CLI gaps fail the pinned probes by design), so pointing `RUST_CDDL` at
   `~/.cargo/bin/cddl` no longer produces a degraded-but-workable run — supply the `local-fixes` @
   `ac1b98e` build (or an immutable copy of it) instead. Its generated-crate compile gate reuses
-  `integration_tests::feature_corpus_compiles`' shared-target pattern (one-time dep warm-up).
+  `integration_tests::feature_corpus_compiles`' shared-target pattern, with the dep warm-up LAZY
+  (run before the first cache miss, behind an always-run generation self-test) because the
+  per-probe `cargo test`/`check`/replay steps are memoized by generated-tree content hash (the
+  gate cache — `tests/README.md` § "The gate cache (memoize-and-skip for nested cargo)"). A cached
+  probe records byte-identical evidence/annotations to a run one — the cache may never change
+  `verify_report.json` or annotation content, only skip re-proving it; `GATE_CACHE=0` forces every
+  probe to run.
 
 ## Scope (v1)
 RFC 8610 backbone in its authoritative current form: 9682 grammar + 8610 prelude + the IANA control-op
