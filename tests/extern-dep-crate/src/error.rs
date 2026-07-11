@@ -36,9 +36,9 @@ pub enum DeserializeFailure {
     NoVariantMatched,
     NoVariantMatchedWithCauses(Vec<DeserializeError>),
     RangeCheck{
-        found: isize,
-        min: Option<isize>,
-        max: Option<isize>,
+        found: i128,
+        min: Option<i128>,
+        max: Option<i128>,
     },
     TagMismatch{
         found: u64,

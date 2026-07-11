@@ -179,7 +179,7 @@ impl NonemptyArm0 {
     pub fn new(f0: NonEmptyVec<u64>, f1: u64) -> Result<Self, DeserializeError> {
         if f1 > 10 {
             return Err(DeserializeFailure::RangeCheck {
-                found: f1 as isize,
+                found: f1 as i128,
                 min: None,
                 max: Some(10),
             }

@@ -4106,7 +4106,7 @@ fn corpus_occurrence_bounds_enforced() {
     // the value-misread form bound each ELEMENT read through `.and_then(|x| if x < ... )` —
     // occurrence bounds must never re-attach to element values
     assert!(
-        !ser.contains("found: x as isize"),
+        !ser.contains("found: x as i128"),
         "occurrence snapshot has an element VALUE RangeCheck — occurrence counts are being \
          misread as element value bounds again"
     );
@@ -6126,9 +6126,11 @@ fn wasm32_target_installed() -> bool {
 /// crate that redefines them. The consumer spec (`tests/extern-deps-wasm-index/inputs`) has a list
 /// and a map whose wrappers ARE in the index (deferred), an all-extern map NOT in the index (local,
 /// with a warning), and a mixed map — both maps keyed by `idx_foo`, whose keys-list IdxFooList IS in
-/// the index (local class, but keys() builds the deferred keys-list via `.into()` — R3d). The spec is
-/// deliberately free of plain `int`/`i64` (the unrelated i64::MIN/MAX-in-isize bug breaks any such
-/// crate on wasm32) so the link gate isolates the duplicate-symbol property.
+/// the index (local class, but keys() builds the deferred keys-list via `.into()` — R3d). The spec
+/// deliberately INCLUDES a control-constrained signed-int member (`local_thing.c: (int .ne 1)`),
+/// whose i64-window width guard emits `i64::MIN`/`i64::MAX` into `RangeCheck`'s fields: those fields
+/// are `i128` (not `isize`, which is 32-bit on wasm32 and overflowed the literals), so this member
+/// pins the widened-i128 class on wasm32 while the same link gate isolates the duplicate-symbol property.
 #[test]
 fn extern_wrapper_index_defers_to_dep() {
     use std::str::FromStr;

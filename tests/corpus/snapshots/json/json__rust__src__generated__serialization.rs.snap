@@ -66,7 +66,7 @@ impl Deserialize for I16Wrapper {
                     .and_then(|x| {
                         if x > 32767 {
                             Err(DeserializeFailure::RangeCheck {
-                                found: x as isize,
+                                found: x as i128,
                                 min: Some(-32768),
                                 max: Some(32767),
                             }
@@ -81,7 +81,7 @@ impl Deserialize for I16Wrapper {
                     .and_then(|x| {
                         if x < -32768 {
                             Err(DeserializeFailure::RangeCheck {
-                                found: x as isize,
+                                found: x as i128,
                                 min: Some(-32768),
                                 max: Some(32767),
                             }
@@ -93,7 +93,7 @@ impl Deserialize for I16Wrapper {
             };
             if inner < -32768 || inner > 32767 {
                 return Err(DeserializeFailure::RangeCheck {
-                    found: inner as isize,
+                    found: inner as i128,
                     min: Some(-32768),
                     max: Some(32767),
                 }
@@ -131,7 +131,7 @@ impl Deserialize for I64Wrapper {
                     .and_then(|x| {
                         if x > 9223372036854775807 {
                             Err(DeserializeFailure::RangeCheck {
-                                found: x as isize,
+                                found: x as i128,
                                 min: Some(-9223372036854775808),
                                 max: Some(9223372036854775807),
                             }
@@ -146,7 +146,7 @@ impl Deserialize for I64Wrapper {
                     .and_then(|(x, _enc)| {
                         if x < -9223372036854775808 {
                             Err(DeserializeFailure::RangeCheck {
-                                found: x as isize,
+                                found: x as i128,
                                 min: Some(-9223372036854775808),
                                 max: Some(9223372036854775807),
                             }
@@ -159,7 +159,7 @@ impl Deserialize for I64Wrapper {
             };
             if inner < -9223372036854775808 || inner > 9223372036854775807 {
                 return Err(DeserializeFailure::RangeCheck {
-                    found: inner as isize,
+                    found: inner as i128,
                     min: Some(-9223372036854775808),
                     max: Some(9223372036854775807),
                 }
@@ -572,7 +572,7 @@ impl Deserialize for U8Wrapper {
                 .and_then(|x| {
                     if x > 255 {
                         Err(DeserializeFailure::RangeCheck {
-                            found: x as isize,
+                            found: x as i128,
                             min: Some(0),
                             max: Some(255),
                         }
@@ -583,7 +583,7 @@ impl Deserialize for U8Wrapper {
                 })? as u8;
             if inner > 255 {
                 return Err(DeserializeFailure::RangeCheck {
-                    found: inner as isize,
+                    found: inner as i128,
                     min: Some(0),
                     max: Some(255),
                 }

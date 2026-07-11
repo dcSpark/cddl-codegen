@@ -182,21 +182,6 @@ are ledgered here (that's what the probe/gate error messages point at).
   list below — each names its prune/re-mint steps.
 
 **Bugs / gaps surfaced as findings (candidate cddl-codegen fixes):**
-- **Generated range checks don't compile on 32-bit targets (`wasm32-unknown-unknown`)** — surfaced
-  downstream while validating the extern-wrapper-dedup feature
-  (`draft/cddl-codegen-extern-wrapper-dedup-feature-request.md` § "Unrelated bug", local note; the
-  shipped feature's record is the 17c6da7..848adb5 commit series). The emitted
-  width guard for plain unbounded `int`/`i64` fields formats `i64::MIN`/`i64::MAX` as literals into
-  `DeserializeFailure::RangeCheck`'s `Option<isize>` fields (`static/error.rs`; emission:
-  `prim_window`/`width_reject` in generation.rs, plus the general `range_check_err` and the other
-  `found: … as isize` sites feeding the same struct), and `isize` is 32-bit there — so essentially
-  any nontrivial generated crate fails to compile for the real wasm target (host builds are 64-bit
-  and never see it). Candidate fix: widen the `RangeCheck` fields to `i128` (static/ + every
-  emission site in one change). Test-side note: the ONLY gate building any generated crate for
-  wasm32 is `extern_wrapper_index_defers_to_dep`, whose fixture deliberately avoids plain
-  `int`/`i64` to keep its duplicate-symbol link gate isolated from this bug — fixing it should add
-  an unbounded-`int` shape to that fixture (or a dedicated wasm32 compile cell) so the class stays
-  pinned.
 - **A sole-owner table in a non-root module whose keys are non-exposable dangles its keys-list
   import (E0425)** — found while building the wasm collections index (single crate, multifile
   input; sibling of the cross-module structural-wrapper-NAME class below). The table's wasm class

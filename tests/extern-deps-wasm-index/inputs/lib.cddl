@@ -5,13 +5,12 @@
 ; index_dep_crate=<dep collections.rs>` at the dep's index makes the consumer DEFER the wrappers the
 ; dep owns. The dep index lists: IdxFooList, MapU64ToIdxFoo (NOT MapIdxFooToIdxFoo).
 ;
-; NB deliberately free of plain unbounded `int`/`i64` fields: those emit i64::MIN/MAX literals in
-; isize positions that don't compile on wasm32-unknown-unknown for unrelated reasons, which would
-; break the honest link gate before it could isolate the duplicate-symbol property. uint / tstr and
-; the extern struct are all fine.
-
 ; A consumer-owned struct, used as a map VALUE to make one map MIXED (extern key + consumer value).
-local_thing = [a: uint, b: tstr]
+; `c: (int .ne 1)` is a control-constrained signed int: it takes the two-major-type signed path and
+; emits an i64-window width guard (`min: i64::MIN, max: i64::MAX`) into `RangeCheck`'s fields. Those
+; fields are i128, so the literals compile on wasm32-unknown-unknown — this member deliberately pins
+; that widened class on wasm32 (they were `isize`, 32-bit on wasm, and any such crate failed to link).
+local_thing = [a: uint, b: tstr, c: (int .ne 1)]
 
 everything = [
     ; (a) list over an extern element whose wrapper IS in the index -> DEFERRED (imported from

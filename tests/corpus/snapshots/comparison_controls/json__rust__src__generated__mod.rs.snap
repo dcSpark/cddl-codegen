@@ -27,7 +27,7 @@ impl ComparisonControls {
     pub fn new(a: u64, b: u64, c: u64, d: u64, e: u64) -> Result<Self, DeserializeError> {
         if a < 5 || a > 5 {
             return Err(DeserializeFailure::RangeCheck {
-                found: a as isize,
+                found: a as i128,
                 min: Some(5),
                 max: Some(5),
             }
@@ -35,7 +35,7 @@ impl ComparisonControls {
         }
         if b == 5 {
             return Err(DeserializeFailure::RangeCheck {
-                found: b as isize,
+                found: b as i128,
                 min: Some(6),
                 max: Some(4),
             }
@@ -43,7 +43,7 @@ impl ComparisonControls {
         }
         if c > 9 {
             return Err(DeserializeFailure::RangeCheck {
-                found: c as isize,
+                found: c as i128,
                 min: None,
                 max: Some(9),
             }
@@ -51,7 +51,7 @@ impl ComparisonControls {
         }
         if d < 1 {
             return Err(DeserializeFailure::RangeCheck {
-                found: d as isize,
+                found: d as i128,
                 min: Some(1),
                 max: None,
             }

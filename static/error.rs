@@ -43,9 +43,9 @@ pub enum DeserializeFailure {
     NoVariantMatched,
     NoVariantMatchedWithCauses(Vec<DeserializeError>),
     RangeCheck{
-        found: isize,
-        min: Option<isize>,
-        max: Option<isize>,
+        found: i128,
+        min: Option<i128>,
+        max: Option<i128>,
     },
     /// A float value fell outside its CDDL window (`float64 .le 10.5`, `0.5..10.5`). Separate from
     /// `RangeCheck` because float bounds are f64-typed and carry per-side exclusivity (dense float

@@ -26,7 +26,7 @@ impl Garm {
     pub fn new_ga(ga: i64) -> Result<Self, DeserializeError> {
         if ga < -10 || ga > -4 {
             return Err(DeserializeFailure::RangeCheck {
-                found: ga as isize,
+                found: ga as i128,
                 min: Some(-10),
                 max: Some(-4),
             }
@@ -63,7 +63,7 @@ impl Holder {
     ) -> Result<Self, DeserializeError> {
         if g == 1 {
             return Err(DeserializeFailure::RangeCheck {
-                found: g as isize,
+                found: g as i128,
                 min: Some(2),
                 max: Some(0),
             }
@@ -94,7 +94,7 @@ impl TaggedCtlNe {
             return Err(DeserializeError::new(
                 "TaggedCtlNe",
                 DeserializeFailure::RangeCheck {
-                    found: inner as isize,
+                    found: inner as i128,
                     min: Some(2),
                     max: Some(0),
                 },
@@ -163,7 +163,7 @@ impl TaggedRangeExcl {
             return Err(DeserializeError::new(
                 "TaggedRangeExcl",
                 DeserializeFailure::RangeCheck {
-                    found: inner as isize,
+                    found: inner as i128,
                     min: Some(-10),
                     max: Some(9),
                 },
@@ -232,7 +232,7 @@ impl TaggedRangeIncl {
             return Err(DeserializeError::new(
                 "TaggedRangeIncl",
                 DeserializeFailure::RangeCheck {
-                    found: inner as isize,
+                    found: inner as i128,
                     min: Some(-10),
                     max: Some(10),
                 },
@@ -301,7 +301,7 @@ impl TaggedRangeNint {
             return Err(DeserializeError::new(
                 "TaggedRangeNint",
                 DeserializeFailure::RangeCheck {
-                    found: inner as isize,
+                    found: inner as i128,
                     min: Some(-10),
                     max: Some(-4),
                 },
@@ -370,7 +370,7 @@ impl TaggedRangeUint {
             return Err(DeserializeError::new(
                 "TaggedRangeUint",
                 DeserializeFailure::RangeCheck {
-                    found: inner as isize,
+                    found: inner as i128,
                     min: Some(3),
                     max: Some(9),
                 },

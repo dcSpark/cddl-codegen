@@ -27,7 +27,7 @@ impl SizedText {
             return Err(DeserializeError::new(
                 "SizedText",
                 DeserializeFailure::RangeCheck {
-                    found: inner.len() as isize,
+                    found: inner.len() as i128,
                     min: Some(1),
                     max: Some(16),
                 },

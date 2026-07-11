@@ -50,7 +50,7 @@ impl Deserialize for TaggedRanged {
                     .and_then(|(x, enc)| {
                         if x > 255 {
                             Err(DeserializeFailure::RangeCheck {
-                                found: x as isize,
+                                found: x as i128,
                                 min: Some(0),
                                 max: Some(255),
                             }
