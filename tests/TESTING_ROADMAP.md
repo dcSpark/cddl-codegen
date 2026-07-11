@@ -135,7 +135,9 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
    (`wasm_matrix_compiles` + the full-tier recombination wasm leg). If it recurs outside their reach,
    escalate to a scoped generation-time invariant — "every synthesized wrapper name an emitter
    references must be in the minted set" — the reference-side complement of the emission-side
-   duplicate-ident backstop.
+   duplicate-ident backstop. (A fourth, CROSS-CRATE flavor — duplicate symbols at link under
+   `--extern-wrapper-index`, invisible to any in-crate layer — is owned by that flag's
+   deferral-boundaries entry among the small residuals below.)
 
 5. **Small independent residuals (low).**
    - **Reason-keyed rejection evidence for the reject catalogs — one proven near-miss recorded, no
@@ -284,8 +286,13 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
      opt-in flag AND an exotic cross-crate nonempty shape no consumer has spelled; extend
      `try_defer_wrapper` into the NonEmpty emitters (and exempt `try_from`-source mints) when one
      does. Related name-interaction note: a USER rule claiming a dep-indexed structural name is
-     never deferred (the rule-declared guard), so it duplicate-symbols at link — the synthesized-name
-     interaction sweep (item above) owns that family. The CLASS here — a per-wrapper emission MODE
+     never deferred (the rule-declared guard), so it duplicate-symbols at link — the CROSS-CRATE
+     flavor of the synthesized-name interaction class, which the shipped in-crate layers cannot
+     see (the duplicate-ident backstop scans one crate's own files;
+     `synthesized_name_interaction_sweep` spells no dep-index cells — see `tests/README.md`
+     § "Synthesized-name interaction sweep + duplicate-ident backstop"), so it is owned HERE: a
+     dep-index cell joins the deferral-profile leg below when this entry's recur-first trigger
+     fires. The CLASS here — a per-wrapper emission MODE
      (local vs deferred) crossed with the wrapper-shape space — is an axis no existing honesty rule
      sweeps (the wasm-ABI matrix's SHAPES/ROLES cover what types look like and where they sit; the
      third honesty axis covers flag × input mode; neither enumerates flag × shape). These two gaps
