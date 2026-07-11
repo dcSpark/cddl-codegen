@@ -2,6 +2,7 @@
 //! and CBOR round-trip-tests it (plus wasm build and json-schema build). This is the correctness
 //! gate. Golden snapshots of the generated *source* live in `snapshot_tests.rs`.
 
+use crate::tests::gate_cache;
 use std::io::Write;
 
 /// Fixture-appended tests compile only inside generated crates, outside the workspace clippy
@@ -1360,6 +1361,8 @@ fn feature_corpus_compiles() {
 
     let mut failures = vec![];
     let mut emitted_test_modules = 0usize;
+    let mut cache_run = 0usize;
+    let mut cache_hit = 0usize;
     for input in &entries {
         let stem = input.file_stem().unwrap().to_str().unwrap();
         if COMPILE_SKIP.contains(&stem) {
@@ -1404,6 +1407,9 @@ fn feature_corpus_compiles() {
             } else {
                 &["rust", "wasm"]
             };
+            let mut command_plan = Vec::new();
+            let mut manifest_subpaths = Vec::new();
+            let mut missing_crates = false;
             for crate_sub in crate_subs.iter().copied() {
                 let crate_dir = out.join(crate_sub);
                 if !crate_dir.exists() {
@@ -1414,6 +1420,7 @@ fn feature_corpus_compiles() {
                     failures.push(format!(
                         "{label} ({crate_sub}): crate dir missing — the fixture is no longer being compile-gated"
                     ));
+                    missing_crates = true;
                     continue;
                 }
                 // Under the default profile (where `--emit-tests` is passed) both the rust AND the
@@ -1429,20 +1436,50 @@ fn feature_corpus_compiles() {
                 } else {
                     "check"
                 };
-                let check = tool_cmd("cargo")
-                    .arg(cargo_cmd)
-                    .current_dir(&crate_dir)
-                    .env("CARGO_TARGET_DIR", &target_dir)
-                    .output()
-                    .unwrap();
-                if !check.status.success() {
-                    failures.push(format!(
-                        "{label} ({crate_sub}): cargo {cargo_cmd} failed\n{}\n{}",
-                        String::from_utf8_lossy(&check.stdout),
-                        String::from_utf8_lossy(&check.stderr)
-                    ));
-                }
+                command_plan.push((crate_sub, cargo_cmd));
+                manifest_subpaths.push(std::path::PathBuf::from(crate_sub).join("Cargo.toml"));
             }
+            if missing_crates {
+                continue;
+            }
+            let mut argv_for_key = Vec::new();
+            for (crate_sub, cargo_cmd) in &command_plan {
+                argv_for_key.extend([
+                    format!("cwd={crate_sub}"),
+                    "cargo".to_string(),
+                    (*cargo_cmd).to_string(),
+                ]);
+            }
+            let outcome = gate_cache::run_cached(
+                "feature_corpus_compiles",
+                &label,
+                &out,
+                &manifest_subpaths,
+                &argv_for_key,
+                || {
+                    let mut ok = true;
+                    for (crate_sub, cargo_cmd) in &command_plan {
+                        let crate_dir = out.join(crate_sub);
+                        let check = tool_cmd("cargo")
+                            .arg(cargo_cmd)
+                            .current_dir(&crate_dir)
+                            .env("CARGO_TARGET_DIR", &target_dir)
+                            .output()
+                            .unwrap();
+                        if !check.status.success() {
+                            failures.push(format!(
+                                "{label} ({crate_sub}): cargo {cargo_cmd} failed\n{}\n{}",
+                                String::from_utf8_lossy(&check.stdout),
+                                String::from_utf8_lossy(&check.stderr)
+                            ));
+                            ok = false;
+                        }
+                    }
+                    ok
+                },
+            );
+            cache_run += outcome.ran();
+            cache_hit += outcome.cached();
             if emit_tests
                 && std::fs::read_to_string(out.join("rust/src/generated/mod.rs"))
                     .unwrap_or_default()
@@ -1459,6 +1496,9 @@ fn feature_corpus_compiles() {
         emitted_test_modules >= 38,
         "only {emitted_test_modules} corpus fixtures emitted a generated-test module (expected >= 38) — emit_tests coverage shrank"
     );
+    if gate_cache::enabled() {
+        println!("feature_corpus_compiles gate-cache: {cache_run} run, {cache_hit} cached");
+    }
     let _ = std::fs::remove_dir_all(&root);
     assert!(
         failures.is_empty(),
@@ -1586,6 +1626,8 @@ fn wasm_matrix_compiles() {
 
     let mut failures = vec![]; // red cells NOT on WASM_MATRIX_SKIP — real bugs
     let mut resurfaced = vec![]; // WASM_MATRIX_SKIP cells that now compile — remove them
+    let mut cache_run = 0usize;
+    let mut cache_hit = 0usize;
     for input in &entries {
         let stem = input.file_stem().unwrap().to_str().unwrap();
         let skipped = WASM_MATRIX_SKIP.contains(&stem);
@@ -1629,21 +1671,45 @@ fn wasm_matrix_compiles() {
         if stem.starts_with("rawbytes__") {
             append_raw_bytes_defs(&out, false);
         }
-        let check = tool_cmd("cargo")
-            .arg("check")
-            .current_dir(&wasm_dir)
-            .env("CARGO_TARGET_DIR", &target_dir)
-            .output()
-            .unwrap();
-        match (skipped, check.status.success()) {
+        let argv_for_key = vec![
+            "cwd=wasm".to_string(),
+            "cargo".to_string(),
+            "check".to_string(),
+        ];
+        let manifest_subpaths = vec![std::path::PathBuf::from("wasm/Cargo.toml")];
+        let mut check_output = None;
+        let outcome = gate_cache::run_cached(
+            "wasm_matrix_compiles",
+            stem,
+            &out,
+            &manifest_subpaths,
+            &argv_for_key,
+            || {
+                let check = tool_cmd("cargo")
+                    .arg("check")
+                    .current_dir(&wasm_dir)
+                    .env("CARGO_TARGET_DIR", &target_dir)
+                    .output()
+                    .unwrap();
+                let success = check.status.success();
+                check_output = Some(check);
+                success
+            },
+        );
+        cache_run += outcome.ran();
+        cache_hit += outcome.cached();
+        match (skipped, outcome.success()) {
             (false, false) => failures.push(format!(
                 "{stem}: cargo check failed (new wasm-ABI red cell — fix the emitter or, deliberately, \
                  add to WASM_MATRIX_SKIP + cddl-matrix/ROADMAP.md)\n{}",
-                String::from_utf8_lossy(&check.stderr)
+                String::from_utf8_lossy(&check_output.unwrap().stderr)
             )),
             (true, true) => resurfaced.push(stem.to_string()),
             _ => {} // (false,true)=green as expected; (true,false)=red as expected
         }
+    }
+    if gate_cache::enabled() {
+        println!("wasm_matrix_compiles gate-cache: {cache_run} run, {cache_hit} cached");
     }
     let _ = std::fs::remove_dir_all(&root);
     assert!(
@@ -1727,6 +1793,8 @@ fn multifile_matrix_compiles() {
 
     let mut failures = vec![]; // red cells NOT on MULTIFILE_MATRIX_SKIP — real bugs
     let mut resurfaced = vec![]; // MULTIFILE_MATRIX_SKIP cells that now compile — remove them
+    let mut cache_run = 0usize;
+    let mut cache_hit = 0usize;
     for input in &cell_dirs {
         let stem = input.file_name().unwrap().to_str().unwrap();
         let pin = MULTIFILE_MATRIX_SKIP.iter().find(|(s, _, _)| *s == stem);
@@ -1773,24 +1841,46 @@ fn multifile_matrix_compiles() {
             }
             continue;
         }
-        let check = tool_cmd("cargo")
-            .arg("check")
-            .current_dir(&wasm_dir)
-            .env("CARGO_TARGET_DIR", &target_dir)
-            .output()
-            .unwrap();
-        match (skipped, check.status.success()) {
+        let argv_for_key = vec![
+            "cwd=wasm".to_string(),
+            "cargo".to_string(),
+            "check".to_string(),
+        ];
+        let manifest_subpaths = vec![std::path::PathBuf::from("wasm/Cargo.toml")];
+        let mut check_output = None;
+        let outcome = gate_cache::run_cached(
+            "multifile_matrix_compiles",
+            stem,
+            &out,
+            &manifest_subpaths,
+            &argv_for_key,
+            || {
+                let check = tool_cmd("cargo")
+                    .arg("check")
+                    .current_dir(&wasm_dir)
+                    .env("CARGO_TARGET_DIR", &target_dir)
+                    .output()
+                    .unwrap();
+                let success = check.status.success();
+                check_output = Some(check);
+                success
+            },
+        );
+        cache_run += outcome.ran();
+        cache_hit += outcome.cached();
+        match (skipped, outcome.success()) {
             (false, false) => failures.push(format!(
                 "{stem}: cargo check failed (new multifile-placement red cell — fix the emitter or, \
                  deliberately, add to MULTIFILE_MATRIX_SKIP + cddl-matrix/ROADMAP.md)\n{}",
-                String::from_utf8_lossy(&check.stderr)
+                String::from_utf8_lossy(&check_output.unwrap().stderr)
             )),
             (true, true) => resurfaced.push(stem.to_string()),
             (true, false) => {
                 // Red as expected — but the observed rustc error-code SET must EQUAL the pin's, or
                 // the cell's failure CLASS changed and the pin must be re-triaged (class assertion).
                 let (_, pinned_codes, reason) = pin.unwrap();
-                let stderr = String::from_utf8_lossy(&check.stderr);
+                let output = check_output.unwrap();
+                let stderr = String::from_utf8_lossy(&output.stderr);
                 let observed = rustc_error_codes(&stderr);
                 let expected: std::collections::BTreeSet<String> =
                     pinned_codes.iter().map(|c| c.to_string()).collect();
@@ -1805,6 +1895,9 @@ fn multifile_matrix_compiles() {
             }
             (false, true) => {} // green as expected
         }
+    }
+    if gate_cache::enabled() {
+        println!("multifile_matrix_compiles gate-cache: {cache_run} run, {cache_hit} cached");
     }
     let _ = std::fs::remove_dir_all(&root);
     assert!(
@@ -2031,6 +2124,8 @@ fn wasm_matrix_roundtrips() {
 
     let mut failures = vec![]; // red cells NOT skip-listed — real findings
     let mut resurfaced = vec![]; // skip-listed cells that now pass — remove them
+    let mut cache_run = 0usize;
+    let mut cache_hit = 0usize;
     for input in &entries {
         let stem = input.file_stem().unwrap().to_str().unwrap();
         // Skipped in EVERY profile (extern).
@@ -2083,19 +2178,43 @@ fn wasm_matrix_roundtrips() {
             if stem.starts_with("rawbytes__") {
                 append_raw_bytes_defs(&out, *profile == "json");
             }
-            let test = tool_cmd("cargo")
-                .arg("test")
-                .current_dir(&wasm_dir)
-                .env("CARGO_TARGET_DIR", &target_dir)
-                .output()
-                .unwrap();
-            match (skipped, test.status.success()) {
-                (false, false) => failures.push(format!(
-                    "{label}: cargo test failed (wasm round-trip red cell — fix the emitter/generator \
-                     or, deliberately, add to WASM_MATRIX_PROFILE_SKIP + a ledger reason)\nstdout:\n{}\nstderr:\n{}",
-                    String::from_utf8_lossy(&test.stdout),
-                    String::from_utf8_lossy(&test.stderr)
-                )),
+            let argv_for_key = vec![
+                "cwd=wasm".to_string(),
+                "cargo".to_string(),
+                "test".to_string(),
+            ];
+            let manifest_subpaths = vec![std::path::PathBuf::from("wasm/Cargo.toml")];
+            let mut test_output = None;
+            let outcome = gate_cache::run_cached(
+                "wasm_matrix_roundtrips",
+                &label,
+                &out,
+                &manifest_subpaths,
+                &argv_for_key,
+                || {
+                    let test = tool_cmd("cargo")
+                        .arg("test")
+                        .current_dir(&wasm_dir)
+                        .env("CARGO_TARGET_DIR", &target_dir)
+                        .output()
+                        .unwrap();
+                    let success = test.status.success();
+                    test_output = Some(test);
+                    success
+                },
+            );
+            cache_run += outcome.ran();
+            cache_hit += outcome.cached();
+            match (skipped, outcome.success()) {
+                (false, false) => {
+                    let test = test_output.unwrap();
+                    failures.push(format!(
+                        "{label}: cargo test failed (wasm round-trip red cell — fix the emitter/generator \
+                         or, deliberately, add to WASM_MATRIX_PROFILE_SKIP + a ledger reason)\nstdout:\n{}\nstderr:\n{}",
+                        String::from_utf8_lossy(&test.stdout),
+                        String::from_utf8_lossy(&test.stderr)
+                    ));
+                }
                 (true, true) => resurfaced.push(label),
                 _ => {} // (false,true)=green as expected; (true,false)=red as expected
             }
@@ -2103,6 +2222,9 @@ fn wasm_matrix_roundtrips() {
             // 98 cells × 3 profiles of generated crates add up.
             let _ = std::fs::remove_dir_all(&out);
         }
+    }
+    if gate_cache::enabled() {
+        println!("wasm_matrix_roundtrips gate-cache: {cache_run} run, {cache_hit} cached");
     }
     let _ = std::fs::remove_dir_all(&root);
     assert!(
@@ -2211,6 +2333,8 @@ fn multifile_matrix_roundtrips() {
 
     let mut failures = vec![]; // red cells NOT skip-listed — real findings
     let mut resurfaced = vec![]; // skip-listed cells that now pass — remove them
+    let mut cache_run = 0usize;
+    let mut cache_hit = 0usize;
     // Vacuity-floor counters: (profile, cell) generations whose crate minted a test module.
     // Counted before the verdict (skip cells still mint), so the floor tracks EMITTER coverage,
     // not the pass rate.
@@ -2277,18 +2401,42 @@ fn multifile_matrix_roundtrips() {
             // Execute BOTH generated subcrates, rust then wasm (see the gate doc); first failure
             // is the cell's red.
             let mut cell_red: Option<(&str, std::process::Output)> = None;
-            for crate_sub in ["rust", "wasm"] {
-                let test = tool_cmd("cargo")
-                    .arg("test")
-                    .current_dir(out.join(crate_sub))
-                    .env("CARGO_TARGET_DIR", &target_dir)
-                    .output()
-                    .unwrap();
-                if !test.status.success() {
-                    cell_red = Some((crate_sub, test));
-                    break;
-                }
-            }
+            let manifest_subpaths = vec![
+                std::path::PathBuf::from("rust/Cargo.toml"),
+                std::path::PathBuf::from("wasm/Cargo.toml"),
+            ];
+            let argv_for_key = vec![
+                "cwd=rust".to_string(),
+                "cargo".to_string(),
+                "test".to_string(),
+                "cwd=wasm".to_string(),
+                "cargo".to_string(),
+                "test".to_string(),
+            ];
+            let outcome = gate_cache::run_cached(
+                "multifile_matrix_roundtrips",
+                &label,
+                &out,
+                &manifest_subpaths,
+                &argv_for_key,
+                || {
+                    for crate_sub in ["rust", "wasm"] {
+                        let test = tool_cmd("cargo")
+                            .arg("test")
+                            .current_dir(out.join(crate_sub))
+                            .env("CARGO_TARGET_DIR", &target_dir)
+                            .output()
+                            .unwrap();
+                        if !test.status.success() {
+                            cell_red = Some((crate_sub, test));
+                            return false;
+                        }
+                    }
+                    true
+                },
+            );
+            cache_run += outcome.ran();
+            cache_hit += outcome.cached();
             match (skipped, cell_red) {
                 (false, Some((crate_sub, test))) => failures.push(format!(
                     "{label} ({crate_sub}): cargo test failed (multifile round-trip red cell — \
@@ -2298,7 +2446,7 @@ fn multifile_matrix_roundtrips() {
                     String::from_utf8_lossy(&test.stdout),
                     String::from_utf8_lossy(&test.stderr)
                 )),
-                (true, None) => resurfaced.push(label),
+                (true, None) if outcome.success() => resurfaced.push(label),
                 _ => {} // (false, None) = green as expected; (true, Some(_)) = red as expected
             }
             // Free the per-cell crate dir as we go (keep the shared target) — 46 cells × 3
@@ -2307,6 +2455,9 @@ fn multifile_matrix_roundtrips() {
         }
     }
     let _ = std::fs::remove_dir_all(&root);
+    if gate_cache::enabled() {
+        println!("multifile_matrix_roundtrips gate-cache: {cache_run} run, {cache_hit} cached");
+    }
     eprintln!(
         "multifile_matrix_roundtrips: minted test modules across the sweep — rust {minted_rust_modules}, wasm {minted_wasm_modules}"
     );
@@ -6938,6 +7089,8 @@ fn decode_replay_run(
     let existing = std::fs::read_to_string(&lib_path).unwrap();
     std::fs::write(&lib_path, existing + &module).unwrap();
 
+    // Uncached in gate-cache v1: the success path parses libtest stdout/stderr into per-replay
+    // verdicts and enforces a completeness count, so exit status alone is not the consumed result.
     let test = tool_cmd("cargo")
         .arg("test")
         .current_dir(out.join("crate/rust"))

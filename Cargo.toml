@@ -77,3 +77,6 @@ syn = { version = "2", features = ["full"] }
 # transitively (via the `cddl` validator), so this adds no lockfile weight. Navigated via
 # `serde_json::Value` — no serde derives of our own.
 serde_json = "1"
+# Harness-side ONLY: `gate_cache` content-addresses generated-crate trees (memoize-and-skip for
+# the nested-cargo gates). Already in-tree transitively, so this adds no lockfile weight.
+sha2 = "0.10"
