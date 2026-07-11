@@ -348,6 +348,12 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
 - An orphan-fixture-directory meta-test (assert every `tests/<dir>/` is referenced by some gate):
   fixture dirs change rarely and a new gate's author touches the dir listing anyway; the failure
   mode (a committed fixture nothing runs) is caught by review at that rate.
+- (low) Assertions on `export()`'s stderr diagnostics — the legacy-root warning and the
+  comment-preservation stale-file scan (an orphaned `.rs` under a generated tree) print via
+  `eprintln!` in-process, which `cargo test` can't capture without a subprocess harness. The
+  behaviors' *output-byte* halves are pinned (seed-once, overlay tests); only the warning text
+  itself is unasserted. If either diagnostic grows logic, run the CLI as a subprocess (the
+  `run_test` pattern) and assert on captured stderr.
 
 ## Sources
 - Full exhaustive menu (24 ranked items + blind spots): `draft/testing-recommendations/RECOMMENDATIONS.md`

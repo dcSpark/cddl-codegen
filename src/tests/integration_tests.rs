@@ -7965,9 +7965,11 @@ fn comment_preservation_disk_round_trip() {
         input.to_str().unwrap(),
         "--output",
         out.to_str().unwrap(),
-        "--wasm=false",
+        "--wasm=true",
     ]);
     let mod_rs = out.join("rust/src/generated/mod.rs");
+    let wasm_mod_rs = out.join("wasm/src/generated/mod.rs");
+    let error_rs = out.join("rust/src/generated/error.rs");
 
     // First export: pristine generated output.
     crate::api::generate_to_disk(&cli).unwrap();
@@ -7977,8 +7979,10 @@ fn comment_preservation_disk_round_trip() {
         "unexpected output:\n{content}"
     );
 
-    // Inject two own-line comments: one on the stable `Bar` type, one above the `Self { … }` literal
-    // inside `impl Foo`'s constructor (a statement the spec change below will rewrite).
+    // Inject own-line comments across the trees: one on the stable `Bar` type and one above the
+    // `Self { … }` literal inside `impl Foo`'s constructor (a statement the spec change below will
+    // rewrite) in the rust tree; one in the wasm tree; one in the statically-sourced `error.rs`
+    // (which takes a different write path in `export` and must be covered by the same overlay).
     content = content.replace("pub struct Bar", "// KEEP BAR\npub struct Bar");
     let foo_pos = content.find("impl Foo {").expect("impl Foo missing");
     let self_rel = content[foo_pos..]
@@ -7988,8 +7992,24 @@ fn comment_preservation_disk_round_trip() {
     let line = content[..self_abs].rfind('\n').unwrap() + 1;
     content.insert_str(line, "        // FOO NEW NOTE\n");
     std::fs::write(&mod_rs, &content).unwrap();
+    let wasm_content = std::fs::read_to_string(&wasm_mod_rs)
+        .unwrap()
+        .replace("pub struct Bar", "// KEEP WASM BAR\npub struct Bar");
+    assert!(
+        wasm_content.contains("// KEEP WASM BAR"),
+        "wasm wrapper for Bar missing:\n{wasm_content}"
+    );
+    std::fs::write(&wasm_mod_rs, &wasm_content).unwrap();
+    let error_content = std::fs::read_to_string(&error_rs)
+        .unwrap()
+        .replace("pub enum", "// KEEP ERROR NOTE\npub enum");
+    assert!(
+        error_content.contains("// KEEP ERROR NOTE"),
+        "no enum in error.rs to anchor on:\n{error_content}"
+    );
+    std::fs::write(&error_rs, &error_content).unwrap();
 
-    // Second export, unchanged spec: both comments survive; nothing fails loudly.
+    // Second export, unchanged spec: all comments survive; nothing fails loudly.
     crate::api::generate_to_disk(&cli).unwrap();
     let second = std::fs::read_to_string(&mod_rs).unwrap();
     assert!(
@@ -8003,6 +8023,16 @@ fn comment_preservation_disk_round_trip() {
     assert!(
         !second.contains("compile_error!"),
         "an unchanged regen must not fail loudly:\n{second}"
+    );
+    let wasm_second = std::fs::read_to_string(&wasm_mod_rs).unwrap();
+    assert!(
+        wasm_second.contains("// KEEP WASM BAR"),
+        "wasm-tree comment lost:\n{wasm_second}"
+    );
+    let error_second = std::fs::read_to_string(&error_rs).unwrap();
+    assert!(
+        error_second.contains("// KEEP ERROR NOTE"),
+        "error.rs comment lost (static write path bypassed the overlay):\n{error_second}"
     );
 
     // Third export, still unchanged: a byte-identical fixed point.
@@ -8032,6 +8062,15 @@ fn comment_preservation_disk_round_trip() {
     assert!(
         changed.contains("FOO NEW NOTE"),
         "the trapped comment must appear in the fail-loudly message:\n{changed}"
+    );
+
+    // Re-export with the changed spec untouched: the sentinel block must carry forward VERBATIM —
+    // a byte-identical fixed point through the fail-loudly path and the extra rustfmt pass.
+    crate::api::generate_to_disk(&cli).unwrap();
+    let changed_again = std::fs::read_to_string(&mod_rs).unwrap();
+    assert_eq!(
+        changed, changed_again,
+        "the fail-loudly block must reach a byte-identical fixed point"
     );
 
     let _ = std::fs::remove_dir_all(&scratch);

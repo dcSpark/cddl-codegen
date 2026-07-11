@@ -19,20 +19,27 @@
 //! * otherwise the comment fails loudly.
 //!
 //! The generator itself emits comments into these trees — the header banner, the static prelude
-//! merged into `serialization.rs`, `.doc()`-rendered `///` blocks, `--emit-tests` trailing stamps —
-//! so "old comment absent from new at the aligned anchor" does NOT imply "user comment". Three rules
-//! keep tool text from being resurrected or duplicated: positional self-cancel (an old comment `new`
-//! carries at the same anchor is the generator's), insertion-point dedup (a comment re-anchoring to
-//! where `new` already carries the identical text is a shifted generator comment — skip), and doc
-//! ownership (an anchor `new` documents is tool-owned: an old `///`/`//!` block there is stale tool
-//! output, dropped rather than preserved — the user channel for doc text is the CDDL/`@doc` DSL).
-//! Residual: a generator `//` comment whose TEXT changes between tool versions is indistinguishable
-//! from user text and fails loudly — noisy-but-safe, once per upgrade.
+//! merged into `serialization.rs`, `.doc()`-rendered `///` blocks, the wasm redefine notes — so
+//! "old comment absent from new at the aligned anchor" does NOT imply "user comment". The rules that
+//! keep tool text from being resurrected, duplicated, or spammed as errors: positional self-cancel
+//! (an old comment `new` carries at the same anchor is the generator's), insertion-point dedup (a
+//! comment re-anchoring to where `new` already carries the identical text is a shifted generator
+//! comment — skip), and doc ownership (an anchor `new` documents is tool-owned: an old `///`/`//!`
+//! block there is stale tool output — and an UNPLACEABLE doc block drops the same way, so deleting
+//! a documented type never traps the tool's own docs in compile_error blocks; the user channel for
+//! doc text is the CDDL/`@doc` DSL). Two residuals: a generator `//` comment whose TEXT changes
+//! between tool versions is indistinguishable from user text and fails loudly — noisy-but-safe,
+//! once per upgrade; and positional self-cancel compares anchor indices even across divergent token
+//! streams, so a user comment textually identical to a generator comment at a coincidentally equal
+//! index is skipped — contrived, and the text still exists in the file.
 //!
 //! v1 scope is own-line comments (only whitespace before them on their line). A user-added trailing
 //! (end-of-line) comment is detected but not re-placed — it fails loudly with a hint to move it to
-//! its own line — so the never-silent property holds without a trailing-anchor flavor. Generator
-//! trailing comments (`--emit-tests`) cancel by exact text against `new`'s trailing set.
+//! its own line — so the never-silent property holds without a trailing-anchor flavor. Trailing
+//! comments whose exact text appears in `new`'s trailing set cancel silently — the generator emits
+//! NO trailing comments today (the `// <cddl>` lines in some test fixtures are harness-appended
+//! hand-written test modules, not tool output), so this rule is defense-in-depth: if the generator
+//! ever grows one, it must not spam compile errors.
 //!
 //! The lexer is string-aware by necessity, not thoroughness: Rust string/raw-string literals span
 //! lines, so a line can begin with `//` while inside a literal; a comment cannot be classified
@@ -196,7 +203,18 @@ fn try_prefixed_string(b: &[u8], i: usize) -> Result<Option<usize>, PreserveErro
             Ok(None)
         }
         b'r' if i + 1 < n && (b[i + 1] == b'"' || b[i + 1] == b'#') => {
-            Ok(Some(scan_raw_string(b, i)?))
+            // `r#foo` is a raw IDENTIFIER, not a raw string: only `"` after the hash run makes it a
+            // string. A raw ident falls through to ordinary lexing (`r` `#` `foo` — side-consistent,
+            // which is all token equality needs).
+            let mut j = i + 1;
+            while j < n && b[j] == b'#' {
+                j += 1;
+            }
+            if j < n && b[j] == b'"' {
+                Ok(Some(scan_raw_string(b, i)?))
+            } else {
+                Ok(None)
+            }
         }
         _ => Ok(None),
     }
@@ -237,15 +255,22 @@ fn lex(src: &str) -> Result<Lexed<'_>, PreserveError> {
             i += 1;
             continue;
         }
-        // line comment
+        // line comment. The text excludes a trailing `\r`: a CRLF-converted prior output (Windows
+        // editor, core.autocrlf) must still text-match its LF twin in `new`, or every generator
+        // comment reads as user-added and silently duplicates.
         if c == b'/' && i + 1 < n && b[i + 1] == b'/' {
             let start = i;
             i += 2;
             while i < n && b[i] != b'\n' {
                 i += 1;
             }
+            let text_end = if i > start && b[i - 1] == b'\r' {
+                i - 1
+            } else {
+                i
+            };
             comments.push(Comment {
-                text: &src[start..i],
+                text: &src[start..text_end],
                 own_line: false,
                 anchor: code.len(),
                 start,
@@ -753,10 +778,10 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
         .filter(|c| c.own_line)
         .map(|c| (c.anchor, c.text))
         .collect();
-    // Trailing comments the generator emits (`--emit-tests` stamps `// <cddl>` after test lines).
-    // Trailing anchors shift with any edit, so generator-trailing cancellation is by exact text, not
-    // position — the residual risk (a user trailing comment textually identical to a generator one
-    // elsewhere is skipped) is documented in the design notes.
+    // Trailing comments whose text `new` also carries somewhere cancel silently. The generator
+    // emits no trailing comments today, so this is defense-in-depth (see module docs); cancellation
+    // is by exact text, not position, because trailing anchors shift with any edit. Residual: a
+    // user trailing comment textually identical to one in `new` is skipped rather than failed.
     let new_trailing_texts: BTreeSet<&str> = new_lex
         .comments
         .iter()
@@ -877,6 +902,12 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
                     text: format!("{indent}{}\n", cm.text),
                 });
             }
+            // Doc ownership extends to UNPLACEABLE doc comments: deleting a documented type must
+            // not trap the tool's own `///` lines (which anchor to the vanished item) in
+            // compile_error blocks — doc text's channel is the CDDL/`@doc` DSL, so doc blocks
+            // drop rather than fail loudly (the same trade as documented anchors; a user doc on a
+            // vanished item drops with them).
+            Err(_) if is_doc_comment(cm.text) => {}
             Err(reason) => unplaceable.push((reason, cm.text.to_owned())),
         }
         order += 1;
@@ -1291,8 +1322,8 @@ mod tests {
 
     #[test]
     fn generator_trailing_comment_cancels_by_text() {
-        // `--emit-tests` stamps trailing comments; identical text in `new`'s trailing set means the
-        // generator owns it — no compile_error spam, byte-identical no-op.
+        // Defense-in-depth: the generator emits no trailing comments today, but if it ever grows
+        // one, identical text in `new`'s trailing set must cancel — no compile_error spam.
         let src = format!("{HEADER}fn t() {{\n    check(x); // u8_wrapper = uint .lt 256\n}}\n");
         let res = preserve(&src, &src).unwrap();
         assert!(!res.changed, "generator trailing comment must self-cancel");
@@ -1398,6 +1429,86 @@ mod tests {
         let idx_c = out.find("// picked for x").unwrap();
         let idx_s = out.find("x: compute_x()").unwrap();
         assert!(idx_c < idx_s, "comment must sit above its field:\n{out}");
+    }
+
+    #[test]
+    fn doc_on_vanished_item_drops_silently() {
+        // Deleting a documented type must not trap the tool's own `///` lines in compile_error
+        // blocks: unplaceable doc comments follow the doc-ownership policy and drop.
+        let old = format!(
+            "{HEADER}/// tool docs line one\n/// tool docs line two\npub struct Gone {{\n    pub a: u64,\n}}\n\npub struct Stay {{\n    pub b: u64,\n}}\n"
+        );
+        let new = format!("{HEADER}pub struct Stay {{\n    pub b: u64,\n}}\n");
+        let out = run(&old, &new);
+        assert!(
+            !out.contains("compile_error!"),
+            "tool docs on a deleted item must not fail loudly:\n{out}"
+        );
+        assert!(!out.contains("tool docs"), "stale docs resurrected:\n{out}");
+    }
+
+    #[test]
+    fn crlf_old_file_self_cancels() {
+        // A CRLF-converted prior output (Windows editor / core.autocrlf) must still text-match its
+        // LF twin: nothing duplicates, output is the pristine LF content.
+        let new = format!("{HEADER}pub struct Foo {{\n    pub a: u64,\n}}\n");
+        let old = new.replace('\n', "\r\n");
+        let res = preserve(&old, &new).unwrap();
+        assert!(
+            !res.changed,
+            "CRLF old file must be a no-op against its LF twin"
+        );
+        assert_eq!(res.content, new);
+        assert_eq!(
+            res.content.matches("This file was code-generated").count(),
+            1,
+            "header duplicated through CRLF mismatch"
+        );
+    }
+
+    #[test]
+    fn crlf_user_comment_still_preserved() {
+        let new = format!("{HEADER}pub struct Foo {{\n    pub a: u64,\n}}\n");
+        let old = format!("{HEADER}pub struct Foo {{\n    // keep me\n    pub a: u64,\n}}\n")
+            .replace('\n', "\r\n");
+        let out = run(&old, &new);
+        assert!(out.contains("// keep me"), "comment lost:\n{out}");
+        assert!(
+            !out.contains("keep me\r"),
+            "inserted comment carries a stray CR:\n{out}"
+        );
+    }
+
+    #[test]
+    fn raw_identifier_lexes_without_error() {
+        // `r#type` is a raw identifier, not a malformed raw string; it must lex side-consistently.
+        let src = format!("{HEADER}pub fn f() {{\n    let r#type = 1;\n    use_it(r#type);\n}}\n");
+        let res = preserve(&src, &src).unwrap();
+        assert!(!res.changed, "raw-ident file must self-preserve as a no-op");
+        assert_eq!(res.content, src);
+    }
+
+    #[test]
+    fn eof_comment_preserved_at_file_end() {
+        let new = format!("{HEADER}pub struct Foo {{\n    pub a: u64,\n}}\n");
+        let old = format!("{HEADER}pub struct Foo {{\n    pub a: u64,\n}}\n// end note\n");
+        let out = run(&old, &new);
+        assert!(
+            out.trim_end().ends_with("// end note"),
+            "EOF comment must be preserved at the file end:\n{out}"
+        );
+        assert!(!out.contains("compile_error!"), "spurious failure:\n{out}");
+    }
+
+    #[test]
+    fn comment_before_code_on_same_line_fails_loudly() {
+        // `/* note */ code` shares its line with code on the RIGHT — out of v1 own-line scope.
+        let new = format!("{HEADER}pub fn f() {{\n    let x = 1;\n}}\n");
+        let old = format!("{HEADER}pub fn f() {{\n    /* note */ let x = 1;\n}}\n");
+        let out = run(&old, &new);
+        assert!(out.contains("compile_error!"), "must fail loudly:\n{out}");
+        assert!(out.contains("own line"), "must carry the hint:\n{out}");
+        assert!(out.contains("note"), "original comment dropped:\n{out}");
     }
 
     #[test]
