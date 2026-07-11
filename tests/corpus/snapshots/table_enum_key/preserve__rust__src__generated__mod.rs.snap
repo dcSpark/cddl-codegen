@@ -164,7 +164,7 @@ impl TryFrom<i128> for Int {
                 encoding: None,
             })
         } else {
-            u64::try_from((x + 1).abs()).map(|x| Self::Nint {
+            u64::try_from((x + 1).unsigned_abs()).map(|x| Self::Nint {
                 value: x,
                 encoding: None,
             })
