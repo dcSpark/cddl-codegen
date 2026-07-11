@@ -31,7 +31,9 @@
 //! between tool versions is indistinguishable from user text and fails loudly — noisy-but-safe,
 //! once per upgrade; and positional self-cancel compares anchor indices even across divergent token
 //! streams, so a user comment textually identical to a generator comment at a coincidentally equal
-//! index is skipped — contrived, and the text still exists in the file.
+//! index is skipped — contrived, and the text still exists in the file. (The CRLF trailing-`\r`
+//! strip covers line comments only; a multi-line `/* */` interior keeps its `\r` bytes — cosmetic
+//! for user text, unreachable for tool text since the generator emits no block comments.)
 //!
 //! v1 scope is own-line comments (only whitespace before them on their line). A user-added trailing
 //! (end-of-line) comment is detected but not re-placed — it fails loudly with a hint to move it to

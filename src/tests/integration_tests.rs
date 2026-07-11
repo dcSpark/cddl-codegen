@@ -8000,13 +8000,15 @@ fn comment_preservation_disk_round_trip() {
         "wasm wrapper for Bar missing:\n{wasm_content}"
     );
     std::fs::write(&wasm_mod_rs, &wasm_content).unwrap();
-    let error_content = std::fs::read_to_string(&error_rs)
-        .unwrap()
-        .replace("pub enum", "// KEEP ERROR NOTE\npub enum");
-    assert!(
-        error_content.contains("// KEEP ERROR NOTE"),
-        "no enum in error.rs to anchor on:\n{error_content}"
-    );
+    // Anchor inside the Display impl on the block-arm whose trailing comma rustfmt strips from the
+    // raw static: this is the token-drift-sensitive spot — if export ever hands the overlay
+    // non-rustfmt-stable content again, THIS comment gets trapped on the second regen.
+    let mut error_content = std::fs::read_to_string(&error_rs).unwrap();
+    let arm = error_content
+        .find("DeserializeFailure::DefiniteLenMismatch(found")
+        .expect("DefiniteLenMismatch match arm missing from error.rs");
+    let arm_line = error_content[..arm].rfind('\n').unwrap() + 1;
+    error_content.insert_str(arm_line, "            // KEEP ERROR NOTE\n");
     std::fs::write(&error_rs, &error_content).unwrap();
 
     // Second export, unchanged spec: all comments survive; nothing fails loudly.
@@ -8035,12 +8037,24 @@ fn comment_preservation_disk_round_trip() {
         "error.rs comment lost (static write path bypassed the overlay):\n{error_second}"
     );
 
-    // Third export, still unchanged: a byte-identical fixed point.
+    // Third export, still unchanged: a byte-identical fixed point. error.rs is the load-bearing
+    // check: its preserve-rewrite is written rustfmt'd, so if export handed the overlay content
+    // whose rustfmt form differs by a token, the comment placed by export 2 would be trapped in a
+    // compile_error HERE (run 3, old=rustfmt'd vs new=raw) with zero input changes.
     crate::api::generate_to_disk(&cli).unwrap();
     let third = std::fs::read_to_string(&mod_rs).unwrap();
     assert_eq!(
         second, third,
         "comment preservation must reach a fixed point"
+    );
+    let error_third = std::fs::read_to_string(&error_rs).unwrap();
+    assert_eq!(
+        error_second, error_third,
+        "error.rs must reach a fixed point (export must hand the overlay rustfmt-stable content)"
+    );
+    assert!(
+        !error_third.contains("compile_error!"),
+        "a preserved error.rs comment must not be trapped by an unchanged regen:\n{error_third}"
     );
 
     // Change the spec so `Foo` is rewritten (extra field) while `Bar` is untouched.
@@ -8139,5 +8153,53 @@ fn comment_preservation_broken_existing_file_hard_errors() {
         "clobber failed:\n{content}"
     );
 
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// Every statically-sourced `.rs` under the generated trees must be written rustfmt-stable: a
+/// preserve-rewrite is written rustfmt'd, so if export hands the overlay content whose rustfmt
+/// form differs by even one token (the raw static's block-arm trailing comma was the live case),
+/// run N+1's fresh tokens mismatch run N's written tokens and an already-placed comment gets
+/// trapped in a compile_error with no input change. The spec uses `[+ T]` + `{+ k => v}` under
+/// --preserve-encodings so all four statics (error, ordered_hash_map, non_empty, non_empty_map)
+/// are exported.
+#[test]
+fn comment_preservation_static_files_rustfmt_stable() {
+    use clap::Parser;
+    let scratch =
+        std::env::temp_dir().join(format!("cddl_codegen_static_fmt_{:016x}", checkout_hash()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    std::fs::write(&input, "foo = [+ uint]\nbar = {+ uint => uint}\n").unwrap();
+    let out = scratch.join("crate");
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+        "--wasm=false",
+        "--preserve-encodings=true",
+    ]);
+    crate::api::generate_to_disk(&cli).unwrap();
+    let statics = [
+        "error.rs",
+        "ordered_hash_map.rs",
+        "non_empty.rs",
+        "non_empty_map.rs",
+    ];
+    for name in statics {
+        let path = out.join("rust/src/generated").join(name);
+        let content = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("expected static {name} missing: {e}"));
+        let formatted = crate::generation::rustfmt_generated_string(&content).unwrap();
+        assert_eq!(
+            formatted.as_ref(),
+            content,
+            "{name} was written non-rustfmt-stable — the overlay would trap comments on the \
+             second unchanged regen"
+        );
+    }
     let _ = std::fs::remove_dir_all(&scratch);
 }
