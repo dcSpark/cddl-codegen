@@ -2494,6 +2494,87 @@ fn flag_value_smoke() {
     assert!(failures.is_empty(), "{}", failures.join("\n\n"));
 }
 
+/// `--no-synthesized-rust-collection-aliases`: suppress ONLY generator-synthesized collection
+/// wrapper rust aliases (a table rule's auto-named keys-list, `pub type FooList = Vec<Foo>;`), never
+/// rule-declared ones. An authored `authored_list = [* foo]` and an authored table `tbl = { * foo =>
+/// uint }` (`pub type Tbl = BTreeMap<..>`) are human-named and must survive. Provenance
+/// (`AliasInfo::rule_metadata`) cannot tell the three apart — all register via `new_manual` with
+/// `rule_metadata: None` — so this pins the explicit `synthesized_collection` marker end-to-end on
+/// the emitted rust source. Flag-OFF byte-identity is the snapshot suite's job (this fixture is
+/// generated into a temp dir, never a committed `export/`); here we assert the ON-side suppression +
+/// rule-declared survival, plus that the wasm-side wrapper class is untouched (generated code still
+/// references it structurally, so the crate must keep compiling). Tier: check.ts `local`.
+#[test]
+fn no_synthesized_rust_collection_aliases_suppresses_only_synthesized() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_no_synth_alias_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    // `foo` is an array struct (not directly-wasm-exposable), so `tbl`'s keys synthesize a
+    // `FooList` keys-list wrapper; `authored_list` is a human-named array rule of the same shape's
+    // element that must NOT be confused with it.
+    std::fs::write(
+        &input,
+        "foo = [uint]\nauthored_list = [* foo]\ntbl = { * foo => uint }\n",
+    )
+    .unwrap();
+    let out = scratch.join("out");
+    let gen_out = tool_cmd("cargo")
+        .args(["run", "--"])
+        .arg(format!("--input={}", input.to_str().unwrap()))
+        .arg(format!("--output={}", out.to_str().unwrap()))
+        .arg("--wasm=true")
+        .arg("--no-synthesized-rust-collection-aliases=true")
+        .output()
+        .unwrap();
+    assert!(
+        gen_out.status.success(),
+        "generation failed:\n{}",
+        String::from_utf8_lossy(&gen_out.stderr)
+    );
+    let rust_mod = std::fs::read_to_string(out.join("rust/src/generated/mod.rs")).unwrap();
+    // synthesized keys-list alias suppressed
+    assert!(
+        !rust_mod.contains("pub type FooList"),
+        "synthesized keys-list alias `FooList` must be suppressed:\n{rust_mod}"
+    );
+    // rule-declared aliases survive byte-identical
+    assert!(
+        rust_mod.contains("pub type AuthoredList = Vec<Foo>;"),
+        "authored array alias must survive:\n{rust_mod}"
+    );
+    assert!(
+        rust_mod.contains("pub type Tbl = BTreeMap<Foo, u64>;"),
+        "authored table alias must survive:\n{rust_mod}"
+    );
+    // wasm-side wrapper class + structural refs are untouched (only the RUST alias is gated)
+    let wasm_mod = std::fs::read_to_string(out.join("wasm/src/generated/mod.rs")).unwrap();
+    assert!(
+        wasm_mod.contains("pub struct FooList("),
+        "wasm `FooList` wrapper class must remain:\n{wasm_mod}"
+    );
+    // the emitted rust crate must still compile: the alias was pure API surface, everything is
+    // referenced structurally as `Vec<Foo>`.
+    let target_dir = scratch.join("target");
+    let check = tool_cmd("cargo")
+        .arg("check")
+        .current_dir(out.join("rust"))
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .output()
+        .unwrap();
+    assert!(
+        check.status.success(),
+        "generated rust crate failed to compile with the flag on:\n{}",
+        String::from_utf8_lossy(&check.stderr)
+    );
+}
+
 /// Clippy over generated crates: the emitted deserialize/serialize source must be `clippy::all`-clean
 /// (no `clippy::no_effect` degenerate `();` statements, no other default clippy lints), per emission
 /// profile. Snapshots pin that the emitted bytes don't *change*, not that they're *idiomatic* — a
