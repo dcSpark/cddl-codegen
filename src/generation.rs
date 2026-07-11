@@ -588,6 +588,23 @@ pub struct GenerationScope {
     /// `BTreeMap` keeps the index deterministic (sorted by class name). Only populated under
     /// `--wasm`; unused otherwise.
     wasm_collection_wrappers: BTreeMap<RustIdent, ModuleScope>,
+    /// Parsed `--extern-wrapper-index` inventories: extern-deps dependency name -> the set of
+    /// collection-wrapper class names that dependency's own wasm crate already emits (read from its
+    /// committed `generated/collections.rs`). Consulted when deciding whether a wrapper the consumer
+    /// would mint should instead be deferred to the dependency. Empty unless the flag is passed.
+    extern_wrapper_index: BTreeMap<String, BTreeSet<String>>,
+    /// Collection wrappers the consumer is NOT minting this run because a mapped dependency already
+    /// owns them (`--extern-wrapper-index`), keyed by the structural wrapper ident and mapped to the
+    /// dependency's `collections` module scope (`_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/collections`,
+    /// non-exported) the reference is imported from. Populated at each emitter's mint point during the
+    /// wasm struct walk (before imports are computed), so `scope_references` can route a plain
+    /// `use <dep_wasm>::collections::<Name>;` into every referencing module and the two keys()
+    /// accessors know to construct via `.into()` cross-crate (R3d). Never records a wrapper into
+    /// `wasm_collection_wrappers`, so a deferred wrapper stays out of the consumer's own index (R3e).
+    deferred_wrappers: BTreeMap<RustIdent, ModuleScope>,
+    /// Wrapper idents already named in a `--extern-wrapper-index` "candidate not in the dep's index"
+    /// stderr warning, so the diagnostic fires at most once per wrapper across the walk.
+    deferred_warned: BTreeSet<RustIdent>,
     no_deser_reasons: BTreeMap<RustIdent, Vec<String>>,
     /// Type-parameter names for the emitted `serialize` / `deserialize` fns. Normally `"W"` / `"R"`,
     /// but if a rule camel-cases to a type named `W`/`R` (which would shadow the generic and break
@@ -616,6 +633,9 @@ impl GenerationScope {
             json_lines: BlocksOrLines::default(),
             already_generated: BTreeSet::new(),
             wasm_collection_wrappers: BTreeMap::new(),
+            extern_wrapper_index: BTreeMap::new(),
+            deferred_wrappers: BTreeMap::new(),
+            deferred_warned: BTreeSet::new(),
             no_deser_reasons: BTreeMap::new(),
             serialize_generic: "W".to_string(),
             deserialize_generic: "R".to_string(),
@@ -634,6 +654,17 @@ impl GenerationScope {
         let defined_idents = types.defined_rust_idents();
         self.serialize_generic = pick_generic_name(&defined_idents, "W", "Ser");
         self.deserialize_generic = pick_generic_name(&defined_idents, "R", "De");
+
+        // `--extern-wrapper-index`: read each mapped dependency's committed collection-wrapper index
+        // (`generated/collections.rs`) so the wasm struct walk below can DEFER any wrapper the dep
+        // already owns instead of re-minting it (a wasm duplicate-symbol link error otherwise).
+        // Parsed once, up front, so it is available at every emitter's mint point. Only meaningful
+        // under `--wasm`; a mapping naming a non-extern dependency is a hard error, mirroring
+        // `--extern-wasm-crate` (a typo would otherwise silently disable deferral and reintroduce the
+        // link error).
+        if cli.wasm {
+            self.extern_wrapper_index = load_extern_wrapper_indices(types, cli);
+        }
 
         // Type aliases
         for (alias_ident, alias_info) in types.type_aliases() {
@@ -1309,7 +1340,9 @@ impl GenerationScope {
             }
         }
         // imports for generated structs from other files (struct files)
-        let rust_imports = types.scope_references(false);
+        // The rust pass registers no collection-wrapper class imports (those are wasm-only), so
+        // deferral never applies here — pass an empty map so rust output is untouched by the flag.
+        let rust_imports = types.scope_references(false, &BTreeMap::new());
         for (scope, content) in self.rust_scopes.iter_mut() {
             add_imports_from_scope_refs(scope, content, &rust_imports, "crate::generated", None);
             // TODO: we blindly add these two map imports. Ideally we would only do it when needed
@@ -1442,7 +1475,10 @@ impl GenerationScope {
             // crate-root lib.rs.
             self.wasm_lib().raw("pub mod collections;");
             // wasm imports
-            let wasm_imports = types.scope_references(true);
+            // `deferred_wrappers` was fully populated during the wasm struct walk above (every
+            // deferred wrapper's mint point recorded it), so referencing modules now get a plain
+            // `use <dep_wasm>::collections::<Name>;` for each instead of a local class.
+            let wasm_imports = types.scope_references(true, &self.deferred_wrappers);
             for (scope, content) in self.wasm_scopes.iter_mut() {
                 // imports from other struct modules; the wasm generated tree nests one level under
                 // `crate::generated` (same as the rust crate)
@@ -2220,6 +2256,125 @@ impl GenerationScope {
     fn record_collection_wrapper(&mut self, types: &IntermediateTypes, ident: &RustIdent) {
         let scope = types.scope(ident).clone();
         self.wasm_collection_wrappers.insert(ident.clone(), scope);
+    }
+
+    /// Decide whether a structural collection wrapper the consumer is about to mint should instead be
+    /// DEFERRED to a dependency that already owns it (`--extern-wrapper-index`). `structural_name` is
+    /// the wrapper's structurally-derived name (`name_as_wasm_array` / `name_for_wasm_map`) and
+    /// `constituents` its element (list) or key+value (map) conceptual types.
+    ///
+    /// Returns `true` when the wrapper is deferred — the caller must emit NO local class and skip
+    /// `record_collection_wrapper`, so the deferred wrapper leaves the crate's own `collections.rs`
+    /// index (R3e). The ident is recorded in `deferred_wrappers` mapped to the dependency's
+    /// `collections` module scope, so `scope_references` routes a plain
+    /// `use <dep_wasm>::collections::<Name>;` into every referencing module (R3b) and the keys()
+    /// accessors construct via `.into()` cross-crate (R3d). Returns `false` (mint locally) when: the
+    /// flag is unused; the ident is not the structural name of these constituents (a rule-declared
+    /// wrapper — never suppressed); the constituents are mixed / not all one dependency (R3c, silent);
+    /// or an all-extern-of-one-dep candidate is absent from that dep's index (local + one stderr
+    /// warning naming the wrapper).
+    fn try_defer_wrapper(
+        &mut self,
+        types: &IntermediateTypes,
+        wrapper_ident: &RustIdent,
+        structural_name: &str,
+        constituents: &[&ConceptualRustType],
+    ) -> bool {
+        if self.extern_wrapper_index.is_empty() {
+            return false;
+        }
+        // Only generator-SYNTHESIZED structural wrappers are defer candidates: a rule-declared
+        // wrapper (`foo_list = [* extern_foo]`) whose ident differs from the structural name is the
+        // consumer's OWN class and is never suppressed.
+        if wrapper_ident.as_ref() != structural_name {
+            return false;
+        }
+        // Each named constituent (element / key / value that resolves to a named rule) maps to the
+        // dependency owning it (leading component of its non-exported scope), or `None` when it's a
+        // consumer-owned (exported) type. Primitives contribute no constituent.
+        let mut constituent_deps: Vec<Option<String>> = Vec::new();
+        for c in constituents {
+            for id in named_constituent_idents(c) {
+                let scope = types.scope(&id);
+                constituent_deps.push(if scope.export() {
+                    None
+                } else {
+                    scope.components().first().cloned()
+                });
+            }
+        }
+        let dep = if constituent_deps.is_empty() {
+            // Zero named constituents (e.g. `MapU64ToText`): a defer candidate only if some configured
+            // index lists the name. Several listing it would each be a duplicate-symbol link error, so
+            // defer to the lexicographically-first dep (BTreeMap iteration order) and warn.
+            let matching: Vec<&String> = self
+                .extern_wrapper_index
+                .iter()
+                .filter(|(_, names)| names.contains(structural_name))
+                .map(|(dep, _)| dep)
+                .collect();
+            match matching.as_slice() {
+                [] => return false, // owned by no dependency -> local, silent
+                [only] => (*only).clone(),
+                many => {
+                    if self.deferred_warned.insert(wrapper_ident.clone()) {
+                        eprintln!(
+                            "warning: collection wrapper {structural_name} is listed in several \
+                             --extern-wrapper-index files ({many:?}); deferring to the first ({})",
+                            many[0]
+                        );
+                    }
+                    many[0].clone()
+                }
+            }
+        } else {
+            // Has named constituents: a defer candidate only if they ALL resolve to extern types of
+            // the SAME dependency (R3c: any consumer-owned or cross-dependency constituent -> local,
+            // silent).
+            let mut single: Option<String> = None;
+            for d in &constituent_deps {
+                match d {
+                    None => return false,
+                    Some(name) => match &single {
+                        None => single = Some(name.clone()),
+                        Some(s) if s == name => {}
+                        Some(_) => return false,
+                    },
+                }
+            }
+            let dep = single.unwrap();
+            // All-extern-of-one-dep candidate: defer iff that dep's index lists it; otherwise mint
+            // locally and warn once (a dep-side inventory change that silently shifted ownership back
+            // to the consumer is then loud in the regen log, not only in the diff).
+            if !self
+                .extern_wrapper_index
+                .get(&dep)
+                .is_some_and(|names| names.contains(structural_name))
+            {
+                if self.deferred_warned.insert(wrapper_ident.clone()) {
+                    eprintln!(
+                        "warning: collection wrapper {structural_name} has only extern elements of \
+                         dependency {dep:?} but is absent from its --extern-wrapper-index; minting \
+                         it locally (a dep that later adds it would duplicate-symbol at link time)"
+                    );
+                }
+                return false;
+            }
+            dep
+        };
+        // Deferred: import from the dep's `collections` module. The non-exported scope
+        // `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/collections` is remapped by
+        // `add_imports_from_scope_refs` to `<dep_wasm>::collections` when `--extern-wasm-crate` maps
+        // the dep, or left as `<dep>::collections` (the dep's rust crate name — the same fallback
+        // unmapped extern types get) otherwise.
+        let dep_scope = ModuleScope::from(vec![
+            crate::parsing::EXTERN_DEPS_DIR.to_owned(),
+            dep,
+            "collections".to_owned(),
+        ]);
+        self.deferred_wrappers
+            .insert(wrapper_ident.clone(), dep_scope);
+        true
     }
 
     /// CBOR encoding scope for `ident` (i.e. *Encoding structs)
@@ -4629,6 +4784,17 @@ impl GenerationScope {
         array_type_ident: &RustIdent,
         cli: &Cli,
     ) {
+        // `--extern-wrapper-index`: if a mapped dependency already owns this exact list wrapper, defer
+        // to it (import from the dep's `collections` module) instead of re-minting a duplicate class.
+        // Only fires for the structurally-named synthesized wrapper, never a rule-declared list.
+        if self.try_defer_wrapper(
+            types,
+            array_type_ident,
+            &element_type.name_as_wasm_array(types),
+            &[&element_type.conceptual_type],
+        ) {
+            return;
+        }
         if self.already_generated.insert(array_type_ident.clone()) {
             // Record for the collections.rs index BEFORE the `--wasm-list-macro` early return: the
             // macro still DEFINES the wrapper class, so it belongs in the index exactly like the
@@ -5055,8 +5221,22 @@ impl GenerationScope {
         } else {
             ".keys().cloned()"
         };
+        // R3d: decide the keys-list wrapper's deferral BEFORE emitting keys() (see the identical
+        // reasoning in `codegen_table_type`). `try_defer_wrapper` is idempotent.
+        let keys_deferred = !keys_type.directly_wasm_exposable_ct(types)
+            && self.try_defer_wrapper(
+                types,
+                &RustIdent::new(CDDLIdent::new(key_type.name_as_wasm_array(types))),
+                &key_type.name_as_wasm_array(types),
+                &[&key_type.conceptual_type],
+            );
         if keys_type.directly_wasm_exposable_ct(types) {
             keys.line(format!("self.0{key_clone}.collect::<Vec<_>>()"));
+        } else if keys_deferred {
+            // R3d: the keys-list wrapper is deferred to a dependency (`--extern-wrapper-index`); its
+            // tuple field is private cross-crate, so build it through `From<Vec<_>>` (`.into()`)
+            // instead of tuple-struct syntax.
+            keys.line(format!("self.0{key_clone}.collect::<Vec<_>>().into()"));
         } else {
             keys.line(format!(
                 "{}(self.0{key_clone}.collect::<Vec<_>>())",
@@ -6454,6 +6634,73 @@ pub fn table_type(cli: &Cli) -> &'static str {
     }
 }
 
+/// The top-level NAMED rust idents of a wrapper constituent (element / key / value) — what the defer
+/// decision resolves to a dependency scope. Primitives / fixed values contribute none; an alias
+/// contributes its aliased ident; an optional passes through to its inner type.
+fn named_constituent_idents(ty: &ConceptualRustType) -> Vec<RustIdent> {
+    match ty {
+        ConceptualRustType::Rust(ident) => vec![ident.clone()],
+        ConceptualRustType::Alias(AliasIdent::Rust(ident), _) => vec![ident.clone()],
+        ConceptualRustType::Optional(inner) => named_constituent_idents(&inner.conceptual_type),
+        _ => vec![],
+    }
+}
+
+/// Parse every `--extern-wrapper-index <dep>=<path>` file into `dep -> {wrapper class names}`. Each
+/// file is a dependency's committed `generated/collections.rs`: `pub use <path>::<Name>;` lines (plus
+/// blank / `//` comment lines). Any other non-blank line is a hard error — the format is ours, and a
+/// silently-tolerated stray line would let a malformed index disable deferral and reintroduce the
+/// duplicate-symbol link error. Mapping keys are validated against `extern_dep_names()` first (a typo
+/// there has the same silent-disable failure mode), mirroring `--extern-wasm-crate`.
+fn load_extern_wrapper_indices(
+    types: &IntermediateTypes,
+    cli: &Cli,
+) -> BTreeMap<String, BTreeSet<String>> {
+    let files = cli.extern_wrapper_index_files();
+    if files.is_empty() {
+        return BTreeMap::new();
+    }
+    let extern_dep_names = types.extern_dep_names();
+    let mut out = BTreeMap::new();
+    for (dep, path) in files {
+        if !extern_dep_names.contains(&dep) {
+            panic!(
+                "--extern-wrapper-index names dependency {dep:?}, which is not an extern dependency \
+                 in this spec. Known extern dependencies: {extern_dep_names:?}"
+            );
+        }
+        let contents = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            panic!("--extern-wrapper-index {dep}={path}: cannot read the index file: {e}")
+        });
+        let mut names = BTreeSet::new();
+        for line in contents.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with("//") {
+                continue;
+            }
+            // Fixed shape: `pub use <path>::<Name>;` — take the segment after the last `::`.
+            let name = line
+                .strip_prefix("pub use ")
+                .and_then(|rest| rest.strip_suffix(';'))
+                .and_then(|path| path.rsplit("::").next())
+                .filter(|name| {
+                    !name.is_empty() && name.chars().all(|c| c.is_alphanumeric() || c == '_')
+                });
+            match name {
+                Some(name) => {
+                    names.insert(name.to_owned());
+                }
+                None => panic!(
+                    "--extern-wrapper-index {dep}={path}: unexpected line {line:?}; the index is a \
+                     generated `collections.rs` of `pub use <path>::<Name>;` re-export lines"
+                ),
+            }
+        }
+        out.insert(dep, names);
+    }
+    out
+}
+
 /// Mint the wasm structural wrapper class for a single visited `ConceptualRustType` (the per-type body
 /// of the wasm-wrapper visit). Shared by the rust-struct walk and the wasm-alias-target walk so both
 /// reach identical minting decisions (sole-owner routing, map-key array wrappers). Idempotent via
@@ -6579,6 +6826,20 @@ fn codegen_table_type(
     cli: &Cli,
 ) {
     assert!(cli.wasm);
+    // `--extern-wrapper-index`: only the anonymous STRUCTURAL map wrapper (`!exists_in_rust`, name ==
+    // `name_for_wasm_map`) is a defer candidate — a rule-owned class (`exists_in_rust`) is the
+    // consumer's own type. If a mapped dependency owns this exact structural map wrapper, defer to it
+    // (import from the dep's `collections` module) instead of re-minting a duplicate class.
+    if !exists_in_rust
+        && gen_scope.try_defer_wrapper(
+            types,
+            name,
+            ConceptualRustType::name_for_wasm_map(&key_type, &value_type).as_ref(),
+            &[&key_type.conceptual_type, &value_type.conceptual_type],
+        )
+    {
+        return;
+    }
     // Idempotency guard, unified with the array wrappers' `already_generated`: the loose structural
     // `MapKToV` builder can be requested BOTH by the wasm-wrapper visitor (a plain `{* k => v}` use)
     // AND directly by `generate_non_empty_map_type` (as a `{+ k => v}` wrapper's `try_from` source);
@@ -6782,8 +7043,24 @@ fn codegen_table_type(
     } else {
         ".keys().cloned()"
     };
+    // R3d: decide the keys-list wrapper's deferral BEFORE emitting keys() — the keys-list emitter
+    // (`generate_array_type`) may run AFTER this map class, so consulting `deferred_wrappers` alone
+    // would miss it. `try_defer_wrapper` is idempotent, so this both records the decision (the later
+    // emitter re-runs it, suppresses, and the import is routed) and drives the `.into()` here.
+    let keys_deferred = !keys_type.directly_wasm_exposable_ct(types)
+        && gen_scope.try_defer_wrapper(
+            types,
+            &RustIdent::new(CDDLIdent::new(key_type.name_as_wasm_array(types))),
+            &key_type.name_as_wasm_array(types),
+            &[&key_type.conceptual_type],
+        );
     if keys_type.directly_wasm_exposable_ct(types) {
         keys.line(format!("self.0{key_clone}.collect::<Vec<_>>()"));
+    } else if keys_deferred {
+        // R3d: the keys-list wrapper is deferred to a dependency (`--extern-wrapper-index`); its tuple
+        // field is private cross-crate, so build it through `From<Vec<_>>` (`.into()`) instead of
+        // tuple-struct syntax.
+        keys.line(format!("self.0{key_clone}.collect::<Vec<_>>().into()"));
     } else {
         keys.line(format!(
             "{}(self.0{key_clone}.collect::<Vec<_>>())",

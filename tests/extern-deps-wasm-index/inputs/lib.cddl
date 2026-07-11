@@ -1,0 +1,28 @@
+; Consumer spec for the `--extern-wrapper-index` deferral feature. Every collection shape below is
+; over the dependency's extern type `idx_foo`, so the wrappers the consumer would mint collide by
+; name with the ones the dependency's own wasm crate already emits — a wasm duplicate-symbol link
+; error when both are linked into one cdylib. Pointing `--extern-wrapper-index
+; index_dep_crate=<dep collections.rs>` at the dep's index makes the consumer DEFER the wrappers the
+; dep owns. The dep index lists: IdxFooList, MapU64ToIdxFoo (NOT MapIdxFooToIdxFoo).
+;
+; NB deliberately free of plain unbounded `int`/`i64` fields: those emit i64::MIN/MAX literals in
+; isize positions that don't compile on wasm32-unknown-unknown for unrelated reasons, which would
+; break the honest link gate before it could isolate the duplicate-symbol property. uint / tstr and
+; the extern struct are all fine.
+
+; A consumer-owned struct, used as a map VALUE to make one map MIXED (extern key + consumer value).
+local_thing = [a: uint, b: tstr]
+
+everything = [
+    ; (a) list over an extern element whose wrapper IS in the index -> DEFERRED (imported from
+    ;     index_dep_crate_wasm::collections, no local IdxFooList class)
+    foos: [* idx_foo],
+    ; (a) map whose wrapper IS in the index -> DEFERRED (MapU64ToIdxFoo)
+    foo_table: { * uint => idx_foo },
+    ; (b) all-extern map whose wrapper is NOT in the index -> minted LOCALLY + a stderr warning; its
+    ;     keys-list wrapper IdxFooList IS in the index -> DEFERRED, so keys() builds via `.into()` (R3d)
+    foo_to_foo: { * idx_foo => idx_foo },
+    ; (c) MIXED map (extern key + consumer value) -> minted LOCALLY, silent; keys-list IdxFooList IS
+    ;     in the index -> DEFERRED, so keys() builds via `.into()` (R3d)
+    foo_keyed: { * idx_foo => local_thing },
+]

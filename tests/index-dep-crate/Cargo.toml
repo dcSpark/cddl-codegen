@@ -1,0 +1,11 @@
+[package]
+name = "index-dep-crate"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+extern-dep-crate = { path = "../extern-dep-crate" }
+cbor_event = "2.4.0"
