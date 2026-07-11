@@ -301,27 +301,26 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
      wasm-ABI matrix's extern-capable shapes — each shape probed once with a dep index listing its
      structural name and once without, asserting deferred-import vs local-mint and a wasm32 link —
      rather than accreting per-shape hand fixtures.
-   - **Extern-deps wasm-boundary surface: compile-gated, not behavior/packaging-gated.** The
-     split-dep cell (`integration_tests::extern_deps_wasm`, `--extern-wasm-crate`) proves the
-     generated wasm crate *builds* against a mapped dep wasm crate; the sibling index fixture
-     narrows this: `extern_wrapper_index_defers_to_dep` (`tests/extern-deps-wasm-index`) now runs a
-     cross-crate behavioral wasm round-trip (`tests_wasm.rs` through deferred dep classes) AND a
-     real `wasm32-unknown-unknown` link build (the only gate compiling any generated crate for the
-     actual wasm target). For the ORIGINAL fixture three layers above "it builds"
-     stay unprobed: (a) wasm-side behavioral round-trips through the cross-crate wrappers — the
-     fixture ships no `tests_wasm.rs`, so a semantically wrong boundary conversion (`get`/`add`
-     through the dep's `From` impls) compiles green; the existing behavioral floor
-     (`tests/core`/`tests/canonical` `tests_wasm.rs`) never crosses crates. Cheapest close: a
-     `tests_wasm.rs` in `tests/extern-deps-wasm` constructing `ExternCrateFooList`/the table
-     wrapper — and the `nested` module's non-root-use wrappers (`ExternCrateBarList`, the
-     `NestedItem`/`ExternCrateBar`-keyed maps), whose rust-side round-trip exists but whose wasm
-     accessors don't — through the wasm API and round-tripping. (b) `wasm-pack`/bindgen-CLI packaging —
-     `cargo build` cannot see duplicate exported JS class names when the dep wasm crate and the
-     consumer both export a like-named wrapper (the generate-locally policy makes this reachable);
-     no gate runs bindgen-CLI over the extern fixture. (c) json-gen against extern-dep types —
-     `gen_json_schema!` now emits the dep's rust path, but no gate generates or executes
-     `--json-schema-export` with extern deps (needs the dep in the json-gen manifest and a
-     `schemars::JsonSchema` impl on the dep type, both user responsibilities by design).
+   - **Extern-deps wasm-boundary surface: packaging- and json-gen-gaps beyond the behavioral floor.**
+     The split-dep cell (`integration_tests::extern_deps_wasm`, `--extern-wasm-crate`) drives the
+     generated wasm crate's cross-crate wrappers behaviorally: `tests/extern-deps-wasm/tests_wasm.rs`
+     constructs `Everything` and the non-root `nested::NestedHolder` through the wasm API (all eight
+     collection wrappers — `ExternCrateFooList`/the table wrapper plus the `nested` module's
+     non-root-use `ExternCrateBarList`, `NestedItemList`, and the `NestedItem`/`ExternCrateBar`-keyed
+     maps whose keys() re-mint the element list), CBOR round-trips, and value-anchors every getter
+     across the boundary (element fields via `.as_ref()` to the dep rust types, map lookups, keys()
+     readback), so a semantically wrong boundary conversion (`get`/`add` through the dep's `From`
+     impls, an identity `.into()` where a transform was needed) now fails rather than compiling green.
+     This mirrors the behavioral floor the sibling index fixture already has
+     (`extern_wrapper_index_defers_to_dep` over `tests/extern-deps-wasm-index`, which additionally
+     links for the real `wasm32-unknown-unknown` target). Two layers above "it builds and round-trips"
+     stay unprobed: (a) `wasm-pack`/bindgen-CLI packaging — `cargo build`/`cargo test` cannot see
+     duplicate exported JS class names when the dep wasm crate and the consumer both export a
+     like-named wrapper (the generate-locally policy makes this reachable); no gate runs bindgen-CLI
+     over the extern fixture. (b) json-gen against extern-dep types — `gen_json_schema!` now emits the
+     dep's rust path, but no gate generates or executes `--json-schema-export` with extern deps (needs
+     the dep in the json-gen manifest and a `schemars::JsonSchema` impl on the dep type, both user
+     responsibilities by design).
 
 6. **Extend the decode-conformance corpus along the composition-depth axis.** (Two sibling axes are
    already delivered by the replay gate's default leg, both deriving from each accept vector's bytes
