@@ -91,7 +91,7 @@ impl TryFrom<i128> for Int {
         if x >= 0 {
             u64::try_from(x).map(Self::Uint)
         } else {
-            u64::try_from((x + 1).abs()).map(Self::Nint)
+            u64::try_from((x + 1).unsigned_abs()).map(Self::Nint)
         }
     }
 }

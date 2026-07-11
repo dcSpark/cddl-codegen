@@ -66,7 +66,7 @@ impl Deserialize for Primitives {
             let b = raw
                 .negative_integer_sz()
                 .map_err(Into::<DeserializeError>::into)
-                .map(|(x, _enc)| (x + 1).abs() as u64)
+                .map(|(x, _enc)| (x + 1).unsigned_abs() as u64)
                 .map_err(|e: DeserializeError| e.annotate("b"))?;
             let c = Int::deserialize(raw).map_err(|e: DeserializeError| e.annotate("c"))?;
             let d = Ok(raw.text()?).map_err(|e: DeserializeError| e.annotate("d"))?;

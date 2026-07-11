@@ -2290,7 +2290,7 @@ impl GenerationScope {
                                 "write_negative_integer",
                                 serializer_use,
                                 &i.to_string(),
-                                &format!("({i}i128 + 1).abs() as u64"),
+                                &format!("({i}i128 + 1).unsigned_abs() as u64"),
                                 line_ender,
                                 &encoding_var_deref,
                                 cli,
@@ -2384,14 +2384,22 @@ impl GenerationScope {
                                 // https://github.com/primetype/cbor_event/issues/9
                                 // cbor_event doesn't support i64::MIN on write_negative_integer() so we use write_negative_integer_sz() for i64s
                                 // even when not preserving encodings
-                                neg.line(format!("{serializer_use}.write_negative_integer_sz({expr_deref} as i128, cbor_event::Sz::canonical(({expr_deref} + 1).abs() as u64)){line_ender}"));
+                                neg.line(format!("{serializer_use}.write_negative_integer_sz({expr_deref} as i128, cbor_event::Sz::canonical(({expr_deref} + 1).unsigned_abs())){line_ender}"));
                             } else {
+                                // unsigned_abs() on i8/i16/i32 yields the same-width unsigned type;
+                                // widen to u64 for Sz::canonical (a bare `as u64` on the i64 case
+                                // would be a no-op cast)
+                                let sz_expr = if *primitive == Primitive::I64 {
+                                    format!("({expr_deref} + 1).unsigned_abs()")
+                                } else {
+                                    format!("({expr_deref} + 1).unsigned_abs() as u64")
+                                };
                                 write_using_sz(
                                     &mut neg,
                                     "write_negative_integer",
                                     serializer_use,
                                     &expr,
-                                    &format!("({expr_deref} + 1).abs() as u64"),
+                                    &sz_expr,
                                     line_ender,
                                     &encoding_var_deref,
                                     cli,
@@ -2977,7 +2985,7 @@ impl GenerationScope {
                             let x_abs = (x + 1).abs();
                             let mut compare_block =
                                 Block::new(format!("if {}_value != {}", config.var_name, x));
-                            compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Uint(({}_value + 1).abs() as u64), expected: Key::Uint({}) }}.into());", config.var_name, x_abs));
+                            compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Uint(({}_value + 1).unsigned_abs() as u64), expected: Key::Uint({}) }}.into());", config.var_name, x_abs));
                             deser_code.content.push_block(compare_block);
                             if cli.preserve_encodings {
                                 config
@@ -3452,7 +3460,7 @@ impl GenerationScope {
                                     "x",
                                     // width-safe: the nint domain (-2^64..-1) maps onto the u64
                                     // magnitude exactly, so no guard is needed
-                                    "(x + 1).abs() as u64",
+                                    "(x + 1).unsigned_abs() as u64",
                                     None,
                                 )
                             } else {
@@ -3460,14 +3468,16 @@ impl GenerationScope {
                                 // cbor_event's negative_integer() doesn't support full nint range so we use the _sz function here instead as that one supports all nints
                                 let bounds_fn = match &type_cfg.bounds {
                                     Some(bounds) => Cow::Owned(format!(
-                                        ".and_then(|(x, _enc)| {} else {{ Ok((x + 1).abs() as u64) }})",
+                                        ".and_then(|(x, _enc)| {} else {{ Ok((x + 1).unsigned_abs() as u64) }})",
                                         bounds_check_if_block(
                                             bounds,
                                             &bounds_check_expr(*p, "x"),
                                             false
                                         ),
                                     )),
-                                    None => Cow::Borrowed(".map(|(x, _enc)| (x + 1).abs() as u64)"),
+                                    None => Cow::Borrowed(
+                                        ".map(|(x, _enc)| (x + 1).unsigned_abs() as u64)",
+                                    ),
                                 };
                                 deser_code.content.line(&format!(
                                     "{}{}.negative_integer_sz(){}{}{}",
@@ -11246,11 +11256,12 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes, cli:
     let mut try_from_else = Block::new("else");
     if cli.preserve_encodings {
         try_from_if.line("u64::try_from(x).map(|x| Self::Uint{ value: x, encoding: None })");
-        try_from_else
-            .line("u64::try_from((x + 1).abs()).map(|x| Self::Nint{ value: x, encoding: None })");
+        try_from_else.line(
+            "u64::try_from((x + 1).unsigned_abs()).map(|x| Self::Nint{ value: x, encoding: None })",
+        );
     } else {
         try_from_if.line("u64::try_from(x).map(Self::Uint)");
-        try_from_else.line("u64::try_from((x + 1).abs()).map(Self::Nint)");
+        try_from_else.line("u64::try_from((x + 1).unsigned_abs()).map(Self::Nint)");
     }
     try_from_i128
         .impl_trait("TryFrom<i128>")

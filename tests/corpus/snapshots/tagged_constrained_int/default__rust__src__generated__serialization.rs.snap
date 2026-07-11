@@ -25,7 +25,7 @@ impl cbor_event::se::Serialize for Garm {
                 } else {
                     serializer.write_negative_integer_sz(
                         *ga as i128,
-                        cbor_event::Sz::canonical((*ga + 1).abs() as u64),
+                        cbor_event::Sz::canonical((*ga + 1).unsigned_abs()),
                     )
                 }
             }
@@ -137,7 +137,7 @@ impl cbor_event::se::Serialize for Holder {
         } else {
             g_inner_se.write_negative_integer_sz(
                 self.g as i128,
-                cbor_event::Sz::canonical((self.g + 1).abs() as u64),
+                cbor_event::Sz::canonical((self.g + 1).unsigned_abs()),
             )?;
         }
         let g_bytes = g_inner_se.finalize();
@@ -257,7 +257,7 @@ impl cbor_event::se::Serialize for TaggedCtlNe {
         } else {
             serializer.write_negative_integer_sz(
                 self.0 as i128,
-                cbor_event::Sz::canonical((self.0 + 1).abs() as u64),
+                cbor_event::Sz::canonical((self.0 + 1).unsigned_abs()),
             )
         }
     }
@@ -333,7 +333,7 @@ impl cbor_event::se::Serialize for TaggedRangeExcl {
         } else {
             serializer.write_negative_integer_sz(
                 self.0 as i128,
-                cbor_event::Sz::canonical((self.0 + 1).abs() as u64),
+                cbor_event::Sz::canonical((self.0 + 1).unsigned_abs()),
             )
         }
     }
@@ -409,7 +409,7 @@ impl cbor_event::se::Serialize for TaggedRangeIncl {
         } else {
             serializer.write_negative_integer_sz(
                 self.0 as i128,
-                cbor_event::Sz::canonical((self.0 + 1).abs() as u64),
+                cbor_event::Sz::canonical((self.0 + 1).unsigned_abs()),
             )
         }
     }
@@ -485,7 +485,7 @@ impl cbor_event::se::Serialize for TaggedRangeNint {
         } else {
             serializer.write_negative_integer_sz(
                 self.0 as i128,
-                cbor_event::Sz::canonical((self.0 + 1).abs() as u64),
+                cbor_event::Sz::canonical((self.0 + 1).unsigned_abs()),
             )
         }
     }
