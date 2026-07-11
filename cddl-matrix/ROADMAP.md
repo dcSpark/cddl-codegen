@@ -205,7 +205,12 @@ are ledgered here (that's what the probe/gate error messages point at).
   compiling any multifile wasm crate with that shape; the collections-index test steered its
   non-root table to exposable `uint` keys to avoid it. Candidate fix: register the keys-list
   wrapper ref into the sole owner's emission scope in `mark_refs`' Map arm (the non-deferred
-  analogue of the deferred-keys-list registration added there).
+  analogue of the deferred-keys-list registration added there). Test-side closure per the
+  axis-honesty rule (§ "wasm-ABI & multifile placement matrices" below): this shape is a hole in
+  `project_multifile_matrix.ts`'s `SHAPES` — the SECOND proven multifile-SHAPES hole after
+  `collrec`, found the same way (someone building an adjacent test asked what the shape reaches,
+  not a gate) — so its pickup starts by enumerating it as a cell (red,
+  `MULTIFILE_MATRIX_SKIP`-pinned with the exact E-code), the same flow `collrec` took.
 - **Real incremental choice extension (`/=` type-choice, `//=` group-choice) is a candidate
   feature.** Extending an already-defined ident is rejected gracefully at the `api.rs` pre-scan
   (pinned by `incremental_choice_extension_rejects_gracefully`; the initial-definition-via-`/=`

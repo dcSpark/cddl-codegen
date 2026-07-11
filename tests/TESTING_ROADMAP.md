@@ -300,7 +300,15 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
      `try_defer_wrapper` into the NonEmpty emitters (and exempt `try_from`-source mints) when one
      does. Related name-interaction note: a USER rule claiming a dep-indexed structural name is
      never deferred (the rule-declared guard), so it duplicate-symbols at link — the synthesized-name
-     interaction sweep (item above) owns that family.
+     interaction sweep (item above) owns that family. The CLASS here — a per-wrapper emission MODE
+     (local vs deferred) crossed with the wrapper-shape space — is an axis no existing honesty rule
+     sweeps (the wasm-ABI matrix's SHAPES/ROLES cover what types look like and where they sit; the
+     third honesty axis covers flag × input mode; neither enumerates flag × shape). These two gaps
+     were found by reading the emitters during review, not by any gate. Mechanical layer on the
+     SECOND read-caught or consumer-reported instance of the class: a deferral-profile leg over the
+     wasm-ABI matrix's extern-capable shapes — each shape probed once with a dep index listing its
+     structural name and once without, asserting deferred-import vs local-mint and a wasm32 link —
+     rather than accreting per-shape hand fixtures.
    - **Extern-deps wasm-boundary surface: compile-gated, not behavior/packaging-gated.** The
      split-dep cell (`integration_tests::extern_deps_wasm`, `--extern-wasm-crate`) proves the
      generated wasm crate *builds* against a mapped dep wasm crate; the sibling index fixture
