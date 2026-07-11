@@ -1460,6 +1460,351 @@ fn feature_corpus_compiles() {
     );
 }
 
+/// Standing, table-driven sweep over the generator's synthesized wasm-boundary idents. The generator
+/// mints structural wasm classes whose names derive from user type names (`intermediate.rs`):
+/// F1 plain list `{Elem}List` (`name_as_wasm_array_ct`), F2 table builder `Map{K}To{V}`
+/// (`name_for_wasm_map`), F3 `NonEmpty{Elem}List` (`non_empty_wasm_wrapper_name`), F4
+/// `NonEmptyMap{K}To{V}` (`non_empty_wasm_map_wrapper_name`), and F5 the table `keys()` list wrapper
+/// (`mint_wasm_wrapper_for_visited_type`). Each cell below crosses a family with one interaction
+/// against user rule names and enforces the invariant **no cell may be exit-0 with a non-compiling
+/// crate**: every cell is pinned to either
+///   - `Reject(ident)` — a GRACEFUL rejection (the IR-level NonEmpty collision scans for F3/F4, or
+///     the generation-time duplicate-ident backstop at the `generated_files` seam for the plain
+///     F1/F2/F5 families that have no IR scan) whose message names the colliding ident; or
+///   - `Ok { present, absent }` — the cell generates AND its wasm crate compiles. The Ok rows are
+///     batched into ONE crate whose wasm binding is `cargo check`ed (the `feature_corpus_compiles`
+///     pattern, shared `CARGO_TARGET_DIR`) — the "AND a compiling crate" leg. `present`/`absent`
+///     additionally pin dedup semantics against the batched source (dedup target defined once, the
+///     synthesized twin never emitted); the backstop already guarantees ≤ 1 definition per ident,
+///     so `present` asserting exactly-once is the "the dedup target exists" complement.
+///
+/// The four interactions (a cell is SKIPPED, with a reason, where an interaction is structurally
+/// inexpressible for a family):
+///   - I-a: a user rule of a DIFFERENT shape claiming the family's synthesized name;
+///   - I-b: a named same-shape rule coexisting with an inline occurrence (dedup or clean coexistence);
+///   - I-c: a self-named rule (rule ident == the structural name its own shape would mint inline);
+///   - I-d: a different-shape claim of a NEEDED AUXILIARY ident — for F3/F4 the restricted wrapper's
+///     loose `try_from`-source builder. Inexpressible for F1/F2 (the loose family's wrapper IS its
+///     own builder — no separate auxiliary) and for F5 (its synthesized name already IS the keys()
+///     auxiliary, so I-d would coincide with I-a).
+///
+/// Every rule ident is cell-prefixed so these NAME-LOCAL failure classes can't mask across cells
+/// when the Ok rows share one crate (cf. the `LAYER2_RULES_PER_BATCH` batch-masking lesson in
+/// `recombination_tests.rs`): distinct idents structurally exclude cross-cell interference. The
+/// probe that seeded these expectations found NO exit-0-non-compiling cell — every collision is
+/// either an IR-scan or backstop rejection, or compiles — so there is no known-bad ledger here; a
+/// future cell that lands exit-0 + non-compiling is a NEW instance of the class and must be fixed
+/// or explicitly ledgered, never blessed by loosening a row to `Ok`.
+#[test]
+fn synthesized_name_interaction_sweep() {
+    use clap::Parser;
+
+    enum Expect {
+        /// graceful rejection whose message must contain this substring (the colliding ident)
+        Reject(&'static str),
+        /// generates + the batched wasm crate compiles; the batched wasm source must define each
+        /// `present` ident exactly once and NONE of the `absent` idents (the deduped-away twins)
+        Ok {
+            present: &'static [&'static str],
+            absent: &'static [&'static str],
+        },
+    }
+    use Expect::{Ok as ExpectOk, Reject};
+
+    // (cell id, CDDL, expected outcome). Non-exposable record element (`[x: uint]`) so the wrappers
+    // actually mint; exposable map keys (`text`) except F5, which deliberately uses a non-exposable
+    // key to mint the keys() list wrapper.
+    let cells: &[(&str, &str, Expect)] = &[
+        // F1 — plain list `{Elem}List` (inline `[* elem]`, non-exposable element)
+        (
+            "F1 x I-a",
+            "f1a_bar = [x: uint]\nf1a_bar_list = tstr\nf1a_holder = { xs: [* f1a_bar] }\n",
+            Reject("F1aBarList"),
+        ),
+        (
+            "F1 x I-b",
+            "f1b_bar = [x: uint]\nf1b_things = [* f1b_bar]\nf1b_holder = { xs: [* f1b_bar] }\n",
+            // a differently-named plain-list rule and the inline mint coexist (no plain-array
+            // owner-dedup: each keeps its own class)
+            ExpectOk {
+                present: &["F1bThings", "F1bBarList"],
+                absent: &[],
+            },
+        ),
+        (
+            "F1 x I-c",
+            "f1c_bar = [x: uint]\nf1c_bar_list = [* f1c_bar]\nf1c_holder = { xs: [* f1c_bar] }\n",
+            // self-named plain-list rule owns the ident; the inline `[* elem]` shares it (idempotent
+            // mint), so exactly one `F1cBarList`
+            ExpectOk {
+                present: &["F1cBarList"],
+                absent: &[],
+            },
+        ),
+        // F1 x I-d SKIPPED: the plain-list family's wrapper IS its own loose builder — no separate
+        // auxiliary ident exists to claim.
+
+        // F2 — table builder `Map{K}To{V}` (inline `{* text => elem}`)
+        (
+            "F2 x I-a",
+            "f2a_bar = [x: uint]\nmap_text_to_f2a_bar = tstr\nf2a_holder = { m: {* text => f2a_bar} }\n",
+            Reject("MapTextToF2aBar"),
+        ),
+        (
+            "F2 x I-b",
+            "f2b_bar = [x: uint]\nf2b_things = {* text => f2b_bar}\nf2b_holder = { m: {* text => f2b_bar} }\n",
+            // a named table rule owns the shape; the inline use routes to it (sole-owner), and the
+            // structural `MapTextToF2bBar` survives as an alias onto that owner — both defined
+            ExpectOk {
+                present: &["F2bThings", "MapTextToF2bBar"],
+                absent: &[],
+            },
+        ),
+        (
+            "F2 x I-c",
+            "f2c_bar = [x: uint]\nmap_text_to_f2c_bar = {* text => f2c_bar}\nf2c_holder = { m: {* text => f2c_bar} }\n",
+            // self-named table rule IS the sole owner; the inline shares it — exactly one class
+            ExpectOk {
+                present: &["MapTextToF2cBar"],
+                absent: &[],
+            },
+        ),
+        // F2 x I-d SKIPPED: same as F1 — the table-builder wrapper IS its own loose builder.
+
+        // F3 — `NonEmpty{Elem}List` (inline `[+ elem]`)
+        (
+            "F3 x I-a",
+            "f3a_bar = [x: uint]\nnon_empty_f3a_bar_list = tstr\nf3a_holder = { xs: [+ f3a_bar] }\n",
+            Reject("NonEmptyF3aBarList"),
+        ),
+        (
+            "F3 x I-b",
+            "f3b_bar = [x: uint]\nf3b_things = [+ f3b_bar]\nf3b_holder = { xs: [+ f3b_bar] }\n",
+            // inline `[+ elem]` dedups to the named `[+ elem]` rule (`non_empty_named_owner`): the
+            // synthesized `NonEmptyF3bBarList` is NOT minted; the loose `F3bBarList` builder IS
+            // (the restricted wrapper's non-exposable-element `try_from` source)
+            ExpectOk {
+                present: &["F3bThings", "F3bBarList"],
+                absent: &["NonEmptyF3bBarList"],
+            },
+        ),
+        (
+            "F3 x I-c",
+            "f3c_bar = [x: uint]\nnon_empty_f3c_bar_list = [+ f3c_bar]\nf3c_holder = { xs: [+ f3c_bar] }\n",
+            // self-named `[+ elem]` rule whose ident IS the structural `NonEmpty…` name: it owns the
+            // restricted wrapper, the inline dedups to it, and the loose builder still mints
+            ExpectOk {
+                present: &["NonEmptyF3cBarList", "F3cBarList"],
+                absent: &[],
+            },
+        ),
+        (
+            "F3 x I-d",
+            "f3d_bar = [x: uint]\nf3d_bar_list = tstr\nf3d_holder = { xs: [+ f3d_bar] }\n",
+            // the inline `[+ elem]` wrapper needs the loose `F3dBarList` builder as its `try_from`
+            // source; a different-shape rule claims that auxiliary ident -> IR-scan rejection
+            Reject("F3dBarList"),
+        ),
+        // F4 — `NonEmptyMap{K}To{V}` (inline `{+ text => elem}`)
+        (
+            "F4 x I-a",
+            "f4a_bar = [x: uint]\nnon_empty_map_text_to_f4a_bar = tstr\nf4a_holder = { m: {+ text => f4a_bar} }\n",
+            Reject("NonEmptyMapTextToF4aBar"),
+        ),
+        (
+            "F4 x I-b",
+            "f4b_bar = [x: uint]\nf4b_things = {+ text => f4b_bar}\nf4b_holder = { m: {+ text => f4b_bar} }\n",
+            // map-side twin of F3 x I-b: inline dedups to the named `{+ …}` rule; the loose
+            // `MapTextToF4bBar` builder mints; the synthesized `NonEmptyMapTextToF4bBar` does not
+            ExpectOk {
+                present: &["F4bThings", "MapTextToF4bBar"],
+                absent: &["NonEmptyMapTextToF4bBar"],
+            },
+        ),
+        (
+            "F4 x I-c",
+            "f4c_bar = [x: uint]\nnon_empty_map_text_to_f4c_bar = {+ text => f4c_bar}\nf4c_holder = { m: {+ text => f4c_bar} }\n",
+            ExpectOk {
+                present: &["NonEmptyMapTextToF4cBar", "MapTextToF4cBar"],
+                absent: &[],
+            },
+        ),
+        (
+            "F4 x I-d",
+            "f4d_bar = [x: uint]\nmap_text_to_f4d_bar = tstr\nf4d_holder = { m: {+ text => f4d_bar} }\n",
+            Reject("MapTextToF4dBar"),
+        ),
+        // F5 — table `keys()` list wrapper (`{* elem => text}`, non-exposable KEY mints the list)
+        (
+            "F5 x I-a",
+            "f5a_bar = [x: uint]\nf5a_bar_list = tstr\nf5a_holder = { m: {* f5a_bar => text} }\n",
+            // the keys() list wrapper `F5aBarList` (no IR scan for this family) collides with a
+            // different-shape rule -> backstop rejection at the `generated_files` seam
+            Reject("F5aBarList"),
+        ),
+        (
+            "F5 x I-b",
+            "f5b_bar = [x: uint]\nf5b_holder = { m: {* f5b_bar => text}, xs: [* f5b_bar] }\n",
+            // the table's keys() list and an inline plain `[* elem]` both want `F5bBarList` — they
+            // dedup to one (idempotent mint), coexisting with the table builder
+            ExpectOk {
+                present: &["F5bBarList"],
+                absent: &[],
+            },
+        ),
+        (
+            "F5 x I-c",
+            "f5c_bar = [x: uint]\nf5c_bar_list = [* f5c_bar]\nf5c_holder = { m: {* f5c_bar => text} }\n",
+            // self-named plain-list rule owns `F5cBarList`; the table's keys() wrapper shares it
+            ExpectOk {
+                present: &["F5cBarList"],
+                absent: &[],
+            },
+        ),
+        // F5 x I-d SKIPPED: F5's synthesized name IS the keys() auxiliary ident, so a
+        // different-shape claim of it coincides with F5 x I-a above.
+    ];
+
+    // Count line-anchored top-level type-namespace definitions of `ident` — the same class the
+    // duplicate-ident backstop keys on (`generation.rs::top_level_type_ident`).
+    fn count_def(src: &str, ident: &str) -> usize {
+        src.lines()
+            .filter(|line| {
+                ["pub struct ", "pub enum ", "pub type "]
+                    .iter()
+                    .filter_map(|kw| line.strip_prefix(kw))
+                    .any(|rest| {
+                        rest.split(|c: char| !(c.is_alphanumeric() || c == '_'))
+                            .next()
+                            == Some(ident)
+                    })
+            })
+            .count()
+    }
+
+    // --- Reject leg: each reject cell rejects GRACEFULLY in-process (no cargo), message-asserted ---
+    let mut reject_count = 0usize;
+    let mut ok_batch = String::new();
+    let mut ok_checks: Vec<(&str, &[&str], &[&str])> = Vec::new();
+    for (i, (id, cddl, expect)) in cells.iter().enumerate() {
+        match expect {
+            Reject(ident) => {
+                reject_count += 1;
+                let spec = std::env::temp_dir().join(format!(
+                    "cddl_codegen_synth_sweep_{:016x}_{i}.cddl",
+                    checkout_hash()
+                ));
+                std::fs::write(&spec, cddl).unwrap();
+                let cli = crate::cli::Cli::parse_from([
+                    "cddl-codegen",
+                    &format!("--input={}", spec.to_str().unwrap()),
+                    "--output=synth_sweep_unused",
+                    "--wasm=true",
+                ]);
+                let msg = crate::api::generated_strings(&cli)
+                    .map_err(|e| e.to_string())
+                    .err()
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "{id}: expected a graceful rejection naming '{ident}', but it generated"
+                        )
+                    });
+                let _ = std::fs::remove_file(&spec);
+                assert!(
+                    msg.contains(ident),
+                    "{id}: the rejection must name the colliding ident '{ident}', got: {msg}"
+                );
+            }
+            ExpectOk { present, absent } => {
+                ok_batch.push_str(cddl);
+                ok_checks.push((id, present, absent));
+            }
+        }
+    }
+    assert!(
+        reject_count > 0 && !ok_checks.is_empty(),
+        "sweep went vacuous: {reject_count} reject cells, {} ok cells",
+        ok_checks.len()
+    );
+
+    // --- Ok leg: batch every generating cell into ONE crate, generate, `cargo check` the wasm
+    // crate, then pin the dedup semantics against the batched wasm source. Cell-prefixed idents make
+    // the batch equivalent to running the cells separately (no cross-cell name interference). ---
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_synth_sweep_batch_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let spec = root.join("batch.cddl");
+    let out = root.join("out");
+    let target_dir = root.join("target");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(&spec, &ok_batch).unwrap();
+
+    let gen_out = tool_cmd("cargo")
+        .args(["run", "--"])
+        .arg(format!("--input={}", spec.to_str().unwrap()))
+        .arg(format!("--output={}", out.to_str().unwrap()))
+        .arg("--wasm=true")
+        .output()
+        .unwrap();
+    assert!(
+        gen_out.status.success(),
+        "batched Ok-cell generation failed (an Ok cell is secretly a rejection?):\n{}",
+        String::from_utf8_lossy(&gen_out.stderr)
+    );
+
+    let wasm_dir = out.join("wasm");
+    assert!(
+        wasm_dir.exists(),
+        "no wasm crate at {wasm_dir:?} — generation stopped emitting it"
+    );
+    let check = tool_cmd("cargo")
+        .arg("check")
+        .current_dir(&wasm_dir)
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .output()
+        .unwrap();
+    assert!(
+        check.status.success(),
+        "the batched Ok-cell wasm crate failed to compile — a cell is exit-0 + non-compiling:\n{}\n{}",
+        String::from_utf8_lossy(&check.stdout),
+        String::from_utf8_lossy(&check.stderr)
+    );
+
+    // Join every generated wasm source file so per-cell dedup assertions see the whole surface.
+    let gen_dir = wasm_dir.join("src/generated");
+    let mut wasm_src = String::new();
+    let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(&gen_dir)
+        .unwrap_or_else(|e| panic!("cannot read {gen_dir:?}: {e}"))
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().and_then(|x| x.to_str()) == Some("rs"))
+        .collect();
+    files.sort();
+    for f in &files {
+        wasm_src.push_str(&std::fs::read_to_string(f).unwrap());
+        wasm_src.push('\n');
+    }
+
+    for (id, present, absent) in &ok_checks {
+        for ident in *present {
+            assert_eq!(
+                count_def(&wasm_src, ident),
+                1,
+                "{id}: expected exactly one top-level definition of '{ident}' in the batched wasm crate"
+            );
+        }
+        for ident in *absent {
+            assert_eq!(
+                count_def(&wasm_src, ident),
+                0,
+                "{id}: '{ident}' should have deduped away (it must NOT be defined) in the batched wasm crate"
+            );
+        }
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// Pins the documented first-run experience in `docs/docs/getting_started.mdx`: that doc tells a new
 /// user to run `cargo run -- --input=example/test.cddl --output=export` (and the release-binary
 /// variant) as their very first command, so `example/test.cddl` must always generate a crate that

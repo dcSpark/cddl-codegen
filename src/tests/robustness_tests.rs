@@ -1077,6 +1077,36 @@ fn input_robustness_catalog() {
     settings.bind(|| insta::assert_snapshot!("catalog", catalog));
 }
 
+/// Message-identity pin for the generation-time duplicate-ident backstop (the plain-loose sibling
+/// of the WI-1 NonEmpty scan). The catalog above only records the `error (graceful)` LABEL; this
+/// asserts the backstop's actual message names the colliding ident (`BarList`) and the offending
+/// file (`wasm/src/generated/mod.rs`), so a future refactor can't silently swap this rejection for
+/// a different (or wrongly-attributed) one. Runs the committed `loose_builder_name_claimed_plain`
+/// fixture through `generated_strings` under DEFAULT (wasm) flags — the backstop lives at the
+/// `generated_files` seam and only fires when the wasm crate mints the wrapper.
+#[test]
+fn loose_builder_name_claimed_plain_message_names_ident_and_file() {
+    let path = std::path::Path::new("tests/robustness/loose_builder_name_claimed_plain.cddl");
+    let cli = Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "loose_builder_name_claimed_plain_unused",
+    ]);
+    let msg = crate::api::generated_strings(&cli)
+        .map_err(|e| e.to_string())
+        .expect_err(
+            "a plain-loose ident collision must reject gracefully at the generated_files seam",
+        );
+    assert!(
+        msg.contains("duplicate top-level ident")
+            && msg.contains("BarList")
+            && msg.contains("wasm/src/generated/mod.rs"),
+        "the duplicate-ident backstop must name the class, the colliding ident, and the file, got: {msg}"
+    );
+}
+
 /// A map-representation field with an all-negative signed-int value window (`{ 0: -10..-3 }`) used
 /// to `unreachable!()` during generation: the per-CBOR-sign-arm bound partition emitted a
 /// `(None, None)` projection for the (empty) uint arm and treated it as a bounds check. This has no
