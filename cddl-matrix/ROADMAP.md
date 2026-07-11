@@ -608,9 +608,16 @@ composition-space cross-check that complements this matrix's curated per-shape g
   (their compile gates use single-file inputs), and EXECUTION of the generated json-gen crate
   (`wasm/json-gen`) against cross-module types (the multifile `json`-profile sweep compiles
   rust+wasm; the json-gen runner gate is single-file-only). NOT on this list:
-  `--common-import-override` and `--extern-wasm-crate` are exercised under directory input by
-  construction — their pins (`integration_tests::extern_deps*`) are directory-input fixtures, and
-  the extern-deps mechanism the latter extends only exists under directory input.
+  `--common-import-override`, `--extern-wasm-crate`, and `--extern-wrapper-index` are exercised
+  under directory input by construction — their pins (`integration_tests::extern_deps*`,
+  `extern_wrapper_index_defers_to_dep`) are directory-input fixtures, and the extern-deps
+  mechanism they extend only exists under directory input. (`--no-synthesized-rust-collection-aliases`
+  is emission-only alias suppression with no per-module placement logic; its pin is single-file,
+  a deliberate posture.) A SIBLING axis with the same silent-hole character — per-wrapper emission
+  MODE (local vs deferred under `--extern-wrapper-index`) × wrapper shape, which neither
+  SHAPES/ROLES nor this input-mode rule enumerates — is recorded with its recur-first mechanical
+  layer (a deferral-profile leg over the extern-capable shapes) in `tests/TESTING_ROADMAP.md`'s
+  `--extern-wrapper-index` deferral-boundaries entry.
 - **Mint the two remaining unminted wasm-surface classes (or declare them permanent).** Extern /
   raw-bytes ctor args (user-supplied types with no generated conversion) and the `--wasm-*-macro`
   modes (they replace the whole wrapper method surface) fall back to the compile verdict with loud
