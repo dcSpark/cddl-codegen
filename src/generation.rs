@@ -3473,7 +3473,7 @@ impl GenerationScope {
                                         ok: &str,
                                         converted: bool| {
                         format!(
-                            "{}.and_then(|{pat}| if {cond} {{ Err(DeserializeFailure::RangeCheck{{ found: x as isize, min: Some({wmin}), max: Some({wmax}) }}.into()) }} else {{ Ok({ok}) }})",
+                            "{}.and_then(|{pat}| if {cond} {{ Err(DeserializeFailure::RangeCheck{{ found: x as i128, min: Some({wmin}), max: Some({wmax}) }}.into()) }} else {{ Ok({ok}) }})",
                             if converted { "" } else { convert_err_to_ours },
                         )
                     };
@@ -5583,7 +5583,7 @@ fn range_check_err(e: &str, min: Option<i128>, max: Option<i128>, return_err: bo
     let possible_return = if return_err { "return " } else { "" };
     let opt = |b: Option<i128>| b.map_or_else(|| "None".to_owned(), |b| format!("Some({b})"));
     format!(
-        "{{ {}Err(DeserializeFailure::RangeCheck{{ found: {} as isize, min: {}, max: {}}}.into()) }}",
+        "{{ {}Err(DeserializeFailure::RangeCheck{{ found: {} as i128, min: {}, max: {}}}.into()) }}",
         possible_return,
         e,
         opt(min),
@@ -11195,7 +11195,7 @@ fn generate_wrapper_struct(
                 ),
             };
             let failure_expr = format!(
-                "DeserializeFailure::RangeCheck{{ found: {} as isize, min: {}, max: {} }}",
+                "DeserializeFailure::RangeCheck{{ found: {} as i128, min: {}, max: {} }}",
                 against,
                 match min {
                     Some(min) => format!("Some({min})"),

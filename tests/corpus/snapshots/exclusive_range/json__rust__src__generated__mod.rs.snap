@@ -23,7 +23,7 @@ impl ExclusiveRange {
     pub fn new(v: u64) -> Result<Self, DeserializeError> {
         if v > 9 {
             return Err(DeserializeFailure::RangeCheck {
-                found: v as isize,
+                found: v as i128,
                 min: None,
                 max: Some(9),
             }

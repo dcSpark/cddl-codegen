@@ -33,7 +33,7 @@ impl OccurrenceHolder {
     ) -> Result<Self, DeserializeError> {
         if b.len() < 2 || b.len() > 5 {
             return Err(DeserializeFailure::RangeCheck {
-                found: b.len() as isize,
+                found: b.len() as i128,
                 min: Some(2),
                 max: Some(5),
             }
@@ -41,7 +41,7 @@ impl OccurrenceHolder {
         }
         if inline_bounded.len() < 1 || inline_bounded.len() > 3 {
             return Err(DeserializeFailure::RangeCheck {
-                found: inline_bounded.len() as isize,
+                found: inline_bounded.len() as i128,
                 min: Some(1),
                 max: Some(3),
             }

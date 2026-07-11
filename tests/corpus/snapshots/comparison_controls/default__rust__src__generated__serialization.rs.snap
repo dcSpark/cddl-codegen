@@ -39,7 +39,7 @@ impl Deserialize for ComparisonControls {
                 .and_then(|x| {
                     if x < 5 || x > 5 {
                         Err(DeserializeFailure::RangeCheck {
-                            found: x as isize,
+                            found: x as i128,
                             min: Some(5),
                             max: Some(5),
                         }
@@ -55,7 +55,7 @@ impl Deserialize for ComparisonControls {
                 .and_then(|x| {
                     if x == 5 {
                         Err(DeserializeFailure::RangeCheck {
-                            found: x as isize,
+                            found: x as i128,
                             min: Some(6),
                             max: Some(4),
                         }
@@ -71,7 +71,7 @@ impl Deserialize for ComparisonControls {
                 .and_then(|x| {
                     if x > 9 {
                         Err(DeserializeFailure::RangeCheck {
-                            found: x as isize,
+                            found: x as i128,
                             min: None,
                             max: Some(9),
                         }
@@ -87,7 +87,7 @@ impl Deserialize for ComparisonControls {
                 .and_then(|x| {
                     if x < 1 {
                         Err(DeserializeFailure::RangeCheck {
-                            found: x as isize,
+                            found: x as i128,
                             min: Some(1),
                             max: None,
                         }

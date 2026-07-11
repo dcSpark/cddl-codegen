@@ -42,7 +42,7 @@ mod extern_wrapper_index_roundtrip {
         let mut foo_keyed = MapIdxFooToLocalThing::new();
         foo_keyed.insert(
             &index_dep_crate_wasm::IdxFoo::from(index_dep_crate::IdxFoo::new(4)),
-            &LocalThing::new(10, "x".to_owned()),
+            &LocalThing::new(10, "x".to_owned(), -5).unwrap(),
         );
         // R3d: keys() returns the DEFERRED `IdxFooList`, constructed via `.into()`.
         let keyed_keys: IdxFooList = foo_keyed.keys();

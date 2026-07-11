@@ -666,7 +666,7 @@ impl DeserializeEmbeddedGroup for NonemptyArm0 {
                                     .and_then(|x| {
                                         if x > 10 {
                                             Err(DeserializeFailure::RangeCheck {
-                                                found: x as isize,
+                                                found: x as i128,
                                                 min: None,
                                                 max: Some(10),
                                             }

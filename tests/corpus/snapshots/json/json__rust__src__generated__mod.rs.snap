@@ -110,7 +110,7 @@ impl I16Wrapper {
             return Err(DeserializeError::new(
                 "I16Wrapper",
                 DeserializeFailure::RangeCheck {
-                    found: inner as isize,
+                    found: inner as i128,
                     min: Some(-32768),
                     max: Some(32767),
                 },
@@ -179,7 +179,7 @@ impl I64Wrapper {
             return Err(DeserializeError::new(
                 "I64Wrapper",
                 DeserializeFailure::RangeCheck {
-                    found: inner as isize,
+                    found: inner as i128,
                     min: Some(-9223372036854775808),
                     max: Some(9223372036854775807),
                 },
@@ -649,7 +649,7 @@ impl U8Wrapper {
             return Err(DeserializeError::new(
                 "U8Wrapper",
                 DeserializeFailure::RangeCheck {
-                    found: inner as isize,
+                    found: inner as i128,
                     min: Some(0),
                     max: Some(255),
                 },

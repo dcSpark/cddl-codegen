@@ -230,7 +230,7 @@ impl String32 {
             return Err(DeserializeError::new(
                 "String32",
                 DeserializeFailure::RangeCheck {
-                    found: inner.len() as isize,
+                    found: inner.len() as i128,
                     min: Some(16),
                     max: Some(32),
                 },
@@ -267,7 +267,7 @@ impl String64 {
             return Err(DeserializeError::new(
                 "String64",
                 DeserializeFailure::RangeCheck {
-                    found: inner.len() as isize,
+                    found: inner.len() as i128,
                     min: Some(0),
                     max: Some(64),
                 },

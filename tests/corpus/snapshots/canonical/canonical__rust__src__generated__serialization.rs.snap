@@ -1692,7 +1692,7 @@ impl Deserialize for String32 {
             };
             if inner.len() < 16 || inner.len() > 32 {
                 return Err(DeserializeFailure::RangeCheck {
-                    found: inner.len() as isize,
+                    found: inner.len() as i128,
                     min: Some(16),
                     max: Some(32),
                 }
@@ -1735,7 +1735,7 @@ impl Deserialize for String64 {
                 .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
             if inner.len() > 64 {
                 return Err(DeserializeFailure::RangeCheck {
-                    found: inner.len() as isize,
+                    found: inner.len() as i128,
                     min: Some(0),
                     max: Some(64),
                 }
@@ -1969,7 +1969,7 @@ impl Deserialize for TableArrMembers {
                                                 .and_then(|(x, enc)| {
                                                     if x > 4294967295 {
                                                         Err(DeserializeFailure::RangeCheck {
-                                                            found: x as isize,
+                                                            found: x as i128,
                                                             min: Some(0),
                                                             max: Some(4294967295),
                                                         }

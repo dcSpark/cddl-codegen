@@ -54,7 +54,7 @@ impl Deserialize for Garm {
                                     .and_then(|x| {
                                         if true {
                                             Err(DeserializeFailure::RangeCheck {
-                                                found: x as isize,
+                                                found: x as i128,
                                                 min: Some(-10),
                                                 max: Some(-4),
                                             }
@@ -70,7 +70,7 @@ impl Deserialize for Garm {
                                 .and_then(|(x, _enc)| {
                                     if x < -10 || x > -4 {
                                         Err(DeserializeFailure::RangeCheck {
-                                            found: x as isize,
+                                            found: x as i128,
                                             min: Some(-10),
                                             max: Some(-4),
                                         }
@@ -173,7 +173,7 @@ impl Deserialize for Holder {
                         .and_then(|x| {
                             if x == 1 {
                                 Err(DeserializeFailure::RangeCheck {
-                                    found: x as isize,
+                                    found: x as i128,
                                     min: Some(2),
                                     max: Some(0),
                                 }
@@ -185,7 +185,7 @@ impl Deserialize for Holder {
                         .and_then(|x| {
                             if x > 9223372036854775807 {
                                 Err(DeserializeFailure::RangeCheck {
-                                    found: x as isize,
+                                    found: x as i128,
                                     min: Some(-9223372036854775808),
                                     max: Some(9223372036854775807),
                                 }
@@ -200,7 +200,7 @@ impl Deserialize for Holder {
                         .and_then(|(x, _enc)| {
                             if x == 1 {
                                 Err(DeserializeFailure::RangeCheck {
-                                    found: x as isize,
+                                    found: x as i128,
                                     min: Some(2),
                                     max: Some(0),
                                 }
@@ -212,7 +212,7 @@ impl Deserialize for Holder {
                         .and_then(|(x, _enc)| {
                             if x < -9223372036854775808 {
                                 Err(DeserializeFailure::RangeCheck {
-                                    found: x as isize,
+                                    found: x as i128,
                                     min: Some(-9223372036854775808),
                                     max: Some(9223372036854775807),
                                 }
@@ -274,7 +274,7 @@ impl Deserialize for TaggedCtlNe {
                         .and_then(|x| {
                             if x > 9223372036854775807 {
                                 Err(DeserializeFailure::RangeCheck {
-                                    found: x as isize,
+                                    found: x as i128,
                                     min: Some(-9223372036854775808),
                                     max: Some(9223372036854775807),
                                 }
@@ -289,7 +289,7 @@ impl Deserialize for TaggedCtlNe {
                         .and_then(|(x, _enc)| {
                             if x < -9223372036854775808 {
                                 Err(DeserializeFailure::RangeCheck {
-                                    found: x as isize,
+                                    found: x as i128,
                                     min: Some(-9223372036854775808),
                                     max: Some(9223372036854775807),
                                 }
@@ -310,7 +310,7 @@ impl Deserialize for TaggedCtlNe {
             };
             if inner == 1 {
                 return Err(DeserializeFailure::RangeCheck {
-                    found: inner as isize,
+                    found: inner as i128,
                     min: Some(2),
                     max: Some(0),
                 }
@@ -350,7 +350,7 @@ impl Deserialize for TaggedRangeExcl {
                         .and_then(|x| {
                             if x > 9223372036854775807 {
                                 Err(DeserializeFailure::RangeCheck {
-                                    found: x as isize,
+                                    found: x as i128,
                                     min: Some(-9223372036854775808),
                                     max: Some(9223372036854775807),
                                 }
@@ -365,7 +365,7 @@ impl Deserialize for TaggedRangeExcl {
                         .and_then(|(x, _enc)| {
                             if x < -9223372036854775808 {
                                 Err(DeserializeFailure::RangeCheck {
-                                    found: x as isize,
+                                    found: x as i128,
                                     min: Some(-9223372036854775808),
                                     max: Some(9223372036854775807),
                                 }
@@ -386,7 +386,7 @@ impl Deserialize for TaggedRangeExcl {
             };
             if inner < -10 || inner > 9 {
                 return Err(DeserializeFailure::RangeCheck {
-                    found: inner as isize,
+                    found: inner as i128,
                     min: Some(-10),
                     max: Some(9),
                 }
@@ -426,7 +426,7 @@ impl Deserialize for TaggedRangeIncl {
                         .and_then(|x| {
                             if x > 9223372036854775807 {
                                 Err(DeserializeFailure::RangeCheck {
-                                    found: x as isize,
+                                    found: x as i128,
                                     min: Some(-9223372036854775808),
                                     max: Some(9223372036854775807),
                                 }
@@ -441,7 +441,7 @@ impl Deserialize for TaggedRangeIncl {
                         .and_then(|(x, _enc)| {
                             if x < -9223372036854775808 {
                                 Err(DeserializeFailure::RangeCheck {
-                                    found: x as isize,
+                                    found: x as i128,
                                     min: Some(-9223372036854775808),
                                     max: Some(9223372036854775807),
                                 }
@@ -462,7 +462,7 @@ impl Deserialize for TaggedRangeIncl {
             };
             if inner < -10 || inner > 10 {
                 return Err(DeserializeFailure::RangeCheck {
-                    found: inner as isize,
+                    found: inner as i128,
                     min: Some(-10),
                     max: Some(10),
                 }
@@ -502,7 +502,7 @@ impl Deserialize for TaggedRangeNint {
                         .and_then(|x| {
                             if x > 9223372036854775807 {
                                 Err(DeserializeFailure::RangeCheck {
-                                    found: x as isize,
+                                    found: x as i128,
                                     min: Some(-9223372036854775808),
                                     max: Some(9223372036854775807),
                                 }
@@ -517,7 +517,7 @@ impl Deserialize for TaggedRangeNint {
                         .and_then(|(x, _enc)| {
                             if x < -9223372036854775808 {
                                 Err(DeserializeFailure::RangeCheck {
-                                    found: x as isize,
+                                    found: x as i128,
                                     min: Some(-9223372036854775808),
                                     max: Some(9223372036854775807),
                                 }
@@ -538,7 +538,7 @@ impl Deserialize for TaggedRangeNint {
             };
             if inner < -10 || inner > -4 {
                 return Err(DeserializeFailure::RangeCheck {
-                    found: inner as isize,
+                    found: inner as i128,
                     min: Some(-10),
                     max: Some(-4),
                 }
@@ -575,7 +575,7 @@ impl Deserialize for TaggedRangeUint {
             };
             if inner < 3 || inner > 9 {
                 return Err(DeserializeFailure::RangeCheck {
-                    found: inner as isize,
+                    found: inner as i128,
                     min: Some(3),
                     max: Some(9),
                 }

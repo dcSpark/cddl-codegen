@@ -42,7 +42,7 @@ impl Deserialize for BoundedInts {
                 .and_then(|x| {
                     if x > 255 {
                         Err(DeserializeFailure::RangeCheck {
-                            found: x as isize,
+                            found: x as i128,
                             min: Some(0),
                             max: Some(255),
                         }
@@ -58,7 +58,7 @@ impl Deserialize for BoundedInts {
                 .and_then(|x| {
                     if x > 65535 {
                         Err(DeserializeFailure::RangeCheck {
-                            found: x as isize,
+                            found: x as i128,
                             min: Some(0),
                             max: Some(65535),
                         }
@@ -74,7 +74,7 @@ impl Deserialize for BoundedInts {
                 .and_then(|x| {
                     if x > 4294967295 {
                         Err(DeserializeFailure::RangeCheck {
-                            found: x as isize,
+                            found: x as i128,
                             min: Some(0),
                             max: Some(4294967295),
                         }
@@ -92,7 +92,7 @@ impl Deserialize for BoundedInts {
                         .and_then(|x| {
                             if x > 127 {
                                 Err(DeserializeFailure::RangeCheck {
-                                    found: x as isize,
+                                    found: x as i128,
                                     min: Some(-128),
                                     max: Some(127),
                                 }
@@ -107,7 +107,7 @@ impl Deserialize for BoundedInts {
                         .and_then(|x| {
                             if x < -128 {
                                 Err(DeserializeFailure::RangeCheck {
-                                    found: x as isize,
+                                    found: x as i128,
                                     min: Some(-128),
                                     max: Some(127),
                                 }

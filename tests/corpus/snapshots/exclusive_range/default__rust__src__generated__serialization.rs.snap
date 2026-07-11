@@ -35,7 +35,7 @@ impl Deserialize for ExclusiveRange {
                 .and_then(|x| {
                     if x > 9 {
                         Err(DeserializeFailure::RangeCheck {
-                            found: x as isize,
+                            found: x as i128,
                             min: None,
                             max: Some(9),
                         }

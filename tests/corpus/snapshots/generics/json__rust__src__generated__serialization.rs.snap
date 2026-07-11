@@ -69,7 +69,7 @@ impl Deserialize for RangedContainer {
                 .and_then(|x| {
                     if x < 1 || x > 10 {
                         Err(DeserializeFailure::RangeCheck {
-                            found: x as isize,
+                            found: x as i128,
                             min: Some(1),
                             max: Some(10),
                         }

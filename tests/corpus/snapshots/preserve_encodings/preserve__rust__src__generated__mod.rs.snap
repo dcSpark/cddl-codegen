@@ -45,7 +45,7 @@ impl A {
     pub fn new(a: u64, b: String) -> Result<Self, DeserializeError> {
         if b.len() > 4 {
             return Err(DeserializeFailure::RangeCheck {
-                found: b.len() as isize,
+                found: b.len() as i128,
                 min: None,
                 max: Some(4),
             }
@@ -157,7 +157,7 @@ impl Bounds {
     ) -> Result<Self, DeserializeError> {
         if w < -1000 || w > 1000 {
             return Err(DeserializeFailure::RangeCheck {
-                found: w as isize,
+                found: w as i128,
                 min: Some(-1000),
                 max: Some(1000),
             }
@@ -165,7 +165,7 @@ impl Bounds {
         }
         if x > 7 {
             return Err(DeserializeFailure::RangeCheck {
-                found: x as isize,
+                found: x as i128,
                 min: None,
                 max: Some(7),
             }
@@ -173,7 +173,7 @@ impl Bounds {
         }
         if y > 4 {
             return Err(DeserializeFailure::RangeCheck {
-                found: y as isize,
+                found: y as i128,
                 min: None,
                 max: Some(4),
             }
@@ -181,7 +181,7 @@ impl Bounds {
         }
         if z.len() < 3 || z.len() > 14 {
             return Err(DeserializeFailure::RangeCheck {
-                found: z.len() as isize,
+                found: z.len() as i128,
                 min: Some(3),
                 max: Some(14),
             }
@@ -189,7 +189,7 @@ impl Bounds {
         }
         if a.len() < 1 || a.len() > 3 {
             return Err(DeserializeFailure::RangeCheck {
-                found: a.len() as isize,
+                found: a.len() as i128,
                 min: Some(1),
                 max: Some(3),
             }
@@ -197,7 +197,7 @@ impl Bounds {
         }
         if b.len() > 3 {
             return Err(DeserializeFailure::RangeCheck {
-                found: b.len() as isize,
+                found: b.len() as i128,
                 min: None,
                 max: Some(3),
             }
@@ -255,7 +255,7 @@ impl BoundsTypeChoice {
     pub fn new_bytes(bytes: Vec<u8>) -> Result<Self, DeserializeError> {
         if bytes.len() > 64 {
             return Err(DeserializeFailure::RangeCheck {
-                found: bytes.len() as isize,
+                found: bytes.len() as i128,
                 min: None,
                 max: Some(64),
             }
@@ -270,7 +270,7 @@ impl BoundsTypeChoice {
     pub fn new_text(text: String) -> Result<Self, DeserializeError> {
         if text.len() > 64 {
             return Err(DeserializeFailure::RangeCheck {
-                found: text.len() as isize,
+                found: text.len() as i128,
                 min: None,
                 max: Some(64),
             }
@@ -658,7 +658,7 @@ impl Hash {
             return Err(DeserializeError::new(
                 "Hash",
                 DeserializeFailure::RangeCheck {
-                    found: inner.len() as isize,
+                    found: inner.len() as i128,
                     min: Some(0),
                     max: Some(8),
                 },
@@ -1070,7 +1070,7 @@ impl OverlapBasicEmbed {
     pub fn new_x(hash: Vec<u8>) -> Result<Self, DeserializeError> {
         if hash.len() < 32 || hash.len() > 32 {
             return Err(DeserializeFailure::RangeCheck {
-                found: hash.len() as isize,
+                found: hash.len() as i128,
                 min: Some(32),
                 max: Some(32),
             }
@@ -1205,7 +1205,7 @@ impl SignBounds {
     ) -> Result<Self, DeserializeError> {
         if all_neg < -10 || all_neg > -3 {
             return Err(DeserializeFailure::RangeCheck {
-                found: all_neg as isize,
+                found: all_neg as i128,
                 min: Some(-10),
                 max: Some(-3),
             }
@@ -1213,7 +1213,7 @@ impl SignBounds {
         }
         if upto_zero < -10 || upto_zero > 0 {
             return Err(DeserializeFailure::RangeCheck {
-                found: upto_zero as isize,
+                found: upto_zero as i128,
                 min: Some(-10),
                 max: Some(0),
             }
@@ -1221,7 +1221,7 @@ impl SignBounds {
         }
         if le_neg > -3 {
             return Err(DeserializeFailure::RangeCheck {
-                found: le_neg as isize,
+                found: le_neg as i128,
                 min: None,
                 max: Some(-3),
             }
@@ -1229,7 +1229,7 @@ impl SignBounds {
         }
         if le_pos > 10 {
             return Err(DeserializeFailure::RangeCheck {
-                found: le_pos as isize,
+                found: le_pos as i128,
                 min: None,
                 max: Some(10),
             }
@@ -1237,7 +1237,7 @@ impl SignBounds {
         }
         if ge_pos < 3 {
             return Err(DeserializeFailure::RangeCheck {
-                found: ge_pos as isize,
+                found: ge_pos as i128,
                 min: Some(3),
                 max: None,
             }
@@ -1245,7 +1245,7 @@ impl SignBounds {
         }
         if ne_pos == 5 {
             return Err(DeserializeFailure::RangeCheck {
-                found: ne_pos as isize,
+                found: ne_pos as i128,
                 min: Some(6),
                 max: Some(4),
             }
@@ -1253,7 +1253,7 @@ impl SignBounds {
         }
         if ne_neg == -5 {
             return Err(DeserializeFailure::RangeCheck {
-                found: ne_neg as isize,
+                found: ne_neg as i128,
                 min: Some(-4),
                 max: Some(-6),
             }
@@ -1261,7 +1261,7 @@ impl SignBounds {
         }
         if straddle < -10 || straddle > 3 {
             return Err(DeserializeFailure::RangeCheck {
-                found: straddle as isize,
+                found: straddle as i128,
                 min: Some(-10),
                 max: Some(3),
             }
@@ -1269,7 +1269,7 @@ impl SignBounds {
         }
         if ne_one == 1 {
             return Err(DeserializeFailure::RangeCheck {
-                found: ne_one as isize,
+                found: ne_one as i128,
                 min: Some(2),
                 max: Some(0),
             }
@@ -1277,7 +1277,7 @@ impl SignBounds {
         }
         if ne_zero == 0 {
             return Err(DeserializeFailure::RangeCheck {
-                found: ne_zero as isize,
+                found: ne_zero as i128,
                 min: Some(1),
                 max: Some(-1),
             }
@@ -1374,7 +1374,7 @@ impl String1632 {
             return Err(DeserializeError::new(
                 "String1632",
                 DeserializeFailure::RangeCheck {
-                    found: inner.len() as isize,
+                    found: inner.len() as i128,
                     min: Some(16),
                     max: Some(32),
                 },
@@ -1411,7 +1411,7 @@ impl String64 {
             return Err(DeserializeError::new(
                 "String64",
                 DeserializeFailure::RangeCheck {
-                    found: inner.len() as isize,
+                    found: inner.len() as i128,
                     min: Some(0),
                     max: Some(64),
                 },
@@ -1565,7 +1565,7 @@ impl TopLevelNegRange {
             return Err(DeserializeError::new(
                 "TopLevelNegRange",
                 DeserializeFailure::RangeCheck {
-                    found: inner as isize,
+                    found: inner as i128,
                     min: Some(-10),
                     max: Some(-3),
                 },
@@ -1602,7 +1602,7 @@ impl TopLevelPosRange {
             return Err(DeserializeError::new(
                 "TopLevelPosRange",
                 DeserializeFailure::RangeCheck {
-                    found: inner as isize,
+                    found: inner as i128,
                     min: Some(3),
                     max: Some(10),
                 },
@@ -1639,7 +1639,7 @@ impl TopLevelTaggedRange {
             return Err(DeserializeError::new(
                 "TopLevelTaggedRange",
                 DeserializeFailure::RangeCheck {
-                    found: inner as isize,
+                    found: inner as i128,
                     min: Some(3),
                     max: Some(10),
                 },
