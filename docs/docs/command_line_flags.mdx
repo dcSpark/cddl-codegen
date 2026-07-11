@@ -187,6 +187,22 @@ cddl-codegen --input=example --output=export --common-import-override=cml_core
 
 <br/><br/>
 
+:::info `--extern-wasm-crate`
+Maps a cross-crate extern dependency (declared under `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/…`) to the crate that holds its **wasm-bindgen** wrappers. Repeatable; each value is `<dep>=<wasm_crate>` (a malformed value, or a `<dep>` that names no extern dependency in the spec, aborts generation).
+
+Use it when a dependency's wasm bindings live in a **separate** crate — the split `<dep>` / `<dep>-wasm` layout cddl-codegen itself generates (e.g. `cml-core` / `cml-core-wasm`). In the wasm pass, the `use` import and the wasm-boundary type path for that dep's types (as a direct member, and as elements of generated list/map wrappers) are qualified through the wasm crate, while the wrapper's inner storage stays the dep's **rust** type. Without a mapping the dep keeps its rust crate name for both passes — the single-crate convention, where the dependency's rust types are themselves `#[wasm_bindgen]`-annotated, which continues to work with no configuration.
+
+The mapped wasm crate must **mirror the rust crate's module tree** (as cddl-codegen-generated wasm crates do: thin root + glob re-export), so `dep::sub::Foo` resolves to `dep_wasm::sub::Foo`. It must also provide, for each boundary type, `From<native> for wrapper` / `From<wrapper> for native` (the generated `get`/`add`/`insert` bodies convert with `.clone().into()`).
+
+The generated wasm `Cargo.toml` then needs **both** dep crates as dependencies (the rust crate for inner storage, the wasm crate for the boundary). cddl-codegen does not add extern-dep entries to manifests — you add them by hand and the manifest merge preserves them.
+
+```bash
+cddl-codegen --input=example --output=export --common-import-override=cml_core --extern-wasm-crate=cml_core=cml_core_wasm
+```
+:::
+
+<br/><br/>
+
 :::info `--wasm-cbor-json-api-macro`
 If it is passed in, it will call the supplied externally defined macro on each exported type, instead of manually exporting the functions for to/from CBOR bytes + to/from JSON API.
 

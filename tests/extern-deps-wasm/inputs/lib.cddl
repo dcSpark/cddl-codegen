@@ -1,0 +1,8 @@
+everything = [
+    ; extern-dep type as a direct member (already worked; kept as a control)
+    single: extern_crate_foo,
+    ; the previously-untested cell: extern-dep type as a list element ...
+    foos: [* extern_crate_foo],
+    ; ... and as a table value
+    table: { * uint => extern_crate_foo },
+]

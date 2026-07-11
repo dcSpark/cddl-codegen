@@ -23,38 +23,22 @@ impl cbor_event::se::Serialize for Everything {
                 .as_ref()
                 .map(|encs| encs.len_encoding)
                 .unwrap_or_default()
-                .to_len_sz(7),
+                .to_len_sz(3),
         )?;
-        self.foo.serialize(serializer)?;
-        self.extern_crate_foo.serialize(serializer)?;
+        self.single.serialize(serializer)?;
         serializer.write_array_sz(
             self.encodings
                 .as_ref()
-                .map(|encs| encs.extern_foos_encoding)
+                .map(|encs| encs.foos_encoding)
                 .unwrap_or_default()
-                .to_len_sz(self.extern_foos.len() as u64),
+                .to_len_sz(self.foos.len() as u64),
         )?;
-        for element in self.extern_foos.iter() {
+        for element in self.foos.iter() {
             element.serialize(serializer)?;
         }
         self.encodings
             .as_ref()
-            .map(|encs| encs.extern_foos_encoding)
-            .unwrap_or_default()
-            .end(serializer)?;
-        serializer.write_array_sz(
-            self.encodings
-                .as_ref()
-                .map(|encs| encs.bars_encoding)
-                .unwrap_or_default()
-                .to_len_sz(self.bars.len() as u64),
-        )?;
-        for element in self.bars.iter() {
-            element.serialize(serializer)?;
-        }
-        self.encodings
-            .as_ref()
-            .map(|encs| encs.bars_encoding)
+            .map(|encs| encs.foos_encoding)
             .unwrap_or_default()
             .end(serializer)?;
         serializer.write_map_sz(
@@ -79,8 +63,6 @@ impl cbor_event::se::Serialize for Everything {
             .map(|encs| encs.table_encoding)
             .unwrap_or_default()
             .end(serializer)?;
-        self.baz.serialize(serializer)?;
-        self.qux.serialize(serializer)?;
         self.encodings
             .as_ref()
             .map(|encs| encs.len_encoding)
@@ -95,17 +77,16 @@ impl Deserialize for Everything {
             let len = raw.array_sz()?;
             let len_encoding: LenEncoding = len.into();
             let mut read_len = CBORReadLen::new(len);
-            read_len.read_elems(7)?;
+            read_len.read_elems(3)?;
             read_len.finish()?;
-            let foo = Foo::deserialize(raw).map_err(|e: DeserializeError| e.annotate("foo"))?;
-            let extern_crate_foo = ExternCrateFoo::deserialize(raw)
-                .map_err(|e: DeserializeError| e.annotate("extern_crate_foo"))?;
-            let (extern_foos, extern_foos_encoding) = (|| -> Result<_, DeserializeError> {
-                let mut extern_foos_arr = Vec::new();
+            let single = ExternCrateFoo::deserialize(raw)
+                .map_err(|e: DeserializeError| e.annotate("single"))?;
+            let (foos, foos_encoding) = (|| -> Result<_, DeserializeError> {
+                let mut foos_arr = Vec::new();
                 let len = raw.array_sz()?;
-                let extern_foos_encoding = len.into();
+                let foos_encoding = len.into();
                 while match len {
-                    cbor_event::LenSz::Len(n, _) => (extern_foos_arr.len() as u64) < n,
+                    cbor_event::LenSz::Len(n, _) => (foos_arr.len() as u64) < n,
                     cbor_event::LenSz::Indefinite => true,
                 } {
                     if matches!(len, cbor_event::LenSz::Indefinite)
@@ -114,30 +95,11 @@ impl Deserialize for Everything {
                     {
                         break;
                     }
-                    extern_foos_arr.push(ExternCrateFoo::deserialize(raw)?);
+                    foos_arr.push(ExternCrateFoo::deserialize(raw)?);
                 }
-                Ok((extern_foos_arr, extern_foos_encoding))
+                Ok((foos_arr, foos_encoding))
             })()
-            .map_err(|e| e.annotate("extern_foos"))?;
-            let (bars, bars_encoding) = (|| -> Result<_, DeserializeError> {
-                let mut bars_arr = Vec::new();
-                let len = raw.array_sz()?;
-                let bars_encoding = len.into();
-                while match len {
-                    cbor_event::LenSz::Len(n, _) => (bars_arr.len() as u64) < n,
-                    cbor_event::LenSz::Indefinite => true,
-                } {
-                    if matches!(len, cbor_event::LenSz::Indefinite)
-                        && raw.cbor_type()? == cbor_event::Type::Special
-                        && raw.special_break()?
-                    {
-                        break;
-                    }
-                    bars_arr.push(Bar::deserialize(raw)?);
-                }
-                Ok((bars_arr, bars_encoding))
-            })()
-            .map_err(|e| e.annotate("bars"))?;
+            .map_err(|e| e.annotate("foos"))?;
             let (table, table_encoding, table_key_encodings) =
                 (|| -> Result<_, DeserializeError> {
                     let mut table_table = OrderedHashMap::new();
@@ -156,7 +118,7 @@ impl Deserialize for Everything {
                         }
                         let (table_key, table_key_encoding) =
                             raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
-                        let table_value = Bar::deserialize(raw)?;
+                        let table_value = ExternCrateFoo::deserialize(raw)?;
                         if table_table.insert(table_key, table_value).is_some() {
                             return Err(
                                 DeserializeFailure::DuplicateKey(Key::Uint(table_key)).into()
@@ -167,8 +129,6 @@ impl Deserialize for Everything {
                     Ok((table_table, table_encoding, table_key_encodings))
                 })()
                 .map_err(|e| e.annotate("table"))?;
-            let baz = Baz::deserialize(raw).map_err(|e: DeserializeError| e.annotate("baz"))?;
-            let qux = Qux::deserialize(raw).map_err(|e: DeserializeError| e.annotate("qux"))?;
             match len {
                 cbor_event::LenSz::Len(_, _) => (),
                 cbor_event::LenSz::Indefinite => match raw.special()? {
@@ -177,17 +137,12 @@ impl Deserialize for Everything {
                 },
             }
             Ok(Everything {
-                foo,
-                extern_crate_foo,
-                extern_foos,
-                bars,
+                single,
+                foos,
                 table,
-                baz,
-                qux,
                 encodings: Some(EverythingEncoding {
                     len_encoding,
-                    extern_foos_encoding,
-                    bars_encoding,
+                    foos_encoding,
                     table_encoding,
                     table_key_encodings,
                 }),

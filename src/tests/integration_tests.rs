@@ -5491,6 +5491,71 @@ fn extern_deps_non_preserve() {
     );
 }
 
+/// The previously-untested cell: a cross-crate extern-dep type crossing the WASM boundary as a LIST
+/// element (`[* extern_crate_foo]`) and a TABLE value (`{ * uint => extern_crate_foo }`), against a
+/// dependency with a SPLIT rust/wasm crate layout (`extern-dep-crate` / `extern-dep-crate-wasm`, the
+/// layout cddl-codegen itself generates). `--extern-wasm-crate extern_dep_crate=extern_dep_crate_wasm`
+/// makes the wasm pass import and qualify the boundary type through the dep's WASM crate while the
+/// wrapper's inner storage stays the dep's RUST type — the two halves this feature adds. Before the
+/// fix the wasm crate did not compile (boundary types pointed at the non-wasm rust crate; inner
+/// storage used the nonexistent `cddl_lib::extern_dep_crate::…` path). The harness `cargo build`s the
+/// generated wasm crate, so that build succeeding is the acceptance test; `tests.rs` adds the
+/// rust-side serialization floor for the list/map cells.
+///
+/// Uses `--common-import-override` (the same real-world CML shape as `extern_deps`): a cross-crate
+/// extern dep serializes through the dep crate's own runtime traits, so the consumer must share that
+/// runtime — default common imports would leave the extern type implementing a different `Deserialize`
+/// trait than the generated crate defines and fail to compile, independent of this feature.
+#[test]
+fn extern_deps_wasm() {
+    run_test(
+        "extern-deps-wasm",
+        &[
+            "--preserve-encodings=true",
+            "--common-import-override=extern_dep_crate",
+            "--extern-wasm-crate=extern_dep_crate=extern_dep_crate_wasm",
+        ],
+        None,
+        &[],
+        &[],
+        true,
+        // rust crate needs the dep's rust crate; wasm crate needs BOTH (rust for inner storage, wasm
+        // for the boundary). The harness copies these `test_deps` into both manifests — the extra
+        // `-wasm` entry is simply an unused dependency in the rust manifest, which cargo tolerates.
+        &[
+            "\nextern-dep-crate = { path = \"../../../extern-dep-crate\" }",
+            "\nextern-dep-crate-wasm = { path = \"../../../extern-dep-crate-wasm\" }",
+        ],
+    );
+}
+
+/// A `--extern-wasm-crate` key that names no extern dependency in the spec must abort generation
+/// loudly (a silent no-op would leave the wasm crate pointing at the non-wasm rust crate and failing
+/// to compile with no hint why).
+#[test]
+fn extern_deps_wasm_unknown_dep_errors() {
+    let out = std::env::temp_dir().join("cddl_codegen_extern_wasm_bad_dep");
+    let run = tool_cmd("cargo")
+        .arg("run")
+        .arg("--")
+        .arg("--input=tests/extern-deps-wasm/inputs")
+        .arg(format!("--output={}", out.to_str().unwrap()))
+        .arg("--wasm=true")
+        .arg("--common-import-override=extern_dep_crate")
+        .arg("--extern-wasm-crate=not_a_dep=whatever_wasm")
+        .output()
+        .unwrap();
+    assert!(
+        !run.status.success(),
+        "generation must fail when --extern-wasm-crate names an unknown dependency"
+    );
+    let stderr = String::from_utf8_lossy(&run.stderr);
+    assert!(
+        stderr.contains("not an extern dependency"),
+        "expected an unknown-dependency error, got stderr:\n{stderr}"
+    );
+}
+
 /// The opt-in recursion depth guard (`--deserialize-depth-limit`). A terminable recursive type
 /// (`tests/corpus/recursive.cddl`: `tree = [value: uint, children: [* tree]]`) compiles a
 /// recursive-descent deserializer with no intrinsic depth bound — ~100k-deep hostile CBOR recurses

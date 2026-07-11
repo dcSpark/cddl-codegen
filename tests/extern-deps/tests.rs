@@ -28,6 +28,11 @@ mod tests {
         Everything::new(
             Foo::new(7, "f".to_owned(), vec![0xde, 0xad]),
             extern_foo,
+            // extern_foos: [* extern_crate_foo] — the list-of-extern-dep-type field
+            vec![
+                ExternCrateFoo::new(10, "l0".to_owned(), vec![0xa0]),
+                ExternCrateFoo::new(11, "l1".to_owned(), vec![0xa1]),
+            ],
             vec![Bar::new(
                 vec![Foo::new(4, "b".to_owned(), vec![5])],
                 Some(4),
@@ -54,6 +59,10 @@ mod tests {
         assert_eq!(back.extern_crate_foo.index_0(), 3);
         assert_eq!(back.extern_crate_foo.index_1(), "ext");
         assert_eq!(back.extern_crate_foo.index_2(), vec![9]);
+        // the list-of-extern-dep-type field round-trips element-for-element
+        assert_eq!(back.extern_foos.len(), 2);
+        assert_eq!(back.extern_foos[1].index_0(), 11);
+        assert_eq!(back.extern_foos[0].index_2(), vec![0xa0]);
         // the embedded field is exactly the dep crate's own encoding (delegation, not a re-impl)
         let extern_bytes =
             extern_dep_crate::serialization::ToCBORBytes::to_cbor_bytes(&back.extern_crate_foo);

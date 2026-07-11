@@ -12,8 +12,7 @@ use std::collections::BTreeMap;
 #[derive(Clone, Debug, Default)]
 pub struct EverythingEncoding {
     pub len_encoding: LenEncoding,
-    pub extern_foos_encoding: LenEncoding,
-    pub bars_encoding: LenEncoding,
+    pub foos_encoding: LenEncoding,
     pub table_encoding: LenEncoding,
     pub table_key_encodings: BTreeMap<u64, Option<cbor_event::Sz>>,
 }

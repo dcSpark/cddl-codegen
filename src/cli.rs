@@ -130,12 +130,42 @@ pub struct Cli {
     /// (The no-argument form of this flag is reserved for a future built-in default.)
     #[clap(long, value_parser)]
     pub wasm_list_macro: Option<String>,
+
+    /// Map an `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>` dependency to the crate that holds its
+    /// wasm-bindgen wrappers, for deps whose wasm bindings live in a separate crate (the layout
+    /// cddl-codegen itself generates: `<dep>` / `<dep>-wasm`). In the wasm pass, imports and
+    /// wasm-boundary type paths for that dep are qualified through the wasm crate instead of the
+    /// rust crate. Repeatable; each value is `<dep>=<wasm_crate>` (e.g.
+    /// `--extern-wasm-crate cml_core=cml_core_wasm`). Without a mapping the dep keeps using its
+    /// rust crate name for both passes (the single-crate convention).
+    #[clap(long = "extern-wasm-crate", value_parser)]
+    pub extern_wasm_crate: Vec<String>,
 }
 
 impl Cli {
     /// lib name from code i.e. with underscores
     pub fn lib_name_code(&self) -> String {
         self.lib_name.replace('-', "_")
+    }
+
+    /// Parsed `--extern-wasm-crate` mappings: extern-deps directory name -> wasm crate name in code
+    /// form. BTreeMap (never HashMap) for deterministic output. Malformed values are a hard error.
+    pub fn extern_wasm_crate_map(&self) -> std::collections::BTreeMap<String, String> {
+        let mut map = std::collections::BTreeMap::new();
+        for entry in &self.extern_wasm_crate {
+            let (dep, wasm_crate) = entry.split_once('=').unwrap_or_else(|| {
+                panic!("--extern-wasm-crate value must be <dep>=<wasm_crate>, got: {entry:?}")
+            });
+            let dep = dep.trim();
+            let wasm_crate = wasm_crate.trim();
+            if dep.is_empty() || wasm_crate.is_empty() {
+                panic!(
+                    "--extern-wasm-crate value must be <dep>=<wasm_crate> with both sides non-empty, got: {entry:?}"
+                );
+            }
+            map.insert(dep.to_owned(), wasm_crate.replace('-', "_"));
+        }
+        map
     }
 
     /// If someone override the common imports, we don't want to export them

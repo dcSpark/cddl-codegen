@@ -1,0 +1,11 @@
+[package]
+name = "extern-dep-crate-wasm"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+extern-dep-crate = { path = "../extern-dep-crate" }
+wasm-bindgen = "0.2"
