@@ -1,1 +1,7 @@
 uint_typedef = uint
+
+; A second cross-crate extern type, living in a SUBMODULE of the dependency so the newly-registered
+; wrapper-element import must be remapped through a submodule path (`extern_dep_crate_wasm::sub::module`).
+; Used by the main spec ONLY from a non-root module (`nested`), never from root — so nothing masks the
+; root wasm module's import of it (the gap the `nested` cells pin).
+extern_crate_bar = _CDDL_CODEGEN_EXTERN_TYPE_

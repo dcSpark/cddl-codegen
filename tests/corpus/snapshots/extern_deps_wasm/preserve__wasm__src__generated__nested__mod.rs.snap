@@ -1,0 +1,133 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use crate::generated::{
+    ExternCrateBarList, MapExternCrateBarToU64, MapNestedItemToU64, MapU64ToExternCrateBar,
+    MapU64ToNestedItem, NestedItemList,
+};
+use extern_dep_crate::ordered_hash_map::OrderedHashMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NestedHolder(cddl_lib::nested::NestedHolder);
+
+#[wasm_bindgen]
+impl NestedHolder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        extern_dep_crate::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NestedHolder, JsError> {
+        extern_dep_crate::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn in_crate_items(&self) -> NestedItemList {
+        self.0.in_crate_items.clone().into()
+    }
+
+    pub fn in_crate_keyed(&self) -> MapNestedItemToU64 {
+        self.0.in_crate_keyed.clone().into()
+    }
+
+    pub fn in_crate_valued(&self) -> MapU64ToNestedItem {
+        self.0.in_crate_valued.clone().into()
+    }
+
+    pub fn ext_items(&self) -> ExternCrateBarList {
+        self.0.ext_items.clone().into()
+    }
+
+    pub fn ext_keyed(&self) -> MapExternCrateBarToU64 {
+        self.0.ext_keyed.clone().into()
+    }
+
+    pub fn ext_valued(&self) -> MapU64ToExternCrateBar {
+        self.0.ext_valued.clone().into()
+    }
+
+    pub fn new(
+        in_crate_items: &NestedItemList,
+        in_crate_keyed: &MapNestedItemToU64,
+        in_crate_valued: &MapU64ToNestedItem,
+        ext_items: &ExternCrateBarList,
+        ext_keyed: &MapExternCrateBarToU64,
+        ext_valued: &MapU64ToExternCrateBar,
+    ) -> Self {
+        Self(cddl_lib::nested::NestedHolder::new(
+            in_crate_items.clone().into(),
+            in_crate_keyed.clone().into(),
+            in_crate_valued.clone().into(),
+            ext_items.clone().into(),
+            ext_keyed.clone().into(),
+            ext_valued.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::nested::NestedHolder> for NestedHolder {
+    fn from(native: cddl_lib::nested::NestedHolder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NestedHolder> for cddl_lib::nested::NestedHolder {
+    fn from(wasm: NestedHolder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::nested::NestedHolder> for NestedHolder {
+    fn as_ref(&self) -> &cddl_lib::nested::NestedHolder {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NestedItem(cddl_lib::nested::NestedItem);
+
+#[wasm_bindgen]
+impl NestedItem {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        extern_dep_crate::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NestedItem, JsError> {
+        extern_dep_crate::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn x(&self) -> u64 {
+        self.0.x
+    }
+
+    pub fn new(x: u64) -> Self {
+        Self(cddl_lib::nested::NestedItem::new(x))
+    }
+}
+
+impl From<cddl_lib::nested::NestedItem> for NestedItem {
+    fn from(native: cddl_lib::nested::NestedItem) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NestedItem> for cddl_lib::nested::NestedItem {
+    fn from(wasm: NestedItem) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::nested::NestedItem> for NestedItem {
+    fn as_ref(&self) -> &cddl_lib::nested::NestedItem {
+        &self.0
+    }
+}

@@ -1,0 +1,20 @@
+; A non-root use-site for anonymous wasm collection wrappers. The wrappers themselves are emitted at
+; the crate ROOT wasm module (or a sole owner's module), so the root module must import each element
+; type — but the element types here are referenced ONLY from this submodule and NEVER from root, so no
+; root-scope direct member / root anonymous collection / named-table domain masks the import. Before the
+; wrapper-element-ref fix the generated wasm crate failed to compile (E0412: the wrappers named
+; `NestedItem` / `ExternCrateBar` bare with no `use` at their emission scope).
+
+; in-crate element type, referenced only as a wrapper element from this non-root module
+nested_item = [ x: uint ]
+
+nested_holder = [
+    ; in-crate list element and map key/value
+    in_crate_items: [* nested_item],
+    in_crate_keyed: { * nested_item => uint },
+    in_crate_valued: { * uint => nested_item },
+    ; cross-crate extern list element and map key/value (mapped through extern_dep_crate_wasm)
+    ext_items: [* extern_crate_bar],
+    ext_keyed: { * extern_crate_bar => uint },
+    ext_valued: { * uint => extern_crate_bar },
+]

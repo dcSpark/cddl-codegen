@@ -602,6 +602,13 @@ impl<'a> IntermediateTypes<'a> {
                             .entry(ROOT_SCOPE.clone())
                             .or_default()
                             .insert(arr_wrapper_ident);
+                        // The wrapper's emitted code names the ELEMENT type bare in its EMISSION
+                        // scope (root — synthesized array-wrapper idents default there via `scope`,
+                        // and `GenerationScope::wasm` emits into it), which is NOT this using scope,
+                        // so the element ref has to be registered FROM root. Recurse (not a single
+                        // `set_ref`) so a nested anonymous wrapper — also root-emitted, its
+                        // `current_scope != ROOT` guard failing here — resolves its own element too.
+                        mark_refs(refs, types, wasm, sole_owners, &ROOT_SCOPE, elem_ty);
                     } else {
                         mark_refs(refs, types, wasm, sole_owners, current_scope, elem_ty);
                     }
@@ -627,10 +634,20 @@ impl<'a> IntermediateTypes<'a> {
                         if import_scope != *current_scope {
                             refs.entry(current_scope.to_owned())
                                 .or_default()
-                                .entry(import_scope)
+                                .entry(import_scope.clone())
                                 .or_default()
                                 .insert(map_wrapper_ident);
                         }
+                        // The wrapper's emitted code names its KEY and VALUE types bare in its
+                        // EMISSION scope (`import_scope` — the sole owner's module or root, resolved
+                        // the SAME way emission places the wrapper), which is not this using scope,
+                        // so their refs must be registered from there. Recurse unconditionally: when
+                        // `import_scope == current_scope` (a sole owner is the using module) `set_ref`
+                        // drops the same-scope refs, and for a sole-owner NAMED table this just
+                        // re-records what the `Table` struct-walk arm already did (refs are a
+                        // `BTreeSet`, so it's a no-op).
+                        mark_refs(refs, types, wasm, sole_owners, &import_scope, key);
+                        mark_refs(refs, types, wasm, sole_owners, &import_scope, value);
                     } else {
                         mark_refs(refs, types, wasm, sole_owners, current_scope, key);
                         mark_refs(refs, types, wasm, sole_owners, current_scope, value);

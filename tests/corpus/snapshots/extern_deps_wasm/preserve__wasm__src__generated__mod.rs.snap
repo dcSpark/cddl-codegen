@@ -10,9 +10,12 @@ expression: content
     clippy::too_many_arguments,
     clippy::new_without_default
 )]
+pub mod nested;
 
 use extern_dep_crate::ordered_hash_map::OrderedHashMap;
+use extern_dep_crate_wasm::sub::module::ExternCrateBar;
 use extern_dep_crate_wasm::ExternCrateFoo;
+use nested::NestedItem;
 use wasm_bindgen::prelude::{wasm_bindgen, JsError};
 
 #[derive(Clone, Debug)]
@@ -76,6 +79,47 @@ impl AsRef<cddl_lib::Everything> for Everything {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct ExternCrateBarList(Vec<extern_dep_crate::sub::module::ExternCrateBar>);
+
+#[wasm_bindgen]
+impl ExternCrateBarList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> ExternCrateBar {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &ExternCrateBar) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<extern_dep_crate::sub::module::ExternCrateBar>> for ExternCrateBarList {
+    fn from(native: Vec<extern_dep_crate::sub::module::ExternCrateBar>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ExternCrateBarList> for Vec<extern_dep_crate::sub::module::ExternCrateBar> {
+    fn from(wasm: ExternCrateBarList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<extern_dep_crate::sub::module::ExternCrateBar>> for ExternCrateBarList {
+    fn as_ref(&self) -> &Vec<extern_dep_crate::sub::module::ExternCrateBar> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct ExternCrateFooList(Vec<extern_dep_crate::ExternCrateFoo>);
 
 #[wasm_bindgen]
@@ -111,6 +155,157 @@ impl From<ExternCrateFooList> for Vec<extern_dep_crate::ExternCrateFoo> {
 
 impl AsRef<Vec<extern_dep_crate::ExternCrateFoo>> for ExternCrateFooList {
     fn as_ref(&self) -> &Vec<extern_dep_crate::ExternCrateFoo> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapExternCrateBarToU64(
+    OrderedHashMap<extern_dep_crate::sub::module::ExternCrateBar, u64>,
+);
+
+#[wasm_bindgen]
+impl MapExternCrateBarToU64 {
+    pub fn new() -> Self {
+        Self(OrderedHashMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: &ExternCrateBar, value: u64) -> Option<u64> {
+        self.0.insert(key.clone().into(), value)
+    }
+
+    pub fn get(&self, key: &ExternCrateBar) -> Option<u64> {
+        self.0.get(key.as_ref()).copied()
+    }
+
+    pub fn keys(&self) -> ExternCrateBarList {
+        ExternCrateBarList(self.0.keys().cloned().collect::<Vec<_>>())
+    }
+}
+
+impl From<OrderedHashMap<extern_dep_crate::sub::module::ExternCrateBar, u64>>
+    for MapExternCrateBarToU64
+{
+    fn from(native: OrderedHashMap<extern_dep_crate::sub::module::ExternCrateBar, u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapExternCrateBarToU64>
+    for OrderedHashMap<extern_dep_crate::sub::module::ExternCrateBar, u64>
+{
+    fn from(wasm: MapExternCrateBarToU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<OrderedHashMap<extern_dep_crate::sub::module::ExternCrateBar, u64>>
+    for MapExternCrateBarToU64
+{
+    fn as_ref(&self) -> &OrderedHashMap<extern_dep_crate::sub::module::ExternCrateBar, u64> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapNestedItemToU64(OrderedHashMap<cddl_lib::nested::NestedItem, u64>);
+
+#[wasm_bindgen]
+impl MapNestedItemToU64 {
+    pub fn new() -> Self {
+        Self(OrderedHashMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: &NestedItem, value: u64) -> Option<u64> {
+        self.0.insert(key.clone().into(), value)
+    }
+
+    pub fn get(&self, key: &NestedItem) -> Option<u64> {
+        self.0.get(key.as_ref()).copied()
+    }
+
+    pub fn keys(&self) -> NestedItemList {
+        NestedItemList(self.0.keys().cloned().collect::<Vec<_>>())
+    }
+}
+
+impl From<OrderedHashMap<cddl_lib::nested::NestedItem, u64>> for MapNestedItemToU64 {
+    fn from(native: OrderedHashMap<cddl_lib::nested::NestedItem, u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapNestedItemToU64> for OrderedHashMap<cddl_lib::nested::NestedItem, u64> {
+    fn from(wasm: MapNestedItemToU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<OrderedHashMap<cddl_lib::nested::NestedItem, u64>> for MapNestedItemToU64 {
+    fn as_ref(&self) -> &OrderedHashMap<cddl_lib::nested::NestedItem, u64> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapU64ToExternCrateBar(
+    OrderedHashMap<u64, extern_dep_crate::sub::module::ExternCrateBar>,
+);
+
+#[wasm_bindgen]
+impl MapU64ToExternCrateBar {
+    pub fn new() -> Self {
+        Self(OrderedHashMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: u64, value: &ExternCrateBar) -> Option<ExternCrateBar> {
+        self.0.insert(key, value.clone().into()).map(Into::into)
+    }
+
+    pub fn get(&self, key: u64) -> Option<ExternCrateBar> {
+        self.0.get(&key).map(|v| v.clone().into())
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<OrderedHashMap<u64, extern_dep_crate::sub::module::ExternCrateBar>>
+    for MapU64ToExternCrateBar
+{
+    fn from(native: OrderedHashMap<u64, extern_dep_crate::sub::module::ExternCrateBar>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapU64ToExternCrateBar>
+    for OrderedHashMap<u64, extern_dep_crate::sub::module::ExternCrateBar>
+{
+    fn from(wasm: MapU64ToExternCrateBar) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<OrderedHashMap<u64, extern_dep_crate::sub::module::ExternCrateBar>>
+    for MapU64ToExternCrateBar
+{
+    fn as_ref(&self) -> &OrderedHashMap<u64, extern_dep_crate::sub::module::ExternCrateBar> {
         &self.0
     }
 }
@@ -156,6 +351,92 @@ impl From<MapU64ToExternCrateFoo> for OrderedHashMap<u64, extern_dep_crate::Exte
 
 impl AsRef<OrderedHashMap<u64, extern_dep_crate::ExternCrateFoo>> for MapU64ToExternCrateFoo {
     fn as_ref(&self) -> &OrderedHashMap<u64, extern_dep_crate::ExternCrateFoo> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapU64ToNestedItem(OrderedHashMap<u64, cddl_lib::nested::NestedItem>);
+
+#[wasm_bindgen]
+impl MapU64ToNestedItem {
+    pub fn new() -> Self {
+        Self(OrderedHashMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: u64, value: &NestedItem) -> Option<NestedItem> {
+        self.0.insert(key, value.clone().into()).map(Into::into)
+    }
+
+    pub fn get(&self, key: u64) -> Option<NestedItem> {
+        self.0.get(&key).map(|v| v.clone().into())
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<OrderedHashMap<u64, cddl_lib::nested::NestedItem>> for MapU64ToNestedItem {
+    fn from(native: OrderedHashMap<u64, cddl_lib::nested::NestedItem>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapU64ToNestedItem> for OrderedHashMap<u64, cddl_lib::nested::NestedItem> {
+    fn from(wasm: MapU64ToNestedItem) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<OrderedHashMap<u64, cddl_lib::nested::NestedItem>> for MapU64ToNestedItem {
+    fn as_ref(&self) -> &OrderedHashMap<u64, cddl_lib::nested::NestedItem> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NestedItemList(Vec<cddl_lib::nested::NestedItem>);
+
+#[wasm_bindgen]
+impl NestedItemList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> NestedItem {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &NestedItem) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<cddl_lib::nested::NestedItem>> for NestedItemList {
+    fn from(native: Vec<cddl_lib::nested::NestedItem>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NestedItemList> for Vec<cddl_lib::nested::NestedItem> {
+    fn from(wasm: NestedItemList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<cddl_lib::nested::NestedItem>> for NestedItemList {
+    fn as_ref(&self) -> &Vec<cddl_lib::nested::NestedItem> {
         &self.0
     }
 }

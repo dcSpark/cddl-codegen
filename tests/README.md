@@ -1214,8 +1214,8 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   exactly the anon shapes whose plain `anon` cell would be masked by an alias-only module `a`
   emitting no serialization (`coll`/`collmap`/`nullable`/`necoll`/`nemap`); the other anon shapes'
   module `a` already emits serialization, so nothing masks their b-side verdict and a ballast
-  variant adds no discrimination (their `anon` cells are green except the pinned `collrec__anon`,
-  `necollrec__anon`, and the other structural-wrapper-class pins below).
+  variant adds no discrimination (their `anon` cells are green except the pinned `necollrec__anon`
+  and the other structural-wrapper-class pins below).
 - **The compile floor** (`integration_tests::multifile_matrix_compiles`) globs the cell dirs,
   generates each with DIRECTORY input `--wasm=true`, and `cargo check`s the wasm crate ONLY (which
   path-depends on the rust crate, so rust-side breakage surfaces transitively). Own scratch +
@@ -1245,8 +1245,8 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   included, is cleared at start and end — with the deps built once up front and the remainder
   dominated by the per-cell-per-profile generate + two nested `cargo test` invocations (3 profiles x the cell count each).
 - **Skip ledgers (round-trip gate).** `MULTIFILE_ROUNDTRIP_SKIP: &[(&str, &str)]` (cell stem,
-  reason) holds cells red in EVERY profile — seeded with the two `collrec` compile-floor carries
-  (their wasm crate never compiles, so `cargo test` can never pass; reasons cite the Array-arm
+  reason) holds cells red in EVERY profile — seeded with the `collrec__named` compile-floor carry
+  (its wasm crate never compiles, so `cargo test` can never pass; the reason cites the Array-arm
   structural-wrapper findings entry in `cddl-matrix/ROADMAP.md`). No rustc-error-code class
   assertion here: the compile floor's `MULTIFILE_MATRIX_SKIP` already pins each cell's exact class.
   `MULTIFILE_ROUNDTRIP_PROFILE_SKIP: &[(&str, &str, &str)]` (profile, cell stem, reason) holds
@@ -1274,12 +1274,13 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   change a real pin's error code to a bogus one, e.g. `E9999` → the class-changed message fires),
   watch it fail, revert.
 
-**What it pins today.** Eleven cells, all the same `mark_refs` structural-wrapper ROOT_SCOPE
-placement class (fix queue in `cddl-matrix/ROADMAP.md` § findings), none of which has ever
-compiled: the two `collrec` cells (`collrec__anon` E0425, `collrec__named` E0432 — the ARRAY
-structural-wrapper class, `[* <record>]`, the only loose array whose wasm representation needs a
-generated `FooList`-style wrapper; `mark_refs`' Array arm still hard-codes ROOT_SCOPE as the
-wrapper's import source; enumerated from a review-found `SHAPES` hole), plus the nine restricted
+**What it pins today.** Ten cells, all the same `mark_refs` structural-wrapper ROOT_SCOPE
+placement class (fix queue in `cddl-matrix/ROADMAP.md` § findings): `collrec__named` (E0432 — the
+ARRAY structural-NAME class, `[* <record>]`, the only loose array whose wasm representation needs a
+generated `FooList`-style wrapper; a NAMED collection alias mints only its own wrapper, so the
+structural name imported from root scope exists nowhere; enumerated from a review-found `SHAPES`
+hole — its `collrec__anon` sibling round-trips green, element refs being registered from the
+wrapper's emission scope), plus the nine restricted
 non-empty cells (`necollrec__{anon,named,unref}`, `nemap__{anon,anonb,named,unref}`,
 `necoll__{anon,anonb}` — all E0425: the restricted wrapper's `try_from(&Loose)` or anon
 dedup-to-named reference names the root-minted loose builder/element/rule bare from a non-root

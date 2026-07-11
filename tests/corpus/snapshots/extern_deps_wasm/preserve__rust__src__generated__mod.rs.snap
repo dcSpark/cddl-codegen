@@ -9,6 +9,7 @@ expression: content
 
 extern crate derivative;
 pub mod cbor_encodings;
+pub mod nested;
 pub mod serialization;
 
 use cbor_encodings::EverythingEncoding;
