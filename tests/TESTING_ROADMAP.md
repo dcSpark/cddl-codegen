@@ -296,7 +296,9 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
      through the dep's `From` impls) compiles green; the existing behavioral floor
      (`tests/core`/`tests/canonical` `tests_wasm.rs`) never crosses crates. Cheapest close: a
      `tests_wasm.rs` in `tests/extern-deps-wasm` constructing `ExternCrateFooList`/the table
-     wrapper through the wasm API and round-tripping. (b) `wasm-pack`/bindgen-CLI packaging —
+     wrapper — and the `nested` module's non-root-use wrappers (`ExternCrateBarList`, the
+     `NestedItem`/`ExternCrateBar`-keyed maps), whose rust-side round-trip exists but whose wasm
+     accessors don't — through the wasm API and round-tripping. (b) `wasm-pack`/bindgen-CLI packaging —
      `cargo build` cannot see duplicate exported JS class names when the dep wasm crate and the
      consumer both export a like-named wrapper (the generate-locally policy makes this reachable);
      no gate runs bindgen-CLI over the extern fixture. (c) json-gen against extern-dep types —
@@ -351,9 +353,10 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
   probed under both preserve flavors — `integration_tests::extern_deps` (preserve) and
   `integration_tests::extern_deps_non_preserve` (non-preserve, compiled against the preserve-flavored
   `extern-dep-crate` stand-in) — plus the wasm-boundary cell `integration_tests::extern_deps_wasm`
-  (`--extern-wasm-crate` against the split `extern-dep-crate`/`extern-dep-crate-wasm` pair, extern
-  types as list elements and table values) — so those specific cells are pinned without enumerating
-  the rest.
+  (`--extern-wasm-crate` against the split `extern-dep-crate`/`extern-dep-crate-wasm` pair; extern
+  types as list elements and table keys/values, from root AND non-root use sites — the non-root
+  `nested` cells pin the wrapper-element imports registered from the wrapper's emission scope, which
+  root use sites would mask) — so those specific cells are pinned without enumerating the rest.
   Every individual flag *value* now appears in some profile or test: the five that previously
   didn't are covered by `flag_value_smoke` (`--annotate-fields=false`,
   `--to-from-bytes-methods=false`, `--binary-wrappers=true`), `wasm_cbor_json_api_macro_compiles`

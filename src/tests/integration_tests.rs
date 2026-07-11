@@ -206,11 +206,13 @@ For more information about this error, try `rustc --explain E0583`.\n";
 /// E0432 anonymous same-shape table importing the structural name from root scope instead of the
 /// sole owner's module; E0433 cross-module named `.cbor` ref omitting the inner-type import) are all
 /// fixed in `generation.rs`'s module-declaration loop and `intermediate.rs`'s
-/// `scope_references`/`mark_refs`. What it holds now is the ARRAY structural-wrapper placement
-/// class (the `collrec` shape, `[* <record>]` — the only SHAPES entry whose wasm representation
-/// needs a generated `FooList`-style array wrapper): `mark_refs`' Array arm still hard-codes
-/// ROOT_SCOPE (the remaining issue-138 half). Enumerated as cells AFTER review found the SHAPES
-/// hole; the fix queue is the cddl-matrix/ROADMAP.md § findings array-wrapper entry. Four-state
+/// `scope_references`/`mark_refs`. The ANON element-import half of the ARRAY structural-wrapper class
+/// (`collrec__anon` — the `[* <record>]` shape's anonymous use, whose wasm representation needs a
+/// generated `FooList`-style array wrapper) is now fixed too: `mark_refs`' Array arm registers the
+/// element ref from the wrapper's root emission scope. What it holds now is the residue — the
+/// NAMED-alias structural-NAME placement (`collrec__named`) and the restricted-wrapper cells, where
+/// `mark_refs` still hard-codes ROOT_SCOPE for the WRAPPER name (the remaining issue-138 half). The
+/// fix queue is the cddl-matrix/ROADMAP.md § findings array-wrapper entry. Four-state
 /// verdict in
 /// `multifile_matrix_compiles`: red+listed = expected (held here) — but ADDITIONALLY the observed
 /// rustc error-code set (extracted from the captured cargo stderr) must EQUAL the pinned set, or the
@@ -220,17 +222,13 @@ For more information about this error, try `rustc --explain E0583`.\n";
 /// all) is likewise a class mismatch. An up-front stale-key guard rejects a listed stem absent from
 /// the projected fixture set, so the list can't rot silently.
 const MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)] = &[
-    // --- The ARRAY structural-wrapper placement class (`mark_refs`' Array arm still hard-codes
-    // ROOT_SCOPE — the remaining issue-138 half; ledgered in cddl-matrix/ROADMAP.md § findings).
-    // `collrec` = `recs = [* foo]` with record element `foo` in module `a`. These cells were NEVER
-    // green: before the mark_refs alias-recursion (E0433) fix the named cell failed RUST-side with
-    // the same inlined-alias-import class; what is pinned here is the class that remains after it.
-    (
-        "collrec__anon",
-        &["E0425"],
-        "E0425: root-minted anonymous array wrapper (`FooList`) names its non-root element type \
-         `Foo` bare, without importing it from the element's module",
-    ),
+    // --- The ARRAY structural-wrapper placement class. `collrec` = `recs = [* foo]` with record
+    // element `foo` in module `a`. The ANON half (`collrec__anon` — a root-minted anonymous array
+    // wrapper naming its non-root element type bare) is FIXED: `mark_refs`' Array arm now registers
+    // the element ref from the wrapper's root emission scope, so the import is emitted. What remains
+    // is the NAMED-alias structural-name placement (below) plus the restricted-wrapper cells further
+    // down — both still hard-code ROOT_SCOPE for the WRAPPER name (the remaining issue-138 half;
+    // ledgered in cddl-matrix/ROADMAP.md § findings).
     (
         "collrec__named",
         &["E0432"],
@@ -320,19 +318,14 @@ const WASM_MATRIX_PROFILE_SKIP: &[(&str, &str, &str)] = &[];
 /// Multifile-placement cells whose ROUND-TRIP (`multifile_matrix_roundtrips`) is deliberately red
 /// in EVERY profile — `(cell stem, reason)`, the roundtrip precedent's shape (`WASM_MATRIX_SKIP`):
 /// no rustc-error-code class assertion here, because the compile floor's `MULTIFILE_MATRIX_SKIP`
-/// already pins each cell's exact failure class. The seeds are the compile-floor reds carried
-/// over: both `collrec` cells' WASM crate never compiles (the `mark_refs` Array-arm
-/// structural-wrapper placement class — ledgered in cddl-matrix/ROADMAP.md § findings, exact
-/// E-codes pinned in `MULTIFILE_MATRIX_SKIP`), so their `cargo test` can never go green. Four-state
-/// verdict + stale-key guard as the compile floor; a listed cell that starts round-tripping fails
-/// the resurfaced guard (remove the pin — a fix landed).
+/// already pins each cell's exact failure class. The seed is the compile-floor red carried
+/// over: `collrec__named`'s WASM crate never compiles (the `mark_refs` Array-arm structural-NAME
+/// placement class — ledgered in cddl-matrix/ROADMAP.md § findings, exact E-codes pinned in
+/// `MULTIFILE_MATRIX_SKIP`), so its `cargo test` can never go green (`collrec__anon`'s
+/// element-import class is fixed, so it round-trips and is no longer listed). Four-state verdict +
+/// stale-key guard as the compile floor; a listed cell that starts round-tripping fails the
+/// resurfaced guard (remove the pin — a fix landed).
 const MULTIFILE_ROUNDTRIP_SKIP: &[(&str, &str)] = &[
-    (
-        "collrec__anon",
-        "wasm crate never compiles: root-minted anonymous array wrapper names its non-root \
-         element type bare (the Array-arm structural-wrapper findings entry in \
-         cddl-matrix/ROADMAP.md; E0425 class pinned by MULTIFILE_MATRIX_SKIP)",
-    ),
     (
         "collrec__named",
         "wasm crate never compiles: alias-target recursion imports the structural wrapper from \
@@ -1674,8 +1667,9 @@ fn wasm_matrix_compiles() {
 /// landing in the wrong scope) surfaces transitively through the wasm check; one crate keeps the
 /// wall-clock bounded.
 ///
-/// `MULTIFILE_MATRIX_SKIP` holds the deliberately-red cells — currently the two `collrec`
-/// array-structural-wrapper cells (the `mark_refs` Array-arm placement class; see the const's doc).
+/// `MULTIFILE_MATRIX_SKIP` holds the deliberately-red cells — the `collrec__named`
+/// array-structural-NAME cell plus the restricted-wrapper cells (the `mark_refs` Array-arm WRAPPER
+/// placement class; see the const's doc). `collrec__anon`'s element-import class is fixed.
 /// The three historical module-placement error classes (E0583 alias/table-only serialization stub,
 /// E0432 anonymous same-shape table importing the structural name from root scope, E0433
 /// cross-module named `.cbor` ref omitting the inner-type import) are all fixed. Four-state verdict per
@@ -5501,6 +5495,17 @@ fn extern_deps_non_preserve() {
 /// storage used the nonexistent `cddl_lib::extern_dep_crate::…` path). The harness `cargo build`s the
 /// generated wasm crate, so that build succeeding is the acceptance test; `tests.rs` adds the
 /// rust-side serialization floor for the list/map cells.
+///
+/// The `nested` module cells pin the OTHER import class this fixture guards: element types used
+/// ONLY as anonymous wrapper elements / map keys / map values from a NON-ROOT module (in-crate
+/// `NestedItem`; extern `ExternCrateBar`, deliberately in a dep SUBMODULE so the remap must compose
+/// a submodule path, `extern_dep_crate_wasm::sub::module`). Anonymous wrappers are emitted at the
+/// crate-root wasm module, so their element imports must be registered from ROOT — the wrapper's
+/// emission scope, not the using scope (`mark_refs`' Array/Map arms). A root-scope use site would
+/// mask that registration (root recursion registers the element anyway), which is why nothing else
+/// in the spec may reference the `nested` element types. `tests.rs`'s
+/// `nested_holder_roundtrips_in_crate_and_extern_collections` adds the behavioral floor over all
+/// six cells.
 ///
 /// Uses `--common-import-override` (the same real-world CML shape as `extern_deps`): a cross-crate
 /// extern dep serializes through the dep crate's own runtime traits, so the consumer must share that

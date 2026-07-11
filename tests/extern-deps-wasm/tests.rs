@@ -6,6 +6,10 @@
 #[cfg(test)]
 mod tests {
     use super::*;
+    // NestedHolder/NestedItem live in the non-root `nested` module (the wrapper-element-import pin);
+    // reference them by path since the appended tests sit in the crate-root generated scope.
+    use super::nested::{NestedHolder, NestedItem};
+    use extern_dep_crate::sub::module::ExternCrateBar;
     // under --common-import-override the serialization traits live in the dep crate
     use extern_dep_crate::serialization::{Deserialize, ToCBORBytes};
 
@@ -58,5 +62,47 @@ mod tests {
             bytes.windows(map_val.len()).any(|w| w == map_val),
             "extern-dep table value bytes not embedded verbatim"
         );
+    }
+
+    fn mk_nested_holder() -> NestedHolder {
+        let mut in_crate_keyed = OrderedHashMap::new();
+        in_crate_keyed.insert(NestedItem::new(1), 10u64);
+        let mut in_crate_valued = OrderedHashMap::new();
+        in_crate_valued.insert(20u64, NestedItem::new(2));
+        let mut ext_keyed = OrderedHashMap::new();
+        ext_keyed.insert(ExternCrateBar::new(3), 30u64);
+        let mut ext_valued = OrderedHashMap::new();
+        ext_valued.insert(40u64, ExternCrateBar::new(4));
+        NestedHolder::new(
+            vec![NestedItem::new(5), NestedItem::new(6)],
+            in_crate_keyed,
+            in_crate_valued,
+            vec![ExternCrateBar::new(7), ExternCrateBar::new(8)],
+            ext_keyed,
+            ext_valued,
+        )
+    }
+
+    // The `nested` module's cells exercise in-crate AND extern element types used ONLY as wrapper
+    // elements / map keys / map values from a non-root scope — the shapes whose root wasm-module
+    // imports the wrapper-element-ref fix registers. Round-tripping them proves the fix is
+    // behavioral, not just a compile-only import addition.
+    #[test]
+    fn nested_holder_roundtrips_in_crate_and_extern_collections() {
+        let h = mk_nested_holder();
+        let bytes = h.to_cbor_bytes();
+        let back = NestedHolder::from_cbor_bytes(&bytes).expect("must deserialize its own bytes");
+        assert_eq!(
+            back.to_cbor_bytes(),
+            bytes,
+            "wire round-trip must be byte-identical"
+        );
+        // value anchors across every cell so a compensating encode+decode bug can't pass on identity
+        assert_eq!(back.in_crate_items[1].x, 6);
+        assert_eq!(*back.in_crate_keyed.get(&NestedItem::new(1)).unwrap(), 10);
+        assert_eq!(back.in_crate_valued.get(&20u64).unwrap().x, 2);
+        assert_eq!(back.ext_items[0].inner(), 7);
+        assert_eq!(*back.ext_keyed.get(&ExternCrateBar::new(3)).unwrap(), 30);
+        assert_eq!(back.ext_valued.get(&40u64).unwrap().inner(), 4);
     }
 }

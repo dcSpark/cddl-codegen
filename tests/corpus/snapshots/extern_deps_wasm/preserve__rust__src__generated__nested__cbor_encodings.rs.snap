@@ -1,0 +1,31 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use extern_dep_crate::serialization::{LenEncoding, StringEncoding};
+use std::collections::BTreeMap;
+
+#[derive(Clone, Debug, Default)]
+pub struct NestedHolderEncoding {
+    pub len_encoding: LenEncoding,
+    pub in_crate_items_encoding: LenEncoding,
+    pub in_crate_keyed_encoding: LenEncoding,
+    pub in_crate_keyed_value_encodings: BTreeMap<NestedItem, Option<cbor_event::Sz>>,
+    pub in_crate_valued_encoding: LenEncoding,
+    pub in_crate_valued_key_encodings: BTreeMap<u64, Option<cbor_event::Sz>>,
+    pub ext_items_encoding: LenEncoding,
+    pub ext_keyed_encoding: LenEncoding,
+    pub ext_keyed_value_encodings: BTreeMap<ExternCrateBar, Option<cbor_event::Sz>>,
+    pub ext_valued_encoding: LenEncoding,
+    pub ext_valued_key_encodings: BTreeMap<u64, Option<cbor_event::Sz>>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct NestedItemEncoding {
+    pub len_encoding: LenEncoding,
+    pub x_encoding: Option<cbor_event::Sz>,
+}

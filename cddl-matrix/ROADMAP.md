@@ -235,36 +235,37 @@ are ledgered here (that's what the probe/gate error messages point at).
   written — the stable-severable decode fix to propose there, plus the standalone repro and the
   prune/re-mint steps for when a fix ships, are in `draft/cbor-event-f16-decode-fix.md` (local
   note) — bundle it with the over-allocation report in one upstream conversation.
-- **Cross-module ARRAY structural-wrapper placement breaks both reference modes of a
-  collection-of-records shape** — the Array-arm half of the issue-138 TODO in `mark_refs`
+- **Cross-module ARRAY structural-wrapper placement breaks the NAMED reference mode of a
+  collection-of-records shape** — the residual Array-arm half of the issue-138 TODO in `mark_refs`
   (intermediate.rs), left in place when the Map arm went sole-owner-aware. `recs = [* foo]` with
   record element `foo` in module `a`: the wasm representation needs a generated structural wrapper
   (`FooList`) — unlike `[* uint]`, which is transparent `Vec<u64>`; that is why the original `coll`
-  shape could never probe this class. Pinned by the `collrec` cells in `tests/matrix_multifile/`
-  (`MULTIFILE_MATRIX_SKIP` with the exact E-codes; carried into the round-trip gate's
-  `MULTIFILE_ROUNDTRIP_SKIP` — the wasm crate never compiles, so `cargo test` can never pass),
-  enumerated AFTER review found the `SHAPES` hole (the axis-honesty rule
-  below applied late — the cells were never green, so no gate had ever seen the shape):
-  - `collrec__anon` (E0425): the anonymous use mints `FooList` at the crate root, and the wrapper's
-    accessors name the element type `Foo` bare without importing it from `a`. Candidate fix: mint
-    the array wrapper in the element's module, or import the element type where the wrapper is
-    minted (the map side answered the analogous placement question with `table_shape_sole_owners`).
+  shape could never probe this class. The ANONYMOUS reference mode is covered: `mark_refs`' Array
+  arm registers the ELEMENT type from the wrapper's root emission scope (the "import the element
+  type where the wrapper is minted" answer, mirroring how the map side answered the analogous
+  placement question with `table_shape_sole_owners`), so `collrec__anon` compiles and round-trips
+  green. What remains is the NAMED mode, pinned by `collrec__named` in `tests/matrix_multifile/`
+  (`MULTIFILE_MATRIX_SKIP` with the exact E-code; carried into the round-trip gate's
+  `MULTIFILE_ROUNDTRIP_SKIP` — the wasm crate never compiles, so `cargo test` can never pass):
   - `collrec__named` (E0432): the `mark_refs` alias-target recursion (the E0433 inner-type-import
     fix) descends into the alias target, where the Array arm adds a ROOT-scope import of the
     structural `FooList` — but a NAMED collection alias mints only its own wrapper (`Recs`), so the
-    structural name exists nowhere. Before that recursion landed, the same cell failed RUST-side
-    (E0433, the inlined-alias-import class) — the recursion traded an earlier error for this one,
-    never a green-to-red. Candidate fix: don't mint structural-wrapper imports when recursing
-    through an alias target (the alias's own wrapper subsumes them — e.g. recurse the target with
-    the wasm special-casing off), paired with Array-arm owner-resolution for the anon case.
+    structural WRAPPER name exists nowhere. Before that recursion landed, the same cell failed
+    RUST-side (E0433, the inlined-alias-import class) — the recursion traded an earlier error for
+    this one, never a green-to-red. Candidate fix: don't mint structural-wrapper imports when
+    recursing through an alias target (the alias's own wrapper subsumes them — e.g. recurse the
+    target with the wasm special-casing off).
 
   The **two-type-constraint restricted wasm wrappers** (`[+ T]` → `NonEmptyVec`, `{+ k => v}` →
-  `NonEmptyMap`) reach this SAME structural-wrapper ROOT_SCOPE class cross-module — the loose builder
-  (`FooList` / `MapU64ToText`) is root-minted and the restricted wrapper's `try_from(&Loose)` (or the
-  anon dedup-to-named reference) names it, the element type, or the dedup-target rule bare from a
-  non-root module. E0425 in every case, pinned by `MULTIFILE_MATRIX_SKIP`/`MULTIFILE_ROUNDTRIP_SKIP`:
+  `NonEmptyMap`) reach this SAME structural-WRAPPER-NAME ROOT_SCOPE class cross-module — the loose
+  builder (`FooList` / `MapU64ToText`) is root-minted and the restricted wrapper's `try_from(&Loose)`
+  (or the anon dedup-to-named reference) names it, or the dedup-target rule, bare from a non-root
+  module. (The element-TYPE import — `Foo` — is emitted by the Array arm's emission-scope element
+  registration, so only the wrapper NAMES dangle.) E0425 in every case, pinned by
+  `MULTIFILE_MATRIX_SKIP`/`MULTIFILE_ROUNDTRIP_SKIP`:
   - `necollrec__{anon,named,unref}` — the `+` analogue of `collrec` (`recs = [+ foo]`, non-exposable
-    record element): the restricted wrapper compounds `collrec`'s root-minted `FooList`/`Foo` dangle.
+    record element): the restricted wrapper still dangles on `collrec`'s root-minted `FooList` (loose
+    builder) and `Recs` (restricted) wrapper NAMES.
   - `nemap__{anon,anonb,named,unref}` — the MAP-side manifestation the loose-only `collmap` never
     exposed (it is green cross-module): the restricted `Mp::try_from(&MapU64ToText)` reintroduces a
     bare reference to the root-minted loose builder.
@@ -549,7 +550,8 @@ composition-space cross-check that complements this matrix's curated per-shape g
   has a proven instance: the collection-of-records shape (`[* <record>]`, the only array whose wasm
   representation needs a generated structural wrapper) was missing from `SHAPES`, so the Array-arm
   placement class stayed invisible to every gate until review of the Map-arm fix asked what the new
-  alias recursion could reach — now enumerated as the `collrec` cells (red, pinned; § findings).
+  alias recursion could reach — now enumerated as the `collrec` cells (`collrec__named` red,
+  pinned; `collrec__anon` green under the emission-scope element registration; § findings).
   A second proven instance on the wasm matrix itself: the alias-to-record shape (`ral = st`) was
   missing from `SHAPES`, so the group-choice wasm-ctor alias-resolution divergence was un-gated for
   plain aliases (only its `.cbor`-wrapper sibling `cborwrap` had a cell) until the fix's review

@@ -1,0 +1,68 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+pub mod cbor_encodings;
+pub mod serialization;
+
+use cbor_encodings::{NestedHolderEncoding, NestedItemEncoding};
+use extern_dep_crate::error::*;
+use extern_dep_crate::ordered_hash_map::OrderedHashMap;
+use extern_dep_crate::serialization::{LenEncoding, StringEncoding};
+use extern_dep_crate::sub::module::ExternCrateBar;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct NestedHolder {
+    pub in_crate_items: Vec<NestedItem>,
+    pub in_crate_keyed: OrderedHashMap<NestedItem, u64>,
+    pub in_crate_valued: OrderedHashMap<u64, NestedItem>,
+    pub ext_items: Vec<ExternCrateBar>,
+    pub ext_keyed: OrderedHashMap<ExternCrateBar, u64>,
+    pub ext_valued: OrderedHashMap<u64, ExternCrateBar>,
+    pub encodings: Option<NestedHolderEncoding>,
+}
+
+impl NestedHolder {
+    pub fn new(
+        in_crate_items: Vec<NestedItem>,
+        in_crate_keyed: OrderedHashMap<NestedItem, u64>,
+        in_crate_valued: OrderedHashMap<u64, NestedItem>,
+        ext_items: Vec<ExternCrateBar>,
+        ext_keyed: OrderedHashMap<ExternCrateBar, u64>,
+        ext_valued: OrderedHashMap<u64, ExternCrateBar>,
+    ) -> Self {
+        Self {
+            in_crate_items,
+            in_crate_keyed,
+            in_crate_valued,
+            ext_items,
+            ext_keyed,
+            ext_valued,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, derivative::Derivative)]
+#[derivative(Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct NestedItem {
+    pub x: u64,
+    #[derivative(
+        PartialEq = "ignore",
+        Ord = "ignore",
+        PartialOrd = "ignore",
+        Hash = "ignore"
+    )]
+    pub encodings: Option<NestedItemEncoding>,
+}
+
+impl NestedItem {
+    pub fn new(x: u64) -> Self {
+        Self { x, encodings: None }
+    }
+}

@@ -1,0 +1,447 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::cbor_encodings::*;
+use super::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use extern_dep_crate::error::*;
+use extern_dep_crate::serialization::*;
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for NestedHolder {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(6),
+        )?;
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.in_crate_items_encoding)
+                .unwrap_or_default()
+                .to_len_sz(self.in_crate_items.len() as u64),
+        )?;
+        for element in self.in_crate_items.iter() {
+            element.serialize(serializer)?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.in_crate_items_encoding)
+            .unwrap_or_default()
+            .end(serializer)?;
+        serializer.write_map_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.in_crate_keyed_encoding)
+                .unwrap_or_default()
+                .to_len_sz(self.in_crate_keyed.len() as u64),
+        )?;
+        for (key, value) in self.in_crate_keyed.iter() {
+            key.serialize(serializer)?;
+            let in_crate_keyed_value_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.in_crate_keyed_value_encodings.get(key))
+                .cloned()
+                .unwrap_or_default();
+            serializer
+                .write_unsigned_integer_sz(*value, fit_sz(*value, in_crate_keyed_value_encoding))?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.in_crate_keyed_encoding)
+            .unwrap_or_default()
+            .end(serializer)?;
+        serializer.write_map_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.in_crate_valued_encoding)
+                .unwrap_or_default()
+                .to_len_sz(self.in_crate_valued.len() as u64),
+        )?;
+        for (key, value) in self.in_crate_valued.iter() {
+            let in_crate_valued_key_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.in_crate_valued_key_encodings.get(key))
+                .cloned()
+                .unwrap_or_default();
+            serializer
+                .write_unsigned_integer_sz(*key, fit_sz(*key, in_crate_valued_key_encoding))?;
+            value.serialize(serializer)?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.in_crate_valued_encoding)
+            .unwrap_or_default()
+            .end(serializer)?;
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.ext_items_encoding)
+                .unwrap_or_default()
+                .to_len_sz(self.ext_items.len() as u64),
+        )?;
+        for element in self.ext_items.iter() {
+            element.serialize(serializer)?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.ext_items_encoding)
+            .unwrap_or_default()
+            .end(serializer)?;
+        serializer.write_map_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.ext_keyed_encoding)
+                .unwrap_or_default()
+                .to_len_sz(self.ext_keyed.len() as u64),
+        )?;
+        for (key, value) in self.ext_keyed.iter() {
+            key.serialize(serializer)?;
+            let ext_keyed_value_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.ext_keyed_value_encodings.get(key))
+                .cloned()
+                .unwrap_or_default();
+            serializer
+                .write_unsigned_integer_sz(*value, fit_sz(*value, ext_keyed_value_encoding))?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.ext_keyed_encoding)
+            .unwrap_or_default()
+            .end(serializer)?;
+        serializer.write_map_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.ext_valued_encoding)
+                .unwrap_or_default()
+                .to_len_sz(self.ext_valued.len() as u64),
+        )?;
+        for (key, value) in self.ext_valued.iter() {
+            let ext_valued_key_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.ext_valued_key_encodings.get(key))
+                .cloned()
+                .unwrap_or_default();
+            serializer.write_unsigned_integer_sz(*key, fit_sz(*key, ext_valued_key_encoding))?;
+            value.serialize(serializer)?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.ext_valued_encoding)
+            .unwrap_or_default()
+            .end(serializer)?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for NestedHolder {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(6)?;
+            read_len.finish()?;
+            let (in_crate_items, in_crate_items_encoding) = (|| -> Result<_, DeserializeError> {
+                let mut in_crate_items_arr = Vec::new();
+                let len = raw.array_sz()?;
+                let in_crate_items_encoding = len.into();
+                while match len {
+                    cbor_event::LenSz::Len(n, _) => (in_crate_items_arr.len() as u64) < n,
+                    cbor_event::LenSz::Indefinite => true,
+                } {
+                    if matches!(len, cbor_event::LenSz::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    in_crate_items_arr.push(NestedItem::deserialize(raw)?);
+                }
+                Ok((in_crate_items_arr, in_crate_items_encoding))
+            })()
+            .map_err(|e| e.annotate("in_crate_items"))?;
+            let (in_crate_keyed, in_crate_keyed_encoding, in_crate_keyed_value_encodings) =
+                (|| -> Result<_, DeserializeError> {
+                    let mut in_crate_keyed_table = OrderedHashMap::new();
+                    let in_crate_keyed_len = raw.map_sz()?;
+                    let in_crate_keyed_encoding = in_crate_keyed_len.into();
+                    let mut in_crate_keyed_value_encodings = BTreeMap::new();
+                    while match in_crate_keyed_len {
+                        cbor_event::LenSz::Len(n, _) => (in_crate_keyed_table.len() as u64) < n,
+                        cbor_event::LenSz::Indefinite => true,
+                    } {
+                        if matches!(in_crate_keyed_len, cbor_event::LenSz::Indefinite)
+                            && raw.cbor_type()? == cbor_event::Type::Special
+                            && raw.special_break()?
+                        {
+                            break;
+                        }
+                        let in_crate_keyed_key = NestedItem::deserialize(raw)?;
+                        let (in_crate_keyed_value, in_crate_keyed_value_encoding) =
+                            raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                        if in_crate_keyed_table
+                            .insert(in_crate_keyed_key.clone(), in_crate_keyed_value)
+                            .is_some()
+                        {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "some complicated/unsupported type",
+                            )))
+                            .into());
+                        }
+                        in_crate_keyed_value_encodings
+                            .insert(in_crate_keyed_key.clone(), in_crate_keyed_value_encoding);
+                    }
+                    Ok((
+                        in_crate_keyed_table,
+                        in_crate_keyed_encoding,
+                        in_crate_keyed_value_encodings,
+                    ))
+                })()
+                .map_err(|e| e.annotate("in_crate_keyed"))?;
+            let (in_crate_valued, in_crate_valued_encoding, in_crate_valued_key_encodings) =
+                (|| -> Result<_, DeserializeError> {
+                    let mut in_crate_valued_table = OrderedHashMap::new();
+                    let in_crate_valued_len = raw.map_sz()?;
+                    let in_crate_valued_encoding = in_crate_valued_len.into();
+                    let mut in_crate_valued_key_encodings = BTreeMap::new();
+                    while match in_crate_valued_len {
+                        cbor_event::LenSz::Len(n, _) => (in_crate_valued_table.len() as u64) < n,
+                        cbor_event::LenSz::Indefinite => true,
+                    } {
+                        if matches!(in_crate_valued_len, cbor_event::LenSz::Indefinite)
+                            && raw.cbor_type()? == cbor_event::Type::Special
+                            && raw.special_break()?
+                        {
+                            break;
+                        }
+                        let (in_crate_valued_key, in_crate_valued_key_encoding) =
+                            raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                        let in_crate_valued_value = NestedItem::deserialize(raw)?;
+                        if in_crate_valued_table
+                            .insert(in_crate_valued_key, in_crate_valued_value)
+                            .is_some()
+                        {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Uint(
+                                in_crate_valued_key,
+                            ))
+                            .into());
+                        }
+                        in_crate_valued_key_encodings
+                            .insert(in_crate_valued_key, in_crate_valued_key_encoding);
+                    }
+                    Ok((
+                        in_crate_valued_table,
+                        in_crate_valued_encoding,
+                        in_crate_valued_key_encodings,
+                    ))
+                })()
+                .map_err(|e| e.annotate("in_crate_valued"))?;
+            let (ext_items, ext_items_encoding) = (|| -> Result<_, DeserializeError> {
+                let mut ext_items_arr = Vec::new();
+                let len = raw.array_sz()?;
+                let ext_items_encoding = len.into();
+                while match len {
+                    cbor_event::LenSz::Len(n, _) => (ext_items_arr.len() as u64) < n,
+                    cbor_event::LenSz::Indefinite => true,
+                } {
+                    if matches!(len, cbor_event::LenSz::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    ext_items_arr.push(ExternCrateBar::deserialize(raw)?);
+                }
+                Ok((ext_items_arr, ext_items_encoding))
+            })()
+            .map_err(|e| e.annotate("ext_items"))?;
+            let (ext_keyed, ext_keyed_encoding, ext_keyed_value_encodings) =
+                (|| -> Result<_, DeserializeError> {
+                    let mut ext_keyed_table = OrderedHashMap::new();
+                    let ext_keyed_len = raw.map_sz()?;
+                    let ext_keyed_encoding = ext_keyed_len.into();
+                    let mut ext_keyed_value_encodings = BTreeMap::new();
+                    while match ext_keyed_len {
+                        cbor_event::LenSz::Len(n, _) => (ext_keyed_table.len() as u64) < n,
+                        cbor_event::LenSz::Indefinite => true,
+                    } {
+                        if matches!(ext_keyed_len, cbor_event::LenSz::Indefinite)
+                            && raw.cbor_type()? == cbor_event::Type::Special
+                            && raw.special_break()?
+                        {
+                            break;
+                        }
+                        let ext_keyed_key = ExternCrateBar::deserialize(raw)?;
+                        let (ext_keyed_value, ext_keyed_value_encoding) =
+                            raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                        if ext_keyed_table
+                            .insert(ext_keyed_key.clone(), ext_keyed_value)
+                            .is_some()
+                        {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
+                                "some complicated/unsupported type",
+                            )))
+                            .into());
+                        }
+                        ext_keyed_value_encodings
+                            .insert(ext_keyed_key.clone(), ext_keyed_value_encoding);
+                    }
+                    Ok((
+                        ext_keyed_table,
+                        ext_keyed_encoding,
+                        ext_keyed_value_encodings,
+                    ))
+                })()
+                .map_err(|e| e.annotate("ext_keyed"))?;
+            let (ext_valued, ext_valued_encoding, ext_valued_key_encodings) =
+                (|| -> Result<_, DeserializeError> {
+                    let mut ext_valued_table = OrderedHashMap::new();
+                    let ext_valued_len = raw.map_sz()?;
+                    let ext_valued_encoding = ext_valued_len.into();
+                    let mut ext_valued_key_encodings = BTreeMap::new();
+                    while match ext_valued_len {
+                        cbor_event::LenSz::Len(n, _) => (ext_valued_table.len() as u64) < n,
+                        cbor_event::LenSz::Indefinite => true,
+                    } {
+                        if matches!(ext_valued_len, cbor_event::LenSz::Indefinite)
+                            && raw.cbor_type()? == cbor_event::Type::Special
+                            && raw.special_break()?
+                        {
+                            break;
+                        }
+                        let (ext_valued_key, ext_valued_key_encoding) =
+                            raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                        let ext_valued_value = ExternCrateBar::deserialize(raw)?;
+                        if ext_valued_table
+                            .insert(ext_valued_key, ext_valued_value)
+                            .is_some()
+                        {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Uint(
+                                ext_valued_key,
+                            ))
+                            .into());
+                        }
+                        ext_valued_key_encodings.insert(ext_valued_key, ext_valued_key_encoding);
+                    }
+                    Ok((
+                        ext_valued_table,
+                        ext_valued_encoding,
+                        ext_valued_key_encodings,
+                    ))
+                })()
+                .map_err(|e| e.annotate("ext_valued"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => (),
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(NestedHolder {
+                in_crate_items,
+                in_crate_keyed,
+                in_crate_valued,
+                ext_items,
+                ext_keyed,
+                ext_valued,
+                encodings: Some(NestedHolderEncoding {
+                    len_encoding,
+                    in_crate_items_encoding,
+                    in_crate_keyed_encoding,
+                    in_crate_keyed_value_encodings,
+                    in_crate_valued_encoding,
+                    in_crate_valued_key_encodings,
+                    ext_items_encoding,
+                    ext_keyed_encoding,
+                    ext_keyed_value_encodings,
+                    ext_valued_encoding,
+                    ext_valued_key_encodings,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("NestedHolder"))
+    }
+}
+
+impl cbor_event::se::Serialize for NestedItem {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(1),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.x,
+            fit_sz(
+                self.x,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.x_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for NestedItem {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let (x, x_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("x"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => (),
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(NestedItem {
+                x,
+                encodings: Some(NestedItemEncoding {
+                    len_encoding,
+                    x_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("NestedItem"))
+    }
+}
