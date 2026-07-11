@@ -51,6 +51,26 @@ pub(crate) fn is_preservable_generated_path(path: &str) -> bool {
             || path.starts_with("wasm/json-gen/src/generated/"))
 }
 
+/// Recursively collect every `.rs` file under `dir` (absent dir = no files). Drives the stale-file
+/// scan at the end of [`GenerationScope::export`].
+fn collect_rs_files(
+    dir: &std::path::Path,
+    out: &mut Vec<std::path::PathBuf>,
+) -> std::io::Result<()> {
+    if !dir.is_dir() {
+        return Ok(());
+    }
+    for entry in std::fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path.is_dir() {
+            collect_rs_files(&path, out)?;
+        } else if path.extension().is_some_and(|e| e == "rs") {
+            out.push(path);
+        }
+    }
+    Ok(())
+}
+
 /// Prepend the codegen header onto a (already rustfmt'd) generated file's content. The header is
 /// pure `//` comments, so it leads the file verbatim regardless of whether the body opens with an
 /// inner `#![…]` attribute (both orderings are valid Rust; a comment may precede an inner attr).
@@ -1580,8 +1600,15 @@ impl GenerationScope {
             }
         }
 
+        // Every generated-tree `.rs` written this run, so the stale-file scan below can tell an
+        // orphan (a file a prior run generated but this one no longer does — e.g. a removed/renamed
+        // scope) from live output.
+        let mut written_generated_rs: BTreeSet<std::path::PathBuf> = BTreeSet::new();
         for (rel_path, content) in &files {
             let path = rust_dir.join(rel_path);
+            if is_preservable_generated_path(rel_path) {
+                written_generated_rs.insert(path.clone());
+            }
             // Seed-once thin roots: each generated crate's root `lib.rs` (rust, wasm, json-gen) is
             // written only if absent (existence check only — the same bounded exception the manifest
             // changeset carves out of the no-prior-output invariant). Everything else under
@@ -1620,8 +1647,9 @@ impl GenerationScope {
             // the user's own-line comments from the prior output onto the fresh content (unplaceable
             // ones become tagged `compile_error!` blocks — loud, never a silent drop). This is the
             // third bounded exception to the no-prior-output invariant: prior output contributes ONLY
-            // comment bytes and `cddl-codegen:unpreserved-comment` blocks, never a generated code
-            // token, and run-twice-equals-run-once still holds (see `comment_preserve`). Files that
+            // comment bytes and `cddl-codegen:unpreserved-comment` compile_error blocks — never a
+            // code token OUTSIDE those tagged blocks — and run-twice-equals-run-once still holds
+            // (see `comment_preserve`). Files that
             // received an insertion get one extra rustfmt pass to normalize the raw insertion.
             if cli.preserve_comments && is_preservable_generated_path(rel_path) && path.exists() {
                 // An unreadable existing file (e.g. not UTF-8) is a hard error, not a silent
@@ -1648,10 +1676,9 @@ impl GenerationScope {
         // static files copied/assembled verbatim (only when we own the common types)
         if cli.export_static_files() {
             // error.rs
-            std::fs::copy(
-                cli.static_dir.join("error.rs"),
-                rust_dir.join("rust/src/generated/error.rs"),
-            )?;
+            let error_path = rust_dir.join("rust/src/generated/error.rs");
+            std::fs::copy(cli.static_dir.join("error.rs"), &error_path)?;
+            written_generated_rs.insert(error_path);
 
             // ordered_hash_map.rs
             if cli.preserve_encodings {
@@ -1667,10 +1694,12 @@ impl GenerationScope {
                         cli.static_dir.join("ordered_hash_map_schemars.rs"),
                     )?);
                 }
+                let ohm_path = rust_dir.join("rust/src/generated/ordered_hash_map.rs");
                 std::fs::write(
-                    rust_dir.join("rust/src/generated/ordered_hash_map.rs"),
+                    &ohm_path,
                     rustfmt_generated_string(&ordered_hash_map_rs)?.as_ref(),
                 )?;
+                written_generated_rs.insert(ohm_path);
             }
 
             // non_empty.rs (the NonEmptyVec runtime) — only for crates that use `[+ T]`. Its
@@ -1688,10 +1717,9 @@ impl GenerationScope {
                         cli.static_dir.join("non_empty_schemars.rs"),
                     )?);
                 }
-                std::fs::write(
-                    rust_dir.join("rust/src/generated/non_empty.rs"),
-                    rustfmt_generated_string(&non_empty_rs)?.as_ref(),
-                )?;
+                let ne_path = rust_dir.join("rust/src/generated/non_empty.rs");
+                std::fs::write(&ne_path, rustfmt_generated_string(&non_empty_rs)?.as_ref())?;
+                written_generated_rs.insert(ne_path);
             }
 
             // non_empty_map.rs (the NonEmptyMap runtime) — only for crates that use `{+ k => v}`. Its
@@ -1721,10 +1749,36 @@ impl GenerationScope {
                         .replace("K: Ord", "K: Ord + core::hash::Hash + Eq")
                         .replace("BTreeMap", "OrderedHashMap");
                 }
+                let nem_path = rust_dir.join("rust/src/generated/non_empty_map.rs");
                 std::fs::write(
-                    rust_dir.join("rust/src/generated/non_empty_map.rs"),
+                    &nem_path,
                     rustfmt_generated_string(&non_empty_map_rs)?.as_ref(),
                 )?;
+                written_generated_rs.insert(nem_path);
+            }
+        }
+
+        // Stale-file scan: a `.rs` under a tool-owned generated tree that this run did not produce
+        // was generated by a PRIOR run (removed/renamed type or scope). Its `mod` declaration is
+        // gone from the regenerated tree, so it (and any user comments in it) silently drops out of
+        // the build — the one comment-loss path the per-file overlay cannot see. Diagnostic-only
+        // stderr (same bounded read as the legacy-root warning): no output byte depends on it.
+        for tree in [
+            "rust/src/generated",
+            "wasm/src/generated",
+            "wasm/json-gen/src/generated",
+        ] {
+            let mut orphans = Vec::new();
+            collect_rs_files(&rust_dir.join(tree), &mut orphans)?;
+            orphans.retain(|p| !written_generated_rs.contains(p));
+            orphans.sort();
+            for orphan in orphans {
+                eprintln!(
+                    "warning: {} was generated by a previous run but is no longer generated; it is \
+                     orphaned (nothing declares it as a module). Delete it — any comments you \
+                     added there are NOT carried anywhere.",
+                    orphan.display()
+                );
             }
         }
 

@@ -54,11 +54,12 @@ changing the *runtime behaviour* of generated code usually means editing `static
     under the always-clobbered `src/generated/**`); (3) the comment-preservation overlay
     (`comment_preserve.rs`) — `export()` reads a prior generated `src/generated/**` `.rs` solely to
     carry the user's comments onto the fresh content, bounded to "prior output contributes only comment
-    bytes and tagged `cddl-codegen:unpreserved-comment` compile_error blocks, never a generated code
-    token" (default on, `--no-preserve-comments` disables it). A diagnostic-only stderr warning reads a
-    legacy root to detect the missing `mod generated;` and name the migration, but changes no output
-    bytes. Nothing reads prior *tool* output to decide what code to generate, so "run twice = run once
-    = clean run" still holds.
+    bytes and tagged `cddl-codegen:unpreserved-comment` compile_error blocks — never a code token
+    outside those tagged blocks" (default on, `--no-preserve-comments` disables it). Two
+    diagnostic-only stderr warnings read prior output but change no output bytes: the legacy-root
+    check (missing `mod generated;`) and the stale-file scan (orphaned `.rs` under the generated
+    trees). Nothing reads prior *tool* output to decide what code to generate, so "run twice = run
+    once = clean run" still holds.
 - **The IR borrows the AST.** `IntermediateTypes<'a>` can't be returned from a function that parses
   internally — drive the pipeline through the scoped callback in `api.rs` (it owns the AST).
 - **bin/lib module duplication.** `main.rs` and `lib.rs` each declare the module list — a new
