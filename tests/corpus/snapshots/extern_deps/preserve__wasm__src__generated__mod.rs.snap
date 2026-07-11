@@ -87,6 +87,10 @@ impl Everything {
         self.0.extern_crate_foo.clone().into()
     }
 
+    pub fn extern_foos(&self) -> ExternCrateFooList {
+        self.0.extern_foos.clone().into()
+    }
+
     pub fn bars(&self) -> BarList {
         self.0.bars.clone().into()
     }
@@ -106,6 +110,7 @@ impl Everything {
     pub fn new(
         foo: &Foo,
         extern_crate_foo: &ExternCrateFoo,
+        extern_foos: &ExternCrateFooList,
         bars: &BarList,
         table: &MapU64ToBarTypedef,
         baz: &Baz,
@@ -114,6 +119,7 @@ impl Everything {
         Self(cddl_lib::Everything::new(
             foo.clone().into(),
             extern_crate_foo.clone().into(),
+            extern_foos.clone().into(),
             bars.clone().into(),
             table.clone().into(),
             baz.clone().into(),
@@ -136,6 +142,47 @@ impl From<Everything> for cddl_lib::Everything {
 
 impl AsRef<cddl_lib::Everything> for Everything {
     fn as_ref(&self) -> &cddl_lib::Everything {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ExternCrateFooList(Vec<extern_dep_crate::ExternCrateFoo>);
+
+#[wasm_bindgen]
+impl ExternCrateFooList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> ExternCrateFoo {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &ExternCrateFoo) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<extern_dep_crate::ExternCrateFoo>> for ExternCrateFooList {
+    fn from(native: Vec<extern_dep_crate::ExternCrateFoo>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ExternCrateFooList> for Vec<extern_dep_crate::ExternCrateFoo> {
+    fn from(wasm: ExternCrateFooList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<extern_dep_crate::ExternCrateFoo>> for ExternCrateFooList {
+    fn as_ref(&self) -> &Vec<extern_dep_crate::ExternCrateFoo> {
         &self.0
     }
 }

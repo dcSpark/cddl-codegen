@@ -2,6 +2,10 @@ everything = [
     ; from a single-level nested mod
     foo,
     extern_crate_foo,
+    ; extern-dep type as a LIST element: proves the wasm wrapper's inner-storage path resolves to
+    ; the dep's own rust crate (no `--extern-wasm-crate` mapping here — the single-crate convention's
+    ; rust type is itself `#[wasm_bindgen]`, so it doubles as the boundary type)
+    extern_foos: [* extern_crate_foo],
     ; test using in arrays too
     bars: [* bar],
     ; and maps

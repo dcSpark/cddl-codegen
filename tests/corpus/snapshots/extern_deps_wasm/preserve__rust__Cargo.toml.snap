@@ -1,0 +1,19 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+[package]
+name = "cddl-lib"
+version = "0.1.0"
+edition = "2024"
+
+[package.metadata.cddl-codegen]
+generated-with = "0.1.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+cbor_event = "2.4.0"
+linked-hash-map = "0.5.3"
+derivative = "2.2.0"

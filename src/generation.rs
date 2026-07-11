@@ -1239,6 +1239,12 @@ impl GenerationScope {
             // and wasm crates nest their generated tree one level (`crate::generated`). Root-scope
             // items and non-exported scopes are still reached relatively.
             crate_prefix: &str,
+            // Wasm pass only: `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>` -> wasm crate name. When a
+            // non-exported (cross-crate extern-dep) import scope's leading component is mapped, the
+            // wasm import is qualified through the dep's wasm crate instead of its rust crate (the
+            // rust type has no wasm-bindgen bindings under the split `<dep>`/`<dep>-wasm` layout).
+            // `None` for the rust pass and for unmapped deps => import path stays verbatim.
+            extern_wasm_crate_map: Option<&BTreeMap<String, String>>,
         ) {
             // might not exist if we don't use stuff from other scopes
             if let Some(scope_imports) = imports.get(scope) {
@@ -1246,7 +1252,23 @@ impl GenerationScope {
                     let import_scope = if *import_scope == *ROOT_SCOPE {
                         Cow::from(crate_prefix.to_owned())
                     } else if *scope == *ROOT_SCOPE || !import_scope.export() {
-                        Cow::from(import_scope.to_string())
+                        // Cross-crate extern-dep scopes are non-exported: their leading component is
+                        // the dependency crate name. In the wasm pass, remap that component to the
+                        // dep's wasm crate when a mapping is present.
+                        let components = import_scope.components();
+                        match (extern_wasm_crate_map, components.split_first()) {
+                            (Some(map), Some((first, rest)))
+                                if !import_scope.export() && map.contains_key(first) =>
+                            {
+                                let wasm_crate = &map[first];
+                                if rest.is_empty() {
+                                    Cow::from(wasm_crate.clone())
+                                } else {
+                                    Cow::from(format!("{}::{}", wasm_crate, rest.join("::")))
+                                }
+                            }
+                            _ => Cow::from(import_scope.to_string()),
+                        }
                     } else {
                         Cow::from(format!("{crate_prefix}::{import_scope}"))
                     };
@@ -1277,7 +1299,7 @@ impl GenerationScope {
         // imports for generated structs from other files (struct files)
         let rust_imports = types.scope_references(false);
         for (scope, content) in self.rust_scopes.iter_mut() {
-            add_imports_from_scope_refs(scope, content, &rust_imports, "crate::generated");
+            add_imports_from_scope_refs(scope, content, &rust_imports, "crate::generated", None);
             // TODO: we blindly add these two map imports. Ideally we would only do it when needed
             // but the code to figure that out would be potentially complex.
             // Issue (general - not just here): https://github.com/dcSpark/cddl-codegen/issues/139
@@ -1363,6 +1385,22 @@ impl GenerationScope {
 
         // wasm
         if cli.wasm {
+            let extern_wasm_crate_map = cli.extern_wasm_crate_map();
+            // Validate mapping keys BEFORE emitting: a key that names no extern dependency is almost
+            // certainly a typo, and a silent no-op would leave the generated wasm crate pointing at
+            // the (non-wasm) rust crate and failing to compile with no hint why.
+            if !extern_wasm_crate_map.is_empty() {
+                let extern_dep_names = types.extern_dep_names();
+                for dep in extern_wasm_crate_map.keys() {
+                    if !extern_dep_names.contains(dep) {
+                        panic!(
+                            "--extern-wasm-crate names dependency {dep:?}, which is not an \
+                             extern dependency in this spec. Known extern dependencies: {:?}",
+                            extern_dep_names
+                        );
+                    }
+                }
+            }
             self
             .wasm_lib()
             .raw("#![allow(clippy::len_without_is_empty, clippy::too_many_arguments, clippy::new_without_default)]");
@@ -1391,7 +1429,13 @@ impl GenerationScope {
             for (scope, content) in self.wasm_scopes.iter_mut() {
                 // imports from other struct modules; the wasm generated tree nests one level under
                 // `crate::generated` (same as the rust crate)
-                add_imports_from_scope_refs(scope, content, &wasm_imports, "crate::generated");
+                add_imports_from_scope_refs(
+                    scope,
+                    content,
+                    &wasm_imports,
+                    "crate::generated",
+                    Some(&extern_wasm_crate_map),
+                );
                 // common imports
                 content
                     .push_import("wasm_bindgen::prelude", "wasm_bindgen", None)
@@ -5644,6 +5688,13 @@ pub fn rust_crate_struct_scope_from_wasm(
     let scope = types.scope(ident);
     if *scope == *ROOT_SCOPE {
         cli.lib_name_code()
+    } else if !scope.export() {
+        // A non-exported (cross-crate extern-dep) scope already stores the dependency's crate as its
+        // leading component (the `_CDDL_CODEGEN_EXTERN_DEPS_DIR_` prefix is stripped by
+        // `ModuleScope::from`), so `dep_crate::sub` is the dep's own rust path. Prefixing the
+        // generated crate's own lib name would mint `cddl_lib::dep_crate::sub`, a path that exists in
+        // no crate. The rust type lives in the dep's rust crate regardless of the wasm-crate mapping.
+        scope.to_string()
     } else {
         format!("{}::{}", cli.lib_name_code(), scope)
     }

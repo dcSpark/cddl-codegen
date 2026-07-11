@@ -1602,6 +1602,18 @@ impl<'a> IntermediateTypes<'a> {
         self.scopes.get(ident).unwrap_or(&self.root_scope)
     }
 
+    /// The set of cross-crate extern-dependency crate names in use — the leading component of every
+    /// non-exported (`_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>`) scope. Used to validate
+    /// `--extern-wasm-crate` mappings so a misspelled dep name errors loudly instead of silently
+    /// no-op'ing.
+    pub fn extern_dep_names(&self) -> BTreeSet<String> {
+        self.scopes
+            .values()
+            .filter(|scope| !scope.export())
+            .filter_map(|scope| scope.components().first().cloned())
+            .collect()
+    }
+
     /// Record the original CDDL source name for a top-level rule's `RustIdent`. Called once per
     /// parsed rule (`api::with_types`), before camel-casing has erased the source spelling.
     pub fn mark_source_rule_name(&mut self, ident: RustIdent, source_name: String) {

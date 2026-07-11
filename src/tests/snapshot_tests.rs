@@ -157,6 +157,21 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
             ],
         ),
     ),
+    // extern-dep types across the WASM boundary (list element / table value) against a split
+    // rust/wasm dependency, via `--extern-wasm-crate`. Pins the mapped wasm import + the dep's-rust
+    // inner-storage path that the `extern_deps_wasm` integration test then compiles.
+    (
+        "extern_deps_wasm",
+        "tests/extern-deps-wasm/inputs",
+        (
+            "preserve",
+            &[
+                "--preserve-encodings=true",
+                "--common-import-override=extern_dep_crate",
+                "--extern-wasm-crate=extern_dep_crate=extern_dep_crate_wasm",
+            ],
+        ),
+    ),
     ("raw_bytes", "tests/raw-bytes/input.cddl", ("default", &[])),
 ];
 
