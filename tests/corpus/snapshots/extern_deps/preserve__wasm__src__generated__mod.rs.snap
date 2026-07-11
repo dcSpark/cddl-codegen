@@ -12,6 +12,7 @@ expression: content
 )]
 pub mod a;
 pub mod b;
+pub mod collections;
 pub mod qux;
 
 use a::c::foo::Foo;

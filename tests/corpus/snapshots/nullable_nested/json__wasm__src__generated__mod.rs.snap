@@ -10,6 +10,7 @@ expression: content
     clippy::too_many_arguments,
     clippy::new_without_default
 )]
+pub mod collections;
 
 use std::collections::BTreeMap;
 use wasm_bindgen::prelude::{wasm_bindgen, JsError, JsValue};
