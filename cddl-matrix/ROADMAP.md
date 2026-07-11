@@ -574,10 +574,12 @@ composition-space cross-check that complements this matrix's curated per-shape g
   single-file-only with the reason. Known surfaces never generated under directory input today, to
   exercise (a multifile cell/profile) or record as a deliberate posture when next touched:
   `--emit-tests-conformance` (the corpus fixtures are all single-file), the `--wasm-*-macro` modes
-  (their compile gates use single-file inputs), `--common-import-override` (the `extern_deps` pins
-  are single-file), and EXECUTION of the generated json-gen crate (`wasm/json-gen`) against
-  cross-module types (the multifile `json`-profile sweep compiles rust+wasm; the json-gen runner
-  gate is single-file-only).
+  (their compile gates use single-file inputs), and EXECUTION of the generated json-gen crate
+  (`wasm/json-gen`) against cross-module types (the multifile `json`-profile sweep compiles
+  rust+wasm; the json-gen runner gate is single-file-only). NOT on this list:
+  `--common-import-override` and `--extern-wasm-crate` are exercised under directory input by
+  construction — their pins (`integration_tests::extern_deps*`) are directory-input fixtures, and
+  the extern-deps mechanism the latter extends only exists under directory input.
 - **Mint the two remaining unminted wasm-surface classes (or declare them permanent).** Extern /
   raw-bytes ctor args (user-supplied types with no generated conversion) and the `--wasm-*-macro`
   modes (they replace the whole wrapper method surface) fall back to the compile verdict with loud

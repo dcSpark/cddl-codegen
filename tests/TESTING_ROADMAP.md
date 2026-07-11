@@ -288,6 +288,21 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
      `, cbor_event::Len::Indefinite)` pattern (mutation testing cannot see this flavor either: the
      mask needs an unrelated emission to APPEAR, which no mutant simulates). A second proxy-witness
      needle instance is the signal to design a detector for that flavor too, same policy.
+   - **Extern-deps wasm-boundary surface: compile-gated, not behavior/packaging-gated.** The
+     split-dep cell (`integration_tests::extern_deps_wasm`, `--extern-wasm-crate`) proves the
+     generated wasm crate *builds* against a mapped dep wasm crate; three layers above "it builds"
+     stay unprobed: (a) wasm-side behavioral round-trips through the cross-crate wrappers — the
+     fixture ships no `tests_wasm.rs`, so a semantically wrong boundary conversion (`get`/`add`
+     through the dep's `From` impls) compiles green; the existing behavioral floor
+     (`tests/core`/`tests/canonical` `tests_wasm.rs`) never crosses crates. Cheapest close: a
+     `tests_wasm.rs` in `tests/extern-deps-wasm` constructing `ExternCrateFooList`/the table
+     wrapper through the wasm API and round-tripping. (b) `wasm-pack`/bindgen-CLI packaging —
+     `cargo build` cannot see duplicate exported JS class names when the dep wasm crate and the
+     consumer both export a like-named wrapper (the generate-locally policy makes this reachable);
+     no gate runs bindgen-CLI over the extern fixture. (c) json-gen against extern-dep types —
+     `gen_json_schema!` now emits the dep's rust path, but no gate generates or executes
+     `--json-schema-export` with extern deps (needs the dep in the json-gen manifest and a
+     `schemars::JsonSchema` impl on the dep type, both user responsibilities by design).
 
 6. **Extend the decode-conformance corpus along the composition-depth axis.** (Two sibling axes are
    already delivered by the replay gate's default leg, both deriving from each accept vector's bytes
@@ -335,7 +350,10 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
   `CBORReadLen::new(Len)` against a `new(LenSz)` runtime (E0308). The extern-deps surface is now
   probed under both preserve flavors — `integration_tests::extern_deps` (preserve) and
   `integration_tests::extern_deps_non_preserve` (non-preserve, compiled against the preserve-flavored
-  `extern-dep-crate` stand-in) — so that specific cell is pinned without enumerating the rest.
+  `extern-dep-crate` stand-in) — plus the wasm-boundary cell `integration_tests::extern_deps_wasm`
+  (`--extern-wasm-crate` against the split `extern-dep-crate`/`extern-dep-crate-wasm` pair, extern
+  types as list elements and table values) — so those specific cells are pinned without enumerating
+  the rest.
   Every individual flag *value* now appears in some profile or test: the five that previously
   didn't are covered by `flag_value_smoke` (`--annotate-fields=false`,
   `--to-from-bytes-methods=false`, `--binary-wrappers=true`), `wasm_cbor_json_api_macro_compiles`
