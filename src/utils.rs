@@ -29,7 +29,7 @@ pub fn convert_to_snake_case(ident: &str) -> String {
                 // NFT -> nft
                 // IPAddress -> ip_address
                 // shelley_MA -> shelley_ma
-                // some_DNS_name -> some_DNS_name (an existing separator absorbs
+                // some_DNS_name -> some_dns_name (an existing separator absorbs
                 // the inserted one — never emit a double underscore)
                 let needs_sep = |s: &String| !s.is_empty() && !s.ends_with('_');
                 if in_uppercase_run {
@@ -208,11 +208,8 @@ mod tests {
     #[test]
     fn snake_case_never_generates_double_underscore() {
         // uppercase directly after an existing separator must not insert a second one
-        assert_eq!(
-            convert_to_snake_case("some_DNS_name"),
-            "some_DNS_name"
-        );
-        assert_eq!(convert_to_snake_case("hello_MA"), "hello_MA");
+        assert_eq!(convert_to_snake_case("some_DNS_name"), "some_dns_name");
+        assert_eq!(convert_to_snake_case("hello_MA"), "hello_ma");
         assert_eq!(convert_to_snake_case("foo-Bar"), "foo_bar");
         // uppercase-run handling unchanged
         assert_eq!(convert_to_snake_case("NFT"), "nft");
