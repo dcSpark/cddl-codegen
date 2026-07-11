@@ -33,12 +33,36 @@
       "why": "enforcement control: 11 is out of the -10..10 window and MUST reject — guards against a stub/always-accept binary and confirms the range fix ENFORCES rather than accept-alls."
     },
     {
-      "name": "prelude-number-float-rejects",
+      "name": "prelude-number-float-accepts",
       "spec": "x = number",
       "mode": "validate",
       "cborHex": "fa4048f5c3",
+      "expectOk": true,
+      "why": "prelude `number` (= int / float) accepts a float (90f66ff/ac1b98e); every earlier build — including the PREVIOUS pin 765fd81 — rejected it ('expected type number, got Float'), so this probe refuses a stale old-pin rebuild. prelude.number's float arm is floor-minted against this behavior (the old DECODE_FLOOR_ARM_EXEMPT entry is retired)."
+    },
+    {
+      "name": "prelude-number-tstr-rejects",
+      "spec": "x = number",
+      "mode": "validate",
+      "cborHex": "6161",
       "expectOk": false,
-      "why": "prelude `number` still REJECTS a float (open gap #7 at the pinned rev, deliberately pinned OPEN); DECODE_FLOOR_ARM_EXEMPT['prelude.number/7'] (lib.ts) and its stale-guard depend on this gap being open, so an oracle where it is FIXED must not silently mint."
+      "why": "enforcement control: a text string is neither int nor float and MUST reject under `number` — guards against the number fix degrading into accept-all and against an always-accept stub."
+    },
+    {
+      "name": "float-key-accepts",
+      "spec": "m = { float => uint }",
+      "mode": "validate",
+      "cborHex": "a1f93e0001",
+      "expectOk": true,
+      "why": "a float-typed map key matches a FLOAT entry key ({1.5: 1} accepts; fixed at ac1b98e); pre-fix builds (765fd81 included) searched with a null predicate copy-pasted from the null branch and rejected every spec-valid float-keyed instance, so this probe refuses a stale old-pin rebuild."
+    },
+    {
+      "name": "null-key-rejects",
+      "spec": "m = { float => uint }",
+      "mode": "validate",
+      "cborHex": "a1f601",
+      "expectOk": false,
+      "why": "enforcement control: the inverse polarity of the same copy-paste bug — pre-fix builds ACCEPTED the spec-invalid {null: 1} against a float-keyed map, and an always-accept stub passes too; both are refused here."
     },
     {
       "name": "bignint-key-empty-map-accepts",

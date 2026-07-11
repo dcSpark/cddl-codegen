@@ -5582,17 +5582,32 @@ mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "82001904a0"
+hex = "82001906f0"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200190db5"
+hex = "8200381b"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200390156"
+hex = "82003820"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820038d7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200fa0cb617ff"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200fb3c57bbd58f753f50"
 source = "ruby-generate"
 expect = "accept"
 

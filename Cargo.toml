@@ -28,9 +28,13 @@ cbor_event = "2.4.0"
 # bignum VALUES accepted any tag unchecked (fixed together in c2ebf9f), and `?`-marked
 # type-domain map entries rejected the legal empty map while unmatched (alien) map entries
 # were silently accepted — the closed-map check was skipped when no member consumed a key
-# (fixed together in 3d56d8e; also implements JSON type-domain string keys).
+# (fixed together in 3d56d8e; also implements JSON type-domain string keys), every CBOR float
+# was rejected against the prelude `number` keyword (`number = int / float`; fixed in 90f66ff
+# via a NumericKind classifier), and float-typed map keys matched NULL keys instead of floats —
+# a copy-paste predicate at three find-based member-key sites inverted both verdicts
+# (spec-valid `{1.5: 1}` rejected, spec-invalid `{null: 1}` accepted).
 # Move back to a crates.io version once all land in anweiss/cddl + release. See tests/TESTING_ROADMAP.md.
-cddl = { git = "https://github.com/dcSpark/cddl", rev = "765fd81186e188e7296684f926a61ef134972f57" }
+cddl = { git = "https://github.com/dcSpark/cddl", rev = "ac1b98ec07184236517da4511b1bbea239e35190" }
 clap = { version = "4.5", features = ["derive"] }
 # dcSpark fork of codegen based on upstream 0.3.0
 codegen = { git = "https://github.com/dcSpark/codegen", branch = "master" }

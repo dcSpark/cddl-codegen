@@ -116,18 +116,15 @@ The durable gotchas and the upstream-oracle-gap state are CURRENT state and live
 are ledgered here (that's what the probe/gate error messages point at).
 
 **Upstream close-outs (waiting on external releases):**
-- When a rust `cddl` release (or the fork's `local-fixes` branch) ships the prelude-`number` float-
-  validation fix (`is_ident_float_data_type` omits `Token::NUMBER` while `is_ident_integer_data_type`
-  includes it, so a bare float against `number` wrongly fails validation; one-line fix + repro in
-  `draft/rust-cddl-number-float-gap.md`): the decode-conformance arm-coverage floor can then mint a real
-  float `prelude.number` accept vector. FIRST flip the `prelude-number-float-rejects` probe in
-  `cddl-matrix/oracle_fingerprint.json` (it deliberately pins this gap OPEN, and the shared file gates
-  both `verify.ts`'s `RUST_CDDL` binary preflight and `ir_conformance_corpus`'s `CDDL_ORACLE_DEP` crate
-  preflight, so a fixed oracle is refused before either consumer can run stale). Then remove
-  `"prelude.number/7"` from `DECODE_FLOOR_ARM_EXEMPT`
-  (`cddl-matrix/lib.ts`) — or let `project_decode_conformance.ts` § 7's stale-guard force it after
-  `verify.ts --mint-decode-foreign --only=prelude.number` — then prune the README gap entry and that
-  draft.
+- When a release ships the `90f66ff` prelude-`number` float fix (README gap #7): prune the
+  fix-provenance notes (README gap #7, the `prelude-number-float-accepts` /
+  `prelude-number-tstr-rejects` fingerprint probes' provenance wording). Separately citable while
+  in the neighborhood: bare floats against `time` (`#6.1(number)`) validate WITHOUT the tag-1
+  wrapper (tag-leniency laxity, pre-existing and unchanged by the fix) — a candidate upstream
+  report, not yet filed.
+- When a release ships the `707c038` float-key/null member-key fix (README gap #10): prune the
+  fix-provenance notes (README gap #10, the `float-key-accepts` / `null-key-rejects` fingerprint
+  probes' provenance wording).
 - When a rust `cddl` release ships the uint-target control-op fix (upstream PR submitted): prune
   README gap #1 and `draft/rust-cddl-uint-control-op-gap.md`.
 - When a release ships the `773b723` array-sequence fix and the `Cargo.toml` pin moves back to
@@ -168,7 +165,7 @@ are ledgered here (that's what the probe/gate error messages point at).
   `RUST_ORACLE_SKIP` past-resident note, the two `bignint-*` fingerprint probes' provenance
   wording).
 - When a rust `cddl` fix ships TAG-typed map-key validation (README gap #8 — OPEN at the pinned
-  `765fd81` rev; differential repro, suspected `src/validator/cbor.rs` site, and prune steps in
+  `ac1b98e` rev; differential repro, suspected `src/validator/cbor.rs` site, and prune steps in
   `draft/rust-cddl-tag-map-key-gap.md`, local note; no upstream issue filed yet): re-mint the row
   it blocks (`--mint-decode-foreign --only=contain.map-key.type2.tag` — its `pinned_reason`
   disappears once candidates survive the two-oracle gate), re-run the full `verify.ts` in the same
@@ -177,8 +174,9 @@ are ledgered here (that's what the probe/gate error messages point at).
 - When a release ships the `3d56d8e` optional-entry/closed-map/JSON-type-domain-key fix (upstream
   PR pending — fix + regression tests + 21/12-cell differential grid on the fork; README gap #9):
   prune the fix-provenance notes (README gap #9 and the two `optional-entry`/`closed-map`
-  fingerprint probes' provenance wording). The fork checkout's `future-issues/` files four
-  adjacent map-matching gaps found during that fix — bundle them into the upstream conversation
+  fingerprint probes' provenance wording). The fork checkout's `future-issues/` files three
+  still-open adjacent map-matching gaps found during that fix (a fourth, the float-key/null
+  copy-paste, is since fork-fixed — README gap #10) — bundle them into the upstream conversation
   when convenient.
 - The `cbor_event` close-outs (f16 mis-decode, length-prefix over-allocation) are entries in the
   list below — each names its prune/re-mint steps.

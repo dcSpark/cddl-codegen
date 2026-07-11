@@ -54,10 +54,10 @@
  *      EXACTLY a bare prelude choice-type name. Two decay pins guard it: EXPECTED_FLOOR_SCOPE pins the
  *      EXACT (row id -> sorted arm classes) set the resolver fires on (a silent widen/narrow fails
  *      got/want), and DECODE_FLOOR_ARM_EXEMPT (lib.ts, stale-guarded) ledgers a genuinely unmintable arm
- *      class (an oracle gap) with a citation. At HEAD it holds ONE entry — `prelude.number`'s float arm,
- *      blocked by a rust-`cddl` reference bug that mis-validates a float against the prelude `number`
- *      alias (draft/rust-cddl-number-float-gap.md), so the two-oracle mint gate can't admit a spec-valid
- *      float `number` vector; the stale-guard prunes the entry (forcing a re-mint) once rust is fixed.
+ *      class (an oracle gap) with a citation. At HEAD it is EMPTY — its one past resident
+ *      (`prelude.number`'s float arm, unmintable while the rust reference rejected floats against the
+ *      prelude `number` keyword) was re-minted once the fork fix landed; the stale-guard is what prunes
+ *      an entry (forcing a re-mint) whenever a ledgered gap closes.
  *   8. Catalog writer↔reader identity — compose(parse(catalog.toml)) must be byte-identical to the
  *      committed file. `composeCatalog` (lib.ts) is the SOLE serializer of the hand-authored vector
  *      fields (class/reason/expect_err); a field the writer forgets to emit is stripped SILENTLY at the
