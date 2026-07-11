@@ -1,6 +1,8 @@
 // Shared matrix-loading + serialization for build_matrix.ts / verify.ts.
 // Paths resolve relative to this file's dir (cddl-matrix/).
-import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { basename, join, relative, resolve, sep } from "node:path";
 
 export const ROOT = import.meta.dir;
 
@@ -105,6 +107,115 @@ export function stableJson(obj: unknown): string {
       ? Object.fromEntries(Object.keys(v).sort().map(k => [k, (v as Record<string, unknown>)[k]]))
       : v;
   return JSON.stringify(obj, sortKeys, 2) + "\n";
+}
+
+export const GATE_CACHE_SCHEMA = "gate-cache-v1";
+
+export interface GateCacheKeyComponents {
+  gate: string;
+  argv: string[];
+  tree: string;
+  rustflags?: string;
+}
+
+export interface GateCacheEntry {
+  schema: typeof GATE_CACHE_SCHEMA;
+  gate: string;
+  cell: string;
+  argv: string[];
+  rustc: string;
+  tree: string;
+  created: string;
+}
+
+let cachedRustcVersionVerbose: string | null = null;
+
+export function gateCacheEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return !["0", "false"].includes((env.GATE_CACHE ?? "").toLowerCase());
+}
+
+export function gateCacheDir(repoRoot = resolve(ROOT, ".."), env: NodeJS.ProcessEnv = process.env): string {
+  return env.GATE_CACHE_DIR ? resolve(env.GATE_CACHE_DIR) : join(repoRoot, ".gate-cache");
+}
+
+function rustcVersionVerbose(): string {
+  if (cachedRustcVersionVerbose !== null) return cachedRustcVersionVerbose;
+  const r = Bun.spawnSync(["rustc", "-vV"], { stdout: "pipe", stderr: "pipe" });
+  const out = (r.stdout?.toString() ?? "") + (r.stderr?.toString() ?? "");
+  cachedRustcVersionVerbose = out;
+  return cachedRustcVersionVerbose;
+}
+
+function hashUpdateString(h: ReturnType<typeof createHash>, s: string): void {
+  h.update(Buffer.from(s, "utf8"));
+}
+
+export function hashTree(root: string): string {
+  const base = resolve(root);
+  const files: string[] = [];
+  const walk = (dir: string) => {
+    for (const ent of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, ent.name);
+      if (ent.isDirectory()) {
+        if (ent.name !== "target") walk(p);
+        continue;
+      }
+      const st = statSync(p);
+      if (st.isFile()) files.push(relative(base, p).split(sep).join("/"));
+    }
+  };
+  walk(base);
+  files.sort();
+
+  const h = createHash("sha256");
+  for (const rel of files) {
+    const bytes = readFileSync(join(base, ...rel.split("/")));
+    hashUpdateString(h, rel);
+    h.update(Buffer.from([0]));
+    hashUpdateString(h, String(bytes.length));
+    h.update(Buffer.from([0]));
+    h.update(bytes);
+    h.update(Buffer.from([0]));
+  }
+  return h.digest("hex");
+}
+
+export function gateCacheKey(components: GateCacheKeyComponents): { key: string; rustc: string; rustflags: string } {
+  const rustc = rustcVersionVerbose();
+  const rustflags = components.rustflags ?? process.env.RUSTFLAGS ?? "";
+  const material = stableJson({
+    schema: GATE_CACHE_SCHEMA,
+    gate: components.gate,
+    argv: components.argv,
+    rustc,
+    rustflags,
+    tree: components.tree,
+  });
+  return { key: createHash("sha256").update(material).digest("hex"), rustc, rustflags };
+}
+
+export function readGateCacheEntry(key: string, repoRoot?: string, env: NodeJS.ProcessEnv = process.env): GateCacheEntry | null {
+  if (!gateCacheEnabled(env)) return null;
+  try {
+    const raw = readFileSync(join(gateCacheDir(repoRoot, env), `${key}.json`), "utf8");
+    const entry = JSON.parse(raw) as Partial<GateCacheEntry>;
+    if (entry.schema !== GATE_CACHE_SCHEMA || typeof entry.gate !== "string" || typeof entry.cell !== "string" ||
+        !Array.isArray(entry.argv) || typeof entry.rustc !== "string" || typeof entry.tree !== "string" ||
+        typeof entry.created !== "string")
+      return null;
+    return entry as GateCacheEntry;
+  } catch {
+    return null;
+  }
+}
+
+export function writeGateCacheEntry(key: string, entry: GateCacheEntry, repoRoot?: string, env: NodeJS.ProcessEnv = process.env): void {
+  if (!gateCacheEnabled(env)) return;
+  const dir = gateCacheDir(repoRoot, env);
+  mkdirSync(dir, { recursive: true });
+  const tmp = join(dir, `.${basename(key)}.${process.pid}.${Date.now()}.tmp`);
+  writeFileSync(tmp, stableJson(entry));
+  renameSync(tmp, join(dir, `${key}.json`));
 }
 
 export function stripComment(s: string): string {
