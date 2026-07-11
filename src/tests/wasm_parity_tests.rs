@@ -237,12 +237,13 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
 ];
 
 /// Only these `.rs` basenames may appear under `rust/src/generated/` (default/json profiles); only
-/// `mod.rs` under `wasm/src/generated/`. A file outside these sets means a new emission surface the
+/// these under `wasm/src/generated/`. A file outside these sets means a new emission surface the
 /// differential doesn't parse — fail with "extend wasm_api_parity" rather than silently skip it.
 /// `serialization.rs`/`error.rs` are deliberately out of scope (runtime plumbing, not per-type
-/// boundary API).
+/// boundary API); `collections.rs` is the wasm wrapper re-export index — a `pub use` inventory of
+/// classes defined in `mod.rs`, so it introduces no new boundary API for the differential to parse.
 const ALLOWED_RUST_GENERATED: &[&str] = &["mod.rs", "serialization.rs", "error.rs"];
-const ALLOWED_WASM_GENERATED: &[&str] = &["mod.rs"];
+const ALLOWED_WASM_GENERATED: &[&str] = &["mod.rs", "collections.rs"];
 
 /// The rust crate's public API surface, parsed from `rust/src/generated/mod.rs`.
 #[derive(Default)]

@@ -2575,6 +2575,118 @@ fn no_synthesized_rust_collection_aliases_suppresses_only_synthesized() {
     );
 }
 
+/// The `wasm/src/generated/collections.rs` re-export index (R3a): every wasm run emits exactly one
+/// `pub use crate::…::<Wrapper>;` per collection wrapper CLASS the crate minted, sorted, no glob, no
+/// cfg — a self-validating inventory (compiled as part of the crate, so a line naming a removed
+/// wrapper fails the crate's own build). This pins the three placement shapes that a single-file
+/// fixture cannot all produce, using a MULTIFILE (directory) input:
+/// (a) a ROOT-scope structural list wrapper (`InnerList`, from an anonymous `[* inner]` field over a
+///     non-exposable element) → `crate::generated::InnerList`;
+/// (b) a sole-owner rule-NAMED table class at root (`RootTbl`) → `crate::generated::RootTbl`;
+/// (c) a sole-owner rule-named table class in a NON-ROOT exported module (`SubTbl` in `sub/`) →
+///     `crate::generated::sub::SubTbl`, verifying the multi-segment path derivation.
+/// The `sub` table uses exposable (`uint`) keys deliberately: a non-exposable key would need a
+/// cross-module keys-list wrapper import that is a SEPARATE known gap, out of scope for this index
+/// test. The acceptance property (feature-request criterion 4) is that the wasm crate COMPILES with
+/// the index in place; we assert that here alongside the exact line set. Tier: check.ts `local`.
+#[test]
+fn wasm_collections_index_lists_every_minted_wrapper() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_collections_index_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    let inputs = scratch.join("inputs");
+    std::fs::create_dir_all(inputs.join("sub")).unwrap();
+    // Root scope: `inner` is an array struct (not directly-wasm-exposable), so the anonymous
+    // `[* inner]` field mints the structural `InnerList` at root, and `root_tbl` is the sole owner
+    // of the `{ inner => text }` shape (a real JS class `RootTbl` at root). `holder` also references
+    // `sub_tbl` so the non-root class is reachable.
+    std::fs::write(
+        inputs.join("lib.cddl"),
+        "inner = [uint]\n\
+         holder = [\n\
+         \x20   items: [* inner],\n\
+         \x20   r: root_tbl,\n\
+         \x20   s: sub_tbl,\n\
+         ]\n\
+         root_tbl = { * inner => text }\n",
+    )
+    .unwrap();
+    // Non-root module `sub`: `sub_tbl` is the sole owner of the `{ uint => text }` shape, so its JS
+    // class `SubTbl` is emitted into `crate::generated::sub`.
+    std::fs::write(
+        inputs.join("sub/mod.cddl"),
+        "sub_tbl = { * uint => text }\n",
+    )
+    .unwrap();
+
+    let out = scratch.join("out");
+    let gen_out = tool_cmd("cargo")
+        .args(["run", "--"])
+        .arg(format!("--input={}", inputs.to_str().unwrap()))
+        .arg(format!("--output={}", out.to_str().unwrap()))
+        .arg("--wasm=true")
+        .output()
+        .unwrap();
+    assert!(
+        gen_out.status.success(),
+        "generation failed:\n{}",
+        String::from_utf8_lossy(&gen_out.stderr)
+    );
+
+    // The index is declared from the always-regenerated generated root, never the seed-once lib.rs.
+    let wasm_mod = std::fs::read_to_string(out.join("wasm/src/generated/mod.rs")).unwrap();
+    assert!(
+        wasm_mod.contains("pub mod collections;"),
+        "generated wasm root mod.rs must declare `pub mod collections;`:\n{wasm_mod}"
+    );
+    let wasm_root = std::fs::read_to_string(out.join("wasm/src/lib.rs")).unwrap();
+    assert!(
+        !wasm_root.contains("collections"),
+        "the seed-once crate-root lib.rs must NOT declare the collections module:\n{wasm_root}"
+    );
+
+    // Exactly the three expected `pub use` lines (order is rustfmt-canonical, hence deterministic;
+    // compare as a set so the assertion pins CONTENT + COUNT, not rustfmt's ordering choice).
+    let collections =
+        std::fs::read_to_string(out.join("wasm/src/generated/collections.rs")).unwrap();
+    let pub_uses: std::collections::BTreeSet<&str> = collections
+        .lines()
+        .map(str::trim)
+        .filter(|l| l.starts_with("pub use "))
+        .collect();
+    let expected: std::collections::BTreeSet<&str> = [
+        "pub use crate::generated::InnerList;",
+        "pub use crate::generated::RootTbl;",
+        "pub use crate::generated::sub::SubTbl;",
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(
+        pub_uses, expected,
+        "collections.rs must list exactly the three minted wrappers:\n{collections}"
+    );
+
+    // Acceptance property: the wasm crate (index included) compiles. `cargo check` on the wasm
+    // manifest also builds its path-dep rust crate, so a bad index path is a hard failure here.
+    let target_dir = scratch.join("target");
+    let check = tool_cmd("cargo")
+        .arg("check")
+        .current_dir(out.join("wasm"))
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .output()
+        .unwrap();
+    assert!(
+        check.status.success(),
+        "generated wasm crate failed to compile with the collections index:\n{}",
+        String::from_utf8_lossy(&check.stderr)
+    );
+}
+
 /// Clippy over generated crates: the emitted deserialize/serialize source must be `clippy::all`-clean
 /// (no `clippy::no_effect` degenerate `();` statements, no other default clippy lints), per emission
 /// profile. Snapshots pin that the emitted bytes don't *change*, not that they're *idiomatic* — a

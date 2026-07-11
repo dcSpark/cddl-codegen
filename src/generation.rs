@@ -580,6 +580,14 @@ pub struct GenerationScope {
     cbor_encodings_scopes: BTreeMap<ModuleScope, codegen::Scope>,
     json_lines: BlocksOrLines,
     already_generated: BTreeSet<RustIdent>,
+    /// Every collection-wrapper CLASS the wasm crate actually minted this run, mapped to the
+    /// `ModuleScope` it was emitted into. Recorded at the point of actual emission (inside each of
+    /// the four wrapper emitters' `already_generated` success paths), so it equals EXACTLY the set
+    /// of wrapper classes the crate owns — no more, no less. Materialized into
+    /// `wasm/src/generated/collections.rs` (a `pub use` re-export index) by `generated_files`. A
+    /// `BTreeMap` keeps the index deterministic (sorted by class name). Only populated under
+    /// `--wasm`; unused otherwise.
+    wasm_collection_wrappers: BTreeMap<RustIdent, ModuleScope>,
     no_deser_reasons: BTreeMap<RustIdent, Vec<String>>,
     /// Type-parameter names for the emitted `serialize` / `deserialize` fns. Normally `"W"` / `"R"`,
     /// but if a rule camel-cases to a type named `W`/`R` (which would shadow the generic and break
@@ -607,6 +615,7 @@ impl GenerationScope {
             cbor_encodings_scopes: BTreeMap::new(),
             json_lines: BlocksOrLines::default(),
             already_generated: BTreeSet::new(),
+            wasm_collection_wrappers: BTreeMap::new(),
             no_deser_reasons: BTreeMap::new(),
             serialize_generic: "W".to_string(),
             deserialize_generic: "R".to_string(),
@@ -1427,6 +1436,11 @@ impl GenerationScope {
             {
                 self.wasm_lib().raw(format!("pub mod {scope};"));
             }
+            // The collection-wrapper index module (materialized as `generated/collections.rs` in
+            // `generated_files`). Declared unconditionally for every wasm run — even one that mints
+            // zero wrappers — from the always-regenerated generated root, never the seed-once
+            // crate-root lib.rs.
+            self.wasm_lib().raw("pub mod collections;");
             // wasm imports
             let wasm_imports = types.scope_references(true);
             for (scope, content) in self.wasm_scopes.iter_mut() {
@@ -2034,6 +2048,48 @@ impl GenerationScope {
                 "wasm/src/lib.rs".to_owned(),
                 rustfmt_generated_string(SEEDED_CRATE_ROOT)?.into_owned(),
             );
+
+            // Collection-wrapper index: one `pub use crate::…::<Wrapper>;` per collection wrapper
+            // CLASS this crate minted this run (recorded at each emitter's actual-mint point in
+            // `wasm_collection_wrappers`). Because these are `pub use` lines compiled as part of
+            // THIS crate, the index cannot drift: a line naming a removed wrapper fails this crate's
+            // own build. A downstream crate points `--extern-wrapper-index <dep>=<this file>` at it
+            // to skip re-minting the same wrappers (a wasm duplicate-symbol link error otherwise).
+            // Emitted even when zero wrappers were minted (header comment only). The paths mirror
+            // exactly how `merge_scopes_to_strings` lays the wasm generated tree out: ROOT_SCOPE
+            // wrappers live in `generated/mod.rs` (`crate::generated::<Name>`); an exported
+            // sub-scope's wrappers live in `generated/<scope>/mod.rs`
+            // (`crate::generated::<scope>::<Name>`).
+            let mut collections = String::from(
+                "// Collection-wrapper index for this crate: one `pub use` re-export per collection\n\
+                 // wrapper class defined here (list/map wrappers minted from `[* T]` / `{* K => V}`\n\
+                 // shapes, including their NonEmpty variants). Compiled as part of this crate, so a\n\
+                 // line naming a removed wrapper fails this crate's own build — the index cannot\n\
+                 // drift. Downstream crates point `--extern-wrapper-index <dep>=<this file>` here to\n\
+                 // avoid re-minting these wrappers (a wasm duplicate-symbol link error otherwise).\n",
+            );
+            for (ident, scope) in &self.wasm_collection_wrappers {
+                let path = if *scope == *ROOT_SCOPE {
+                    format!("crate::generated::{ident}")
+                } else if scope.export() {
+                    format!(
+                        "crate::generated::{}::{ident}",
+                        scope.components().join("::")
+                    )
+                } else {
+                    // Non-exported (extern-dep) scopes are never written to a file by
+                    // `merge_scopes_to_strings`, so a wrapper there is not part of THIS crate's
+                    // output and must not appear in its index. Defensive — post-W1 no wrapper the
+                    // crate mints lands in a non-exported scope.
+                    continue;
+                };
+                collections.push_str(&format!("pub use {path};\n"));
+            }
+            out.insert(
+                "wasm/src/generated/collections.rs".to_owned(),
+                rustfmt_generated_string(&collections)?.into_owned(),
+            );
+
             out.insert(
                 "wasm/Cargo.toml".to_owned(),
                 crate::cargo_manifest::apply(
@@ -2153,6 +2209,17 @@ impl GenerationScope {
     /// e.g. implicit types like arrays/tables (for WASM)
     pub fn wasm_lib(&mut self) -> &mut codegen::Scope {
         &mut self.wasm_lib_scope
+    }
+
+    /// Record that a collection-wrapper class `ident` was just emitted, for the
+    /// `wasm/src/generated/collections.rs` re-export index. Called from each of the four wrapper
+    /// emitters right after their shared `already_generated` guard admits the mint, so the index
+    /// captures every wrapper class exactly once and never a suppressed one. The recorded
+    /// `ModuleScope` is `types.scope(ident)` — the SAME scope `wasm(types, ident)` places the class
+    /// in — so the index path derives from the class's real emission location.
+    fn record_collection_wrapper(&mut self, types: &IntermediateTypes, ident: &RustIdent) {
+        let scope = types.scope(ident).clone();
+        self.wasm_collection_wrappers.insert(ident.clone(), scope);
     }
 
     /// CBOR encoding scope for `ident` (i.e. *Encoding structs)
@@ -4563,6 +4630,10 @@ impl GenerationScope {
         cli: &Cli,
     ) {
         if self.already_generated.insert(array_type_ident.clone()) {
+            // Record for the collections.rs index BEFORE the `--wasm-list-macro` early return: the
+            // macro still DEFINES the wrapper class, so it belongs in the index exactly like the
+            // inline struct below.
+            self.record_collection_wrapper(types, array_type_ident);
             // --wasm-list-macro: emit a single macro invocation in place of the inline struct +
             // accessor block + conversion impls. The macro also emits the conversions, so we skip
             // building the WasmWrapper entirely (returning early) to avoid double-defining them.
@@ -4648,6 +4719,7 @@ impl GenerationScope {
         if !self.already_generated.insert(wrapper_ident.clone()) {
             return;
         }
+        self.record_collection_wrapper(types, wrapper_ident);
         let elem_rust = element_type.for_rust_member(types, true, cli);
         let inner_type = format!("NonEmptyVec<{elem_rust}>");
         // the element's structural loose-builder name; when it coincides with THIS wrapper's ident
@@ -4787,6 +4859,7 @@ impl GenerationScope {
         if !self.already_generated.insert(wrapper_ident.clone()) {
             return;
         }
+        self.record_collection_wrapper(types, wrapper_ident);
         let inner_map =
             ConceptualRustType::name_for_rust_map(types, &key_type, &value_type, true, cli);
         let inner_type = format!("NonEmptyMap<{}>", {
@@ -6515,6 +6588,7 @@ fn codegen_table_type(
     if !gen_scope.already_generated.insert(name.clone()) {
         return;
     }
+    gen_scope.record_collection_wrapper(types, name);
     // No `tag` parameter: this emits ONLY the wasm wrapper class (accessors + delegation). When the
     // shape has a CBOR tag (`#6.n({ ... })`), the tag is owned entirely by the rust crate's type,
     // which this wrapper's single tuple field holds (via `rust_crate_struct_from_wasm` when

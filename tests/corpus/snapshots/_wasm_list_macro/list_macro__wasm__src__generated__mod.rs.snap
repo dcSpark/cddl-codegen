@@ -10,6 +10,7 @@ expression: lib
     clippy::too_many_arguments,
     clippy::new_without_default
 )]
+pub mod collections;
 
 pub use cddl_lib::Color;
 use my_crate::impl_wasm_list;

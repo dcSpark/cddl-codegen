@@ -10,6 +10,7 @@ expression: content
     clippy::too_many_arguments,
     clippy::new_without_default
 )]
+pub mod collections;
 
 use cddl_lib::non_empty::NonEmptyVec;
 use cddl_lib::non_empty_map::NonEmptyMap;
