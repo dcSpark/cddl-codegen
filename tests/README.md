@@ -95,8 +95,8 @@ with [`insta`]. No subprocess, no compilation, no `target/` bloat. Three sub-sui
   into a profile-limited input's `.cddl` rather than the corpus: `tagged_type_choice` (tag over a
   whole type choice) lives in `core` because tagging a type-choice enum is unimplemented under
   preserve-encodings. And it's the home for inputs whose output *can't compile
-  standalone* (`extern_deps`/`raw_bytes` reference user-supplied types; their behavioral coverage is
-  their integration fixtures) — this suite never compiles, so neither constraint bites here, which
+  standalone* (`extern_deps`/`extern_deps_wasm`/`raw_bytes` reference user-supplied types; their
+  behavioral coverage is their integration fixtures) — this suite never compiles, so neither constraint bites here, which
   is why such inputs are pinned here rather than via corpus skip-lists that would weaken the corpus
   invariant that every fixture is fully gated.
 - **`cargo_toml_matrix`** — a small curated `input × profile` matrix that snapshots every distinct
