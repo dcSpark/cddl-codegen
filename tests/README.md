@@ -58,6 +58,46 @@ a new manual gate or IOU stub is a conscious registry edit, not a silent omissio
 Wall times above are warm-cache, measured on the dev machine; a cold build adds the one-time
 dependency + test-binary compile.
 
+### The gate cache (memoize-and-skip for nested cargo)
+
+The heavy gates spend nearly all their wall time cargo-compiling/testing GENERATED crates whose
+bytes did not change since the last green run, so those nested cargo invocations are memoized:
+generation always re-runs (cheap, and it is what computes the impact of a change — never a
+change→test map, which rots silently), then each nested cargo step hashes everything it consumes
+and skips on a key that matched a previously-passing run. The key is sha256 over the whole
+generated output tree (all crates — path deps are inputs — hashed AFTER `cargo generate-lockfile`,
+so dependency resolution is pinned into the tree and the skipped build would have used the same
+resolution by construction), the full `rustc -vV`, `RUSTFLAGS` as the nested invocation sees it,
+the exact command sequence, and a schema version. Soundness rests on the same enforced determinism
+invariant the rest of the repo leans on (byte-identical regeneration; `generated_code_clippy_clean`
+already relies on the identical-bytes→identical-verdict form of it): an unchanged key means
+re-running would provably reproduce the recorded verdict.
+
+Mechanics: entries live in the gitignored `.gate-cache/` at the repo root (one
+`<key>.json` per green verdict — existence is the verdict, the body is for debugging which
+component moved); only PASSES are cached (a failing or expected-red cell re-runs every time);
+corrupt entries read as misses and self-heal on the next green run; `GATE_CACHE=0` disables
+read+write entirely and `GATE_CACHE_DIR` relocates the dir (unit tests use it). Skips are never
+silent: each covered gate prints a `[gate-cache] <cell>: cached PASS (key …)` line per hit and a
+`N run, M cached` summary. CI is unaffected (the fast tier reaches no cached site, and CI starts
+from a clean checkout with no cache dir). There is deliberately NO time-based invalidation of any
+kind: the industry "nightly cold run" guardrail compensates for unchecked input closures, and this
+repo's stance is mechanical per-run enforcement instead — the closure is reviewed at each call
+site, mutation-verified red-first at landing (comment-only fixture edit still hits; a rule rename
+misses exactly its cells; a corrupted entry re-runs), and `GATE_CACHE=0` exists for suspicion.
+
+Covered sites: `verify.ts`'s per-example rust/wasm probe tests, failure-classifying checks, and
+decode-foreign replays (its warm-ups turn lazy — first miss only — behind an always-run
+generation-only self-test, so a generator that doesn't build still aborts the run before any
+verdict is written); and, via `src/tests/gate_cache.rs`, one cached unit per cell in
+`feature_corpus_compiles`, `wasm_matrix_compiles`, `multifile_matrix_compiles`,
+`wasm_matrix_roundtrips`, `multifile_matrix_roundtrips`, and the recombination layer-2 batches.
+`decode_conformance_replay` is deliberately NOT cached: its success path parses libtest stdout
+into per-vector verdicts and completeness counts, so exit status alone is not the consumed result
+(the cached-unit rule: a site qualifies only when the harness consumes nothing but exit codes
+from a fixed command sequence). `run_test`-based fixture suites are also uncached in v1 — they
+reuse export dirs and already replay warm-incrementally through cargo.
+
 | Layer | File | Question it answers | Speed |
 |-------|------|---------------------|-------|
 | **Golden snapshots** | `src/tests/snapshot_tests.rs` | "Did the *generated source* change?" | fast (~5s, in-process) |
