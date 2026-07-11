@@ -113,6 +113,14 @@ pub struct Cli {
     #[clap(long, value_parser)]
     pub wasm_conversions_macro: Option<String>,
 
+    /// Disable carrying user-added comments across regeneration. By default, when a generated
+    /// `src/generated/**` file already exists on disk, own-line comments a user added to it are
+    /// re-anchored onto the freshly generated output by symbol identity; a comment that cannot be
+    /// safely re-placed becomes a `compile_error!` block (loud, never a silent drop). Pass this flag
+    /// to skip that overlay entirely and clobber the file with pristine output.
+    #[clap(long = "no-preserve-comments", action = clap::ArgAction::SetFalse, default_value_t = true)]
+    pub preserve_comments: bool,
+
     /// An external macro to be called instead of manually emitting the struct +
     /// accessor block (new/len/get/add) + conversion traits for each generated
     /// WASM list wrapper. Lists only - map wrappers are unaffected.

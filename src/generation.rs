@@ -41,6 +41,16 @@ pub(crate) fn is_header_stamped_path(path: &str) -> bool {
         && (path.starts_with("rust/src/generated/") || path.starts_with("wasm/src/generated/"))
 }
 
+/// True for a `.rs` file under one of the tool-owned generated trees (rust, wasm, json-gen). These
+/// are the files the comment-preservation overlay may run on; the seed-once crate roots, `main.rs`,
+/// and every `Cargo.toml` live outside these trees and are deliberately untouched.
+pub(crate) fn is_preservable_generated_path(path: &str) -> bool {
+    path.ends_with(".rs")
+        && (path.starts_with("rust/src/generated/")
+            || path.starts_with("wasm/src/generated/")
+            || path.starts_with("wasm/json-gen/src/generated/"))
+}
+
 /// Prepend the codegen header onto a (already rustfmt'd) generated file's content. The header is
 /// pure `//` comments, so it leads the file verbatim regardless of whether the body opens with an
 /// inner `#![…]` attribute (both orderings are valid Rust; a comment may precede an inner attr).
@@ -1540,9 +1550,11 @@ impl GenerationScope {
         }
 
         // Manifests merge into whatever is already on disk (the declarative changeset) rather than
-        // clobbering, so user edits to keys the tool doesn't own survive regeneration. This is the
-        // ONLY place output depends on prior directory contents, and only as the changeset contract
-        // allows: keys no op mentions pass through, `SeedOnce` checks existence. An unparseable
+        // clobbering, so user edits to keys the tool doesn't own survive regeneration. This is one of
+        // the bounded exceptions where output depends on prior directory contents (the others: the
+        // seed-once crate roots below, and the comment-preservation overlay in the write loop), and
+        // only as the changeset contract allows: keys no op mentions pass through, `SeedOnce` checks
+        // existence. An unparseable
         // existing manifest is a hard error naming the file (see `cargo_manifest::apply`) — never a
         // silent clobber. `generated_files` above produced these same manifests against an empty
         // document; here we re-derive them against the on-disk file before the common write loop.
@@ -1603,6 +1615,32 @@ impl GenerationScope {
             }
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent)?;
+            }
+            // Comment-preservation overlay: for a generated `.rs` that already exists on disk, carry
+            // the user's own-line comments from the prior output onto the fresh content (unplaceable
+            // ones become tagged `compile_error!` blocks — loud, never a silent drop). This is the
+            // third bounded exception to the no-prior-output invariant: prior output contributes ONLY
+            // comment bytes and `cddl-codegen:unpreserved-comment` blocks, never a generated code
+            // token, and run-twice-equals-run-once still holds (see `comment_preserve`). Files that
+            // received an insertion get one extra rustfmt pass to normalize the raw insertion.
+            if cli.preserve_comments && is_preservable_generated_path(rel_path) && path.exists() {
+                // An unreadable existing file (e.g. not UTF-8) is a hard error, not a silent
+                // clobber — the same policy as an unlexable one (see `comment_preserve`).
+                let existing = std::fs::read_to_string(&path).map_err(|e| {
+                    std::io::Error::other(format!(
+                        "{rel_path}: cannot read the existing generated file for comment \
+                         preservation: {e}. Fix or delete the file, or pass \
+                         --no-preserve-comments."
+                    ))
+                })?;
+                let preserved = crate::comment_preserve::preserve(&existing, content)
+                    .map_err(|e| std::io::Error::other(format!("{rel_path}: {e}")))?;
+                if preserved.changed {
+                    std::fs::write(path, rustfmt_generated_string(&preserved.content)?.as_ref())?;
+                } else {
+                    std::fs::write(path, content)?;
+                }
+                continue;
             }
             std::fs::write(path, content)?;
         }

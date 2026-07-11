@@ -958,6 +958,13 @@ fn run_test(
         "--output={}",
         test_path.join(&export_path).to_str().unwrap()
     ));
+    // These reused export dirs accumulate hand-written scaffolding (custom-serialization helpers, the
+    // appended `tests.rs`/`deser_test` modules — code the tool never emits, carrying its own comments)
+    // in `generated/mod.rs` after each export. The harness's model is pristine clobber-then-append, so
+    // regenerate with comment preservation OFF: default-on would (correctly) read those hand-written
+    // comments as edits on now-vanished items and trap them in `compile_error!` blocks. The
+    // preservation contract itself is covered by `comment_preservation_disk_round_trip`.
+    cargo_run.arg("--no-preserve-comments");
     if input_is_dir {
         cargo_run.arg(format!(
             "--input={}",
@@ -4171,6 +4178,10 @@ fn emit_wasm_tests_execute() {
         ))
         .arg("--wasm=true")
         .arg("--emit-tests=true")
+        // Pristine clobber-then-append model (same as `run_test`): the externs/custom serializers
+        // appended below carry their own comments, which default-on preservation would trap in
+        // `compile_error!` blocks on the next reuse of this persistent dir.
+        .arg("--no-preserve-comments")
         .output()
         .unwrap();
     if !generate.status.success() {
@@ -7871,4 +7882,218 @@ fn bin_and_lib_production_module_declarations_match() {
              omissions fail loudly, but the crate roots still need to stay aligned"
         );
     }
+}
+
+/// Lexer/self-cancel round-trip over the real generated corpus: for every generated `.rs` under the
+/// tool-owned `src/generated/**` trees, `preserve(content, content)` must lex cleanly and be a
+/// byte-identical no-op (the CODEGEN_HEADER banner self-cancels; no generated line is mistaken for a
+/// user comment). Runs across the flag profiles so the preserve/json codegen shapes are exercised
+/// too. In-process via `generated_strings` (no disk/compile — pure string property).
+#[test]
+fn comment_preserve_lexer_round_trip_over_corpus() {
+    use clap::Parser;
+    // Each input paired with the flag profile it is known-safe under (core supports only default;
+    // preserve/json each have their own fixture) — the same pairings the snapshot suite uses.
+    let cases: &[(&str, &[&str])] = &[
+        ("tests/core/input.cddl", &[]),
+        (
+            "tests/preserve-encodings/input.cddl",
+            &["--preserve-encodings=true"],
+        ),
+        (
+            "tests/json/input.cddl",
+            &["--json-serde-derives=true", "--json-schema-export=true"],
+        ),
+    ];
+    for (profile, flags) in cases {
+        let input_path = format!("{}/{profile}", env!("CARGO_MANIFEST_DIR"));
+        let mut args = vec![
+            "cddl-codegen",
+            "--input",
+            &input_path,
+            "--output",
+            "comment_preserve_roundtrip_unused",
+            "--wasm=true",
+        ];
+        args.extend_from_slice(flags);
+        let cli = crate::cli::Cli::parse_from(args);
+        let files = crate::api::generated_strings(&cli)
+            .unwrap_or_else(|e| panic!("generation failed for profile {profile}: {e}"));
+        for (path, content) in &files {
+            if !crate::generation::is_preservable_generated_path(path) {
+                continue;
+            }
+            let res = crate::comment_preserve::preserve(content, content).unwrap_or_else(|e| {
+                panic!("lexer rejected generated file {path} (profile {profile}): {e}")
+            });
+            assert!(
+                !res.changed,
+                "self-preserve must be a no-op for {path} (profile {profile}) — a generated line was \
+                 mistaken for a user comment"
+            );
+            assert_eq!(
+                res.content, *content,
+                "self-preserve altered {path} (profile {profile})"
+            );
+        }
+    }
+}
+
+/// End-to-end comment preservation over the real disk export path (`generate_to_disk`): inject
+/// own-line comments into a generated file, re-export against the unchanged spec (comments survive
+/// byte-stably), then change the spec so one type is rewritten — a comment on an unchanged type
+/// survives, while a comment on the rewritten type's changed statement becomes a `compile_error!`
+/// block. `--wasm=false` keeps it to the single rust crate.
+#[test]
+fn comment_preservation_disk_round_trip() {
+    use clap::Parser;
+    let scratch =
+        std::env::temp_dir().join(format!("cddl_codegen_comment_rt_{:016x}", checkout_hash()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    std::fs::write(&input, "foo = [x: uint, y: tstr]\nbar = [z: uint]\n").unwrap();
+    let out = scratch.join("crate");
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+        "--wasm=false",
+    ]);
+    let mod_rs = out.join("rust/src/generated/mod.rs");
+
+    // First export: pristine generated output.
+    crate::api::generate_to_disk(&cli).unwrap();
+    let mut content = std::fs::read_to_string(&mod_rs).unwrap();
+    assert!(
+        content.contains("pub struct Bar"),
+        "unexpected output:\n{content}"
+    );
+
+    // Inject two own-line comments: one on the stable `Bar` type, one above the `Self { … }` literal
+    // inside `impl Foo`'s constructor (a statement the spec change below will rewrite).
+    content = content.replace("pub struct Bar", "// KEEP BAR\npub struct Bar");
+    let foo_pos = content.find("impl Foo {").expect("impl Foo missing");
+    let self_rel = content[foo_pos..]
+        .find("Self {")
+        .expect("Self literal missing");
+    let self_abs = foo_pos + self_rel;
+    let line = content[..self_abs].rfind('\n').unwrap() + 1;
+    content.insert_str(line, "        // FOO NEW NOTE\n");
+    std::fs::write(&mod_rs, &content).unwrap();
+
+    // Second export, unchanged spec: both comments survive; nothing fails loudly.
+    crate::api::generate_to_disk(&cli).unwrap();
+    let second = std::fs::read_to_string(&mod_rs).unwrap();
+    assert!(
+        second.contains("// KEEP BAR"),
+        "comment on Bar lost:\n{second}"
+    );
+    assert!(
+        second.contains("// FOO NEW NOTE"),
+        "comment in Foo lost:\n{second}"
+    );
+    assert!(
+        !second.contains("compile_error!"),
+        "an unchanged regen must not fail loudly:\n{second}"
+    );
+
+    // Third export, still unchanged: a byte-identical fixed point.
+    crate::api::generate_to_disk(&cli).unwrap();
+    let third = std::fs::read_to_string(&mod_rs).unwrap();
+    assert_eq!(
+        second, third,
+        "comment preservation must reach a fixed point"
+    );
+
+    // Change the spec so `Foo` is rewritten (extra field) while `Bar` is untouched.
+    std::fs::write(
+        &input,
+        "foo = [x: uint, y: tstr, w: uint]\nbar = [z: uint]\n",
+    )
+    .unwrap();
+    crate::api::generate_to_disk(&cli).unwrap();
+    let changed = std::fs::read_to_string(&mod_rs).unwrap();
+    assert!(
+        changed.contains("// KEEP BAR"),
+        "comment on the unchanged Bar type must survive a spec change elsewhere:\n{changed}"
+    );
+    assert!(
+        changed.contains("compile_error!") && changed.contains("cddl-codegen:unpreserved-comment"),
+        "comment on the rewritten Foo statement must become a fail-loudly block:\n{changed}"
+    );
+    assert!(
+        changed.contains("FOO NEW NOTE"),
+        "the trapped comment must appear in the fail-loudly message:\n{changed}"
+    );
+
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// A broken existing generated file is a hard error naming the file — never a silent clobber:
+/// both an unlexable one (valid UTF-8, unterminated string) and an unreadable one (not UTF-8).
+/// `--no-preserve-comments` restores the plain clobber for the same dir.
+#[test]
+fn comment_preservation_broken_existing_file_hard_errors() {
+    use clap::Parser;
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_comment_broken_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    std::fs::write(&input, "foo = [x: uint]\n").unwrap();
+    let out = scratch.join("crate");
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+        "--wasm=false",
+    ]);
+    let mod_rs = out.join("rust/src/generated/mod.rs");
+    crate::api::generate_to_disk(&cli).unwrap();
+
+    // Unlexable: an unterminated string literal.
+    std::fs::write(&mod_rs, "pub const BROKEN: &str = \"unterminated;\n").unwrap();
+    let err = crate::api::generate_to_disk(&cli).expect_err("unlexable file must hard-error");
+    assert!(
+        err.to_string().contains("mod.rs"),
+        "error must name the file: {err}"
+    );
+
+    // Unreadable: invalid UTF-8.
+    std::fs::write(&mod_rs, [0xC3, 0x28, b'\n']).unwrap();
+    let err = crate::api::generate_to_disk(&cli).expect_err("non-UTF-8 file must hard-error");
+    assert!(
+        err.to_string().contains("mod.rs"),
+        "error must name the file: {err}"
+    );
+
+    // The escape hatch clobbers pristine over the broken file.
+    let mut args: Vec<String> = [
+        "cddl-codegen",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+        "--wasm=false",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    args.push("--no-preserve-comments".to_owned());
+    let cli_off = crate::cli::Cli::parse_from(args);
+    crate::api::generate_to_disk(&cli_off).unwrap();
+    let content = std::fs::read_to_string(&mod_rs).unwrap();
+    assert!(
+        content.contains("pub struct Foo"),
+        "clobber failed:\n{content}"
+    );
+
+    let _ = std::fs::remove_dir_all(&scratch);
 }
