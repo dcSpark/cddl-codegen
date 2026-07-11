@@ -1111,13 +1111,12 @@ fn gen_and_exec(
     spec: &str,
     out: &std::path::Path,
     target_dir: &std::path::Path,
-    profile_args: &[&str],
-    exec_args: &[&str],
-    crate_subdir: &str,
-    cargo_subcmd: &str,
+    p: &Layer2Profile,
     cache_run: &mut usize,
     cache_hit: &mut usize,
 ) -> Result<(), String> {
+    let (profile_args, exec_args, crate_subdir, cargo_subcmd) =
+        (p.profile_args, p.exec_args, p.crate_subdir, p.cargo_subcmd);
     let spec_path = out.with_extension("cddl");
     std::fs::create_dir_all(out.parent().unwrap()).ok();
     std::fs::write(&spec_path, spec).map_err(|e| e.to_string())?;
@@ -1302,17 +1301,7 @@ fn run_layer2_profile(p: &Layer2Profile) {
     let mut cache_run = 0usize;
     let mut cache_hit = 0usize;
     let mut run_batch = |spec: &str, out: &std::path::Path| {
-        gen_and_exec(
-            spec,
-            out,
-            &target_dir,
-            p.profile_args,
-            p.exec_args,
-            p.crate_subdir,
-            p.cargo_subcmd,
-            &mut cache_run,
-            &mut cache_hit,
-        )
+        gen_and_exec(spec, out, &target_dir, p, &mut cache_run, &mut cache_hit)
     };
     for (bi, batch) in batches.iter().enumerate() {
         let spec: String = batch.iter().map(|c| c.spec.as_str()).collect();
