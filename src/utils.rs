@@ -29,12 +29,15 @@ pub fn convert_to_snake_case(ident: &str) -> String {
                 // NFT -> nft
                 // IPAddress -> ip_address
                 // shelley_MA -> shelley_ma
+                // some_DNS_name -> some_DNS_name (an existing separator absorbs
+                // the inserted one — never emit a double underscore)
+                let needs_sep = |s: &String| !s.is_empty() && !s.ends_with('_');
                 if in_uppercase_run {
                     if c.is_ascii_uppercase() {
                         if let Some(next) = iter.peek()
                             && next.is_ascii_lowercase()
                         {
-                            if !snake_case.is_empty() {
+                            if needs_sep(&snake_case) {
                                 snake_case.push('_');
                             }
                             in_uppercase_run = false;
@@ -43,7 +46,7 @@ pub fn convert_to_snake_case(ident: &str) -> String {
                         in_uppercase_run = false;
                     }
                 } else if c.is_ascii_uppercase() {
-                    if !snake_case.is_empty() {
+                    if needs_sep(&snake_case) {
                         snake_case.push('_');
                     }
                     in_uppercase_run = true;
@@ -195,5 +198,30 @@ pub fn append_number_if_duplicate(used_names: &mut BTreeMap<String, u32>, name: 
         format!("{}{}", name, *entry)
     } else {
         name
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn snake_case_never_generates_double_underscore() {
+        // uppercase directly after an existing separator must not insert a second one
+        assert_eq!(
+            convert_to_snake_case("some_DNS_name"),
+            "some_DNS_name"
+        );
+        assert_eq!(convert_to_snake_case("hello_MA"), "hello_MA");
+        assert_eq!(convert_to_snake_case("foo-Bar"), "foo_bar");
+        // uppercase-run handling unchanged
+        assert_eq!(convert_to_snake_case("NFT"), "nft");
+        assert_eq!(convert_to_snake_case("IPAddress"), "ip_address");
+        assert_eq!(convert_to_snake_case("DNSName"), "dns_name");
+        // user-written doubles pass through untouched (their choice, not our insertion)
+        assert_eq!(
+            convert_to_snake_case("already__doubled"),
+            "already__doubled"
+        );
     }
 }
