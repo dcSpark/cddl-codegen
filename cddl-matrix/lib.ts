@@ -432,21 +432,9 @@ export function resolveChoiceArmClasses(example: string): ArmClassResolution | n
 // class) and the drift gate (won't fail the coverage floor for it). Stale-guarded on the gate side: a
 // ledger entry for a (row, class) that is now covered — or a row no longer in scope — fails the gate, so
 // when the underlying oracle gap closes the class is re-minted and the entry must be removed.
-export const DECODE_FLOOR_ARM_EXEMPT: Record<string, string> = {
-  // `prelude.number` = `int / float`; the float arm (major-7 class "7") is unmintable through the mint's
-  // two-oracle accept gate because the rust `cddl` reference (0.10.6) mis-validates a FLOAT against the
-  // prelude `number` alias: `is_ident_float_data_type` (src/validator/mod.rs) omits `Token::NUMBER`,
-  // while its sibling `is_ident_integer_data_type` INCLUDES it — so rust accepts an int `number` but
-  // rejects a float `number` ("expected type number, got Float(…)"), even though the equivalent inline
-  // `int / float` and a user alias both validate. Ruby (the authoritative reference) accepts floats, so
-  // a float `number` instance is spec-VALID but cannot pass the both-oracle gate. Repro + the one-line
-  // fork-fix (add `| Token::NUMBER` to `is_ident_float_data_type`) are in
-  // draft/rust-cddl-number-float-gap.md. PRUNE when a fixed rust `cddl` ships: the resample loop then
-  // mints an f32/f64 (non-f9) float vector and the § 7 stale-guard forces this entry's removal.
-  "prelude.number/7": "rust cddl 0.10.6 mis-validates a float against the prelude `number` alias " +
-    "(is_ident_float_data_type omits Token::NUMBER); the two-oracle mint gate can't admit a float " +
-    "`number` accept vector — draft/rust-cddl-number-float-gap.md",
-};
+// Currently empty: the last resident (`prelude.number`'s float arm, blocked by the pre-ac1b98e rust
+// oracle rejecting floats against the prelude `number` keyword) was re-minted when the fork fix landed.
+export const DECODE_FLOOR_ARM_EXEMPT: Record<string, string> = {};
 
 // ==================================================================================================
 // DECODE-CONFORMANCE CATALOG reader/writer pair — the SOLE serializer of the hand-authored vector

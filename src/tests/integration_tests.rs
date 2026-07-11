@@ -3842,7 +3842,7 @@ fn comment_dsl() {
 /// crate, so its round-trips gain the independent conformance oracle (tests/deser_test_conformance.rs).
 /// Pinned to the same rev as Cargo.toml — enforced by `cddl_oracle_dep_rev_matches_cargo_toml` below,
 /// so a routine cddl bump that updates only Cargo.toml can't silently leave the oracle on a stale rev.
-const CDDL_ORACLE_DEP: &str = "\ncddl = { git = \"https://github.com/dcSpark/cddl\", rev = \"765fd81186e188e7296684f926a61ef134972f57\" }\n";
+const CDDL_ORACLE_DEP: &str = "\ncddl = { git = \"https://github.com/dcSpark/cddl\", rev = \"ac1b98ec07184236517da4511b1bbea239e35190\" }\n";
 
 #[test]
 fn cddl_oracle_dep_rev_matches_cargo_toml() {
@@ -4015,24 +4015,13 @@ fn rust_oracle_fingerprint_preflight(scratch_root: &std::path::Path, target_dir:
         // contract does not hold at this rev" and both demand the same conscious re-validation;
         // triage which one it is from the attached cargo output below (compile errors vs the
         // probe-name mismatch lines).
-        let mut message = format!(
+        let message = format!(
             "HARNESS FAILURE: rust oracle fingerprint MISMATCH — CDDL_ORACLE_DEP rev {rev} does not \
              behave like the pinned oracle. Failing probe(s):\n{combined}\nThe pinned oracle is the \
-             fork's `local-fixes` branch @ 765fd81, injected through CDDL_ORACLE_DEP. Recover by \
+             fork's `local-fixes` branch @ ac1b98e, injected through CDDL_ORACLE_DEP. Recover by \
              updating CDDL_ORACLE_DEP only after consciously re-validating the shared probe set in \
              cddl-matrix/oracle_fingerprint.json."
         );
-        if combined.contains("prelude-number-float-rejects") {
-            message.push_str(
-                "\nNOTE: the 'prelude-number-float-rejects' probe pins gap #7 as OPEN on purpose. \
-                 If the oracle LEGITIMATELY moved (a fixed rust `cddl` that now accepts a float \
-                 against `number`), re-pin CONSCIOUSLY: update cddl-matrix/oracle_fingerprint.json \
-                 TOGETHER with the close-out steps in cddl-matrix/ROADMAP.md findings (the \
-                 prelude-`number` float entry — re-mint prelude.number via `verify.ts \
-                 --mint-decode-foreign --only=prelude.number` and prune DECODE_FLOOR_ARM_EXEMPT). \
-                 Do NOT just delete the probe.",
-            );
-        }
         panic!("{message}");
     }
     print!("{combined}");

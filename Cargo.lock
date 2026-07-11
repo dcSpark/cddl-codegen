@@ -212,7 +212,7 @@ dependencies = [
 [[package]]
 name = "cddl"
 version = "0.10.6"
-source = "git+https://github.com/dcSpark/cddl?rev=765fd81186e188e7296684f926a61ef134972f57#765fd81186e188e7296684f926a61ef134972f57"
+source = "git+https://github.com/dcSpark/cddl?rev=ac1b98ec07184236517da4511b1bbea239e35190#ac1b98ec07184236517da4511b1bbea239e35190"
 dependencies = [
  "abnf_to_pest",
  "base16",

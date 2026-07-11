@@ -543,7 +543,7 @@ and asserts they are accepted.
   synthetic all-fields sample round-trips through `parse∘compose` in the same section, so a dropped
   field is caught even when the committed catalog does not currently exercise it. It ALSO
   runs the **arm-coverage floor** (§ 7): the mint's `generate` is randomized, so a multi-arm CHOICE row
-  can land with a whole arm unsampled and its decode verdict silently under-claims (at HEAD
+  can land with a whole arm unsampled and its decode verdict silently under-claims (the seed instance:
   `prelude.number` = `int / float` carried only int-headed accepts — the float arm had zero
   decode-direction evidence). For each active choice row whose root RHS statically resolves to arm head
   major-classes (`resolveChoiceArmClasses` in `cddl-matrix/lib.ts` — the ONE resolver the mint's
@@ -562,10 +562,10 @@ and asserts they are accepted.
   encoding-variant mutator copies float heads verbatim (`encoding_variants_copy_float_heads_verbatim`),
   and the float class is preserve-skipped — so it would pin nothing about the decoded value; the mint
   takes an f32/f64 encoding instead. Prune the ban (both sides together) when a fixed cbor_event ships.
-  At HEAD the ledger holds ONE entry — `prelude.number`'s float arm, blocked by a rust-`cddl` reference
-  bug that rejects a float against the prelude `number` alias (README § "Upstream oracle gaps" gap 7;
-  `draft/rust-cddl-number-float-gap.md`), so the two-oracle gate cannot admit a spec-valid float
-  `number` vector; the stale-guard forces a re-mint once rust is fixed.
+  At HEAD the ledger is EMPTY — its one past resident (`prelude.number`'s float arm, unmintable while
+  the rust reference rejected a float against the prelude `number` keyword) was re-minted with real
+  f32/f64 accept vectors once the fork fix landed at the `ac1b98e` pin; the stale-guard is what forces
+  that removal whenever a ledgered gap closes.
 - **The verify.ts oracle** — normal `verify.ts` runs replay each supported row's committed vectors
   as a default-on corroborating oracle (`--no-decode-foreign` / `VERIFY_DECODE_FOREIGN=0` opt-out),
   recording an `accepts_foreign` evidence clause in the annotations. Corroboration only — it never
@@ -771,8 +771,8 @@ cargo test --bin cddl-codegen rust_oracle_fingerprint -- --ignored --nocapture #
 
 Before the corpus loop, the gate generates a tiny `fingerprint_probe` crate under the same scratch root,
 injects `CDDL_ORACLE_DEP`, and executes every shared fingerprint probe through the exact parser and
-validator entrypoints the conformance oracle trusts. A mismatch panics with the failing probe names and
-the same special note for `prelude-number-float-rejects` as the matrix verifier. Then, for every
+validator entrypoints the conformance oracle trusts. A mismatch panics with the failing probe names,
+the same recovery guidance as the matrix verifier. Then, for every
 `tests/corpus/*.cddl`, it generates with `--emit-tests --emit-tests-conformance`, appends
 `CDDL_ORACLE_DEP` + the shared oracle helpers, copies the fixture in as
 `cddl_conformance_source.cddl`, and `cargo test`s the crate under one shared `CARGO_TARGET_DIR` (so

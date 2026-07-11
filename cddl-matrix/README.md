@@ -212,10 +212,9 @@ Cut/socket *semantics* stay hand-asserted overlay notes in the corpus projection
 None of these are cddl-codegen bugs, and the matrix no longer sits on any of them — but they shape
 what "certified" means per vector family (§ Q4 above) and what the close-out steps in `ROADMAP.md`
 § findings wait on. The sibling checkout's `local-fixes` branch (`~/Documents/git/cddl`, commit
-`765fd81` — also the `Cargo.toml` pinned rev, so the generated-crate conformance oracle AND
-cddl-codegen's own parser share it) carries fixes for gaps 1–6 and 9 (gaps 7–8 are OPEN at that
-rev — gap 7 blocks ONE arm-coverage-floor
-class, ledgered honestly; gap 8 keeps one containment row's decode-foreign minting
+`ac1b98e` — also the `Cargo.toml` pinned rev, so the generated-crate conformance oracle AND
+cddl-codegen's own parser share it) carries fixes for gaps 1–7 and 9–10 (gap 8 is OPEN at that
+rev — it keeps one containment row's decode-foreign minting
 `pinned_reason`-vectorless); `RUST_CDDL` defaults to that build,
 giving `verify.ts` runs an enforcing oracle. Because every local branch reports version 0.10.6, a
 version string cannot tell the pinned build apart from a wrong-branch rebuild, so the shared
@@ -291,22 +290,24 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    gem's inline-composite controller parse gap — so it stays on `RUBY_EXPECTED_FAIL`). Two
    fingerprint probes (`bignint-key-empty-map-accepts`, `bignint-wrong-tag-rejects`) pin the fixed
    behavior, refusing a stale pre-fix (old-pin) oracle build.
-7. **prelude `number` rejects a float** (OPEN at `765fd81`, NOT fork-fixed): `validate` rejects every
-   CBOR float against the built-in `number` type (`expected type number, got Float(…)`), while ints
-   against `number` — and floats against the equivalent inline `int / float` or a user alias — validate
-   fine. Root cause is a one-line asymmetry: `is_ident_float_data_type` omits `Token::NUMBER` where its
-   sibling `is_ident_integer_data_type` includes it (`number = int / float` accepts both). TWO
-   consumers sit on this gap: the decode-conformance **arm-coverage floor** (§ "Decode-direction
-   conformance" in `tests/README.md`) — `prelude.number`'s float arm cannot be minted through the
-   two-oracle accept gate, so its class is carried in `DECODE_FLOOR_ARM_EXEMPT` (`lib.ts`), the floor's
-   stale-guarded exemption ledger — and the shared oracle fingerprint's
-   `prelude-number-float-rejects` probe (`cddl-matrix/oracle_fingerprint.json`), which deliberately
-   pins the gap OPEN so an oracle where it is silently fixed cannot mint against the stale exemption.
-   Both flip together via the close-out steps in `ROADMAP.md` § findings (fingerprint probe first — a
-   fixed oracle is refused by both consumers until it is consciously re-pinned). Repro + the one-line
-   fork-fix + prune steps:
-   `draft/rust-cddl-number-float-gap.md`.
-8. **tag-typed map-key over-rejection** (OPEN at `765fd81`, NOT fork-fixed): `validate` evaluates a
+7. **prelude `number` rejected a float** (released 0.10.x): `validate` rejected every CBOR float
+   against the built-in `number` type (`expected type number, got Float(…)`), while ints against
+   `number` — and floats against the equivalent inline `int / float` or a user alias — validated
+   fine. Root cause: the validator lexes `number` to a reserved token rather than expanding the
+   prelude text, and the float classifier omitted that token where its integer sibling included it
+   (`number = int / float` accepts both). FIXED in `local-fixes` @ `90f66ff` (a `NumericKind`
+   int/float/both classifier replaces the asymmetric per-type checks, in both the CBOR and JSON
+   validators). The fix unblocked the one class the decode-conformance **arm-coverage floor**
+   (§ "Decode-direction conformance" in `tests/README.md`) had ledgered in `DECODE_FLOOR_ARM_EXEMPT`
+   (`lib.ts`): `prelude.number`'s float arm is re-minted with real f32/f64 accept vectors (the `f9`
+   half-precision ban stays — that's the separate cbor_event mis-decode, `ROADMAP.md` § findings)
+   and the exemption ledger is empty again. Two fingerprint probes
+   (`prelude-number-float-accepts`, `prelude-number-tstr-rejects`) pin the fixed behavior,
+   refusing a stale pre-fix (old-pin) oracle build. A stale claim in the retired repro note is
+   corrected for the record: bare floats against `time` (`#6.1(number)`) were ALREADY accepted
+   before this fix (tag-leniency laxity, unchanged by the bump), not newly accepted by it.
+8. **tag-typed map-key over-rejection** (OPEN at `ac1b98e`, NOT fork-fixed — re-confirmed still
+   open at that rev by direct probe): `validate` evaluates a
    TAGGED Type1 member key against the WHOLE map instead of the entry keys — spec-valid
    `{24(5): "x"}` against `m = { * #6.24(uint) => tstr }` rejects with
    `expected tagged data #6.24(uint), got Map(...)`, while the untagged `{ * uint => tstr }`
@@ -336,9 +337,21 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    `contain.occurrence-target.memberkey.type1.optional_table` is a reject fixture in
    `tests/matrix_reject/` with no decode-catalog row to re-mint. Two fingerprint probes
    (`optional-entry-empty-map-accepts`, `closed-map-unexpected-key-rejects`) pin the fixed
-   behavior, refusing a stale pre-fix (old-pin) oracle build. Four adjacent map-matching gaps
-   found during the fix are filed in the fork checkout's `future-issues/` (extension-member
-   openness, consumed-key re-matching, mixed key domains, float-key/null copy-paste).
+   behavior, refusing a stale pre-fix (old-pin) oracle build. Of the four adjacent map-matching
+   gaps found during the fix, one (the float-key/null copy-paste) is since fork-fixed — gap #10
+   below; the other three stay filed in the fork checkout's `future-issues/` (extension-member
+   openness, consumed-key re-matching, mixed key domains).
+10. **float-typed map keys matched `null` keys** (released 0.10.x): three find-based member-key
+   sites in the CBOR validator guarded on the float classifier but searched the map with a NULL
+   predicate copy-pasted from the null branch above — both verdicts inverted against
+   `m = { float => uint }`: the spec-valid `{1.5: 1}` REJECTED ("map requires entry key of type
+   float") while the spec-invalid `{null: 1}` ACCEPTED. The filter-based `* float => k` partition
+   path was already correct; only the occurrence-less, `?`, and find-fallback paths were wrong.
+   FIXED in `local-fixes` @ `707c038` (`matches!(k, Value::Null)` → `matches!(k, Value::Float(_))`
+   at the three sites). No matrix row sat on this gap (it was a `future-issues/` filing from the
+   gap #9 close-out, never a catalog blocker). Two fingerprint probes (`float-key-accepts`,
+   `null-key-rejects`) pin the fixed behavior — the reject probe also refuses an always-accept
+   stub — so a stale pre-fix (old-pin) oracle build is refused by both fingerprint consumers.
 
 ## Gotchas (read before touching the support seam or probe examples)
 
@@ -443,7 +456,7 @@ numbers** — same robustness rule as the COVERAGE.md docs.
   `cargo install cddl` build is refused at startup by the `runOracleFingerprint` behavioral fingerprint
   (its released-CLI gaps fail the pinned probes by design), so pointing `RUST_CDDL` at
   `~/.cargo/bin/cddl` no longer produces a degraded-but-workable run — supply the `local-fixes` @
-  `765fd81` build (or an immutable copy of it) instead. Its generated-crate compile gate reuses
+  `ac1b98e` build (or an immutable copy of it) instead. Its generated-crate compile gate reuses
   `integration_tests::feature_corpus_compiles`' shared-target pattern (one-time dep warm-up).
 
 ## Scope (v1)
