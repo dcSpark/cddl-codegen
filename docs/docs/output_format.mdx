@@ -76,7 +76,13 @@ halves so your hand edits to the crate root survive regeneration:
   `generated/mod.rs` (the type definitions + module decls + generator crate attrs like
   `#![allow(clippy::too_many_arguments)]` as inner attrs), `generated/serialization.rs`, per-scope
   submodules, and the copied runtime modules (`error.rs`, `ordered_hash_map.rs`). This subtree is
-  overwritten wholesale on every export — never hand-edit it.
+  overwritten wholesale on every export — never hand-edit the *code*. One exception: **own-line
+  comments you add to a generated `.rs` are carried across regeneration** by symbol identity (which
+  named item they sit in/above) — a comment on an unchanged item transfers, and a comment whose
+  anchor changed too much becomes a `compile_error!` block (loud, never a silent drop) so you review
+  it. This never affects the generated code tokens; pass `--no-preserve-comments` to turn it off and
+  clobber pristine. Trailing (end-of-line) comments are not carried in v1 — move them to their own
+  line to preserve them.
 - **User-owned: the crate root `src/lib.rs` (seeded once, then never touched).** On a first export the
   tool seeds a thin root:
 

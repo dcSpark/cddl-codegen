@@ -298,3 +298,30 @@ When set to `N`, every generated composite `deserialize` acquires an RAII depth 
 cddl-codegen --input=example --output=export --deserialize-depth-limit 128
 ```
 :::
+
+<br/><br/>
+
+:::info `--no-preserve-comments`
+Disables carrying user-added comments across regeneration.
+
+By default, when a generated `src/generated/**` `.rs` file already exists on disk, the own-line comments you added to the previous output are re-anchored onto the freshly generated content. Anchoring is by **symbol identity** (which named item the comment sits in or above) and **token equality** (the safety test), never a textual diff: a comment on an unchanged item transfers, a comment above a still-present item re-attaches above it, and a comment on an individual statement inside a changed body re-attaches if that exact statement still appears exactly once.
+
+A comment that cannot be safely re-placed — its item vanished, its statement changed or now appears twice — is **not dropped silently**. It becomes a tagged block:
+
+```rust
+// cddl-codegen:unpreserved-comment (delete this block after review)
+compile_error!("cddl-codegen could not preserve a user comment across regeneration.\n…\nOriginal comment:\n// your note");
+```
+
+so the generated crate fails to build with your original comment in the message; you re-place or discard it and delete the block. The block carries forward verbatim on every regeneration until you delete it, so the trapped comment is never lost. This overlay contributes only comment bytes to the output — never a generated code token — and running the tool twice equals running it once.
+
+**v1 scope:** own-line comments only (`//`, `///`/`//!`, and `/* */` blocks that occupy their own lines). A user-added **trailing** (end-of-line) comment fails loudly with a hint to move it to its own line, after which it is preserved. If the existing file cannot be lexed (e.g. a hand edit left an unterminated string), regeneration is a hard error naming the file rather than a silent clobber.
+
+Pass `--no-preserve-comments` to skip the overlay entirely and clobber each generated file with pristine output.
+
+**Possible values:** the flag takes no value; its presence disables preservation<br></br>
+**Default:** preservation on
+```bash
+cddl-codegen --input=example --output=export --no-preserve-comments
+```
+:::

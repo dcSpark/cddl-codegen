@@ -45,16 +45,20 @@ changing the *runtime behaviour* of generated code usually means editing `static
     `HashMap` — hash iteration order breaks it.
   - *Canonical layout*: stable item ordering via `codegen`'s sort + `rustfmt` post-processing.
   - *No prior-output dependence* — generation must not read the prior contents of the output
-    directory. Two bounded exceptions, both existence-only and neither feeding back into *what* is
-    generated: (1) the generated `Cargo.toml`s — `export()` merges a declarative changeset
-    (`cargo_manifest.rs`) onto the existing manifest so user edits survive, bounded to "keys the op
-    set doesn't mention pass through; `SeedOnce` keys check existence only"; (2) each generated crate
-    root `src/lib.rs` (rust, wasm, json-gen) is a seed-once thin root — written on a first export,
-    then skipped if the file exists (existence check only, same bounded wording as the manifest
-    `SeedOnce`; all generated code lives under the always-clobbered `src/generated/**`). A
-    diagnostic-only stderr warning reads a legacy root to detect the missing `mod generated;` and name
-    the migration, but changes no output bytes. Nothing reads prior *tool* output to decide what to
-    generate, so "run twice = run once = clean run" still holds.
+    directory. Three bounded exceptions, none feeding back into *what code* is generated: (1) the
+    generated `Cargo.toml`s — `export()` merges a declarative changeset (`cargo_manifest.rs`) onto the
+    existing manifest so user edits survive, bounded to "keys the op set doesn't mention pass through;
+    `SeedOnce` keys check existence only"; (2) each generated crate root `src/lib.rs` (rust, wasm,
+    json-gen) is a seed-once thin root — written on a first export, then skipped if the file exists
+    (existence check only, same bounded wording as the manifest `SeedOnce`; all generated code lives
+    under the always-clobbered `src/generated/**`); (3) the comment-preservation overlay
+    (`comment_preserve.rs`) — `export()` reads a prior generated `src/generated/**` `.rs` solely to
+    carry the user's comments onto the fresh content, bounded to "prior output contributes only comment
+    bytes and tagged `cddl-codegen:unpreserved-comment` compile_error blocks, never a generated code
+    token" (default on, `--no-preserve-comments` disables it). A diagnostic-only stderr warning reads a
+    legacy root to detect the missing `mod generated;` and name the migration, but changes no output
+    bytes. Nothing reads prior *tool* output to decide what code to generate, so "run twice = run once
+    = clean run" still holds.
 - **The IR borrows the AST.** `IntermediateTypes<'a>` can't be returned from a function that parses
   internally — drive the pipeline through the scoped callback in `api.rs` (it owns the AST).
 - **bin/lib module duplication.** `main.rs` and `lib.rs` each declare the module list — a new
