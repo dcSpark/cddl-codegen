@@ -197,6 +197,22 @@ extern-deps wires `tests/extern-dep-crate`). Those macros' arms mirror the inlin
 wrong-emission classes a snapshot would bless — swapped args, wrong `needs_into`/`is_copy`, an
 unreachable combination, a wrong arity — fail to compile (see the crate's README).
 
+`extern_wrapper_index_defers_to_dep` pins the `--extern-wrapper-index` deferral surface (a consumer
+skips re-minting collection wrappers a dependency's committed `generated/collections.rs` index says
+the dep already owns) over `tests/extern-deps-wasm-index` and the dedicated wasm-clean dep pair
+`tests/index-dep-crate{,-wasm}` — dedicated because the shared `tests/extern-dep-crate` pair
+intentionally double-defines its `#[wasm_bindgen]` class across both crates (the single-crate
+convention `extern_deps` needs) and so can never link for the real wasm target. It is a bespoke
+harness rather than `run_test`: it asserts the CLI's stderr warning for an all-extern wrapper
+absent from the index, the deferred `use <dep_wasm>::collections::…;` imports (plain `use`, never
+re-exported), the local-mint cells (not-in-index and mixed-element), a cross-crate behavioral
+round-trip via the fixture's `tests_wasm.rs` (constructing through the DEP's wrapper classes — the
+one `tests_wasm.rs` whose boundary crosses crates), and the honest link gate: a real
+`cargo build --target wasm32-unknown-unknown` of consumer+dep — the only place duplicate
+`#[wasm_bindgen]` classes actually fail — asserted GREEN with the flag and RED
+(`duplicate symbol`) without it, with a loud skip (hard assert under CI) when the target isn't
+installed. This is the suite's only gate compiling any generated crate for the actual wasm target.
+
 `flag_value_smoke` generate + `cargo check`s a rich extern-free input (`tests/canonical`) under each
 documented flag *value* that no named profile exercises (`--annotate-fields=false`,
 `--to-from-bytes-methods=false`, `--binary-wrappers=true`) — each selects a whole alternative emit
@@ -1136,8 +1152,10 @@ Generation is **in-process** (`api::generated_strings` via `Cli::parse_from`, wr
 generated crates), so the sweep stays always-on (no `#[ignore]`) in the default `cargo test` /
 check.ts local tier. It scopes to `src/generated/mod.rs`; a key-set guard over the returned file map
 fails loudly on any `.rs` name outside the per-profile allowlist (preserve additionally allows
-`cbor_encodings.rs`/`ordered_hash_map.rs`, both optional; the wasm side is `mod.rs`-only in every
-profile), so a future emission surface can't silently escape the differential. One (profile, input)
+`cbor_encodings.rs`/`ordered_hash_map.rs`, both optional; the wasm side allows `mod.rs` plus
+`collections.rs` — the wrapper re-export index every wasm crate now emits, a `pub use` inventory of
+classes already defined in `mod.rs`, so it introduces no boundary API for the differential to
+parse), so a future emission surface can't silently escape the differential. One (profile, input)
 pair is pinned in `EXPECTED_GENERATION_FAIL`: (preserve, tests/core) — a float member aborts
 generation under `--preserve-encodings` (issue #205, the `preserve_encodings_supports_floats` stub)
 — with a resurfaced guard both directions (a listed pair that generates fails as "gap closed —
