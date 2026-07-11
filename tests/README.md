@@ -1083,6 +1083,45 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`, `
 > against the docs' comma rules — ideally beside a control cell using the same placement in a
 > position where the directive works, isolating *position* as the variable.
 
+### Synthesized-name interaction sweep + duplicate-ident backstop
+
+The generator mints structural wasm-boundary classes whose names derive from user type names — the
+loose `{Elem}List` / `Map{K}To{V}` builders, the restricted `NonEmpty*` wrappers, and the table
+`keys()` list wrappers. How those names interact with USER rule names (and with each other) is a
+NAME-shaped axis the shape catalogs never reach: they mint one rule per shape and never spell a
+colliding user name or a named+inline coexistence, so a bug in this class ships as **generation exits
+0 but the wasm crate doesn't compile**. Two standing layers own it:
+
+- **Duplicate-ident backstop** (`generation.rs::top_level_type_ident` + the scan in
+  `generated_files`). Before export, every generated `src/generated/**` file (all three crates) is
+  scanned for line-anchored top-level type-namespace definitions (`pub struct`/`enum`/`type`); any
+  ident defined twice within one file returns an `Err` at the `generated_files` seam naming the file
+  and the duplicated ident(s). This observes the ACTUAL emitted source rather than an IR prediction,
+  so it is the backstop for every mint path present and future — turning the silent E0428
+  redefinition (a user rule colliding with a synthesized ident) into a loud, graceful generator
+  error. The plain F1/F2/F5 families have no IR-level collision scan (only the `NonEmpty*` families
+  do, in `intermediate.rs`), so for them the backstop is the sole pinned layer;
+  `loose_builder_name_claimed_plain_message_names_ident_and_file` pins its message identity and its
+  robustness-catalog row pins the outcome label.
+- **`synthesized_name_interaction_sweep`** (`integration_tests.rs`). A table-driven sweep crossing
+  each synthesized-name FAMILY (F1 plain list, F2 table builder, F3 `NonEmpty*` list, F4 `NonEmpty*`
+  map, F5 table `keys()` list) with each INTERACTION (I-a different-shape rule claims the synthesized
+  name; I-b named + inline same-shape coexistence; I-c self-named rule; I-d different-shape claim of a
+  needed auxiliary builder — expressible only for F3/F4). The per-cell **invariant: no cell may be
+  exit-0 with a non-compiling crate.** Each cell is pinned to either a graceful `Reject(ident)` (an
+  IR-scan or backstop rejection whose message names the colliding ident, asserted in-process, no
+  cargo) or `Ok` — the generating cells are batched (cell-prefixed rule names, so name-local classes
+  can't mask across cells) into ONE crate whose wasm binding is `cargo check`ed (the
+  `feature_corpus_compiles` shared-target pattern), with per-cell `present`/`absent` assertions
+  pinning the dedup semantics (dedup target defined once, the deduped-away twin never emitted).
+
+Expectations are seeded by the **probe-then-pin** rule: run the generator on the cell's CDDL, inspect
+the outcome, then pin the observed-AND-correct behavior. A cell that lands exit-0 + non-compiling is a
+NEW instance of the class — fix it if the fix is small and clearly correct, otherwise pin it in a
+cited, vacuity-guarded known-bad ledger and REPORT it; never bless it by loosening the row to `Ok`.
+The E0425 flavor (an emitter that references a wrapper name no mint path emits) stays owned by the
+compile gates (`wasm_matrix_compiles` + the full-tier recombination wasm leg), not this sweep.
+
 ### rust↔wasm API-surface parity (`wasm_parity_tests::wasm_api_parity`)
 
 The compile gate above proves the emitted wasm bindings *type-check*; it cannot prove they *exist*. A

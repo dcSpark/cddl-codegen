@@ -110,6 +110,23 @@ fn stamp_codegen_header(content: &str) -> String {
     format!("{CODEGEN_HEADER}{content}")
 }
 
+/// If `line` is a line-leading top-level type-namespace definition — `pub struct`/`pub enum`/`pub
+/// type` at column 0, exactly how `codegen` emits items at the file root — return the defined
+/// ident. Drives the `generated_files` duplicate-ident backstop. The leading-anchor (no
+/// `strip_prefix` for indented forms) excludes nested items inside `mod {}` blocks (indented) and
+/// the anchor keywords exclude other namespaces (`impl`/`fn`/`use`), which never collide in the
+/// type namespace. Returns `None` for anything else.
+fn top_level_type_ident(line: &str) -> Option<&str> {
+    let rest = line
+        .strip_prefix("pub struct ")
+        .or_else(|| line.strip_prefix("pub enum "))
+        .or_else(|| line.strip_prefix("pub type "))?;
+    let ident = rest
+        .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .next()?;
+    (!ident.is_empty()).then_some(ident)
+}
+
 #[derive(Debug, Clone)]
 struct SerializeConfig<'a> {
     /// the name of the variable where this is accessed, e.g. "self.foo" or "field" (e.g. for if let Some(field) = self.foo)
@@ -2197,6 +2214,46 @@ impl GenerationScope {
         for (path, content) in out.iter_mut() {
             if is_header_stamped_path(path) {
                 *content = stamp_codegen_header(content);
+            }
+        }
+
+        // Duplicate-ident backstop: no top-level type-namespace ident (struct/enum/type) may be
+        // defined twice within a single generated file. Silent redefinitions arise when a user rule
+        // name collides with a generator-synthesized structural ident (list/map wrapper families) —
+        // exit-0 today, E0428 in the output crate. Observing the ACTUAL emitted source (not an IR
+        // prediction) makes this the backstop for every mint path, present and future. Scoped to the
+        // tool-owned `src/generated/**` trees (all three crates); static/template-sourced files are
+        // excluded. `out` is a BTreeMap (sorted keys) and per-file idents are collected into a
+        // BTreeMap, so the first offending file and its listed idents are deterministic. On a hit
+        // this returns an `Err` at the seam (surfaced as `error (graceful)` by the catalogs), never
+        // a panic.
+        for (path, content) in out.iter() {
+            if !path.contains("src/generated/") {
+                continue;
+            }
+            let mut seen: BTreeMap<&str, usize> = BTreeMap::new();
+            for line in content.lines() {
+                if let Some(ident) = top_level_type_ident(line) {
+                    *seen.entry(ident).or_insert(0) += 1;
+                }
+            }
+            let dups: Vec<&str> = seen
+                .iter()
+                .filter(|&(_, &count)| count > 1)
+                .map(|(ident, _)| *ident)
+                .collect();
+            if !dups.is_empty() {
+                let names = dups
+                    .iter()
+                    .map(|d| format!("'{d}'"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                return Err(std::io::Error::other(format!(
+                    "duplicate top-level ident{} {names} in {path}: a rule name collides with a \
+                     generator-synthesized ident (list/map wrapper families) — rename the rule; if \
+                     no user rule is involved this is a cddl-codegen bug",
+                    if dups.len() == 1 { "" } else { "s" },
+                )));
             }
         }
 
