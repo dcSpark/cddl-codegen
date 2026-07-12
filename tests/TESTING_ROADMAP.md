@@ -185,7 +185,20 @@ dead loses the lesson.
   prior row carrying every vector class; and a perturbation sweep asserting each committed field's
   drift flips the gate red for each row KIND (active and pinned). Meanwhile the working rule:
   an armed-but-idle arm lands with its first-use self-check in the same change, or the review
-  explicitly walks the empty arm. Related, smaller catch from the same review with its own
+  explicitly walks the empty arm. A FOURTH instance is on record from the json/wasm
+  decode-surface-leg delivery, in a distinct CLAIMED-GUARD flavor and a new HOME:
+  `JSON_SURFACE_SKIP` (a replay-gate rust-side skip ledger, not a drift-gate arm) shipped with its
+  code comment and doc claiming the reproduction guard ("a listed row that now round-trips fails
+  the gate") while the leg driver consumed entries WITHOUT running the leg — the guard was
+  asserted, never wired; the `WASM_SURFACE_SKIP` sibling in the same change had the real guard.
+  Caught by in-session diff review (the review walked the arm — the working rule holding), fixed
+  in the same series. Two consequences for the mechanical layer: the flavor to detect is "ledger
+  entry consumed with zero reproduction attempt", and the layer as sketched above is
+  DRIFT-gate-scoped — the replay gates' rust-side skip ledgers need a sibling arm (a synthetic
+  always-passing resident driven through the leg driver, asserting exactly the stale-pin failure
+  fires and no other). Count: four review-caught instances, zero escapes; the build trigger stays
+  the first instance that survives review, with the layer owing BOTH homes when built. Related,
+  smaller catch from the same review with its own
   trivial layer: a machine-written catalog `pinned_reason` cited a run artifact ("see mint
   log") — catalog prose is outside `lint_doc_citations`' scan surface, so non-durable citations
   there rot silently; fixed by wording review (the mint now emits self-contained tallies + a
