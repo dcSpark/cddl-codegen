@@ -572,8 +572,9 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
   unsupported and the pin dropped with it.) (`8200a0` also remains the seeded-control *accept* on
   `type2.map` — `{ * tstr => int }`, a spec-VALID empty table there.)
 - **The replay gate** — `integration_tests::decode_conformance_replay` (`#[ignore]`d, check.ts
-  `full` tier, ~3 min): per active row it generates a crate from the committed `spec` and `cargo
-  test`s it under two profiles. Oracle-free and deterministic — the bytes were spec-cross-validated
+  `full` tier, ~6 min): per active row it generates a crate from the committed `spec` and `cargo
+  test`s it under two profiles (default + preserve), plus a third json/wasm-surface generation
+  (§ "json/wasm surface legs" below). Oracle-free and deterministic — the bytes were spec-cross-validated
   at mint time, so the gate replays commitments, never re-derives them. Three assertion legs run on
   the DEFAULT-profile build, sharing one failure-attribution grammar. Shared across every leg body
   that captures an error Display (the constraint and header-mutant Err arms, both profiles): an
@@ -754,14 +755,15 @@ Two gates mirror the matrix legs:
   one of the generated `#[ignore]`d-gate roll-call in "Running everything"). It reuses
   `decode_conformance_replay`'s `decode_replay_generate` / `decode_replay_run` helpers and every leg
   verbatim (base accept, `cddl_encoding_fidelity::variants` encoding variants, `header_mutants` header
-  mutation at holder offset 2, over-acceptance completeness, and the `--preserve-encodings`
-  byte-identity leg), differing only in the catalog path, its own scratch target, its own
-  empty-at-HEAD skip ledgers, and vacuity floors pinned from actuals. The corpus carries only plain
+  mutation at holder offset 2, over-acceptance completeness, the `--preserve-encodings`
+  byte-identity leg, and the json/wasm surface legs below), differing only in the catalog path, its
+  own scratch target, its own skip-ledger instances, and vacuity floors pinned from actuals. The corpus carries only plain
   accept vectors at HEAD (the enforcement / over-acceptance axes are matrix-owned), so the
   constraint-reason and over-acceptance machinery stays armed but idle (the over-acceptance
   completeness `assert_eq` holds at 0 == 0); `PRESERVE_SKIP` holds only the native-float row
-  `homogeneous_array.floats` (`[* float64]`, the `preserve_encodings_supports_floats` gap), every
-  other ledger empty and stale-guarded.
+  `homogeneous_array.floats` (`[* float64]`, the `preserve_encodings_supports_floats` gap), the
+  json/wasm surface ledgers hold this gate's corpus residents (listed in § "json/wasm surface
+  legs"), and every other ledger is empty and stale-guarded.
 
 **Whole-item f9 ban.** The matrix f9 ban is item-HEAD-scoped; a corpus vector is a composite where an
 `f9` half-float head (mis-decoded by cbor_event 2.4.0 — `cddl-matrix/ROADMAP.md` § findings) can sit
@@ -772,11 +774,11 @@ condition — remove both halves together when a fixed cbor_event ships.
 #### json/wasm surface legs
 
 The two replay gates above pin the RUST CBOR decoder. Two OTHER decode entry points ship with the
-generated crate and had no obligation minted: the `--json-serde-derives` json surface
+generated crate: the `--json-serde-derives` json surface
 (`serde_json::from_str` over the serde-derived rust types) and the `--wasm` wrapper surface (the thin
 `#[wasm_bindgen]` `from_cbor_bytes` / `from_json` delegators in `create_base_wasm_struct`). A json/wasm
 boundary that is over-strict about spec-valid input the rust decoder already accepts would pass every
-other gate. So each replay gate gains a **third generation per row** — `--wasm=true
+other gate, so each replay gate runs a **third generation per row** — `--wasm=true
 --json-serde-derives=true`, default profile otherwise (NO `--json-schema-export`, NO preserve) — and
 two accept-only legs off it (`decode_replay_json_wasm_legs` in `integration_tests.rs`, shared verbatim
 by both gates). Only the PLAIN accept vectors are replayed: reject / constraint / over-acceptance /
