@@ -22,7 +22,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok(validate) rust=ok",
         "id": "ctl.ne.one",
         "status": "supported"
       },
@@ -37,7 +37,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok(validate) rust=ok",
         "id": "ctl.ne.zero",
         "status": "supported"
       },
@@ -52,7 +52,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok(validate) rust=ok",
         "id": "ctl.size.uint",
         "status": "supported"
       },
@@ -1142,7 +1142,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok(validate) rust=ok",
         "id": "type1.ctlop",
         "status": "supported"
       },
@@ -2247,7 +2247,7 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok",
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=nondet(generate) rust=ok",
         "id": "ctl.and",
         "status": "unsupported"
       },
@@ -2347,7 +2347,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok(validate) rust=ok",
         "id": "ctl.eq",
         "status": "supported"
       },
@@ -2367,7 +2367,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok(validate) rust=ok",
         "id": "ctl.ge",
         "status": "supported"
       },
@@ -2382,7 +2382,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok(validate) rust=ok",
         "id": "ctl.gt",
         "status": "supported"
       },
@@ -2427,7 +2427,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok(validate) rust=ok",
         "id": "ctl.le",
         "status": "supported"
       },
@@ -2442,7 +2442,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok(validate) rust=ok",
         "id": "ctl.lt",
         "status": "supported"
       },
@@ -2457,7 +2457,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok(validate) rust=ok",
         "id": "ctl.ne",
         "status": "supported"
       },
@@ -2502,12 +2502,12 @@
             "status": "supported"
           }
         },
-        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen exit 0; compiles; round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok(validate) rust=ok",
         "id": "ctl.size",
         "status": "supported"
       },
       {
-        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=nondet(generate) rust=ok",
         "id": "ctl.within",
         "status": "unsupported"
       }
