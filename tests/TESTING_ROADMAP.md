@@ -303,6 +303,29 @@ dead loses the lesson.
   dep's rust path, but no gate generates or executes `--json-schema-export` with extern deps (needs
   the dep in the json-gen manifest and a `schemars::JsonSchema` impl on the dep type, both user
   responsibilities by design).
+- **Run-local values in gate-cache key material — one proven instance, no machinery yet.** The
+  TS-side cache keys hashed the literal nested-cargo argv, which embeds the run's `mkdtempSync`
+  probe dir — every key was unique to its run, so verify.ts could never hit its cache across runs
+  (fixed by path-normalizing the key argv; the normalized form is documented in `tests/README.md`
+  § "The gate cache (memoize-and-skip for nested cargo)"). Caught by merge-review reading, not by
+  any gate — and `verify_cache_transparency`'s ≥1-hit vacuity floor is BLIND to this class by
+  construction: identical generated trees hit WITHIN a run (the probe dir is constant inside one
+  run), so the hit count stays above zero even when no cross-run hit is possible. Mechanical layer
+  if the class recurs (a second run-local value — an env var, a timestamp, a counter — leaking
+  into key material): a key path-independence self-test (hash one fixed byte tree under two
+  different scratch roots in two separate invocations; assert `gateCacheKey` / the Rust
+  `gate_cache_key` produce identical keys), plus a cross-run hit floor that only counts hits whose
+  entries PREDATE the running process (within-run hits excluded, so the floor actually measures
+  cross-run keyability).
+- **Control bytes in committed source files — one proven instance, no machinery yet.** A committed
+  TS script embedded a literal 0x00 byte in a template-string separator; grep/diff/review tooling
+  then classifies the whole file as binary — silently exempting it from every text-shaped check
+  and from readable review — while `tsc` parses it happily, so `matrix_typecheck` cannot see the
+  class (fixed by spelling the byte as a backslash-u0000 escape). Working rule meanwhile: escape
+  sequences, never literal control bytes, in source text. Mechanical layer if the class recurs: a
+  tracked-source text-cleanliness lint — every tracked `*.ts`/`*.rs`/`*.toml`/`*.md` must be valid
+  UTF-8 with no control bytes outside tab/LF/CR (a one-command scan; natural sibling of
+  `lint_doc_citations` in the local tier).
 
 ## Deferred features (build when a real consumer needs them)
 
