@@ -152,6 +152,10 @@ conformance") — exactly the direction a round-trip conflates away. **Encode** 
 per-construct oracle — its independent evidence is corpus-level only (`golden_hex`,
 `ir_conformance_corpus`) — so the query reports encode strictly as the round-trip half
 (`encode = yes iff round-trip = yes`) and never claims a stronger per-construct encode fact.
+(The suite-side sibling catalog `tests/decode_conformance/corpus_catalog.toml` — the
+composition-depth leg over the corpus fixtures, same tests/README section — deliberately feeds
+NEITHER Q4 nor the annotations: its rows are (fixture, rule) obligations, not matrix rows, so
+matrix-scoped counts and evidence clauses never include it.)
 
 **The enforcement axis (`enforce-constraint`) is grounded by `class="constraint"` reject vectors** in
 `catalog.toml`: spec-INVALID CBOR whose ONLY invalidity is the constraint the row enforces (an

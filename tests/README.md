@@ -372,7 +372,9 @@ only decode what they themselves encoded, the conformance oracles validate *our 
 (encode side), and the reject tests check that spec-INVALID input is refused. A generated decoder
 that rejects spec-VALID CBOR passes all of them — proven twice on this layer's first sweep (below).
 This layer feeds SPEC-DERIVED CBOR instances our code did *not* produce into the generated decoders
-and asserts they are accepted.
+and asserts they are accepted. Two mechanically-projected obligation sets drive it, each with its own
+committed catalog under `tests/decode_conformance/`: the matrix's per-construct BREADTH (the bullets
+below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus) leg").
 
 - **The committed corpus** — `tests/decode_conformance/catalog.toml`, machine-produced (same
   artifact class as `cddl-matrix/matrix.json`). The obligation set is PROJECTED from the matrix's
@@ -624,7 +626,10 @@ top-level rule of every fixture), mechanically derived and never a hand-picked f
 (fixture, rule) carries ≥1 committed vector XOR a `pinned_reason` — the same no-silent-skips rule as
 the matrix catalog. The enumerator and the per-rule dependency-closure builder live in
 `cddl-matrix/lib.ts`, shared by the mint and the drift gate, so the gate re-derives exactly what the
-mint derived.
+mint derived. Refresh flow: `cd cddl-matrix && bun run verify.ts --mint-decode-corpus` (`--only=`
+takes row ids AND bare fixture stems — a stem expands to the fixture's rows — preserving every
+unselected row byte-identically; mint-ONLY: it writes this catalog and nothing else, never
+annotations or the matrix catalog).
 
 Every active corpus row is **holder mode**: the probe spec is `__probe_holder = [0, <rule>]` plus the
 rule's dependency closure (the target rule's span + every fixture rule transitively referenced from
@@ -642,7 +647,8 @@ rules** (a `<…>` head can't be holder-wrapped bare — instantiations are cove
 rules), and **`dsl_custom`** (references user-supplied (de)serialize code — can't compile standalone).
 A distinct, decoder-clean class is the **named-rule / parenthesized-choice map-KEY over-rejection** in
 the rust oracle (`draft/rust-cddl-named-key-map-gap.md`): its affected table rows (`table_enum_key.*`,
-`c_style_enum_map_key.enum_keyed_map`, and the composite-key / nested-map-value siblings) keep only
+`c_style_enum_map_key.enum_keyed_map`, and the adjacent-signature siblings on `composite_map_key.*`
+and `wasm_nested_alias.passthru_tags_map`) keep only
 their empty-instance accept vectors, because the rust reference contests every non-empty instance
 while the ruby reference and our own decoder accept — an oracle-side drop, not a cddl-codegen gap.
 
