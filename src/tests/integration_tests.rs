@@ -7358,6 +7358,29 @@ const MARKER_DOUBLED_LOCATION: &str = "DOUBLED_LOCATION";
 /// An `over_accept_{i}` test's `class="over-acceptance"` vector was REJECTED by the decoder — i.e. the
 /// decoder no longer wrongly accepts the spec-INVALID bytes (the fix landed). The pin flip signal.
 const MARKER_OVER_ACCEPT_NOW_REJECTED: &str = "OVER_ACCEPT_NOW_REJECTED";
+
+// --- json / wasm decode-surface leg markers (the third-generation `--wasm --json-serde-derives`
+// legs). Same grep-stable `{marker} {test_name}:` grammar as the base-leg markers above; the
+// classifiers `classify_json_failure` / `classify_wasm_failure` own the trailing ':'. ---
+/// The rust-side json leg's `serde_json::to_string(&v)` FAILED — a value the CBOR decoder accepted is
+/// not json-serializable (e.g. a byte-string map key, a non-finite float). A JSON_SURFACE_SKIP resident.
+const MARKER_JSON_SERIALIZE_FAILED: &str = "JSON_SERIALIZE_FAILED";
+/// The rust-side json leg's `serde_json::from_str::<T>(&s)` REJECTED the value's OWN serialization —
+/// the json decode surface is over-strict about a value the CBOR decoder accepted (the motivating class).
+const MARKER_JSON_REJECTED: &str = "JSON_REJECTED";
+/// The rust-side json round-trip decoded to a value that RE-ENCODES to different CBOR — json lost fidelity.
+const MARKER_JSON_VALUE_MISMATCH: &str = "JSON_VALUE_MISMATCH";
+/// The wasm wrapper's `from_cbor_bytes` REJECTED a spec-valid accept vector the rust decoder accepts —
+/// the thin wasm delegation boundary is over-strict (surfaces as a panic; JsError Display is elided).
+const MARKER_WASM_REJECTED: &str = "WASM_REJECTED";
+/// The wasm wrapper re-encoded a decoded accept vector to different CBOR than the rust crate — the
+/// cross-crate delegation boundary corrupted the value.
+const MARKER_WASM_VALUE_MISMATCH: &str = "WASM_VALUE_MISMATCH";
+/// The wasm wrapper's `from_json` REJECTED its own `to_json` output — the wasm json boundary is over-strict.
+const MARKER_WASM_JSON_REJECTED: &str = "WASM_JSON_REJECTED";
+/// The wasm wrapper's `from_json` round-trip re-encoded to different CBOR — the wasm json boundary lost fidelity.
+const MARKER_WASM_JSON_VALUE_MISMATCH: &str = "WASM_JSON_VALUE_MISMATCH";
+
 const DOUBLED_LOCATION_HELPER_SELF_CHECK: &str = "doubled_location_helper_self_check";
 
 /// How a FAILED `class="constraint"` reject vector's replay test attributed its cause.
@@ -7679,6 +7702,248 @@ fn classify_over_acceptance_failure_disambiguates_prefix_colliding_names() {
     );
 }
 
+/// How a FAILED rust-side json-leg replay test (`json_accept_{i}`) attributed its cause. The obligation
+/// (no external json oracle — the CBOR-decoder-accepted value IS the oracle): every value the rust CBOR
+/// decoder accepts must survive `serde_json::to_string` → `from_str` → CBOR re-encode byte-identically.
+#[derive(Debug, PartialEq)]
+enum JsonFailureKind {
+    /// `serde_json::to_string(&v)` FAILED — the accepted value is not json-serializable (byte-string map
+    /// key, non-finite float, …). A JSON_SURFACE_SKIP resident (ledger it with a finding citation).
+    SerializeFailed,
+    /// `serde_json::from_str::<T>(&s)` REJECTED the value's OWN serialization — the json decode surface
+    /// is over-strict about a value the CBOR decoder accepts (the motivating over-strictness class).
+    Rejected,
+    /// The json round-trip decoded to a value that RE-ENCODES to different CBOR — json lost fidelity.
+    ValueMismatch,
+    /// No known marker was found in the captured output — unexpected.
+    Unattributed,
+}
+
+/// Classify a failed json-leg replay test from the captured cargo output. Same prefix-collision grammar
+/// as `classify_constraint_failure` and siblings: the needle is `"{marker} {test_name}:"` and the
+/// trailing ':' is what stops a prefix test name (`json_accept_1` is a prefix of `json_accept_10`) from
+/// stealing the attribution. This function owns that delimiter so no attribution site can forget it.
+fn classify_json_failure(output: &str, test_name: &str) -> JsonFailureKind {
+    if output.contains(&format!("{MARKER_JSON_SERIALIZE_FAILED} {test_name}:")) {
+        JsonFailureKind::SerializeFailed
+    } else if output.contains(&format!("{MARKER_JSON_REJECTED} {test_name}:")) {
+        JsonFailureKind::Rejected
+    } else if output.contains(&format!("{MARKER_JSON_VALUE_MISMATCH} {test_name}:")) {
+        JsonFailureKind::ValueMismatch
+    } else {
+        JsonFailureKind::Unattributed
+    }
+}
+
+/// Prefix-collision pin for `classify_json_failure`, mirroring
+/// `classify_constraint_failure_disambiguates_prefix_colliding_names`: libtest names end in decimal
+/// indices, so `json_accept_1` is a PREFIX of `json_accept_10`. Assert a marker for the longer suffix
+/// does NOT attribute to the prefix name, each marker maps to its kind, and an absent name attributes to
+/// nothing.
+#[test]
+fn classify_json_failure_disambiguates_prefix_colliding_names() {
+    let output = "\
+        thread 'x' panicked: JSON_SERIALIZE_FAILED json_accept_1: not json-serializable\n\
+        thread 'y' panicked: JSON_REJECTED json_accept_10: from_str rejected its own serialization\n\
+        thread 'z' panicked: JSON_VALUE_MISMATCH json_accept_100: json round-trip changed the value\n";
+    assert_eq!(
+        classify_json_failure(output, "json_accept_1"),
+        JsonFailureKind::SerializeFailed
+    );
+    assert_eq!(
+        classify_json_failure(output, "json_accept_10"),
+        JsonFailureKind::Rejected
+    );
+    assert_eq!(
+        classify_json_failure(output, "json_accept_100"),
+        JsonFailureKind::ValueMismatch
+    );
+    // Mirror the pairing so neither ordering is privileged.
+    let mirrored = "\
+        thread 'x' panicked: JSON_VALUE_MISMATCH json_accept_1: json round-trip changed the value\n\
+        thread 'y' panicked: JSON_SERIALIZE_FAILED json_accept_10: not json-serializable\n\
+        thread 'z' panicked: JSON_REJECTED json_accept_100: from_str rejected\n";
+    assert_eq!(
+        classify_json_failure(mirrored, "json_accept_1"),
+        JsonFailureKind::ValueMismatch
+    );
+    assert_eq!(
+        classify_json_failure(mirrored, "json_accept_10"),
+        JsonFailureKind::SerializeFailed
+    );
+    assert_eq!(
+        classify_json_failure(mirrored, "json_accept_100"),
+        JsonFailureKind::Rejected
+    );
+    // A marker for the longer decimal suffix must NOT attribute to the prefix name.
+    let longer = "thread 'x' panicked: JSON_REJECTED json_accept_10: rejected\n";
+    assert_eq!(
+        classify_json_failure(longer, "json_accept_1"),
+        JsonFailureKind::Unattributed
+    );
+    assert_eq!(
+        classify_json_failure(longer, "json_accept_10"),
+        JsonFailureKind::Rejected
+    );
+    // A name absent from the output attributes to nothing.
+    assert_eq!(
+        classify_json_failure(output, "json_accept_2"),
+        JsonFailureKind::Unattributed
+    );
+}
+
+/// How a FAILED wasm-leg replay test (`wasm_accept_{i}`) attributed its cause. Accept-direction only:
+/// the wasm wrapper's `from_cbor_bytes` builds `JsError` on rejection, which PANICS under host `cargo
+/// test` (tests/README.md § "wasm-crate test module"), so a wrongful rejection surfaces as the
+/// `WASM_REJECTED` panic (loud) rather than an inspectable Err — the reject-direction is rust-decoder
+/// territory and is not replayed here.
+#[derive(Debug, PartialEq)]
+enum WasmFailureKind {
+    /// The wasm wrapper's `from_cbor_bytes` REJECTED a spec-valid accept vector — over-strict boundary.
+    /// ARMED BUT IDLE in practice: the wrapper builds `JsError` on rejection, whose CONSTRUCTION panics
+    /// under host `cargo test` (wasm-bindgen `lib.rs`) BEFORE the `.ok().expect(WASM_REJECTED)` marker
+    /// is reached, so a real rejection surfaces as `Unattributed` (the JsError panic). This variant/marker
+    /// stays as the intent-documenting `expect` message and would classify if JsError ever went host-safe.
+    Rejected,
+    /// The wasm wrapper re-encoded a decoded accept vector to different CBOR than the rust crate.
+    ValueMismatch,
+    /// The wasm wrapper's `from_json` REJECTED its own `to_json` output — over-strict json boundary. Same
+    /// ARMED-BUT-IDLE JsError-panic preemption as `Rejected` (surfaces as `Unattributed` in practice).
+    JsonRejected,
+    /// The wasm wrapper's `from_json` round-trip re-encoded to different CBOR — json fidelity lost.
+    JsonValueMismatch,
+    /// No marker was found — in the wasm leg this is the EXPECTED shape of a JsError-construction panic
+    /// (a `from_cbor_bytes`/`from_json` rejection or a `to_json` serialize failure), not merely unexpected.
+    Unattributed,
+}
+
+/// Classify a failed wasm-leg replay test from the captured cargo output. Same prefix-collision grammar
+/// as the sibling classifiers: the needle is `"{marker} {test_name}:"` and the trailing ':' is what
+/// stops a prefix test name (`wasm_accept_1` is a prefix of `wasm_accept_10`) from stealing the
+/// attribution. The two json-boundary markers are checked BEFORE their non-json twins so a
+/// `WASM_JSON_REJECTED` line is never mis-read as `WASM_REJECTED` (the latter is a substring of the
+/// former's marker word, but the needle's leading boundary — the markers are distinct WORDS separated by
+/// a space from the test name — keeps them apart; the ordering is belt-and-suspenders).
+fn classify_wasm_failure(output: &str, test_name: &str) -> WasmFailureKind {
+    if output.contains(&format!("{MARKER_WASM_JSON_REJECTED} {test_name}:")) {
+        WasmFailureKind::JsonRejected
+    } else if output.contains(&format!("{MARKER_WASM_JSON_VALUE_MISMATCH} {test_name}:")) {
+        WasmFailureKind::JsonValueMismatch
+    } else if output.contains(&format!("{MARKER_WASM_REJECTED} {test_name}:")) {
+        WasmFailureKind::Rejected
+    } else if output.contains(&format!("{MARKER_WASM_VALUE_MISMATCH} {test_name}:")) {
+        WasmFailureKind::ValueMismatch
+    } else {
+        WasmFailureKind::Unattributed
+    }
+}
+
+/// Prefix-collision pin for `classify_wasm_failure`, mirroring the sibling pins. Also pins the
+/// json-marker-word disambiguation: `WASM_REJECTED` is a suffix-word of nothing but appears inside the
+/// same output as `WASM_JSON_REJECTED`; assert a `WASM_JSON_REJECTED` line classifies as `JsonRejected`,
+/// never `Rejected`.
+#[test]
+fn classify_wasm_failure_disambiguates_prefix_colliding_names() {
+    let output = "\
+        thread 'x' panicked: WASM_REJECTED wasm_accept_1: wrapper rejected a spec-valid accept vector\n\
+        thread 'y' panicked: WASM_VALUE_MISMATCH wasm_accept_10: re-encoded differently than the rust crate\n\
+        thread 'z' panicked: WASM_JSON_REJECTED wasm_accept_100: from_json rejected its own to_json output\n";
+    assert_eq!(
+        classify_wasm_failure(output, "wasm_accept_1"),
+        WasmFailureKind::Rejected
+    );
+    assert_eq!(
+        classify_wasm_failure(output, "wasm_accept_10"),
+        WasmFailureKind::ValueMismatch
+    );
+    assert_eq!(
+        classify_wasm_failure(output, "wasm_accept_100"),
+        WasmFailureKind::JsonRejected
+    );
+    // The json value-mismatch marker maps to its own kind.
+    assert_eq!(
+        classify_wasm_failure(
+            "WASM_JSON_VALUE_MISMATCH wasm_accept_0: json round-trip changed the value\n",
+            "wasm_accept_0"
+        ),
+        WasmFailureKind::JsonValueMismatch
+    );
+    // A marker for the longer decimal suffix must NOT attribute to the prefix name.
+    let longer = "thread 'x' panicked: WASM_REJECTED wasm_accept_10: rejected\n";
+    assert_eq!(
+        classify_wasm_failure(longer, "wasm_accept_1"),
+        WasmFailureKind::Unattributed
+    );
+    assert_eq!(
+        classify_wasm_failure(longer, "wasm_accept_10"),
+        WasmFailureKind::Rejected
+    );
+    // A name absent from the output attributes to nothing.
+    assert_eq!(
+        classify_wasm_failure(output, "wasm_accept_2"),
+        WasmFailureKind::Unattributed
+    );
+}
+
+/// Mechanically detect whether the generated WASM crate's inherent `impl {type_name}` block emits a
+/// given method (`from_cbor_bytes` — the decode surface gated by `deserialize_generated` /
+/// `to_from_bytes_methods`; or `from_json` — the json surface gated by `json_serde_derives`, both in
+/// `create_base_wasm_struct`). A type with no wrapper at all (a bare primitive alias) or a wrapper
+/// without the method has NO such wasm surface, so its row's wasm leg is skipped MECHANICALLY (not
+/// hand-ledgered) — a hand list would rot. Implemented as a textual scan rather than brace-matching
+/// because the inherent impl body contains string literals with `{}` (the `from_bytes: {}` format),
+/// which defeats naive brace counting: find the inherent `impl {type_name} {` and slice to the next
+/// top-level `impl ` (impls don't nest), then look for `fn {method}` in that window.
+fn wasm_impl_has_fn(wasm_src: &str, type_name: &str, method: &str) -> bool {
+    let needle = format!("impl {type_name} {{");
+    let Some(start) = wasm_src.find(&needle) else {
+        return false;
+    };
+    let rest = &wasm_src[start + needle.len()..];
+    let end = rest.find("\nimpl ").unwrap_or(rest.len());
+    rest[..end].contains(&format!("fn {method}"))
+}
+
+/// Pins `wasm_impl_has_fn`: present-in-block => true, absent-in-block => false, no-wrapper => false,
+/// and the prefix-name hazard (`Foo` must not match `impl FooBar {`).
+#[test]
+fn wasm_impl_has_fn_detects_the_method() {
+    let with = "\
+#[wasm_bindgen]\n\
+impl Foo {\n\
+    pub fn to_cbor_bytes(&self) -> Vec<u8> { unimplemented!() }\n\
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Foo, JsError> { unimplemented!() }\n\
+    pub fn from_json(json: &str) -> Result<Foo, JsError> { unimplemented!() }\n\
+}\n\
+impl From<cddl_lib::Foo> for Foo {\n\
+    fn from(native: cddl_lib::Foo) -> Self { unimplemented!() }\n\
+}\n";
+    assert!(wasm_impl_has_fn(with, "Foo", "from_cbor_bytes"));
+    assert!(wasm_impl_has_fn(with, "Foo", "from_json"));
+
+    // A wrapper whose inherent impl has only `to_cbor_bytes` (no deserialize surface).
+    let without = "\
+#[wasm_bindgen]\n\
+impl Bar {\n\
+    pub fn to_cbor_bytes(&self) -> Vec<u8> { unimplemented!() }\n\
+}\n\
+impl From<cddl_lib::Bar> for Bar {\n\
+    fn from(native: cddl_lib::Bar) -> Self { unimplemented!() }\n\
+}\n";
+    assert!(!wasm_impl_has_fn(without, "Bar", "from_cbor_bytes"));
+
+    // No wrapper at all for the queried type.
+    assert!(!wasm_impl_has_fn(with, "Baz", "from_cbor_bytes"));
+
+    // Prefix hazard: querying `Foo` must not match `impl FooBar {`, even though FooBar has the method.
+    let foobar = "\
+#[wasm_bindgen]\n\
+impl FooBar {\n\
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<FooBar, JsError> { unimplemented!() }\n\
+}\n";
+    assert!(!wasm_impl_has_fn(foobar, "Foo", "from_cbor_bytes"));
+}
+
 /// Append the `__foreign_decode_replay` module (one `#[test]` per vector) to the generated lib.rs and
 /// `cargo test` it under the shared scratch target, returning the per-test `name -> passed` map — or
 /// `None` when the crate did not compile (no result lines), so callers separate "decoder rejected a
@@ -7923,6 +8188,430 @@ fn decode_replay_run(
     (Some(results), combined)
 }
 
+/// Generate a crate from `spec` into `out` under the THIRD generation profile the json/wasm
+/// decode-surface legs consume: `--wasm=true --json-serde-derives=true` (default profile otherwise; NO
+/// `--json-schema-export`, NO preserve). This produces BOTH `out/crate/rust` (with serde derives on the
+/// rust types) and `out/crate/wasm` (the thin `#[wasm_bindgen]` wrapper crate, path-dep on `../rust`).
+/// The default lib name (`cddl-lib` / code `cddl_lib`) is unchanged — the wasm test module references
+/// the rust crate as `cddl_lib`. Sibling of `decode_replay_generate`; returns `cargo run`'s Output so a
+/// generation abort is distinguishable from a later compile/decode outcome.
+fn decode_replay_generate_json_wasm(spec: &str, out: &std::path::Path) -> std::process::Output {
+    let _ = std::fs::remove_dir_all(out);
+    std::fs::create_dir_all(out).unwrap();
+    let spec_file = out.join("__spec.cddl");
+    std::fs::write(&spec_file, format!("{}\n", spec.trim_end_matches('\n'))).unwrap();
+    tool_cmd("cargo")
+        .args(["run", "--"])
+        .arg(format!("--input={}", spec_file.to_str().unwrap()))
+        .arg(format!("--output={}", out.join("crate").to_str().unwrap()))
+        .arg("--wasm=true")
+        .arg("--json-serde-derives=true")
+        .output()
+        .unwrap()
+}
+
+/// Append a `__foreign_decode_replay_json` `#[cfg(test)]` module to the third-generation RUST crate's
+/// `generated/mod.rs` and `cargo test` it, returning the per-test `name -> passed` map (or `None` when
+/// the crate did not compile / the emitted count is incomplete — the same completeness gate
+/// `decode_replay_run` uses). ONE `json_accept_{i}` test per spec-valid accept vector `accept_hexes[i]`:
+///
+/// - `let v = T::from_cbor_bytes(BYTES)` — the accept vector decodes (Ok expected; a rejection here is a
+///   base-leg finding, already caught, so `.expect` is fine).
+/// - `let s = serde_json::to_string(&v)` — the accepted value must be json-SERIALIZABLE
+///   (`JSON_SERIALIZE_FAILED` on failure — e.g. a byte-string map key).
+/// - `let v2: T = serde_json::from_str(&s)` — the json decode surface must ACCEPT the value's own
+///   serialization (`JSON_REJECTED` on failure — the over-strictness class this leg exists to catch).
+/// - `assert_eq!(v2.to_cbor_bytes(), v.to_cbor_bytes())` — the json round-trip must preserve the value
+///   (`JSON_VALUE_MISMATCH`; a `to_cbor_bytes` equality proxy, since generated types don't uniformly
+///   derive PartialEq — the same proxy the encoding-variant leg uses).
+///
+/// Obligation: there is NO external json oracle (CDDL has no json generation target), so the
+/// CBOR-decoder-accepted value IS the oracle — every value the rust CBOR decoder accepts must survive
+/// the json boundary. `use super::serialization::*;` brings the `Deserialize`/`ToCBORBytes` traits.
+fn decode_replay_run_json(
+    out: &std::path::Path,
+    type_name: &str,
+    accept_hexes: &[String],
+    target_dir: &std::path::Path,
+) -> (Option<std::collections::BTreeMap<String, bool>>, String) {
+    let mut fns = String::new();
+    for (i, hex) in accept_hexes.iter().enumerate() {
+        let bytes = hex_to_byte_literals(hex);
+        let name = format!("json_accept_{i}");
+        // `.expect` on `to_string`/`from_str` panics as `{msg}: {err}` — std supplies the ':' the
+        // classifier needle (`{marker} {name}:`) needs, so the marker word + test name land before it.
+        let body = format!(
+            "let v = {type_name}::from_cbor_bytes(BYTES).expect(\"json accept vector must decode\");\n\
+             \x20       let s = serde_json::to_string(&v).expect(\"{MARKER_JSON_SERIALIZE_FAILED} {name}\");\n\
+             \x20       let v2: {type_name} = serde_json::from_str(&s).expect(\"{MARKER_JSON_REJECTED} {name}\");\n\
+             \x20       assert_eq!(v2.to_cbor_bytes(), v.to_cbor_bytes(), \"{MARKER_JSON_VALUE_MISMATCH} {name}: json round-trip changed the value\");"
+        );
+        fns.push_str(&format!(
+            "\n    #[test]\n    fn {name}() {{\n        const BYTES: &[u8] = &[{bytes}];\n        {body}\n    }}\n"
+        ));
+    }
+    let module = format!(
+        "\n#[cfg(test)]\n#[allow(clippy::all)]\nmod __foreign_decode_replay_json {{\n    use super::*;\n    use super::serialization::*;\n{fns}}}\n"
+    );
+    let lib_path = out.join("crate/rust/src/generated/mod.rs");
+    let existing = std::fs::read_to_string(&lib_path).unwrap();
+    std::fs::write(&lib_path, existing + &module).unwrap();
+
+    let test = tool_cmd("cargo")
+        .arg("test")
+        .current_dir(out.join("crate/rust"))
+        .env("CARGO_TARGET_DIR", target_dir)
+        .arg("--")
+        .arg("__foreign_decode_replay_json")
+        .output()
+        .unwrap();
+    let combined = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&test.stdout),
+        String::from_utf8_lossy(&test.stderr)
+    );
+    let results = parse_libtest_results(&combined, "__foreign_decode_replay_json::");
+    if results.len() != accept_hexes.len() {
+        return (None, combined);
+    }
+    (Some(results), combined)
+}
+
+/// Append a `__foreign_decode_replay_wasm` `#[cfg(test)]` module to the third-generation WASM crate's
+/// `generated/mod.rs` and `cargo test` it (host target — the wasm-bindgen wrapper types are plain Rust,
+/// like `tests/*/tests_wasm.rs`), returning the per-test `name -> passed` map (or `None` when the wasm
+/// crate did not compile / the count is incomplete). ONE `wasm_accept_{i}` test per spec-valid accept
+/// vector — ACCEPT DIRECTION ONLY (the reject direction builds `JsError`, which PANICS under host `cargo
+/// test`, tests/README.md § "wasm-crate test module"; a wrongful rejection therefore surfaces as the
+/// `WASM_REJECTED` panic, loud and acceptable):
+///
+/// - `let wv = T::from_cbor_bytes(BYTES).ok().expect(WASM_REJECTED)` — the wasm wrapper must accept the
+///   vector (`.ok()` drops the JsError so `.expect` needs no `Debug`; Option::expect emits no ':', so the
+///   marker message carries its own).
+/// - `assert_eq!(wv.to_cbor_bytes(), <rust crate re-encode of the same bytes>)` — the CROSS-CRATE
+///   differential (`WASM_VALUE_MISMATCH`): the thin wasm wrapper must delegate decode+encode to the rust
+///   crate without corrupting the value.
+/// - where `from_json` is emitted (`has_from_json`): `let jv = T::from_json(&wv.to_json())` must be Ok
+///   (`WASM_JSON_REJECTED`) and re-encode identically (`WASM_JSON_VALUE_MISMATCH`).
+fn decode_replay_run_wasm(
+    out: &std::path::Path,
+    type_name: &str,
+    accept_hexes: &[String],
+    has_from_json: bool,
+    target_dir: &std::path::Path,
+) -> (Option<std::collections::BTreeMap<String, bool>>, String) {
+    let mut fns = String::new();
+    for (i, hex) in accept_hexes.iter().enumerate() {
+        let bytes = hex_to_byte_literals(hex);
+        let name = format!("wasm_accept_{i}");
+        let mut body = format!(
+            "let wv = {type_name}::from_cbor_bytes(BYTES).ok().expect(\"{MARKER_WASM_REJECTED} {name}: wasm wrapper rejected a spec-valid accept vector the rust decoder accepts\");\n\
+             \x20       let rv: cddl_lib::{type_name} = cddl_lib::serialization::Deserialize::from_cbor_bytes(BYTES).expect(\"{name}: rust-side decode of a spec-valid accept vector failed\");\n\
+             \x20       assert_eq!(wv.to_cbor_bytes(), cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&rv), \"{MARKER_WASM_VALUE_MISMATCH} {name}: wasm wrapper re-encoded differently than the rust crate\");"
+        );
+        if has_from_json {
+            body.push_str(&format!(
+                "\n        let s = wv.to_json().ok().expect(\"{name}: wasm wrapper to_json failed (serialize side)\");\n\
+                 \x20       let jv = {type_name}::from_json(&s).ok().expect(\"{MARKER_WASM_JSON_REJECTED} {name}: from_json rejected the wrapper's own to_json output\");\n\
+                 \x20       assert_eq!(jv.to_cbor_bytes(), wv.to_cbor_bytes(), \"{MARKER_WASM_JSON_VALUE_MISMATCH} {name}: from_json round-trip changed the value\");"
+            ));
+        }
+        fns.push_str(&format!(
+            "\n    #[test]\n    fn {name}() {{\n        const BYTES: &[u8] = &[{bytes}];\n        {body}\n    }}\n"
+        ));
+    }
+    let module = format!(
+        "\n#[cfg(test)]\n#[allow(clippy::all)]\nmod __foreign_decode_replay_wasm {{\n    use super::*;\n{fns}}}\n"
+    );
+    let lib_path = out.join("crate/wasm/src/generated/mod.rs");
+    let existing = std::fs::read_to_string(&lib_path).unwrap();
+    std::fs::write(&lib_path, existing + &module).unwrap();
+
+    let test = tool_cmd("cargo")
+        .arg("test")
+        .current_dir(out.join("crate/wasm"))
+        .env("CARGO_TARGET_DIR", target_dir)
+        .arg("--")
+        .arg("__foreign_decode_replay_wasm")
+        .output()
+        .unwrap();
+    let combined = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&test.stdout),
+        String::from_utf8_lossy(&test.stderr)
+    );
+    let results = parse_libtest_results(&combined, "__foreign_decode_replay_wasm::");
+    if results.len() != accept_hexes.len() {
+        return (None, combined);
+    }
+    (Some(results), combined)
+}
+
+/// Parse libtest stdout/stderr into a `name -> passed` map, keyed on the module marker so the parse is
+/// agnostic to the parent module path (the module is appended into `generated/mod.rs`, so its libtest
+/// path is `generated::{module_marker}name`). Shared by the json/wasm run helpers (the base-leg
+/// `decode_replay_run` inlines the same loop against `__foreign_decode_replay::`).
+fn parse_libtest_results(
+    combined: &str,
+    module_marker: &str,
+) -> std::collections::BTreeMap<String, bool> {
+    let mut results = std::collections::BTreeMap::new();
+    for line in combined.lines() {
+        let line = line.trim_start();
+        if let Some(rest) = line
+            .strip_prefix("test ")
+            .and_then(|r| r.split_once(module_marker))
+            .map(|(_, r)| r)
+            && let Some((name, tail)) = rest.split_once(" ... ")
+        {
+            let tail = tail.trim();
+            if tail == "ok" {
+                results.insert(name.to_string(), true);
+            } else if tail == "FAILED" {
+                results.insert(name.to_string(), false);
+            }
+        }
+    }
+    results
+}
+
+/// Per-row outcome of the json/wasm decode-surface legs (`decode_replay_json_wasm_legs`), aggregated by
+/// the caller into the gate's floors, stale guards, and failure list.
+#[derive(Default)]
+struct JsonWasmLegResult {
+    failures: Vec<String>,
+    /// json_accept tests that ran (non-skipped rows) — the json-round-trip vacuity floor.
+    json_accept_tests: usize,
+    /// wasm_accept tests that ran (rows with a wasm decode surface) — the wasm-accept vacuity floor.
+    wasm_accept_tests: usize,
+    /// This row exercised the json leg (didn't skip) — the "rows DO exercise" count.
+    json_row_exercised: bool,
+    /// This row exercised the wasm leg (had a decode surface and didn't skip).
+    wasm_row_exercised: bool,
+    /// The wasm leg was MECHANICALLY skipped (no `from_cbor_bytes` wrapper surface for this type, or no
+    /// spec-valid accept vectors) — classified by `wasm_impl_has_fn`, not hand-ledgered.
+    wasm_mechanical_skip: bool,
+    /// A `JSON_SURFACE_SKIP` hand-ledger entry was consumed (the row's json boundary can't round-trip).
+    json_surface_skip_hit: bool,
+    /// A `WASM_SURFACE_SKIP` hand-ledger entry was consumed (`--wasm` generation or wasm-crate compile
+    /// legitimately failed).
+    wasm_surface_skip_hit: bool,
+}
+
+/// Run the json + wasm decode-surface legs for one catalog row from a SINGLE third-generation
+/// (`--wasm=true --json-serde-derives=true`) crate. Shared verbatim by both replay gates (the matrix
+/// `decode_conformance_replay` and the corpus `corpus_decode_replay`) so the two legs cannot drift.
+///
+/// The two hand ledgers (`json_surface_skip` / `wasm_surface_skip`, both `row_id -> reason`) are passed
+/// in; the caller owns the stale-guard (an entry whose row didn't consume it fails the gate). The
+/// distinction the plan draws: a type with NO wasm decode surface is MECHANICAL (detected via
+/// `wasm_impl_has_fn`, logged, floor-counted), never hand-listed; only unexpected gen/compile failures
+/// are hand-ledgered.
+fn decode_replay_json_wasm_legs(
+    row: &ReplayRow,
+    root: &std::path::Path,
+    target_dir: &std::path::Path,
+    json_surface_skip: &std::collections::BTreeMap<&str, &str>,
+    wasm_surface_skip: &std::collections::BTreeMap<&str, &str>,
+) -> JsonWasmLegResult {
+    let mut r = JsonWasmLegResult::default();
+    let accept_hexes: Vec<String> = row
+        .vectors
+        .iter()
+        .filter(|v| v.spec_valid_accept())
+        .map(|v| v.hex.clone())
+        .collect();
+    let json_skip = json_surface_skip.get(row.id.as_str()).copied();
+    let wasm_skip = wasm_surface_skip.get(row.id.as_str()).copied();
+
+    let out = root.join(format!("{}__jsonwasm", foreign_scratch_ident(&row.id)));
+    let jwgen = decode_replay_generate_json_wasm(&row.spec, &out);
+    if !jwgen.status.success() {
+        // The failed generation blocks BOTH surfaces. Generation failure is WASM_SURFACE_SKIP territory.
+        if wasm_skip.is_some() {
+            r.wasm_surface_skip_hit = true;
+        } else {
+            r.failures.push(format!(
+                "{}: `--wasm=true --json-serde-derives=true` generation FAILED — a finding: either a \
+                 real combined-flag generation regression, or add it to WASM_SURFACE_SKIP with an \
+                 honest reason (a citation to a cddl-matrix/ROADMAP.md finding)\n{}",
+                row.id,
+                String::from_utf8_lossy(&jwgen.stderr)
+            ));
+        }
+        let _ = std::fs::remove_dir_all(&out);
+        return r;
+    }
+
+    // ---- json leg (rust crate with serde derives) ----
+    if accept_hexes.is_empty() {
+        // No spec-valid accept vectors — nothing to round-trip. Not a skip resident (vacuously empty).
+    } else if let Some(_reason) = json_skip {
+        r.json_surface_skip_hit = true;
+    } else {
+        match decode_replay_run_json(&out, &row.type_name, &accept_hexes, target_dir) {
+            (Some(results), combined) => {
+                r.json_row_exercised = true;
+                for (i, orig_hex) in accept_hexes.iter().enumerate() {
+                    let name = format!("json_accept_{i}");
+                    if !results.contains_key(&name) {
+                        continue;
+                    }
+                    r.json_accept_tests += 1;
+                    if results[&name] {
+                        continue;
+                    }
+                    match classify_json_failure(&combined, &name) {
+                        JsonFailureKind::SerializeFailed => r.failures.push(format!(
+                            "{}: json leg — `serde_json::to_string` FAILED on accepted value {orig_hex} \
+                             (the value is not json-serializable: a byte-string map key, a non-finite \
+                             float, …). If legitimate, ledger the row in JSON_SURFACE_SKIP citing a \
+                             cddl-matrix/ROADMAP.md finding; else report. Captured output:\n{combined}",
+                            row.id
+                        )),
+                        JsonFailureKind::Rejected => r.failures.push(format!(
+                            "{}: json leg — `serde_json::from_str::<{ty}>` REJECTED the value's OWN \
+                             serialization of accepted value {orig_hex} — the json decode surface is \
+                             over-strict about a value the CBOR decoder accepts (the motivating class). \
+                             Ledger the row in JSON_SURFACE_SKIP citing a cddl-matrix/ROADMAP.md finding, \
+                             or report it. Captured output:\n{combined}",
+                            row.id,
+                            ty = row.type_name
+                        )),
+                        JsonFailureKind::ValueMismatch => r.failures.push(format!(
+                            "{}: json leg — the json round-trip of accepted value {orig_hex} re-encoded \
+                             to DIFFERENT CBOR (json lost fidelity). Captured output:\n{combined}",
+                            row.id
+                        )),
+                        JsonFailureKind::Unattributed => r.failures.push(format!(
+                            "{}: json leg — `{name}` failed but emitted no known marker — unexpected. \
+                             Captured output:\n{combined}",
+                            row.id
+                        )),
+                    }
+                }
+            }
+            (None, combined) => {
+                r.failures.push(format!(
+                    "{}: json leg — the `--json-serde-derives` rust crate did not compile / produced no \
+                     json results (the default-profile rust crate compiled in the base leg, so this is \
+                     a serde-derive-specific finding). Captured output:\n{combined}",
+                    row.id
+                ));
+            }
+        }
+    }
+
+    // ---- wasm leg (wasm wrapper crate) ----
+    let wasm_src =
+        std::fs::read_to_string(out.join("crate/wasm/src/generated/mod.rs")).unwrap_or_default();
+    let has_from_cbor = wasm_impl_has_fn(&wasm_src, &row.type_name, "from_cbor_bytes");
+    // The wasm from_json sub-leg's serialize side (`to_json`) is the SAME serde path as the rust json
+    // leg, so a row whose json boundary legitimately can't round-trip (JSON_SURFACE_SKIP) must not run
+    // its wasm from_json asserts either — the wasm accept + cbor differential still runs.
+    let has_from_json =
+        wasm_impl_has_fn(&wasm_src, &row.type_name, "from_json") && json_skip.is_none();
+    if accept_hexes.is_empty() || !has_from_cbor {
+        // MECHANICAL skip: no wasm decode surface for this type (bare primitive alias / a wrapper without
+        // `from_cbor_bytes`), or no spec-valid accepts to replay. Not hand-ledgered.
+        r.wasm_mechanical_skip = true;
+    } else if wasm_skip.is_some() {
+        // Hand-ledgered expected wasm-crate compile failure. Confirm it still fails (else the guard fires).
+        match decode_replay_run_wasm(
+            &out,
+            &row.type_name,
+            &accept_hexes,
+            has_from_json,
+            target_dir,
+        ) {
+            (Some(results), _) if !results.is_empty() && results.values().all(|&p| p) => {
+                r.failures.push(format!(
+                    "{}: on WASM_SURFACE_SKIP but the wasm leg now COMPILES and every accept vector \
+                     passes — the gap closed; remove it from WASM_SURFACE_SKIP",
+                    row.id
+                ));
+            }
+            _ => {
+                r.wasm_surface_skip_hit = true;
+            }
+        }
+    } else {
+        match decode_replay_run_wasm(
+            &out,
+            &row.type_name,
+            &accept_hexes,
+            has_from_json,
+            target_dir,
+        ) {
+            (Some(results), combined) => {
+                r.wasm_row_exercised = true;
+                for (i, orig_hex) in accept_hexes.iter().enumerate() {
+                    let name = format!("wasm_accept_{i}");
+                    if !results.contains_key(&name) {
+                        continue;
+                    }
+                    r.wasm_accept_tests += 1;
+                    if results[&name] {
+                        continue;
+                    }
+                    match classify_wasm_failure(&combined, &name) {
+                        WasmFailureKind::Rejected => r.failures.push(format!(
+                            "{}: wasm leg — the wasm wrapper's `from_cbor_bytes` REJECTED spec-valid \
+                             accept vector {orig_hex} the rust decoder accepts — the thin wasm \
+                             delegation boundary is over-strict (the class this leg exists to catch). \
+                             Captured output:\n{combined}",
+                            row.id
+                        )),
+                        WasmFailureKind::ValueMismatch => r.failures.push(format!(
+                            "{}: wasm leg — the wasm wrapper re-encoded accept vector {orig_hex} to \
+                             DIFFERENT CBOR than the rust crate — the cross-crate delegation boundary \
+                             corrupted the value. Captured output:\n{combined}",
+                            row.id
+                        )),
+                        WasmFailureKind::JsonRejected => r.failures.push(format!(
+                            "{}: wasm leg — the wasm wrapper's `from_json` REJECTED its OWN `to_json` \
+                             output for accept vector {orig_hex} — the wasm json boundary is over-strict. \
+                             If the row's json boundary legitimately can't round-trip, it should be on \
+                             JSON_SURFACE_SKIP (which also gates this sub-leg); else report. Captured \
+                             output:\n{combined}",
+                            row.id
+                        )),
+                        WasmFailureKind::JsonValueMismatch => r.failures.push(format!(
+                            "{}: wasm leg — the wasm wrapper's `from_json` round-trip of accept vector \
+                             {orig_hex} re-encoded to DIFFERENT CBOR — the wasm json boundary lost \
+                             fidelity. Captured output:\n{combined}",
+                            row.id
+                        )),
+                        WasmFailureKind::Unattributed => r.failures.push(format!(
+                            "{}: wasm leg — `{name}` (accept vector {orig_hex}) failed WITHOUT one of \
+                             our markers — this is the JsError-CONSTRUCTION panic (wasm-bindgen \
+                             `lib.rs`), which preempts the `WASM_REJECTED` / `WASM_JSON_REJECTED` \
+                             `.expect` markers under host `cargo test`. It means the wasm wrapper \
+                             REJECTED the vector (`from_cbor_bytes` — an over-strict wasm boundary, the \
+                             class this leg exists to catch: REPORT it) OR `to_json`/`from_json` failed \
+                             (the row's json boundary can't round-trip — it belongs on JSON_SURFACE_SKIP, \
+                             which also suppresses this from_json sub-leg). Triage which via the \
+                             captured output:\n{combined}",
+                            row.id
+                        )),
+                    }
+                }
+            }
+            (None, combined) => {
+                r.failures.push(format!(
+                    "{}: wasm leg — the wasm crate did not compile / produced no wasm results — a \
+                     finding: fix it or add the row to WASM_SURFACE_SKIP with an honest reason (a \
+                     citation to a cddl-matrix/ROADMAP.md finding). Captured output:\n{combined}",
+                    row.id
+                ));
+            }
+        }
+    }
+
+    let _ = std::fs::remove_dir_all(&out);
+    r
+}
+
 /// Deterministic decode-direction replay of the committed `tests/decode_conformance/catalog.toml`
 /// corpus (no oracles — the bytes were spec-cross-validated at mint time). Per active row: generate
 /// the crate from `spec`, replay every vector through the generated decoder (accept => Ok, reject
@@ -7971,12 +8660,18 @@ fn decode_replay_run(
 /// `from_cbor_bytes` `TrailingData` path, is not reached by any header mutant here). A header-mutant
 /// vacuity floor keeps the leg live.
 ///
-/// MANUAL/LOCAL ONLY — `#[ignore]`d. Measured wall time ~180s warm (104 active rows × up to two full
-/// generate+`cargo test` crate builds, the default build now also compiling ~4500 encoding-variant
-/// tests plus ~2040 header-mutation tests), well past the ~90s plain-`#[test]` threshold, so it is
-/// a `full`-tier check.ts gate rather than riding the always-on `test` gate. Its own scratch dir +
-/// `cddl_codegen_decode_conformance` target so it never collides with the corpus/wasm gates when
-/// `cargo test` runs tests in parallel; `acquire_scratch_lock` serializes same-checkout runs.
+/// It ALSO runs the json/wasm decode-surface legs off a THIRD generation per row
+/// (`--wasm=true --json-serde-derives=true`, `decode_replay_json_wasm_legs`): the rust serde json
+/// round-trip and the wasm wrapper's accept + cross-crate byte differential (+ from_json where emitted).
+/// See tests/README.md § "json/wasm surface legs" and the JSON_SURFACE_SKIP / WASM_SURFACE_SKIP ledgers.
+///
+/// MANUAL/LOCAL ONLY — `#[ignore]`d. Measured wall time ~360s warm (104 active rows × up to THREE full
+/// generate+`cargo test` crate builds — default (also compiling ~4500 encoding-variant + ~2040
+/// header-mutation tests), preserve, and the json/wasm third generation), well past the ~90s
+/// plain-`#[test]` threshold, so it is a `full`-tier check.ts gate rather than riding the always-on
+/// `test` gate. Its own scratch dir + `cddl_codegen_decode_conformance` target so it never collides
+/// with the corpus/wasm gates when `cargo test` runs tests in parallel; `acquire_scratch_lock`
+/// serializes same-checkout runs.
 #[ignore = "manual/local decode-conformance replay gate (heavy: per-catalog-row crate builds under two profiles): cargo test --bin cddl-codegen decode_conformance_replay -- --ignored --nocapture"]
 #[test]
 fn decode_conformance_replay() {
@@ -8097,6 +8792,81 @@ fn decode_conformance_replay() {
     // no-location case instead).
     const HEADER_MUTANT_LOCATION_SKIP: &[(&str, &str, &str)] = &[];
 
+    // json/wasm decode-surface legs (third generation, `--wasm=true --json-serde-derives=true`).
+    // JSON_SURFACE_SKIP: rows whose json boundary legitimately can't round-trip (a value the CBOR
+    // decoder accepts that serde_json can't serialize / re-accept / round-trip bit-for-bit). Each
+    // resident cites a cddl-matrix/ROADMAP.md finding. Stale-guarded (a listed row that now round-trips
+    // fails the gate). A row skipped here still runs the wasm accept + cbor differential leg (only its
+    // wasm from_json sub-leg is suppressed too, since that shares the same serde parse path).
+    const JSON_SURFACE_SKIP: &[(&str, &str)] = &[
+        // The native-float rows: serde_json's default (non-`float_roundtrip`) f64 parse loses 1 ULP, so
+        // the json round-trip re-encodes to different CBOR (cddl-matrix/ROADMAP.md § findings, the
+        // `serde_json` `float_roundtrip` entry). f32 rows round-trip exactly, so they are NOT here.
+        (
+            "prelude.float",
+            "serde_json's default f64 parse loses 1 ULP on the json round-trip — the generated crate's \
+             serde_json dep lacks `float_roundtrip` (cddl-matrix/ROADMAP.md § findings)",
+        ),
+        (
+            "prelude.float64",
+            "serde_json's default f64 parse loses 1 ULP on the json round-trip — the generated crate's \
+             serde_json dep lacks `float_roundtrip` (cddl-matrix/ROADMAP.md § findings)",
+        ),
+        (
+            "prelude.number",
+            "the `int / float` float arm loses 1 ULP through serde_json's default f64 parse on the json \
+             round-trip — serde_json lacks `float_roundtrip` (cddl-matrix/ROADMAP.md § findings)",
+        ),
+        (
+            "prelude.time",
+            "the `~= number` float arm loses 1 ULP through serde_json's default f64 parse on the json \
+             round-trip — serde_json lacks `float_roundtrip` (cddl-matrix/ROADMAP.md § findings)",
+        ),
+        (
+            "rangeop.inclusive.float",
+            "the f64-range newtype loses 1 ULP through serde_json's default f64 parse on the json \
+             round-trip — serde_json lacks `float_roundtrip` (cddl-matrix/ROADMAP.md § findings)",
+        ),
+        (
+            "rangeop.exclusive.float",
+            "the f64-range newtype loses 1 ULP through serde_json's default f64 parse on the json \
+             round-trip — serde_json lacks `float_roundtrip` (cddl-matrix/ROADMAP.md § findings)",
+        ),
+        // `@custom_json` omits serde derives on the rust type, so `serde_json::to_string(&T)` in the
+        // json test module won't compile standalone — the user is expected to supply custom json code
+        // (cddl-matrix/ROADMAP.md § findings, the `@custom_json` json/wasm-surface entry).
+        (
+            "dsl.custom_json",
+            "`@custom_json` omits the serde derives the json leg's serde_json usage needs — references \
+             user-supplied custom-json code, can't compile standalone (cddl-matrix/ROADMAP.md § findings)",
+        ),
+    ];
+    // WASM_SURFACE_SKIP: rows whose `--wasm` generation or wasm-crate compile legitimately fails. Each
+    // resident cites a finding. Distinct from a MECHANICAL skip — a type with no `from_cbor_bytes`
+    // wrapper surface is classified by `wasm_impl_has_fn` and NOT hand-listed (a hand list would rot).
+    // Stale-guarded (a listed row that now compiles + passes fails the gate).
+    const WASM_SURFACE_SKIP: &[(&str, &str)] = &[
+        // `@custom_json` omits the type's serde derives, but the wasm wrapper still emits
+        // to_json/from_json (gated only on --json-serde-derives), which require `T: Serialize +
+        // Deserialize` → the wasm crate fails E0277 (cddl-matrix/ROADMAP.md § findings, the
+        // `@custom_json` json/wasm-surface entry).
+        (
+            "dsl.custom_json",
+            "`@custom_json` omits serde derives, but the wasm wrapper's to_json/from_json require them → \
+             the wasm crate fails to compile standalone (cddl-matrix/ROADMAP.md § findings)",
+        ),
+    ];
+
+    // json/wasm decode-surface vacuity floors, pinned from the confirm run's actuals with ~10%
+    // headroom (1071 json-round-trip asserts over 117 rows, 1126 wasm-accept asserts over 123 rows,
+    // 0 mechanical wasm skips — every catalog type carries a from_cbor_bytes wrapper surface). Floors
+    // set just under so ordinary corpus churn doesn't false-fail while a collapsed generation loop
+    // still trips the gate.
+    const JSON_ACCEPT_FLOOR: usize = 960;
+    const JSON_ROWS_FLOOR: usize = 105;
+    const WASM_ACCEPT_FLOOR: usize = 1010;
+    const WASM_ROWS_FLOOR: usize = 110;
+
     let catalog_path = std::path::Path::new("tests/decode_conformance/catalog.toml");
     let catalog_src = std::fs::read_to_string(catalog_path)
         .unwrap_or_else(|e| panic!("cannot read {catalog_path:?}: {e}"));
@@ -8215,6 +8985,20 @@ fn decode_conformance_replay() {
              — stale pin, remove or fix it"
         );
     }
+    for (id, _) in JSON_SURFACE_SKIP {
+        assert!(
+            active_row_ids.contains(id),
+            "JSON_SURFACE_SKIP names catalog row `{id}` that is not an active replayed row — stale \
+             pin, remove or fix it"
+        );
+    }
+    for (id, _) in WASM_SURFACE_SKIP {
+        assert!(
+            active_row_ids.contains(id),
+            "WASM_SURFACE_SKIP names catalog row `{id}` that is not an active replayed row — stale \
+             pin, remove or fix it"
+        );
+    }
 
     let scratch_name = format!("cddl_codegen_decode_conformance_{:016x}", checkout_hash());
     // Hold for the whole gate: same-checkout concurrent runs serialize instead of clobbering each
@@ -8262,10 +9046,26 @@ fn decode_conformance_replay() {
         std::collections::BTreeSet::new();
     let mut header_location_skip_still_failing: std::collections::BTreeSet<(String, String)> =
         std::collections::BTreeSet::new();
+    let json_surface_skip: std::collections::BTreeMap<&str, &str> =
+        JSON_SURFACE_SKIP.iter().copied().collect();
+    let wasm_surface_skip: std::collections::BTreeMap<&str, &str> =
+        WASM_SURFACE_SKIP.iter().copied().collect();
+    // Row ids whose JSON_SURFACE_SKIP / WASM_SURFACE_SKIP entry was actually consumed (the row's leg
+    // skipped/failed as ledgered); the stale guards flag any listed id NOT here (the gap closed).
+    let mut json_surface_skip_hit: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
+    let mut wasm_surface_skip_hit: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
 
     let mut failures: Vec<String> = Vec::new();
     let mut rows_replayed = 0usize;
     let mut vectors_replayed = 0usize;
+    // json/wasm decode-surface leg counters (third generation). Floors below guard vacuity.
+    let mut json_accept_tests_total = 0usize;
+    let mut wasm_accept_tests_total = 0usize;
+    let mut json_rows_exercised = 0usize;
+    let mut wasm_rows_exercised = 0usize;
+    let mut wasm_mechanical_skips = 0usize;
     // How many DEFAULT-leg encoding-variant tests were emitted (a vacuity floor guards against the
     // variant leg silently emitting nothing — a mutator that returned empty, or a broken loop).
     let mut variant_tests_total = 0usize;
@@ -8725,9 +9525,49 @@ fn decode_conformance_replay() {
             ));
         }
         let _ = std::fs::remove_dir_all(&pout);
+
+        // ---- json + wasm decode-surface legs (third generation, --wasm --json-serde-derives) ----
+        let jw = decode_replay_json_wasm_legs(
+            row,
+            &root,
+            &target_dir,
+            &json_surface_skip,
+            &wasm_surface_skip,
+        );
+        failures.extend(jw.failures);
+        json_accept_tests_total += jw.json_accept_tests;
+        wasm_accept_tests_total += jw.wasm_accept_tests;
+        json_rows_exercised += usize::from(jw.json_row_exercised);
+        wasm_rows_exercised += usize::from(jw.wasm_row_exercised);
+        wasm_mechanical_skips += usize::from(jw.wasm_mechanical_skip);
+        if jw.json_surface_skip_hit {
+            json_surface_skip_hit.insert(row.id.clone());
+        }
+        if jw.wasm_surface_skip_hit {
+            wasm_surface_skip_hit.insert(row.id.clone());
+        }
     }
 
     let _ = std::fs::remove_dir_all(&root);
+
+    // Stale-entry guards for the json/wasm surface ledgers: a listed row whose leg no longer skips/fails
+    // as ledgered must be removed (the gap closed). Mirrors the PRESERVE_SKIP stale guard.
+    for (id, _reason) in JSON_SURFACE_SKIP {
+        if !json_surface_skip_hit.contains(*id) {
+            failures.push(format!(
+                "JSON_SURFACE_SKIP names `{id}` but its json boundary no longer fails to round-trip — \
+                 the gap closed; remove the entry (stale pin)"
+            ));
+        }
+    }
+    for (id, _reason) in WASM_SURFACE_SKIP {
+        if !wasm_surface_skip_hit.contains(*id) {
+            failures.push(format!(
+                "WASM_SURFACE_SKIP names `{id}` but its wasm generation/compile no longer fails — the \
+                 gap closed; remove the entry (stale pin)"
+            ));
+        }
+    }
 
     // Stale-entry guard for ENCODING_VARIANT_SKIP: a listed (row, label) whose variant test no longer
     // fails (it now decodes+re-encodes cleanly, or the row/label stopped emitting that variant) must be
@@ -8826,6 +9666,32 @@ fn decode_conformance_replay() {
         "only {header_tests_total} header-mutation tests were emitted (expected >= 1900) — the \
          header-mutation leg looks disabled or the corpus lost its accept vectors"
     );
+    // json/wasm decode-surface vacuity floors (pinned from the first full run's actuals with ~10%
+    // headroom; see the plan). A json-round-trip assert count floor and a wasm-accept assert count
+    // floor guard against a leg silently emitting nothing (a broken third generation, a mutator that
+    // returned empty, or the corpus losing its accept vectors); the "rows DO exercise the leg" floors
+    // (the mechanical-skip vacuity guard) catch a generation that never produces a decode surface.
+    assert!(
+        json_accept_tests_total >= JSON_ACCEPT_FLOOR,
+        "only {json_accept_tests_total} json-round-trip asserts ran (expected >= {JSON_ACCEPT_FLOOR}) \
+         — the json decode-surface leg looks disabled or the corpus lost its accept vectors"
+    );
+    assert!(
+        json_rows_exercised >= JSON_ROWS_FLOOR,
+        "only {json_rows_exercised} rows exercised the json leg (expected >= {JSON_ROWS_FLOOR}) — the \
+         json leg looks disabled or nearly every row landed on JSON_SURFACE_SKIP"
+    );
+    assert!(
+        wasm_accept_tests_total >= WASM_ACCEPT_FLOOR,
+        "only {wasm_accept_tests_total} wasm-accept asserts ran (expected >= {WASM_ACCEPT_FLOOR}) — \
+         the wasm decode-surface leg looks disabled or the corpus lost its accept vectors"
+    );
+    assert!(
+        wasm_rows_exercised >= WASM_ROWS_FLOOR,
+        "only {wasm_rows_exercised} rows exercised the wasm leg (expected >= {WASM_ROWS_FLOOR}, with \
+         {wasm_mechanical_skips} mechanically skipped for having no from_cbor_bytes wrapper surface) — \
+         the wasm leg looks disabled or nearly every type lost its wasm decode surface"
+    );
     assert!(
         failures.is_empty(),
         "decode-conformance replay found {} problem(s):\n\n{}",
@@ -8853,9 +9719,12 @@ fn decode_conformance_replay() {
 ///
 /// Its own scratch dir + `cddl_codegen_corpus_decode_replay` target keeps it from colliding with the
 /// matrix replay / corpus / wasm gates when `cargo test` runs in parallel; `acquire_scratch_lock`
-/// serializes same-checkout runs. MANUAL/LOCAL ONLY — `#[ignore]`d, check.ts `full` tier. Measured
-/// wall time ~225s warm (124 active rows × up to two generate+`cargo test` crate builds, the default
-/// build compiling ~4900 encoding-variant plus ~2100 header-mutation tests).
+/// serializes same-checkout runs. It ALSO runs the json/wasm decode-surface legs off a THIRD
+/// generation per row (`decode_replay_json_wasm_legs`, shared with the matrix gate — tests/README.md
+/// § "json/wasm surface legs"). MANUAL/LOCAL ONLY — `#[ignore]`d, check.ts `full` tier. Measured wall
+/// time ~382s warm (124 active rows × up to THREE generate+`cargo test` crate builds — default
+/// (compiling ~4900 encoding-variant + ~2100 header-mutation tests), preserve, and the json/wasm third
+/// generation).
 ///
 /// NAMING: the name is deliberately NOT a superstring of `decode_conformance_replay` — check.ts's
 /// existing full-tier gate runs `cargo test … decode_conformance_replay -- --ignored` with SUBSTRING
@@ -8899,12 +9768,77 @@ fn corpus_decode_replay() {
     // stale-guarded.
     const HEADER_MUTANT_LOCATION_SKIP: &[(&str, &str, &str)] = &[];
 
+    // json/wasm decode-surface leg ledgers (third generation, `--wasm=true --json-serde-derives=true`).
+    // Same contract as the matrix gate's: JSON_SURFACE_SKIP for rows whose json boundary can't
+    // round-trip, WASM_SURFACE_SKIP for rows whose `--wasm` generation/compile fails — distinct from a
+    // MECHANICAL no-`from_cbor_bytes` skip (classified by `wasm_impl_has_fn`, never hand-listed). Every
+    // corpus row is holder mode (`type_name = ProbeHolder`, a generated array struct that always has a
+    // decode surface), so no mechanical wasm skips are expected here. Both stale-guarded; each resident
+    // cites a cddl-matrix/ROADMAP.md finding.
+    const JSON_SURFACE_SKIP: &[(&str, &str)] = &[
+        // Non-string map keys don't cross the json boundary (serde_json errors on byte-string / composite
+        // keys) — cddl-matrix/ROADMAP.md § findings, the non-string-map-key entry.
+        (
+            "bytes_map_key.bkeys",
+            "a `bytes`-keyed map is not json-serializable — serde_json requires string keys \
+             (cddl-matrix/ROADMAP.md § findings)",
+        ),
+        (
+            "bytes_map_key.bytes_key_holder",
+            "a `bytes`-keyed map is not json-serializable — serde_json requires string keys \
+             (cddl-matrix/ROADMAP.md § findings)",
+        ),
+        (
+            "composite_map_key.holder",
+            "a composite (array) map key is not json-serializable — serde_json requires string keys \
+             (cddl-matrix/ROADMAP.md § findings)",
+        ),
+        // f64 ULP loss through serde_json's default parse (this row is also on PRESERVE_SKIP for the
+        // native-float generation gap) — cddl-matrix/ROADMAP.md § findings.
+        (
+            "homogeneous_array.floats",
+            "`[* float64]` loses 1 ULP per element through serde_json's default f64 parse — serde_json \
+             lacks `float_roundtrip` (cddl-matrix/ROADMAP.md § findings)",
+        ),
+        // Present-null optional field: json preserves present-null, the CBOR re-encode drops it — the
+        // to_cbor_bytes fidelity proxy diverges (cddl-matrix/ROADMAP.md § findings).
+        (
+            "nullable_nested.nullable_optional_field",
+            "a present-null optional field round-trips differently through json (preserved) than the \
+             direct CBOR re-encode (dropped) (cddl-matrix/ROADMAP.md § findings)",
+        ),
+        // `@custom_json` omits serde derives, so the json test module's serde_json usage won't compile
+        // standalone (references user-supplied custom-json code) — cddl-matrix/ROADMAP.md § findings.
+        (
+            "dsl_custom.custom_newtype",
+            "`@custom_json` omits the serde derives the json leg needs — references user-supplied \
+             custom-json code, can't compile standalone (cddl-matrix/ROADMAP.md § findings)",
+        ),
+    ];
+    const WASM_SURFACE_SKIP: &[(&str, &str)] = &[
+        // `@custom_json` omits serde derives, but the wasm wrapper still emits to_json/from_json requiring
+        // them → the wasm crate fails E0277 standalone (cddl-matrix/ROADMAP.md § findings).
+        (
+            "dsl_custom.custom_newtype",
+            "`@custom_json` omits serde derives, but the wasm wrapper's to_json/from_json require them → \
+             the wasm crate fails to compile standalone (cddl-matrix/ROADMAP.md § findings)",
+        ),
+    ];
+
     // Encoding-variant / header-mutant vacuity floors, pinned from the first full run's actuals with
     // ~10% headroom (see the asserts at the end of this test): 4914 encoding-variant tests and 2117
     // header-mutation tests emitted from the 1064 accept vectors when the floors were set — observed
     // baselines, not current counts.
     const FLOOR_VARIANT: usize = 4400;
     const FLOOR_HEADER: usize = 1900;
+    // json/wasm decode-surface vacuity floors, pinned from the confirm run's actuals with ~10% headroom
+    // (1014 json-round-trip asserts over 118 rows, 1054 wasm-accept asserts over 123 rows, 0 mechanical
+    // wasm skips — every ProbeHolder carries a from_cbor_bytes wrapper surface; 6 rows on
+    // JSON_SURFACE_SKIP, 1 on WASM_SURFACE_SKIP).
+    const JSON_ACCEPT_FLOOR: usize = 910;
+    const JSON_ROWS_FLOOR: usize = 106;
+    const WASM_ACCEPT_FLOOR: usize = 945;
+    const WASM_ROWS_FLOOR: usize = 110;
 
     let catalog_path = std::path::Path::new("tests/decode_conformance/corpus_catalog.toml");
     let catalog_src = std::fs::read_to_string(catalog_path)
@@ -9029,6 +9963,20 @@ fn corpus_decode_replay() {
              — stale pin, remove or fix it"
         );
     }
+    for (id, _) in JSON_SURFACE_SKIP {
+        assert!(
+            active_row_ids.contains(id),
+            "JSON_SURFACE_SKIP names catalog row `{id}` that is not an active replayed row — stale \
+             pin, remove or fix it"
+        );
+    }
+    for (id, _) in WASM_SURFACE_SKIP {
+        assert!(
+            active_row_ids.contains(id),
+            "WASM_SURFACE_SKIP names catalog row `{id}` that is not an active replayed row — stale \
+             pin, remove or fix it"
+        );
+    }
 
     let scratch_name = format!("cddl_codegen_corpus_decode_replay_{:016x}", checkout_hash());
     // Hold for the whole gate: same-checkout concurrent runs serialize instead of clobbering each
@@ -9070,6 +10018,14 @@ fn corpus_decode_replay() {
         std::collections::BTreeSet::new();
     let mut header_location_skip_still_failing: std::collections::BTreeSet<(String, String)> =
         std::collections::BTreeSet::new();
+    let json_surface_skip: std::collections::BTreeMap<&str, &str> =
+        JSON_SURFACE_SKIP.iter().copied().collect();
+    let wasm_surface_skip: std::collections::BTreeMap<&str, &str> =
+        WASM_SURFACE_SKIP.iter().copied().collect();
+    let mut json_surface_skip_hit: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
+    let mut wasm_surface_skip_hit: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
 
     let mut failures: Vec<String> = Vec::new();
     let mut rows_replayed = 0usize;
@@ -9078,6 +10034,12 @@ fn corpus_decode_replay() {
     let mut header_tests_total = 0usize;
     let mut constraint_reason_asserts = 0usize;
     let mut over_acceptance_tests_emitted = 0usize;
+    // json/wasm decode-surface leg counters (third generation). Floors below guard vacuity.
+    let mut json_accept_tests_total = 0usize;
+    let mut wasm_accept_tests_total = 0usize;
+    let mut json_rows_exercised = 0usize;
+    let mut wasm_rows_exercised = 0usize;
+    let mut wasm_mechanical_skips = 0usize;
     let over_acceptance_catalog_total: usize = rows
         .iter()
         .flat_map(|r| &r.vectors)
@@ -9478,9 +10440,47 @@ fn corpus_decode_replay() {
             ));
         }
         let _ = std::fs::remove_dir_all(&pout);
+
+        // ---- json + wasm decode-surface legs (third generation, --wasm --json-serde-derives) ----
+        let jw = decode_replay_json_wasm_legs(
+            row,
+            &root,
+            &target_dir,
+            &json_surface_skip,
+            &wasm_surface_skip,
+        );
+        failures.extend(jw.failures);
+        json_accept_tests_total += jw.json_accept_tests;
+        wasm_accept_tests_total += jw.wasm_accept_tests;
+        json_rows_exercised += usize::from(jw.json_row_exercised);
+        wasm_rows_exercised += usize::from(jw.wasm_row_exercised);
+        wasm_mechanical_skips += usize::from(jw.wasm_mechanical_skip);
+        if jw.json_surface_skip_hit {
+            json_surface_skip_hit.insert(row.id.clone());
+        }
+        if jw.wasm_surface_skip_hit {
+            wasm_surface_skip_hit.insert(row.id.clone());
+        }
     }
 
     let _ = std::fs::remove_dir_all(&root);
+
+    for (id, _reason) in JSON_SURFACE_SKIP {
+        if !json_surface_skip_hit.contains(*id) {
+            failures.push(format!(
+                "JSON_SURFACE_SKIP names `{id}` but its json boundary no longer fails to round-trip — \
+                 the gap closed; remove the entry (stale pin)"
+            ));
+        }
+    }
+    for (id, _reason) in WASM_SURFACE_SKIP {
+        if !wasm_surface_skip_hit.contains(*id) {
+            failures.push(format!(
+                "WASM_SURFACE_SKIP names `{id}` but its wasm generation/compile no longer fails — the \
+                 gap closed; remove the entry (stale pin)"
+            ));
+        }
+    }
 
     for (id, label, _reason) in ENCODING_VARIANT_SKIP {
         if !variant_skip_still_failing.contains(&(id.to_string(), label.to_string())) {
@@ -9561,6 +10561,29 @@ fn corpus_decode_replay() {
         header_tests_total >= FLOOR_HEADER,
         "only {header_tests_total} header-mutation tests were emitted (expected >= {FLOOR_HEADER}) — \
          the header-mutation leg looks disabled or the corpus lost its accept vectors"
+    );
+    // json/wasm decode-surface vacuity floors (see the matrix gate for the rationale). Every corpus row
+    // is holder mode with a ProbeHolder decode surface, so no mechanical wasm skips are expected here.
+    assert!(
+        json_accept_tests_total >= JSON_ACCEPT_FLOOR,
+        "only {json_accept_tests_total} json-round-trip asserts ran (expected >= {JSON_ACCEPT_FLOOR}) \
+         — the json decode-surface leg looks disabled or the corpus lost its accept vectors"
+    );
+    assert!(
+        json_rows_exercised >= JSON_ROWS_FLOOR,
+        "only {json_rows_exercised} rows exercised the json leg (expected >= {JSON_ROWS_FLOOR}) — the \
+         json leg looks disabled or nearly every row landed on JSON_SURFACE_SKIP"
+    );
+    assert!(
+        wasm_accept_tests_total >= WASM_ACCEPT_FLOOR,
+        "only {wasm_accept_tests_total} wasm-accept asserts ran (expected >= {WASM_ACCEPT_FLOOR}) — \
+         the wasm decode-surface leg looks disabled or the corpus lost its accept vectors"
+    );
+    assert!(
+        wasm_rows_exercised >= WASM_ROWS_FLOOR,
+        "only {wasm_rows_exercised} rows exercised the wasm leg (expected >= {WASM_ROWS_FLOOR}, with \
+         {wasm_mechanical_skips} mechanically skipped) — the wasm leg looks disabled or the corpus \
+         lost its ProbeHolder decode surface"
     );
     assert!(
         failures.is_empty(),

@@ -769,6 +769,65 @@ NESTED, so the corpus mint drops any accept candidate whose CBOR item tree conta
 ANYWHERE and the drift gate statically bans a committed one. It shares the matrix ban's prune
 condition — remove both halves together when a fixed cbor_event ships.
 
+#### json/wasm surface legs
+
+The two replay gates above pin the RUST CBOR decoder. Two OTHER decode entry points ship with the
+generated crate and had no obligation minted: the `--json-serde-derives` json surface
+(`serde_json::from_str` over the serde-derived rust types) and the `--wasm` wrapper surface (the thin
+`#[wasm_bindgen]` `from_cbor_bytes` / `from_json` delegators in `create_base_wasm_struct`). A json/wasm
+boundary that is over-strict about spec-valid input the rust decoder already accepts would pass every
+other gate. So each replay gate gains a **third generation per row** — `--wasm=true
+--json-serde-derives=true`, default profile otherwise (NO `--json-schema-export`, NO preserve) — and
+two accept-only legs off it (`decode_replay_json_wasm_legs` in `integration_tests.rs`, shared verbatim
+by both gates). Only the PLAIN accept vectors are replayed: reject / constraint / over-acceptance /
+encoding-variant / header-mutant vectors evidence nothing about these boundaries (the reject direction
+is rust-decoder territory, and wasm-side is `JsError`-blocked — see below).
+
+**No external json oracle.** CDDL has no json generation target, so the obligation is defined against
+the rust CBOR decoder's accepted values: *every value the rust CBOR decoder accepts from a committed
+vector must survive the boundary.*
+
+- **json leg** (`__foreign_decode_replay_json`, appended to the third-generation RUST crate's
+  `generated/mod.rs`): per accept vector, `let v = T::from_cbor_bytes(BYTES)` (Ok), `serde_json::to_string(&v)`
+  (Ok — the value must be json-SERIALIZABLE), `serde_json::from_str::<T>(&s)` (Ok — the over-strictness
+  assert), `assert_eq!(v2.to_cbor_bytes(), v.to_cbor_bytes())` (the `to_cbor_bytes` value-fidelity
+  proxy, since generated types don't uniformly derive `PartialEq` — the same proxy the encoding-variant
+  leg uses).
+- **wasm leg** (`__foreign_decode_replay_wasm`, appended to the WASM crate's `generated/mod.rs`, `cargo
+  test`ed on the HOST target like `tests/*/tests_wasm.rs`): per accept vector,
+  `T::from_cbor_bytes(BYTES).ok().expect(marker)` (accept direction ONLY — the wasm wrapper builds
+  `JsError` on rejection, which PANICS under host `cargo test`, so a wrongful rejection surfaces as the
+  loud `WASM_REJECTED` panic rather than an inspectable Err), plus a **cross-crate byte differential**
+  (`wv.to_cbor_bytes()` == the rust crate's re-encode of the same bytes — the wasm crate path-deps on
+  `../rust`), and where `from_json` is emitted, `T::from_json(&wv.to_json())` Ok with the same
+  differential.
+
+**Skip ledgers** (per gate, both stale-guarded, same shape as `PRESERVE_SKIP`, EMPTY at HEAD): a row
+skipped on one leg still runs the other. `JSON_SURFACE_SKIP` — rows whose json boundary legitimately
+can't round-trip (a value the CBOR decoder accepts that `serde_json` can't serialize — a byte-string
+map key, a non-finite float — or that `from_str` won't re-accept); each resident cites a
+`cddl-matrix/ROADMAP.md` finding, and it also suppresses the wasm `from_json` sub-leg (same serde path).
+`WASM_SURFACE_SKIP` — rows whose `--wasm` generation or wasm-crate compile legitimately fails; also
+cited. Distinct from a **mechanical** skip: a type with NO `from_cbor_bytes` wasm wrapper surface (a
+bare primitive alias, or a wrapper without the deserialize method — `deserialize_generated` gating) is
+classified MECHANICALLY (`wasm_impl_has_fn` scans the generated wasm source for that type's inherent
+impl), never hand-listed — a hand list of that class would rot. Loudly-logged, and paired with a
+"rows DO exercise the wasm leg" vacuity floor.
+
+**Vacuity floors** (pinned from actuals with ~10% headroom): a json-round-trip assert count floor and a
+wasm-accept assert count floor per gate, plus per-crate emitted-test completeness (the run helper
+returns `None` — treated as a compile finding — if the emitted test count doesn't match the expected
+per-row accept-vector count). **Failure attribution**: grep-stable markers
+(`JSON_SERIALIZE_FAILED` / `JSON_REJECTED` / `JSON_VALUE_MISMATCH`; `WASM_REJECTED` /
+`WASM_VALUE_MISMATCH` / `WASM_JSON_REJECTED` / `WASM_JSON_VALUE_MISMATCH`) + `classify_json_failure` /
+`classify_wasm_failure`, the same trailing-':' prefix-collision grammar as the base-leg classifiers
+(pinned unit-side by `classify_json_failure_disambiguates_prefix_colliding_names` and its wasm sibling).
+
+**Out of scope:** the `--wasm-cbor-json-api-macro` escape hatch (it replaces the wrapper surface with a
+user-supplied macro; flag-gated, unexercised by these catalogs). The wasm reject direction (the
+`JsError`-panic class). And json laxness (serde derives don't re-enforce CDDL bounds — an
+enforcement-axis question for a future item, not this accept-direction leg).
+
 ### JSON-schema → TypeScript JS-side pipeline (`js_schema_to_ts`, `js_d_ts_merge`, `package_json_pipeline`)
 
 `--json-schema-export` ships a JS toolchain that turns the exported schemas into TypeScript and

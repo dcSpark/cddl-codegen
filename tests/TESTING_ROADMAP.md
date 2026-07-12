@@ -118,17 +118,6 @@ fuzzer escalations, the recur-first residuals), not here.
    - **Real-world corpus differential** (see `draft/testing-recommendations/RECOMMENDATIONS.md`):
      synthetic breadth vs real-world depth — recombination does not replace it.
 
-2. **Mint decode-conformance vectors for the json and wasm decode surfaces.** The decode-direction
-   harness (`tests/README.md` § "Decode-direction conformance") mints spec-derived vectors for the
-   RUST decoder along two mechanically-projected obligation sets — the matrix's per-construct breadth
-   (replayed by `decode_conformance_replay`) and the corpus fixtures' composition depth (replayed by
-   `corpus_decode_replay`). The `--json-serde-derives` and `--wasm` decode entry points have no such
-   obligation minted, so a json/wasm-boundary decoder that is over-strict about spec-valid input the
-   rust decoder already accepts would pass every current gate. Route any minting for them through the
-   same projection machinery (the matrix rows / corpus glob × the shared rule enumerator) so coverage
-   stays mechanically checkable rather than a hand-picked list, reusing the replay legs the two
-   existing gates already share.
-
 ## Standing-system residuals (recur-first)
 
 Each entry here is a ledger record for a proven-once failure class: what happened, which standing
