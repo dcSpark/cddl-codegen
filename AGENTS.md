@@ -138,6 +138,16 @@ For sessions that spawn their own sub-agents (an orchestrating session, or a sub
   foreground tool call (a `check.ts local` run is silent for ~4 min), so before invoking recovery,
   check the last entry's type (a trailing `tool_use` = mid-call) and for live build processes.
   Same rationale as the foreground rule for multi-minute gates above.
+- **Write the operational rules INTO the delegation prompt — sub-agents don't reliably act on this
+  file even when instructed to read it (and the review must diff the report against the plan
+  item-by-item).** Two same-session instances from the corpus-decode-leg delivery: an implementing
+  sub-agent that had read this file still ended its turn to "stand by" for its own backgrounded
+  gate run (the exact stall above — the run died with its turn, leaving no log and no process); and
+  another silently dropped one item of a reviewed plan (an ENOSPC preflight), visible only by
+  checking its completion report against the plan point-by-point — a report reads complete on its
+  own terms. So: spell out the multi-minute-gate run discipline (foreground, extended timeout,
+  full-output-to-file) in every delegation prompt that runs gates, re-assert it in mid-task
+  corrections, and treat plan-vs-report diffing as a mandatory review step, not a spot check.
 
 
 ## Markdown formatting
