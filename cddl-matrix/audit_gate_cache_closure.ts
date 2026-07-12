@@ -437,7 +437,7 @@ async function main(): Promise<void> {
     uniquePaths.get(cls.label)!.add(rd.path);
     if (!cls.allowed) {
       const ownerArgv = (model.argv.get(owner) ?? []).join(" ");
-      const dedup = `${rd.path} ${owner}`;
+      const dedup = `${rd.path}\u0000${owner}`;
       if (!offenders.has(dedup)) offenders.set(dedup, { path: rd.path, label: cls.label, pid: rd.pid, ownerArgv });
     }
   });
