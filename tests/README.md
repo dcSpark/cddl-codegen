@@ -28,7 +28,7 @@ pin by exact identifier ("pinned by/tracked by/gated by `name`"), and a *behavio
 X panics/rejects") gets a robustness-catalog row FIRST — the panic/reject catalogs flip loudly on a
 behavior change, where prose-only claims rot silently. `full` additionally runs the
 manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the thirteen `#[ignore]`d gates `wasm_matrix_roundtrips` / `multifile_matrix_roundtrips` / `identifier_hazard_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `rust_oracle_fingerprint` / `decode_conformance_replay` / `corpus_decode_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
-the fuzz-crate compile-rot check) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
+the fuzz-crate compile-rot check, plus the two gate-cache soundness gates — the input-closure audit `gate_cache_closure_audit` and the flag-gated `verify_cache_transparency` — see the gate-cache section below) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
 `SKIPPED(reason)` / `STUB` / `not-in-tier` + per-gate durations), so a gate that didn't run is always
 *visibly* not-run. Exit is non-zero on any `FAIL`; the run fails fast by default (`--keep-going` runs
 every in-tier gate first).
@@ -39,6 +39,8 @@ slowest single gate but not prohibitive: ~170 examples × generate + `cargo test
 ~11 min warm-cache on the dev machine (wasm + decode-foreign on); hours cold, the shared-target
 warm-up dominating. The fuzz
 gate re-runs `fuzz/generate.sh` only when `fuzz/generated` is absent or `--refresh-fuzz` is passed.
+`--cache-transparency` enables the otherwise-`SKIPPED` `verify_cache_transparency` gate (two verify
+runs, cached vs `GATE_CACHE=0`, asserted byte-identical — see the gate-cache section).
 
 > **Fold before committing after a `full` run.** The `verify` gate rewrites
 > `cddl-matrix/annotations/cddl_codegen.toml`, and it runs AFTER `build_matrix_check` already
@@ -99,6 +101,26 @@ into per-vector verdicts and completeness counts, so exit status alone is not th
 (the cached-unit rule: a site qualifies only when the harness consumes nothing but exit codes
 from a fixed command sequence). `run_test`-based fixture suites are also uncached in v1 — they
 reuse export dirs and already replay warm-incrementally through cargo.
+
+**Soundness gates.** The NO-time-based-invalidation stance rests on two obligations, each with a
+mechanical full-tier gate INSTEAD of an industry cold run. `gate_cache_closure_audit`
+(`cddl-matrix/audit_gate_cache_closure.ts`) protects the KEY side: it traces a real cached gate
+under `strace -f` and asserts every file-content read made by a nested-cargo subtree falls in a
+class the key provably covers (the generated tree under `$TMPDIR`, `$CARGO_HOME`, `$RUSTUP_HOME`,
+system prefixes, and exactly the two user git-config files cargo consults at startup — fetch-side
+only, checksum-fenced by the hashed lockfile, so verdict-inert) — a read under the repo checkout is
+exactly "a cached site grew an unhashed input"
+and FAILs, naming the path, pid, and owning nested-cargo argv. It traces `multifile_matrix_compiles`
+by default (its nested `cargo check` transitively builds the `../rust` path dep — the highest-risk
+read pattern); `CLOSURE_AUDIT_GATE=<test name>` extends coverage to the other cached gates as
+configuration, not code. It prints a visible `SKIPPED` when `strace` is absent, refuses to pass a
+trace with zero nested-cargo subtrees (vacuity floor), and statically asserts the repo carries no
+`.cargo/config` (an unhashed input for the TS-side sites whose nested cargo runs with cwd = the
+repo). `verify_cache_transparency` (`cddl-matrix/cache_transparency.ts`, flag-gated by
+`--cache-transparency`) protects the OUTPUT side: it asserts `verify.ts`'s
+`annotations/cddl_codegen.toml` and `verify_report.json` are byte-identical between a cached run
+(≥1 hit required — vacuity floor) and a `GATE_CACHE=0` run, the direct check that the hit path's
+reconstructed verdicts can never leak into output bytes differently than real execution.
 
 | Layer | File | Question it answers | Speed |
 |-------|------|---------------------|-------|

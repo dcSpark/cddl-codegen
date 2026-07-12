@@ -20,6 +20,8 @@
  *                   gates depend on the build, so stopping early avoids cascade noise).
  *   --skip-missing  downgrade a missing verify.ts oracle from FAIL to SKIPPED(oracle absent).
  *   --refresh-fuzz  re-run fuzz/generate.sh before the fuzz compile-rot check even if generated/ exists.
+ *   --cache-transparency  enable the flag-gated `verify_cache_transparency` full-tier gate (two verify
+ *                   runs — cached vs GATE_CACHE=0 — asserted byte-identical; otherwise SKIPPED).
  *
  * SELF-COMPLETENESS (the systematic catch, TDD): the first gate `self_checks` runs three meta-checks
  * so a new gate that nobody registers fails the run rather than silently not existing:
@@ -51,7 +53,7 @@ const rank = (t: Tier) => TIERS.indexOf(t);
 // ---- gate model ----------------------------------------------------------------------------------
 type Status = "PASS" | "FAIL" | "SKIPPED" | "STUB" | "NOT_IN_TIER";
 interface Outcome { status: Status; reason?: string }
-interface Opts { skipMissing: boolean; refreshFuzz: boolean }
+interface Opts { skipMissing: boolean; refreshFuzz: boolean; cacheTransparency: boolean }
 export interface Gate {
   id: string;
   tier: Tier;
@@ -173,6 +175,42 @@ function runVerify(o: Opts): Outcome {
   console.log(`  oracles OK — ruby=${ruby}  rust=${rust}`);
   const exit = sh(["bun", "run", "verify.ts"], MATRIX, { RUST_CDDL: rust!, RUBY_CDDL: ruby! });
   return exit === 0 ? { status: "PASS" } : { status: "FAIL", reason: `verify.ts exit ${exit}` };
+}
+
+// ---- gate-cache closure-audit gate: strace preflight, then run the strace'd audit script ---------
+// A `fn` gate (not `cmd`) so a strace-less machine shows SKIPPED in the registry SUMMARY table, not
+// a PASS whose skip is visible only in the scrollback — the honest-visible-skip rule at the summary
+// level. The script keeps its own internal strace skip for direct invocation.
+function runClosureAudit(): Outcome {
+  if (!Bun.which("strace")) {
+    console.log("  strace not found on PATH — install strace to run the gate-cache input-closure audit.");
+    return { status: "SKIPPED", reason: "strace absent" };
+  }
+  const exit = sh(["bun", "run", "audit_gate_cache_closure.ts"], MATRIX);
+  return exit === 0 ? { status: "PASS" } : { status: "FAIL", reason: `audit_gate_cache_closure.ts exit ${exit}` };
+}
+
+// ---- cache-transparency gate: flag-gated; oracle preflight mirrors runVerify, then run the diff ---
+// Flag-gated (`--cache-transparency`) because it costs ~two verify runs (one mostly-cached + one full);
+// the roadmap prescribes an occasional manual full-tier diff, not an every-run cost. The oracle
+// preflight is identical to `verify` so `--skip-missing` downgrades the same way; the resolved oracles
+// are passed through the env, exactly as the cached run needs them.
+function runCacheTransparency(o: Opts): Outcome {
+  if (!o.cacheTransparency) return { status: "SKIPPED", reason: "pass --cache-transparency" };
+  const ruby = resolveRubyCddl();
+  const rust = resolveRustCddl();
+  const missing: string[] = [];
+  if (!ruby) missing.push("ruby `cddl`   install: gem install --user-install cddl");
+  if (!rust) missing.push("rust `cddl`   build the pinned fork: local-fixes @ ac1b98e in the ~/Documents/git/cddl sibling checkout (or an immutable copy of it), then set RUST_CDDL to it");
+  if (missing.length) {
+    console.log("  oracle preflight FAILED — cache_transparency.ts needs both oracles (it runs verify.ts twice):");
+    for (const m of missing) console.log("    - " + m);
+    if (o.skipMissing) return { status: "SKIPPED", reason: "oracle absent (--skip-missing)" };
+    return { status: "FAIL", reason: `missing oracle(s): ${!ruby ? "ruby cddl " : ""}${!rust ? "rust cddl" : ""}`.trim() };
+  }
+  console.log(`  oracles OK — ruby=${ruby}  rust=${rust}`);
+  const exit = sh(["bun", "run", "cache_transparency.ts"], MATRIX, { RUST_CDDL: rust!, RUBY_CDDL: ruby! });
+  return exit === 0 ? { status: "PASS" } : { status: "FAIL", reason: `cache_transparency.ts exit ${exit}` };
 }
 
 // ---- fuzz compile-rot gate: (re)generate iff needed, then cargo check the fuzz crate -------------
@@ -336,6 +374,12 @@ export const REGISTRY: Gate[] = [
     desc: "corpus emit-tests round-trip under preserve/json (manual, #[ignore]d)" },
   { id: "verify", tier: "full", kind: "fn", run: runVerify, script: "verify.ts",
     desc: "cddl-matrix mechanical verify gate (oracle preflight + probe every feature)" },
+  // Registered AFTER `verify` so a `full --cache-transparency` run warms the cache via `verify` first,
+  // making this gate's cached run A genuinely hit-heavy (registry execution is sequential).
+  { id: "verify_cache_transparency", tier: "full", kind: "fn", run: runCacheTransparency, script: "cache_transparency.ts",
+    desc: "gate-cache OUTPUT-side soundness: verify.ts annotations + report byte-identical cached vs GATE_CACHE=0 (flag-gated --cache-transparency)" },
+  { id: "gate_cache_closure_audit", tier: "full", kind: "fn", run: runClosureAudit, script: "audit_gate_cache_closure.ts",
+    desc: "gate-cache KEY-side soundness: strace input-closure audit of a cached gate (default multifile_matrix_compiles, CLOSURE_AUDIT_GATE overrides; SKIPPED if strace absent)" },
   { id: "corpus_detect", tier: "full", kind: "cmd", cmd: ["bun", "run", "corpus_detect.ts"], cwd: MATRIX,
     script: "corpus_detect.ts", desc: "corpus_detect featuresIn/rolesIn self-checks" },
   { id: "fuzz_compile_rot", tier: "full", kind: "fn", run: runFuzz,
@@ -372,11 +416,11 @@ function main() {
   const argv = process.argv.slice(2);
   const flags = new Set(argv.filter(a => a.startsWith("--")));
   const positional = argv.filter(a => !a.startsWith("--"));
-  const KNOWN = new Set(["--keep-going", "--skip-missing", "--refresh-fuzz", "--help"]);
+  const KNOWN = new Set(["--keep-going", "--skip-missing", "--refresh-fuzz", "--cache-transparency", "--help"]);
   for (const f of flags)
     if (!KNOWN.has(f)) { console.error(`check.ts: unknown flag '${f}' (known: ${[...KNOWN].join(", ")})`); process.exit(2); }
   if (flags.has("--help")) {
-    console.log("usage: bun run check.ts [fast|local|full] [--keep-going] [--skip-missing] [--refresh-fuzz]");
+    console.log("usage: bun run check.ts [fast|local|full] [--keep-going] [--skip-missing] [--refresh-fuzz] [--cache-transparency]");
     console.log("  bare invocation runs the `local` tier; CI runs `fast`. See the header of check.ts for details.");
     process.exit(0);
   }
@@ -389,9 +433,9 @@ function main() {
     tier = positional[0] as Tier;
   }
   const keepGoing = flags.has("--keep-going");
-  const opts: Opts = { skipMissing: flags.has("--skip-missing"), refreshFuzz: flags.has("--refresh-fuzz") };
+  const opts: Opts = { skipMissing: flags.has("--skip-missing"), refreshFuzz: flags.has("--refresh-fuzz"), cacheTransparency: flags.has("--cache-transparency") };
 
-  console.log(`\ncheck.ts — tier=${tier}${keepGoing ? " --keep-going" : ""}${opts.skipMissing ? " --skip-missing" : ""}${opts.refreshFuzz ? " --refresh-fuzz" : ""}`);
+  console.log(`\ncheck.ts — tier=${tier}${keepGoing ? " --keep-going" : ""}${opts.skipMissing ? " --skip-missing" : ""}${opts.refreshFuzz ? " --refresh-fuzz" : ""}${opts.cacheTransparency ? " --cache-transparency" : ""}`);
 
   const results = new Map<string, { out: Outcome; ms: number }>();
   let anyFail = false;
