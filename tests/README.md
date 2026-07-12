@@ -72,7 +72,10 @@ and skips on a key that matched a previously-passing run. The key is sha256 over
 generated output tree (all crates — path deps are inputs — hashed AFTER `cargo generate-lockfile`,
 so dependency resolution is pinned into the tree and the skipped build would have used the same
 resolution by construction), the full `rustc -vV`, `RUSTFLAGS` as the nested invocation sees it,
-the exact command sequence, and a schema version. Soundness rests on the same enforced determinism
+the command sequence in path-normalized form (scratch paths are run- or checkout-local, so keys
+carry the command SHAPE — subcommand + crate role within the hashed tree — never a literal
+scratch path, which would make every key unique to its run), and a schema version. Soundness
+rests on the same enforced determinism
 invariant the rest of the repo leans on (byte-identical regeneration; `generated_code_clippy_clean`
 already relies on the identical-bytes→identical-verdict form of it): an unchanged key means
 re-running would provably reproduce the recorded verdict.

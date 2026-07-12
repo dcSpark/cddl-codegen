@@ -390,11 +390,19 @@ dead loses the lesson.
   `multifile_matrix_compiles`) each resolve `cbor_event` from crates.io per temp cell, so a flaky
   network/proxy fails otherwise-green local-tier runs with `unable to update registry crates-io`
   on a DIFFERENT cell each run (three consecutive local runs, 2026-07-12, all this signature; every
-  affected gate green in isolation). The shifting-cell + registry-error signature distinguishes it
-  from a real red cell at a glance; isolated re-run of the named gate is the confirm. If the rate
-  bites, the mechanical hardening is removing the per-cell network dependency: run nested
-  `cargo check`/`test` with `--offline` after one warm-up fetch (the shared `CARGO_TARGET_DIR` and
-  cargo home already hold the deps), or vendor the handful of generated-crate deps.
+  affected gate green in isolation; root-caused the same day to the local proxy aborting roughly
+  1-in-6 CONNECTs to index.crates.io). The shifting-cell + registry-error signature distinguishes
+  it from a real red cell at a glance; isolated re-run of the named gate is the confirm, and
+  `CARGO_NET_OFFLINE=true bun run check.ts` is the clean-confirm when the rate makes consecutive
+  online runs impractical (deps are already in cargo home after any warm run). The class also
+  reaches verify.ts EVIDENCE (not just gate exits): a transient null replay flips a row's
+  decode-foreign clause to "FAILED", which `verify_cache_transparency` reads as an A/B divergence —
+  absorbed since 2026-07-12 by decodeForeignProbe's regenerate-retry-once (the same retry the mint
+  paths carry); the transparency gate itself is the standing detector if the class outruns the
+  retry. If the rate bites harder, the mechanical hardening is removing the per-cell network
+  dependency: run nested `cargo check`/`test` with `--offline` after one warm-up fetch (the shared
+  `CARGO_TARGET_DIR` and cargo home already hold the deps), or vendor the handful of
+  generated-crate deps.
 - **Full-suite flake, now attributed: `acquire_scratch_lock_serializes` — recurrence needs the
   errno.** The `test` gate failed with exit 101 twice (2026-07-06 unattributed — output truncated
   before the `failures:` list; 2026-07-08 captured in full): the second sighting names
