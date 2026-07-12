@@ -213,9 +213,9 @@ None of these are cddl-codegen bugs, and the matrix no longer sits on any of the
 what "certified" means per vector family (§ Q4 above) and what the close-out steps in `ROADMAP.md`
 § findings wait on. The sibling checkout's `local-fixes` branch (`~/Documents/git/cddl`, commit
 `ac1b98e` — also the `Cargo.toml` pinned rev, so the generated-crate conformance oracle AND
-cddl-codegen's own parser share it) carries fixes for gaps 1–7 and 9–10 (gap 8 is OPEN at that
-rev — it keeps one containment row's decode-foreign minting
-`pinned_reason`-vectorless); `RUST_CDDL` defaults to that build,
+cddl-codegen's own parser share it) carries fixes for gaps 1–7 and 9–10 (gaps 8 and 11 are OPEN at
+that rev — gap 8 keeps one containment row's decode-foreign minting `pinned_reason`-vectorless, and
+gap 11 keeps three corpus decode rows empty-instance-only); `RUST_CDDL` defaults to that build,
 giving `verify.ts` runs an enforcing oracle. Because every local branch reports version 0.10.6, a
 version string cannot tell the pinned build apart from a wrong-branch rebuild, so the shared
 behavioral fingerprint in `cddl-matrix/oracle_fingerprint.json` refuses wrong oracles: `verify.ts`
@@ -352,6 +352,23 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    gap #9 close-out, never a catalog blocker). Two fingerprint probes (`float-key-accepts`,
    `null-key-rejects`) pin the fixed behavior — the reject probe also refuses an always-accept
    stub — so a stale pre-fix (old-pin) oracle build is refused by both fingerprint consumers.
+11. **named-rule / parenthesized-choice map keys over-rejected** (OPEN at `ac1b98e`, NOT
+   fork-fixed — found by the first corpus decode-conformance mint): `validate` WRONGLY REJECTS
+   every non-empty map instance whose KEY domain is a NAMED-RULE reference (`{ * fe => uint }` +
+   `fe = 0 / 1 / 2` — and equally `fe = 0`, `fe = uint`, `fe = uint / nint`, `fe = tstr`) or a
+   PARENTHESIZED CHOICE (`{ * (0 / 1 / 2) => uint }`), while ruby accepts; the same keys spelled
+   INLINE (`{ * uint => uint }`, `{ * 0 => uint }`) validate fine, and the empty map validates
+   everywhere (no key to mis-match). Error shape: `unexpected key Integer(Integer(0))` from the
+   map-key arm — the same neighborhood as gap #8 (TAG-typed map keys), likely the same
+   key-matching site not resolving typename refs/choices. This is what strips the corpus decode
+   rows `c_style_enum_map_key.enum_keyed_map`, `table_enum_key.enum_keyed` and
+   `table_enum_key.enum_key_holder` down to their EMPTY-map instances (every non-empty ruby
+   candidate dies `ruby=0 rust=1` on the two-oracle gate; a mint whose random draws miss the
+   empty instance pins the row `pinned_reason`-vectorless instead, with the per-oracle tallies in
+   the pin wording — the two states flip-flop across re-mints while the gap is open). No
+   upstream issue filed yet. Differential grid, two adjacent same-neighborhood observations
+   (nested-map VALUES in a `*` table; multi-entry composite-array-key tables), and close-out
+   steps: `draft/rust-cddl-named-key-map-gap.md` (local note).
 
 ## Gotchas (read before touching the support seam or probe examples)
 
