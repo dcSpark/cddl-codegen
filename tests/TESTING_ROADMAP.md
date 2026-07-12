@@ -105,7 +105,10 @@ fuzzer escalations, the recur-first residuals), not here.
      worth building on the SECOND masked instance: run each layer-2 sweep under a second
      DETERMINISTIC batch permutation (a different fixed grouping — determinism preserved, most
      pair-masks broken, wall-clock ×2 on full-tier gates), or an occasional singleton mode
-     (batch size 1 — the exhaustive oracle, but hours of wall-clock). Either also owns the
+     (batch size 1 — the exhaustive oracle, but hours of wall-clock). Both costs are FIRST-run
+     prices now: layer-2 batches are gate-cached per generated tree, so a permutation's or
+     singleton's re-runs skip every batch whose composition didn't change — the detector got
+     materially cheaper to adopt. Either also owns the
      misfiled-ledger-contradiction class (an entry claiming profile-specificity while masked in its
      home profile — how this instance actually surfaced). Related but decided: the observed-baseline
      comments next to each gate's floors are informational and review-maintained (a stale one
@@ -125,6 +128,21 @@ fuzzer escalations, the recur-first residuals), not here.
    same projection machinery (the matrix rows / corpus glob × the shared rule enumerator) so coverage
    stays mechanically checkable rather than a hand-picked list, reusing the replay legs the two
    existing gates already share.
+
+3. **Gate-cache soundness gates.** The per-cell nested-cargo cost of the matrix/corpus/recombination
+   gates and `verify.ts` is memoized by generated-tree content hash (the gate cache —
+   `tests/README.md` § "The gate cache (memoize-and-skip for nested cargo)"; `src/tests/gate_cache.rs`),
+   so unchanged cells skip provably instead of recompiling. Its two soundness obligations are
+   review-enforced today and each deserves a mechanical layer:
+   - **Input-closure audit gate** — the mechanical guardrail this repo uses INSTEAD of timer-based
+     cold runs (which are never happening here): trace each cached site's file reads
+     (strace/fsatrace) and assert observed reads ⊆ what the key hashes. Today the closure is
+     review-enforced per call site + mutation-verified at landing; a drift gate makes "a cached
+     site grew an unhashed input" fail loudly on the next local run.
+   - **Cache-transparency diff** — `verify.ts` annotations/`verify_report.json` must be
+     byte-identical between a cached and an uncached (`GATE_CACHE=0`) run; review-enforced today,
+     mechanizable as an occasional manual full-tier diff (two verify runs, so full-tier cost —
+     pairs naturally with the closure audit).
 
 ## Standing-system residuals (recur-first)
 
@@ -358,14 +376,23 @@ dead loses the lesson.
 
 ## Operational watches
 
-- **Local-tier wall-clock to watch.** `feature_corpus_compiles`, `wasm_matrix_compiles`, and
-  `multifile_matrix_compiles` shell nested cargo per cell in the default `cargo test` suite
-  (check.ts `local` tier, not CI); the shared `CARGO_TARGET_DIR` amortizes deps
-  (`multifile_matrix_compiles` measured ~35 s cold / ~30 s warm at 43 cells; 62 at HEAD). If wall-time
-  bites: batch cells into fewer crates, adopt `cargo-nextest` as the suite runner, or gate only
-  changed cells.
+- **Gate-cache residual costs.** The nested-cargo gates (`feature_corpus_compiles`,
+  `wasm_matrix_compiles`, `multifile_matrix_compiles`, the layer-2 recombination sweeps, and
+  `verify.ts`) memoize per generated-tree content hash (the gate cache), so re-run wall-clock is a
+  first-run price; what remains always-run:
+  - **Residual all-hit cost** — an all-hit `feature_corpus_compiles` still measures ~2.5 min of
+    always-run work (177× generation + 177× `cargo generate-lockfile`); dedupe lockfile resolution
+    per identical generated `Cargo.toml` within a run if that bites.
+  - **Coverage extensions** — the `run_test` fixture suites (uncached: reused export dirs already
+    replay warm-incrementally through cargo, and their external path-dep closure is larger) and
+    classified deterministic FAILs (expected-red skip-listed cells and unsupported `verify.ts`
+    probes re-run every time; caching a *classified* compile-fail is the same soundness argument,
+    but transient-env failures must stay uncacheable — needs a careful failure taxonomy first).
+  - The pre-cache remedies stay valid if the UNCACHED path ever bites (a touch-everything change
+    pays full price): batch cells into fewer crates, or adopt `cargo-nextest` as the suite runner
+    (`multifile_matrix_compiles` measured ~35 s cold / ~30 s warm at 43 cells; 62 at HEAD).
 - **Registry-fetch transients in nested-cargo cells.** The same nested-cargo gates as the
-  wall-clock watch above (`feature_corpus_compiles`, `wasm_matrix_compiles`,
+  gate-cache watch above (`feature_corpus_compiles`, `wasm_matrix_compiles`,
   `multifile_matrix_compiles`) each resolve `cbor_event` from crates.io per temp cell, so a flaky
   network/proxy fails otherwise-green local-tier runs with `unable to update registry crates-io`
   on a DIFFERENT cell each run (three consecutive local runs, 2026-07-12, all this signature; every

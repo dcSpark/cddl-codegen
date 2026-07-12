@@ -91,6 +91,11 @@ registry with three tiers (details + wall times: `tests/README.md` § "Running e
   Run this before considering work done.
 - `bun run check.ts full` — local + every manual-only gate. Run this before shipping a feature.
 
+The heavy gates memoize their nested-cargo work per generated-crate content hash (the gate cache —
+`tests/README.md` § "The gate cache (memoize-and-skip for nested cargo)"): unchanged cells skip
+with a visible `[gate-cache] … cached PASS` line, so re-runs after small changes cost far less
+than the cold wall times. `GATE_CACHE=0` forces everything to run.
+
 Rules:
 - **CI runs the `fast` tier ONLY** (cost policy — see `tests/README.md` § "CI policy"). Never add
   steps to `build.yml` or promote a gate into `fast` — that's a maintainer decision; new gates
