@@ -38,7 +38,13 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { constants, homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { ALT_PRODUCTIONS, CORPUS_CATALOG_INTRO, CORPUS_DECODE_FLOOR_ARM_EXEMPT, CORPUS_HOLDER_RULE, CatalogRow, CatalogVector, CorpusRule, DECODE_FLOOR_ARM_EXEMPT, PRELUDE_NAMES, ROOT, cborContainsF9, composeCatalog, corpusArmExample, corpusClosureBody, corpusProbeSpec, enumerateCorpusRules, grammarAltCoverage, loadMatrixInputs, parseCatalog, resolveChoiceArmClasses, stableJson, vectorShapeClass } from "./lib";
+import {
+  ALT_PRODUCTIONS, CORPUS_CATALOG_INTRO, CORPUS_DECODE_FLOOR_ARM_EXEMPT, CORPUS_HOLDER_RULE, CatalogRow,
+  CatalogVector, CorpusRule, DECODE_FLOOR_ARM_EXEMPT, GATE_CACHE_SCHEMA, GateCacheEntry, PRELUDE_NAMES, ROOT,
+  cborContainsF9, composeCatalog, corpusArmExample, corpusClosureBody, corpusProbeSpec, enumerateCorpusRules,
+  gateCacheEnabled, gateCacheKey, grammarAltCoverage, hashTree, loadMatrixInputs, parseCatalog,
+  readGateCacheEntry, resolveChoiceArmClasses, stableJson, vectorShapeClass, writeGateCacheEntry,
+} from "./lib";
 
 process.chdir(ROOT);
 
@@ -459,6 +465,7 @@ const probeFile = join(probeDir, "probe.cddl");
 // RUST_CDDL fails in under a second instead of minting mixed-oracle evidence minutes in.
 runOracleFingerprint(probeDir);
 const ccOut = join(probeDir, "cc_out");
+const ccWarmOut = join(probeDir, "cc_warm_out");
 // Shared cargo target for the compile-gate so the generated crate's deps (cbor_event, …) build ONCE and
 // every subsequent `cargo check` is incremental (fits PROBE_TIMEOUT). Warmed before the probe loops.
 const COMPILE_TARGET = mkdtempSync(join(tmpdir(), "cddl_verify_target_"));
@@ -474,6 +481,7 @@ const COMPILE_WARM_TIMEOUT = 600; // first build (all deps) can exceed the per-p
 const WASM_PROBE =
   !process.argv.includes("--no-wasm") && !["0", "false"].includes((process.env.VERIFY_WASM ?? "").toLowerCase());
 const ccOutWasm = join(probeDir, "cc_out_wasm");
+const ccWarmOutWasm = join(probeDir, "cc_warm_out_wasm");
 const WASM_TARGET = WASM_PROBE ? mkdtempSync(join(tmpdir(), "cddl_verify_wasm_target_")) : "";
 
 // DEFAULT-ON decode-foreign oracle (D4; opt out with `--no-decode-foreign` argv or
@@ -521,25 +529,64 @@ function runProbe(cmd: string[], cwd?: string, env?: Record<string, string>, tim
   return exit;
 }
 
+const GATE_CACHE_ENABLED = gateCacheEnabled();
+const gateCacheStats = { run: 0, cached: 0 };
+
+type WarmNeed = { kind: "rust" } | { kind: "wasm" } | { kind: "emission"; profile: EmissionProfile };
+
+function runGenerateLockfile(manifestPath: string): number {
+  return runExit(["cargo", "generate-lockfile", "--manifest-path", manifestPath], CODEGEN_DIR);
+}
+
+function cacheableCargoPass(
+  gate: string,
+  cell: string,
+  argv: string[],
+  manifestPath: string,
+  treeRoot: string,
+  warmNeed: WarmNeed,
+  env: Record<string, string>,
+  timeoutS: number,
+): number {
+  let key: string | null = null;
+  let entryBase: Omit<GateCacheEntry, "cell" | "created"> | null = null;
+  if (GATE_CACHE_ENABLED && runGenerateLockfile(manifestPath) === 0) {
+    const tree = hashTree(treeRoot);
+    const keyParts = gateCacheKey({ gate, argv, tree });
+    key = keyParts.key;
+    entryBase = { schema: GATE_CACHE_SCHEMA, gate, argv, rustc: keyParts.rustc, tree };
+    if (readGateCacheEntry(key, CODEGEN_DIR)) {
+      gateCacheStats.cached++;
+      console.log(`[gate-cache] ${cell}: cached PASS (key ${key.slice(0, 8)})`);
+      return 0;
+    }
+  }
+
+  ensureWarm(warmNeed);
+  gateCacheStats.run++;
+  const exit = runProbe(argv, CODEGEN_DIR, env, timeoutS);
+  if (exit === 0 && key && entryBase)
+    writeGateCacheEntry(key, { ...entryBase, cell, created: new Date().toISOString() }, CODEGEN_DIR);
+  return exit;
+}
+
 // COMPILE (classification only): `cargo check` the generated crate. Run when `cargo test` FAILED, to
 // split "generates but does not compile" (e.g. `x = any` -> `pub type X = Any;`, a type defined
 // nowhere) from "compiles but the emitted tests fail". Mirrors
 // integration_tests::feature_corpus_compiles (rust-only, shared CARGO_TARGET_DIR).
-function runCompile(timeoutS = PROBE_TIMEOUT): number {
-  return runProbe(
-    ["cargo", "check", "--manifest-path", join(ccOut, "rust", "Cargo.toml")],
-    CODEGEN_DIR, { CARGO_TARGET_DIR: COMPILE_TARGET }, timeoutS,
-  );
+function runCompile(cell: string, warmNeed: WarmNeed = { kind: "rust" }, timeoutS = PROBE_TIMEOUT): number {
+  const manifest = join(ccOut, "rust", "Cargo.toml");
+  const argv = ["cargo", "check", "--manifest-path", manifest];
+  return cacheableCargoPass("verify.rust_check", cell, argv, manifest, ccOut, warmNeed, { CARGO_TARGET_DIR: COMPILE_TARGET }, timeoutS);
 }
 
 // EXECUTION-GATE: `cargo test` the generated crate — compiles the lib AND runs the `--emit-tests`
 // round-trip/reject module (strictly stronger than `cargo check`). Caller invokes only when
 // generation succeeded.
-function runTest(timeoutS = PROBE_TIMEOUT): number {
-  return runProbe(
-    ["cargo", "test", "--manifest-path", join(ccOut, "rust", "Cargo.toml")],
-    CODEGEN_DIR, { CARGO_TARGET_DIR: COMPILE_TARGET }, timeoutS,
-  );
+function runTest(cell: string, warmNeed: WarmNeed = { kind: "rust" }, timeoutS = PROBE_TIMEOUT): number {
+  const manifest = join(ccOut, "rust", "Cargo.toml");
+  const argv = ["cargo", "test", "--manifest-path", manifest];
+  return cacheableCargoPass("verify.rust_test", cell, argv, manifest, ccOut, warmNeed, { CARGO_TARGET_DIR: COMPILE_TARGET }, timeoutS);
 }
 
 // The generator MERGES into an existing output dir (it never clears it), so a partially-written crate
@@ -562,11 +609,10 @@ function runCodegenWasm(): number {
   cleanOutWasm();
   return runProbe(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOutWasm}`, "--wasm=true", "--emit-tests=true"], CODEGEN_DIR);
 }
-function runWasmTest(timeoutS = PROBE_TIMEOUT): number {
-  return runProbe(
-    ["cargo", "test", "--manifest-path", join(ccOutWasm, "wasm", "Cargo.toml")],
-    CODEGEN_DIR, { CARGO_TARGET_DIR: WASM_TARGET }, timeoutS,
-  );
+function runWasmTest(cell: string, timeoutS = PROBE_TIMEOUT): number {
+  const manifest = join(ccOutWasm, "wasm", "Cargo.toml");
+  const argv = ["cargo", "test", "--manifest-path", manifest];
+  return cacheableCargoPass("verify.wasm_test", cell, argv, manifest, ccOutWasm, { kind: "wasm" }, { CARGO_TARGET_DIR: WASM_TARGET }, timeoutS);
 }
 
 // The full cddl-codegen probe: generate (with --emit-tests) -> `cargo test`. On the green path a single
@@ -586,33 +632,34 @@ interface CodegenProbe { gen: number; compile: number; test: number; minted: boo
 // probe and the per-emission-profile probes. `extraFlags` appends a profile's CLI flags; the emission
 // probes deliberately DON'T run the wasm oracle (design doc: wasm stays default-profile corroborating
 // evidence, keeping added wall time ~2x rust work on the supported subset, not 4x).
-function probeCodegenRust(extraFlags: string[] = []): CodegenProbe {
+function probeCodegenRust(cell: string, extraFlags: string[] = [], emissionProfile?: EmissionProfile): CodegenProbe {
   const gen = runCodegen(extraFlags);
   if (gen !== 0) return { gen, compile: -2, test: -2, minted: false };
   const libPath = join(ccOut, "rust", "src", "generated", "mod.rs");
   const minted = existsSync(libPath) && readFileSync(libPath, "utf8").includes("mod cddl_generated_tests");
-  const test = runTest();
-  const compile = test === 0 ? 0 : runCompile();
+  const warmNeed: WarmNeed = emissionProfile ? { kind: "emission", profile: emissionProfile } : { kind: "rust" };
+  const test = runTest(cell, warmNeed);
+  const compile = test === 0 ? 0 : runCompile(cell, warmNeed);
   return { gen, compile, test, minted };
 }
-function probeCodegen(): CodegenProbe {
-  const base = probeCodegenRust();
+function probeCodegen(cell: string): CodegenProbe {
+  const base = probeCodegenRust(cell);
   // A spec that doesn't generate at all has no wasm crate to test either (the wasm probe re-runs the
   // SAME generator with `--wasm=true`), so skip the doomed wasm generation — the rust verdict already
   // records the parse/panic. wasm fields stay undefined -> no (redundant) wasm evidence clause.
   if (base.gen !== 0) return base;
-  return { ...base, ...wasmProbe() };
+  return { ...base, ...wasmProbe(cell) };
 }
 
 // The wasm half of a probe (default-on): generate `--wasm=true`, cargo test the wasm crate. Returns {}
 // when opted out so the fields stay undefined (report/annotation output matches a pre-wasm-probe run).
-function wasmProbe(): { minted_wasm?: boolean; wasm_roundtrips?: number } {
+function wasmProbe(cell: string): { minted_wasm?: boolean; wasm_roundtrips?: number } {
   if (!WASM_PROBE) return {};
   const gen = runCodegenWasm();
   if (gen !== 0) return { minted_wasm: false, wasm_roundtrips: gen };
   const wasmLib = join(ccOutWasm, "wasm", "src", "generated", "mod.rs");
   const minted_wasm = existsSync(wasmLib) && readFileSync(wasmLib, "utf8").includes("mod cddl_generated_wasm_tests");
-  return { minted_wasm, wasm_roundtrips: runWasmTest() };
+  return { minted_wasm, wasm_roundtrips: runWasmTest(cell) };
 }
 
 // The cddl-codegen half of the support verdict, shared by the feature / per-cell / control-op loops so
@@ -679,9 +726,10 @@ function firstRuleName(example: string): { name: string; generic: boolean } | nu
 // Returns embedded=true iff the synthetic holder minted AND its `cargo test` round-trips green;
 // embedded stays undefined on any skip/failure (kept the compile verdict). Every path logs one loud
 // `[embed]` line so a skip or a failed embed is visible in the run output, not silent.
-function embedFallback(id: string, example: string, cg: CodegenProbe, extraFlags: string[] = []): boolean | undefined {
+function embedFallback(id: string, example: string, cg: CodegenProbe, emissionProfile?: EmissionProfile): boolean | undefined {
   if (cg.gen !== 0 || cg.minted) return undefined; // not applicable — base already mints (or didn't generate)
   const log = (note: string) => console.log(`  [embed] ${id}: ${note}`);
+  const extraFlags = emissionProfile?.flags ?? [];
   const rule = firstRuleName(example);
   if (!rule) { log("no parseable rule head; embed skipped (kept compile verdict)"); return undefined; }
   if (rule.generic) { log(`generic rule '${rule.name}' needs type args; not embeddable (kept compile verdict)`); return undefined; }
@@ -691,7 +739,7 @@ function embedFallback(id: string, example: string, cg: CodegenProbe, extraFlags
   const libPath = join(ccOut, "rust", "src", "generated", "mod.rs");
   const minted = existsSync(libPath) && readFileSync(libPath, "utf8").includes("mod cddl_generated_tests");
   if (!minted) { log("synthetic holder minted no test surface; kept compile verdict"); return undefined; }
-  const test = runTest();
+  const test = runTest(id, emissionProfile ? { kind: "emission", profile: emissionProfile } : { kind: "rust" });
   if (test === 0) { log(`round-trips when embedded in ${HOLDER_RULE}`); return true; }
   log(`embedded round-trip FAILED (cargo test exit ${test}); kept compile verdict`);
   return false;
@@ -717,7 +765,7 @@ function probeEmissions(id: string, example: string): Record<string, EmissionOut
   const exempt = Object.hasOwn(COMPILE_GATE_EXEMPT, id);
   for (const prof of EMISSION_PROFILES) {
     writeFileSync(probeFile, example + "\n");
-    const cg = probeCodegenRust(prof.flags);
+    const cg = probeCodegenRust(`${id} (emission=${prof.name})`, prof.flags, prof);
     if (exempt && cg.gen === 0) {
       out[prof.name] = {
         status: "supported",
@@ -727,7 +775,7 @@ function probeEmissions(id: string, example: string): Record<string, EmissionOut
       continue;
     }
     const v = codegenVerdict(cg);
-    const embedded = embedFallback(`${id} (emission=${prof.name})`, example, cg, prof.flags);
+    const embedded = embedFallback(`${id} (emission=${prof.name})`, example, cg, prof);
     out[prof.name] = {
       status: v.supported ? "supported" : "unsupported",
       detail: embedDetail(v.detail, embedded),
@@ -738,11 +786,11 @@ function probeEmissions(id: string, example: string): Record<string, EmissionOut
 }
 
 // [ruby, rust, codegen probe].
-function oracles(example: string): [number, number, CodegenProbe] {
+function oracles(cell: string, example: string): [number, number, CodegenProbe] {
   writeFileSync(probeFile, example + "\n");
   const a = RUBY_CDDL ? runProbe([RUBY_CDDL, probeFile, "generate", "1"]) : -2;
   const b = runProbe([RUST_CDDL, "compile-cddl", "--cddl", probeFile]);
-  return [a, b, probeCodegen()];
+  return [a, b, probeCodegen(cell)];
 }
 
 function derive(featureId: string, profile: string, rubyExit: number, rustExit: number, cg: CodegenProbe): Derived {
@@ -829,7 +877,7 @@ function crateHasDeserialize(outDir: string, typeName: string): boolean {
 // Runs `cargo test` (shared warm target) and parses per-test pass/fail. Returns null on a COMPILE failure
 // (no test result lines) so callers can tell "decoder rejected a vector" (a verdict) from "crate didn't
 // build" (a harness/detection problem).
-function replayInDir(outDir: string, vecs: ReplayVec[], decodeType: string): Map<string, boolean> | null {
+function replayInDir(cell: string, outDir: string, vecs: ReplayVec[], decodeType: string): Map<string, boolean> | null {
   const libPath = join(outDir, "rust", "src", "generated", "mod.rs");
   const fns = vecs.map(v => {
     const bytes = (v.hex.match(/../g) ?? []).map(b => `0x${b}`).join(", ");
@@ -843,8 +891,28 @@ function replayInDir(outDir: string, vecs: ReplayVec[], decodeType: string): Map
   }).join("\n");
   const mod = `\n#[cfg(test)]\n#[allow(clippy::all)]\nmod __foreign_decode_replay {\n    use super::*;\n    use super::serialization::*;\n${fns}\n}\n`;
   writeFileSync(libPath, readFileSync(libPath, "utf8") + mod);
+  const manifest = join(outDir, "rust", "Cargo.toml");
+  const argv = ["cargo", "test", "--manifest-path", manifest, "--", "__foreign_decode_replay"];
+  let key: string | null = null;
+  let entryBase: Omit<GateCacheEntry, "cell" | "created"> | null = null;
+  if (GATE_CACHE_ENABLED && runGenerateLockfile(manifest) === 0) {
+    const tree = hashTree(outDir);
+    const keyParts = gateCacheKey({ gate: "verify.decode_foreign_replay", argv, tree });
+    key = keyParts.key;
+    entryBase = { schema: GATE_CACHE_SCHEMA, gate: "verify.decode_foreign_replay", argv, rustc: keyParts.rustc, tree };
+    if (readGateCacheEntry(key, CODEGEN_DIR)) {
+      gateCacheStats.cached++;
+      console.log(`[gate-cache] ${cell}: cached PASS (key ${key.slice(0, 8)})`);
+      // replay stdout is consumed only to recover per-test pass/fail. A cached PASS means libtest
+      // reached every appended replay test and they all passed, so the success-path map is exact.
+      return new Map(vecs.map(v => [v.name, true]));
+    }
+  }
+
+  ensureWarm({ kind: "rust" });
+  gateCacheStats.run++;
   const run = () => Bun.spawnSync(
-    ["cargo", "test", "--manifest-path", join(outDir, "rust", "Cargo.toml"), "--", "__foreign_decode_replay"],
+    argv,
     { cwd: CODEGEN_DIR, env: { ...process.env, CARGO_TARGET_DIR: COMPILE_TARGET }, stdout: "pipe", stderr: "pipe", timeout: PROBE_TIMEOUT * 1000 },
   );
   let r = run();
@@ -855,6 +923,8 @@ function replayInDir(outDir: string, vecs: ReplayVec[], decodeType: string): Map
   // the module is appended into `generated/mod.rs`, so its libtest path carries a parent module
   // prefix (`generated::__foreign_decode_replay::…`) — match the marker anywhere after `test `
   for (const m of out.matchAll(/test [\w:]*__foreign_decode_replay::(\w+) \.\.\. (ok|FAILED)/g)) res.set(m[1], m[2] === "ok");
+  if ((r.exitCode ?? -1) === 0 && res.size === vecs.length && vecs.every(v => res.get(v.name) === true) && key && entryBase)
+    writeGateCacheEntry(key, { ...entryBase, cell, created: new Date().toISOString() }, CODEGEN_DIR);
   if (res.size !== vecs.length) return null;  // compile error / missing tests -> not a verdict
   return res;
 }
@@ -901,7 +971,7 @@ function decodeForeignProbe(id: string, matrixExample: string): ForeignOutcome {
     ...accepts.map((v, i) => ({ hex: v.hex, name: `accept_${i}`, expectOk: true })),
     ...rejects.map((v, i) => ({ hex: v.hex, name: `reject_${i}`, expectOk: false })),
   ];
-  const res = replayInDir(ccOutForeign, vecs, row.type_name);       // null (compile fail) -> not-accepts
+  const res = replayInDir(id, ccOutForeign, vecs, row.type_name);   // null (compile fail) -> not-accepts
   return { accepts_foreign: res !== null && vecs.every(v => res.get(v.name) === true), foreign_vectors: accepts.length };
 }
 // Evidence suffix (wasmEvidence twin). "" when opted out so an opted-out run's annotations are unchanged.
@@ -1093,7 +1163,7 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
     // over-acceptance vectors: the decoder is EXPECTED to (still wrongly) accept them — expectOk true.
     ...validatedOverAccept.map((p, i) => ({ hex: p.hex, name: `${foreignIdent(id)}_o${i}`, expectOk: true })),
   ];
-  const res = replayInDir(ccOut, vecs, decodeType);
+  const res = replayInDir(id, ccOut, vecs, decodeType);
   if (res === null) { console.error(`HARNESS FAILURE: replay crate for '${id}' failed to compile (decodeType=${decodeType}, mode=${mode}) — detection bug; refusing to mint.`); process.exit(2); }
 
   const outVecs: CatalogVector[] = [];
@@ -1134,7 +1204,7 @@ function runMintDecodeForeign(): never {
       process.exit(2);
     }
     if (foreignGenCrate(ccOut, spec) !== 0) { console.error("HARNESS FAILURE: negative-control spec `n = uint` failed to generate."); process.exit(2); }
-    const res = replayInDir(ccOut, [{ hex: badHex, name: "neg_control", expectOk: false }], toCamelCase("n"));
+    const res = replayInDir("mint.neg_control", ccOut, [{ hex: badHex, name: "neg_control", expectOk: false }], toCamelCase("n"));
     if (res === null || res.get("neg_control") !== true) {
       console.error("HARNESS FAILURE: decode-conformance negative control — our generated decoder did NOT reject the known-bad instance (or the replay failed to compile). Refusing to mint.");
       process.exit(2);
@@ -1387,10 +1457,10 @@ function mintCorpusRow(fixture: string, rule: CorpusRule, allRules: CorpusRule[]
   // crates sharing one incremental COMPILE_TARGET it also shows up as a TRANSIENT glitch (an isolated
   // re-mint of the same row then passes). Regenerate + replay once before declaring a HARNESS FAILURE,
   // so a real non-compiling construct still fails loudly but a transient does not abort the whole mint.
-  let res = replayInDir(ccOut, vecs, decodeType);
+  let res = replayInDir(id, ccOut, vecs, decodeType);
   if (res === null) {
     console.error(`[mint-corpus] ${id}: replay produced no per-test verdict (compile error or partial output) — regenerating + retrying once.`);
-    if (foreignGenCrate(ccOut, spec) === 0) res = replayInDir(ccOut, vecs, decodeType);
+    if (foreignGenCrate(ccOut, spec) === 0) res = replayInDir(id, ccOut, vecs, decodeType);
   }
   if (res === null) { console.error(`HARNESS FAILURE: corpus replay crate for '${id}' failed to compile TWICE (mode=${mode}) — a non-compiling standalone construct or a detection bug; refusing to mint.`); process.exit(2); }
 
@@ -1454,7 +1524,7 @@ function runMintDecodeCorpus(): never {
       process.exit(2);
     }
     if (foreignGenCrate(ccOut, spec) !== 0) { console.error("HARNESS FAILURE: negative-control spec `n = uint` failed to generate."); process.exit(2); }
-    const res = replayInDir(ccOut, [{ hex: badHex, name: "neg_control", expectOk: false }], toCamelCase("n"));
+    const res = replayInDir("mint-corpus.neg_control", ccOut, [{ hex: badHex, name: "neg_control", expectOk: false }], toCamelCase("n"));
     if (res === null || res.get("neg_control") !== true) {
       console.error("HARNESS FAILURE: decode-conformance negative control — our generated decoder did NOT reject the known-bad instance (or the replay failed to compile). Refusing to mint.");
       process.exit(2);
@@ -1556,66 +1626,86 @@ function runMintDecodeCorpus(): never {
   process.exit(0);
 }
 
-// Warm the shared compile target ONCE (deps + the libtest harness build here; per-probe `cargo test`
-// is then incremental and fits PROBE_TIMEOUT). Without this the first probe's test would eat the whole
-// dep build and risk a spurious timeout -> false "does not round-trip". A trivial valid spec that MINTS
-// a round-trip test is enough to pull in the deps and the test-profile artifacts.
-//
-// The warm-up doubles as the HARNESS SELF-TEST: it runs a known-good spec through the full
-// generate+test pipeline, so any failure here is by definition environmental (the generator itself
-// doesn't build, cargo/registry/disk trouble). It MUST abort: cargo exits 101 for a compile error of
-// the generator exactly like a per-feature panic, so an unhealthy harness would otherwise record every
-// feature as "panic (exit 101)"/unsupported and still print PASS (no hard-fail term inspects probe
-// exits). Both halves get the warm timeout — a cold full generator build can exceed PROBE_TIMEOUT.
-// The warm spec must also MINT tests (assert below): a warm-up whose `cargo test` runs zero emitted
-// tests would silently stop self-testing the execution half of the pipeline.
-writeFileSync(probeFile, "warm = [uint, tstr]\n");
-cleanOut();
-const warmGen = runExit(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOut}`, "--wasm=false", "--emit-tests=true"], CODEGEN_DIR, undefined, COMPILE_WARM_TIMEOUT);
-const warmLib = warmGen === 0 ? readFileSync(join(ccOut, "rust", "src", "generated", "mod.rs"), "utf8") : "";
-const warmTest = warmGen === 0 ? runExit(["cargo", "test", "--manifest-path", join(ccOut, "rust", "Cargo.toml")], CODEGEN_DIR, { CARGO_TARGET_DIR: COMPILE_TARGET }, COMPILE_WARM_TIMEOUT) : -2;
-if (warmGen !== 0 || warmTest !== 0 || !warmLib.includes("mod cddl_generated_tests")) {
-  console.error(`HARNESS FAILURE: warm-up on a known-good spec failed (generate exit ${warmGen}, cargo test exit ${warmTest}, minted=${warmLib.includes("mod cddl_generated_tests")}). The environment is unhealthy; no probes were run and nothing was written.`);
-  process.exit(2);
+let rustWarm = false;
+let wasmWarm = false;
+const emissionWarm = new Set<string>();
+
+function ensureRustWarm(): void {
+  if (rustWarm) return;
+  // Warm the shared compile target ONCE (deps + libtest harness build) and self-test a known-good,
+  // minting spec. A separate warm output dir avoids clobbering the freshly generated crate whose cache
+  // lookup just missed.
+  writeFileSync(probeFile, "warm = [uint, tstr]\n");
+  rmSync(ccWarmOut, { recursive: true, force: true });
+  const warmGen = runExit(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccWarmOut}`, "--wasm=false", "--emit-tests=true"], CODEGEN_DIR, undefined, COMPILE_WARM_TIMEOUT);
+  const warmLib = warmGen === 0 ? readFileSync(join(ccWarmOut, "rust", "src", "generated", "mod.rs"), "utf8") : "";
+  const warmTest = warmGen === 0 ? runExit(["cargo", "test", "--manifest-path", join(ccWarmOut, "rust", "Cargo.toml")], CODEGEN_DIR, { CARGO_TARGET_DIR: COMPILE_TARGET }, COMPILE_WARM_TIMEOUT) : -2;
+  if (warmGen !== 0 || warmTest !== 0 || !warmLib.includes("mod cddl_generated_tests")) {
+    console.error(`HARNESS FAILURE: warm-up on a known-good spec failed (generate exit ${warmGen}, cargo test exit ${warmTest}, minted=${warmLib.includes("mod cddl_generated_tests")}). The environment is unhealthy; no probes were run and nothing was written.`);
+    process.exit(2);
+  }
+  rustWarm = true;
 }
 
-// --mint-decode-foreign (D3): the rust warm-up above hot the shared target; mint per-row now and EXIT,
-// skipping the wasm/emission warm-ups and all probe loops (they are below and never run). Writes ONLY
-// the catalog, never annotations/verify_report.json.
-if (MINT_DECODE) runMintDecodeForeign();
-// --mint-decode-corpus (composition-depth leg): mint the corpus catalog and EXIT, same post-warm-up
-// insertion point as the foreign mint (skips the wasm/emission warm-ups and all probe loops below).
-if (MINT_DECODE_CORPUS) runMintDecodeCorpus();
-
-// Warm the WASM target the same way when the wasm probe is on (the default): the first wasm crate build (wasm-bindgen
-// + the libtest harness) can exceed PROBE_TIMEOUT, which would false-fail the first per-probe wasm test.
-// Doubles as the wasm-oracle self-test — a known-good spec that MINTS a wasm module must round-trip green.
-if (WASM_PROBE) {
+function ensureWasmWarm(): void {
+  if (wasmWarm || !WASM_PROBE) return;
   writeFileSync(probeFile, "warm = [uint, tstr]\n");
-  const wgen = runExit(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOutWasm}`, "--wasm=true", "--emit-tests=true"], CODEGEN_DIR, undefined, COMPILE_WARM_TIMEOUT);
-  const wlib = wgen === 0 ? readFileSync(join(ccOutWasm, "wasm", "src", "generated", "mod.rs"), "utf8") : "";
-  const wtest = wgen === 0 ? runExit(["cargo", "test", "--manifest-path", join(ccOutWasm, "wasm", "Cargo.toml")], CODEGEN_DIR, { CARGO_TARGET_DIR: WASM_TARGET }, COMPILE_WARM_TIMEOUT) : -2;
+  rmSync(ccWarmOutWasm, { recursive: true, force: true });
+  const wgen = runExit(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccWarmOutWasm}`, "--wasm=true", "--emit-tests=true"], CODEGEN_DIR, undefined, COMPILE_WARM_TIMEOUT);
+  const wlib = wgen === 0 ? readFileSync(join(ccWarmOutWasm, "wasm", "src", "generated", "mod.rs"), "utf8") : "";
+  const wtest = wgen === 0 ? runExit(["cargo", "test", "--manifest-path", join(ccWarmOutWasm, "wasm", "Cargo.toml")], CODEGEN_DIR, { CARGO_TARGET_DIR: WASM_TARGET }, COMPILE_WARM_TIMEOUT) : -2;
   if (wgen !== 0 || wtest !== 0 || !wlib.includes("mod cddl_generated_wasm_tests")) {
     console.error(`HARNESS FAILURE: wasm warm-up on a known-good spec failed (generate exit ${wgen}, cargo test exit ${wtest}, minted=${wlib.includes("mod cddl_generated_wasm_tests")}). The --wasm probe environment is unhealthy; no probes were run and nothing was written.`);
     process.exit(2);
   }
+  wasmWarm = true;
 }
 
-// Warm one known-good minting spec per EMISSION PROFILE: the json profile
-// pulls serde/schemars deps, so without this the first json probe's dep build could exceed
-// PROBE_TIMEOUT and false-fail. Shares COMPILE_TARGET so subsequent per-profile `cargo test`s stay
-// incremental. Doubles as the per-profile pipeline self-test — an unhealthy profile aborts the run
-// before any verdict is written.
-for (const prof of EMISSION_PROFILES) {
+function ensureEmissionWarm(prof: EmissionProfile): void {
+  if (emissionWarm.has(prof.name)) return;
   writeFileSync(probeFile, "warm = [uint, tstr]\n");
-  cleanOut();
-  const g = runExit(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOut}`, "--wasm=false", "--emit-tests=true", ...prof.flags], CODEGEN_DIR, undefined, COMPILE_WARM_TIMEOUT);
-  const lib = g === 0 ? readFileSync(join(ccOut, "rust", "src", "generated", "mod.rs"), "utf8") : "";
-  const t = g === 0 ? runExit(["cargo", "test", "--manifest-path", join(ccOut, "rust", "Cargo.toml")], CODEGEN_DIR, { CARGO_TARGET_DIR: COMPILE_TARGET }, COMPILE_WARM_TIMEOUT) : -2;
+  rmSync(ccWarmOut, { recursive: true, force: true });
+  const g = runExit(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccWarmOut}`, "--wasm=false", "--emit-tests=true", ...prof.flags], CODEGEN_DIR, undefined, COMPILE_WARM_TIMEOUT);
+  const lib = g === 0 ? readFileSync(join(ccWarmOut, "rust", "src", "generated", "mod.rs"), "utf8") : "";
+  const t = g === 0 ? runExit(["cargo", "test", "--manifest-path", join(ccWarmOut, "rust", "Cargo.toml")], CODEGEN_DIR, { CARGO_TARGET_DIR: COMPILE_TARGET }, COMPILE_WARM_TIMEOUT) : -2;
   if (g !== 0 || t !== 0 || !lib.includes("mod cddl_generated_tests")) {
     console.error(`HARNESS FAILURE: emission-profile warm-up '${prof.name}' (flags: ${prof.flags.join(" ") || "none"}) failed (generate exit ${g}, cargo test exit ${t}, minted=${lib.includes("mod cddl_generated_tests")}). The '${prof.name}' probe pipeline is unhealthy; no probes were run and nothing was written.`);
     process.exit(2);
   }
+  emissionWarm.add(prof.name);
+}
+
+function ensureWarm(need: WarmNeed): void {
+  if (need.kind === "wasm") ensureWasmWarm();
+  else if (need.kind === "emission") ensureEmissionWarm(need.profile);
+  else ensureRustWarm();
+}
+
+if (!GATE_CACHE_ENABLED) {
+  ensureRustWarm();
+  // Mint modes run per-row and EXIT, skipping the wasm/emission warm-ups and all probe loops below.
+  // They write ONLY their catalog, never annotations/verify_report.json.
+  if (MINT_DECODE) runMintDecodeForeign();
+  if (MINT_DECODE_CORPUS) runMintDecodeCorpus();
+  ensureWasmWarm();
+  for (const prof of EMISSION_PROFILES) ensureEmissionWarm(prof);
+} else {
+  // Lazy warm-ups defer the nested-cargo self-tests to the first cache miss (a hit never touches
+  // the env those self-tests guard), but the GENERATOR half must still self-test upfront: a
+  // generator that doesn't build fails every probe's `cargo run` with exit 101 — recorded as
+  // per-feature panics — and a generation failure never reaches a nested cargo step, so no miss
+  // would ever hit a warm-up abort. One tiny known-good spec, generation-only (~seconds warm; the
+  // generator build it may pay for is needed by every probe anyway).
+  writeFileSync(probeFile, "warm = [uint, tstr]\n");
+  rmSync(ccWarmOut, { recursive: true, force: true });
+  const g = runExit(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccWarmOut}`, "--wasm=false", "--emit-tests=true"], CODEGEN_DIR, undefined, COMPILE_WARM_TIMEOUT);
+  const lib = g === 0 ? readFileSync(join(ccWarmOut, "rust", "src", "generated", "mod.rs"), "utf8") : "";
+  if (g !== 0 || !lib.includes("mod cddl_generated_tests")) {
+    console.error(`HARNESS FAILURE: generation self-test on a known-good spec failed (generate exit ${g}, minted=${lib.includes("mod cddl_generated_tests")}). The environment is unhealthy; no probes were run and nothing was written.`);
+    process.exit(2);
+  }
+  if (MINT_DECODE) runMintDecodeForeign();
+  if (MINT_DECODE_CORPUS) runMintDecodeCorpus();
 }
 
 const probe_results: ProbeResult[] = [];
@@ -1623,7 +1713,7 @@ const sortedFeatures = [...features].sort((a, b) => (a.id < b.id ? -1 : a.id > b
 // --smoke=N probes only the first N features (see the flag comment near the top).
 const featureList = SMOKE ? sortedFeatures.slice(0, SMOKE_N) : sortedFeatures;
 for (const f of featureList) {
-  const [a, b, cg] = oracles(f.example);
+  const [a, b, cg] = oracles(f.id, f.example);
   const profile = f.profile ?? "RFC8610";
   const d = derive(f.id, profile, a, b, cg);
   // Embed fallback (evidence-only): re-probe unmintable shapes wrapped in a synthetic record holder so
@@ -1664,7 +1754,7 @@ for (const c of containCells) {
   const b = runProbe([RUST_CDDL, "compile-cddl", "--cddl", probeFile]);
   // only probe support where the nesting is spec-valid (ruby accepts); a spec-disallowed cell isn't
   // valid CDDL, so "does cddl-codegen support it" is meaningless.
-  const cg = a === 0 ? probeCodegen() : { gen: -2, compile: -2, test: -2, minted: false };
+  const cg = a === 0 ? probeCodegen(c.id) : { gen: -2, compile: -2, test: -2, minted: false };
   // execution-gate the cell too (same false-positive class as the feature axis)
   const support = a === 0 ? (codegenVerdict(cg).supported ? "supported" : "unsupported") : null;
   const observed = a === 0 ? "allowed" : "disallowed";
@@ -1701,7 +1791,7 @@ const controlop_support: ControlOpSupport[] = [];
 // --smoke skips the control-op loop entirely (see the flag comment near the top).
 const controlOpCells = SMOKE ? [] : [...control_ops].filter(co => co.example).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 for (const co of controlOpCells) {
-  const [a, b, cg] = oracles(co.example!);
+  const [a, b, cg] = oracles(co.id, co.example!);
   // ANY nonzero ruby exit means the reference did not confirm the example is valid CDDL — not just
   // 65 (EX_DATAERR). Keying on 65 alone hid exit-1 cases (malformed controllers, valid examples of
   // ops ruby rejects with a different code) — 3 of the 5 historical malformed forms among them. The
@@ -2053,6 +2143,7 @@ console.log(`type2 per-alt       : ${s.type2_covered}/${s.type2_alternatives} co
 console.log(`spec-invalid (ref-rejected examples): ${s.spec_invalid}`);
 console.log(`parser limitations (rust): features=${s.parser_limitations} containment=${s.containment_parser_limitations}`);
 console.log(`containment         : contradictions=${s.containment_contradictions}`);
+if (GATE_CACHE_ENABLED) console.log(`gate-cache          : ${gateCacheStats.run} run, ${gateCacheStats.cached} cached`);
 
 console.log("\nALTERNATIVE COVERAGE (hard-gated for every listed production):");
 for (const prod of ALT_PRODUCTIONS) {

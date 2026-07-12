@@ -12,6 +12,7 @@
 //! the paths must keep containing `snapshot_tests`, `robustness`, and the documented fn names.
 
 pub(crate) mod dsl_position_tests;
+pub(crate) mod gate_cache;
 pub(crate) mod identifier_hazard_tests;
 pub(crate) mod integration_tests;
 pub(crate) mod recombination_tests;
