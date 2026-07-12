@@ -65,7 +65,10 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   one run, all with the same generic cargo-failure evidence line, none reproducing solo. Check
   `df` and clear the stale scratch dirs BEFORE trusting (or laboriously hand-reverting) a wide
   evidence diff; if it recurs, the mechanical layer is a disk-headroom preflight in `verify.ts`
-  alongside the oracle-fingerprint checks (and/or per-probe scratch cleanup at success).
+  alongside the oracle-fingerprint checks (and/or per-probe scratch cleanup at success). The
+  template already exists: the corpus decode mint (`runMintDecodeCorpus`) ships that preflight —
+  a 2 GiB `df` floor hard-failing with the stale-scratch cleanup named — so the remaining build
+  is lifting it to the full probe/evidence-writing runs, not designing it.
 
 ## F4 / F5 follow-ons (only when their consumer exists)
 
