@@ -43,7 +43,8 @@ import {
   CatalogVector, CorpusRule, DECODE_FLOOR_ARM_EXEMPT, GATE_CACHE_SCHEMA, GateCacheEntry, PRELUDE_NAMES, ROOT,
   cborContainsF9, composeCatalog, corpusArmExample, corpusClosureBody, corpusProbeSpec, enumerateCorpusRules,
   gateCacheEnabled, gateCacheKey, grammarAltCoverage, hashTree, loadMatrixInputs, parseCatalog,
-  readGateCacheEntry, resolveChoiceArmClasses, stableJson, vectorShapeClass, writeGateCacheEntry,
+  readGateCacheEntry, resolveChoiceArmClasses, rubyGenerateIsBernoulli, stableJson, vectorShapeClass,
+  writeGateCacheEntry,
 } from "./lib";
 
 process.chdir(ROOT);
@@ -160,6 +161,34 @@ const onlyArg = process.argv.find(a => a.startsWith("--only="));
 const MINT_ONLY = onlyArg
   ? new Set(onlyArg.slice("--only=".length).split(",").map(s => s.trim()).filter(s => s.length))
   : null;
+
+// ASSERT-AT-STARTUP self-test for the ruby-generate Bernoulli classifier (Change A's deterministic
+// verdict source). Runs on EVERY invocation before any oracle work — a mis-classification would silently
+// route a Bernoulli row back onto the flaky `generate` verdict (or a deterministic row onto the nondet
+// token), so it must fail loud and early rather than surface as a spurious annotations flip. `--selftest`
+// runs ONLY this block and exits, for a sub-second red/green check without the multi-minute pipeline.
+{
+  const cases: [string, boolean][] = [
+    ["x = uint .and (0..9)", true],   // .and narrows the value space -> generate is Bernoulli
+    ["x = int .ne 0", true],          // .ne comparison op
+    ["t = tstr .size 4", true],       // .size length narrowing
+    ["x = bytes .cbor uint", false],  // .cbor is a payload wrapper -> generate is deterministic
+    ["x = uint .default 5", false],   // .default is an annotation, not a validity constraint
+  ];
+  const failures = cases.filter(([ex, want]) => rubyGenerateIsBernoulli(ex) !== want);
+  if (failures.length) {
+    console.error(
+      "HARNESS FAILURE: ruby-generate Bernoulli classifier self-test failed for " +
+      failures.map(([ex, want]) => `${JSON.stringify(ex)} (expected ${want})`).join(", ") +
+      " — the deterministic ruby-verdict routing is unsafe; refusing to run.",
+    );
+    process.exit(2);
+  }
+  if (process.argv.includes("--selftest")) {
+    console.log(`ruby-generate Bernoulli classifier self-test OK (${cases.length} fixtures)`);
+    process.exit(0);
+  }
+}
 // K ruby-generated candidate instances per row (deduped byte-identically before two-oracle validation).
 const FOREIGN_K = 10;
 // The committed catalog the mint writes and the D4 corroborating oracle reads.
@@ -184,6 +213,9 @@ interface EmissionOutcome { status: string; detail: string; gen: number; compile
 interface ProbeResult extends Derived {
   id: string; production: string | null; profile: string; example: string;
   ruby: number; rust: number; codegen: number; compile: number; test: number; minted: boolean;
+  // Deterministic ruby verdict token for the `ruby=` evidence clause (rubyClause; Change A). `ruby` above
+  // stays the raw generate exit for the diagnostic report; the annotation clause reads this.
+  ruby_clause: string;
   minted_wasm?: boolean; wasm_roundtrips?: number;
   // Decode-foreign oracle (D4): whether the generated decoder accepted the committed spec-derived
   // vectors, and how many accept vectors were replayed. Undefined when opted out (byte-identical output).
@@ -197,6 +229,7 @@ interface ProbeResult extends Derived {
 }
 interface ContainmentCorr {
   id: string; spec_declared: string | null; spec_observed: string; ruby: number; rust: number;
+  ruby_clause: string;  // deterministic ruby verdict token for the `ruby=` clause (rubyClause; Change A)
   parser_limitation: boolean; contradiction: boolean; example: string;
   codegen: number; compile: number; test: number; minted: boolean;
   minted_wasm?: boolean; wasm_roundtrips?: number;
@@ -456,6 +489,34 @@ function runOracleFingerprint(dir: string): void {
   console.log(`rust oracle fingerprint OK (${ORACLE_FINGERPRINT.length} probes — local-fixes @ ac1b98e behavior)`);
 }
 
+// Disk-headroom preflight (Change B): every probe/mint path generates 100s of throwaway crates into
+// tmpdir-backed scratch; a near-full scratch volume degrades into the WIDE-EVIDENCE-FLIP signature (a
+// batch of identical bogus verdicts — many rows flipping to the same generic cargo-failure line, none
+// reproducing solo) rather than one loud error (the ENOSPC triage lesson, cddl-matrix/README.md
+// § "Gotchas"). Hard-fail upfront when headroom is under the 2 GiB floor, naming the stale-scratch
+// cleanup for both scratch prefixes. `df -k` is GNU coreutils; if unavailable the check degrades to a
+// loud warning rather than blocking the run. This is the oracle-fingerprint's designated sibling — one
+// implementation, called once at startup so it covers the normal evidence-writing run,
+// --mint-decode-foreign, and --mint-decode-corpus alike.
+function diskHeadroomPreflight(context: string): void {
+  const FLOOR_KIB = 2 * 1024 * 1024; // 2 GiB in KiB
+  const r = Bun.spawnSync(["df", "-k", "--output=avail", tmpdir()], { stdout: "pipe", stderr: "ignore" });
+  const availKiB = parseInt((r.stdout?.toString() ?? "").trim().split(/\r?\n/).pop() ?? "", 10);
+  if (r.exitCode !== 0 || !Number.isFinite(availKiB)) {
+    console.warn(`[${context}] WARNING: could not measure free space on '${tmpdir()}' (df exit ${r.exitCode}) — proceeding without the ENOSPC preflight.`);
+    return;
+  }
+  if (availKiB < FLOOR_KIB) {
+    console.error(
+      `HARNESS FAILURE: only ${(availKiB / 1024 / 1024).toFixed(1)} GiB free on the scratch volume ('${tmpdir()}'; floor 2 GiB). ` +
+      `A near-full scratch degrades into runs of identical bogus verdicts (the ENOSPC wide-evidence-flip lesson, ` +
+      `cddl-matrix/README.md § "Gotchas") instead of failing loudly. Clear stale scratch first — e.g. ` +
+      `\`rm -rf ${tmpdir()}/cddl_codegen_* ${tmpdir()}/cddl_verify_*\` — then re-run.`,
+    );
+    process.exit(2);
+  }
+}
+
 // ==================================================================================================
 // 3. PROBE each feature's example through the three oracles.
 // ==================================================================================================
@@ -464,6 +525,8 @@ const probeFile = join(probeDir, "probe.cddl");
 // Oracle-identity fingerprint runs FIRST (before the shared-target warm-up), on every path — a wrong
 // RUST_CDDL fails in under a second instead of minting mixed-oracle evidence minutes in.
 runOracleFingerprint(probeDir);
+// Its designated sibling: fail fast on a near-full scratch volume before any generation (Change B).
+diskHeadroomPreflight("scratch-preflight");
 // Every generation gets a FRESH output dir (a monotonic counter suffix; the previous dir is deleted
 // so disk use stays keep-last-1). Reusing ONE path for every cell under the shared CARGO_TARGET_DIR
 // let cargo's mtime-based fingerprint declare freshly generated sources "fresh" against the PREVIOUS
@@ -844,8 +907,11 @@ function oracles(cell: string, example: string): [number, number, CodegenProbe] 
   return [a, b, probeCodegen(cell)];
 }
 
-function derive(featureId: string, profile: string, rubyExit: number, rustExit: number, cg: CodegenProbe): Derived {
-  const valid_a = rubyExit === 0;
+// `rubySpecValid` is the DETERMINISTIC ruby spec-validity bit (rubyClause().specValid) — NOT the raw
+// generate exit, which is a Bernoulli trial for value-narrowing controllers (Change A). Everything else
+// is unchanged: valid_a is that bit, spec_valid derives from it (or true for the vendor profile).
+function derive(featureId: string, profile: string, rubySpecValid: boolean, rustExit: number, cg: CodegenProbe): Derived {
+  const valid_a = rubySpecValid;
   const valid_b = rustExit === 0;
   // CDDL_CODEGEN is a vendor profile: cddl-codegen IS the spec authority, so the ruby/rust reference
   // oracles don't gate validity (they reject the sentinel typenames — expected). Validity comes from the
@@ -1006,6 +1072,49 @@ function validateBoth(spec: string, hex: string): { ruby: number; rust: number }
   const ruby = runExit([RUBY_CDDL!, probeFile, "validate", cbor]);
   const rust = runExit([RUST_CDDL, "--ci", "validate", "--cddl", probeFile, "--cbor", cbor]);
   return { ruby, rust };
+}
+
+// --- Change A: deterministic ruby verdict for the annotation `ruby=` clause -------------------------
+// For a value-narrowing controller (rubyGenerateIsBernoulli), the ruby `generate` exit is a Bernoulli
+// trial and must NOT be trusted (draft/ruby-cddl-generate-bernoulli-constraint-controllers.md). rubyClause
+// replaces the raw generate exit wherever it fed evidence/status, with a deterministic source. Token
+// grammar (the `; ruby=` delimiter downstream splitters key on is preserved; the parenthesized provenance
+// is new):
+//   ruby=ok | ruby=fail                 — generate exit; NON-Bernoulli examples only (deterministic in practice)
+//   ruby=ok(validate) | fail(validate)  — the row's committed spec-valid accept vectors, ALL re-validated by
+//                                         ruby against the CATALOG spec (deterministic input ⇒ deterministic
+//                                         verdict); ok iff every accept vector validates
+//   ruby=nondet(generate)               — Bernoulli example with no committed accept vectors; a STABLE token
+//                                         chosen statically (no subprocess), NEVER spec-invalidating (a random
+//                                         generate must not flip a row's status on a dice roll)
+// `specValid` is what feeds derive()'s spec_valid on the feature axis (and the per-cell / uncorroborated
+// gate on the other two loops). Validate uses a DEDICATED probe file so it never clobbers the caller's
+// shared probeFile, keeping rubyClause free of loop-ordering hazards.
+interface RubyClause { token: string; specValid: boolean }
+function rubyValidateHex(spec: string, hex: string): number {
+  const specFile = join(probeDir, "ruby_verdict.cddl");
+  writeFileSync(specFile, spec.replace(/\n*$/, "\n"));
+  const cbor = join(probeDir, "ruby_verdict.cbor");
+  writeFileSync(cbor, Buffer.from(hex, "hex"));
+  return runExit([RUBY_CDDL!, specFile, "validate", cbor]);
+}
+function rubyClause(id: string, example: string, generateExit: number): RubyClause {
+  if (!rubyGenerateIsBernoulli(example)) {
+    const okv = generateExit === 0;
+    return { token: okv ? "ok" : "fail", specValid: okv };
+  }
+  const row = RUBY_CDDL ? catalogRows.get(id) : undefined;
+  const accepts =
+    row && row.spec !== undefined && row.pinned_reason === undefined
+      ? row.vectors.filter(v => v.expect === "accept" && v.class !== "over-acceptance")
+      : [];
+  if (row?.spec !== undefined && accepts.length > 0) {
+    const allOk = accepts.every(v => rubyValidateHex(row.spec!, v.hex) === 0);
+    return { token: allOk ? "ok(validate)" : "fail(validate)", specValid: allOk };
+  }
+  // Classified but no deterministic vectors (e.g. ctl.and / ctl.within — unsupported, no catalog row):
+  // a stable token, treated as not-spec-invalidating.
+  return { token: "nondet(generate)", specValid: true };
 }
 
 // --- D4: the default-on corroborating oracle (called from the three probe loops on supported rows) ---
@@ -1556,28 +1665,8 @@ function mintCorpusRow(fixture: string, rule: CorpusRule, allRules: CorpusRule[]
 function runMintDecodeCorpus(): never {
   if (!RUBY_CDDL) { console.error("HARNESS FAILURE: --mint-decode-corpus needs the ruby cddl reference (generate + validate); none resolved."); process.exit(2); }
   if (!DIAG2CBOR || !existsSync(DIAG2CBOR)) { console.error(`HARNESS FAILURE: diag2cbor.rb not found beside the ruby cddl binstub (looked at '${DIAG2CBOR}'); the cbor-diag gem is required to mint.`); process.exit(2); }
-
-  // ENOSPC/SCRATCH PREFLIGHT: the mint generates 130+ crates into tmpdir-backed scratch; a near-full
-  // scratch volume degrades into the wide-evidence-flip signature (a run of identical bogus verdicts —
-  // the ENOSPC lesson in cddl-matrix/ROADMAP.md § Remaining work) rather than one loud error. Hard-fail
-  // upfront when headroom is under 2 GiB, naming the stale-scratch cleanup. `df -k` is GNU coreutils;
-  // if unavailable the check degrades to a loud warning rather than blocking the mint.
-  {
-    const FLOOR_KIB = 2 * 1024 * 1024; // 2 GiB in KiB
-    const r = Bun.spawnSync(["df", "-k", "--output=avail", tmpdir()], { stdout: "pipe", stderr: "ignore" });
-    const availKiB = parseInt((r.stdout?.toString() ?? "").trim().split(/\r?\n/).pop() ?? "", 10);
-    if (r.exitCode !== 0 || !Number.isFinite(availKiB)) {
-      console.warn(`[mint-corpus] WARNING: could not measure free space on '${tmpdir()}' (df exit ${r.exitCode}) — proceeding without the ENOSPC preflight.`);
-    } else if (availKiB < FLOOR_KIB) {
-      console.error(
-        `HARNESS FAILURE: only ${(availKiB / 1024 / 1024).toFixed(1)} GiB free on the scratch volume ('${tmpdir()}'; floor 2 GiB). ` +
-        `A near-full scratch degrades into runs of identical bogus verdicts (the ENOSPC wide-evidence-flip lesson, ` +
-        `cddl-matrix/ROADMAP.md § Remaining work) instead of failing loudly. Clear stale scratch first — e.g. ` +
-        `\`rm -rf ${tmpdir()}/cddl_codegen_* ${tmpdir()}/cddl_verify_*\` — then re-run.`,
-      );
-      process.exit(2);
-    }
-  }
+  // The ENOSPC/scratch preflight is the startup `diskHeadroomPreflight("scratch-preflight")` (Change B) —
+  // it runs before this mint is dispatched, so no inline copy is needed here.
 
   // Negative control (same as the foreign mint): a known-bad instance must be rejected by BOTH oracles
   // (rust via --ci) AND our decoder — else the cross-check is vacated.
@@ -1791,7 +1880,10 @@ const featureList = SMOKE ? sortedFeatures.slice(0, SMOKE_N) : sortedFeatures;
 for (const f of featureList) {
   const [a, b, cg] = oracles(f.id, f.example);
   const profile = f.profile ?? "RFC8610";
-  const d = derive(f.id, profile, a, b, cg);
+  // Change A: route the ruby verdict through the deterministic source (never the raw Bernoulli generate
+  // exit for value-narrowing controllers). specValid feeds derive()'s spec_valid; token feeds evidence.
+  const rc = rubyClause(f.id, f.example, a);
+  const d = derive(f.id, profile, rc.specValid, b, cg);
   // Embed fallback (evidence-only): re-probe unmintable shapes wrapped in a synthetic record holder so
   // their embed-site wire path executes. Never changes `d.support` — only enriches the evidence text.
   const embedded = embedFallback(f.id, f.example, cg);
@@ -1802,7 +1894,7 @@ for (const f of featureList) {
   // Decode-foreign oracle (D4): corroborate a supported verdict by replaying the committed spec-derived
   // vectors through the generated decoder. Never changes `d.support`.
   const foreign = d.status === "supported" ? decodeForeignProbe(f.id, f.example) : {};
-  probe_results.push({ id: f.id, production: f.production ?? null, profile, example: f.example, ruby: a, rust: b, codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted, minted_wasm: cg.minted_wasm, wasm_roundtrips: cg.wasm_roundtrips, accepts_foreign: foreign.accepts_foreign, foreign_vectors: foreign.foreign_vectors, embedded, emission, ...d });
+  probe_results.push({ id: f.id, production: f.production ?? null, profile, example: f.example, ruby: a, ruby_clause: rc.token, rust: b, codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted, minted_wasm: cg.minted_wasm, wasm_roundtrips: cg.wasm_roundtrips, accepts_foreign: foreign.accepts_foreign, foreign_vectors: foreign.foreign_vectors, embedded, emission, ...d });
 }
 
 // Second harness-health layer (the warm-up catches a broken environment at startup; this catches one
@@ -1828,13 +1920,19 @@ for (const c of containCells) {
   writeFileSync(probeFile, c.example + "\n");
   const a = RUBY_CDDL ? runProbe([RUBY_CDDL, probeFile, "generate", "1"]) : -2;
   const b = runProbe([RUST_CDDL, "compile-cddl", "--cddl", probeFile]);
+  // Change A: the spec-validity gate reads the DETERMINISTIC ruby verdict, not the raw generate exit
+  // (byte-identical for the non-Bernoulli cells that populate the containment axis today; the routing
+  // is here so a future value-narrowing cell can't gate on a dice roll). rubyValidateHex uses its own
+  // probe file, so this never clobbers c.example in probeFile before probeCodegen reads it.
+  const rc = rubyClause(c.id, c.example!, a);
+  const rubyValid = rc.specValid;
   // only probe support where the nesting is spec-valid (ruby accepts); a spec-disallowed cell isn't
   // valid CDDL, so "does cddl-codegen support it" is meaningless.
-  const cg = a === 0 ? probeCodegen(c.id) : { gen: -2, compile: -2, test: -2, minted: false };
+  const cg = rubyValid ? probeCodegen(c.id) : { gen: -2, compile: -2, test: -2, minted: false };
   // execution-gate the cell too (same false-positive class as the feature axis)
-  const support = a === 0 ? (codegenVerdict(cg).supported ? "supported" : "unsupported") : null;
-  const observed = a === 0 ? "allowed" : "disallowed";
-  const parser_limitation = a === 0 && b !== 0;  // directional, matching the feature-level definition (ruby accepts, rust rejects)
+  const support = rubyValid ? (codegenVerdict(cg).supported ? "supported" : "unsupported") : null;
+  const observed = rubyValid ? "allowed" : "disallowed";
+  const parser_limitation = rubyValid && b !== 0;  // directional, matching the feature-level definition (ruby accepts, rust rejects)
   const contradiction = observed !== c.spec;
   // Emission-profile axis, same scoping rule (a) as the feature loop: probe preserve/json iff the cell's
   // default per-cell verdict is supported.
@@ -1842,7 +1940,7 @@ for (const c of containCells) {
   const foreign = support === "supported" ? decodeForeignProbe(c.id, c.example!) : {};
   containment_corroboration.push({
     id: c.id, spec_declared: c.spec ?? null, spec_observed: observed,
-    ruby: a, rust: b, parser_limitation, contradiction, example: c.example!,
+    ruby: a, ruby_clause: rc.token, rust: b, parser_limitation, contradiction, example: c.example!,
     codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted,
     minted_wasm: cg.minted_wasm, wasm_roundtrips: cg.wasm_roundtrips,
     accepts_foreign: foreign.accepts_foreign, foreign_vectors: foreign.foreign_vectors, support, emission,
@@ -1854,7 +1952,7 @@ for (const c of containCells) {
 // authoritative, so ruby/rust are CORROBORATION ONLY (an op a given ruby/rust version lacks is not
 // "invalid CDDL"): support is purely the cddl-codegen verdict, supported/unsupported (no out_of_profile —
 // the control-op extension RFCs 9090/9165/9741 are a separate axis from the grammar profile).
-interface ControlOpSupport { id: string; name: string; support: string; detail: string; ruby: number; rust: number; codegen: number; compile: number; test: number; minted: boolean; embedded?: boolean; example: string; emission?: Record<string, EmissionOutcome>; accepts_foreign?: boolean; foreign_vectors?: number }
+interface ControlOpSupport { id: string; name: string; support: string; detail: string; ruby: number; ruby_clause: string; rust: number; codegen: number; compile: number; test: number; minted: boolean; embedded?: boolean; example: string; emission?: Record<string, EmissionOutcome>; accepts_foreign?: boolean; foreign_vectors?: number }
 const controlop_missing_example = control_ops.filter(co => !co.example).map(co => co.id);
 // ruby exit 65 (EX_DATAERR) can mean the example is malformed — but ALSO that ruby's generate mode
 // simply can't handle an op it postdates (verified: the RFC-correct `.printf ["%04x", 20]`, which
@@ -1868,12 +1966,13 @@ const controlop_support: ControlOpSupport[] = [];
 const controlOpCells = SMOKE ? [] : [...control_ops].filter(co => co.example).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 for (const co of controlOpCells) {
   const [a, b, cg] = oracles(co.id, co.example!);
-  // ANY nonzero ruby exit means the reference did not confirm the example is valid CDDL — not just
-  // 65 (EX_DATAERR). Keying on 65 alone hid exit-1 cases (malformed controllers, valid examples of
-  // ops ruby rejects with a different code) — 3 of the 5 historical malformed forms among them. The
-  // exit code is recorded per id so a malformed-example regression stays distinguishable from the
-  // unimplemented-op noise this list is expected to carry.
-  if (a !== 0) controlop_uncorroborated.push(`${co.id} (ruby exit ${a})`);
+  // Change A: the corroboration verdict is deterministic (rubyClause) — a value-narrowing op is
+  // corroborated by ruby `validate` over its committed vectors, not by the Bernoulli `generate` exit,
+  // so it can no longer land in the review list on a dice roll. A row appears here only when the
+  // deterministic verdict is NOT spec-valid: a genuine parse/generate gap (e.g. `.printf` exit 65,
+  // not classified) or a classified op whose committed vectors fail to validate (an upstream drift).
+  const rc = rubyClause(co.id, co.example!, a);
+  if (!rc.specValid) controlop_uncorroborated.push(`${co.id} (ruby ${rc.token}; generate exit ${a})`);
   const v = codegenVerdict(cg);
   // Same embed fallback as the feature loop (trivial generalization — control-op examples are single
   // named rules): an op whose annotated type mints no standalone surface (`.cbor`, `.ge` -> a bounded
@@ -1882,7 +1981,7 @@ for (const co of controlOpCells) {
   // Emission-profile axis, same scoping rule (a): probe preserve/json iff the op's default verdict is supported.
   const emission = v.supported ? probeEmissions(co.id, co.example!) : undefined;
   const foreign = v.supported ? decodeForeignProbe(co.id, co.example!) : {};
-  controlop_support.push({ id: co.id, name: co.name, support: v.supported ? "supported" : "unsupported", detail: v.detail, ruby: a, rust: b, codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted, embedded, example: co.example!, emission, accepts_foreign: foreign.accepts_foreign, foreign_vectors: foreign.foreign_vectors });
+  controlop_support.push({ id: co.id, name: co.name, support: v.supported ? "supported" : "unsupported", detail: v.detail, ruby: a, ruby_clause: rc.token, rust: b, codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted, embedded, example: co.example!, emission, accepts_foreign: foreign.accepts_foreign, foreign_vectors: foreign.foreign_vectors });
 }
 
 // Same harness-health guard as the feature loop (line ~390), extended to the two loops that run
@@ -1997,7 +2096,7 @@ function pushEmissionLines(emission?: Record<string, EmissionOutcome>) {
   }
 }
 for (const pr of probe_results) {
-  let ev = `probe: cddl-codegen ${embedDetail(pr.support_detail ?? "exit " + pr.codegen, pr.embedded)}${wasmEvidence(pr.minted_wasm, pr.wasm_roundtrips, Object.hasOwn(COMPILE_GATE_EXEMPT, pr.id))}${decodeForeignEvidence({ accepts_foreign: pr.accepts_foreign, foreign_vectors: pr.foreign_vectors })}; ruby=${ok(pr.ruby)} rust=${ok(pr.rust)}`;
+  let ev = `probe: cddl-codegen ${embedDetail(pr.support_detail ?? "exit " + pr.codegen, pr.embedded)}${wasmEvidence(pr.minted_wasm, pr.wasm_roundtrips, Object.hasOwn(COMPILE_GATE_EXEMPT, pr.id))}${decodeForeignEvidence({ accepts_foreign: pr.accepts_foreign, foreign_vectors: pr.foreign_vectors })}; ruby=${pr.ruby_clause} rust=${ok(pr.rust)}`;
   if (pr.parser_limitation) ev += " (rust parser limitation: reference/ABNF accept)";
   if (pr.profile === "CDDL_CODEGEN") ev += " (vendor profile: validity by cddl-codegen; ruby/rust informational)";
   if (pr.status === "out_of_profile")
@@ -2016,7 +2115,7 @@ annoLines.push("");
 for (const c of containment_corroboration.filter(c => c.support !== null)) {
   const roundtrips = c.test === 0 ? (c.minted ? "ok" : "n/a (nothing minted)") : "fail";
   const compile = c.codegen === 0 ? `; compiles=${c.compile === 0 ? "ok" : "fail"}; round-trips=${roundtrips}` : "";
-  const ev = `probe (cell): cddl-codegen exit ${c.codegen}${compile}${wasmEvidence(c.minted_wasm, c.wasm_roundtrips)}${decodeForeignEvidence({ accepts_foreign: c.accepts_foreign, foreign_vectors: c.foreign_vectors })}; ruby=${ok(c.ruby)} rust=${ok(c.rust)}`;
+  const ev = `probe (cell): cddl-codegen exit ${c.codegen}${compile}${wasmEvidence(c.minted_wasm, c.wasm_roundtrips)}${decodeForeignEvidence({ accepts_foreign: c.accepts_foreign, foreign_vectors: c.foreign_vectors })}; ruby=${c.ruby_clause} rust=${ok(c.rust)}`;
   annoLines.push("[[support]]");
   annoLines.push(`id = ${tomlStr(c.id)}`);
   annoLines.push(`status = ${tomlStr(c.support!)}`);
@@ -2029,7 +2128,7 @@ for (const c of containment_corroboration.filter(c => c.support !== null)) {
 annoLines.push("# --- per-control-op support, keyed by ctl.<name> (IANA registry; ruby/rust corroborate only) ---");
 annoLines.push("");
 for (const co of controlop_support) {
-  const ev = `probe (control-op): cddl-codegen ${embedDetail(co.detail, co.embedded)}${decodeForeignEvidence({ accepts_foreign: co.accepts_foreign, foreign_vectors: co.foreign_vectors })}; ruby=${ok(co.ruby)} rust=${ok(co.rust)}`;
+  const ev = `probe (control-op): cddl-codegen ${embedDetail(co.detail, co.embedded)}${decodeForeignEvidence({ accepts_foreign: co.accepts_foreign, foreign_vectors: co.foreign_vectors })}; ruby=${co.ruby_clause} rust=${ok(co.rust)}`;
   annoLines.push("[[support]]");
   annoLines.push(`id = ${tomlStr(co.id)}`);
   annoLines.push(`status = ${tomlStr(co.support)}`);

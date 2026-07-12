@@ -10,10 +10,14 @@
 # panic/parse-reject (-> unsupported), which is the correct verdict. Forms follow each op's DEFINING
 # RFC; the oracles can only corroborate ops they implement (ruby's generate mode exits 65 for any op
 # it postdates, valid or not — verify.ts surfaces those ids as an uncorroborated-REVIEW list).
-# The ruby corroboration bit is FLAKY for some ops: ruby generates a RANDOM instance per run, so an
-# op whose generated instance only sometimes satisfies the constraint flips ruby=ok/fail across runs
-# on identical input (observed: ctl.and, `uint .and (0..9)`). It is corroboration only — never a
-# verdict input — so a flip in the annotations diff is noise, not a regression to chase.
+# The ruby `generate` exit is a Bernoulli trial for a value-space-NARROWING op (ruby draws a RANDOM
+# instance and self-validates it, so it flips ruby=ok/fail across runs on identical input — observed:
+# ctl.and, `uint .and (0..9)`; root cause in draft/ruby-cddl-generate-bernoulli-constraint-controllers.md).
+# verify.ts NEVER derives a verdict from `generate` for those ops (classified statically by controller
+# op-name, lib.ts `rubyGenerateIsBernoulli`): the `ruby=` clause becomes `ruby=ok(validate)`/
+# `fail(validate)` — ruby `validate` over the row's committed spec-valid decode vectors — where the
+# decode catalog has them, else the STABLE `ruby=nondet(generate)` token. So the annotations diff is
+# deterministic; a value-narrowing row's `ruby=` clause no longer flips as noise.
 
 # --- RFC 8610 (the 9 supported + the 5 it parses-but-rejects) ---
 [[example]]
