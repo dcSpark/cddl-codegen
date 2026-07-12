@@ -604,6 +604,44 @@ impl<'a> IntermediateTypes<'a> {
                     .insert(keys_ident);
             }
         }
+        // Register the import of a locally ROOT-minted keys-list wrapper into `emit_scope` (the
+        // module a table's wasm class is emitted in). A map's `keys()` accessor names the keys-list
+        // wrapper BARE (`{Elem}List(...)`) exactly when the key is non-exposable AND the wrapper is
+        // not deferred — mirroring `codegen_table_type`'s emission condition. That wrapper is
+        // synthesized at ROOT_SCOPE (`create_and_register_array_type`, never `mark_scope`'d), so a
+        // class emitted in a non-root module must import it. No-op (matching the emitter naming NO
+        // wrapper, or naming one that lives in the same scope) when: not the wasm pass; the emit
+        // scope IS root (wrapper minted there too); the key is exposable (bare `Vec` return, no
+        // wrapper named); or the keys-list is deferred (`register_deferred_keys_list` imports it from
+        // the dep's `collections` module instead). Independent of the using site: it follows the
+        // table class, like `register_deferred_keys_list`.
+        fn register_root_keys_list(
+            refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
+            types: &IntermediateTypes,
+            wasm: bool,
+            deferred: &BTreeMap<RustIdent, ModuleScope>,
+            emit_scope: &ModuleScope,
+            key: &RustType,
+        ) {
+            if !wasm || *emit_scope == *ROOT_SCOPE {
+                return;
+            }
+            // exposable keys return a bare `Vec` — the emitter names no wrapper, so nothing to import
+            if ConceptualRustType::Array(Box::new(key.clone())).directly_wasm_exposable_ct(types) {
+                return;
+            }
+            let keys_ident = RustIdent::new(CDDLIdent::new(key.name_as_wasm_array(types)));
+            // deferred keys-lists live in a dep's `collections` module — imported by the deferred
+            // helper, not from root
+            if deferred.contains_key(&keys_ident) {
+                return;
+            }
+            refs.entry(emit_scope.to_owned())
+                .or_default()
+                .entry(ROOT_SCOPE.clone())
+                .or_default()
+                .insert(keys_ident);
+        }
         fn mark_refs(
             refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
             types: &IntermediateTypes,
@@ -746,6 +784,11 @@ impl<'a> IntermediateTypes<'a> {
                         // must be imported where the map class lives (`import_scope`), not the using
                         // site — the map class stays local while its keys-list is borrowed.
                         register_deferred_keys_list(refs, types, deferred, &import_scope, key);
+                        // The non-deferred analogue: a non-exposable key whose keys-list wrapper is
+                        // ROOT-minted (`FooList`) must be imported into `import_scope` (the non-root
+                        // module the map class lives in) — otherwise `keys()` names it bare and
+                        // dangles (E0425).
+                        register_root_keys_list(refs, types, wasm, deferred, &import_scope, key);
                         // The wrapper's emitted code names its KEY and VALUE types bare in its
                         // EMISSION scope (`import_scope` — the sole owner's module or root, resolved
                         // the SAME way emission places the wrapper), which is not this using scope,
@@ -845,6 +888,11 @@ impl<'a> IntermediateTypes<'a> {
                     )
                 }),
                 RustStructType::Table { domain, range, .. } => {
+                    // The named table's own wasm class is emitted in `current_scope`; its `keys()`
+                    // accessor names the ROOT-minted keys-list wrapper bare for a non-exposable key,
+                    // so import it into this (non-root) module — the named/unref analogue of the Map
+                    // arm's inline-use registration above.
+                    register_root_keys_list(&mut refs, self, wasm, deferred, current_scope, domain);
                     mark_refs(
                         &mut refs,
                         self,

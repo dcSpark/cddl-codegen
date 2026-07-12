@@ -301,32 +301,6 @@ const MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)] = &[
         "E0425: as nemap__named — `Mp::try_from` names the root-minted loose `MapU64ToText` bare from \
          module `a` (cddl-matrix/ROADMAP.md § findings)",
     ),
-    // --- The MAP keys-list class: a sole-owner table in a non-root module whose KEY is non-exposable
-    // (`tbl = { * foo => text }` with record `foo`). The table's wasm class is minted in module `a`
-    // and its `keys()` accessor names the root-minted keys-list wrapper (`FooList`) bare — but that
-    // wrapper is synthesized at ROOT_SCOPE and never imported into module `a`. `collmap`
-    // (`{ * uint => text }`) has an exposable key so its `keys()` returns a bare `Vec` and can never
-    // probe this. All three modes red because module `a` always declares `tbl` (E0425 in the wasm
-    // crate; cddl-matrix/ROADMAP.md § findings — the keys-list Map-arm entry).
-    (
-        "tblrec__anon",
-        &["E0425"],
-        "E0425: the sole-owner table `tbl`'s wasm class (module `a`) names the root-minted keys-list \
-         `FooList` bare in `keys()`, but `FooList` is never imported into module `a` \
-         (cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "tblrec__named",
-        &["E0425"],
-        "E0425: as tblrec__anon — the non-root `tbl` class names the root-minted `FooList` bare \
-         (cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "tblrec__unref",
-        &["E0425"],
-        "E0425: as tblrec__anon — module `a`'s `tbl` class names the root-minted `FooList` bare \
-         (cddl-matrix/ROADMAP.md § findings)",
-    ),
 ];
 
 /// Per-profile round-trip skips for `wasm_matrix_roundtrips` ONLY (never consulted by
@@ -408,25 +382,6 @@ const MULTIFILE_ROUNDTRIP_SKIP: &[(&str, &str)] = &[
     (
         "nemap__unref",
         "wasm crate never compiles: as nemap__named (E0425 class pinned by MULTIFILE_MATRIX_SKIP; \
-         cddl-matrix/ROADMAP.md § findings)",
-    ),
-    // The non-root non-exposable-key table cells: the wasm crate never compiles (the `tbl` class
-    // names the root-minted keys-list `FooList` bare without importing it — E0425 class pinned by
-    // MULTIFILE_MATRIX_SKIP), so `cargo test` can never go green (cddl-matrix/ROADMAP.md § findings).
-    (
-        "tblrec__anon",
-        "wasm crate never compiles: the non-root `tbl` class names the root-minted keys-list \
-         `FooList` bare in `keys()` (E0425 class pinned by MULTIFILE_MATRIX_SKIP; \
-         cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "tblrec__named",
-        "wasm crate never compiles: as tblrec__anon (E0425 class pinned by MULTIFILE_MATRIX_SKIP; \
-         cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "tblrec__unref",
-        "wasm crate never compiles: as tblrec__anon (E0425 class pinned by MULTIFILE_MATRIX_SKIP; \
          cddl-matrix/ROADMAP.md § findings)",
     ),
 ];
@@ -2968,17 +2923,22 @@ fn no_synthesized_rust_collection_aliases_suppresses_only_synthesized() {
 /// The `wasm/src/generated/collections.rs` re-export index (R3a): every wasm run emits exactly one
 /// `pub use crate::…::<Wrapper>;` per collection wrapper CLASS the crate minted, sorted, no glob, no
 /// cfg — a self-validating inventory (compiled as part of the crate, so a line naming a removed
-/// wrapper fails the crate's own build). This pins the three placement shapes that a single-file
+/// wrapper fails the crate's own build). This pins the four placement shapes that a single-file
 /// fixture cannot all produce, using a MULTIFILE (directory) input:
 /// (a) a ROOT-scope structural list wrapper (`InnerList`, from an anonymous `[* inner]` field over a
 ///     non-exposable element) → `crate::generated::InnerList`;
 /// (b) a sole-owner rule-NAMED table class at root (`RootTbl`) → `crate::generated::RootTbl`;
 /// (c) a sole-owner rule-named table class in a NON-ROOT exported module (`SubTbl` in `sub/`) →
 ///     `crate::generated::sub::SubTbl`, verifying the multi-segment path derivation.
-/// The `sub` table uses exposable (`uint`) keys deliberately: a non-exposable key would need a
-/// cross-module keys-list wrapper import that is a SEPARATE known gap, out of scope for this index
-/// test. The acceptance property (feature-request criterion 4) is that the wasm crate COMPILES with
-/// the index in place; we assert that here alongside the exact line set. Tier: check.ts `local`.
+/// (d) the ROOT-minted keys-list wrapper of that non-root table (`SubKeyList`, minted because
+///     `sub_tbl` is keyed by the NON-exposable record `sub_key`) → `crate::generated::SubKeyList`.
+///     The `sub` table deliberately uses a non-exposable KEY so its `keys()` accessor names
+///     `SubKeyList` — a root-minted wrapper the non-root `SubTbl` class must import
+///     (`use crate::generated::SubKeyList;`). Before the `mark_refs` keys-list registration this
+///     dangled E0425 (cddl-matrix/ROADMAP.md § findings, now retired; enumerated as the `tblrec`
+///     multifile cells); the compile assertion below is what would catch a regression here.
+/// The acceptance property (feature-request criterion 4) is that the wasm crate COMPILES with the
+/// index in place; we assert that here alongside the exact line set. Tier: check.ts `local`.
 #[test]
 fn wasm_collections_index_lists_every_minted_wrapper() {
     if !tool_exists("cargo") {
@@ -3006,11 +2966,15 @@ fn wasm_collections_index_lists_every_minted_wrapper() {
          root_tbl = { * inner => text }\n",
     )
     .unwrap();
-    // Non-root module `sub`: `sub_tbl` is the sole owner of the `{ uint => text }` shape, so its JS
-    // class `SubTbl` is emitted into `crate::generated::sub`.
+    // Non-root module `sub`: `sub_tbl` is the sole owner of the `{ sub_key => text }` shape, so its
+    // JS class `SubTbl` is emitted into `crate::generated::sub`. Its KEY `sub_key` is a record
+    // (non-exposable), so `keys()` names the ROOT-minted keys-list wrapper `SubKeyList` — which the
+    // non-root `SubTbl` class must import (the `mark_refs` keys-list registration; the fixed
+    // non-exposable-key placement class, enumerated as the `tblrec` multifile cells).
     std::fs::write(
         inputs.join("sub/mod.cddl"),
-        "sub_tbl = { * uint => text }\n",
+        "sub_key = [b0: uint]\n\
+         sub_tbl = { * sub_key => text }\n",
     )
     .unwrap();
 
@@ -3052,13 +3016,14 @@ fn wasm_collections_index_lists_every_minted_wrapper() {
     let expected: std::collections::BTreeSet<&str> = [
         "pub use crate::generated::InnerList;",
         "pub use crate::generated::RootTbl;",
+        "pub use crate::generated::SubKeyList;",
         "pub use crate::generated::sub::SubTbl;",
     ]
     .into_iter()
     .collect();
     assert_eq!(
         pub_uses, expected,
-        "collections.rs must list exactly the three minted wrappers:\n{collections}"
+        "collections.rs must list exactly the four minted wrappers:\n{collections}"
     );
 
     // Acceptance property: the wasm crate (index included) compiles. `cargo check` on the wasm
