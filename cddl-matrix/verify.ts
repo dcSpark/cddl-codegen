@@ -1696,14 +1696,24 @@ let rustWarm = false;
 let wasmWarm = false;
 const emissionWarm = new Set<string>();
 
+// The warm-ups' OWN spec file. Never probeFile: LAZY warm-ups run MID-CELL (on the first cache
+// miss, between a cell's rust generation and its later legs), so writing the warm spec to the
+// shared probeFile made the cell's SUBSEQUENT generations (the wasm leg reuses probeFile from
+// `oracles()`) silently generate the WARM crate instead of the cell — the first-miss cell's wasm
+// evidence was then the warm crate's, and identical warm trees across cells cross-hit each other's
+// cache entries under the wrong cell labels (caught live by verify_cache_transparency: a failing
+// cell's wasm leg reported the warm crate's PASS). Eager warm-ups (GATE_CACHE=0) predate every
+// cell and were immune, which is the A/B asymmetry the gate flagged.
+const warmFile = join(probeDir, "warm.cddl");
+
 function ensureRustWarm(): void {
   if (rustWarm) return;
   // Warm the shared compile target ONCE (deps + libtest harness build) and self-test a known-good,
   // minting spec. A separate warm output dir avoids clobbering the freshly generated crate whose cache
   // lookup just missed.
-  writeFileSync(probeFile, "warm = [uint, tstr]\n");
+  writeFileSync(warmFile, "warm = [uint, tstr]\n");
   rmSync(ccWarmOut, { recursive: true, force: true });
-  const warmGen = runExit(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccWarmOut}`, "--wasm=false", "--emit-tests=true"], CODEGEN_DIR, undefined, COMPILE_WARM_TIMEOUT);
+  const warmGen = runExit(["cargo", "run", "-q", "--", `--input=${warmFile}`, `--output=${ccWarmOut}`, "--wasm=false", "--emit-tests=true"], CODEGEN_DIR, undefined, COMPILE_WARM_TIMEOUT);
   const warmLib = warmGen === 0 ? readFileSync(join(ccWarmOut, "rust", "src", "generated", "mod.rs"), "utf8") : "";
   const warmTest = warmGen === 0 ? runExit(["cargo", "test", "--manifest-path", join(ccWarmOut, "rust", "Cargo.toml")], CODEGEN_DIR, { CARGO_TARGET_DIR: COMPILE_TARGET }, COMPILE_WARM_TIMEOUT) : -2;
   if (warmGen !== 0 || warmTest !== 0 || !warmLib.includes("mod cddl_generated_tests")) {
@@ -1715,9 +1725,9 @@ function ensureRustWarm(): void {
 
 function ensureWasmWarm(): void {
   if (wasmWarm || !WASM_PROBE) return;
-  writeFileSync(probeFile, "warm = [uint, tstr]\n");
+  writeFileSync(warmFile, "warm = [uint, tstr]\n");
   rmSync(ccWarmOutWasm, { recursive: true, force: true });
-  const wgen = runExit(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccWarmOutWasm}`, "--wasm=true", "--emit-tests=true"], CODEGEN_DIR, undefined, COMPILE_WARM_TIMEOUT);
+  const wgen = runExit(["cargo", "run", "-q", "--", `--input=${warmFile}`, `--output=${ccWarmOutWasm}`, "--wasm=true", "--emit-tests=true"], CODEGEN_DIR, undefined, COMPILE_WARM_TIMEOUT);
   const wlib = wgen === 0 ? readFileSync(join(ccWarmOutWasm, "wasm", "src", "generated", "mod.rs"), "utf8") : "";
   const wtest = wgen === 0 ? runExit(["cargo", "test", "--manifest-path", join(ccWarmOutWasm, "wasm", "Cargo.toml")], CODEGEN_DIR, { CARGO_TARGET_DIR: WASM_TARGET }, COMPILE_WARM_TIMEOUT) : -2;
   if (wgen !== 0 || wtest !== 0 || !wlib.includes("mod cddl_generated_wasm_tests")) {
@@ -1729,9 +1739,9 @@ function ensureWasmWarm(): void {
 
 function ensureEmissionWarm(prof: EmissionProfile): void {
   if (emissionWarm.has(prof.name)) return;
-  writeFileSync(probeFile, "warm = [uint, tstr]\n");
+  writeFileSync(warmFile, "warm = [uint, tstr]\n");
   rmSync(ccWarmOut, { recursive: true, force: true });
-  const g = runExit(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccWarmOut}`, "--wasm=false", "--emit-tests=true", ...prof.flags], CODEGEN_DIR, undefined, COMPILE_WARM_TIMEOUT);
+  const g = runExit(["cargo", "run", "-q", "--", `--input=${warmFile}`, `--output=${ccWarmOut}`, "--wasm=false", "--emit-tests=true", ...prof.flags], CODEGEN_DIR, undefined, COMPILE_WARM_TIMEOUT);
   const lib = g === 0 ? readFileSync(join(ccWarmOut, "rust", "src", "generated", "mod.rs"), "utf8") : "";
   const t = g === 0 ? runExit(["cargo", "test", "--manifest-path", join(ccWarmOut, "rust", "Cargo.toml")], CODEGEN_DIR, { CARGO_TARGET_DIR: COMPILE_TARGET }, COMPILE_WARM_TIMEOUT) : -2;
   if (g !== 0 || t !== 0 || !lib.includes("mod cddl_generated_tests")) {
@@ -1762,9 +1772,9 @@ if (!GATE_CACHE_ENABLED) {
   // per-feature panics — and a generation failure never reaches a nested cargo step, so no miss
   // would ever hit a warm-up abort. One tiny known-good spec, generation-only (~seconds warm; the
   // generator build it may pay for is needed by every probe anyway).
-  writeFileSync(probeFile, "warm = [uint, tstr]\n");
+  writeFileSync(warmFile, "warm = [uint, tstr]\n");
   rmSync(ccWarmOut, { recursive: true, force: true });
-  const g = runExit(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccWarmOut}`, "--wasm=false", "--emit-tests=true"], CODEGEN_DIR, undefined, COMPILE_WARM_TIMEOUT);
+  const g = runExit(["cargo", "run", "-q", "--", `--input=${warmFile}`, `--output=${ccWarmOut}`, "--wasm=false", "--emit-tests=true"], CODEGEN_DIR, undefined, COMPILE_WARM_TIMEOUT);
   const lib = g === 0 ? readFileSync(join(ccWarmOut, "rust", "src", "generated", "mod.rs"), "utf8") : "";
   if (g !== 0 || !lib.includes("mod cddl_generated_tests")) {
     console.error(`HARNESS FAILURE: generation self-test on a known-good spec failed (generate exit ${g}, minted=${lib.includes("mod cddl_generated_tests")}). The environment is unhealthy; no probes were run and nothing was written.`);
