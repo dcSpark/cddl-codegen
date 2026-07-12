@@ -131,11 +131,14 @@ warm-up does on a cache miss, running between the cell's generation and its `car
 declares the older sources "fresh" and reuses the other crate's artifacts: `cargo test` exits 0
 without compiling the failing cell's bytes, and the cache persisted the false PASS (the eager-warm
 `GATE_CACHE=0` path was immune, which is exactly the asymmetry the transparency diff exposed).
-Two-layer defense in verify.ts: every generation gets a fresh, counter-suffixed output dir
-(keep-last-1 deletion; the Rust gates' per-cell-dir design), and `touchTree` bumps every tree
-file's mtime right before each MISSED nested cargo (after any warm-up), so the cell's sources are
-always newer than any same-name fingerprint and the rebuild is honest. Neither layer moves a key:
-the tree hash is content-over-relative-paths and the key argv is path-normalized.
+Defense in verify.ts, three layers: every generation gets a fresh, counter-suffixed output dir
+(keep-last-1 deletion; the Rust gates' per-cell-dir design); `touchTree` bumps every tree file's
+mtime right before each MISSED nested cargo (after any warm-up), so the cell's sources are always
+newer than any same-name fingerprint and the rebuild is honest; and the warm-ups write their spec
+to their OWN `warm.cddl` — a lazy warm-up runs mid-cell, and when it shared the cell's probe file
+the cell's later legs (the wasm probe reuses the spec file) silently generated the WARM crate
+instead of the cell. None of the layers moves a key: the tree hash is content-over-relative-paths
+and the key argv is path-normalized.
 
 | Layer | File | Question it answers | Speed |
 |-------|------|---------------------|-------|
