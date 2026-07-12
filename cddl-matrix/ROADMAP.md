@@ -121,7 +121,12 @@ are ledgered here (that's what the probe/gate error messages point at).
   `prelude-number-tstr-rejects` fingerprint probes' provenance wording). Separately citable while
   in the neighborhood: bare floats against `time` (`#6.1(number)`) validate WITHOUT the tag-1
   wrapper (tag-leniency laxity, pre-existing and unchanged by the fix) — a candidate upstream
-  report, not yet filed.
+  report, not yet filed. A sibling ruby time-family laxity surfaced by the corpus decode mint:
+  the generator mints calendar-INVALID `tdate`s (`0("5906-11-31t22:32:49-05:59")` — November 31
+  does not exist) and the validator accepts them, while the local-fixes rust oracle rejects
+  (RFC 3339 date validity — arguably the correct reading); repro + impact under "Adjacent
+  observations" in `draft/rust-cddl-named-key-map-gap.md` (local note) — the same
+  candidate-upstream-report disposition, not yet filed.
 - When a release ships the `707c038` float-key/null member-key fix (README gap #10): prune the
   fix-provenance notes (README gap #10, the `float-key-accepts` / `null-key-rejects` fingerprint
   probes' provenance wording).
@@ -171,6 +176,17 @@ are ledgered here (that's what the probe/gate error messages point at).
   disappears once candidates survive the two-oracle gate), re-run the full `verify.ts` in the same
   change so the row's evidence picks up the corroboration clause, and prune README gap #8 + that
   draft.
+- When a rust `cddl` fix ships NAMED-RULE / parenthesized-choice map-KEY validation (README gap
+  #11 — OPEN at the pinned `ac1b98e` rev; differential grid, adjacent nested-map-VALUE and
+  multi-entry-composite-array-key observations, and prune steps in
+  `draft/rust-cddl-named-key-map-gap.md`, local note; no upstream issue filed yet): re-mint the
+  corpus decode rows it blocks
+  (`--mint-decode-corpus --only=c_style_enum_map_key.enum_keyed_map,table_enum_key.enum_keyed,table_enum_key.enum_key_holder`
+  — the empty-instance-only rows pick up non-empty vectors, and the pinned/active flip-flop the
+  gap causes stops, once candidates survive the two-oracle gate; if the fix also covers the
+  adjacent observations,
+  re-mint `wasm_nested_alias.passthru_tags_map` and the `composite_map_key` fixture in the same
+  change), and prune README gap #11 + that draft.
 - When a release ships the `3d56d8e` optional-entry/closed-map/JSON-type-domain-key fix (upstream
   PR pending — fix + regression tests + 21/12-cell differential grid on the fork; README gap #9):
   prune the fix-provenance notes (README gap #9 and the two `optional-entry`/`closed-map`
