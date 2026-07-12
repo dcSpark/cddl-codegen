@@ -123,7 +123,14 @@ repo). `verify_cache_transparency` (`cddl-matrix/cache_transparency.ts`, flag-ga
 `--cache-transparency`) protects the OUTPUT side: it asserts `verify.ts`'s
 `annotations/cddl_codegen.toml` and `verify_report.json` are byte-identical between a cached run
 (≥1 hit required — vacuity floor) and a `GATE_CACHE=0` run, the direct check that the hit path's
-reconstructed verdicts can never leak into output bytes differently than real execution.
+reconstructed verdicts can never leak into output bytes differently than real execution. Its
+fourth real run caught a live soundness bug: verify.ts once reused ONE output path for every cell
+under the shared `CARGO_TARGET_DIR`, letting cargo's mtime fingerprint declare freshly generated
+sources "fresh" against the previous cell's build at the same path — `cargo test` exited 0 without
+compiling the new bytes, and the cache persisted the false PASS. Every verify.ts generation now
+gets a fresh, counter-suffixed output dir (keep-last-1 deletion; the Rust gates' per-cell-dir
+design), so a nested cargo verdict can never lean on another cell's artifacts; the tree hash uses
+relative paths and the key argv is path-normalized, so the moving dirs leave keys unchanged.
 
 | Layer | File | Question it answers | Speed |
 |-------|------|---------------------|-------|

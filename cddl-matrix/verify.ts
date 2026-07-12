@@ -464,7 +464,18 @@ const probeFile = join(probeDir, "probe.cddl");
 // Oracle-identity fingerprint runs FIRST (before the shared-target warm-up), on every path — a wrong
 // RUST_CDDL fails in under a second instead of minting mixed-oracle evidence minutes in.
 runOracleFingerprint(probeDir);
-const ccOut = join(probeDir, "cc_out");
+// Every generation gets a FRESH output dir (a monotonic counter suffix; the previous dir is deleted
+// so disk use stays keep-last-1). Reusing ONE path for every cell under the shared CARGO_TARGET_DIR
+// let cargo's mtime-based fingerprint declare freshly generated sources "fresh" against the PREVIOUS
+// cell's build at the same path and reuse its artifacts — `cargo test` then exits 0 without compiling
+// the new bytes. That stale-reuse race predates the cache (a transient wrong verdict per run), but the
+// cache PERSISTED it: a deterministically-failing exempt cell (dsl.custom_serialize) got a poisoned
+// PASS entry, caught live by `verify_cache_transparency`'s A/B diff. Unique per-generation paths make
+// cargo fingerprint the leaf crate per cell (deps stay amortized in the shared target — they are
+// path-independent), which is the Rust-side gates' per-cell-dir design. The gate-cache tree hash uses
+// RELATIVE paths and the key argv is path-normalized, so keys are unchanged by the moving dirs.
+let outSeq = 0;
+let ccOut = join(probeDir, `cc_out_${outSeq++}`);
 const ccWarmOut = join(probeDir, "cc_warm_out");
 // Shared cargo target for the compile-gate so the generated crate's deps (cbor_event, …) build ONCE and
 // every subsequent `cargo check` is incremental (fits PROBE_TIMEOUT). Warmed before the probe loops.
@@ -480,7 +491,7 @@ const COMPILE_WARM_TIMEOUT = 600; // first build (all deps) can exceed the per-p
 // own out/target dirs keep it from disturbing the rust probe's compile classification.
 const WASM_PROBE =
   !process.argv.includes("--no-wasm") && !["0", "false"].includes((process.env.VERIFY_WASM ?? "").toLowerCase());
-const ccOutWasm = join(probeDir, "cc_out_wasm");
+let ccOutWasm = join(probeDir, `cc_out_wasm_${outSeq++}`);
 const ccWarmOutWasm = join(probeDir, "cc_warm_out_wasm");
 const WASM_TARGET = WASM_PROBE ? mkdtempSync(join(tmpdir(), "cddl_verify_wasm_target_")) : "";
 
@@ -495,7 +506,7 @@ const WASM_TARGET = WASM_PROBE ? mkdtempSync(join(tmpdir(), "cddl_verify_wasm_ta
 const DECODE_FOREIGN =
   !process.argv.includes("--no-decode-foreign") &&
   !["0", "false"].includes((process.env.VERIFY_DECODE_FOREIGN ?? "").toLowerCase());
-const ccOutForeign = join(probeDir, "cc_out_foreign");
+let ccOutForeign = join(probeDir, `cc_out_foreign_${outSeq++}`);
 // The committed vectors keyed by matrix row id (empty in the mint path / when opted out / before the
 // catalog is first committed). Loaded once; a missing file is not an error here (D6 gates completeness).
 const catalogRows: Map<string, CatalogRow> =
@@ -599,7 +610,13 @@ function runTest(cell: string, warmNeed: WarmNeed = { kind: "rust" }, timeoutS =
 // The generator MERGES into an existing output dir (it never clears it), so a partially-written crate
 // from a panicking probe — or any future conditionally-emitted module — would leak into the next
 // probe's compile gate. Start every generation from an empty dir.
-const cleanOut = () => rmSync(ccOut, { recursive: true, force: true });
+// (Bumping to a fresh path is the stale-fingerprint defense — see the `outSeq` comment above.)
+const cleanOut = () => { rmSync(ccOut, { recursive: true, force: true }); ccOut = join(probeDir, `cc_out_${outSeq++}`); };
+// Fresh-dir bump for the foreignGenCrate flows (decode-foreign probe + the mint paths): delete the
+// current dir, allocate the next, return it — callers pass the return straight to foreignGenCrate and
+// keep reading the module binding for the replay that follows.
+const nextForeignOut = (): string => { rmSync(ccOutForeign, { recursive: true, force: true }); ccOutForeign = join(probeDir, `cc_out_foreign_${outSeq++}`); return ccOutForeign; };
+const nextOut = (): string => { cleanOut(); return ccOut; };
 // `extraFlags` appends an emission profile's CLI flags (preserve/json) so the SAME generate pipeline
 // serves both the default probe (no extra flags) and the per-emission-profile probes.
 function runCodegen(extraFlags: string[] = []): number {
@@ -611,7 +628,7 @@ function runCodegen(extraFlags: string[] = []): number {
 // `cargo test` the wasm crate — which builds the rust crate as a (non-test) path dep AND compiles+runs
 // the emitted `cddl_generated_wasm_tests` module. Separate out dir so it never perturbs the rust
 // probe's ccOut; separate target so its wasm-bindgen deps don't invalidate the rust compile cache.
-const cleanOutWasm = () => rmSync(ccOutWasm, { recursive: true, force: true });
+const cleanOutWasm = () => { rmSync(ccOutWasm, { recursive: true, force: true }); ccOutWasm = join(probeDir, `cc_out_wasm_${outSeq++}`); };
 function runCodegenWasm(): number {
   cleanOutWasm();
   return runProbe(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOutWasm}`, "--wasm=true", "--emit-tests=true"], CODEGEN_DIR);
@@ -976,7 +993,7 @@ function decodeForeignProbe(id: string, matrixExample: string): ForeignOutcome {
   const accepts = row.vectors.filter(v => v.expect === "accept" && v.class !== "over-acceptance");
   const rejects = row.vectors.filter(v => v.expect === "reject");
   if (accepts.length === 0) return { foreign_vectors: 0 };
-  if (foreignGenCrate(ccOutForeign, row.spec) !== 0) return { accepts_foreign: false, foreign_vectors: accepts.length };
+  if (foreignGenCrate(nextForeignOut(), row.spec) !== 0) return { accepts_foreign: false, foreign_vectors: accepts.length };
   const vecs: ReplayVec[] = [
     ...accepts.map((v, i) => ({ hex: v.hex, name: `accept_${i}`, expectOk: true })),
     ...rejects.map((v, i) => ({ hex: v.hex, name: `reject_${i}`, expectOk: false })),
@@ -991,7 +1008,7 @@ function decodeForeignProbe(id: string, matrixExample: string): ForeignOutcome {
   let res = replayInDir(id, ccOutForeign, vecs, row.type_name);   // null (compile fail) -> not-accepts
   if (res === null) {
     console.error(`[decode-foreign] ${id}: replay produced no per-test verdict (compile error or transient registry glitch) — regenerating + retrying once.`);
-    if (foreignGenCrate(ccOutForeign, row.spec) === 0) res = replayInDir(id, ccOutForeign, vecs, row.type_name);
+    if (foreignGenCrate(nextForeignOut(), row.spec) === 0) res = replayInDir(id, ccOutForeign, vecs, row.type_name);
   }
   return { accepts_foreign: res !== null && vecs.every(v => res.get(v.name) === true), foreign_vectors: accepts.length };
 }
@@ -1020,7 +1037,7 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
   const rule = firstRuleName(example);
   if (!rule) return pin("no parseable rule head in the example");
 
-  if (foreignGenCrate(ccOut, example) !== 0) return pin("cddl-codegen cannot generate this construct standalone");
+  if (foreignGenCrate(nextOut(), example) !== 0) return pin("cddl-codegen cannot generate this construct standalone");
   const typeName = toCamelCase(rule.name);
   let mode: string, spec: string, decodeType: string;
   if (crateHasDeserialize(ccOut, typeName)) {
@@ -1028,7 +1045,7 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
   } else {
     if (rule.generic) return pin(`generic rule '${rule.name}' needs type args; not standalone-decodable and not embeddable`);
     spec = `${FOREIGN_HOLDER_RULE} = [0, ${rule.name}]\n${example}`;
-    if (foreignGenCrate(ccOut, spec) !== 0) return pin("synthetic holder failed to generate");
+    if (foreignGenCrate(nextOut(), spec) !== 0) return pin("synthetic holder failed to generate");
     decodeType = toCamelCase(FOREIGN_HOLDER_RULE);
     if (!crateHasDeserialize(ccOut, decodeType)) return pin("synthetic holder minted no standalone decode surface");
     mode = "holder";
@@ -1224,7 +1241,7 @@ function runMintDecodeForeign(): never {
       console.error(`HARNESS FAILURE: decode-conformance negative control was ACCEPTED by an oracle (ruby exit ${ruby}, rust --ci exit ${rust}); the two-oracle cross-check is not rejecting invalid CBOR (check the --ci flag). Refusing to mint.`);
       process.exit(2);
     }
-    if (foreignGenCrate(ccOut, spec) !== 0) { console.error("HARNESS FAILURE: negative-control spec `n = uint` failed to generate."); process.exit(2); }
+    if (foreignGenCrate(nextOut(), spec) !== 0) { console.error("HARNESS FAILURE: negative-control spec `n = uint` failed to generate."); process.exit(2); }
     const res = replayInDir("mint.neg_control", ccOut, [{ hex: badHex, name: "neg_control", expectOk: false }], toCamelCase("n"));
     if (res === null || res.get("neg_control") !== true) {
       console.error("HARNESS FAILURE: decode-conformance negative control — our generated decoder did NOT reject the known-bad instance (or the replay failed to compile). Refusing to mint.");
@@ -1335,7 +1352,7 @@ function mintCorpusRow(fixture: string, rule: CorpusRule, allRules: CorpusRule[]
     return pin("references user-supplied serialize/deserialize code; crate cannot compile standalone (@custom_serialize/@custom_deserialize)");
 
   const spec = corpusProbeSpec(rule.name, allRules);
-  const genExit = foreignGenCrate(ccOut, spec);
+  const genExit = foreignGenCrate(nextOut(), spec);
   if (genExit !== 0) return pin(`cddl-codegen cannot generate this construct standalone (holder+closure; cargo run exit ${genExit})`);
   const decodeType = toCamelCase(CORPUS_HOLDER_RULE);      // "ProbeHolder"
   if (!crateHasDeserialize(ccOut, decodeType)) return pin("synthetic holder minted no standalone decode surface");
@@ -1481,7 +1498,7 @@ function mintCorpusRow(fixture: string, rule: CorpusRule, allRules: CorpusRule[]
   let res = replayInDir(id, ccOut, vecs, decodeType);
   if (res === null) {
     console.error(`[mint-corpus] ${id}: replay produced no per-test verdict (compile error or partial output) — regenerating + retrying once.`);
-    if (foreignGenCrate(ccOut, spec) === 0) res = replayInDir(id, ccOut, vecs, decodeType);
+    if (foreignGenCrate(nextOut(), spec) === 0) res = replayInDir(id, ccOut, vecs, decodeType);
   }
   if (res === null) { console.error(`HARNESS FAILURE: corpus replay crate for '${id}' failed to compile TWICE (mode=${mode}) — a non-compiling standalone construct or a detection bug; refusing to mint.`); process.exit(2); }
 
@@ -1544,7 +1561,7 @@ function runMintDecodeCorpus(): never {
       console.error(`HARNESS FAILURE: decode-conformance negative control was ACCEPTED by an oracle (ruby exit ${ruby}, rust --ci exit ${rust}); the two-oracle cross-check is not rejecting invalid CBOR (check the --ci flag). Refusing to mint.`);
       process.exit(2);
     }
-    if (foreignGenCrate(ccOut, spec) !== 0) { console.error("HARNESS FAILURE: negative-control spec `n = uint` failed to generate."); process.exit(2); }
+    if (foreignGenCrate(nextOut(), spec) !== 0) { console.error("HARNESS FAILURE: negative-control spec `n = uint` failed to generate."); process.exit(2); }
     const res = replayInDir("mint-corpus.neg_control", ccOut, [{ hex: badHex, name: "neg_control", expectOk: false }], toCamelCase("n"));
     if (res === null || res.get("neg_control") !== true) {
       console.error("HARNESS FAILURE: decode-conformance negative control — our generated decoder did NOT reject the known-bad instance (or the replay failed to compile). Refusing to mint.");
