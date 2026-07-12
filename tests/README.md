@@ -27,7 +27,7 @@ blank lines before headings in the hand docs. The conventions it backs: gap-trac
 pin by exact identifier ("pinned by/tracked by/gated by `name`"), and a *behavioral* claim ("construct
 X panics/rejects") gets a robustness-catalog row FIRST — the panic/reject catalogs flip loudly on a
 behavior change, where prose-only claims rot silently. `full` additionally runs the
-manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the twelve `#[ignore]`d gates `wasm_matrix_roundtrips` / `multifile_matrix_roundtrips` / `identifier_hazard_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `rust_oracle_fingerprint` / `decode_conformance_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
+manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the thirteen `#[ignore]`d gates `wasm_matrix_roundtrips` / `multifile_matrix_roundtrips` / `identifier_hazard_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `rust_oracle_fingerprint` / `decode_conformance_replay` / `corpus_decode_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
 the fuzz-crate compile-rot check) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
 `SKIPPED(reason)` / `STUB` / `not-in-tier` + per-gate durations), so a gate that didn't run is always
 *visibly* not-run. Exit is non-zero on any `FAIL`; the run fails fast by default (`--keep-going` runs
@@ -613,6 +613,64 @@ one mandatory item, rejecting spec-valid zero- and two-bytes instances — was t
 (mintable only once the fully-fixed rust oracle stopped contesting the candidates) and is rejected
 gracefully the same way; `occurrence_on_array_record_field_rejects_gracefully` pins the boundaries
 (`+`/bounded/any position reject; `?`, `1*1`, and single-entry homogeneous `[* t]` keep generating).
+
+#### Composition-depth (corpus) leg
+
+The catalog above keys its obligation set on the matrix's minimal per-construct examples — breadth.
+The **composition depth** those examples lack lives in the `tests/corpus/*.cddl` fixtures, so a
+sibling catalog — `tests/decode_conformance/corpus_catalog.toml` — mints spec-derived decode vectors
+for them. Its obligation set is `tests/corpus/*.cddl` **× the shared rule enumerator** (every
+top-level rule of every fixture), mechanically derived and never a hand-picked fixture list, so every
+(fixture, rule) carries ≥1 committed vector XOR a `pinned_reason` — the same no-silent-skips rule as
+the matrix catalog. The enumerator and the per-rule dependency-closure builder live in
+`cddl-matrix/lib.ts`, shared by the mint and the drift gate, so the gate re-derives exactly what the
+mint derived.
+
+Every active corpus row is **holder mode**: the probe spec is `__probe_holder = [0, <rule>]` plus the
+rule's dependency closure (the target rule's span + every fixture rule transitively referenced from
+it, in fixture order), `type_name = ProbeHolder`. Holder mode routes decode through the generated
+member/field-decode path — the surface composition depth actually exercises — and covers bare-GROUP
+rules too: `inner = (a: uint, b: uint)` splices into the holder array, so its vector is the wider
+`83 00 …` = `[0, a, b]` rather than the single-item `82 00` (the header-mutation leg strips the same
+2-byte preamble and mutates the spliced item at byte 2). The per-rule closure — rather than a
+whole-fixture spec — quarantines one un-mintable rule from poisoning its fixture-mates.
+
+Rows that can't be minted mechanically carry a `pinned_reason` instead of vectors, in stable classes:
+the ruby generator's **inline-composite `.cbor`-controller parse gap** (gem 0.12.14 exit 65 —
+`draft/ruby-cddl-inline-composite-control-arg-gap.md`, re-mint when the gem fix ships), **generic
+rules** (a `<…>` head can't be holder-wrapped bare — instantiations are covered via referencing
+rules), and **`dsl_custom`** (references user-supplied (de)serialize code — can't compile standalone).
+A distinct, decoder-clean class is the **named-rule / parenthesized-choice map-KEY over-rejection** in
+the rust oracle (`draft/rust-cddl-named-key-map-gap.md`): its affected table rows (`table_enum_key.*`,
+`c_style_enum_map_key.enum_keyed_map`, and the composite-key / nested-map-value siblings) keep only
+their empty-instance accept vectors, because the rust reference contests every non-empty instance
+while the ruby reference and our own decoder accept — an oracle-side drop, not a cddl-codegen gap.
+
+Two gates mirror the matrix legs:
+- **Drift gate** — `cddl-matrix/project_decode_conformance.ts` (check.ts `local` tier, pure file
+  reads): its corpus half re-derives the glob × enumerator obligation set and asserts completeness
+  (vectors XOR `pinned_reason`), staleness (each active row's committed `spec` byte-equals the
+  reconstruction from the current fixture via the shared enumerator/closure builder — a drifted
+  fixture reads "re-mint"), the holder `82 00` / wider-`83 00` preamble shape, and the whole-item f9
+  ban below.
+- **Replay gate** — `integration_tests::corpus_decode_replay` (`#[ignore]`d, check.ts `full` tier —
+  one of the generated `#[ignore]`d-gate roll-call in "Running everything"). It reuses
+  `decode_conformance_replay`'s `decode_replay_generate` / `decode_replay_run` helpers and every leg
+  verbatim (base accept, `cddl_encoding_fidelity::variants` encoding variants, `header_mutants` header
+  mutation at holder offset 2, over-acceptance completeness, and the `--preserve-encodings`
+  byte-identity leg), differing only in the catalog path, its own scratch target, its own
+  empty-at-HEAD skip ledgers, and vacuity floors pinned from actuals. The corpus carries only plain
+  accept vectors at HEAD (the enforcement / over-acceptance axes are matrix-owned), so the
+  constraint-reason and over-acceptance machinery stays armed but idle (the over-acceptance
+  completeness `assert_eq` holds at 0 == 0); `PRESERVE_SKIP` holds only the native-float row
+  `homogeneous_array.floats` (`[* float64]`, the `preserve_encodings_supports_floats` gap), every
+  other ledger empty and stale-guarded.
+
+**Whole-item f9 ban.** The matrix f9 ban is item-HEAD-scoped; a corpus vector is a composite where an
+`f9` half-float head (mis-decoded by cbor_event 2.4.0 — `cddl-matrix/ROADMAP.md` § findings) can sit
+NESTED, so the corpus mint drops any accept candidate whose CBOR item tree contains an `f9` head
+ANYWHERE and the drift gate statically bans a committed one. It shares the matrix ban's prune
+condition — remove both halves together when a fixed cbor_event ships.
 
 ### JSON-schema → TypeScript JS-side pipeline (`js_schema_to_ts`, `js_d_ts_merge`, `package_json_pipeline`)
 

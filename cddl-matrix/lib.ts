@@ -436,6 +436,183 @@ export function resolveChoiceArmClasses(example: string): ArmClassResolution | n
 // oracle rejecting floats against the prelude `number` keyword) was re-minted when the fork fix landed.
 export const DECODE_FLOOR_ARM_EXEMPT: Record<string, string> = {};
 
+// The CORPUS twin of DECODE_FLOOR_ARM_EXEMPT, keyed `"<fixture>.<rule>/<class>"` -> cited reason. A
+// SEPARATE ledger because each stale-guard iterates its OWN uncovered-in-scope set: a corpus-keyed
+// entry in the matrix ledger can never appear in the MATRIX guard's uncovered set (its keys are matrix
+// row ids), so it would always read stale there and falsely fail the gate. Shared by the corpus mint
+// (verify.ts `mintCorpusRow` — won't exit 1 / won't waste draws for a ledgered class) and the corpus
+// drift-gate half (project_decode_conformance.ts — coverage floor + its own stale guard). Currently
+// empty: no corpus arm class is ledgered unmintable at HEAD.
+export const CORPUS_DECODE_FLOOR_ARM_EXEMPT: Record<string, string> = {};
+
+// The prelude rule-name set (from the same pinned source the arm resolver parses). Exported for the
+// corpus enumeration-time collision assert — a corpus rule named like a prelude type would make
+// reference extraction ambiguous — checked by BOTH the corpus mint and the corpus drift-gate half.
+export const PRELUDE_NAMES: ReadonlySet<string> = new Set(preludeDefById.keys());
+
+// ==================================================================================================
+// CORPUS decode-conformance support — the SHARED rule enumerator, dependency-closure builder, and
+// whole-item CBOR f9 walker used by BOTH the corpus mint (verify.ts `--mint-decode-corpus`) and the
+// corpus drift gate (project_decode_conformance.ts). ONE implementation so the drift gate re-derives
+// exactly what the mint derived; any asymmetry would be drift-gate-invisible. Self-checked inline in
+// the drift gate against a synthetic multi-rule sample (strings, comments, generics, hyphens).
+// ==================================================================================================
+
+// The synthetic record holder wrapping a corpus rule (`__probe_holder = [0, <rule>]`): every corpus row
+// is holder-mode (the composition-depth value is the generated member/field decode path). Prepended
+// FIRST in the probe spec so both oracles root validation at it (rust: "Root type for validation: …").
+export const CORPUS_HOLDER_RULE = "__probe_holder";
+
+// A top-level rule HEAD at column 0 — the SAME shape `firstRuleName` (verify.ts) matches, so the
+// enumerator agrees with the embed-fallback rule detection: an identifier (covers `-` in names and
+// `@_$`), an optional generic parameter list (`<...>`), then `=` / `/=` / `//=` (not `==`/`=>`).
+// Anchored at column 0 so indented member/continuation lines and `;` comments never read as heads.
+export const CORPUS_RULE_HEAD_RE = /^([A-Za-z@_$][A-Za-z0-9@_$.-]*)\s*(<[^=]*>)?\s*(\/\/=|\/=|=)(?![=>])/;
+
+export interface CorpusRule {
+  name: string;    // enumerated rule name (row-id suffix); the generic BASE name, without `<...>`
+  generic: boolean; // head carries a `<...>` parameter list (cannot be holder-wrapped bare → pinned row)
+  span: string;    // verbatim text span: the head line through the line before the next head, trailing
+                   //   blank lines trimmed. Inline/trailing comments (incl. `; @newtype` DSL) are kept —
+                   //   the DSL attaches AFTER a construct, so span-splitting preserves its semantics.
+  order: number;   // 0-based index in fixture order (the closure renders rules by this)
+}
+
+// Enumerate a fixture's top-level rules into (name, generic, span, order). Leading file comments before
+// the first rule are dropped (spans start at the first head). Every enumerated rule becomes one catalog
+// obligation row — never a hand-picked list.
+export function enumerateCorpusRules(text: string): CorpusRule[] {
+  const lines = text.split(/\r?\n/);
+  const heads: { name: string; generic: boolean; line: number }[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(CORPUS_RULE_HEAD_RE);
+    if (m) heads.push({ name: m[1], generic: m[2] !== undefined, line: i });
+  }
+  const rules: CorpusRule[] = [];
+  for (let h = 0; h < heads.length; h++) {
+    const start = heads[h].line;
+    const end = h + 1 < heads.length ? heads[h + 1].line : lines.length;
+    const spanLines = lines.slice(start, end);
+    while (spanLines.length && spanLines[spanLines.length - 1].trim() === "") spanLines.pop();
+    rules.push({ name: heads[h].name, generic: heads[h].generic, span: spanLines.join("\n"), order: h });
+  }
+  return rules;
+}
+
+// Strip `;` comments AND quoted strings (both `"…"` and `'…'`, honoring `\` escapes so `"he\"llo\\world"`
+// tokenizes cleanly) from a span, leaving only the code text the reference tokenizer scans. Done FIRST so
+// a rule name appearing inside a string literal or a comment is never mistaken for a reference edge.
+function stripCommentsAndStrings(span: string): string {
+  let out = "";
+  for (const line of span.split("\n")) {
+    let inS: '"' | "'" | null = null, esc = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inS) {
+        if (esc) esc = false;
+        else if (ch === "\\") esc = true;
+        else if (ch === inS) inS = null;
+        continue; // drop string contents
+      }
+      if (ch === ";") break;                          // rest of the line is a comment
+      if (ch === '"' || ch === "'") { inS = ch; continue; }
+      out += ch;
+    }
+    out += "\n";
+  }
+  return out;
+}
+
+// The dependency closure of a target rule: the target plus every fixture rule transitively referenced
+// from it (a reference = a bare identifier token in a span that equals another fixture rule name —
+// including generic rule names, since `pair<uint, tstr>` call sites reference `pair`). Returned in
+// FIXTURE ORDER. Self-references (`tree` → `tree`) are ignored (already in the closure).
+export function dependencyClosure(target: string, rules: CorpusRule[]): CorpusRule[] {
+  const byName = new Map(rules.map(r => [r.name, r]));
+  const ruleNames = new Set(rules.map(r => r.name));
+  const refsOf = (r: CorpusRule): string[] => {
+    const toks = stripCommentsAndStrings(r.span).match(/[A-Za-z@_$][A-Za-z0-9@_$.-]*/g) ?? [];
+    return [...new Set(toks.filter(t => ruleNames.has(t) && t !== r.name))];
+  };
+  const seen = new Set<string>([target]);
+  const queue = [target];
+  while (queue.length) {
+    const r = byName.get(queue.shift()!);
+    if (!r) continue;
+    for (const ref of refsOf(r)) if (!seen.has(ref)) { seen.add(ref); queue.push(ref); }
+  }
+  return rules.filter(r => seen.has(r.name)).sort((a, b) => a.order - b.order);
+}
+
+// The closure body (rule spans joined) in FIXTURE ORDER — the committed catalog `example` for a corpus
+// row (mirrors the matrix holder invariant `spec === holder-line + "\n" + example`).
+export function corpusClosureBody(target: string, rules: CorpusRule[]): string {
+  return dependencyClosure(target, rules).map(r => r.span).join("\n");
+}
+
+// The committed holder+closure probe spec: `__probe_holder = [0, <rule>]` then the closure body. Both
+// oracles root at `__probe_holder` (first rule), so the closure body's order is free — kept fixture
+// order for a stable, re-derivable committed `spec` (the drift gate byte-compares this reconstruction).
+export function corpusProbeSpec(target: string, rules: CorpusRule[]): string {
+  return `${CORPUS_HOLDER_RULE} = [0, ${target}]\n${corpusClosureBody(target, rules)}`;
+}
+
+// The arm-coverage-floor "example": the closure with the TARGET rule FIRST and no holder line, so
+// `resolveChoiceArmClasses`'s root-rule scan lands on the target's RHS (not a dependency's). Used only to
+// classify choice arms (mint resample loop + drift-gate § 7 corpus half); never committed.
+export function corpusArmExample(target: string, rules: CorpusRule[]): string {
+  const closure = dependencyClosure(target, rules);
+  const tgt = closure.find(r => r.name === target)!;
+  return [tgt, ...closure.filter(r => r.name !== target)].map(r => r.span).join("\n");
+}
+
+// Minimal whole-item CBOR walker: heads + lengths only, recursing every nested item, returning true iff
+// ANY item HEAD byte is 0xf9 (a half-precision float head) ANYWHERE in the tree. The corpus f9 ban is
+// whole-item (not head-only like the matrix's): a corpus vector is a composite where an f9 can sit
+// NESTED (`[* float64]`), and cbor_event 2.4.0 mis-decodes f9 (green-but-corrupted accept evidence).
+// NEVER a byte-grep: 0xf9 also occurs inside payloads (string bytes, deeper float mantissas). Throws on
+// malformed/truncated input so a walker bug can't silently pass an f9 vector as clean.
+export function cborContainsF9(bytes: Uint8Array): boolean {
+  let pos = 0, found = false;
+  const need = (n: number) => { if (pos + n > bytes.length) throw new Error(`truncated CBOR at ${pos} (need ${n})`); };
+  const readItem = (): void => {
+    need(1);
+    const head = bytes[pos++];
+    if (head === 0xf9) found = true;
+    const major = head >> 5, ai = head & 0x1f;
+    let arg = 0, indefinite = false;
+    if (ai < 24) arg = ai;
+    else if (ai === 24) { need(1); arg = bytes[pos]; pos += 1; }
+    else if (ai === 25) { need(2); arg = (bytes[pos] << 8) | bytes[pos + 1]; pos += 2; }
+    else if (ai === 26) { need(4); for (let i = 0; i < 4; i++) arg = arg * 256 + bytes[pos + i]; pos += 4; }
+    else if (ai === 27) { need(8); for (let i = 0; i < 8; i++) arg = arg * 256 + bytes[pos + i]; pos += 8; }
+    else if (ai === 31) indefinite = true;            // indefinite length (or, for major 7, the break)
+    else throw new Error(`reserved additional-info ${ai} at ${pos - 1}`);
+    const atBreak = () => { need(1); return bytes[pos] === 0xff; };
+    switch (major) {
+      case 0: case 1: break;                           // uint / nint — argument is the value
+      case 2: case 3:                                  // byte / text string
+        if (indefinite) { while (!atBreak()) readItem(); pos++; }
+        else { need(arg); pos += arg; }
+        break;
+      case 4:                                          // array
+        if (indefinite) { while (!atBreak()) readItem(); pos++; }
+        else for (let i = 0; i < arg; i++) readItem();
+        break;
+      case 5:                                          // map
+        if (indefinite) { while (!atBreak()) { readItem(); readItem(); } pos++; }
+        else for (let i = 0; i < arg; i++) { readItem(); readItem(); }
+        break;
+      case 6: readItem(); break;                       // tag — one following item
+      case 7:                                          // simple / float / break
+        if (ai === 31) throw new Error(`unexpected break at ${pos - 1}`);
+        break;                                         // f16/f32/f64 argument bytes already consumed above
+    }
+  };
+  readItem();
+  return found;
+}
+
 // ==================================================================================================
 // DECODE-CONFORMANCE CATALOG reader/writer pair — the SOLE serializer of the hand-authored vector
 // fields (class/reason/expect_err). Shared by the mint (verify.ts `--mint-decode-foreign`) and the
@@ -446,6 +623,8 @@ export const DECODE_FLOOR_ARM_EXEMPT: Record<string, string> = {};
 export interface CatalogVector { hex: string; source: string; expect: string; class?: string; reason?: string; expect_err?: string }
 export interface CatalogRow {
   id: string; axis: string; example: string;
+  fixture?: string; rule?: string;                    // corpus catalog ONLY (fixture stem + enumerated rule name);
+                                                      // undefined on matrix catalog rows (kept out of catalog.toml bytes)
   pinned_reason?: string;                             // set => the row has no vectors (names the cause)
   spec?: string; mode?: string; type_name?: string;   // set together when NOT pinned
   vectors: CatalogVector[];
@@ -469,6 +648,8 @@ export function parseCatalogContent(toml: string): Map<string, CatalogRow> {
     }));
     map.set(String(r.id), {
       id: String(r.id), axis: String(r.axis), example: String(r.example),
+      fixture: r.fixture !== undefined ? String(r.fixture) : undefined,
+      rule: r.rule !== undefined ? String(r.rule) : undefined,
       pinned_reason: r.pinned_reason !== undefined ? String(r.pinned_reason) : undefined,
       spec: r.spec !== undefined ? String(r.spec) : undefined,
       mode: r.mode !== undefined ? String(r.mode) : undefined,
@@ -484,17 +665,35 @@ export function parseCatalog(path: string): Map<string, CatalogRow> {
   return parseCatalogContent(readFileSync(path, "utf8"));
 }
 
+// The header INTRO (the catalog-specific lines: title, the mint command, and what a row projects). The
+// rest of the header (mode / vector.expect / class semantics) is SHARED and appended by composeCatalog.
+// The matrix mint uses the default; the corpus mint passes CORPUS_CATALOG_INTRO so corpus_catalog.toml
+// names the right command and its own obligation set. Kept byte-identical to the historical matrix header.
+export const DEFAULT_CATALOG_INTRO: string[] = [
+  "# Decode-conformance catalog. MACHINE-PRODUCED by the mint:",
+  "#   bun run verify.ts --mint-decode-foreign            # full refresh",
+  "#   bun run verify.ts --mint-decode-foreign --only=ID  # re-mint one row, preserve the rest",
+  "# Each row projects a matrix `supported` row: spec-derived CBOR instances (ruby `cddl … generate`,",
+  "# cross-validated by BOTH the ruby reference AND rust `cddl --ci validate`) that the generated",
+  '# decoder must accept. Hand-edit ONLY for triage class/reason on reject pins and source="hand"',
+  "# supplement vectors (both re-validated mechanically at the next mint).",
+];
+export const CORPUS_CATALOG_INTRO: string[] = [
+  "# CORPUS decode-conformance catalog (composition-depth leg). MACHINE-PRODUCED by the mint:",
+  "#   bun run verify.ts --mint-decode-corpus             # full refresh",
+  "#   bun run verify.ts --mint-decode-corpus --only=ID   # re-mint one row (or a bare fixture stem), preserve the rest",
+  "# One row per (tests/corpus/*.cddl fixture, top-level rule) enumerated by the shared rule enumerator:",
+  "# spec-derived CBOR instances (ruby `cddl … generate`, cross-validated by BOTH the ruby reference AND",
+  "# rust `cddl --ci validate`) that the generated decoder must accept. Every active row is holder mode",
+  '# (spec = `__probe_holder = [0, <rule>]` + the rule\'s dependency closure). Hand-edit ONLY for triage',
+  '# class/reason on reject pins and source="hand" supplement vectors (both re-validated at the next mint).',
+];
 // Compose the catalog TOML deterministically (rows by id, vectors by hex) so a re-mint of any `--only`
-// subset re-emits every other row byte-identically. Header mirrors annotations/cddl_codegen.toml's style.
-export function composeCatalog(rows: CatalogRow[]): string {
+// subset re-emits every other row byte-identically. `intro` picks the catalog-specific header lines
+// (default = the matrix intro, keeping catalog.toml byte-identical); the shared body follows.
+export function composeCatalog(rows: CatalogRow[], intro: string[] = DEFAULT_CATALOG_INTRO): string {
   const L: string[] = [
-    "# Decode-conformance catalog. MACHINE-PRODUCED by the mint:",
-    "#   bun run verify.ts --mint-decode-foreign            # full refresh",
-    "#   bun run verify.ts --mint-decode-foreign --only=ID  # re-mint one row, preserve the rest",
-    "# Each row projects a matrix `supported` row: spec-derived CBOR instances (ruby `cddl … generate`,",
-    "# cross-validated by BOTH the ruby reference AND rust `cddl --ci validate`) that the generated",
-    '# decoder must accept. Hand-edit ONLY for triage class/reason on reject pins and source="hand"',
-    "# supplement vectors (both re-validated mechanically at the next mint).",
+    ...intro,
     "#",
     "# mode: standalone = a nominal `impl Deserialize for <type_name>` decodes the vector directly;",
     "#       holder = the rule is a transparent alias / named table / c-enum with no standalone decoder,",
@@ -529,6 +728,11 @@ export function composeCatalog(rows: CatalogRow[]): string {
     L.push(`id = ${foreignTomlStr(row.id)}`);
     L.push(`axis = ${foreignTomlStr(row.axis)}`);
     L.push(`example = ${foreignTomlStr(row.example)}`);
+    // fixture/rule are the corpus catalog's per-row provenance (file stem + enumerated rule). Emitted
+    // unconditionally WHEN PRESENT (the § 8 silent-strip lesson) — undefined on matrix catalog rows, so
+    // catalog.toml's bytes are unchanged. Placed before the pinned/active split: both kinds carry them.
+    if (row.fixture !== undefined) L.push(`fixture = ${foreignTomlStr(row.fixture)}`);
+    if (row.rule !== undefined) L.push(`rule = ${foreignTomlStr(row.rule)}`);
     if (row.pinned_reason !== undefined) {
       L.push(`pinned_reason = ${foreignTomlStr(row.pinned_reason)}`);
     } else {

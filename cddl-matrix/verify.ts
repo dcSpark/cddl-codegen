@@ -35,10 +35,10 @@
  *
  * Run from cddl-matrix/:  bun run build_matrix.ts && bun run verify.ts
  */
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { constants, homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { ALT_PRODUCTIONS, CatalogRow, CatalogVector, DECODE_FLOOR_ARM_EXEMPT, ROOT, composeCatalog, grammarAltCoverage, loadMatrixInputs, parseCatalog, resolveChoiceArmClasses, stableJson, vectorShapeClass } from "./lib";
+import { ALT_PRODUCTIONS, CORPUS_CATALOG_INTRO, CORPUS_DECODE_FLOOR_ARM_EXEMPT, CORPUS_HOLDER_RULE, CatalogRow, CatalogVector, CorpusRule, DECODE_FLOOR_ARM_EXEMPT, PRELUDE_NAMES, ROOT, cborContainsF9, composeCatalog, corpusArmExample, corpusClosureBody, corpusProbeSpec, enumerateCorpusRules, grammarAltCoverage, loadMatrixInputs, parseCatalog, resolveChoiceArmClasses, stableJson, vectorShapeClass } from "./lib";
 
 process.chdir(ROOT);
 
@@ -143,6 +143,13 @@ const SMOKE = SMOKE_N > 0;
 // verbatim (parsed back through the same deterministic writer); a named id that has left the supported
 // set but still has a committed row is DROPPED (support-boundary removal), not re-minted.
 const MINT_DECODE = process.argv.includes("--mint-decode-foreign");
+// --mint-decode-corpus (composition-depth decode leg): (re)generate the committed corpus decode catalog
+// (tests/decode_conformance/corpus_catalog.toml) from tests/corpus/*.cddl × the shared rule enumerator
+// and EXIT — writes ONLY that catalog, never annotations/verify_report.json/the matrix catalog. Same
+// structure as runMintDecodeForeign (negative control, two-oracle validation, replay, arm-floor,
+// triage/pin posture). `--only=` accepts corpus row ids AND bare fixture stems (expanding to the
+// fixture's rows). See runMintDecodeCorpus.
+const MINT_DECODE_CORPUS = process.argv.includes("--mint-decode-corpus");
 const onlyArg = process.argv.find(a => a.startsWith("--only="));
 const MINT_ONLY = onlyArg
   ? new Set(onlyArg.slice("--only=".length).split(",").map(s => s.trim()).filter(s => s.length))
@@ -151,6 +158,9 @@ const MINT_ONLY = onlyArg
 const FOREIGN_K = 10;
 // The committed catalog the mint writes and the D4 corroborating oracle reads.
 const CATALOG_PATH = resolve(CODEGEN_DIR, "tests", "decode_conformance", "catalog.toml");
+// The committed CORPUS catalog (composition-depth leg), sibling of catalog.toml.
+const CORPUS_CATALOG_PATH = resolve(CODEGEN_DIR, "tests", "decode_conformance", "corpus_catalog.toml");
+const CORPUS_DIR = resolve(CODEGEN_DIR, "tests", "corpus");
 // The synthetic holder wrapping a rule with no standalone decode surface (transparent alias / named
 // table / c-enum): the field decode routes through cddl-codegen's GENERATED code, not cbor_event's
 // blanket impl, so the holder is what actually exercises the decoder for those shapes. Prepended FIRST
@@ -950,7 +960,10 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
   // reject, the class="constraint" inverse gate) and committed VERBATIM, never routed through the
   // accept two-oracle gate (which would drop them as "spec-invalid") nor pruned mechanically.
   const overAcceptPins = (prev?.vectors ?? []).filter(v => v.expect === "accept" && v.class === "over-acceptance");
-  if (candidates.length === 0 && handVecs.length === 0 && rejectPins.length === 0)
+  // overAcceptPins is checked EXPLICITLY (not via handVecs): over-acceptance pins are source="hand" by
+  // convention, but the guard must not lean on that unenforced invariant — pinning a row that still
+  // holds an over-acceptance pin would silently discard a pin that must survive re-mints VERBATIM.
+  if (candidates.length === 0 && handVecs.length === 0 && rejectPins.length === 0 && overAcceptPins.length === 0)
     return pin(`ruby generator cannot mint this construct (last exit ${lastRubyExit})`);
 
   // Two-oracle validate. Reject-intended and over-acceptance pins take precedence over accept-intended
@@ -1198,6 +1211,351 @@ function runMintDecodeForeign(): never {
   process.exit(0);
 }
 
+// ==================================================================================================
+// CORPUS DECODE-CONFORMANCE MINT (`--mint-decode-corpus`) — the composition-depth leg. Structured
+// exactly like runMintDecodeForeign (negative control, two-oracle validation, replay, arm-floor,
+// triage/pin posture) but the obligation set is tests/corpus/*.cddl × the shared rule enumerator, every
+// row is HOLDER mode (spec = `__probe_holder = [0, <rule>]\n<closure>`), and the f9 ban is WHOLE-ITEM.
+// ==================================================================================================
+
+// A corpus row id: "<fixture stem>.<rule>". Kept greppable and stable.
+function corpusRowId(fixture: string, rule: string): string { return `${fixture}.${rule}`; }
+
+// Mint ONE corpus (fixture, rule) row. Always holder mode: the composition-depth value is the generated
+// member/field decode path the holder routes through. GENERIC rules and rules referencing user-supplied
+// code (custom ser/deser) are pinned (can't be minted standalone). `allRules` is the fixture's full
+// enumeration (for the dependency closure). Accumulates triage/pin-break/dropped notes like mintRow.
+function mintCorpusRow(fixture: string, rule: CorpusRule, allRules: CorpusRule[], prev: CatalogRow | undefined,
+                       triage: string[], pinBreak: string[], dropped: string[]): CatalogRow {
+  const id = corpusRowId(fixture, rule.name);
+  const axis = "corpus";
+  const example = corpusClosureBody(rule.name, allRules);   // fixture-order closure body (the committed `example`)
+  const pin = (reason: string): CatalogRow => ({ id, axis, example, fixture, rule: rule.name, pinned_reason: reason, vectors: [] });
+
+  // GENERIC rules (`pair<a,b>` — head carries `<...>`) can't be holder-wrapped bare; their
+  // instantiations ARE covered via the referencing rules (`pair_use`, `[pair<uint, tstr>]`).
+  if (rule.generic)
+    return pin(`generic rule (head carries \`<...>\`); cannot be holder-wrapped bare — instantiations are covered via referencing rules`);
+  // Rules whose closure references user-supplied ser/deser fns (`@custom_serialize` / `@custom_deserialize`)
+  // generate code calling code that isn't in the crate, so the replay crate cannot compile standalone —
+  // pin them upfront (the matrix's COMPILE_GATE_EXEMPT precedent for dsl.custom_serialize/deserialize).
+  // `@custom_json` is NOT included: it only affects the --json profile; the default-profile crate compiles.
+  if (/@custom_serialize\b|@custom_deserialize\b/.test(example))
+    return pin("references user-supplied serialize/deserialize code; crate cannot compile standalone (@custom_serialize/@custom_deserialize)");
+
+  const spec = corpusProbeSpec(rule.name, allRules);
+  const genExit = foreignGenCrate(ccOut, spec);
+  if (genExit !== 0) return pin(`cddl-codegen cannot generate this construct standalone (holder+closure; cargo run exit ${genExit})`);
+  const decodeType = toCamelCase(CORPUS_HOLDER_RULE);      // "ProbeHolder"
+  if (!crateHasDeserialize(ccOut, decodeType)) return pin("synthetic holder minted no standalone decode surface");
+  const mode = "holder";
+  // ccOut now holds the crate generated from `spec`.
+
+  // WHOLE-ITEM f9 ban: drop any candidate whose CBOR item tree contains an f9 head ANYWHERE (not just at
+  // the item head like the matrix ban). An unparseable candidate (never expected from a diag2cbor round-
+  // trip) is dropped the same way rather than risking a throw.
+  const containsF9OrBad = (hex: string): boolean => {
+    try { return cborContainsF9(Uint8Array.from(Buffer.from(hex, "hex"))); }
+    catch { return true; }
+  };
+
+  const seen = new Set<string>();
+  const candidates: string[] = [];
+  let lastRubyExit = 0;
+  for (let i = 0; i < FOREIGN_K; i++) {
+    const g = rubyGenDiag(spec);
+    if (g.exit !== 0) { lastRubyExit = g.exit; continue; }
+    const hex = diagToHex(g.diag);
+    if (hex && !seen.has(hex)) { seen.add(hex); candidates.push(hex); }
+  }
+  const handVecs = (prev?.vectors ?? []).filter(v => v.source === "hand");
+  const rejectPins = (prev?.vectors ?? []).filter(v => v.expect === "reject");
+  const overAcceptPins = (prev?.vectors ?? []).filter(v => v.expect === "accept" && v.class === "over-acceptance");
+  // overAcceptPins is checked EXPLICITLY (not via handVecs): over-acceptance pins are source="hand" by
+  // convention, but the guard must not lean on that unenforced invariant — pinning a row that still
+  // holds an over-acceptance pin would silently discard a pin that must survive re-mints VERBATIM.
+  if (candidates.length === 0 && handVecs.length === 0 && rejectPins.length === 0 && overAcceptPins.length === 0) {
+    // The dominant pin cause here is the ruby 0.12.14 inline-composite `.cbor`-controller parse gap
+    // (exit 65 — draft/ruby-cddl-inline-composite-control-arg-gap.md; the ir_conformance_corpus
+    // RUBY_EXPECTED_FAIL prune condition in cddl-matrix/ROADMAP.md re-mints these when the gem fix ships).
+    const gap = lastRubyExit === 65
+      ? " — ruby 0.12.14 inline-composite `.cbor`-controller parse gap (draft/ruby-cddl-inline-composite-control-arg-gap.md; re-mint when the gem fix ships)"
+      : "";
+    return pin(`ruby generator cannot mint this construct (last exit ${lastRubyExit})${gap}`);
+  }
+
+  const rejectHexes = new Set(rejectPins.map(v => v.hex));
+  const overAcceptHexes = new Set(overAcceptPins.map(v => v.hex));
+  const excludedHex = (h: string) => rejectHexes.has(h) || overAcceptHexes.has(h);
+  const acDedup = new Map<string, { hex: string; source: string }>();
+  for (const c of [
+    ...candidates.filter(h => !excludedHex(h)).map(h => ({ hex: h, source: "ruby-generate" })),
+    ...handVecs.filter(v => v.expect === "accept" && v.class !== "over-acceptance" && !excludedHex(v.hex)).map(v => ({ hex: v.hex, source: "hand" })),
+  ]) {
+    if (containsF9OrBad(c.hex)) { dropped.push(`${id}/${c.hex} (whole-item f9 half-precision head; cbor_event f16 mis-decode — green-but-corrupted accept evidence, skipped)`); continue; }
+    if (!acDedup.has(c.hex)) acDedup.set(c.hex, c);
+  }
+
+  const validatedAccept: { hex: string; source: string }[] = [];
+  // Per-oracle accept tallies over the primary candidate set, kept for the oracle-disagreement pin
+  // wording below (a durable, direction-agnostic record of HOW the two oracles split).
+  let tallyRubyOk = 0, tallyRustOk = 0, tallyTotal = 0;
+  for (const c of acDedup.values()) {
+    const { ruby, rust } = validateBoth(spec, c.hex);
+    tallyTotal++;
+    if (ruby === 0) tallyRubyOk++;
+    if (rust === 0) tallyRustOk++;
+    if (ruby === 0 && rust === 0) validatedAccept.push(c);
+    else dropped.push(`${id}/${c.hex} (accept-intended; ruby ${ruby} rust ${rust})`);
+  }
+
+  // Accept-vector ARM-COVERAGE floor (resample-until-covered) — reuse the SAME resolver the drift gate's
+  // corpus half uses, applied to the TARGET-FIRST closure example (corpusArmExample) so the root scan
+  // lands on the target's RHS. WHOLE-ITEM f9 candidates are skipped (same cbor_event gap). Exemptions
+  // come from the CORPUS ledger (CORPUS_DECODE_FLOOR_ARM_EXEMPT — corpus keys must never enter the
+  // matrix ledger, whose stale-guard iterates matrix row ids only).
+  const floor = resolveChoiceArmClasses(corpusArmExample(rule.name, allRules));
+  if (floor) {
+    const required = new Set(floor.classes.filter(c => !Object.hasOwn(CORPUS_DECODE_FLOOR_ARM_EXEMPT, `${id}/${c}`)));
+    const coveredClasses = () => new Set(validatedAccept.map(c => vectorShapeClass(c.hex, true)));
+    const missing = () => [...required].filter(c => !coveredClasses().has(c));
+    const ARM_FLOOR_EXTRA_CAP = 60;
+    let extra = 0;
+    while (missing().length && extra < ARM_FLOOR_EXTRA_CAP) {
+      extra++;
+      const g = rubyGenDiag(spec);
+      if (g.exit !== 0) continue;
+      const hex = diagToHex(g.diag);
+      if (!hex || seen.has(hex) || excludedHex(hex)) continue;
+      seen.add(hex);
+      const cls = vectorShapeClass(hex, true);
+      if (!missing().includes(cls)) continue;
+      if (containsF9OrBad(hex)) continue;
+      const { ruby, rust } = validateBoth(spec, hex);
+      if (ruby === 0 && rust === 0) validatedAccept.push({ hex, source: "ruby-generate" });
+      else dropped.push(`${id}/${hex} (arm-coverage resample for class ${cls}; ruby ${ruby} rust ${rust})`);
+    }
+    const stillMissing = missing();
+    if (stillMissing.length) {
+      console.error(
+        `ARM-COVERAGE FLOOR: corpus row '${id}' left arm class(es) [${stillMissing.join(", ")}] with NO spec-valid ` +
+          `accept vector after ${ARM_FLOOR_EXTRA_CAP} extra generate draws (required {${[...required].join(", ")}}). ` +
+          `Investigate (resample bias, mis-resolved arm, or oracle gap) and fix or add a cited ` +
+          `CORPUS_DECODE_FLOOR_ARM_EXEMPT entry in lib.ts (the corpus ledger — NOT the matrix one). ` +
+          `Refusing to mint an under-claiming row.`,
+      );
+      process.exit(1);
+    }
+  }
+
+  // Class-aware reject re-validation (inverse gates) — identical to mintRow.
+  const validatedRejectPins: CatalogVector[] = [];
+  for (const p of rejectPins) {
+    const { ruby, rust } = validateBoth(spec, p.hex);
+    if (p.class === "constraint") {
+      if (ruby !== 0 && rust !== 0) validatedRejectPins.push(p);
+      else dropped.push(`${id}/${p.hex} (constraint vector is no longer spec-INVALID per both oracles — upstream spec drift; ruby ${ruby} rust ${rust})`);
+    } else {
+      if (ruby === 0 && rust === 0) validatedRejectPins.push(p);
+      else dropped.push(`${id}/${p.hex} (reject pin no longer spec-valid; ruby ${ruby} rust ${rust})`);
+    }
+  }
+  const validatedOverAccept: CatalogVector[] = [];
+  for (const p of overAcceptPins) {
+    const { ruby, rust } = validateBoth(spec, p.hex);
+    if (ruby !== 0 && rust !== 0) validatedOverAccept.push(p);
+    else dropped.push(`${id}/${p.hex} (over-acceptance vector is no longer spec-INVALID per both oracles — upstream spec drift/fix; ruby ${ruby} rust ${rust})`);
+  }
+  if (validatedAccept.length === 0 && validatedRejectPins.length === 0 && validatedOverAccept.length === 0) {
+    // Durable, self-contained pin wording (not "see mint log" — the log is transient): record the
+    // per-oracle accept tallies so the DIRECTION of the disagreement survives in the committed catalog,
+    // and point at the durable ledger of upstream oracle gaps rather than a run artifact.
+    return pin(
+      `all ${tallyTotal} generated candidate(s) failed two-oracle cross-validation ` +
+      `(ruby accepted ${tallyRubyOk}/${tallyTotal}, rust --ci accepted ${tallyRustOk}/${tallyTotal} — an upstream oracle ` +
+      `disagreement, not a decoder verdict; see cddl-matrix/README.md § "Upstream oracle gaps" and re-mint this row when ` +
+      `the cited fix ships)`,
+    );
+  }
+
+  const vecs: ReplayVec[] = [
+    ...validatedAccept.map((c, i) => ({ hex: c.hex, name: `${foreignIdent(id)}_a${i}`, expectOk: true })),
+    ...validatedRejectPins.map((p, i) => ({ hex: p.hex, name: `${foreignIdent(id)}_r${i}`, expectOk: false })),
+    ...validatedOverAccept.map((p, i) => ({ hex: p.hex, name: `${foreignIdent(id)}_o${i}`, expectOk: true })),
+  ];
+  // A null replay (no per-test verdict lines) is normally a compile failure, but over 130+ sequential
+  // crates sharing one incremental COMPILE_TARGET it also shows up as a TRANSIENT glitch (an isolated
+  // re-mint of the same row then passes). Regenerate + replay once before declaring a HARNESS FAILURE,
+  // so a real non-compiling construct still fails loudly but a transient does not abort the whole mint.
+  let res = replayInDir(ccOut, vecs, decodeType);
+  if (res === null) {
+    console.error(`[mint-corpus] ${id}: replay produced no per-test verdict (compile error or partial output) — regenerating + retrying once.`);
+    if (foreignGenCrate(ccOut, spec) === 0) res = replayInDir(ccOut, vecs, decodeType);
+  }
+  if (res === null) { console.error(`HARNESS FAILURE: corpus replay crate for '${id}' failed to compile TWICE (mode=${mode}) — a non-compiling standalone construct or a detection bug; refusing to mint.`); process.exit(2); }
+
+  const outVecs: CatalogVector[] = [];
+  validatedAccept.forEach((c, i) => {
+    if (res.get(`${foreignIdent(id)}_a${i}`) === true) outVecs.push({ hex: c.hex, source: c.source, expect: "accept" });
+    else {
+      outVecs.push({ hex: c.hex, source: c.source, expect: "reject" });  // class-less: triage-pending
+      triage.push(`${id}/${c.hex} (mode=${mode}, type=${decodeType}): spec-valid but decoder REJECTED`);
+    }
+  });
+  validatedRejectPins.forEach((p, i) => {
+    outVecs.push(p);
+    if (res.get(`${foreignIdent(id)}_r${i}`) !== true)
+      pinBreak.push(p.class === "constraint"
+        ? `${id}/${p.hex}: constraint vector now DECODES cleanly — the generated decoder does NOT enforce the constraint (enforcement gap); record it in ROADMAP § findings`
+        : `${id}/${p.hex}: committed reject pin now DECODES cleanly — bug fixed or decoder loosened; re-triage/unpin`);
+  });
+  validatedOverAccept.forEach((p, i) => {
+    outVecs.push(p);
+    if (res.get(`${foreignIdent(id)}_o${i}`) !== true)
+      pinBreak.push(`${id}/${p.hex}: over-acceptance vector now REJECTS — the decoder no longer wrongly accepts the spec-INVALID bytes (the fix landed); promote it to class="constraint" (+ expect_err) and update the ROADMAP § findings entry`);
+  });
+  return { id, axis, example, fixture, rule: rule.name, spec, mode, type_name: decodeType, vectors: outVecs };
+}
+
+function runMintDecodeCorpus(): never {
+  if (!RUBY_CDDL) { console.error("HARNESS FAILURE: --mint-decode-corpus needs the ruby cddl reference (generate + validate); none resolved."); process.exit(2); }
+  if (!DIAG2CBOR || !existsSync(DIAG2CBOR)) { console.error(`HARNESS FAILURE: diag2cbor.rb not found beside the ruby cddl binstub (looked at '${DIAG2CBOR}'); the cbor-diag gem is required to mint.`); process.exit(2); }
+
+  // ENOSPC/SCRATCH PREFLIGHT: the mint generates 130+ crates into tmpdir-backed scratch; a near-full
+  // scratch volume degrades into the wide-evidence-flip signature (a run of identical bogus verdicts —
+  // the ENOSPC lesson in cddl-matrix/ROADMAP.md § Remaining work) rather than one loud error. Hard-fail
+  // upfront when headroom is under 2 GiB, naming the stale-scratch cleanup. `df -k` is GNU coreutils;
+  // if unavailable the check degrades to a loud warning rather than blocking the mint.
+  {
+    const FLOOR_KIB = 2 * 1024 * 1024; // 2 GiB in KiB
+    const r = Bun.spawnSync(["df", "-k", "--output=avail", tmpdir()], { stdout: "pipe", stderr: "ignore" });
+    const availKiB = parseInt((r.stdout?.toString() ?? "").trim().split(/\r?\n/).pop() ?? "", 10);
+    if (r.exitCode !== 0 || !Number.isFinite(availKiB)) {
+      console.warn(`[mint-corpus] WARNING: could not measure free space on '${tmpdir()}' (df exit ${r.exitCode}) — proceeding without the ENOSPC preflight.`);
+    } else if (availKiB < FLOOR_KIB) {
+      console.error(
+        `HARNESS FAILURE: only ${(availKiB / 1024 / 1024).toFixed(1)} GiB free on the scratch volume ('${tmpdir()}'; floor 2 GiB). ` +
+        `A near-full scratch degrades into runs of identical bogus verdicts (the ENOSPC wide-evidence-flip lesson, ` +
+        `cddl-matrix/ROADMAP.md § Remaining work) instead of failing loudly. Clear stale scratch first — e.g. ` +
+        `\`rm -rf ${tmpdir()}/cddl_codegen_* ${tmpdir()}/cddl_verify_*\` — then re-run.`,
+      );
+      process.exit(2);
+    }
+  }
+
+  // Negative control (same as the foreign mint): a known-bad instance must be rejected by BOTH oracles
+  // (rust via --ci) AND our decoder — else the cross-check is vacated.
+  {
+    const spec = "n = uint";
+    const badHex = "627878";  // text "xx" — invalid for a uint
+    const { ruby, rust } = validateBoth(spec, badHex);
+    if (ruby === 0 || rust === 0) {
+      console.error(`HARNESS FAILURE: decode-conformance negative control was ACCEPTED by an oracle (ruby exit ${ruby}, rust --ci exit ${rust}); the two-oracle cross-check is not rejecting invalid CBOR (check the --ci flag). Refusing to mint.`);
+      process.exit(2);
+    }
+    if (foreignGenCrate(ccOut, spec) !== 0) { console.error("HARNESS FAILURE: negative-control spec `n = uint` failed to generate."); process.exit(2); }
+    const res = replayInDir(ccOut, [{ hex: badHex, name: "neg_control", expectOk: false }], toCamelCase("n"));
+    if (res === null || res.get("neg_control") !== true) {
+      console.error("HARNESS FAILURE: decode-conformance negative control — our generated decoder did NOT reject the known-bad instance (or the replay failed to compile). Refusing to mint.");
+      process.exit(2);
+    }
+    console.log("[mint-corpus] negative control OK (known-bad instance rejected by ruby, rust --ci, and our decoder).");
+  }
+
+  // Obligation set: every tests/corpus/*.cddl × every enumerated top-level rule. NEVER a hand list.
+  const fixtureFiles = readdirSync(CORPUS_DIR).filter(f => f.endsWith(".cddl")).sort();
+  if (fixtureFiles.length < 55) { console.error(`HARNESS FAILURE: only ${fixtureFiles.length} corpus fixtures found (< 55 floor) — an implausibly small obligation set; refusing to mint.`); process.exit(2); }
+  interface CorpusObligation { id: string; fixture: string; rule: CorpusRule; allRules: CorpusRule[] }
+  const obligations: CorpusObligation[] = [];
+  const fixtureStems = new Set<string>();
+  for (const file of fixtureFiles) {
+    const stem = file.replace(/\.cddl$/, "");
+    fixtureStems.add(stem);
+    const text = readFileSync(join(CORPUS_DIR, file), "utf8");
+    const rules = enumerateCorpusRules(text);
+    if (rules.length === 0) { console.error(`HARNESS FAILURE: corpus fixture '${stem}.cddl' enumerated ZERO rules — the rule-head regex drifted or the file is empty.`); process.exit(2); }
+    for (const rule of rules) {
+      // Prelude names must never collide with corpus rule names (a collision would make a reference
+      // ambiguous between a prelude type and a fixture rule). Asserted at enumeration time here AND by
+      // the drift gate's corpus enumeration (PRELUDE_NAMES, lib.ts — same pinned source).
+      if (PRELUDE_NAMES.has(rule.name)) { console.error(`HARNESS FAILURE: corpus fixture '${stem}.cddl' rule '${rule.name}' collides with a prelude type name — reference extraction would be ambiguous.`); process.exit(2); }
+      obligations.push({ id: corpusRowId(stem, rule.name), fixture: stem, rule, allRules: rules });
+    }
+  }
+  if (obligations.length < 120) { console.error(`HARNESS FAILURE: only ${obligations.length} corpus (fixture,rule) obligations (< 120 floor) — implausibly small; refusing to mint.`); process.exit(2); }
+
+  const existing = existsSync(CORPUS_CATALOG_PATH) ? parseCatalog(CORPUS_CATALOG_PATH) : new Map<string, CatalogRow>();
+  const outRows = new Map<string, CatalogRow>();
+  const enumeratedIds = new Set(obligations.map(o => o.id));
+  let mintOnlySelected: Set<string> | null = null;
+  if (MINT_ONLY) {
+    // `--only=` accepts corpus row ids AND bare fixture stems (expanding to the fixture's rows). An id
+    // that is neither an enumerated row nor a fixture stem nor an existing catalog row is a typo → hard-fail.
+    const selected = new Set<string>();
+    const unknown: string[] = [];
+    for (const tok of MINT_ONLY) {
+      if (enumeratedIds.has(tok)) {
+        selected.add(tok);
+      } else if (fixtureStems.has(tok)) {
+        for (const o of obligations) if (o.fixture === tok) selected.add(o.id);
+      } else if (existing.has(tok)) {
+        selected.add(tok);   // a row that left the enumerated set — DROP it (excluded below)
+      } else {
+        unknown.push(tok);
+      }
+    }
+    if (unknown.length) { console.error(`HARNESS FAILURE: --only names token(s) that are neither an enumerated corpus row id, a corpus fixture stem, nor an existing catalog row: ${unknown.join(", ")}`); process.exit(2); }
+    // Preserve verbatim every existing row NOT selected. A selected id that is no longer enumerated is
+    // simply not re-minted and not preserved → it vanishes (the support-boundary drop).
+    for (const [rid, row] of existing) if (!selected.has(rid)) outRows.set(rid, row);
+    mintOnlySelected = selected;
+  }
+  const toMint = obligations.filter(o => (MINT_ONLY ? mintOnlySelected!.has(o.id) : true));
+
+  const triage: string[] = [];
+  const pinBreak: string[] = [];
+  const dropped: string[] = [];
+  const pinnedRows: string[] = [];
+  for (const o of toMint) {
+    const row = mintCorpusRow(o.fixture, o.rule, o.allRules, existing.get(o.id), triage, pinBreak, dropped);
+    if (row.pinned_reason !== undefined) pinnedRows.push(`${o.id}: ${row.pinned_reason}`);
+    outRows.set(o.id, row);
+    const tag = row.pinned_reason !== undefined ? `PINNED (${row.pinned_reason})` : `${row.mode}, ${row.vectors.length} vector(s) [${row.type_name}]`;
+    console.log(`[mint-corpus] ${o.id}: ${tag}`);
+  }
+
+  const content = composeCatalog([...outRows.values()], CORPUS_CATALOG_INTRO);
+  try { Bun.TOML.parse(content); }
+  catch (e) { console.error(`HARNESS FAILURE: composed corpus_catalog.toml does not parse as TOML (${e}) — a writer bug, not a verdict. Refusing to write.`); process.exit(2); }
+  mkdirSync(dirname(CORPUS_CATALOG_PATH), { recursive: true });
+  writeFileSync(CORPUS_CATALOG_PATH, content);
+
+  const active = [...outRows.values()].filter(r => r.pinned_reason === undefined);
+  const nVectors = active.reduce((n, r) => n + r.vectors.length, 0);
+  const eq = "=".repeat(80);
+  console.log(`\n${eq}`);
+  console.log(`CORPUS DECODE-CONFORMANCE MINT ${MINT_ONLY ? `(--only=${[...MINT_ONLY].sort().join(",")})` : "(full)"}`);
+  console.log(eq);
+  console.log(`fixtures enumerated : ${fixtureStems.size}`);
+  console.log(`rows written        : ${outRows.size} (minted ${toMint.length}, preserved ${outRows.size - toMint.length})`);
+  console.log(`active / pinned     : ${active.length} active, ${outRows.size - active.length} pinned_reason`);
+  console.log(`vectors             : ${nVectors} across ${active.length} active row(s)`);
+  if (pinnedRows.length) { console.log("\nPINNED (mechanically un-mintable):"); for (const p of pinnedRows) console.log(`  - ${p}`); }
+  if (dropped.length) { console.log("\nDROPPED VECTORS (contested / oracle artifact / f9 — not committed):"); for (const d of dropped) console.log(`  - ${d}`); }
+  console.log(`\nwrote ${CORPUS_CATALOG_PATH}`);
+  if (triage.length) {
+    console.log("\nTRIAGE-PENDING (spec-valid vectors our decoder REJECTED — committed as class-less reject rows; the drift gate stays RED until a human classifies each):");
+    for (const t of triage) console.log(`  - ${t}`);
+  }
+  if (pinBreak.length) {
+    console.log("\nPIN RE-CHECK FAILURES (committed reject pins that now decode — re-triage/unpin):");
+    for (const p of pinBreak) console.log(`  - ${p}`);
+  }
+  if (triage.length || pinBreak.length) { console.log("\nRESULT: CORPUS MINT wrote the catalog but exits 1 (triage pending — see above)."); process.exit(1); }
+  console.log("\nRESULT: CORPUS MINT PASS");
+  process.exit(0);
+}
+
 // Warm the shared compile target ONCE (deps + the libtest harness build here; per-probe `cargo test`
 // is then incremental and fits PROBE_TIMEOUT). Without this the first probe's test would eat the whole
 // dep build and risk a spurious timeout -> false "does not round-trip". A trivial valid spec that MINTS
@@ -1225,6 +1583,9 @@ if (warmGen !== 0 || warmTest !== 0 || !warmLib.includes("mod cddl_generated_tes
 // skipping the wasm/emission warm-ups and all probe loops (they are below and never run). Writes ONLY
 // the catalog, never annotations/verify_report.json.
 if (MINT_DECODE) runMintDecodeForeign();
+// --mint-decode-corpus (composition-depth leg): mint the corpus catalog and EXIT, same post-warm-up
+// insertion point as the foreign mint (skips the wasm/emission warm-ups and all probe loops below).
+if (MINT_DECODE_CORPUS) runMintDecodeCorpus();
 
 // Warm the WASM target the same way when the wasm probe is on (the default): the first wasm crate build (wasm-bindgen
 // + the libtest harness) can exceed PROBE_TIMEOUT, which would false-fail the first per-probe wasm test.

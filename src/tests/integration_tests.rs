@@ -6969,11 +6969,24 @@ fn header_mutants(
     evidenced_majors: &std::collections::BTreeSet<u8>,
 ) -> Vec<(&'static str, Vec<u8>)> {
     if offset == 2 {
-        assert_eq!(
-            &bytes[..2],
-            &[0x82u8, 0x00u8],
-            "holder-mode vector must begin with the `82 00` = [0, _] preamble \
-             (project_decode_conformance.ts § 6) — got {bytes:02x?}"
+        // Holder preamble: a definite-length array head (major 4) whose FIRST element is the literal
+        // `0` discriminant, then the rule instance starting at byte 2. A single-item rule yields the
+        // canonical `82 00` = [0, item]; a SPLICED bare GROUP (`inner = (a: uint, b: uint)`) widens the
+        // holder array to `83 00 …`/wider — `[0, a, b]` — but the item under test's head is still the
+        // array's SECOND element at byte 2 (the mint's `vectorShapeClass`-equivalent shape logic strips
+        // the same 2-byte preamble, and evidenced_majors reads byte 2 too). The count must fit the
+        // head's info bits (info < 24) so the preamble stays exactly 2 bytes and offset 2 lands on the
+        // item; a 23+-field group (info >= 24, a multi-byte count) would push the item past byte 2, so
+        // it must fail here rather than mutate the wrong byte.
+        let head = bytes.first().copied().unwrap_or(0);
+        assert!(
+            bytes.len() >= 3
+                && (head >> 5) == 4
+                && (head & 0x1f) >= 2
+                && (head & 0x1f) < 24
+                && bytes[1] == 0x00,
+            "holder-mode vector must begin with a definite array head (major 4, 2..=23 elems) + the \
+             `00` discriminant (project_decode_conformance.ts § 6) — got {bytes:02x?}"
         );
     }
     let prefix = &bytes[..offset];
@@ -7082,6 +7095,22 @@ fn header_mutants_pin_hand_derived_bytes() {
             (
                 "trunc_head",
                 vec![0x82, 0x00, 0x1b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+            ),
+        ]
+    );
+    // WIDER holder preamble: a SPLICED bare group `(a: uint, b: uint)` holder-wraps to `[0, a, b]` =
+    // `83 00 <a> <b>` (array-of-3, not the single-item `82 00`). The 2-byte preamble `83 00` still
+    // rides through unmutated and the item under test is the second element (inner uint `a` at byte 2).
+    // `wrong_major` keeps the rest of the buffer, so the trailing third element (`0x02`) rides through;
+    // `trunc_head` drops everything after the head by construction (its `0x02` is gone). This pins that
+    // the relaxed offset-2 preamble check accepts the wider array head the corpus bare-group rows produce.
+    assert_eq!(
+        header_mutants(&[0x83, 0x00, 0x01, 0x02], 2, &none),
+        vec![
+            ("wrong_major", vec![0x83, 0x00, 0x81, 0x02]),
+            (
+                "trunc_head",
+                vec![0x83, 0x00, 0x1b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
             ),
         ]
     );
@@ -8647,6 +8676,742 @@ fn decode_conformance_replay() {
     assert!(
         failures.is_empty(),
         "decode-conformance replay found {} problem(s):\n\n{}",
+        failures.len(),
+        failures.join("\n\n")
+    );
+}
+
+/// Deterministic decode-direction replay of the COMPOSITION-DEPTH corpus catalog
+/// (`tests/decode_conformance/corpus_catalog.toml`), the sibling of `decode_conformance_replay`'s
+/// matrix catalog. Where the matrix catalog keys its obligation set on the matrix's minimal per-construct
+/// examples (breadth), this catalog is minted from the `tests/corpus/*.cddl` fixtures × the shared rule
+/// enumerator (depth): every active row is holder mode (`spec = __probe_holder = [0, <rule>]` + the
+/// rule's dependency closure, `type_name = ProbeHolder`), so decoding always routes through the generated
+/// member/field-decode path the composition depth exercises.
+///
+/// It reuses `decode_replay_generate` / `decode_replay_run` and ALL of `decode_conformance_replay`'s legs
+/// verbatim (base accept/reject with the `expect_err` reason assert + doubled-location helper, the
+/// `cddl_encoding_fidelity::variants` encoding-variant leg, the `header_mutants` header-mutation leg at
+/// holder offset 2, over-acceptance completeness, and the `--preserve-encodings` byte-identity leg) — only
+/// the catalog path, the scratch ident, the skip ledgers, and the vacuity floors differ. At HEAD the
+/// corpus carries only plain accept vectors (no `class="constraint"` / `class="over-acceptance"` — the
+/// enforcement axis is matrix-owned), so the constraint-reason and over-acceptance machinery stays armed
+/// but idle (the over-acceptance completeness `assert_eq` holds at 0 == 0).
+///
+/// Its own scratch dir + `cddl_codegen_corpus_decode_replay` target keeps it from colliding with the
+/// matrix replay / corpus / wasm gates when `cargo test` runs in parallel; `acquire_scratch_lock`
+/// serializes same-checkout runs. MANUAL/LOCAL ONLY — `#[ignore]`d, check.ts `full` tier. Measured
+/// wall time ~225s warm (124 active rows × up to two generate+`cargo test` crate builds, the default
+/// build compiling ~4900 encoding-variant plus ~2100 header-mutation tests).
+///
+/// NAMING: the name is deliberately NOT a superstring of `decode_conformance_replay` — check.ts's
+/// existing full-tier gate runs `cargo test … decode_conformance_replay -- --ignored` with SUBSTRING
+/// filtering, so a `corpus_decode_conformance_replay` would be swept into that gate's run. `corpus_decode_replay`
+/// substring-matches no other test and no other check.ts cargo-test filter, so it runs under exactly one gate.
+#[ignore = "manual/local corpus (composition-depth) decode-conformance replay gate (heavy: per-catalog-row crate builds under two profiles): cargo test --bin cddl-codegen corpus_decode_replay -- --ignored --nocapture"]
+#[test]
+fn corpus_decode_replay() {
+    if !tool_exists("cargo") {
+        return;
+    }
+
+    // Rows whose generation/compile legitimately fails under `--preserve-encodings=true`. The one
+    // member is `homogeneous_array.floats` (`[* float64]`): a native-float element hits the pre-existing
+    // `unimplemented!` in generation.rs ("preserve_encodings is not implemented for float"), the same
+    // gap the `preserve_encodings_supports_floats` stub tracks and the matrix replay's PRESERVE_SKIP
+    // documents for the prelude/rangeop float rows. Default-profile decode of this row still replays.
+    // Stale-guarded: a row here that starts generating+replaying cleanly under preserve fails the gate.
+    const PRESERVE_SKIP: &[(&str, &str)] = &[(
+        "homogeneous_array.floats",
+        "`[* float64]` has a native-float element that is unimplemented under --preserve-encodings \
+         (generation.rs float arm `unimplemented!`; see the preserve_encodings_supports_floats stub) — \
+         default-profile decode still replays its accept vectors",
+    )];
+    // Rows that GENERATE + compile under preserve but re-encode a decoded accept vector to different
+    // bytes. Empty at HEAD — a newly-appearing byte-identity mismatch is a FINDING to triage.
+    const EXPECTED_MISMATCH: &[(&str, &str)] = &[];
+    // (row id, encoding-variant label, reason) pairs whose DEFAULT-leg variant test legitimately fails —
+    // a spec-equal re-encoding the generated decoder is over-strict about, or mis-decodes. Each entry is
+    // an HONEST finding ledgered in `cddl-matrix/ROADMAP.md` § findings. Empty at HEAD; stale-guarded.
+    const ENCODING_VARIANT_SKIP: &[(&str, &str, &str)] = &[];
+    // (row id, replay test-name, reason) pairs whose DEFAULT-leg replay test legitimately rejects with
+    // an adjacent-duplicate error location segment (`Foo.Foo`). Empty at HEAD; stale-guarded.
+    const DOUBLED_LOCATION_SKIP: &[(&str, &str, &str)] = &[];
+    // (row id, header-mutant label, reason) pairs whose DEFAULT-leg header-mutant test legitimately
+    // DECODES the mutated bytes Ok (an `any`-typed row / an unsampled choice arm). Empty at HEAD;
+    // stale-guarded. A `trunc_head` entry here is a hard error (ill-formed by construction).
+    const HEADER_MUTANT_ACCEPT_SKIP: &[(&str, &str, &str)] = &[];
+    // (row id, header-mutant label, reason) pairs whose DEFAULT-leg header-mutant test REJECTS the
+    // mutated bytes but the error Display carries NO location naming the decoding type. Empty at HEAD;
+    // stale-guarded.
+    const HEADER_MUTANT_LOCATION_SKIP: &[(&str, &str, &str)] = &[];
+
+    // Encoding-variant / header-mutant vacuity floors, pinned from the first full run's actuals with
+    // ~10% headroom (see the asserts at the end of this test): 4914 encoding-variant tests and 2117
+    // header-mutation tests emitted from the 1064 accept vectors when the floors were set — observed
+    // baselines, not current counts.
+    const FLOOR_VARIANT: usize = 4400;
+    const FLOOR_HEADER: usize = 1900;
+
+    let catalog_path = std::path::Path::new("tests/decode_conformance/corpus_catalog.toml");
+    let catalog_src = std::fs::read_to_string(catalog_path)
+        .unwrap_or_else(|e| panic!("cannot read {catalog_path:?}: {e}"));
+    let doc: toml::Value = toml::from_str(&catalog_src).expect("corpus_catalog.toml is valid TOML");
+    let all_rows = doc
+        .get("row")
+        .and_then(|v| v.as_array())
+        .expect("corpus_catalog.toml has [[row]] entries");
+    // A truncated parse (bad slice, wrong path) must not pass vacuously: the committed corpus has 134
+    // rows (124 active + 10 pinned/vectorless), so a read that sees far fewer means something broke.
+    assert!(
+        all_rows.len() >= 120,
+        "corpus catalog parsed only {} rows (expected >= 120) — truncated/incorrect parse",
+        all_rows.len()
+    );
+
+    // Distil the active (has-vectors) rows; pinned/vectorless rows have nothing to replay.
+    let mut rows: Vec<ReplayRow> = Vec::new();
+    for row in all_rows {
+        let vectors_toml = match row.get("vector").and_then(|v| v.as_array()) {
+            Some(v) if !v.is_empty() => v,
+            _ => continue,
+        };
+        let id = row.get("id").and_then(|v| v.as_str()).unwrap().to_string();
+        let spec = row
+            .get("spec")
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| panic!("active row {id} is missing `spec`"))
+            .to_string();
+        let type_name = row
+            .get("type_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| panic!("active row {id} is missing `type_name`"))
+            .to_string();
+        // Every active corpus row is holder mode (asserted below), so `mode` drives the header-mutation
+        // leg's byte offset (the `82 00` = `[0, _]` preamble).
+        let mode = row
+            .get("mode")
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| panic!("active row {id} is missing `mode`"))
+            .to_string();
+        assert_eq!(
+            mode, "holder",
+            "corpus active row {id} has mode={mode:?} — every corpus row is minted holder mode; a \
+             standalone row means the mint or the catalog drifted"
+        );
+        let vectors = vectors_toml
+            .iter()
+            .map(|v| {
+                let hex = v.get("hex").and_then(|x| x.as_str()).unwrap().to_string();
+                let expect = v.get("expect").and_then(|x| x.as_str()).unwrap();
+                let class = v.get("class").and_then(|x| x.as_str());
+                let expect_err = v
+                    .get("expect_err")
+                    .and_then(|x| x.as_str())
+                    .map(|s| s.to_string());
+                ReplayVector {
+                    hex,
+                    accept: expect == "accept",
+                    over_acceptance: expect == "accept" && class == Some("over-acceptance"),
+                    expect_err,
+                }
+            })
+            .collect();
+        rows.push(ReplayRow {
+            id,
+            spec,
+            type_name,
+            mode,
+            vectors,
+        });
+    }
+
+    let active_row_ids: std::collections::BTreeSet<&str> =
+        rows.iter().map(|row| row.id.as_str()).collect();
+    for (id, _) in PRESERVE_SKIP {
+        assert!(
+            active_row_ids.contains(id),
+            "PRESERVE_SKIP names active catalog row `{id}` that is no longer replayed — stale pin, \
+             remove or fix it"
+        );
+    }
+    for (id, _) in EXPECTED_MISMATCH {
+        assert!(
+            active_row_ids.contains(id),
+            "EXPECTED_MISMATCH names active catalog row `{id}` that is no longer replayed — \
+             stale pin, remove or fix it"
+        );
+    }
+    for (id, _, _) in ENCODING_VARIANT_SKIP {
+        assert!(
+            active_row_ids.contains(id),
+            "ENCODING_VARIANT_SKIP names catalog row `{id}` that is not an active replayed row — \
+             stale pin, remove or fix it"
+        );
+    }
+    for (id, _, _) in DOUBLED_LOCATION_SKIP {
+        assert!(
+            active_row_ids.contains(id),
+            "DOUBLED_LOCATION_SKIP names catalog row `{id}` that is not an active replayed row — \
+             stale pin, remove or fix it"
+        );
+    }
+    for (id, label, _) in HEADER_MUTANT_ACCEPT_SKIP {
+        assert!(
+            *label != "trunc_head",
+            "HEADER_MUTANT_ACCEPT_SKIP lists a `trunc_head` mutant for `{id}` — trunc_head is \
+             ill-formed by construction and can NEVER decode Ok, so this entry is impossible; a \
+             trunc_head that decodes Ok is a real over-acceptance finding, not a skip"
+        );
+        assert!(
+            active_row_ids.contains(id),
+            "HEADER_MUTANT_ACCEPT_SKIP names catalog row `{id}` that is not an active replayed row — \
+             stale pin, remove or fix it"
+        );
+    }
+    for (id, _, _) in HEADER_MUTANT_LOCATION_SKIP {
+        assert!(
+            active_row_ids.contains(id),
+            "HEADER_MUTANT_LOCATION_SKIP names catalog row `{id}` that is not an active replayed row \
+             — stale pin, remove or fix it"
+        );
+    }
+
+    let scratch_name = format!("cddl_codegen_corpus_decode_replay_{:016x}", checkout_hash());
+    // Hold for the whole gate: same-checkout concurrent runs serialize instead of clobbering each
+    // other's crates via the `remove_dir_all` below (the `ir_conformance_corpus` pattern).
+    let _scratch_lock = acquire_scratch_lock(&scratch_name);
+    let root = std::env::temp_dir().join(&scratch_name);
+    let _ = std::fs::remove_dir_all(&root);
+    let target_dir = root.join("target");
+
+    let preserve_skip: std::collections::BTreeMap<&str, &str> =
+        PRESERVE_SKIP.iter().copied().collect();
+    let expected_mismatch: std::collections::BTreeMap<&str, &str> =
+        EXPECTED_MISMATCH.iter().copied().collect();
+    let encoding_variant_skip: std::collections::BTreeMap<(&str, &str), &str> =
+        ENCODING_VARIANT_SKIP
+            .iter()
+            .map(|(r, l, why)| ((*r, *l), *why))
+            .collect();
+    let doubled_location_skip: std::collections::BTreeMap<(&str, &str), &str> =
+        DOUBLED_LOCATION_SKIP
+            .iter()
+            .map(|(r, l, why)| ((*r, *l), *why))
+            .collect();
+    let mut variant_skip_still_failing: std::collections::BTreeSet<(String, String)> =
+        std::collections::BTreeSet::new();
+    let mut doubled_location_skip_still_failing: std::collections::BTreeSet<(String, String)> =
+        std::collections::BTreeSet::new();
+    let header_mutant_accept_skip: std::collections::BTreeMap<(&str, &str), &str> =
+        HEADER_MUTANT_ACCEPT_SKIP
+            .iter()
+            .map(|(r, l, why)| ((*r, *l), *why))
+            .collect();
+    let header_mutant_location_skip: std::collections::BTreeMap<(&str, &str), &str> =
+        HEADER_MUTANT_LOCATION_SKIP
+            .iter()
+            .map(|(r, l, why)| ((*r, *l), *why))
+            .collect();
+    let mut header_accept_skip_still_failing: std::collections::BTreeSet<(String, String)> =
+        std::collections::BTreeSet::new();
+    let mut header_location_skip_still_failing: std::collections::BTreeSet<(String, String)> =
+        std::collections::BTreeSet::new();
+
+    let mut failures: Vec<String> = Vec::new();
+    let mut rows_replayed = 0usize;
+    let mut vectors_replayed = 0usize;
+    let mut variant_tests_total = 0usize;
+    let mut header_tests_total = 0usize;
+    let mut constraint_reason_asserts = 0usize;
+    let mut over_acceptance_tests_emitted = 0usize;
+    let over_acceptance_catalog_total: usize = rows
+        .iter()
+        .flat_map(|r| &r.vectors)
+        .filter(|v| v.over_acceptance)
+        .count();
+
+    for row in &rows {
+        // ---- default profile: accept => Ok, reject pin => Err ----
+        let mut variant_specs: Vec<(usize, String, Vec<u8>)> = Vec::new();
+        for (i, vector) in row.vectors.iter().enumerate() {
+            if !vector.spec_valid_accept() {
+                continue;
+            }
+            let bytes = hex_to_bytes(&vector.hex);
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                cddl_encoding_fidelity::variants(&bytes)
+            })) {
+                Ok(list) => {
+                    for (label, var_bytes) in list {
+                        variant_specs.push((i, label.to_string(), var_bytes));
+                    }
+                }
+                Err(_) => failures.push(format!(
+                    "{}: encoding-fidelity variants() PANICKED on accept vector {} — mint guarantees \
+                     definite-length minimal CBOR, so this is a harness/mutator bug, not a decoder \
+                     finding",
+                    row.id, vector.hex
+                )),
+            }
+        }
+        variant_tests_total += variant_specs.len();
+
+        let hdr_offset = if row.mode == "holder" { 2 } else { 0 };
+        let evidenced_majors: std::collections::BTreeSet<u8> = row
+            .vectors
+            .iter()
+            .filter(|v| v.spec_valid_accept())
+            .map(|v| header_major_class(hex_to_bytes(&v.hex)[hdr_offset] >> 5))
+            .collect();
+        let mut header_specs: Vec<(usize, String, Vec<u8>)> = Vec::new();
+        for (i, vector) in row.vectors.iter().enumerate() {
+            if !vector.spec_valid_accept() {
+                continue;
+            }
+            let bytes = hex_to_bytes(&vector.hex);
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                header_mutants(&bytes, hdr_offset, &evidenced_majors)
+            })) {
+                Ok(list) => {
+                    for (label, mut_bytes) in list {
+                        header_specs.push((i, label.to_string(), mut_bytes));
+                    }
+                }
+                Err(_) => failures.push(format!(
+                    "{}: header_mutants() PANICKED on accept vector {} (mode={}) — the mutator is a \
+                     pure byte transform over mint-guaranteed definite-minimal CBOR, so this is a \
+                     harness/mutator bug, not a decoder finding",
+                    row.id, vector.hex, row.mode
+                )),
+            }
+        }
+        header_tests_total += header_specs.len();
+
+        let out = root.join(format!("{}__default", foreign_scratch_ident(&row.id)));
+        let dgen = decode_replay_generate(&row.spec, &out, &[]);
+        if !dgen.status.success() {
+            failures.push(format!(
+                "{}: default-profile generation failed (an active catalog row must generate)\n{}",
+                row.id,
+                String::from_utf8_lossy(&dgen.stderr)
+            ));
+            let _ = std::fs::remove_dir_all(&out);
+            continue;
+        }
+        match decode_replay_run(
+            &out,
+            &row.type_name,
+            &row.vectors,
+            false,
+            &target_dir,
+            &variant_specs,
+            &header_specs,
+        ) {
+            (Some(results), combined) => {
+                if results.get(DOUBLED_LOCATION_HELPER_SELF_CHECK).copied() != Some(true) {
+                    failures.push(format!(
+                        "{}: replay helper self-check `{DOUBLED_LOCATION_HELPER_SELF_CHECK}` failed \
+                         — the doubled-location invariant harness regressed. Captured output:\n{combined}",
+                        row.id
+                    ));
+                }
+                rows_replayed += 1;
+                vectors_replayed += row.vectors.len();
+                for (i, vector) in row.vectors.iter().enumerate() {
+                    let hex = &vector.hex;
+                    let name = if vector.over_acceptance {
+                        format!("over_accept_{i}")
+                    } else if vector.accept {
+                        format!("accept_{i}")
+                    } else {
+                        format!("reject_{i}")
+                    };
+                    if vector.over_acceptance && results.contains_key(&name) {
+                        over_acceptance_tests_emitted += 1;
+                    }
+                    let passed = results.get(&name).copied().unwrap_or(false);
+                    if passed {
+                        if !vector.accept && vector.expect_err.is_some() {
+                            constraint_reason_asserts += 1;
+                        }
+                        continue;
+                    }
+                    if vector.over_acceptance {
+                        match classify_over_acceptance_failure(&combined, &name) {
+                            OverAcceptanceFailureKind::NowRejected => failures.push(format!(
+                                "{}: over-acceptance vector {hex} was REJECTED — the decoder no longer \
+                                 wrongly accepts this spec-INVALID CBOR (the fix landed): promote this \
+                                 vector to class=\"constraint\" with an expect_err, move the row id from \
+                                 EXPECTED_ENFORCE_OVERACCEPTS to EXPECTED_ENFORCE_YES in \
+                                 query_q4_directional.ts, update the ROADMAP finding, re-mint. Captured \
+                                 output:\n{combined}",
+                                row.id
+                            )),
+                            OverAcceptanceFailureKind::Unattributed => failures.push(format!(
+                                "{}: over-acceptance vector {hex} failed but emitted no known marker — \
+                                 unexpected. Captured output:\n{combined}",
+                                row.id
+                            )),
+                        }
+                    } else if vector.accept {
+                        failures.push(format!(
+                            "{}: default decode REJECTED a spec-valid accept vector {hex} — the \
+                             decoder is over-strict (the exact class this gate exists to catch)",
+                            row.id
+                        ));
+                    } else if vector.expect_err.is_some() {
+                        let expect = vector.expect_err.as_deref().unwrap_or("");
+                        match classify_constraint_failure(&combined, &name) {
+                            ConstraintFailureKind::DecodedOk => failures.push(format!(
+                                "{}: constraint vector {hex} DECODED Ok — the generated decoder does \
+                                 NOT enforce the constraint (enforcement gap); expected rejection \
+                                 whose Display contains {expect:?}",
+                                row.id
+                            )),
+                            ConstraintFailureKind::WrongReason => failures.push(format!(
+                                "{}: constraint vector {hex} was rejected for the WRONG reason — its \
+                                 error Display did NOT contain the pinned {expect:?}; either re-author \
+                                 the catalog `expect_err` (after confirming the message genuinely \
+                                 names the violated constraint) or this is a real wrong-reason \
+                                 rejection to report. Captured Display in the run output below:\n{combined}",
+                                row.id
+                            )),
+                            ConstraintFailureKind::DoubledLocation => {
+                                if doubled_location_skip
+                                    .contains_key(&(row.id.as_str(), name.as_str()))
+                                {
+                                    doubled_location_skip_still_failing
+                                        .insert((row.id.clone(), name.clone()));
+                                } else {
+                                    failures.push(format!(
+                                        "{}: constraint vector {hex} rejected with an adjacent-duplicate \
+                                         error location segment — generator double-annotation regression; \
+                                         triage: DOUBLED_LOCATION_SKIP. Captured output:\n{combined}",
+                                        row.id
+                                    ));
+                                }
+                            }
+                            ConstraintFailureKind::Unattributed => failures.push(format!(
+                                "{}: constraint vector {hex} failed its reason assert but emitted \
+                                 no known marker — unexpected; full output:\n{combined}",
+                                row.id
+                            )),
+                        }
+                    } else {
+                        failures.push(format!(
+                            "{}: reject pin {hex} now DECODES Ok — bug apparently fixed or decoder \
+                             loosened; re-triage/unpin the catalog row (re-bless protection)",
+                            row.id
+                        ));
+                    }
+                }
+                // ---- encoding-variant results (default leg only) ----
+                for (i, label, _) in &variant_specs {
+                    let name = format!("accept_{i}_var_{label}");
+                    let orig_hex = &row.vectors[*i].hex;
+                    let passed = results.get(&name).copied().unwrap_or(false);
+                    let skipped =
+                        encoding_variant_skip.contains_key(&(row.id.as_str(), label.as_str()));
+                    if passed {
+                        continue;
+                    }
+                    if skipped {
+                        variant_skip_still_failing.insert((row.id.clone(), label.clone()));
+                        continue;
+                    }
+                    match classify_variant_failure(&combined, &name) {
+                        VariantFailureKind::Rejected => failures.push(format!(
+                            "{}: encoding variant `{label}` of accept vector {orig_hex} was REJECTED by \
+                             the default decoder — a spec-EQUAL re-encoding (indefinite framing / \
+                             non-minimal width / chunked string / reversed map) the decoder is \
+                             over-strict about (the motivating class). If it is a known decoder gap, \
+                             ledger it in cddl-matrix/ROADMAP.md § findings and add ({}, {label}) to \
+                             ENCODING_VARIANT_SKIP. Captured output:\n{combined}",
+                            row.id, row.id
+                        )),
+                        VariantFailureKind::ValueMismatch => failures.push(format!(
+                            "{}: encoding variant `{label}` of accept vector {orig_hex} decoded to a \
+                             DIFFERENT value than the original (its default re-encoding differs) — a \
+                             mis-decode of a spec-equal re-encoding. Captured output:\n{combined}",
+                            row.id
+                        )),
+                        VariantFailureKind::OrigDecodeFailed => failures.push(format!(
+                            "{}: the ORIGINAL accept vector {orig_hex} failed to decode inside variant \
+                             test `{name}` — unexpected (it is an accept vector). Captured output:\n{combined}",
+                            row.id
+                        )),
+                        VariantFailureKind::Unattributed => failures.push(format!(
+                            "{}: encoding variant test `{name}` failed but emitted no known marker — \
+                             unexpected. Captured output:\n{combined}",
+                            row.id
+                        )),
+                    }
+                }
+                // ---- header-mutation results (default leg only) ----
+                for (i, label, _) in &header_specs {
+                    let name = format!("accept_{i}_hdr_{label}");
+                    let orig_hex = &row.vectors[*i].hex;
+                    let passed = results.get(&name).copied().unwrap_or(false);
+                    if passed {
+                        continue;
+                    }
+                    match classify_header_mutant_failure(&combined, &name) {
+                        HeaderMutantFailureKind::DecodedOk => {
+                            if header_mutant_accept_skip
+                                .contains_key(&(row.id.as_str(), label.as_str()))
+                            {
+                                header_accept_skip_still_failing
+                                    .insert((row.id.clone(), label.clone()));
+                            } else {
+                                failures.push(format!(
+                                    "{}: header mutant `{label}` of accept vector {orig_hex} DECODED \
+                                     Ok — the header-mutated bytes were accepted, and flips landing \
+                                     on a major the row's own accept vectors evidence are ALREADY \
+                                     skipped at derivation, so this acceptance is unevidenced. If the \
+                                     row's spec genuinely accepts the bytes anyway (an `any`-typed \
+                                     row, a choice arm whose major the mint never sampled), ledger \
+                                     ({}, {label}) in HEADER_MUTANT_ACCEPT_SKIP with a reason naming \
+                                     the accepting spec arm. If you CANNOT justify it from the spec, \
+                                     this is a real OVER-ACCEPTANCE finding — do NOT ledger it; report \
+                                     it. (A `trunc_head` mutant here is ALWAYS a finding: it is \
+                                     ill-formed by construction.) Captured output:\n{combined}",
+                                    row.id, row.id
+                                ));
+                            }
+                        }
+                        HeaderMutantFailureKind::NoLocation => {
+                            if header_mutant_location_skip
+                                .contains_key(&(row.id.as_str(), label.as_str()))
+                            {
+                                header_location_skip_still_failing
+                                    .insert((row.id.clone(), label.clone()));
+                            } else {
+                                failures.push(format!(
+                                    "{}: header mutant `{label}` of accept vector {orig_hex} was \
+                                     rejected but the error Display carries NO location naming the \
+                                     type (`failed in {ty}`). Header scaffolding (records, \
+                                     embedded/plain-groups) and newtype-wrapper container reads are \
+                                     all annotated now, so this is a real annotation regression — \
+                                     investigate before ledgering. The only known-legitimate \
+                                     locationless path is `from_cbor_bytes` `TrailingData` (a mutant \
+                                     that decodes the item Ok and trips only the buffer-length \
+                                     check); if that is genuinely what happened, ledger ({}, {label}) \
+                                     in HEADER_MUTANT_LOCATION_SKIP naming that path. \
+                                     Captured output:\n{combined}",
+                                    row.id,
+                                    row.id,
+                                    ty = row.type_name
+                                ));
+                            }
+                        }
+                        HeaderMutantFailureKind::DoubledLocation => {
+                            if doubled_location_skip.contains_key(&(row.id.as_str(), name.as_str()))
+                            {
+                                doubled_location_skip_still_failing
+                                    .insert((row.id.clone(), name.clone()));
+                            } else {
+                                failures.push(format!(
+                                    "{}: header mutant `{label}` of accept vector {orig_hex} rejected \
+                                     with an adjacent-duplicate error location segment — generator \
+                                     double-annotation regression; triage: DOUBLED_LOCATION_SKIP. \
+                                     Captured output:\n{combined}",
+                                    row.id
+                                ));
+                            }
+                        }
+                        HeaderMutantFailureKind::Unattributed => failures.push(format!(
+                            "{}: header mutant test `{name}` failed but emitted no known marker — \
+                             unexpected. Captured output:\n{combined}",
+                            row.id
+                        )),
+                    }
+                }
+            }
+            (None, combined) => {
+                failures.push(format!(
+                    "{}: default-profile crate did not compile / produced no replay results\n{}",
+                    row.id, combined
+                ));
+            }
+        }
+        let _ = std::fs::remove_dir_all(&out);
+
+        // ---- preserve profile: SPEC-VALID ACCEPT vectors only, decode-Ok AND byte-identity ----
+        let accepts: Vec<ReplayVector> = row
+            .vectors
+            .iter()
+            .filter(|v| v.spec_valid_accept())
+            .cloned()
+            .collect();
+        let skip_reason = preserve_skip.get(row.id.as_str()).copied();
+        let mismatch_reason = expected_mismatch.get(row.id.as_str()).copied();
+
+        let pout = root.join(format!("{}__preserve", foreign_scratch_ident(&row.id)));
+        let pgen = decode_replay_generate(&row.spec, &pout, &["--preserve-encodings=true"]);
+        let preserve_ok: bool;
+        if !pgen.status.success() {
+            preserve_ok = false;
+            if skip_reason.is_none() {
+                failures.push(format!(
+                    "{}: preserve-profile generation failed and the row is NOT on PRESERVE_SKIP — a \
+                     finding: either a real preserve generation regression, or add it to \
+                     PRESERVE_SKIP with an honest reason\n{}",
+                    row.id,
+                    String::from_utf8_lossy(&pgen.stderr)
+                ));
+            }
+        } else {
+            match decode_replay_run(&pout, &row.type_name, &accepts, true, &target_dir, &[], &[]) {
+                (Some(results), combined) => {
+                    if results.get(DOUBLED_LOCATION_HELPER_SELF_CHECK).copied() != Some(true) {
+                        preserve_ok = false;
+                        failures.push(format!(
+                            "{}: preserve replay helper self-check `{DOUBLED_LOCATION_HELPER_SELF_CHECK}` \
+                             failed — the doubled-location invariant harness regressed. Captured \
+                             output:\n{combined}",
+                            row.id
+                        ));
+                    } else {
+                        let all_pass = results.values().all(|&p| p);
+                        preserve_ok = all_pass;
+                        if !all_pass {
+                            let byte_mismatch = combined.contains("PRESERVE_BYTE_MISMATCH");
+                            let decode_failed = combined.contains("PRESERVE_DECODE_FAILED");
+                            if mismatch_reason.is_none() && skip_reason.is_none() {
+                                let kind = if byte_mismatch {
+                                    "re-encodes to DIFFERENT bytes (decodes Ok but `to_cbor_bytes()` != \
+                                 input — the preserve byte-identity contract is broken)"
+                                } else if decode_failed {
+                                    "fails to DECODE an accept vector under preserve"
+                                } else {
+                                    "fails preserve replay for an unrecognized reason"
+                                };
+                                failures.push(format!(
+                                "{}: preserve profile {kind} — a finding: report it and pin with a \
+                                 reason (PRESERVE_SKIP for gen/compile, EXPECTED_MISMATCH for \
+                                 byte-identity)\n{combined}",
+                                row.id
+                            ));
+                            }
+                        }
+                    }
+                }
+                (None, combined) => {
+                    preserve_ok = false;
+                    if skip_reason.is_none() {
+                        failures.push(format!(
+                            "{}: preserve-profile crate did not compile and the row is NOT on \
+                             PRESERVE_SKIP — a finding: fix it or add it to PRESERVE_SKIP with an \
+                             honest reason\n{combined}",
+                            row.id
+                        ));
+                    }
+                }
+            }
+        }
+        if preserve_ok && skip_reason.is_some() {
+            failures.push(format!(
+                "{}: on PRESERVE_SKIP but now generates + replays cleanly under preserve — the gap \
+                 closed; remove it from PRESERVE_SKIP",
+                row.id
+            ));
+        }
+        if preserve_ok && mismatch_reason.is_some() {
+            failures.push(format!(
+                "{}: on EXPECTED_MISMATCH but now re-encodes byte-identically under preserve — \
+                 remove it from EXPECTED_MISMATCH",
+                row.id
+            ));
+        }
+        let _ = std::fs::remove_dir_all(&pout);
+    }
+
+    let _ = std::fs::remove_dir_all(&root);
+
+    for (id, label, _reason) in ENCODING_VARIANT_SKIP {
+        if !variant_skip_still_failing.contains(&(id.to_string(), label.to_string())) {
+            failures.push(format!(
+                "ENCODING_VARIANT_SKIP names ({id}, {label}) but that variant no longer FAILS — the \
+                 gap closed (or the row/label no longer emits a variant test); remove the entry \
+                 (stale pin)"
+            ));
+        }
+    }
+    for (id, label, _reason) in DOUBLED_LOCATION_SKIP {
+        if !doubled_location_skip_still_failing.contains(&(id.to_string(), label.to_string())) {
+            failures.push(format!(
+                "DOUBLED_LOCATION_SKIP names ({id}, {label}) but that replay test no longer rejects \
+                 with an adjacent-duplicate location segment — the double-annotation gap closed (or \
+                 the row/test no longer emits); remove the entry (stale pin)"
+            ));
+        }
+    }
+    for (id, label, _reason) in HEADER_MUTANT_ACCEPT_SKIP {
+        if !header_accept_skip_still_failing.contains(&(id.to_string(), label.to_string())) {
+            failures.push(format!(
+                "HEADER_MUTANT_ACCEPT_SKIP names ({id}, {label}) but that mutant no longer DECODES Ok \
+                 — the row stopped accepting the mutated bytes (or no longer emits that mutant); \
+                 remove the entry (stale pin)"
+            ));
+        }
+    }
+    for (id, label, _reason) in HEADER_MUTANT_LOCATION_SKIP {
+        if !header_location_skip_still_failing.contains(&(id.to_string(), label.to_string())) {
+            failures.push(format!(
+                "HEADER_MUTANT_LOCATION_SKIP names ({id}, {label}) but that mutant no longer rejects \
+                 WITHOUT a location — the annotation gap closed (or it no longer emits that mutant); \
+                 remove the entry (stale pin)"
+            ));
+        }
+    }
+
+    // Vacuity floors from the first full run's actuals (~10% headroom below each measured count, so
+    // ordinary corpus churn doesn't false-fail while a collapsed parse or a silently-degraded generation
+    // loop that replays almost nothing still fails the gate). At HEAD: 124 active rows, 1064 vectors.
+    assert!(
+        rows_replayed >= 111,
+        "only {rows_replayed} catalog rows were replayed (expected >= 111) — the corpus or the \
+         generation loop shrank"
+    );
+    assert!(
+        vectors_replayed >= 955,
+        "only {vectors_replayed} vectors were replayed (expected >= 955) — the corpus or the \
+         generation loop shrank"
+    );
+    // Over-acceptance completeness: the emitted `over_accept_*` test count must equal the catalog's
+    // class="over-acceptance" vector count (0 at HEAD — the machinery stays armed for the first corpus
+    // over-acceptance instance). A mismatch means an over-acceptance vector fell through to the plain
+    // accept arm (or a stale count).
+    assert_eq!(
+        over_acceptance_tests_emitted, over_acceptance_catalog_total,
+        "emitted {over_acceptance_tests_emitted} over_accept_* test(s) but the catalog holds \
+         {over_acceptance_catalog_total} class=\"over-acceptance\" vector(s) — the over-acceptance \
+         emission arm regressed (a vector mislabeled as a plain accept, or the catalog parse drifted)"
+    );
+    // The corpus carries no `class="constraint"` vectors at HEAD (the enforcement axis is matrix-owned),
+    // so there is no constraint-reason floor: `constraint_reason_asserts` is 0 by construction. Reference
+    // it so the counter isn't dead code if the corpus ever grows constraint vectors.
+    let _ = constraint_reason_asserts;
+    // Variant-test floor: the DEFAULT-leg encoding-variant leg must actually emit its tests. Floor set
+    // ~10% under the measured count (FLOOR_VARIANT, pinned above) so ordinary corpus churn doesn't
+    // false-fail while a mutator that returned empty (or a broken variant loop) that emits almost
+    // nothing still trips the gate.
+    assert!(
+        variant_tests_total >= FLOOR_VARIANT,
+        "only {variant_tests_total} encoding-variant tests were emitted (expected >= {FLOOR_VARIANT}) \
+         — the variant leg looks disabled or the corpus lost its accept vectors"
+    );
+    // Header-mutant floor: the DEFAULT-leg header-mutation leg must actually emit its tests (same
+    // ~10%-headroom pin, FLOOR_HEADER above).
+    assert!(
+        header_tests_total >= FLOOR_HEADER,
+        "only {header_tests_total} header-mutation tests were emitted (expected >= {FLOOR_HEADER}) — \
+         the header-mutation leg looks disabled or the corpus lost its accept vectors"
+    );
+    assert!(
+        failures.is_empty(),
+        "corpus decode-conformance replay found {} problem(s):\n\n{}",
         failures.len(),
         failures.join("\n\n")
     );
