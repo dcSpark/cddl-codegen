@@ -41,8 +41,8 @@ header mutants asserting an error location that names the decoding type), and an
 over-acceptance promotion flow whose both branches have fired. All of that is *current state*,
 documented in `tests/README.md` (suite-side; § "Decode-direction conformance" for the evidence
 contract and its validation layers) and `cddl-matrix/README.md` (probe-side; § "Directional support
-evidence"). What remains on this axis lives in the sections below (composition depth, the fuzzer
-escalations, the recur-first residuals), not here.
+evidence"). What remains on this axis lives in the sections below (the json/wasm decode surfaces, the
+fuzzer escalations, the recur-first residuals), not here.
 
 ## Pending maintainer action
 
@@ -115,27 +115,16 @@ escalations, the recur-first residuals), not here.
    - **Real-world corpus differential** (see `draft/testing-recommendations/RECOMMENDATIONS.md`):
      synthetic breadth vs real-world depth — recombination does not replace it.
 
-2. **Extend the decode-conformance corpus along the composition-depth axis.** Two sibling axes are
-   already delivered by the replay gate's default leg, both deriving from each accept vector's bytes
-   via pure-byte transforms harness-side, no oracle: the encoding-variant axis — spec-EQUAL
-   re-encodings (indefinite framing / non-minimal widths / chunked strings / reversed maps) via the
-   shipped `cddl_encoding_fidelity::variants` mutator — and the header-mutation reject axis —
-   wrong-major-type and truncated-header mutants (`header_mutants`) asserting decode-Err AND an error
-   location naming the rule (`failed in {type_name}`), the annotation analogue of the
-   `class="constraint"` rejection-reason (`expect_err`) pin, lifting the per-type annotation contract
-   from fixture granularity (the `error_annotation_*` tests) to catalog breadth. The remaining depth
-   axis:
-   - **Composition depth (low).** The shipped decode-direction harness (`tests/README.md`
-     § "Decode-direction conformance") keys its obligation set on the matrix's minimal
-     per-construct examples — breadth, not depth. The corpus fixtures (`tests/corpus/*.cddl`) add
-     the composition depth those minimal examples lack; extending the harness to mint vectors for
-     them should go through the corpus projection (so coverage stays mechanically checkable), not
-     a hand-picked fixture list. json/wasm decode surfaces are likewise unminted. The breadth
-     layer's first sweep caught two decoder bugs (the map-rep group-choice key-drop miscompile —
-     since fixed, pinned by the row's accept vectors — and inline-group occurrence narrowing —
-     since fixed as a graceful rejection, pinned by projected
-     `contain.occurrence-target.grpent.inline_group.{plus_array,optional_array,bounded_array,zero_map}`
-     reject rows and unsupported-row decode catalog absence), so depth is not the current bottleneck.
+2. **Mint decode-conformance vectors for the json and wasm decode surfaces.** The decode-direction
+   harness (`tests/README.md` § "Decode-direction conformance") mints spec-derived vectors for the
+   RUST decoder along two mechanically-projected obligation sets — the matrix's per-construct breadth
+   (replayed by `decode_conformance_replay`) and the corpus fixtures' composition depth (replayed by
+   `corpus_decode_replay`). The `--json-serde-derives` and `--wasm` decode entry points have no such
+   obligation minted, so a json/wasm-boundary decoder that is over-strict about spec-valid input the
+   rust decoder already accepts would pass every current gate. Route any minting for them through the
+   same projection machinery (the matrix rows / corpus glob × the shared rule enumerator) so coverage
+   stays mechanically checkable rather than a hand-picked list, reusing the replay legs the two
+   existing gates already share.
 
 ## Standing-system residuals (recur-first)
 
@@ -178,6 +167,38 @@ dead loses the lesson.
   snapshot loudly. Same recur-first policy as the invariant-softening/vacuity design rules below;
   meanwhile the working rule for new rejection work is the float_table_key header comment: check
   which existing reject fixtures the new guard can reach, and respell or reason-assert them.
+- **Armed-but-idle harness arms (empty-at-HEAD ledgers, zero-count vector classes, per-row-kind
+  gate branches) have untested first-use paths — three same-review instances recorded, no
+  machinery yet.** The decode-conformance family deliberately keeps machinery armed for residents
+  that don't exist at HEAD (the over-acceptance flow, the exempt ledgers, the stale guards), so a
+  scoping or preservation bug in such an arm is invisible to every gate until the first real
+  resident arrives — and then fires as a false red or a silent data loss. Three instances, all in
+  the corpus-decode-leg delivery, all caught by in-session diff review and none by a gate, all
+  since fixed: (1) the matrix arm-floor stale-exempt guard iterated a SHARED exempt ledger
+  against only the MATRIX uncovered set, so the first corpus-keyed entry — which the corpus
+  error messages direct users to add — would have falsely failed the matrix gate (fixed:
+  per-catalog ledgers, `CORPUS_DECODE_FLOOR_ARM_EXEMPT`, each stale-guarded against its own
+  set); (2) both mints' zero-candidates pin guard ignored over-acceptance pins (zero committed
+  at HEAD), so the first ruby-generation gap on a row carrying one would have silently discarded
+  a pin that must survive re-mints VERBATIM (fixed in both mints, with the
+  don't-lean-on-`source="hand"` comment); (3) the corpus drift half skipped the
+  example-reconstruction staleness check for PINNED rows, leaving a fixture edit that invalidates
+  a pin's justification green until the next re-mint (fixed: pinned rows check the example half).
+  The shipped exemplar of the fix pattern is the drift gate's § 8 synthetic all-fields sample —
+  but it covers only the writer/reader schema, not ledgers, mint buckets, or per-row-kind gate
+  branches. The mechanical layer on the NEXT instance (especially one that survives review):
+  extend the drift gate's self-check section with synthetic residents and synthetic
+  perturbations — a fake entry per empty-at-HEAD ledger asserting exactly its own guard (and no
+  sibling's) reacts; a pure preservation check of the mint bucket logic over a synthetic
+  prior row carrying every vector class; and a perturbation sweep asserting each committed field's
+  drift flips the gate red for each row KIND (active and pinned). Meanwhile the working rule:
+  an armed-but-idle arm lands with its first-use self-check in the same change, or the review
+  explicitly walks the empty arm. Related, smaller catch from the same review with its own
+  trivial layer: a machine-written catalog `pinned_reason` cited a run artifact ("see mint
+  log") — catalog prose is outside `lint_doc_citations`' scan surface, so non-durable citations
+  there rot silently; fixed by wording review (the mint now emits self-contained tallies + a
+  durable ledger pointer), and extending that lint's scan to catalog reason strings is the
+  mechanical layer if it recurs.
 - **Doubled doc-comment markers in emitted docs — one proven instance recorded, no machinery
   yet.** The `codegen` builder fork prefixes EVERY newline-separated line of a doc string with
   the marker itself, so an emission-site string embedding a literal marker to "continue" a
@@ -343,6 +364,16 @@ dead loses the lesson.
   (`multifile_matrix_compiles` measured ~35 s cold / ~30 s warm at 43 cells; 62 at HEAD). If wall-time
   bites: batch cells into fewer crates, adopt `cargo-nextest` as the suite runner, or gate only
   changed cells.
+- **Registry-fetch transients in nested-cargo cells.** The same nested-cargo gates as the
+  wall-clock watch above (`feature_corpus_compiles`, `wasm_matrix_compiles`,
+  `multifile_matrix_compiles`) each resolve `cbor_event` from crates.io per temp cell, so a flaky
+  network/proxy fails otherwise-green local-tier runs with `unable to update registry crates-io`
+  on a DIFFERENT cell each run (three consecutive local runs, 2026-07-12, all this signature; every
+  affected gate green in isolation). The shifting-cell + registry-error signature distinguishes it
+  from a real red cell at a glance; isolated re-run of the named gate is the confirm. If the rate
+  bites, the mechanical hardening is removing the per-cell network dependency: run nested
+  `cargo check`/`test` with `--offline` after one warm-up fetch (the shared `CARGO_TARGET_DIR` and
+  cargo home already hold the deps), or vendor the handful of generated-crate deps.
 - **Full-suite flake, now attributed: `acquire_scratch_lock_serializes` — recurrence needs the
   errno.** The `test` gate failed with exit 101 twice (2026-07-06 unattributed — output truncated
   before the `failures:` list; 2026-07-08 captured in full): the second sighting names

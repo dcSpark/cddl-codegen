@@ -127,9 +127,9 @@ const enforceGreenRowCount = enforceGreenRows.size;
 // --- check.ts registry: the manual (non-stub) #[ignore]d gate roll-call ---------------------------
 const ignoredGates = REGISTRY.filter(g => g.kind !== "stub" && g.ignoredTest).map(g => g.ignoredTest!);
 
-// English count word for 0–12, numeral above (matches the hand prose's "the five gates" spelling).
-const WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
-function countWord(n: number): string { return n >= 0 && n <= 12 ? WORDS[n]! : String(n); }
+// English count word for 0–13, numeral above (matches the hand prose's "the five gates" spelling).
+const WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen"];
+function countWord(n: number): string { return n >= 0 && n < WORDS.length ? WORDS[n]! : String(n); }
 
 // --- the spans ------------------------------------------------------------------------------------
 interface Span { file: string; id: string; render: () => string }

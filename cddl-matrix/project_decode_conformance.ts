@@ -76,6 +76,38 @@
  *      left to § 2 so the drift is not double-reported. A `FAILED (N)` clause is count-checked only;
  *      the replay gate owns whether decode actually succeeds.
  *
+ * CORPUS half (composition-depth leg) — the same contract re-derived against the sibling
+ * `tests/decode_conformance/corpus_catalog.toml`, whose obligation set is `tests/corpus/*.cddl` ×
+ * the SHARED rule enumerator (lib.ts `enumerateCorpusRules` — never a hand list; a fixture rule
+ * name colliding with a prelude name fails loud here AND at the mint):
+ *   - Completeness (§ 1): every enumerated (fixture, rule) has a catalog row; each row carries
+ *     EITHER >=1 vector XOR a `pinned_reason`, plus `fixture`/`rule` provenance matching its id.
+ *   - Spec-reconstruction staleness (§ 2): an ACTIVE row's committed `spec`/`example` must
+ *     byte-equal the reconstruction from the CURRENT fixture via the shared enumerator + closure
+ *     builder (`corpusProbeSpec`/`corpusClosureBody`) — a drifted fixture reads "re-mint". A
+ *     PINNED row's `example` is checked the same way (a fixture edit can invalidate the pin's
+ *     justification); pinned rows carry no `spec`.
+ *   - Shape (§ 3): every active corpus row is HOLDER mode (`type_name = "ProbeHolder"`, spec
+ *     starts with the holder prefix); every vector begins with a major-4 array head + literal-0
+ *     first element (`8200…`, or `8N00…` for a spliced bare group).
+ *   - WHOLE-ITEM f9 ban (§ 3 cont.): an accept vector must not contain an f9 half-precision head
+ *     ANYWHERE in its CBOR item tree (`cborContainsF9` — corpus vectors are composites, so a
+ *     nested f9 is the same green-but-corrupted evidence the matrix head-only ban catches; prune
+ *     both bans together when a fixed cbor_event ships).
+ *   - Arm-coverage floor trio (§ 7): CORPUS_EXPECTED_FLOOR_SCOPE decay pin (resolver fires via
+ *     `corpusArmExample`, target rule first), per-class coverage floor, and the stale-exempt
+ *     guard over CORPUS_DECODE_FLOOR_ARM_EXEMPT (lib.ts — a SEPARATE ledger from the matrix one:
+ *     each stale-guard iterates its own uncovered set, so cross-ledger keys would falsely read
+ *     stale).
+ *   - Writer↔reader identity (§ 8): compose(parse(corpus_catalog.toml), CORPUS_CATALOG_INTRO)
+ *     byte-identical to the committed file; the synthetic all-fields sample covers the
+ *     fixture/rule fields on both active and pinned rows.
+ *   - Vacuity floors (§ 5): >= 55 fixtures enumerated, >= 120 obligation rows.
+ *   - Self-checks: the shared enumerator/closure builder and the f9 walker are exercised against
+ *     synthetic samples (strings with escaped quotes/semicolons, comments, generics, hyphens;
+ *     hand-derived nested-f9 bytes both caught and clean) so a regression in the ONE shared
+ *     implementation is caught here regardless of what the committed corpus exercises.
+ *
  * This script NEVER writes (there is nothing to project/rewrite in v1), so the DEFAULT run IS the check
  * — no `--check` flag is needed. A `--check` arg is accepted and ignored for symmetry with the
  * projection family (`--check` = CI drift mode elsewhere). Exit nonzero with a per-problem list on any
@@ -84,9 +116,10 @@
  * Run from cddl-matrix/:
  *   bun run project_decode_conformance.ts   -> the drift gate (default)
  */
-import { readFileSync } from "node:fs";
-import type { CatalogRow } from "./lib";
-import { DECODE_FLOOR_ARM_EXEMPT, composeCatalog, parseCatalogContent, resolveChoiceArmClasses, vectorShapeClass } from "./lib";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import type { CatalogRow, CorpusRule } from "./lib";
+import { CORPUS_CATALOG_INTRO, CORPUS_DECODE_FLOOR_ARM_EXEMPT, CORPUS_HOLDER_RULE, DECODE_FLOOR_ARM_EXEMPT, PRELUDE_NAMES, cborContainsF9, composeCatalog, corpusClosureBody, corpusProbeSpec, corpusArmExample, dependencyClosure, enumerateCorpusRules, parseCatalogContent, resolveChoiceArmClasses, vectorShapeClass } from "./lib";
 
 const HERE = import.meta.dir;
 const CATALOG_REL = "tests/decode_conformance/catalog.toml";
@@ -137,7 +170,7 @@ const supported = new Set(
 // --- catalog.toml ---------------------------------------------------------------------------------
 interface CatVector { hex?: unknown; source?: unknown; expect?: unknown; class?: unknown; reason?: unknown; expect_err?: unknown }
 interface CatRow {
-  id?: unknown; axis?: unknown; example?: unknown; pinned_reason?: unknown;
+  id?: unknown; axis?: unknown; example?: unknown; fixture?: unknown; rule?: unknown; pinned_reason?: unknown;
   spec?: unknown; mode?: unknown; type_name?: unknown; vector?: CatVector[];
 }
 const catalogText = readFileSync(`${HERE}/../${CATALOG_REL}`, "utf8");
@@ -473,6 +506,18 @@ if (supported.size < 80)
         { hex: "820007", source: "hand", expect: "reject", class: "constraint", reason: "synthetic holder constraint", expect_err: "too large" },
       ],
     },
+    // A corpus-shaped row exercising the fixture/rule provenance fields (emitted only when present, so
+    // catalog.toml's bytes are unchanged) through parse∘compose. Both active and pinned corpus rows carry
+    // them; this active one plus the pinned one below cover both branches.
+    {
+      id: "synthetic-fixture.rule_name", axis: "corpus", example: "rule_name = uint", fixture: "synthetic-fixture", rule: "rule_name",
+      mode: "holder", spec: "__probe_holder = [0, rule_name]\nrule_name = uint", type_name: "ProbeHolder",
+      vectors: [{ hex: "820000", source: "spec", expect: "accept" }],
+    },
+    {
+      id: "synthetic-fixture.pinned_rule", axis: "corpus", example: "pinned_rule<t> = [t]", fixture: "synthetic-fixture", rule: "pinned_rule",
+      pinned_reason: "synthetic corpus pin — generic rule", vectors: [],
+    },
   ];
   const back = parseCatalogContent(composeCatalog(sample));
   const vKey = (v: { hex: string }) => v.hex;
@@ -484,7 +529,7 @@ if (supported.size < 80)
   for (const row of sample) {
     const got = back.get(row.id);
     if (!got) { problems.push(`catalog synthetic roundtrip: row \`${row.id}\` vanished through parse∘compose — the writer dropped it`); continue; }
-    for (const f of ["axis", "example", "pinned_reason", "spec", "mode", "type_name"] as const)
+    for (const f of ["axis", "example", "fixture", "rule", "pinned_reason", "spec", "mode", "type_name"] as const)
       if (row[f] !== got[f])
         problems.push(`catalog synthetic roundtrip: row \`${row.id}\` field \`${f}\` did not survive parse∘compose (${JSON.stringify(row[f])} -> ${JSON.stringify(got[f])}) — the writer dropped/mangled it`);
     const wantV = [...row.vectors].sort((p, q) => (vKey(p) < vKey(q) ? -1 : 1));
@@ -596,6 +641,269 @@ for (const a of supportedAnnotations) {
   if (problem !== null) problems.push(problem);
 }
 
+// ==================================================================================================
+// CORPUS decode-conformance half (composition-depth leg) — mirrors §§ 1-9 where applicable against the
+// sibling `tests/decode_conformance/corpus_catalog.toml` and the CURRENT tests/corpus/*.cddl fixtures.
+// The obligation set is glob × the SHARED rule enumerator (never a hand list); every active row is
+// HOLDER mode. The matrix sections above are untouched — this is an independent block feeding the same
+// `problems` array and the same final report/exit.
+// ==================================================================================================
+
+// The EXACT (corpus row id -> sorted arm classes) set the shared resolver fires on at HEAD (decay pin,
+// the matrix § 7 EXPECTED_FLOOR_SCOPE pattern): a resolver change that silently widens/narrows the
+// in-scope set fails got/want. Classes are majors-0/1-merged ("int"). Pinned from the mint's actuals.
+const CORPUS_EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
+  "c_style_enum.fixed_enum": ["int"],
+  "c_style_enum_map_key.fixed_enum": ["int"],
+  "c_style_enum_newtype.fixed_enum": ["int"],
+  "nullable.maybe_text": ["3", "7"],
+  "nullable_nested.data_enum": ["3", "int"],
+  "nullable_nested.maybe_coll": ["7"],   // `nums_arr / null` — the array arm is exempt (a named collection), null → 7
+  "nullable_nested.maybe_denum": ["7"],  // `data_enum / null` — the enum arm is exempt (a named choice), null → 7
+  "nullable_nested.maybe_uint": ["7", "int"],
+  "table_enum_key.ikey": ["int"],
+  "type_choice.type_choice": ["2", "3", "int"],
+};
+const CORPUS_MIN_FIXTURES = 55;   // ≥ 55 corpus fixtures enumerated (adjust to actuals; 60 at HEAD)
+const CORPUS_MIN_ROWS = 120;      // ≥ 120 (fixture, rule) obligation rows (≈ 134 at HEAD)
+
+const CORPUS_CATALOG_REL = "tests/decode_conformance/corpus_catalog.toml";
+const CORPUS_DIR = `${HERE}/../tests/corpus`;
+const corpusProblems: string[] = [];
+
+// --- self-checks for the shared enumerator / closure builder / f9 walker (mirrors the § 8/§ 9 pattern):
+// a synthetic multi-rule sample exercising strings, comments, generics, and hyphens, so a regression in
+// the ONE shared implementation the mint and this gate both call is caught here regardless of what the
+// committed corpus happens to exercise.
+{
+  const selfProblems: string[] = [];
+  const SAMPLE = [
+    "; leading file comment — dropped (spans start at the first head)",
+    'lit-holder = [k: "he\\"llo; not a comment", g: gen<uint>]  ; @name Foo',
+    "gen<t> = [t]",
+    "unref = uint",  // defined but never referenced from lit-holder → not in its closure
+  ].join("\n");
+  const rules = enumerateCorpusRules(SAMPLE);
+  const names = rules.map(r => `${r.name}${r.generic ? "<>" : ""}`).join(",");
+  if (names !== "lit-holder,gen<>,unref")
+    selfProblems.push(`enumerator names/generic-flags drifted: got ${JSON.stringify(names)} (want "lit-holder,gen<>,unref")`);
+  // The `; not a comment` inside the string, and the `-` in `lit-holder`, must not corrupt spans/refs.
+  const closure = dependencyClosure("lit-holder", rules).map(r => r.name).join(",");
+  if (closure !== "lit-holder,gen")  // fixture order; `unref` excluded (never referenced), string content ignored
+    selfProblems.push(`closure drifted: got ${JSON.stringify(closure)} (want "lit-holder,gen" — string content must not add a ref, unref must be excluded)`);
+  const hx = (s: string) => Uint8Array.from(Buffer.from(s, "hex"));
+  if (cborContainsF9(hx("820080")))                     selfProblems.push("f9 walker false-positive on 820080 ([0,[]])");
+  if (!cborContainsF9(hx("8200f94200")))                selfProblems.push("f9 walker missed a top-level-item f9 (8200f94200)");
+  if (!cborContainsF9(hx("82008201f94200")))            selfProblems.push("f9 walker missed a NESTED f9 (82008201f94200)");
+  if (cborContainsF9(hx("43f94200")))                   selfProblems.push("f9 walker false-positive on an f9 byte inside a bytestring payload (43f94200)");
+  if (cborContainsF9(hx("8200fb4008000000000000")))     selfProblems.push("f9 walker false-positive on an f64 (fb…)");
+  for (const p of selfProblems) corpusProblems.push(`corpus enumerator/closure/walker self-test: ${p}`);
+}
+
+// --- enumerate the CURRENT fixtures (the obligation-set source of truth) --------------------------
+interface CorpusEnumRow { fixture: string; rule: CorpusRule; allRules: CorpusRule[] }
+const corpusEnum = new Map<string, CorpusEnumRow>();   // id -> enumeration
+const corpusFixtureStems = new Set<string>();
+{
+  const files = existsSync(CORPUS_DIR) ? readdirSync(CORPUS_DIR).filter(f => f.endsWith(".cddl")).sort() : [];
+  for (const file of files) {
+    const stem = file.replace(/\.cddl$/, "");
+    corpusFixtureStems.add(stem);
+    const allRules = enumerateCorpusRules(readFileSync(join(CORPUS_DIR, file), "utf8"));
+    for (const rule of allRules) {
+      // Prelude-name collision assert (the mint's enumeration-time check, mirrored here so the gate
+      // fails loud on the day a colliding rule lands, not at the next mint): a corpus rule named like a
+      // prelude type would make reference extraction ambiguous.
+      if (PRELUDE_NAMES.has(rule.name))
+        corpusProblems.push(`corpus fixture \`${stem}.cddl\` rule \`${rule.name}\` collides with a prelude type name — reference extraction would be ambiguous (rename the rule)`);
+      corpusEnum.set(`${stem}.${rule.name}`, { fixture: stem, rule, allRules });
+    }
+  }
+}
+
+// --- read the committed corpus catalog ------------------------------------------------------------
+const corpusCatalogText = existsSync(`${HERE}/../${CORPUS_CATALOG_REL}`) ? readFileSync(`${HERE}/../${CORPUS_CATALOG_REL}`, "utf8") : null;
+if (corpusCatalogText === null) {
+  corpusProblems.push(`${CORPUS_CATALOG_REL} is missing — run \`bun run verify.ts --mint-decode-corpus\` to mint it`);
+}
+const corpusCatalog = corpusCatalogText !== null ? (Bun.TOML.parse(corpusCatalogText) as { row?: CatRow[] }) : { row: [] };
+const corpusRows = corpusCatalog.row ?? [];
+const corpusById = new Map<string, CatRow>();
+
+// --- §8 corpus: writer↔reader identity (the SOLE serializer round-trips the committed bytes) -------
+if (corpusCatalogText !== null) {
+  const recomposed = composeCatalog([...parseCatalogContent(corpusCatalogText).values()], CORPUS_CATALOG_INTRO);
+  if (recomposed !== corpusCatalogText) {
+    const a = corpusCatalogText.split("\n"), b = recomposed.split("\n");
+    let i = 0;
+    while (i < a.length && i < b.length && a[i] === b[i]) i++;
+    corpusProblems.push(
+      `corpus catalog writer↔reader identity: compose(parse(corpus_catalog.toml)) is NOT byte-identical — first divergence at line ${i + 1}:\n` +
+        `    committed  : ${a[i] === undefined ? "<EOF>" : JSON.stringify(a[i])}\n    recomposed : ${b[i] === undefined ? "<EOF>" : JSON.stringify(b[i])}\n` +
+        `    fix the writer, hand-align to writer-canonical form, or re-mint that row.`,
+    );
+  }
+}
+
+const CORPUS_HOLDER_PREFIX = `${CORPUS_HOLDER_RULE} = [0, `;
+const corpusFloorScope: Record<string, string[]> = {};
+const corpusUncoveredInScope = new Set<string>();
+
+for (const r of corpusRows) {
+  const id = typeof r.id === "string" ? r.id : undefined;
+  if (id === undefined) { corpusProblems.push(`corpus row is missing a string \`id\`: ${JSON.stringify(r)}`); continue; }
+  if (corpusById.has(id)) corpusProblems.push(`duplicate corpus catalog row id \`${id}\``);
+  corpusById.set(id, r);
+
+  const vectors = r.vector ?? [];
+  const hasVectors = vectors.length > 0;
+  const pinned = typeof r.pinned_reason === "string" && r.pinned_reason.length > 0;
+
+  // §1 completeness: exactly one of {>=1 vector, pinned_reason}.
+  if (hasVectors === pinned)
+    corpusProblems.push(`\`${id}\`: a corpus row must have EITHER >=1 vector OR a nonempty pinned_reason, not ${hasVectors ? "both" : "neither"}`);
+
+  // §1/§2: fixture/rule provenance present and consistent with the id + still enumerated.
+  const fixture = typeof r.fixture === "string" ? r.fixture : undefined;
+  const rule = typeof r.rule === "string" ? r.rule : undefined;
+  if (fixture === undefined || rule === undefined) {
+    corpusProblems.push(`\`${id}\`: corpus row must carry \`fixture\` and \`rule\` provenance (got fixture=${JSON.stringify(fixture)} rule=${JSON.stringify(rule)})`);
+  } else {
+    if (`${fixture}.${rule}` !== id) corpusProblems.push(`\`${id}\`: id must equal "<fixture>.<rule>" but fixture=${JSON.stringify(fixture)} rule=${JSON.stringify(rule)}`);
+    if (!corpusFixtureStems.has(fixture)) corpusProblems.push(`\`${id}\`: fixture \`${fixture}\` no longer exists in tests/corpus/ (remove or re-mint)`);
+  }
+  const enumRow = corpusEnum.get(id);
+  if (!enumRow) corpusProblems.push(`\`${id}\`: (fixture, rule) is no longer enumerated from tests/corpus/ (construct removed/renamed — re-mint the corpus catalog)`);
+
+  if (pinned) {
+    for (const f of ["spec", "mode", "type_name"] as const)
+      if (r[f] !== undefined) corpusProblems.push(`\`${id}\`: pinned corpus row must not carry \`${f}\``);
+    // §2 staleness applies to PINNED rows too (example half only — a pinned row carries no spec): a
+    // fixture edit that changes a pinned row's closure may invalidate the pin's justification (e.g. a
+    // ruby-unparseable controller removed), and without this check the stale pin stays green until
+    // someone happens to re-mint.
+    if (enumRow && rule !== undefined && typeof r.example === "string") {
+      const wantExample = corpusClosureBody(rule, enumRow.allRules);
+      if (r.example !== wantExample)
+        corpusProblems.push(`\`${id}\`: PINNED row's committed example drifted from the fixture reconstruction — the pin's justification may be stale; re-mint (\`bun run verify.ts --mint-decode-corpus --only=${id}\`)`);
+    }
+    continue;
+  }
+  if (!hasVectors) continue;
+
+  // §3 shape: an active corpus row is ALWAYS holder mode with a reconstructable spec.
+  const spec = typeof r.spec === "string" ? r.spec : undefined;
+  const mode = typeof r.mode === "string" ? r.mode : undefined;
+  const typeName = typeof r.type_name === "string" ? r.type_name : undefined;
+  if (mode !== "holder") corpusProblems.push(`\`${id}\`: corpus rows are always holder mode (got ${JSON.stringify(mode)})`);
+  if (typeName !== "ProbeHolder") corpusProblems.push(`\`${id}\`: holder-mode type_name must be "ProbeHolder" (got ${JSON.stringify(typeName)})`);
+  if (spec !== undefined && !spec.startsWith(CORPUS_HOLDER_PREFIX)) corpusProblems.push(`\`${id}\`: holder-mode spec must start with \`${CORPUS_HOLDER_PREFIX}\``);
+
+  // §2 spec-reconstruction staleness: the committed spec/example must byte-equal a fresh reconstruction
+  // from the CURRENT fixture via the shared enumerator/closure builder. A drifted fixture reads "re-mint".
+  if (enumRow && rule !== undefined) {
+    const wantSpec = corpusProbeSpec(rule, enumRow.allRules);
+    const wantExample = corpusClosureBody(rule, enumRow.allRules);
+    if (spec !== undefined && spec !== wantSpec)
+      corpusProblems.push(`\`${id}\`: committed spec drifted from the fixture reconstruction — re-mint\n    committed: ${JSON.stringify(spec)}\n    fixture  : ${JSON.stringify(wantSpec)}`);
+    if (typeof r.example === "string" && r.example !== wantExample)
+      corpusProblems.push(`\`${id}\`: committed example drifted from the fixture reconstruction — re-mint`);
+  }
+
+  // §3 per-vector shape (corpus subset; the matrix loop owns the matrix catalog).
+  vectors.forEach((v, i) => {
+    const where = `\`${id}\` vector[${i}]`;
+    const hex = typeof v.hex === "string" ? v.hex : undefined;
+    if (hex === undefined || hex.length === 0) corpusProblems.push(`${where}: missing/empty hex`);
+    else if (hex.length % 2 !== 0) corpusProblems.push(`${where}: hex \`${hex}\` has odd length`);
+    else if (!HEX_RE.test(hex)) corpusProblems.push(`${where}: hex \`${hex}\` is not lowercase hex`);
+    const expect = v.expect;
+    if (expect !== "accept" && expect !== "reject") corpusProblems.push(`${where}: \`expect\` must be "accept" or "reject" (got ${JSON.stringify(expect)})`);
+    // Holder-array preamble: every vector is an instance of `[0, <rule>]`, so it begins with a CBOR
+    // array head (major 4) whose first element is the literal 0. A NORMAL rule gives `8200…`; a bare
+    // GROUP rule SPLICES its members, widening the array count (`8300…` for a 2-member group), so the
+    // check is "major-4 head + `00` first element", NOT a literal `8200` (the plan's shorthand).
+    if (typeof hex === "string" && hex.length >= 4) {
+      const major = parseInt(hex.slice(0, 2), 16) >> 5;
+      if (major !== 4 || hex.slice(2, 4) !== "00")
+        corpusProblems.push(`${where}: holder vector \`${hex}\` must begin with a CBOR array head (major 4) and the literal 0 first element (\`8200…\`, or \`8N00…\` for a spliced bare group)`);
+    }
+    if (expect === "accept") {
+      if (v.class !== undefined && v.class !== "over-acceptance")
+        corpusProblems.push(`${where}: an accept vector may carry no class or class="over-acceptance" (got ${JSON.stringify(v.class)})`);
+      if (v.class === "over-acceptance" && (typeof v.reason !== "string" || (v.reason as string).length === 0))
+        corpusProblems.push(`${where}: class="over-acceptance" vector needs a nonempty \`reason\``);
+      // WHOLE-ITEM f9 ban (not head-only): cbor_event 2.4.0 mis-decodes any f9 head, so a nested f9
+      // (`[* float64]`) is green-but-corrupted decode evidence. Prune with the mint's draw-side skip.
+      if (typeof hex === "string" && hex.length >= 2) {
+        let bad = false;
+        try { bad = cborContainsF9(Uint8Array.from(Buffer.from(hex, "hex"))); } catch { bad = true; }
+        if (bad) corpusProblems.push(`${where}: accept vector \`${hex}\` contains an f9 half-precision head somewhere in its item tree — cbor_event 2.4.0 mis-decodes f9 (green-but-corrupted). Re-mint; prune this ban when a fixed cbor_event ships (ROADMAP § findings, the f16 entry)`);
+      }
+    }
+    if (expect === "reject") {
+      if (v.class !== "bug" && v.class !== "limitation" && v.class !== "constraint")
+        corpusProblems.push(`${where}: reject vector \`class\` must be "bug", "limitation" or "constraint" (got ${JSON.stringify(v.class)}) — a class-less reject is triage-pending`);
+      if (typeof v.reason !== "string" || (v.reason as string).length === 0)
+        corpusProblems.push(`${where}: reject vector needs a nonempty \`reason\``);
+    }
+    if (v.class === "constraint" && expect === "reject") {
+      if (typeof v.expect_err !== "string" || (v.expect_err as string).length === 0)
+        corpusProblems.push(`${where}: class="constraint" vector needs a nonempty \`expect_err\``);
+    } else if (v.expect_err !== undefined) {
+      corpusProblems.push(`${where}: only class="constraint" reject vectors may carry \`expect_err\` (got ${JSON.stringify(v.expect_err)})`);
+    }
+  });
+
+  // §7 arm-coverage floor for choice rows — resolve against the TARGET-FIRST closure example so the
+  // root scan lands on the target rule's RHS. All corpus rows are holder (strip the array preamble).
+  if (enumRow && rule !== undefined) {
+    const res = resolveChoiceArmClasses(corpusArmExample(rule, enumRow.allRules));
+    const specValidAccepts = vectors.filter(
+      v => v.expect === "accept" && v.class !== "over-acceptance" && typeof v.hex === "string" && (v.hex as string).length >= 6,
+    );
+    if (res && specValidAccepts.length > 0) {
+      corpusFloorScope[id] = res.classes;
+      const covered = new Set(specValidAccepts.map(v => vectorShapeClass(v.hex as string, true)));
+      for (const cls of res.classes) if (!covered.has(cls)) corpusUncoveredInScope.add(`${id}/${cls}`);
+    }
+  }
+}
+
+// §7 scope decay pin + coverage floor + stale-exempt guard (corpus, mirroring the matrix § 7 trio).
+// The exemption ledger is the CORPUS one (CORPUS_DECODE_FLOOR_ARM_EXEMPT, lib.ts): the two ledgers are
+// SEPARATE because each stale-guard iterates its own uncovered-in-scope set — a corpus-keyed entry in
+// the matrix ledger could never match the matrix guard's uncovered set and would falsely read stale.
+{
+  const got = JSON.stringify(Object.fromEntries(Object.keys(corpusFloorScope).sort().map(k => [k, corpusFloorScope[k]])));
+  const want = JSON.stringify(Object.fromEntries(Object.keys(CORPUS_EXPECTED_FLOOR_SCOPE).sort().map(k => [k, CORPUS_EXPECTED_FLOOR_SCOPE[k]])));
+  if (got !== want) corpusProblems.push(`corpus arm-coverage floor scope drifted:\n    got : ${got}\n    want: ${want}`);
+  for (const key of [...corpusUncoveredInScope].sort()) {
+    if (Object.hasOwn(CORPUS_DECODE_FLOOR_ARM_EXEMPT, key)) continue;
+    const [id, cls] = key.split("/");
+    corpusProblems.push(`\`${id}\`: choice arm class "${cls}" has ZERO spec-valid accept vector(s) (required {${(corpusFloorScope[id] ?? []).join(", ")}}) — re-mint \`bun run verify.ts --mint-decode-corpus --only=${id}\` or add a cited CORPUS_DECODE_FLOOR_ARM_EXEMPT entry for a genuine oracle gap`);
+  }
+  // Stale-exempt guard (the matrix trio's third leg, corpus side): every ledgered (row, class) must
+  // still be a genuinely-uncovered in-scope pair; an entry for a now-covered / out-of-scope pair is
+  // stale and fails the gate, forcing the re-mint when the underlying oracle gap closes.
+  for (const key of Object.keys(CORPUS_DECODE_FLOOR_ARM_EXEMPT).sort())
+    if (!corpusUncoveredInScope.has(key))
+      corpusProblems.push(`CORPUS_DECODE_FLOOR_ARM_EXEMPT names \`${key}\` which is no longer a genuinely-uncovered in-scope arm class (covered now, or the row left the floor's scope) — stale ledger entry, remove it`);
+}
+
+// §1 completeness: every enumerated (fixture, rule) has a catalog row.
+for (const id of [...corpusEnum.keys()].sort())
+  if (!corpusById.has(id))
+    corpusProblems.push(`enumerated corpus (fixture, rule) \`${id}\` has no catalog row (mint it or pin it) — run \`bun run verify.ts --mint-decode-corpus\``);
+
+// §5 vacuity floors: implausibly small enumeration/catalog reads must fail loud, not pass empty.
+if (corpusFixtureStems.size < CORPUS_MIN_FIXTURES)
+  corpusProblems.push(`only ${corpusFixtureStems.size} corpus fixtures enumerated (expected >= ${CORPUS_MIN_FIXTURES}) — glob/enumerator read looks broken`);
+if (corpusEnum.size < CORPUS_MIN_ROWS)
+  corpusProblems.push(`only ${corpusEnum.size} enumerated corpus (fixture, rule) rows (expected >= ${CORPUS_MIN_ROWS}) — enumerator read looks broken`);
+
+for (const p of corpusProblems) problems.push(p);
+
 // --- report ---------------------------------------------------------------------------------------
 const activeRows = rows.filter(r => (r.vector ?? []).length > 0);
 const pinnedRows = rows.filter(r => typeof r.pinned_reason === "string" && r.pinned_reason.length > 0);
@@ -613,11 +921,19 @@ if (problems.length) {
   for (const p of problems) console.log(`  FAIL ${p}`);
   process.exit(1);
 }
+const corpusActive = corpusRows.filter(r => (r.vector ?? []).length > 0);
+const corpusPinned = corpusRows.filter(r => typeof r.pinned_reason === "string" && (r.pinned_reason as string).length > 0);
+const corpusVectorCount = corpusActive.reduce((n, r) => n + (r.vector ?? []).length, 0);
 console.log(
   `decode-conformance catalog OK — ${rows.length} rows (${activeRows.length} active / ${allVectors.length} vectors: ` +
     `${accepts} accept [${overAccepts} over-acceptance], ${rejects.length} reject) · ${pinnedRows.length} pinned · ` +
     `reject vectors: ${rejectBug} bug, ${rejectLimitation} limitation, ${rejectConstraint} constraint (${constraintWithExpectErr} with expect_err) · ` +
     `${Object.keys(floorScope).length} arm-coverage-floor rows (${Object.keys(DECODE_FLOOR_ARM_EXEMPT).length} ledgered-exempt arm class) · ` +
     `evidence↔catalog clauses coherent on ${evidenceCatalogChecked} supported rows · ${supported.size} supported matrix rows`,
+);
+console.log(
+  `corpus decode-conformance OK — ${corpusFixtureStems.size} fixtures enumerated / ${corpusEnum.size} obligation rows · ` +
+    `${corpusRows.length} catalog rows (${corpusActive.length} active / ${corpusVectorCount} vectors · ${corpusPinned.length} pinned) · ` +
+    `${Object.keys(corpusFloorScope).length} arm-coverage-floor rows (${Object.keys(CORPUS_DECODE_FLOOR_ARM_EXEMPT).length} ledgered-exempt arm class)`,
 );
 process.exit(0);
