@@ -552,9 +552,16 @@ function cacheableCargoPass(
   let entryBase: Omit<GateCacheEntry, "cell" | "created"> | null = null;
   if (GATE_CACHE_ENABLED && runGenerateLockfile(manifestPath) === 0) {
     const tree = hashTree(treeRoot);
-    const keyParts = gateCacheKey({ gate, argv, tree });
+    // Key on a PATH-NORMALIZED argv: the literal command line embeds `treeRoot`, which lives under
+    // this run's mkdtemp probeDir — a random path per run, so keying the raw argv would make every
+    // key unique to its run (zero cross-run hits, the whole point of the cache). The tree hash
+    // already pins the crate bytes; the argv's role in the key is the command SHAPE (subcommand +
+    // which crate within the tree), which survives the placeholder. Mirrors the Rust gates'
+    // `cwd=<subdir>`-style normalized argv_for_key.
+    const argvForKey = argv.map(a => a.split(treeRoot).join("<tree>"));
+    const keyParts = gateCacheKey({ gate, argv: argvForKey, tree });
     key = keyParts.key;
-    entryBase = { schema: GATE_CACHE_SCHEMA, gate, argv, rustc: keyParts.rustc, tree };
+    entryBase = { schema: GATE_CACHE_SCHEMA, gate, argv: argvForKey, rustc: keyParts.rustc, tree };
     if (readGateCacheEntry(key, CODEGEN_DIR)) {
       gateCacheStats.cached++;
       console.log(`[gate-cache] ${cell}: cached PASS (key ${key.slice(0, 8)})`);
@@ -897,9 +904,12 @@ function replayInDir(cell: string, outDir: string, vecs: ReplayVec[], decodeType
   let entryBase: Omit<GateCacheEntry, "cell" | "created"> | null = null;
   if (GATE_CACHE_ENABLED && runGenerateLockfile(manifest) === 0) {
     const tree = hashTree(outDir);
-    const keyParts = gateCacheKey({ gate: "verify.decode_foreign_replay", argv, tree });
+    // Same path-normalization as cacheableCargoPass: `outDir` is under the per-run mkdtemp
+    // probeDir, so the raw argv would poison the key with a run-unique path (zero cross-run hits).
+    const argvForKey = argv.map(a => a.split(outDir).join("<tree>"));
+    const keyParts = gateCacheKey({ gate: "verify.decode_foreign_replay", argv: argvForKey, tree });
     key = keyParts.key;
-    entryBase = { schema: GATE_CACHE_SCHEMA, gate: "verify.decode_foreign_replay", argv, rustc: keyParts.rustc, tree };
+    entryBase = { schema: GATE_CACHE_SCHEMA, gate: "verify.decode_foreign_replay", argv: argvForKey, rustc: keyParts.rustc, tree };
     if (readGateCacheEntry(key, CODEGEN_DIR)) {
       gateCacheStats.cached++;
       console.log(`[gate-cache] ${cell}: cached PASS (key ${key.slice(0, 8)})`);
