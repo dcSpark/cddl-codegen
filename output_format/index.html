@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.1">
 <title data-rh="true">Output format | cddl-codegen</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://dcspark.github.io/cddl-codegen/output_format"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Output format | cddl-codegen"><meta data-rh="true" name="description" content="- Inside of the output directly the tool always produces a rust/ directory (including Cargo.toml, etc)."><meta data-rh="true" property="og:description" content="- Inside of the output directly the tool always produces a rust/ directory (including Cargo.toml, etc)."><link data-rh="true" rel="icon" href="/cddl-codegen/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://dcspark.github.io/cddl-codegen/output_format"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/output_format" hreflang="en"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/output_format" hreflang="x-default"><link rel="stylesheet" href="/cddl-codegen/assets/css/styles.472964ba.css">
-<script src="/cddl-codegen/assets/js/runtime~main.a4a56017.js" defer="defer"></script>
+<script src="/cddl-codegen/assets/js/runtime~main.e5b754ca.js" defer="defer"></script>
 <script src="/cddl-codegen/assets/js/main.de2a18f3.js" defer="defer"></script>
 </head>
 <body>
@@ -16,7 +16,7 @@
 <li class="">Inside of the output directly the tool always produces a <code>rust/</code> directory (including Cargo.toml, etc).</li>
 <li class="">Unless we pass in <code>--wasm=false</code> the tool also generates a corresponding <code>wasm/</code> directory.</li>
 <li class="">Every crate&#x27;s generated code lives under a tool-owned <code>src/generated/</code> subtree (<code>rust/src/generated/mod.rs</code> holds the structs, <code>rust/src/generated/serialization.rs</code> their (de)serialization implementations/corresponding types, plus the runtime modules <code>error.rs</code>/<code>ordered_hash_map.rs</code>). The crate root <code>src/lib.rs</code> is a thin, user-owned wrapper (<code>mod generated; pub use generated::*;</code>) — see <a href="#generated-crate-roots-thin-root-seed-once" class="">Generated crate roots</a> below.</li>
-<li class="">The <code>wasm/</code> directory is full of wasm_bindgen-annotated wrappers (under <code>wasm/src/generated/</code>) for the corresponding rust-use-only structs in <code>rust/</code> and can be compiled for WASM builds by running <code>wasm-pack build</code> on it. The <code>--target=nodejs</code> output runs unchanged under both Node and <a href="https://bun.sh" target="_blank" rel="noopener noreferrer" class="">Bun</a>.</li>
+<li class="">The <code>wasm/</code> directory is full of wasm_bindgen-annotated wrappers (under <code>wasm/src/generated/</code>) for the corresponding rust-use-only structs in <code>rust/</code> and can be compiled for WASM builds by running <code>wasm-pack build</code> on it. The <code>--target=nodejs</code> output runs unchanged under both Node and <a href="https://bun.sh" target="_blank" rel="noopener noreferrer" class="">Bun</a>. Every wasm crate also carries a <code>wasm/src/generated/collections.rs</code> index: one <code>pub use crate::…::&lt;Wrapper&gt;;</code> re-export per collection wrapper class the crate defines (the <code>FooList</code> / <code>MapKToV</code> and <code>NonEmpty…</code> wrappers minted from <code>[* T]</code> / <code>{* K =&gt; V}</code> shapes), sorted, with no glob. Because it is compiled as part of the crate, a line naming a removed wrapper fails the crate&#x27;s own build, so the index can never silently drift from the classes it inventories.</li>
 </ul>
 <p><strong><code>from_cbor_bytes</code> rejects trailing bytes.</strong> The generated/<code>static</code> <code>Deserialize::from_cbor_bytes</code> (and the wasm <code>from_cbor_bytes</code>) decode one complete value and then require the cursor to have consumed the <strong>entire</strong> input; leftover bytes after a complete value return an error (<code>cbor_event::Error::TrailingData</code>) rather than being silently ignored, so a truncated/corrupt or accidentally-concatenated buffer is caught. (Nested/embedded decoding — e.g. <code>bytes .cbor T</code> — is unaffected; only the top-level entry point enforces this.)</p>
 <p><strong>Not every type gets its own (de)serialization in <code>serialization.rs</code>.</strong> Some constructs carry their CBOR framing at the point of <em>use</em> rather than as a standalone impl on the type:</p>
@@ -72,7 +72,15 @@ halves so your hand edits to the crate root survive regeneration:</p>
 <code>generated/mod.rs</code> (the type definitions + module decls + generator crate attrs like
 <code>#![allow(clippy::too_many_arguments)]</code> as inner attrs), <code>generated/serialization.rs</code>, per-scope
 submodules, and the copied runtime modules (<code>error.rs</code>, <code>ordered_hash_map.rs</code>). This subtree is
-overwritten wholesale on every export — never hand-edit it.</p>
+overwritten wholesale on every export — never hand-edit the <em>code</em>. One exception: <strong>own-line
+comments you add to a generated <code>.rs</code> are carried across regeneration</strong> by symbol identity (which
+named item they sit in/above) — a comment on an unchanged item transfers, and a comment whose
+anchor changed too much becomes a <code>compile_error!</code> block (loud, never a silent drop) so you review
+it. Outside those tagged blocks this never affects the generated code tokens; pass
+<code>--no-preserve-comments</code> to turn it off and clobber pristine. Two carve-outs: trailing
+(end-of-line) comments are not carried in v1 — move them to their own line — and <code>///</code> doc text
+on tool-documented items is tool-owned (it flows from your CDDL/<code>@doc</code>; hand edits to it are
+dropped, so edit the CDDL instead).</p>
 </li>
 <li class="">
 <p><strong>User-owned: the crate root <code>src/lib.rs</code> (seeded once, then never touched).</strong> On a first export the
