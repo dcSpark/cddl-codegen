@@ -35,7 +35,7 @@
  *
  * Run from cddl-matrix/:  bun run build_matrix.ts && bun run verify.ts
  */
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { constants, homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
@@ -581,11 +581,38 @@ function cacheableCargoPass(
   }
 
   ensureWarm(warmNeed);
+  touchTree(treeRoot);
   gateCacheStats.run++;
   const exit = runProbe(argv, CODEGEN_DIR, env, timeoutS);
   if (exit === 0 && key && entryBase)
     writeGateCacheEntry(key, { ...entryBase, cell, created: new Date().toISOString() }, CODEGEN_DIR);
   return exit;
+}
+
+// Cargo's leaf fingerprint in the shared COMPILE_TARGET is keyed by package name+version, NOT by
+// manifest path: when a PASSING `cddl-lib` is built into the target AFTER this cell's sources were
+// written — exactly what the LAZY warm-up does on a cache miss (it runs between the cell's
+// generation and its `cargo test`) — cargo sees "sources older than the last same-name build",
+// declares the cell FRESH, and reuses the other crate's artifacts: `cargo test` exits 0 without
+// compiling the cell's bytes (proven by direct experiment: a deterministically-failing crate tests
+// green when a same-name passing crate is built after its generation). The eager-warm GATE_CACHE=0
+// path is immune (warm-ups predate every cell's generation), which is how verify_cache_transparency
+// caught the poisoned PASS this defends against. Touching every tree file right before the nested
+// cargo makes the sources NEWER than any same-name fingerprint, forcing the honest rebuild; mtimes
+// are not key material, so the content-hash key is unaffected.
+function touchTree(root: string): void {
+  const now = new Date();
+  const walk = (dir: string) => {
+    for (const ent of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, ent.name);
+      if (ent.isDirectory()) {
+        if (ent.name !== "target") walk(p);
+      } else {
+        try { utimesSync(p, now, now); } catch { /* raced/removed file — rebuild honesty is kept by the rest */ }
+      }
+    }
+  };
+  walk(root);
 }
 
 // COMPILE (classification only): `cargo check` the generated crate. Run when `cargo test` FAILED, to
@@ -937,6 +964,7 @@ function replayInDir(cell: string, outDir: string, vecs: ReplayVec[], decodeType
   }
 
   ensureWarm({ kind: "rust" });
+  touchTree(outDir);   // same-name stale-fingerprint defense — see touchTree's comment
   gateCacheStats.run++;
   const run = () => Bun.spawnSync(
     argv,

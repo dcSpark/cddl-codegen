@@ -124,13 +124,18 @@ repo). `verify_cache_transparency` (`cddl-matrix/cache_transparency.ts`, flag-ga
 `annotations/cddl_codegen.toml` and `verify_report.json` are byte-identical between a cached run
 (≥1 hit required — vacuity floor) and a `GATE_CACHE=0` run, the direct check that the hit path's
 reconstructed verdicts can never leak into output bytes differently than real execution. Its
-fourth real run caught a live soundness bug: verify.ts once reused ONE output path for every cell
-under the shared `CARGO_TARGET_DIR`, letting cargo's mtime fingerprint declare freshly generated
-sources "fresh" against the previous cell's build at the same path — `cargo test` exited 0 without
-compiling the new bytes, and the cache persisted the false PASS. Every verify.ts generation now
-gets a fresh, counter-suffixed output dir (keep-last-1 deletion; the Rust gates' per-cell-dir
-design), so a nested cargo verdict can never lean on another cell's artifacts; the tree hash uses
-relative paths and the key argv is path-normalized, so the moving dirs leave keys unchanged.
+fourth real run caught a live soundness bug in verify.ts: cargo's leaf fingerprint in the shared
+`CARGO_TARGET_DIR` is keyed by package name+version, NOT manifest path, so when a passing
+`cddl-lib` is built into the target AFTER a cell's sources were generated — exactly what the LAZY
+warm-up does on a cache miss, running between the cell's generation and its `cargo test` — cargo
+declares the older sources "fresh" and reuses the other crate's artifacts: `cargo test` exits 0
+without compiling the failing cell's bytes, and the cache persisted the false PASS (the eager-warm
+`GATE_CACHE=0` path was immune, which is exactly the asymmetry the transparency diff exposed).
+Two-layer defense in verify.ts: every generation gets a fresh, counter-suffixed output dir
+(keep-last-1 deletion; the Rust gates' per-cell-dir design), and `touchTree` bumps every tree
+file's mtime right before each MISSED nested cargo (after any warm-up), so the cell's sources are
+always newer than any same-name fingerprint and the rebuild is honest. Neither layer moves a key:
+the tree hash is content-over-relative-paths and the key argv is path-normalized.
 
 | Layer | File | Question it answers | Speed |
 |-------|------|---------------------|-------|
