@@ -129,21 +129,6 @@ fuzzer escalations, the recur-first residuals), not here.
    stays mechanically checkable rather than a hand-picked list, reusing the replay legs the two
    existing gates already share.
 
-3. **Gate-cache soundness gates.** The per-cell nested-cargo cost of the matrix/corpus/recombination
-   gates and `verify.ts` is memoized by generated-tree content hash (the gate cache —
-   `tests/README.md` § "The gate cache (memoize-and-skip for nested cargo)"; `src/tests/gate_cache.rs`),
-   so unchanged cells skip provably instead of recompiling. Its two soundness obligations are
-   review-enforced today and each deserves a mechanical layer:
-   - **Input-closure audit gate** — the mechanical guardrail this repo uses INSTEAD of timer-based
-     cold runs (which are never happening here): trace each cached site's file reads
-     (strace/fsatrace) and assert observed reads ⊆ what the key hashes. Today the closure is
-     review-enforced per call site + mutation-verified at landing; a drift gate makes "a cached
-     site grew an unhashed input" fail loudly on the next local run.
-   - **Cache-transparency diff** — `verify.ts` annotations/`verify_report.json` must be
-     byte-identical between a cached and an uncached (`GATE_CACHE=0`) run; review-enforced today,
-     mechanizable as an occasional manual full-tier diff (two verify runs, so full-tier cost —
-     pairs naturally with the closure audit).
-
 ## Standing-system residuals (recur-first)
 
 Each entry here is a ledger record for a proven-once failure class: what happened, which standing
@@ -388,6 +373,15 @@ dead loses the lesson.
     classified deterministic FAILs (expected-red skip-listed cells and unsupported `verify.ts`
     probes re-run every time; caching a *classified* compile-fail is the same soundness argument,
     but transient-env failures must stay uncacheable — needs a careful failure taxonomy first).
+  - **Closure-audit traced-set extension** — the input-closure audit gate
+    (`gate_cache_closure_audit`; `tests/README.md` § "The gate cache" / "Soundness gates") traces
+    ONE representative cached gate per run (`multifile_matrix_compiles` by default, the
+    highest-risk path-dep read pattern), parameterized by `CLOSURE_AUDIT_GATE`. Widen coverage as
+    configuration when a new read pattern warrants it — the cargo-test + json-gen shapes
+    (`feature_corpus_compiles`), the roundtrip and recombination sites, and the TS-side `verify.ts`
+    cached sites (whose nested cargo runs with cwd = the repo, guarded meanwhile by the audit's
+    static `.cargo/config` assert) — each run adding a full trace's wall-clock, so extend
+    deliberately rather than tracing every site every run.
   - The pre-cache remedies stay valid if the UNCACHED path ever bites (a touch-everything change
     pays full price): batch cells into fewer crates, or adopt `cargo-nextest` as the suite runner
     (`multifile_matrix_compiles` measured ~35 s cold / ~30 s warm at 43 cells; 62 at HEAD).
