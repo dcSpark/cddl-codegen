@@ -725,6 +725,34 @@ export function cborContainsF9(bytes: Uint8Array): boolean {
 }
 
 // ==================================================================================================
+// RUBY `cddl generate` BERNOULLI CLASSIFIER — a deterministic verdict-source guard for verify.ts.
+// The ruby cddl gem (0.12.14) `generate`, for a rule whose type carries a value-space-NARROWING control
+// operator, GENERATES a random instance of the TARGET type and self-validates it against the controlled
+// type — so its exit code is a Bernoulli trial (a random uint rarely lands in `.and (0..9)`), flipping
+// ruby=ok/fail on IDENTICAL input across runs. Root-caused in
+// draft/ruby-cddl-generate-bernoulli-constraint-controllers.md. verify.ts must therefore NOT derive a
+// verdict from `generate` for these ops; it routes them to a deterministic source (ruby `validate` over
+// the committed spec-valid accept vectors, else a stable `nondet(generate)` evidence token). Classify
+// STATICALLY by controller op-name in the example text — never by SAMPLING (sampling is the same trap).
+//
+// The set is the value-space-narrowing ops whose target the generator draws randomly: the RFC 9741
+// comparison ops (.eq .ne .lt .le .gt .ge), .and / .within (RFC 9165 intersection/set narrowing), and
+// .size (length narrowing). EXCLUDED (generate is deterministic for these): .cbor/.cborseq (payload
+// wrapper — the generator emits a valid payload), .default (an annotation, not a validity constraint),
+// and the parse-gap ops (.abnf/.printf/… — a deterministic exit-65 parse failure, separately documented
+// in draft/ruby-cddl-inline-composite-control-arg-gap.md).
+export const RUBY_GENERATE_BERNOULLI_OPS = [
+  ".and", ".within", ".eq", ".ne", ".le", ".lt", ".ge", ".gt", ".size",
+] as const;
+// Match a Bernoulli op as a standalone `.op` token: a non-alnum, non-dot char (or line start) before the
+// `.`, and no alnum right after the op name. The leading `[^A-Za-z0-9.]` excludes `.` so a range `..` or
+// a float `1.5` can never be misread as an op start.
+const RUBY_BERNOULLI_RE = /(?:^|[^A-Za-z0-9.])\.(?:and|within|eq|ne|le|lt|ge|gt|size)(?![A-Za-z0-9])/;
+export function rubyGenerateIsBernoulli(example: string): boolean {
+  return RUBY_BERNOULLI_RE.test(example);
+}
+
+// ==================================================================================================
 // DECODE-CONFORMANCE CATALOG reader/writer pair — the SOLE serializer of the hand-authored vector
 // fields (class/reason/expect_err). Shared by the mint (verify.ts `--mint-decode-foreign`) and the
 // drift gate (project_decode_conformance.ts § 8), which asserts compose(parse(catalog.toml)) is
