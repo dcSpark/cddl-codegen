@@ -186,7 +186,11 @@ so no node/wasm-pack is needed). `tests/core/tests_wasm.rs` (default profile) an
 `to_cbor_bytes`/`from_cbor_bytes`, read every accessor back. That's the *behavioral* half the
 `wasm_matrix_compiles` gate below can't see — a semantically wrong accessor or boundary conversion
 compiles green. The rust-side value round-trips are `--emit-tests`' job; these files own the
-boundary.
+boundary. `tests/extern-deps-wasm/tests_wasm.rs` extends that behavioral floor across CRATES: it
+constructs the consumer's wrappers over the mapped dep's types (`--extern-wasm-crate` — the eight
+collection wrappers plus the non-root `nested::NestedHolder`), round-trips to byte-identity, and
+value-anchors every getter through the dep's `From`/`AsRef` boundary impls, so a semantically wrong
+cross-crate conversion fails rather than merely building.
 
 The three external-macro flags (`--wasm-list-macro`/`--wasm-conversions-macro` and
 `--wasm-cbor-json-api-macro`) emit invocations of a *user-supplied* macro, so the output can't
@@ -207,11 +211,16 @@ harness rather than `run_test`: it asserts the CLI's stderr warning for an all-e
 absent from the index, the deferred `use <dep_wasm>::collections::…;` imports (plain `use`, never
 re-exported), the local-mint cells (not-in-index and mixed-element), a cross-crate behavioral
 round-trip via the fixture's `tests_wasm.rs` (constructing through the DEP's wrapper classes — the
-one `tests_wasm.rs` whose boundary crosses crates), and the honest link gate: a real
+DEFERRED-wrapper sibling of `tests/extern-deps-wasm`'s cross-crate `tests_wasm.rs` above), and the
+honest link gate: a real
 `cargo build --target wasm32-unknown-unknown` of consumer+dep — the only place duplicate
 `#[wasm_bindgen]` classes actually fail — asserted GREEN with the flag and RED
 (`duplicate symbol`) without it, with a loud skip (hard assert under CI) when the target isn't
-installed. This is the suite's only gate compiling any generated crate for the actual wasm target.
+installed. This is the suite's only gate compiling any generated crate for the actual wasm target,
+so the fixture also deliberately INCLUDES a control-constrained signed-int member
+(`local_thing.c: (int .ne 1)`): its emitted i64-window width guard pins `RangeCheck`'s `i128`
+fields on a 32-bit target — the class where `isize` fields overflowed the `i64::MIN`/`MAX`
+literals, which 64-bit host builds can never see.
 
 `flag_value_smoke` generate + `cargo check`s a rich extern-free input (`tests/canonical`) under each
 documented flag *value* that no named profile exercises (`--annotate-fields=false`,
@@ -1252,7 +1261,9 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
 - **Axis 1 — type-shape** (`SHAPES`, copied verbatim from `project_wasm_matrix.ts` with a provenance
   comment; NOT imported — that module projects on import; plus the multifile-specific `collrec`,
   `[* <record>]` — the structural array wrapper only needs placement cross-module, so the wasm
-  matrix's root-scope grid cannot probe it). Every self-contained shape that HAS defs is
+  matrix's root-scope grid cannot probe it — and `tblrec`, `{ * <record> => text }` — the
+  non-exposable-KEYED table, whose `keys()` accessor names a root-minted keys-list wrapper that
+  likewise only dangles cross-module). Every self-contained shape that HAS defs is
   included; `prim` (no defs — nothing to place in a module) and `extern`/`rawbytes` (user-supplied
   types, can't compile standalone) are excluded with header comments.
 - **Axis 2 — cross-module reference mode.** `named` — `b` references the shape's named rule
@@ -1265,9 +1276,9 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   `named`/`unref` apply to every shape; `anon` exists ONLY for a shape whose anon holder
   `holder = [field0: <anonForm>]` compiles GREEN as a **single-file control** — otherwise the red
   would be a single-file limitation, not a placement finding, and the shape carries no `anonForm`
-  (the controls are throwaway, not committed). All 10 candidates
-  (`coll`/`collmap`/`collrec`/`tag`/`nullable`/`bwrap`/`cborwrap` and the restricted non-empty
-  shapes `necoll`/`necollrec`/`nemap`) probed green. `anonb` applies to
+  (the controls are throwaway, not committed). All 11 candidates
+  (`coll`/`collmap`/`collrec`/`tblrec`/`tag`/`nullable`/`bwrap`/`cborwrap` and the restricted
+  non-empty shapes `necoll`/`necollrec`/`nemap`) probed green. `anonb` applies to
   exactly the anon shapes whose plain `anon` cell would be masked by an alias-only module `a`
   emitting no serialization (`coll`/`collmap`/`nullable`/`necoll`/`nemap`); the other anon shapes'
   module `a` already emits serialization, so nothing masks their b-side verdict and a ballast
@@ -1278,7 +1289,7 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   path-depends on the rust crate, so rust-side breakage surfaces transitively). Own scratch +
   `CARGO_TARGET_DIR` (`cddl_codegen_multifile_matrix`). Always-on (no `#[ignore]`): it joins the
   default `cargo test` / check.ts local tier. Wall-clock ~35 s (first cold run, shared target warms
-  once) / ~30 s warm measured at 43 cells (59 at HEAD).
+  once) / ~30 s warm measured at 43 cells (62 at HEAD).
 - **The round-trip gate** (`integration_tests::multifile_matrix_roundtrips`, `#[ignore]`d, check.ts
   **full** tier — the behavioural upgrade, mirroring `wasm_matrix_roundtrips`): same cell
   enumeration, but each cell is generated `--wasm=true --emit-tests=true` across `ALL_PROFILES`
@@ -1298,7 +1309,7 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   globs, without which every multifile cell is E0433-uncompilable) is pinned always-on by the
   in-process `emit_tests_multifile_scope_imports`, so a regression there doesn't wait for full
   tier. Run with `cargo test --bin cddl-codegen multifile_matrix_roundtrips -- --ignored`
-  (~4.6 min measured at 48 cells, ~6 min at HEAD's 59; every run is effectively cold — the scratch root, shared target
+  (~4.6 min measured at 48 cells, scaling with the cell count — 62 at HEAD; every run is effectively cold — the scratch root, shared target
   included, is cleared at start and end — with the deps built once up front and the remainder
   dominated by the per-cell-per-profile generate + two nested `cargo test` invocations (3 profiles x the cell count each).
 - **Skip ledgers (round-trip gate).** `MULTIFILE_ROUNDTRIP_SKIP: &[(&str, &str)]` (cell stem,
@@ -1342,16 +1353,20 @@ non-empty cells (`necollrec__{anon,named,unref}`, `nemap__{anon,anonb,named,unre
 `necoll__{anon,anonb}` — all E0425: the restricted wrapper's `try_from(&Loose)` or anon
 dedup-to-named reference names the root-minted loose builder/element/rule bare from a non-root
 module; the per-shape breakdown is on the same findings entry). Every
-other cell is green, and greenness rests on three emitter invariants this matrix guards: a module
+other cell is green, and greenness rests on four emitter invariants this matrix guards: a module
 declares `pub mod serialization;` only when that file is written (the module-declaration loop in
 `generation.rs` shares the `serialize_scopes` predicate with the file-write, so an alias/enum-only
 non-root module cannot declare a phantom module — the E0583 class); an anonymous same-shape table
 used cross-module imports the structural wrapper from the sole owner's module
 (`scope_references`/`mark_refs` consult `IntermediateTypes::table_shape_sole_owners`, the same
 helper the wasm emit path uses, so import and emission placement cannot disagree — the E0432
-class); and a cross-module *named* reference to a `.cbor` wrapper imports the inner named type into
+class); a cross-module *named* reference to a `.cbor` wrapper imports the inner named type into
 the referencing module (`mark_refs`' Alias arm recurses into the alias target so idents the inlined
-serialization names get imported — the E0433 class). The two gates split the verdict: the
+serialization names get imported — the E0433 class); and a non-root table class whose KEY is
+non-exposable imports the root-minted keys-list wrapper its `keys()` accessor names bare
+(`register_root_keys_list` at both `mark_refs` walk arms, mirroring `codegen_table_type`'s emission
+condition — the `tblrec` E0425 class, guarded green by all three `tblrec` cells and exercised
+end-to-end by `wasm_collections_index`'s record-keyed non-root table). The two gates split the verdict: the
 always-on **compile floor** pins that every non-pinned cell's cross-module wiring type-checks (its
 four-state class-asserting verdict stays live so any regression re-pins with the observed
 error-code evidence), and the full-tier **round-trip gate** executes that wiring across all three
