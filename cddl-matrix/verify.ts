@@ -981,7 +981,18 @@ function decodeForeignProbe(id: string, matrixExample: string): ForeignOutcome {
     ...accepts.map((v, i) => ({ hex: v.hex, name: `accept_${i}`, expectOk: true })),
     ...rejects.map((v, i) => ({ hex: v.hex, name: `reject_${i}`, expectOk: false })),
   ];
-  const res = replayInDir(id, ccOutForeign, vecs, row.type_name);   // null (compile fail) -> not-accepts
+  // A null replay (no per-test verdict lines) is normally a compile failure, but across 170-ish
+  // sequential replay crates it also shows up as a TRANSIENT (an isolated shifting-cell registry/
+  // CONNECT abort during dep resolution — the "Registry-fetch transients in nested-cargo cells"
+  // operational watch). Regenerate + replay once before recording not-accepts, mirroring the mint
+  // paths' retry: without it a single transient flips a row's committed decode-foreign evidence to
+  // "FAILED", which the cache-transparency gate then reads as an A/B divergence (both of that
+  // gate's first two real runs failed exactly this way, on different rows each time).
+  let res = replayInDir(id, ccOutForeign, vecs, row.type_name);   // null (compile fail) -> not-accepts
+  if (res === null) {
+    console.error(`[decode-foreign] ${id}: replay produced no per-test verdict (compile error or transient registry glitch) — regenerating + retrying once.`);
+    if (foreignGenCrate(ccOutForeign, row.spec) === 0) res = replayInDir(id, ccOutForeign, vecs, row.type_name);
+  }
   return { accepts_foreign: res !== null && vecs.every(v => res.get(v.name) === true), foreign_vectors: accepts.length };
 }
 // Evidence suffix (wasmEvidence twin). "" when opted out so an opted-out run's annotations are unchanged.
