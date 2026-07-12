@@ -802,17 +802,26 @@ vector must survive the boundary.*
   `../rust`), and where `from_json` is emitted, `T::from_json(&wv.to_json())` Ok with the same
   differential.
 
-**Skip ledgers** (per gate, both stale-guarded, same shape as `PRESERVE_SKIP`, EMPTY at HEAD): a row
-skipped on one leg still runs the other. `JSON_SURFACE_SKIP` — rows whose json boundary legitimately
-can't round-trip (a value the CBOR decoder accepts that `serde_json` can't serialize — a byte-string
-map key, a non-finite float — or that `from_str` won't re-accept); each resident cites a
-`cddl-matrix/ROADMAP.md` finding, and it also suppresses the wasm `from_json` sub-leg (same serde path).
-`WASM_SURFACE_SKIP` — rows whose `--wasm` generation or wasm-crate compile legitimately fails; also
-cited. Distinct from a **mechanical** skip: a type with NO `from_cbor_bytes` wasm wrapper surface (a
-bare primitive alias, or a wrapper without the deserialize method — `deserialize_generated` gating) is
-classified MECHANICALLY (`wasm_impl_has_fn` scans the generated wasm source for that type's inherent
-impl), never hand-listed — a hand list of that class would rot. Loudly-logged, and paired with a
-"rows DO exercise the wasm leg" vacuity floor.
+**Skip ledgers** (per gate, both REPRODUCTION-guarded like `WASM_SURFACE_SKIP`'s compile check — a
+skip row's leg still RUNS, and the entry is consumed only if the leg still fails; a run where every
+emitted test passes fails the gate as a stale pin): a row skipped on one leg still runs the other.
+`JSON_SURFACE_SKIP` — rows whose json boundary legitimately can't round-trip; each resident cites a
+`cddl-matrix/ROADMAP.md` finding, and it also suppresses the wasm `from_json` sub-leg (same serde
+path). Resident classes at HEAD (all first-sweep findings, ledgered in § findings): the **f64 1-ULP
+loss** through serde_json's default (non-`float_roundtrip`) parse (`prelude.float`/`float64`/`number`/
+`time`, `rangeop.{inclusive,exclusive}.float` matrix-side; `homogeneous_array.floats` corpus-side);
+**`@custom_json`** omitting the serde derives the leg's serde_json usage needs (`dsl.custom_json` /
+`dsl_custom.custom_newtype` — can't compile standalone); **non-string map keys** serde_json can't
+serialize (`bytes_map_key.*`, `composite_map_key.holder`, corpus); and the **present-null optional
+field** whose json round-trip preserves the null the direct CBOR re-encode drops
+(`nullable_nested.nullable_optional_field`, corpus). `WASM_SURFACE_SKIP` — rows whose `--wasm`
+generation or wasm-crate compile legitimately fails; also cited; sole resident class at HEAD is the
+same `@custom_json` gap (the wrapper's `to_json`/`from_json` require the omitted derives). Distinct
+from a **mechanical** skip: a type with NO `from_cbor_bytes` wasm wrapper surface (a bare primitive
+alias, or a wrapper without the deserialize method — `deserialize_generated` gating) is classified
+MECHANICALLY (`wasm_impl_has_fn` scans the generated wasm source for that type's inherent impl),
+never hand-listed — a hand list of that class would rot. Loudly-logged, and paired with a "rows DO
+exercise the wasm leg" vacuity floor.
 
 **Vacuity floors** (pinned from actuals with ~10% headroom): a json-round-trip assert count floor and a
 wasm-accept assert count floor per gate, plus per-crate emitted-test completeness (the run helper

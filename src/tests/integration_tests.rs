@@ -8446,8 +8446,24 @@ fn decode_replay_json_wasm_legs(
     // ---- json leg (rust crate with serde derives) ----
     if accept_hexes.is_empty() {
         // No spec-valid accept vectors — nothing to round-trip. Not a skip resident (vacuously empty).
-    } else if let Some(_reason) = json_skip {
-        r.json_surface_skip_hit = true;
+    } else if json_skip.is_some() {
+        // Hand-ledgered json boundary gap. REPRODUCE it (the WASM_SURFACE_SKIP guard's json mirror):
+        // still run the leg, and only consume the ledger entry if it still fails somewhere — a
+        // compile failure (None: the @custom_json class) or ANY failing json_accept test. A run
+        // where every emitted test passes means the gap closed (serde_json float_roundtrip landed,
+        // the derive gating fix shipped, …) and the entry is stale — fail the gate so it is removed.
+        match decode_replay_run_json(&out, &row.type_name, &accept_hexes, target_dir) {
+            (Some(results), _) if !results.is_empty() && results.values().all(|&p| p) => {
+                r.failures.push(format!(
+                    "{}: on JSON_SURFACE_SKIP but the json leg now COMPILES and every accept vector \
+                     round-trips — the gap closed; remove it from JSON_SURFACE_SKIP",
+                    row.id
+                ));
+            }
+            _ => {
+                r.json_surface_skip_hit = true;
+            }
+        }
     } else {
         match decode_replay_run_json(&out, &row.type_name, &accept_hexes, target_dir) {
             (Some(results), combined) => {
