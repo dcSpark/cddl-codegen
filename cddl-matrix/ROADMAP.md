@@ -523,6 +523,53 @@ are ledgered here (that's what the probe/gate error messages point at).
   generated crates float on semver `cbor_event = "2.4.0"`, so nothing tests the version RANGE
   consumers actually resolve — the upstream fix will arrive as exactly such a version event; a
   `--minimal-versions`-style or pinned-latest check of a generated crate would own it.
+- **The generated `--json-serde-derives` json surface loses 1 ULP on `f64` round-trips.**
+  `serde_json` parses `f64` with its fast (lossy) path unless the `float_roundtrip` feature is
+  enabled; the generated `Cargo.toml` requests `serde_json = "1.0.57"` with default features, so a
+  value the CBOR decoder accepts and re-encodes as `fb …` re-encodes to DIFFERENT bytes (off by one
+  mantissa ULP) after `serde_json::to_string` → `from_str`. `f32` values round-trip exactly (fewer
+  mantissa bits), so only `f64`-headed vectors are affected. Surfaced decode-direction by the json/wasm
+  decode-surface legs of `decode_conformance_replay` (tests/README.md § "json/wasm surface legs"): the
+  affected rows (`prelude.float`, `prelude.float64`, `prelude.number`, `prelude.time`,
+  `rangeop.inclusive.float`, `rangeop.exclusive.float`) are on those gates' `JSON_SURFACE_SKIP` ledgers
+  citing this entry (which also suppresses their wasm `from_json` sub-leg — same serde parse path). The
+  candidate fix is a generated-manifest change: add `features = ["float_roundtrip"]` to the `serde_json`
+  dependency (via `static/manifest_changes/`), which restores bit-exact `f64` parsing; retire the
+  JSON_SURFACE_SKIP entries and this finding together when it lands.
+- **A `@custom_json` type produces a non-compiling json/wasm surface standalone (the same
+  can't-compile-standalone class as `dsl_custom`).** `@custom_json` intentionally omits the serde
+  derives on the rust type (the user is expected to supply custom json (de)serialize code), but the
+  generated code still assumes serde is present on the json/wasm surfaces: the wasm wrapper emits
+  `to_json` / `from_json` gated only on `--json-serde-derives` (`create_base_wasm_struct`), which
+  require `T: serde::Serialize + Deserialize`, so a `--wasm --json-serde-derives` build fails
+  `E0277` (`cddl_lib::Cj: serde::Serialize is not satisfied`); and any `serde_json::to_string(&T)` over
+  the rust type likewise won't compile. Surfaced by the json/wasm decode-surface legs on the
+  `dsl.custom_json` matrix row (`cj = uint ; @newtype @custom_json`), which is on both `JSON_SURFACE_SKIP`
+  and `WASM_SURFACE_SKIP` citing this entry. Candidate fix: gate the wasm `to_json`/`from_json` emission
+  (and treat the rust json boundary) on whether the type actually carries serde derives, delegating to
+  the user's custom-json hook otherwise — the json analogue of how `@custom_serialize` is already
+  threaded. Until then it is a standalone-compile limitation, not a round-trip bug.
+- **A NON-STRING map key can't cross the `--json-serde-derives` json boundary.** JSON object keys must
+  be strings; `serde_json` stringifies integer keys but hard-errors on a byte-string or composite
+  (array/map) key (`serde_json::to_string` returns `Err`, "key must be a string"). So a map keyed by
+  `bytes` or a composite type — spec-valid CBOR the decoder accepts — is not json-serializable through
+  the generated serde derives. Surfaced by the json/wasm decode-surface legs of `corpus_decode_replay`
+  on `bytes_map_key.bkeys`, `bytes_map_key.bytes_key_holder`, and `composite_map_key.holder`, which are
+  on that gate's `JSON_SURFACE_SKIP` citing this entry (which also suppresses their wasm `from_json`
+  sub-leg). Largely a JSON-format limitation rather than a codegen bug; a candidate mitigation is a
+  generated serde impl that hex/base64-encodes non-string keys into json strings (and reverses it), at
+  the cost of a non-obvious wire mapping — decide before building.
+- **A present-null OPTIONAL field round-trips differently through json than through CBOR re-encode.**
+  For `[pre: uint, ? field0: (uint / null)]`, the accept vector `[0, [824, null]]` (the optional field
+  PRESENT and null) decodes fine, but the direct CBOR re-encode DROPS the null (`v.to_cbor_bytes()` =
+  `[0, [824]]` — present-null normalized to absent), while the json round-trip PRESERVES it
+  (`serde_json` → `from_str` → `[0, [824, null]]`). The two decode surfaces disagree about the
+  present-null-vs-absent distinction for an optional field whose inner type is itself nullable. Surfaced
+  by the json/wasm decode-surface legs of `corpus_decode_replay` on
+  `nullable_nested.nullable_optional_field` (on that gate's `JSON_SURFACE_SKIP` citing this entry). The
+  candidate fix needs a call on which representation is canonical (a faithful codec should preserve the
+  distinction — the CBOR re-encode dropping the present null is the likelier defect) and a matching
+  serde/serialize alignment; until then the row's json round-trip can't assert `to_cbor_bytes` fidelity.
 
 ## wasm-ABI & multifile placement matrices — remaining work
 

@@ -356,14 +356,14 @@ export const REGISTRY: Gate[] = [
   { id: "decode_conformance_replay", tier: "full", kind: "cmd",
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "decode_conformance_replay", "--", "--ignored", "--nocapture"],
     ignoredTest: "decode_conformance_replay",
-    desc: "decode-conformance replay: committed catalog vectors decode (+ preserve byte-identity), oracle-free (manual, #[ignore]d)" },
+    desc: "decode-conformance replay: committed catalog vectors decode (+ preserve byte-identity + json/wasm decode-surface legs), oracle-free (manual, #[ignore]d)" },
   // Name is NOT a superstring of `decode_conformance_replay` — the sibling gate above filters by
   // SUBSTRING, so a `corpus_decode_conformance_replay` would be swept into it. `corpus_decode_replay`
   // substring-matches no other test name and no other cargo-test filter here, so it runs alone.
   { id: "corpus_decode_replay", tier: "full", kind: "cmd",
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "corpus_decode_replay", "--", "--ignored", "--nocapture"],
     ignoredTest: "corpus_decode_replay",
-    desc: "corpus (composition-depth) decode-conformance replay: committed corpus_catalog.toml vectors decode (+ preserve byte-identity), oracle-free (manual, #[ignore]d)" },
+    desc: "corpus (composition-depth) decode-conformance replay: committed corpus_catalog.toml vectors decode (+ preserve byte-identity + json/wasm decode-surface legs), oracle-free (manual, #[ignore]d)" },
   { id: "all_supported_constructs_generate_all_profiles", tier: "full", kind: "cmd",
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "all_supported_constructs_generate_all_profiles", "--", "--ignored"],
     ignoredTest: "all_supported_constructs_generate_all_profiles",
