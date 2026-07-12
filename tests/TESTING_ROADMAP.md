@@ -273,7 +273,21 @@ location chain must have no adjacent-duplicate segment (a doubled "Foo.Foo" *sat
      ungated Special peek — and review fixed it to witness the gate's own
      `, cbor_event::Len::Indefinite)` pattern (mutation testing cannot see this flavor either: the
      mask needs an unrelated emission to APPEAR, which no mutant simulates). A second proxy-witness
-     needle instance is the signal to design a detector for that flavor too, same policy.
+     needle instance is the signal to design a detector for that flavor too, same policy. A SECOND
+     needle-vacuity instance is on record in a distinct STALE-LITERAL flavor:
+     `corpus_occurrence_bounds_enforced`'s negative needle pinned the exact emitted spelling of the
+     element-value RangeCheck cast, so the i128 widening of `RangeCheck` (which renamed every
+     emission from `as isize` to `as i128`) would have left it matching nothing — green forever
+     while witnessing nothing — had the widening session's exhaustive grep of the old spelling not
+     caught it (the needle was retargeted to `found: x as i128` in the same change). Reading, not a
+     gate: a vacuous negative needle passes by construction, and the harness-scoped mutation sweep
+     is blind to this flavor too (no mutant renames emitted text). The mechanical layer if THIS
+     flavor recurs: pair every negative needle over emitted text with a positive LIVENESS witness
+     asserting the same literal still occurs where it is legitimate (e.g. a constrained-int
+     serialization snapshot DOES contain `found: x as i128` beside the occurrence cell's does-not),
+     so an emission rename flips the liveness half red instead of leaving the negative half
+     vacuous. Meanwhile the working rule when renaming emitted text: grep the test tree for needles
+     pinning the old spelling in the same change.
    - **`--extern-wrapper-index` deferral boundaries — NonEmpty structural wrappers are not defer
      candidates.** The deferral (pinned by `extern_wrapper_index_defers_to_dep`) covers only the
      loose list/map wrapper emitters (`generate_array_type` / `codegen_table_type`):
