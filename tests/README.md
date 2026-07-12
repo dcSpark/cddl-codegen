@@ -35,9 +35,11 @@ every in-tier gate first).
 
 `verify.ts` needs two oracles (ruby `cddl`, rust `cddl`); the runner preflights them and prints
 install one-liners on failure (`--skip-missing` downgrades a missing oracle to `SKIPPED`). It is the
-slowest single gate but not prohibitive: ~170 examples × generate + `cargo test` × 2 crates — measured
-~11 min warm-cache on the dev machine (wasm + decode-foreign on); hours cold, the shared-target
-warm-up dominating. The fuzz
+slowest single gate but not prohibitive: ~170 examples × generate + `cargo test` × 2 crates —
+measured ~10-11 min on the dev machine when every cell runs (a `GATE_CACHE=0` or first/all-miss
+run; wasm + decode-foreign on), collapsing to ~4-5 min on a hit-heavy re-run against an unchanged
+tree (~715 of ~740 cells proven by key — see the gate-cache section below); hours cold, the
+shared-target warm-up dominating. The fuzz
 gate re-runs `fuzz/generate.sh` only when `fuzz/generated` is absent or `--refresh-fuzz` is passed.
 `--cache-transparency` enables the otherwise-`SKIPPED` `verify_cache_transparency` gate (two verify
 runs, cached vs `GATE_CACHE=0`, asserted byte-identical — see the gate-cache section).
@@ -123,22 +125,25 @@ repo). `verify_cache_transparency` (`cddl-matrix/cache_transparency.ts`, flag-ga
 `--cache-transparency`) protects the OUTPUT side: it asserts `verify.ts`'s
 `annotations/cddl_codegen.toml` and `verify_report.json` are byte-identical between a cached run
 (≥1 hit required — vacuity floor) and a `GATE_CACHE=0` run, the direct check that the hit path's
-reconstructed verdicts can never leak into output bytes differently than real execution. Its
-fourth real run caught a live soundness bug in verify.ts: cargo's leaf fingerprint in the shared
-`CARGO_TARGET_DIR` is keyed by package name+version, NOT manifest path, so when a passing
-`cddl-lib` is built into the target AFTER a cell's sources were generated — exactly what the LAZY
-warm-up does on a cache miss, running between the cell's generation and its `cargo test` — cargo
-declares the older sources "fresh" and reuses the other crate's artifacts: `cargo test` exits 0
-without compiling the failing cell's bytes, and the cache persisted the false PASS (the eager-warm
-`GATE_CACHE=0` path was immune, which is exactly the asymmetry the transparency diff exposed).
-Defense in verify.ts, three layers: every generation gets a fresh, counter-suffixed output dir
-(keep-last-1 deletion; the Rust gates' per-cell-dir design); `touchTree` bumps every tree file's
-mtime right before each MISSED nested cargo (after any warm-up), so the cell's sources are always
-newer than any same-name fingerprint and the rebuild is honest; and the warm-ups write their spec
-to their OWN `warm.cddl` — a lazy warm-up runs mid-cell, and when it shared the cell's probe file
-the cell's later legs (the wasm probe reuses the spec file) silently generated the WARM crate
-instead of the cell. None of the layers moves a key: the tree hash is content-over-relative-paths
-and the key argv is path-normalized.
+reconstructed verdicts can never leak into output bytes differently than real execution (this
+gate has already earned its keep: it exposed cached-vs-uncached divergences down to single lines,
+each attributed and fixed — the defenses below exist because of what it found).
+
+verify.ts carries three defenses against nested-cargo verdicts leaning on state OUTSIDE the
+hashed tree, all forced by the shared `CARGO_TARGET_DIR`: cargo's leaf fingerprint there is keyed
+by package name+version, NOT manifest path, so a `cddl-lib` built AFTER another cell's sources
+were written makes cargo declare those older sources "fresh" and reuse the wrong crate's
+artifacts — `cargo test` then exits 0 without compiling the cell's bytes (a lazy warm-up runs in
+exactly that window: on a cache miss, between the cell's generation and its `cargo test`; the
+eager-warm `GATE_CACHE=0` path never can, which made the poison a pure cached-run asymmetry). The
+defenses: every generation gets a fresh, counter-suffixed output dir (keep-last-1 deletion; the
+Rust gates' per-cell-dir design); `touchTree` bumps every tree file's mtime right before each
+MISSED nested cargo (after any warm-up), so the cell's sources are always newer than any
+same-name fingerprint and the rebuild is honest; and the warm-ups write their spec to their OWN
+`warm.cddl`, never the cell's probe file — a lazy warm-up runs mid-cell, and a shared spec file
+would make the cell's later legs (the wasm probe reuses the spec file) silently generate the WARM
+crate instead of the cell. None of the layers moves a key: the tree hash is
+content-over-relative-paths and the key argv is path-normalized.
 
 | Layer | File | Question it answers | Speed |
 |-------|------|---------------------|-------|
@@ -678,7 +683,11 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
 - **The verify.ts oracle** — normal `verify.ts` runs replay each supported row's committed vectors
   as a default-on corroborating oracle (`--no-decode-foreign` / `VERIFY_DECODE_FOREIGN=0` opt-out),
   recording an `accepts_foreign` evidence clause in the annotations. Corroboration only — it never
-  downgrades a support verdict; failures surface in the report's `decode_foreign_failures`.
+  downgrades a support verdict; failures surface in the report's `decode_foreign_failures`. A
+  replay that produces NO per-test verdict (a compile error, or the shifting-cell registry
+  transient — the "Registry-fetch transients in nested-cargo cells" watch in
+  `tests/TESTING_ROADMAP.md`) regenerates and retries once before recording FAILED, the same
+  absorber the mint paths carry, so one transient cannot flip a row's committed evidence clause.
 
 First-sweep payoff — two miscompiles invisible to every self-consistent gate, each caught here by
 feeding spec-valid CBOR our code did not produce. Map-representation group-choice single-field
