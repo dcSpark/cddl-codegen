@@ -41,8 +41,9 @@ header mutants asserting an error location that names the decoding type), and an
 over-acceptance promotion flow whose both branches have fired. All of that is *current state*,
 documented in `tests/README.md` (suite-side; § "Decode-direction conformance" for the evidence
 contract and its validation layers) and `cddl-matrix/README.md` (probe-side; § "Directional support
-evidence"). What remains on this axis lives in the sections below (the json/wasm decode surfaces, the
-fuzzer escalations, the recur-first residuals), not here.
+evidence"). The json/wasm decode surfaces carry the same obligation now (the json/wasm surface legs
+on both replay gates — `tests/README.md` § "json/wasm surface legs"). What remains on this axis lives
+in the sections below (the fuzzer escalations, the recur-first residuals), not here.
 
 ## Pending maintainer action
 
