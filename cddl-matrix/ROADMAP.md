@@ -46,39 +46,6 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
   supports it; wire it into `project_corpus.ts` if a consumer wants the complete matrix view.
-- **Ruby-oracle flake absorber for evidence-writing verify runs — trigger has fired; the fix is a
-  deterministic verdict source, NOT a retry.** The ruby oracle non-deterministically flips a
-  verdict on identical input (documented on `control_examples.toml`'s header), so a full
-  `verify.ts` run can hand an unrelated change a spurious one-line annotation evidence flip. No
-  gate can see it (the evidence is probe-written by design); the working rule is review
-  discipline — the annotations diff of an evidence-writing run must name exactly the rows the
-  change touches, and a flake flip is hand-reverted (done twice: the occurrence-marker enumeration
-  change, and a 2026-07-12 `verify_cache_transparency` run whose A/B legs split on `ctl.and`).
-  The second instance ROOT-CAUSED the mechanism, which invalidates the previously sketched
-  retry-a-fail-once absorber: for a constraint-carrying controller the gem GENERATES a random
-  instance and self-validates it — `x = uint .and (0..9)` measured exit 1 on 7 of 8 draws (a
-  random uint is rarely in 0..9) — i.e. the verdict is a Bernoulli trial whose SPURIOUS direction
-  is an OK, so no retry/majority policy makes it deterministic (retrying fails would flip the
-  majority-fail verdict MORE often). Build instead a deterministic verdict source for the ops
-  whose controller constrains the generator: derive the ruby clause from `validate` over the
-  committed spec-derived decode vectors where the row has them (deterministic input, deterministic
-  verdict), or record an explicit `ruby=nondet(generate)` evidence token for generator-constrained
-  controllers (a STABLE string chosen by static classification of the controller, not by sampling
-  — sampling is the same Bernoulli trap). Until built, expect `verify_cache_transparency` to carry
-  a ~1-in-5 false-red rate from this class alone (both its verify legs roll the dice); the
-  registry-transient watch in `tests/TESTING_ROADMAP.md` lists that gate's other false-red source.
-  A SECOND spurious-flip class is environmental, with a distinct triage signature: **ENOSPC from
-  accumulated probe scratch dirs**. A full `verify.ts` run once flipped ~11 rows to IDENTICAL
-  "cargo test exit 101" evidence in one batch — none reproducing when probed individually — with
-  `/tmp` at 99% under 1600+ stale `cddl_codegen_*` dirs; after clearing them, the re-run's
-  annotations diff was empty. The tell that separates it from a ruby flake: MANY rows flipping in
-  one run, all with the same generic cargo-failure evidence line, none reproducing solo. Check
-  `df` and clear the stale scratch dirs BEFORE trusting (or laboriously hand-reverting) a wide
-  evidence diff; if it recurs, the mechanical layer is a disk-headroom preflight in `verify.ts`
-  alongside the oracle-fingerprint checks (and/or per-probe scratch cleanup at success). The
-  template already exists: the corpus decode mint (`runMintDecodeCorpus`) ships that preflight —
-  a 2 GiB `df` floor hard-failing with the stale-scratch cleanup named — so the remaining build
-  is lifting it to the full probe/evidence-writing runs, not designing it.
 
 ## F4 / F5 follow-ons (only when their consumer exists)
 

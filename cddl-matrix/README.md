@@ -458,6 +458,31 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   rejection REASON, so a TYPE-mismatch (or any wrong-reason) rejection no longer passes as it would
   under a bare `is_err` check. The authoring rule remains: holder shapes belong ONLY to
   `mode = "holder"` rows, and a row's accept and reject vectors share their outer CBOR shape.
+- **The `ruby=` evidence clause is a DETERMINISTIC verdict, not the raw `generate` exit.** For a rule
+  carrying a value-space-NARROWING control operator (`.eq`/`.ne`/`.lt`/`.le`/`.gt`/`.ge`/`.and`/
+  `.within`/`.size`), the ruby `cddl generate` mode draws a RANDOM instance of the target type and
+  self-validates it — a Bernoulli trial whose exit flips `ok`/`fail` on identical input across runs
+  (a random uint rarely lands in `.and (0..9)`; root cause in
+  `draft/ruby-cddl-generate-bernoulli-constraint-controllers.md`). `verify.ts` therefore never derives
+  a verdict from `generate` for those ops (classified statically by controller op-name —
+  `lib.ts` `rubyGenerateIsBernoulli`, self-tested at startup / `bun run verify.ts --selftest`). The
+  clause reports one of three deterministic tokens, all preserving the `; ruby=` delimiter downstream
+  splitters key on: `ruby=ok|fail` from `generate` for NON-narrowing examples; `ruby=ok(validate)|
+  fail(validate)` for a narrowing op WITH committed spec-valid accept vectors — ruby `validate` over
+  those vectors (deterministic input ⇒ deterministic verdict), the authoritative source; and
+  `ruby=nondet(generate)` for a narrowing op with NO committed vectors (`ctl.and`, `ctl.within`) — a
+  STABLE token chosen without a subprocess, never spec-invalidating (a dice roll must not flip a row's
+  status). Control-op-axis ruby is corroboration-only, but a narrowing FEATURE row's `spec_valid` reads
+  the same deterministic source, so no classified row can hard-fail a run on a draw.
+- **A WIDE evidence flip means check disk, not the oracle.** A single ruby flake dirties ONE row's
+  `ruby=` clause; the distinct tell of the ENOSPC class is MANY rows flipping in one run to the SAME
+  generic cargo-failure line (`cargo test exit 101`), none reproducing when probed solo. The cause is a
+  near-full scratch volume (`/tmp` backing the 100s of throwaway probe crates): once headroom runs out,
+  generations fail identically instead of loudly. `verify.ts` runs `diskHeadroomPreflight` at startup
+  (the oracle-fingerprint's sibling) — a 2 GiB `df` floor on the scratch volume, hard-failing with the
+  stale-scratch cleanup (`rm -rf $TMPDIR/cddl_codegen_* $TMPDIR/cddl_verify_*`) named — so the
+  low-headroom case fails fast on every probe/mint path. The triage lesson still generalizes: before
+  trusting (or hand-reverting) a wide evidence diff, check `df` and clear stale scratch.
 
 ## Evidence/id convention
 
