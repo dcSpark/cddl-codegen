@@ -552,12 +552,21 @@ composition-space cross-check that complements this matrix's curated per-shape g
   placement class stayed invisible to every gate until review of the Map-arm fix asked what the new
   alias recursion could reach — now enumerated as the `collrec` cells (`collrec__named` red,
   pinned; `collrec__anon` green under the emission-scope element registration; § findings).
+  A SECOND multifile-`SHAPES` instance is on record with a different discovery signature — an
+  adjacent test STEERING AROUND the hole rather than a fix's review: the non-exposable-KEYED table
+  (`{ * <record> => text }`, whose wasm `keys()` names a root-minted keys-list wrapper) was in
+  neither `SHAPES` list while `wasm_collections_index` deliberately used exposable `uint` keys to
+  dodge the then-unfixed keys-list import dangle — a steering comment in a test is a coverage hole
+  wearing a disguise, and grepping for such steering is a cheap arm of the periodic sweep.
+  Enumerated as the `tblrec` cells (red, E0425-pinned) and fixed (`register_root_keys_list` at both
+  `mark_refs` walk arms) in the same change series; all three cells green at HEAD.
   A second proven instance on the wasm matrix itself: the alias-to-record shape (`ral = st`) was
   missing from `SHAPES`, so the group-choice wasm-ctor alias-resolution divergence was un-gated for
   plain aliases (only its `.cbor`-wrapper sibling `cborwrap` had a cell) until the fix's review
   asked which other alias shapes the divergent `resolve_alias_shallow` could reach — now enumerated
-  as the `ralias` cells (green). Both instances were found by review asking "what else can this
-  code path reach?", which is exactly the question the periodic sweep mechanizes. One near-miss on
+  as the `ralias` cells (green). The `collrec` and `ralias` instances were found by review asking
+  "what else can this code path reach?", which is exactly the question the periodic sweep
+  mechanizes; the `tblrec` instance adds the steering-comment tell to it. One near-miss on
   the multifile half of this rule is on record: `ralias` initially landed only in the wasm
   projection's `SHAPES`, silently breaking the multifile list's "every self-contained shape with
   defs" claim until a doc-coherence review caught it — a SECOND such near-miss is the signal to
