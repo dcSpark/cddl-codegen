@@ -426,6 +426,23 @@ dead loses the lesson.
   dependency: run nested `cargo check`/`test` with `--offline` after one warm-up fetch (the shared
   `CARGO_TARGET_DIR` and cargo home already hold the deps), or vendor the handful of
   generated-crate deps.
+- **`verify_cache_transparency` A/B split on an emission-profile EMBED cell — intermittent, distinct
+  from the ruby and registry classes.** Observed 2026-07-13: one `cache_transparency.ts` leg diverged
+  on `prelude.tstr`'s `emission.preserve.evidence` — the synthetic-holder embed round-trip
+  (`embedFallback`) landed `embedded=true` ("round-trips when embedded") in one run and `embedded=false`
+  ("no minted round-trip surface") in another, same input. A back-to-back offline re-run
+  (`CARGO_NET_OFFLINE=true`) was byte-identical (714 cache hits), so it is INTERMITTENT, not a
+  deterministic cache-reconstruction bug: the `minted` bit of the embed holder's generated
+  `generated/mod.rs` varies run-to-run (a transparent-alias-under-preserve cell whose holder sometimes
+  mints a standalone test surface, sometimes not — the residual tail of the fresh-output-dir /
+  warm-up-clobber class the `72cf4ce`/`a796b7c`/`dbcead7` fixes addressed for the base probe, not yet
+  the emission-embed path). The tell that separates it from a ruby flake (now deterministic — README
+  § "Gotchas") and the registry-transient class (shifting cell + `unable to update registry`): a SINGLE
+  emission-embed evidence line flipping on the `embedded`/`minted` bit, reproducing on neither an
+  offline re-run nor a solo probe. Re-run once (offline) to confirm transience before hand-reverting.
+  The mechanical fix, when the rate warrants: make the emission-embed generation use a fresh output dir
+  per cell (mirror the base-probe fix) so a prior cell's minted `mod.rs` can't be read for the current
+  holder.
 - **Full-suite flake, now attributed: `acquire_scratch_lock_serializes` — recurrence needs the
   errno.** The `test` gate failed with exit 101 twice (2026-07-06 unattributed — output truncated
   before the `failures:` list; 2026-07-08 captured in full): the second sighting names
