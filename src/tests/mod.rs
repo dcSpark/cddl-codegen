@@ -15,6 +15,7 @@ pub(crate) mod dsl_position_tests;
 pub(crate) mod gate_cache;
 pub(crate) mod identifier_hazard_tests;
 pub(crate) mod integration_tests;
+pub(crate) mod preserve_fixture_tests;
 pub(crate) mod recombination_tests;
 pub(crate) mod robustness_tests;
 pub(crate) mod snapshot_tests;

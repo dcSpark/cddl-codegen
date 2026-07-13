@@ -51,12 +51,14 @@ changing the *runtime behaviour* of generated code usually means editing `static
     `SeedOnce` keys check existence only"; (2) each generated crate root `src/lib.rs` (rust, wasm,
     json-gen) is a seed-once thin root — written on a first export, then skipped if the file exists
     (existence check only, same bounded wording as the manifest `SeedOnce`; all generated code lives
-    under the always-clobbered `src/generated/**`); (3) the comment-preservation overlay
-    (`comment_preserve.rs`) — `export()` reads a prior generated `src/generated/**` `.rs` solely to
-    carry the user's comments onto the fresh content, bounded to "prior output contributes only comment
-    bytes and tagged `cddl-codegen:unpreserved-comment` compile_error blocks — never a code token
-    outside those tagged blocks" (default on, `--no-preserve-comments` disables it). Two
-    diagnostic-only stderr warnings read prior output but change no output bytes: the legacy-root
+    under the always-clobbered `src/generated/**`); (3) the comment/code-preservation overlay
+    (`comment_preserve.rs`) — `export()` reads a prior generated `src/generated/**` `.rs` whose only
+    effects on fresh content are (a) inserting comment bytes and tagged regions
+    (`cddl-codegen:unpreserved-comment` compile_error blocks and `cddl-codegen:replace`/`insert` user
+    blocks), and (b) removing exactly the token span that a replace block's recorded original
+    identifies — never any other code token, in either direction (default on, `--no-preserve-comments`
+    disables it). Two diagnostic-only stderr warnings read prior output but change no output bytes: the
+    legacy-root
     check (missing `mod generated;`) and the stale-file scan (orphaned `.rs` under the generated
     trees). Nothing reads prior *tool* output to decide what code to generate, so "run twice = run
     once = clean run" still holds.

@@ -43,6 +43,33 @@
 //! hand-written test modules, not tool output), so this rule is defense-in-depth: if the generator
 //! ever grows one, it must not spam compile errors.
 //!
+//! Beyond comments, a user can keep hand-written CODE across a regen with an
+//! `// cddl-codegen:insert-start` … `// cddl-codegen:insert-end` own-line comment pair. The whole
+//! block — its two tag lines, the interior code, and any interior comments — travels as ONE opaque
+//! verbatim unit, anchored exactly like a comment: by the code token immediately following the block,
+//! through the identity → per-item → unique-statement tiers. To anchor it we first reconstruct a
+//! virtual pristine `old` stream in which a block's interior code tokens are REMOVED (the generator
+//! never emitted them, so leaving them in would read as item drift and doom every anchor in that
+//! item); the block's tag/interior comments are excluded from the comment pass by the same
+//! exclusion-set pattern as a `sentinel_comment`. Recognition is comment-text based on the lexed
+//! stream, so a tag-lookalike inside a string literal is inert for free. An unplaceable block is not
+//! left in place — its ENTIRE text is escaped into the same `compile_error!` fail-loudly payload an
+//! unplaceable comment uses (a bigger message, zero new machinery), so a failed block carries forward
+//! verbatim on the next regen instead of being recounted as a user edit.
+//!
+//! Namespace reservation makes never-silent hold in the presence of tags: any own-line comment
+//! beginning `// cddl-codegen:` that is not part of a well-formed known structure — a valid
+//! `unpreserved-comment` fail-loudly block or a well-formed insert block — is a hard [`PreserveError`]
+//! naming the offending line, NEVER a silent demotion to user text. This closes the gap where a stray
+//! tag inside a block would terminate it early and clobber the trailing user lines as untagged code:
+//! premature termination always leaves an orphaned tag, which errors instead of truncating. So a bare
+//! `unpreserved-comment` marker NOT backed by the `compile_error!` shape is a hard error too (it is a
+//! malformed fail-loudly block, not a user comment), and the `replace-*` tags are
+//! reserved-but-unsupported — they error with a note that they arrive with replace-block support,
+//! rather than degrading to user comments. The user section of an insert block must have balanced
+//! `{}`/`()`/`[]` (hard error otherwise): an unbalanced fragment cannot be placed by the statement-run
+//! model and would corrupt item splitting for the whole file.
+//!
 //! The lexer is string-aware by necessity, not thoroughness: Rust string/raw-string literals span
 //! lines, so a line can begin with `//` while inside a literal; a comment cannot be classified
 //! without tracking literal state first. The input is our own generated output plus user comments (a
@@ -56,6 +83,13 @@ use std::collections::{BTreeMap, BTreeSet};
 /// the block is recognized on the NEXT regeneration and carried forward verbatim rather than counted
 /// as a user code edit.
 const SENTINEL_MARKER: &str = "// cddl-codegen:unpreserved-comment";
+
+/// The reserved own-line-comment namespace. Every `// cddl-codegen:<tag>` is either a well-formed
+/// known structure or a hard [`PreserveError`] (see the module docs' namespace-reservation rule).
+const CDDL_NAMESPACE: &str = "cddl-codegen:";
+/// Insert-block delimiters: `// cddl-codegen:insert-start` … `// cddl-codegen:insert-end`.
+const INSERT_START: &str = "insert-start";
+const INSERT_END: &str = "insert-end";
 
 /// The merged content plus whether any comment was inserted. `changed == false` means `content`
 /// equals the pristine input byte-for-byte, so the caller can skip the extra rustfmt pass.
@@ -668,7 +702,7 @@ fn is_doc_comment(text: &str) -> bool {
     text.starts_with("///") || text.starts_with("//!")
 }
 
-fn escape_for_rust_string(s: &str) -> String {
+pub(crate) fn escape_for_rust_string(s: &str) -> String {
     let mut o = String::with_capacity(s.len());
     for ch in s.chars() {
         match ch {
@@ -716,42 +750,285 @@ struct Insertion {
     text: String,
 }
 
-/// Overlay the user comments from `old` onto the freshly generated `new`. See the module docs for
-/// the tiered anchoring. Pure: no I/O; output is a function of `(old, new)`.
-pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
-    let old_lex = lex(old)?;
-    let new_lex = lex(new)?;
+/// The result of recognizing prior-run fail-loudly (`compile_error!`) blocks in `old`.
+struct SentinelScan {
+    /// Comment indices that are a valid sentinel marker line — excluded from the comment pass.
+    sentinel_comment: BTreeSet<usize>,
+    /// Each recognized block's verbatim text, carried forward unchanged (dropping it would destroy
+    /// the trapped comment/code on the next regen).
+    carried_blocks: Vec<String>,
+    /// Code-token indices inside the recognized `compile_error!` blocks, removed from the virtual
+    /// pristine old stream so they do not count as a user code edit.
+    removed_code: BTreeSet<usize>,
+}
 
-    // 1. Recognize and strip fail-loudly blocks emitted by a prior run so they don't count as a user
-    //    code edit (which would break the identity tier for the whole file). Their payload is carried
-    //    forward verbatim — dropping it would silently destroy the trapped comment on the next regen.
-    let mut removed_code: BTreeSet<usize> = BTreeSet::new();
-    let mut sentinel_comment: BTreeSet<usize> = BTreeSet::new();
-    let mut carried_blocks: Vec<String> = Vec::new();
-    for (ci, cm) in old_lex.comments.iter().enumerate() {
+/// Recognize the fail-loudly blocks a prior run emitted (`SENTINEL_MARKER` line immediately above a
+/// `compile_error!("…");`), so they carry forward verbatim rather than reading as user edits.
+fn recognize_sentinels(lexed: &Lexed) -> SentinelScan {
+    let mut sentinel_comment = BTreeSet::new();
+    let mut carried_blocks = Vec::new();
+    let mut removed_code = BTreeSet::new();
+    for (ci, cm) in lexed.comments.iter().enumerate() {
         if !(cm.own_line && cm.text.starts_with(SENTINEL_MARKER)) {
             continue;
         }
         let a = cm.anchor;
-        if a + 5 < old_lex.code.len()
-            && old_lex.code[a].kind == TokKind::Ident
-            && old_lex.code[a].text == "compile_error"
-            && old_lex.code[a + 1].text == "!"
-            && old_lex.code[a + 2].text == "("
-            && old_lex.code[a + 3].kind == TokKind::Literal
-            && old_lex.code[a + 4].text == ")"
-            && old_lex.code[a + 5].text == ";"
+        if a + 5 < lexed.code.len()
+            && lexed.code[a].kind == TokKind::Ident
+            && lexed.code[a].text == "compile_error"
+            && lexed.code[a + 1].text == "!"
+            && lexed.code[a + 2].text == "("
+            && lexed.code[a + 3].kind == TokKind::Literal
+            && lexed.code[a + 4].text == ")"
+            && lexed.code[a + 5].text == ";"
         {
-            carried_blocks.push(old_lex.src[cm.start..old_lex.code[a + 5].end].to_owned());
+            carried_blocks.push(lexed.src[cm.start..lexed.code[a + 5].end].to_owned());
             sentinel_comment.insert(ci);
             for k in a..=a + 5 {
                 removed_code.insert(k);
             }
         }
     }
+    SentinelScan {
+        sentinel_comment,
+        carried_blocks,
+        removed_code,
+    }
+}
 
-    // Filtered old code stream (sentinel `compile_error!` tokens removed) + an anchor remap: for an
-    // anchor `a` into the original stream, `kept_before[a]` is its index into the filtered stream.
+/// A recognized `// cddl-codegen:insert-start` … `// cddl-codegen:insert-end` block in `old`. The
+/// whole block travels as one opaque verbatim unit; only its placement anchor and its interior span
+/// are needed here.
+struct InsertBlock {
+    /// Byte range of the verbatim block text in `old`: from the start of the insert-start line
+    /// through the end of the insert-end comment (trailing newline excluded).
+    byte_start: usize,
+    byte_end: usize,
+    /// Interior code-token range `[code_start, code_end)` in the ORIGINAL old stream (empty when the
+    /// block wraps no code). `code_end` is also the placement anchor — the code token the block sits
+    /// above.
+    code_start: usize,
+    code_end: usize,
+}
+
+/// The result of scanning `old` for insert blocks and enforcing the `cddl-codegen:` namespace.
+struct BlockScan {
+    blocks: Vec<InsertBlock>,
+    /// Comment indices consumed by a block (its tag lines plus any interior comment, own-line or
+    /// trailing) — excluded from the comment pass.
+    consumed: BTreeSet<usize>,
+    /// Interior code-token indices to remove from the virtual pristine old stream.
+    removed_code: BTreeSet<usize>,
+}
+
+/// The reserved tag on an own-line comment, if any: the text after `// cddl-codegen:`.
+fn cddl_tag(comment_text: &str) -> Option<&str> {
+    comment_text
+        .strip_prefix("//")?
+        .trim_start()
+        .strip_prefix(CDDL_NAMESPACE)
+}
+
+/// True iff `{}`/`()`/`[]` are balanced across `toks` (and never close before they open).
+fn delimiters_balanced(toks: &[CodeTok]) -> bool {
+    let (mut c, mut p, mut b) = (0i32, 0i32, 0i32);
+    for t in toks {
+        match t.text {
+            "{" => c += 1,
+            "}" => {
+                c -= 1;
+                if c < 0 {
+                    return false;
+                }
+            }
+            "(" => p += 1,
+            ")" => {
+                p -= 1;
+                if p < 0 {
+                    return false;
+                }
+            }
+            "[" => b += 1,
+            "]" => {
+                b -= 1;
+                if b < 0 {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    c == 0 && p == 0 && b == 0
+}
+
+/// Recognize insert blocks and enforce the `cddl-codegen:` namespace reservation over `old`'s own-line
+/// comments (see the module docs). `sentinel_comment` marks comment indices already claimed by a valid
+/// fail-loudly block so their marker line is not re-flagged as a stray tag. Any own-line
+/// `// cddl-codegen:` comment that is not part of a well-formed structure is a hard error — never a
+/// silent demotion to user text.
+fn scan_blocks(
+    lexed: &Lexed,
+    sentinel_comment: &BTreeSet<usize>,
+) -> Result<BlockScan, PreserveError> {
+    let comments = &lexed.comments;
+    // own-line comment indices in source order (comments are lexed in order).
+    let own: Vec<usize> = comments
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| c.own_line)
+        .map(|(i, _)| i)
+        .collect();
+    let mut blocks: Vec<InsertBlock> = Vec::new();
+    let mut p = 0;
+    while p < own.len() {
+        let ci = own[p];
+        if sentinel_comment.contains(&ci) {
+            p += 1;
+            continue;
+        }
+        let tag = match cddl_tag(comments[ci].text) {
+            None => {
+                p += 1;
+                continue;
+            }
+            Some(t) => t.trim(),
+        };
+        if tag == INSERT_START {
+            // Scan forward for the matching insert-end. Any OTHER reserved tag before it terminates
+            // the block prematurely — a hard error, not a silent truncation of the user section.
+            let mut q = p + 1;
+            let mut end_p = None;
+            while q < own.len() {
+                let cj = own[q];
+                match cddl_tag(comments[cj].text) {
+                    None => q += 1, // ordinary interior comment line — allowed
+                    Some(inner) => {
+                        if inner.trim() == INSERT_END {
+                            end_p = Some(q);
+                            break;
+                        }
+                        return err(&format!(
+                            "An `// cddl-codegen:insert-start` block contains an unexpected reserved \
+                             tag before its `// cddl-codegen:insert-end` (line: `{}`).",
+                            comments[cj].text
+                        ));
+                    }
+                }
+            }
+            let q = match end_p {
+                Some(q) => q,
+                None => {
+                    return err(
+                        "An `// cddl-codegen:insert-start` block is not closed by a matching \
+                         `// cddl-codegen:insert-end`.",
+                    );
+                }
+            };
+            let start_ci = ci;
+            let end_ci = own[q];
+            let code_start = comments[start_ci].anchor;
+            let code_end = comments[end_ci].anchor;
+            if !delimiters_balanced(&lexed.code[code_start..code_end]) {
+                return err(
+                    "The user section of an `// cddl-codegen:insert-start` block has unbalanced \
+                     delimiters ({}, (), or []); wrap a complete, balanced fragment.",
+                );
+            }
+            let byte_start = line_start(lexed.src, comments[start_ci].start);
+            let byte_end = comments[end_ci].end;
+            blocks.push(InsertBlock {
+                byte_start,
+                byte_end,
+                code_start,
+                code_end,
+            });
+            p = q + 1;
+        } else if tag == INSERT_END {
+            return err(
+                "Found `// cddl-codegen:insert-end` without a matching `// cddl-codegen:insert-start`.",
+            );
+        } else if tag.starts_with("replace") {
+            return err(&format!(
+                "`// cddl-codegen:{tag}` is a reserved replace-block tag; replace blocks arrive with \
+                 replace-block support and are not yet handled."
+            ));
+        } else {
+            // A bare `unpreserved-comment` marker not backed by the `compile_error!` shape (it was
+            // not claimed by `recognize_sentinels`), or any unknown tag: a malformed structure, not a
+            // user comment.
+            return err(&format!(
+                "Unrecognized reserved comment in the `cddl-codegen:` namespace (line: `{}`).",
+                comments[ci].text
+            ));
+        }
+    }
+    // A block's tag/interior comments (own-line AND trailing) and interior code tokens are excluded
+    // from the comment/code passes; recognize them by byte/index containment.
+    let mut consumed = BTreeSet::new();
+    let mut removed_code = BTreeSet::new();
+    for b in &blocks {
+        for (ci, cm) in comments.iter().enumerate() {
+            if cm.start >= b.byte_start && cm.start < b.byte_end {
+                consumed.insert(ci);
+            }
+        }
+        for k in b.code_start..b.code_end {
+            removed_code.insert(k);
+        }
+    }
+    Ok(BlockScan {
+        blocks,
+        consumed,
+        removed_code,
+    })
+}
+
+/// Re-indent a captured verbatim block for insertion above a token at `target_indent`: strip the
+/// block's own base indentation (the insert-start line's leading whitespace) from every line and
+/// re-apply `target_indent`, preserving relative nesting. A fixed point when the block already sits at
+/// `target_indent` (the idempotency property), and rustfmt normalizes the rest on disk anyway.
+fn reindent_block(old_src: &str, b: &InsertBlock, target_indent: &str) -> String {
+    let base = line_indent(old_src, b.byte_start);
+    let text = &old_src[b.byte_start..b.byte_end];
+    let mut out = String::with_capacity(text.len() + 8);
+    for line in text.split('\n') {
+        // Drop a trailing CR (a CRLF-converted prior output) so the inserted block does not carry a
+        // stray `\r` into the LF-only `new`, mirroring the comment engine's CR strip.
+        let line = line.strip_suffix('\r').unwrap_or(line);
+        if line.trim().is_empty() {
+            out.push('\n');
+            continue;
+        }
+        let rel = line.strip_prefix(base).unwrap_or(line);
+        out.push_str(target_indent);
+        out.push_str(rel);
+        out.push('\n');
+    }
+    out
+}
+
+/// Overlay the user comments from `old` onto the freshly generated `new`. See the module docs for
+/// the tiered anchoring. Pure: no I/O; output is a function of `(old, new)`.
+pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
+    let old_lex = lex(old)?;
+    let new_lex = lex(new)?;
+
+    // 1. Recognize prior-run fail-loudly blocks (carried forward verbatim) and user insert blocks
+    //    (namespace-reserved), then build the virtual pristine old stream. Both remove code tokens
+    //    that were not the generator's output — a sentinel `compile_error!` block, and an insert
+    //    block's interior user code — so the identity tier can still fire and anchors stay sound.
+    let sentinel = recognize_sentinels(&old_lex);
+    let block_scan = scan_blocks(&old_lex, &sentinel.sentinel_comment)?;
+    let sentinel_comment = &sentinel.sentinel_comment;
+    let carried_blocks = &sentinel.carried_blocks;
+    let mut removed_code: BTreeSet<usize> = sentinel.removed_code.clone();
+    removed_code.extend(block_scan.removed_code.iter().copied());
+
+    // Filtered old code stream (sentinel `compile_error!` + insert-block interior tokens removed) plus
+    // an anchor remap: for an anchor `a` into the original stream, `kept_before[a]` is its index into
+    // the filtered (virtual pristine) stream. This is a contraction offset map today; replace-block
+    // support will generalize it to also EXPAND (a recorded original substitutes more tokens than the
+    // user code it sits in).
     let mut kept_before = vec![0usize; old_lex.code.len() + 1];
     let mut kept = 0;
     for (idx, slot) in kept_before.iter_mut().enumerate().take(old_lex.code.len()) {
@@ -804,7 +1081,7 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
     let mut trailing: Vec<&str> = Vec::new();
     let mut user_comments: Vec<Comment> = Vec::new();
     for (ci, cm) in old_lex.comments.iter().enumerate() {
-        if sentinel_comment.contains(&ci) {
+        if sentinel_comment.contains(&ci) || block_scan.consumed.contains(&ci) {
             continue;
         }
         if !cm.own_line {
@@ -857,11 +1134,26 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
         *c += 1;
     }
 
+    // Comments and insert blocks are placed by the same tiers; interleave them in source order so
+    // ties at one target offset keep their original top-to-bottom order (e.g. an insert block
+    // immediately above a comment).
+    enum Placeable<'a> {
+        Comment(&'a Comment<'a>),
+        Block(usize),
+    }
+    let mut placeables: Vec<(usize, Placeable)> = Vec::new();
     for cm in &user_comments {
-        let a = cm.anchor;
-        // Compute the target code-token index in `new` (or None → insert at EOF, or Err → unplaceable).
-        let target: Result<Option<usize>, String> = if a >= old_code.len() {
-            Ok(None) // trailing dangling comment at end of file
+        placeables.push((cm.start, Placeable::Comment(cm)));
+    }
+    for (bi, b) in block_scan.blocks.iter().enumerate() {
+        placeables.push((b.byte_start, Placeable::Block(bi)));
+    }
+    placeables.sort_by_key(|(s, _)| *s);
+
+    // Anchor a code index into `new` through the tiers (identity → per-item → unique-statement).
+    let place = |a: usize| -> Result<Option<usize>, String> {
+        if a >= old_code.len() {
+            Ok(None) // dangling anchor at end of file
         } else if identity {
             Ok(Some(a)) // identity tier: same index in new
         } else {
@@ -875,42 +1167,75 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
                 &old_occ,
                 &old_key_counts,
             )
-        };
-        match target {
-            Ok(t) => {
-                let t = t.unwrap_or(new_lex.code.len());
-                // Insertion-point dedup: a generator comment whose anchor shifted (any edit earlier
-                // in the file) re-anchors to exactly where `new` already carries the identical
-                // comment — inserting would duplicate it.
-                if new_comment_keys.contains(&(t, cm.text)) {
-                    order += 1;
-                    continue;
+        }
+    };
+
+    for (_, p) in placeables {
+        match p {
+            Placeable::Comment(cm) => {
+                match place(cm.anchor) {
+                    Ok(t) => {
+                        let t = t.unwrap_or(new_lex.code.len());
+                        // Insertion-point dedup: a generator comment whose anchor shifted (any edit
+                        // earlier in the file) re-anchors to exactly where `new` already carries the
+                        // identical comment — inserting would duplicate it.
+                        if new_comment_keys.contains(&(t, cm.text)) {
+                            order += 1;
+                            continue;
+                        }
+                        // Doc ownership: `new` documents this anchor, so an old doc block here is
+                        // stale tool output (the user channel for doc text is the CDDL/`@doc` DSL).
+                        if is_doc_comment(cm.text) && new_doc_anchors.contains(&t) {
+                            order += 1;
+                            continue;
+                        }
+                        let (offset, indent) = if t >= new_lex.code.len() {
+                            (new.len(), "")
+                        } else {
+                            let start = new_lex.code[t].start;
+                            (line_start(new, start), line_indent(new, start))
+                        };
+                        insertions.push(Insertion {
+                            offset,
+                            order,
+                            text: format!("{indent}{}\n", cm.text),
+                        });
+                    }
+                    // Doc ownership extends to UNPLACEABLE doc comments: deleting a documented type
+                    // must not trap the tool's own `///` lines (which anchor to the vanished item) in
+                    // compile_error blocks — doc text's channel is the CDDL/`@doc` DSL, so doc blocks
+                    // drop rather than fail loudly (the same trade as documented anchors; a user doc
+                    // on a vanished item drops with them).
+                    Err(_) if is_doc_comment(cm.text) => {}
+                    Err(reason) => unplaceable.push((reason, cm.text.to_owned())),
                 }
-                // Doc ownership: `new` documents this anchor, so an old doc block here is stale
-                // tool output (the user channel for doc text is the CDDL/`@doc` DSL) — drop it.
-                if is_doc_comment(cm.text) && new_doc_anchors.contains(&t) {
-                    order += 1;
-                    continue;
-                }
-                let (offset, indent) = if t >= new_lex.code.len() {
-                    (new.len(), "")
-                } else {
-                    let start = new_lex.code[t].start;
-                    (line_start(new, start), line_indent(new, start))
-                };
-                insertions.push(Insertion {
-                    offset,
-                    order,
-                    text: format!("{indent}{}\n", cm.text),
-                });
             }
-            // Doc ownership extends to UNPLACEABLE doc comments: deleting a documented type must
-            // not trap the tool's own `///` lines (which anchor to the vanished item) in
-            // compile_error blocks — doc text's channel is the CDDL/`@doc` DSL, so doc blocks
-            // drop rather than fail loudly (the same trade as documented anchors; a user doc on a
-            // vanished item drops with them).
-            Err(_) if is_doc_comment(cm.text) => {}
-            Err(reason) => unplaceable.push((reason, cm.text.to_owned())),
+            Placeable::Block(bi) => {
+                let b = &block_scan.blocks[bi];
+                // The anchor is the code token following the block, remapped onto the virtual stream.
+                match place(kept_before[b.code_end]) {
+                    Ok(t) => {
+                        let t = t.unwrap_or(new_lex.code.len());
+                        let (offset, indent) = if t >= new_lex.code.len() {
+                            (new.len(), "")
+                        } else {
+                            let start = new_lex.code[t].start;
+                            (line_start(new, start), line_indent(new, start))
+                        };
+                        insertions.push(Insertion {
+                            offset,
+                            order,
+                            text: reindent_block(old, b, indent),
+                        });
+                    }
+                    // An unplaceable block is NOT left in place (its user tokens would count as a
+                    // user edit on the next regen). Its ENTIRE text goes into the standard
+                    // fail-loudly payload, so it carries forward verbatim like an unplaceable comment.
+                    Err(reason) => {
+                        unplaceable.push((reason, old[b.byte_start..b.byte_end].to_owned()))
+                    }
+                }
+            }
         }
         order += 1;
     }
@@ -954,7 +1279,7 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
     };
     let mut top_order = 0usize;
     let mut all: Vec<(usize, usize, usize, String)> = Vec::new(); // (offset, group, order, text)
-    for block in &carried_blocks {
+    for block in carried_blocks {
         all.push((top_offset, 0, top_order, format!("{block}\n")));
         top_order += 1;
     }
@@ -1070,172 +1395,48 @@ fn place_tier2(
     ))
 }
 
+/// The never-silent units of a source: the own-line NON-DOC user comments and the verbatim insert
+/// blocks that a merge must not silently drop (each must appear in the output verbatim/re-indented or
+/// `escape_for_rust_string`-transformed inside a `compile_error!`). Reuses the real sentinel/block
+/// recognition so it stays correct as blocks evolve. Doc comments are excluded (they are tool-owned
+/// and may legitimately drop); tool-generated comments (header/redefine notes) are harmless to
+/// include — they survive because `new` carries them. The fixture harness asserts this property over
+/// every blessed fixture. Returns an error only if `src` is unlexable or its tags are malformed.
+///
+/// `dead_code`-allowed: only the bin-only fixture harness (`src/tests/`) calls it, so the lib crate's
+/// test build (which compiles this module but not `src/tests/`) sees it as unused.
+#[cfg(test)]
+#[allow(dead_code)]
+pub(crate) fn never_silent_units(src: &str) -> Result<Vec<String>, PreserveError> {
+    let lexed = lex(src)?;
+    let sentinel = recognize_sentinels(&lexed);
+    let scan = scan_blocks(&lexed, &sentinel.sentinel_comment)?;
+    let mut units = Vec::new();
+    for b in &scan.blocks {
+        units.push(src[b.byte_start..b.byte_end].to_owned());
+    }
+    for (ci, cm) in lexed.comments.iter().enumerate() {
+        if !cm.own_line
+            || sentinel.sentinel_comment.contains(&ci)
+            || scan.consumed.contains(&ci)
+            || is_doc_comment(cm.text)
+        {
+            continue;
+        }
+        units.push(cm.text.to_owned());
+    }
+    Ok(units)
+}
+
 #[cfg(test)]
 mod tests {
+    //! Only lexer-level cases stay inline — they test `lex`, not the merge. Every merge case lives in
+    //! the file-fixture harness (`tests/preserve-fixtures/`, driven by
+    //! `src/tests/preserve_fixture_tests.rs`), where the fixture name is the migrated test's name.
     use super::*;
 
     // A CODEGEN_HEADER-shaped banner, so tests exercise the self-cancel path the real files hit.
     const HEADER: &str = "// This file was code-generated using an experimental CDDL to rust tool:\n// https://github.com/dcSpark/cddl-codegen\n\n";
-
-    fn run(old: &str, new: &str) -> String {
-        preserve(old, new).unwrap().content
-    }
-
-    #[test]
-    fn identity_transfers_own_line_comment() {
-        let new = format!("{HEADER}pub struct Foo {{\n    pub a: u64,\n}}\n");
-        let old = format!("{HEADER}pub struct Foo {{\n    // keep me\n    pub a: u64,\n}}\n");
-        let out = run(&old, &new);
-        assert!(out.contains("// keep me"), "comment lost:\n{out}");
-        assert!(out.contains("pub a: u64"), "code lost:\n{out}");
-    }
-
-    #[test]
-    fn header_self_cancels_no_duplicate() {
-        // No user comments: output is byte-identical and the header is not duplicated.
-        let new = format!("{HEADER}pub struct Foo {{\n    pub a: u64,\n}}\n");
-        let res = preserve(&new, &new).unwrap();
-        assert!(!res.changed, "a comment-free regen must be a no-op");
-        assert_eq!(res.content, new);
-        assert_eq!(
-            new.matches("This file was code-generated").count(),
-            res.content.matches("This file was code-generated").count()
-        );
-    }
-
-    #[test]
-    fn trailing_comment_fails_loudly_with_hint() {
-        let new = format!("{HEADER}pub struct Foo {{\n    pub a: u64,\n}}\n");
-        let old = format!("{HEADER}pub struct Foo {{\n    pub a: u64, // inline note\n}}\n");
-        let out = run(&old, &new);
-        assert!(
-            out.contains("compile_error!"),
-            "no fail-loudly block:\n{out}"
-        );
-        assert!(out.contains(SENTINEL_MARKER), "no sentinel tag:\n{out}");
-        assert!(out.contains("own line"), "no move-to-own-line hint:\n{out}");
-        assert!(
-            out.contains("inline note"),
-            "original comment dropped:\n{out}"
-        );
-    }
-
-    #[test]
-    fn per_item_transfer_with_unrelated_item_changed() {
-        let old = format!(
-            "{HEADER}pub struct A {{\n    // annotate a\n    pub a: u64,\n}}\n\npub struct B {{\n    pub b: u64,\n}}\n"
-        );
-        // B changed (added a field) so the whole file's tokens differ; A is untouched.
-        let new = format!(
-            "{HEADER}pub struct A {{\n    pub a: u64,\n}}\n\npub struct B {{\n    pub b: u64,\n    pub c: u64,\n}}\n"
-        );
-        let out = run(&old, &new);
-        assert!(
-            out.contains("// annotate a"),
-            "unchanged-item comment lost:\n{out}"
-        );
-        assert!(
-            !out.contains("compile_error!"),
-            "should not fail loudly:\n{out}"
-        );
-        assert!(out.contains("pub c: u64"), "new field missing:\n{out}");
-    }
-
-    #[test]
-    fn unique_statement_reanchors_in_changed_body() {
-        // The impl body changed (extra line), but the annotated statement is still unique.
-        let old = format!(
-            "{HEADER}impl Foo {{\n    fn go(&self) {{\n        // the length write\n        write_len(self.a);\n    }}\n}}\n"
-        );
-        let new = format!(
-            "{HEADER}impl Foo {{\n    fn go(&self) {{\n        write_tag(self.t);\n        write_len(self.a);\n    }}\n}}\n"
-        );
-        let out = run(&old, &new);
-        assert!(out.contains("// the length write"), "comment lost:\n{out}");
-        assert!(
-            !out.contains("compile_error!"),
-            "should re-anchor, not fail:\n{out}"
-        );
-        // re-anchored directly above the statement it annotates
-        let idx_c = out.find("// the length write").unwrap();
-        let idx_s = out.find("write_len(self.a);").unwrap();
-        assert!(
-            idx_c < idx_s,
-            "comment must sit above its statement:\n{out}"
-        );
-    }
-
-    #[test]
-    fn changed_statement_fails_loudly() {
-        let old = format!(
-            "{HEADER}impl Foo {{\n    fn go(&self) {{\n        // note\n        write_len(self.a);\n    }}\n}}\n"
-        );
-        // The annotated statement itself changed → its referent is suspect → fail loudly.
-        let new = format!(
-            "{HEADER}impl Foo {{\n    fn go(&self) {{\n        write_len(self.b);\n    }}\n}}\n"
-        );
-        let out = run(&old, &new);
-        assert!(out.contains("compile_error!"), "must fail loudly:\n{out}");
-        assert!(out.contains("note"), "original comment dropped:\n{out}");
-    }
-
-    #[test]
-    fn non_unique_statement_fails_loudly() {
-        let old = format!(
-            "{HEADER}impl Foo {{\n    fn go(&self) {{\n        // which one\n        push(x);\n    }}\n}}\n"
-        );
-        // The annotated statement now appears twice in the body → ambiguous → fail loudly.
-        let new = format!(
-            "{HEADER}impl Foo {{\n    fn go(&self) {{\n        push(x);\n        other();\n        push(x);\n    }}\n}}\n"
-        );
-        let out = run(&old, &new);
-        assert!(out.contains("compile_error!"), "must fail loudly:\n{out}");
-        assert!(
-            out.contains("which one"),
-            "original comment dropped:\n{out}"
-        );
-    }
-
-    #[test]
-    fn vanished_item_fails_loudly() {
-        let old = format!(
-            "{HEADER}pub struct Gone {{\n    // rip\n    pub a: u64,\n}}\n\npub struct Stay {{\n    pub b: u64,\n}}\n"
-        );
-        let new = format!("{HEADER}pub struct Stay {{\n    pub b: u64,\n}}\n");
-        let out = run(&old, &new);
-        assert!(out.contains("compile_error!"), "must fail loudly:\n{out}");
-        assert!(out.contains("no longer exists"), "wrong reason:\n{out}");
-        assert!(out.contains("rip"), "original comment dropped:\n{out}");
-    }
-
-    #[test]
-    fn sentinel_block_carries_forward_across_two_regens() {
-        let new = format!("{HEADER}pub struct Stay {{\n    pub b: u64,\n}}\n");
-        let old = format!(
-            "{HEADER}pub struct Gone {{\n    // rip\n    pub a: u64,\n}}\n\npub struct Stay {{\n    pub b: u64,\n}}\n"
-        );
-        let first = run(&old, &new);
-        assert!(
-            first.contains("compile_error!"),
-            "first regen must emit block:\n{first}"
-        );
-        // Second regen against the same pristine `new`: the block is recognized and carried forward
-        // verbatim (not dropped, not re-processed as a code edit), preserving the trapped comment.
-        let second = run(&first, &new);
-        assert!(
-            second.contains("compile_error!"),
-            "block dropped on 2nd regen:\n{second}"
-        );
-        assert!(
-            second.contains("rip"),
-            "trapped comment lost on 2nd regen:\n{second}"
-        );
-        assert_eq!(
-            first.matches("compile_error!").count(),
-            second.matches("compile_error!").count(),
-            "carry-forward must not multiply blocks:\n{second}"
-        );
-    }
 
     #[test]
     fn comment_lookalikes_inside_string_literals_are_not_comments() {
@@ -1271,246 +1472,12 @@ mod tests {
     }
 
     #[test]
-    fn idempotency_fixed_point() {
-        let new = format!("{HEADER}pub struct Foo {{\n    pub a: u64,\n    pub b: u64,\n}}\n");
-        let old = format!(
-            "{HEADER}pub struct Foo {{\n    // about a\n    pub a: u64,\n    // about b\n    pub b: u64,\n}}\n"
-        );
-        let once = run(&old, &new);
-        let twice = run(&once, &new);
-        assert_eq!(
-            once, twice,
-            "preserve(preserve(old,new),new) must equal preserve(old,new)"
-        );
-    }
-
-    #[test]
-    fn fail_loudly_block_lands_after_leading_inner_attribute() {
-        // A `compile_error!` item emitted before a leading `#![…]` would make the inner attribute
-        // illegal; the block must be inserted after it.
-        let attr = "#![allow(clippy::too_many_arguments)]\n\n";
-        let new = format!("{HEADER}{attr}pub struct Stay {{\n    pub b: u64,\n}}\n");
-        let old = format!(
-            "{HEADER}{attr}pub struct Gone {{\n    // rip\n    pub a: u64,\n}}\n\npub struct Stay {{\n    pub b: u64,\n}}\n"
-        );
-        let out = run(&old, &new);
-        assert!(out.contains("compile_error!"), "must fail loudly:\n{out}");
-        let attr_idx = out.find("#![allow").unwrap();
-        let block_idx = out.find("compile_error!").unwrap();
-        assert!(
-            attr_idx < block_idx,
-            "inner attribute must stay above the fail-loudly block:\n{out}"
-        );
-    }
-
-    #[test]
-    fn deleted_duplicate_statement_fails_loudly_not_retargets() {
-        // Two identical statements (x's and y's); the comment annotates the SECOND (y). The regen
-        // removes y, leaving the run unique in `new` — unique-in-new alone would silently re-attach
-        // y's comment to x's line. It must fail loudly instead.
-        let old = format!(
-            "{HEADER}impl Foo {{\n    fn de(&self) {{\n        read_elems(1);\n        // about y\n        read_elems(1);\n    }}\n}}\n"
-        );
-        let new = format!(
-            "{HEADER}impl Foo {{\n    fn de(&self) {{\n        read_elems(1);\n    }}\n}}\n"
-        );
-        let out = run(&old, &new);
-        assert!(
-            out.contains("compile_error!"),
-            "must fail loudly, not retarget to the surviving duplicate:\n{out}"
-        );
-        assert!(out.contains("about y"), "original comment dropped:\n{out}");
-    }
-
-    #[test]
-    fn generator_trailing_comment_cancels_by_text() {
-        // Defense-in-depth: the generator emits no trailing comments today, but if it ever grows
-        // one, identical text in `new`'s trailing set must cancel — no compile_error spam.
-        let src = format!("{HEADER}fn t() {{\n    check(x); // u8_wrapper = uint .lt 256\n}}\n");
-        let res = preserve(&src, &src).unwrap();
-        assert!(!res.changed, "generator trailing comment must self-cancel");
-        assert_eq!(res.content, src);
-    }
-
-    #[test]
-    fn shifted_generator_comment_not_duplicated() {
-        // A generator own-line comment AFTER a code change: its anchor index shifts, so positional
-        // self-cancel misses it — insertion-point dedup must keep it from duplicating.
-        let old = format!(
-            "{HEADER}pub struct A {{\n    pub a: u64,\n}}\n\nimpl B {{\n    // have to redefine so it's visible in WASM\n    fn f(&self) {{\n        go();\n    }}\n}}\n"
-        );
-        // A gained a field (code change BEFORE the generator comment); the comment is still emitted.
-        let new = format!(
-            "{HEADER}pub struct A {{\n    pub a: u64,\n    pub b: u64,\n}}\n\nimpl B {{\n    // have to redefine so it's visible in WASM\n    fn f(&self) {{\n        go();\n    }}\n}}\n"
-        );
-        let out = run(&old, &new);
-        assert_eq!(
-            out.matches("have to redefine").count(),
-            1,
-            "shifted generator comment duplicated:\n{out}"
-        );
-        assert!(!out.contains("compile_error!"), "spurious failure:\n{out}");
-    }
-
-    #[test]
-    fn stale_tool_doc_dropped_user_doc_on_undocumented_item_kept() {
-        // Item's tool docs changed text (e.g. the CDDL shape in the doc changed): the old block must
-        // NOT be preserved next to the new one — the anchor is tool-owned. A user /// on an item the
-        // tool does NOT document is preserved.
-        let old = format!(
-            "{HEADER}/// `[+ u64]`: at least one element\npub struct A {{\n    pub a: u64,\n}}\n\n/// my own note\npub struct B {{\n    pub b: u64,\n}}\n"
-        );
-        let new = format!(
-            "{HEADER}/// `[+ u32]`: at least one element\npub struct A {{\n    pub a: u64,\n}}\n\npub struct B {{\n    pub b: u64,\n}}\n"
-        );
-        let out = run(&old, &new);
-        assert!(
-            !out.contains("u64]`: at least"),
-            "stale tool doc resurrected:\n{out}"
-        );
-        assert_eq!(
-            out.matches("at least one element").count(),
-            1,
-            "doc block duplicated:\n{out}"
-        );
-        assert!(
-            out.contains("/// my own note"),
-            "user doc on undocumented item lost:\n{out}"
-        );
-        assert!(!out.contains("compile_error!"), "spurious failure:\n{out}");
-    }
-
-    #[test]
-    fn same_key_count_change_fails_loudly() {
-        // `impl A` count went from one to two: "the Nth impl A" is ambiguous — refuse.
-        let old = format!(
-            "{HEADER}impl A {{\n    // note\n    fn f(&self) {{\n        go();\n    }}\n}}\n"
-        );
-        let new = format!(
-            "{HEADER}impl A {{\n    fn f(&self) {{\n        go();\n    }}\n}}\n\nimpl A {{\n    fn g(&self) {{\n        go();\n    }}\n}}\n"
-        );
-        let out = run(&old, &new);
-        assert!(out.contains("compile_error!"), "must fail loudly:\n{out}");
-        assert!(
-            out.contains("same-named items changed"),
-            "wrong reason:\n{out}"
-        );
-    }
-
-    #[test]
-    fn preceding_comment_on_reordered_same_key_items_fails_loudly() {
-        // Two same-keyed items whose bodies BOTH changed: occurrence order is the only tiebreak, so
-        // a preceding comment must refuse rather than trust the ordering.
-        let old = format!(
-            "{HEADER}// mine\nimpl A {{\n    fn f(&self) {{\n        one();\n    }}\n}}\n\nimpl A {{\n    fn g(&self) {{\n        two();\n    }}\n}}\n"
-        );
-        let new = format!(
-            "{HEADER}impl A {{\n    fn g2(&self) {{\n        two2();\n    }}\n}}\n\nimpl A {{\n    fn f2(&self) {{\n        one2();\n    }}\n}}\n"
-        );
-        let out = run(&old, &new);
-        assert!(out.contains("compile_error!"), "must fail loudly:\n{out}");
-        assert!(out.contains("mine"), "original comment dropped:\n{out}");
-    }
-
-    #[test]
-    fn comma_terminated_statement_reanchors() {
-        // A comment above a struct-literal field: the run ends at the field's `,`, so an unrelated
-        // body change elsewhere in the item does not orphan it.
-        let old = format!(
-            "{HEADER}impl A {{\n    fn f() -> Self {{\n        Self {{\n            // picked for x\n            x: compute_x(),\n            y: 0,\n        }}\n    }}\n}}\n"
-        );
-        let new = format!(
-            "{HEADER}impl A {{\n    fn f() -> Self {{\n        Self {{\n            x: compute_x(),\n            y: 1,\n        }}\n    }}\n}}\n"
-        );
-        let out = run(&old, &new);
-        assert!(
-            out.contains("// picked for x"),
-            "comma-terminated statement comment lost:\n{out}"
-        );
-        assert!(!out.contains("compile_error!"), "spurious failure:\n{out}");
-        let idx_c = out.find("// picked for x").unwrap();
-        let idx_s = out.find("x: compute_x()").unwrap();
-        assert!(idx_c < idx_s, "comment must sit above its field:\n{out}");
-    }
-
-    #[test]
-    fn doc_on_vanished_item_drops_silently() {
-        // Deleting a documented type must not trap the tool's own `///` lines in compile_error
-        // blocks: unplaceable doc comments follow the doc-ownership policy and drop.
-        let old = format!(
-            "{HEADER}/// tool docs line one\n/// tool docs line two\npub struct Gone {{\n    pub a: u64,\n}}\n\npub struct Stay {{\n    pub b: u64,\n}}\n"
-        );
-        let new = format!("{HEADER}pub struct Stay {{\n    pub b: u64,\n}}\n");
-        let out = run(&old, &new);
-        assert!(
-            !out.contains("compile_error!"),
-            "tool docs on a deleted item must not fail loudly:\n{out}"
-        );
-        assert!(!out.contains("tool docs"), "stale docs resurrected:\n{out}");
-    }
-
-    #[test]
-    fn crlf_old_file_self_cancels() {
-        // A CRLF-converted prior output (Windows editor / core.autocrlf) must still text-match its
-        // LF twin: nothing duplicates, output is the pristine LF content.
-        let new = format!("{HEADER}pub struct Foo {{\n    pub a: u64,\n}}\n");
-        let old = new.replace('\n', "\r\n");
-        let res = preserve(&old, &new).unwrap();
-        assert!(
-            !res.changed,
-            "CRLF old file must be a no-op against its LF twin"
-        );
-        assert_eq!(res.content, new);
-        assert_eq!(
-            res.content.matches("This file was code-generated").count(),
-            1,
-            "header duplicated through CRLF mismatch"
-        );
-    }
-
-    #[test]
-    fn crlf_user_comment_still_preserved() {
-        let new = format!("{HEADER}pub struct Foo {{\n    pub a: u64,\n}}\n");
-        let old = format!("{HEADER}pub struct Foo {{\n    // keep me\n    pub a: u64,\n}}\n")
-            .replace('\n', "\r\n");
-        let out = run(&old, &new);
-        assert!(out.contains("// keep me"), "comment lost:\n{out}");
-        assert!(
-            !out.contains("keep me\r"),
-            "inserted comment carries a stray CR:\n{out}"
-        );
-    }
-
-    #[test]
     fn raw_identifier_lexes_without_error() {
         // `r#type` is a raw identifier, not a malformed raw string; it must lex side-consistently.
         let src = format!("{HEADER}pub fn f() {{\n    let r#type = 1;\n    use_it(r#type);\n}}\n");
         let res = preserve(&src, &src).unwrap();
         assert!(!res.changed, "raw-ident file must self-preserve as a no-op");
         assert_eq!(res.content, src);
-    }
-
-    #[test]
-    fn eof_comment_preserved_at_file_end() {
-        let new = format!("{HEADER}pub struct Foo {{\n    pub a: u64,\n}}\n");
-        let old = format!("{HEADER}pub struct Foo {{\n    pub a: u64,\n}}\n// end note\n");
-        let out = run(&old, &new);
-        assert!(
-            out.trim_end().ends_with("// end note"),
-            "EOF comment must be preserved at the file end:\n{out}"
-        );
-        assert!(!out.contains("compile_error!"), "spurious failure:\n{out}");
-    }
-
-    #[test]
-    fn comment_before_code_on_same_line_fails_loudly() {
-        // `/* note */ code` shares its line with code on the RIGHT — out of v1 own-line scope.
-        let new = format!("{HEADER}pub fn f() {{\n    let x = 1;\n}}\n");
-        let old = format!("{HEADER}pub fn f() {{\n    /* note */ let x = 1;\n}}\n");
-        let out = run(&old, &new);
-        assert!(out.contains("compile_error!"), "must fail loudly:\n{out}");
-        assert!(out.contains("own line"), "must carry the hint:\n{out}");
-        assert!(out.contains("note"), "original comment dropped:\n{out}");
     }
 
     #[test]
