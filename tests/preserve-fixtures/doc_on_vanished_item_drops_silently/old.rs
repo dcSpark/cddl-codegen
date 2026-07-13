@@ -1,0 +1,12 @@
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+/// tool docs line one
+/// tool docs line two
+pub struct Gone {
+    pub a: u64,
+}
+
+pub struct Stay {
+    pub b: u64,
+}
