@@ -12314,6 +12314,163 @@ fn comment_preservation_disk_round_trip() {
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
+/// `--export-static-dir=<dir>` writes the composed rust static runtime into `<dir>`, independent of
+/// in-crate static export, as a PURE FUNCTION OF THE FLAG SET (not of the spec). Covers, in the
+/// preserve-encodings + canonical + json flavor over a spec that uses NEITHER `[+ T]` NOR
+/// `{+ k => v}` (so the always-include rule is meaningfully exercised — the in-crate path would emit
+/// no NonEmpty runtime here):
+///   (a) the dir holds error.rs / serialization.rs / ordered_hash_map.rs / non_empty.rs /
+///       non_empty_map.rs with the expected composed content — serialization.rs is the PRELUDE ONLY
+///       (a prelude trait present, raw_bytes always included, and NO generated per-type impl for the
+///       distinctively-named spec type); non_empty_map.rs carries OrderedHashMap not BTreeMap under
+///       preserve;
+///   (b) a `cddl-codegen:insert` block hand-added to an exported file survives a re-export
+///       (the comment/code-preservation overlay runs in this dir too);
+///   (c) with the flag unset the dir is untouched (a pre-existing sentinel file is neither read nor
+///       clobbered, and no runtime file appears).
+/// `--wasm=false` keeps it to the single rust crate.
+#[test]
+fn export_static_dir_writes_composed_runtime() {
+    use clap::Parser;
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_export_static_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    // A distinctively-named type using no `[+ …]` / `{+ … => …}`, so the always-include rule for
+    // non_empty*.rs is not accidentally satisfied by spec usage, and its name is a reliable probe
+    // for "serialization.rs is prelude-only" (no static prelude mentions it).
+    std::fs::write(&input, "myuniqueexporttype = [x: uint, y: tstr]\n").unwrap();
+    let out = scratch.join("crate");
+    let static_dir = scratch.join("exported-runtime");
+
+    let flavor = [
+        "cddl-codegen",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+        "--wasm=false",
+        "--preserve-encodings=true",
+        "--canonical-form=true",
+        "--json-serde-derives=true",
+        "--export-static-dir",
+        static_dir.to_str().unwrap(),
+    ];
+    let cli = crate::cli::Cli::parse_from(flavor);
+
+    // (a) First export: the exported dir holds the composed runtime.
+    crate::api::generate_to_disk(&cli).unwrap();
+    let read = |name: &str| {
+        std::fs::read_to_string(static_dir.join(name))
+            .unwrap_or_else(|e| panic!("exported {name} missing: {e}"))
+    };
+    let error_rs = read("error.rs");
+    assert!(
+        error_rs.contains("pub enum DeserializeFailure"),
+        "error.rs must be the composed error runtime:\n{error_rs}"
+    );
+    let serialization_rs = read("serialization.rs");
+    assert!(
+        serialization_rs.contains("pub trait Deserialize"),
+        "serialization.rs must carry the static prelude:\n{serialization_rs}"
+    );
+    assert!(
+        serialization_rs.contains("pub trait RawBytesEncoding"),
+        "serialization.rs must ALWAYS include raw_bytes_encoding (pure function of flags), even \
+         though the spec uses no raw bytes:\n{serialization_rs}"
+    );
+    assert!(
+        !serialization_rs.contains("MyUniqueExportType"),
+        "serialization.rs must be the PRELUDE ONLY — no generated per-type impl for the spec \
+         type:\n{serialization_rs}"
+    );
+    let ohm_rs = read("ordered_hash_map.rs");
+    assert!(
+        ohm_rs.contains("OrderedHashMap"),
+        "ordered_hash_map.rs must be present under --preserve-encodings:\n{ohm_rs}"
+    );
+    let non_empty_rs = read("non_empty.rs");
+    assert!(
+        non_empty_rs.contains("pub struct NonEmptyVec"),
+        "non_empty.rs must ALWAYS be exported regardless of spec usage:\n{non_empty_rs}"
+    );
+    let non_empty_map_rs = read("non_empty_map.rs");
+    assert!(
+        non_empty_map_rs.contains("pub struct NonEmptyMap"),
+        "non_empty_map.rs must ALWAYS be exported regardless of spec usage:\n{non_empty_map_rs}"
+    );
+    assert!(
+        non_empty_map_rs.contains("OrderedHashMap") && !non_empty_map_rs.contains("BTreeMap"),
+        "non_empty_map.rs must carry the OrderedHashMap flavor (not BTreeMap) under \
+         --preserve-encodings:\n{non_empty_map_rs}"
+    );
+    // No module wiring is written — the target crate owns its declarations.
+    assert!(
+        !static_dir.join("mod.rs").exists() && !static_dir.join("lib.rs").exists(),
+        "the exported dir must NOT contain mod.rs/lib.rs"
+    );
+
+    // (b) Inject a `cddl-codegen:insert` block into the exported serialization.rs (before a stable
+    // prelude statement inside a fn body) and re-export: the preservation overlay must carry it.
+    let ser_path = static_dir.join("serialization.rs");
+    let mut ser = std::fs::read_to_string(&ser_path).unwrap();
+    let anchor = "let value = Self::deserialize(&mut raw)?;";
+    let pos = ser
+        .find(anchor)
+        .expect("prelude anchor line missing from exported serialization.rs");
+    let line_start = ser[..pos].rfind('\n').unwrap() + 1;
+    ser.insert_str(
+        line_start,
+        "        // cddl-codegen:insert-start\n        let _preserved = 1;\n        // cddl-codegen:insert-end\n",
+    );
+    std::fs::write(&ser_path, &ser).unwrap();
+
+    crate::api::generate_to_disk(&cli).unwrap();
+    let ser_second = std::fs::read_to_string(&ser_path).unwrap();
+    assert!(
+        ser_second.contains("// cddl-codegen:insert-start")
+            && ser_second.contains("let _preserved = 1"),
+        "the insert block hand-added to the exported serialization.rs must survive a re-export:\n{ser_second}"
+    );
+    assert!(
+        !ser_second.contains("compile_error!"),
+        "preservation in the exported dir must not fail loudly on an unchanged re-export:\n{ser_second}"
+    );
+
+    // (c) Flag unset → the exported dir is untouched. A pre-existing sentinel with content that is
+    // NOT valid Rust proves the dir is neither read for preservation nor clobbered.
+    let untouched_dir = scratch.join("untouched-runtime");
+    std::fs::create_dir_all(&untouched_dir).unwrap();
+    let sentinel = untouched_dir.join("error.rs");
+    std::fs::write(&sentinel, "this is not rust {{{").unwrap();
+    let cli_no_flag = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+        "--wasm=false",
+        "--preserve-encodings=true",
+        "--canonical-form=true",
+        "--json-serde-derives=true",
+    ]);
+    crate::api::generate_to_disk(&cli_no_flag).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&sentinel).unwrap(),
+        "this is not rust {{{",
+        "with --export-static-dir unset, a same-named dir must be left completely untouched"
+    );
+    assert!(
+        !untouched_dir.join("serialization.rs").exists(),
+        "with --export-static-dir unset, no runtime file may be written anywhere but the crate"
+    );
+
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
 /// A broken existing generated file is a hard error naming the file — never a silent clobber:
 /// both an unlexable one (valid UTF-8, unterminated string) and an unreadable one (not UTF-8).
 /// `--no-preserve-comments` restores the plain clobber for the same dir.
