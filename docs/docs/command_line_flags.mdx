@@ -241,6 +241,25 @@ cddl-codegen --input=example --output=export --common-import-override=cml_core \
 
 <br/><br/>
 
+:::info `--workspace-dep`
+Marks an extern dependency as a co-generated **workspace member**. For every collection wrapper whose element types are **all** owned (transitively — nested lists/maps resolve to their named leaves) by that single dependency, the consumer **defers unconditionally** — it emits `use <dep_wasm>::collections::<Name>;` at use sites (routed through `--extern-wasm-crate`) and never mints a local `#[wasm_bindgen]` class, regardless of any `--extern-wrapper-index`. This closes the sibling-collision class: two consumers each minting the same `FooList` would otherwise define one JS class twice and fail to link a single wasm cdylib. Repeatable; each value is a bare `<dep>` name (the `<dep>=<host>` host form for unmodifiable external deps is reserved but not yet supported). Each named dependency must be a configured extern dependency **and** have an `--extern-wasm-crate` mapping.
+
+The consumer additionally emits `wasm/src/generated/borrowed_collections.rs` whenever the flag is present (empty-but-present when nothing is borrowed — stable presence, stable diffs): the mirror of `collections.rs` ("what I provide" ↔ "what I borrow, from whom"). It carries a private `#[allow(unused_imports)] mod borrowed` of `use` lines (the compile-checked half — a wrapper a dependency stops providing fails **this** crate's build, naming the type) and a `BORROWED_SHAPES` table whose first column is the dependency's **rust** crate name (see [Output format](./output_format)).
+
+- **Ownerless** wrappers (no named element types, e.g. `{* uint => text}`) and **mixed-dep** wrappers are never workspace-borrowed — they keep the shipped `--extern-wrapper-index` deferral / local-mint behavior. Passing both flags for the same dependency is legal: workspace-borrow the owned shapes, index-defer the ownerless ones.
+- A consumer's own **rule-declared** type whose name equals a wrapper it would otherwise borrow is never suppressed; it mints locally and generation warns that it will duplicate-symbol against the dependency's class (remedy: rename the rule or give it a distinct `@name`).
+
+Requires `--extern-wasm-crate`. Defaults off; output with no new flags is byte-identical to before.
+
+```bash
+cddl-codegen --input=example --output=export --common-import-override=cml_core \
+  --extern-wasm-crate=cml_core=cml_core_wasm \
+  --workspace-dep=cml_core
+```
+:::
+
+<br/><br/>
+
 :::info `--wasm-cbor-json-api-macro`
 If it is passed in, it will call the supplied externally defined macro on each exported type, instead of manually exporting the functions for to/from CBOR bytes + to/from JSON API.
 

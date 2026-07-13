@@ -622,6 +622,18 @@ pub struct GenerationScope {
     /// Wrapper idents already named in a `--extern-wrapper-index` "candidate not in the dep's index"
     /// stderr warning, so the diagnostic fires at most once per wrapper across the walk.
     deferred_warned: BTreeSet<RustIdent>,
+    /// Parsed `--workspace-dep` set (extern-deps directory names marked co-generated workspace
+    /// members). A wrapper whose element types are ALL owned by one of these deps DEFERS
+    /// UNCONDITIONALLY (no index consult) and is recorded in `borrowed_wrappers`. Empty unless the
+    /// flag is passed; populated (and validated) in `generate()` under `--wasm` only.
+    workspace_deps: BTreeSet<String>,
+    /// Collection wrappers deferred to a workspace dep this run (`--workspace-dep`), keyed by the
+    /// structural wrapper ident and mapped to `(dep rust-crate name, canonical CDDL shape)`. The
+    /// mirror image of `wasm_collection_wrappers` ("what I provide" ↔ "what I borrow, from whom"),
+    /// materialized into `wasm/src/generated/borrowed_collections.rs` for the dep's own generation to
+    /// read. Recording is idempotent (the same wrapper is probed from several sites); two DISTINCT
+    /// shapes deriving the SAME structural name is a hard error (the `MapAToBToC` reverse-ambiguity).
+    borrowed_wrappers: BTreeMap<RustIdent, (String, String)>,
     no_deser_reasons: BTreeMap<RustIdent, Vec<String>>,
     /// Type-parameter names for the emitted `serialize` / `deserialize` fns. Normally `"W"` / `"R"`,
     /// but if a rule camel-cases to a type named `W`/`R` (which would shadow the generic and break
@@ -653,6 +665,8 @@ impl GenerationScope {
             extern_wrapper_index: BTreeMap::new(),
             deferred_wrappers: BTreeMap::new(),
             deferred_warned: BTreeSet::new(),
+            workspace_deps: BTreeSet::new(),
+            borrowed_wrappers: BTreeMap::new(),
             no_deser_reasons: BTreeMap::new(),
             serialize_generic: "W".to_string(),
             deserialize_generic: "R".to_string(),
@@ -681,6 +695,7 @@ impl GenerationScope {
         // link error).
         if cli.wasm {
             self.extern_wrapper_index = load_extern_wrapper_indices(types, cli);
+            self.workspace_deps = load_workspace_deps(types, cli);
         }
 
         // Type aliases
@@ -901,6 +916,7 @@ impl GenerationScope {
                                 domain.clone(),
                                 range.clone(),
                                 rust_ident,
+                                true,
                                 cli,
                             );
                         } else if cli.wasm {
@@ -953,6 +969,7 @@ impl GenerationScope {
                                     types,
                                     element_type.clone(),
                                     rust_ident,
+                                    true,
                                     cli,
                                 );
                             } else {
@@ -960,6 +977,7 @@ impl GenerationScope {
                                     types,
                                     element_type.clone(),
                                     rust_ident,
+                                    true,
                                     cli,
                                 );
                             }
@@ -1491,6 +1509,15 @@ impl GenerationScope {
             // zero wrappers — from the always-regenerated generated root, never the seed-once
             // crate-root lib.rs.
             self.wasm_lib().raw("pub mod collections;");
+            // The borrowed-collections sidecar module (materialized as `generated/borrowed_collections.rs`
+            // in `generated_files`). PRIVATE (`mod`, never `pub mod`) — its `use` lines only
+            // existence-check the borrowed wrapper names; borrowed wrappers are never re-exported (the
+            // consumer's own `collections.rs` lists only wrappers it defines). Declared whenever
+            // `--workspace-dep` is present (stable presence, stable diffs), even when nothing is
+            // borrowed.
+            if !self.workspace_deps.is_empty() {
+                self.wasm_lib().raw("mod borrowed_collections;");
+            }
             // wasm imports
             // `deferred_wrappers` was fully populated during the wasm struct walk above (every
             // deferred wrapper's mint point recorded it), so referencing modules now get a plain
@@ -2143,6 +2170,55 @@ impl GenerationScope {
                 rustfmt_generated_string(&collections)?.into_owned(),
             );
 
+            // Borrowed-collections sidecar (`--workspace-dep`): the mirror image of `collections.rs`
+            // ("what I provide" ↔ "what I borrow, from whom"). Emitted whenever the flag is present —
+            // INCLUDING when nothing is borrowed (stable presence, stable diffs) — and never
+            // otherwise. Fixed format, ALL payload in code (no load-bearing comments the preservation
+            // overlay could trap on): a private `#[allow(unused_imports)] mod borrowed` of plain `use`
+            // lines (the compile-checked half — a wrapper a dep stops providing fails THIS crate's
+            // build naming the type) and a `#[allow(dead_code)] pub(crate) const BORROWED_SHAPES`
+            // table (the machine half the dep re-parses). Entries sorted by (dep, name); the `use`
+            // paths go through the `--extern-wasm-crate` remap; the const's first column is the dep's
+            // RUST crate name (the extern-deps directory name / `--extern-wasm-crate` left side), not
+            // the wasm crate name.
+            if !self.workspace_deps.is_empty() {
+                let extern_wasm_crate_map = cli.extern_wasm_crate_map();
+                let mut entries: Vec<(&str, &str, &str)> = self
+                    .borrowed_wrappers
+                    .iter()
+                    .map(|(name, (dep, shape))| (dep.as_str(), name.as_ref(), shape.as_str()))
+                    .collect();
+                entries.sort_unstable();
+                let mut sidecar = String::from(
+                    "// This file records every collection wrapper this crate borrows from workspace deps.\n\
+                     // It is machine-read by those deps' generation runs (--wrapper-requests) and compiled\n\
+                     // here, so a wrapper a dep stops providing fails THIS crate's build, naming the type.\n\
+                     #[allow(unused_imports)]\n\
+                     mod borrowed {\n",
+                );
+                for (dep, name, _) in &entries {
+                    let dep_wasm = extern_wasm_crate_map
+                        .get(*dep)
+                        .map(String::as_str)
+                        .unwrap_or(dep);
+                    sidecar.push_str(&format!("    use {dep_wasm}::collections::{name};\n"));
+                }
+                sidecar.push_str(
+                    "}\n\
+                     #[allow(dead_code)]\n\
+                     pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[\n\
+                     \x20   // (dep rust-crate name, wrapper name, shape in CDDL syntax with the dep's idents)\n",
+                );
+                for (dep, name, shape) in &entries {
+                    sidecar.push_str(&format!("    ({dep:?}, {name:?}, {shape:?}),\n"));
+                }
+                sidecar.push_str("];\n");
+                out.insert(
+                    "wasm/src/generated/borrowed_collections.rs".to_owned(),
+                    rustfmt_generated_string(&sidecar)?.into_owned(),
+                );
+            }
+
             out.insert(
                 "wasm/Cargo.toml".to_owned(),
                 crate::cargo_manifest::apply(
@@ -2315,6 +2391,27 @@ impl GenerationScope {
         self.wasm_collection_wrappers.insert(ident.clone(), scope);
     }
 
+    /// Record that structural wrapper `ident` was deferred to workspace dependency `dep` this run
+    /// (`--workspace-dep`), for the `wasm/src/generated/borrowed_collections.rs` sidecar. Idempotent:
+    /// the same wrapper is probed from several sites (the loose emitter, a keys-list, a NonEmpty
+    /// try_from source), each recording the same `(dep, shape)`. Two DISTINCT shapes deriving the
+    /// SAME structural name — the `MapAToBToC` reverse-ambiguity (`{* a => b_to_c}` vs
+    /// `{* a_to_b => c}`) — is a hard error naming both shapes: today that pair already fails rustc
+    /// (two same-named local mints), so this upgrades a compile failure into an actionable diagnostic.
+    pub(crate) fn record_borrowed_wrapper(&mut self, ident: &RustIdent, dep: &str, shape: &str) {
+        if let Some((_, existing_shape)) = self.borrowed_wrappers.get(ident)
+            && existing_shape != shape
+        {
+            panic!(
+                "two distinct shapes in this crate's spec derive the same borrowed collection wrapper \
+                 name {ident}: {existing_shape:?} and {shape:?}. These would define one JS class for \
+                 two concepts — rename or @name one of them."
+            );
+        }
+        self.borrowed_wrappers
+            .insert(ident.clone(), (dep.to_owned(), shape.to_owned()));
+    }
+
     /// Decide whether a structural collection wrapper the consumer is about to mint should instead be
     /// DEFERRED to a dependency that already owns it (`--extern-wrapper-index`). `structural_name` is
     /// the wrapper's structurally-derived name (`name_as_wasm_array` / `name_for_wasm_map`) and
@@ -2330,24 +2427,79 @@ impl GenerationScope {
     /// wrapper — never suppressed); the constituents are mixed / not all one dependency (R3c, silent);
     /// or an all-extern-of-one-dep candidate is absent from that dep's index (local + one stderr
     /// warning naming the wrapper).
+    #[allow(clippy::too_many_arguments)]
     fn try_defer_wrapper(
         &mut self,
         types: &IntermediateTypes,
         wrapper_ident: &RustIdent,
         structural_name: &str,
         constituents: &[&ConceptualRustType],
-        // The wrapper's CDDL shape fragment (canonical renderer output), used only to build the
-        // paste-able "add this rule" hint on the not-in-index warning.
+        // The wrapper's CDDL shape fragment (canonical renderer output), used to build the paste-able
+        // "add this rule" hint on the not-in-index warning AND recorded in the workspace sidecar.
         shape: &str,
+        // `true` when this mint request comes from an explicit RULE declaration (`foo_list = [* foo]`
+        // reached via the `RustStruct::{Array,Table}` variant arms) rather than a synthesized/inline
+        // wrapper. Only meaningful when the rule's ident coincides with the structural name (the
+        // common `name != structural` case is already screened below); in workspace mode a
+        // rule-declared wrapper is the consumer's OWN class and must NEVER defer — instead it triggers
+        // the shadowing warning (criterion 9).
+        rule_declared: bool,
         cli: &Cli,
     ) -> bool {
-        if self.extern_wrapper_index.is_empty() {
+        // Fast out only when NEITHER deferral mechanism is active. (Flag-off byte-identity: with both
+        // sets empty this is the same early `false` as before — the workspace branch below is dead
+        // code, criterion 10.)
+        if self.extern_wrapper_index.is_empty() && self.workspace_deps.is_empty() {
             return false;
         }
-        // Only generator-SYNTHESIZED structural wrappers are defer candidates: a rule-declared
-        // wrapper (`foo_list = [* extern_foo]`) whose ident differs from the structural name is the
-        // consumer's OWN class and is never suppressed.
+        // Only structural-named wrappers are defer candidates: a rule-declared wrapper
+        // (`foo_list = [* extern_foo]`) whose ident DIFFERS from the structural name is the consumer's
+        // OWN class and is never suppressed. (A rule whose ident COINCIDES with the structural name
+        // passes this guard; workspace mode distinguishes it via `rule_declared` just below.)
         if wrapper_ident.as_ref() != structural_name {
+            return false;
+        }
+        // Workspace mode (`--workspace-dep`): an all-one-workspace-dep wrapper DEFERS UNCONDITIONALLY,
+        // before any index consult. The placement decision is factored as one function over the
+        // transitive element-owner set (plan decision 4: today "exactly one owner ∈ workspace deps →
+        // Borrow"; "latest of the element owners" can replace this body later without touching call
+        // sites). Ownerless / mixed-dep wrappers fall through to the shipped index/local logic below
+        // (criterion 2). A rule-declared wrapper that would otherwise borrow is the consumer's own
+        // class: warn (criterion 9) and fall through, never suppress it.
+        if !self.workspace_deps.is_empty()
+            && let WrapperPlacement::Borrow(dep) = wrapper_placement(
+                &transitive_owner_set(types, constituents),
+                &self.workspace_deps,
+            )
+        {
+            if rule_declared {
+                if self.deferred_warned.insert(wrapper_ident.clone()) {
+                    eprintln!(
+                        "warning: rule-declared type {structural_name} shadows the collection wrapper \
+                         this crate would otherwise borrow from workspace dependency {dep:?}; the \
+                         authored class will duplicate-symbol against the dep's requested class at \
+                         link. Remedy: rename the rule, or give it a distinct @name."
+                    );
+                }
+                // fall through to the shipped behavior (never a workspace defer)
+            } else {
+                // Deferred to the workspace dep: record the borrow (idempotent; a same-name/different
+                // -shape collision hard-errors inside) and route the import exactly like the index
+                // branch does, so `scope_references` emits `use <dep_wasm>::collections::<Name>;`.
+                self.record_borrowed_wrapper(wrapper_ident, &dep, shape);
+                let dep_scope = ModuleScope::from(vec![
+                    crate::parsing::EXTERN_DEPS_DIR.to_owned(),
+                    dep,
+                    "collections".to_owned(),
+                ]);
+                self.deferred_wrappers
+                    .insert(wrapper_ident.clone(), dep_scope);
+                return true;
+            }
+        }
+        // Beyond this point is the shipped `--extern-wrapper-index` path (unchanged). It requires the
+        // index; with only `--workspace-dep` set (no index) there is nothing more to do.
+        if self.extern_wrapper_index.is_empty() {
             return false;
         }
         // Each named constituent (element / key / value that resolves to a named rule) maps to the
@@ -4852,17 +5004,21 @@ impl GenerationScope {
         types: &IntermediateTypes,
         element_type: RustType,
         array_type_ident: &RustIdent,
+        // `true` when `array_type_ident` is an explicit RULE ident (`foo_list = [* foo]`), so a
+        // structural-name coincidence never workspace-defers the consumer's own class (criterion 9).
+        rule_declared: bool,
         cli: &Cli,
     ) {
-        // `--extern-wrapper-index`: if a mapped dependency already owns this exact list wrapper, defer
-        // to it (import from the dep's `collections` module) instead of re-minting a duplicate class.
-        // Only fires for the structurally-named synthesized wrapper, never a rule-declared list.
+        // `--extern-wrapper-index` / `--workspace-dep`: if a dependency already owns (index) or a
+        // workspace dep owns (unconditional) this exact list wrapper, defer to it (import from the
+        // dep's `collections` module) instead of re-minting a duplicate class.
         if self.try_defer_wrapper(
             types,
             array_type_ident,
             &element_type.name_as_wasm_array(types),
             &[&element_type.conceptual_type],
             &format!("[* {}]", render_wrapper_shape(&element_type)),
+            rule_declared,
             cli,
         ) {
             return;
@@ -4950,6 +5106,9 @@ impl GenerationScope {
         types: &IntermediateTypes,
         element_type: RustType,
         wrapper_ident: &RustIdent,
+        // `true` when `wrapper_ident` is an explicit RULE ident (`foo = [+ foo]`), so a structural-name
+        // coincidence never workspace-defers the consumer's own class (criterion 9).
+        rule_declared: bool,
         cli: &Cli,
     ) {
         // `--extern-wrapper-index`: a synthesized `NonEmpty*List` over a mapped dependency's extern
@@ -4968,6 +5127,7 @@ impl GenerationScope {
             &structural_name,
             &[&element_type.conceptual_type],
             &format!("[+ {}]", render_wrapper_shape(&element_type)),
+            rule_declared,
             cli,
         ) {
             return;
@@ -5076,6 +5236,7 @@ impl GenerationScope {
                 types,
                 element_type.clone(),
                 &RustIdent::new(CDDLIdent::new(loose_list.clone())),
+                false,
                 cli,
             );
             wrapper
@@ -5113,6 +5274,9 @@ impl GenerationScope {
         key_type: RustType,
         value_type: RustType,
         wrapper_ident: &RustIdent,
+        // `true` when `wrapper_ident` is an explicit RULE ident (`m = {+ k => v}`), so a
+        // structural-name coincidence never workspace-defers the consumer's own class (criterion 9).
+        rule_declared: bool,
         cli: &Cli,
     ) {
         // `--extern-wrapper-index`: a synthesized `NonEmptyMap*` over a mapped dependency's extern
@@ -5137,6 +5301,7 @@ impl GenerationScope {
                 render_wrapper_shape(&key_type),
                 render_wrapper_shape(&value_type)
             ),
+            rule_declared,
             cli,
         ) {
             return;
@@ -5352,6 +5517,7 @@ impl GenerationScope {
                 &key_type.name_as_wasm_array(types),
                 &[&key_type.conceptual_type],
                 &format!("[* {}]", render_wrapper_shape(&key_type)),
+                false,
                 cli,
             );
         if keys_type.directly_wasm_exposable_ct(types) {
@@ -5428,7 +5594,13 @@ impl GenerationScope {
                     if types.non_empty_named_owner(inner).is_none() {
                         let ident =
                             RustIdent::new(CDDLIdent::new(rt.non_empty_wasm_wrapper_name(types)));
-                        self.generate_non_empty_array_type(types, (**inner).clone(), &ident, cli);
+                        self.generate_non_empty_array_type(
+                            types,
+                            (**inner).clone(),
+                            &ident,
+                            false,
+                            cli,
+                        );
                     }
                 } else {
                     self.ensure_non_empty_wrappers(types, inner, cli);
@@ -5453,6 +5625,7 @@ impl GenerationScope {
                             (**k).clone(),
                             (**v).clone(),
                             &ident,
+                            false,
                             cli,
                         );
                     }
@@ -6835,6 +7008,103 @@ fn named_constituent_idents(ty: &ConceptualRustType) -> Vec<RustIdent> {
     }
 }
 
+/// The TRANSITIVE named leaf idents of a wrapper constituent — `named_constituent_idents` extended to
+/// descend through nested `Array`/`Map` conceptual types to the named types at the leaves. A
+/// `[* [* foo]]` has leaf `foo` (its inner wrapper is classified independently); `{* a => [* b]}` has
+/// leaves `a` and `b`. Primitives / fixed values contribute none; alias / optional unwrap to their
+/// inner. This is what workspace placement resolves to dependency owners.
+fn transitive_named_leaf_idents(ty: &ConceptualRustType) -> Vec<RustIdent> {
+    match ty {
+        ConceptualRustType::Rust(ident) => vec![ident.clone()],
+        ConceptualRustType::Alias(AliasIdent::Rust(ident), _) => vec![ident.clone()],
+        ConceptualRustType::Optional(inner) => transitive_named_leaf_idents(&inner.conceptual_type),
+        ConceptualRustType::Array(inner) => transitive_named_leaf_idents(&inner.conceptual_type),
+        ConceptualRustType::Map(key, value) => {
+            let mut out = transitive_named_leaf_idents(&key.conceptual_type);
+            out.extend(transitive_named_leaf_idents(&value.conceptual_type));
+            out
+        }
+        _ => vec![],
+    }
+}
+
+/// The set of element OWNERS of a wrapper's constituents, computed transitively to the named leaves.
+/// Each leaf resolves to `Some(dep)` when it is an extern type (leading component of its non-exported
+/// scope) or `None` when it is a consumer-owned (exported) type. An empty set means "ownerless" (no
+/// named leaves — a primitives-only wrapper like `{* uint => text}`). This is the input to
+/// `wrapper_placement`.
+fn transitive_owner_set(
+    types: &IntermediateTypes,
+    constituents: &[&ConceptualRustType],
+) -> BTreeSet<Option<String>> {
+    let mut owners = BTreeSet::new();
+    for c in constituents {
+        for id in transitive_named_leaf_idents(c) {
+            let scope = types.scope(&id);
+            owners.insert(if scope.export() {
+                None
+            } else {
+                scope.components().first().cloned()
+            });
+        }
+    }
+    owners
+}
+
+/// Where a collection wrapper is hosted, given its transitive element owners. Factored as one
+/// function so the placement rule can generalize (plan decision 4): today `Borrow(dep)` iff the
+/// wrapper has EXACTLY ONE owner, that owner is a named dependency, and that dependency is a
+/// `--workspace-dep`; every other case (ownerless, mixed-dep, a lone non-workspace owner, any
+/// consumer-owned leaf) is `Local`. The future rule ("latest of the element owners" / least upper
+/// bound in a DAG) replaces this body without touching call sites.
+enum WrapperPlacement {
+    Local,
+    Borrow(String),
+}
+
+fn wrapper_placement(
+    owners: &BTreeSet<Option<String>>,
+    workspace_deps: &BTreeSet<String>,
+) -> WrapperPlacement {
+    if owners.len() == 1
+        && let Some(Some(dep)) = owners.iter().next()
+        && workspace_deps.contains(dep)
+    {
+        return WrapperPlacement::Borrow(dep.clone());
+    }
+    WrapperPlacement::Local
+}
+
+/// Validate `--workspace-dep` values (plan decision 6) and return the set. Each named dep must be a
+/// configured extern dependency (`extern_dep_names()`) AND have an `--extern-wasm-crate` mapping —
+/// the deferral imports and the sidecar's `use` lines both need the wasm crate name, so a missing
+/// mapping is a hard error rather than a silent fallback. Mirrors `load_extern_wrapper_indices`'
+/// startup hardening. The accessor already rejected empty / `=`-bearing values.
+fn load_workspace_deps(types: &IntermediateTypes, cli: &Cli) -> BTreeSet<String> {
+    let deps = cli.workspace_deps();
+    if deps.is_empty() {
+        return BTreeSet::new();
+    }
+    let extern_dep_names = types.extern_dep_names();
+    let wasm_crate_map = cli.extern_wasm_crate_map();
+    for dep in &deps {
+        if !extern_dep_names.contains(dep) {
+            panic!(
+                "--workspace-dep names dependency {dep:?}, which is not an extern dependency in this \
+                 spec. Known extern dependencies: {extern_dep_names:?}"
+            );
+        }
+        if !wasm_crate_map.contains_key(dep) {
+            panic!(
+                "--workspace-dep {dep:?} has no --extern-wasm-crate mapping; workspace deferral needs \
+                 the dep's wasm crate name for its imports and the borrowed-collections sidecar. Add \
+                 --extern-wasm-crate {dep}=<wasm_crate>."
+            );
+        }
+    }
+    deps
+}
+
 /// Parse every `--extern-wrapper-index <dep>=<path>` file into `dep -> {wrapper class names}`. Each
 /// file is a dependency's committed `generated/collections.rs`: `pub use <path>::<Name>;` lines (plus
 /// blank / `//` comment lines). Any other non-blank line is a hard error — the format is ours, and a
@@ -6912,6 +7182,7 @@ fn mint_wasm_wrapper_for_visited_type(
                         types,
                         *elem.clone(),
                         &RustIdent::new(CDDLIdent::new(array_ident)),
+                        false,
                         cli,
                     );
                 }
@@ -6954,6 +7225,7 @@ fn mint_wasm_wrapper_for_visited_type(
                         types,
                         *k.clone(),
                         &RustIdent::new(CDDLIdent::new(keys_ident)),
+                        false,
                         cli,
                     );
                 }
@@ -7030,6 +7302,9 @@ fn codegen_table_type(
                 render_wrapper_shape(&key_type),
                 render_wrapper_shape(&value_type)
             ),
+            // Only the anonymous STRUCTURAL map wrapper reaches here (`!exists_in_rust`); a
+            // rule-declared table is screened out above and never a defer candidate.
+            false,
             cli,
         )
     {
@@ -7249,6 +7524,7 @@ fn codegen_table_type(
             &key_type.name_as_wasm_array(types),
             &[&key_type.conceptual_type],
             &format!("[* {}]", render_wrapper_shape(&key_type)),
+            false,
             cli,
         );
     if keys_type.directly_wasm_exposable_ct(types) {

@@ -15,8 +15,10 @@
 // Also deliberately absent: any restricted `[+ idx_bar]` / `[+ idx_baz]` wrapper —
 // their LOOSE lists below ARE indexed, so the consumer mints the restricted class
 // locally while deferring its `try_from` source here (the deferred-source cells).
+pub use crate::ArrIdxFooList;
 pub use crate::IdxBarList;
 pub use crate::IdxBazList;
 pub use crate::IdxFooList;
 pub use crate::MapU64ToIdxFoo;
+pub use crate::MapU64ToText;
 pub use crate::NonEmptyIdxFooList;

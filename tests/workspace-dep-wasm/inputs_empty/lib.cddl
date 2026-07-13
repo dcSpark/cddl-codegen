@@ -1,0 +1,4 @@
+; The flag is present but nothing all-one-dep is borrowed (the dep type is used directly, not in a
+; collection). Proves the sidecar is emitted EMPTY-but-PRESENT in the fixed skeleton (stable
+; presence, stable diffs).
+thing = [ f: idx_foo, n: uint ]

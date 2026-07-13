@@ -1,0 +1,24 @@
+; W1 consumer spec for `--workspace-dep`. Every all-one-dep collection shape below DEFERS
+; UNCONDITIONALLY to the dep's wasm crate (no `--extern-wrapper-index` consulted) and is recorded in
+; `borrowed_collections.rs`. Two consumers minting these would collide by symbol in one cdylib;
+; hosting them in the dep is what workspace mode buys. Covers: a loose list, a loose map, a NonEmpty
+; list, a nested list-of-list (`ArrIdxFooList`) — all provided by index-dep-crate-wasm — plus two
+; composition cells:
+;
+; A consumer-owned struct, used as a map VALUE to make one map MIXED (extern key + consumer value).
+local_thing = [a: uint, b: tstr]
+
+; NAMED `[+ idx_bar]` rule: its restricted class (AbcBars — rule-declared, ident != structural name,
+; never deferred) is minted locally, but its loose `try_from` SOURCE IdxBarList is all-one-dep ->
+; WORKSPACE-deferred (recorded in the sidecar), so the conversion resolves against the dep's class.
+abc_bars = [+ idx_bar]
+
+everything = [
+    foos: [* idx_foo],
+    foo_table: { * uint => idx_foo },
+    bars: [+ idx_foo],
+    nested: [* [* idx_foo]],
+    ; MIXED map (extern key + consumer value) -> minted LOCALLY (mixed-dep is never borrowed), but
+    ; its keys-list IdxFooList is all-one-dep -> WORKSPACE-deferred, so keys() builds via `.into()`.
+    foo_keyed: { * idx_foo => local_thing },
+]

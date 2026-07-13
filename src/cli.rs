@@ -166,6 +166,22 @@ pub struct Cli {
     /// cross-crate interface.
     #[clap(long = "extern-wrapper-index", value_parser)]
     pub extern_wrapper_index: Vec<String>,
+
+    /// Mark an `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>` dependency as a co-generated workspace member.
+    /// For every collection wrapper whose element types are ALL owned (transitively) by that single
+    /// dep, the consumer DEFERS UNCONDITIONALLY — emits `use <dep_wasm>::collections::<Name>;` at use
+    /// sites (routed through `--extern-wasm-crate`) and never mints a local `#[wasm_bindgen]` class,
+    /// regardless of any `--extern-wrapper-index`. This closes the sibling-collision class two
+    /// consumers minting the same wrapper both define `pub struct FooList` and collide in one cdylib.
+    /// The consumer additionally emits `wasm/src/generated/borrowed_collections.rs` recording what it
+    /// borrows and from whom (read by the dep's own generation via a future `--wrapper-requests`).
+    /// Ownerless (primitives-only) and mixed-dep wrappers are unaffected — they keep the shipped
+    /// index-deferral / local-mint behavior. Repeatable; each value is a bare `<dep>` name (the
+    /// `<dep>=<host>` host form for unmodifiable external deps is reserved but not yet supported).
+    /// Each named dep must be a configured extern dependency AND have an `--extern-wasm-crate`
+    /// mapping (the deferral imports and sidecar `use` lines need the wasm crate name).
+    #[clap(long = "workspace-dep", value_parser)]
+    pub workspace_dep: Vec<String>,
 }
 
 impl Cli {
@@ -215,6 +231,30 @@ impl Cli {
             map.insert(dep.to_owned(), path.to_owned());
         }
         map
+    }
+
+    /// Parsed `--workspace-dep` values: the set of extern-deps directory names marked co-generated
+    /// workspace members. BTreeSet (never HashMap) for deterministic output. An empty value is a hard
+    /// error; a value containing `=` is a hard error naming the future `<dep>=<host>` host form as not
+    /// yet supported (flag-syntax reservation without implementing it). The names are further
+    /// validated against the extern-dep set and `--extern-wasm-crate` mappings at generation time.
+    pub fn workspace_deps(&self) -> std::collections::BTreeSet<String> {
+        let mut set = std::collections::BTreeSet::new();
+        for entry in &self.workspace_dep {
+            if entry.contains('=') {
+                panic!(
+                    "--workspace-dep value {entry:?} contains '='; the <dep>=<host> host form (for \
+                     unmodifiable external deps) is reserved but not yet supported — pass a bare \
+                     <dep> name"
+                );
+            }
+            let dep = entry.trim();
+            if dep.is_empty() {
+                panic!("--workspace-dep value must be a non-empty <dep> name, got: {entry:?}");
+            }
+            set.insert(dep.to_owned());
+        }
+        set
     }
 
     /// If someone override the common imports, we don't want to export them
