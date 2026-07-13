@@ -342,11 +342,33 @@ honest link gate: a real
 `cargo build --target wasm32-unknown-unknown` of consumer+dep — the only place duplicate
 `#[wasm_bindgen]` classes actually fail — asserted GREEN with the flag and RED
 (`duplicate symbol`) without it, with a loud skip (hard assert under CI) when the target isn't
-installed. This is the suite's only gate compiling any generated crate for the actual wasm target,
-so the fixture also deliberately INCLUDES a control-constrained signed-int member
+installed. It was the suite's first gate compiling a generated crate for the actual wasm target
+(the workspace-mode gates below now do too), so the fixture also deliberately INCLUDES a
+control-constrained signed-int member
 (`local_thing.c: (int .ne 1)`): its emitted i64-window width guard pins `RangeCheck`'s `i128`
 fields on a 32-bit target — the class where `isize` fields overflowed the `i64::MIN`/`MAX`
 literals, which 64-bit host builds can never see.
+
+The workspace-mode surface (`--workspace-dep` / `--wrapper-requests` — dep-owned placement of
+all-one-dep collection wrappers via request sidecars; user docs:
+`docs/docs/command_line_flags.mdx` and `docs/docs/output_format.mdx` § "Workspace mode") is pinned
+by three sibling gates plus the parser's unit suite (`src/wrapper_requests.rs`):
+`workspace_dep_defers_to_dep` (consumer side over `tests/workspace-dep-wasm/`: unconditional
+all-one-dep deferral incl. NonEmpty and nested shapes, the byte-frozen `borrowed_collections.rs`
+sidecar format asserted as full-file equality — it is a cross-crate contract — plus
+ownerless/mixed composition with `--extern-wrapper-index` and the rule-declared shadowing
+warning); `workspace_requests_hosts_borrowed_wrappers` + the two hard-error tests (dep side over
+`tests/workspace-requests/`: strict sidecar intake, union-by-shape with sorted requester
+attribution, own-spec-shape satisfaction, flag-order byte-identity, and the criterion-8 hard
+errors); and `workspace_regen_two_consumer_contract` (the regen-contract gate over
+`tests/workspace-regen/`: an umbrella wasm cdylib linking one dep + TWO consumers, RED with
+duplicate symbols when both consumers mint and GREEN after a reverse-dependency-order holistic
+regen, then the in-place lifecycle — zero-diff unchanged regen, requester churn without
+preservation traps, last-borrower removal, and the new-borrow-before-dep-regen unresolved-import
+failure). The regen gate runs every generation IN PLACE over prior output precisely so the
+edit-preservation overlay participates — it is what caught the sidecar's in-const legend comment
+trapping on borrow removal (since relocated to the file banner, where comments anchor to
+structure that always exists).
 
 `flag_value_smoke` generate + `cargo check`s a rich extern-free input (`tests/canonical`) under each
 documented flag *value* that no named profile exercises (`--annotate-fields=false`,

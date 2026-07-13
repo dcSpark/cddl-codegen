@@ -631,13 +631,16 @@ composition-space cross-check that complements this matrix's curated per-shape g
   (their compile gates use single-file inputs), and EXECUTION of the generated json-gen crate
   (`wasm/json-gen`) against cross-module types (the multifile `json`-profile sweep compiles
   rust+wasm; the json-gen runner gate is single-file-only). NOT on this list:
-  `--common-import-override`, `--extern-wasm-crate`, and `--extern-wrapper-index` are exercised
+  `--common-import-override`, `--extern-wasm-crate`, `--extern-wrapper-index`, and the
+  workspace-mode pair `--workspace-dep`/`--wrapper-requests` are exercised
   under directory input by construction — their pins (`integration_tests::extern_deps*`,
-  `extern_wrapper_index_defers_to_dep`) are directory-input fixtures, and the extern-deps
+  `extern_wrapper_index_defers_to_dep`, `workspace_dep_defers_to_dep`,
+  `workspace_requests_hosts_borrowed_wrappers`, `workspace_regen_two_consumer_contract`) are
+  directory-input fixtures, and the extern-deps
   mechanism they extend only exists under directory input. (`--no-synthesized-rust-collection-aliases`
   is emission-only alias suppression with no per-module placement logic; its pin is single-file,
   a deliberate posture.) A SIBLING axis with the same silent-hole character — per-wrapper emission
-  MODE (local vs deferred under `--extern-wrapper-index`) × wrapper shape, which neither
+  MODE (local vs index-deferred vs workspace-borrowed) × wrapper shape, which neither
   SHAPES/ROLES nor this input-mode rule enumerates — is recorded with its recur-first mechanical
   layer (a deferral-profile leg over the extern-capable shapes) in `tests/TESTING_ROADMAP.md`'s
   `--extern-wrapper-index` deferral-boundaries entry.

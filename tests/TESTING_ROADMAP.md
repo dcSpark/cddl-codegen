@@ -271,22 +271,33 @@ dead loses the lesson.
   loose use in another module — RED as duplicate-symbol if the source re-mints, RED as unresolved
   `IdxBarList` if the import isn't routed) and the inline `only_nb_baz: [+ idx_baz]` twin (no loose
   use anywhere). The map-side source routing is the same helper pattern but has no dedicated cell —
-  it joins the deferral-profile leg below. Two related gaps stay open. (1) A USER rule claiming a
-  dep-indexed structural name is never deferred (the rule-declared guard — correctly, so it stays a
-  local class), so it duplicate-symbols at link — the CROSS-CRATE flavor of the synthesized-name
-  interaction class, which the shipped in-crate layers cannot see (the duplicate-ident backstop scans
-  one crate's own files; `synthesized_name_interaction_sweep` spells no dep-index cells — see
-  `tests/README.md` § "Synthesized-name interaction sweep + duplicate-ident backstop"), so it is owned
-  HERE. (2) The CLASS behind both — a per-wrapper emission MODE (local vs deferred under
-  `--extern-wrapper-index`) crossed with the wrapper-shape space — is an axis no existing honesty rule
+  it joins the deferral-profile leg below. Two related gaps stay open. (1) USER rules claiming a
+  dep-indexed structural name split by flavor under `--extern-wrapper-index`, and neither flavor is
+  fully right: a rule whose ident EQUALS the structural name passes the shipped name-identity
+  guard for ARRAYS and silently DEFERS — the user's own class is suppressed in favor of the dep's
+  (probed live during the workspace-mode delivery; same-shape so no link error, but the consumer's
+  crate silently stops exporting its own authored class) — while TABLE rules are screened by
+  `exists_in_rust` and stay local, where they duplicate-symbol at link if the dep also ships the
+  name — the CROSS-CRATE flavor of the synthesized-name interaction class, which the shipped
+  in-crate layers cannot see (the duplicate-ident backstop scans one crate's own files;
+  `synthesized_name_interaction_sweep` spells no dep-index cells — see `tests/README.md`
+  § "Synthesized-name interaction sweep + duplicate-ident backstop"), so it is owned HERE.
+  Workspace mode already threads real rule provenance (`rule_declared`, from the
+  `RustStructType::{Array,Table}` call sites) and warns + keeps the user's class
+  (`workspace_dep_defers_to_dep`'s shadowing cell); the open decision is whether the INDEX path
+  should adopt the same guard — a behavior change to shipped semantics (today's array-flavor defer
+  is at least link-clean), so it needs its own red-first cell, not a drive-by. (2) The CLASS behind
+  all of these — a per-wrapper emission MODE (local vs index-deferred vs workspace-borrowed under
+  `--workspace-dep`) crossed with the wrapper-shape space — is an axis no existing honesty rule
   sweeps (the wasm-ABI matrix's SHAPES/ROLES cover what types look like and where they sit; the third
   honesty axis covers flag × input mode; neither enumerates flag × shape). Each has been found by
   reading the emitters, not by any gate. Mechanical layer on the SECOND read-caught or
   consumer-reported instance of the class (the NonEmpty cell above being the first, now pinned by
   hand): a deferral-profile leg over the wasm-ABI matrix's extern-capable shapes — each shape probed
-  once with a dep index listing its structural name and once without, asserting deferred-import vs
-  local-mint and a wasm32 link (the user-rule cross-crate cell joins it) — rather than accreting
-  per-shape hand fixtures.
+  once per mode (dep index listing its structural name / absent / workspace-dep configured),
+  asserting deferred-import vs local-mint vs borrowed+sidecar-recorded and a wasm32 link (the
+  user-rule cross-crate cell and the map-side NonEmpty source-routing cell join it) — rather than
+  accreting per-shape hand fixtures.
 - **Extern-deps wasm-boundary surface: packaging- and json-gen-gaps beyond the behavioral floor.**
   The split-dep cell (`integration_tests::extern_deps_wasm`, `--extern-wasm-crate`) drives the
   generated wasm crate's cross-crate wrappers behaviorally: `tests/extern-deps-wasm/tests_wasm.rs`
