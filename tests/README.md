@@ -258,6 +258,45 @@ gitignored.
 CI also runs `cargo insta test --unreferenced=reject` so a snapshot orphaned by a refactor (one
 that stops generating a file) fails the build instead of lingering unnoticed.
 
+## Preservation-merge fixtures (`tests/preserve-fixtures/` + `src/tests/preserve_fixture_tests.rs`)
+
+The edit-preservation overlay (`comment_preserve::preserve` — user comments, insert blocks,
+replace blocks; user docs: `docs/docs/preserving_edits.mdx`) is a pure function of
+`(old, new) → merged`, so its behavioral tests are **fixture triples independent of codegen** —
+they never churn when the generator changes. Each `tests/preserve-fixtures/<case>/` holds:
+
+- `old.rs` — the prior on-disk file (user comments / tagged blocks / carried sentinel blocks);
+- `new.rs` — the freshly generated pristine content;
+- exactly one expectation: `expected.rs` (byte-exact merge output) or `error.txt` (a substring
+  the hard `PreserveError` must contain — used for malformed-tag cases, authored by hand).
+
+One test (`preserve_fixture_tests::preserve_fixtures`) globs the directory. Byte-exact matching
+is deliberate — a misplacement that keeps a substring cannot pass — and on top of the blessed
+bytes the harness asserts three properties **independent of the blessed content**, so a wrong
+`expected.rs` is hard to bless:
+
+- *idempotent fixed point* (pre-rustfmt): `preserve(expected, new).content == expected` — re-running
+  the merge on its own output is a no-op (this also covers block carry-forward across regens);
+- *never-silent*: every own-line non-doc user comment and tagged block in `old.rs` appears in the
+  output either placed or `escape_for_rust_string`-transformed inside a `compile_error!`;
+- `changed == false` ⇒ output byte-identical to `new`.
+
+Bless with `BLESS_PRESERVE_FIXTURES=1 cargo test --bin cddl-codegen preserve_fixtures`, then
+review the diff like a snapshot. Blessing never creates `error.txt` cases. The directory's
+`.gitattributes` (`* -text`) pins CRLF fixture bytes against checkout conversion; per-case
+intents live in `tests/preserve-fixtures/README.md`.
+
+What the pure fixtures CANNOT see — assumptions about real generator output (the header banner,
+"the generator emits no trailing comments", doc ownership) and the disk-level write seam — is
+pinned by exactly two integration tests: `comment_preservation_disk_round_trip` (real pipeline;
+injects comments + an insert block + a replace block, regenerates twice, asserts the post-rustfmt
+fixed point) and `comment_preserve_lexer_round_trip_over_corpus` (lexer assumptions vs everything
+the generator emits across flag profiles). Keep that pair thin; new merge behavior belongs in
+fixtures.
+
+Lexer-level tests (char-vs-lifetime, raw identifiers, in-string `//`) stay inline in
+`comment_preserve.rs` — they test `lex`, not the merge.
+
 ## Integration tests (`integration_tests.rs`)
 
 Each test generates a crate via the CLI (`cargo run`), appends hand-written round-trip tests

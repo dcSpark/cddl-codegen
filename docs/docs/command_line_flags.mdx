@@ -356,24 +356,13 @@ cddl-codegen --input=example --output=export --deserialize-depth-limit 128
 <br/><br/>
 
 :::info `--no-preserve-comments`
-Disables carrying user-added comments across regeneration.
+Disables the edit-preservation overlay — user comments AND tagged code blocks alike.
 
-By default, when a generated `src/generated/**` `.rs` file already exists on disk, the own-line comments you added to the previous output are re-anchored onto the freshly generated content. Anchoring is by **symbol identity** (which named item the comment sits in or above) and **token equality** (the safety test), never a textual diff: a comment on an unchanged item transfers, a comment above a still-present item re-attaches above it, and a comment on an individual statement inside a changed body re-attaches if that exact statement still appears exactly once.
+By default, when a generated `src/generated/**` `.rs` file already exists on disk, the hand edits it carries are re-applied onto the freshly generated content: own-line comments are re-anchored by **symbol identity** and **token equality** (never a textual diff), `// cddl-codegen:insert-start`/`insert-end` blocks re-insert your added code, and `// cddl-codegen:replace-start`/`replaces`/`replace-end` blocks re-apply your code swaps by matching their recorded original in the fresh output. Anything that cannot be safely re-placed is **not dropped silently** — it is trapped in a tagged `compile_error!` block that fails the generated crate's build with your original text in the message, and carries forward until you delete it. Outside your tagged regions the overlay never touches a generated code token, and running the tool twice equals running it once.
 
-A comment that cannot be safely re-placed — its item vanished, its statement changed or now appears twice — is **not dropped silently**. It becomes a tagged block:
+See [preserving edits](preserving_edits.mdx) for the block syntax, the anchoring rules, every failure message with its resolution, and the residual limits (trailing comments, tool-owned doc text, unlexable files, orphaned files).
 
-```rust
-// cddl-codegen:unpreserved-comment (delete this block after review)
-compile_error!("cddl-codegen could not preserve a user comment across regeneration.\n…\nOriginal comment:\n// your note");
-```
-
-so the generated crate fails to build with your original comment in the message; you re-place or discard it and delete the block. The block carries forward verbatim on every regeneration until you delete it, so the trapped comment is never lost. Outside these tagged blocks the overlay contributes only comment bytes to the output — never a code token — and running the tool twice equals running it once.
-
-**Doc comments are tool-owned where the tool documents.** `///`/`//!` text on generated items flows from your CDDL and the `@doc` comment DSL — edit it there, not in the output. A hand edit to a tool-emitted doc block is dropped on regeneration, and a doc block whose item vanished (e.g. you deleted a documented type from the spec) drops too rather than becoming a compile error — the one deliberate silent-drop class: stale tool docs and user-edited tool docs are indistinguishable. A doc comment you add to a position the tool does **not** document is preserved like any other comment.
-
-**v1 scope:** own-line comments only (`//`, `///`/`//!`, and `/* */` blocks that occupy their own lines). A user-added **trailing** (end-of-line) comment fails loudly with a hint to move it to its own line, after which it is preserved. If the existing file cannot be lexed (e.g. a hand edit left an unterminated string) or read, regeneration is a hard error naming the file rather than a silent clobber. A file that *stops being generated* (removed/renamed type or scope) is orphaned on disk with a stderr warning — comments there are not carried anywhere.
-
-Pass `--no-preserve-comments` to skip the overlay entirely and clobber each generated file with pristine output.
+Pass `--no-preserve-comments` to skip the overlay entirely and clobber each generated file with pristine output. With the overlay off, tagged blocks in the prior output are clobbered like any other edit.
 
 **Possible values:** the flag takes no value; its presence disables preservation<br></br>
 **Default:** preservation on
