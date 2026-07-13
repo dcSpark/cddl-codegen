@@ -1,0 +1,1 @@
+Found `// cddl-codegen:replaces` without an enclosing

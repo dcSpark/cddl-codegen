@@ -48,6 +48,36 @@ harness module docs for the byte-for-byte assertion and the three cross-cutting 
 - `insert_at_eof` — block with no following code lands at end of file.
 - `insert_crlf` — a CRLF block is placed as clean LF.
 
+## Replace-block cases
+
+A replace block records the generated code it overrides (`//`-commented under `replaces`); that
+recorded original is both the placement anchor (lex it, find the token run in the regenerated item,
+splice the user block over it) and the drift detector (needle gone ⇒ the generator changed ⇒ fail
+loudly). The needle must be unique on BOTH sides. Idempotent re-splice is not a separate fixture —
+the harness's fixed-point property (`preserve(expected, new) == expected`) exercises it on every
+`expected.rs` case below.
+
+- `replace_one_line_swap` — one line of generated code swapped (case 1).
+- `replace_multi_statement_swap` — a multi-statement region swapped (case 2).
+- `replace_whole_fn_in_impl` — a whole member fn inside an `impl` swapped (case 3); the needle is the fn, the enclosing top-level item is the impl.
+- `replace_whole_impl` — a whole top-level `impl` swapped; same code path, bigger needle.
+- `replace_identity_tier_still_fires` — a file with a replace block whose generator output is unchanged; an unrelated plain comment still transfers via the identity tier (the reconstruction payoff).
+- `replace_needle_midline_match_arm` — the needle matches mid-line in a one-liner match arm; the splice is byte-range, not line-based.
+- `replace_interior_generator_comment_deleted_exterior_kept` — a generator comment interior to the replaced byte span is deleted with it; one exterior to the span survives.
+- `replace_recorded_original_with_commented_generator_comment` — a recorded-original line that is itself a comment (`// //`) uncomments to a comment and lexes away (inert), so the needle ignores it.
+- `replace_empty_user_section_pinned` — an empty user section (undocumented deletion) is pinned: the recorded original is deleted and the tag-only block sits in its place.
+- `replace_insert_block_above_lands_above` — an insert block immediately above a replace block lands ABOVE the spliced code.
+- `replace_insert_plain_comment_coexist` — a replace block, an insert block, and two plain comments coexist in one file.
+
+## Replace-block fail-loudly cases (`compile_error!`, blessed `expected.rs`)
+
+- `replace_drift_fails_loudly` — the recorded original no longer appears in the regenerated item (drift); the whole block is trapped, recorded original included.
+- `replace_ambiguous_in_new_fails_loudly` — the needle appears more than once in the matched new item.
+- `replace_deleted_duplicate_fails_loudly` — the needle is non-unique in the virtual old item (a deleted duplicate); which occurrence it replaces is ambiguous, so it fails loudly rather than re-attaching to a survivor.
+- `replace_vanished_item_fails_loudly` — the enclosing item was deleted.
+- `replace_same_key_count_change_fails_loudly` — the same-keyed item count changed, so occurrence matching is unsound.
+- `replace_comment_inside_replaced_span_conflict_fails_loudly` — a plain user comment whose anchor lands strictly inside a replaced byte span (op-composition conflict); the replace still splices, the comment fails loudly.
+
 ## Hard-error cases (`error.txt`)
 
 - `insert_quoted_tag_line_errors` — a reserved tag inside a block (namespace reservation).
@@ -55,4 +85,13 @@ harness module docs for the byte-for-byte assertion and the three cross-cutting 
 - `insert_orphaned_end_errors` — `insert-end` with no matching `insert-start`.
 - `insert_unclosed_errors` — `insert-start` with no matching `insert-end`.
 - `namespace_bare_unpreserved_marker_errors` — a bare `unpreserved-comment` marker not backed by a `compile_error!`.
-- `namespace_replace_reserved_errors` — reserved-but-unsupported `replace-*` tags.
+- `replace_missing_replaces_errors` — a replace block with no `replaces` marker (nothing separates user code from the recorded original).
+- `replace_missing_end_errors` — a replace block with no `replace-end`.
+- `replace_empty_recorded_original_errors` — a `replaces` section that lexes to zero code tokens.
+- `replace_unbalanced_user_section_errors` — the user section has unbalanced delimiters.
+- `replace_unbalanced_recorded_original_errors` — the recorded original has unbalanced delimiters.
+- `replace_unlexable_recorded_original_errors` — the recorded original fails to lex (an unterminated string literal after uncommenting).
+- `replace_orphaned_replaces_errors` — `replaces` outside any replace block.
+- `replace_orphaned_end_errors` — `replace-end` with no matching `replace-start`.
+- `replace_nested_blocks_errors` — a `replace-start` nested inside another replace block's user section.
+- `replace_straddles_item_boundary_errors` — a recorded original spanning more than one top-level item.

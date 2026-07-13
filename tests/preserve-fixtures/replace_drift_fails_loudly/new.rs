@@ -3,6 +3,7 @@
 
 impl Foo {
     fn go(&self) {
+        renamed();
         write_len(self.a);
     }
 }
