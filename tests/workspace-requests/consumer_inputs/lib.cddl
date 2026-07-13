@@ -1,0 +1,8 @@
+; W1 consumer over the workspace dep `wr_dep`. Every shape below is all-one-dep -> workspace-deferred
+; and recorded in borrowed_collections.rs, which the dep re-reads via --wrapper-requests.
+everything = [
+    foos: [* idx_foo],
+    foo_table: { * uint => idx_foo },
+    bars: [+ idx_foo],
+    nested: [* [* idx_foo]],
+]

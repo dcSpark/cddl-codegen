@@ -6935,6 +6935,422 @@ fn workspace_borrowed_wrapper_collision_is_a_hard_error() {
     gen_scope.record_borrowed_wrapper(&ident, "dep", "{* a_to_b => c}");
 }
 
+/// W2 of the workspace wrapper-placement feature (`--wrapper-requests`): the dep side that HOSTS the
+/// wrappers a consumer's `borrowed_collections.rs` records. A GENERATED dep (`dep_inputs`: owns
+/// `idx_foo`/`idx_bar`, produces `IdxFooList` STRUCTURALLY via an inline `[* idx_foo]`) reads a
+/// GENERATED consumer's real sidecar plus a committed second-consumer sidecar, unions the requested
+/// shapes, and emits `requested_collections.rs`. Assertions map to acceptance criteria 3, 5, 8, 10:
+/// exactly (union − own-produced) + transitive NonEmpty support, sorted attribution, index re-export,
+/// own-produced-under-structural skip, byte-identical under flag-order reversal, empty-when-flagged,
+/// absent flag-off, and the honest wasm32 link of BOTH the dep and the deferring consumer.
+///
+/// Bespoke harness (not `run_test`) for the same reasons as `workspace_dep_defers_to_dep`: it drives
+/// a two-crate workspace regen (consumer sidecar → dep) and runs the wasm32 link gate.
+#[test]
+fn workspace_requests_hosts_borrowed_wrappers() {
+    use std::str::FromStr;
+    let base = std::path::PathBuf::from_str("tests/workspace-requests").unwrap();
+    let zeta_sidecar = "tests/workspace-requests/sidecars/zeta_borrowed_collections.rs";
+
+    // Generate the CONSUMER over the workspace dep `wr_dep` (extern stub + --workspace-dep). This
+    // writes the real `borrowed_collections.rs` the dep re-reads. `export`-prefixed output dirs match
+    // the gitignore (`tests/*/export*/`).
+    let gen_consumer = |output: &str| -> std::process::Output {
+        let out_dir = base.join(output);
+        let _ = std::fs::remove_dir_all(&out_dir);
+        tool_cmd("cargo")
+            .arg("run")
+            .arg("--")
+            .arg("--input=tests/workspace-requests/consumer_inputs")
+            .arg(format!("--output=tests/workspace-requests/{output}"))
+            .arg("--wasm=true")
+            .arg("--preserve-encodings=true")
+            .arg("--common-import-override=wr_dep")
+            .arg("--extern-wasm-crate=wr_dep=wr_dep_wasm")
+            .arg("--workspace-dep=wr_dep")
+            .output()
+            .unwrap()
+    };
+    // Generate the DEP (owns idx_foo/idx_bar). `input` selects the spec (dep_inputs or the
+    // rule-name variant); `requests` are the `<consumer>=<path>` sidecar flags.
+    let gen_dep = |input: &str, output: &str, requests: &[&str]| -> std::process::Output {
+        let out_dir = base.join(output);
+        let _ = std::fs::remove_dir_all(&out_dir);
+        let mut cmd = tool_cmd("cargo");
+        cmd.arg("run")
+            .arg("--")
+            .arg(format!("--input=tests/workspace-requests/{input}"))
+            .arg(format!("--output=tests/workspace-requests/{output}"))
+            .arg("--lib-name=wr-dep")
+            .arg("--wasm=true")
+            .arg("--preserve-encodings=true");
+        for r in requests {
+            cmd.arg(format!("--wrapper-requests={r}"));
+        }
+        cmd.output().unwrap()
+    };
+    let read = |output: &str, rel: &str| -> String {
+        std::fs::read_to_string(base.join(output).join(rel)).unwrap()
+    };
+
+    // ===== Consumer regen: the real sidecar the dep will read =====
+    let c = gen_consumer("export_consumer");
+    assert!(
+        c.status.success(),
+        "consumer generate failed:\n{}",
+        String::from_utf8_lossy(&c.stderr)
+    );
+    let consumer_sidecar =
+        "tests/workspace-requests/export_consumer/wasm/src/generated/borrowed_collections.rs";
+    let consumer_flag = format!("consumer={consumer_sidecar}");
+    let zeta_flag = format!("zeta={zeta_sidecar}");
+
+    // ===== Dep regen with BOTH consumers (criterion 3: union) =====
+    let d = gen_dep("dep_inputs", "export_dep", &[&consumer_flag, &zeta_flag]);
+    assert!(
+        d.status.success(),
+        "dep generate failed:\n{}",
+        String::from_utf8_lossy(&d.stderr)
+    );
+    let requested = read("export_dep", "wasm/src/generated/requested_collections.rs");
+
+    // Exactly the union minus own-produced, PLUS transitive NonEmpty support:
+    // - IdxFooList: own-spec-produced STRUCTURALLY (the dep's inline `[* idx_foo]`) => SKIPPED here.
+    // - MapU64ToIdxFoo / ArrIdxFooList / NonEmptyIdxFooList: requested, not own-produced => emitted.
+    // - IdxBarList: requested only by zeta => emitted.
+    for name in [
+        "ArrIdxFooList",
+        "IdxBarList",
+        "MapU64ToIdxFoo",
+        "NonEmptyIdxFooList",
+    ] {
+        assert!(
+            requested.contains(&format!("pub struct {name}(")),
+            "requested_collections.rs must define {name}"
+        );
+    }
+    assert!(
+        !requested.contains("pub struct IdxFooList("),
+        "IdxFooList is own-spec-produced under its structural name => must NOT be re-emitted"
+    );
+
+    // Sorted-requester attribution docs (criterion 3): the shared map lists BOTH, sorted.
+    assert!(
+        requested.contains("/// Generated at the request of: consumer, zeta.\n#[derive(Clone, Debug)]\n#[wasm_bindgen]\npub struct MapU64ToIdxFoo("),
+        "the shared map must attribute both requesters, sorted:\n{requested}"
+    );
+    assert!(
+        requested.contains("/// Generated at the request of: zeta.\n#[derive(Clone, Debug)]\n#[wasm_bindgen]\npub struct IdxBarList("),
+        "IdxBarList is requested only by zeta"
+    );
+    // A NonEmpty support source that IS own-produced/requested carries no spurious doc; the NonEmpty
+    // wrapper itself carries attribution PREPENDED to its structural doc.
+    assert!(
+        requested.contains("/// Generated at the request of: consumer.\n///\n/// `[+ IdxFoo]`"),
+        "the NonEmpty wrapper's attribution precedes its structural doc"
+    );
+    // Its loose `try_from` source is the dep's OWN IdxFooList (own-produced), taken by reference —
+    // never re-minted into requested_collections.
+    assert!(
+        requested.contains("pub fn try_from(list: &IdxFooList)"),
+        "the NonEmpty wrapper's try_from takes the dep's own IdxFooList"
+    );
+
+    // Index re-export (criterion 3): requested wrappers come from requested_collections, the
+    // own-produced IdxFooList from the crate root — one definition each, all in the dep's index.
+    let index = read("export_dep", "wasm/src/generated/collections.rs");
+    for name in [
+        "ArrIdxFooList",
+        "IdxBarList",
+        "MapU64ToIdxFoo",
+        "NonEmptyIdxFooList",
+    ] {
+        assert!(
+            index.contains(&format!(
+                "pub use crate::generated::requested_collections::{name};"
+            )),
+            "{name} must be re-exported from requested_collections in the dep index"
+        );
+    }
+    assert!(
+        index.contains("pub use crate::generated::IdxFooList;"),
+        "the own-produced IdxFooList stays a root re-export in the index"
+    );
+    assert!(
+        read("export_dep", "wasm/src/generated/mod.rs").contains("pub mod requested_collections;"),
+        "the requested_collections module must be declared"
+    );
+
+    // ===== Byte-identical under any flag ordering (criterion 3) =====
+    let d_rev = gen_dep(
+        "dep_inputs",
+        "export_dep_rev",
+        &[&zeta_flag, &consumer_flag],
+    );
+    assert!(d_rev.status.success());
+    assert_eq!(
+        requested,
+        read(
+            "export_dep_rev",
+            "wasm/src/generated/requested_collections.rs"
+        ),
+        "requested_collections.rs must be byte-identical regardless of --wrapper-requests order"
+    );
+
+    // ===== Empty-but-present when flagged (a sidecar addressed to ANOTHER dep) =====
+    let empty_sidecar_dir = base.join("export_other_sidecar");
+    let _ = std::fs::remove_dir_all(&empty_sidecar_dir);
+    std::fs::create_dir_all(&empty_sidecar_dir).unwrap();
+    let other_path = empty_sidecar_dir.join("borrowed_collections.rs");
+    std::fs::write(
+        &other_path,
+        "// This file was code-generated using an experimental CDDL to rust tool:\n\
+         // https://github.com/dcSpark/cddl-codegen\n\n\
+         // This file records every collection wrapper this crate borrows from workspace deps.\n\
+         // It is machine-read by those deps' generation runs (--wrapper-requests) and compiled\n\
+         // here, so a wrapper a dep stops providing fails THIS crate's build, naming the type.\n\
+         #[allow(unused_imports)]\n\
+         mod borrowed {\n    use other_dep_wasm::collections::FooList;\n}\n\
+         #[allow(dead_code)]\n\
+         pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[\n    (\"other_dep\", \"FooList\", \"[* foo]\"),\n];\n",
+    )
+    .unwrap();
+    let empty_flag = format!("other={}", other_path.to_str().unwrap());
+    let de = gen_dep("dep_inputs", "export_dep_empty", &[&empty_flag]);
+    assert!(de.status.success());
+    assert!(
+        base.join("export_dep_empty/wasm/src/generated/requested_collections.rs")
+            .exists(),
+        "requested_collections.rs must be PRESENT (empty) whenever any --wrapper-requests flag is set"
+    );
+    assert!(
+        !read(
+            "export_dep_empty",
+            "wasm/src/generated/requested_collections.rs"
+        )
+        .contains("pub struct"),
+        "a request addressed to another dep leaves requested_collections empty"
+    );
+
+    // ===== Absent flag-off (criterion 10 analog): no flag => no file, no mod decl =====
+    let doff = gen_dep("dep_inputs", "export_dep_off", &[]);
+    assert!(doff.status.success());
+    assert!(
+        !base
+            .join("export_dep_off/wasm/src/generated/requested_collections.rs")
+            .exists(),
+        "no requested_collections.rs may appear without --wrapper-requests"
+    );
+    assert!(
+        !read("export_dep_off", "wasm/src/generated/mod.rs").contains("requested_collections"),
+        "no requested_collections mod decl without the flag"
+    );
+
+    // ===== The honest wasm32 link gate (criteria 3 + 5): dep and consumer both link clean =====
+    if !wasm32_target_installed() {
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "wasm32-unknown-unknown is required to run workspace_requests_hosts_borrowed_wrappers's link gate in CI"
+        );
+        eprintln!(
+            "skipping workspace_requests_hosts_borrowed_wrappers link gate: wasm32-unknown-unknown target not installed"
+        );
+        return;
+    }
+    // Wire the co-generated crates as path deps: consumer -> dep (rust + wasm), dep wasm -> dep rust
+    // is already wired by the tool. The consumer borrows the dep's now-hosted wrappers.
+    use std::io::Write;
+    let append = |manifest: std::path::PathBuf, line: &str| {
+        let mut f = std::fs::OpenOptions::new()
+            .append(true)
+            .open(manifest)
+            .unwrap();
+        f.write_all(line.as_bytes()).unwrap();
+    };
+    append(
+        base.join("export_consumer/rust/Cargo.toml"),
+        "\nwr-dep = { path = \"../../export_dep/rust\" }\n",
+    );
+    append(
+        base.join("export_consumer/wasm/Cargo.toml"),
+        "\nwr-dep = { path = \"../../export_dep/rust\" }\nwr-dep-wasm = { path = \"../../export_dep/wasm\" }\n",
+    );
+    for wasm_dir in ["export_dep", "export_consumer"] {
+        let build = tool_cmd("cargo")
+            .args(["build", "--target", "wasm32-unknown-unknown"])
+            .current_dir(base.join(wasm_dir).join("wasm"))
+            .output()
+            .unwrap();
+        assert!(
+            build.status.success(),
+            "the {wasm_dir} wasm crate must link for wasm32-unknown-unknown:\n{}",
+            String::from_utf8_lossy(&build.stderr)
+        );
+    }
+}
+
+/// W2 criterion-8 dep-side hard errors, each exercised end-to-end (the real resolution code) with a
+/// hand-built or generated sidecar against the generated dep, asserting the actionable message. #6
+/// (malformed sidecar) is unit-tested in `crate::wrapper_requests`; #3 additionally uses the authored
+/// `foos = [* idx_foo]` dep spec (`dep_inputs_rulename`).
+#[test]
+fn workspace_requests_hard_errors() {
+    use std::str::FromStr;
+    if !tool_exists("cargo") {
+        return;
+    }
+    let base = std::path::PathBuf::from_str("tests/workspace-requests").unwrap();
+    let scratch = base.join("export_err_scratch");
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+
+    // Write a hand-built sidecar with the given const rows, returning its path.
+    let write_sidecar = |name: &str, rows: &str| -> String {
+        let p = scratch.join(name);
+        std::fs::write(
+            &p,
+            format!(
+                "// This file was code-generated using an experimental CDDL to rust tool:\n\
+                 // https://github.com/dcSpark/cddl-codegen\n\n\
+                 // This file records every collection wrapper this crate borrows from workspace deps.\n\
+                 // It is machine-read by those deps' generation runs (--wrapper-requests) and compiled\n\
+                 // here, so a wrapper a dep stops providing fails THIS crate's build, naming the type.\n\
+                 #[allow(unused_imports)]\n\
+                 mod borrowed {{}}\n\
+                 #[allow(dead_code)]\n\
+                 pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[\n{rows}];\n"
+            ),
+        )
+        .unwrap();
+        p.to_str().unwrap().to_owned()
+    };
+    let run = |dep_input: &str, out: &str, sidecar: &str| -> String {
+        let out_dir = base.join(out);
+        let _ = std::fs::remove_dir_all(&out_dir);
+        let o = tool_cmd("cargo")
+            .arg("run")
+            .arg("--")
+            .arg(format!("--input=tests/workspace-requests/{dep_input}"))
+            .arg(format!("--output=tests/workspace-requests/{out}"))
+            .arg("--lib-name=wr-dep")
+            .arg("--wasm=true")
+            .arg("--preserve-encodings=true")
+            .arg(format!("--wrapper-requests=c={sidecar}"))
+            .output()
+            .unwrap();
+        assert!(
+            !o.status.success(),
+            "expected a hard error, but generation succeeded"
+        );
+        String::from_utf8_lossy(&o.stderr).into_owned()
+    };
+
+    // #1 element not owned.
+    let s1 = write_sidecar("e1.rs", "    (\"wr_dep\", \"NopeList\", \"[* nope]\"),\n");
+    assert!(
+        run("dep_inputs", "export_e1", &s1).contains("this dep does not own"),
+        "criterion 8 #1: an unowned element must hard-error naming it"
+    );
+
+    // #2 name<->shape mismatch (the shape derives IdxFooList, not the listed WrongName).
+    let s2 = write_sidecar(
+        "e2.rs",
+        "    (\"wr_dep\", \"WrongName\", \"[* idx_foo]\"),\n",
+    );
+    assert!(
+        run("dep_inputs", "export_e2", &s2).contains("name and shape columns disagree"),
+        "criterion 8 #2: a name/shape mismatch must hard-error"
+    );
+
+    // #3 own-spec-produced under a non-structural rule name (dep authored `foos = [* idx_foo]`).
+    let s3 = write_sidecar(
+        "e3.rs",
+        "    (\"wr_dep\", \"IdxFooList\", \"[* idx_foo]\"),\n",
+    );
+    assert!(
+        run("dep_inputs_rulename", "export_e3", &s3).contains("non-structural rule name"),
+        "criterion 8 #3: a shape produced under a non-structural rule name must hard-error"
+    );
+
+    // (#4 — two distinct shapes deriving one structural name — needs a dep owning the ambiguous
+    // element set, so it is a separate test: `workspace_requests_two_shapes_one_name_is_a_hard_error`.)
+
+    // #5 nested shape whose inner collection wrapper is neither requested nor own-produced. The dep
+    // does produce IdxFooList (inner of `[* [* idx_foo]]`), so to trip #5 we request a nested shape
+    // over idx_bar whose inner `[* idx_bar]` is neither own-produced nor listed.
+    let s5 = write_sidecar(
+        "e5.rs",
+        "    (\"wr_dep\", \"ArrIdxBarList\", \"[* [* idx_bar]]\"),\n",
+    );
+    assert!(
+        run("dep_inputs", "export_e5", &s5)
+            .contains("neither requested by any consumer nor produced"),
+        "criterion 8 #5: a nested shape missing its inner wrapper must hard-error"
+    );
+}
+
+/// Criterion 8 #4 at unit level: two DISTINCT shapes deriving the SAME structural name is a hard
+/// error naming both shapes and their requesters. Driven directly through the union collision path
+/// with a hand-built pair whose reverse-ambiguity (`{* a => b_to_c}` vs `{* a_to_b => c}`) collapses
+/// to one `MapAToBToC` — the analog of the consumer-side `record_borrowed_wrapper` check, but on the
+/// dep's requested-shape union. Wrapped as a real CLI run so it exercises the actual resolution code.
+#[test]
+fn workspace_requests_two_shapes_one_name_is_a_hard_error() {
+    use std::str::FromStr;
+    if !tool_exists("cargo") {
+        return;
+    }
+    let base = std::path::PathBuf::from_str("tests/workspace-requests").unwrap();
+    // A dep that owns a, b, c, b_to_c, a_to_b so both ambiguous shapes' elements resolve.
+    let scratch = base.join("export_e4_spec");
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    std::fs::write(
+        scratch.join("lib.cddl"),
+        "a = [n: uint]\nb_to_c = [n: uint]\na_to_b = [n: uint]\nc = [n: uint]\nroot = [x: a, y: b_to_c, z: a_to_b, w: c]\n",
+    )
+    .unwrap();
+    let sidecar = scratch.join("sc.rs");
+    std::fs::write(
+        &sidecar,
+        "// This file was code-generated using an experimental CDDL to rust tool:\n\
+         // https://github.com/dcSpark/cddl-codegen\n\n\
+         // This file records every collection wrapper this crate borrows from workspace deps.\n\
+         // It is machine-read by those deps' generation runs (--wrapper-requests) and compiled\n\
+         // here, so a wrapper a dep stops providing fails THIS crate's build, naming the type.\n\
+         #[allow(unused_imports)]\n\
+         mod borrowed {}\n\
+         #[allow(dead_code)]\n\
+         pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[\n\
+         \x20   (\"wr_dep\", \"MapAToBToC\", \"{* a => b_to_c}\"),\n\
+         \x20   (\"wr_dep\", \"MapAToBToC\", \"{* a_to_b => c}\"),\n];\n",
+    )
+    .unwrap();
+    let out = base.join("export_e4_unit");
+    let _ = std::fs::remove_dir_all(&out);
+    let o = tool_cmd("cargo")
+        .arg("run")
+        .arg("--")
+        .arg(format!("--input={}", scratch.to_str().unwrap()))
+        .arg(format!("--output={}", out.to_str().unwrap()))
+        .arg("--lib-name=wr-dep")
+        .arg("--wasm=true")
+        .arg("--preserve-encodings=true")
+        .arg(format!(
+            "--wrapper-requests=c={}",
+            sidecar.to_str().unwrap()
+        ))
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&o.stderr);
+    assert!(
+        !o.status.success()
+            && stderr
+                .contains("two distinct requested shapes derive the same structural wrapper name"),
+        "criterion 8 #4: two shapes deriving one name must hard-error naming both; stderr:\n{stderr}"
+    );
+}
+
 /// The opt-in recursion depth guard (`--deserialize-depth-limit`). A terminable recursive type
 /// (`tests/corpus/recursive.cddl`: `tree = [value: uint, children: [* tree]]`) compiles a
 /// recursive-descent deserializer with no intrinsic depth bound — ~100k-deep hostile CBOR recurses

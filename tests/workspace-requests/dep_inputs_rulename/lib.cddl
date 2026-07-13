@@ -1,0 +1,5 @@
+; Variant where the dep produces `[* idx_foo]` under a NON-structural RULE name (Foos), not the
+; structural IdxFooList. A request for `[* idx_foo]` (structural IdxFooList) is then a hard error
+; (criterion 8 #3) — two JS classes for one concept.
+idx_foo = [x: uint]
+foos = [* idx_foo]

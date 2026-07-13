@@ -182,6 +182,20 @@ pub struct Cli {
     /// mapping (the deferral imports and sidecar `use` lines need the wasm crate name).
     #[clap(long = "workspace-dep", value_parser)]
     pub workspace_dep: Vec<String>,
+
+    /// W2 dep-side companion to `--workspace-dep`: one `<consumer>=<path>` per consumer, pointing at
+    /// that consumer's committed `wasm/src/generated/borrowed_collections.rs` sidecar. The dep parses
+    /// each sidecar strictly, takes the entries addressed to itself (dep column == this crate's
+    /// normalized `--lib-name`), unions the requested collection-wrapper shapes across consumers, and
+    /// emits every requested wrapper the dep does not already produce into
+    /// `wasm/src/generated/requested_collections.rs` (indexed in the dep's own `collections.rs`, each
+    /// carrying a `/// Generated at the request of: …` attribution doc). This hosts the wrapper in the
+    /// dep so sibling consumers import one definition instead of each minting a colliding
+    /// `#[wasm_bindgen]` class. Repeatable; `<consumer>` is a label (used only in the attribution and
+    /// error messages), `<path>` must be a readable sidecar. With no `--wrapper-requests` flags the
+    /// output is byte-identical to today (the file is not emitted).
+    #[clap(long = "wrapper-requests", value_parser)]
+    pub wrapper_requests: Vec<String>,
 }
 
 impl Cli {
@@ -255,6 +269,31 @@ impl Cli {
             set.insert(dep.to_owned());
         }
         set
+    }
+
+    /// Parsed `--wrapper-requests` mappings: consumer label -> path to that consumer's committed
+    /// `borrowed_collections.rs` sidecar. BTreeMap (never HashMap) for deterministic output — the
+    /// requested-wrapper union must not depend on flag order. A malformed value (no `=`, or an empty
+    /// side) is a hard error naming the flag; an unreadable path is a hard error at load time (see the
+    /// generation-side loader). Mirrors `extern_wrapper_index_files`.
+    pub fn wrapper_requests(&self) -> std::collections::BTreeMap<String, String> {
+        let mut map = std::collections::BTreeMap::new();
+        for entry in &self.wrapper_requests {
+            let (consumer, path) = entry.split_once('=').unwrap_or_else(|| {
+                panic!(
+                    "--wrapper-requests value must be <consumer>=<path/to/borrowed_collections.rs>, got: {entry:?}"
+                )
+            });
+            let consumer = consumer.trim();
+            let path = path.trim();
+            if consumer.is_empty() || path.is_empty() {
+                panic!(
+                    "--wrapper-requests value must be <consumer>=<path/to/borrowed_collections.rs> with both sides non-empty, got: {entry:?}"
+                );
+            }
+            map.insert(consumer.to_owned(), path.to_owned());
+        }
+        map
     }
 
     /// If someone override the common imports, we don't want to export them
