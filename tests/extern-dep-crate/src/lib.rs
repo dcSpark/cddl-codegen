@@ -4,6 +4,7 @@ use cbor_encodings::ExternCrateFooEncoding;
 
 pub mod cbor_encodings;
 pub mod error;
+pub mod non_empty;
 pub mod ordered_hash_map;
 pub mod serialization;
 pub mod sub;

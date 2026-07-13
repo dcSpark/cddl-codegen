@@ -604,6 +604,71 @@ impl<'a> IntermediateTypes<'a> {
                     .insert(keys_ident);
             }
         }
+        // Register the import of a DEFERRED loose LIST wrapper that a locally-minted restricted
+        // wrapper (`NonEmpty*List`, or a named `[+ …]` rule's class) borrows as its `try_from`
+        // source. The `try_from(&<Elem>List)` reference is conversion-internal — invisible to the
+        // field walk, the same class of problem as a map's `keys()`-list
+        // (`register_deferred_keys_list`), solved the same way: follow the CLASS, not the using
+        // site — import at the restricted wrapper's EMISSION scope, from the dep's `collections`
+        // module. No-op when: the element is exposable (`try_from` takes a bare `Vec`, no loose
+        // class is named) or itself non-empty (no loose source exists — built incrementally); the
+        // loose name equals the wrapper ident (a self-named rule emits no `try_from`); or the
+        // loose wrapper is not deferred (it is a local class in the same scope). Empty `deferred`
+        // (rust pass / flag unused) makes this a no-op, so output is byte-identical without the flag.
+        fn register_deferred_non_empty_list_source(
+            refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
+            types: &IntermediateTypes,
+            deferred: &BTreeMap<RustIdent, ModuleScope>,
+            wrapper_ident: &RustIdent,
+            elem: &RustType,
+        ) {
+            if elem.directly_wasm_exposable(types) || elem.is_non_empty_array() {
+                return;
+            }
+            let loose = elem.name_as_wasm_array(types);
+            if loose == wrapper_ident.as_ref() {
+                return;
+            }
+            let loose_ident = RustIdent::new(CDDLIdent::new(loose));
+            if let Some(dep_scope) = deferred.get(&loose_ident) {
+                let emit_scope = types.scope(wrapper_ident).clone();
+                refs.entry(emit_scope)
+                    .or_default()
+                    .entry(dep_scope.clone())
+                    .or_default()
+                    .insert(loose_ident);
+            }
+        }
+        // The map twin of `register_deferred_non_empty_list_source`: a locally-minted restricted
+        // `NonEmptyMap*` (or named `{+ …}` rule) class enters via `try_from(&MapKToV)` — when that
+        // loose structural table wrapper is deferred, import it at the restricted wrapper's
+        // emission scope. Additional no-op case: the loose shape has a SOLE table-rule owner —
+        // the `try_from` source is then the owner's local `pub type MapKToV = <Owner>;` alias
+        // (see `generate_non_empty_map_type`), never a deferred class.
+        fn register_deferred_non_empty_map_source(
+            refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
+            types: &IntermediateTypes,
+            deferred: &BTreeMap<RustIdent, ModuleScope>,
+            sole_owners: &BTreeMap<String, RustIdent>,
+            wrapper_ident: &RustIdent,
+            key: &RustType,
+            value: &RustType,
+        ) {
+            let loose_ident = ConceptualRustType::name_for_wasm_map(key, value);
+            if loose_ident.as_ref() == wrapper_ident.as_ref()
+                || sole_owners.contains_key(&loose_ident.to_string())
+            {
+                return;
+            }
+            if let Some(dep_scope) = deferred.get(&loose_ident) {
+                let emit_scope = types.scope(wrapper_ident).clone();
+                refs.entry(emit_scope)
+                    .or_default()
+                    .entry(dep_scope.clone())
+                    .or_default()
+                    .insert(loose_ident);
+            }
+        }
         // Register the import of a locally ROOT-minted keys-list wrapper into `emit_scope` (the
         // module a table's wasm class is emitted in). A map's `keys()` accessor names the keys-list
         // wrapper BARE (`{Elem}List(...)`) exactly when the key is non-exposable AND the wrapper is
@@ -681,13 +746,23 @@ impl<'a> IntermediateTypes<'a> {
                     set_ref(refs, types, current_scope, rust_ident)
                 }
                 ConceptualRustType::Array(elem_ty) => {
-                    let deferred_wrapper = (wasm && !elem_ty.directly_wasm_exposable(types))
-                        .then(|| {
-                            let ident =
-                                RustIdent::new(CDDLIdent::new(elem_ty.name_as_wasm_array(types)));
-                            deferred.get(&ident).map(|scope| (ident, scope))
-                        })
-                        .flatten();
+                    // A `[+ elem]` field is wrapped as the restricted `NonEmpty*List`, not the loose
+                    // `*List`; look that name up in `deferred` so a deferred NonEmpty wrapper is
+                    // imported under its real (NonEmpty) name. The non-deferred fallback branches
+                    // below stay keyed on the loose name (unchanged output without the flag).
+                    let is_non_empty = wasm && ty.is_non_empty_array();
+                    let deferred_wrapper = (wasm
+                        && (is_non_empty || !elem_ty.directly_wasm_exposable(types)))
+                    .then(|| {
+                        let wrapper_name = if is_non_empty {
+                            ty.non_empty_wasm_wrapper_name(types)
+                        } else {
+                            elem_ty.name_as_wasm_array(types)
+                        };
+                        let ident = RustIdent::new(CDDLIdent::new(wrapper_name));
+                        deferred.get(&ident).map(|scope| (ident, scope))
+                    })
+                    .flatten();
                     if let Some((arr_wrapper_ident, dep_scope)) = deferred_wrapper {
                         // Deferred to a dependency's `--extern-wrapper-index`: the list wrapper class
                         // no longer lives locally, so import it from the dep's `collections` module
@@ -698,7 +773,18 @@ impl<'a> IntermediateTypes<'a> {
                             .entry(dep_scope.clone())
                             .or_default()
                             .insert(arr_wrapper_ident);
-                    } else if wasm
+                        return;
+                    }
+                    if is_non_empty {
+                        // Locally-minted restricted wrapper whose loose `try_from` source may be
+                        // deferred: route the source's import at the wrapper's emission scope.
+                        let ne_ident =
+                            RustIdent::new(CDDLIdent::new(ty.non_empty_wasm_wrapper_name(types)));
+                        register_deferred_non_empty_list_source(
+                            refs, types, deferred, &ne_ident, elem_ty,
+                        );
+                    }
+                    if wasm
                         && !elem_ty.directly_wasm_exposable(types)
                         && *current_scope != *ROOT_SCOPE
                     {
@@ -744,11 +830,33 @@ impl<'a> IntermediateTypes<'a> {
                 }
                 ConceptualRustType::Map(key, value) => {
                     let map_wrapper_ident = ConceptualRustType::name_for_wasm_map(key, value);
+                    // A `{+ k => v}` field is wrapped as the restricted `NonEmptyMap*`, not the loose
+                    // `Map*`; look that name up in `deferred` so a deferred NonEmpty map wrapper is
+                    // imported under its real name. The non-deferred fallback branch below stays keyed
+                    // on the loose `map_wrapper_ident` (unchanged output without the flag).
+                    let deferred_lookup_ident = if wasm && ty.is_non_empty_map() {
+                        RustIdent::new(CDDLIdent::new(ty.non_empty_wasm_map_wrapper_name(types)))
+                    } else {
+                        map_wrapper_ident.clone()
+                    };
                     let map_deferred = if wasm {
-                        deferred.get(&map_wrapper_ident)
+                        deferred.get(&deferred_lookup_ident)
                     } else {
                         None
                     };
+                    if wasm && ty.is_non_empty_map() && map_deferred.is_none() {
+                        // Locally-minted restricted map wrapper whose loose `try_from` source may
+                        // be deferred: route the source's import at the wrapper's emission scope.
+                        register_deferred_non_empty_map_source(
+                            refs,
+                            types,
+                            deferred,
+                            sole_owners,
+                            &deferred_lookup_ident,
+                            key,
+                            value,
+                        );
+                    }
                     if let Some(dep_scope) = map_deferred {
                         // The whole map wrapper is deferred to a dependency's
                         // `--extern-wrapper-index`: import it from the dep's `collections` module from
@@ -758,7 +866,7 @@ impl<'a> IntermediateTypes<'a> {
                             .or_default()
                             .entry(dep_scope.clone())
                             .or_default()
-                            .insert(map_wrapper_ident);
+                            .insert(deferred_lookup_ident);
                     } else if wasm && *current_scope != *ROOT_SCOPE {
                         // Resolve the map wrapper's import scope the SAME way emission decides
                         // placement (`table_shape_sole_owners` / `mint_sole_owner_table`): a shape
@@ -840,15 +948,33 @@ impl<'a> IntermediateTypes<'a> {
         for rust_struct in self.rust_structs().values() {
             let current_scope = self.scope(&rust_struct.ident);
             match rust_struct.variant() {
-                RustStructType::Array { element_type, .. } => mark_refs(
-                    &mut refs,
-                    self,
-                    wasm,
-                    &table_shape_sole_owners,
-                    deferred,
-                    current_scope,
+                RustStructType::Array {
                     element_type,
-                ),
+                    bounds,
+                } => {
+                    // A NAMED `[+ …]` rule's restricted class (rule ident — never deferred) still
+                    // borrows the LOOSE structural wrapper as its `try_from` source; when that
+                    // source is deferred, import it at THIS rule's scope (its emission scope).
+                    // The rule-named analogue of the inline Array arm's registration above.
+                    if wasm && *bounds == Some((Some(1), None)) {
+                        register_deferred_non_empty_list_source(
+                            &mut refs,
+                            self,
+                            deferred,
+                            &rust_struct.ident,
+                            element_type,
+                        );
+                    }
+                    mark_refs(
+                        &mut refs,
+                        self,
+                        wasm,
+                        &table_shape_sole_owners,
+                        deferred,
+                        current_scope,
+                        element_type,
+                    )
+                }
                 RustStructType::GroupChoice { variants, .. }
                 | RustStructType::TypeChoice { variants, .. } => {
                     variants.iter().for_each(|ev| match &ev.data {
@@ -887,12 +1013,31 @@ impl<'a> IntermediateTypes<'a> {
                         &field.rust_type,
                     )
                 }),
-                RustStructType::Table { domain, range, .. } => {
+                RustStructType::Table {
+                    domain,
+                    range,
+                    bounds,
+                } => {
                     // The named table's own wasm class is emitted in `current_scope`; its `keys()`
                     // accessor names the ROOT-minted keys-list wrapper bare for a non-exposable key,
                     // so import it into this (non-root) module — the named/unref analogue of the Map
                     // arm's inline-use registration above.
                     register_root_keys_list(&mut refs, self, wasm, deferred, current_scope, domain);
+                    // A NAMED `{+ …}` rule's restricted class borrows the LOOSE structural
+                    // `MapKToV` as its `try_from` source; when that source is deferred, import it
+                    // at THIS rule's scope — the rule-named analogue of the inline Map arm's
+                    // registration above.
+                    if wasm && *bounds == Some((Some(1), None)) {
+                        register_deferred_non_empty_map_source(
+                            &mut refs,
+                            self,
+                            deferred,
+                            &table_shape_sole_owners,
+                            &rust_struct.ident,
+                            domain,
+                            range,
+                        );
+                    }
                     mark_refs(
                         &mut refs,
                         self,
@@ -2758,6 +2903,9 @@ impl RustType {
         match &self.conceptual_type {
             ConceptualRustType::Array(inner) => match types.non_empty_named_owner(inner) {
                 Some(owner) => owner.to_string(),
+                // LOCKSTEP: `generate_non_empty_array_type`'s defer-candidate structural name
+                // duplicates THIS spelling on purpose (it must stay owner-independent — an
+                // owner-named wrapper must never look deferrable). Change both together.
                 None => format!("NonEmpty{}List", inner.conceptual_type.for_variant()),
             },
             _ => unreachable!("non_empty_wasm_wrapper_name on a non-array: {:?}", self),
@@ -2773,6 +2921,9 @@ impl RustType {
         match &self.conceptual_type {
             ConceptualRustType::Map(k, v) => match types.non_empty_map_named_owner(k, v) {
                 Some(owner) => owner.to_string(),
+                // LOCKSTEP: `generate_non_empty_map_type`'s defer-candidate structural name
+                // duplicates THIS spelling on purpose (it must stay owner-independent — an
+                // owner-named wrapper must never look deferrable). Change both together.
                 None => format!("NonEmpty{}", ConceptualRustType::name_for_wasm_map(k, v)),
             },
             _ => unreachable!("non_empty_wasm_map_wrapper_name on a non-map: {:?}", self),

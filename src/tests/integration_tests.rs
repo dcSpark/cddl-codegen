@@ -6270,6 +6270,63 @@ fn wasm32_target_installed() -> bool {
         .unwrap_or(false)
 }
 
+/// Unit-pin the canonical shape renderer (`generation::render_wrapper_shape`) against the W1
+/// shape-column grammar directly, so its exact spelling — the format a dep re-parses and the
+/// warning hint pastes — is fixed independently of the heavier integration gate. Covers loose and
+/// NonEmpty lists/maps, nesting, and the bounds-carried occurrence at every level (`[* [+ foo]]`),
+/// plus primitive rendering.
+#[test]
+fn render_wrapper_shape_matches_shape_grammar() {
+    use crate::generation::render_wrapper_shape;
+    use crate::intermediate::{CDDLIdent, ConceptualRustType, Primitive, RustIdent, RustType};
+
+    let named = |s: &str| {
+        RustType::new(ConceptualRustType::Rust(RustIdent::new(CDDLIdent::new(
+            s.to_owned(),
+        ))))
+    };
+    let prim = |p: Primitive| RustType::new(ConceptualRustType::Primitive(p));
+    let list = |elem: RustType| RustType::new(ConceptualRustType::Array(Box::new(elem)));
+    let non_empty_list = |elem: RustType| list(elem).with_bounds((Some(1), None));
+    let map =
+        |k: RustType, v: RustType| RustType::new(ConceptualRustType::Map(Box::new(k), Box::new(v)));
+    let non_empty_map = |k: RustType, v: RustType| map(k, v).with_bounds((Some(1), None));
+
+    // The element idents render as the dep's spec spelling (snake_case of the rust ident).
+    assert_eq!(render_wrapper_shape(&list(named("Foo"))), "[* foo]");
+    assert_eq!(render_wrapper_shape(&list(named("IdxFoo"))), "[* idx_foo]");
+    assert_eq!(
+        render_wrapper_shape(&non_empty_list(named("Foo"))),
+        "[+ foo]"
+    );
+    // Maps use `=>` with surrounding spaces; primitives render as their CDDL name.
+    assert_eq!(
+        render_wrapper_shape(&map(prim(Primitive::U64), prim(Primitive::Str))),
+        "{* uint => text}"
+    );
+    assert_eq!(
+        render_wrapper_shape(&map(named("IdxFoo"), named("IdxFoo"))),
+        "{* idx_foo => idx_foo}"
+    );
+    assert_eq!(
+        render_wrapper_shape(&non_empty_map(named("IdxFoo"), named("IdxFoo"))),
+        "{+ idx_foo => idx_foo}"
+    );
+    // Nesting recurses, and the occurrence marker is taken from each level's own bounds.
+    assert_eq!(
+        render_wrapper_shape(&list(list(named("Foo")))),
+        "[* [* foo]]"
+    );
+    assert_eq!(
+        render_wrapper_shape(&list(non_empty_list(named("Foo")))),
+        "[* [+ foo]]"
+    );
+    assert_eq!(
+        render_wrapper_shape(&non_empty_map(prim(Primitive::U64), list(named("IdxFoo")))),
+        "{+ uint => [* idx_foo]}"
+    );
+}
+
 /// R3b–e of the extern-wrapper-dedup feature: a consumer whose spec uses list/map shapes over a
 /// dependency's extern types DEFERS to the dep's committed `--extern-wrapper-index` instead of
 /// re-minting wrappers the dep already owns (a wasm duplicate-symbol link error otherwise). This is
@@ -6319,11 +6376,30 @@ fn extern_wrapper_index_defers_to_dep() {
         eprintln!("generate stderr:\n{gen_stderr}");
     }
     assert!(generate.status.success());
-    // (b) The all-extern map NOT in the index is minted locally with a warning naming it.
+    // (b) The all-extern map NOT in the index is minted locally with a warning naming it, plus the
+    // Phase 0 paste-able rule-line hint: the exact `<snake_rule> = <shape> ; requested by <lib>` to
+    // add to the owning dep's spec (rule name = snake_case of the structural name; shape from the
+    // canonical renderer with `=>` for maps; requester = this consumer's normalized default
+    // --lib-name `cddl_lib`). This is the shipped manual override for wrappers no request sidecar
+    // covers, so the hint must be complete and correct to paste.
     assert!(
         gen_stderr.contains("MapIdxFooToIdxFoo")
             && gen_stderr.contains("absent from its --extern-wrapper-index"),
         "expected a 'candidate not in index' warning for MapIdxFooToIdxFoo, got stderr:\n{gen_stderr}"
+    );
+    assert!(
+        gen_stderr.contains(
+            "hint: add to index_dep_crate's spec: map_idx_foo_to_idx_foo = {* idx_foo => idx_foo} ; requested by cddl_lib"
+        ),
+        "expected the paste-able rule-line hint for MapIdxFooToIdxFoo, got stderr:\n{gen_stderr}"
+    );
+    // The NonEmpty flavor of the same hint: the inline `[+ idx_baz]` wrapper is a defer candidate
+    // whose structural name is absent from the index, so its warning carries the `[+ …]` shape.
+    assert!(
+        gen_stderr.contains(
+            "hint: add to index_dep_crate's spec: non_empty_idx_baz_list = [+ idx_baz] ; requested by cddl_lib"
+        ),
+        "expected the paste-able rule-line hint for NonEmptyIdxBazList, got stderr:\n{gen_stderr}"
     );
 
     let wasm_mod = std::fs::read_to_string(export.join("wasm/src/generated/mod.rs")).unwrap();
@@ -6341,13 +6417,24 @@ fn extern_wrapper_index_defers_to_dep() {
         !wasm_mod.contains("pub use index_dep_crate_wasm::collections::"),
         "deferred wrappers must be imported with a plain `use`, never `pub use` (R3e)"
     );
-    for deferred in ["pub struct IdxFooList", "pub struct MapU64ToIdxFoo"] {
+    // The synthesized NonEmpty `[+ idx_foo]` wrapper is ALSO a defer candidate (Phase 1: the
+    // `NonEmpty*List` emitter consults the dep index like the loose list/map emitters do): its
+    // structural name IS listed in the dep index, so it is imported from the dep, not re-minted.
+    assert!(
+        wasm_mod.contains("NonEmptyIdxFooList"),
+        "consumer must reference the deferred NonEmptyIdxFooList (imported from the dep)"
+    );
+    for deferred in [
+        "pub struct IdxFooList",
+        "pub struct MapU64ToIdxFoo",
+        "pub struct NonEmptyIdxFooList",
+    ] {
         assert!(
             !wasm_mod.contains(deferred),
             "deferred wrapper must NOT be minted locally: found `{deferred}`"
         );
     }
-    for deferred_name in ["IdxFooList", "MapU64ToIdxFoo"] {
+    for deferred_name in ["IdxFooList", "MapU64ToIdxFoo", "NonEmptyIdxFooList"] {
         assert!(
             !wasm_index.contains(deferred_name),
             "deferred wrapper `{deferred_name}` must be excluded from the consumer's own collections.rs (R3e)"
@@ -6364,6 +6451,50 @@ fn extern_wrapper_index_defers_to_dep() {
     // The consumer's own index lists exactly the wrappers it mints itself.
     assert!(wasm_index.contains("MapIdxFooToIdxFoo"));
     assert!(wasm_index.contains("MapIdxFooToLocalThing"));
+    // (e)/(f) Deferred-`try_from`-source cells: the restricted wrappers are LOCAL (AbcBars is
+    // rule-declared — never deferred; NonEmptyIdxBazList's structural name is absent from the
+    // index) but their loose `try_from` sources ARE in the dep index, so the sources defer — no
+    // local class, try_from takes the DEP's class by reference. The `use` for each source is
+    // routed at the restricted class's EMISSION scope (root here), since nothing else at root
+    // references them: `abc_bars` is unreferenced by any rule, the only loose `[* idx_bar]` use
+    // lives in the zeta module, and no loose `[* idx_baz]` use exists at all. The AbcBars cell is
+    // additionally ORDER-hostile: it is walked first (AbcBars < Everything < ZetaHolder), so its
+    // source mint runs before any other idx_bar deferral is established — a source mint that
+    // re-mints locally in that window collides at link with the class the zeta module defers to.
+    assert!(wasm_mod.contains("pub struct AbcBars"));
+    assert!(wasm_mod.contains("pub struct NonEmptyIdxBazList"));
+    for local_mint in ["pub struct IdxBarList", "pub struct IdxBazList"] {
+        assert!(
+            !wasm_mod.contains(local_mint),
+            "deferred try_from source must NOT be re-minted locally: found `{local_mint}`"
+        );
+    }
+    assert!(
+        wasm_mod.contains("try_from(list: &IdxBarList)"),
+        "AbcBars::try_from must take the dep's deferred IdxBarList"
+    );
+    assert!(
+        wasm_mod.contains("try_from(list: &IdxBazList)"),
+        "NonEmptyIdxBazList::try_from must take the dep's deferred IdxBazList"
+    );
+    // (matched as `::<Name>;` re-export suffixes: the local NonEmptyIdxBazList line legitimately
+    // CONTAINS the substring `IdxBazList`)
+    for deferred_reexport in ["::IdxBarList;", "::IdxBazList;"] {
+        assert!(
+            !wasm_index.contains(deferred_reexport),
+            "deferred try_from source `{deferred_reexport}` must be excluded from the consumer's own collections.rs"
+        );
+    }
+    // The zeta module's loose `[* idx_bar]` field defers to the dep from ITS OWN scope (and only
+    // there — the root import above is the emission-scope routing's, not this one).
+    let wasm_zeta = std::fs::read_to_string(export.join("wasm/src/generated/zeta.rs"))
+        .or_else(|_| std::fs::read_to_string(export.join("wasm/src/generated/zeta/mod.rs")))
+        .unwrap();
+    assert!(
+        wasm_zeta.contains("use index_dep_crate_wasm::collections::IdxBarList;")
+            && !wasm_zeta.contains("pub struct IdxBarList"),
+        "zeta's loose [* idx_bar] field must import the deferred IdxBarList, not mint it"
+    );
 
     // Wire the dep crates into the generated manifests (rust needs the rust dep; wasm needs both).
     let append_dep_manifests = |export_dir: &std::path::Path| {
