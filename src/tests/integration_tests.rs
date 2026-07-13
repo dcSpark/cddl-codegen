@@ -12377,6 +12377,14 @@ fn export_static_dir_writes_composed_runtime() {
         serialization_rs.contains("pub trait Deserialize"),
         "serialization.rs must carry the static prelude:\n{serialization_rs}"
     );
+    // In-crate the prelude borrows the generated impls' module-wide `use` block; standalone it
+    // must bring its own imports or the exported file does not compile.
+    assert!(
+        serialization_rs.contains("use super::error::{DeserializeError, DeserializeFailure};")
+            && serialization_rs.contains("use cbor_event::de::Deserializer;"),
+        "exported serialization.rs must carry its own import header (it has no generated impls \
+         block to borrow `use` statements from):\n{serialization_rs}"
+    );
     assert!(
         serialization_rs.contains("pub trait RawBytesEncoding"),
         "serialization.rs must ALWAYS include raw_bytes_encoding (pure function of flags), even \
