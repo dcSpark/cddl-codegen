@@ -11,8 +11,10 @@
 //! no actionable pointer. So the ONLY content this parser accepts is exactly what the frozen W1
 //! emitter produces (`generation.rs`, the `borrowed_collections.rs` block):
 //!
-//! - the tool's two-line codegen header stamp and the three fixed sidecar banner comment lines plus
-//!   the one fixed column comment (any OTHER `//` comment is a hard error);
+//! - the tool's two-line codegen header stamp and the four fixed sidecar banner comment lines
+//!   (the fourth is the column legend; any OTHER `//` comment — including one inside the const
+//!   body, where the legend used to live and where an anchored comment traps on row deletion — is
+//!   a hard error);
 //! - `#[allow(unused_imports)]` / `#[allow(dead_code)]`;
 //! - `mod borrowed { <use lines> }` (or the empty `mod borrowed {}`);
 //! - `pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[ <rows> ];`, each row a
@@ -49,16 +51,18 @@ pub struct WrapperRequestEntry {
 /// `// cddl-codegen:<tag>` is either a well-formed known overlay structure or a hard error.
 const CDDL_NAMESPACE: &str = "cddl-codegen:";
 
-/// The exact comment lines the W1 emitter writes (header stamp, sidecar banner, column legend).
-/// Anything else on a `//` own-line comment (outside the `cddl-codegen:` overlay namespace) is a
-/// hard error — a drifted/hand-edited banner must be loud, never silently consumed.
+/// The exact comment lines the W1 emitter writes (header stamp, four-line sidecar banner — the
+/// fourth banner line is the column legend, kept OUT of the const body so the preservation overlay
+/// anchors it to the file rather than to a deletable row). Anything else on a `//` own-line comment
+/// (outside the `cddl-codegen:` overlay namespace) is a hard error — a drifted/hand-edited banner
+/// must be loud, never silently consumed.
 const KNOWN_COMMENTS: &[&str] = &[
     "// This file was code-generated using an experimental CDDL to rust tool:",
     "// https://github.com/dcSpark/cddl-codegen",
     "// This file records every collection wrapper this crate borrows from workspace deps.",
     "// It is machine-read by those deps' generation runs (--wrapper-requests) and compiled",
     "// here, so a wrapper a dep stops providing fails THIS crate's build, naming the type.",
-    "// (dep rust-crate name, wrapper name, shape in CDDL syntax with the dep's idents)",
+    "// Rows are (dep rust-crate name, wrapper name, shape in CDDL syntax with the dep's idents).",
 ];
 
 /// Parse a committed `borrowed_collections.rs` sidecar into its `BORROWED_SHAPES` entries. `file` is
@@ -81,7 +85,7 @@ pub fn parse_sidecar(contents: &str, file: &str) -> Vec<WrapperRequestEntry> {
     let mut entries = Vec::new();
     let mut in_mod = false;
     let mut in_const = false;
-    let mut const_body = String::new();
+    let mut const_item = String::new();
 
     for line in &logical {
         let trimmed = line.trim();
@@ -89,15 +93,22 @@ pub fn parse_sidecar(contents: &str, file: &str) -> Vec<WrapperRequestEntry> {
             continue;
         }
         if in_const {
-            // Accumulate the raw const-array body until its closing `];`, then tokenize (so a
-            // rustfmt-wrapped row across lines is handled). The closing bracket is on its own line.
-            if trimmed == "];" {
-                entries.extend(parse_const_body(&const_body, file));
+            // Accumulate the raw const item until the line carrying its closing `];`, then parse the
+            // whole item (so any rustfmt layout — wrapped rows, a wrapped initializer — is handled).
+            // A `//` comment inside the const body is a hard error (overlay scaffolding was already
+            // stripped by `flatten_overlay_blocks`): the emitter writes none — the column legend
+            // lives in the banner precisely because an in-const comment anchors to a deletable row
+            // and traps on an in-place regen — so any comment here is either a stale old-format
+            // sidecar or a stray hand edit.
+            if trimmed.starts_with("//") {
+                hard_error(file, "unexpected comment inside `BORROWED_SHAPES`", trimmed);
+            }
+            const_item.push_str(line);
+            const_item.push('\n');
+            if trimmed.ends_with("];") {
+                entries.extend(parse_const_item(&const_item, file));
                 in_const = false;
-                const_body.clear();
-            } else {
-                const_body.push_str(line);
-                const_body.push('\n');
+                const_item.clear();
             }
             continue;
         }
@@ -131,10 +142,19 @@ pub fn parse_sidecar(contents: &str, file: &str) -> Vec<WrapperRequestEntry> {
             in_mod = true;
             continue;
         }
-        // The const table opener. `rustfmt` keeps this on one line; the fixed element type makes it
-        // short enough to never wrap.
-        if trimmed.starts_with("pub(crate) const BORROWED_SHAPES") && trimmed.ends_with("= &[") {
-            in_const = true;
+        // The const table, accumulated as a whole item then parsed. `rustfmt` lays it out by size:
+        // an empty table collapses whole onto one line (`… = &[];`), a single short row may collapse
+        // onto a wrapped initializer (`… =\n    &[(…)];`), and a longer table keeps the `= &[`
+        // opener with one row per line — parse_const_item handles all of them uniformly.
+        if trimmed.starts_with("pub(crate) const BORROWED_SHAPES") {
+            const_item.push_str(line);
+            const_item.push('\n');
+            if trimmed.ends_with("];") {
+                entries.extend(parse_const_item(&const_item, file));
+                const_item.clear();
+            } else {
+                in_const = true;
+            }
             continue;
         }
         hard_error(file, "unexpected item", trimmed);
@@ -152,6 +172,37 @@ pub fn parse_sidecar(contents: &str, file: &str) -> Vec<WrapperRequestEntry> {
     }
 
     entries
+}
+
+/// Parse the complete `BORROWED_SHAPES` const item (header, `=`, `&[ … ];`) into entries. The
+/// header up to the initializer `=` must be exactly the frozen declaration (whitespace-normalized —
+/// rustfmt may wrap the initializer onto the next line); the initializer must be a `&[ … ]` array
+/// expression. The first `=` in the item IS the initializer's: the type annotation contains none,
+/// and shape strings (which can contain `=>`) only occur after it.
+fn parse_const_item(item: &str, file: &str) -> Vec<WrapperRequestEntry> {
+    let Some(eq) = item.find('=') else {
+        hard_error(file, "malformed `BORROWED_SHAPES` item (missing `=`)", item);
+    };
+    let header: String = item[..eq].split_whitespace().collect::<Vec<_>>().join(" ");
+    if header != "pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)]" {
+        hard_error(
+            file,
+            "unexpected `BORROWED_SHAPES` declaration (the type must be exactly `&[(&str, &str, &str)]`)",
+            &header,
+        );
+    }
+    let init = item[eq + 1..].trim();
+    let Some(body) = init
+        .strip_prefix("&[")
+        .and_then(|rest| rest.trim_end().strip_suffix("];"))
+    else {
+        hard_error(
+            file,
+            "malformed `BORROWED_SHAPES` initializer (expected `&[ … ];`)",
+            init,
+        );
+    };
+    parse_const_body(body, file)
 }
 
 /// Strip the edit-preservation overlay scaffolding (`comment_preserve.rs` marker structures) to a
@@ -216,9 +267,10 @@ fn reserved_tag(line: &str) -> Option<&str> {
 
 /// Tokenize the raw `BORROWED_SHAPES` array body (everything between `= &[` and `];`) into entries.
 /// Strict tuple grammar: `( "<dep>" , "<name>" , "<shape>" )` with an optional trailing comma,
-/// tuples separated by commas, `//`-to-end-of-line comments (the column legend, any residual overlay
-/// remnants) skipped. Any deviation — a non-triple tuple, an unterminated literal, a stray token — is
-/// a hard error (a mangled sidecar must be loud).
+/// tuples separated by commas. Comments never reach here (own-line ones hard-error in the caller;
+/// a trailing `// …` after a row surfaces as an unexpected token below). Any deviation — a
+/// non-triple tuple, an unterminated literal, a stray token — is a hard error (a mangled sidecar
+/// must be loud).
 fn parse_const_body(body: &str, file: &str) -> Vec<WrapperRequestEntry> {
     let chars: Vec<char> = body.chars().collect();
     let mut i = 0;
@@ -288,20 +340,12 @@ fn parse_const_body(body: &str, file: &str) -> Vec<WrapperRequestEntry> {
     entries
 }
 
-/// Advance past whitespace and `//`-to-end-of-line comments (the column legend inside the array
-/// body; any residual overlay scaffolding was already stripped by `flatten_overlay_blocks`).
+/// Advance past whitespace only. Deliberately does NOT skip `//` comments: the emitter writes none
+/// inside the const body (the column legend lives in the banner), so a comment reaching the
+/// tokenizer is stray content that must surface as an unexpected-token hard error.
 fn skip_trivia(chars: &[char], mut i: usize) -> usize {
-    loop {
-        while i < chars.len() && chars[i].is_whitespace() {
-            i += 1;
-        }
-        if i + 1 < chars.len() && chars[i] == '/' && chars[i + 1] == '/' {
-            while i < chars.len() && chars[i] != '\n' {
-                i += 1;
-            }
-            continue;
-        }
-        break;
+    while i < chars.len() && chars[i].is_whitespace() {
+        i += 1;
     }
     i
 }
@@ -370,6 +414,7 @@ mod tests {
 // This file records every collection wrapper this crate borrows from workspace deps.
 // It is machine-read by those deps' generation runs (--wrapper-requests) and compiled
 // here, so a wrapper a dep stops providing fails THIS crate's build, naming the type.
+// Rows are (dep rust-crate name, wrapper name, shape in CDDL syntax with the dep's idents).
 #[allow(unused_imports)]
 mod borrowed {
     use index_dep_crate_wasm::collections::ArrIdxFooList;
@@ -379,7 +424,6 @@ mod borrowed {
 }
 #[allow(dead_code)]
 pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
-    // (dep rust-crate name, wrapper name, shape in CDDL syntax with the dep's idents)
     ("index_dep_crate", "ArrIdxFooList", "[* [* idx_foo]]"),
     ("index_dep_crate", "IdxFooList", "[* idx_foo]"),
     ("index_dep_crate", "MapU64ToIdxFoo", "{* uint => idx_foo}"),
@@ -393,12 +437,11 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
 // This file records every collection wrapper this crate borrows from workspace deps.
 // It is machine-read by those deps' generation runs (--wrapper-requests) and compiled
 // here, so a wrapper a dep stops providing fails THIS crate's build, naming the type.
+// Rows are (dep rust-crate name, wrapper name, shape in CDDL syntax with the dep's idents).
 #[allow(unused_imports)]
 mod borrowed {}
 #[allow(dead_code)]
-pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
-    // (dep rust-crate name, wrapper name, shape in CDDL syntax with the dep's idents)
-];
+pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[];
 "#;
 
     #[test]
@@ -447,13 +490,13 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
 // This file records every collection wrapper this crate borrows from workspace deps.
 // It is machine-read by those deps' generation runs (--wrapper-requests) and compiled
 // here, so a wrapper a dep stops providing fails THIS crate's build, naming the type.
+// Rows are (dep rust-crate name, wrapper name, shape in CDDL syntax with the dep's idents).
 #[allow(unused_imports)]
 mod borrowed {
     use index_dep_crate_wasm::collections::IdxFooList;
 }
 #[allow(dead_code)]
 pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
-    // (dep rust-crate name, wrapper name, shape in CDDL syntax with the dep's idents)
     (
         "index_dep_crate",
         "IdxFooList",
@@ -462,6 +505,37 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
 ];
 "#;
         let entries = parse_sidecar(wrapped, "borrowed_collections.rs");
+        assert_eq!(
+            entries,
+            vec![WrapperRequestEntry {
+                dep: "index_dep_crate".into(),
+                name: "IdxFooList".into(),
+                shape: "[* idx_foo]".into(),
+            }]
+        );
+    }
+
+    #[test]
+    fn accepts_single_row_collapsed_initializer() {
+        // With one short row, rustfmt collapses the table onto a wrapped initializer
+        // (`… =\n    &[(…)];` — no `= &[` opener line, no trailing comma). The const is parsed as a
+        // whole item, so this lays out identically to the one-row-per-line form.
+        let collapsed = r#"// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+// This file records every collection wrapper this crate borrows from workspace deps.
+// It is machine-read by those deps' generation runs (--wrapper-requests) and compiled
+// here, so a wrapper a dep stops providing fails THIS crate's build, naming the type.
+// Rows are (dep rust-crate name, wrapper name, shape in CDDL syntax with the dep's idents).
+#[allow(unused_imports)]
+mod borrowed {
+    use index_dep_crate_wasm::collections::IdxFooList;
+}
+#[allow(dead_code)]
+pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] =
+    &[("index_dep_crate", "IdxFooList", "[* idx_foo]")];
+"#;
+        let entries = parse_sidecar(collapsed, "borrowed_collections.rs");
         assert_eq!(
             entries,
             vec![WrapperRequestEntry {
@@ -482,13 +556,13 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
 // This file records every collection wrapper this crate borrows from workspace deps.
 // It is machine-read by those deps' generation runs (--wrapper-requests) and compiled
 // here, so a wrapper a dep stops providing fails THIS crate's build, naming the type.
+// Rows are (dep rust-crate name, wrapper name, shape in CDDL syntax with the dep's idents).
 #[allow(unused_imports)]
 mod borrowed {
     use index_dep_crate_wasm::collections::IdxFooList;
 }
 #[allow(dead_code)]
 pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
-    // (dep rust-crate name, wrapper name, shape in CDDL syntax with the dep's idents)
     ("index_dep_crate", "IdxFooList", "[* idx_foo]"),
     // cddl-codegen:insert-start
     ("index_dep_crate", "IdxBarList", "[* idx_bar]"),
@@ -511,11 +585,11 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
 // This file records every collection wrapper this crate borrows from workspace deps.
 // It is machine-read by those deps' generation runs (--wrapper-requests) and compiled
 // here, so a wrapper a dep stops providing fails THIS crate's build, naming the type.
+// Rows are (dep rust-crate name, wrapper name, shape in CDDL syntax with the dep's idents).
 #[allow(unused_imports)]
 mod borrowed {}
 #[allow(dead_code)]
 pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
-    // (dep rust-crate name, wrapper name, shape in CDDL syntax with the dep's idents)
     // cddl-codegen:replace-start
     ("index_dep_crate", "IdxFooList", "[* idx_foo]"),
     // cddl-codegen:replaces
@@ -593,6 +667,25 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
 ];
 "#;
         parse_sidecar(stray, "borrowed_collections.rs");
+    }
+
+    #[test]
+    #[should_panic(expected = "unexpected comment inside `BORROWED_SHAPES`")]
+    fn rejects_in_const_comment() {
+        // The old sidecar format kept the column legend INSIDE the const body, where the
+        // preservation overlay anchored it to a deletable row (trapping on an in-place regen that
+        // dropped a borrow). The legend now lives in the banner; any in-const comment is either a
+        // stale old-format sidecar or a stray hand edit — both must be loud.
+        let old_format = r#"// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#[allow(dead_code)]
+pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
+    // (dep rust-crate name, wrapper name, shape in CDDL syntax with the dep's idents)
+    ("index_dep_crate", "IdxFooList", "[* idx_foo]"),
+];
+"#;
+        parse_sidecar(old_format, "borrowed_collections.rs");
     }
 
     #[test]

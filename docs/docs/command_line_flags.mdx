@@ -249,6 +249,8 @@ The consumer additionally emits `wasm/src/generated/borrowed_collections.rs` whe
 - **Ownerless** wrappers (no named element types, e.g. `{* uint => text}`) and **mixed-dep** wrappers are never workspace-borrowed — they keep the shipped `--extern-wrapper-index` deferral / local-mint behavior. Passing both flags for the same dependency is legal: workspace-borrow the owned shapes, index-defer the ownerless ones.
 - A consumer's own **rule-declared** type whose name equals a wrapper it would otherwise borrow is never suppressed; it mints locally and generation warns that it will duplicate-symbol against the dependency's class (remedy: rename the rule or give it a distinct `@name`).
 
+The sidecar it emits, the dependency-hosted `requested_collections.rs`, and the reverse-dependency-order **regeneration contract** (holistic regen = one pass, zero diff when unchanged; a consumer-alone regen that adds a borrow fails loudly until the dependency regens; removals are a benign superset) are documented under [Output format § Workspace mode](./output_format#workspace-mode-borrowed-and-requested-collection-wrappers).
+
 Requires `--extern-wasm-crate`. Defaults off; output with no new flags is byte-identical to before.
 
 ```bash
@@ -256,6 +258,10 @@ cddl-codegen --input=example --output=export --common-import-override=cml_core \
   --extern-wasm-crate=cml_core=cml_core_wasm \
   --workspace-dep=cml_core
 ```
+
+**Shapes this flag does not cover (the manual override).** `--workspace-dep` automates only all-one-dep wrappers that generated consumer code borrows. For a **mixed-dep** wrapper (elements from more than one dependency) or a wrapper needed by **hand-written consumer code** that no generated code requests, the zero-tool-change interim remains the answer and stays useful permanently: declare the wrapper as a **rule in the owning dependency's spec**, named to match the structural name (`stake_credential_list = [* stake_credential]` → `StakeCredentialList`; for a mixed-dep shape, declare it in the *latest* involved dependency's spec — the general placement rule applied by hand). Rule-declared wrappers land in that crate's `collections.rs` index by construction, so every consumer's `--extern-wrapper-index` deferral picks them up. The not-in-index stderr warning prints the exact paste-able rule line — `<snake_name> = <shape> ; requested by <consumer>` — telling you precisely which rule to add and where.
+
+**Degenerate case: the shared host crate (documented, not yet implemented).** For an extern dependency that **cannot** be modified (external, separately released), the same mechanism degenerates to a designated **host** — a workspace member with an empty or minimal spec whose sole purpose is to own wrappers over the external dependency's types. Consumers would point the placement at the host, their sidecar entries would name it, and the host's regen would consume `--wrapper-requests` exactly as any dependency does (regenerated last, since every consumer depends on it). The `<dep>=<host>` value form for `--workspace-dep` is **reserved** for this; the host defaults to the dependency itself. Not yet implemented — until then, the manual override (declare the wrapper as a rule in a commonly-depended workspace crate's spec and index-defer) covers the case.
 :::
 
 <br/><br/>
@@ -268,6 +274,8 @@ The **dependency-side** companion to `--workspace-dep`: one `<consumer>=<path>` 
 - Output is byte-identical regardless of the order of the `--wrapper-requests` flags (everything is sorted before emission). Repeatable; `<consumer>` is a label used only in attribution and error messages.
 
 With no `--wrapper-requests` flag the output is byte-identical to before (the file is not emitted).
+
+The `requested_collections.rs` file format (attribution docs, index re-export, `NonEmpty…` support wrappers) and the reverse-dependency-order regeneration contract this flag participates in are documented under [Output format § Workspace mode](./output_format#workspace-mode-borrowed-and-requested-collection-wrappers).
 
 ```bash
 cddl-codegen --input=cml_core.cddl --output=export --lib-name=cml-core --wasm=true \
