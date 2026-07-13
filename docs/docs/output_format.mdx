@@ -193,6 +193,104 @@ The tool prints a one-time stderr warning when it sees a root without `mod gener
 3. Add the two thin-root lines: `mod generated;` and `pub use generated::*;`.
 4. Regenerate. From here on the root is yours and survives every run.
 
+## Workspace mode: borrowed and requested collection wrappers
+
+When a set of co-generated crates form a workspace — one crate per CDDL spec, later crates importing
+earlier ones as extern deps — a collection wrapper over another crate's types
+(`[* foo]` → `FooList`, `{* k => v}` → `MapKToV`, and their `NonEmpty…` variants) must live in
+**exactly one** crate. Two crates that each mint the same `#[wasm_bindgen] FooList` export one JS
+class name twice and fail to link a single wasm cdylib (`duplicate symbol: __wbg_foolist_free`). The
+`--workspace-dep` (consumer side) and `--wrapper-requests` (dependency side) flags place every
+all-one-dep wrapper in the **owning dependency**, so every consumer imports one shared definition. Two
+generated files carry this, both under the **wasm** crate's tool-owned `src/generated/**` (clobbered
+every run like the rest of that subtree):
+
+### `borrowed_collections.rs` — the consumer's sidecar
+
+Emitted whenever `--workspace-dep` is set (empty-but-present when nothing is borrowed — stable
+presence, stable diffs). It is the mirror of the `collections.rs` wrapper index — "what I borrow, from whom" against
+that file's "what I provide" — and its format is **frozen**, because the owning dependency machine-reads
+it:
+
+```rust
+// This file records every collection wrapper this crate borrows from workspace deps.
+// It is machine-read by those deps' generation runs (--wrapper-requests) and compiled
+// here, so a wrapper a dep stops providing fails THIS crate's build, naming the type.
+// Rows are (dep rust-crate name, wrapper name, shape in CDDL syntax with the dep's idents).
+#[allow(unused_imports)]
+mod borrowed {
+    use cml_dep_wasm::collections::FooList;
+    use cml_dep_wasm::collections::MapKToV;
+}
+#[allow(dead_code)]
+pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
+    ("cml_dep", "FooList", "[* foo]"),
+    ("cml_dep", "MapKToV", "{* k => v}"),
+];
+```
+
+The two halves serve different validators. The private `mod borrowed` of `use` lines is the
+**compile-checked** half: it names every borrowed wrapper, so a wrapper the dependency stops providing
+fails **this** crate's own build with an unresolved import naming the exact type. The
+`BORROWED_SHAPES` table is the **machine** half the dependency parses: `(dependency rust-crate name,
+wrapper name, shape in CDDL syntax with the dependency's idents)`, sorted by `(dep, name)`. The
+**shape column is authoritative** — the dependency derives the wrapper's definition from the shape and
+only cross-checks the name (reverse-parsing element types out of a name like `MapAToBToC` is
+ambiguous). The file is derived output, rebuilt from the consumer's spec on every regen; borrowed
+wrappers are never re-exported (they are not the consumer's public API). All comments — the column
+legend included — live in the fixed banner, never inside the const body, so the edit-preservation
+overlay anchors them to the file itself and a regen that adds or removes rows never has a comment
+stranded on a deleted row.
+
+A user may hand-add a row via the overlay's `// cddl-codegen:insert-start/end` (or `replace`) blocks —
+honored like any preserved edit **when the payload conforms** to the fixed row format. A
+`compile_error!` / `cddl-codegen:unpreserved-comment` trap block, an unknown line, or a mangled row is
+**not** silently tolerated: the dependency's strict parser rejects the whole sidecar as a hard error
+naming the file, on the principle that a cross-crate request channel must never consume a drifted
+generated file. Regenerate the consumer crate to clear such a trap before regenerating the dependency.
+
+### `requested_collections.rs` — the dependency's hosted wrappers
+
+Emitted whenever `--wrapper-requests` is set (empty-but-present when flagged, absent with no flag —
+flag-off output is byte-identical to before). The dependency unions the requested shapes across all
+consumers' sidecars, and emits every requested wrapper it does not already produce, from its **own**
+module view (correct `crate::…` paths, current tool version, one writer per file). Each wrapper carries
+a tool-owned attribution doc listing its requesters alphabetically:
+
+```rust
+/// Generated at the request of: cml_chain, cml_multiera.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct FooList(Vec<cml_dep::Foo>);
+```
+
+Attribution is a `///` doc comment — the overlay's tool-owned documentation class, which regenerates
+freely — so adding or dropping a requester churns the doc in place without ever tripping edit
+preservation. Requested wrappers are indexed in the dependency's own `collections.rs`
+(`pub use crate::generated::requested_collections::<Name>;`) exactly like a wrapper the dependency's
+own spec produces, so a consumer's `use <dep_wasm>::collections::<Name>;` resolves. A requested
+`NonEmpty…` wrapper additionally provisions the `NonEmptyVec`/`NonEmptyMap` runtime and may emit its
+loose `try_from` source wrapper as an (unattributed) transitive support type.
+
+### The regeneration contract
+
+- **Holistic regen runs in reverse dependency order, one pass.** Consumers first — each rewrites its
+  own sidecar and reads nothing from any dependency's output — then dependencies, each reading its
+  consumers' committed sidecars. A crate that is both consumer and dependency does both jobs in its
+  single run. An **unchanged workspace regenerates to a zero diff**, and regenerating any single crate
+  twice is byte-identical (attribution and shape payload included).
+- **Consumer-alone regen is safe unless it *adds* a borrow.** A spec change that introduces no new
+  borrowed wrapper (the common iterate-on-my-own-crate loop) stays green with no dependency regen. A
+  change that **adds** a borrow the dependency does not yet host fails the consumer's build with a
+  **loud unresolved import naming that wrapper** — fixed by regenerating the dependency. This is a
+  subset state (a consumer needs a wrapper the dependency lacks) and cannot exist silently.
+- **Dep-alone regen is always safe.** It re-reads the committed sidecars, so a converged workspace
+  reproduces byte-identical output — the per-crate idempotency guarantee holds with no asterisk.
+- **Removals are a benign superset.** When the last borrowing consumer drops a shape, its regen shrinks
+  its sidecar; the next dependency regen shrinks the union and deletes the wrapper, its index line, and
+  its attribution doc — an ordinary code diff. Between the two regens the dependency carries an extra
+  unused wrapper, which is harmless.
+
 ## Generated `Cargo.toml` (merge, not clobber)
 
 The generated manifests — `rust/Cargo.toml`, and (when enabled) `wasm/Cargo.toml` and

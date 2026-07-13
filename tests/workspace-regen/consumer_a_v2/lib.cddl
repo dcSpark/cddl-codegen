@@ -1,0 +1,8 @@
+; Consumer A, v2: drops the A-unique `bars: [* bar]` (BarList). Its sidecar shrinks; the next dep
+; regen removes the now-unborrowed BarList wrapper (criterion 6). Its remaining borrows are exactly
+; the three shared shapes, all already hosted by the dep.
+alpha = [
+    foos: [* foo],
+    foo_table: { * uint => foo },
+    non_empty_foos: [+ foo],
+]

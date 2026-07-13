@@ -1,0 +1,18 @@
+[package]
+name = "regen-umbrella-wasm"
+version = "0.1.0"
+edition = "2021"
+
+# A thin hand-written umbrella cdylib that links the dep wasm crate AND both consumer wasm crates
+# into one artifact. This is what makes two-consumer duplicate symbols observable at the wasm32 link:
+# a wrapper minted in both consumer crates (workspace mode OFF) collides here; workspace mode (the dep
+# hosts each wrapper once) links clean. Path deps point into the gitignored `export_*` dirs the gate
+# regenerates. Not part of any cargo workspace (standalone) so its own `[dependencies]` resolve.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+regen-dep-wasm = { path = "../export_dep/wasm" }
+consumer-a-wasm = { path = "../export_a/wasm" }
+consumer-b-wasm = { path = "../export_b/wasm" }

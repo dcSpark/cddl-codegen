@@ -1,0 +1,11 @@
+; Consumer A, v1. Root rule `alpha` (distinct from B's `beta`) so the consumers' own root structs
+; never collide — the ONLY cross-consumer collision surface is the shared borrowed wrappers.
+; Borrows from the workspace dep `regen_dep`:
+;   shared with B: FooList `[* foo]`, MapU64ToFoo `{* uint => foo}`, NonEmptyFooList `[+ foo]`
+;   unique to A:   BarList `[* bar]`
+alpha = [
+    foos: [* foo],
+    foo_table: { * uint => foo },
+    non_empty_foos: [+ foo],
+    bars: [* bar],
+]

@@ -1,0 +1,9 @@
+; Consumer A, v3: v2 plus a NEW borrow `non_empty_bars: [+ bar]` (NonEmptyBarList) the dep does not
+; yet host. Regenerating A alone (dep untouched) must fail A's wasm build with an unresolved import
+; naming NonEmptyBarList (criterion 7).
+alpha = [
+    foos: [* foo],
+    foo_table: { * uint => foo },
+    non_empty_foos: [+ foo],
+    non_empty_bars: [+ bar],
+]

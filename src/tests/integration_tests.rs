@@ -6725,6 +6725,7 @@ fn workspace_dep_defers_to_dep() {
 // This file records every collection wrapper this crate borrows from workspace deps.
 // It is machine-read by those deps' generation runs (--wrapper-requests) and compiled
 // here, so a wrapper a dep stops providing fails THIS crate's build, naming the type.
+// Rows are (dep rust-crate name, wrapper name, shape in CDDL syntax with the dep's idents).
 #[allow(unused_imports)]
 mod borrowed {
     use index_dep_crate_wasm::collections::ArrIdxFooList;
@@ -6735,7 +6736,6 @@ mod borrowed {
 }
 #[allow(dead_code)]
 pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
-    // (dep rust-crate name, wrapper name, shape in CDDL syntax with the dep's idents)
     ("index_dep_crate", "ArrIdxFooList", "[* [* idx_foo]]"),
     ("index_dep_crate", "IdxBarList", "[* idx_bar]"),
     ("index_dep_crate", "IdxFooList", "[* idx_foo]"),
@@ -6786,12 +6786,11 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
 // This file records every collection wrapper this crate borrows from workspace deps.
 // It is machine-read by those deps' generation runs (--wrapper-requests) and compiled
 // here, so a wrapper a dep stops providing fails THIS crate's build, naming the type.
+// Rows are (dep rust-crate name, wrapper name, shape in CDDL syntax with the dep's idents).
 #[allow(unused_imports)]
 mod borrowed {}
 #[allow(dead_code)]
-pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
-    // (dep rust-crate name, wrapper name, shape in CDDL syntax with the dep's idents)
-];
+pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[];
 "#;
     assert_eq!(
         empty_sidecar, EXPECTED_EMPTY,
@@ -6828,9 +6827,11 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
     );
     assert!(!c2_sidecar.contains("MapU64ToU64"));
     // The all-one-dep control IS workspace-deferred and recorded — proving workspace mode is active
-    // in the same run that leaves the ownerless wrappers alone.
+    // in the same run that leaves the ownerless wrappers alone. (Matched without a trailing comma:
+    // as the only row, rustfmt collapses the table onto a wrapped initializer with no trailing
+    // comma — the single-row layout the strict parser's whole-item handling covers.)
     assert!(
-        c2_sidecar.contains("(\"index_dep_crate\", \"IdxFooList\", \"[* idx_foo]\"),"),
+        c2_sidecar.contains("(\"index_dep_crate\", \"IdxFooList\", \"[* idx_foo]\")"),
         "the all-one-dep wrapper must still be workspace-borrowed alongside the ownerless ones"
     );
 
@@ -7349,6 +7350,507 @@ fn workspace_requests_two_shapes_one_name_is_a_hard_error() {
                 .contains("two distinct requested shapes derive the same structural wrapper name"),
         "criterion 8 #4: two shapes deriving one name must hard-error naming both; stderr:\n{stderr}"
     );
+}
+
+/// Recursively collect every generated `.rs` file under `root` (anything on a path containing a
+/// `generated` component), skipping `target/` build trees. Used by the workspace-regen contract gate
+/// to snapshot generated trees (zero-diff) and to scan for preservation traps.
+fn wr_collect_generated_rs(root: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    if let Ok(entries) = std::fs::read_dir(root) {
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                if p.file_name().and_then(|s| s.to_str()) == Some("target") {
+                    continue;
+                }
+                wr_collect_generated_rs(&p, out);
+            } else if p.extension().and_then(|s| s.to_str()) == Some("rs")
+                && p.components().any(|c| c.as_os_str() == "generated")
+            {
+                out.push(p);
+            }
+        }
+    }
+}
+
+/// Snapshot the generated-`.rs` tree under `root` as a path→contents map (sorted), for byte-diff
+/// comparison across a holistic regen.
+fn wr_generated_snapshot(root: &std::path::Path) -> std::collections::BTreeMap<String, String> {
+    let mut files = Vec::new();
+    wr_collect_generated_rs(root, &mut files);
+    files
+        .into_iter()
+        .map(|p| {
+            let rel = p.strip_prefix(root).unwrap().to_string_lossy().into_owned();
+            let body = std::fs::read_to_string(&p).unwrap();
+            (rel, body)
+        })
+        .collect()
+}
+
+/// Assert no generated `.rs` under `root` carries a preservation trap (a `compile_error!` from a
+/// `cddl-codegen:unpreserved-comment` block). Returns the offending files for a readable failure.
+fn wr_assert_no_traps(root: &std::path::Path, ctx: &str) {
+    let mut files = Vec::new();
+    wr_collect_generated_rs(root, &mut files);
+    let mut offenders = Vec::new();
+    for p in files {
+        let body = std::fs::read_to_string(&p).unwrap();
+        if body.contains("compile_error!") || body.contains("cddl-codegen:unpreserved-comment") {
+            offenders.push(p.to_string_lossy().into_owned());
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "{ctx}: preservation trap(s) found in the regenerated tree:\n{}",
+        offenders.join("\n")
+    );
+}
+
+/// W3 two-consumer regeneration contract (the Phase-4 headline gate). Unlike the Phase-2/3 gates —
+/// which each generate ONE crate into a FRESH dir — this walks a whole two-consumer workspace through
+/// its regen lifecycle IN SEQUENCE over DELIBERATELY-REUSED on-disk state, so the edit-preservation
+/// overlay runs against prior output (its real production mode). A thin hand-written umbrella cdylib
+/// (`tests/workspace-regen/umbrella`) links the dep wasm crate AND both consumer wasm crates into one
+/// artifact — the only way two-consumer duplicate symbols become observable at link.
+///
+/// The dep (`dep_inputs`) owns `foo`/`bar` and produces NO wrapper structurally, so every borrowed
+/// wrapper is dep-hosted. Consumer A (`alpha`) and B (`beta`) share FooList/MapU64ToFoo/NonEmptyFooList
+/// and each add a unique shape (A: BarList; B: MapU64ToBar). Distinct root-rule names keep the ONLY
+/// cross-consumer collision surface the shared borrowed wrappers.
+///
+/// Legs (each builds on the prior state):
+///   a. RED (criterion 5): both consumers minted (workspace OFF) => umbrella FAILS with a duplicate
+///      symbol on a shared wrapper. The feature's headline failure.
+///   b. GREEN (criteria 1/3/5): reverse-order regen (A, B, then dep) => dep hosts the union with
+///      sorted attribution; the umbrella links CLEAN.
+///   c. Zero-diff holistic regen (criterion 4): the same three generations re-run over the existing
+///      dirs (overlay sees prior output) => generated trees byte-identical.
+///   d. Requester churn (criterion 4): dep regen with only A's sidecar (drop B) IN PLACE => B-only
+///      wrapper deleted, attribution churned, no traps (the dep's `///`-doc class regenerates freely).
+///   e. Last borrower drops a shape (criterion 6): an in-place consumer regen shrinks the sidecar
+///      cleanly (no trap — the column legend lives in the banner, never in the const body, so the
+///      overlay has nothing anchored to the deleted row), and the in-place dep regen removes the
+///      wrapper, its index line, and its doc with no residue.
+///   f. Criterion 7 + the answer-7 softener: a new borrow before the dep regens fails A's build with
+///      an unresolved import; a no-new-borrow regen stays green; the dep regen reconverges.
+#[test]
+fn workspace_regen_two_consumer_contract() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let base = std::path::PathBuf::from("tests/workspace-regen");
+    // One shared target dir so the (slow) wasm builds compile the dependency graph once.
+    let target_dir = std::env::temp_dir().join("cddl_codegen_workspace_regen_target");
+    let sa = "tests/workspace-regen/export_a/wasm/src/generated/borrowed_collections.rs";
+    let sb = "tests/workspace-regen/export_b/wasm/src/generated/borrowed_collections.rs";
+
+    let run_consumer = |input: &str,
+                        output: &str,
+                        lib_name: &str,
+                        wipe: bool,
+                        workspace: bool|
+     -> std::process::Output {
+        let out_dir = base.join(output);
+        if wipe {
+            let _ = std::fs::remove_dir_all(&out_dir);
+        }
+        let mut cmd = tool_cmd("cargo");
+        cmd.arg("run")
+            .arg("--")
+            .arg(format!("--input=tests/workspace-regen/{input}"))
+            .arg(format!("--output=tests/workspace-regen/{output}"))
+            .arg(format!("--lib-name={lib_name}"))
+            .arg("--wasm=true")
+            .arg("--preserve-encodings=true")
+            .arg("--common-import-override=regen_dep")
+            .arg("--extern-wasm-crate=regen_dep=regen_dep_wasm");
+        if workspace {
+            cmd.arg("--workspace-dep=regen_dep");
+        }
+        cmd.output().unwrap()
+    };
+    let run_dep = |output: &str, wipe: bool, requests: &[&str]| -> std::process::Output {
+        let out_dir = base.join(output);
+        if wipe {
+            let _ = std::fs::remove_dir_all(&out_dir);
+        }
+        let mut cmd = tool_cmd("cargo");
+        cmd.arg("run")
+            .arg("--")
+            .arg("--input=tests/workspace-regen/dep_inputs")
+            .arg(format!("--output=tests/workspace-regen/{output}"))
+            .arg("--lib-name=regen-dep")
+            .arg("--wasm=true")
+            .arg("--preserve-encodings=true");
+        for r in requests {
+            cmd.arg(format!("--wrapper-requests={r}"));
+        }
+        cmd.output().unwrap()
+    };
+    // Wire the co-generated path deps the tool cannot know (rust needs dep-rust; wasm needs both).
+    // Only after a WIPE — the manifest merge passes these keys through on an in-place regen, so a
+    // second append would duplicate the dependency key.
+    let wire = |output: &str| {
+        use std::io::Write;
+        let d = base.join(output);
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(d.join("rust/Cargo.toml"))
+            .unwrap()
+            .write_all(b"\nregen-dep = { path = \"../../export_dep/rust\" }\n")
+            .unwrap();
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(d.join("wasm/Cargo.toml"))
+            .unwrap()
+            .write_all(
+                b"\nregen-dep = { path = \"../../export_dep/rust\" }\nregen-dep-wasm = { path = \"../../export_dep/wasm\" }\n",
+            )
+            .unwrap();
+    };
+    let read = |output: &str, rel: &str| -> String {
+        std::fs::read_to_string(base.join(output).join(rel)).unwrap()
+    };
+    let build_wasm = |output: &str| -> std::process::Output {
+        tool_cmd("cargo")
+            .args(["build", "--target", "wasm32-unknown-unknown"])
+            .current_dir(base.join(output).join("wasm"))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap()
+    };
+    let build_umbrella = || -> std::process::Output {
+        tool_cmd("cargo")
+            .args([
+                "build",
+                "--target",
+                "wasm32-unknown-unknown",
+                "--manifest-path",
+                "tests/workspace-regen/umbrella/Cargo.toml",
+            ])
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap()
+    };
+
+    // The link legs (a/b/f builds) need the wasm32 target. House pattern: hard-assert under CI, skip
+    // loudly locally; the file-content assertions run regardless.
+    let have_wasm = wasm32_target_installed();
+    if !have_wasm {
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "wasm32-unknown-unknown is required to run workspace_regen_two_consumer_contract's link legs in CI"
+        );
+        eprintln!(
+            "skipping workspace_regen_two_consumer_contract link legs: wasm32-unknown-unknown not installed"
+        );
+    }
+
+    // =============================== LEG a — RED (criterion 5) ===============================
+    // Both consumers generated WITHOUT workspace flags each mint the shared wrappers locally; the dep
+    // hosts nothing. Linked into one umbrella cdylib, the two `#[wasm_bindgen] FooList` collide.
+    assert!(
+        run_consumer("consumer_a", "export_a", "consumer-a", true, false)
+            .status
+            .success()
+    );
+    assert!(
+        run_consumer("consumer_b", "export_b", "consumer-b", true, false)
+            .status
+            .success()
+    );
+    assert!(run_dep("export_dep", true, &[]).status.success());
+    wire("export_a");
+    wire("export_b");
+    for (out, root) in [("export_a", "alpha"), ("export_b", "beta")] {
+        assert!(
+            read(out, "wasm/src/generated/mod.rs").contains("pub struct FooList"),
+            "workspace OFF: {root}'s consumer must mint the shared FooList locally"
+        );
+        assert!(
+            !base
+                .join(out)
+                .join("wasm/src/generated/borrowed_collections.rs")
+                .exists(),
+            "no borrowed_collections.rs may appear without --workspace-dep ({out})"
+        );
+    }
+    if have_wasm {
+        let red = build_umbrella();
+        let stderr = String::from_utf8_lossy(&red.stderr);
+        assert!(
+            !red.status.success()
+                && stderr.contains("duplicate symbol")
+                && stderr.to_lowercase().contains("foolist"),
+            "leg a: two minted consumers must fail the umbrella link with a duplicate symbol on a \
+             shared wrapper; success={}, stderr:\n{stderr}",
+            red.status.success()
+        );
+    }
+
+    // =============================== LEG b — GREEN (criteria 1/3/5) ===========================
+    // Reverse-order holistic regen: consumers first (each rewrites its sidecar), then the dep (reads
+    // both). The dep hosts the union once, with sorted attribution; the umbrella links clean.
+    assert!(
+        run_consumer("consumer_a", "export_a", "consumer-a", true, true)
+            .status
+            .success()
+    );
+    assert!(
+        run_consumer("consumer_b", "export_b", "consumer-b", true, true)
+            .status
+            .success()
+    );
+    wire("export_a");
+    wire("export_b");
+    let requests_both = [format!("consumer_a={sa}"), format!("consumer_b={sb}")];
+    assert!(
+        run_dep(
+            "export_dep",
+            true,
+            &requests_both.iter().map(String::as_str).collect::<Vec<_>>()
+        )
+        .status
+        .success()
+    );
+    let requested = read("export_dep", "wasm/src/generated/requested_collections.rs");
+    // The dep hosts the whole union — shared wrappers once, each unique shape once.
+    for name in [
+        "BarList",
+        "FooList",
+        "MapU64ToBar",
+        "MapU64ToFoo",
+        "NonEmptyFooList",
+    ] {
+        assert!(
+            requested.contains(&format!("pub struct {name}(")),
+            "leg b: requested_collections.rs must host {name}"
+        );
+    }
+    // Attribution: shared wrappers list BOTH consumers sorted; each unique shape names its one borrower.
+    assert!(
+        requested.contains(
+            "/// Generated at the request of: consumer_a, consumer_b.\n#[derive(Clone, Debug)]\n#[wasm_bindgen]\npub struct FooList("
+        ),
+        "leg b: the shared FooList must attribute both consumers, sorted"
+    );
+    assert!(
+        requested.contains(
+            "/// Generated at the request of: consumer_a, consumer_b.\n///\n/// `[+ Foo]`"
+        ),
+        "leg b: the shared NonEmptyFooList's attribution must precede its structural doc"
+    );
+    assert!(
+        requested.contains(
+            "/// Generated at the request of: consumer_a.\n#[derive(Clone, Debug)]\n#[wasm_bindgen]\npub struct BarList("
+        ),
+        "leg b: the A-unique BarList must attribute only consumer_a"
+    );
+    assert!(
+        requested.contains(
+            "/// Generated at the request of: consumer_b.\n#[derive(Clone, Debug)]\n#[wasm_bindgen]\npub struct MapU64ToBar("
+        ),
+        "leg b: the B-unique MapU64ToBar must attribute only consumer_b"
+    );
+    // The index re-exports every hosted wrapper from requested_collections (so consumer imports resolve).
+    let index = read("export_dep", "wasm/src/generated/collections.rs");
+    for name in [
+        "BarList",
+        "FooList",
+        "MapU64ToBar",
+        "MapU64ToFoo",
+        "NonEmptyFooList",
+    ] {
+        assert!(
+            index.contains(&format!(
+                "pub use crate::generated::requested_collections::{name};"
+            )),
+            "leg b: the dep index must re-export {name} from requested_collections"
+        );
+    }
+    if have_wasm {
+        let green = build_umbrella();
+        assert!(
+            green.status.success(),
+            "leg b: workspace mode (dep hosts each wrapper once) must link the umbrella clean:\n{}",
+            String::from_utf8_lossy(&green.stderr)
+        );
+    }
+
+    // =============================== LEG c — zero-diff holistic regen (criterion 4) ===========
+    // Re-run the exact three generations over the EXISTING dirs (no wipe): the overlay reads prior
+    // output and must reproduce every generated file byte-for-byte.
+    let snap_a = wr_generated_snapshot(&base.join("export_a"));
+    let snap_b = wr_generated_snapshot(&base.join("export_b"));
+    let snap_dep = wr_generated_snapshot(&base.join("export_dep"));
+    assert!(
+        run_consumer("consumer_a", "export_a", "consumer-a", false, true)
+            .status
+            .success()
+    );
+    assert!(
+        run_consumer("consumer_b", "export_b", "consumer-b", false, true)
+            .status
+            .success()
+    );
+    assert!(
+        run_dep(
+            "export_dep",
+            false,
+            &requests_both.iter().map(String::as_str).collect::<Vec<_>>()
+        )
+        .status
+        .success()
+    );
+    assert_eq!(
+        snap_a,
+        wr_generated_snapshot(&base.join("export_a")),
+        "leg c: consumer A's generated tree must be byte-identical on an in-place holistic regen"
+    );
+    assert_eq!(
+        snap_b,
+        wr_generated_snapshot(&base.join("export_b")),
+        "leg c: consumer B's generated tree must be byte-identical on an in-place holistic regen"
+    );
+    assert_eq!(
+        snap_dep,
+        wr_generated_snapshot(&base.join("export_dep")),
+        "leg c: the dep's generated tree (attribution + shape payload included) must be \
+         byte-identical on an in-place holistic regen"
+    );
+
+    // =============================== LEG d — requester churn, in place (criterion 4) ==========
+    // Dep regen with ONLY consumer A's sidecar (B dropped), over the existing dep output. The B-only
+    // wrapper is deleted; shared-wrapper attribution churns from two requesters to one; no traps —
+    // requested_collections carries attribution as `///` doc text (the overlay's tool-owned class).
+    assert!(
+        run_dep("export_dep", false, &[&format!("consumer_a={sa}")])
+            .status
+            .success()
+    );
+    let requested_d = read("export_dep", "wasm/src/generated/requested_collections.rs");
+    let index_d = read("export_dep", "wasm/src/generated/collections.rs");
+    assert!(
+        !requested_d.contains("MapU64ToBar"),
+        "leg d: the B-only MapU64ToBar wrapper must be deleted when B's request is dropped"
+    );
+    assert!(
+        !index_d.contains("MapU64ToBar"),
+        "leg d: MapU64ToBar's index line must be deleted too (no residue)"
+    );
+    assert!(
+        requested_d.contains("pub struct BarList("),
+        "leg d: the A-borrowed BarList must remain (A still requests it)"
+    );
+    assert!(
+        requested_d.contains(
+            "/// Generated at the request of: consumer_a.\n#[derive(Clone, Debug)]\n#[wasm_bindgen]\npub struct FooList("
+        ) && !requested_d.contains("consumer_a, consumer_b"),
+        "leg d: the shared FooList's attribution must churn in place to only consumer_a"
+    );
+    wr_assert_no_traps(&base.join("export_dep"), "leg d");
+
+    // =============================== LEG e — last borrower drops a shape (criterion 6) ========
+    // Consumer A regenerates IN PLACE (the overlay's real mode) with v2 — which drops its A-unique
+    // `[* bar]` — and the sidecar shrinks CLEANLY: BarList's `use` line and const row are gone, no
+    // preservation trap anywhere. This is the clean-shrink contract the sidecar format guarantees by
+    // keeping the column legend in the banner (anchored to the file) instead of inside the const
+    // body (anchored to a deletable row — the pre-fix layout, which trapped exactly here). Then the
+    // dep regen IN PLACE consumes the shrunken sidecar: the now-unborrowed BarList wrapper, its
+    // index line, and its `///` doc are all gone, with no residue and no traps.
+    assert!(
+        run_consumer("consumer_a_v2", "export_a", "consumer-a", false, true)
+            .status
+            .success()
+    );
+    let sidecar_v2 = read("export_a", "wasm/src/generated/borrowed_collections.rs");
+    assert!(
+        !sidecar_v2.contains("BarList"),
+        "leg e: an in-place borrow-drop regen must shrink the sidecar (BarList gone):\n{sidecar_v2}"
+    );
+    assert!(
+        !sidecar_v2.contains("compile_error!")
+            && !sidecar_v2.contains("cddl-codegen:unpreserved-comment"),
+        "leg e: an in-place borrow-drop regen must not trap the sidecar (criterion 6 / design \
+         principle 3):\n{sidecar_v2}"
+    );
+    wr_assert_no_traps(&base.join("export_a"), "leg e (consumer, in-place shrink)");
+    assert!(
+        run_dep("export_dep", false, &[&format!("consumer_a={sa}")])
+            .status
+            .success()
+    );
+    let requested_e = read("export_dep", "wasm/src/generated/requested_collections.rs");
+    let index_e = read("export_dep", "wasm/src/generated/collections.rs");
+    assert!(
+        !requested_e.contains("BarList") && !index_e.contains("BarList"),
+        "leg e: the last borrower dropping BarList must remove its wrapper, index line, and doc"
+    );
+    wr_assert_no_traps(&base.join("export_dep"), "leg e (dep, in-place removal)");
+
+    // =============================== LEG f — criterion 7 + the answer-7 softener ==============
+    // State: the dep hosts exactly the three shared wrappers. Consumer A v3 adds a NEW borrow
+    // (`[+ bar]` → NonEmptyBarList) the dep does not host. Regenerating A ALONE fails A's wasm build
+    // with an unresolved import naming that exact wrapper (the loud subset the contract promises).
+    assert!(
+        run_consumer("consumer_a_v3", "export_a", "consumer-a", true, true)
+            .status
+            .success()
+    );
+    wire("export_a");
+    assert!(
+        read("export_a", "wasm/src/generated/borrowed_collections.rs").contains("NonEmptyBarList"),
+        "leg f: consumer A v3's sidecar must record the new NonEmptyBarList borrow"
+    );
+    if have_wasm {
+        let v3 = build_wasm("export_a");
+        let v3_stderr = String::from_utf8_lossy(&v3.stderr);
+        assert!(
+            !v3.status.success()
+                && v3_stderr.contains("unresolved import")
+                && v3_stderr.contains("NonEmptyBarList"),
+            "leg f: a new borrow before the dep regens must fail A's build with an unresolved import \
+             naming NonEmptyBarList; success={}, stderr:\n{v3_stderr}",
+            v3.status.success()
+        );
+    }
+    // The answer-7 softener: a consumer-alone regen that adds NO new borrow stays green without
+    // touching the dep. Revert A to v2 (its converged spec — all three borrows already hosted). NOTE:
+    // the literal "v1 again" cannot be used here: v1 re-introduces BarList, which leg e removed from
+    // the dep, so v1 would itself be a fresh criterion-7 event (a new borrow). "No new borrow" is the
+    // load-bearing condition; v2 satisfies it.
+    assert!(
+        run_consumer("consumer_a_v2", "export_a", "consumer-a", true, true)
+            .status
+            .success()
+    );
+    wire("export_a");
+    if have_wasm {
+        let soft = build_wasm("export_a");
+        assert!(
+            soft.status.success(),
+            "leg f softener: a no-new-borrow consumer regen must build green without a dep regen:\n{}",
+            String::from_utf8_lossy(&soft.stderr)
+        );
+    }
+    // Finally the dep regens over A's v2 sidecar — the workspace reconverges and both crates link.
+    assert!(
+        run_dep("export_dep", false, &[&format!("consumer_a={sa}")])
+            .status
+            .success()
+    );
+    wr_assert_no_traps(&base.join("export_dep"), "leg f (post-reconverge)");
+    if have_wasm {
+        for out in ["export_dep", "export_a"] {
+            let b = build_wasm(out);
+            assert!(
+                b.status.success(),
+                "leg f: after the dep reconverges, {out}'s wasm crate must link clean:\n{}",
+                String::from_utf8_lossy(&b.stderr)
+            );
+        }
+    }
 }
 
 /// The opt-in recursion depth guard (`--deserialize-depth-limit`). A terminable recursive type

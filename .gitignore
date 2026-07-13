@@ -19,6 +19,9 @@ book/
 
 # Test files (generated output dirs, any export suffix e.g. export, export_wasm, export_json_preserve)
 tests/*/export*/
+# The hand-written umbrella cdylib (workspace_regen gate) resolves a fresh lock against the
+# regenerated export dirs on every run; the lock is a transient artifact, not a source of truth.
+tests/workspace-regen/umbrella/Cargo.lock
 # getting_started_example generates the documented first-run output here (see getting_started.mdx)
 example/export*/
 

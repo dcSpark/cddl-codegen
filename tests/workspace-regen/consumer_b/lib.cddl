@@ -1,0 +1,9 @@
+; Consumer B. Root rule `beta` (distinct from A's `alpha`). Borrows from the workspace dep:
+;   shared with A: FooList `[* foo]`, MapU64ToFoo `{* uint => foo}`, NonEmptyFooList `[+ foo]`
+;   unique to B:   MapU64ToBar `{* uint => bar}`
+beta = [
+    foos: [* foo],
+    foo_table: { * uint => foo },
+    non_empty_foos: [+ foo],
+    bar_table: { * uint => bar },
+]

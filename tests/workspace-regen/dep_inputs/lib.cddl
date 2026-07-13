@@ -1,0 +1,9 @@
+; Phase 4 workspace-regen dep spec. The dep OWNS `foo` and `bar` (real structs) and produces NO
+; collection wrapper over them structurally, so every wrapper the two consumers borrow is hosted from
+; the --wrapper-requests union into requested_collections.rs (the two-consumer regen contract under
+; test). `dep_local` gives the dep its OWN NonEmpty usage (`[+ uint]`) so the `non_empty` runtime
+; module is always provisioned — the consumers' `[+ foo]` fields need it even in the request-less
+; (RED) dep — while owning no wrapper any consumer borrows (they borrow NonEmptyFooList, never this).
+foo = [x: uint]
+bar = [y: tstr]
+dep_local = [nums: [+ uint]]
