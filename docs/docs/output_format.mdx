@@ -76,15 +76,18 @@ halves so your hand edits to the crate root survive regeneration:
   `generated/mod.rs` (the type definitions + module decls + generator crate attrs like
   `#![allow(clippy::too_many_arguments)]` as inner attrs), `generated/serialization.rs`, per-scope
   submodules, and the copied runtime modules (`error.rs`, `ordered_hash_map.rs`). This subtree is
-  overwritten wholesale on every export — never hand-edit the *code*. One exception: **own-line
-  comments you add to a generated `.rs` are carried across regeneration** by symbol identity (which
-  named item they sit in/above) — a comment on an unchanged item transfers, and a comment whose
-  anchor changed too much becomes a `compile_error!` block (loud, never a silent drop) so you review
-  it. Outside those tagged blocks this never affects the generated code tokens; pass
-  `--no-preserve-comments` to turn it off and clobber pristine. Two carve-outs: trailing
-  (end-of-line) comments are not carried in v1 — move them to their own line — and `///` doc text
-  on tool-documented items is tool-owned (it flows from your CDDL/`@doc`; hand edits to it are
-  dropped, so edit the CDDL instead).
+  overwritten wholesale on every export — untagged hand edits to the *code* are clobbered. What
+  DOES survive regeneration: **own-line comments** (carried automatically by symbol identity —
+  which named item they sit in/above) and **tagged code blocks** —
+  `// cddl-codegen:insert-start`/`insert-end` for added lines, and
+  `// cddl-codegen:replace-start`/`replaces`/`replace-end` for swapped code (your version plus a
+  `//`-commented record of the generated code it overrides). Anything that cannot be safely
+  re-placed becomes a `compile_error!` block (loud, never a silent drop) so you review it. See
+  [preserving edits](preserving_edits.mdx) for the full syntax, failure modes, and limits; pass
+  `--no-preserve-comments` to turn the whole overlay off and clobber pristine. Two carve-outs:
+  trailing (end-of-line) comments are not carried — move them to their own line — and `///` doc
+  text on tool-documented items is tool-owned (it flows from your CDDL/`@doc`; hand edits to it
+  are dropped, so edit the CDDL instead).
 - **User-owned: the crate root `src/lib.rs` (seeded once, then never touched).** On a first export the
   tool seeds a thin root:
 
