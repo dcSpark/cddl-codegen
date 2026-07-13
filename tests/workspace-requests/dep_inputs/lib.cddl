@@ -1,0 +1,9 @@
+; W2 dep spec for `--wrapper-requests`. The dep OWNS idx_foo / idx_bar (real structs) and produces
+; IdxFooList STRUCTURALLY via the inline `[* idx_foo]` below — so a consumer's `[* idx_foo]` request
+; is own-spec-produced-under-the-structural-name and emits nothing (satisfied by the existing class).
+; The map / NonEmpty / nested wrappers the consumers request are NOT produced here, so the dep hosts
+; them in requested_collections.rs.
+idx_foo = [x: uint]
+idx_bar = [y: tstr]
+
+container = [items: [* idx_foo]]

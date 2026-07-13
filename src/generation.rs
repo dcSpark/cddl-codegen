@@ -634,6 +634,29 @@ pub struct GenerationScope {
     /// read. Recording is idempotent (the same wrapper is probed from several sites); two DISTINCT
     /// shapes deriving the SAME structural name is a hard error (the `MapAToBToC` reverse-ambiguity).
     borrowed_wrappers: BTreeMap<RustIdent, (String, String)>,
+    /// W2 dep side (`--wrapper-requests`): the canonical CDDL shape (`render_wrapper_shape` output) of
+    /// every collection wrapper this crate produces from its OWN spec, mapped to that wrapper's ident.
+    /// Recorded at each emitter's actual mint point during the main walk (guarded off during requested
+    /// emission). Answers "does the dep already produce this requested shape, and under what name?": a
+    /// requested shape whose canonical form is a key here is own-spec-produced — satisfied when the
+    /// ident is the structural name, a hard error when it is a different (rule-declared) name.
+    own_wrapper_shapes: BTreeMap<String, RustIdent>,
+    /// W2 dep side: while `Some`, `wasm()` / `record_collection_wrapper` route the wrapper being
+    /// emitted into this scope (the `requested_collections` module) instead of `types.scope(ident)` —
+    /// the requested wrappers are not in the dep's IR, so they have no natural scope. Set only around
+    /// the requested-wrapper emission in `emit_requested_collections`; `None` everywhere else.
+    requested_scope_override: Option<ModuleScope>,
+    /// W2 dep side: attribution doc text (`Generated at the request of: …`) keyed by requested-wrapper
+    /// ident. Consulted by `create_base_wasm_struct` (and prepended by the NonEmpty emitters, which set
+    /// their own struct doc). Empty except during requested emission, so own-spec wrappers are
+    /// unaffected (flag-off byte-identity).
+    requested_attribution: BTreeMap<RustIdent, String>,
+    /// W2 dep side: `true` when requested-wrapper emission produced a `[+ …]` / `{+ … => …}` wrapper
+    /// whose NonEmpty runtime the dep's OWN spec does not otherwise pull in. The runtime-provisioning
+    /// gates (`pub mod non_empty`/`non_empty_map` decl + static file copy) OR these in so the dep
+    /// hosts a requested NonEmpty wrapper's `NonEmptyVec`/`NonEmptyMap` type. Never set off the flag.
+    requested_non_empty_vec: bool,
+    requested_non_empty_map: bool,
     no_deser_reasons: BTreeMap<RustIdent, Vec<String>>,
     /// Type-parameter names for the emitted `serialize` / `deserialize` fns. Normally `"W"` / `"R"`,
     /// but if a rule camel-cases to a type named `W`/`R` (which would shadow the generic and break
@@ -667,6 +690,11 @@ impl GenerationScope {
             deferred_warned: BTreeSet::new(),
             workspace_deps: BTreeSet::new(),
             borrowed_wrappers: BTreeMap::new(),
+            own_wrapper_shapes: BTreeMap::new(),
+            requested_scope_override: None,
+            requested_attribution: BTreeMap::new(),
+            requested_non_empty_vec: false,
+            requested_non_empty_map: false,
             no_deser_reasons: BTreeMap::new(),
             serialize_generic: "W".to_string(),
             deserialize_generic: "R".to_string(),
@@ -1088,6 +1116,15 @@ impl GenerationScope {
             }
         }
 
+        // W2 dep side (`--wrapper-requests`): now that the OWN-spec wasm wrapper walk is complete
+        // (`wasm_collection_wrappers` / `own_wrapper_shapes` fully populated), read the consumer
+        // sidecars, union the requested shapes, and emit each requested wrapper the dep does not
+        // already produce into the `requested_collections` module. Wasm-only, and a no-op (byte
+        // identical) with no `--wrapper-requests` flag.
+        if cli.wasm {
+            self.emit_requested_collections(types, cli);
+        }
+
         // JSON export crate
         if cli.json_schema_export {
             self.json_lines
@@ -1142,12 +1179,13 @@ impl GenerationScope {
                 self.rust_lib().raw("pub mod ordered_hash_map;");
             }
             // only crates that actually use `[+ T]` pull in the NonEmptyVec runtime — keeps every
-            // non-`+` crate's output byte-identical
-            if types.uses_non_empty_vec() {
+            // non-`+` crate's output byte-identical. `--wrapper-requests`: a dep hosting a requested
+            // NonEmpty wrapper needs the runtime module even when its own spec has no `[+ …]`.
+            if types.uses_non_empty_vec() || self.requested_non_empty_vec {
                 self.rust_lib().raw("pub mod non_empty;");
             }
             // only crates that actually use `{+ k => v}` pull in the NonEmptyMap runtime
-            if types.uses_non_empty_map() {
+            if types.uses_non_empty_map() || self.requested_non_empty_map {
                 self.rust_lib().raw("pub mod non_empty_map;");
             }
         }
@@ -1875,7 +1913,9 @@ impl GenerationScope {
 
             // non_empty.rs (the NonEmptyVec runtime) — only for crates that use `[+ T]`. Its
             // json/schemars companions append under the same flags as the ordered_hash_map ones.
-            if types.uses_non_empty_vec() {
+            // `--wrapper-requests`: a dep hosting a requested NonEmpty wrapper needs the runtime file
+            // even when its own spec has no `[+ …]`.
+            if types.uses_non_empty_vec() || self.requested_non_empty_vec {
                 let mut non_empty_rs =
                     std::fs::read_to_string(cli.static_dir.join("non_empty.rs"))?;
                 if cli.json_serde_derives {
@@ -1903,7 +1943,7 @@ impl GenerationScope {
             // --preserve-encodings a targeted substitution swaps it for `OrderedHashMap` (import +
             // type token + the extra `Hash + Eq` key bound the hash-map flavor requires), following
             // the ordered_hash_map flavoring precedent. Iteration stays deterministic either way.
-            if types.uses_non_empty_map() {
+            if types.uses_non_empty_map() || self.requested_non_empty_map {
                 let mut non_empty_map_rs =
                     std::fs::read_to_string(cli.static_dir.join("non_empty_map.rs"))?;
                 if cli.json_serde_derives {
@@ -2124,6 +2164,17 @@ impl GenerationScope {
                 "mod.rs",
                 "mod.rs",
             )?;
+            // W2 (`--wrapper-requests`): the synthetic `requested_collections` scope has no
+            // submodules, so materialize it as the flat `generated/requested_collections.rs` the
+            // cross-crate contract names (its `pub mod requested_collections;` decl and the index's
+            // `crate::generated::requested_collections::…` re-exports resolve to either layout). Every
+            // other exported scope keeps its `<name>/mod.rs` form (it may nest submodules).
+            if let Some(content) = out.remove("wasm/src/generated/requested_collections/mod.rs") {
+                out.insert(
+                    "wasm/src/generated/requested_collections.rs".to_owned(),
+                    content,
+                );
+            }
             out.insert(
                 "wasm/src/lib.rs".to_owned(),
                 rustfmt_generated_string(SEEDED_CRATE_ROOT)?.into_owned(),
@@ -2369,7 +2420,13 @@ impl GenerationScope {
     /// Generates in the appropriate scope for `ident`
     /// Used for all the generated WASM wrapper structs and associated traits
     pub fn wasm(&mut self, types: &IntermediateTypes, ident: &RustIdent) -> &mut codegen::Scope {
-        let scope_name = types.scope(ident).to_owned();
+        // W2 (`--wrapper-requests`): a requested wrapper is not in this dep's IR, so `types.scope`
+        // would fall back to the crate root. While the override is set (only around requested-wrapper
+        // emission), route it into the dedicated `requested_collections` module instead.
+        let scope_name = match &self.requested_scope_override {
+            Some(scope) => scope.clone(),
+            None => types.scope(ident).to_owned(),
+        };
         self.wasm_scopes.entry(scope_name).or_default()
     }
 
@@ -2386,9 +2443,37 @@ impl GenerationScope {
     /// captures every wrapper class exactly once and never a suppressed one. The recorded
     /// `ModuleScope` is `types.scope(ident)` — the SAME scope `wasm(types, ident)` places the class
     /// in — so the index path derives from the class's real emission location.
-    fn record_collection_wrapper(&mut self, types: &IntermediateTypes, ident: &RustIdent) {
-        let scope = types.scope(ident).clone();
+    fn record_collection_wrapper(
+        &mut self,
+        types: &IntermediateTypes,
+        ident: &RustIdent,
+        shape: &str,
+    ) {
+        // The recorded scope is where the class is actually emitted: the requested-collections
+        // override when active (so the index re-exports it from that module), else `types.scope`.
+        let scope = match &self.requested_scope_override {
+            Some(scope) => scope.clone(),
+            None => types.scope(ident).clone(),
+        };
         self.wasm_collection_wrappers.insert(ident.clone(), scope);
+        // W2 (`--wrapper-requests`): index this crate's OWN collection-wrapper shapes (main walk only,
+        // never the requested wrappers being minted under the override) so a dep can tell whether it
+        // already produces a requested shape, and under what name.
+        if self.requested_scope_override.is_none() {
+            self.own_wrapper_shapes
+                .insert(shape.to_owned(), ident.clone());
+        }
+    }
+
+    /// W2 (`--wrapper-requests`): the attribution doc for `ident` as a paragraph PREFIX (trailing
+    /// blank line) to prepend to an emitter-set struct doc, or `""` when the wrapper is not requested.
+    /// Used by the NonEmpty emitters, whose `.doc()` call would otherwise clobber the attribution
+    /// `create_base_wasm_struct` injects.
+    fn requested_attribution_prefix(&self, ident: &RustIdent) -> String {
+        self.requested_attribution
+            .get(ident)
+            .map(|d| format!("{d}\n\n"))
+            .unwrap_or_default()
     }
 
     /// Record that structural wrapper `ident` was deferred to workspace dependency `dep` this run
@@ -2410,6 +2495,234 @@ impl GenerationScope {
         }
         self.borrowed_wrappers
             .insert(ident.clone(), (dep.to_owned(), shape.to_owned()));
+    }
+
+    /// W2 dep side (`--wrapper-requests`): read each consumer's committed `borrowed_collections.rs`,
+    /// take the entries addressed to THIS dep (dep column == the normalized `--lib-name`), union the
+    /// requested collection-wrapper shapes across consumers, and emit every requested wrapper the dep
+    /// does not already produce into `wasm/src/generated/requested_collections.rs` (indexed via
+    /// `record_collection_wrapper`, each carrying a sorted-requester attribution doc). Called once,
+    /// after the own-spec wasm walk, under `--wasm`. A no-op — output byte-identical to today — when
+    /// no `--wrapper-requests` flag is set (the module is not even created).
+    ///
+    /// Determinism: everything is keyed/sorted (`BTreeMap`/`BTreeSet`), so the union and the emission
+    /// order depend on neither the flag order nor the consumers' regen order.
+    fn emit_requested_collections(&mut self, types: &IntermediateTypes, cli: &Cli) {
+        let request_files = cli.wrapper_requests();
+        if request_files.is_empty() {
+            // No flag => no file, byte-identical to today (acceptance criterion 10 analog).
+            return;
+        }
+        let my_lib = cli.lib_name_code();
+
+        // One entry per requested shape after unioning across consumers.
+        struct Unioned {
+            rt: RustType,
+            structural: String,
+            requesters: BTreeSet<String>,
+        }
+        // Keyed by the canonically RE-RENDERED shape (so `stake-credential` ≡ `stake_credential`
+        // unify): two consumers requesting the same shape with hyphen/underscore skew collapse here.
+        let mut union: BTreeMap<String, Unioned> = BTreeMap::new();
+
+        for (consumer, path) in &request_files {
+            let contents = std::fs::read_to_string(path).unwrap_or_else(|e| {
+                panic!("--wrapper-requests {consumer}={path}: cannot read the sidecar: {e}")
+            });
+            let entries = crate::wrapper_requests::parse_sidecar(&contents, path);
+            for entry in entries {
+                // Entries addressed to OTHER deps (dep column != this crate's normalized lib name)
+                // are silently skipped — a shared sidecar can name several deps.
+                if entry.dep.replace('-', "_") != my_lib {
+                    continue;
+                }
+                let rt = parse_requested_shape(types, &entry.shape, consumer, path, &entry.name);
+                let canonical = render_wrapper_shape(&rt);
+                let structural = requested_structural_name(types, &rt, consumer, path);
+                // Cross-check the derived structural name against the listed name (criterion 8 #2).
+                if structural != entry.name {
+                    panic!(
+                        "--wrapper-requests {consumer} ({path}): the borrowed wrapper listed as \
+                         {:?} with shape {:?} derives the structural name {:?}, not {:?} — the \
+                         sidecar's name and shape columns disagree (a name↔shape mismatch).",
+                        entry.name, entry.shape, structural, entry.name
+                    );
+                }
+                let u = union.entry(canonical).or_insert_with(|| Unioned {
+                    rt: rt.clone(),
+                    structural: structural.clone(),
+                    requesters: BTreeSet::new(),
+                });
+                u.requesters.insert(consumer.clone());
+            }
+        }
+
+        // Criterion 8 #4: two DISTINCT requested shapes deriving the SAME structural name (from any
+        // combination of consumers) — one JS class for two concepts. Name both shapes and their
+        // requesters.
+        let mut by_structural: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for shape in union.keys() {
+            by_structural
+                .entry(union[shape].structural.clone())
+                .or_default()
+                .push(shape.clone());
+        }
+        for (structural, shapes) in &by_structural {
+            if shapes.len() > 1 {
+                let requesters: BTreeSet<&String> = shapes
+                    .iter()
+                    .flat_map(|s| union[s].requesters.iter())
+                    .collect();
+                panic!(
+                    "--wrapper-requests: two distinct requested shapes derive the same structural \
+                     wrapper name {structural:?}: {shapes:?} (requested by {requesters:?}). These \
+                     would define one JS class for two concepts — rename or @name one of the shapes \
+                     in the requesting consumers."
+                );
+            }
+        }
+
+        // Decide, per unioned shape, whether the dep already produces it (skip), produces it under a
+        // different rule name (criterion 8 #3, hard error), or must emit it.
+        let mut to_emit: Vec<(String, RustType, String, Vec<String>)> = Vec::new();
+        for (canonical, u) in &union {
+            match self.own_wrapper_shapes.get(canonical) {
+                // Own spec already produces this shape under the STRUCTURAL name => request satisfied
+                // by the existing indexed wrapper; emit nothing.
+                Some(existing) if existing.as_ref() == u.structural => {}
+                // Own spec produces this shape under a DIFFERENT (rule-declared) name => hard error.
+                Some(existing) => {
+                    panic!(
+                        "--wrapper-requests: requested shape {canonical:?} (requested by {:?}) is \
+                         already produced by this dep's own spec under the non-structural rule name \
+                         {existing}, not the structural name {:?} the consumers import. Emitting \
+                         both would create two JS classes for one concept. Remedy: rename the rule \
+                         {existing} to {}, give it `@name {}`, or drop it.",
+                        u.requesters, u.structural, u.structural, u.structural
+                    );
+                }
+                None => {
+                    let mut requesters: Vec<String> = u.requesters.iter().cloned().collect();
+                    requesters.sort();
+                    to_emit.push((
+                        canonical.clone(),
+                        u.rt.clone(),
+                        u.structural.clone(),
+                        requesters,
+                    ));
+                }
+            }
+        }
+
+        // Criterion 8 #5: a requested NESTED shape whose inner collection wrapper is neither requested
+        // nor own-spec-produced — an integrity check against a hand-edited / truncated sidecar (a real
+        // consumer closes over its nested shapes automatically, so the inner should always be present).
+        for (canonical, rt, _, _) in &to_emit {
+            for inner in inner_collection_shapes(rt) {
+                let requested = union.contains_key(&inner);
+                let own = self.own_wrapper_shapes.contains_key(&inner);
+                if !requested && !own {
+                    panic!(
+                        "--wrapper-requests: requested shape {canonical:?} nests the collection \
+                         wrapper {inner:?}, which is neither requested by any consumer nor produced \
+                         by this dep's own spec. The inner collection of an all-one-dep shape is \
+                         itself all-one-dep and must be requested too — this sidecar looks truncated \
+                         or hand-edited."
+                    );
+                }
+            }
+        }
+
+        // Emit. `to_emit` is in canonical-shape (BTreeMap) order, so loose `[* …]` precedes its
+        // NonEmpty `[+ …]` twin (`*` < `+`): a separately-requested loose source is emitted (and gets
+        // its attribution) BEFORE the NonEmpty emitter's recursive mint no-ops on it. A NonEmpty
+        // support source that is NOT itself requested is minted by the emitter into this same module
+        // (indexed, no attribution — a benign transitive superset). Byte-identical under any flag /
+        // regen order because the input set is fully sorted.
+        let requested_scope = ModuleScope::from(vec!["requested_collections".to_owned()]);
+        for (_, _, structural, requesters) in &to_emit {
+            let ident = RustIdent::new(CDDLIdent::new(structural.clone()));
+            self.requested_attribution.insert(
+                ident,
+                format!("Generated at the request of: {}.", requesters.join(", ")),
+            );
+        }
+        self.requested_scope_override = Some(requested_scope.clone());
+        for (_, rt, structural, _) in &to_emit {
+            let ident = RustIdent::new(CDDLIdent::new(structural.clone()));
+            match &rt.conceptual_type {
+                ConceptualRustType::Array(inner) => {
+                    if rt.is_non_empty_array() {
+                        self.generate_non_empty_array_type(
+                            types,
+                            (**inner).clone(),
+                            &ident,
+                            false,
+                            cli,
+                        );
+                    } else {
+                        self.generate_array_type(types, (**inner).clone(), &ident, false, cli);
+                    }
+                }
+                ConceptualRustType::Map(k, v) => {
+                    if rt.is_non_empty_map() {
+                        self.generate_non_empty_map_type(
+                            types,
+                            (**k).clone(),
+                            (**v).clone(),
+                            &ident,
+                            false,
+                            cli,
+                        );
+                    } else {
+                        codegen_table_type(
+                            self,
+                            types,
+                            &ident,
+                            (**k).clone(),
+                            (**v).clone(),
+                            false,
+                            cli,
+                        );
+                    }
+                }
+                other => unreachable!("requested shape is not a collection: {other:?}"),
+            }
+        }
+        self.requested_scope_override = None;
+
+        // A requested NonEmpty wrapper pulls in the NonEmpty runtime the dep's OWN spec may not use;
+        // record it so the runtime-provisioning gates (mod decl + static file copy) fire, and import
+        // the type into this scope explicitly (the per-scope loop's import gate is keyed off the dep's
+        // own IR, which doesn't see the requested wrappers).
+        self.requested_non_empty_vec = to_emit
+            .iter()
+            .any(|(_, rt, _, _)| rt.contains_non_empty_array());
+        self.requested_non_empty_map = to_emit
+            .iter()
+            .any(|(_, rt, _, _)| rt.contains_non_empty_map());
+        let non_empty_import = self
+            .requested_non_empty_vec
+            .then(|| format!("{}::non_empty", cli.common_import_wasm()));
+        let non_empty_map_import = self
+            .requested_non_empty_map
+            .then(|| format!("{}::non_empty_map", cli.common_import_wasm()));
+
+        // Ensure the module exists even when nothing is emitted (all requests satisfied by own spec /
+        // addressed elsewhere) — stable presence, stable diffs (plan decision 1). When non-empty, the
+        // wrappers reference the dep's own element WASM wrappers (which live at the generated root or a
+        // sibling module); `use super::*;` reaches them, mirroring the emit-tests glob. The per-scope
+        // import loop later adds the common wasm imports (wasm_bindgen/JsError/OrderedHashMap/…).
+        let scope_content = self.wasm_scopes.entry(requested_scope).or_default();
+        if !to_emit.is_empty() {
+            scope_content.raw("use super::*;");
+        }
+        if let Some(path) = non_empty_import {
+            scope_content.push_import(path, "NonEmptyVec", None);
+        }
+        if let Some(path) = non_empty_map_import {
+            scope_content.push_import(path, "NonEmptyMap", None);
+        }
     }
 
     /// Decide whether a structural collection wrapper the consumer is about to mint should instead be
@@ -5012,12 +5325,13 @@ impl GenerationScope {
         // `--extern-wrapper-index` / `--workspace-dep`: if a dependency already owns (index) or a
         // workspace dep owns (unconditional) this exact list wrapper, defer to it (import from the
         // dep's `collections` module) instead of re-minting a duplicate class.
+        let shape = format!("[* {}]", render_wrapper_shape(&element_type));
         if self.try_defer_wrapper(
             types,
             array_type_ident,
             &element_type.name_as_wasm_array(types),
             &[&element_type.conceptual_type],
-            &format!("[* {}]", render_wrapper_shape(&element_type)),
+            &shape,
             rule_declared,
             cli,
         ) {
@@ -5027,7 +5341,7 @@ impl GenerationScope {
             // Record for the collections.rs index BEFORE the `--wasm-list-macro` early return: the
             // macro still DEFINES the wrapper class, so it belongs in the index exactly like the
             // inline struct below.
-            self.record_collection_wrapper(types, array_type_ident);
+            self.record_collection_wrapper(types, array_type_ident, &shape);
             // --wasm-list-macro: emit a single macro invocation in place of the inline struct +
             // accessor block + conversion impls. The macro also emits the conversions, so we skip
             // building the WasmWrapper entirely (returning early) to avoid double-defining them.
@@ -5121,12 +5435,13 @@ impl GenerationScope {
         // here because an owner-named wrapper must never look deferrable. If that helper's
         // synthesized spelling changes, change this format! too (and the map twin below).
         let structural_name = format!("NonEmpty{}List", element_type.conceptual_type.for_variant());
+        let shape = format!("[+ {}]", render_wrapper_shape(&element_type));
         if self.try_defer_wrapper(
             types,
             wrapper_ident,
             &structural_name,
             &[&element_type.conceptual_type],
-            &format!("[+ {}]", render_wrapper_shape(&element_type)),
+            &shape,
             rule_declared,
             cli,
         ) {
@@ -5137,7 +5452,7 @@ impl GenerationScope {
         if !self.already_generated.insert(wrapper_ident.clone()) {
             return;
         }
-        self.record_collection_wrapper(types, wrapper_ident);
+        self.record_collection_wrapper(types, wrapper_ident, &shape);
         let elem_rust = element_type.for_rust_member(types, true, cli);
         let inner_type = format!("NonEmptyVec<{elem_rust}>");
         // the element's structural loose-builder name; when it coincides with THIS wrapper's ident
@@ -5158,8 +5473,12 @@ impl GenerationScope {
         } else {
             "Enter via `try_from` or `new(first)`."
         };
+        // W2 (`--wrapper-requests`): a requested NonEmpty wrapper sets its own struct doc (above /
+        // below), which would clobber the attribution doc `create_base_wasm_struct` injects, so
+        // prepend the attribution here. Empty prefix (the common case) leaves output byte-identical.
+        let attr_prefix = self.requested_attribution_prefix(wrapper_ident);
         wrapper.s.doc(format!(
-            "`[+ {elem_wasm}]`: at least one element, enforced by the `NonEmptyVec` \
+            "{attr_prefix}`[+ {elem_wasm}]`: at least one element, enforced by the `NonEmptyVec` \
              representation.\n{entry_doc}\n`add` can never violate the bound; removal is checked \
              in the core type."
         ));
@@ -5291,16 +5610,17 @@ impl GenerationScope {
             "NonEmpty{}",
             ConceptualRustType::name_for_wasm_map(&key_type, &value_type)
         );
+        let shape = format!(
+            "{{+ {} => {}}}",
+            render_wrapper_shape(&key_type),
+            render_wrapper_shape(&value_type)
+        );
         if self.try_defer_wrapper(
             types,
             wrapper_ident,
             &structural_name,
             &[&key_type.conceptual_type, &value_type.conceptual_type],
-            &format!(
-                "{{+ {} => {}}}",
-                render_wrapper_shape(&key_type),
-                render_wrapper_shape(&value_type)
-            ),
+            &shape,
             rule_declared,
             cli,
         ) {
@@ -5312,7 +5632,7 @@ impl GenerationScope {
         if !self.already_generated.insert(wrapper_ident.clone()) {
             return;
         }
-        self.record_collection_wrapper(types, wrapper_ident);
+        self.record_collection_wrapper(types, wrapper_ident, &shape);
         let inner_map =
             ConceptualRustType::name_for_rust_map(types, &key_type, &value_type, true, cli);
         let inner_type = format!("NonEmptyMap<{}>", {
@@ -5339,10 +5659,11 @@ impl GenerationScope {
         } else {
             "Enter via `try_from` or `new(first_key, first_value)`."
         };
+        let attr_prefix = self.requested_attribution_prefix(wrapper_ident);
         wrapper.s.doc(format!(
-            "`{{+ k => v}}` (`{map_wasm}`): at least one entry, enforced by the `NonEmptyMap` \
-             representation.\n{entry_doc}\n`insert` can never violate the bound; removal is checked \
-             in the core type."
+            "{attr_prefix}`{{+ k => v}}` (`{map_wasm}`): at least one entry, enforced by the \
+             `NonEmptyMap` representation.\n{entry_doc}\n`insert` can never violate the bound; \
+             removal is checked in the core type."
         ));
         wrapper.s.tuple_field(None, &inner_type);
         // new(first_key, first_value) — always valid (length 1)
@@ -6353,6 +6674,14 @@ fn create_base_wasm_struct<'a>(
         .derive("Clone")
         .derive("Debug")
         .attr("wasm_bindgen");
+    // W2 (`--wrapper-requests`): a requested wrapper carries a `/// Generated at the request of: …`
+    // attribution doc. Set here so the loose list / map emitters (which set no struct doc of their
+    // own) carry it; the NonEmpty emitters set their own struct doc and PREPEND this text via
+    // `requested_attribution_prefix` (a `.doc()` call replaces, not appends). Empty map off the flag,
+    // so own-spec wrappers are byte-identical.
+    if let Some(doc) = gen_scope.requested_attribution.get(ident) {
+        s.doc(doc);
+    }
     let mut s_impl = codegen::Impl::new(name);
     let mut macros = Vec::new();
     // There are auto-implementing ToCBORBytes and FromBytes traits, but unfortunately
@@ -7105,6 +7434,245 @@ fn load_workspace_deps(types: &IntermediateTypes, cli: &Cli) -> BTreeSet<String>
     deps
 }
 
+// ===== W2 dep side (`--wrapper-requests`): shape reconstruction + structural naming ===============
+
+/// Reverse of `primitive_cddl_name`: the `Primitive` a shape-column leaf denotes, or `None` for a
+/// named-type leaf. Only the exact spellings `render_wrapper_shape` emits for primitive leaves are
+/// recognized, so a dep type whose snake-case happens NOT to be a prelude name is correctly treated
+/// as a named element.
+fn primitive_from_cddl_name(name: &str) -> Option<Primitive> {
+    Some(match name {
+        "bool" => Primitive::Bool,
+        "float64" => Primitive::F64,
+        "float32" => Primitive::F32,
+        "u8" => Primitive::U8,
+        "i8" => Primitive::I8,
+        "u16" => Primitive::U16,
+        "i16" => Primitive::I16,
+        "u32" => Primitive::U32,
+        "i32" => Primitive::I32,
+        "uint" => Primitive::U64,
+        "i64" => Primitive::I64,
+        "nint" => Primitive::N64,
+        "text" => Primitive::Str,
+        "bytes" => Primitive::Bytes,
+        _ => return None,
+    })
+}
+
+/// Whether this dep's OWN spec defines `ident` (a generated struct/enum or a user type alias) as an
+/// exported, in-crate type. A non-exported (`_CDDL_CODEGEN_EXTERN_DEPS_DIR_/…`) scope means the type
+/// belongs to one of the DEP's own deps, not the dep itself, so it is NOT owned.
+fn dep_owns_element(types: &IntermediateTypes, ident: &RustIdent) -> bool {
+    let known = types.rust_struct(ident).is_some()
+        || types
+            .type_aliases()
+            .contains_key(&AliasIdent::Rust(ident.clone()));
+    known && types.scope(ident).export()
+}
+
+/// Reconstruct a requested wrapper's `RustType` from its canonical shape column, resolving each
+/// named leaf against the DEP's own IR after the same normalization (`RustIdent::new`, which
+/// camel-cases and folds `-`/`_`) type-name derivation uses. A leaf the dep does not own is a hard
+/// error (criterion 8 #1). `consumer`/`path`/`listed_name` are threaded only for actionable errors.
+fn parse_requested_shape(
+    types: &IntermediateTypes,
+    shape: &str,
+    consumer: &str,
+    path: &str,
+    listed_name: &str,
+) -> RustType {
+    let chars: Vec<char> = shape.chars().collect();
+    let mut pos = 0;
+    let rt = parse_shape_fragment(types, &chars, &mut pos, consumer, path, shape, listed_name);
+    while pos < chars.len() && chars[pos].is_whitespace() {
+        pos += 1;
+    }
+    if pos != chars.len() {
+        panic!(
+            "--wrapper-requests {consumer} ({path}): trailing content after the shape {shape:?} \
+             (wrapper {listed_name:?})."
+        );
+    }
+    rt
+}
+
+fn parse_shape_fragment(
+    types: &IntermediateTypes,
+    chars: &[char],
+    pos: &mut usize,
+    consumer: &str,
+    path: &str,
+    shape: &str,
+    listed_name: &str,
+) -> RustType {
+    let skip_ws = |pos: &mut usize| {
+        while *pos < chars.len() && chars[*pos].is_whitespace() {
+            *pos += 1;
+        }
+    };
+    let bad = |what: &str| -> ! {
+        panic!(
+            "--wrapper-requests {consumer} ({path}): malformed shape {shape:?} (wrapper \
+             {listed_name:?}): {what}."
+        );
+    };
+    skip_ws(pos);
+    if *pos >= chars.len() {
+        bad("unexpected end of shape");
+    }
+    match chars[*pos] {
+        '[' => {
+            *pos += 1;
+            skip_ws(pos);
+            let occ = read_occurrence(chars, pos).unwrap_or_else(|| bad("expected `*` or `+`"));
+            skip_ws(pos);
+            let inner = parse_shape_fragment(types, chars, pos, consumer, path, shape, listed_name);
+            skip_ws(pos);
+            if *pos >= chars.len() || chars[*pos] != ']' {
+                bad("expected `]`");
+            }
+            *pos += 1;
+            let rt = RustType::new(ConceptualRustType::Array(Box::new(inner)));
+            if occ == '+' {
+                rt.with_bounds((Some(1), None))
+            } else {
+                rt
+            }
+        }
+        '{' => {
+            *pos += 1;
+            skip_ws(pos);
+            let occ = read_occurrence(chars, pos).unwrap_or_else(|| bad("expected `*` or `+`"));
+            skip_ws(pos);
+            let key = parse_shape_fragment(types, chars, pos, consumer, path, shape, listed_name);
+            skip_ws(pos);
+            if !(chars.get(*pos) == Some(&'=') && chars.get(*pos + 1) == Some(&'>')) {
+                bad("expected `=>`");
+            }
+            *pos += 2;
+            skip_ws(pos);
+            let value = parse_shape_fragment(types, chars, pos, consumer, path, shape, listed_name);
+            skip_ws(pos);
+            if *pos >= chars.len() || chars[*pos] != '}' {
+                bad("expected `}`");
+            }
+            *pos += 1;
+            let rt = RustType::new(ConceptualRustType::Map(Box::new(key), Box::new(value)));
+            if occ == '+' {
+                rt.with_bounds((Some(1), None))
+            } else {
+                rt
+            }
+        }
+        _ => {
+            // A named or primitive leaf: read the ident token.
+            let start = *pos;
+            while *pos < chars.len()
+                && (chars[*pos].is_ascii_alphanumeric() || chars[*pos] == '_' || chars[*pos] == '-')
+            {
+                *pos += 1;
+            }
+            if *pos == start {
+                bad("expected an element type name");
+            }
+            let token: String = chars[start..*pos].iter().collect();
+            if let Some(p) = primitive_from_cddl_name(&token) {
+                return RustType::new(ConceptualRustType::Primitive(p));
+            }
+            let ident = RustIdent::new(CDDLIdent::new(token.clone()));
+            if !dep_owns_element(types, &ident) {
+                panic!(
+                    "--wrapper-requests {consumer} ({path}): the requested wrapper {listed_name:?} \
+                     (shape {shape:?}) references the element type {token:?}, which this dep does not \
+                     own. The consumer's extern stub for this dep and the dep's own spec disagree — \
+                     the request cannot be satisfied."
+                );
+            }
+            RustType::new(ConceptualRustType::Rust(ident))
+        }
+    }
+}
+
+/// Read a `*`/`+` occurrence marker at `chars[*pos]`, advancing past it.
+fn read_occurrence(chars: &[char], pos: &mut usize) -> Option<char> {
+    match chars.get(*pos) {
+        Some('*') => {
+            *pos += 1;
+            Some('*')
+        }
+        Some('+') => {
+            *pos += 1;
+            Some('+')
+        }
+        _ => None,
+    }
+}
+
+/// The owner-INDEPENDENT structural wrapper name for a reconstructed requested shape — the exact
+/// spelling the consumer's emitter passed to `try_defer_wrapper` and recorded in its sidecar. Uses
+/// the raw `NonEmpty*List` / `NonEmpty<MapKToV>` forms (NOT `non_empty_wasm_wrapper_name`, which
+/// consults named owners) so a dep that authored a `[+ …]` rule surfaces as a name↔shape/own-spec
+/// disagreement rather than silently matching. Panics for a non-collection top level (a hand-edited
+/// sidecar row).
+fn requested_structural_name(
+    types: &IntermediateTypes,
+    rt: &RustType,
+    consumer: &str,
+    path: &str,
+) -> String {
+    match &rt.conceptual_type {
+        ConceptualRustType::Array(inner) => {
+            if rt.is_non_empty_array() {
+                format!("NonEmpty{}List", inner.conceptual_type.for_variant())
+            } else {
+                inner.conceptual_type.name_as_wasm_array_ct(types)
+            }
+        }
+        ConceptualRustType::Map(k, v) => {
+            if rt.is_non_empty_map() {
+                format!("NonEmpty{}", ConceptualRustType::name_for_wasm_map(k, v))
+            } else {
+                ConceptualRustType::name_for_wasm_map(k, v).to_string()
+            }
+        }
+        other => panic!(
+            "--wrapper-requests {consumer} ({path}): a requested shape must be a collection wrapper \
+             (list or map), got {other:?}."
+        ),
+    }
+}
+
+/// The immediate nested collection shapes of a requested wrapper (canonical form), used for the
+/// inner-closure integrity check (criterion 8 #5). Only ONE level: deeper nesting is covered
+/// transitively because each level is a separately-requested (and separately-checked) entry.
+fn inner_collection_shapes(rt: &RustType) -> Vec<String> {
+    let is_collection = |rt: &RustType| {
+        matches!(
+            rt.conceptual_type,
+            ConceptualRustType::Array(_) | ConceptualRustType::Map(_, _)
+        )
+    };
+    let mut out = Vec::new();
+    match &rt.conceptual_type {
+        ConceptualRustType::Array(inner) => {
+            if is_collection(inner) {
+                out.push(render_wrapper_shape(inner));
+            }
+        }
+        ConceptualRustType::Map(k, v) => {
+            if is_collection(k) {
+                out.push(render_wrapper_shape(k));
+            }
+            if is_collection(v) {
+                out.push(render_wrapper_shape(v));
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
 /// Parse every `--extern-wrapper-index <dep>=<path>` file into `dep -> {wrapper class names}`. Each
 /// file is a dependency's committed `generated/collections.rs`: `pub use <path>::<Name>;` lines (plus
 /// blank / `//` comment lines). Any other non-blank line is a hard error — the format is ours, and a
@@ -7291,17 +7859,18 @@ fn codegen_table_type(
     // `name_for_wasm_map`) is a defer candidate — a rule-owned class (`exists_in_rust`) is the
     // consumer's own type. If a mapped dependency owns this exact structural map wrapper, defer to it
     // (import from the dep's `collections` module) instead of re-minting a duplicate class.
+    let shape = format!(
+        "{{* {} => {}}}",
+        render_wrapper_shape(&key_type),
+        render_wrapper_shape(&value_type)
+    );
     if !exists_in_rust
         && gen_scope.try_defer_wrapper(
             types,
             name,
             ConceptualRustType::name_for_wasm_map(&key_type, &value_type).as_ref(),
             &[&key_type.conceptual_type, &value_type.conceptual_type],
-            &format!(
-                "{{* {} => {}}}",
-                render_wrapper_shape(&key_type),
-                render_wrapper_shape(&value_type)
-            ),
+            &shape,
             // Only the anonymous STRUCTURAL map wrapper reaches here (`!exists_in_rust`); a
             // rule-declared table is screened out above and never a defer candidate.
             false,
@@ -7319,7 +7888,7 @@ fn codegen_table_type(
     if !gen_scope.already_generated.insert(name.clone()) {
         return;
     }
-    gen_scope.record_collection_wrapper(types, name);
+    gen_scope.record_collection_wrapper(types, name, &shape);
     // No `tag` parameter: this emits ONLY the wasm wrapper class (accessors + delegation). When the
     // shape has a CBOR tag (`#6.n({ ... })`), the tag is owned entirely by the rust crate's type,
     // which this wrapper's single tuple field holds (via `rust_crate_struct_from_wasm` when

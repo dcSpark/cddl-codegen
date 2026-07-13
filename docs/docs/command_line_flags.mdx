@@ -260,6 +260,24 @@ cddl-codegen --input=example --output=export --common-import-override=cml_core \
 
 <br/><br/>
 
+:::info `--wrapper-requests`
+The **dependency-side** companion to `--workspace-dep`: one `<consumer>=<path>` per consumer, each pointing at that consumer's committed `wasm/src/generated/borrowed_collections.rs`. The dependency parses each sidecar **strictly** (any content outside the frozen format — a `compile_error!`/`unpreserved-comment` trap, an unknown line, a mangled row — is a hard error naming the file), takes the entries addressed to itself (dep column == this crate's normalized `--lib-name`), **unions** the requested collection-wrapper shapes across consumers, and emits every requested wrapper it does not already produce into `wasm/src/generated/requested_collections.rs` — indexed in its own `collections.rs`, each carrying a `/// Generated at the request of: <consumers, sorted>.` doc. This **hosts** the wrapper in the dependency so sibling consumers import one definition instead of each minting a colliding `#[wasm_bindgen]` class.
+
+- The union is keyed by the wrapper's **shape**, not its name; the derived structural name is cross-checked against the listed name. Hard errors (each with an actionable message): a shape referencing an element the dependency doesn't own; a name↔shape mismatch; a shape the dependency already produces under a **non-structural rule name** (remedy: rename the rule, `@name` it, or drop it); two requested shapes deriving the same structural name; a nested shape whose inner wrapper is neither requested nor own-produced; a malformed sidecar.
+- A requested shape the dependency already produces **under its structural name** is satisfied by the existing class — nothing is emitted for it.
+- Output is byte-identical regardless of the order of the `--wrapper-requests` flags (everything is sorted before emission). Repeatable; `<consumer>` is a label used only in attribution and error messages.
+
+With no `--wrapper-requests` flag the output is byte-identical to before (the file is not emitted).
+
+```bash
+cddl-codegen --input=cml_core.cddl --output=export --lib-name=cml-core --wasm=true \
+  --wrapper-requests=cml_chain=../cml_chain/wasm/src/generated/borrowed_collections.rs \
+  --wrapper-requests=cml_multiera=../cml_multiera/wasm/src/generated/borrowed_collections.rs
+```
+:::
+
+<br/><br/>
+
 :::info `--wasm-cbor-json-api-macro`
 If it is passed in, it will call the supplied externally defined macro on each exported type, instead of manually exporting the functions for to/from CBOR bytes + to/from JSON API.
 

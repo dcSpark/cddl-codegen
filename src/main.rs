@@ -11,6 +11,7 @@ pub(crate) mod intermediate;
 pub(crate) mod parsing;
 pub(crate) mod rust_reserved;
 pub(crate) mod utils;
+pub(crate) mod wrapper_requests;
 
 use clap::Parser;
 use cli::Cli;
