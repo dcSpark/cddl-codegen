@@ -12,5 +12,11 @@
 // `--extern-wrapper-index` line parser is exercised against real generated shape.
 // Deliberately does NOT list MapIdxFooToIdxFoo, so a consumer's all-extern
 // `{* idx_foo => idx_foo}` mints locally + warns (the "candidate not in index" path).
+// Also deliberately absent: any restricted `[+ idx_bar]` / `[+ idx_baz]` wrapper —
+// their LOOSE lists below ARE indexed, so the consumer mints the restricted class
+// locally while deferring its `try_from` source here (the deferred-source cells).
+pub use crate::IdxBarList;
+pub use crate::IdxBazList;
 pub use crate::IdxFooList;
 pub use crate::MapU64ToIdxFoo;
+pub use crate::NonEmptyIdxFooList;

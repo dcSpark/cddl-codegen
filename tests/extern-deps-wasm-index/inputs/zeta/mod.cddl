@@ -1,0 +1,9 @@
+; Non-root module holding the ONLY loose `[* idx_bar]` use in the spec. Its deferral import
+; (`use index_dep_crate_wasm::collections::IdxBarList;`) is registered in THIS module's scope, so
+; the root-scope `try_from(&IdxBarList)` on the unreferenced `abc_bars` rule (lib.cddl cell (e))
+; gets no import from here — the emission-scope routing must supply it. Walked LAST (ZetaHolder
+; sorts after AbcBars and Everything), so the abc_bars emitters run with no prior idx_bar deferral
+; established — the order-dependent flavor of the deferred-`try_from`-source hazard.
+zeta_holder = [
+    zloose: [* idx_bar],
+]

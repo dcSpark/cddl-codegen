@@ -2,3 +2,7 @@
 ; --extern-wasm-crate), and its list/map wrappers (IdxFooList / MapU64ToIdxFoo) live in that crate's
 ; `collections` index — which this consumer defers to.
 idx_foo = _CDDL_CODEGEN_EXTERN_TYPE_
+; Two further extern elements for the deferred-`try_from`-source cells: the dep indexes their
+; LOOSE lists (IdxBarList / IdxBazList) but NOT any restricted `[+ …]` wrapper over them.
+idx_bar = _CDDL_CODEGEN_EXTERN_TYPE_
+idx_baz = _CDDL_CODEGEN_EXTERN_TYPE_

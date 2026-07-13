@@ -48,12 +48,40 @@ mod extern_wrapper_index_roundtrip {
         let keyed_keys: IdxFooList = foo_keyed.keys();
         assert_eq!(keyed_keys.len(), 1);
 
-        // Round-trip the whole record through CBOR and read the deferred list back off the getter.
-        let everything = Everything::new(&foos, &foo_table, &foo_to_foo, &foo_keyed);
+        // (d) DEFERRED NonEmpty list wrapper, built through the dep's `NonEmptyIdxFooList` class
+        // (the `[+ idx_foo]` restricted wrapper the dep owns and the consumer must NOT re-mint).
+        let mut bars = NonEmptyIdxFooList::new(&index_dep_crate_wasm::IdxFoo::from(
+            index_dep_crate::IdxFoo::new(5),
+        ));
+        bars.add(&index_dep_crate_wasm::IdxFoo::from(index_dep_crate::IdxFoo::new(6)));
+        assert_eq!(bars.len(), 2);
+
+        // (e) LOCALLY-minted rule-named restricted wrapper (AbcBars) whose `try_from` source is the
+        // dep's DEFERRED loose IdxBarList — the honored deferred-source path, driven end to end:
+        // build the dep's loose class from the dep's rust type, convert through try_from.
+        let bar_list = IdxBarList::from(vec![
+            index_dep_crate::IdxBar::new(21),
+            index_dep_crate::IdxBar::new(22),
+        ]);
+        let abc = AbcBars::try_from(&bar_list).expect("a non-empty source must convert");
+        assert_eq!(abc.len(), 2);
+
+        // (f) Same for the INLINE synthesized flavor: local NonEmptyIdxBazList, deferred IdxBazList
+        // source.
+        let baz_list = IdxBazList::from(vec![index_dep_crate::IdxBaz::new(31)]);
+        let nb_baz =
+            NonEmptyIdxBazList::try_from(&baz_list).expect("a non-empty source must convert");
+        assert_eq!(nb_baz.len(), 1);
+
+        // Round-trip the whole record through CBOR and read the deferred lists back off the getters.
+        let everything =
+            Everything::new(&foos, &foo_table, &foo_to_foo, &foo_keyed, &bars, &nb_baz);
         let bytes = everything.to_cbor_bytes();
         let back = Everything::from_cbor_bytes(&bytes).expect("must deserialize its own bytes");
         assert_eq!(back.to_cbor_bytes(), bytes);
         assert_eq!(back.foos().len(), 2);
         assert_eq!(back.foo_keyed().keys().len(), 1);
+        assert_eq!(back.bars().len(), 2);
+        assert_eq!(back.only_nb_baz().len(), 1);
     }
 }

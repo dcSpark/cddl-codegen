@@ -2336,6 +2336,10 @@ impl GenerationScope {
         wrapper_ident: &RustIdent,
         structural_name: &str,
         constituents: &[&ConceptualRustType],
+        // The wrapper's CDDL shape fragment (canonical renderer output), used only to build the
+        // paste-able "add this rule" hint on the not-in-index warning.
+        shape: &str,
+        cli: &Cli,
     ) -> bool {
         if self.extern_wrapper_index.is_empty() {
             return false;
@@ -2409,10 +2413,19 @@ impl GenerationScope {
                 .is_some_and(|names| names.contains(structural_name))
             {
                 if self.deferred_warned.insert(wrapper_ident.clone()) {
+                    // Append the exact rule line to paste into the owning dep's spec: declaring it
+                    // there lands the wrapper in the dep's collections.rs index (by construction), so
+                    // every consumer's index-deferral then picks it up — the shipped manual override
+                    // for wrappers no request sidecar covers (hand-written consumer code, mixed-dep
+                    // shapes). Rule name = snake_case of the structural name; shape from the canonical
+                    // renderer; requester = this consumer's normalized --lib-name.
+                    let rule_name = convert_to_snake_case(structural_name);
+                    let requester = cli.lib_name_code();
                     eprintln!(
                         "warning: collection wrapper {structural_name} has only extern elements of \
                          dependency {dep:?} but is absent from its --extern-wrapper-index; minting \
-                         it locally (a dep that later adds it would duplicate-symbol at link time)"
+                         it locally (a dep that later adds it would duplicate-symbol at link time)\n\
+                         hint: add to {dep}'s spec: {rule_name} = {shape} ; requested by {requester}"
                     );
                 }
                 return false;
@@ -4849,6 +4862,8 @@ impl GenerationScope {
             array_type_ident,
             &element_type.name_as_wasm_array(types),
             &[&element_type.conceptual_type],
+            &format!("[* {}]", render_wrapper_shape(&element_type)),
+            cli,
         ) {
             return;
         }
@@ -4937,6 +4952,26 @@ impl GenerationScope {
         wrapper_ident: &RustIdent,
         cli: &Cli,
     ) {
+        // `--extern-wrapper-index`: a synthesized `NonEmpty*List` over a mapped dependency's extern
+        // element is a defer candidate exactly like the loose list — if the dep owns it, import it
+        // instead of re-minting a colliding `#[wasm_bindgen]` class. Only the STRUCTURAL name is a
+        // candidate (`try_defer_wrapper`'s rule-declared guard: a named `[+ …]` rule keeps its ident,
+        // which differs from the structural `NonEmpty*List`, and is never suppressed).
+        // LOCKSTEP: this spelling is deliberately the owner-INDEPENDENT structural name — the `None`
+        // (no named owner) branch of `RustType::non_empty_wasm_wrapper_name`, which cannot be called
+        // here because an owner-named wrapper must never look deferrable. If that helper's
+        // synthesized spelling changes, change this format! too (and the map twin below).
+        let structural_name = format!("NonEmpty{}List", element_type.conceptual_type.for_variant());
+        if self.try_defer_wrapper(
+            types,
+            wrapper_ident,
+            &structural_name,
+            &[&element_type.conceptual_type],
+            &format!("[+ {}]", render_wrapper_shape(&element_type)),
+            cli,
+        ) {
+            return;
+        }
         // mint any NonEmpty wrappers the element itself needs (nested `[+ [+ int]]`) first
         self.ensure_non_empty_wrappers(types, &element_type, cli);
         if !self.already_generated.insert(wrapper_ident.clone()) {
@@ -5032,7 +5067,11 @@ impl GenerationScope {
             // non-exposable, non-nested element: borrow the loose list wrapper and clone it out.
             // Make sure the loose builder exists (inline arrays already mint it; a named `[+ bar]`
             // rule may not have — minting is idempotent via `already_generated`, and a user rule
-            // of incompatible shape claiming this ident was rejected at finalize).
+            // of incompatible shape claiming this ident was rejected at finalize). This mint runs
+            // through `try_defer_wrapper` like any other, so a dep-indexed loose source DEFERS —
+            // the `try_from` below then borrows the dep's class, whose import is routed at THIS
+            // wrapper's emission scope by `scope_references` (the try_from reference is invisible
+            // to the field walk — see `register_deferred_non_empty_list_source`).
             self.generate_array_type(
                 types,
                 element_type.clone(),
@@ -5076,6 +5115,32 @@ impl GenerationScope {
         wrapper_ident: &RustIdent,
         cli: &Cli,
     ) {
+        // `--extern-wrapper-index`: a synthesized `NonEmptyMap*` over a mapped dependency's extern
+        // key+value is a defer candidate exactly like the loose table — if the dep owns it, import it
+        // instead of re-minting a colliding `#[wasm_bindgen]` class. Only the STRUCTURAL name is a
+        // candidate (rule-declared `{+ …}` rules keep their ident and are never suppressed).
+        // LOCKSTEP: this spelling is deliberately the owner-INDEPENDENT structural name — the `None`
+        // (no named owner) branch of `RustType::non_empty_wasm_map_wrapper_name`, which cannot be
+        // called here because an owner-named wrapper must never look deferrable. If that helper's
+        // synthesized spelling changes, change this format! too (and the list twin above).
+        let structural_name = format!(
+            "NonEmpty{}",
+            ConceptualRustType::name_for_wasm_map(&key_type, &value_type)
+        );
+        if self.try_defer_wrapper(
+            types,
+            wrapper_ident,
+            &structural_name,
+            &[&key_type.conceptual_type, &value_type.conceptual_type],
+            &format!(
+                "{{+ {} => {}}}",
+                render_wrapper_shape(&key_type),
+                render_wrapper_shape(&value_type)
+            ),
+            cli,
+        ) {
+            return;
+        }
         // mint any NonEmpty wrappers the key/value themselves need (nested `{+ …}`) first
         self.ensure_non_empty_wrappers(types, &key_type, cli);
         self.ensure_non_empty_wrappers(types, &value_type, cli);
@@ -5286,6 +5351,8 @@ impl GenerationScope {
                 &RustIdent::new(CDDLIdent::new(key_type.name_as_wasm_array(types))),
                 &key_type.name_as_wasm_array(types),
                 &[&key_type.conceptual_type],
+                &format!("[* {}]", render_wrapper_shape(&key_type)),
+                cli,
             );
         if keys_type.directly_wasm_exposable_ct(types) {
             keys.line(format!("self.0{key_clone}.collect::<Vec<_>>()"));
@@ -5317,6 +5384,11 @@ impl GenerationScope {
                 .table_shape_sole_owners()
                 .contains_key(&loose_ident.to_string());
             if !shape_has_sole_owner {
+                // This mint runs through `try_defer_wrapper` like any other, so a dep-indexed loose
+                // `MapKToV` source DEFERS — the `try_from` below then borrows the dep's class, whose
+                // import is routed at THIS wrapper's emission scope by `scope_references` (the
+                // try_from reference is invisible to the field walk — see
+                // `register_deferred_non_empty_map_source`).
                 codegen_table_type(
                     self,
                     types,
@@ -6691,6 +6763,66 @@ pub fn table_type(cli: &Cli) -> &'static str {
     }
 }
 
+/// The CDDL prelude spelling of a primitive, for the canonical shape renderer. Kept in lockstep with
+/// the wasm-map/list structural naming: the dep re-parses a rendered shape and must derive the SAME
+/// structural name, so each primitive renders to a CDDL name whose `for_variant` round-trips (e.g.
+/// `uint` -> `U64` -> `MapU64To…`). `u8`/`i8`/… are cddl-codegen's own sized-int spellings.
+fn primitive_cddl_name(p: &Primitive) -> &'static str {
+    match p {
+        Primitive::Bool => "bool",
+        Primitive::F64 => "float64",
+        Primitive::F32 => "float32",
+        Primitive::U8 => "u8",
+        Primitive::I8 => "i8",
+        Primitive::U16 => "u16",
+        Primitive::I16 => "i16",
+        Primitive::U32 => "u32",
+        Primitive::I32 => "i32",
+        Primitive::U64 => "uint",
+        Primitive::I64 => "i64",
+        Primitive::N64 => "nint",
+        Primitive::Str => "text",
+        Primitive::Bytes => "bytes",
+    }
+}
+
+/// Render a collection wrapper's CDDL shape fragment in the canonical W1 shape-column grammar —
+/// `[* foo]` / `[+ foo]` for loose / non-empty lists, `{* k => v}` / `{+ k => v}` for maps, nesting
+/// recursively (`[* [* foo]]`, `[* [+ foo]]`). Element idents are the dependency's own spec spelling
+/// (snake_case of the rust ident, matching the extern-stub naming a dep re-parses after
+/// normalization); primitives render as their CDDL prelude name. The occurrence marker is taken from
+/// the `RustType`'s own bounds so nested non-empty shapes are honored at every level. This is the
+/// single shape renderer shared by the not-in-index warning hint and (later) the request-sidecar
+/// machinery, so its output is EXACTLY the format a dep parses back.
+pub(crate) fn render_wrapper_shape(rt: &RustType) -> String {
+    match &rt.conceptual_type {
+        ConceptualRustType::Array(inner) => {
+            let occ = if rt.is_non_empty_array() { "+" } else { "*" };
+            format!("[{occ} {}]", render_wrapper_shape(inner))
+        }
+        ConceptualRustType::Map(key, value) => {
+            let occ = if rt.is_non_empty_map() { "+" } else { "*" };
+            format!(
+                "{{{occ} {} => {}}}",
+                render_wrapper_shape(key),
+                render_wrapper_shape(value)
+            )
+        }
+        // An optional isn't itself a wrapper occurrence — render its inner shape (only reachable via
+        // nesting; the top-level constituents the callers pass are Array/Map/named-leaf).
+        ConceptualRustType::Optional(inner) => render_wrapper_shape(inner),
+        ConceptualRustType::Rust(ident) => convert_to_snake_case(ident.as_ref()),
+        ConceptualRustType::Alias(AliasIdent::Rust(ident), _) => {
+            convert_to_snake_case(ident.as_ref())
+        }
+        ConceptualRustType::Alias(AliasIdent::Reserved(name), _) => name.clone(),
+        ConceptualRustType::Primitive(p) => primitive_cddl_name(p).to_owned(),
+        // Fixed values carry no CDDL ident and never appear as a real wrapper element; render a
+        // placeholder rather than panicking so the advisory hint text stays best-effort.
+        ConceptualRustType::Fixed(_) => "_".to_owned(),
+    }
+}
+
 /// The top-level NAMED rust idents of a wrapper constituent (element / key / value) — what the defer
 /// decision resolves to a dependency scope. Primitives / fixed values contribute none; an alias
 /// contributes its aliased ident; an optional passes through to its inner type.
@@ -6893,6 +7025,12 @@ fn codegen_table_type(
             name,
             ConceptualRustType::name_for_wasm_map(&key_type, &value_type).as_ref(),
             &[&key_type.conceptual_type, &value_type.conceptual_type],
+            &format!(
+                "{{* {} => {}}}",
+                render_wrapper_shape(&key_type),
+                render_wrapper_shape(&value_type)
+            ),
+            cli,
         )
     {
         return;
@@ -7110,6 +7248,8 @@ fn codegen_table_type(
             &RustIdent::new(CDDLIdent::new(key_type.name_as_wasm_array(types))),
             &key_type.name_as_wasm_array(types),
             &[&key_type.conceptual_type],
+            &format!("[* {}]", render_wrapper_shape(&key_type)),
+            cli,
         );
     if keys_type.directly_wasm_exposable_ct(types) {
         keys.line(format!("self.0{key_clone}.collect::<Vec<_>>()"));

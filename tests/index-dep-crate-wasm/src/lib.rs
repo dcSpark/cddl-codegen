@@ -75,6 +75,187 @@ impl AsRef<Vec<index_dep_crate::IdxFoo>> for IdxFooList {
     }
 }
 
+// Second element (`idx_bar`) plus its LOOSE list wrapper. The dep index lists IdxBarList but NOT
+// any restricted `[+ idx_bar]` wrapper, so a consumer's `[+ idx_bar]` rule/shape mints its
+// restricted class locally while deferring THIS loose class as the `try_from` source — the
+// conversion must resolve cross-crate through the public From/AsRef contract below.
+#[wasm_bindgen]
+#[derive(Clone, Debug)]
+pub struct IdxBar(index_dep_crate::IdxBar);
+
+impl From<index_dep_crate::IdxBar> for IdxBar {
+    fn from(native: index_dep_crate::IdxBar) -> Self {
+        Self(native)
+    }
+}
+
+impl From<IdxBar> for index_dep_crate::IdxBar {
+    fn from(wasm: IdxBar) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<index_dep_crate::IdxBar> for IdxBar {
+    fn as_ref(&self) -> &index_dep_crate::IdxBar {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+#[derive(Clone, Debug)]
+pub struct IdxBarList(Vec<index_dep_crate::IdxBar>);
+
+#[wasm_bindgen]
+impl IdxBarList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> IdxBar {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &IdxBar) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<index_dep_crate::IdxBar>> for IdxBarList {
+    fn from(native: Vec<index_dep_crate::IdxBar>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<IdxBarList> for Vec<index_dep_crate::IdxBar> {
+    fn from(wasm: IdxBarList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<index_dep_crate::IdxBar>> for IdxBarList {
+    fn as_ref(&self) -> &Vec<index_dep_crate::IdxBar> {
+        &self.0
+    }
+}
+
+// Third element (`idx_baz`) plus its LOOSE list wrapper — the inline `[+ idx_baz]` twin of the
+// named-rule IdxBar cell. Indexed: IdxBazList. NOT indexed: NonEmptyIdxBazList.
+#[wasm_bindgen]
+#[derive(Clone, Debug)]
+pub struct IdxBaz(index_dep_crate::IdxBaz);
+
+impl From<index_dep_crate::IdxBaz> for IdxBaz {
+    fn from(native: index_dep_crate::IdxBaz) -> Self {
+        Self(native)
+    }
+}
+
+impl From<IdxBaz> for index_dep_crate::IdxBaz {
+    fn from(wasm: IdxBaz) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<index_dep_crate::IdxBaz> for IdxBaz {
+    fn as_ref(&self) -> &index_dep_crate::IdxBaz {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+#[derive(Clone, Debug)]
+pub struct IdxBazList(Vec<index_dep_crate::IdxBaz>);
+
+#[wasm_bindgen]
+impl IdxBazList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> IdxBaz {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &IdxBaz) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<index_dep_crate::IdxBaz>> for IdxBazList {
+    fn from(native: Vec<index_dep_crate::IdxBaz>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<IdxBazList> for Vec<index_dep_crate::IdxBaz> {
+    fn from(wasm: IdxBazList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<index_dep_crate::IdxBaz>> for IdxBazList {
+    fn as_ref(&self) -> &Vec<index_dep_crate::IdxBaz> {
+        &self.0
+    }
+}
+
+// The RESTRICTED `[+ idx_foo]` wrapper — the NonEmpty twin of IdxFooList, wrapping
+// `NonEmptyVec<IdxFoo>`. Hand-written to match cddl-codegen's synthesized `NonEmpty*List` emission
+// (new(first)/len/get/add plus the `From<NonEmptyVec<..>>` / `From<.. for NonEmptyVec>` / `AsRef`
+// boundary contract a consumer's deferred `[+ idx_foo]` field relies on), and indexed in
+// `collections.rs` so a consumer pointing `--extern-wrapper-index` here DEFERS it instead of
+// re-minting a colliding `#[wasm_bindgen] NonEmptyIdxFooList`.
+#[wasm_bindgen]
+#[derive(Clone, Debug)]
+pub struct NonEmptyIdxFooList(
+    index_dep_crate::non_empty::NonEmptyVec<index_dep_crate::IdxFoo>,
+);
+
+#[wasm_bindgen]
+impl NonEmptyIdxFooList {
+    pub fn new(first: &IdxFoo) -> Self {
+        Self(index_dep_crate::non_empty::NonEmptyVec::new(first.clone().into()))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> IdxFoo {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &IdxFoo) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<index_dep_crate::non_empty::NonEmptyVec<index_dep_crate::IdxFoo>> for NonEmptyIdxFooList {
+    fn from(native: index_dep_crate::non_empty::NonEmptyVec<index_dep_crate::IdxFoo>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonEmptyIdxFooList> for index_dep_crate::non_empty::NonEmptyVec<index_dep_crate::IdxFoo> {
+    fn from(wasm: NonEmptyIdxFooList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<index_dep_crate::non_empty::NonEmptyVec<index_dep_crate::IdxFoo>> for NonEmptyIdxFooList {
+    fn as_ref(&self) -> &index_dep_crate::non_empty::NonEmptyVec<index_dep_crate::IdxFoo> {
+        &self.0
+    }
+}
+
 #[wasm_bindgen]
 #[derive(Clone, Debug)]
 pub struct MapU64ToIdxFoo(OrderedHashMap<u64, index_dep_crate::IdxFoo>);

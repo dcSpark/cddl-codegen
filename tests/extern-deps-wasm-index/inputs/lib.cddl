@@ -12,6 +12,18 @@
 ; that widened class on wasm32 (they were `isize`, 32-bit on wasm, and any such crate failed to link).
 local_thing = [a: uint, b: tstr, c: (int .ne 1)]
 
+; (e) NAMED `[+ idx_bar]` rule, deliberately UNREFERENCED by any other rule and alphabetically
+;     FIRST in the struct walk (BTreeMap order: AbcBars < Everything < ZetaHolder). Its restricted
+;     class (AbcBars — rule-declared, never deferred) is minted locally, but its `try_from` source
+;     is the LOOSE structural IdxBarList, which IS in the dep index -> the source mint defers and
+;     the conversion resolves against the dep's class. The rule is unreferenced and the only loose
+;     `[* idx_bar]` use lives in another module (zeta.cddl), so the root-scope `use` for the
+;     try_from source can come ONLY from the emission-scope import routing — this cell is RED if
+;     the source is re-minted locally (duplicate class at link, the order-dependent hazard: this
+;     rule's emitters run before any other idx_bar use) OR if the deferred source's import isn't
+;     routed (unresolved IdxBarList in the try_from signature).
+abc_bars = [+ idx_bar]
+
 everything = [
     ; (a) list over an extern element whose wrapper IS in the index -> DEFERRED (imported from
     ;     index_dep_crate_wasm::collections, no local IdxFooList class)
@@ -24,4 +36,15 @@ everything = [
     ; (c) MIXED map (extern key + consumer value) -> minted LOCALLY, silent; keys-list IdxFooList IS
     ;     in the index -> DEFERRED, so keys() builds via `.into()` (R3d)
     foo_keyed: { * idx_foo => local_thing },
+    ; (d) NonEmpty list over an extern element whose restricted wrapper IS in the index ->
+    ;     DEFERRED (imported NonEmptyIdxFooList, no local class). Closes the NonEmpty deferral
+    ;     boundary: the synthesized `NonEmpty*List` emitter must consult the dep index too, or two
+    ;     consumers of the same dep both mint `#[wasm_bindgen] NonEmptyIdxFooList` and collide.
+    bars: [+ idx_foo],
+    ; (f) INLINE `[+ idx_baz]` whose restricted wrapper is NOT in the index (local mint + warning
+    ;     hint) but whose LOOSE try_from source IdxBazList IS -> the synthesized NonEmptyIdxBazList
+    ;     is minted locally with `try_from(&IdxBazList)` against the dep's deferred class. No loose
+    ;     `[* idx_baz]` use exists anywhere, so the root `use` for IdxBazList can come ONLY from the
+    ;     emission-scope import routing (the inline twin of the `abc_bars` cell above).
+    only_nb_baz: [+ idx_baz],
 ]

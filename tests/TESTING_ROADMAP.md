@@ -259,33 +259,34 @@ dead loses the lesson.
   so an emission rename flips the liveness half red instead of leaving the negative half
   vacuous. Meanwhile the working rule when renaming emitted text: grep the test tree for needles
   pinning the old spelling in the same change.
-- **`--extern-wrapper-index` deferral boundaries — NonEmpty structural wrappers are not defer
-  candidates.** The deferral (pinned by `extern_wrapper_index_defers_to_dep`) covers only the
-  loose list/map wrapper emitters (`generate_array_type` / `codegen_table_type`):
-  `generate_non_empty_array_type` / `generate_non_empty_map_type` never consult
-  `try_defer_wrapper`, so a dep index listing a `NonEmptyVec`/`NonEmptyMap`-backed wrapper plus
-  a consumer spelling the same anonymous nonempty list/table shape over that dep's extern
-  element re-mints it (duplicate-symbol link error, exactly the class the flag exists to remove);
-  conversely `codegen_table_type` defers a structural map even when it was requested as a
-  NonEmpty wrapper's `try_from` source, which would dangle that source type. Both need the
-  opt-in flag AND an exotic cross-crate nonempty shape no consumer has spelled; extend
-  `try_defer_wrapper` into the NonEmpty emitters (and exempt `try_from`-source mints) when one
-  does. Related name-interaction note: a USER rule claiming a dep-indexed structural name is
-  never deferred (the rule-declared guard), so it duplicate-symbols at link — the CROSS-CRATE
-  flavor of the synthesized-name interaction class, which the shipped in-crate layers cannot
-  see (the duplicate-ident backstop scans one crate's own files;
-  `synthesized_name_interaction_sweep` spells no dep-index cells — see `tests/README.md`
-  § "Synthesized-name interaction sweep + duplicate-ident backstop"), so it is owned HERE: a
-  dep-index cell joins the deferral-profile leg below when this entry's recur-first trigger
-  fires. The CLASS here — a per-wrapper emission MODE
-  (local vs deferred) crossed with the wrapper-shape space — is an axis no existing honesty rule
-  sweeps (the wasm-ABI matrix's SHAPES/ROLES cover what types look like and where they sit; the
-  third honesty axis covers flag × input mode; neither enumerates flag × shape). These two gaps
-  were found by reading the emitters during review, not by any gate. Mechanical layer on the
-  SECOND read-caught or consumer-reported instance of the class: a deferral-profile leg over the
-  wasm-ABI matrix's extern-capable shapes — each shape probed once with a dep index listing its
-  structural name and once without, asserting deferred-import vs local-mint and a wasm32 link —
-  rather than accreting per-shape hand fixtures.
+- **`--extern-wrapper-index` deferral-boundaries — per-wrapper emission MODE × wrapper shape is an
+  unswept axis.** The NonEmpty defer boundary is now closed: `generate_non_empty_array_type` /
+  `generate_non_empty_map_type` consult `try_defer_wrapper`, their loose `try_from`-source mints
+  defer normally (eager decisions, order-independent), and the source's conversion-internal import —
+  invisible to the field walk — is routed at the restricted class's emission scope
+  (`register_deferred_non_empty_{list,map}_source`, the same follow-the-class pattern as the R3d
+  keys-list registration). Pinned by `extern_wrapper_index_defers_to_dep`'s
+  `[+ idx_foo]`/`NonEmptyIdxFooList` cell (whole-wrapper deferral) plus its order-hostile
+  deferred-source cells: the unreferenced named rule `abc_bars = [+ idx_bar]` (walked first, only
+  loose use in another module — RED as duplicate-symbol if the source re-mints, RED as unresolved
+  `IdxBarList` if the import isn't routed) and the inline `only_nb_baz: [+ idx_baz]` twin (no loose
+  use anywhere). The map-side source routing is the same helper pattern but has no dedicated cell —
+  it joins the deferral-profile leg below. Two related gaps stay open. (1) A USER rule claiming a
+  dep-indexed structural name is never deferred (the rule-declared guard — correctly, so it stays a
+  local class), so it duplicate-symbols at link — the CROSS-CRATE flavor of the synthesized-name
+  interaction class, which the shipped in-crate layers cannot see (the duplicate-ident backstop scans
+  one crate's own files; `synthesized_name_interaction_sweep` spells no dep-index cells — see
+  `tests/README.md` § "Synthesized-name interaction sweep + duplicate-ident backstop"), so it is owned
+  HERE. (2) The CLASS behind both — a per-wrapper emission MODE (local vs deferred under
+  `--extern-wrapper-index`) crossed with the wrapper-shape space — is an axis no existing honesty rule
+  sweeps (the wasm-ABI matrix's SHAPES/ROLES cover what types look like and where they sit; the third
+  honesty axis covers flag × input mode; neither enumerates flag × shape). Each has been found by
+  reading the emitters, not by any gate. Mechanical layer on the SECOND read-caught or
+  consumer-reported instance of the class (the NonEmpty cell above being the first, now pinned by
+  hand): a deferral-profile leg over the wasm-ABI matrix's extern-capable shapes — each shape probed
+  once with a dep index listing its structural name and once without, asserting deferred-import vs
+  local-mint and a wasm32 link (the user-rule cross-crate cell joins it) — rather than accreting
+  per-shape hand fixtures.
 - **Extern-deps wasm-boundary surface: packaging- and json-gen-gaps beyond the behavioral floor.**
   The split-dep cell (`integration_tests::extern_deps_wasm`, `--extern-wasm-crate`) drives the
   generated wasm crate's cross-crate wrappers behaviorally: `tests/extern-deps-wasm/tests_wasm.rs`
