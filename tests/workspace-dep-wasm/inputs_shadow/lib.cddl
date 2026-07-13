@@ -1,0 +1,7 @@
+; Criterion 9: a consumer's own RULE-declared type whose name equals the structural wrapper it would
+; otherwise borrow (`idx_foo_list` -> `IdxFooList`). Rule-declared wrappers are never deferred; in
+; workspace mode this must WARN (the authored class duplicate-symbols against the dep's requested
+; class) and mint LOCALLY, never silently suppress the user's own class.
+idx_foo_list = [* idx_foo]
+
+holder = [ things: idx_foo_list ]

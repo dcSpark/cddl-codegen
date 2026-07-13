@@ -6601,6 +6601,340 @@ fn extern_wrapper_index_defers_to_dep() {
     );
 }
 
+/// W1 of the workspace wrapper-placement feature: `--workspace-dep` makes a consumer DEFER
+/// UNCONDITIONALLY every all-one-dep collection wrapper to the dep's wasm crate (no
+/// `--extern-wrapper-index` consulted) and emit a `borrowed_collections.rs` sidecar recording what it
+/// borrows. This closes the consumer-vs-consumer collision class (two consumers minting the same
+/// `#[wasm_bindgen] FooList` collide in one cdylib); the sidecar is a frozen cross-crate contract a
+/// dep will later machine-read (`--wrapper-requests`, Phase 3). Bespoke harness (not `run_test`) for
+/// the same three reasons as `extern_wrapper_index_defers_to_dep`: capture stderr (shadowing
+/// warning), run the honest wasm32 link gate, and pin the flag-off RED (duplicate symbol).
+///
+/// Reuses the `index-dep-crate{,-wasm}` dep pair, whose wasm crate hand-provides every borrowed
+/// class (IdxFooList / MapU64ToIdxFoo / NonEmptyIdxFooList / ArrIdxFooList / MapU64ToText — that is
+/// what Phase 3 will automate). Assertions map to acceptance criteria 1, 2, 9, 10.
+#[test]
+fn workspace_dep_defers_to_dep() {
+    use std::str::FromStr;
+    let base = std::path::PathBuf::from_str("tests/workspace-dep-wasm").unwrap();
+    let index_file = "tests/index-dep-crate-wasm/src/collections.rs";
+
+    // Run the tool over one of the committed input specs, into a gitignored `export*` dir. Common
+    // flags mirror the extern-wrapper harness (split wasm crate + preserve-encodings).
+    let run_gen = |input: &str, output: &str, extra: &[&str]| -> std::process::Output {
+        let out_dir = base.join(output);
+        let _ = std::fs::remove_dir_all(&out_dir);
+        let mut cmd = tool_cmd("cargo");
+        cmd.arg("run")
+            .arg("--")
+            .arg(format!("--input=tests/workspace-dep-wasm/{input}"))
+            .arg(format!("--output=tests/workspace-dep-wasm/{output}"))
+            .arg("--wasm=true")
+            .arg("--preserve-encodings=true")
+            .arg("--common-import-override=index_dep_crate")
+            .arg("--extern-wasm-crate=index_dep_crate=index_dep_crate_wasm");
+        for a in extra {
+            cmd.arg(a);
+        }
+        cmd.output().unwrap()
+    };
+    let read = |output: &str, rel: &str| -> String {
+        std::fs::read_to_string(base.join(output).join(rel)).unwrap()
+    };
+
+    // Wire the dep crates into the generated manifests (rust needs the rust dep; wasm needs both).
+    let append_dep_manifests = |output: &str| {
+        use std::io::Write;
+        let export_dir = base.join(output);
+        let mut rust_toml = std::fs::OpenOptions::new()
+            .append(true)
+            .open(export_dir.join("rust/Cargo.toml"))
+            .unwrap();
+        rust_toml
+            .write_all(b"\nindex-dep-crate = { path = \"../../../index-dep-crate\" }\n")
+            .unwrap();
+        let mut wasm_toml = std::fs::OpenOptions::new()
+            .append(true)
+            .open(export_dir.join("wasm/Cargo.toml"))
+            .unwrap();
+        wasm_toml
+            .write_all(b"\nindex-dep-crate = { path = \"../../../index-dep-crate\" }\nindex-dep-crate-wasm = { path = \"../../../index-dep-crate-wasm\" }\n")
+            .unwrap();
+    };
+
+    // ===== Criterion 1: every all-one-dep wrapper defers, sidecar in the exact frozen format =====
+    let main = run_gen("inputs", "export", &["--workspace-dep=index_dep_crate"]);
+    assert!(
+        main.status.success(),
+        "generate failed:\n{}",
+        String::from_utf8_lossy(&main.stderr)
+    );
+    let wasm_mod = read("export", "wasm/src/generated/mod.rs");
+    // The five all-one-dep wrappers (loose list, loose map, NonEmpty list, nested list-of-list, and
+    // the named-`[+ idx_bar]` rule's loose try_from source) are each imported by a PLAIN `use` from
+    // the dep's collections module — no local class.
+    for name in [
+        "IdxFooList",
+        "MapU64ToIdxFoo",
+        "NonEmptyIdxFooList",
+        "ArrIdxFooList",
+        "IdxBarList",
+    ] {
+        assert!(
+            wasm_mod.contains(&format!("use index_dep_crate_wasm::collections::{name}"))
+                || wasm_mod.contains(&format!("{name},"))
+                || wasm_mod.contains(&format!("{name}}}")),
+            "borrowed wrapper {name} must be imported from the dep's collections module"
+        );
+        assert!(
+            !wasm_mod.contains(&format!("pub struct {name}")),
+            "borrowed wrapper {name} must NOT be minted locally"
+        );
+    }
+    assert!(
+        !wasm_mod.contains("pub use index_dep_crate_wasm::collections::"),
+        "borrowed wrappers must be a plain `use`, never `pub use`"
+    );
+    // The consumer's OWN index lists only wrappers it defines (the local mixed-map class), never a
+    // borrowed one. (Matched as `::<Name>;` re-export suffixes where a local ident legitimately
+    // CONTAINS the borrowed name as a substring.)
+    let wasm_index = read("export", "wasm/src/generated/collections.rs");
+    for suffix in [
+        "::IdxFooList;",
+        "::MapU64ToIdxFoo;",
+        "::NonEmptyIdxFooList;",
+        "::ArrIdxFooList;",
+        "::IdxBarList;",
+    ] {
+        assert!(
+            !wasm_index.contains(suffix),
+            "borrowed wrapper `{suffix}` must be absent from the consumer's own collections.rs index"
+        );
+    }
+    assert!(
+        wasm_index.contains("MapIdxFooToLocalThing"),
+        "the local mixed-dep map IS the consumer's own wrapper and belongs in its index"
+    );
+    // The sidecar is a cross-crate contract: assert the FULL file byte-for-byte (not substrings).
+    let sidecar = read("export", "wasm/src/generated/borrowed_collections.rs");
+    // Raw string, flush-left so the 4-space `use`/row indentation is literal (a `\`-continuation
+    // would strip it). This IS the frozen cross-crate contract, banner included.
+    const EXPECTED_SIDECAR: &str = r#"// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+// This file records every collection wrapper this crate borrows from workspace deps.
+// It is machine-read by those deps' generation runs (--wrapper-requests) and compiled
+// here, so a wrapper a dep stops providing fails THIS crate's build, naming the type.
+#[allow(unused_imports)]
+mod borrowed {
+    use index_dep_crate_wasm::collections::ArrIdxFooList;
+    use index_dep_crate_wasm::collections::IdxBarList;
+    use index_dep_crate_wasm::collections::IdxFooList;
+    use index_dep_crate_wasm::collections::MapU64ToIdxFoo;
+    use index_dep_crate_wasm::collections::NonEmptyIdxFooList;
+}
+#[allow(dead_code)]
+pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
+    // (dep rust-crate name, wrapper name, shape in CDDL syntax with the dep's idents)
+    ("index_dep_crate", "ArrIdxFooList", "[* [* idx_foo]]"),
+    ("index_dep_crate", "IdxBarList", "[* idx_bar]"),
+    ("index_dep_crate", "IdxFooList", "[* idx_foo]"),
+    ("index_dep_crate", "MapU64ToIdxFoo", "{* uint => idx_foo}"),
+    ("index_dep_crate", "NonEmptyIdxFooList", "[+ idx_foo]"),
+];
+"#;
+    assert_eq!(
+        sidecar, EXPECTED_SIDECAR,
+        "borrowed_collections.rs must match the frozen W1 format exactly"
+    );
+    // Composition cells (verified, not assumed):
+    // (a) The MIXED map `{* idx_foo => local_thing}` is minted locally (mixed-dep is never
+    //     borrowed), but its keys-list IdxFooList is workspace-deferred, so keys() constructs the
+    //     dep's class via `.into()` (the R3d cross-crate path) — not tuple-struct syntax.
+    assert!(
+        wasm_mod.contains("pub struct MapIdxFooToLocalThing"),
+        "the mixed-dep map must mint locally (never workspace-borrowed)"
+    );
+    assert!(
+        wasm_mod.contains("self.0.keys().cloned().collect::<Vec<_>>().into()"),
+        "a local map keyed by the dep's type must build the workspace-deferred keys-list via .into()"
+    );
+    // (b) The named `[+ idx_bar]` rule AbcBars (rule-declared — never deferred) mints locally, but
+    //     its loose try_from SOURCE IdxBarList is workspace-deferred: no local class, and try_from
+    //     takes the DEP's class by reference.
+    assert!(wasm_mod.contains("pub struct AbcBars"));
+    assert!(
+        !wasm_mod.contains("pub struct IdxBarList"),
+        "the workspace-deferred try_from source must NOT be re-minted locally"
+    );
+    assert!(
+        wasm_mod.contains("try_from(list: &IdxBarList)"),
+        "AbcBars::try_from must take the dep's workspace-deferred IdxBarList"
+    );
+
+    // ===== Criterion 1: sidecar emitted EMPTY-but-PRESENT when nothing is borrowed =====
+    let empty = run_gen(
+        "inputs_empty",
+        "export_empty",
+        &["--workspace-dep=index_dep_crate"],
+    );
+    assert!(empty.status.success());
+    let empty_sidecar = read("export_empty", "wasm/src/generated/borrowed_collections.rs");
+    const EXPECTED_EMPTY: &str = r#"// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+// This file records every collection wrapper this crate borrows from workspace deps.
+// It is machine-read by those deps' generation runs (--wrapper-requests) and compiled
+// here, so a wrapper a dep stops providing fails THIS crate's build, naming the type.
+#[allow(unused_imports)]
+mod borrowed {}
+#[allow(dead_code)]
+pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
+    // (dep rust-crate name, wrapper name, shape in CDDL syntax with the dep's idents)
+];
+"#;
+    assert_eq!(
+        empty_sidecar, EXPECTED_EMPTY,
+        "an empty borrow set must still emit the fixed sidecar skeleton"
+    );
+
+    // ===== Criterion 2: ownerless wrappers behave exactly as shipped, with BOTH flags set =====
+    let c2 = run_gen(
+        "inputs_c2",
+        "export_c2",
+        &[
+            "--workspace-dep=index_dep_crate",
+            &format!("--extern-wrapper-index=index_dep_crate={index_file}"),
+        ],
+    );
+    assert!(c2.status.success());
+    let c2_mod = read("export_c2", "wasm/src/generated/mod.rs");
+    let c2_sidecar = read("export_c2", "wasm/src/generated/borrowed_collections.rs");
+    // The ownerless `{* uint => text}` IS in the dep index -> INDEX-deferred (imported), and — the
+    // key property — NEVER recorded in the workspace sidecar (workspace mode ignores ownerless).
+    assert!(
+        c2_mod.contains("MapU64ToText") && !c2_mod.contains("pub struct MapU64ToText"),
+        "listed ownerless wrapper must index-defer, not mint locally"
+    );
+    assert!(
+        !c2_sidecar.contains("MapU64ToText"),
+        "an ownerless wrapper must never be recorded in the workspace sidecar (criterion 2)"
+    );
+    // The ownerless `{* uint => uint}` is NOT in the index -> minted locally (shipped behavior), and
+    // likewise never in the sidecar.
+    assert!(
+        c2_mod.contains("pub struct MapU64ToU64"),
+        "unlisted ownerless wrapper must mint locally (shipped behavior)"
+    );
+    assert!(!c2_sidecar.contains("MapU64ToU64"));
+    // The all-one-dep control IS workspace-deferred and recorded — proving workspace mode is active
+    // in the same run that leaves the ownerless wrappers alone.
+    assert!(
+        c2_sidecar.contains("(\"index_dep_crate\", \"IdxFooList\", \"[* idx_foo]\"),"),
+        "the all-one-dep wrapper must still be workspace-borrowed alongside the ownerless ones"
+    );
+
+    // ===== Criterion 9: rule-declared type shadowing a would-be-borrowed wrapper =====
+    let shadow = run_gen(
+        "inputs_shadow",
+        "export_shadow",
+        &["--workspace-dep=index_dep_crate"],
+    );
+    assert!(shadow.status.success());
+    let shadow_stderr = String::from_utf8_lossy(&shadow.stderr);
+    assert!(
+        shadow_stderr.contains("rule-declared type IdxFooList shadows")
+            && shadow_stderr.contains("index_dep_crate")
+            && shadow_stderr.contains("rename the rule"),
+        "a rule-declared shadow must warn naming the type, the dep, and the remedy; stderr:\n{shadow_stderr}"
+    );
+    let shadow_mod = read("export_shadow", "wasm/src/generated/mod.rs");
+    // The consumer's own rule-declared class is minted LOCALLY (never suppressed), listed in its own
+    // index, and absent from the sidecar (it is not a borrow).
+    assert!(
+        shadow_mod.contains("pub struct IdxFooList"),
+        "a rule-declared wrapper must mint locally, never workspace-defer"
+    );
+    let shadow_sidecar = read(
+        "export_shadow",
+        "wasm/src/generated/borrowed_collections.rs",
+    );
+    assert!(!shadow_sidecar.contains("IdxFooList"));
+    assert!(
+        read("export_shadow", "wasm/src/generated/collections.rs").contains("IdxFooList"),
+        "the rule-declared class is the consumer's OWN wrapper and belongs in its index"
+    );
+
+    // ===== The honest wasm32 link gate (criteria 1 + 5): the deferring consumer links clean =====
+    if !wasm32_target_installed() {
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "wasm32-unknown-unknown is required to run workspace_dep_defers_to_dep's link gate in CI"
+        );
+        eprintln!(
+            "skipping workspace_dep_defers_to_dep link gate: wasm32-unknown-unknown target not installed"
+        );
+        return;
+    }
+    for output in ["export", "export_c2"] {
+        append_dep_manifests(output);
+        let green = tool_cmd("cargo")
+            .args(["build", "--target", "wasm32-unknown-unknown"])
+            .current_dir(base.join(output).join("wasm"))
+            .output()
+            .unwrap();
+        assert!(
+            green.status.success(),
+            "the deferring consumer wasm crate ({output}) must link for wasm32-unknown-unknown:\n{}",
+            String::from_utf8_lossy(&green.stderr)
+        );
+    }
+
+    // ===== Criterion 10 (RED): flag-off re-mints locally -> duplicate-symbol link failure =====
+    let nodefer = run_gen("inputs", "export_nodefer", &[]);
+    assert!(nodefer.status.success());
+    // Flag-off emits NO sidecar (byte-identity: no new file appears without the flag).
+    assert!(
+        !base
+            .join("export_nodefer/wasm/src/generated/borrowed_collections.rs")
+            .exists(),
+        "no borrowed_collections.rs may appear without --workspace-dep (criterion 10)"
+    );
+    assert!(
+        read("export_nodefer", "wasm/src/generated/mod.rs").contains("pub struct IdxFooList"),
+        "without the flag the consumer re-mints the wrapper locally"
+    );
+    append_dep_manifests("export_nodefer");
+    let red = tool_cmd("cargo")
+        .args(["build", "--target", "wasm32-unknown-unknown"])
+        .current_dir(base.join("export_nodefer").join("wasm"))
+        .output()
+        .unwrap();
+    let red_stderr = String::from_utf8_lossy(&red.stderr);
+    assert!(
+        !red.status.success() && red_stderr.contains("duplicate symbol"),
+        "without deferral the consumer must fail the wasm32 link with a duplicate symbol; \
+         status_success={}, stderr:\n{red_stderr}",
+        red.status.success()
+    );
+}
+
+/// Item E of W1's diagnostics: two DISTINCT shapes in one consumer's spec that derive the SAME
+/// structural wrapper name (the `MapAToBToC` reverse-ambiguity) is a hard error at borrowed-wrapper
+/// recording time, naming both shapes. Unit-level because constructing the ambiguous pair through a
+/// real spec is awkward, but it drives the real code path (`record_borrowed_wrapper`).
+#[test]
+#[should_panic(expected = "derive the same borrowed collection wrapper name")]
+fn workspace_borrowed_wrapper_collision_is_a_hard_error() {
+    use crate::generation::GenerationScope;
+    use crate::intermediate::{CDDLIdent, RustIdent};
+    let mut gen_scope = GenerationScope::new();
+    let ident = RustIdent::new(CDDLIdent::new("MapAToBToC".to_owned()));
+    // Same structural name, two different shapes -> one JS class for two concepts -> panic.
+    gen_scope.record_borrowed_wrapper(&ident, "dep", "{* a => b_to_c}");
+    gen_scope.record_borrowed_wrapper(&ident, "dep", "{* a_to_b => c}");
+}
+
 /// The opt-in recursion depth guard (`--deserialize-depth-limit`). A terminable recursive type
 /// (`tests/corpus/recursive.cddl`: `tree = [value: uint, children: [* tree]]`) compiles a
 /// recursive-descent deserializer with no intrinsic depth bound — ~100k-deep hostile CBOR recurses

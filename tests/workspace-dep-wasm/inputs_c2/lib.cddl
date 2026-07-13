@@ -1,0 +1,12 @@
+; Criterion 2: ownerless wrappers behave exactly as shipped even with BOTH `--workspace-dep` and
+; `--extern-wrapper-index` set for the same dep. Workspace mode NEVER claims an ownerless wrapper
+; (no named leaves), so each falls through to the shipped index logic.
+c2 = [
+    ; ownerless, IN the dep index -> INDEX-deferred (imported), and NOT recorded in the sidecar.
+    listed: { * uint => text },
+    ; ownerless, NOT in the dep index -> minted locally + the shipped not-in-index warning.
+    unlisted: { * uint => uint },
+    ; all-one-dep control -> WORKSPACE-deferred (recorded in the sidecar), proving workspace mode is
+    ; active in the same run.
+    owned: [* idx_foo],
+]

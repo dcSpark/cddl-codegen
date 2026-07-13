@@ -300,3 +300,96 @@ impl AsRef<OrderedHashMap<u64, index_dep_crate::IdxFoo>> for MapU64ToIdxFoo {
         &self.0
     }
 }
+
+// Nested list-of-list wrapper (`[* [* idx_foo]]`) — the structural name a consumer's nested shape
+// derives (`ArrIdxFooList`). Its inner is `Vec<Vec<IdxFoo>>`; `get`/`add` speak the INNER loose
+// wrapper `IdxFooList` across the boundary. Hand-provided (like the others) so a `--workspace-dep`
+// consumer that DEFERS its nested wrapper links against this class instead of re-minting it.
+#[wasm_bindgen]
+#[derive(Clone, Debug)]
+pub struct ArrIdxFooList(Vec<Vec<index_dep_crate::IdxFoo>>);
+
+#[wasm_bindgen]
+impl ArrIdxFooList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> IdxFooList {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &IdxFooList) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<Vec<index_dep_crate::IdxFoo>>> for ArrIdxFooList {
+    fn from(native: Vec<Vec<index_dep_crate::IdxFoo>>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ArrIdxFooList> for Vec<Vec<index_dep_crate::IdxFoo>> {
+    fn from(wasm: ArrIdxFooList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<Vec<index_dep_crate::IdxFoo>>> for ArrIdxFooList {
+    fn as_ref(&self) -> &Vec<Vec<index_dep_crate::IdxFoo>> {
+        &self.0
+    }
+}
+
+// An OWNERLESS map wrapper (`{* uint => text}` — no named element types). Indexed below, so a
+// consumer passing BOTH `--workspace-dep` and `--extern-wrapper-index` for this dep INDEX-defers it
+// (ownerless wrappers are never workspace-borrowed — criterion 2). Its keys are `u64`, value String.
+#[wasm_bindgen]
+#[derive(Clone, Debug)]
+pub struct MapU64ToText(OrderedHashMap<u64, String>);
+
+#[wasm_bindgen]
+impl MapU64ToText {
+    pub fn new() -> Self {
+        Self(OrderedHashMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: u64, value: String) -> Option<String> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: u64) -> Option<String> {
+        self.0.get(&key).cloned()
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<OrderedHashMap<u64, String>> for MapU64ToText {
+    fn from(native: OrderedHashMap<u64, String>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapU64ToText> for OrderedHashMap<u64, String> {
+    fn from(wasm: MapU64ToText) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<OrderedHashMap<u64, String>> for MapU64ToText {
+    fn as_ref(&self) -> &OrderedHashMap<u64, String> {
+        &self.0
+    }
+}
