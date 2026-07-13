@@ -83,6 +83,114 @@ fn write_rs_with_preserve(
     std::fs::write(path, content)
 }
 
+/// The composed rust runtime static files (`error.rs`, `ordered_hash_map.rs`, `non_empty.rs`,
+/// `non_empty_map.rs`) shared by the in-crate static export and the `--export-static-dir` path so
+/// the two can't drift. Each returned entry is (bare filename, rustfmt'd content). The content
+/// COMPOSITION (file concatenation, json/schemars companions, the preserve-encodings
+/// BTreeMap→OrderedHashMap substitution for non_empty_map) is identical between the two callers —
+/// only WHICH files appear differs: `include_non_empty_vec`/`include_non_empty_map` gate the two
+/// NonEmpty runtimes on spec usage in-crate but are forced true for the exported dir (a pure
+/// function of the flag set, not of the spec that happened to be run). `ordered_hash_map.rs` is
+/// gated on `--preserve-encodings` for both. `serialization.rs` is deliberately NOT here: the
+/// in-crate path appends the generated per-type impls to the prelude, while the export-dir path
+/// writes the prelude only — each composes that file itself.
+///
+/// The content is rustfmt'd here (not at the write site) so both callers hand the
+/// comment-preservation overlay identical, rustfmt-stable bytes: a preserve-rewrite is written
+/// rustfmt'd, so raw content whose rustfmt form differs by a token (e.g. a static's block-arm
+/// trailing comma) would make a later run's fresh tokens mismatch the written tokens and trap an
+/// already-placed comment with no input change (pinned by
+/// `comment_preservation_static_files_rustfmt_stable`).
+fn composed_runtime_static_files(
+    cli: &Cli,
+    include_non_empty_vec: bool,
+    include_non_empty_map: bool,
+) -> std::io::Result<Vec<(String, String)>> {
+    let mut out = Vec::new();
+
+    // error.rs — always, verbatim static/error.rs + rustfmt.
+    let error_rs = std::fs::read_to_string(cli.static_dir.join("error.rs"))?;
+    out.push((
+        "error.rs".to_owned(),
+        rustfmt_generated_string(&error_rs)?.into_owned(),
+    ));
+
+    // ordered_hash_map.rs — iff --preserve-encodings, with the json/schemars companions appended
+    // per the json flags.
+    if cli.preserve_encodings {
+        let mut ordered_hash_map_rs =
+            std::fs::read_to_string(cli.static_dir.join("ordered_hash_map.rs"))?;
+        if cli.json_serde_derives {
+            ordered_hash_map_rs.push_str(&std::fs::read_to_string(
+                cli.static_dir.join("ordered_hash_map_json.rs"),
+            )?);
+        }
+        if cli.json_schema_export {
+            ordered_hash_map_rs.push_str(&std::fs::read_to_string(
+                cli.static_dir.join("ordered_hash_map_schemars.rs"),
+            )?);
+        }
+        out.push((
+            "ordered_hash_map.rs".to_owned(),
+            rustfmt_generated_string(&ordered_hash_map_rs)?.into_owned(),
+        ));
+    }
+
+    // non_empty.rs (the NonEmptyVec runtime). Its json/schemars companions append under the same
+    // flags as the ordered_hash_map ones.
+    if include_non_empty_vec {
+        let mut non_empty_rs = std::fs::read_to_string(cli.static_dir.join("non_empty.rs"))?;
+        if cli.json_serde_derives {
+            non_empty_rs.push_str(&std::fs::read_to_string(
+                cli.static_dir.join("non_empty_json.rs"),
+            )?);
+        }
+        if cli.json_schema_export {
+            non_empty_rs.push_str(&std::fs::read_to_string(
+                cli.static_dir.join("non_empty_schemars.rs"),
+            )?);
+        }
+        out.push((
+            "non_empty.rs".to_owned(),
+            rustfmt_generated_string(&non_empty_rs)?.into_owned(),
+        ));
+    }
+
+    // non_empty_map.rs (the NonEmptyMap runtime). Its inner map is the table type: BTreeMap by
+    // default, and under --preserve-encodings a targeted substitution swaps it for OrderedHashMap
+    // (import + type token + the extra `Hash + Eq` key bound the hash-map flavor requires),
+    // following the ordered_hash_map flavoring precedent. Iteration stays deterministic either way.
+    if include_non_empty_map {
+        let mut non_empty_map_rs =
+            std::fs::read_to_string(cli.static_dir.join("non_empty_map.rs"))?;
+        if cli.json_serde_derives {
+            non_empty_map_rs.push_str(&std::fs::read_to_string(
+                cli.static_dir.join("non_empty_map_json.rs"),
+            )?);
+        }
+        if cli.json_schema_export {
+            non_empty_map_rs.push_str(&std::fs::read_to_string(
+                cli.static_dir.join("non_empty_map_schemars.rs"),
+            )?);
+        }
+        if cli.preserve_encodings {
+            non_empty_map_rs = non_empty_map_rs
+                .replace(
+                    "use std::collections::BTreeMap;",
+                    "use super::ordered_hash_map::OrderedHashMap;",
+                )
+                .replace("K: Ord", "K: Ord + core::hash::Hash + Eq")
+                .replace("BTreeMap", "OrderedHashMap");
+        }
+        out.push((
+            "non_empty_map.rs".to_owned(),
+            rustfmt_generated_string(&non_empty_map_rs)?.into_owned(),
+        ));
+    }
+
+    Ok(out)
+}
+
 /// Recursively collect every `.rs` file under `dir` (absent dir = no files). Drives the stale-file
 /// scan at the end of [`GenerationScope::export`].
 fn collect_rs_files(
@@ -1868,112 +1976,55 @@ impl GenerationScope {
             }
         }
 
-        // static files copied/assembled verbatim (only when we own the common types)
+        // static files copied/assembled verbatim (only when we own the common types). The runtime
+        // composition (error.rs / ordered_hash_map.rs / non_empty.rs / non_empty_map.rs) is shared
+        // with the `--export-static-dir` path via `composed_runtime_static_files` so the two can't
+        // drift; the returned content is already rustfmt'd (load-bearing for the overlay — see that
+        // helper). In-crate the NonEmpty runtimes are gated on spec usage: only for crates that use
+        // `[+ T]` / `{+ k => v}`. `--wrapper-requests`: a dep hosting a requested NonEmpty wrapper
+        // needs the runtime file even when its own spec has none.
         if cli.export_static_files() {
-            // error.rs (read + preserve-aware write rather than fs::copy, so user comments in it
-            // get the same overlay as every other generated-tree file). rustfmt'd like its three
-            // sibling statics — the content handed to the overlay MUST be rustfmt-stable, because
-            // a preserve-rewrite is written rustfmt'd: raw content whose rustfmt form differs by a
-            // token (the static's block-arm trailing comma) would make run N+1's fresh tokens
-            // mismatch run N's written tokens and trap an already-placed comment with no input
-            // change (pinned by `comment_preservation_static_files_rustfmt_stable`).
-            let error_path = rust_dir.join("rust/src/generated/error.rs");
-            let error_rs = std::fs::read_to_string(cli.static_dir.join("error.rs"))?;
+            let runtime_files = composed_runtime_static_files(
+                cli,
+                types.uses_non_empty_vec() || self.requested_non_empty_vec,
+                types.uses_non_empty_map() || self.requested_non_empty_map,
+            )?;
+            for (filename, content) in &runtime_files {
+                let rel_path = format!("rust/src/generated/{filename}");
+                let path = rust_dir.join(&rel_path);
+                write_rs_with_preserve(&path, &rel_path, content, cli.preserve_comments)?;
+                written_generated_rs.insert(path);
+            }
+        }
+
+        // `--export-static-dir`: ADDITIONALLY write the composed rust runtime into the named dir,
+        // independent of the in-crate export above (the upgrade path for --common-import-override
+        // users). The exported set is a PURE FUNCTION OF THE FLAG SET, never of the spec: the two
+        // NonEmpty runtimes are ALWAYS included (unlike the spec-usage gating in-crate) and
+        // serialization.rs always includes raw_bytes_encoding — a shared runtime crate serves many
+        // specs, so which spec was run must not change the output. serialization.rs here is the
+        // composed static PRELUDE ONLY (no generated per-type impls appended). No mod.rs/lib.rs is
+        // written — the target crate owns its module declarations; static files reference siblings
+        // via `super::…`, so a flat module dir works. This dir is OUTSIDE the output crate, so its
+        // paths are deliberately not added to `written_generated_rs` / the stale-file scan.
+        if let Some(export_dir) = &cli.export_static_dir {
+            std::fs::create_dir_all(export_dir)?;
+            let runtime_files = composed_runtime_static_files(cli, true, true)?;
+            for (filename, content) in &runtime_files {
+                let path = export_dir.join(filename);
+                write_rs_with_preserve(&path, filename, content, cli.preserve_comments)?;
+            }
+            // serialization.rs — the static prelude only. `export_raw_bytes_encoding_trait` is
+            // forced true (always include raw_bytes_encoding, per the pure-function-of-flags rule).
+            // rustfmt'd before the preserve write, exactly like the composed runtime files.
+            let prelude = Self::serialization_prelude(true, cli)?;
+            let serialization_path = export_dir.join("serialization.rs");
             write_rs_with_preserve(
-                &error_path,
-                "rust/src/generated/error.rs",
-                rustfmt_generated_string(&error_rs)?.as_ref(),
+                &serialization_path,
+                "serialization.rs",
+                rustfmt_generated_string(&prelude)?.as_ref(),
                 cli.preserve_comments,
             )?;
-            written_generated_rs.insert(error_path);
-
-            // ordered_hash_map.rs
-            if cli.preserve_encodings {
-                let mut ordered_hash_map_rs =
-                    std::fs::read_to_string(cli.static_dir.join("ordered_hash_map.rs"))?;
-                if cli.json_serde_derives {
-                    ordered_hash_map_rs.push_str(&std::fs::read_to_string(
-                        cli.static_dir.join("ordered_hash_map_json.rs"),
-                    )?);
-                }
-                if cli.json_schema_export {
-                    ordered_hash_map_rs.push_str(&std::fs::read_to_string(
-                        cli.static_dir.join("ordered_hash_map_schemars.rs"),
-                    )?);
-                }
-                let ohm_path = rust_dir.join("rust/src/generated/ordered_hash_map.rs");
-                write_rs_with_preserve(
-                    &ohm_path,
-                    "rust/src/generated/ordered_hash_map.rs",
-                    rustfmt_generated_string(&ordered_hash_map_rs)?.as_ref(),
-                    cli.preserve_comments,
-                )?;
-                written_generated_rs.insert(ohm_path);
-            }
-
-            // non_empty.rs (the NonEmptyVec runtime) — only for crates that use `[+ T]`. Its
-            // json/schemars companions append under the same flags as the ordered_hash_map ones.
-            // `--wrapper-requests`: a dep hosting a requested NonEmpty wrapper needs the runtime file
-            // even when its own spec has no `[+ …]`.
-            if types.uses_non_empty_vec() || self.requested_non_empty_vec {
-                let mut non_empty_rs =
-                    std::fs::read_to_string(cli.static_dir.join("non_empty.rs"))?;
-                if cli.json_serde_derives {
-                    non_empty_rs.push_str(&std::fs::read_to_string(
-                        cli.static_dir.join("non_empty_json.rs"),
-                    )?);
-                }
-                if cli.json_schema_export {
-                    non_empty_rs.push_str(&std::fs::read_to_string(
-                        cli.static_dir.join("non_empty_schemars.rs"),
-                    )?);
-                }
-                let ne_path = rust_dir.join("rust/src/generated/non_empty.rs");
-                write_rs_with_preserve(
-                    &ne_path,
-                    "rust/src/generated/non_empty.rs",
-                    rustfmt_generated_string(&non_empty_rs)?.as_ref(),
-                    cli.preserve_comments,
-                )?;
-                written_generated_rs.insert(ne_path);
-            }
-
-            // non_empty_map.rs (the NonEmptyMap runtime) — only for crates that use `{+ k => v}`. Its
-            // inner map is `table_type(cli)`: the BTreeMap default is authored verbatim, and under
-            // --preserve-encodings a targeted substitution swaps it for `OrderedHashMap` (import +
-            // type token + the extra `Hash + Eq` key bound the hash-map flavor requires), following
-            // the ordered_hash_map flavoring precedent. Iteration stays deterministic either way.
-            if types.uses_non_empty_map() || self.requested_non_empty_map {
-                let mut non_empty_map_rs =
-                    std::fs::read_to_string(cli.static_dir.join("non_empty_map.rs"))?;
-                if cli.json_serde_derives {
-                    non_empty_map_rs.push_str(&std::fs::read_to_string(
-                        cli.static_dir.join("non_empty_map_json.rs"),
-                    )?);
-                }
-                if cli.json_schema_export {
-                    non_empty_map_rs.push_str(&std::fs::read_to_string(
-                        cli.static_dir.join("non_empty_map_schemars.rs"),
-                    )?);
-                }
-                if cli.preserve_encodings {
-                    non_empty_map_rs = non_empty_map_rs
-                        .replace(
-                            "use std::collections::BTreeMap;",
-                            "use super::ordered_hash_map::OrderedHashMap;",
-                        )
-                        .replace("K: Ord", "K: Ord + core::hash::Hash + Eq")
-                        .replace("BTreeMap", "OrderedHashMap");
-                }
-                let nem_path = rust_dir.join("rust/src/generated/non_empty_map.rs");
-                write_rs_with_preserve(
-                    &nem_path,
-                    "rust/src/generated/non_empty_map.rs",
-                    rustfmt_generated_string(&non_empty_map_rs)?.as_ref(),
-                    cli.preserve_comments,
-                )?;
-                written_generated_rs.insert(nem_path);
-            }
         }
 
         // Stale-file scan: a `.rs` under a tool-owned generated tree that this run did not produce

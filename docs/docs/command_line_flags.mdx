@@ -202,6 +202,23 @@ cddl-codegen --input=example --output=export --common-import-override=cml_core
 
 <br/><br/>
 
+:::info `--export-static-dir`
+Additionally writes the composed rust static runtime — `error.rs`, the `serialization.rs` **prelude** (the static runtime only, no generated per-type impls), `ordered_hash_map.rs`, `non_empty.rs`, and `non_empty_map.rs` — into `<dir>` (created if needed), independent of whether in-crate static export happens.
+
+This is the supported **upgrade path** for `--common-import-override` users. Override users own their copy of the static runtime in a shared crate, so cddl-codegen otherwise writes no static files for them — and that copy silently rots when the emitter and the runtime change together (e.g. a widening of the deserialization range-check type). Point this flag at the shared crate's runtime directory and regenerate: the freshly composed runtime is written, and the comment/code-preservation overlay carries any hand additions in those files forward (unless `--no-preserve-comments`).
+
+**Pure function of the flag set.** Unlike the in-crate static export (which gates `non_empty.rs` / `non_empty_map.rs` on `[+ …]` / `{+ … => …}` spec usage, and `raw_bytes_encoding` on `.cbor`/`.bytes` usage), the exported directory is a pure function of the *flags*, never of the spec that happened to be run — a shared runtime crate serves many specs, so which spec was run must not change the output. Therefore `non_empty.rs`, `non_empty_map.rs`, and the `raw_bytes_encoding` prelude are **always** written. Flavor selection is otherwise identical to the in-crate composer: `ordered_hash_map.rs` appears only under `--preserve-encodings`; the `serialization.rs` prelude picks the preserve / canonical branches and appends the depth-guard runtime under `--deserialize-depth-limit`; the json / schemars companions append under `--json-serde-derives` / `--json-schema-export`; and `non_empty_map.rs` uses `OrderedHashMap` (not `BTreeMap`) under `--preserve-encodings`.
+
+No `mod.rs` / `lib.rs` is written — the target crate owns its module declarations. The static files reference siblings via `super::…`, so a flat module directory works.
+
+```bash
+cddl-codegen --input=example --output=export --common-import-override=cml_core \
+  --export-static-dir=../cml-core/rust/src/generated
+```
+:::
+
+<br/><br/>
+
 :::info `--extern-wasm-crate`
 Maps a cross-crate extern dependency (declared under `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/…`) to the crate that holds its **wasm-bindgen** wrappers. Repeatable; each value is `<dep>=<wasm_crate>` (a malformed value, or a `<dep>` that names no extern dependency in the spec, aborts generation).
 
