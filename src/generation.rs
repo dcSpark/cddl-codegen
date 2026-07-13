@@ -2017,7 +2017,19 @@ impl GenerationScope {
             // serialization.rs — the static prelude only. `export_raw_bytes_encoding_trait` is
             // forced true (always include raw_bytes_encoding, per the pure-function-of-flags rule).
             // rustfmt'd before the preserve write, exactly like the composed runtime files.
-            let prelude = Self::serialization_prelude(true, cli)?;
+            //
+            // The prelude carries no `use` statements of its own: in-crate it is prepended to the
+            // generated root serialization.rs, whose emitted import block serves the whole module
+            // (`use` is scope-wide regardless of position). Standalone, the exported file must
+            // bring its own imports or it does not compile. Every prelude flavor references all of
+            // these (Deserialize/Serialize traits are in the base file).
+            let prelude = format!(
+                "use super::error::{{DeserializeError, DeserializeFailure}};\n\
+                 use cbor_event::de::Deserializer;\n\
+                 use cbor_event::se::Serializer;\n\
+                 use std::io::{{BufRead, Seek, Write}};\n\n{}",
+                Self::serialization_prelude(true, cli)?
+            );
             let serialization_path = export_dir.join("serialization.rs");
             write_rs_with_preserve(
                 &serialization_path,
