@@ -1,6 +1,3 @@
-use cbor_event::{self, de::Deserializer};
-use std::io::{BufRead, Seek};
-
 #[derive(Debug)]
 pub enum Key {
     Str(String),
