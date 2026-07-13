@@ -1,0 +1,1 @@
+is not closed by a matching `// cddl-codegen:replace-end`

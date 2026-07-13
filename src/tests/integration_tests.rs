@@ -10796,6 +10796,26 @@ fn comment_preservation_disk_round_trip() {
     error_content.insert_str(arm_line, "            // KEEP ERROR NOTE\n");
     std::fs::write(&error_rs, &error_content).unwrap();
 
+    // Inject the CODE-preservation counterparts into `Bar`'s serialize impl in serialization.rs: a
+    // REPLACE block (swap one generated line, recording the original `//`-commented under `replaces`)
+    // and an INSERT block (add a line the generator never emits). Both must survive the regen; the
+    // replaced generated line must disappear from live code (surviving only as the recorded original).
+    let ser_rs = out.join("rust/src/generated/serialization.rs");
+    let mut ser_content = std::fs::read_to_string(&ser_rs).unwrap();
+    assert!(
+        ser_content.contains("        serializer.write_unsigned_integer(self.z)?;\n"),
+        "expected Bar serialize line not found in serialization.rs:\n{ser_content}"
+    );
+    ser_content = ser_content.replace(
+        "        serializer.write_unsigned_integer(self.z)?;\n",
+        "        // cddl-codegen:replace-start\n        serializer.write_unsigned_integer(self.z + 0)?;\n        // cddl-codegen:replaces\n        //   serializer.write_unsigned_integer(self.z)?;\n        // cddl-codegen:replace-end\n",
+    );
+    ser_content = ser_content.replace(
+        "        serializer.write_array(cbor_event::Len::Len(1))?;\n",
+        "        // cddl-codegen:insert-start\n        let _preserved = 1;\n        // cddl-codegen:insert-end\n        serializer.write_array(cbor_event::Len::Len(1))?;\n",
+    );
+    std::fs::write(&ser_rs, &ser_content).unwrap();
+
     // Second export, unchanged spec: all comments survive; nothing fails loudly.
     crate::api::generate_to_disk(&cli).unwrap();
     let second = std::fs::read_to_string(&mod_rs).unwrap();
@@ -10821,6 +10841,31 @@ fn comment_preservation_disk_round_trip() {
         error_second.contains("// KEEP ERROR NOTE"),
         "error.rs comment lost (static write path bypassed the overlay):\n{error_second}"
     );
+    // Both code blocks survive; the replace splice applied (user variant present) and the replaced
+    // line is GONE from live code — it survives only as the recorded original, so exactly one
+    // `write_unsigned_integer(self.z)?;` remains (the `//`-commented copy). A drift/failure would trap
+    // the block in a compile_error and leave the fresh live line, giving two occurrences.
+    let ser_second = std::fs::read_to_string(&ser_rs).unwrap();
+    assert!(
+        ser_second.contains("// cddl-codegen:replace-start") && ser_second.contains("self.z + 0"),
+        "replace block lost on unchanged regen:\n{ser_second}"
+    );
+    assert!(
+        ser_second.contains("// cddl-codegen:insert-start")
+            && ser_second.contains("let _preserved = 1"),
+        "insert block lost on unchanged regen:\n{ser_second}"
+    );
+    assert!(
+        !ser_second.contains("compile_error!"),
+        "code preservation must not fail loudly on an unchanged regen:\n{ser_second}"
+    );
+    assert_eq!(
+        ser_second
+            .matches("write_unsigned_integer(self.z)?;")
+            .count(),
+        1,
+        "the replaced line must survive only as the recorded original, not as live code:\n{ser_second}"
+    );
 
     // Third export, still unchanged: a byte-identical fixed point. error.rs is the load-bearing
     // check: its preserve-rewrite is written rustfmt'd, so if export handed the overlay content
@@ -10836,6 +10881,17 @@ fn comment_preservation_disk_round_trip() {
     assert_eq!(
         error_second, error_third,
         "error.rs must reach a fixed point (export must hand the overlay rustfmt-stable content)"
+    );
+    // The code-preserved serialization.rs must also reach a byte-identical fixed point through the
+    // second regen — the disk-level (post-rustfmt) idempotency the pure fixture harness cannot see.
+    let ser_third = std::fs::read_to_string(&ser_rs).unwrap();
+    assert_eq!(
+        ser_second, ser_third,
+        "code preservation must reach a fixed point (replace + insert splices are rustfmt-stable)"
+    );
+    assert!(
+        !ser_third.contains("compile_error!"),
+        "preserved code blocks must not be trapped by an unchanged regen:\n{ser_third}"
     );
     assert!(
         !error_third.contains("compile_error!"),

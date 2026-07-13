@@ -57,18 +57,48 @@
 //! unplaceable comment uses (a bigger message, zero new machinery), so a failed block carries forward
 //! verbatim on the next regen instead of being recounted as a user edit.
 //!
+//! A user can also SWAP generated code with an `// cddl-codegen:replace-start` … `:replaces` …
+//! `:replace-end` block: the user's replacement sits between `replace-start` and `replaces`; every
+//! line between `replaces` and `replace-end` is a `//`-commented copy of the generated code it
+//! replaced. That recorded original does three jobs — it is the placement ANCHOR (uncomment it, lex
+//! it into a NEEDLE, find that token run in the regenerated item, splice the user block over it),
+//! the DRIFT detector (needle gone ⇒ the generator's output for that region changed ⇒ fail loudly
+//! with the recorded original in the message, killing silently-stale overrides), and the review
+//! record (every override is visible in diffs next to what it replaced). To anchor it we substitute
+//! the block's user-code span in the virtual pristine stream with the NEEDLE (not merely remove it):
+//! then the identity tier still fires when generator output is unchanged, and the needle regains
+//! BOTH-sides uniqueness. The needle must be unique in the virtual old item AND in the matched new
+//! item — the deleted-duplicate hazard the comment engine documents is here a LOUD failure, not a
+//! residual: a recorded original that is non-unique in the virtual old (a genuine duplicate the
+//! generator still emits twice) fails loudly rather than guessing which occurrence it overrides. The
+//! splice is BYTE-RANGE, not line-based (from the first matched token's start to the last's end), so
+//! a needle beginning mid-line in a one-liner match arm splices correctly and generator comments
+//! interior to that span are deleted with it while comments before/after survive. Whole-item replaces
+//! (a member fn, a whole `impl`) are the same path with a bigger needle; a member fn's enclosing
+//! TOP-LEVEL item is its impl, and `find_subsequence` within the impl slice locates it without real
+//! Rust parsing. The merge engine is now a set of non-overlapping delete+insert ops on `new`: an
+//! insertion (comment / insert block) whose target offset falls STRICTLY INSIDE a replaced span fails
+//! loudly (its referent is being replaced — move it into the block); an insert block or comment at a
+//! splice's START byte lands ABOVE the spliced code (ordered before the splice). Hard `PreserveError`
+//! (pre-splice) on a malformed block: a missing `replaces`/`replace-end`, an empty recorded original
+//! (lexes to zero code tokens), unbalanced delimiters in the user section OR the recorded original, a
+//! recorded original that fails to lex, an orphaned/nested tag, or a recorded original that straddles
+//! a top-level item boundary. An empty user section is a (undocumented) deletion — allowed, pinned by
+//! a fixture. Every fail-loudly `compile_error!` names its payload correctly — "a user comment" for a
+//! comment, "a user code block" for an insert/replace block.
+//!
 //! Namespace reservation makes never-silent hold in the presence of tags: any own-line comment
 //! beginning `// cddl-codegen:` that is not part of a well-formed known structure — a valid
-//! `unpreserved-comment` fail-loudly block or a well-formed insert block — is a hard [`PreserveError`]
-//! naming the offending line, NEVER a silent demotion to user text. This closes the gap where a stray
-//! tag inside a block would terminate it early and clobber the trailing user lines as untagged code:
-//! premature termination always leaves an orphaned tag, which errors instead of truncating. So a bare
-//! `unpreserved-comment` marker NOT backed by the `compile_error!` shape is a hard error too (it is a
-//! malformed fail-loudly block, not a user comment), and the `replace-*` tags are
-//! reserved-but-unsupported — they error with a note that they arrive with replace-block support,
-//! rather than degrading to user comments. The user section of an insert block must have balanced
-//! `{}`/`()`/`[]` (hard error otherwise): an unbalanced fragment cannot be placed by the statement-run
-//! model and would corrupt item splitting for the whole file.
+//! `unpreserved-comment` fail-loudly block, a well-formed insert block, or a well-formed replace
+//! block — is a hard [`PreserveError`] naming the offending line, NEVER a silent demotion to user
+//! text. This closes the gap where a stray tag inside a block would terminate it early and clobber
+//! the trailing user lines as untagged code: premature termination always leaves an orphaned tag,
+//! which errors instead of truncating. So a bare `unpreserved-comment` marker NOT backed by the
+//! `compile_error!` shape is a hard error too (it is a malformed fail-loudly block, not a user
+//! comment), and an orphaned `replaces`/`replace-end` errors rather than degrading to a user comment.
+//! The user section of an insert block — and both the user section and the recorded original of a
+//! replace block — must have balanced `{}`/`()`/`[]` (hard error otherwise): an unbalanced fragment
+//! cannot be placed by the statement-run model and would corrupt item splitting for the whole file.
 //!
 //! The lexer is string-aware by necessity, not thoroughness: Rust string/raw-string literals span
 //! lines, so a line can begin with `//` while inside a literal; a comment cannot be classified
@@ -90,6 +120,11 @@ const CDDL_NAMESPACE: &str = "cddl-codegen:";
 /// Insert-block delimiters: `// cddl-codegen:insert-start` … `// cddl-codegen:insert-end`.
 const INSERT_START: &str = "insert-start";
 const INSERT_END: &str = "insert-end";
+/// Replace-block delimiters: `// cddl-codegen:replace-start` (user code) …
+/// `// cddl-codegen:replaces` (recorded original, `//`-commented) … `// cddl-codegen:replace-end`.
+const REPLACE_START: &str = "replace-start";
+const REPLACES: &str = "replaces";
+const REPLACE_END: &str = "replace-end";
 
 /// The merged content plus whether any comment was inserted. `changed == false` means `content`
 /// equals the pristine input byte-for-byte, so the caller can skip the extra rustfmt pass.
@@ -548,13 +583,15 @@ fn classify(toks: &[CodeTok]) -> (String, String) {
             .get(idx + 2)
             .map(|t| t.text.to_owned())
             .unwrap_or_default(),
+        // Name from AFTER the keyword (`impl Foo` → `Foo`, `impl Ser for Foo` → `Ser for Foo`):
+        // the kind already carries `impl`, so messages format as "`impl Foo`", not "`impl impl Foo`".
         "impl" => {
             let brace = toks[idx..]
                 .iter()
                 .position(|t| t.text == "{")
                 .map(|p| idx + p)
                 .unwrap_or(len);
-            join_texts(&toks[idx..brace])
+            join_texts(&toks[idx + 1..brace])
         }
         "use" => {
             let end = if len > idx + 1 && toks[len - 1].text == ";" {
@@ -718,10 +755,12 @@ pub(crate) fn escape_for_rust_string(s: &str) -> String {
 }
 
 /// Build a fail-loudly block: a recognizable sentinel comment line plus a `compile_error!` carrying
-/// the full original comment, so the crate fails to build with the comment in the message.
-fn sentinel_block(reason: &str, original_comment: &str) -> String {
+/// the full original payload, so the crate fails to build with it in the message. `noun` names the
+/// payload — `"comment"` for a user comment, `"code block"` for an insert/replace block — so a
+/// trapped block does not misreport itself as "a user comment".
+fn sentinel_block(reason: &str, original: &str, noun: &str) -> String {
     let message = format!(
-        "cddl-codegen could not preserve a user comment across regeneration.\n{reason}\nOriginal comment:\n{original_comment}"
+        "cddl-codegen could not preserve a user {noun} across regeneration.\n{reason}\nOriginal {noun}:\n{original}"
     );
     format!(
         "{SENTINEL_MARKER} (delete this block after review)\ncompile_error!(\"{}\");",
@@ -811,13 +850,34 @@ struct InsertBlock {
     code_end: usize,
 }
 
-/// The result of scanning `old` for insert blocks and enforcing the `cddl-codegen:` namespace.
+/// A recognized `// cddl-codegen:replace-start` … `:replaces` … `:replace-end` block in `old`. The
+/// whole block travels as one opaque verbatim unit; the recorded original (the `//`-commented copy
+/// under `replaces`, uncommented into `needle_text`) is the placement anchor and drift detector.
+struct ReplaceBlock {
+    /// Byte range of the verbatim block text in `old`: from the start of the replace-start line
+    /// through the end of the replace-end comment (trailing newline excluded).
+    byte_start: usize,
+    byte_end: usize,
+    /// User-code token range `[user_code_start, user_code_end)` in the ORIGINAL old stream — the
+    /// tokens between replace-start and replaces (empty section allowed: an undocumented deletion).
+    /// `user_code_end` is also the following-token anchor (== anchor of both `replaces` and
+    /// `replace-end`, since only comments sit between them).
+    user_code_start: usize,
+    user_code_end: usize,
+    /// The recorded original, uncommented (leading `//` + one optional space stripped per line,
+    /// lines joined by `\n`). Lexed in [`preserve`] into the NEEDLE tokens — only kind+text matter.
+    needle_text: String,
+}
+
+/// The result of scanning `old` for insert/replace blocks and enforcing the `cddl-codegen:` namespace.
 struct BlockScan {
     blocks: Vec<InsertBlock>,
+    replace_blocks: Vec<ReplaceBlock>,
     /// Comment indices consumed by a block (its tag lines plus any interior comment, own-line or
     /// trailing) — excluded from the comment pass.
     consumed: BTreeSet<usize>,
-    /// Interior code-token indices to remove from the virtual pristine old stream.
+    /// Interior code-token indices to remove from the virtual pristine old stream (insert-block
+    /// interiors only; a replace block's user code is SUBSTITUTED by its needle, not removed).
     removed_code: BTreeSet<usize>,
 }
 
@@ -827,6 +887,14 @@ fn cddl_tag(comment_text: &str) -> Option<&str> {
         .strip_prefix("//")?
         .trim_start()
         .strip_prefix(CDDL_NAMESPACE)
+}
+
+/// Uncomment one recorded-original line: strip the leading `//` and one optional following space,
+/// keeping the rest verbatim. A line that was itself a comment (`// // note`) strips to `// note` —
+/// a comment line, which the lexer drops from the code-token stream (inert by construction).
+fn uncomment_line(comment_text: &str) -> &str {
+    let s = comment_text.strip_prefix("//").unwrap_or(comment_text);
+    s.strip_prefix(' ').unwrap_or(s)
 }
 
 /// True iff `{}`/`()`/`[]` are balanced across `toks` (and never close before they open).
@@ -879,6 +947,7 @@ fn scan_blocks(
         .map(|(i, _)| i)
         .collect();
     let mut blocks: Vec<InsertBlock> = Vec::new();
+    let mut replace_blocks: Vec<ReplaceBlock> = Vec::new();
     let mut p = 0;
     while p < own.len() {
         let ci = own[p];
@@ -893,7 +962,112 @@ fn scan_blocks(
             }
             Some(t) => t.trim(),
         };
-        if tag == INSERT_START {
+        if tag == REPLACE_START {
+            // Phase 1: from the user section, scan to `replaces`. Ordinary interior comments are
+            // allowed; any OTHER reserved tag before `replaces` is a malformed structure.
+            let mut q = p + 1;
+            let mut replaces_p = None;
+            while q < own.len() {
+                match cddl_tag(comments[own[q]].text) {
+                    None => q += 1,
+                    Some(inner) => {
+                        let inner = inner.trim();
+                        if inner == REPLACES {
+                            replaces_p = Some(q);
+                            break;
+                        }
+                        return err(&format!(
+                            "An `// cddl-codegen:replace-start` block reached `// cddl-codegen:{inner}` \
+                             before its `// cddl-codegen:replaces` marker."
+                        ));
+                    }
+                }
+            }
+            let replaces_p = match replaces_p {
+                Some(q) => q,
+                None => {
+                    return err(
+                        "An `// cddl-codegen:replace-start` block has no `// cddl-codegen:replaces` \
+                         marker (nothing separates the user code from the recorded original).",
+                    );
+                }
+            };
+            // Phase 2: from `replaces`, scan to `replace-end`. Every line between is a `//`-commented
+            // recorded-original line (an ordinary comment); the only reserved tag allowed is
+            // `replace-end`. Any other reserved tag is a malformed structure.
+            let mut r = replaces_p + 1;
+            let mut end_p = None;
+            while r < own.len() {
+                match cddl_tag(comments[own[r]].text) {
+                    None => r += 1,
+                    Some(inner) => {
+                        let inner = inner.trim();
+                        if inner == REPLACE_END {
+                            end_p = Some(r);
+                            break;
+                        }
+                        return err(&format!(
+                            "An `// cddl-codegen:replace-start` block reached `// cddl-codegen:{inner}` \
+                             before its `// cddl-codegen:replace-end` marker."
+                        ));
+                    }
+                }
+            }
+            let end_p = match end_p {
+                Some(r) => r,
+                None => {
+                    return err(
+                        "An `// cddl-codegen:replace-start` block is not closed by a matching \
+                         `// cddl-codegen:replace-end`.",
+                    );
+                }
+            };
+            let start_ci = ci;
+            let replaces_ci = own[replaces_p];
+            let end_ci = own[end_p];
+            let user_code_start = comments[start_ci].anchor;
+            let user_code_end = comments[replaces_ci].anchor;
+            // Only comments may sit between `replaces` and `replace-end`; a code token there would
+            // desync the following-token anchor and means the recorded section is malformed.
+            if comments[end_ci].anchor != user_code_end {
+                return err(
+                    "An `// cddl-codegen:replaces` section contains code; every line under \
+                     `replaces` must be a `//`-commented copy of the replaced generated code.",
+                );
+            }
+            if !delimiters_balanced(&lexed.code[user_code_start..user_code_end]) {
+                return err(
+                    "The user section of an `// cddl-codegen:replace-start` block has unbalanced \
+                     delimiters ({}, (), or []); wrap a complete, balanced fragment.",
+                );
+            }
+            // Uncomment the recorded-original lines (the own-line comments between `replaces` and
+            // `replace-end`) into the needle text. Emptiness / balance / lex validity are checked in
+            // `preserve` once the needle is lexed.
+            let mut needle_lines: Vec<&str> = Vec::new();
+            for cm in comments.iter() {
+                if cm.start >= comments[replaces_ci].end && cm.start < comments[end_ci].start {
+                    needle_lines.push(uncomment_line(cm.text));
+                }
+            }
+            let needle_text = needle_lines.join("\n");
+            let byte_start = line_start(lexed.src, comments[start_ci].start);
+            let byte_end = comments[end_ci].end;
+            replace_blocks.push(ReplaceBlock {
+                byte_start,
+                byte_end,
+                user_code_start,
+                user_code_end,
+                needle_text,
+            });
+            p = end_p + 1;
+        } else if tag == REPLACES {
+            return err("Found `// cddl-codegen:replaces` without an enclosing \
+                 `// cddl-codegen:replace-start` block.");
+        } else if tag == REPLACE_END {
+            return err("Found `// cddl-codegen:replace-end` without a matching \
+                 `// cddl-codegen:replace-start`.");
+        } else if tag == INSERT_START {
             // Scan forward for the matching insert-end. Any OTHER reserved tag before it terminates
             // the block prematurely — a hard error, not a silent truncation of the user section.
             let mut q = p + 1;
@@ -947,11 +1121,6 @@ fn scan_blocks(
             return err(
                 "Found `// cddl-codegen:insert-end` without a matching `// cddl-codegen:insert-start`.",
             );
-        } else if tag.starts_with("replace") {
-            return err(&format!(
-                "`// cddl-codegen:{tag}` is a reserved replace-block tag; replace blocks arrive with \
-                 replace-block support and are not yet handled."
-            ));
         } else {
             // A bare `unpreserved-comment` marker not backed by the `compile_error!` shape (it was
             // not claimed by `recognize_sentinels`), or any unknown tag: a malformed structure, not a
@@ -976,35 +1145,67 @@ fn scan_blocks(
             removed_code.insert(k);
         }
     }
+    // A replace block's comments (tags, interior user comments, recorded-original lines) are consumed
+    // too; its user-code tokens are NOT removed here — reconstruction substitutes them by the needle.
+    for rb in &replace_blocks {
+        for (ci, cm) in comments.iter().enumerate() {
+            if cm.start >= rb.byte_start && cm.start < rb.byte_end {
+                consumed.insert(ci);
+            }
+        }
+    }
     Ok(BlockScan {
         blocks,
+        replace_blocks,
         consumed,
         removed_code,
     })
 }
 
-/// Re-indent a captured verbatim block for insertion above a token at `target_indent`: strip the
-/// block's own base indentation (the insert-start line's leading whitespace) from every line and
+/// Re-indent a captured verbatim block span `[byte_start, byte_end)` for placement at `target_indent`:
+/// strip the block's own base indentation (its first line's leading whitespace) from every line and
 /// re-apply `target_indent`, preserving relative nesting. A fixed point when the block already sits at
 /// `target_indent` (the idempotency property), and rustfmt normalizes the rest on disk anyway.
-fn reindent_block(old_src: &str, b: &InsertBlock, target_indent: &str) -> String {
-    let base = line_indent(old_src, b.byte_start);
-    let text = &old_src[b.byte_start..b.byte_end];
+/// `trailing_newline` controls whether the result ends with `\n` (insert blocks sit ABOVE a line, so
+/// they need it; a replace splice puts the block IN PLACE of deleted tokens whose line's `\n` remains,
+/// so it must not add one).
+fn reindent_span(
+    old_src: &str,
+    byte_start: usize,
+    byte_end: usize,
+    target_indent: &str,
+    trailing_newline: bool,
+) -> String {
+    let base = line_indent(old_src, byte_start);
+    let text = &old_src[byte_start..byte_end];
+    let lines: Vec<&str> = text.split('\n').collect();
     let mut out = String::with_capacity(text.len() + 8);
-    for line in text.split('\n') {
+    for (i, line) in lines.iter().enumerate() {
         // Drop a trailing CR (a CRLF-converted prior output) so the inserted block does not carry a
         // stray `\r` into the LF-only `new`, mirroring the comment engine's CR strip.
         let line = line.strip_suffix('\r').unwrap_or(line);
-        if line.trim().is_empty() {
+        if !trailing_newline && i > 0 {
             out.push('\n');
+        }
+        if line.trim().is_empty() {
+            if trailing_newline {
+                out.push('\n');
+            }
             continue;
         }
         let rel = line.strip_prefix(base).unwrap_or(line);
         out.push_str(target_indent);
         out.push_str(rel);
-        out.push('\n');
+        if trailing_newline {
+            out.push('\n');
+        }
     }
     out
+}
+
+/// Re-indent an insert block above a token at `target_indent` (trailing newline included).
+fn reindent_block(old_src: &str, b: &InsertBlock, target_indent: &str) -> String {
+    reindent_span(old_src, b.byte_start, b.byte_end, target_indent, true)
 }
 
 /// Overlay the user comments from `old` onto the freshly generated `new`. See the module docs for
@@ -1024,27 +1225,68 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
     let mut removed_code: BTreeSet<usize> = sentinel.removed_code.clone();
     removed_code.extend(block_scan.removed_code.iter().copied());
 
-    // Filtered old code stream (sentinel `compile_error!` + insert-block interior tokens removed) plus
-    // an anchor remap: for an anchor `a` into the original stream, `kept_before[a]` is its index into
-    // the filtered (virtual pristine) stream. This is a contraction offset map today; replace-block
-    // support will generalize it to also EXPAND (a recorded original substitutes more tokens than the
-    // user code it sits in).
-    let mut kept_before = vec![0usize; old_lex.code.len() + 1];
-    let mut kept = 0;
-    for (idx, slot) in kept_before.iter_mut().enumerate().take(old_lex.code.len()) {
-        *slot = kept;
-        if !removed_code.contains(&idx) {
-            kept += 1;
+    // Lex each replace block's recorded original into its NEEDLE tokens (owned via the block's
+    // `needle_text`, which outlives this borrow). Validate here (all hard errors, pre-splice): the
+    // recorded original must lex, be non-empty (a section that lexes to zero code tokens — e.g. all
+    // `// //` lines — records nothing to place against), and be delimiter-balanced.
+    let needle_lexed: Vec<Lexed> = block_scan
+        .replace_blocks
+        .iter()
+        .map(|rb| lex(&rb.needle_text))
+        .collect::<Result<_, _>>()?;
+    for nl in &needle_lexed {
+        if nl.code.is_empty() {
+            return err(
+                "An `// cddl-codegen:replaces` section records no generated code (it lexes to zero \
+                 tokens); record the exact code being replaced under `replaces`.",
+            );
+        }
+        if !delimiters_balanced(&nl.code) {
+            return err(
+                "The recorded original of an `// cddl-codegen:replace-start` block has unbalanced \
+                 delimiters ({}, (), or []); record a complete, balanced fragment.",
+            );
         }
     }
-    kept_before[old_lex.code.len()] = kept;
-    let old_code: Vec<CodeTok> = old_lex
-        .code
+
+    // Build the virtual pristine old stream + a general anchor remap: for an original anchor `a`,
+    // `remap[a]` is its index into the virtual stream. A sentinel `compile_error!` block and an
+    // insert-block interior contribute nothing (removed); a replace block's user-code span is
+    // SUBSTITUTED by the recorded original's needle (so the identity tier still fires when generator
+    // output is unchanged, and the needle regains both-sides uniqueness). Substitution makes the
+    // remap EXPAND/CONTRACT, not just contract — it need only be correct at non-interior positions,
+    // since a block's interior comments are consumed and no anchor points inside a substituted span.
+    let replace_at: BTreeMap<usize, usize> = block_scan
+        .replace_blocks
         .iter()
         .enumerate()
-        .filter(|(idx, _)| !removed_code.contains(idx))
-        .map(|(_, t)| *t)
+        .map(|(bi, rb)| (rb.user_code_start, bi))
         .collect();
+    let mut remap = vec![0usize; old_lex.code.len() + 1];
+    let mut old_code: Vec<CodeTok> = Vec::new();
+    let mut a = 0;
+    while a < old_lex.code.len() {
+        remap[a] = old_code.len();
+        if let Some(&bi) = replace_at.get(&a) {
+            // Emit the needle in place of the user-code tokens `[user_code_start, user_code_end)`.
+            // Interior positions `(a, end)` need no remap — a block's interior comments are consumed,
+            // so no anchor ever points inside a substituted span.
+            old_code.extend(needle_lexed[bi].code.iter().copied());
+            let end = block_scan.replace_blocks[bi].user_code_end;
+            if end > a {
+                a = end;
+                continue;
+            }
+            // Empty user section (end == a): the token at `a` is the following code token, emitted
+            // below normally; `remap[a]` stays at the needle start (an anchor here lands above the
+            // replaced region — the sound choice with no user tokens to disambiguate above/below).
+        }
+        if !removed_code.contains(&a) {
+            old_code.push(old_lex.code[a]);
+        }
+        a += 1;
+    }
+    remap[old_lex.code.len()] = old_code.len();
 
     // The generator's own comments (the CODEGEN_HEADER banner, static-prelude comments, `.doc()`
     // renderings, …) appear identically in `new` at the same anchor, so they self-cancel: exclude
@@ -1090,7 +1332,7 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
             }
             continue;
         }
-        let anchor = kept_before[cm.anchor];
+        let anchor = remap[cm.anchor];
         if new_comment_keys.contains(&(anchor, cm.text)) {
             continue; // generator comment — already present in new at the same position
         }
@@ -1100,19 +1342,25 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
     // 2. Place each user comment. Insertions target byte offsets in `new`; unplaceable comments and
     //    the verbatim carried blocks become fail-loudly blocks at the top (after the header).
     let mut insertions: Vec<Insertion> = Vec::new();
-    let mut unplaceable: Vec<(String, String)> = Vec::new(); // (reason, original comment text)
+    // (reason, original payload text, noun): the noun ("comment"/"code block") names what a
+    // fail-loudly `compile_error!` traps, so a block does not misreport itself as a comment.
+    let mut unplaceable: Vec<(String, String, &'static str)> = Vec::new();
     let mut order = 0usize;
 
     let identity = code_eq(&old_code, &new_lex.code);
-    let old_items = if identity {
-        Vec::new()
-    } else {
+    // Comment placement short-circuits on identity, but replace placement always needs the item
+    // partition (it matches the enclosing item and locates the needle within it), so build items
+    // whenever there is a replace block even under identity.
+    let need_items = !identity || !block_scan.replace_blocks.is_empty();
+    let old_items = if need_items {
         split_items(&old_code)
-    };
-    let new_items = if identity {
-        Vec::new()
     } else {
+        Vec::new()
+    };
+    let new_items = if need_items {
         split_items(&new_lex.code)
+    } else {
+        Vec::new()
     };
     // (kind, name) -> new item indices, in order (occurrence index disambiguates duplicates).
     let mut new_by_key: BTreeMap<(&str, &str), Vec<usize>> = BTreeMap::new();
@@ -1132,6 +1380,26 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
             .or_default();
         old_occ[i] = *c;
         *c += 1;
+    }
+
+    // A replace block's needle must fall within a single top-level item of the virtual stream — a
+    // recorded original that straddles a top-level item boundary can't be placed by the item matcher
+    // and means malformed authoring: a hard error (checked here, after reconstruction, per the plan).
+    for (bi, rb) in block_scan.replace_blocks.iter().enumerate() {
+        let vstart = remap[rb.user_code_start];
+        let vlen = needle_lexed[bi].code.len();
+        let containing = old_items
+            .iter()
+            .find(|it| it.start <= vstart && vstart < it.end);
+        match containing {
+            Some(it) if vstart + vlen <= it.end => {}
+            _ => {
+                return err(
+                    "An `// cddl-codegen:replace-start` block's recorded original spans more than \
+                     one top-level item; a replace block must stay within a single item.",
+                );
+            }
+        }
     }
 
     // Comments and insert blocks are placed by the same tiers; interleave them in source order so
@@ -1170,6 +1438,65 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
         }
     };
 
+    // 2a. Place each replace block: match the enclosing item into `new`, locate the needle uniquely
+    //     on BOTH sides, and splice the verbatim block over the matched byte range. A failure (drift,
+    //     ambiguity, vanished/reshaped item) traps the whole block in a fail-loudly `compile_error!`.
+    let mut splices: Vec<(usize, usize, String)> = Vec::new(); // (delete_start, delete_end, text)
+    for (bi, rb) in block_scan.replace_blocks.iter().enumerate() {
+        let needle = &needle_lexed[bi].code;
+        let vstart = remap[rb.user_code_start];
+        match place_replace(
+            vstart,
+            needle,
+            &old_code,
+            &new_lex.code,
+            &old_items,
+            &new_items,
+            &new_by_key,
+            &old_occ,
+            &old_key_counts,
+        ) {
+            Ok((nstart, nlen)) => {
+                let first = &new_lex.code[nstart];
+                let last = &new_lex.code[nstart + nlen - 1];
+                let ls = line_start(new, first.start);
+                // Byte-range splice, not line-based: a needle can begin mid-line (one-liner match
+                // arm). Delete from the line start only when the first token IS the line's first
+                // token (so its indentation is replaced cleanly); otherwise from the token itself,
+                // wrapping the block in newlines so its tag lines stay own-line (rustfmt tidies).
+                let at_line_start = new[ls..first.start].trim().is_empty();
+                let after_end = new[last.end..]
+                    .find('\n')
+                    .map(|p| last.end + p)
+                    .unwrap_or(new.len());
+                let at_line_end = new[last.end..after_end].trim().is_empty();
+                let indent = line_indent(new, first.start);
+                let delete_start = if at_line_start { ls } else { first.start };
+                let body = reindent_span(old, rb.byte_start, rb.byte_end, indent, false);
+                let mut text = String::new();
+                if !at_line_start {
+                    text.push('\n');
+                }
+                text.push_str(&body);
+                if !at_line_end {
+                    text.push('\n');
+                    text.push_str(indent);
+                }
+                splices.push((delete_start, last.end, text));
+            }
+            Err(reason) => unplaceable.push((
+                reason,
+                old[rb.byte_start..rb.byte_end].to_owned(),
+                "code block",
+            )),
+        }
+    }
+    // Successful splice ranges drive the op-composition conflict rule: an insertion whose target
+    // offset falls STRICTLY INSIDE a deleted range (its referent is being replaced) fails loudly.
+    let delete_ranges: Vec<(usize, usize)> = splices.iter().map(|(s, e, _)| (*s, *e)).collect();
+    let inside_delete =
+        |off: usize| -> bool { delete_ranges.iter().any(|&(s, e)| s < off && off < e) };
+
     for (_, p) in placeables {
         match p {
             Placeable::Comment(cm) => {
@@ -1195,6 +1522,19 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
                             let start = new_lex.code[t].start;
                             (line_start(new, start), line_indent(new, start))
                         };
+                        // Op-composition conflict: this comment's referent is inside a span a replace
+                        // block deletes. Fail loudly — the user must move it into the replace block.
+                        if inside_delete(offset) {
+                            unplaceable.push((
+                                "Its anchor lies inside code replaced by a \
+                                 `// cddl-codegen:replace-start` block; move it into that block."
+                                    .to_owned(),
+                                cm.text.to_owned(),
+                                "comment",
+                            ));
+                            order += 1;
+                            continue;
+                        }
                         insertions.push(Insertion {
                             offset,
                             order,
@@ -1207,13 +1547,13 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
                     // drop rather than fail loudly (the same trade as documented anchors; a user doc
                     // on a vanished item drops with them).
                     Err(_) if is_doc_comment(cm.text) => {}
-                    Err(reason) => unplaceable.push((reason, cm.text.to_owned())),
+                    Err(reason) => unplaceable.push((reason, cm.text.to_owned(), "comment")),
                 }
             }
             Placeable::Block(bi) => {
                 let b = &block_scan.blocks[bi];
                 // The anchor is the code token following the block, remapped onto the virtual stream.
-                match place(kept_before[b.code_end]) {
+                match place(remap[b.code_end]) {
                     Ok(t) => {
                         let t = t.unwrap_or(new_lex.code.len());
                         let (offset, indent) = if t >= new_lex.code.len() {
@@ -1222,6 +1562,19 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
                             let start = new_lex.code[t].start;
                             (line_start(new, start), line_indent(new, start))
                         };
+                        // Same op-composition conflict rule as for comments (an insert block whose
+                        // following anchor is inside a replaced span fails loudly).
+                        if inside_delete(offset) {
+                            unplaceable.push((
+                                "Its anchor lies inside code replaced by a \
+                                 `// cddl-codegen:replace-start` block; move it into that block."
+                                    .to_owned(),
+                                old[b.byte_start..b.byte_end].to_owned(),
+                                "code block",
+                            ));
+                            order += 1;
+                            continue;
+                        }
                         insertions.push(Insertion {
                             offset,
                             order,
@@ -1231,9 +1584,11 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
                     // An unplaceable block is NOT left in place (its user tokens would count as a
                     // user edit on the next regen). Its ENTIRE text goes into the standard
                     // fail-loudly payload, so it carries forward verbatim like an unplaceable comment.
-                    Err(reason) => {
-                        unplaceable.push((reason, old[b.byte_start..b.byte_end].to_owned()))
-                    }
+                    Err(reason) => unplaceable.push((
+                        reason,
+                        old[b.byte_start..b.byte_end].to_owned(),
+                        "code block",
+                    )),
                 }
             }
         }
@@ -1245,11 +1600,16 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
              preserve it."
                 .to_owned(),
             t.to_owned(),
+            "comment",
         ));
     }
 
     // Nothing to overlay → the pristine content is byte-identical to today.
-    if insertions.is_empty() && unplaceable.is_empty() && carried_blocks.is_empty() {
+    if insertions.is_empty()
+        && unplaceable.is_empty()
+        && carried_blocks.is_empty()
+        && splices.is_empty()
+    {
         return Ok(Preserved {
             content: new.to_owned(),
             changed: false,
@@ -1277,33 +1637,50 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
             .map(|t| line_start(new, t.start))
             .unwrap_or(new.len())
     };
+    // The merge engine is now a set of non-overlapping delete+insert ops on `new` (an insertion is a
+    // zero-width delete). Each op is `(start, end, group, order, text)`: bytes `[start, end)` are
+    // removed and `text` inserted at `start`. Group orders ties at one offset: top-of-file blocks (0)
+    // before placed insertions (1) before replace splices (2), so an insert block/comment anchored at
+    // a splice's start byte lands ABOVE the spliced code.
     let mut top_order = 0usize;
-    let mut all: Vec<(usize, usize, usize, String)> = Vec::new(); // (offset, group, order, text)
+    let mut all: Vec<(usize, usize, usize, usize, String)> = Vec::new();
     for block in carried_blocks {
-        all.push((top_offset, 0, top_order, format!("{block}\n")));
+        all.push((top_offset, top_offset, 0, top_order, format!("{block}\n")));
         top_order += 1;
     }
-    for (reason, original) in &unplaceable {
+    for (reason, original, noun) in &unplaceable {
         all.push((
+            top_offset,
             top_offset,
             0,
             top_order,
-            format!("{}\n", sentinel_block(reason, original)),
+            format!("{}\n", sentinel_block(reason, original, noun)),
         ));
         top_order += 1;
     }
     for ins in insertions {
-        all.push((ins.offset, 1, ins.order, ins.text));
+        all.push((ins.offset, ins.offset, 1, ins.order, ins.text));
     }
-    // Sort by offset, then top blocks before placed comments at the same offset, then push order.
-    all.sort_by(|x, y| x.0.cmp(&y.0).then(x.1.cmp(&y.1)).then(x.2.cmp(&y.2)));
+    for (i, (delete_start, delete_end, text)) in splices.into_iter().enumerate() {
+        all.push((delete_start, delete_end, 2, i, text));
+    }
+    // Sort by start offset, then group, then push order.
+    all.sort_by(|x, y| x.0.cmp(&y.0).then(x.2.cmp(&y.2)).then(x.3.cmp(&y.3)));
 
     let mut content = String::with_capacity(new.len() + 64);
     let mut prev = 0;
-    for (offset, _, _, text) in &all {
-        content.push_str(&new[prev..*offset]);
+    for (start, end, _, _, text) in &all {
+        // Deletes are non-overlapping and no insertion lands strictly inside one (the conflict rule),
+        // so ops advance monotonically. A `start < prev` here means two deletes overlap — defensive,
+        // should be unreachable given both-sides uniqueness + non-straddling — surface it, don't panic.
+        if *start < prev {
+            return err(
+                "internal: overlapping replace splices while composing the preservation overlay",
+            );
+        }
+        content.push_str(&new[prev..*start]);
         content.push_str(text);
-        prev = *offset;
+        prev = *end;
     }
     content.push_str(&new[prev..]);
 
@@ -1331,25 +1708,8 @@ fn place_tier2(
         Some(oi) => oi,
         None => return Err("It could not be attached to any generated item.".to_owned()),
     };
+    let ni = match_new_item(oi, old_items, new_by_key, old_occ, old_key_counts)?;
     let item = &old_items[oi];
-    let key = (item.kind.as_str(), item.name.as_str());
-    let group = new_by_key.get(&key).map(Vec::as_slice).unwrap_or(&[]);
-    if group.is_empty() {
-        return Err(format!(
-            "It was attached to `{} {}`, which no longer exists in the regenerated code.",
-            item.kind, item.name
-        ));
-    }
-    // Occurrence matching is only sound when the same-key counts agree: with a same-keyed item added
-    // or removed, "the Nth `impl Foo`" may denote a different item on each side.
-    if group.len() != old_key_counts.get(&key).copied().unwrap_or(0) {
-        return Err(format!(
-            "It was attached to `{} {}`, but the number of same-named items changed in the \
-             regenerated code.",
-            item.kind, item.name
-        ));
-    }
-    let ni = group[old_occ[oi]];
     let nitem = &new_items[ni];
     let old_slice = &old_code[item.start..item.end];
     let new_slice = &new_code[nitem.start..nitem.end];
@@ -1360,13 +1720,15 @@ fn place_tier2(
     // same-keyed items whose bodies changed, occurrence order is the only tiebreak and a canonical
     // reorder would silently retarget the comment — refuse.
     if a == item.start {
-        if group.len() > 1 && !unchanged {
+        let group_len = new_by_key
+            .get(&(item.kind.as_str(), item.name.as_str()))
+            .map(Vec::len)
+            .unwrap_or(0);
+        if group_len > 1 && !unchanged {
             return Err(format!(
                 "It sat above one of {} same-named `{} {}` items whose generated code changed, so \
                  its owner cannot be re-identified.",
-                group.len(),
-                item.kind,
-                item.name
+                group_len, item.kind, item.name
             ));
         }
         return Ok(Some(nitem.start));
@@ -1395,6 +1757,90 @@ fn place_tier2(
     ))
 }
 
+/// Match old item `oi` to its counterpart in `new` by (kind, name) + occurrence — the shared item
+/// matcher for both the comment tiers and replace placement. Errs (naming the item) when the item
+/// vanished or its same-key count changed (occurrence matching then unsound).
+fn match_new_item(
+    oi: usize,
+    old_items: &[Item],
+    new_by_key: &BTreeMap<(&str, &str), Vec<usize>>,
+    old_occ: &[usize],
+    old_key_counts: &BTreeMap<(&str, &str), usize>,
+) -> Result<usize, String> {
+    let item = &old_items[oi];
+    let key = (item.kind.as_str(), item.name.as_str());
+    let group = new_by_key.get(&key).map(Vec::as_slice).unwrap_or(&[]);
+    if group.is_empty() {
+        return Err(format!(
+            "It was attached to `{} {}`, which no longer exists in the regenerated code.",
+            item.kind, item.name
+        ));
+    }
+    if group.len() != old_key_counts.get(&key).copied().unwrap_or(0) {
+        return Err(format!(
+            "It was attached to `{} {}`, but the number of same-named items changed in the \
+             regenerated code.",
+            item.kind, item.name
+        ));
+    }
+    Ok(group[old_occ[oi]])
+}
+
+/// Place a replace block: match the enclosing item (containing the needle's virtual-stream start
+/// `vstart`) into `new`, then require the needle unique in the virtual old item AND unique in the
+/// matched new item (the same both-sides rule as the comment engine — unique-in-new alone would let a
+/// deleted duplicate's block silently re-attach to the survivor). On success returns the matched new
+/// token run as `(start_index, len)`; otherwise a fail-loudly reason (drift / ambiguity / vanished /
+/// reshaped item) that names the item.
+#[allow(clippy::too_many_arguments)]
+fn place_replace(
+    vstart: usize,
+    needle: &[CodeTok],
+    old_code: &[CodeTok],
+    new_code: &[CodeTok],
+    old_items: &[Item],
+    new_items: &[Item],
+    new_by_key: &BTreeMap<(&str, &str), Vec<usize>>,
+    old_occ: &[usize],
+    old_key_counts: &BTreeMap<(&str, &str), usize>,
+) -> Result<(usize, usize), String> {
+    let oi = old_items
+        .iter()
+        .position(|it| it.start <= vstart && vstart < it.end)
+        .ok_or_else(|| {
+            "Its recorded original could not be attached to any generated item.".to_owned()
+        })?;
+    let ni = match_new_item(oi, old_items, new_by_key, old_occ, old_key_counts)?;
+    let item = &old_items[oi];
+    let nitem = &new_items[ni];
+    let old_slice = &old_code[item.start..item.end];
+    let new_slice = &new_code[nitem.start..nitem.end];
+    // Both-sides uniqueness. Non-unique in the virtual old item = a deleted duplicate; the block's
+    // referent is ambiguous, so fail loudly rather than guess (the deleted-duplicate hazard the comment
+    // engine also refuses).
+    if find_subsequence(old_slice, needle).len() != 1 {
+        return Err(format!(
+            "Its recorded original is not unique within `{} {}` (a deleted duplicate?), so which \
+             occurrence it replaces is ambiguous.",
+            item.kind, item.name
+        ));
+    }
+    let matches = find_subsequence(new_slice, needle);
+    match matches.len() {
+        0 => Err(format!(
+            "The generated code for `{} {}` changed, so its recorded original no longer appears \
+             (drift). Re-review the block and re-record the original under `replaces`.",
+            item.kind, item.name
+        )),
+        1 => Ok((nitem.start + matches[0], needle.len())),
+        _ => Err(format!(
+            "Its recorded original appears more than once in the regenerated `{} {}`, so which \
+             occurrence it replaces is ambiguous.",
+            item.kind, item.name
+        )),
+    }
+}
+
 /// The never-silent units of a source: the own-line NON-DOC user comments and the verbatim insert
 /// blocks that a merge must not silently drop (each must appear in the output verbatim/re-indented or
 /// `escape_for_rust_string`-transformed inside a `compile_error!`). Reuses the real sentinel/block
@@ -1414,6 +1860,9 @@ pub(crate) fn never_silent_units(src: &str) -> Result<Vec<String>, PreserveError
     let mut units = Vec::new();
     for b in &scan.blocks {
         units.push(src[b.byte_start..b.byte_end].to_owned());
+    }
+    for rb in &scan.replace_blocks {
+        units.push(src[rb.byte_start..rb.byte_end].to_owned());
     }
     for (ci, cm) in lexed.comments.iter().enumerate() {
         if !cm.own_line
