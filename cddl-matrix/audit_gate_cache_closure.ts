@@ -21,7 +21,9 @@
  *   |                                         | files content-addressed by version+checksum              |
  *   | under $RUSTUP_HOME (default ~/.rustup)  | pinned by the `rustc -vV` key component                 |
  *   | system prefixes (/usr /lib* /etc /proc  | machine state (per-checkout-local cache, never shared) — |
- *   | /sys /dev /opt /run /bin /sbin)         | same accepted class as glibc/the linker                  |
+ *   | /sys /dev /opt /run /bin /sbin, plus    | same accepted class as glibc/the linker. /mnt/wsl is the |
+ *   | /mnt/wsl — see the comment at           | WSL-kernel tmpfs `/etc/resolv.conf` resolves into (the   |
+ *   | SYSTEM_PREFIXES)                        | audit records kernel-resolved paths)                     |
  *   | user git config — EXACTLY the two files | cargo consults git config for URL rewriting/transport    |
  *   | $HOME/.gitconfig and $XDG_CONFIG_HOME   | during registry/git-dep access, so it can affect whether |
  *   | (default ~/.config)/git/config — NOT a  | FETCHING succeeds, but not WHAT is built: the key hashes |
@@ -178,7 +180,15 @@ export interface Boundaries {
   // Deliberately NOT a widened $HOME class; soundness argument in the header allow-table.
   userGitConfig: string[];
 }
-const SYSTEM_PREFIXES = ["/usr", "/lib", "/lib64", "/lib32", "/etc", "/proc", "/sys", "/dev", "/opt", "/run", "/bin", "/sbin"];
+// `/mnt/wsl` is in the system class because the audit records KERNEL-RESOLVED paths: on WSL2,
+// `/etc/resolv.conf` is a distro-managed symlink into the WSL-kernel-managed tmpfs mount at
+// `/mnt/wsl`, so an allowed `/etc` read surfaces under `/mnt/wsl` after symlink resolution.
+// Soundness: `/mnt/wsl` holds only WSL cross-distro machine state (resolver config, shared-mount
+// plumbing) — network-reachability state that can affect whether a nested cargo FETCH succeeds,
+// never WHAT is built (same argument as the user-git-config class: versions + checksums are pinned
+// by the hashed lockfile). No repo checkout or user content lives there (user Windows drives mount
+// under /mnt/<drive-letter>, which stays unclassified).
+const SYSTEM_PREFIXES = ["/usr", "/lib", "/lib64", "/lib32", "/etc", "/proc", "/sys", "/dev", "/opt", "/run", "/bin", "/sbin", "/mnt/wsl"];
 
 const underAny = (path: string, prefixes: string[]): boolean =>
   prefixes.some(p => p !== "" && (path === p || path.startsWith(p.endsWith("/") ? p : p + "/")));
@@ -267,6 +277,9 @@ function selfTest(): void {
   eq(classifyPath("/home/u/.cargo/registry/z", b).allowed, true, "cargo_home allowed");
   eq(classifyPath("/home/u/.rustup/toolchains/z", b).allowed, true, "rustup allowed");
   eq(classifyPath("/usr/lib/x.so", b).allowed, true, "system allowed");
+  eq(classifyPath("/mnt/wsl/resolv.conf", b), { allowed: true, label: "system" }, "WSL kernel-resolved /etc/resolv.conf allowed");
+  eq(classifyPath("/mnt/wslx/evil", b).label, "UNCLASSIFIED", "/mnt/wsl prefix does not bleed into siblings");
+  eq(classifyPath("/mnt/c/Users/u/repo/x.rs", b).label, "UNCLASSIFIED", "Windows drive mounts NOT in the system class");
   eq(classifyPath("/home/u/.gitconfig", b), { allowed: true, label: "user_git_config" }, "user gitconfig allowed");
   eq(classifyPath("/home/u/.config/git/config", b), { allowed: true, label: "user_git_config" }, "xdg git config allowed");
   eq(classifyPath("/home/u/.gitconfig.bak", b).label, "HOME_OUTSIDE_CARGO_RUSTUP", "gitconfig sibling NOT allowed (exact match only)");
