@@ -66,7 +66,7 @@ minicbor = { version = "0.26", features = ["half"] }
 # Harness-side ONLY (never a generated-crate dep): `decode_conformance_replay` parses the committed
 # `tests/decode_conformance/catalog.toml` corpus (same class as ciborium/minicbor above). Navigated
 # via `toml::Value` — no serde derives of our own.
-toml = "0.8"
+toml = "1.1"
 # Harness-side ONLY (never a generated-crate dep): `wasm_api_parity` parses the emitted
 # `rust`/`wasm` `src/generated/mod.rs` with syn to run the rust->wasm public-API-surface
 # differential. Already in-tree transitively (2.0.x via the proc-macro derives), so this adds no
