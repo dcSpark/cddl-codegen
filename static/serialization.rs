@@ -1,5 +1,9 @@
 // same as cbor_event::de::Deserialize but with our DeserializeError
 pub trait Deserialize {
+    fn deserialize<R: BufRead + Seek>(
+        raw: &mut Deserializer<R>,
+    ) -> Result<Self, DeserializeError> where Self: Sized;
+
     fn from_cbor_bytes(data: &[u8]) -> Result<Self, DeserializeError> where Self: Sized {
         let mut raw = Deserializer::from(std::io::Cursor::new(data));
         let value = Self::deserialize(&mut raw)?;
@@ -10,10 +14,6 @@ pub trait Deserialize {
         }
         Ok(value)
     }
-
-    fn deserialize<R: BufRead + Seek>(
-        raw: &mut Deserializer<R>,
-    ) -> Result<Self, DeserializeError> where Self: Sized;
 }
 
 impl<T: cbor_event::de::Deserialize> Deserialize for T {
