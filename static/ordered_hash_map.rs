@@ -34,8 +34,12 @@ impl<K, V> OrderedHashMap<K, V> where K : Hash + Eq + Ord {
     pub fn new() -> Self {
         Self(linked_hash_map::LinkedHashMap::new())
     }
-}
 
+    /// Consume the wrapper, yielding the backing insertion-ordered map.
+    pub fn take(self) -> linked_hash_map::LinkedHashMap<K, V> {
+        self.0
+    }
+}
 
 impl<K, V> FromIterator<(K, V)> for OrderedHashMap<K, V> where K : Hash + Eq + Ord {
     fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
