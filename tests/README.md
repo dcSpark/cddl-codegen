@@ -297,6 +297,13 @@ fixtures.
 Lexer-level tests (char-vs-lifetime, raw identifiers, in-string `//`) stay inline in
 `comment_preserve.rs` — they test `lex`, not the merge.
 
+The overlay's one out-of-crate surface — `--export-static-dir`, which writes the composed static
+runtime into a consumer-named dir (the upgrade path for `--common-import-override` runtime crates)
+— is pinned by `export_static_dir_writes_composed_runtime` (integration): the flag-set-pure file
+set (non_empty\*/raw_bytes always included, prelude-only serialization.rs carrying its own import
+header), insert-block survival across a re-export in that dir, and flag-off leaving a same-named
+dir untouched.
+
 ## Integration tests (`integration_tests.rs`)
 
 Each test generates a crate via the CLI (`cargo run`), appends hand-written round-trip tests
@@ -357,10 +364,16 @@ by three sibling gates plus the parser's unit suite (`src/wrapper_requests.rs`):
 all-one-dep deferral incl. NonEmpty and nested shapes, the byte-frozen `borrowed_collections.rs`
 sidecar format asserted as full-file equality — it is a cross-crate contract — plus
 ownerless/mixed composition with `--extern-wrapper-index` and the rule-declared shadowing
-warning); `workspace_requests_hosts_borrowed_wrappers` + the two hard-error tests (dep side over
-`tests/workspace-requests/`: strict sidecar intake, union-by-shape with sorted requester
-attribution, own-spec-shape satisfaction, flag-order byte-identity, and the criterion-8 hard
-errors); and `workspace_regen_two_consumer_contract` (the regen-contract gate over
+warning); `workspace_requests_hosts_borrowed_wrappers` + the hard-error tests + 
+`workspace_requests_alias_elements_host` (dep side over `tests/workspace-requests/`: strict sidecar
+intake, union-by-shape with sorted requester attribution, own-spec-shape satisfaction, flag-order
+byte-identity, the criterion-8 hard errors plus the review-hardened classes — the stub-fidelity
+diagnosis for directly-exposable shapes, reserved element idents, the shape-nesting depth cap, and
+the element-resolution appendix on name↔shape mismatches — and alias-element hosting: request
+leaves resolve through the pipeline's `resolve_alias`, the single owner of the alias-substitution
+rule, so requested wrappers over `stake_credential = credential`-style aliases, primitive aliases,
+and externs generate exactly what the dep's own spec would); and
+`workspace_regen_two_consumer_contract` (the regen-contract gate over
 `tests/workspace-regen/`: an umbrella wasm cdylib linking one dep + TWO consumers, RED with
 duplicate symbols when both consumers mint and GREEN after a reverse-dependency-order holistic
 regen, then the in-place lifecycle — zero-diff unchanged regen, requester churn without
