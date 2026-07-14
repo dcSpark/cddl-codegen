@@ -7290,6 +7290,78 @@ fn workspace_requests_hard_errors() {
     );
 }
 
+/// Regression: a requested wrapper whose element is an ALIAS in the dep's spec — a named-type
+/// alias (`stake_credential = credential`), a primitive alias (`transaction_index = uint .size 2`),
+/// or an extern declaration (`metadata = _CDDL_CODEGEN_EXTERN_TYPE_`) — must be hosted like any
+/// struct-element request instead of dying on `is_enum`'s registered-struct assert. The requests
+/// path was the first caller to feed unresolved alias idents into the wasm-exposability check; the
+/// dep's own generation of the same CDDL shape resolves aliases through `new_type` first, so the
+/// leaf parser must resolve identically. Found in the motivating real workspace, where 5 of the 18
+/// committed requests name alias elements (`policy_id = script_hash` domain naming is the idiom
+/// real CDDL uses pervasively).
+#[test]
+fn workspace_requests_alias_elements_host() {
+    use std::str::FromStr;
+    if !tool_exists("cargo") {
+        return;
+    }
+    let base = std::path::PathBuf::from_str("tests/workspace-requests").unwrap();
+    let scratch = base.join("export_aliases_scratch");
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let sidecar = scratch.join("sc.rs");
+    std::fs::write(
+        &sidecar,
+        "// This file was code-generated using an experimental CDDL to rust tool:\n\
+         // https://github.com/dcSpark/cddl-codegen\n\n\
+         // This file records every collection wrapper this crate borrows from workspace deps.\n\
+         // It is machine-read by those deps' generation runs (--wrapper-requests) and compiled\n\
+         // here, so a wrapper a dep stops providing fails THIS crate's build, naming the type.\n\
+         #[allow(unused_imports)]\n\
+         mod borrowed {}\n\
+         #[allow(dead_code)]\n\
+         pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[\n\
+         \x20   (\"wr_dep\", \"StakeCredentialList\", \"[* stake_credential]\"),\n\
+         \x20   (\"wr_dep\", \"MapTransactionIndexToMetadata\", \"{* transaction_index => metadata}\"),\n];\n",
+    )
+    .unwrap();
+    let out = base.join("export_aliases");
+    let _ = std::fs::remove_dir_all(&out);
+    let o = tool_cmd("cargo")
+        .arg("run")
+        .arg("--")
+        .arg("--input=tests/workspace-requests/dep_inputs_aliases")
+        .arg("--output=tests/workspace-requests/export_aliases")
+        .arg("--lib-name=wr-dep")
+        .arg("--wasm=true")
+        .arg("--preserve-encodings=true")
+        .arg(format!(
+            "--wrapper-requests=consumer={}",
+            sidecar.to_str().unwrap()
+        ))
+        .output()
+        .unwrap();
+    assert!(
+        o.status.success(),
+        "dep generation over alias-element requests must succeed, got:\n{}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    let requested =
+        std::fs::read_to_string(out.join("wasm/src/generated/requested_collections.rs")).unwrap();
+    for name in ["StakeCredentialList", "MapTransactionIndexToMetadata"] {
+        assert!(
+            requested.contains(&format!("pub struct {name}")),
+            "requested_collections.rs must host the alias-element wrapper {name}:\n{requested}"
+        );
+    }
+    // Storage must resolve through the alias exactly as the dep's own generation would: the rust
+    // alias type name (not its target, not the raw CDDL token) appears in the stored types.
+    assert!(
+        requested.contains("StakeCredential") && requested.contains("TransactionIndex"),
+        "hosted wrappers must store the alias rust types:\n{requested}"
+    );
+}
+
 /// Criterion 8 #4 at unit level: two DISTINCT shapes deriving the SAME structural name is a hard
 /// error naming both shapes and their requesters. Driven directly through the union collision path
 /// with a hand-built pair whose reverse-ambiguity (`{* a => b_to_c}` vs `{* a_to_b => c}`) collapses

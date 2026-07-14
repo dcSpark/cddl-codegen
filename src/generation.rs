@@ -7657,7 +7657,22 @@ fn parse_shape_fragment(
                      the request cannot be satisfied."
                 );
             }
-            RustType::new(ConceptualRustType::Rust(ident))
+            // Resolve through the dep's alias table exactly as `new_type` does on the normal
+            // generation path (immutably — `dep_owns_element` already required a spec-registered
+            // ident, so no prelude emission can be needed): a leaf left as a bare `Rust(ident)`
+            // naming an alias (`stake_credential = credential`, `policy_id = script_hash`)
+            // panics downstream lookups (`is_enum`, exposability, member naming) that assume
+            // `Rust(ident)` names a registered struct. The `Alias` wrapper keeps the requested
+            // ident for structural naming (the consumer derived `StakeCredentialList` from the
+            // alias name) while resolving storage/exposability through the target, matching what
+            // the dep's own generation of the same CDDL shape would produce.
+            match types.type_aliases().get(&AliasIdent::Rust(ident.clone())) {
+                Some(info) if info.gen_rust_alias => {
+                    info.base_type.clone().as_alias(AliasIdent::Rust(ident))
+                }
+                Some(info) => info.base_type.clone(),
+                None => RustType::new(ConceptualRustType::Rust(ident)),
+            }
         }
     }
 }
