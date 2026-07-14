@@ -145,6 +145,15 @@ dead loses the lesson.
   the pipeline's, and synthetic fixtures inherit the feature author's blind spots. A second
   instance (a new external-input parser shipping struct-only fixtures) is the trigger to make
   this mechanical, e.g. a checklist gate over `parse_*` functions that take external strings.
+  An independent first-principles review subsequently ran the full ident-class × shape matrix over
+  the requests path (confirming the fix and surfacing four hardening findings, all closed with
+  pinned hard errors: the stub-fidelity diagnosis for directly-exposable shapes, reserved element
+  idents, the nesting depth cap, and the element-resolution mismatch appendix). The same review
+  cycle also caught the PREDICATE flavor of this class mid-implementation: the reserved-ident
+  pre-check first shipped as a hand-mirrored copy of `RustIdent::new`'s two assert predicates, and
+  review replaced it with `RustIdent::reserved_reason` — the reservation rule's single owner that
+  `new` itself asserts through. Working rule reinforced: when a fix needs the same decision an
+  existing function already makes, extract the decision, never mirror it.
 - **Synthesized-name residual: the referenced-but-never-minted (E0425) flavor.** The generator mints
   structural wasm idents (loose `{Elem}List` / `Map{K}To{V}` builders, restricted `NonEmpty*`
   wrappers, table `keys()` list wrappers) whose interactions with USER rule names and with EACH OTHER

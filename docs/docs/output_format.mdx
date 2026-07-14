@@ -75,7 +75,11 @@ halves so your hand edits to the crate root survive regeneration:
 - **Tool-owned: `src/generated/**` (clobbered every run).** All generated code lives here —
   `generated/mod.rs` (the type definitions + module decls + generator crate attrs like
   `#![allow(clippy::too_many_arguments)]` as inner attrs), `generated/serialization.rs`, per-scope
-  submodules, and the copied runtime modules (`error.rs`, `ordered_hash_map.rs`). This subtree is
+  submodules, and the copied runtime modules (`error.rs`, `ordered_hash_map.rs`). (Under
+  [`--common-import-override`](./command_line_flags) the runtime modules are
+  **not** emitted — the override crate owns its copy, and
+  [`--export-static-dir`](./command_line_flags) is the supported path for keeping
+  that copy current.) This subtree is
   overwritten wholesale on every export — untagged hand edits to the *code* are clobbered. What
   DOES survive regeneration: **own-line comments** (carried automatically by symbol identity —
   which named item they sit in/above) and **tagged code blocks** —
@@ -236,7 +240,10 @@ fails **this** crate's own build with an unresolved import naming the exact type
 wrapper name, shape in CDDL syntax with the dependency's idents)`, sorted by `(dep, name)`. The
 **shape column is authoritative** — the dependency derives the wrapper's definition from the shape and
 only cross-checks the name (reverse-parsing element types out of a name like `MapAToBToC` is
-ambiguous). The file is derived output, rebuilt from the consumer's spec on every regen; borrowed
+ambiguous). The name and shape agree across the two crates only when the consumer's extern stub is
+representation-faithful to the dependency's spec — the **stub-fidelity contract** documented under
+[`--wrapper-requests`](./command_line_flags); an unfaithful stub surfaces as a
+dependency-side hard error naming the element and the stub fix. The file is derived output, rebuilt from the consumer's spec on every regen; borrowed
 wrappers are never re-exported (they are not the consumer's public API). All comments — the column
 legend included — live in the fixed banner, never inside the const body, so the edit-preservation
 overlay anchors them to the file itself and a regen that adds or removes rows never has a comment
