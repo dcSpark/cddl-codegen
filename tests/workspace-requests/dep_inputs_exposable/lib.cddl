@@ -1,0 +1,10 @@
+; W2 dep spec for `--wrapper-requests` stub-fidelity + residual-mismatch hard errors.
+; `coin = uint` is a transparent primitive alias, so a `[* coin]` request is DIRECTLY WASM-EXPOSABLE
+; (`Vec<Coin>`, no wrapper class) — the dep-side intake must diagnose it as an unfaithful consumer
+; stub rather than a name<->shape disagreement. `credential`/`nal` (`@no_alias`) exercise the residual
+; name<->shape mismatch's element-resolution appendix: a `[* nal]` request derives `CredentialList`,
+; not the listed `NalList`, because `@no_alias` transparently substitutes `nal` to `credential`.
+coin = uint
+credential = [n: uint]
+nal = credential ; @no_alias
+root = [c: coin, cr: credential, n: nal]
