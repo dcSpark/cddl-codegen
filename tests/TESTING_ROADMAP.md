@@ -127,6 +127,24 @@ justifies building the named mechanical layer. Building before the trigger fires
 over-engineering; deleting an entry without either building the layer or recording why the class is
 dead loses the lesson.
 
+- **Parallel-constructor fixture diversity: a parser over external input must span the ident-class
+  matrix of REAL specs, not the feature spec's mental model.** Proven instance: the
+  `--wrapper-requests` shape parser hand-built bare `Rust(ident)` element leaves instead of
+  resolving through the pipeline's alias rule, and every fixture used plain struct elements — so
+  the first REAL spec fed through it (conway, where alias domain naming like
+  `policy_id = script_hash` is the pervasive idiom) panicked `is_enum`'s registered-struct
+  invariant on 5 of the motivating workspace's 18 committed requests. Two layers closed it: the
+  MECHANICAL one is `IntermediateTypes::resolve_alias` — the single owner of the alias-substitution
+  rule, called by both `new_type` and the requests parser, so a leaf built outside the pipeline
+  cannot drift from pipeline resolution again (plus `workspace_requests_alias_elements_host`
+  pinning the named-alias / primitive-alias / extern element classes). The residual this entry
+  records is the FIXTURE principle no gate enforces: any NEW parser that reconstructs IR values
+  from external content (sidecars, index files, future request formats) must ship fixtures
+  spanning every ident class the IR distinguishes — registered struct, rule alias, primitive
+  alias, extern, generic instance — because a parallel constructor's coverage is independent of
+  the pipeline's, and synthetic fixtures inherit the feature author's blind spots. A second
+  instance (a new external-input parser shipping struct-only fixtures) is the trigger to make
+  this mechanical, e.g. a checklist gate over `parse_*` functions that take external strings.
 - **Synthesized-name residual: the referenced-but-never-minted (E0425) flavor.** The generator mints
   structural wasm idents (loose `{Elem}List` / `Map{K}To{V}` builders, restricted `NonEmpty*`
   wrappers, table `keys()` list wrappers) whose interactions with USER rule names and with EACH OTHER
