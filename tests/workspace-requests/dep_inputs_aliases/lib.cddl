@@ -1,0 +1,8 @@
+; Alias-element regression fixture (wrapper-requests): every failing ident class from the
+; real-workspace panic — a named-type alias, a primitive alias, and an extern declaration —
+; plus the real struct the named alias resolves to.
+credential = [n: uint]
+stake_credential = credential
+transaction_index = uint .size 2
+metadata = _CDDL_CODEGEN_EXTERN_TYPE_
+root = [c: credential, s: stake_credential, t: transaction_index, m: metadata]
