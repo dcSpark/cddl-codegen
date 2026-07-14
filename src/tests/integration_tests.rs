@@ -7288,6 +7288,66 @@ fn workspace_requests_hard_errors() {
             .contains("neither requested by any consumer nor produced"),
         "criterion 8 #5: a nested shape missing its inner wrapper must hard-error"
     );
+
+    // (a) A directly-wasm-exposable requested shape (`[* coin]` over a dep owning the transparent
+    // alias `coin = uint`) has NO wrapper class — this must be diagnosed as an unfaithful consumer
+    // stub, not misdiagnosed as a name<->shape disagreement.
+    let sa = write_sidecar("ea.rs", "    (\"wr_dep\", \"CoinList\", \"[* coin]\"),\n");
+    let ea = run("dep_inputs_exposable", "export_ea", &sa);
+    assert!(
+        ea.contains("directly wasm-exposable") && ea.contains("coin"),
+        "exposable-shape request must get a stub-fidelity diagnosis naming the element, got: {ea}"
+    );
+
+    // (b) A member-form listing (`Vec<u64>` for `[* uint]`) previously slipped past the name
+    // cross-check and died in rustfmt labeled a generator bug; it must now get the same diagnosis.
+    let sb = write_sidecar("eb.rs", "    (\"wr_dep\", \"Vec<u64>\", \"[* uint]\"),\n");
+    let eb = run("dep_inputs_exposable", "export_eb", &sb);
+    assert!(
+        eb.contains("directly wasm-exposable"),
+        "a Vec<u64>/[* uint] request must get the exposable diagnosis, not a rustfmt/generator-bug \
+         death, got: {eb}"
+    );
+
+    // (c) A reserved CDDL keyword leaf (`biguint`) must hard-error with the feature message, not the
+    // bare `Cannot use reserved CDDL keyword` internal assert from RustIdent::new.
+    let sc = write_sidecar(
+        "ec.rs",
+        "    (\"wr_dep\", \"BiguintList\", \"[* biguint]\"),\n",
+    );
+    let ec = run("dep_inputs_exposable", "export_ec", &sc);
+    assert!(
+        ec.contains("--wrapper-requests")
+            && ec.contains("biguint")
+            && !ec.contains("Cannot use reserved CDDL keyword"),
+        "a reserved leaf token must hard-error with the feature message, not the internal assert, \
+         got: {ec}"
+    );
+
+    // (d) A shape nesting collections far deeper than any real wrapper must hit the depth cap
+    // instead of overflowing the stack.
+    let deep_shape = format!("{}uint{}", "[* ".repeat(64), "]".repeat(64));
+    let sd = write_sidecar(
+        "ed.rs",
+        &format!("    (\"wr_dep\", \"DeepList\", \"{deep_shape}\"),\n"),
+    );
+    let ed = run("dep_inputs_exposable", "export_ed", &sd);
+    assert!(
+        ed.contains("deeper than the supported limit"),
+        "a pathologically deep shape must hit the depth cap, got: {ed}"
+    );
+
+    // (e) A residual name<->shape mismatch (`[* nal]` derives CredentialList via the dep's
+    // `@no_alias` substitution, not the listed NalList) must carry the element-resolution appendix
+    // naming the requested ident and its substitution target.
+    let se = write_sidecar("ee.rs", "    (\"wr_dep\", \"NalList\", \"[* nal]\"),\n");
+    let ee = run("dep_inputs_exposable", "export_ee", &se);
+    assert!(
+        ee.contains("name and shape columns disagree")
+            && ee.contains("nal")
+            && ee.contains("credential"),
+        "a residual mismatch must name the leaf ident and its substitution target, got: {ee}"
+    );
 }
 
 /// Regression: a requested wrapper whose element is an ALIAS in the dep's spec — a named-type

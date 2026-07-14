@@ -2605,14 +2605,49 @@ impl GenerationScope {
                     continue;
                 }
                 let rt = parse_requested_shape(types, &entry.shape, consumer, path, &entry.name);
+                // A requested shape that is DIRECTLY WASM-EXPOSABLE has no wrapper class at all —
+                // it lowers to a bare `Vec<…>` at the wasm boundary — so no borrowed wrapper exists
+                // or is needed. Such a request is the symptom of an unfaithful consumer stub: the
+                // consumer declared its element(s) opaque (`_CDDL_CODEGEN_EXTERN_TYPE_`) while this
+                // dep resolves them transparently to a directly-exposable type. Diagnose it here,
+                // before deriving the structural name — otherwise a loose list over a transparent
+                // primitive alias (`[* coin]` with `coin = uint`) misdiagnoses as a name↔shape
+                // disagreement, and a member-form listing (`Vec<u64>` for `[* uint]`) slips past the
+                // cross-check and dies later in rustfmt labeled a generator bug.
+                if let Some(member) = requested_exposable_member(types, &rt) {
+                    let leaves = requested_shape_leaf_resolutions(types, &entry.shape);
+                    let leaf_note = if leaves.is_empty() {
+                        "its element is a wasm-primitive".to_owned()
+                    } else {
+                        format!("its element(s) resolve here as {}", leaves.join(", "))
+                    };
+                    panic!(
+                        "--wrapper-requests {consumer} ({path}): the requested wrapper {:?} with \
+                         shape {:?} is directly wasm-exposable — it lowers to `{member}` with no \
+                         wrapper class, so no borrowed wrapper exists or is needed ({leaf_note}). \
+                         This request is the symptom of an unfaithful consumer stub: the consumer \
+                         declared the element opaque (`_CDDL_CODEGEN_EXTERN_TYPE_`) while this dep \
+                         resolves it transparently. Remedy: fix the consumer's \
+                         `_CDDL_CODEGEN_EXTERN_DEPS_DIR_` stub for this dep to declare the element \
+                         truthfully (e.g. `coin = uint`) and regenerate the consumer, which will \
+                         then stop borrowing this shape.",
+                        entry.name, entry.shape
+                    );
+                }
                 let canonical = render_wrapper_shape(&rt);
                 let structural = requested_structural_name(types, &rt, consumer, path);
                 // Cross-check the derived structural name against the listed name (criterion 8 #2).
                 if structural != entry.name {
+                    let leaves = requested_shape_leaf_resolutions(types, &entry.shape);
+                    let leaf_note = if leaves.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" Element resolution in this dep: {}.", leaves.join(", "))
+                    };
                     panic!(
                         "--wrapper-requests {consumer} ({path}): the borrowed wrapper listed as \
                          {:?} with shape {:?} derives the structural name {:?}, not {:?} — the \
-                         sidecar's name and shape columns disagree (a name↔shape mismatch).",
+                         sidecar's name and shape columns disagree (a name↔shape mismatch).{leaf_note}",
                         entry.name, entry.shape, structural, entry.name
                     );
                 }
@@ -7552,7 +7587,16 @@ fn parse_requested_shape(
 ) -> RustType {
     let chars: Vec<char> = shape.chars().collect();
     let mut pos = 0;
-    let rt = parse_shape_fragment(types, &chars, &mut pos, consumer, path, shape, listed_name);
+    let rt = parse_shape_fragment(
+        types,
+        &chars,
+        &mut pos,
+        consumer,
+        path,
+        shape,
+        listed_name,
+        0,
+    );
     while pos < chars.len() && chars[pos].is_whitespace() {
         pos += 1;
     }
@@ -7565,6 +7609,12 @@ fn parse_requested_shape(
     rt
 }
 
+/// Depth cap for `parse_shape_fragment`'s recursion. Real wrapper shapes nest 2–3 deep; 32 is a
+/// generous ceiling that turns a pathological hand-edited sidecar (thousands of `[* [* …]]` levels)
+/// into an actionable hard error instead of a stack-overflow abort.
+const MAX_SHAPE_DEPTH: usize = 32;
+
+#[allow(clippy::too_many_arguments)]
 fn parse_shape_fragment(
     types: &IntermediateTypes,
     chars: &[char],
@@ -7573,6 +7623,7 @@ fn parse_shape_fragment(
     path: &str,
     shape: &str,
     listed_name: &str,
+    depth: usize,
 ) -> RustType {
     let skip_ws = |pos: &mut usize| {
         while *pos < chars.len() && chars[*pos].is_whitespace() {
@@ -7585,6 +7636,14 @@ fn parse_shape_fragment(
              {listed_name:?}): {what}."
         );
     };
+    if depth > MAX_SHAPE_DEPTH {
+        panic!(
+            "--wrapper-requests {consumer} ({path}): the requested wrapper {listed_name:?} \
+             (shape {shape:?}) nests collections deeper than the supported limit of \
+             {MAX_SHAPE_DEPTH}. Real wrapper shapes nest only a few levels; this is almost \
+             certainly a malformed hand-edited sidecar."
+        );
+    }
     skip_ws(pos);
     if *pos >= chars.len() {
         bad("unexpected end of shape");
@@ -7595,7 +7654,16 @@ fn parse_shape_fragment(
             skip_ws(pos);
             let occ = read_occurrence(chars, pos).unwrap_or_else(|| bad("expected `*` or `+`"));
             skip_ws(pos);
-            let inner = parse_shape_fragment(types, chars, pos, consumer, path, shape, listed_name);
+            let inner = parse_shape_fragment(
+                types,
+                chars,
+                pos,
+                consumer,
+                path,
+                shape,
+                listed_name,
+                depth + 1,
+            );
             skip_ws(pos);
             if *pos >= chars.len() || chars[*pos] != ']' {
                 bad("expected `]`");
@@ -7613,14 +7681,32 @@ fn parse_shape_fragment(
             skip_ws(pos);
             let occ = read_occurrence(chars, pos).unwrap_or_else(|| bad("expected `*` or `+`"));
             skip_ws(pos);
-            let key = parse_shape_fragment(types, chars, pos, consumer, path, shape, listed_name);
+            let key = parse_shape_fragment(
+                types,
+                chars,
+                pos,
+                consumer,
+                path,
+                shape,
+                listed_name,
+                depth + 1,
+            );
             skip_ws(pos);
             if !(chars.get(*pos) == Some(&'=') && chars.get(*pos + 1) == Some(&'>')) {
                 bad("expected `=>`");
             }
             *pos += 2;
             skip_ws(pos);
-            let value = parse_shape_fragment(types, chars, pos, consumer, path, shape, listed_name);
+            let value = parse_shape_fragment(
+                types,
+                chars,
+                pos,
+                consumer,
+                path,
+                shape,
+                listed_name,
+                depth + 1,
+            );
             skip_ws(pos);
             if *pos >= chars.len() || chars[*pos] != '}' {
                 bad("expected `}`");
@@ -7647,6 +7733,19 @@ fn parse_shape_fragment(
             let token: String = chars[start..*pos].iter().collect();
             if let Some(p) = primitive_from_cddl_name(&token) {
                 return RustType::new(ConceptualRustType::Primitive(p));
+            }
+            // A reserved CDDL keyword (`biguint`, `bigint`, …) or reserved Rust type name
+            // (`option` → `Option`) as a leaf token would trip `RustIdent::new`'s internal asserts
+            // — an internal panic reachable only from a hand-edited sidecar (a real consumer never
+            // emits these). Pre-check through the reservation rule's one owner
+            // (`RustIdent::reserved_reason`, the same predicate `new` asserts on) so external
+            // input surfaces the feature's own hard error instead of the assert.
+            if RustIdent::reserved_reason(&token).is_some() {
+                panic!(
+                    "--wrapper-requests {consumer} ({path}): the requested wrapper {listed_name:?} \
+                     (shape {shape:?}) uses the reserved identifier {token:?} as a wrapper element; \
+                     reserved CDDL keywords and reserved Rust type names cannot be wrapper elements."
+                );
             }
             let ident = RustIdent::new(CDDLIdent::new(token.clone()));
             if !dep_owns_element(types, &ident) {
@@ -7721,6 +7820,74 @@ fn requested_structural_name(
             "--wrapper-requests {consumer} ({path}): a requested shape must be a collection wrapper \
              (list or map), got {other:?}."
         ),
+    }
+}
+
+/// If a reconstructed requested shape is DIRECTLY WASM-EXPOSABLE (it lowers to a bare `Vec<…>` with
+/// no wrapper class), return that member spelling; otherwise `None`. Mirrors `name_as_wasm_array_ct`'s
+/// own exposability test exactly (rebuild `Array(inner)` and ask `directly_wasm_exposable_ct`) rather
+/// than sniffing a rendered string. A `Map` top level is never directly exposable; a `[+ …]` NonEmpty
+/// array always gets a wrapper class, so only the loose-array (`[* …]`) case can be exposable.
+fn requested_exposable_member(types: &IntermediateTypes, rt: &RustType) -> Option<String> {
+    match &rt.conceptual_type {
+        ConceptualRustType::Array(inner) if !rt.is_non_empty_array() => {
+            if ConceptualRustType::Array(Box::new(inner.conceptual_type.clone().into()))
+                .directly_wasm_exposable_ct(types)
+            {
+                Some(inner.conceptual_type.name_as_wasm_array_ct(types))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Describe how this dep resolves each NAMED leaf element written in a requested shape's shape column,
+/// for the actionable exposable-shape / name↔shape diagnostics. Walks the ORIGINAL shape tokens (not
+/// the reconstructed `RustType`, which has already substituted `@no_alias` idents away) so the message
+/// names the ident the operator wrote and its resolution target. Primitive leaves contribute nothing.
+/// Only reached after a successful `parse_requested_shape`, so every named token is an owned,
+/// non-reserved ident — `RustIdent::new` cannot trip.
+fn requested_shape_leaf_resolutions(types: &IntermediateTypes, shape: &str) -> Vec<String> {
+    let chars: Vec<char> = shape.chars().collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i].is_ascii_alphanumeric() || chars[i] == '_' || chars[i] == '-' {
+            let start = i;
+            while i < chars.len()
+                && (chars[i].is_ascii_alphanumeric() || chars[i] == '_' || chars[i] == '-')
+            {
+                i += 1;
+            }
+            let token: String = chars[start..i].iter().collect();
+            if primitive_from_cddl_name(&token).is_some() {
+                continue;
+            }
+            let ident = RustIdent::new(CDDLIdent::new(token.clone()));
+            out.push(describe_leaf_resolution(types, &token, &ident));
+        } else {
+            i += 1;
+        }
+    }
+    out
+}
+
+/// One leaf's resolution phrase: a registered struct, a kept alias (rust alias preserving the ident),
+/// or a transparent (`@no_alias` / passthrough) substitution to its base. Consults `type_aliases()`,
+/// the same table `parse_shape_fragment`'s leaf arm resolves through.
+fn describe_leaf_resolution(types: &IntermediateTypes, token: &str, ident: &RustIdent) -> String {
+    match types.type_aliases().get(&AliasIdent::Rust(ident.clone())) {
+        Some(info) => {
+            let target = render_wrapper_shape(&info.base_type);
+            if info.gen_rust_alias {
+                format!("`{token}` (a kept alias resolving to `{target}`)")
+            } else {
+                format!("`{token}` (transparently substituted to `{target}`)")
+            }
+        }
+        None => format!("`{token}` (a registered struct)"),
     }
 }
 

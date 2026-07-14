@@ -2340,26 +2340,46 @@ mod idents {
         }
     }
 
+    /// Why a token cannot become a [`RustIdent`] — see [`RustIdent::reserved_reason`].
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum ReservedIdentKind {
+        RustTypeName,
+        CddlKeyword,
+    }
+
     // formatted code-generation identifier exactly as how it would be in the rust code
     #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
     pub struct RustIdent(String);
 
     impl RustIdent {
+        /// Why `token` cannot become a `RustIdent`, or `None` if it can. The ONE owner of the
+        /// reservation rule: `new` asserts on it (internal invariant — pipeline callers never feed
+        /// reserved tokens), and callers that take idents from EXTERNAL text (the
+        /// `--wrapper-requests` shape parser) pre-check with it so their input surfaces the
+        /// feature's own hard error instead of the assert.
+        pub fn reserved_reason(token: &str) -> Option<ReservedIdentKind> {
+            if STD_TYPES.contains(&&super::convert_to_camel_case(token)[..]) {
+                Some(ReservedIdentKind::RustTypeName)
+            } else if token != "int" && is_identifier_reserved(token) {
+                // int is special here since it refers to our own rust struct, not a primitive
+                Some(ReservedIdentKind::CddlKeyword)
+            } else {
+                None
+            }
+        }
+
         // this should not be created directly, but instead via IntermediateTypes::new_type()
         // except for defining new cddl rules, since those should not be reserved identifiers
         pub fn new(cddl_ident: CDDLIdent) -> Self {
-            // int is special here since it refers to our own rust struct, not a primitive
-            assert!(
-                !STD_TYPES.contains(&&super::convert_to_camel_case(&cddl_ident.0)[..]),
-                "Cannot use reserved Rust type name: \"{}\"",
-                cddl_ident.0
-            );
-            if cddl_ident.0 != "int" {
-                assert!(
-                    !is_identifier_reserved(&cddl_ident.0),
-                    "Cannot use reserved CDDL keyword: \"{}\"",
-                    cddl_ident.0
-                );
+            // Message texts are recombination-sweep panic-class keys — keep them if refactoring.
+            match Self::reserved_reason(&cddl_ident.0) {
+                Some(ReservedIdentKind::RustTypeName) => {
+                    panic!("Cannot use reserved Rust type name: \"{}\"", cddl_ident.0)
+                }
+                Some(ReservedIdentKind::CddlKeyword) => {
+                    panic!("Cannot use reserved CDDL keyword: \"{}\"", cddl_ident.0)
+                }
+                None => {}
             }
 
             Self(super::convert_to_camel_case(&cddl_ident.0))
