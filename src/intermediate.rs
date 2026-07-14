@@ -1133,15 +1133,57 @@ impl<'a> IntermediateTypes<'a> {
         aliases
     }
 
-    // note: this is mut so that apply_type_aliases() can mark which reserved idents
+    /// The alias-substitution rule: a REGISTERED alias resolves to its base type, kept behind an
+    /// `Alias` wrapper when the alias generates a rust type (`gen_rust_alias` — the wrapper is what
+    /// preserves the alias's name for naming derivations) and substituted transparently when it
+    /// doesn't; an unregistered ident is `None` (the caller decides the fallback). This is the ONE
+    /// owner of that rule: `new_type` (the canonical pipeline constructor) and the
+    /// `--wrapper-requests` shape parser (generation.rs `parse_shape_fragment`) both call it, so a
+    /// leaf built outside the pipeline cannot drift from pipeline resolution — the drift is exactly
+    /// how alias-element requests once panicked `is_enum`'s registered-struct invariant (pinned by
+    /// `workspace_requests_alias_elements_host`). Immutable on purpose: prelude emission for
+    /// unregistered reserved idents is `new_type`'s fallback, not part of the rule.
+    pub fn resolve_alias(&self, alias_ident: &AliasIdent) -> Option<RustType> {
+        self.type_aliases.get(alias_ident).map(|info| {
+            if info.gen_rust_alias {
+                info.base_type.clone().as_alias(alias_ident.clone())
+            } else {
+                info.base_type.clone()
+            }
+        })
+    }
+
+    // note: this is mut so the unregistered-reserved fallback can mark which reserved idents
     // are in the CDDL prelude so we don't generate code for all of them, potentially
     // bloating generated code a bit
     pub fn new_type(&mut self, raw: &CDDLIdent, cli: &Cli) -> RustType {
         let alias_ident = AliasIdent::new(raw.clone());
-        let resolved = match self.apply_type_aliases(&alias_ident, cli) {
-            Some((ty, true)) => ty,
-            Some((ty, false)) => ty.as_alias(alias_ident.clone()),
-            None => ConceptualRustType::Rust(RustIdent::new(raw.clone())).into(),
+        let resolved = match self.resolve_alias(&alias_ident) {
+            Some(ty) => ty,
+            None => match &alias_ident {
+                AliasIdent::Rust(_) => ConceptualRustType::Rust(RustIdent::new(raw.clone())).into(),
+                AliasIdent::Reserved(reserved) if reserved == "int" => {
+                    // We define an Int rust struct in prelude.rs
+                    ConceptualRustType::Rust(RustIdent::new(raw.clone())).into()
+                }
+                AliasIdent::Reserved(reserved) => {
+                    // we auto-include only the parts of the cddl prelude necessary (and supported)
+                    cddl_prelude(reserved).unwrap_or_else(|| {
+                        panic!(
+                            "{}",
+                            "Reserved ident {reserved} not a part of cddl_prelude?"
+                        )
+                    });
+                    self.emit_prelude(reserved.clone(), cli);
+                    // Resolve to whatever the emitted `prelude_<x>` rule resolves to, exactly
+                    // as a user-written reference to that rule would. This yields a proper
+                    // Alias (for plain prelude types like biguint) or a Rust struct ref (for
+                    // type-choice prelude types like bigint), instead of a bare Rust ident
+                    // pointing at an unregistered type alias - which panics downstream lookups
+                    // (is_enum, cbor_types, ...) that assume Rust(ident) names a real struct.
+                    self.new_type(&CDDLIdent::new(format!("prelude_{reserved}")), cli)
+                }
+            },
         };
         let resolved_inner = match &resolved.conceptual_type {
             ConceptualRustType::Alias(_, ty) => ty,
@@ -1169,47 +1211,6 @@ impl<'a> IntermediateTypes<'a> {
         // homogeneous_array / special_map_key corpus round-trips and the golden_hex_preserve KATs)
         // — not something an assert here needs to guard.
         resolved
-    }
-
-    // see new_type() for why this is mut
-    /// returns: (base type, if the alias should be substituted)
-    pub fn apply_type_aliases(
-        &mut self,
-        alias_ident: &AliasIdent,
-        cli: &Cli,
-    ) -> Option<(RustType, bool)> {
-        // Assumes we are not trying to pass in any kind of compound type (arrays, etc)
-        match self.type_aliases.get(alias_ident) {
-            Some(alias) => Some((alias.base_type.clone(), !alias.gen_rust_alias)),
-            None => match alias_ident {
-                AliasIdent::Rust(_rust_ident) => None,
-                AliasIdent::Reserved(reserved) => {
-                    if reserved == "int" {
-                        // We define an Int rust struct in prelude.rs
-                        None
-                    } else {
-                        // we auto-include only the parts of the cddl prelude necessary (and supported)
-                        cddl_prelude(reserved).unwrap_or_else(|| {
-                            panic!(
-                                "{}",
-                                "Reserved ident {reserved} not a part of cddl_prelude?"
-                            )
-                        });
-                        self.emit_prelude(reserved.clone(), cli);
-                        // Resolve to whatever the emitted `prelude_<x>` rule resolves to, exactly
-                        // as a user-written reference to that rule would. This yields a proper
-                        // Alias (for plain prelude types like biguint) or a Rust struct ref (for
-                        // type-choice prelude types like bigint), instead of a bare Rust ident
-                        // pointing at an unregistered type alias - which panics downstream lookups
-                        // (is_enum, cbor_types, ...) that assume Rust(ident) names a real struct.
-                        Some((
-                            self.new_type(&CDDLIdent::new(format!("prelude_{reserved}")), cli),
-                            true,
-                        ))
-                    }
-                }
-            },
-        }
     }
 
     pub fn register_type_alias(&mut self, alias: RustIdent, info: AliasInfo) {
@@ -1281,7 +1282,8 @@ impl<'a> IntermediateTypes<'a> {
         if let Some(rs) = self.rust_struct(ident) {
             matches!(rs.variant(), RustStructType::CStyleEnum { .. })
         } else {
-            // could be a generic instead
+            // could be a generic instead. (Message text is a recombination-sweep panic-class key —
+            // known-class ledgers match on it, so don't reword casually.)
             assert!(self.generic_instances.contains_key(ident));
             false
         }
