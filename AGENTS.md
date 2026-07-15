@@ -65,6 +65,13 @@ changing the *runtime behaviour* of generated code usually means editing `static
     `--key-requests` reading a CONSUMER's committed `borrowed_collections.rs` /
     `borrowed_key_types.rs` — are explicit INPUTS from another crate, not this run's prior output;
     same inputs → same bytes still holds.)
+- **Never regenerate a downstream CONSUMER repo (e.g. a CML checkout) to validate a change.**
+  Generation clobbers the consumer's `src/generated/**`, and those working trees may hold large
+  uncommitted migrations — a "just regen it to prove the fix" step nearly destroyed one. Validate
+  against a synthetic fixture mirroring the consumer's shape, generated into a scratch/throwaway
+  directory (the `@used_as_key` flavor delivery did exactly this: an `Ord`-refusing extern + a
+  flavored union, generated to scratch, `cargo check`ed both directions). Regenerate a real
+  consumer only when its owner explicitly asks, with their tree committed.
 - **The IR borrows the AST.** `IntermediateTypes<'a>` can't be returned from a function that parses
   internally — drive the pipeline through the scoped callback in `api.rs` (it owns the AST).
 - **bin/lib module duplication.** `main.rs` and `lib.rs` each declare the module list — a new
