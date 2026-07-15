@@ -385,6 +385,51 @@ const GRID: &[Cell] = &[
             must_not: &["impl serde::Serialize for Cj"],
         },
     },
+    // 21a. @custom_json on a SUM-TYPE rule (flags: --preserve-encodings=true --json-serde-derives=true).
+    //      The enum gets no serde derive (custom_json suppresses it), so its variant encoding fields
+    //      must NOT carry `#[serde(skip)]` — an unregistered serde helper attribute makes the crate
+    //      fail `cargo check` ("cannot find attribute `serde`"). Control `CtrlSum` (no @custom_json,
+    //      same flags) still emits `#[serde(skip)]` on its encoding fields, attributing the absence to
+    //      the directive rather than a missing flag. The `@custom_json` merges onto the whole rule via
+    //      the last type-choice variant's trailing comment.
+    Cell {
+        directive: "@custom_json",
+        position: "type-choice-rule",
+        spec: "my_sum =\n    uint ; @name integer\n  / bytes ; @name raw @custom_json\nctrl_sum =\n    uint ; @name cint\n  / bytes ; @name craw\n",
+        flags: &["--preserve-encodings=true", "--json-serde-derives=true"],
+        expect: Expect::Effect {
+            must: &[
+                "integer_encoding: Option<cbor_event::Sz>",
+                "#[serde(skip)]\n        cint_encoding",
+            ],
+            must_not: &[
+                "#[serde(skip)]\n        integer_encoding",
+                "#[serde(skip)]\n        raw_encoding",
+            ],
+        },
+    },
+    // 21b. @custom_json on a RECORD-STRUCT (map group) rule, same flags. The struct's serde/schemars
+    //      derives AND its preserve-encodings `encodings` field's `#[serde(skip)]` must BOTH be
+    //      suppressed — they're only coherent together (derives without the skip demand serde impls
+    //      for the encoding struct, E0277; the skip without derives is an unregistered attribute).
+    //      Control `CtrlRec` (no @custom_json) keeps both — positive control in the same spec.
+    Cell {
+        directive: "@custom_json",
+        position: "map-group-rule",
+        spec: "my_rec = { 0: uint } ; @custom_json\nctrl_rec = { 1: uint }\n",
+        flags: &["--preserve-encodings=true", "--json-serde-derives=true"],
+        expect: Expect::Effect {
+            must: &[
+                "pub encodings: Option<MyRecEncoding>",
+                "#[serde(skip)]\n    pub encodings: Option<CtrlRecEncoding>",
+                "serde::Serialize)]\npub struct CtrlRec {",
+            ],
+            must_not: &[
+                "#[serde(skip)]\n    pub encodings: Option<MyRecEncoding>",
+                "serde::Serialize)]\npub struct MyRec {",
+            ],
+        },
+    },
     // ---- @custom_serialize / @custom_deserialize (string-level only) -------------------------
     // 22. type level → the custom fns are called in the generated (de)serialization source.
     Cell {
