@@ -119,6 +119,21 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    - **Real-world corpus differential** (see `draft/testing-recommendations/RECOMMENDATIONS.md`):
      synthetic breadth vs real-world depth — recombination does not replace it.
 
+2. **A flavored-borrow workspace fixture (`@used_as_key hash`/`ord` across the `--key-requests`
+   channel).** The flavor legs of the map-key-derive channel are pinned at the unit layer
+   (`key_types_accepts_flavor_column` / `key_types_rejects_unknown_flavor` in
+   `src/wrapper_requests.rs`, plus the emitter's conditional three-column form), and the all-bare
+   workspace fixtures prove byte-identity — but no workspace fixture yet runs the flavored
+   contract end-to-end: a consumer whose spec tags a dep extern with a flavor emits the
+   three-column row + per-flavor self-check, the dep's `--key-requests` regen derives exactly the
+   named family (a hash-only borrow must NOT force `Ord` through the dep's fields), and both
+   crates compile against each other. The compiled cross-crate seam is what the unit tests
+   structurally can't see — the same rationale that justified
+   `workspace_key_requests_derive_effect_and_hard_errors` for the bare channel. Extend one of the
+   existing `tests/workspace-*` fixtures (or mint a sibling) rather than a new gate shape; user
+   docs for the format are `docs/docs/output_format.mdx` § Workspace mode and
+   `docs/docs/comment_dsl.mdx` § `@used_as_key`.
+
 ## Standing-system residuals (recur-first)
 
 Each entry here is a ledger record for a proven-once failure class: what happened, which standing
