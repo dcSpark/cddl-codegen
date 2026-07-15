@@ -109,13 +109,54 @@ pub struct Bar {
 foo = [
   x: uint,
   y: uint,
-] ; @used_as_Key
+] ; @used_as_key
 ```
 
-cddl-codegen automatically derives `Ord`/`PartialOrd` or `Hash` for any types used within as a key in another type.
-Putting this comment on a type forces that type to derive those traits even if it weren't used in a key in the cddl spec.
-This is useful for when you are writing utility code that would put them in a map and want the generated code to have it already,
-which is particularly useful for re-generating as it lets your `mod.rs` files remain untouched.
+cddl-codegen derives the comparison/hash traits a type needs to serve as a map/set key. For any type
+used as a CBOR map key *in the spec* it infers this automatically; `@used_as_key` forces the same
+derives onto a type even when the spec never keys a map on it — useful when your own utility code puts
+the type in a map and you want the generated code to already implement the traits (and, because it
+lives in the spec, your hand-written `mod.rs` files stay untouched across regenerations).
+
+### Flavors
+
+Bare `@used_as_key` derives the tool's full internal key bundle: `Eq, PartialEq, Ord, PartialOrd` —
+plus `Hash` under `--preserve-encodings` (that mode's maps are hash-ordered). This bundle is
+**mode-dependent** and matches exactly what an auto-detected CBOR map key gets.
+
+When your downstream code only needs *one* family, name it — the flavor is **mode-independent** (an
+external `HashMap`/`BTreeMap` requirement exists regardless of the encoding flags):
+
+```cddl
+transaction_output = alonzo_format_tx_out / conway_format_tx_out ; @used_as_key hash
+```
+
+| Tag | Derives |
+|-----|---------|
+| `@used_as_key` (bare) | `Eq, PartialEq, Ord, PartialOrd` (+ `Hash` under `--preserve-encodings`) |
+| `@used_as_key hash` | `Hash, Eq, PartialEq` |
+| `@used_as_key ord` | `Ord, PartialOrd, Eq, PartialEq` |
+| `@used_as_key hash ord` | the union of both |
+
+Naming a flavor lets a type that keys a `HashMap` downstream avoid an `Ord` it can never supply (e.g.
+a hand-written extern with no total order), instead of failing to compile far from the cause.
+
+**Demand is a union.** Flavors and the internal bundle can only *add* derives, never remove them:
+tagging a type `hash` cannot strip the `Ord` it gets from *also* being an auto-detected CBOR map key.
+The flavor propagates transitively to every type the tagged type contains, exactly like the bare tag.
+
+**Strict vocabulary.** Only `hash` and `ord` may follow `@used_as_key`. Any other word — a typo, or
+trailing prose like `@used_as_key marks the output` — is a hard error; put prose in `@doc`.
+
+**Compile-time assertions.** For each tagged type with a flavor, the generated crate gets a named
+`_demand_<rule>` function (in `generated/key_demand_assertions.rs`) that asks the compiler to prove
+the type supplies the flavor's traits — turning a distant trait error into a near, named one citing
+the tag.
+
+**Version-skew hazard.** A cddl-codegen older than this feature silently *ignores* the flavor word and
+falls back to the full bundle, so a spec relying on a narrow flavor to avoid `Ord` (etc.) regenerates
+the original failure under an old tool. Pin your tool version in-repo. (Requires cddl-codegen with
+`@used_as_key` flavor support.)
 
 ## @used_as_elem
 

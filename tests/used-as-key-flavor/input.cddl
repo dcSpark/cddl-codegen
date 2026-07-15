@@ -1,0 +1,6 @@
+; A hand-written extern that deliberately supplies Hash+Eq but NOT Ord (see the injected `Value` in
+; the `used_as_key_ord_flavor_assertion_fails_on_missing_supply` integration test). `keyed` is tagged
+; `@used_as_key ord`, so it demands `Ord` transitively through `value` — which `value` refuses. The
+; emitted `_demand_keyed` assertion turns that into a near, named compile error at the definition site.
+value = _CDDL_CODEGEN_EXTERN_TYPE_
+keyed = [v: value] ; @used_as_key ord

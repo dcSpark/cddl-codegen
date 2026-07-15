@@ -1,0 +1,27 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+mod key_demand_assertions;
+pub mod serialization;
+
+use crate::generated::error::*;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub struct Keyed {
+    pub a: u64,
+    pub b: String,
+}
+
+impl Keyed {
+    pub fn new(a: u64, b: String) -> Self {
+        Self { a, b }
+    }
+}

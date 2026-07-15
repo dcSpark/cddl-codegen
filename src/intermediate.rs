@@ -4,7 +4,7 @@ use cddl::ast::parent::ParentVisitor;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::comment_ast::RuleMetadata;
+use crate::comment_ast::{DemandSet, RuleMetadata};
 // TODO: move all of these generation specifics into generation.rs
 use crate::generation::table_type;
 use crate::utils::{
@@ -144,7 +144,16 @@ pub struct IntermediateTypes<'a> {
     generic_defs: BTreeMap<RustIdent, GenericDef>,
     generic_instances: BTreeMap<RustIdent, GenericInstance>,
     news_can_fail: BTreeSet<RustIdent>,
-    used_as_key: BTreeSet<RustIdent>,
+    // Every ident finalize resolves as used-as-key, mapped to the UNION of comparison/hash trait
+    // demand on it (`@used_as_key` flavors + auto-detected internal map-key bundle). Presence in the
+    // map == used-as-key; `DemandSet` records WHICH derive family. Propagated as demand SETS (not one
+    // bit) through the transitive `visit_types` walk in `finalize`. Determinism: `BTreeMap`.
+    key_demand: BTreeMap<RustIdent, DemandSet>,
+    // The subset of `key_demand` that was DIRECTLY tagged (via `@used_as_key`/`--key-requests`), before
+    // finalize's transitive expansion — the "demand roots". Only these get an emitted compile-time
+    // demand assertion (auto-detected internal keys are enforced by the generated containers' own
+    // bounds). Recorded at `mark_key_demand` time so the roots survive the finalize union.
+    key_demand_roots: BTreeMap<RustIdent, DemandSet>,
     // Idents explicitly tagged `@used_as_elem`: the generator mints the loose-list wasm wrapper
     // (`FooList = [* foo]` equivalent) for each, exactly as an inline `[* foo]` usage would. Unlike
     // `used_as_key`, there is NO transitive expansion — the tag names the element directly, and the
@@ -190,7 +199,8 @@ impl<'a> IntermediateTypes<'a> {
             generic_defs: BTreeMap::new(),
             generic_instances: BTreeMap::new(),
             news_can_fail: BTreeSet::new(),
-            used_as_key: BTreeSet::new(),
+            key_demand: BTreeMap::new(),
+            key_demand_roots: BTreeMap::new(),
             used_as_elem: BTreeSet::new(),
             scopes: BTreeMap::new(),
             rule_source_names: BTreeMap::new(),
@@ -1482,20 +1492,35 @@ impl<'a> IntermediateTypes<'a> {
             }
         }
         // recursively check all types used as keys or contained within a type used as a key
-        // this is so we only derive comparison or hash traits for those types
-        let mut used_as_key = BTreeSet::new();
-        fn mark_used_as_key(ty: &ConceptualRustType, used_as_key: &mut BTreeSet<RustIdent>) {
+        // this is so we only derive comparison or hash traits for those types. Demand is propagated as
+        // SETS (`DemandSet`), union-merged: a tagged root spreads ITS flavor to every contained type;
+        // an auto-detected internal map key spreads the mode-dependent `bare` internal bundle. Flavors
+        // can only ADD to `bare`, never narrow it, so a type that is both is safe.
+        let mut key_demand: BTreeMap<RustIdent, DemandSet> = BTreeMap::new();
+        fn mark_key_demand(
+            ty: &ConceptualRustType,
+            key_demand: &mut BTreeMap<RustIdent, DemandSet>,
+            demand: DemandSet,
+        ) {
             if let ConceptualRustType::Rust(ident) = ty {
-                used_as_key.insert(ident.clone());
+                let e = key_demand.entry(ident.clone()).or_default();
+                *e = e.union(demand);
             }
         }
+        // An auto-detected internal map key demands today's `bare` internal bundle (mode-dependent).
+        let bare = DemandSet {
+            bare: true,
+            hash: false,
+            ord: false,
+        };
         fn check_used_as_key(
             ty: &ConceptualRustType,
             types: &IntermediateTypes<'_>,
-            used_as_key: &mut BTreeSet<RustIdent>,
+            key_demand: &mut BTreeMap<RustIdent, DemandSet>,
+            bare: DemandSet,
         ) {
             if let ConceptualRustType::Map(k, _v) = ty {
-                k.visit_types(types, &mut |ty| mark_used_as_key(ty, used_as_key));
+                k.visit_types(types, &mut |ty| mark_key_demand(ty, key_demand, bare));
             }
         }
         // A map key that is (or recursively contains) a float compiles to a `BTreeMap<f64, _>` (or
@@ -1523,18 +1548,22 @@ impl<'a> IntermediateTypes<'a> {
                 "rule `{rule}`: table key type contains a float (floats have no total order, so they cannot be map keys) — use an integer/text/bytes key domain instead"
             )
         }
-        // do a recursive check on the ones explicitly tagged as keys using @used_as_key
-        // this is done here since the lambdas are defined here so we can reuse them
-        for ident in &self.used_as_key {
+        // do a recursive check on the ones explicitly tagged as keys using @used_as_key: each tagged
+        // root spreads its OWN flavor to every type it (transitively) contains. Iterating the roots map
+        // (not the full `key_demand`, which finalize is about to expand) keeps the propagated flavor
+        // exactly what the tag declared.
+        for (ident, demand) in &self.key_demand_roots {
             if let Some(rust_struct) = self.rust_struct(ident) {
-                rust_struct.visit_types(self, &mut |ty| mark_used_as_key(ty, &mut used_as_key));
+                let demand = *demand;
+                rust_struct
+                    .visit_types(self, &mut |ty| mark_key_demand(ty, &mut key_demand, demand));
             }
         }
         // check all other places used as keys
         for rust_struct in self.rust_structs().values() {
             let rule_ident = rust_struct.ident().clone();
             rust_struct.visit_types(self, &mut |ty| {
-                check_used_as_key(ty, self, &mut used_as_key);
+                check_used_as_key(ty, self, &mut key_demand, bare);
                 // A nested/inline map (`{ number => uint }` as an array element or map value)
                 // surfaces as a Map conceptual type rather than a Table struct, so its float key is
                 // rejected here — the Table branch below only sees top-level `x = { k => v }` rules.
@@ -1545,7 +1574,7 @@ impl<'a> IntermediateTypes<'a> {
                 }
             });
             if let RustStructType::Table { domain, .. } = rust_struct.variant() {
-                domain.visit_types(self, &mut |ty| mark_used_as_key(ty, &mut used_as_key));
+                domain.visit_types(self, &mut |ty| mark_key_demand(ty, &mut key_demand, bare));
                 // A top-level table rule's key is its `domain`, walked directly (not as a Map node),
                 // so it needs its own check. This runs AFTER generic resolution, so it also catches
                 // float keys hidden behind a resolved generic instance (`{ gen<float64> => uint }`),
@@ -1557,8 +1586,8 @@ impl<'a> IntermediateTypes<'a> {
             }
         }
         // we use a separate one here to get around the borrow checker in the above visit_types
-        for ident in used_as_key {
-            self.mark_used_as_key(ident);
+        for (ident, demand) in key_demand {
+            self.union_key_demand(ident, demand);
         }
         for msg in float_key_rejections {
             self.record_rejection(msg);
@@ -2055,18 +2084,42 @@ impl<'a> IntermediateTypes<'a> {
     }
 
     pub fn used_as_key(&self, name: &RustIdent) -> bool {
-        self.used_as_key.contains(name)
+        self.key_demand.contains_key(name)
     }
 
-    /// The full set of idents finalize resolved as used-as-key, in sorted (`BTreeSet`) order. The
+    /// The comparison/hash trait demand resolved onto `name` (the union of every tag + auto-detected
+    /// internal-key contribution), or `None` if it is not used as a key.
+    pub fn key_demand(&self, name: &RustIdent) -> Option<DemandSet> {
+        self.key_demand.get(name).copied()
+    }
+
+    /// The full set of idents finalize resolved as used-as-key, in sorted (`BTreeMap`) order. The
     /// consumer-side `borrowed_key_types.rs` emitter partitions this for the extern idents owned by a
     /// `--workspace-dep` (those get marked here then otherwise evaporate — no in-crate type to derive).
-    pub fn used_as_key_idents(&self) -> &BTreeSet<RustIdent> {
-        &self.used_as_key
+    pub fn used_as_key_idents(&self) -> impl Iterator<Item = &RustIdent> {
+        self.key_demand.keys()
     }
 
-    pub fn mark_used_as_key(&mut self, name: RustIdent) {
-        self.used_as_key.insert(name);
+    /// The directly-tagged demand roots (pre-transitive-expansion), sorted. Drives the emitted
+    /// compile-time demand assertions (`generation.rs`).
+    pub fn key_demand_roots(&self) -> &BTreeMap<RustIdent, DemandSet> {
+        &self.key_demand_roots
+    }
+
+    /// Record a directly-tagged demand root (from `@used_as_key` or `--key-requests`). Unions into
+    /// both the roots map and the full demand map (finalize then expands the full map transitively).
+    pub fn mark_key_demand(&mut self, name: RustIdent, demand: DemandSet) {
+        let root = self.key_demand_roots.entry(name.clone()).or_default();
+        *root = root.union(demand);
+        let full = self.key_demand.entry(name).or_default();
+        *full = full.union(demand);
+    }
+
+    /// Union `demand` into the full demand map without touching the roots map — the transitive-expansion
+    /// path used by `finalize`.
+    fn union_key_demand(&mut self, name: RustIdent, demand: DemandSet) {
+        let full = self.key_demand.entry(name).or_default();
+        *full = full.union(demand);
     }
 
     /// The set of idents tagged `@used_as_elem`, in sorted (`BTreeSet`) order — the generator walks

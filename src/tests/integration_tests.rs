@@ -4627,6 +4627,89 @@ fn used_as_elem_mints_loose_list_wrapper() {
     );
 }
 
+/// Plan step 4 (emitted demand assertions): a `@used_as_key ord` root over an extern that supplies
+/// Hash+Eq but NOT Ord must (a) emit a named `_demand_keyed` assertion over the tagged type citing the
+/// tag, and (b) make the GENERATED crate fail to compile because the extern refuses `Ord`. In the
+/// same-crate case the tagged type's OWN `#[derive(Ord)]` is the first failure and rustc's derive
+/// error-recovery synthesizes a stub `Ord` that masks the assertion's redundant error; the assertion's
+/// distinct cross-crate value (naming the demanding ROOT when the failure surfaces far away) is covered
+/// by the CML validation. Here we pin the mechanism that matters in phase 1: the flavor is enforced at
+/// the generated crate's compile, and the assertion is emitted well-formed.
+#[test]
+fn used_as_key_ord_flavor_assertion_fails_on_missing_supply() {
+    use std::io::Write;
+    use std::str::FromStr;
+    if !tool_exists("cargo") {
+        return;
+    }
+    let base = std::path::PathBuf::from_str("tests/used-as-key-flavor").unwrap();
+    let out_dir = base.join("export");
+    let _ = std::fs::remove_dir_all(&out_dir);
+    let gen_out = tool_cmd("cargo")
+        .arg("run")
+        .arg("--")
+        .arg("--input=tests/used-as-key-flavor/input.cddl")
+        .arg("--output=tests/used-as-key-flavor/export")
+        .arg("--wasm=false")
+        .output()
+        .unwrap();
+    assert!(
+        gen_out.status.success(),
+        "generation must succeed (the supply check is deferred to the generated crate's compile):\n{}",
+        String::from_utf8_lossy(&gen_out.stderr)
+    );
+
+    // The emitted assertion file must exist and reference the ord carrier over the tagged type.
+    let assertions =
+        std::fs::read_to_string(out_dir.join("rust/src/generated/key_demand_assertions.rs"))
+            .expect("key_demand_assertions.rs must be emitted for a flavored root");
+    assert!(
+        assertions.contains("_key_demand_ord::<crate::generated::Keyed>();")
+            && assertions.contains("@used_as_key ord` on keyed"),
+        "the assertion must name the ord carrier and cite the tag:\n{assertions}"
+    );
+
+    // Inject a hand-written `Value` extern that supplies Hash+Eq but deliberately NOT Ord.
+    let mut lib_rs = std::fs::OpenOptions::new()
+        .append(true)
+        .open(out_dir.join("rust/src/lib.rs"))
+        .unwrap();
+    lib_rs
+        .write_all(
+            b"\nuse serialization::*;\n\n\
+            #[derive(Clone, Debug, Eq, PartialEq, Hash)]\n\
+            pub struct Value(pub u64);\n\
+            impl cbor_event::se::Serialize for Value {\n\
+                fn serialize<'se, W: std::io::Write>(&self, serializer: &'se mut cbor_event::se::Serializer<W>) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {\n\
+                    serializer.write_unsigned_integer(self.0)\n\
+                }\n\
+            }\n\
+            impl serialization::Deserialize for Value {\n\
+                fn deserialize<R: std::io::BufRead + std::io::Seek>(raw: &mut cbor_event::de::Deserializer<R>) -> Result<Self, error::DeserializeError> {\n\
+                    Ok(Value(raw.unsigned_integer()?))\n\
+                }\n\
+            }\n",
+        )
+        .unwrap();
+    std::mem::drop(lib_rs);
+
+    let build = tool_cmd("cargo")
+        .arg("build")
+        .current_dir(out_dir.join("rust"))
+        .output()
+        .unwrap();
+    assert!(
+        !build.status.success(),
+        "the generated crate must fail to compile: `Value` supplies no `Ord` but `keyed` demands it"
+    );
+    let stderr = String::from_utf8_lossy(&build.stderr);
+    assert!(
+        stderr.contains("Value") && stderr.contains("Ord"),
+        "the compile failure must be the missing `Ord` supply on the extern the flavor demands; \
+         stderr:\n{stderr}"
+    );
+}
+
 /// The dcSpark `cddl` fork (already this crate's parser dep) as a test dependency of a *generated*
 /// crate, so its round-trips gain the independent conformance oracle (tests/deser_test_conformance.rs).
 /// Pinned to the same rev as Cargo.toml — enforced by `cddl_oracle_dep_rev_matches_cargo_toml` below,

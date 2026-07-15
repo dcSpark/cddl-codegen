@@ -285,6 +285,15 @@ fn _borrowed_key_types_self_check() {
 pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] = &[("cml_dep", "foo")];
 ```
 
+When a borrowed key carries a [`@used_as_key`](./comment_dsl) **flavor** (`hash`/`ord`) rather than the
+bare full bundle, each row gains an optional third column naming the flavor, the table type becomes
+`&[(&str, &str, &str)]`, and the self-check splits into per-flavor bound carriers
+(`_assert_key_traits_hash<K: Eq + core::hash::Hash>()`, …) so a hash-only borrow is not checked against
+the full `Ord` bundle. An all-bare sidecar keeps the two-column form **byte-identically** — this is a
+pure superset. The three-column banner is a **declared breaking seam**: a cddl-codegen predating flavor
+support hard-errors ("unexpected comment"/"row must be … two string literals") when it re-reads a new
+consumer's flavored sidecar, rather than silently mis-deriving. Keep workspace tool versions in sync.
+
 ### `requested_collections.rs` — the dependency's hosted wrappers
 
 Emitted whenever `--wrapper-requests` is set (empty-but-present when flagged, absent with no flag —

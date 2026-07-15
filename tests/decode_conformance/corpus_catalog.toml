@@ -1338,6 +1338,206 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "dsl_used_as_key_hash.keyed"
+axis = "corpus"
+example = "keyed = [a: uint, b: text] ; @used_as_key hash"
+fixture = "dsl_used_as_key_hash"
+rule = "keyed"
+spec = "__probe_holder = [0, keyed]\nkeyed = [a: uint, b: text] ; @used_as_key hash"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820082183964416d2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008218d266526567676965"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008218ef63627573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821901d969486f636b6e65792773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821902fa67446f796c652773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821904036b7374726174696679696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008219056d66696e73757265"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008219065f657665742773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821906ab687265656665722773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190ecd6d706c617469747564696e6f7573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "dsl_used_as_key_hash_cstyle.fixed_enum"
+axis = "corpus"
+example = "fixed_enum = 0 / 1 / 2 ; @used_as_key hash"
+fixture = "dsl_used_as_key_hash_cstyle"
+rule = "fixed_enum"
+spec = "__probe_holder = [0, fixed_enum]\nfixed_enum = 0 / 1 / 2 ; @used_as_key hash"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820001"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820002"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "dsl_used_as_key_hash_ord.keyed"
+axis = "corpus"
+example = "keyed = [a: uint, b: text] ; @used_as_key hash ord"
+fixture = "dsl_used_as_key_hash_ord"
+rule = "keyed"
+spec = "__probe_holder = [0, keyed]\nkeyed = [a: uint, b: text] ; @used_as_key hash ord"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82008219011d6a756e6c696b656c696572"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008219012b6770726f776c6564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821901c3686475737465722773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821902ac6a7769646573637265656e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821903586777726f6e676572"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821905de6d636f6d6d756e69636174696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190a9d6963726f7373696e6773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190b336b7265667269676572616e74"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190e306973687566666c657273"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190eaa6b7369676e626f6172642773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "dsl_used_as_key_ord.keyed"
+axis = "corpus"
+example = "keyed = [a: uint, b: text] ; @used_as_key ord"
+fixture = "dsl_used_as_key_ord"
+rule = "keyed"
+spec = "__probe_holder = [0, keyed]\nkeyed = [a: uint, b: text] ; @used_as_key ord"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82008219026566706174726f6c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821902a667696e6369746564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190433684a61636f62697465"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821906d06c73706972697475616c69736d"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008219075d6767616464696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821908806965786f7263697a6564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821908f06861736872616d2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821908f26b747261646974696f6e616c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190aad6c427261647374726565742773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190be16977696e646f77696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "exclusive_range.exclusive_range"
 axis = "corpus"
 example = "exclusive_range = [v: 0...10]"

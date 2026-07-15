@@ -6,6 +6,41 @@ use nom::{
     multi::many0,
 };
 
+/// The comparison/hash trait "flavor" a `@used_as_key` tag demands. Fields OR-merge (like the other
+/// boolean metadata flags), so two comment lines — or two flavor words on one tag — union. Demand is
+/// therefore a monotone union: a flavor can only ADD derives on top of internal demand, never remove.
+///
+/// - `bare`: bare `@used_as_key` — today's mode-dependent full internal bundle
+///   (`Eq/PartialEq/Ord/PartialOrd`, plus `Hash` under `--preserve-encodings`).
+/// - `hash`: `@used_as_key hash` — `Hash, Eq, PartialEq` (mode-INdependent: external downstream
+///   `HashMap` demand exists regardless of the encoding flags).
+/// - `ord`: `@used_as_key ord` — `Ord, PartialOrd, Eq, PartialEq` (mode-independent).
+#[derive(Copy, Clone, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct DemandSet {
+    pub bare: bool,
+    pub hash: bool,
+    pub ord: bool,
+}
+
+impl DemandSet {
+    pub fn union(self, other: DemandSet) -> DemandSet {
+        DemandSet {
+            bare: self.bare || other.bare,
+            hash: self.hash || other.hash,
+            ord: self.ord || other.ord,
+        }
+    }
+}
+
+/// Field-wise OR of two optional demand sets (None = no `@used_as_key` tag at all).
+fn merge_key_demand(a: Option<DemandSet>, b: Option<DemandSet>) -> Option<DemandSet> {
+    match (a, b) {
+        (Some(x), Some(y)) => Some(x.union(y)),
+        (x @ Some(_), None) => x,
+        (None, y) => y,
+    }
+}
+
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct RuleMetadata {
     pub name: Option<String>,
@@ -13,7 +48,9 @@ pub struct RuleMetadata {
     /// Some(Some(name)) = getter renamed to `name`
     pub newtype: Option<Option<String>>,
     pub no_alias: bool,
-    pub used_as_key: bool,
+    /// None = no `@used_as_key` tag; `Some(demand)` = tagged with the given flavor(s) (bare when no
+    /// flavor word follows the tag). See [`DemandSet`].
+    pub key_demand: Option<DemandSet>,
     /// `@used_as_elem`: mint the loose-list wasm wrapper (`FooList = [* foo]` equivalent) for this
     /// rule's type as if the spec contained an inline `[* foo]` usage, so a downstream crate can
     /// import the canonical wrapper class from THIS crate. See `IntermediateTypes::mark_used_as_elem`.
@@ -44,7 +81,7 @@ pub fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
         name: merge_metadata_fields!(r1.name, r2.name, "name"),
         newtype: merge_metadata_fields!(r1.newtype, r2.newtype, "newtype"),
         no_alias: r1.no_alias || r2.no_alias,
-        used_as_key: r1.used_as_key || r2.used_as_key,
+        key_demand: merge_key_demand(r1.key_demand, r2.key_demand),
         used_as_elem: r1.used_as_elem || r2.used_as_elem,
         custom_json: r1.custom_json || r2.custom_json,
         custom_serialize: merge_metadata_fields!(
@@ -67,7 +104,7 @@ enum ParseResult {
     NewType(Option<String>),
     Name(String),
     DontGenAlias,
-    UsedAsKey,
+    UsedAsKey(DemandSet),
     UsedAsElem,
     CustomJson,
     CustomSerialize(String),
@@ -104,8 +141,8 @@ impl RuleMetadata {
                     base.no_alias = true;
                 }
 
-                ParseResult::UsedAsKey => {
-                    base.used_as_key = true;
+                ParseResult::UsedAsKey(demand) => {
+                    base.key_demand = Some(base.key_demand.unwrap_or_default().union(*demand));
                 }
                 ParseResult::UsedAsElem => {
                     base.used_as_elem = true;
@@ -168,8 +205,38 @@ fn tag_no_alias(input: &str) -> IResult<&str, ParseResult> {
 
 fn tag_used_as_key(input: &str) -> IResult<&str, ParseResult> {
     let (input, _) = tag("@used_as_key")(input)?;
-
-    Ok((input, ParseResult::UsedAsKey))
+    // Parse the optional flavor words (`hash`, `ord`) that follow, up to the next `@tag` or end of
+    // the comment. Strict vocabulary: any other word is a PANIC. The comment parser otherwise swallows
+    // nom errors (`metadata_from_comments`) and `many0` ignores leftovers, so a soft parse failure here
+    // would silently drop the whole line's metadata and regress the tagged type to no key derives — the
+    // exact distant-failure class this DSL exists to kill. Panicking (matching the duplicate-key panics)
+    // makes a typo/prose loud instead. This intentionally rejects today-legal trailing prose
+    // (`@used_as_key marks the tx-out`); prose belongs in `@doc`.
+    let mut demand = DemandSet::default();
+    let mut any_flavor = false;
+    let mut rest = input;
+    loop {
+        let (after_ws, _) = take_while(char::is_whitespace)(rest)?;
+        if after_ws.is_empty() || after_ws.starts_with('@') {
+            rest = after_ws;
+            break;
+        }
+        let (after_word, word) = take_while1(|ch| !char::is_whitespace(ch) && ch != '@')(after_ws)?;
+        match word {
+            "hash" => demand.hash = true,
+            "ord" => demand.ord = true,
+            other => panic!(
+                "@used_as_key: unknown flavor {other:?}; expected `hash` and/or `ord`, or bare \
+                 `@used_as_key`. (Trailing prose is not allowed after `@used_as_key` — put it in `@doc`.)"
+            ),
+        }
+        any_flavor = true;
+        rest = after_word;
+    }
+    if !any_flavor {
+        demand.bare = true;
+    }
+    Ok((rest, ParseResult::UsedAsKey(demand)))
 }
 
 fn tag_used_as_elem(input: &str) -> IResult<&str, ParseResult> {
@@ -266,7 +333,7 @@ fn parse_comment_name() {
                 name: Some("foo".to_string()),
                 newtype: None,
                 no_alias: false,
-                used_as_key: false,
+                key_demand: None,
                 used_as_elem: false,
                 custom_json: false,
                 custom_serialize: None,
@@ -287,7 +354,7 @@ fn parse_comment_newtype() {
                 name: None,
                 newtype: Some(None),
                 no_alias: false,
-                used_as_key: false,
+                key_demand: None,
                 used_as_elem: false,
                 custom_json: false,
                 custom_serialize: None,
@@ -308,7 +375,11 @@ fn parse_comment_newtype_getter_before() {
                 name: None,
                 newtype: Some(Some("custom_getter".to_owned())),
                 no_alias: false,
-                used_as_key: true,
+                key_demand: Some(DemandSet {
+                    bare: true,
+                    hash: false,
+                    ord: false
+                }),
                 used_as_elem: false,
                 custom_json: false,
                 custom_serialize: None,
@@ -329,7 +400,11 @@ fn parse_comment_newtype_getter_after() {
                 name: None,
                 newtype: Some(Some("custom_getter".to_owned())),
                 no_alias: false,
-                used_as_key: true,
+                key_demand: Some(DemandSet {
+                    bare: true,
+                    hash: false,
+                    ord: false
+                }),
                 used_as_elem: false,
                 custom_json: false,
                 custom_serialize: None,
@@ -350,7 +425,7 @@ fn parse_comment_newtype_and_name() {
                 name: Some("foo".to_string()),
                 newtype: Some(None),
                 no_alias: false,
-                used_as_key: false,
+                key_demand: None,
                 used_as_elem: false,
                 custom_json: false,
                 custom_serialize: None,
@@ -371,7 +446,11 @@ fn parse_comment_newtype_and_name_and_used_as_key() {
                 name: Some("foo".to_string()),
                 newtype: Some(None),
                 no_alias: false,
-                used_as_key: true,
+                key_demand: Some(DemandSet {
+                    bare: true,
+                    hash: false,
+                    ord: false
+                }),
                 used_as_elem: false,
                 custom_json: false,
                 custom_serialize: None,
@@ -392,7 +471,11 @@ fn parse_comment_used_as_key() {
                 name: None,
                 newtype: None,
                 no_alias: false,
-                used_as_key: true,
+                key_demand: Some(DemandSet {
+                    bare: true,
+                    hash: false,
+                    ord: false
+                }),
                 used_as_elem: false,
                 custom_json: false,
                 custom_serialize: None,
@@ -401,6 +484,108 @@ fn parse_comment_used_as_key() {
             }
         ))
     );
+}
+
+#[test]
+fn parse_comment_used_as_key_hash() {
+    assert_eq!(
+        rule_metadata("@used_as_key hash").unwrap().1.key_demand,
+        Some(DemandSet {
+            bare: false,
+            hash: true,
+            ord: false
+        })
+    );
+}
+
+#[test]
+fn parse_comment_used_as_key_ord() {
+    assert_eq!(
+        rule_metadata("@used_as_key ord").unwrap().1.key_demand,
+        Some(DemandSet {
+            bare: false,
+            hash: false,
+            ord: true
+        })
+    );
+}
+
+#[test]
+fn parse_comment_used_as_key_hash_ord() {
+    assert_eq!(
+        rule_metadata("@used_as_key hash ord").unwrap().1.key_demand,
+        Some(DemandSet {
+            bare: false,
+            hash: true,
+            ord: true
+        })
+    );
+}
+
+// Flavor-word order does not matter (both fold into the same union).
+#[test]
+fn parse_comment_used_as_key_ord_hash_order_independent() {
+    assert_eq!(
+        rule_metadata("@used_as_key ord hash").unwrap().1.key_demand,
+        rule_metadata("@used_as_key hash ord").unwrap().1.key_demand,
+    );
+}
+
+// A flavored tag stops at the next `@tag` — it must not swallow a following tag as a flavor word.
+#[test]
+fn parse_comment_used_as_key_hash_then_newtype() {
+    let md = rule_metadata("@used_as_key hash @newtype custom_getter")
+        .unwrap()
+        .1;
+    assert_eq!(
+        md.key_demand,
+        Some(DemandSet {
+            bare: false,
+            hash: true,
+            ord: false
+        })
+    );
+    assert_eq!(md.newtype, Some(Some("custom_getter".to_owned())));
+}
+
+// Two comment lines union their flavors (field-wise OR merge).
+#[test]
+fn merge_metadata_unions_key_demand_flavors() {
+    let hash = RuleMetadata {
+        key_demand: Some(DemandSet {
+            hash: true,
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let ord = RuleMetadata {
+        key_demand: Some(DemandSet {
+            ord: true,
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    assert_eq!(
+        merge_metadata(&hash, &ord).key_demand,
+        Some(DemandSet {
+            bare: false,
+            hash: true,
+            ord: true
+        })
+    );
+}
+
+#[test]
+#[should_panic(expected = "unknown flavor")]
+fn parse_comment_used_as_key_unknown_flavor_panics() {
+    let _ = rule_metadata("@used_as_key hsah");
+}
+
+// Today-legal trailing prose after `@used_as_key` is now a hard error (prose belongs in `@doc`).
+#[test]
+#[should_panic(expected = "unknown flavor")]
+fn parse_comment_used_as_key_trailing_prose_panics() {
+    let _ = rule_metadata("@used_as_key marks the tx-out");
 }
 
 #[test]
@@ -413,7 +598,7 @@ fn parse_comment_used_as_elem() {
                 name: None,
                 newtype: None,
                 no_alias: false,
-                used_as_key: false,
+                key_demand: None,
                 used_as_elem: true,
                 custom_json: false,
                 custom_serialize: None,
@@ -435,7 +620,11 @@ fn parse_comment_used_as_elem_and_key() {
                 name: None,
                 newtype: None,
                 no_alias: false,
-                used_as_key: true,
+                key_demand: Some(DemandSet {
+                    bare: true,
+                    hash: false,
+                    ord: false
+                }),
                 used_as_elem: true,
                 custom_json: false,
                 custom_serialize: None,
@@ -456,7 +645,11 @@ fn parse_comment_used_as_key_and_elem_inverse() {
                 name: None,
                 newtype: None,
                 no_alias: false,
-                used_as_key: true,
+                key_demand: Some(DemandSet {
+                    bare: true,
+                    hash: false,
+                    ord: false
+                }),
                 used_as_elem: true,
                 custom_json: false,
                 custom_serialize: None,
@@ -478,7 +671,7 @@ fn parse_comment_newtype_getter_before_used_as_elem() {
                 name: None,
                 newtype: Some(Some("custom_getter".to_owned())),
                 no_alias: false,
-                used_as_key: false,
+                key_demand: None,
                 used_as_elem: true,
                 custom_json: false,
                 custom_serialize: None,
@@ -499,7 +692,7 @@ fn parse_comment_used_as_elem_before_newtype_getter() {
                 name: None,
                 newtype: Some(Some("custom_getter".to_owned())),
                 no_alias: false,
-                used_as_key: false,
+                key_demand: None,
                 used_as_elem: true,
                 custom_json: false,
                 custom_serialize: None,
@@ -533,7 +726,7 @@ fn parse_comment_newtype_and_name_inverse() {
                 name: Some("foo".to_string()),
                 newtype: Some(None),
                 no_alias: false,
-                used_as_key: false,
+                key_demand: None,
                 used_as_elem: false,
                 custom_json: false,
                 custom_serialize: None,
@@ -554,7 +747,7 @@ fn parse_comment_name_noalias() {
                 name: Some("foo".to_string()),
                 newtype: None,
                 no_alias: true,
-                used_as_key: false,
+                key_demand: None,
                 used_as_elem: false,
                 custom_json: false,
                 custom_serialize: None,
@@ -575,7 +768,7 @@ fn parse_comment_newtype_and_custom_json() {
                 name: None,
                 newtype: Some(None),
                 no_alias: false,
-                used_as_key: false,
+                key_demand: None,
                 used_as_elem: false,
                 custom_json: true,
                 custom_serialize: None,
@@ -602,7 +795,7 @@ fn parse_comment_custom_serialize_deserialize() {
                 name: None,
                 newtype: None,
                 no_alias: false,
-                used_as_key: false,
+                key_demand: None,
                 used_as_elem: false,
                 custom_json: false,
                 custom_serialize: Some("foo".to_string()),
@@ -626,7 +819,11 @@ fn parse_comment_all_except_no_alias() {
                 name: Some("baz".to_string()),
                 newtype: Some(None),
                 no_alias: false,
-                used_as_key: true,
+                key_demand: Some(DemandSet {
+                    bare: true,
+                    hash: false,
+                    ord: false
+                }),
                 used_as_elem: true,
                 custom_json: true,
                 custom_serialize: Some("foo".to_string()),

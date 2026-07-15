@@ -656,6 +656,7 @@ const CORPUS_EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
   "c_style_enum.fixed_enum": ["int"],
   "c_style_enum_map_key.fixed_enum": ["int"],
   "c_style_enum_newtype.fixed_enum": ["int"],
+  "dsl_used_as_key_hash_cstyle.fixed_enum": ["int"],
   "nullable.maybe_text": ["3", "7"],
   "nullable_nested.data_enum": ["3", "int"],
   "nullable_nested.maybe_coll": ["7"],   // `nums_arr / null` — the array arm is exempt (a named collection), null → 7
