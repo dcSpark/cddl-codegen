@@ -263,6 +263,8 @@ Marks an extern dependency as a co-generated **workspace member**. For every col
 
 The consumer additionally emits `wasm/src/generated/borrowed_collections.rs` whenever the flag is present (empty-but-present when nothing is borrowed — stable presence, stable diffs): the mirror of `collections.rs` ("what I provide" ↔ "what I borrow, from whom"). It carries a private `#[allow(unused_imports)] mod borrowed` of `use` lines (the compile-checked half — a wrapper a dependency stops providing fails **this** crate's build, naming the type) and a `BORROWED_SHAPES` table whose first column is the dependency's **rust** crate name (see [Output format](./output_format)).
 
+The consumer also emits `rust/src/generated/borrowed_key_types.rs` (same presence semantics), the **rust-crate** analog for map-key derives. A consumer map keyed on a dependency's type needs that type to derive `Eq/Ord/PartialOrd` (plus `Hash` under `--preserve-encodings`), but the derive lives in the dependency's crate — and when the map mixes a dependency **key** with a consumer-owned **value** (`{* dep_key => my_local}`) the wrapper is not all-one-dep, so it never enters `borrowed_collections.rs`, yet the dependency must still key-derive `dep_key`. This file records every such borrowed key type: a `_borrowed_key_types_self_check` fn (the compiled half — a dependency dropping a derive fails **this** crate's build, naming the type) and a `BORROWED_KEY_TYPES` table of `(dep rust-crate name, cddl ident)` rows the dependency re-reads via `--key-requests`.
+
 - **Ownerless** wrappers (no named element types, e.g. `{* uint => text}`) and **mixed-dep** wrappers are never workspace-borrowed — they keep the shipped `--extern-wrapper-index` deferral / local-mint behavior. Passing both flags for the same dependency is legal: workspace-borrow the owned shapes, index-defer the ownerless ones.
 - A consumer's own **rule-declared** type whose name equals a wrapper it would otherwise borrow is never suppressed; it mints locally and generation warns that it will duplicate-symbol against the dependency's class (remedy: rename the rule or give it a distinct `@name`).
 
@@ -300,6 +302,23 @@ The `requested_collections.rs` file format (attribution docs, index re-export, `
 cddl-codegen --input=cml_core.cddl --output=export --lib-name=cml-core --wasm=true \
   --wrapper-requests=cml_chain=../cml_chain/wasm/src/generated/borrowed_collections.rs \
   --wrapper-requests=cml_multiera=../cml_multiera/wasm/src/generated/borrowed_collections.rs
+```
+:::
+
+<br/><br/>
+
+:::info `--key-requests`
+The **dependency-side** companion to a consumer's `rust/src/generated/borrowed_key_types.rs` (the map-key-derive channel — see `--workspace-dep` above): one `<consumer>=<path>` per consumer. The dependency parses each sidecar **strictly** (any content outside the frozen format — a `compile_error!`/`unpreserved-comment` trap, an unknown line, a mangled row — is a hard error naming the file), takes the rows addressed to itself (dep column == this crate's normalized `--lib-name`), resolves each borrowed CDDL ident to a type in its own spec, and marks it **used-as-key before finalize computes the key-derive set**. The dependency then derives `Eq/Ord/PartialOrd` (plus `Hash` under `--preserve-encodings`) on that type and — since finalize expands the seed transitively through the type's private fields — on everything it recursively contains.
+
+This covers the case the all-one-dep sidecar structurally can't: a consumer map mixing this dependency's **key** with a consumer-owned **value** (`{* dep_key => my_local}`) never enters `borrowed_collections.rs`, so only `--key-requests` conveys that `dep_key` must be key-capable. (An all-one-dep struct-keyed map `{* dep_key => uint}` does record its wrapper in `borrowed_collections.rs`, and the dependency also seeds that key from the `--wrapper-requests` shape — so passing both flags is the norm.)
+
+- A row naming a type the dependency **no longer defines** is a hard error naming the consumer and file (a consumer keying on a deleted type must be loud, mirroring the sidecar's compiled self-check). Rows addressed to other dependencies are ignored.
+- Output is byte-identical regardless of the order of the `--key-requests` flags (seeds are collected into a sorted set). Repeatable; `<consumer>` is a label used only in error messages. With no `--key-requests` flag the output is byte-identical to before.
+
+```bash
+cddl-codegen --input=cml_core.cddl --output=export --lib-name=cml-core --wasm=true --preserve-encodings=true \
+  --key-requests=cml_chain=../cml_chain/rust/src/generated/borrowed_key_types.rs \
+  --key-requests=cml_multiera=../cml_multiera/rust/src/generated/borrowed_key_types.rs
 ```
 :::
 

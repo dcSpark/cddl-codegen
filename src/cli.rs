@@ -197,6 +197,20 @@ pub struct Cli {
     #[clap(long = "wrapper-requests", value_parser)]
     pub wrapper_requests: Vec<String>,
 
+    /// Dep-side companion to a consumer's `rust/src/generated/borrowed_key_types.rs` sidecar (the
+    /// in-workspace map-key-derive channel). One `<consumer>=<path>` per consumer. The dep parses each
+    /// sidecar strictly, takes the rows addressed to itself (dep column == this crate's normalized
+    /// `--lib-name`), resolves each borrowed CDDL ident to a type in this dep's spec, and marks it
+    /// used-as-key BEFORE finalize computes the key-derive set — so a consumer map mixing this dep's
+    /// key with a consumer-owned value (`{* dep_key => my_local}`, which never enters
+    /// `borrowed_collections.rs`) still gets `Eq/Ord/PartialOrd` (plus `Hash` under
+    /// `--preserve-encodings`) derived on `dep_key`. A row naming a type the dep no longer defines is a
+    /// hard error naming the consumer and file. Repeatable; `<consumer>` is a label (used only in error
+    /// messages), `<path>` must be a readable sidecar. With no `--key-requests` flags the output is
+    /// byte-identical to today.
+    #[clap(long = "key-requests", value_parser)]
+    pub key_requests: Vec<String>,
+
     /// Additionally write the composed rust static runtime (error.rs, the serialization.rs prelude,
     /// ordered_hash_map.rs, non_empty.rs, non_empty_map.rs) into `<dir>` (created if needed),
     /// regardless of whether in-crate static export happens. The upgrade path for
@@ -309,6 +323,31 @@ impl Cli {
             if consumer.is_empty() || path.is_empty() {
                 panic!(
                     "--wrapper-requests value must be <consumer>=<path/to/borrowed_collections.rs> with both sides non-empty, got: {entry:?}"
+                );
+            }
+            map.insert(consumer.to_owned(), path.to_owned());
+        }
+        map
+    }
+
+    /// Parsed `--key-requests` mappings: consumer label -> path to that consumer's committed
+    /// `borrowed_key_types.rs` sidecar. BTreeMap (never HashMap) for deterministic output — the
+    /// seeded key-derive set must not depend on flag order. A malformed value (no `=`, or an empty
+    /// side) is a hard error naming the flag; an unreadable path is a hard error at seed time (see
+    /// `wrapper_requests::seed_used_as_key_from_key_requests`). Mirrors `wrapper_requests`.
+    pub fn key_requests(&self) -> std::collections::BTreeMap<String, String> {
+        let mut map = std::collections::BTreeMap::new();
+        for entry in &self.key_requests {
+            let (consumer, path) = entry.split_once('=').unwrap_or_else(|| {
+                panic!(
+                    "--key-requests value must be <consumer>=<path/to/borrowed_key_types.rs>, got: {entry:?}"
+                )
+            });
+            let consumer = consumer.trim();
+            let path = path.trim();
+            if consumer.is_empty() || path.is_empty() {
+                panic!(
+                    "--key-requests value must be <consumer>=<path/to/borrowed_key_types.rs> with both sides non-empty, got: {entry:?}"
                 );
             }
             map.insert(consumer.to_owned(), path.to_owned());

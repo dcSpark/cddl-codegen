@@ -1339,6 +1339,16 @@ impl GenerationScope {
             self.rust_lib().raw(format!("pub mod {scope};"));
         }
 
+        // The borrowed-key-types sidecar module (materialized as `generated/borrowed_key_types.rs` in
+        // `generated_files`). RUST crate, not wasm — key derives are a rust-crate concern (the
+        // consumer's rust crate is what fails to build without them). PRIVATE (`mod`): its
+        // `BORROWED_KEY_TYPES` const is `pub(crate)`-machine-read output and the compiled self-check
+        // fails THIS crate's build if a dep drops a derive; nothing is re-exported. Declared whenever
+        // `--workspace-dep` is present (stable presence, stable diffs), even when nothing is borrowed.
+        if !self.workspace_deps.is_empty() {
+            self.rust_lib().raw("mod borrowed_key_types;");
+        }
+
         // declare common modules in each module (struct files). serialization / cbor_encodings are
         // each declared only where the corresponding .rs is actually emitted (mirror the conditions
         // in generated_files / merge_scopes_to_strings): declaring a `pub mod` with no backing file
@@ -2232,6 +2242,72 @@ impl GenerationScope {
             )
             .map_err(std::io::Error::other)?,
         );
+
+        // Borrowed-key-types sidecar (`--workspace-dep`): the rust-crate analog of
+        // `borrowed_collections.rs` for the map-key-derive concern. A consumer map keyed on a dep type
+        // (`{* dep_key => …}`) marks `dep_key` used-as-key in finalize, but the derive lives in the
+        // DEP's crate; when the value is consumer-owned (`{* dep_key => my_local}`) the wrapper is not
+        // all-one-dep and never enters `borrowed_collections.rs`, yet the dep must still derive the key
+        // traits on `dep_key` or the consumer's rust crate fails to build. This file records every such
+        // borrowed key type so the dep can re-read it via `--key-requests`. Emitted whenever the flag
+        // is present — INCLUDING when nothing is borrowed (stable presence/diffs) — and never
+        // otherwise, mirroring `borrowed_collections.rs`. Fixed format: the four-line banner, a
+        // `_assert_key_traits` bound-carrier + a `_borrowed_key_types_self_check` fn (the compiled half
+        // — a dep dropping a derive fails THIS crate's build naming the type), and the
+        // `#[allow(dead_code)] pub(crate) const BORROWED_KEY_TYPES` machine table (rows sorted by
+        // (dep, ident); the first column is the dep's RUST crate name — the extern-deps dir name).
+        if !self.workspace_deps.is_empty() {
+            let mut rows: Vec<(String, String)> = Vec::new();
+            for ident in types.used_as_key_idents() {
+                let scope = types.scope(ident);
+                if scope.export() {
+                    continue;
+                }
+                let Some(dep) = scope.components().first() else {
+                    continue;
+                };
+                if !self.workspace_deps.contains(dep) {
+                    continue;
+                }
+                rows.push((dep.clone(), convert_to_snake_case(ident.as_ref())));
+            }
+            rows.sort();
+            rows.dedup();
+            let bound = if cli.preserve_encodings {
+                "Eq + Ord + PartialOrd + core::hash::Hash"
+            } else {
+                "Eq + Ord + PartialOrd"
+            };
+            let mut sidecar = String::from(
+                "// This file records every map-key type this crate borrows from workspace deps.\n\
+                 // It is machine-read by those deps' generation runs (--key-requests) so they derive the key\n\
+                 // traits (Eq/Ord/PartialOrd, plus Hash under --preserve-encodings) on the borrowed type; the\n\
+                 // compiled self-check below fails THIS crate's build if a dep drops such a derive.\n\
+                 // Rows are (dep rust-crate name, cddl ident) of each borrowed map-key type.\n",
+            );
+            sidecar.push_str(&format!(
+                "#[allow(dead_code)]\nfn _assert_key_traits<K: {bound}>() {{}}\n"
+            ));
+            if !rows.is_empty() {
+                sidecar.push_str("#[allow(dead_code)]\nfn _borrowed_key_types_self_check() {\n");
+                for (dep, ident) in &rows {
+                    let ty = RustIdent::new(CDDLIdent::new(ident.clone()));
+                    sidecar.push_str(&format!("    _assert_key_traits::<{dep}::{ty}>();\n"));
+                }
+                sidecar.push_str("}\n");
+            }
+            sidecar.push_str(
+                "#[allow(dead_code)]\npub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] = &[\n",
+            );
+            for (dep, ident) in &rows {
+                sidecar.push_str(&format!("    ({dep:?}, {ident:?}),\n"));
+            }
+            sidecar.push_str("];\n");
+            out.insert(
+                "rust/src/generated/borrowed_key_types.rs".to_owned(),
+                rustfmt_generated_string(&sidecar)?.into_owned(),
+            );
+        }
 
         // wasm crate
         if cli.wasm {
