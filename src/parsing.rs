@@ -320,8 +320,8 @@ fn parse_type_choices(
                     .and_then(|tc| tc.type1.comments_after_type.as_ref()),
             ),
         );
-        if rule_metadata.used_as_key {
-            types.mark_used_as_key(name.clone());
+        if let Some(demand) = rule_metadata.key_demand {
+            types.mark_key_demand(name.clone(), demand);
         }
         if rule_metadata.used_as_elem {
             types.mark_used_as_elem(name.clone());
@@ -886,8 +886,8 @@ fn parse_type(
         ),
         &RuleMetadata::from(type_choice.comments_after_type.as_ref()),
     );
-    if rule_metadata.used_as_key {
-        types.mark_used_as_key(type_name.clone());
+    if let Some(demand) = rule_metadata.key_demand {
+        types.mark_key_demand(type_name.clone(), demand);
     }
     if rule_metadata.used_as_elem {
         types.mark_used_as_elem(type_name.clone());

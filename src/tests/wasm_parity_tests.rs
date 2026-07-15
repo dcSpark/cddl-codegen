@@ -234,6 +234,12 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
          emitted as user-macro invocations, invisible to a syn presence differential (same class \
          as the wasm-mint macro loud-skip)",
     ),
+    (
+        "used-as-key-flavor",
+        "rust-only compile-fail fixture (a `@used_as_key ord` root over an extern lacking Ord): its \
+         integration gate generates with --wasm=false and injects a hand-written extern, so there is \
+         no wasm surface to differential and the crate is intended NOT to compile",
+    ),
 ];
 
 /// Only these `.rs` basenames may appear under `rust/src/generated/` (default/json profiles); only

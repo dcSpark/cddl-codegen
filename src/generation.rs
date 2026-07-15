@@ -1,4 +1,5 @@
 use crate::cli::Cli;
+use crate::comment_ast::DemandSet;
 use codegen::{Block, TypeAlias};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -1349,6 +1350,14 @@ impl GenerationScope {
             self.rust_lib().raw("mod borrowed_key_types;");
         }
 
+        // The key-demand assertions module (materialized as `generated/key_demand_assertions.rs` in
+        // `generated_files`), declared only when some `@used_as_key hash`/`ord` FLAVORED root exists —
+        // so a bare-only (or key-free) crate emits neither the decl nor the file, keeping its output
+        // byte-identical. PRIVATE (`mod`): its `_demand_*` fns are compile-time-only self-checks.
+        if !flavored_assertion_roots(types).is_empty() {
+            self.rust_lib().raw("mod key_demand_assertions;");
+        }
+
         // declare common modules in each module (struct files). serialization / cbor_encodings are
         // each declared only where the corresponding .rs is actually emitted (mirror the conditions
         // in generated_files / merge_scopes_to_strings): declaring a `pub mod` with no backing file
@@ -2268,7 +2277,7 @@ impl GenerationScope {
         // `#[allow(dead_code)] pub(crate) const BORROWED_KEY_TYPES` machine table (rows sorted by
         // (dep, ident); the first column is the dep's RUST crate name — the extern-deps dir name).
         if !self.workspace_deps.is_empty() {
-            let mut rows: Vec<(String, String)> = Vec::new();
+            let mut rows: Vec<(String, String, DemandSet)> = Vec::new();
             for ident in types.used_as_key_idents() {
                 let scope = types.scope(ident);
                 if scope.export() {
@@ -2280,43 +2289,157 @@ impl GenerationScope {
                 if !self.workspace_deps.contains(dep) {
                     continue;
                 }
-                rows.push((dep.clone(), convert_to_snake_case(ident.as_ref())));
+                let demand = types.key_demand(ident).unwrap_or_default();
+                rows.push((dep.clone(), convert_to_snake_case(ident.as_ref()), demand));
             }
             rows.sort();
             rows.dedup();
-            let bound = if cli.preserve_encodings {
-                "Eq + Ord + PartialOrd + core::hash::Hash"
-            } else {
-                "Eq + Ord + PartialOrd"
-            };
-            let mut sidecar = String::from(
-                "// This file records every map-key type this crate borrows from workspace deps.\n\
-                 // It is machine-read by those deps' generation runs (--key-requests) so they derive the key\n\
-                 // traits (Eq/Ord/PartialOrd, plus Hash under --preserve-encodings) on the borrowed type; the\n\
-                 // compiled self-check below fails THIS crate's build if a dep drops such a derive.\n\
-                 // Rows are (dep rust-crate name, cddl ident) of each borrowed map-key type.\n",
-            );
-            sidecar.push_str(&format!(
-                "#[allow(dead_code)]\nfn _assert_key_traits<K: {bound}>() {{}}\n"
-            ));
-            if !rows.is_empty() {
-                sidecar.push_str("#[allow(dead_code)]\nfn _borrowed_key_types_self_check() {\n");
-                for (dep, ident) in &rows {
-                    let ty = RustIdent::new(CDDLIdent::new(ident.clone()));
-                    sidecar.push_str(&format!("    _assert_key_traits::<{dep}::{ty}>();\n"));
+            // A borrowed key whose demand carries a `hash`/`ord` FLAVOR (a consumer keyed the dep type
+            // through a `@used_as_key hash`/`ord` root) needs the flavored 3-column format + per-flavor
+            // self-check bound. When every borrowed key is `bare` (the universal pre-flavor case), the
+            // legacy 2-column form is emitted BYTE-IDENTICALLY — no banner/type/self-check churn.
+            let any_flavored = rows.iter().any(|(_, _, d)| d.hash || d.ord);
+            let sidecar = if any_flavored {
+                let mut s = String::from(
+                    "// This file records every map-key type this crate borrows from workspace deps.\n\
+                     // It is machine-read by those deps' generation runs (--key-requests) so they derive the key\n\
+                     // traits (Eq/Ord/PartialOrd, plus Hash under --preserve-encodings) on the borrowed type; the\n\
+                     // compiled self-check below fails THIS crate's build if a dep drops such a derive.\n\
+                     // Rows are (dep rust-crate name, cddl ident, demand flavor) of each borrowed map-key type.\n",
+                );
+                // One bound-carrier per distinct demand (the flavor decides the bound), then a
+                // per-row self-check call routed to its flavor's carrier.
+                let mut demands: Vec<DemandSet> = rows.iter().map(|(_, _, d)| *d).collect();
+                demands.sort();
+                demands.dedup();
+                let assert_fn = |d: DemandSet| {
+                    format!(
+                        "_assert_key_traits_{}",
+                        key_flavor_token(d).replace(' ', "_")
+                    )
+                };
+                for d in &demands {
+                    s.push_str(&format!(
+                        "#[allow(dead_code)]\nfn {}<K: {}>() {{}}\n",
+                        assert_fn(*d),
+                        key_bound(*d, cli)
+                    ));
                 }
-                sidecar.push_str("}\n");
-            }
-            sidecar.push_str(
-                "#[allow(dead_code)]\npub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] = &[\n",
-            );
-            for (dep, ident) in &rows {
-                sidecar.push_str(&format!("    ({dep:?}, {ident:?}),\n"));
-            }
-            sidecar.push_str("];\n");
+                s.push_str("#[allow(dead_code)]\nfn _borrowed_key_types_self_check() {\n");
+                for (dep, ident, d) in &rows {
+                    let ty = RustIdent::new(CDDLIdent::new(ident.clone()));
+                    s.push_str(&format!("    {}::<{dep}::{ty}>();\n", assert_fn(*d)));
+                }
+                s.push_str("}\n");
+                s.push_str(
+                    "#[allow(dead_code)]\npub(crate) const BORROWED_KEY_TYPES: &[(&str, &str, &str)] = &[\n",
+                );
+                for (dep, ident, d) in &rows {
+                    let flavor = key_flavor_token(*d);
+                    s.push_str(&format!("    ({dep:?}, {ident:?}, {flavor:?}),\n"));
+                }
+                s.push_str("];\n");
+                s
+            } else {
+                let bound = if cli.preserve_encodings {
+                    "Eq + Ord + PartialOrd + core::hash::Hash"
+                } else {
+                    "Eq + Ord + PartialOrd"
+                };
+                let mut s = String::from(
+                    "// This file records every map-key type this crate borrows from workspace deps.\n\
+                     // It is machine-read by those deps' generation runs (--key-requests) so they derive the key\n\
+                     // traits (Eq/Ord/PartialOrd, plus Hash under --preserve-encodings) on the borrowed type; the\n\
+                     // compiled self-check below fails THIS crate's build if a dep drops such a derive.\n\
+                     // Rows are (dep rust-crate name, cddl ident) of each borrowed map-key type.\n",
+                );
+                s.push_str(&format!(
+                    "#[allow(dead_code)]\nfn _assert_key_traits<K: {bound}>() {{}}\n"
+                ));
+                if !rows.is_empty() {
+                    s.push_str("#[allow(dead_code)]\nfn _borrowed_key_types_self_check() {\n");
+                    for (dep, ident, _) in &rows {
+                        let ty = RustIdent::new(CDDLIdent::new(ident.clone()));
+                        s.push_str(&format!("    _assert_key_traits::<{dep}::{ty}>();\n"));
+                    }
+                    s.push_str("}\n");
+                }
+                s.push_str(
+                    "#[allow(dead_code)]\npub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] = &[\n",
+                );
+                for (dep, ident, _) in &rows {
+                    s.push_str(&format!("    ({dep:?}, {ident:?}),\n"));
+                }
+                s.push_str("];\n");
+                s
+            };
             out.insert(
                 "rust/src/generated/borrowed_key_types.rs".to_owned(),
                 rustfmt_generated_string(&sidecar)?.into_owned(),
+            );
+        }
+
+        // Key-demand assertions (plan step 4): for each FLAVORED `@used_as_key hash`/`ord` root, emit a
+        // named `_demand_<rule>` fn that instantiates a bound-carrier over the tagged type. The Rust
+        // compiler — the one component never wrong about trait supply — then converts a distant
+        // downstream trait error (e.g. a tx-out struct's extern field lacking `Ord`) into a NEAR, named
+        // error at THIS assertion, citing the tag. Bare roots and internal auto-detected keys emit
+        // nothing (their containers' own bounds enforce them in-crate), so the bare path is
+        // byte-identical.
+        let assertion_roots = flavored_assertion_roots(types);
+        if !assertion_roots.is_empty() {
+            let mut file = String::from(
+                "// Compile-time key-demand assertions for `@used_as_key` flavor tags. Each\n\
+                 // `_demand_<rule>` fn makes the Rust compiler prove the tagged type implements the\n\
+                 // traits its flavor requires, turning a distant downstream trait error into a near,\n\
+                 // named one at the tagged type's definition site.\n",
+            );
+            if assertion_roots.iter().any(|(_, d)| d.hash) {
+                file.push_str(
+                    "#[allow(dead_code)]\nfn _key_demand_hash<T: core::hash::Hash + Eq>() {}\n",
+                );
+            }
+            if assertion_roots.iter().any(|(_, d)| d.ord) {
+                file.push_str("#[allow(dead_code)]\nfn _key_demand_ord<T: Ord>() {}\n");
+            }
+            for (ident, demand) in &assertion_roots {
+                let scope = types.scope(ident);
+                let path = if *scope == *ROOT_SCOPE {
+                    format!("crate::generated::{ident}")
+                } else {
+                    format!(
+                        "crate::generated::{}::{ident}",
+                        scope.components().join("::")
+                    )
+                };
+                let src = types
+                    .source_rule_name(ident)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| ident.to_string());
+                let mut words = Vec::new();
+                if demand.hash {
+                    words.push("hash");
+                }
+                if demand.ord {
+                    words.push("ord");
+                }
+                file.push_str(&format!(
+                    "#[allow(dead_code)]\nfn _demand_{}() {{\n    // required by `@used_as_key {}` on {}\n",
+                    convert_to_snake_case(ident.as_ref()),
+                    words.join(" "),
+                    src
+                ));
+                if demand.hash {
+                    file.push_str(&format!("    _key_demand_hash::<{path}>();\n"));
+                }
+                if demand.ord {
+                    file.push_str(&format!("    _key_demand_ord::<{path}>();\n"));
+                }
+                file.push_str("}\n");
+            }
+            out.insert(
+                "rust/src/generated/key_demand_assertions.rs".to_owned(),
+                rustfmt_generated_string(&file)?.into_owned(),
             );
         }
 
@@ -6198,11 +6321,11 @@ fn canonical_param(cli: &Cli) -> &'static str {
 
 /// the codegen crate doesn't support proc macros for fields so we need to
 /// do this with newlines. codegen takes care of indentation somehow.
-fn encoding_var_macros(used_in_key: bool, custom_json: bool, cli: &Cli) -> String {
-    let mut ret = if used_in_key {
+fn encoding_var_macros(key_demand: Option<DemandSet>, custom_json: bool, cli: &Cli) -> String {
+    let mut ret = if let Some(demand) = key_demand {
         format!(
             "#[derivative({})]\n",
-            key_derives(true, cli)
+            key_trait_list(demand, true, cli)
                 .iter()
                 .map(|derive| format!("{derive}=\"ignore\""))
                 .collect::<Vec<String>>()
@@ -6764,7 +6887,8 @@ fn create_base_rust_struct(
     let mut s = codegen::Struct::new(name);
     add_struct_derives(
         &mut s,
-        types.used_as_key(ident),
+        types.key_demand(ident),
+        false,
         false,
         manual_json_impl,
         cli,
@@ -9507,7 +9631,7 @@ fn codegen_struct(
         native_struct.field(
             format!(
                 "{}pub encodings",
-                encoding_var_macros(types.used_as_key(name), config.custom_json, cli)
+                encoding_var_macros(types.key_demand(name), config.custom_json, cli)
             ),
             format!("Option<{encoding_name}>"),
         );
@@ -10807,7 +10931,12 @@ impl EnumVariantInRust {
         &self.names[..self.names.len() - self.outer_vars]
     }
 
-    fn names_with_macros(&self, used_in_key: bool, custom_json: bool, cli: &Cli) -> Vec<String> {
+    fn names_with_macros(
+        &self,
+        key_demand: Option<DemandSet>,
+        custom_json: bool,
+        cli: &Cli,
+    ) -> Vec<String> {
         self.names
             .iter()
             .enumerate()
@@ -10822,7 +10951,7 @@ impl EnumVariantInRust {
                     // Indentation is never an issue as we're always 2 levels deep for field declarations
                     format!(
                         "{}{}",
-                        encoding_var_macros(used_in_key, custom_json, cli),
+                        encoding_var_macros(key_demand, custom_json, cli),
                         name
                     )
                 }
@@ -10950,8 +11079,9 @@ fn generate_c_style_enum(
     }
     add_struct_derives(
         &mut e,
-        types.used_as_key(name),
+        types.key_demand(name),
         true,
+        /* cstyle_baseline */ true,
         config.custom_json,
         cli,
     );
@@ -11275,8 +11405,9 @@ fn generate_enum(
     // by potentially wrapping the choices with the array/map tag in the variant branch when applicable
     add_struct_derives(
         &mut e,
-        types.used_as_key(name),
+        types.key_demand(name),
         true,
+        /* cstyle_baseline */ false,
         config.custom_json,
         cli,
     );
@@ -11373,7 +11504,7 @@ fn generate_enum(
             }
             _ => {
                 for (name_with_macros, type_str) in enum_gen_info
-                    .names_with_macros(types.used_as_key(name), config.custom_json, cli)
+                    .names_with_macros(types.key_demand(name), config.custom_json, cli)
                     .into_iter()
                     .zip(enum_gen_info.types.iter())
                 {
@@ -12347,7 +12478,7 @@ fn generate_wrapper_struct(
             s.field(
                 format!(
                     "{}pub encodings",
-                    encoding_var_macros(types.used_as_key(type_name), true, cli)
+                    encoding_var_macros(types.key_demand(type_name), true, cli)
                 ),
                 format!("Option<{encoding_name}>"),
             );
@@ -12751,24 +12882,109 @@ fn generate_wrapper_struct(
 
 /// the derivative crate doesn't accept Eq="ignore" but omitting it
 /// seems to behave correctly
-fn key_derives(for_ignore: bool, cli: &Cli) -> &'static [&'static str] {
-    if for_ignore {
+/// The SINGLE demand→traits mapping (pinned semantics 6), used by every derive/ignore emission site so
+/// the bare path stays byte-identical. Resolves a `DemandSet` to the comparison/hash traits it demands,
+/// in the canonical emission order `Eq, PartialEq, Ord, PartialOrd, Hash`:
+/// - `bare` → today's mode-dependent internal bundle (`Eq/PartialEq/Ord/PartialOrd`, plus `Hash` under
+///   `--preserve-encodings`);
+/// - `hash` → `Hash, Eq, PartialEq` (mode-independent);
+/// - `ord` → `Ord, PartialOrd, Eq, PartialEq` (mode-independent).
+///
+/// `for_ignore` drops `Eq` (the `derivative` field ignore-list has no `Eq` attribute — `Eq` is a
+/// fieldless marker), reproducing the old `key_derives(for_ignore=true)` set exactly.
+fn key_trait_list(demand: DemandSet, for_ignore: bool, cli: &Cli) -> Vec<&'static str> {
+    let mut eq = false;
+    let mut ord = false;
+    let mut hash = false;
+    if demand.bare {
+        eq = true;
+        ord = true;
         if cli.preserve_encodings {
-            &["PartialEq", "Ord", "PartialOrd", "Hash"]
-        } else {
-            &["PartialEq", "Ord", "PartialOrd"]
+            hash = true;
         }
-    } else if cli.preserve_encodings {
-        &["Eq", "PartialEq", "Ord", "PartialOrd", "Hash"]
-    } else {
-        &["Eq", "PartialEq", "Ord", "PartialOrd"]
     }
+    if demand.hash {
+        hash = true;
+        eq = true;
+    }
+    if demand.ord {
+        ord = true;
+        eq = true;
+    }
+    let mut out = Vec::new();
+    if eq && !for_ignore {
+        out.push("Eq");
+    }
+    if eq {
+        out.push("PartialEq");
+    }
+    if ord {
+        out.push("Ord");
+        out.push("PartialOrd");
+    }
+    if hash {
+        out.push("Hash");
+    }
+    out
+}
+
+/// The `where`-clause trait bound a key demand needs, as used by the `borrowed_key_types.rs`
+/// `_assert_key_traits*` self-check carriers. Drops `PartialEq` (a supertrait of `Eq`, redundant as a
+/// bound) and maps `Hash` to its full path, so the `bare` bound reproduces the historical
+/// `Eq + Ord + PartialOrd + core::hash::Hash` (byte-identical) form.
+fn key_bound(demand: DemandSet, cli: &Cli) -> String {
+    key_trait_list(demand, false, cli)
+        .iter()
+        .filter(|t| **t != "PartialEq")
+        .map(|t| if *t == "Hash" { "core::hash::Hash" } else { *t })
+        .collect::<Vec<_>>()
+        .join(" + ")
+}
+
+/// The sidecar flavor token for a demand (`bare`/`hash`/`ord`, space-joined when several bits are set).
+/// This is the optional 3rd `BORROWED_KEY_TYPES` column; `parse_key_flavor` is its inverse.
+fn key_flavor_token(demand: DemandSet) -> String {
+    let mut parts = Vec::new();
+    if demand.bare {
+        parts.push("bare");
+    }
+    if demand.hash {
+        parts.push("hash");
+    }
+    if demand.ord {
+        parts.push("ord");
+    }
+    parts.join(" ")
+}
+
+/// The directly-tagged demand roots that warrant an emitted compile-time assertion (pinned semantics /
+/// plan step 4): those carrying a `hash`/`ord` FLAVOR (bare roots get NONE — keeping the bare path
+/// byte-identical) whose type is a generated (non-extern), export-scope struct in THIS crate, so it can
+/// be named `crate::generated::…` and its supply proven by the compiler. Sorted by ident (`BTreeMap`
+/// iteration) for deterministic placement.
+fn flavored_assertion_roots(types: &IntermediateTypes) -> Vec<(RustIdent, DemandSet)> {
+    types
+        .key_demand_roots()
+        .iter()
+        .filter(|(_, d)| d.hash || d.ord)
+        .filter(|(ident, _)| {
+            types.scope(ident).export()
+                && types.rust_struct(ident).is_some_and(|rs| {
+                    !matches!(
+                        rs.variant(),
+                        RustStructType::Extern | RustStructType::RawBytesType
+                    )
+                })
+        })
+        .map(|(ident, d)| (ident.clone(), *d))
+        .collect()
 }
 
 fn add_struct_derives<T: DataType>(
     data_type: &mut T,
-    used_in_key: bool,
+    key_demand: Option<DemandSet>,
     is_enum: bool,
+    cstyle_baseline: bool,
     custom_json: bool,
     cli: &Cli,
 ) {
@@ -12783,13 +12999,21 @@ fn add_struct_derives<T: DataType>(
             data_type.derive("schemars::JsonSchema");
         }
     }
-    if used_in_key {
+    if let Some(mut demand) = key_demand {
+        // A c-style enum's always-on baseline is `Eq/PartialEq/Ord/PartialOrd` (emitted directly when
+        // it is NOT a key). When it IS a key, that baseline must be UNIONED with the tag's flavor so a
+        // tagged enum never derives LESS than an untagged one (pinned semantics 5). `ord` supplies the
+        // whole `Ord/PartialOrd/Eq/PartialEq` family, so forcing it reconstitutes the baseline.
+        if cstyle_baseline {
+            demand.ord = true;
+        }
+        let traits = key_trait_list(demand, false, cli);
         if cli.preserve_encodings {
             // there's no way to do non-derive() proc macros in the codegen
             // cate so we must sadly use a newline like this. codegen manages indentation
             data_type.derive(&format!(
                 "derivative::Derivative)]\n#[derivative({}",
-                key_derives(false, cli)
+                traits
                     .iter()
                     .map(|tr| match *tr {
                         // the derivative crate doesn't support enums tagged with ord/partialord yet without this
@@ -12801,7 +13025,7 @@ fn add_struct_derives<T: DataType>(
                     .join(", ")
             ));
         } else {
-            for key_derive in key_derives(false, cli) {
+            for key_derive in traits {
                 data_type.derive(key_derive);
             }
         }
@@ -12888,14 +13112,14 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes, cli:
         uint.named("value", "u64").named(
             format!(
                 "{}encoding",
-                encoding_var_macros(types.used_as_key(&ident), true, cli)
+                encoding_var_macros(types.key_demand(&ident), true, cli)
             ),
             "Option<cbor_event::Sz>",
         );
         nint.named("value", "u64").named(
             format!(
                 "{}encoding",
-                encoding_var_macros(types.used_as_key(&ident), true, cli)
+                encoding_var_macros(types.key_demand(&ident), true, cli)
             ),
             "Option<cbor_event::Sz>",
         );
@@ -12907,8 +13131,9 @@ fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes, cli:
     native_struct.push_variant(nint);
     add_struct_derives(
         &mut native_struct,
-        types.used_as_key(&ident),
+        types.key_demand(&ident),
         /* is_enum */ true,
+        /* cstyle_baseline */ false,
         /* custom_json */ true,
         cli,
     );

@@ -37,6 +37,7 @@
 //! are filtered by the caller, not here — this parser returns every well-formed entry.
 
 use crate::cli::Cli;
+use crate::comment_ast::DemandSet;
 use crate::intermediate::{AliasIdent, CDDLIdent, IntermediateTypes, RustIdent};
 
 /// One row of a consumer's `BORROWED_SHAPES` table: a collection wrapper the consumer borrows from a
@@ -452,7 +453,16 @@ pub fn seed_used_as_key_from_wrapper_requests(types: &mut IntermediateTypes, cli
         }
     }
     for ident in to_mark {
-        types.mark_used_as_key(ident);
+        // A wrapper-requested map shape is an internal CBOR map key: it demands today's `bare` internal
+        // bundle, exactly as an in-spec `{* k => v}` key would.
+        types.mark_key_demand(
+            ident,
+            crate::comment_ast::DemandSet {
+                bare: true,
+                hash: false,
+                ord: false,
+            },
+        );
     }
 }
 
@@ -672,11 +682,40 @@ fn collect_all_named(node: &ShapeNode, out: &mut Vec<String>) {
 
 /// One row of a consumer's `BORROWED_KEY_TYPES` table: a map-key type the consumer borrows from a
 /// workspace dep. `dep` is the dep's rust-crate name as the consumer knows it (extern-deps dir name);
-/// `ident` is the borrowed type's CDDL ident (snake-case, as `RustIdent::new` folds it back).
+/// `ident` is the borrowed type's CDDL ident (snake-case, as `RustIdent::new` folds it back); `demand`
+/// is the comparison/hash flavor the consumer needs on it (the optional 3rd column — absent = `bare`,
+/// so old two-column sidecars parse unchanged).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyTypeEntry {
     pub dep: String,
     pub ident: String,
+    pub demand: DemandSet,
+}
+
+/// Parse a sidecar flavor token (`bare`/`hash`/`ord`/`hash ord`) into a `DemandSet`. The emitter writes
+/// a single space-joined token per row; anything else is a hard error (a mangled sidecar must be loud).
+fn parse_key_flavor(token: &str, file: &str) -> DemandSet {
+    let mut demand = DemandSet::default();
+    for word in token.split_whitespace() {
+        match word {
+            "bare" => demand.bare = true,
+            "hash" => demand.hash = true,
+            "ord" => demand.ord = true,
+            _ => key_hard_error(
+                file,
+                "unknown key-demand flavor in BORROWED_KEY_TYPES row",
+                token,
+            ),
+        }
+    }
+    if demand == DemandSet::default() {
+        key_hard_error(
+            file,
+            "empty key-demand flavor in BORROWED_KEY_TYPES row",
+            token,
+        );
+    }
+    demand
 }
 
 /// The exact comment lines the consumer's `borrowed_key_types.rs` emitter writes (header stamp +
@@ -690,6 +729,11 @@ const KNOWN_KEY_COMMENTS: &[&str] = &[
     "// traits (Eq/Ord/PartialOrd, plus Hash under --preserve-encodings) on the borrowed type; the",
     "// compiled self-check below fails THIS crate's build if a dep drops such a derive.",
     "// Rows are (dep rust-crate name, cddl ident) of each borrowed map-key type.",
+    // The flavored (three-column) banner variant — emitted only when a borrowed key carries a
+    // `@used_as_key hash`/`ord` flavor. Both spellings are accepted so a bare sidecar and a flavored
+    // one both parse; an OLD tool (with only the two-column banner) hard-errors "unexpected comment"
+    // on a new flavored sidecar — the declared cross-crate breaking seam.
+    "// Rows are (dep rust-crate name, cddl ident, demand flavor) of each borrowed map-key type.",
 ];
 
 /// Parse a committed `borrowed_key_types.rs` sidecar into its `BORROWED_KEY_TYPES` entries. Strict:
@@ -798,10 +842,16 @@ fn parse_key_const_item(item: &str, file: &str) -> Vec<KeyTypeEntry> {
         );
     };
     let header: String = item[..eq].split_whitespace().collect::<Vec<_>>().join(" ");
-    if header != "pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)]" {
+    // Two forms are accepted: the frozen two-column `&[(&str, &str)]` (all rows bare — byte-identical to
+    // pre-flavor sidecars) and the three-column `&[(&str, &str, &str)]` (rows carry a flavor token). The
+    // body parser tolerates 2- or 3-tuple rows regardless, so an old two-column-typed table with only
+    // bare rows and a new three-column-typed table both round-trip.
+    if header != "pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)]"
+        && header != "pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str, &str)]"
+    {
         key_hard_error(
             file,
-            "unexpected `BORROWED_KEY_TYPES` declaration (the type must be exactly `&[(&str, &str)]`)",
+            "unexpected `BORROWED_KEY_TYPES` declaration (the type must be `&[(&str, &str)]` or `&[(&str, &str, &str)]`)",
             &header,
         );
     }
@@ -870,16 +920,27 @@ fn parse_key_const_body(body: &str, file: &str) -> Vec<KeyTypeEntry> {
                 );
             }
         }
-        if fields.len() != 2 {
+        if fields.len() != 2 && fields.len() != 3 {
             key_hard_error(
                 file,
-                "malformed BORROWED_KEY_TYPES row (a row must be exactly two string literals: dep, ident)",
+                "malformed BORROWED_KEY_TYPES row (a row must be two string literals — dep, ident — or three, adding a flavor)",
                 &format!("{fields:?}"),
             );
         }
+        // The optional 3rd column is the comparison/hash flavor; a two-column (old) row is `bare`.
+        let demand = if fields.len() == 3 {
+            parse_key_flavor(&fields[2], file)
+        } else {
+            DemandSet {
+                bare: true,
+                hash: false,
+                ord: false,
+            }
+        };
         entries.push(KeyTypeEntry {
             dep: fields[0].clone(),
             ident: fields[1].clone(),
+            demand,
         });
         i = skip_trivia(&chars, i);
         if i < chars.len() && chars[i] == ',' {
@@ -912,7 +973,8 @@ pub fn seed_used_as_key_from_key_requests(types: &mut IntermediateTypes, cli: &C
         return;
     }
     let my_lib = cli.lib_name_code();
-    let mut to_mark: std::collections::BTreeSet<RustIdent> = std::collections::BTreeSet::new();
+    let mut to_mark: std::collections::BTreeMap<RustIdent, DemandSet> =
+        std::collections::BTreeMap::new();
     for (consumer, path) in &request_files {
         let contents = std::fs::read_to_string(path).unwrap_or_else(|e| {
             panic!("--key-requests {consumer}={path}: cannot read the sidecar: {e}")
@@ -939,11 +1001,13 @@ pub fn seed_used_as_key_from_key_requests(types: &mut IntermediateTypes, cli: &C
                     entry.ident, entry.dep, entry.ident
                 );
             }
-            to_mark.insert(RustIdent::new(CDDLIdent::new(entry.ident)));
+            let ident = RustIdent::new(CDDLIdent::new(entry.ident));
+            let e = to_mark.entry(ident).or_default();
+            *e = e.union(entry.demand);
         }
     }
-    for ident in to_mark {
-        types.mark_used_as_key(ident);
+    for (ident, demand) in to_mark {
+        types.mark_key_demand(ident, demand);
     }
 }
 
@@ -1328,10 +1392,64 @@ pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] = &[];
                 KeyTypeEntry {
                     dep: "wr_dep".into(),
                     ident: "idx_bar".into(),
+                    demand: DemandSet {
+                        bare: true,
+                        hash: false,
+                        ord: false
+                    },
                 },
                 KeyTypeEntry {
                     dep: "wr_dep".into(),
                     ident: "idx_foo".into(),
+                    demand: DemandSet {
+                        bare: true,
+                        hash: false,
+                        ord: false
+                    },
+                },
+            ]
+        );
+    }
+
+    // A three-column table row carries a flavor token; a two-column row is `bare`. Mixed tables parse.
+    #[test]
+    fn key_types_accepts_flavor_column() {
+        let src = r#"// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+// This file records every map-key type this crate borrows from workspace deps.
+// It is machine-read by those deps' generation runs (--key-requests) so they derive the key
+// traits (Eq/Ord/PartialOrd, plus Hash under --preserve-encodings) on the borrowed type; the
+// compiled self-check below fails THIS crate's build if a dep drops such a derive.
+// Rows are (dep rust-crate name, cddl ident) of each borrowed map-key type.
+#[allow(dead_code)]
+fn _assert_key_traits<K: Eq + Ord + PartialOrd + core::hash::Hash>() {}
+#[allow(dead_code)]
+pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str, &str)] = &[
+    ("wr_dep", "idx_hash", "hash"),
+    ("wr_dep", "idx_ho", "hash ord"),
+];
+"#;
+        assert_eq!(
+            parse_key_types_sidecar(src, "borrowed_key_types.rs"),
+            vec![
+                KeyTypeEntry {
+                    dep: "wr_dep".into(),
+                    ident: "idx_hash".into(),
+                    demand: DemandSet {
+                        bare: false,
+                        hash: true,
+                        ord: false
+                    },
+                },
+                KeyTypeEntry {
+                    dep: "wr_dep".into(),
+                    ident: "idx_ho".into(),
+                    demand: DemandSet {
+                        bare: false,
+                        hash: true,
+                        ord: true
+                    },
                 },
             ]
         );
@@ -1373,16 +1491,32 @@ pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] = &[];
     #[test]
     #[should_panic(expected = "malformed BORROWED_KEY_TYPES row")]
     fn key_types_rejects_mangled_tuple() {
-        // A three-element tuple is a mangled key row (must be exactly two literals).
+        // A four-element tuple is a mangled key row (a row is two literals — dep, ident — or three,
+        // adding a flavor). Three is now legal (the optional flavor column), so the mangled case is 4+.
         let mangled = r#"// This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
 
 #[allow(dead_code)]
 pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] = &[
-    ("wr_dep", "idx_foo", "extra"),
+    ("wr_dep", "idx_foo", "hash", "extra"),
 ];
 "#;
         parse_key_types_sidecar(mangled, "borrowed_key_types.rs");
+    }
+
+    // A three-column row whose flavor token is not a known word is a hard error (mangled sidecar).
+    #[test]
+    #[should_panic(expected = "unknown key-demand flavor")]
+    fn key_types_rejects_unknown_flavor() {
+        let bad = r#"// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#[allow(dead_code)]
+pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str, &str)] = &[
+    ("wr_dep", "idx_foo", "nonsense"),
+];
+"#;
+        parse_key_types_sidecar(bad, "borrowed_key_types.rs");
     }
 
     #[test]
