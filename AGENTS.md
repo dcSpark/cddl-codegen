@@ -61,7 +61,10 @@ changing the *runtime behaviour* of generated code usually means editing `static
     legacy-root
     check (missing `mod generated;`) and the stale-file scan (orphaned `.rs` under the generated
     trees). Nothing reads prior *tool* output to decide what code to generate, so "run twice = run
-    once = clean run" still holds.
+    once = clean run" still holds. (Cross-crate request sidecars — `--wrapper-requests` /
+    `--key-requests` reading a CONSUMER's committed `borrowed_collections.rs` /
+    `borrowed_key_types.rs` — are explicit INPUTS from another crate, not this run's prior output;
+    same inputs → same bytes still holds.)
 - **The IR borrows the AST.** `IntermediateTypes<'a>` can't be returned from a function that parses
   internally — drive the pipeline through the scoped callback in `api.rs` (it owns the AST).
 - **bin/lib module duplication.** `main.rs` and `lib.rs` each declare the module list — a new

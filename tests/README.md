@@ -356,15 +356,21 @@ control-constrained signed-int member
 fields on a 32-bit target — the class where `isize` fields overflowed the `i64::MIN`/`MAX`
 literals, which 64-bit host builds can never see.
 
-The workspace-mode surface (`--workspace-dep` / `--wrapper-requests` — dep-owned placement of
-all-one-dep collection wrappers via request sidecars; user docs:
+The workspace-mode surface (`--workspace-dep` / `--wrapper-requests` / `--key-requests` — dep-owned
+placement of all-one-dep collection wrappers via request sidecars, and the map-key-derive channel:
+the consumer's `borrowed_key_types.rs` sidecar plus dep-side pre-finalize `used_as_key` seeding from
+both request channels, so a dep type keyed only by a consumer still derives `Eq/Ord/PartialOrd`
+(+`Hash` under preserve-encodings); user docs:
 `docs/docs/command_line_flags.mdx` and `docs/docs/output_format.mdx` § "Workspace mode") is pinned
-by three sibling gates plus the parser's unit suite (`src/wrapper_requests.rs`):
+by three sibling gates plus the parser's unit suite (`src/wrapper_requests.rs` — both the strict
+sidecar grammars and the lenient shape-key extractor):
 `workspace_dep_defers_to_dep` (consumer side over `tests/workspace-dep-wasm/`: unconditional
 all-one-dep deferral incl. NonEmpty and nested shapes, the byte-frozen `borrowed_collections.rs`
 sidecar format asserted as full-file equality — it is a cross-crate contract — plus
 ownerless/mixed composition with `--extern-wrapper-index` and the rule-declared shadowing
-warning); `workspace_requests_hosts_borrowed_wrappers` + the hard-error tests + 
+warning); `workspace_requests_hosts_borrowed_wrappers` + the hard-error tests (including
+`workspace_key_requests_derive_effect_and_hard_errors`, the `--key-requests` intake: derive effect,
+unknown-ident hard error, other-dep row filtering) +
 `workspace_requests_alias_elements_host` (dep side over `tests/workspace-requests/`: strict sidecar
 intake, union-by-shape with sorted requester attribution, own-spec-shape satisfaction, flag-order
 byte-identity, the criterion-8 hard errors plus the review-hardened classes — the stub-fidelity

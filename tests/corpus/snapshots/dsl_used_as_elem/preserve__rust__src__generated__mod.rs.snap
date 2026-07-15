@@ -1,0 +1,38 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+pub mod cbor_encodings;
+pub mod serialization;
+
+use crate::generated::error::*;
+use crate::generated::ordered_hash_map::OrderedHashMap;
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+use cbor_encodings::ElemEncoding;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+#[derive(Clone, Debug)]
+pub struct Elem {
+    pub a: u64,
+    pub b: String,
+    pub encodings: Option<ElemEncoding>,
+}
+
+impl Elem {
+    pub fn new(a: u64, b: String) -> Self {
+        Self {
+            a,
+            b,
+            encodings: None,
+        }
+    }
+}
