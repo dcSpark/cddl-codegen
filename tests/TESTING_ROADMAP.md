@@ -560,6 +560,16 @@ dead loses the lesson.
   (`--wasm-cbor-json-api-macro`), and — for `--canonical-form=true` without `--preserve-encodings`,
   which emitted a non-compiling crate — a CLI rejection (`api::with_types`, pinned by
   `flag_value_rejects_canonical_without_preserve`).
+- **A compile leg for compile-relevant `dsl_position_tests` Effect cells.** The sweep is
+  string-level by design, so a cell can be GREEN while the emitted crate is broken: the
+  `@custom_json` record-struct cell first landed passing while the generated struct kept its
+  serde derives against a now-unskipped `encodings` field (E0277) — caught only by a hand-run
+  end-to-end repro during review, not by any gate. The landed mitigation is paired anchors
+  (the cell asserts the derive line AND the skip attribute, on both the directive and control
+  sides), which covers known failure modes only; a `cargo check` probe over the cells whose
+  expectation is compile-relevant would close the class. Weigh against the sweep's cheapness
+  (it currently runs in ~1s; a compile leg is nested-cargo-priced and would need the gate
+  cache).
 - **`quickcheck` alongside `proptest`; `goldenfile`/`expect-test` as a second corpus engine;
   `no-panic` lints; coverage instrumentation of *generated* code; `trybuild` for whole-crate
   compile-pass** (the corpus `cargo check` is simpler and broader).
