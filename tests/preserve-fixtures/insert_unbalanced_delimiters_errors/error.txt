@@ -1,1 +1,1 @@
-unbalanced delimiters
+old.rs:6: The user section of the `// cddl-codegen:insert-start` block has unbalanced

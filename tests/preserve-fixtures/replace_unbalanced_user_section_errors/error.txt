@@ -1,1 +1,1 @@
-user section of an `// cddl-codegen:replace-start` block has unbalanced
+old.rs:6: The user section of the `// cddl-codegen:replace-start` block has unbalanced

@@ -4,7 +4,8 @@
 //! * `old.rs` — the prior on-disk file (user comments / insert blocks / carried sentinel blocks);
 //! * `new.rs` — the freshly generated pristine content;
 //! * exactly one expectation: `expected.rs` (the exact merge output) OR `error.txt` (a substring the
-//!   hard [`PreserveError`] message must contain).
+//!   hard [`PreserveError`], rendered as the CLI shows it via `render("old.rs")`, must contain — so a
+//!   case can pin the clickable `old.rs:<line>:` prefix, not just the bare message).
 //!
 //! For an `expected.rs` case the harness asserts `preserve(old, new).content == expected`
 //! BYTE-FOR-BYTE — strictly stronger than a `contains()` check — and then runs, independent of the
@@ -81,7 +82,7 @@ fn preserve_fixtures() {
         let error_path = dir.join("error.txt");
         let expected_path = dir.join("expected.rs");
 
-        // Hard-error case: `preserve` must return an Err whose message contains error.txt's content.
+        // Hard-error case: `preserve` must return an Err whose rendered form contains error.txt.
         if error_path.exists() {
             match preserve(&old, &new) {
                 Ok(_) => failures.push(format!(
@@ -90,10 +91,13 @@ fn preserve_fixtures() {
                 Err(e) => {
                     let want = std::fs::read_to_string(&error_path).unwrap();
                     let want = want.trim();
-                    if !e.message.contains(want) {
+                    // Match against the RENDERED form the CLI shows — `old.rs` is the fixture's own
+                    // on-disk file, the analog of the real generated file — so an error.txt can pin
+                    // the clickable `old.rs:<line>:` prefix, not just the bare message.
+                    let got = e.render("old.rs");
+                    if !got.contains(want) {
                         failures.push(format!(
-                            "[{name}] error message mismatch\n  want substring: {want}\n  got: {}",
-                            e.message
+                            "[{name}] error message mismatch\n  want substring: {want}\n  got: {got}"
                         ));
                     }
                 }
