@@ -1512,11 +1512,15 @@ Generation is **in-process** (`api::generated_strings` via `Cli::parse_from`, wr
 `catch_unwind` — no subprocess, no scratch dirs) and **parse-only** (no cargo check/test of the
 generated crates), so the sweep stays always-on (no `#[ignore]`) in the default `cargo test` /
 check.ts local tier. It scopes to `src/generated/mod.rs`; a key-set guard over the returned file map
-fails loudly on any `.rs` name outside the per-profile allowlist (preserve additionally allows
+fails loudly on any `.rs` name outside the per-profile allowlist (the rust base list includes
+`key_demand_assertions.rs` — any `@used_as_key`-tagged crate's private compile-time-only
+`_demand_*` self-checks, zero pub items so nothing to parse; preserve additionally allows
 `cbor_encodings.rs`/`ordered_hash_map.rs`, both optional; the wasm side allows `mod.rs` plus
 `collections.rs` — the wrapper re-export index every wasm crate now emits, a `pub use` inventory of
 classes already defined in `mod.rs`, so it introduces no boundary API for the differential to
-parse), so a future emission surface can't silently escape the differential. One (profile, input)
+parse), so a future emission surface can't silently escape the differential — it caught
+`key_demand_assertions.rs`'s widening to bare roots exactly this way before the file was
+classified. One (profile, input)
 pair is pinned in `EXPECTED_GENERATION_FAIL`: (preserve, tests/core) — a float member aborts
 generation under `--preserve-encodings` (issue #205, the `preserve_encodings_supports_floats` stub)
 — with a resurfaced guard both directions (a listed pair that generates fails as "gap closed —
