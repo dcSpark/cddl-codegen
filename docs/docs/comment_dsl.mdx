@@ -160,6 +160,18 @@ foo = uint ; @newtype @custom_json
 
 Avoids generating and/or deriving json-related traits under the assumption that the user will supply their own implementation to be used in the generated library.
 
+It works on any rule shape — newtypes, record structs (map/array group rules), and sum types.
+On a type-choice rule, rule-level directives attach via the trailing comment of the LAST variant:
+
+```cddl
+my_sum =
+    uint ; @name integer
+  / bytes ; @name raw @custom_json
+```
+
+With `--preserve-encodings`, the type's serde/schemars derives and the `#[serde(skip)]`
+attributes on its encoding fields are omitted together (either alone would not compile).
+
 ## @custom_serialize / @custom_deserialize
 
 ```cddl
