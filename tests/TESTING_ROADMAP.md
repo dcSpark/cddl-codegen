@@ -256,6 +256,24 @@ dead loses the lesson.
   (`unused_parens` et al.): evaluate specific beyond-`all` lints one at a time, adding a per-lint
   deny only if it is currently green-able on both profiles (nursery lints carry known false
   positives). Act on a second instance or a consumer report, not before.
+- **`unused_imports` on the pruned collection-type imports — no rustc-warning gate yet.** The
+  usage-derived prune (`import_prune::prune_generated_files`, run once over the whole file map in
+  `generation.rs`'s `generated_files`) removes the four blindly-pushed collection imports
+  (`BTreeMap`/`OrderedHashMap`/`NonEmptyVec`/`NonEmptyMap`) that a file's module family — the file
+  plus its strict path-descendant modules, the complete set of possible consumers of its private
+  imports — names nowhere. An over-prune that removes a needed import is caught LOUD by the
+  existing nested-cargo compile gates (E0412/E0433 — exactly what caught the first per-file
+  prototype); the uncovered direction is warning-severity residue: a future under-prune, or the
+  model's one remaining imprecision — a file is protected by ALL its descendants, including ones
+  that never actually glob-chain (`use super::*;` at each level) back to it, so a descendant using
+  a type through its own direct import can keep an ancestor's copy alive. Expected residue at
+  today's emission shapes is near zero (children reach parents via `use super::*;` uniformly). The
+  mechanical layer is a nested-cargo check failing on an `unused_imports` rustc warning whose ident
+  is one of the four allowlisted names (`cargo build --message-format=json` filtered to
+  `unused_imports` diagnostics naming an allowlist ident); it would also measure the actual residue.
+  Build it if it slots into an existing nested-cargo gate in ≤ ~30 lines. Exact glob-EDGE tracking
+  (protect only via descendants that actually glob-chain to the file) replaces the descendant
+  closure only on a real warning report — not before.
 - **Mechanical layers for the two review-owned design rules in `tests/README.md` § "Design
   rules" (invariant-softening, vacuity-floor witness) — build only if a class recurs.** The
   vacuity-floor detector is a scoped mutation sweep over the harness's emission helpers — a

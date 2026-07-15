@@ -40,6 +40,20 @@ clap = { version = "4.5", features = ["derive"] }
 codegen = { git = "https://github.com/dcSpark/codegen", branch = "master" }
 nom = "8"
 pathdiff = "0.2.3"
+# Powers `import_prune.rs`, the usage-derived import-pruning post-pass over every generated `.rs`
+# string. `proc-macro2`'s `span-locations` feature makes `Span::start()`/`Span::end()` report real
+# line/column info when parsing a plain string, which the pass maps to byte offsets to splice out
+# only the exact use-item range (never whole-file token re-printing, which would drop comments and
+# break the comment-preservation overlay). `quote` supplies `ToTokens` to render the filtered use
+# item back to source. Both are already in-tree transitively (via `syn`), so this adds no lockfile
+# weight. None of the three become generated-crate deps — they run inside this tool only.
+proc-macro2 = { version = "1", features = ["span-locations"] }
+quote = "1"
+# Parses each generated `.rs` string into an AST for `import_prune.rs` (the import-pruning post-pass;
+# `features=["full"]` gets the item/use AST it walks) and drives the harness-side `syn`-based
+# differentials in the test suite (`wasm_api_parity` / `recombination_tests`). NEVER a
+# generated-crate dep — it runs inside this tool only.
+syn = { version = "2", features = ["full"] }
 # Cargo's own SemVer parser/evaluator (cargo-team maintained). Powers the dependency-spec merge in
 # `cargo_manifest.rs`: a user's concrete version pin is kept verbatim when it satisfies the tool's
 # version requirement (caret semantics), otherwise the tool's floor wins.
@@ -67,11 +81,6 @@ minicbor = { version = "0.26", features = ["half"] }
 # `tests/decode_conformance/catalog.toml` corpus (same class as ciborium/minicbor above). Navigated
 # via `toml::Value` — no serde derives of our own.
 toml = "0.8"
-# Harness-side ONLY (never a generated-crate dep): `wasm_api_parity` parses the emitted
-# `rust`/`wasm` `src/generated/mod.rs` with syn to run the rust->wasm public-API-surface
-# differential. Already in-tree transitively (2.0.x via the proc-macro derives), so this adds no
-# lockfile weight; `features=["full"]` gets the item/impl/fn AST the differential walks.
-syn = { version = "2", features = ["full"] }
 # Harness-side ONLY (never a generated-crate dep): `recombination_tests` parses the projected
 # `tests/recomb/ingredients.json` (cddl-matrix/project_recombination.ts). Already in-tree
 # transitively (via the `cddl` validator), so this adds no lockfile weight. Navigated via

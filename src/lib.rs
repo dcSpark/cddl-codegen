@@ -7,6 +7,7 @@ pub mod dep_graph;
 pub mod emit_tests;
 pub mod emit_tests_wasm;
 pub mod generation;
+pub mod import_prune;
 pub mod intermediate;
 pub mod parsing;
 pub mod rust_reserved;

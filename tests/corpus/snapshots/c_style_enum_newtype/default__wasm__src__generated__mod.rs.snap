@@ -13,7 +13,6 @@ expression: content
 pub mod collections;
 
 pub use cddl_lib::FixedEnum;
-use std::collections::BTreeMap;
 use wasm_bindgen::prelude::{wasm_bindgen, JsError};
 
 #[derive(Clone, Debug)]

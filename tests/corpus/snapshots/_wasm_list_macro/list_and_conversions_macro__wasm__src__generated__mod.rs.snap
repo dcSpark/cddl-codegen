@@ -14,7 +14,6 @@ pub mod collections;
 
 pub use cddl_lib::Color;
 use my_crate::{impl_wasm_conversions, impl_wasm_list};
-use std::collections::BTreeMap;
 use wasm_bindgen::prelude::{wasm_bindgen, JsError};
 
 impl_wasm_list!(Color, Color, Colors, false, true);

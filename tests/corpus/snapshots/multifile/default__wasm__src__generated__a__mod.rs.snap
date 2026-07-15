@@ -7,7 +7,6 @@ expression: content
 
 pub mod c;
 
-use std::collections::BTreeMap;
 use wasm_bindgen::prelude::{wasm_bindgen, JsError};
 
 #[derive(Clone, Debug)]

@@ -333,6 +333,8 @@ The macro must take the wasm wrapper type as the only parameter.
 
 This macro will be called regardless of the values of to-from-bytes-methods / json-serde-derives / etc, so it is assumed that whatever logic your macros have is consistent with the other CLI flag values.
 
+If the macro's *expansion* names a collection type (`BTreeMap`, `OrderedHashMap`, `NonEmptyVec`, `NonEmptyMap`), it must fully-qualify it (`$crate::...` / `std::collections::BTreeMap`) rather than rely on the call-site file's ambient imports — imports are emitted only for names the generated code itself references, and ident-scanning cannot see through macro expansion (the in-repo stub macro crate already complies and is compile-gated).
+
 ```bash
 cddl-codegen --input=example --output=export --wasm-cbor-json-api-macro=cml_core_wasm::impl_wasm_cbor_json_api
 ```
@@ -346,6 +348,8 @@ If it is passed in, it will call the supplied externally defined macro on each e
 The external macro is assumed to exist at the specified path and will be imported if there are module prefixes.
 
 The macro must take the rust type as the first parameter and the wasm wrapper type as the second one.
+
+If the macro's *expansion* names a collection type (`BTreeMap`, `OrderedHashMap`, `NonEmptyVec`, `NonEmptyMap`), it must fully-qualify it — never rely on the call-site file's ambient imports (see `--wasm-cbor-json-api-macro` above; ident-scanning cannot see through macro expansion).
 
 ```bash
 cddl-codegen --input=example --output=export --wasm-conversions-macro=cml_core_wasm::impl_wasm_conversions
@@ -373,6 +377,8 @@ The first two parameters can be generic types (e.g. `Vec<u8>`, `BTreeMap<u64, St
 This supersedes `--wasm-conversions-macro` for list wrappers (the list macro is expected to emit the conversion traits itself); non-list types are unaffected. A list whose element type can't be reduced to those two bools (e.g. an optional element) falls back to the inline form.
 
 The **restricted non-empty list wrappers** (`[+ T]` → `NonEmptyBarList`; see [Wasm Differences](wasm_differences) § Non-empty containers) always emit **inline** in this phase — only the *loose* builder wrapper takes the macro path. The restricted wrapper's boundary surface (the failable `try_from` door, `new(first)`, checked removal) differs from the plain `new`/`len`/`get`/`add` block the macro emits, so a parallel macro for it is deferred; there is no flag needed to opt into the inline form.
+
+If the macro's *expansion* names a collection type (`BTreeMap`, `OrderedHashMap`, `NonEmptyVec`, `NonEmptyMap`), it must fully-qualify it — never rely on the call-site file's ambient imports (see `--wasm-cbor-json-api-macro` above; ident-scanning cannot see through macro expansion). Types passed as macro *arguments* are unaffected — call-site tokens are scanned.
 
 (The no-argument form of this flag is reserved for a future built-in default that would also emit the macro definition; for now the macro definition must be supplied by you, e.g. `cml_core_wasm::impl_wasm_list`.)
 

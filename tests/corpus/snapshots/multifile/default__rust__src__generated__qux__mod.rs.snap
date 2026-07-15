@@ -8,7 +8,6 @@ expression: content
 pub mod serialization;
 
 use crate::generated::error::*;
-use std::collections::BTreeMap;
 use std::convert::TryFrom;
 
 #[derive(Clone, Debug)]
