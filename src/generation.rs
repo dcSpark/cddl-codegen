@@ -9420,7 +9420,8 @@ fn codegen_struct(
     // Rust-only for the rest of this function
 
     // Struct (fields) + constructor
-    let (mut native_struct, mut native_impl) = create_base_rust_struct(types, name, false, cli);
+    let (mut native_struct, mut native_impl) =
+        create_base_rust_struct(types, name, config.custom_json, cli);
     native_struct.vis("pub");
     if let Some(doc) = config.doc.as_ref() {
         native_struct.doc(doc);
@@ -9506,7 +9507,7 @@ fn codegen_struct(
         native_struct.field(
             format!(
                 "{}pub encodings",
-                encoding_var_macros(types.used_as_key(name), false, cli)
+                encoding_var_macros(types.used_as_key(name), config.custom_json, cli)
             ),
             format!("Option<{encoding_name}>"),
         );
@@ -10806,7 +10807,7 @@ impl EnumVariantInRust {
         &self.names[..self.names.len() - self.outer_vars]
     }
 
-    fn names_with_macros(&self, used_in_key: bool, cli: &Cli) -> Vec<String> {
+    fn names_with_macros(&self, used_in_key: bool, custom_json: bool, cli: &Cli) -> Vec<String> {
         self.names
             .iter()
             .enumerate()
@@ -10819,7 +10820,11 @@ impl EnumVariantInRust {
                     // the codeen crate doesn't support proc macros on fields but we just inline
                     // these with a newline in the field names for declaring as workaround.
                     // Indentation is never an issue as we're always 2 levels deep for field declarations
-                    format!("{}{}", encoding_var_macros(used_in_key, false, cli), name)
+                    format!(
+                        "{}{}",
+                        encoding_var_macros(used_in_key, custom_json, cli),
+                        name
+                    )
                 }
             })
             .collect()
@@ -11368,7 +11373,7 @@ fn generate_enum(
             }
             _ => {
                 for (name_with_macros, type_str) in enum_gen_info
-                    .names_with_macros(types.used_as_key(name), cli)
+                    .names_with_macros(types.used_as_key(name), config.custom_json, cli)
                     .into_iter()
                     .zip(enum_gen_info.types.iter())
                 {
