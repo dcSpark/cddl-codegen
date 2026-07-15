@@ -46,6 +46,15 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
   supports it; wire it into `project_corpus.ts` if a consumer wants the complete matrix view.
+- **Matrix rows for the flavored `@used_as_key` DSL surface.** The `dsl.used_as_key` row covers only the
+  bare tag; the flavor arguments (`@used_as_key hash` / `ord` / `hash ord` — narrowed, mode-independent
+  derive families; `docs/docs/comment_dsl.mdx` § `@used_as_key`, `src/comment_ast.rs`) are new
+  vendor-profile surface with no rows, so Q1's generated Limitations projection cannot see them. Mint
+  sibling rows (or per-flavor annotations on `dsl.used_as_key`) riding the same probe machinery; the
+  probes should also cover the emitted `key_demand_assertions.rs` self-check file, which is new generated
+  output surface (`docs/docs/output_format.mdx` documents the workspace-sidecar flavor column; the
+  corpus already carries `dsl_used_as_key_hash`/`_ord`/`_hash_ord`/`_hash_cstyle` fixtures to seed
+  examples from).
 
 ## F4 / F5 follow-ons (only when their consumer exists)
 

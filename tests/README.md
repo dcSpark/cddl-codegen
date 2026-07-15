@@ -360,7 +360,12 @@ The workspace-mode surface (`--workspace-dep` / `--wrapper-requests` / `--key-re
 placement of all-one-dep collection wrappers via request sidecars, and the map-key-derive channel:
 the consumer's `borrowed_key_types.rs` sidecar plus dep-side pre-finalize `used_as_key` seeding from
 both request channels, so a dep type keyed only by a consumer still derives `Eq/Ord/PartialOrd`
-(+`Hash` under preserve-encodings); user docs:
+(+`Hash` under preserve-encodings) — or, when the borrow carries a `@used_as_key` flavor
+(`hash`/`ord`), exactly that family via an optional third row column with per-flavor compiled
+self-checks (all-bare sidecars keep the two-column form byte-identically; the flavored
+column/parse legs are covered by the `wrapper_requests` unit suite — `key_types_accepts_flavor_column`,
+`key_types_rejects_unknown_flavor` — with no flavored-borrow workspace *fixture* yet, see
+`TESTING_ROADMAP.md`); user docs:
 `docs/docs/command_line_flags.mdx` and `docs/docs/output_format.mdx` § "Workspace mode") is pinned
 by three sibling gates plus the parser's unit suite (`src/wrapper_requests.rs` — both the strict
 sidecar grammars and the lenient shape-key extractor):
