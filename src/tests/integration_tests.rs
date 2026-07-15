@@ -495,7 +495,9 @@ fn tool_exists(bin: &str) -> bool {
 }
 
 /// Spawn cargo/wasm-pack for building a *generated* crate. The generated code is the harness's
-/// own output and legitimately over-imports; CI's `setup-rust-toolchain` injects
+/// own output and legitimately over-imports traits and globs — the usage-derived prune
+/// (`import_prune`) covers only the concrete collection-type imports, since a trait can be
+/// exercised via a method call that never names it; CI's `setup-rust-toolchain` injects
 /// `RUSTFLAGS="-D warnings"` into the job env, which nested cargo builds would otherwise inherit
 /// and fail on those unused-import warnings. The root workspace keeps `-D warnings` via the
 /// dedicated Build/clippy steps; only these nested generated-crate builds must be insulated.
@@ -3204,7 +3206,8 @@ fn wasm_collections_index_lists_every_minted_wrapper() {
 /// representative profiles: default flags, and `--preserve-encodings=true --canonical-form=true`.
 ///
 /// Deny only `clippy::all` plus a curated rustc style-lint set, NOT `-D warnings`: generated code
-/// legitimately over-imports and rustc's `unused_imports` / `unused_variables` must stay warnings
+/// legitimately over-imports traits/globs (only the concrete collection-type imports are pruned —
+/// `import_prune`) and rustc's `unused_imports` / `unused_variables` must stay warnings
 /// here (see `tool_cmd`'s doc comment; `tool_cmd` also strips the CI-injected `RUSTFLAGS=-D
 /// warnings`). The rustc denies cover emitted source-shape regressions `clippy::all` does not:
 /// redundant grouping (`unused_parens`, `unused_braces`) and useless heap allocation
@@ -6164,8 +6167,8 @@ fn package_json_pipeline() {
     assert!(npm_install.status.success());
 
     // THE assertion: run the shipped script verbatim. Strip RUSTFLAGS for the same reason `tool_cmd`
-    // does — the nested `cargo +stable` builds the generated crate, which legitimately over-imports,
-    // and CI injects `-D warnings` into the job env. ~20s cold here (wasm-pack build + a small nested
+    // does — the nested `cargo +stable` builds the generated crate, which legitimately over-imports
+    // traits/globs, and CI injects `-D warnings` into the job env. ~20s cold here (wasm-pack build + a small nested
     // cargo build); give the tool an extended timeout.
     let build = std::process::Command::new("npm")
         .args(["run", "rust:build-nodejs"])

@@ -281,8 +281,8 @@ fn identifier_hazard_robustness_catalog() {
 // ---- layer 2: the standalone compile gate ---------------------------------------------------------
 
 /// Spawn cargo for a *generated* crate, insulated from the workspace's `-D warnings` (generated code
-/// legitimately over-imports). Local copy of `integration_tests::tool_cmd` to keep that module's
-/// visibility unchanged.
+/// legitimately over-imports traits/globs — see `integration_tests::tool_cmd`'s doc comment). Local
+/// copy of `integration_tests::tool_cmd` to keep that module's visibility unchanged.
 fn tool_cmd(program: &str) -> std::process::Command {
     let mut c = std::process::Command::new(program);
     c.env_remove("RUSTFLAGS");
