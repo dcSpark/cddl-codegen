@@ -1,1 +1,1 @@
-records no generated code
+old.rs:6: The `// cddl-codegen:replaces` section records no generated code

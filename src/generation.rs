@@ -73,7 +73,7 @@ fn write_rs_with_preserve(
             ))
         })?;
         let preserved = crate::comment_preserve::preserve(&existing, content)
-            .map_err(|e| std::io::Error::other(format!("{rel_path}: {e}")))?;
+            .map_err(|e| std::io::Error::other(e.render(rel_path)))?;
         if preserved.changed {
             std::fs::write(path, rustfmt_generated_string(&preserved.content)?.as_ref())?;
         } else {

@@ -83,7 +83,10 @@
 //! (pre-splice) on a malformed block: a missing `replaces`/`replace-end`, an empty recorded original
 //! (lexes to zero code tokens), unbalanced delimiters in the user section OR the recorded original, a
 //! recorded original that fails to lex, an orphaned/nested tag, or a recorded original that straddles
-//! a top-level item boundary. An empty user section is a (undocumented) deletion — allowed, pinned by
+//! a top-level item boundary. The block-shape errors (unbalanced delimiters, empty recorded original)
+//! tag the offending block's `*-start` line on the [`PreserveError`], so the caller renders a
+//! `file:line:` prefix editors turn into a clickable jump (one on-disk file can hold many blocks). An
+//! empty user section is a (undocumented) deletion — allowed, pinned by
 //! a fixture. Every fail-loudly `compile_error!` names its payload correctly — "a user comment" for a
 //! comment, "a user code block" for an insert/replace block.
 //!
@@ -135,15 +138,31 @@ pub struct Preserved {
     pub changed: bool,
 }
 
-/// A failure to lex the existing on-disk file. Carries a message; the caller attaches the file name.
+/// A failure to preserve/lex the existing on-disk file. The caller attaches the file name via
+/// [`render`](Self::render); `line`, when known, is the 1-based line of the offending block so the
+/// rendered form is a `file:line:` prefix editors turn into a clickable jump.
 #[derive(Debug)]
 pub struct PreserveError {
     pub message: String,
+    pub line: Option<usize>,
+}
+
+impl PreserveError {
+    /// `<file>:<line>: <message>` when a line is known (clickable in editors), else `<file>: <message>`.
+    pub fn render(&self, file: &str) -> String {
+        match self.line {
+            Some(l) => format!("{file}:{l}: {}", self.message),
+            None => format!("{file}: {}", self.message),
+        }
+    }
 }
 
 impl std::fmt::Display for PreserveError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.message)
+        match self.line {
+            Some(l) => write!(f, "line {l}: {}", self.message),
+            None => f.write_str(&self.message),
+        }
     }
 }
 
@@ -192,6 +211,16 @@ fn is_ident_cont(c: u8) -> bool {
 fn err<T>(message: &str) -> Result<T, PreserveError> {
     Err(PreserveError {
         message: message.to_owned(),
+        line: None,
+    })
+}
+
+/// Like [`err`] but tags the 1-based source line of the offending block, so the caller can render a
+/// `file:line:` prefix.
+fn err_at<T>(line: usize, message: String) -> Result<T, PreserveError> {
+    Err(PreserveError {
+        message,
+        line: Some(line),
     })
 }
 
@@ -772,6 +801,11 @@ fn line_start(src: &str, pos: usize) -> usize {
     src[..pos].rfind('\n').map(|p| p + 1).unwrap_or(0)
 }
 
+/// 1-based line number of byte offset `pos` in `src`, for locating a malformed block in an error.
+fn line_of(src: &str, pos: usize) -> usize {
+    src[..pos].bytes().filter(|&b| b == b'\n').count() + 1
+}
+
 fn line_indent(src: &str, pos: usize) -> &str {
     let ls = line_start(src, pos);
     let line = &src[ls..];
@@ -976,19 +1010,25 @@ fn scan_blocks(
                             replaces_p = Some(q);
                             break;
                         }
-                        return err(&format!(
-                            "An `// cddl-codegen:replace-start` block reached `// cddl-codegen:{inner}` \
-                             before its `// cddl-codegen:replaces` marker."
-                        ));
+                        return err_at(
+                            line_of(lexed.src, comments[ci].start),
+                            format!(
+                                "An `// cddl-codegen:replace-start` block reached \
+                                 `// cddl-codegen:{inner}` before its `// cddl-codegen:replaces` \
+                                 marker."
+                            ),
+                        );
                     }
                 }
             }
             let replaces_p = match replaces_p {
                 Some(q) => q,
                 None => {
-                    return err(
+                    return err_at(
+                        line_of(lexed.src, comments[ci].start),
                         "An `// cddl-codegen:replace-start` block has no `// cddl-codegen:replaces` \
-                         marker (nothing separates the user code from the recorded original).",
+                         marker (nothing separates the user code from the recorded original)."
+                            .to_owned(),
                     );
                 }
             };
@@ -1006,19 +1046,25 @@ fn scan_blocks(
                             end_p = Some(r);
                             break;
                         }
-                        return err(&format!(
-                            "An `// cddl-codegen:replace-start` block reached `// cddl-codegen:{inner}` \
-                             before its `// cddl-codegen:replace-end` marker."
-                        ));
+                        return err_at(
+                            line_of(lexed.src, comments[ci].start),
+                            format!(
+                                "An `// cddl-codegen:replace-start` block reached \
+                                 `// cddl-codegen:{inner}` before its `// cddl-codegen:replace-end` \
+                                 marker."
+                            ),
+                        );
                     }
                 }
             }
             let end_p = match end_p {
                 Some(r) => r,
                 None => {
-                    return err(
+                    return err_at(
+                        line_of(lexed.src, comments[ci].start),
                         "An `// cddl-codegen:replace-start` block is not closed by a matching \
-                         `// cddl-codegen:replace-end`.",
+                         `// cddl-codegen:replace-end`."
+                            .to_owned(),
                     );
                 }
             };
@@ -1030,15 +1076,19 @@ fn scan_blocks(
             // Only comments may sit between `replaces` and `replace-end`; a code token there would
             // desync the following-token anchor and means the recorded section is malformed.
             if comments[end_ci].anchor != user_code_end {
-                return err(
+                return err_at(
+                    line_of(lexed.src, comments[ci].start),
                     "An `// cddl-codegen:replaces` section contains code; every line under \
-                     `replaces` must be a `//`-commented copy of the replaced generated code.",
+                     `replaces` must be a `//`-commented copy of the replaced generated code."
+                        .to_owned(),
                 );
             }
             if !delimiters_balanced(&lexed.code[user_code_start..user_code_end]) {
-                return err(
-                    "The user section of an `// cddl-codegen:replace-start` block has unbalanced \
-                     delimiters ({}, (), or []); wrap a complete, balanced fragment.",
+                return err_at(
+                    line_of(lexed.src, comments[start_ci].start),
+                    "The user section of the `// cddl-codegen:replace-start` block has unbalanced \
+                     delimiters ({}, (), or []); wrap a complete, balanced fragment."
+                        .to_owned(),
                 );
             }
             // Uncomment the recorded-original lines (the own-line comments between `replaces` and
@@ -1062,11 +1112,19 @@ fn scan_blocks(
             });
             p = end_p + 1;
         } else if tag == REPLACES {
-            return err("Found `// cddl-codegen:replaces` without an enclosing \
-                 `// cddl-codegen:replace-start` block.");
+            return err_at(
+                line_of(lexed.src, comments[ci].start),
+                "Found `// cddl-codegen:replaces` without an enclosing \
+                 `// cddl-codegen:replace-start` block."
+                    .to_owned(),
+            );
         } else if tag == REPLACE_END {
-            return err("Found `// cddl-codegen:replace-end` without a matching \
-                 `// cddl-codegen:replace-start`.");
+            return err_at(
+                line_of(lexed.src, comments[ci].start),
+                "Found `// cddl-codegen:replace-end` without a matching \
+                 `// cddl-codegen:replace-start`."
+                    .to_owned(),
+            );
         } else if tag == INSERT_START {
             // Scan forward for the matching insert-end. Any OTHER reserved tag before it terminates
             // the block prematurely — a hard error, not a silent truncation of the user section.
@@ -1081,20 +1139,25 @@ fn scan_blocks(
                             end_p = Some(q);
                             break;
                         }
-                        return err(&format!(
-                            "An `// cddl-codegen:insert-start` block contains an unexpected reserved \
-                             tag before its `// cddl-codegen:insert-end` (line: `{}`).",
-                            comments[cj].text
-                        ));
+                        return err_at(
+                            line_of(lexed.src, comments[ci].start),
+                            format!(
+                                "An `// cddl-codegen:insert-start` block contains an unexpected \
+                                 reserved tag before its `// cddl-codegen:insert-end` (line: `{}`).",
+                                comments[cj].text
+                            ),
+                        );
                     }
                 }
             }
             let q = match end_p {
                 Some(q) => q,
                 None => {
-                    return err(
+                    return err_at(
+                        line_of(lexed.src, comments[ci].start),
                         "An `// cddl-codegen:insert-start` block is not closed by a matching \
-                         `// cddl-codegen:insert-end`.",
+                         `// cddl-codegen:insert-end`."
+                            .to_owned(),
                     );
                 }
             };
@@ -1103,9 +1166,11 @@ fn scan_blocks(
             let code_start = comments[start_ci].anchor;
             let code_end = comments[end_ci].anchor;
             if !delimiters_balanced(&lexed.code[code_start..code_end]) {
-                return err(
-                    "The user section of an `// cddl-codegen:insert-start` block has unbalanced \
-                     delimiters ({}, (), or []); wrap a complete, balanced fragment.",
+                return err_at(
+                    line_of(lexed.src, comments[start_ci].start),
+                    "The user section of the `// cddl-codegen:insert-start` block has unbalanced \
+                     delimiters ({}, (), or []); wrap a complete, balanced fragment."
+                        .to_owned(),
                 );
             }
             let byte_start = line_start(lexed.src, comments[start_ci].start);
@@ -1118,17 +1183,23 @@ fn scan_blocks(
             });
             p = q + 1;
         } else if tag == INSERT_END {
-            return err(
-                "Found `// cddl-codegen:insert-end` without a matching `// cddl-codegen:insert-start`.",
+            return err_at(
+                line_of(lexed.src, comments[ci].start),
+                "Found `// cddl-codegen:insert-end` without a matching \
+                 `// cddl-codegen:insert-start`."
+                    .to_owned(),
             );
         } else {
             // A bare `unpreserved-comment` marker not backed by the `compile_error!` shape (it was
             // not claimed by `recognize_sentinels`), or any unknown tag: a malformed structure, not a
             // user comment.
-            return err(&format!(
-                "Unrecognized reserved comment in the `cddl-codegen:` namespace (line: `{}`).",
-                comments[ci].text
-            ));
+            return err_at(
+                line_of(lexed.src, comments[ci].start),
+                format!(
+                    "Unrecognized reserved comment in the `cddl-codegen:` namespace (line: `{}`).",
+                    comments[ci].text
+                ),
+            );
         }
     }
     // A block's tag/interior comments (own-line AND trailing) and interior code tokens are excluded
@@ -1234,17 +1305,22 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
         .iter()
         .map(|rb| lex(&rb.needle_text))
         .collect::<Result<_, _>>()?;
-    for nl in &needle_lexed {
+    for (nl, rb) in needle_lexed.iter().zip(block_scan.replace_blocks.iter()) {
+        let line = line_of(old, rb.byte_start);
         if nl.code.is_empty() {
-            return err(
-                "An `// cddl-codegen:replaces` section records no generated code (it lexes to zero \
-                 tokens); record the exact code being replaced under `replaces`.",
+            return err_at(
+                line,
+                "The `// cddl-codegen:replaces` section records no generated code (it lexes to zero \
+                 tokens); record the exact code being replaced under `replaces`."
+                    .to_owned(),
             );
         }
         if !delimiters_balanced(&nl.code) {
-            return err(
-                "The recorded original of an `// cddl-codegen:replace-start` block has unbalanced \
-                 delimiters ({}, (), or []); record a complete, balanced fragment.",
+            return err_at(
+                line,
+                "The recorded original of the `// cddl-codegen:replace-start` block has unbalanced \
+                 delimiters ({}, (), or []); record a complete, balanced fragment."
+                    .to_owned(),
             );
         }
     }
@@ -1394,9 +1470,11 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
         match containing {
             Some(it) if vstart + vlen <= it.end => {}
             _ => {
-                return err(
+                return err_at(
+                    line_of(old, rb.byte_start),
                     "An `// cddl-codegen:replace-start` block's recorded original spans more than \
-                     one top-level item; a replace block must stay within a single item.",
+                     one top-level item; a replace block must stay within a single item."
+                        .to_owned(),
                 );
             }
         }
