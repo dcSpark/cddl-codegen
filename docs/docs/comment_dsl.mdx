@@ -117,6 +117,41 @@ Putting this comment on a type forces that type to derive those traits even if i
 This is useful for when you are writing utility code that would put them in a map and want the generated code to have it already,
 which is particularly useful for re-generating as it lets your `mod.rs` files remain untouched.
 
+## @used_as_elem
+
+```cddl
+bootstrap_witness = [
+  vkey: bytes,
+  signature: bytes,
+] ; @used_as_elem
+```
+
+When you generate WASM bindings, a list used inline in the spec — `[* bootstrap_witness]` — mints a
+loose-list wrapper class (`BootstrapWitnessList`) so the elements can cross the WASM boundary safely.
+But if no rule in your spec actually contains that list, the wrapper is never generated, even though
+hand-written downstream code (or another crate) may still want to construct one.
+
+`@used_as_elem` forces the generator to mint that loose-list wrapper for the tagged type exactly as
+if the spec contained an inline `[* bootstrap_witness]` usage: the structural class
+`BootstrapWitnessList`, its entry in `wasm/src/generated/collections.rs`, and its registration as an
+own-spec-produced shape (so a downstream `--wrapper-requests` consumer asking for `[* bootstrap_witness]`
+is satisfied by *your* crate's class instead of minting its own).
+
+The idiomatic use case is being the canonical host of a wrapper class for a type your crate owns: a
+downstream crate points `--extern-wrapper-index`/`--workspace-dep` at you and imports `BootstrapWitnessList`
+from your `collections` module rather than re-minting a colliding `#[wasm_bindgen]` class. Before this
+tag you had to add a throwaway "fake" rule (`bootstrap_witness_list = [* bootstrap_witness]`) purely to
+force the class into existence; the tag expresses the intent directly on the element type and avoids
+the extra rust-side `pub type` alias the fake rule would emit.
+
+Notes:
+- It is a no-op without `--wasm` (the wrapper is a WASM-boundary concern only).
+- It is rejected if the element is *directly WASM-exposable* (e.g. a transparent `uint`/`text` alias):
+  such a list lowers to a bare `Vec<..>` at the boundary with no wrapper class, so there is nothing to
+  mint.
+- It only mints the loose `[* x]` list wrapper. `[+ x]` (NonEmpty) and map wrappers are out of scope
+  (a map wrapper cannot be named by a tag on a single element rule).
+
 ## @custom_json
 
 ```cddl

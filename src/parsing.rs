@@ -323,6 +323,9 @@ fn parse_type_choices(
         if rule_metadata.used_as_key {
             types.mark_used_as_key(name.clone());
         }
+        if rule_metadata.used_as_elem {
+            types.mark_used_as_elem(name.clone());
+        }
         let variants = create_variants_from_type_choices(types, parent_visitor, type_choices, cli);
         let rust_struct =
             RustStruct::new_type_choice(name.clone(), tag, Some(&rule_metadata), variants, cli);
@@ -885,6 +888,9 @@ fn parse_type(
     );
     if rule_metadata.used_as_key {
         types.mark_used_as_key(type_name.clone());
+    }
+    if rule_metadata.used_as_elem {
+        types.mark_used_as_elem(type_name.clone());
     }
     match &type1.type2 {
         Type2::Typename {

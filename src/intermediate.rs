@@ -145,6 +145,11 @@ pub struct IntermediateTypes<'a> {
     generic_instances: BTreeMap<RustIdent, GenericInstance>,
     news_can_fail: BTreeSet<RustIdent>,
     used_as_key: BTreeSet<RustIdent>,
+    // Idents explicitly tagged `@used_as_elem`: the generator mints the loose-list wasm wrapper
+    // (`FooList = [* foo]` equivalent) for each, exactly as an inline `[* foo]` usage would. Unlike
+    // `used_as_key`, there is NO transitive expansion — the tag names the element directly, and the
+    // wrapper's identity is fully determined by that one element type.
+    used_as_elem: BTreeSet<RustIdent>,
     // which scope an ident is declared in
     scopes: BTreeMap<RustIdent, ModuleScope>,
     // The ORIGINAL CDDL source name for each top-level rule's `RustIdent`. `RustIdent::new`
@@ -186,6 +191,7 @@ impl<'a> IntermediateTypes<'a> {
             generic_instances: BTreeMap::new(),
             news_can_fail: BTreeSet::new(),
             used_as_key: BTreeSet::new(),
+            used_as_elem: BTreeSet::new(),
             scopes: BTreeMap::new(),
             rule_source_names: BTreeMap::new(),
             rejections: Vec::new(),
@@ -1569,6 +1575,30 @@ impl<'a> IntermediateTypes<'a> {
             for msg in self.non_empty_map_wrapper_name_collisions() {
                 self.record_rejection(msg);
             }
+            // `@used_as_elem` mints the loose-list wasm wrapper `<Elem>List` for each tagged
+            // element. A directly-wasm-exposable element (e.g. a transparent `coin = uint` alias)
+            // has NO such wrapper — the list lowers to a bare `Vec<..>` at the wasm boundary — so
+            // the tag has nothing to mint. Reject gracefully here (mirroring the `--wrapper-requests`
+            // exposable diagnostic) rather than silently no-op. Collected into a local set to
+            // sidestep the borrow checker, like the float-key rejections above.
+            let mut exposable_elem_rejections = BTreeSet::new();
+            for ident in &self.used_as_elem {
+                let element_type = self.used_as_elem_element_type(ident);
+                if ConceptualRustType::Array(Box::new(element_type.conceptual_type.clone().into()))
+                    .directly_wasm_exposable_ct(self)
+                {
+                    let member = element_type.name_as_wasm_array(self);
+                    exposable_elem_rejections.insert(format!(
+                        "@used_as_elem on `{ident}`: the loose list `[* {ident}]` is directly \
+                         wasm-exposable — it lowers to `{member}` with no wrapper class, so there \
+                         is no wrapper for this tag to mint. Remove `@used_as_elem` (the element \
+                         already crosses the wasm boundary as a bare `{member}`)."
+                    ));
+                }
+            }
+            for msg in exposable_elem_rejections {
+                self.record_rejection(msg);
+            }
         }
         // Surface any rejection recorded DURING finalize (e.g. the float-key check above, which can
         // only run post-generic-resolution). Without this the entry-point check at the top of
@@ -2030,6 +2060,27 @@ impl<'a> IntermediateTypes<'a> {
 
     pub fn mark_used_as_key(&mut self, name: RustIdent) {
         self.used_as_key.insert(name);
+    }
+
+    /// The set of idents tagged `@used_as_elem`, in sorted (`BTreeSet`) order — the generator walks
+    /// this to mint one loose-list wasm wrapper per marked element (see `mark_used_as_elem`).
+    pub fn used_as_elem(&self) -> &BTreeSet<RustIdent> {
+        &self.used_as_elem
+    }
+
+    pub fn mark_used_as_elem(&mut self, name: RustIdent) {
+        self.used_as_elem.insert(name);
+    }
+
+    /// Resolve a marked-`@used_as_elem` ident to the ELEMENT `RustType` of its loose-list wrapper,
+    /// resolving through a type alias exactly as an inline `[* ident]` usage does (mirrors the
+    /// alias-vs-struct split in `new_type`): a named alias resolves to its (aliased) base type, and a
+    /// plain registered struct/reserved ident becomes `ConceptualRustType::Rust(ident)`.
+    pub fn used_as_elem_element_type(&self, ident: &RustIdent) -> RustType {
+        match self.resolve_alias(&AliasIdent::Rust(ident.clone())) {
+            Some(ty) => ty,
+            None => ConceptualRustType::Rust(ident.clone()).into(),
+        }
     }
 
     pub fn print_info(&self) {

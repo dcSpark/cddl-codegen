@@ -1,0 +1,7 @@
+; `@used_as_elem` on a struct rule with NO inline `[* bootstrap_witness]` usage anywhere: the tag
+; alone must make the generator mint the loose-list wasm wrapper BootstrapWitnessList, so a
+; downstream crate can import the canonical class from here (replaces a hand-maintained fake rule).
+bootstrap_witness = [
+    vkey: bytes,
+    signature: bytes,
+] ; @used_as_elem
