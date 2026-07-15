@@ -1,0 +1,119 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{wasm_bindgen, JsError, JsValue};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Elem(cddl_lib::Elem);
+
+#[wasm_bindgen]
+impl Elem {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Elem, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<Elem, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn a(&self) -> u64 {
+        self.0.a
+    }
+
+    pub fn b(&self) -> String {
+        self.0.b.clone()
+    }
+
+    pub fn new(a: u64, b: String) -> Self {
+        Self(cddl_lib::Elem::new(a, b))
+    }
+}
+
+impl From<cddl_lib::Elem> for Elem {
+    fn from(native: cddl_lib::Elem) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Elem> for cddl_lib::Elem {
+    fn from(wasm: Elem) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Elem> for Elem {
+    fn as_ref(&self) -> &cddl_lib::Elem {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ElemList(Vec<cddl_lib::Elem>);
+
+#[wasm_bindgen]
+impl ElemList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> Elem {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &Elem) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<cddl_lib::Elem>> for ElemList {
+    fn from(native: Vec<cddl_lib::Elem>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ElemList> for Vec<cddl_lib::Elem> {
+    fn from(wasm: ElemList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<cddl_lib::Elem>> for ElemList {
+    fn as_ref(&self) -> &Vec<cddl_lib::Elem> {
+        &self.0
+    }
+}

@@ -256,6 +256,33 @@ honored like any preserved edit **when the payload conforms** to the fixed row f
 naming the file, on the principle that a cross-crate request channel must never consume a drifted
 generated file. Regenerate the consumer crate to clear such a trap before regenerating the dependency.
 
+### `borrowed_key_types.rs` — the consumer's map-key-derive sidecar
+
+Emitted into the **rust** crate (`rust/src/generated/borrowed_key_types.rs`) whenever
+`--workspace-dep` is set (same empty-but-present semantics as `borrowed_collections.rs`). Where the
+wasm-side sidecar records borrowed wrapper *classes*, this one records borrowed map-**key** *types*:
+a consumer map keyed on a dependency's type needs `Eq`/`Ord`/`PartialOrd` (plus `Hash` under
+`--preserve-encodings`) derived on that type, and the orphan rule means only the dependency's crate
+can provide the derives. Same two-half structure: a compiled
+`_borrowed_key_types_self_check` fn (a dependency dropping a derive fails **this** crate's build,
+naming the type) and the machine-read `BORROWED_KEY_TYPES` table of
+`(dep rust-crate name, cddl ident)` rows, sorted, which the dependency re-reads via
+[`--key-requests`](./command_line_flags) and seeds into its key-derive computation before finalize.
+Strictly parsed under the same never-consume-a-drifted-file principle as `BORROWED_SHAPES`.
+
+```rust
+// This file records every map-key type this crate borrows from workspace deps.
+// …
+#[allow(dead_code)]
+fn _assert_key_traits<K: Eq + Ord + PartialOrd + core::hash::Hash>() {}
+#[allow(dead_code)]
+fn _borrowed_key_types_self_check() {
+    _assert_key_traits::<cml_dep::Foo>();
+}
+#[allow(dead_code)]
+pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] = &[("cml_dep", "foo")];
+```
+
 ### `requested_collections.rs` — the dependency's hosted wrappers
 
 Emitted whenever `--wrapper-requests` is set (empty-but-present when flagged, absent with no flag —
