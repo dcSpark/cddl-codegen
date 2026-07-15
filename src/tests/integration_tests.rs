@@ -6980,12 +6980,20 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[];
     // ===== Criterion 10 (RED): flag-off re-mints locally -> duplicate-symbol link failure =====
     let nodefer = run_gen("inputs", "export_nodefer", &[]);
     assert!(nodefer.status.success());
-    // Flag-off emits NO sidecar (byte-identity: no new file appears without the flag).
+    // Flag-off emits NO sidecar (byte-identity: no new file appears without the flag). This holds for
+    // BOTH workspace sidecars — the wasm-side borrowed_collections.rs and the rust-side
+    // borrowed_key_types.rs (the map-key-derive channel) — each gated identically on --workspace-dep.
     assert!(
         !base
             .join("export_nodefer/wasm/src/generated/borrowed_collections.rs")
             .exists(),
         "no borrowed_collections.rs may appear without --workspace-dep (criterion 10)"
+    );
+    assert!(
+        !base
+            .join("export_nodefer/rust/src/generated/borrowed_key_types.rs")
+            .exists(),
+        "no borrowed_key_types.rs may appear without --workspace-dep (flag-off byte-identity)"
     );
     assert!(
         read("export_nodefer", "wasm/src/generated/mod.rs").contains("pub struct IdxFooList"),
@@ -7059,8 +7067,16 @@ fn workspace_requests_hosts_borrowed_wrappers() {
             .unwrap()
     };
     // Generate the DEP (owns idx_foo/idx_bar). `input` selects the spec (dep_inputs or the
-    // rule-name variant); `requests` are the `<consumer>=<path>` sidecar flags.
-    let gen_dep = |input: &str, output: &str, requests: &[&str]| -> std::process::Output {
+    // rule-name variant); `requests` are the `<consumer>=<path>` wrapper-requests sidecar flags;
+    // `key_requests` the `<consumer>=<path>` borrowed_key_types.rs flags (the map-key-derive channel). A real workspace regen
+    // passes both — the mixed map `{* idx_bar => my_local}` the consumer mints locally needs the dep
+    // to key-derive `IdxBar`, which only the key-requests channel conveys (the shape never enters
+    // borrowed_collections.rs), so the co-built consumer only links when the dep gets both.
+    let gen_dep = |input: &str,
+                   output: &str,
+                   requests: &[&str],
+                   key_requests: &[&str]|
+     -> std::process::Output {
         let out_dir = base.join(output);
         let _ = std::fs::remove_dir_all(&out_dir);
         let mut cmd = tool_cmd("cargo");
@@ -7073,6 +7089,9 @@ fn workspace_requests_hosts_borrowed_wrappers() {
             .arg("--preserve-encodings=true");
         for r in requests {
             cmd.arg(format!("--wrapper-requests={r}"));
+        }
+        for r in key_requests {
+            cmd.arg(format!("--key-requests={r}"));
         }
         cmd.output().unwrap()
     };
@@ -7091,23 +7110,84 @@ fn workspace_requests_hosts_borrowed_wrappers() {
         "tests/workspace-requests/export_consumer/wasm/src/generated/borrowed_collections.rs";
     let consumer_flag = format!("consumer={consumer_sidecar}");
     let zeta_flag = format!("zeta={zeta_sidecar}");
+    // The consumer's borrowed_key_types.rs — the map-key-derive channel. Exact rows: the
+    // struct-keyed `keyed` map borrows `idx_foo` as a key, and the mixed `mixed` map borrows `idx_bar`
+    // (its consumer-owned value keeps the wrapper out of borrowed_collections.rs, but the key derive
+    // still lives in the dep). Rows are sorted (dep, ident).
+    let consumer_key_sidecar =
+        "tests/workspace-requests/export_consumer/rust/src/generated/borrowed_key_types.rs";
+    let consumer_key_flag = format!("consumer={consumer_key_sidecar}");
+    let key_types = read(
+        "export_consumer",
+        "rust/src/generated/borrowed_key_types.rs",
+    );
+    assert!(
+        key_types.contains("pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)]"),
+        "borrowed_key_types.rs must carry the machine table:\n{key_types}"
+    );
+    assert!(
+        key_types.contains("(\"wr_dep\", \"idx_bar\")")
+            && key_types.contains("(\"wr_dep\", \"idx_foo\")"),
+        "borrowed_key_types.rs must list exactly the two borrowed key types:\n{key_types}"
+    );
+    assert!(
+        key_types.contains("_assert_key_traits::<wr_dep::IdxBar>();")
+            && key_types.contains("_assert_key_traits::<wr_dep::IdxFoo>();"),
+        "the compiled self-check must assert key traits on both borrowed types:\n{key_types}"
+    );
+    // The mixed map's wrapper (dep KEY + consumer-owned VALUE) is minted LOCALLY in the consumer and
+    // must never be recorded as a borrow (only its all-one-dep keys-list `[* idx_bar]` is borrowed).
+    let consumer_borrowed = read(
+        "export_consumer",
+        "wasm/src/generated/borrowed_collections.rs",
+    );
+    assert!(
+        !consumer_borrowed.contains("MapIdxBarToMyLocal"),
+        "the mixed map wrapper must stay consumer-minted, never in borrowed_collections.rs:\n{consumer_borrowed}"
+    );
 
-    // ===== Dep regen with BOTH consumers (criterion 3: union) =====
-    let d = gen_dep("dep_inputs", "export_dep", &[&consumer_flag, &zeta_flag]);
+    // ===== Dep regen with BOTH consumers (criterion 3: union) + the consumer's key requests =====
+    let d = gen_dep(
+        "dep_inputs",
+        "export_dep",
+        &[&consumer_flag, &zeta_flag],
+        &[&consumer_key_flag],
+    );
     assert!(
         d.status.success(),
         "dep generate failed:\n{}",
         String::from_utf8_lossy(&d.stderr)
+    );
+    // --key-requests dep-side derive effect: the key-request seeds `idx_bar` used-as-key, so the dep now derives
+    // the key traits on IdxBar (a `derivative`-tagged struct under --preserve-encodings). Without the
+    // key-request channel (only the list request `[* idx_bar]` reaches the dep) it would stay plain.
+    let dep_rust = read("export_dep", "rust/src/generated/mod.rs");
+    let idx_bar_pos = dep_rust
+        .find("pub struct IdxBar")
+        .expect("dep defines IdxBar");
+    assert!(
+        dep_rust[..idx_bar_pos]
+            .rfind("#[derivative(")
+            .is_some_and(|d| {
+                dep_rust[d..idx_bar_pos].contains("Ord")
+                    && dep_rust[d..idx_bar_pos].contains("Hash")
+            }),
+        "the --key-requests channel must make the dep derive Ord/Hash on IdxBar:\n{dep_rust}"
     );
     let requested = read("export_dep", "wasm/src/generated/requested_collections.rs");
 
     // Exactly the union minus own-produced, PLUS transitive NonEmpty support:
     // - IdxFooList: own-spec-produced STRUCTURALLY (the dep's inline `[* idx_foo]`) => SKIPPED here.
     // - MapU64ToIdxFoo / ArrIdxFooList / NonEmptyIdxFooList: requested, not own-produced => emitted.
+    // - MapIdxFooToU64: the struct-KEYED map (`{* idx_foo => uint}`) — requested by consumer only,
+    //   not own-produced => emitted. It is the struct-keyed requested-map derive regression fixture: the dep must derive the
+    //   key traits on IdxFoo (seeded pre-finalize from this request) or this OrderedHashMap<IdxFoo,
+    //   u64> wrapper — and the consumer struct holding it — fail the wasm32 link with E0277.
     // - IdxBarList: requested only by zeta => emitted.
     for name in [
         "ArrIdxFooList",
         "IdxBarList",
+        "MapIdxFooToU64",
         "MapU64ToIdxFoo",
         "NonEmptyIdxFooList",
     ] {
@@ -7126,9 +7206,18 @@ fn workspace_requests_hosts_borrowed_wrappers() {
         requested.contains("/// Generated at the request of: consumer, zeta.\n#[derive(Clone, Debug)]\n#[wasm_bindgen]\npub struct MapU64ToIdxFoo("),
         "the shared map must attribute both requesters, sorted:\n{requested}"
     );
+    // IdxBarList is now co-requested: zeta lists it directly, and the consumer's mixed map
+    // `{* idx_bar => my_local}` synthesizes a keys-list `[* idx_bar]` (all-one-dep, so borrowed). The
+    // shared attribution lists both, sorted. (Before consumer_inputs gained the mixed map,
+    // this was zeta-only; the change is a direct consequence of that fixture.)
     assert!(
-        requested.contains("/// Generated at the request of: zeta.\n#[derive(Clone, Debug)]\n#[wasm_bindgen]\npub struct IdxBarList("),
-        "IdxBarList is requested only by zeta"
+        requested.contains("/// Generated at the request of: consumer, zeta.\n#[derive(Clone, Debug)]\n#[wasm_bindgen]\npub struct IdxBarList("),
+        "IdxBarList is co-requested by consumer (via the mixed map's keys-list) and zeta:\n{requested}"
+    );
+    // The struct-keyed map is requested by the consumer alone (zeta's sidecar does not list it).
+    assert!(
+        requested.contains("/// Generated at the request of: consumer.\n#[derive(Clone, Debug)]\n#[wasm_bindgen]\npub struct MapIdxFooToU64("),
+        "MapIdxFooToU64 (the struct-keyed map) is requested only by the consumer:\n{requested}"
     );
     // A NonEmpty support source that IS own-produced/requested carries no spurious doc; the NonEmpty
     // wrapper itself carries attribution PREPENDED to its structural doc.
@@ -7149,6 +7238,7 @@ fn workspace_requests_hosts_borrowed_wrappers() {
     for name in [
         "ArrIdxFooList",
         "IdxBarList",
+        "MapIdxFooToU64",
         "MapU64ToIdxFoo",
         "NonEmptyIdxFooList",
     ] {
@@ -7173,6 +7263,7 @@ fn workspace_requests_hosts_borrowed_wrappers() {
         "dep_inputs",
         "export_dep_rev",
         &[&zeta_flag, &consumer_flag],
+        &[&consumer_key_flag],
     );
     assert!(d_rev.status.success());
     assert_eq!(
@@ -7203,7 +7294,7 @@ fn workspace_requests_hosts_borrowed_wrappers() {
     )
     .unwrap();
     let empty_flag = format!("other={}", other_path.to_str().unwrap());
-    let de = gen_dep("dep_inputs", "export_dep_empty", &[&empty_flag]);
+    let de = gen_dep("dep_inputs", "export_dep_empty", &[&empty_flag], &[]);
     assert!(de.status.success());
     assert!(
         base.join("export_dep_empty/wasm/src/generated/requested_collections.rs")
@@ -7218,10 +7309,23 @@ fn workspace_requests_hosts_borrowed_wrappers() {
         .contains("pub struct"),
         "a request addressed to another dep leaves requested_collections empty"
     );
+    // Wrapper-requests-seeding other-dep filtering: a shape row whose dep column names ANOTHER dep
+    // must NOT seed any of THIS dep's types used-as-key.
+    assert!(
+        !read("export_dep_empty", "rust/src/generated/mod.rs").contains("#[derivative("),
+        "a request addressed to another dep must not seed this dep's key derives"
+    );
 
     // ===== Absent flag-off (criterion 10 analog): no flag => no file, no mod decl =====
-    let doff = gen_dep("dep_inputs", "export_dep_off", &[]);
+    let doff = gen_dep("dep_inputs", "export_dep_off", &[], &[]);
     assert!(doff.status.success());
+    // Flag-off byte-identity for the derive channel: with neither --key-requests nor
+    // --wrapper-requests, no shape seeds `used_as_key` and dep_inputs keys nothing itself, so NO struct
+    // is key-derived — `#[derivative(` (the preserve-encodings key-derive marker) appears nowhere.
+    assert!(
+        !read("export_dep_off", "rust/src/generated/mod.rs").contains("#[derivative("),
+        "without the request flags the dep must key-derive nothing (flag-off byte-identity)"
+    );
     assert!(
         !base
             .join("export_dep_off/wasm/src/generated/requested_collections.rs")
@@ -7507,6 +7611,116 @@ fn workspace_requests_hard_errors() {
             && ee.contains("nal")
             && ee.contains("credential"),
         "a residual mismatch must name the leaf ident and its substitution target, got: {ee}"
+    );
+}
+
+/// Dep side of the map-key-derive channel (`--key-requests`): end-to-end resolution of a consumer's `borrowed_key_types.rs`
+/// against the generated dep. Covers the derive effect (a row addressed to this dep seeds the key
+/// traits), the unknown-ident hard error (a consumer keying on a type the dep no longer defines must
+/// be loud, naming the file), and other-dep row filtering (a row whose dep column names another dep
+/// seeds nothing and generation succeeds). The strict grammar's malformed-file rejections are unit
+/// tested in `crate::wrapper_requests`.
+#[test]
+fn workspace_key_requests_derive_effect_and_hard_errors() {
+    use std::str::FromStr;
+    if !tool_exists("cargo") {
+        return;
+    }
+    let base = std::path::PathBuf::from_str("tests/workspace-requests").unwrap();
+    let scratch = base.join("export_key_err_scratch");
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+
+    // Write a hand-built borrowed_key_types.rs with the given const rows (frozen banner + assert-fn),
+    // returning its path.
+    let write_key_sidecar = |name: &str, rows: &str| -> String {
+        let p = scratch.join(name);
+        std::fs::write(
+            &p,
+            format!(
+                "// This file was code-generated using an experimental CDDL to rust tool:\n\
+                 // https://github.com/dcSpark/cddl-codegen\n\n\
+                 // This file records every map-key type this crate borrows from workspace deps.\n\
+                 // It is machine-read by those deps' generation runs (--key-requests) so they derive the key\n\
+                 // traits (Eq/Ord/PartialOrd, plus Hash under --preserve-encodings) on the borrowed type; the\n\
+                 // compiled self-check below fails THIS crate's build if a dep drops such a derive.\n\
+                 // Rows are (dep rust-crate name, cddl ident) of each borrowed map-key type.\n\
+                 #[allow(dead_code)]\n\
+                 fn _assert_key_traits<K: Eq + Ord + PartialOrd + core::hash::Hash>() {{}}\n\
+                 #[allow(dead_code)]\n\
+                 pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] = &[\n{rows}];\n"
+            ),
+        )
+        .unwrap();
+        p.to_str().unwrap().to_owned()
+    };
+    let run = |out: &str, sidecar: &str| -> std::process::Output {
+        let out_dir = base.join(out);
+        let _ = std::fs::remove_dir_all(&out_dir);
+        tool_cmd("cargo")
+            .arg("run")
+            .arg("--")
+            .arg("--input=tests/workspace-requests/dep_inputs")
+            .arg(format!("--output=tests/workspace-requests/{out}"))
+            .arg("--lib-name=wr-dep")
+            .arg("--wasm=true")
+            .arg("--preserve-encodings=true")
+            .arg(format!("--key-requests=c={sidecar}"))
+            .output()
+            .unwrap()
+    };
+    let read = |out: &str, rel: &str| -> String {
+        std::fs::read_to_string(base.join(out).join(rel)).unwrap()
+    };
+
+    // Derive effect: a row addressed to THIS dep (`idx_bar`) seeds it used-as-key, so the dep derives
+    // the key traits (a `#[derivative(...)]` block under --preserve-encodings) on IdxBar.
+    let s_ok = write_key_sidecar("k_ok.rs", "    (\"wr_dep\", \"idx_bar\"),\n");
+    let o_ok = run("export_k_ok", &s_ok);
+    assert!(
+        o_ok.status.success(),
+        "a valid key-request must generate:\n{}",
+        String::from_utf8_lossy(&o_ok.stderr)
+    );
+    let dep_rust = read("export_k_ok", "rust/src/generated/mod.rs");
+    let bar_pos = dep_rust
+        .find("pub struct IdxBar")
+        .expect("dep defines IdxBar");
+    assert!(
+        dep_rust[..bar_pos]
+            .rsplit("pub struct")
+            .next()
+            .unwrap_or("")
+            .contains("#[derivative(")
+            || dep_rust[..bar_pos]
+                .contains("#[derivative(Eq, PartialEq, Ord, PartialOrd, Hash)]\npub struct IdxBar"),
+        "a --key-requests row must make the dep key-derive IdxBar:\n{dep_rust}"
+    );
+
+    // Unknown ident: a consumer keying on a type the dep does not define must hard-error naming the
+    // consumer + file (not panic with a bare internal RustIdent assert).
+    let s_unknown = write_key_sidecar("k_unknown.rs", "    (\"wr_dep\", \"ghost\"),\n");
+    let o_unknown = run("export_k_unknown", &s_unknown);
+    let unknown_err = String::from_utf8_lossy(&o_unknown.stderr);
+    assert!(
+        !o_unknown.status.success()
+            && unknown_err.contains("not a type this dep defines")
+            && unknown_err.contains("ghost"),
+        "an unknown borrowed key type must hard-error naming it; stderr:\n{unknown_err}"
+    );
+
+    // Other-dep row filtering: a row whose dep column names ANOTHER dep seeds nothing here, and
+    // generation succeeds (no key derives on this dep's types).
+    let s_other = write_key_sidecar("k_other.rs", "    (\"other_dep\", \"idx_bar\"),\n");
+    let o_other = run("export_k_other", &s_other);
+    assert!(
+        o_other.status.success(),
+        "an other-dep key-request row must be ignored, not error:\n{}",
+        String::from_utf8_lossy(&o_other.stderr)
+    );
+    assert!(
+        !read("export_k_other", "rust/src/generated/mod.rs").contains("#[derivative("),
+        "an other-dep key-request row must not seed this dep's key derives"
     );
 }
 

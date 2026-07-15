@@ -1,8 +1,16 @@
-; W1 consumer over the workspace dep `wr_dep`. Every shape below is all-one-dep -> workspace-deferred
-; and recorded in borrowed_collections.rs, which the dep re-reads via --wrapper-requests.
+; W1 consumer over the workspace dep `wr_dep`. The all-one-dep shapes are workspace-deferred and
+; recorded in borrowed_collections.rs (the dep re-reads them via --wrapper-requests). The struct-keyed
+; `keyed` map pins the struct-keyed requested-map derive regression: its key `idx_foo` must be seeded used-as-key in the
+; dep. The `mixed` map (dep KEY + consumer-owned VALUE) is NOT all-one-dep, so it is minted locally
+; here (never in borrowed_collections.rs) — but its key `idx_bar` must still be derived key-capable by
+; the dep, which is exactly what borrowed_key_types.rs records (the --key-requests channel).
+my_local = [z: uint]
+
 everything = [
     foos: [* idx_foo],
     foo_table: { * uint => idx_foo },
     bars: [+ idx_foo],
     nested: [* [* idx_foo]],
+    keyed: { * idx_foo => uint },
+    mixed: { * idx_bar => my_local },
 ]

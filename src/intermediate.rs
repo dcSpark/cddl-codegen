@@ -2058,6 +2058,13 @@ impl<'a> IntermediateTypes<'a> {
         self.used_as_key.contains(name)
     }
 
+    /// The full set of idents finalize resolved as used-as-key, in sorted (`BTreeSet`) order. The
+    /// consumer-side `borrowed_key_types.rs` emitter partitions this for the extern idents owned by a
+    /// `--workspace-dep` (those get marked here then otherwise evaporate — no in-crate type to derive).
+    pub fn used_as_key_idents(&self) -> &BTreeSet<RustIdent> {
+        &self.used_as_key
+    }
+
     pub fn mark_used_as_key(&mut self, name: RustIdent) {
         self.used_as_key.insert(name);
     }

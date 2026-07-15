@@ -235,6 +235,14 @@ pub fn with_types<R>(
         );
         parse_rule(&mut types, &pv, cddl_rule, cli);
     }
+    // Pre-finalize seeding of `used_as_key` from cross-crate requests (parsing is complete here, so
+    // idents resolve; finalize's closure then expands the seeds transitively through private fields).
+    // Both are no-ops — byte-identical output — when their flags are absent:
+    //   - map KEYS of `--wrapper-requests` shapes addressed to this dep (lenient: an unparseable
+    //     sidecar seeds nothing, leaving strict diagnosis to `emit_requested_collections`);
+    //   - the `--key-requests` sidecar rows (strict: an unknown ident is a hard error).
+    crate::wrapper_requests::seed_used_as_key_from_wrapper_requests(&mut types, cli);
+    crate::wrapper_requests::seed_used_as_key_from_key_requests(&mut types, cli);
     types.finalize(&pv, cli)?;
 
     Ok(f(&types, export_raw_bytes_encoding_trait))
