@@ -10,9 +10,18 @@ expression: content
 // traits its tag demands, turning a distant downstream trait error into a near,
 // named one at the tagged type's definition site.
 #[allow(dead_code)]
+fn _key_demand_hash<T: core::hash::Hash + Eq>() {}
+#[allow(dead_code)]
 fn _key_demand_ord<T: Ord>() {}
 #[allow(dead_code)]
-fn _demand_keyed() {
-    // required by `@used_as_key ord` on keyed
-    _key_demand_ord::<crate::generated::Keyed>();
+fn _demand_foo() {
+    // required by `@used_as_key` on foo
+    _key_demand_hash::<crate::generated::Foo>();
+    _key_demand_ord::<crate::generated::Foo>();
+}
+#[allow(dead_code)]
+fn _demand_non_overlapping_type_choice_some() {
+    // required by `@used_as_key` on non_overlapping_type_choice_some
+    _key_demand_hash::<crate::generated::NonOverlappingTypeChoiceSome>();
+    _key_demand_ord::<crate::generated::NonOverlappingTypeChoiceSome>();
 }

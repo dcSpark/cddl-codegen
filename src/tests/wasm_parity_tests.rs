@@ -248,7 +248,14 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
 /// `serialization.rs`/`error.rs` are deliberately out of scope (runtime plumbing, not per-type
 /// boundary API); `collections.rs` is the wasm wrapper re-export index — a `pub use` inventory of
 /// classes defined in `mod.rs`, so it introduces no new boundary API for the differential to parse.
-const ALLOWED_RUST_GENERATED: &[&str] = &["mod.rs", "serialization.rs", "error.rs"];
+/// `key_demand_assertions.rs` (any `@used_as_key`-tagged root) holds private compile-time-only
+/// `_demand_*` self-checks — zero pub items, so nothing for the differential to parse either.
+const ALLOWED_RUST_GENERATED: &[&str] = &[
+    "mod.rs",
+    "serialization.rs",
+    "error.rs",
+    "key_demand_assertions.rs",
+];
 const ALLOWED_WASM_GENERATED: &[&str] = &["mod.rs", "collections.rs"];
 
 /// The rust crate's public API surface, parsed from `rust/src/generated/mod.rs`.

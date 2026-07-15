@@ -1351,10 +1351,10 @@ impl GenerationScope {
         }
 
         // The key-demand assertions module (materialized as `generated/key_demand_assertions.rs` in
-        // `generated_files`), declared only when some `@used_as_key hash`/`ord` FLAVORED root exists —
-        // so a bare-only (or key-free) crate emits neither the decl nor the file, keeping its output
-        // byte-identical. PRIVATE (`mod`): its `_demand_*` fns are compile-time-only self-checks.
-        if !flavored_assertion_roots(types).is_empty() {
+        // `generated_files`), declared only when some `@used_as_key` root — flavored or bare — exists,
+        // so a key-free crate emits neither the decl nor the file. PRIVATE (`mod`): its `_demand_*`
+        // fns are compile-time-only self-checks.
+        if !assertion_roots(types).is_empty() {
             self.rust_lib().raw("mod key_demand_assertions;");
         }
 
@@ -2379,27 +2379,32 @@ impl GenerationScope {
             );
         }
 
-        // Key-demand assertions (plan step 4): for each FLAVORED `@used_as_key hash`/`ord` root, emit a
-        // named `_demand_<rule>` fn that instantiates a bound-carrier over the tagged type. The Rust
+        // Key-demand assertions: for each `@used_as_key` root — flavored or bare — emit a named
+        // `_demand_<rule>` fn that instantiates a bound-carrier over the tagged type. The Rust
         // compiler — the one component never wrong about trait supply — then converts a distant
         // downstream trait error (e.g. a tx-out struct's extern field lacking `Ord`) into a NEAR, named
-        // error at THIS assertion, citing the tag. Bare roots and internal auto-detected keys emit
-        // nothing (their containers' own bounds enforce them in-crate), so the bare path is
-        // byte-identical.
-        let assertion_roots = flavored_assertion_roots(types);
+        // error at THIS assertion, citing the tag; for demand that fails at a contained struct's own
+        // derive, the file is the in-crate breadcrumb from the failing trait back to the causing tag.
+        // A bare root asserts the mode-dependent internal bundle it demands (ord family; + hash under
+        // --preserve-encodings), mirroring `key_trait_list`. Internal auto-detected keys emit nothing
+        // (their containers' own bounds enforce them in-crate).
+        let assertion_roots = assertion_roots(types);
         if !assertion_roots.is_empty() {
+            // The families each root's demand resolves to in THIS mode (bare is mode-dependent).
+            let hash_family = |d: &DemandSet| d.hash || (d.bare && cli.preserve_encodings);
+            let ord_family = |d: &DemandSet| d.ord || d.bare;
             let mut file = String::from(
-                "// Compile-time key-demand assertions for `@used_as_key` flavor tags. Each\n\
+                "// Compile-time key-demand assertions for `@used_as_key` tags. Each\n\
                  // `_demand_<rule>` fn makes the Rust compiler prove the tagged type implements the\n\
-                 // traits its flavor requires, turning a distant downstream trait error into a near,\n\
+                 // traits its tag demands, turning a distant downstream trait error into a near,\n\
                  // named one at the tagged type's definition site.\n",
             );
-            if assertion_roots.iter().any(|(_, d)| d.hash) {
+            if assertion_roots.iter().any(|(_, d)| hash_family(d)) {
                 file.push_str(
                     "#[allow(dead_code)]\nfn _key_demand_hash<T: core::hash::Hash + Eq>() {}\n",
                 );
             }
-            if assertion_roots.iter().any(|(_, d)| d.ord) {
+            if assertion_roots.iter().any(|(_, d)| ord_family(d)) {
                 file.push_str("#[allow(dead_code)]\nfn _key_demand_ord<T: Ord>() {}\n");
             }
             for (ident, demand) in &assertion_roots {
@@ -2418,21 +2423,21 @@ impl GenerationScope {
                     .unwrap_or_else(|| ident.to_string());
                 let mut words = Vec::new();
                 if demand.hash {
-                    words.push("hash");
+                    words.push(" hash");
                 }
                 if demand.ord {
-                    words.push("ord");
+                    words.push(" ord");
                 }
                 file.push_str(&format!(
-                    "#[allow(dead_code)]\nfn _demand_{}() {{\n    // required by `@used_as_key {}` on {}\n",
+                    "#[allow(dead_code)]\nfn _demand_{}() {{\n    // required by `@used_as_key{}` on {}\n",
                     convert_to_snake_case(ident.as_ref()),
-                    words.join(" "),
+                    words.concat(),
                     src
                 ));
-                if demand.hash {
+                if hash_family(demand) {
                     file.push_str(&format!("    _key_demand_hash::<{path}>();\n"));
                 }
-                if demand.ord {
+                if ord_family(demand) {
                     file.push_str(&format!("    _key_demand_ord::<{path}>();\n"));
                 }
                 file.push_str("}\n");
@@ -12957,16 +12962,18 @@ fn key_flavor_token(demand: DemandSet) -> String {
     parts.join(" ")
 }
 
-/// The directly-tagged demand roots that warrant an emitted compile-time assertion (pinned semantics /
-/// plan step 4): those carrying a `hash`/`ord` FLAVOR (bare roots get NONE — keeping the bare path
-/// byte-identical) whose type is a generated (non-extern), export-scope struct in THIS crate, so it can
-/// be named `crate::generated::…` and its supply proven by the compiler. Sorted by ident (`BTreeMap`
-/// iteration) for deterministic placement.
-fn flavored_assertion_roots(types: &IntermediateTypes) -> Vec<(RustIdent, DemandSet)> {
+/// The directly-tagged demand roots that warrant an emitted compile-time assertion: every
+/// `@used_as_key` root — flavored or bare — whose type is a generated (non-extern), export-scope
+/// struct in THIS crate, so it can be named `crate::generated::…` and its supply proven by the
+/// compiler. Bare roots are included as a diagnosis breadcrumb: their derive demand propagates
+/// transitively, so a missing-trait failure surfaces at a contained struct with nothing connecting
+/// it to the tag — this file is the in-crate record of which tag caused which demand. (Internal
+/// auto-detected map keys still emit nothing: their containers' own bounds enforce them in-crate.)
+/// Sorted by ident (`BTreeMap` iteration) for deterministic placement.
+fn assertion_roots(types: &IntermediateTypes) -> Vec<(RustIdent, DemandSet)> {
     types
         .key_demand_roots()
         .iter()
-        .filter(|(_, d)| d.hash || d.ord)
         .filter(|(ident, _)| {
             types.scope(ident).export()
                 && types.rust_struct(ident).is_some_and(|rs| {

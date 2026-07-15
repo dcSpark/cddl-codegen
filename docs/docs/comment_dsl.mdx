@@ -148,10 +148,14 @@ The flavor propagates transitively to every type the tagged type contains, exact
 **Strict vocabulary.** Only `hash` and `ord` may follow `@used_as_key`. Any other word — a typo, or
 trailing prose like `@used_as_key marks the output` — is a hard error; put prose in `@doc`.
 
-**Compile-time assertions.** For each tagged type with a flavor, the generated crate gets a named
-`_demand_<rule>` function (in `generated/key_demand_assertions.rs`) that asks the compiler to prove
-the type supplies the flavor's traits — turning a distant trait error into a near, named one citing
-the tag.
+**Compile-time assertions.** Every `@used_as_key`-tagged type — flavored or bare — gets a named
+`_demand_<rule>` function in the generated crate (`generated/key_demand_assertions.rs`) that asks
+the compiler to prove the type supplies the traits its tag demands (for bare, the mode-dependent
+full bundle). Beyond turning a distant trait error into a near, named one, the file is the
+in-crate breadcrumb from a failing derive back to its cause: demand propagates transitively, so
+"why does this struct need `Ord`?" is answered by the demand roots this file enumerates, each
+citing its tag. (Auto-detected CBOR map keys emit no assertion — the generated containers' own
+bounds already enforce them.)
 
 **Version-skew hazard.** A cddl-codegen older than this feature silently *ignores* the flavor word and
 falls back to the full bundle, so a spec relying on a narrow flavor to avoid `Ord` (etc.) regenerates

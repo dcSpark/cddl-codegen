@@ -5,9 +5,9 @@ expression: content
 // This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
 
-// Compile-time key-demand assertions for `@used_as_key` flavor tags. Each
+// Compile-time key-demand assertions for `@used_as_key` tags. Each
 // `_demand_<rule>` fn makes the Rust compiler prove the tagged type implements the
-// traits its flavor requires, turning a distant downstream trait error into a near,
+// traits its tag demands, turning a distant downstream trait error into a near,
 // named one at the tagged type's definition site.
 #[allow(dead_code)]
 fn _key_demand_hash<T: core::hash::Hash + Eq>() {}

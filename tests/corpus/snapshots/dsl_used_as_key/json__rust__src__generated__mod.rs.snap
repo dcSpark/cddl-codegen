@@ -8,6 +8,7 @@ expression: content
 #![allow(clippy::too_many_arguments)]
 
 pub mod error;
+mod key_demand_assertions;
 pub mod serialization;
 
 use crate::generated::error::*;
