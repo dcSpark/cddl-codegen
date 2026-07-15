@@ -42,6 +42,7 @@ expression: ir
                             newtype: None,
                             no_alias: false,
                             used_as_key: false,
+                            used_as_elem: false,
                             custom_json: false,
                             custom_serialize: None,
                             custom_deserialize: None,

@@ -1,5 +1,5 @@
 ---
-source: src/snapshot_tests.rs
+source: src/tests/snapshot_tests.rs
 expression: ir
 ---
 {
@@ -42,6 +42,7 @@ expression: ir
                             newtype: None,
                             no_alias: false,
                             used_as_key: false,
+                            used_as_elem: false,
                             custom_json: false,
                             custom_serialize: None,
                             custom_deserialize: None,
@@ -69,6 +70,7 @@ expression: ir
                             newtype: None,
                             no_alias: false,
                             used_as_key: false,
+                            used_as_elem: false,
                             custom_json: false,
                             custom_serialize: None,
                             custom_deserialize: None,
@@ -96,6 +98,7 @@ expression: ir
                             newtype: None,
                             no_alias: false,
                             used_as_key: false,
+                            used_as_elem: false,
                             custom_json: false,
                             custom_serialize: None,
                             custom_deserialize: None,

@@ -14,6 +14,10 @@ pub struct RuleMetadata {
     pub newtype: Option<Option<String>>,
     pub no_alias: bool,
     pub used_as_key: bool,
+    /// `@used_as_elem`: mint the loose-list wasm wrapper (`FooList = [* foo]` equivalent) for this
+    /// rule's type as if the spec contained an inline `[* foo]` usage, so a downstream crate can
+    /// import the canonical wrapper class from THIS crate. See `IntermediateTypes::mark_used_as_elem`.
+    pub used_as_elem: bool,
     pub custom_json: bool,
     pub custom_serialize: Option<String>,
     pub custom_deserialize: Option<String>,
@@ -41,6 +45,7 @@ pub fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
         newtype: merge_metadata_fields!(r1.newtype, r2.newtype, "newtype"),
         no_alias: r1.no_alias || r2.no_alias,
         used_as_key: r1.used_as_key || r2.used_as_key,
+        used_as_elem: r1.used_as_elem || r2.used_as_elem,
         custom_json: r1.custom_json || r2.custom_json,
         custom_serialize: merge_metadata_fields!(
             r1.custom_serialize,
@@ -63,6 +68,7 @@ enum ParseResult {
     Name(String),
     DontGenAlias,
     UsedAsKey,
+    UsedAsElem,
     CustomJson,
     CustomSerialize(String),
     CustomDeserialize(String),
@@ -100,6 +106,9 @@ impl RuleMetadata {
 
                 ParseResult::UsedAsKey => {
                     base.used_as_key = true;
+                }
+                ParseResult::UsedAsElem => {
+                    base.used_as_elem = true;
                 }
                 ParseResult::CustomJson => {
                     base.custom_json = true;
@@ -163,6 +172,12 @@ fn tag_used_as_key(input: &str) -> IResult<&str, ParseResult> {
     Ok((input, ParseResult::UsedAsKey))
 }
 
+fn tag_used_as_elem(input: &str) -> IResult<&str, ParseResult> {
+    let (input, _) = tag("@used_as_elem")(input)?;
+
+    Ok((input, ParseResult::UsedAsElem))
+}
+
 fn tag_custom_json(input: &str) -> IResult<&str, ParseResult> {
     let (input, _) = tag("@custom_json")(input)?;
 
@@ -205,6 +220,7 @@ fn whitespace_then_tag(input: &str) -> IResult<&str, ParseResult> {
         tag_newtype,
         tag_no_alias,
         tag_used_as_key,
+        tag_used_as_elem,
         tag_custom_json,
         tag_custom_serialize,
         tag_custom_deserialize,
@@ -251,6 +267,7 @@ fn parse_comment_name() {
                 newtype: None,
                 no_alias: false,
                 used_as_key: false,
+                used_as_elem: false,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -271,6 +288,7 @@ fn parse_comment_newtype() {
                 newtype: Some(None),
                 no_alias: false,
                 used_as_key: false,
+                used_as_elem: false,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -291,6 +309,7 @@ fn parse_comment_newtype_getter_before() {
                 newtype: Some(Some("custom_getter".to_owned())),
                 no_alias: false,
                 used_as_key: true,
+                used_as_elem: false,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -311,6 +330,7 @@ fn parse_comment_newtype_getter_after() {
                 newtype: Some(Some("custom_getter".to_owned())),
                 no_alias: false,
                 used_as_key: true,
+                used_as_elem: false,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -331,6 +351,7 @@ fn parse_comment_newtype_and_name() {
                 newtype: Some(None),
                 no_alias: false,
                 used_as_key: false,
+                used_as_elem: false,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -351,6 +372,7 @@ fn parse_comment_newtype_and_name_and_used_as_key() {
                 newtype: Some(None),
                 no_alias: false,
                 used_as_key: true,
+                used_as_elem: false,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -371,6 +393,7 @@ fn parse_comment_used_as_key() {
                 newtype: None,
                 no_alias: false,
                 used_as_key: true,
+                used_as_elem: false,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -378,6 +401,126 @@ fn parse_comment_used_as_key() {
             }
         ))
     );
+}
+
+#[test]
+fn parse_comment_used_as_elem() {
+    assert_eq!(
+        rule_metadata("@used_as_elem"),
+        Ok((
+            "",
+            RuleMetadata {
+                name: None,
+                newtype: None,
+                no_alias: false,
+                used_as_key: false,
+                used_as_elem: true,
+                custom_json: false,
+                custom_serialize: None,
+                custom_deserialize: None,
+                comment: None,
+            }
+        ))
+    );
+}
+
+// `@used_as_elem` and `@used_as_key` are independent flags that can co-occur, in either order.
+#[test]
+fn parse_comment_used_as_elem_and_key() {
+    assert_eq!(
+        rule_metadata("@used_as_elem @used_as_key"),
+        Ok((
+            "",
+            RuleMetadata {
+                name: None,
+                newtype: None,
+                no_alias: false,
+                used_as_key: true,
+                used_as_elem: true,
+                custom_json: false,
+                custom_serialize: None,
+                custom_deserialize: None,
+                comment: None,
+            }
+        ))
+    );
+}
+
+#[test]
+fn parse_comment_used_as_key_and_elem_inverse() {
+    assert_eq!(
+        rule_metadata("@used_as_key @used_as_elem"),
+        Ok((
+            "",
+            RuleMetadata {
+                name: None,
+                newtype: None,
+                no_alias: false,
+                used_as_key: true,
+                used_as_elem: true,
+                custom_json: false,
+                custom_serialize: None,
+                custom_deserialize: None,
+                comment: None,
+            }
+        ))
+    );
+}
+
+// Ordering with a value-carrying tag (@newtype's optional getter) must not swallow @used_as_elem.
+#[test]
+fn parse_comment_newtype_getter_before_used_as_elem() {
+    assert_eq!(
+        rule_metadata("@newtype custom_getter @used_as_elem"),
+        Ok((
+            "",
+            RuleMetadata {
+                name: None,
+                newtype: Some(Some("custom_getter".to_owned())),
+                no_alias: false,
+                used_as_key: false,
+                used_as_elem: true,
+                custom_json: false,
+                custom_serialize: None,
+                custom_deserialize: None,
+                comment: None,
+            }
+        ))
+    );
+}
+
+#[test]
+fn parse_comment_used_as_elem_before_newtype_getter() {
+    assert_eq!(
+        rule_metadata("@used_as_elem @newtype custom_getter"),
+        Ok((
+            "",
+            RuleMetadata {
+                name: None,
+                newtype: Some(Some("custom_getter".to_owned())),
+                no_alias: false,
+                used_as_key: false,
+                used_as_elem: true,
+                custom_json: false,
+                custom_serialize: None,
+                custom_deserialize: None,
+                comment: None,
+            }
+        ))
+    );
+}
+
+// Merging two comment lines OR-folds the flag, matching @used_as_key's merge semantics.
+#[test]
+fn merge_metadata_ors_used_as_elem() {
+    let lhs = RuleMetadata {
+        used_as_elem: true,
+        ..Default::default()
+    };
+    let rhs = RuleMetadata::default();
+    assert!(merge_metadata(&lhs, &rhs).used_as_elem);
+    assert!(merge_metadata(&rhs, &lhs).used_as_elem);
+    assert!(!merge_metadata(&rhs, &rhs).used_as_elem);
 }
 
 #[test]
@@ -391,6 +534,7 @@ fn parse_comment_newtype_and_name_inverse() {
                 newtype: Some(None),
                 no_alias: false,
                 used_as_key: false,
+                used_as_elem: false,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -411,6 +555,7 @@ fn parse_comment_name_noalias() {
                 newtype: None,
                 no_alias: true,
                 used_as_key: false,
+                used_as_elem: false,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -431,6 +576,7 @@ fn parse_comment_newtype_and_custom_json() {
                 newtype: Some(None),
                 no_alias: false,
                 used_as_key: false,
+                used_as_elem: false,
                 custom_json: true,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -457,6 +603,7 @@ fn parse_comment_custom_serialize_deserialize() {
                 newtype: None,
                 no_alias: false,
                 used_as_key: false,
+                used_as_elem: false,
                 custom_json: false,
                 custom_serialize: Some("foo".to_string()),
                 custom_deserialize: Some("bar".to_string()),
@@ -471,7 +618,7 @@ fn parse_comment_custom_serialize_deserialize() {
 fn parse_comment_all_except_no_alias() {
     assert_eq!(
         rule_metadata(
-            "@newtype @name baz @custom_serialize foo @custom_deserialize bar @used_as_key @custom_json @doc this is a doc comment"
+            "@newtype @name baz @custom_serialize foo @custom_deserialize bar @used_as_key @used_as_elem @custom_json @doc this is a doc comment"
         ),
         Ok((
             "",
@@ -480,6 +627,7 @@ fn parse_comment_all_except_no_alias() {
                 newtype: Some(None),
                 no_alias: false,
                 used_as_key: true,
+                used_as_elem: true,
                 custom_json: true,
                 custom_serialize: Some("foo".to_string()),
                 custom_deserialize: Some("bar".to_string()),

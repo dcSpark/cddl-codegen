@@ -1,0 +1,11 @@
+; The same tag, but the spec ALSO uses `[* bootstrap_witness]` inline. The inline usage mints
+; BootstrapWitnessList during the main walk; the tag mint then dedups via `already_generated`, so
+; the wrapper class is defined exactly ONCE (no duplicate `#[wasm_bindgen]` symbol).
+bootstrap_witness = [
+    vkey: bytes,
+    signature: bytes,
+] ; @used_as_elem
+
+container = [
+    witnesses: [* bootstrap_witness],
+]

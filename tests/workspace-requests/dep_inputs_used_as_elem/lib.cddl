@@ -1,0 +1,9 @@
+; W2 dep variant for the `@used_as_elem` + `--wrapper-requests` interaction. Identical to dep_inputs
+; except `idx_bar` is tagged `@used_as_elem`: the dep now produces IdxBarList STRUCTURALLY in its own
+; spec (as if it declared a fake `[* idx_bar]` rule), so a consumer's `[* idx_bar]` request is
+; own-spec-produced-under-the-structural-name and emits NOTHING into requested_collections.rs — the
+; request is satisfied by the class the tag minted (re-exported from the crate root in the index).
+idx_foo = [x: uint]
+idx_bar = [y: tstr] ; @used_as_elem
+
+container = [items: [* idx_foo]]

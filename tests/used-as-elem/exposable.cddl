@@ -1,0 +1,5 @@
+; `@used_as_elem` on a transparent primitive alias. `[* coin]` is directly wasm-exposable (it
+; lowers to a bare `Vec<Coin>` with no wrapper class), so the tag has nothing to mint — the
+; generator must reject gracefully (not panic), mirroring the --wrapper-requests exposable message.
+coin = uint ; @used_as_elem
+root = [c: coin]

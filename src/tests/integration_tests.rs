@@ -4538,6 +4538,92 @@ fn comment_dsl() {
     );
 }
 
+/// `@used_as_elem` (comment DSL): a struct rule tagged `@used_as_elem` makes the generator mint the
+/// loose-list wasm wrapper (`<Elem>List`, the `[* elem]` equivalent) exactly as an inline `[* elem]`
+/// usage would — structural name, `collections.rs` index entry, `own_wrapper_shapes` membership.
+/// This replaces a downstream crate's hand-maintained fake structural-named rules. Asserts:
+/// (a) the tag ALONE (no inline usage) mints the wrapper under its structural name and indexes it;
+/// (b) the tag + an inline `[* elem]` usage define the class exactly ONCE (dedup, no wasm
+/// duplicate-symbol); (c) a directly-wasm-exposable element is rejected GRACEFULLY (exit failure +
+/// actionable message, never a panic). Bespoke harness (not `run_test`) so it can regen several
+/// specs and capture the rejection stderr.
+#[test]
+fn used_as_elem_mints_loose_list_wrapper() {
+    use std::str::FromStr;
+    if !tool_exists("cargo") {
+        return;
+    }
+    let base = std::path::PathBuf::from_str("tests/used-as-elem").unwrap();
+    let run = |input: &str, output: &str| -> std::process::Output {
+        let out_dir = base.join(output);
+        let _ = std::fs::remove_dir_all(&out_dir);
+        tool_cmd("cargo")
+            .arg("run")
+            .arg("--")
+            .arg(format!("--input=tests/used-as-elem/{input}"))
+            .arg(format!("--output=tests/used-as-elem/{output}"))
+            .arg("--wasm=true")
+            .arg("--preserve-encodings=true")
+            .output()
+            .unwrap()
+    };
+    let read = |output: &str, rel: &str| -> String {
+        std::fs::read_to_string(base.join(output).join(rel)).unwrap()
+    };
+
+    // (a) Tag alone: the wrapper is minted under its structural name and indexed, with NO inline use.
+    let only = run("tag_only.cddl", "export_tag_only");
+    assert!(
+        only.status.success(),
+        "tag_only generate failed:\n{}",
+        String::from_utf8_lossy(&only.stderr)
+    );
+    let only_mod = read("export_tag_only", "wasm/src/generated/mod.rs");
+    assert!(
+        only_mod.contains("pub struct BootstrapWitnessList("),
+        "the @used_as_elem tag alone must mint the structural loose-list wrapper BootstrapWitnessList"
+    );
+    let only_index = read("export_tag_only", "wasm/src/generated/collections.rs");
+    assert!(
+        only_index.contains("pub use crate::generated::BootstrapWitnessList;"),
+        "the minted wrapper must appear in the collections.rs re-export index:\n{only_index}"
+    );
+
+    // (b) Tag + inline `[* bootstrap_witness]`: the class is defined EXACTLY ONCE (dedup).
+    let both = run("tag_and_inline.cddl", "export_tag_and_inline");
+    assert!(
+        both.status.success(),
+        "tag_and_inline generate failed:\n{}",
+        String::from_utf8_lossy(&both.stderr)
+    );
+    let both_mod = read("export_tag_and_inline", "wasm/src/generated/mod.rs");
+    assert_eq!(
+        both_mod.matches("pub struct BootstrapWitnessList(").count(),
+        1,
+        "the wrapper must be defined exactly once when the tag AND an inline [* x] usage coexist \
+         (dedup via already_generated) — a second definition is a wasm duplicate-symbol"
+    );
+    assert!(
+        read("export_tag_and_inline", "wasm/src/generated/collections.rs")
+            .contains("pub use crate::generated::BootstrapWitnessList;"),
+        "the wrapper is indexed exactly once regardless of how it was minted"
+    );
+
+    // (c) A directly-wasm-exposable element (`coin = uint`) has no wrapper class: reject gracefully.
+    let bad = run("exposable.cddl", "export_exposable");
+    assert!(
+        !bad.status.success(),
+        "an exposable @used_as_elem element must fail generation, not silently no-op"
+    );
+    let bad_stderr = String::from_utf8_lossy(&bad.stderr);
+    assert!(
+        bad_stderr.contains("directly wasm-exposable")
+            && bad_stderr.contains("@used_as_elem")
+            && !bad_stderr.to_lowercase().contains("panicked"),
+        "the exposable rejection must be graceful and name the tag; stderr:\n{bad_stderr}"
+    );
+}
+
 /// The dcSpark `cddl` fork (already this crate's parser dep) as a test dependency of a *generated*
 /// crate, so its round-trips gain the independent conformance oracle (tests/deser_test_conformance.rs).
 /// Pinned to the same rev as Cargo.toml — enforced by `cddl_oracle_dep_rev_matches_cargo_toml` below,
@@ -7188,6 +7274,80 @@ fn workspace_requests_hosts_borrowed_wrappers() {
             String::from_utf8_lossy(&build.stderr)
         );
     }
+}
+
+/// `@used_as_elem` × `--wrapper-requests` interaction: a dep that tags `idx_bar` `@used_as_elem`
+/// produces `IdxBarList` STRUCTURALLY in its own spec (as a hand-maintained fake `[* idx_bar]` rule
+/// would). A consumer's request for `[* idx_bar]` (the zeta sidecar) is then satisfied-by-own-spec:
+/// nothing for it lands in `requested_collections.rs`, and the dep's index re-exports the tag-minted
+/// class from the crate ROOT (not from requested_collections). This is a PARALLEL variant to
+/// `workspace_requests_hosts_borrowed_wrappers` (which asserts IdxBarList IS request-emitted from the
+/// UNtagged `dep_inputs`); it deliberately does not touch that fixture or its assertions. The
+/// still-unproduced `MapU64ToIdxFoo` request confirms the dep-side channel remains active in the same
+/// run — only the tagged shape drops out of the requested set.
+#[test]
+fn used_as_elem_satisfies_wrapper_request_from_own_spec() {
+    use std::str::FromStr;
+    if !tool_exists("cargo") {
+        return;
+    }
+    let base = std::path::PathBuf::from_str("tests/workspace-requests").unwrap();
+    let zeta_sidecar = "tests/workspace-requests/sidecars/zeta_borrowed_collections.rs";
+    let out_dir = base.join("export_dep_used_as_elem");
+    let _ = std::fs::remove_dir_all(&out_dir);
+    let d = tool_cmd("cargo")
+        .arg("run")
+        .arg("--")
+        .arg("--input=tests/workspace-requests/dep_inputs_used_as_elem")
+        .arg("--output=tests/workspace-requests/export_dep_used_as_elem")
+        .arg("--lib-name=wr-dep")
+        .arg("--wasm=true")
+        .arg("--preserve-encodings=true")
+        .arg(format!("--wrapper-requests=zeta={zeta_sidecar}"))
+        .output()
+        .unwrap();
+    assert!(
+        d.status.success(),
+        "dep generate failed:\n{}",
+        String::from_utf8_lossy(&d.stderr)
+    );
+    let read = |rel: &str| -> String { std::fs::read_to_string(out_dir.join(rel)).unwrap() };
+
+    // The tag mints IdxBarList structurally in the dep's OWN crate (crate root), so the zeta request
+    // for `[* idx_bar]` is own-spec-produced-under-the-structural-name => NOT re-emitted.
+    let wasm_mod = read("wasm/src/generated/mod.rs");
+    assert!(
+        wasm_mod.contains("pub struct IdxBarList("),
+        "@used_as_elem on idx_bar must mint IdxBarList in the dep's own crate"
+    );
+    let requested = read("wasm/src/generated/requested_collections.rs");
+    assert!(
+        !requested.contains("pub struct IdxBarList("),
+        "the tag-produced IdxBarList satisfies the request from own-spec => it must NOT be \
+         re-emitted into requested_collections.rs:\n{requested}"
+    );
+    // The other zeta request (MapU64ToIdxFoo — not own-produced) IS still hosted, proving the
+    // dep-side wrapper-requests channel remains active in the same run.
+    assert!(
+        requested.contains("pub struct MapU64ToIdxFoo("),
+        "a still-unproduced requested shape must still be hosted alongside the satisfied one:\n{requested}"
+    );
+
+    // Index: IdxBarList is re-exported from the crate ROOT (own-produced), never from
+    // requested_collections; MapU64ToIdxFoo comes from requested_collections.
+    let index = read("wasm/src/generated/collections.rs");
+    assert!(
+        index.contains("pub use crate::generated::IdxBarList;"),
+        "the tag-minted IdxBarList must be a crate-root re-export in the dep index:\n{index}"
+    );
+    assert!(
+        !index.contains("pub use crate::generated::requested_collections::IdxBarList;"),
+        "IdxBarList must NOT be re-exported from requested_collections (it is own-produced)"
+    );
+    assert!(
+        index.contains("pub use crate::generated::requested_collections::MapU64ToIdxFoo;"),
+        "the still-hosted MapU64ToIdxFoo comes from requested_collections:\n{index}"
+    );
 }
 
 /// W2 criterion-8 dep-side hard errors, each exercised end-to-end (the real resolution code) with a
