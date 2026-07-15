@@ -15,7 +15,6 @@ pub mod serialization;
 use crate::generated::error::*;
 use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::non_empty_map::NonEmptyMap;
-use std::collections::BTreeMap;
 use std::convert::TryFrom;
 
 /// `[+ u64]`: at least one element, enforced at the `NonEmptyVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).

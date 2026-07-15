@@ -17,7 +17,6 @@ use crate::generated::error::*;
 use crate::generated::ordered_hash_map::OrderedHashMap;
 use crate::generated::serialization::{LenEncoding, StringEncoding};
 use cbor_encodings::OptHolderEncoding;
-use std::collections::BTreeMap;
 use std::convert::TryFrom;
 
 pub type NestedArr = Vec<Nums>;

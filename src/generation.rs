@@ -1440,7 +1440,10 @@ impl GenerationScope {
 
         // cbor_encodings imports
         if cli.preserve_encodings {
-            // Issue (general - not just here): https://github.com/dcSpark/cddl-codegen/issues/139
+            // `BTreeMap` is pushed into every cbor_encodings file unconditionally; the prune pass
+            // (`import_prune::prune_generated_files`, run in `generated_files`) drops it from files
+            // whose module family doesn't name it. Dumb-push + central prune — see the struct loop
+            // below.
             for content in self.cbor_encodings_scopes.values_mut() {
                 content
                     // encoding structs can reference GENERATED types (a table keyed by a
@@ -1555,9 +1558,13 @@ impl GenerationScope {
         let rust_imports = types.scope_references(false, &BTreeMap::new());
         for (scope, content) in self.rust_scopes.iter_mut() {
             add_imports_from_scope_refs(scope, content, &rust_imports, "crate::generated", None);
-            // TODO: we blindly add these two map imports. Ideally we would only do it when needed
-            // but the code to figure that out would be potentially complex.
-            // Issue (general - not just here): https://github.com/dcSpark/cddl-codegen/issues/139
+            // These collection-type imports are pushed unconditionally (or on spec-global gates)
+            // even into files that never reference them: dumb-push here, and the usage-derived
+            // prune pass (`import_prune::prune_generated_files`, run once over the whole file map in
+            // `generated_files`) removes any that the file's module family doesn't actually name.
+            // Deriving the import set from the emitted tokens is sound by construction and lives in
+            // one place; predicting per-file need at each of these ~30 sites would have to mirror
+            // every local emission decision and drift.
             content.push_import("std::collections", "BTreeMap", None);
             if cli.preserve_encodings {
                 content.push_import(
@@ -1708,7 +1715,11 @@ impl GenerationScope {
                     "crate::generated",
                     Some(&extern_wasm_crate_map),
                 );
-                // common imports
+                // common imports. The collection-type imports below (`BTreeMap`/`OrderedHashMap`
+                // and the two NonEmpty types) are pushed on spec-global gates even into wasm files
+                // that never reference them; the prune pass (`import_prune::prune_generated_files`,
+                // in `generated_files`) removes the ones the file's module family doesn't name.
+                // Dumb-push + central prune.
                 content
                     .push_import("wasm_bindgen::prelude", "wasm_bindgen", None)
                     .push_import("wasm_bindgen::prelude", "JsError", None);
@@ -2547,6 +2558,21 @@ impl GenerationScope {
             }
         }
 
+        // Usage-derived import prune: drop the blindly-pushed collection-type imports
+        // (`BTreeMap`/`OrderedHashMap`/`NonEmptyVec`/`NonEmptyMap`) that a file's module family
+        // references nowhere. Runs here, over the WHOLE file map, rather than per-file in
+        // `rustfmt_generated_string`, because soundness needs each file's descendant modules in
+        // view: a child's `use super::*;` chain can consume the parent's private imports, so a
+        // file's import is genuinely unused only when neither the file nor any descendant module
+        // names the ident (see `import_prune.rs`). The pass returns the changed files' pruned
+        // (not-yet-rustfmt'd) content; rustfmt normalizes the splice here. This is still BEFORE the
+        // comment-preservation overlay (which runs at `export` write time), so fresh content stays
+        // a rustfmt-stable fixed point run-over-run.
+        for (path, pruned) in crate::import_prune::prune_generated_files(&out) {
+            let formatted = rustfmt_generated_string(&pruned)?.into_owned();
+            out.insert(path, formatted);
+        }
+
         Ok(out)
     }
 
@@ -2915,6 +2941,10 @@ impl GenerationScope {
         if !to_emit.is_empty() {
             scope_content.raw("use super::*;");
         }
+        // These NonEmpty imports are pushed whenever the requested wrappers use them; if the file's
+        // module family ends up not naming one, the prune pass
+        // (`import_prune::prune_generated_files`, in `generated_files`) drops it. Dumb-push +
+        // central prune, same as the struct sites.
         if let Some(path) = non_empty_import {
             scope_content.push_import(path, "NonEmptyVec", None);
         }
@@ -13093,7 +13123,12 @@ fn rustfmt_path() -> std::io::Result<std::path::PathBuf> {
     ))
 }
 
-/// Runs rustfmt on the string
+/// Runs rustfmt on the string.
+///
+/// Import pruning is NOT done here: the usage-derived prune (`import_prune.rs`) needs to see a
+/// file's descendant modules (a parent module's import can be consumed by a child via
+/// `use super::*;`, so per-file "ident absent from this file" does NOT imply unused), so it runs
+/// once over the full file map in `generated_files` — see `import_prune::prune_generated_files`.
 pub fn rustfmt_generated_string(source: &str) -> std::io::Result<Cow<'_, str>> {
     let mut cmd = Command::new(rustfmt_path().unwrap());
     cmd.stdin(Stdio::piped()).stdout(Stdio::piped());

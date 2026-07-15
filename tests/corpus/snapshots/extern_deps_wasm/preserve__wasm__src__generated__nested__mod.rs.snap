@@ -9,7 +9,6 @@ use crate::generated::{
     ExternCrateBarList, MapExternCrateBarToU64, MapNestedItemToU64, MapU64ToExternCrateBar,
     MapU64ToNestedItem, NestedItemList,
 };
-use extern_dep_crate::ordered_hash_map::OrderedHashMap;
 use wasm_bindgen::prelude::{wasm_bindgen, JsError};
 
 #[derive(Clone, Debug)]

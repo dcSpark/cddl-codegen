@@ -7,6 +7,7 @@ pub(crate) mod dep_graph;
 pub(crate) mod emit_tests;
 pub(crate) mod emit_tests_wasm;
 pub(crate) mod generation;
+pub(crate) mod import_prune;
 pub(crate) mod intermediate;
 pub(crate) mod parsing;
 pub(crate) mod rust_reserved;

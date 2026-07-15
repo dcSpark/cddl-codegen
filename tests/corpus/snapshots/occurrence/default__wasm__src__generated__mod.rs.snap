@@ -13,7 +13,6 @@ expression: content
 pub mod collections;
 
 use cddl_lib::non_empty::NonEmptyVec;
-use std::collections::BTreeMap;
 use wasm_bindgen::prelude::{wasm_bindgen, JsError};
 
 #[derive(Clone, Debug)]

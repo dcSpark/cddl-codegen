@@ -13098,3 +13098,175 @@ fn comment_preservation_static_files_rustfmt_stable() {
     }
     let _ = std::fs::remove_dir_all(&scratch);
 }
+
+fn import_line_present(content: &str, ty: &str) -> bool {
+    content
+        .lines()
+        .any(|l| l.trim_start().starts_with("use ") && l.contains(ty))
+}
+
+/// The usage-derived import prune (`import_prune::prune_generated_files`, run over the whole file
+/// map in `generated_files`) must be SOUND across the `use super::*;` glob: a struct `mod.rs` whose
+/// own body never names `BTreeMap` still needs its blindly-pushed `BTreeMap` import when the sibling
+/// `serialization.rs` uses it (encoding maps under `--preserve-encodings`) and reaches it via
+/// `use super::*;`. Removing it would compile-fail the crate (E0433) — the regression this pins. A
+/// per-file prune would wrongly strip it; the whole-crate union keeps it because the ident is used
+/// elsewhere in the crate. `--wasm=false` keeps this to the string-emit path (no static dir needed).
+#[test]
+fn integration_prune_keeps_import_used_via_super_glob() {
+    use clap::Parser;
+    let dir =
+        std::env::temp_dir().join(format!("cddl_codegen_prune_glob_{:016x}", checkout_hash()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let input = dir.join("input.cddl");
+    // A map as a RECORD FIELD: under --preserve-encodings the field is an OrderedHashMap (so mod.rs
+    // does not name BTreeMap), but serialization.rs uses `BTreeMap::new()` for the per-entry encoding
+    // maps and reaches BTreeMap via `use super::*;` from mod.rs. (A top-level `{ * k => v }` rule is
+    // just a BTreeMap type alias and generates no such encoding maps, hence the enclosing record.)
+    std::fs::write(&input, "foo = [ tbl: { * uint => text } ]\n").unwrap();
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        "prune_glob_unused",
+        "--wasm=false",
+        "--preserve-encodings=true",
+    ]);
+    let files =
+        crate::api::generated_strings(&cli).unwrap_or_else(|e| panic!("generation failed: {e}"));
+    let _ = std::fs::remove_dir_all(&dir);
+
+    let mod_rs = files
+        .iter()
+        .find(|(p, _)| p.as_str() == "rust/src/generated/mod.rs")
+        .map(|(_, c)| c.clone())
+        .unwrap_or_else(|| panic!("no rust generated mod.rs; files: {:?}", files.keys()));
+    let serialization_rs = files
+        .iter()
+        .find(|(p, _)| p.as_str() == "rust/src/generated/serialization.rs")
+        .map(|(_, c)| c.clone())
+        .expect("no serialization.rs");
+
+    // Precondition sanity: mod.rs does not itself name BTreeMap, but serialization.rs does.
+    assert!(
+        !mod_rs
+            .lines()
+            .any(|l| !l.trim_start().starts_with("use ") && l.contains("BTreeMap")),
+        "test premise broken: mod.rs body names BTreeMap:\n{mod_rs}"
+    );
+    assert!(
+        serialization_rs.contains("BTreeMap"),
+        "test premise broken: serialization.rs should use BTreeMap"
+    );
+    // The fix: mod.rs must retain the BTreeMap import so the child's `use super::*;` resolves.
+    assert!(
+        import_line_present(&mod_rs, "BTreeMap"),
+        "mod.rs must keep its BTreeMap import (used by serialization.rs via super::*):\n{mod_rs}"
+    );
+}
+
+/// The prune actually FIRES: a spec that references none of the four collection helper types
+/// anywhere in the crate must yield a `mod.rs` importing none of them, even though the emission
+/// sites push `BTreeMap` unconditionally.
+#[test]
+fn integration_prune_removes_crate_wide_unused_imports() {
+    use clap::Parser;
+    let dir =
+        std::env::temp_dir().join(format!("cddl_codegen_prune_none_{:016x}", checkout_hash()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let input = dir.join("input.cddl");
+    // A plain array record: no maps, no non-empty collections anywhere in the crate.
+    std::fs::write(&input, "foo = [x: uint, y: text]\n").unwrap();
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        "prune_none_unused",
+        "--wasm=false",
+    ]);
+    let files =
+        crate::api::generated_strings(&cli).unwrap_or_else(|e| panic!("generation failed: {e}"));
+    let _ = std::fs::remove_dir_all(&dir);
+
+    let mod_rs = files
+        .iter()
+        .find(|(p, _)| p.as_str() == "rust/src/generated/mod.rs")
+        .map(|(_, c)| c.clone())
+        .unwrap_or_else(|| panic!("no rust generated mod.rs; files: {:?}", files.keys()));
+    for ty in ["BTreeMap", "OrderedHashMap", "NonEmptyVec", "NonEmptyMap"] {
+        assert!(
+            !import_line_present(&mod_rs, ty),
+            "crate-wide-unused `{ty}` import must be pruned from mod.rs:\n{mod_rs}"
+        );
+    }
+}
+
+/// Per-module precision of the descendant-protected prune (the motivating multi-scope case from
+/// dcSpark/cddl-codegen#139): a two-module spec where module A names `[+ T]` / `{+ k => v}` / a
+/// `{ * k => v }` table and module B names none of them. The collection-type imports
+/// (`NonEmptyVec` / `NonEmptyMap` / `BTreeMap`) are pushed on spec-global gates, so BOTH module
+/// files receive them before pruning — yet A's file must keep all three (its module family
+/// references them) and B's file must keep none (neither B nor B's serialization child names
+/// them; a sibling scope's usage must NOT protect it). `--wasm=false` keeps this to the
+/// string-emit path (no static dir needed).
+#[test]
+fn integration_prune_removes_blind_imports_per_module() {
+    use clap::Parser;
+    let dir = std::env::temp_dir().join(format!("cddl_codegen_prune_{:016x}", checkout_hash()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("a")).unwrap();
+    std::fs::create_dir_all(dir.join("b")).unwrap();
+    // Root scope references both modules so their types are reachable and get generated.
+    std::fs::write(dir.join("lib.cddl"), "root = [av: alpha, bv: beta]\n").unwrap();
+    // Module A: non-empty array, non-empty map, and a plain map table — needs all three imports.
+    std::fs::write(
+        dir.join("a/a.cddl"),
+        "alpha = {\n  list: [+ text],\n  m: {+ text => uint},\n  table: { * uint => text },\n}\n",
+    )
+    .unwrap();
+    // Module B: a plain array record — needs none of the three.
+    std::fs::write(dir.join("b/b.cddl"), "beta = [x: uint, y: text]\n").unwrap();
+
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        dir.to_str().unwrap(),
+        "--output",
+        "prune_integration_unused",
+        "--wasm=false",
+    ]);
+    let files =
+        crate::api::generated_strings(&cli).unwrap_or_else(|e| panic!("generation failed: {e}"));
+    let _ = std::fs::remove_dir_all(&dir);
+
+    let find = |needle: &str| -> String {
+        let matches: Vec<&String> = files
+            .values()
+            .filter(|content| content.contains(needle))
+            .collect();
+        assert!(
+            matches.len() == 1,
+            "expected exactly one generated file containing `{needle}`, found {}",
+            matches.len()
+        );
+        matches[0].clone()
+    };
+
+    let alpha_file = find("pub struct Alpha");
+    let beta_file = find("pub struct Beta");
+
+    for ty in ["NonEmptyVec", "NonEmptyMap", "BTreeMap"] {
+        assert!(
+            import_line_present(&alpha_file, ty),
+            "module A's file must keep `{ty}` (its family references it):\n{alpha_file}"
+        );
+        assert!(
+            !import_line_present(&beta_file, ty),
+            "module B's file must NOT import `{ty}` (its family references none):\n{beta_file}"
+        );
+    }
+}

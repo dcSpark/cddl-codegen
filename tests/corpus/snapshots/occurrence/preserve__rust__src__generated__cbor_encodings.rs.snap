@@ -7,7 +7,6 @@ expression: content
 
 use super::*;
 use crate::generated::serialization::{LenEncoding, StringEncoding};
-use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Default)]
 pub struct OccurrenceHolderEncoding {
