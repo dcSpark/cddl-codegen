@@ -864,7 +864,7 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
         "tag directly inside a tag; pinned by tests/matrix_panic/contain.tag-content.type2.tag.cddl",
     ),
     (
-        "failed left: \";\" right: \"\" @ src/generation/mod.rs",
+        "failed left: \";\" right: \"\" @ src/generation/deserialize.rs",
         "map-rep group-choice arm with a fixed-value entry; pinned by tests/matrix_panic/contain.group-choice-arm.type2.value.map.cddl",
     ),
     (
