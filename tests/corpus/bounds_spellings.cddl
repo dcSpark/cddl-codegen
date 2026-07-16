@@ -1,0 +1,24 @@
+; Bounds-check condition spellings, pinned at BOTH member (record field) and wrapper (named rule)
+; sites so the single bounds-check owner's per-shape spelling stays locked down:
+;   * exact size            -> the single-value `!= N` form (not `< N || > N`)
+;   * zero-min length range -> the dead `len() < 0` lower leg is dropped (also silences the
+;                              `unused_comparisons` wart on the usize length)
+;   * zero-min integer range that keeps a residual bound -> same lower-leg drop on the value
+;   * nint magnitude window  -> the u64-magnitude check keeps its long form (the wart is NOT
+;                              dropped for a stored-magnitude nint, matching the wrapper)
+; The wrapper sites already emit the short spellings today; the member sites are what the one-owner
+; unification brings in line with them.
+
+; wrapper (named-rule) sites — each emits a `new()` / deserialize range check
+w_exact_size = bytes .size 3
+w_zero_len = bytes .size (0..32)
+w_int_range = 0..100
+w_nint_range = nint .ge -100
+
+; member (record-field) sites — each emits a ctor / setter range check
+bounds_members = [
+  m_exact_size: bytes .size 3,
+  m_zero_len: bytes .size (0..32),
+  m_int_range: 0..100,
+  m_nint_range: nint .ge -100,
+]

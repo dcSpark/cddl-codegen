@@ -1,0 +1,344 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: ir
+---
+{
+    RustIdent(
+        "BoundsMembers",
+    ): RustStruct {
+        ident: RustIdent(
+            "BoundsMembers",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "m_exact_size",
+                        rust_type: RustType {
+                            conceptual_type: Primitive(
+                                Bytes,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: Some(
+                                    (
+                                        Some(
+                                            3,
+                                        ),
+                                        Some(
+                                            3,
+                                        ),
+                                    ),
+                                ),
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                    RustField {
+                        name: "m_zero_len",
+                        rust_type: RustType {
+                            conceptual_type: Primitive(
+                                Bytes,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: Some(
+                                    (
+                                        None,
+                                        Some(
+                                            32,
+                                        ),
+                                    ),
+                                ),
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                    RustField {
+                        name: "m_int_range",
+                        rust_type: RustType {
+                            conceptual_type: Primitive(
+                                U64,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: Some(
+                                    (
+                                        None,
+                                        Some(
+                                            100,
+                                        ),
+                                    ),
+                                ),
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                    RustField {
+                        name: "m_nint_range",
+                        rust_type: RustType {
+                            conceptual_type: Primitive(
+                                N64,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: Some(
+                                    (
+                                        Some(
+                                            -100,
+                                        ),
+                                        None,
+                                    ),
+                                ),
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                ],
+            },
+        ),
+    },
+    RustIdent(
+        "Int",
+    ): RustStruct {
+        ident: RustIdent(
+            "Int",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Extern,
+    },
+    RustIdent(
+        "WExactSize",
+    ): RustStruct {
+        ident: RustIdent(
+            "WExactSize",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Primitive(
+                    Bytes,
+                ),
+                encodings: [],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    float_bounds: None,
+                    basic_override: false,
+                },
+            },
+            min_max: Some(
+                (
+                    Some(
+                        3,
+                    ),
+                    Some(
+                        3,
+                    ),
+                ),
+            ),
+            float_min_max: None,
+        },
+    },
+    RustIdent(
+        "WIntRange",
+    ): RustStruct {
+        ident: RustIdent(
+            "WIntRange",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Primitive(
+                    U64,
+                ),
+                encodings: [],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    float_bounds: None,
+                    basic_override: false,
+                },
+            },
+            min_max: Some(
+                (
+                    Some(
+                        0,
+                    ),
+                    Some(
+                        100,
+                    ),
+                ),
+            ),
+            float_min_max: None,
+        },
+    },
+    RustIdent(
+        "WNintRange",
+    ): RustStruct {
+        ident: RustIdent(
+            "WNintRange",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Primitive(
+                    N64,
+                ),
+                encodings: [],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    float_bounds: None,
+                    basic_override: false,
+                },
+            },
+            min_max: Some(
+                (
+                    Some(
+                        -100,
+                    ),
+                    None,
+                ),
+            ),
+            float_min_max: None,
+        },
+    },
+    RustIdent(
+        "WZeroLen",
+    ): RustStruct {
+        ident: RustIdent(
+            "WZeroLen",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Primitive(
+                    Bytes,
+                ),
+                encodings: [],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    float_bounds: None,
+                    basic_override: false,
+                },
+            },
+            min_max: Some(
+                (
+                    Some(
+                        0,
+                    ),
+                    Some(
+                        32,
+                    ),
+                ),
+            ),
+            float_min_max: None,
+        },
+    },
+}
