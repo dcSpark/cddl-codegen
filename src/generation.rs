@@ -5748,36 +5748,8 @@ impl GenerationScope {
             new_func.vis("pub").ret("Self");
             new_func.line("Self(Vec::new())");
             wrapper.s_impl.push_fn(new_func);
-            wrapper
-                .s_impl
-                .new_fn("len")
-                .vis("pub")
-                .ret("usize")
-                .arg_ref_self()
-                .line("self.0.len()");
-            wrapper
-                .s_impl
-                .new_fn("get")
-                .vis("pub")
-                .ret(element_type.for_wasm_return(types))
-                .arg_ref_self()
-                .arg("index", "usize")
-                .line(element_type.to_wasm_boundary(types, "self.0[index]", false));
             // TODO: range check stuff? where do we want to put this? or do we want to get rid of this like before?
-            wrapper
-                .s_impl
-                .new_fn("add")
-                .vis("pub")
-                .arg_mut_self()
-                .arg("elem", element_type.for_wasm_param(types))
-                .line(format!(
-                    "self.0.push({});",
-                    ToWasmBoundaryOperations::format(
-                        element_type
-                            .from_wasm_boundary_clone(types, "elem", false)
-                            .into_iter()
-                    )
-                ));
+            push_list_accessors(&mut wrapper, types, &element_type);
             wrapper.add_conversion_methods(&inner_type, cli);
             wrapper.push(self, types);
         }
@@ -5871,36 +5843,8 @@ impl GenerationScope {
                 )
             ));
         wrapper.s_impl.push_fn(new_func);
-        wrapper
-            .s_impl
-            .new_fn("len")
-            .vis("pub")
-            .ret("usize")
-            .arg_ref_self()
-            .line("self.0.len()");
-        wrapper
-            .s_impl
-            .new_fn("get")
-            .vis("pub")
-            .ret(element_type.for_wasm_return(types))
-            .arg_ref_self()
-            .arg("index", "usize")
-            .line(element_type.to_wasm_boundary(types, "self.0[index]", false));
         // add stays infallible: a push can never violate the >= 1 lower bound
-        wrapper
-            .s_impl
-            .new_fn("add")
-            .vis("pub")
-            .arg_mut_self()
-            .arg("elem", element_type.for_wasm_param(types))
-            .line(format!(
-                "self.0.push({});",
-                ToWasmBoundaryOperations::format(
-                    element_type
-                        .from_wasm_boundary_clone(types, "elem", false)
-                        .into_iter()
-                )
-            ));
+        push_list_accessors(&mut wrapper, types, &element_type);
         // try_from: the single checked door from the loose form to the restricted wrapper. It
         // BORROWS (and clones) so the source loose list/Vec remains valid on the JS side, and the
         // throw happens here — right at the conversion, not inside a parent constructor.
@@ -6331,6 +6275,48 @@ impl GenerationScope {
             _ => (),
         }
     }
+}
+
+/// Emit the shared wasm list-wrapper accessor triple — `len`, `get`, `add` — onto `wrapper`'s impl.
+/// The loose `Vec` wrapper (`generate_array_type`) and its restricted `NonEmptyVec` twin
+/// (`generate_non_empty_array_type`) deliberately expose the SAME method surface, each accessor
+/// delegating to `self.0` identically, so both mint these three through here — the conventions live
+/// once. Only `new` differs between the twins (loose: `Self(Vec::new())`; NonEmpty: `new(first)`),
+/// so it stays at each call site (along with any site-specific rationale) and is emitted before this.
+fn push_list_accessors(
+    wrapper: &mut WasmWrapper,
+    types: &IntermediateTypes,
+    element_type: &RustType,
+) {
+    wrapper
+        .s_impl
+        .new_fn("len")
+        .vis("pub")
+        .ret("usize")
+        .arg_ref_self()
+        .line("self.0.len()");
+    wrapper
+        .s_impl
+        .new_fn("get")
+        .vis("pub")
+        .ret(element_type.for_wasm_return(types))
+        .arg_ref_self()
+        .arg("index", "usize")
+        .line(element_type.to_wasm_boundary(types, "self.0[index]", false));
+    wrapper
+        .s_impl
+        .new_fn("add")
+        .vis("pub")
+        .arg_mut_self()
+        .arg("elem", element_type.for_wasm_param(types))
+        .line(format!(
+            "self.0.push({});",
+            ToWasmBoundaryOperations::format(
+                element_type
+                    .from_wasm_boundary_clone(types, "elem", false)
+                    .into_iter()
+            )
+        ));
 }
 
 fn canonical_param(cli: &Cli) -> &'static str {
