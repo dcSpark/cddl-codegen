@@ -1050,7 +1050,7 @@ extern / raw-bytes ctor args (and the same-class wrapper-entry ctor differential
 `--wasm-*-macro` flag (those replace the wrapper method surface) — each an `eprintln!`. (Optional-nullable
 flatten points need no skip: optional fields are not ctor args, so no mint constructs a present-null
 state — the three-state surface is covered by the hand-written `tests/nullable-wasm/` fixture.) Mutation-verified
-red-first (three `generation.rs` wasm-boundary mutations each turned exactly the intended assertion class
+red-first (three `generation/` wasm-boundary mutations each turned exactly the intended assertion class
 red; see the `src/emit_tests_wasm.rs` header).
 
 Two consumers run it:
@@ -1268,7 +1268,7 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
     `RawBytesEncoding` type). This is the
     `is_copy × directly_wasm_exposable × has-a-wrapper-RustStruct` axis the CBOR feature matrix
     deliberately does *not* individuate (wrapper-vs-transparent is a struct-table fact, not a shape fact
-    — see the docstrings in `src/intermediate.rs`).
+    — see the docstrings in `src/intermediate/`).
   - **Role**: where the type sits — `array-element`, `map-value`, `map-key`, `struct-field`,
     `struct-field-opt`, `newtype-inner`, `tchoice-variant` (the shape placed as one arm of a
     type-choice enum — the per-variant wasm ctor emission path via
@@ -1414,7 +1414,7 @@ NAME-shaped axis the shape catalogs never reach: they mint one rule per shape an
 colliding user name or a named+inline coexistence, so a bug in this class ships as **generation exits
 0 but the wasm crate doesn't compile**. Two standing layers own it:
 
-- **Duplicate-ident backstop** (`generation.rs::top_level_type_ident` + the scan in
+- **Duplicate-ident backstop** (`generation/export.rs::top_level_type_ident` + the scan in
   `generated_files`). Before export, every generated `src/generated/**` file (all three crates) is
   scanned for line-anchored top-level type-namespace definitions (`pub struct`/`enum`/`type`); any
   ident defined twice within one file returns an `Err` at the `generated_files` seam naming the file
@@ -1422,7 +1422,7 @@ colliding user name or a named+inline coexistence, so a bug in this class ships 
   so it is the backstop for every mint path present and future — turning the silent E0428
   redefinition (a user rule colliding with a synthesized ident) into a loud, graceful generator
   error. The plain F1/F2/F5 families have no IR-level collision scan (only the `NonEmpty*` families
-  do, in `intermediate.rs`), so for them the backstop is the sole pinned layer;
+  do, in `intermediate/mod.rs`), so for them the backstop is the sole pinned layer;
   `loose_builder_name_claimed_plain_message_names_ident_and_file` pins its message identity and its
   robustness-catalog row pins the outcome label.
 - **`synthesized_name_interaction_sweep`** (`integration_tests.rs`). A table-driven sweep crossing
@@ -1531,7 +1531,7 @@ Findings reconcile against a `PARITY_EXEMPT` ledger keyed `(profile, input, item
 live finding fails as "resurfaced" (a fix landed — remove it); an unexempted finding fails with the
 remedy spelled out (fix the emitter, or deliberately ledger it with a reason). The ledger is
 **empty** — every finding class the gate has surfaced was fixed at the emitter rather than ledgered:
-the named-table wasm alias emitted as a private `type` instead of `pub type` (`generation.rs`'s
+the named-table wasm alias emitted as a private `type` instead of `pub type` (`generation/`'s
 already-generated-map branch now carries `.vis("pub")`, matching its sibling passthrough-alias site);
 the preserve-profile wrapper `inner` field emitted `pub` (caught by the profile sweep's first run;
 now private like the default profile's tuple field, so downstream code can't literal-construct or
@@ -1539,7 +1539,7 @@ mutate a wrapper past the bound check `new()` enforces — access goes through t
 profile); and the rule-5 usage-dependent JS-class-name bug, where a named table rule's wrapper
 degraded to a `pub type` alias pointing at the generator-invented structural map class (so the CDDL
 rule name never reached JS and the shape's class name flipped with unrelated spec content). The fix
-(`generation.rs`'s up-front table-shape ownership pass): a shape owned by a SINGLE named rule now
+(`generation/`'s up-front table-shape ownership pass): a shape owned by a SINGLE named rule now
 surfaces its class under the CDDL rule name, with the structural `MapKToV` name a `pub type` alias to
 it; same-shape rule PAIRS keep the structural fallback for embedded uses while each named rule still
 gets its own class. The corpus-axis landing also surfaced the built-in `int` prelude wrapper gap:
@@ -1552,7 +1552,7 @@ the two raw-CBOR-argument constructors and a source-level `pub type IntError = J
 A **coverage-by-construction** gate for the axis every OTHER construct gate is blind to: **module
 placement**. The corpus gates, the wasm-ABI matrix, and the parity differential all feed the
 generator SINGLE-file specs, so every construct is only ever verified in root scope. Multifile
-emission branches on scope — `mark_refs` (`intermediate.rs`) resolves the import source for the
+emission branches on scope — `mark_refs` (`intermediate/mod.rs`) resolves the import source for the
 generator-invented structural wrappers (owner-resolved for map shapes via
 `IntermediateTypes::table_shape_sole_owners`; still root-hard-coded for arrays, the pinned
 `collrec` class and the remaining `issue #138` TODO), while the wrapper/alias definitions land
@@ -1672,7 +1672,7 @@ dedup-to-named reference names the root-minted loose builder/element/rule bare f
 module; the per-shape breakdown is on the same findings entry). Every
 other cell is green, and greenness rests on four emitter invariants this matrix guards: a module
 declares `pub mod serialization;` only when that file is written (the module-declaration loop in
-`generation.rs` shares the `serialize_scopes` predicate with the file-write, so an alias/enum-only
+`generation/export.rs` shares the `serialize_scopes` predicate with the file-write, so an alias/enum-only
 non-root module cannot declare a phantom module — the E0583 class); an anonymous same-shape table
 used cross-module imports the structural wrapper from the sole owner's module
 (`scope_references`/`mark_refs` consult `IntermediateTypes::table_shape_sole_owners`, the same
@@ -1825,7 +1825,7 @@ owner; the conditional mechanical layers (built only if a class recurs) are a
   catch-all soft arm silently absorbs the impossible state, and no gate can see that (a mutation
   sweep would at best surface the arm as a survivor that triage then plausibly waves through as
   equivalent — it cannot distinguish "kept loud" from "absorbed"). Shipped exemplar:
-  `set_rep_if_plain_group`'s multi-rep match in intermediate.rs (conflicting-rep = graceful
+  `set_rep_if_plain_group`'s multi-rep match in intermediate/mod.rs (conflicting-rep = graceful
   rejection; non-Record/non-GroupChoice materialization = still `unreachable!`).
 - **Vacuity floors witness the guarded artifact, not a proxy for it.** A floor whose count derives
   from an INPUT correlated with the guarded behavior — rather than from the behavior's own
@@ -1841,7 +1841,7 @@ owner; the conditional mechanical layers (built only if a class recurs) are a
 
 ## Coverage
 
-The in-process snapshot suite alone covers ~81% of the codebase (generation.rs ~86%). To measure
+The in-process snapshot suite alone covers ~81% of the codebase (generation/ ~86%). To measure
 (requires `cargo install cargo-llvm-cov` + `rustup component add llvm-tools-preview`):
 
 ```sh
@@ -1869,7 +1869,7 @@ cargo mutants --iterate   # resume: skips mutants already caught/unviable in mut
 ```
 
 Never pass `--in-place`: an interrupted in-place run leaves a live mutant applied to
-`src/generation.rs` in the working tree (observed). The default copied-workdir costs one warm-up
+`src/generation/` in the working tree (observed). The default copied-workdir costs one warm-up
 build per invocation and keeps the tree clean. Leave the default baseline on (it validates the
 unmutated suite green and auto-derives sane per-mutant timeouts; `--baseline=skip` falls back to a
 300 s cap that real mutant runs approach).
@@ -1888,7 +1888,7 @@ survivors that *aren't* in it.
 
 The CDDL standard prelude (`biguint`, `tdate`, `uri`, …) is covered by `tests/corpus/prelude.cddl`.
 The float-bearing prelude types (`number`, `time`) are omitted from it because floats don't support
-`--preserve-encodings` (a pre-existing `unimplemented!` in `generation.rs`), which the corpus
+`--preserve-encodings` (a pre-existing `unimplemented!` in `generation/deserialize.rs`), which the corpus
 exercises for every entry.
 
 [`insta`]: https://insta.rs

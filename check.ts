@@ -388,7 +388,7 @@ export const REGISTRY: Gate[] = [
   // --- tracked-failing IOU stubs: known-failing #[ignore] tests, NEVER executed (shown as STUB) ---
   { id: "stub_preserve_encodings_supports_floats", tier: "full", kind: "stub",
     ignoredTest: "preserve_encodings_supports_floats",
-    desc: "IOU: floats under --preserve-encodings (pre-existing unimplemented! in generation.rs)" },
+    desc: "IOU: floats under --preserve-encodings (pre-existing unimplemented! in generation/deserialize.rs)" },
 ];
 
 // ==================================================================================================

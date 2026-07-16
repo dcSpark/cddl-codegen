@@ -162,7 +162,7 @@ const ROLES: Record<string, Role> = {
   // and the supported fixed values (uint/text literals) overlap prim/cenum/talias arms — so neither
   // can stand in as the disjoint arm.
   "tchoice-variant": { wrap: (t) => `holder = ${t} / nint` },
-  // GROUP-choice per-variant wasm ctor emission (`codegen_group_choices` in generation.rs) — the
+  // GROUP-choice per-variant wasm ctor emission (`codegen_group_choices` in generation/enums.rs) — the
   // group-choice sibling of `tchoice-variant`, exercising a DISTINCT emitter path (a `//` group choice
   // routes through `codegen_group_choices`' per-variant wasm ctor loop, not the type-choice
   // `generate_type_choices_from_variants` path). Each arm is a single named field, so the shape is
