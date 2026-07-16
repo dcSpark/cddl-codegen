@@ -163,7 +163,10 @@ export const NO_DETECTOR = new Set(["grpchoice.sequence", "grpent.groupname", "g
 // order; arg grammars mirror each tag_* fn:
 //   @name / @custom_serialize / @custom_deserialize : ws* then take_while1(!ws) — arg REQUIRED (fails if absent)
 //   @newtype                                         : OPTIONAL ws* then take_while1(!ws && !@)
-//   @no_alias / @used_as_key / @custom_json          : none
+//   @no_alias / @used_as_elem / @custom_json         : none
+//   @used_as_key                                     : optional flavor words `hash`/`ord` up to the next `@`/EOL
+//                                                      (comment_ast PANICS on any other word, so a fixture with
+//                                                      prose there cannot generate — the mirror credits nothing)
 //   @doc                                             : take_while1(c != '@') — prose runs to the next `@` (arg REQUIRED)
 type TagParse = (s: string) => { id: string; rest: string } | null;
 const ws = (s: string) => s.replace(/^\s+/, ""); // take_while(char::is_whitespace)
@@ -185,7 +188,21 @@ const DSL_TAGS: TagParse[] = [
     return m ? { id: "dsl.newtype", rest: ws(after).slice(m[0].length) } : { id: "dsl.newtype", rest: ws(after) };
   },
   noArg("dsl.no_alias", "@no_alias"),
-  noArg("dsl.used_as_key", "@used_as_key"),
+  // @used_as_key: consumes the optional flavor words (`hash`/`ord`) so a directive AFTER them is
+  // still reachable, mirroring tag_used_as_key's loop. On any OTHER word comment_ast panics (the
+  // fixture couldn't have generated), so the mirror refuses the credit rather than false-crediting.
+  s => {
+    if (!s.startsWith("@used_as_key")) return null;
+    let rest = s.slice("@used_as_key".length);
+    while (true) {
+      const afterWs = ws(rest);
+      if (afterWs === "" || afterWs.startsWith("@")) return { id: "dsl.used_as_key", rest: afterWs };
+      const m = afterWs.match(/^[^\s@]+/)!;
+      if (m[0] !== "hash" && m[0] !== "ord") return null; // comment_ast panics here — no credit
+      rest = afterWs.slice(m[0].length);
+    }
+  },
+  noArg("dsl.used_as_elem", "@used_as_elem"),
   noArg("dsl.custom_json", "@custom_json"),
   argRequired("dsl.custom_serialize", "@custom_serialize"),
   argRequired("dsl.custom_deserialize", "@custom_deserialize"),
@@ -367,11 +384,23 @@ function selfCheck() {
   if (featuresIn("x = uint ; ask user@example about it").dsl.size) throw new Error("selfCheck: mid-prose @word invented a dsl id");
   // dsl-prose residual: the sequential scanner mirrors comment_ast's many0(whitespace_then_tag) —
   // a real directive id buried in trailing prose after a NON-@doc directive must NOT be credited
-  // (comment_ast's many0 stops at the first non-directive token).
+  // (comment_ast's many0 stops at the first non-directive token). @used_as_key goes further: its
+  // flavor loop PANICS on a non-flavor word, so trailing prose there kills the whole credit (the
+  // fixture couldn't have generated) — the mirror must credit NOTHING, not stop-after-crediting.
   {
     const r = featuresIn("x = uint ; @used_as_key see @newtype for the alternative").dsl;
-    if (!r.has("dsl.used_as_key")) throw new Error("selfCheck: @used_as_key not credited");
+    if (r.has("dsl.used_as_key")) throw new Error("selfCheck: @used_as_key with trailing prose was credited (comment_ast panics on a non-flavor word — no credit)");
     if (r.has("dsl.newtype")) throw new Error("selfCheck: @newtype in trailing prose after @used_as_key was over-credited (the dsl-prose residual)");
+  }
+  // @used_as_key flavor words are consumed as its ARGS, so a directive after them is still parsed;
+  // bare @used_as_elem chains like any no-arg directive.
+  {
+    const r = featuresIn("x = uint ; @used_as_key hash ord @newtype").dsl;
+    if (!r.has("dsl.used_as_key") || !r.has("dsl.newtype")) throw new Error("selfCheck: @used_as_key flavor words must be consumed with the directive after them still parsed");
+  }
+  {
+    const r = featuresIn("x = uint ; @used_as_elem @newtype").dsl;
+    if (!r.has("dsl.used_as_elem") || !r.has("dsl.newtype")) throw new Error("selfCheck: @used_as_elem (+ chained directive) must be credited");
   }
   // the asymmetric @doc grammar: @doc's prose runs to the next `@`, so a directive AFTER @doc prose
   // IS still parsed (comment_ast.rs tag_comment = take_while1(c != '@')). A naive stop-at-first rule

@@ -3597,6 +3597,64 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "dsl.used_as_elem"
+axis = "feature"
+example = "elem_host = [a: uint, b: text] ; @used_as_elem"
+spec = "elem_host = [a: uint, b: text] ; @used_as_elem"
+mode = "standalone"
+type_name = "ElemHost"
+
+[[row.vector]]
+hex = "821902756973696c656e74657374"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "821902de6c726570726f64756374697665"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8219033d6a666c696d73696e657373"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "821906556b7472617070696e67732773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82190a376750696c6772696d"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82190aa169617474656e74696f6e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82190d476773696c6c696572"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82190f346f6465636f6d706f736974696f6e2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82190fa56e68656d61746f6c6f676973742773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82190ff967446172796c2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "dsl.used_as_key"
 axis = "feature"
 example = "keyed = [a: uint, b: text] ; @used_as_key"
