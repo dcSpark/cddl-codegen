@@ -1,0 +1,9 @@
+; An INLINE array carrying a group choice (`[ 0 // 1 ]`) used as a member/element type is rejected
+; gracefully (`an inline array with group choices ... is unsupported`, parsing.rs
+; `rust_type_from_type2`) — a DISTINCT site from the "Anonymous groups not allowed" path (which fires
+; for the choice-FREE heterogeneous inline array): the group-choice count check trips first. The named
+; form (`t = [ 0 // 1 ]` referenced by name) is the supported spelling and is verified to generate, so
+; the rejection message points at it. This is the array sibling of inline_group_choice_member.cddl
+; (the map shape); the message itself is pinned by
+; `inline_array_group_choice_member_rejects_gracefully` in src/tests/robustness_tests.rs.
+bar = { x: [ 0 // 1 ] }

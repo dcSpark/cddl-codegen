@@ -2254,7 +2254,19 @@ fn rust_type_from_type2(
                     }
                 }
                 // array of elements with choices: enums?
-                _ => unimplemented!("group choices in array type not supported"),
+                _ => {
+                    // An inline array with group choices in member/element position has no
+                    // anonymous representation here — but the NAMED form (a top-level rule
+                    // `t = [ a // b ]` referenced by name) IS supported (verified to generate).
+                    // Reject gracefully and point at it, rather than panicking.
+                    types.record_rejection(
+                        "an inline array with group choices (`[ a // b ]`) used as a member or \
+                         element type is unsupported — name it as its own rule (`t = [ a // b ]`) \
+                         and reference `t`"
+                            .to_string(),
+                    );
+                    ConceptualRustType::Fixed(FixedValue::Null).into()
+                }
             }
         }
         Type2::Map { group, .. } => {
@@ -2291,10 +2303,19 @@ fn rust_type_from_type2(
                         _ => unimplemented!("TODO: non-table types as types: {:?}", group),
                     }
                 }
-                _ => unimplemented!(
-                    "group choices in inlined map types not allowed: {:?}",
-                    group
-                ),
+                _ => {
+                    // An inline map with group choices in member/element position has no
+                    // anonymous representation here — but the NAMED form (a top-level rule
+                    // `t = { a // b }` referenced by name) IS supported (verified to generate).
+                    // Reject gracefully and point at it, rather than panicking.
+                    types.record_rejection(
+                        "an inline map with group choices (`{ a // b }`) used as a member or \
+                         element type is unsupported — name it as its own rule (`t = { a // b }`) \
+                         and reference `t`"
+                            .to_string(),
+                    );
+                    ConceptualRustType::Fixed(FixedValue::Null).into()
+                }
             }
         }
         // unsure if we need to handle the None case - when does this happen?
