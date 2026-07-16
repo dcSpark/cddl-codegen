@@ -4905,7 +4905,7 @@ impl Deserialize for OverlapBasicEmbed {
                     .bytes()
                     .map_err(Into::<DeserializeError>::into)
                     .and_then(|bytes| {
-                        if bytes.len() < 32 || bytes.len() > 32 {
+                        if bytes.len() != 32 {
                             Err(DeserializeFailure::RangeCheck {
                                 found: bytes.len() as i128,
                                 min: Some(32),

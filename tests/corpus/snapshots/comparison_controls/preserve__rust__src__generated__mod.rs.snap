@@ -30,7 +30,7 @@ pub struct ComparisonControls {
 
 impl ComparisonControls {
     pub fn new(a: u64, b: u64, c: u64, d: u64, e: u64) -> Result<Self, DeserializeError> {
-        if a < 5 || a > 5 {
+        if a != 5 {
             return Err(DeserializeFailure::RangeCheck {
                 found: a as i128,
                 min: Some(5),
