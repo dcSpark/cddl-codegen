@@ -5904,7 +5904,6 @@ impl GenerationScope {
     /// `insert`/`get`/`has`/`keys` accessors are minted by the shared `push_table_accessors` (also
     /// used by `codegen_table_type`), delegating to `self.0`, whose `NonEmptyMap` method surface
     /// matches the raw map's `len`/`insert`/`get`/`keys`.
-    #[allow(clippy::too_many_lines)]
     fn generate_non_empty_map_type(
         &mut self,
         types: &IntermediateTypes,
