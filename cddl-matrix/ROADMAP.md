@@ -473,13 +473,16 @@ are ledgered here (that's what the probe/gate error messages point at).
   sessions keep landing small nint conversions without moving the support boundary. Two facts for
   whoever picks this up: (1) upstream `cbor_event` issue #9 is NOT the blocker it appears — the
   crate already ships full-range endpoints (`write_negative_integer_sz` / `negative_integer_sz`,
-  `i128`) and generation already uses them on the paths where the `i64` limit bites (`i64::MIN`,
-  preserve-encodings); (2) the actual full-range limiters are local: `FixedValue::Nint(isize)` in
-  the IR cannot represent -2^64..-(2^63+1), and the remaining plain `write_negative_integer(i64)`
-  call sites (e.g. `FixedValue::to_bytes`) cap fixed-value encoding at the `i64` range. Until a
-  consumer justifies the feature, new nint shapes land as graceful rejections + enumeration cells;
-  when one does, do the IR widening and the `_sz` sweep as one change, then flip the pinned
-  rejection rows (record path first, then the group-choice arm).
+  `i128`) and generation uses them wherever the `i64` limit bites (`i64::MIN`,
+  preserve-encodings, and `FixedValue::to_bytes` — full-range `_sz` since the `FixedValue`
+  widening, pinned by `nint_to_bytes_canonical_across_boundaries`); (2) the IR-side limiters are
+  gone — `FixedValue::Nint` is `i128` and can represent the whole CBOR nint range — so the
+  remaining full-range limiter is UPSTREAM: the `cddl` crate parses int literals as
+  `isize`/`usize`, so a literal in -2^64..-(2^63+1) cannot reach us from CDDL text. Until a
+  consumer justifies the feature, new
+  nint shapes land as graceful rejections + enumeration cells; when one does, the work is the
+  runtime/emitted-type design plus the upstream literal-width question, not IR plumbing — then
+  flip the pinned rejection rows (record path first, then the group-choice arm).
 - Bare `x = int` / an `int` `.cbor` payload emit an undefined `Int` wrapper (`cannot find type Int`); `int`
   works as a member / array element. Third instance from the recombination fuzzer's layer-2 run: an
   `int`-VALUED table under a `.cbor` payload (`x = bytes .cbor { tstr => int }`) dangles the same
