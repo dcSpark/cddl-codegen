@@ -1,5 +1,11 @@
+//! The rust type vocabulary (`RustType`/`ConceptualRustType` and friends).
+//!
+//! Known exceptions to the intermediate->generation module boundary: the type-naming methods here
+//! reach back into `generation` — the `table_type` import below and the
+//! `crate::generation::rust_crate_struct_from_wasm` calls in `for_rust_member_ct`/`name_for_rust_map`.
+//! Full inversion is a bigger job (the `from_wasm` flag threads through type naming), so these stay
+//! as the boundary's documented leaks rather than being "fixed" here.
 use super::*;
-// TODO: move all of these generation specifics into generation.rs
 use crate::generation::table_type;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
