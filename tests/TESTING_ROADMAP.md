@@ -142,6 +142,43 @@ justifies building the named mechanical layer. Building before the trigger fires
 over-engineering; deleting an entry without either building the layer or recording why the class is
 dead loses the lesson.
 
+- **Extreme-value boundary correctness of generation-time encode paths: a value that FITS the
+  type can still encode wrong at the type's boundary, and no fixture minted from "supported
+  shapes" ever lands there.** Proven instance (read-caught during the `FixedValue` i128/u64
+  widening, not by any test): `FixedValue::to_bytes` — the generation-time canonical-ordering
+  encoder for fixed map keys — called cbor_event's `write_negative_integer(*i as i64)`, which
+  produces wrong bytes for `i64::MIN` (primetype/cbor_event#9: `-i64::MIN` overflows), so a
+  canonical spec with a fixed `-9223372036854775808` map key would have gotten wrong key
+  ordering silently. `i64::MIN` is representable in the old `isize` field, so this was a
+  correctness hole at a representable boundary — a different class from the representability
+  widening the nint entry in `cddl-matrix/ROADMAP.md` scopes (that entry even named this call
+  site, but as a range cap, and its "generation already uses `_sz` where the `i64` limit bites"
+  premise was exactly what the bug falsified). Standing coverage now:
+  `nint_to_bytes_canonical_across_boundaries` pins hard-coded canonical bytes across the full
+  magnitude ladder + `i64::MIN` through `to_bytes`, and
+  `i64_min_fixed_value_emits_width_correct_nint` pins the emitted serialize line under default +
+  preserve profiles. What no gate yet does: thread each numeric extreme (`i64::MIN`/`MAX`,
+  `u64::MAX`, the `±2^63±1` off-by-ones) through every POSITION class systematically — fixed
+  value, fixed map key under `--canonical`, range/bounds windows, deserialize mismatch arms — in
+  a generated crate whose emitted tests execute. A SECOND read-caught extreme-value bug in any
+  encode/compare path is the trigger to build that boundary-vector sweep as a corpus/matrix
+  axis rather than hand-pinning per instance.
+- **Panic-site un-shadowing: converting a shallow panic to a graceful rejection exposes deeper
+  panic sites for inputs that previously died early — and the outcome catalogs, which record
+  CATEGORY only by design, cannot see a PANIC→PANIC site shift.** Proven instance: converting
+  `parse_type`'s fall-through panic made `ctl.bits` (which died there, on its `&(...)` rule)
+  travel past the recorded rejection into the control-operator catch-all — still PANIC, so its
+  `matrix_panic` catalog row never flipped, and the shift was visible only because the
+  conversion's fixture-flip prediction was diffed against a pre-conversion PER-SITE baseline
+  probe. Standing coverage: the recombination sweep's ledger keys are message+site-scoped, so a
+  SWEPT composition moving to an unledgered deeper class fails loudly as a new finding; and the
+  cycle-4 working rule — before converting a panic site, baseline-probe every fixture the site
+  owns (panic site + message, not category), and re-probe after — caught this instance. The
+  trigger for a mechanical layer (a site-fingerprint sidecar per `matrix_panic` fixture, diffed
+  by the catalog test alongside the category) is a SECOND instance where an un-shadowed deeper
+  site goes unnoticed past its converting commit; building it now would trade the catalogs'
+  deliberate refactor-stability for a fingerprint that churns on every panic-message edit.
+
 - **Parallel-constructor fixture diversity: a parser over external input must span the ident-class
   matrix of REAL specs, not the feature spec's mental model.** Proven instance: the
   `--wrapper-requests` shape parser hand-built bare `Rust(ident)` element leaves instead of
