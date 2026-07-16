@@ -2339,6 +2339,9 @@ if (fabricated.length) {
   for (const x of fabricated) console.log(`  - ${x.id}: production '${x.production}'`);
 }
 if (gaps.length) { console.log("\nCOMPLETENESS GAPS (prelude):"); for (const g of gaps) console.log(`  - ${JSON.stringify(g)}`); }
+// Print this hard-fail category like its siblings — it once fired with no console section at all
+// ("see above" pointed at nothing; the culprit was only visible in verify_report.json).
+if (cddl_codegen_gaps.length) { console.log("\nCOMPLETENESS GAPS (CDDL_CODEGEN comment-DSL: documented directive/marker with no feature row):"); for (const g of cddl_codegen_gaps) console.log(`  - ${JSON.stringify(g)}`); }
 if (link_errors.length) { console.log("\nLINK-INTEGRITY ERRORS:"); for (const e of link_errors) console.log(`  - ${e.kind}: ${e.id} -> unknown '${e.ref}'`); }
 if (type2_uncovered.length) { console.log("\nTYPE2 PER-ALTERNATIVE GAPS (no covering feature row):"); for (const a of type2_uncovered) console.log(`  - ${a}`); }
 if (altCoverageResult.problems.length) {
