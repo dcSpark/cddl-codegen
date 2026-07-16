@@ -173,6 +173,21 @@
           }
         },
         "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "id": "dsl.used_as_elem",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "dsl.used_as_key",
         "status": "supported"
       },
@@ -4093,6 +4108,16 @@
       "profile": "CDDL_CODEGEN",
       "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@used_as_key; src/comment_ast.rs",
       "title": "@used_as_key — force Ord/Hash derives"
+    },
+    {
+      "alt": "@used_as_elem",
+      "desc": "Forces minting the loose-list wasm wrapper (FooList = [* foo] equivalent) for the tagged type even when the spec never contains that list inline, so this crate canonically hosts the wrapper class (and satisfies downstream --wrapper-requests consumers asking for that shape).",
+      "example": "elem_host = [a: uint, b: text] ; @used_as_elem",
+      "id": "dsl.used_as_elem",
+      "production": "comment_dsl",
+      "profile": "CDDL_CODEGEN",
+      "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@used_as_elem; src/comment_ast.rs",
+      "title": "@used_as_elem — mint the canonical loose-list wasm wrapper"
     },
     {
       "alt": "@custom_json",

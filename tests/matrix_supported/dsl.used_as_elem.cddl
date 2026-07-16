@@ -1,0 +1,1 @@
+elem_host = [a: uint, b: text] ; @used_as_elem

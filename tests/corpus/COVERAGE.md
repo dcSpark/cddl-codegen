@@ -240,7 +240,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 ## cddl-codegen vendor profile (comment DSL + sentinels — not RFC 8610)
 
-### `comment_dsl` (8)
+### `comment_dsl` (9)
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
@@ -251,6 +251,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `dsl.name` | ✅ | @name — explicit field/variant name | `dsl_name.cddl` |
 | `dsl.newtype` | ✅ | @newtype — wrapper struct instead of alias | `dsl_newtype.cddl` |
 | `dsl.no_alias` | ✅ | @no_alias — inline the type, emit no alias | `dsl_no_alias.cddl` |
+| `dsl.used_as_elem` | ✅ | @used_as_elem — mint the canonical loose-list wasm wrapper | `dsl_used_as_elem.cddl` |
 | `dsl.used_as_key` | ✅ | @used_as_key — force Ord/Hash derives | `dsl_used_as_key.cddl` |
 
 ### `sentinel` (2)
@@ -324,7 +325,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 ## Summary
 
-- Features: **106** — ✅ 54 covered · ➕ 21 supported-untested · ⚠️ 4 partial · ➖ 27 not supported
+- Features: **107** — ✅ 55 covered · ➕ 21 supported-untested · ⚠️ 4 partial · ➖ 27 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
 - Corpus fixtures: 67
 

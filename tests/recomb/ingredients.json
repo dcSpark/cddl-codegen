@@ -734,6 +734,10 @@
       "reason": "DSL comment in an auxiliary rule (may reference user-supplied code); not self-contained"
     },
     {
+      "feature": "dsl.used_as_elem",
+      "reason": "DSL comment in root RHS; not a clean reusable expression"
+    },
+    {
       "feature": "dsl.used_as_key",
       "reason": "DSL comment in root RHS; not a clean reusable expression"
     },

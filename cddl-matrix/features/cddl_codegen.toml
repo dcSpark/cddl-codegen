@@ -80,6 +80,16 @@ desc = "Forces a type to derive Ord/PartialOrd or Hash even if it isn't used as 
 example = "keyed = [a: uint, b: text] ; @used_as_key"
 
 [[feature]]
+id = "dsl.used_as_elem"
+production = "comment_dsl"
+alt = "@used_as_elem"
+rfc = "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@used_as_elem; src/comment_ast.rs"
+profile = "CDDL_CODEGEN"
+title = "@used_as_elem — mint the canonical loose-list wasm wrapper"
+desc = "Forces minting the loose-list wasm wrapper (FooList = [* foo] equivalent) for the tagged type even when the spec never contains that list inline, so this crate canonically hosts the wrapper class (and satisfies downstream --wrapper-requests consumers asking for that shape)."
+example = "elem_host = [a: uint, b: text] ; @used_as_elem"
+
+[[feature]]
 id = "dsl.custom_json"
 production = "comment_dsl"
 alt = "@custom_json"

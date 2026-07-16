@@ -299,6 +299,10 @@ id = "dsl.used_as_key"
 fixture = "dsl_used_as_key.cddl"
 
 [[cover]]
+id = "dsl.used_as_elem"
+fixture = "dsl_used_as_elem.cddl"
+
+[[cover]]
 id = "dsl.custom_json"
 fixture = "dsl_custom.cddl"
 

@@ -417,7 +417,20 @@ dead loses the lesson.
   primitive-deserialize `.and_then`, collection len check) and diff the check conditions +
   failure payloads, ledgering deliberate site-specific differences — plus the cheap grep half, a
   snapshot-wide wart scan (same-N `< N || > N`, dead `< 0` over unsigned/`len()` exprs) in the
-  spirit of the doubled-doc-marker scan above.
+  spirit of the doubled-doc-marker scan above. A third flavor of the class, CROSS-LANGUAGE this
+  time, surfaced on the first full-tier run after the `@used_as_elem` delivery:
+  `corpus_detect.ts`'s `DSL_TAGS` scanner is a documented hand mirror of `comment_ast.rs`'s
+  directive grammar, and the delivery updated the rust authority (plus docs, fixture, catalog
+  rows) but not the mirror — nor the mirror's own selfCheck vectors, which still encoded the
+  pre-flavor `@used_as_key` grammar (so the "detector" agreed with the drift). `verify.ts`'s
+  docs-lint (documented directive with no feature row → `cddl_codegen_gaps` hard fail) was the
+  layer that fired, and `project_corpus`'s content-drift check A pins fixture↔directive credit
+  once a `[[cover]]` exists — but BOTH trigger only via adjacent artifacts (docs mention, cover
+  entry), not the mirror itself. The mechanical fix direction is already named in
+  `corpus_detect.ts`'s header: move the dsl channel onto an AST floor (parse comments with the
+  real `comment_ast` via a small `examples/` binary, as the role floor already does with
+  `ast_roles.rs`) instead of growing the TS mirror — do that on the next directive addition
+  rather than hand-extending `DSL_TAGS` again.
 - **Run-local values in gate-cache key material — one proven instance, no machinery yet.** The
   TS-side cache keys hashed the literal nested-cargo argv, which embeds the run's `mkdtempSync`
   probe dir — every key was unique to its run, so verify.ts could never hit its cache across runs
