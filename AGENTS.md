@@ -81,6 +81,22 @@ changing the *runtime behaviour* of generated code usually means editing `static
   paths — CI and documented commands select tests by substring.
 - **The CLI flags change codegen substantially** (preserve-encodings, canonical, json, wasm, …).
   When behaviour depends on a flag, check `cli.rs` and `docs/docs/command_line_flags.mdx`.
+- **Some comments and panic messages are load-bearing test keys.** `LOCKSTEP`-paired comments and
+  the panic-class ledgers in `src/tests/recombination_tests.rs` (keys are substrings of
+  `<message> @ <file> @ fn <symbol>`) mean: moved code carries its comments verbatim; a pinned
+  panic message is never reworded; relocating or deleting a guarded site fires the stale-pin guard
+  by design — update/prune the ledger entry in the same commit (two keys are enforced only by
+  full-tier `#[ignore]`d gates, so reason about them explicitly rather than trusting a local run).
+- **Deliberately-unrefactored structure — don't re-litigate without new evidence** (decided during
+  the 2026-07 `src/` refactoring series; rationale in that series' commit messages): string-based
+  emission stays (the rustfmt post-pass + snapshot corpus + comment-preservation overlay all key on
+  emitted-token stability — an AST/quote emitter breaks the overlay); the `codegen`-crate
+  workarounds (newline-smuggled attrs, the `derivative)]` hack) stay isolated — the real fix is
+  upstream; no `Ctx { types, cli }` param-pair struct (borrow-splitting `&mut GenerationScope` +
+  `&IntermediateTypes` gets harder behind one struct); `api::with_types` stays one linear
+  narrative; `print!` progress logging stays (humans and tests consume it as-is); the twin
+  non-empty collision detectors stay twins unless a third container kind appears (their message
+  texts differ meaningfully and are pinned).
 
 ## Git workflow
 
