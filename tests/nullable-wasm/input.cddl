@@ -12,7 +12,7 @@
 ;
 ; A DOUBLE-nested enum variant (payload resolving to Option<Option<T>>) is deliberately absent: it is
 ; unreachable — the wasm enum constructor panics on such a variant before any getter is emitted (see the
-; `unreachable!` in generation.rs add_wasm_enum_getters), so no supported CDDL can produce it.
+; `unreachable!` in generation/enums.rs add_wasm_enum_getters), so no supported CDDL can produce it.
 maybe_uint = uint / null
 nullable_optional_field = [pre: uint, ? field0: maybe_uint]
 nullable_map_value = { * uint => maybe_uint }

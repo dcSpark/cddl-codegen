@@ -1,5 +1,5 @@
 ; A tag wrapping a PRELUDE CONSTANT (`#6.11(true)`; equally `nil` / `false`) panics generation in
-; `for_rust_member` (`should not expose Fixed type in member`, intermediate.rs). The LITERAL-inner
+; `for_rust_member` (`should not expose Fixed type in member`, intermediate/rust_type.rs). The LITERAL-inner
 ; sibling `#6.5(5)` is rejected gracefully at rule registration (tests/robustness/tagged_literal.cddl)
 ; — but a prelude CONSTANT inner resolves through the prelude alias (`true` -> Fixed(Bool)) on a path
 ; the registration-time guard does not classify, so the tag-wrapped constant still reaches the

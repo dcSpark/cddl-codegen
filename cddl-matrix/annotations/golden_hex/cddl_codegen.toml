@@ -125,7 +125,7 @@ reason = "extended simple values are not a CDDL construct the generator emits"
 cell = "enc.major7.float16"
 status = "out_of_scope"
 reason = "generator maps CDDL `float` to Rust f64 and does NOT shorten (Inf/NaN encode as double, not half), so half-precision is never emitted"
-code_anchor = "Special::Float"   # generation.rs: `Special::Float({expr} as f64)`
+code_anchor = "Special::Float"   # generation/serialize.rs: `Special::Float({expr} as f64)`
 
 [[note]]
 cell = "enc.major7.float32"

@@ -99,7 +99,7 @@ fn wasm_nullable_map_value_three_state_fidelity() {
     assert_eq!((wm.has(20), wm.get(20)), (true, Some(7)));
 }
 
-// Regression guard for the `has_<field>` name-collision skip (generation.rs). `has_name_collision`
+// Regression guard for the `has_<field>` name-collision skip (generation/records.rs). `has_name_collision`
 // has an optional-nullable `field0` (whose flattening getter would synthesize `has_field0()`) AND a
 // sibling field literally named `has_field0`. The generator must SKIP the synthesized accessor so the
 // wasm crate compiles with a single `pub fn has_field0` (the sibling field's own getter). That this

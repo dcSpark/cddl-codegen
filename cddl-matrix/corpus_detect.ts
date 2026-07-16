@@ -21,7 +21,11 @@
  *
  * The @-DSL channel is the ONE exception to the recall-first contract: `scanDslDirectives` is a
  * PRECISE sequential mirror of comment_ast.rs (not a regex approximation), because the dsl set backs
- * check A's cover drift-check where a FALSE CREDIT — not a miss — is the failure mode.
+ * check A's cover drift-check where a FALSE CREDIT — not a miss — is the failure mode. The mirror's
+ * directive VOCABULARY is lockstep-gated: selfCheck compares `MIRRORED_DIRECTIVES` against
+ * comment_ast.rs's `tag("@…")` literals, so adding/removing a directive on either side fails every
+ * importer (project_corpus = fast tier). ARG-GRAMMAR drift within an unchanged set has no detector —
+ * that residual is why the AST-floor upgrade below wins over growing this mirror.
  *
  * Known-approximate cases audited and accepted under the above (each would be fixed by the AST-floor
  * upgrade, not by more regex): hyphenated rule names; ctl-name credit from dotted ids / range bounds;
