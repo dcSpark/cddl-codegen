@@ -517,8 +517,8 @@ fn try_float_or_reject(
 
 fn type2_to_fixed_value(type2: &Type2) -> FixedValue {
     match type2 {
-        Type2::UintValue { value, .. } => FixedValue::Uint(*value),
-        Type2::IntValue { value, .. } => FixedValue::Nint(*value),
+        Type2::UintValue { value, .. } => FixedValue::Uint(*value as u64),
+        Type2::IntValue { value, .. } => FixedValue::Nint(*value as i128),
         Type2::FloatValue { value, .. } => FixedValue::Float(*value),
         Type2::TextValue { value, .. } => FixedValue::Text(value.to_string()),
         _ => panic!(
@@ -1220,7 +1220,7 @@ fn parse_type(
         }
         // Note: bool constants are handled via Type2::Typename
         Type2::IntValue { value, .. } => {
-            let fallback_type = ConceptualRustType::Fixed(FixedValue::Nint(*value));
+            let fallback_type = ConceptualRustType::Fixed(FixedValue::Nint(*value as i128));
 
             let control = type1.operator.as_ref().map(|op| {
                 parse_control_operator(
@@ -1278,7 +1278,7 @@ fn parse_type(
             }
         }
         Type2::UintValue { value, .. } => {
-            let fallback_type = ConceptualRustType::Fixed(FixedValue::Uint(*value));
+            let fallback_type = ConceptualRustType::Fixed(FixedValue::Uint(*value as u64));
 
             let control = type1.operator.as_ref().map(|op| {
                 parse_control_operator(
@@ -1465,6 +1465,10 @@ pub fn create_variants_from_type_choices(
 
 /// Possible special cases for groups that can be handled to generate much nicer code
 /// instead of treating all groups as structs.
+// internal, produced once per group during detection and matched immediately (never stored in
+// bulk), so the inter-variant size gap doesn't matter; boxing a `RustType` field here would only
+// obscure the arms.
+#[allow(clippy::large_enum_variant)]
 enum GroupParsingType {
     /// Fields are the same e.g. field: [* uint]. The second field is the occurrence-count bounds
     /// (`+` / `n*m`) — a LENGTH constraint belonging to the enclosing array type, kept separate
@@ -2147,9 +2151,11 @@ fn rust_type_from_type2(
     // TODO: socket plugs (used in hash type)
     match &type2 {
         Type2::UintValue { value, .. } => {
-            ConceptualRustType::Fixed(FixedValue::Uint(*value)).into()
+            ConceptualRustType::Fixed(FixedValue::Uint(*value as u64)).into()
         }
-        Type2::IntValue { value, .. } => ConceptualRustType::Fixed(FixedValue::Nint(*value)).into(),
+        Type2::IntValue { value, .. } => {
+            ConceptualRustType::Fixed(FixedValue::Nint(*value as i128)).into()
+        }
         Type2::FloatValue { value, .. } => {
             ConceptualRustType::Fixed(FixedValue::Float(*value)).into()
         }
@@ -2430,8 +2436,8 @@ fn group_entry_map_key_kind(entry: &GroupEntry) -> MapKeyKind {
         GroupEntry::ValueMemberKey { ge, .. } => match ge.member_key.as_ref() {
             None => MapKeyKind::Keyless,
             Some(MemberKey::Value { value, .. }) => match value {
-                cddl::token::Value::UINT(x) => MapKeyKind::Fixed(FixedValue::Uint(*x)),
-                cddl::token::Value::INT(x) => MapKeyKind::Fixed(FixedValue::Nint(*x)),
+                cddl::token::Value::UINT(x) => MapKeyKind::Fixed(FixedValue::Uint(*x as u64)),
+                cddl::token::Value::INT(x) => MapKeyKind::Fixed(FixedValue::Nint(*x as i128)),
                 cddl::token::Value::TEXT(x) => MapKeyKind::Fixed(FixedValue::Text(x.to_string())),
                 cddl::token::Value::FLOAT(x) => MapKeyKind::Fixed(FixedValue::Float(*x)),
                 _ => MapKeyKind::NonFixed,
@@ -2440,8 +2446,12 @@ fn group_entry_map_key_kind(entry: &GroupEntry) -> MapKeyKind {
                 MapKeyKind::Fixed(FixedValue::Text(ident.to_string()))
             }
             Some(MemberKey::Type1 { t1, .. }) => match &t1.type2 {
-                Type2::UintValue { value, .. } => MapKeyKind::Fixed(FixedValue::Uint(*value)),
-                Type2::IntValue { value, .. } => MapKeyKind::Fixed(FixedValue::Nint(*value)),
+                Type2::UintValue { value, .. } => {
+                    MapKeyKind::Fixed(FixedValue::Uint(*value as u64))
+                }
+                Type2::IntValue { value, .. } => {
+                    MapKeyKind::Fixed(FixedValue::Nint(*value as i128))
+                }
                 Type2::TextValue { value, .. } => {
                     MapKeyKind::Fixed(FixedValue::Text(value.to_string()))
                 }

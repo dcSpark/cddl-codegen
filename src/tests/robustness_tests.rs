@@ -296,6 +296,55 @@ fn bareword_and_quoted_keys_converge() {
     );
 }
 
+/// `i64::MIN` (`-9223372036854775808`) is the CBOR nint boundary that `write_negative_integer(i64)`
+/// cannot encode (cbor_event#9: `-i64::MIN` overflows `i64`). Since `FixedValue::Nint` is `i128`,
+/// the generator must emit the width-correct `write_negative_integer_sz` form for this literal —
+/// under DEFAULT with a hard-coded `cbor_event::Sz::Eight`, and under `--preserve-encodings` with
+/// the `fit_sz(... .unsigned_abs() as u64, ...)` runtime-encoding form. Pinning both spellings
+/// guards the boundary against a future width regression (a narrower literal type would either fail
+/// to parse the value or silently truncate it before this line is reached).
+#[test]
+fn i64_min_fixed_value_emits_width_correct_nint() {
+    fn generate(flags: &[&str]) -> String {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_imin_{}_{}.cddl",
+            flags.len(),
+            std::process::id()
+        ));
+        // Member position: a bare top-level fixed value is (correctly) unsupported, so wrap the
+        // literal in an array where it serializes as a fixed element.
+        std::fs::write(&path, "foo = [-9223372036854775808]\n").unwrap();
+        let mut args = vec![
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "imin_unused",
+        ];
+        args.extend_from_slice(flags);
+        let cli = Cli::parse_from(args);
+        let out = crate::api::generated_strings(&cli).unwrap();
+        std::fs::remove_file(&path).ok();
+        out.into_values().collect::<Vec<_>>().join("\n")
+    }
+
+    let default_out = generate(&[]);
+    assert!(
+        default_out.contains(
+            "serializer.write_negative_integer_sz(-9223372036854775808i128, cbor_event::Sz::Eight)"
+        ),
+        "default profile must emit the width-correct i64::MIN nint call; got:\n{default_out}"
+    );
+
+    let preserve_out = generate(&["--preserve-encodings=true"]);
+    assert!(
+        preserve_out.contains("serializer.write_negative_integer_sz(")
+            && preserve_out.contains("-9223372036854775808,")
+            && preserve_out.contains("(-9223372036854775808i128 + 1).unsigned_abs() as u64"),
+        "preserve profile must emit the runtime-encoding i64::MIN nint call; got:\n{preserve_out}"
+    );
+}
+
 /// A keyless map entry (`{ bytes, uint }`) is rejected BY DESIGN — each map field needs a key — but
 /// via a GRACEFUL `Err` (deferred through `IntermediateTypes::record_rejection` → drained by
 /// `finalize`), never a `panic!`. This pins that the error is real and its message is actionable:

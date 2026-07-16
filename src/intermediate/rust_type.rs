@@ -18,8 +18,8 @@ pub enum Representation {
 pub enum FixedValue {
     Null,
     Bool(bool),
-    Nint(isize),
-    Uint(usize),
+    Nint(i128),
+    Uint(u64),
     Float(f64),
     Text(String),
     // UTF byte types not supported
@@ -54,8 +54,15 @@ impl FixedValue {
         match self {
             FixedValue::Null => buf.write_special(cbor_event::Special::Null),
             FixedValue::Bool(b) => buf.write_special(cbor_event::Special::Bool(*b)),
-            FixedValue::Nint(i) => buf.write_negative_integer(*i as i64),
-            FixedValue::Uint(u) => buf.write_unsigned_integer(*u as u64),
+            // write_negative_integer(i64) can't encode i64::MIN (cbor_event#9); the _sz form
+            // takes i128 and encodes the full CBOR nint range. Passing Sz::canonical(magnitude)
+            // reproduces the default endpoint's byte-for-byte canonical layout (write_type_definite
+            // derives the same Sz from the magnitude when no Sz is supplied).
+            FixedValue::Nint(i) => {
+                let magnitude = (-(*i + 1)) as u64;
+                buf.write_negative_integer_sz(*i, cbor_event::Sz::canonical(magnitude))
+            }
+            FixedValue::Uint(u) => buf.write_unsigned_integer(*u),
             FixedValue::Float(f) => buf.write_special(Special::Float(*f)),
             FixedValue::Text(s) => buf.write_text(s),
         }
@@ -1569,5 +1576,68 @@ impl std::fmt::Display for ToWasmBoundaryOperations {
             Self::MapInto => write!(f, ".map(Into::into)"),
             Self::MapTryInto => write!(f, ".map(TryInto::try_into)"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FixedValue;
+    use cbor_event::Sz;
+
+    /// `FixedValue::to_bytes` for negative literals must produce canonical CBOR nint bytes across
+    /// the full magnitude ladder, and — critically — for `i64::MIN`, which the old
+    /// `write_negative_integer(i64)` path could not encode (cbor_event#9: `-i64::MIN` overflows).
+    ///
+    /// Expected bytes are hard-coded literals (NOT computed via the old code path) so a width or
+    /// endpoint regression that silently changed the bytes would be caught here rather than
+    /// masked by re-deriving both sides from the same buggy source.
+    #[test]
+    fn nint_to_bytes_canonical_across_boundaries() {
+        // (value, canonical CBOR nint encoding)
+        let cases: &[(i128, &[u8])] = &[
+            (-1, &[0x20]),
+            (-24, &[0x37]),
+            (-25, &[0x38, 0x18]),
+            (-0x100, &[0x38, 0xff]),
+            (-0x101, &[0x39, 0x01, 0x00]),
+            (-0x1_0000, &[0x39, 0xff, 0xff]),
+            (-0x1_0001, &[0x3a, 0x00, 0x01, 0x00, 0x00]),
+            (-0x1_0000_0000, &[0x3a, 0xff, 0xff, 0xff, 0xff]),
+            (
+                -0x1_0000_0001,
+                &[0x3b, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00],
+            ),
+            (
+                (i64::MIN as i128) + 1,
+                &[0x3b, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe],
+            ),
+            // i64::MIN: 0x3b + 8 bytes of 0x7fffffffffffffff. The old i64 path overflowed here.
+            (
+                i64::MIN as i128,
+                &[0x3b, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
+            ),
+        ];
+        for (value, expected) in cases {
+            assert_eq!(
+                FixedValue::Nint(*value).to_bytes(),
+                *expected,
+                "Nint({value}) encoded incorrectly"
+            );
+        }
+    }
+
+    /// Sanity-check the magnitude→Sz derivation matches cbor_event's canonical rule at the
+    /// class boundaries (guards against an off-by-one if the magnitude formula is ever touched).
+    #[test]
+    fn nint_magnitude_sz_is_canonical() {
+        assert_eq!(Sz::canonical(0), Sz::Inline);
+        assert_eq!(Sz::canonical(23), Sz::Inline);
+        assert_eq!(Sz::canonical(24), Sz::One);
+        assert_eq!(Sz::canonical(0xff), Sz::One);
+        assert_eq!(Sz::canonical(0x100), Sz::Two);
+        assert_eq!(Sz::canonical(0xffff), Sz::Two);
+        assert_eq!(Sz::canonical(0x1_0000), Sz::Four);
+        assert_eq!(Sz::canonical(0xffff_ffff), Sz::Four);
+        assert_eq!(Sz::canonical(0x1_0000_0000), Sz::Eight);
     }
 }
