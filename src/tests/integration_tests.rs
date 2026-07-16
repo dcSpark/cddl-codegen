@@ -206,7 +206,7 @@ For more information about this error, try `rustc --explain E0583`.\n";
 /// (E0583 alias/enum-only non-root module declaring `pub mod serialization;` without the file;
 /// E0432 anonymous same-shape table importing the structural name from root scope instead of the
 /// sole owner's module; E0433 cross-module named `.cbor` ref omitting the inner-type import) are all
-/// fixed in `generation.rs`'s module-declaration loop and `intermediate.rs`'s
+/// fixed in `generation.rs`'s module-declaration loop and `intermediate/mod.rs`'s
 /// `scope_references`/`mark_refs`. The ANON element-import half of the ARRAY structural-wrapper class
 /// (`collrec__anon` — the `[* <record>]` shape's anonymous use, whose wasm representation needs a
 /// generated `FooList`-style array wrapper) is now fixed too: `mark_refs`' Array arm registers the
