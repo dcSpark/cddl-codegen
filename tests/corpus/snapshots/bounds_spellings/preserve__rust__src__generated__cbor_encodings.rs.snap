@@ -1,0 +1,38 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+
+#[derive(Clone, Debug, Default)]
+pub struct BoundsMembersEncoding {
+    pub len_encoding: LenEncoding,
+    pub m_exact_size_encoding: StringEncoding,
+    pub m_zero_len_encoding: StringEncoding,
+    pub m_int_range_encoding: Option<cbor_event::Sz>,
+    pub m_nint_range_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct WExactSizeEncoding {
+    pub inner_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct WIntRangeEncoding {
+    pub inner_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct WNintRangeEncoding {
+    pub inner_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct WZeroLenEncoding {
+    pub inner_encoding: StringEncoding,
+}

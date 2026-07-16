@@ -1,0 +1,332 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use wasm_bindgen::prelude::{wasm_bindgen, JsError, JsValue};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct BoundsMembers(cddl_lib::BoundsMembers);
+
+#[wasm_bindgen]
+impl BoundsMembers {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<BoundsMembers, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<BoundsMembers, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn m_exact_size(&self) -> Vec<u8> {
+        self.0.m_exact_size.clone()
+    }
+
+    pub fn m_zero_len(&self) -> Vec<u8> {
+        self.0.m_zero_len.clone()
+    }
+
+    pub fn m_int_range(&self) -> u64 {
+        self.0.m_int_range
+    }
+
+    pub fn m_nint_range(&self) -> u64 {
+        self.0.m_nint_range
+    }
+
+    pub fn new(
+        m_exact_size: Vec<u8>,
+        m_zero_len: Vec<u8>,
+        m_int_range: u64,
+        m_nint_range: u64,
+    ) -> Result<BoundsMembers, JsError> {
+        cddl_lib::BoundsMembers::new(m_exact_size, m_zero_len, m_int_range, m_nint_range)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+}
+
+impl From<cddl_lib::BoundsMembers> for BoundsMembers {
+    fn from(native: cddl_lib::BoundsMembers) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BoundsMembers> for cddl_lib::BoundsMembers {
+    fn from(wasm: BoundsMembers) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::BoundsMembers> for BoundsMembers {
+    fn as_ref(&self) -> &cddl_lib::BoundsMembers {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct WExactSize(cddl_lib::WExactSize);
+
+#[wasm_bindgen]
+impl WExactSize {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<WExactSize, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<WExactSize, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: Vec<u8>) -> Result<WExactSize, JsError> {
+        cddl_lib::WExactSize::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> Vec<u8> {
+        self.0.get().clone()
+    }
+}
+
+impl From<cddl_lib::WExactSize> for WExactSize {
+    fn from(native: cddl_lib::WExactSize) -> Self {
+        Self(native)
+    }
+}
+
+impl From<WExactSize> for cddl_lib::WExactSize {
+    fn from(wasm: WExactSize) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::WExactSize> for WExactSize {
+    fn as_ref(&self) -> &cddl_lib::WExactSize {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct WIntRange(cddl_lib::WIntRange);
+
+#[wasm_bindgen]
+impl WIntRange {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<WIntRange, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<WIntRange, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: u64) -> Result<WIntRange, JsError> {
+        cddl_lib::WIntRange::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> u64 {
+        self.0.get()
+    }
+}
+
+impl From<cddl_lib::WIntRange> for WIntRange {
+    fn from(native: cddl_lib::WIntRange) -> Self {
+        Self(native)
+    }
+}
+
+impl From<WIntRange> for cddl_lib::WIntRange {
+    fn from(wasm: WIntRange) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::WIntRange> for WIntRange {
+    fn as_ref(&self) -> &cddl_lib::WIntRange {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct WNintRange(cddl_lib::WNintRange);
+
+#[wasm_bindgen]
+impl WNintRange {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<WNintRange, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<WNintRange, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: u64) -> Result<WNintRange, JsError> {
+        cddl_lib::WNintRange::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> u64 {
+        self.0.get()
+    }
+}
+
+impl From<cddl_lib::WNintRange> for WNintRange {
+    fn from(native: cddl_lib::WNintRange) -> Self {
+        Self(native)
+    }
+}
+
+impl From<WNintRange> for cddl_lib::WNintRange {
+    fn from(wasm: WNintRange) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::WNintRange> for WNintRange {
+    fn as_ref(&self) -> &cddl_lib::WNintRange {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct WZeroLen(cddl_lib::WZeroLen);
+
+#[wasm_bindgen]
+impl WZeroLen {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<WZeroLen, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<WZeroLen, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: Vec<u8>) -> Result<WZeroLen, JsError> {
+        cddl_lib::WZeroLen::new(inner)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+
+    pub fn get(&self) -> Vec<u8> {
+        self.0.get().clone()
+    }
+}
+
+impl From<cddl_lib::WZeroLen> for WZeroLen {
+    fn from(native: cddl_lib::WZeroLen) -> Self {
+        Self(native)
+    }
+}
+
+impl From<WZeroLen> for cddl_lib::WZeroLen {
+    fn from(wasm: WZeroLen) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::WZeroLen> for WZeroLen {
+    fn as_ref(&self) -> &cddl_lib::WZeroLen {
+        &self.0
+    }
+}

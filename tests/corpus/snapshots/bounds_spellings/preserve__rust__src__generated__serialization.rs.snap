@@ -1,0 +1,325 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::cbor_encodings::*;
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for BoundsMembers {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(4),
+        )?;
+        serializer.write_bytes_sz(
+            &self.m_exact_size,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.m_exact_size_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(self.m_exact_size.len() as u64),
+        )?;
+        serializer.write_bytes_sz(
+            &self.m_zero_len,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.m_zero_len_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(self.m_zero_len.len() as u64),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.m_int_range,
+            fit_sz(
+                self.m_int_range,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.m_int_range_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        serializer.write_negative_integer_sz(
+            -(self.m_nint_range as i128 + 1),
+            fit_sz(
+                self.m_nint_range,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.m_nint_range_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for BoundsMembers {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(4)?;
+            read_len.finish()?;
+            let (m_exact_size, m_exact_size_encoding) = raw
+                .bytes_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .and_then(|(bytes, enc)| {
+                    if bytes.len() < 3 || bytes.len() > 3 {
+                        Err(DeserializeFailure::RangeCheck {
+                            found: bytes.len() as i128,
+                            min: Some(3),
+                            max: Some(3),
+                        }
+                        .into())
+                    } else {
+                        Ok((bytes, StringEncoding::from(enc)))
+                    }
+                })
+                .map_err(|e: DeserializeError| e.annotate("m_exact_size"))?;
+            let (m_zero_len, m_zero_len_encoding) = raw
+                .bytes_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .and_then(|(bytes, enc)| {
+                    if bytes.len() > 32 {
+                        Err(DeserializeFailure::RangeCheck {
+                            found: bytes.len() as i128,
+                            min: None,
+                            max: Some(32),
+                        }
+                        .into())
+                    } else {
+                        Ok((bytes, StringEncoding::from(enc)))
+                    }
+                })
+                .map_err(|e: DeserializeError| e.annotate("m_zero_len"))?;
+            let (m_int_range, m_int_range_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .and_then(|(x, enc)| {
+                    if x > 100 {
+                        Err(DeserializeFailure::RangeCheck {
+                            found: x as i128,
+                            min: None,
+                            max: Some(100),
+                        }
+                        .into())
+                    } else {
+                        Ok((x, Some(enc)))
+                    }
+                })
+                .map_err(|e: DeserializeError| e.annotate("m_int_range"))?;
+            let (m_nint_range, m_nint_range_encoding) = raw
+                .negative_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .and_then(|(x, enc)| {
+                    if x < -100 {
+                        Err(DeserializeFailure::RangeCheck {
+                            found: x as i128,
+                            min: Some(-100),
+                            max: None,
+                        }
+                        .into())
+                    } else {
+                        Ok(((x + 1).unsigned_abs() as u64, Some(enc)))
+                    }
+                })
+                .map_err(|e: DeserializeError| e.annotate("m_nint_range"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => (),
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(BoundsMembers {
+                m_exact_size,
+                m_zero_len,
+                m_int_range,
+                m_nint_range,
+                encodings: Some(BoundsMembersEncoding {
+                    len_encoding,
+                    m_exact_size_encoding,
+                    m_zero_len_encoding,
+                    m_int_range_encoding,
+                    m_nint_range_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("BoundsMembers"))
+    }
+}
+
+impl cbor_event::se::Serialize for WExactSize {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_bytes_sz(
+            &self.inner,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.inner_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(self.inner.len() as u64),
+        )
+    }
+}
+
+impl Deserialize for WExactSize {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let (inner, inner_encoding) = raw
+                .bytes_sz()
+                .map(|(bytes, enc)| (bytes, StringEncoding::from(enc)))?;
+            if inner.len() != 3 {
+                return Err(DeserializeFailure::RangeCheck {
+                    found: inner.len() as i128,
+                    min: Some(3),
+                    max: Some(3),
+                }
+                .into());
+            }
+            Ok(Self {
+                inner,
+                encodings: Some(WExactSizeEncoding { inner_encoding }),
+            })
+        })()
+        .map_err(|e| e.annotate("WExactSize"))
+    }
+}
+
+impl cbor_event::se::Serialize for WIntRange {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_unsigned_integer_sz(
+            self.inner,
+            fit_sz(
+                self.inner,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.inner_encoding)
+                    .unwrap_or_default(),
+            ),
+        )
+    }
+}
+
+impl Deserialize for WIntRange {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let (inner, inner_encoding) =
+                raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+            if inner > 100 {
+                return Err(DeserializeFailure::RangeCheck {
+                    found: inner as i128,
+                    min: Some(0),
+                    max: Some(100),
+                }
+                .into());
+            }
+            Ok(Self {
+                inner,
+                encodings: Some(WIntRangeEncoding { inner_encoding }),
+            })
+        })()
+        .map_err(|e| e.annotate("WIntRange"))
+    }
+}
+
+impl cbor_event::se::Serialize for WNintRange {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_negative_integer_sz(
+            -(self.inner as i128 + 1),
+            fit_sz(
+                self.inner,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.inner_encoding)
+                    .unwrap_or_default(),
+            ),
+        )
+    }
+}
+
+impl Deserialize for WNintRange {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let (inner, inner_encoding) = raw
+                .negative_integer_sz()
+                .map(|(x, enc)| ((x + 1).unsigned_abs() as u64, Some(enc)))?;
+            if inner > 99 {
+                return Err(DeserializeFailure::RangeCheck {
+                    found: inner as i128,
+                    min: None,
+                    max: Some(99),
+                }
+                .into());
+            }
+            Ok(Self {
+                inner,
+                encodings: Some(WNintRangeEncoding { inner_encoding }),
+            })
+        })()
+        .map_err(|e| e.annotate("WNintRange"))
+    }
+}
+
+impl cbor_event::se::Serialize for WZeroLen {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_bytes_sz(
+            &self.inner,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.inner_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(self.inner.len() as u64),
+        )
+    }
+}
+
+impl Deserialize for WZeroLen {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let (inner, inner_encoding) = raw
+                .bytes_sz()
+                .map(|(bytes, enc)| (bytes, StringEncoding::from(enc)))?;
+            if inner.len() > 32 {
+                return Err(DeserializeFailure::RangeCheck {
+                    found: inner.len() as i128,
+                    min: Some(0),
+                    max: Some(32),
+                }
+                .into());
+            }
+            Ok(Self {
+                inner,
+                encodings: Some(WZeroLenEncoding { inner_encoding }),
+            })
+        })()
+        .map_err(|e| e.annotate("WZeroLen"))
+    }
+}

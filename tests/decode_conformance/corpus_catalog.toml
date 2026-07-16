@@ -175,6 +175,306 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "bounds_spellings.bounds_members"
+axis = "corpus"
+example = "bounds_members = [\n  m_exact_size: bytes .size 3,\n  m_zero_len: bytes .size (0..32),\n  m_int_range: 0..100,\n  m_nint_range: nint .ge -100,\n]"
+fixture = "bounds_spellings"
+rule = "bounds_members"
+spec = "__probe_holder = [0, bounds_members]\nbounds_members = [\n  m_exact_size: bytes .size 3,\n  m_zero_len: bytes .size (0..32),\n  m_int_range: 0..100,\n  m_nint_range: nint .ge -100,\n]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820084430ea8a05495763b9ca11151877d36115a0caf8fd375f2cbed0427"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008443188acf581e2188cfca281adc671805df5553b69002cd19b12f80ca87c8cd646a460167183c385f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008443249fa050e356afa10a8093188b1b2af68b58ce71185f3845"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200844355e3ed507e4329403c56699b73a22f3f8e735cb11834381c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820084437000494d6689bed30551eec7224214793218283841"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008443a8f5f24e39fe9e9289a4f914f299819671a0182d3831"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008443ab8d15551982d38ecc4f56ced14ab8466835c46858ca1ec96518403861"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008443ade6f05484aed5c0ec52894070aac08698d4809d551f5a3d185a381c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008443ca0b33581a2e8f993b35bc205355db0832d2970ded67f896aa518f6da866c418543830"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008443d3f2da5819abbcabcea08c2773492efd2433f0ae9f809ed8333d833137fd182222"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "bounds_spellings.w_exact_size"
+axis = "corpus"
+example = "w_exact_size = bytes .size 3"
+fixture = "bounds_spellings"
+rule = "w_exact_size"
+spec = "__probe_holder = [0, w_exact_size]\nw_exact_size = bytes .size 3"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82004309563e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200431f1807"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200434fba6f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200436d9673"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820043705573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200438dbee1"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820043b06a32"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820043df2e11"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820043e26302"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820043e9d996"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "bounds_spellings.w_int_range"
+axis = "corpus"
+example = "w_int_range = 0..100"
+fixture = "bounds_spellings"
+rule = "w_int_range"
+spec = "__probe_holder = [0, w_int_range]\nw_int_range = 0..100"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820008"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82000e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820011"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200181e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82001834"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82001849"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200184d"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82001852"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82001856"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82001862"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "bounds_spellings.w_nint_range"
+axis = "corpus"
+example = "w_nint_range = nint .ge -100\n\n; member (record-field) sites — each emits a ctor / setter range check"
+fixture = "bounds_spellings"
+rule = "w_nint_range"
+spec = "__probe_holder = [0, w_nint_range]\nw_nint_range = nint .ge -100\n\n; member (record-field) sites — each emits a ctor / setter range check"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820030"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820037"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200381a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82003837"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82003840"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200384e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82003857"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200385b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82003860"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82003862"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "bounds_spellings.w_zero_len"
+axis = "corpus"
+example = "w_zero_len = bytes .size (0..32)"
+fixture = "bounds_spellings"
+rule = "w_zero_len"
+spec = "__probe_holder = [0, w_zero_len]\nw_zero_len = bytes .size (0..32)"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200421bc7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004303f021"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004a7b03e84c7f9e410a6623"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004cc7e29830a5e4f6dedc794f39"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004da1988f8b6faa2b3c0029a32a78"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820054f0e55dbd21d441b05ce3b199e9c08207bd87e339"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200560a6ba58ceaff121f7f4513a7f8851acdda5d20b4cc05"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200570d4d8bc99aaca7d5c1b3722b37e638e1fccbfdf495bd0e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82005818d0330b1c86a71a10f7e5ea48321b2b5c614eb43df3dcdbfe"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200581f0994917a1240e2d95a8808a4d3354fe48d2538aed7bac3fc912edd75ae6f27"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "bytes_map_key.bkeys"
 axis = "corpus"
 example = "bkeys = { * bytes => uint }\n; the inline form exercises the same key wire path through a field-local map (named tables mint\n; empty, so the inline field is what puts a real byte-string key on the wire via emit-tests)."
