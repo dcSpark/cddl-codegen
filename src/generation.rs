@@ -8667,18 +8667,7 @@ fn encoding_fields_impl(
             if inner_encs.is_empty() {
                 vec![base]
             } else {
-                let type_name_elem = if inner_encs.len() == 1 {
-                    inner_encs.first().unwrap().type_name.clone()
-                } else {
-                    format!(
-                        "({})",
-                        inner_encs
-                            .iter()
-                            .map(|key_enc| key_enc.type_name.clone())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )
-                };
+                let type_name_elem = tuple_type_name(&inner_encs);
                 vec![
                     base,
                     EncodingField {
@@ -8706,18 +8695,7 @@ fn encoding_fields_impl(
                 encoding_fields_impl(types, &format!("{name}_value"), (&**v).into(), cli);
 
             if !key_encs.is_empty() {
-                let type_name_value = if key_encs.len() == 1 {
-                    key_encs.first().unwrap().type_name.clone()
-                } else {
-                    format!(
-                        "({})",
-                        key_encs
-                            .iter()
-                            .map(|key_enc| key_enc.type_name.clone())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )
-                };
+                let type_name_value = tuple_type_name(&key_encs);
                 encs.push(EncodingField {
                     field_name: format!("{name}_key_encodings"),
                     type_name: format!(
@@ -8733,18 +8711,7 @@ fn encoding_fields_impl(
             }
 
             if !val_encs.is_empty() {
-                let type_name_value = if val_encs.len() == 1 {
-                    val_encs.first().unwrap().type_name.clone()
-                } else {
-                    format!(
-                        "({})",
-                        val_encs
-                            .iter()
-                            .map(|val_enc| val_enc.type_name.clone())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )
-                };
+                let type_name_value = tuple_type_name(&val_encs);
                 encs.push(EncodingField {
                     field_name: format!("{name}_value_encodings"),
                     type_name: format!(
@@ -8892,11 +8859,28 @@ fn encoding_var_names_str(
     }
 }
 
+// Value-level twin of `tuple_type_name`: joins encoding VAR names into a parenthesized tuple.
 fn tuple_str(strs: Vec<String>) -> String {
     if strs.len() > 1 {
         format!("({})", strs.join(", "))
     } else {
         strs.join(", ")
+    }
+}
+
+// Type-level twin of `tuple_str`: joins encoding fields' `type_name`s into a parenthesized tuple
+// type unless there is exactly one (then the lone type_name stands alone, unparenthesized).
+fn tuple_type_name(encs: &[EncodingField]) -> String {
+    if encs.len() == 1 {
+        encs[0].type_name.clone()
+    } else {
+        format!(
+            "({})",
+            encs.iter()
+                .map(|enc| enc.type_name.clone())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
     }
 }
 
