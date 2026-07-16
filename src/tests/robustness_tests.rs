@@ -11,6 +11,11 @@
 //! fixture comments say why it's pinned (e.g. `map_entry_no_key`); making it graceful is a fix.
 //! The catalog deliberately records only the outcome *category*
 //! (not panic messages/line numbers) so it stays stable across refactors that don't change behaviour.
+//!
+//! Besides the spec-input catalogs, this module also hosts direct error-path unit probes of
+//! generator helpers whose failure mode must be a clean `Err`, never a panic (e.g.
+//! `concat_files_missing_path_yields_error_not_panic`) — same panic-vs-graceful theme, exercised
+//! at the helper level where no spec input can reach the failure.
 
 use crate::cli::Cli;
 use clap::Parser;
