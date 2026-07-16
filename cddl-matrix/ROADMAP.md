@@ -365,17 +365,17 @@ are ledgered here (that's what the probe/gate error messages point at).
   `LAYER2_KNOWN_BAD` family list below. Candidate fix: treat an encoding-less optional fixed value
   as a present/absent flag in the length computation (mirroring the mandatory fixed-value handling).
 - Array-representation group-choice arm with an inline group panics:
-  `contain.group-choice-arm.grpent.inline_group.array` (`t = [ (uint, tstr) // bytes ]`) aborts at
-  `parsing.rs:1710` (`inline group entries are not implemented`). This is a distinct inline-group arm
+  `contain.group-choice-arm.grpent.inline_group.array` (`t = [ (uint, tstr) // bytes ]`) aborts in
+  `parsing.rs`'s `group_entry_to_type` (`inline group entries are not implemented`). This is a
+  distinct inline-group arm
   limitation, tracked as a known PANIC row in `tests/matrix_panic/`.
-- **Five panic-class families remaining from the recombination fuzzer's sweeps**
+- **Four panic-class families remaining from the recombination fuzzer's sweeps**
   (`src/tests/recombination_tests.rs`; each pinned as a `tests/robustness/` PANIC row and cited in
   the sweep's `KNOWN_PANIC_CLASSES` ledger — the matrix has no containment cells for these shapes,
-  which is itself the coverage gap the fuzzer exists to find):
-  - An inline map carrying a GROUP CHOICE as a member/element type (`a = [{ x: uint // y: tstr }]`)
-    panics parsing (`group choices in inlined map types not allowed`) — a distinct, earlier site
-    than the choice-free "Anonymous groups not allowed" panic. Pinned by
-    `tests/robustness/inline_group_choice_member.cddl`.
+  which is itself the coverage gap the fuzzer exists to find; a fifth, the inline map carrying a
+  group choice as a member/element type, now rejects gracefully with its array sibling —
+  `tests/robustness/inline_group_choice_member.cddl` / `inline_array_group_choice_member.cddl`,
+  both `error (graceful)` rows — though the matrix-cell coverage gap for those shapes stands):
   - `any` in member/element position (`a = [any]`, `{ k: any }`) panics intermediate/mod.rs's
     `generic_instances` assert — distinct from the top-level `x = any` compile-class gap
     (`tests/matrix_reject/prelude.any.cddl`). Pinned by `tests/robustness/any_member.cddl`.
