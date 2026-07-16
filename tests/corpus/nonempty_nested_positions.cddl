@@ -1,0 +1,18 @@
+; Non-empty containers buried in nested detection positions that a per-variant hand-walk of the
+; rust_structs missed but `visit_all_rust_types` reaches. Pins that the `non_empty` /
+; `non_empty_map` runtime module + import wiring is pulled in for these shapes (a missing import
+; would leave the generated crate referencing `NonEmptyVec` / `NonEmptyMap` undeclared).
+;
+; nested_plus  — a named array rule with a `*` (non-`+`) outer occurrence whose ELEMENT is an inline
+;                `[+ uint]`. The old vec walker's `RustStructType::Array` arm checked only the
+;                struct's own `bounds` (None here) and never the `element_type`, so the `[+]` was
+;                invisible to that arm; the transparent alias `Vec<NonEmptyVec<u64>>` masked it. The
+;                visitor walks the element type and sees it directly.
+; dom_nonempty_map — a table whose `*` occurrence keeps it a loose map but whose DOMAIN (key) is an
+;                inline `{+ uint => uint}`. The old map walker's `Table` arm checked `bounds` + the
+;                `range` but never the `domain`, so a non-empty map on the key side was invisible to
+;                that arm; the visitor walks the domain.
+; holder       — embeds both so they also emit in member (record-field) position.
+nested_plus = [* [+ uint]]
+dom_nonempty_map = { * {+ uint => uint} => text }
+holder = [np: nested_plus, dm: dom_nonempty_map]

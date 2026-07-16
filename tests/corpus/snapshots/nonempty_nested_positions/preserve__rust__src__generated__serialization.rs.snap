@@ -1,0 +1,196 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::cbor_encodings::*;
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+use std::io::{BufRead, Seek, SeekFrom, Write};
+
+impl cbor_event::se::Serialize for Holder {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(2),
+        )?;
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.np_encoding)
+                .unwrap_or_default()
+                .to_len_sz(self.np.len() as u64),
+        )?;
+        for (i, element) in self.np.iter().enumerate() {
+            let (np_elem_encoding, np_elem_elem_encodings) = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.np_elem_encodings.get(i))
+                .cloned()
+                .unwrap_or_else(|| (LenEncoding::default(), Vec::new()));
+            serializer.write_array_sz(np_elem_encoding.to_len_sz(element.len() as u64))?;
+            for (i, element) in element.iter().enumerate() {
+                let np_elem_elem_encoding =
+                    np_elem_elem_encodings.get(i).cloned().unwrap_or_default();
+                serializer
+                    .write_unsigned_integer_sz(*element, fit_sz(*element, np_elem_elem_encoding))?;
+            }
+            np_elem_encoding.end(serializer)?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.np_encoding)
+            .unwrap_or_default()
+            .end(serializer)?;
+        serializer.write_map_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.dm_encoding)
+                .unwrap_or_default()
+                .to_len_sz(self.dm.len() as u64),
+        )?;
+        for (key, value) in self.dm.iter() {
+            let (dm_key_encoding, dm_key_key_encodings, dm_key_value_encodings) = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.dm_key_encodings.get(key))
+                .cloned()
+                .unwrap_or_else(|| (LenEncoding::default(), BTreeMap::new(), BTreeMap::new()));
+            serializer.write_map_sz(dm_key_encoding.to_len_sz(key.len() as u64))?;
+            for (key, value) in key.iter() {
+                let dm_key_key_encoding =
+                    dm_key_key_encodings.get(key).cloned().unwrap_or_default();
+                serializer.write_unsigned_integer_sz(*key, fit_sz(*key, dm_key_key_encoding))?;
+                let dm_key_value_encoding =
+                    dm_key_value_encodings.get(key).cloned().unwrap_or_default();
+                serializer
+                    .write_unsigned_integer_sz(*value, fit_sz(*value, dm_key_value_encoding))?;
+            }
+            dm_key_encoding.end(serializer)?;
+            let dm_value_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.dm_value_encodings.get(key))
+                .cloned()
+                .unwrap_or_default();
+            serializer.write_text_sz(value, dm_value_encoding.to_str_len_sz(value.len() as u64))?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.dm_encoding)
+            .unwrap_or_default()
+            .end(serializer)?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for Holder {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(2)?;
+            read_len.finish()?;
+            let (np, np_encoding, np_elem_encodings) = (|| -> Result<_, DeserializeError> {
+                let mut np_arr = Vec::new();
+                let len = raw.array_sz()?;
+                let np_encoding = len.into();
+                let mut np_elem_encodings = Vec::new();
+                while match len { cbor_event::LenSz::Len(n, _) => (np_arr.len() as u64) < n, cbor_event::LenSz::Indefinite => true, } {
+                    if matches!(len, cbor_event::LenSz::Indefinite) && raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                        break;
+                    }
+                    let mut np_elem_arr = Vec::new();
+                    let len = raw.array_sz()?;
+                    let np_elem_encoding = len.into();
+                    let mut np_elem_elem_encodings = Vec::new();
+                    while match len { cbor_event::LenSz::Len(n, _) => (np_elem_arr.len() as u64) < n, cbor_event::LenSz::Indefinite => true, } {
+                        if matches!(len, cbor_event::LenSz::Indefinite) && raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                            break;
+                        }
+                        let (np_elem_elem, np_elem_elem_encoding) = raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                        np_elem_arr.push(np_elem_elem);
+                        np_elem_elem_encodings.push(np_elem_elem_encoding);
+                    }
+                    let np_elem_arr = NonEmptyVec::try_from(np_elem_arr)?;
+                    let (np_elem, np_elem_encoding, np_elem_elem_encodings) = (np_elem_arr, np_elem_encoding, np_elem_elem_encodings);
+                    np_arr.push(np_elem);
+                    np_elem_encodings.push((np_elem_encoding, np_elem_elem_encodings));
+                }
+                Ok((np_arr, np_encoding, np_elem_encodings))
+            })().map_err(|e| e.annotate("np"))?;
+            let (dm, dm_encoding, dm_key_encodings, dm_value_encodings) = (|| -> Result<_, DeserializeError> {
+                let mut dm_table = OrderedHashMap::new();
+                let dm_len = raw.map_sz()?;
+                let dm_encoding = dm_len.into();
+                let mut dm_key_encodings = BTreeMap::new();
+                let mut dm_value_encodings = BTreeMap::new();
+                while match dm_len { cbor_event::LenSz::Len(n, _) => (dm_table.len() as u64) < n, cbor_event::LenSz::Indefinite => true, } {
+                    if matches!(dm_len, cbor_event::LenSz::Indefinite) && raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                        break;
+                    }
+                    let mut dm_key_table = OrderedHashMap::new();
+                    let dm_key_len = raw.map_sz()?;
+                    let dm_key_encoding = dm_key_len.into();
+                    let mut dm_key_key_encodings = BTreeMap::new();
+                    let mut dm_key_value_encodings = BTreeMap::new();
+                    while match dm_key_len { cbor_event::LenSz::Len(n, _) => (dm_key_table.len() as u64) < n, cbor_event::LenSz::Indefinite => true, } {
+                        if matches!(dm_key_len, cbor_event::LenSz::Indefinite) && raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()? {
+                            break;
+                        }
+                        let (dm_key_key, dm_key_key_encoding) = raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                        let (dm_key_value, dm_key_value_encoding) = raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                        if dm_key_table.insert(dm_key_key, dm_key_value).is_some() {
+                            return Err(DeserializeFailure::DuplicateKey(Key::Uint(dm_key_key)).into());
+                        }
+                        dm_key_key_encodings.insert(dm_key_key, dm_key_key_encoding);
+                        dm_key_value_encodings.insert(dm_key_key, dm_key_value_encoding);
+                    }
+                    let dm_key_table = NonEmptyMap::try_from(dm_key_table)?;
+                    let (dm_key, dm_key_encoding, dm_key_key_encodings, dm_key_value_encodings) = (dm_key_table, dm_key_encoding, dm_key_key_encodings, dm_key_value_encodings);
+                    let (dm_value, dm_value_encoding) = raw.text_sz().map(|(s, enc)| (s, StringEncoding::from(enc)))?;
+                    if dm_table.insert(dm_key.clone(), dm_value).is_some() {
+                        return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from("some complicated/unsupported type"))).into());
+                    }
+                    dm_key_encodings.insert(dm_key.clone(), (dm_key_encoding, dm_key_key_encodings, dm_key_value_encodings));
+                    dm_value_encodings.insert(dm_key.clone(), dm_value_encoding);
+                }
+                Ok((dm_table, dm_encoding, dm_key_encodings, dm_value_encodings))
+            })().map_err(|e| e.annotate("dm"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => (),
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(Holder {
+                np,
+                dm,
+                encodings: Some(HolderEncoding {
+                    len_encoding,
+                    np_encoding,
+                    np_elem_encodings,
+                    dm_encoding,
+                    dm_key_encodings,
+                    dm_value_encodings,
+                }),
+            })
+        })().map_err(|e| e.annotate("Holder"))
+    }
+}
