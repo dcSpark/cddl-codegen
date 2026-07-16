@@ -868,10 +868,6 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
         "map-rep group-choice arm with a fixed-value entry; pinned by tests/matrix_panic/contain.group-choice-arm.type2.value.map.cddl",
     ),
     (
-        "group choices in inlined map types not allowed",
-        "inline group-choice map as a member type; pinned by tests/robustness/inline_group_choice_member.cddl (recombination finding)",
-    ),
-    (
         "assertion failed: self.generic_instances.contains_key(ident)",
         "`any` in member/element position; pinned by tests/robustness/any_member.cddl (recombination finding)",
     ),

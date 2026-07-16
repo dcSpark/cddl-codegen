@@ -381,6 +381,75 @@ fn keyless_map_entry_rejects_gracefully() {
     );
 }
 
+/// An inline MAP carrying group choices (`{ x: uint // y: tstr }`) used as a member/element type is
+/// rejected BY DESIGN — via a GRACEFUL `Err` (deferred through `record_rejection` → drained by
+/// `finalize`), never a `panic!`. The NAMED form (`t = { x: uint // y: tstr }` referenced by name)
+/// IS supported, so the message points at it. The robustness fixture
+/// `inline_group_choice_member.cddl` pins the OUTCOME category; this pins the message.
+#[test]
+fn inline_map_group_choice_member_rejects_gracefully() {
+    let path =
+        std::env::temp_dir().join(format!("cddl_codegen_map_gc_{}.cddl", std::process::id()));
+    std::fs::write(&path, "a = [{ x: uint // y: tstr }]\n").unwrap();
+    let cli = Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "map_gc_unused",
+    ]);
+    let result = crate::api::generated_strings(&cli);
+    std::fs::remove_file(&path).ok();
+
+    let err = result.expect_err(
+        "inline map with group choices as a member type must be a graceful Err, not a panic",
+    );
+    let msg = err.to_string();
+    // Names the construct...
+    assert!(
+        msg.contains("inline map") && msg.contains("group choices"),
+        "rejection message should name the inline-map-group-choices construct, got: {msg}"
+    );
+    // ...and gives the real remedy (name it as its own rule, then reference it).
+    assert!(
+        msg.contains("name it as its own rule") && msg.contains("reference"),
+        "rejection message should point at the supported named-rule remedy, got: {msg}"
+    );
+}
+
+/// An inline ARRAY carrying group choices (`[ 0 // 1 ]`) used as a member/element type is rejected
+/// BY DESIGN — via a GRACEFUL `Err`, never a `panic!`. The NAMED form (`t = [ 0 // 1 ]` referenced
+/// by name) IS supported, so the message points at it. The robustness fixture
+/// `inline_array_group_choice_member.cddl` pins the OUTCOME category; this pins the message.
+#[test]
+fn inline_array_group_choice_member_rejects_gracefully() {
+    let path =
+        std::env::temp_dir().join(format!("cddl_codegen_arr_gc_{}.cddl", std::process::id()));
+    std::fs::write(&path, "bar = { x: [ 0 // 1 ] }\n").unwrap();
+    let cli = Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "arr_gc_unused",
+    ]);
+    let result = crate::api::generated_strings(&cli);
+    std::fs::remove_file(&path).ok();
+
+    let err = result.expect_err(
+        "inline array with group choices as a member type must be a graceful Err, not a panic",
+    );
+    let msg = err.to_string();
+    assert!(
+        msg.contains("inline array") && msg.contains("group choices"),
+        "rejection message should name the inline-array-group-choices construct, got: {msg}"
+    );
+    assert!(
+        msg.contains("name it as its own rule") && msg.contains("reference"),
+        "rejection message should point at the supported named-rule remedy, got: {msg}"
+    );
+}
+
 /// A ZERO-permitting occurrence (`*` / `0*n` / `*n`) on a keyed struct-map field means the entry
 /// may be ABSENT (RFC 8610) — silently narrowing it to a mandatory field generates a decoder that
 /// rejects valid CBOR, invisible to round-trip tests (only cross-producer data exposes it). This
