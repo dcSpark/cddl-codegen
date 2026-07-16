@@ -7,7 +7,7 @@
  * wasm-bindgen boundary, this individuates the axis EVERY other construct gate is blind to: MODULE
  * PLACEMENT. The corpus gates, the wasm-ABI matrix and the parity differential all feed the generator
  * SINGLE-file specs, so every construct is only ever verified in root scope. Multifile emission
- * branches on scope: `mark_refs` (intermediate.rs) resolves the import source for the
+ * branches on scope: `mark_refs` (intermediate/mod.rs) resolves the import source for the
  * generator-invented structural wrappers (`XList`/`MapKToV`), and each per-module `mod.rs` declares
  * only the submodules whose files it actually emits. This matrix is the systematic catcher for that
  * axis; the emitter invariants it guards (each once a loud `cargo check` failure class): a

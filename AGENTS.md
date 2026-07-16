@@ -20,8 +20,8 @@ Pipeline — `CDDL text → AST → IR → emitted source`:
 
 1. The `cddl` crate parses the spec to an AST.
 2. `parsing.rs` walks the AST and builds the intermediate representation
-3. `intermediate.rs` has the IR data structures that everything else works against.
-3. `generation.rs` walks the IR and emits the per-type Rust/WASM/JSON source (Rust built with the `codegen` builder crate). It's the largest area of the codebase.
+3. `intermediate/` has the IR data structures that everything else works against — split into `mod.rs` (`IntermediateTypes` + scopes), `idents.rs`, `rust_type.rs` (`RustType`/`ConceptualRustType`), and `structs.rs` (`RustStruct`/`RustRecord`/`EnumVariant`/generics).
+3. `generation/` walks the IR and emits the per-type Rust/WASM/JSON source (Rust built with the `codegen` builder crate). It's the largest area of the codebase — split by concern into `mod.rs` (the `GenerationScope` orchestration) plus `serialize`, `deserialize`, `records`, `enums`, `wrappers`, `collections`, `requests`, `bounds`, and `export`.
 4. `api.rs` orchestrates the pipeline; `main.rs` is the CLI entry, `lib.rs` the library entry.
 5. Other modules:
     1. `cli.rs` (flags)
