@@ -272,7 +272,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 |----------|---|----------|
 | `.abnf` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
 | `.abnfb` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
-| `.and` | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.and` | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
 | `.b32` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
 | `.b45` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
 | `.b64c` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
@@ -306,7 +306,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `.sdnv` _(RFC9090)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
 | `.sdnvseq` _(RFC9090)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
 | `.size` | ✅ | `bounded_bytes.cddl` |
-| `.within` | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.within` | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
 
 ## Notable findings
 

@@ -25,10 +25,8 @@ contain.map-value.type2.unwrap     PANIC
 contain.occurrence-target.type2.array PANIC
 contain.occurrence-target.type2.map PANIC
 contain.tag-content.type2.tag      PANIC
-contain.top-level.type2.unwrap     PANIC
 ctl.abnf                           PANIC
 ctl.abnfb                          PANIC
-ctl.and                            PANIC
 ctl.b32                            PANIC
 ctl.b45                            PANIC
 ctl.b64c-sloppy                    PANIC
@@ -49,7 +47,6 @@ ctl.json                           PANIC
 ctl.plus                           PANIC
 ctl.printf                         PANIC
 ctl.regexp                         PANIC
-ctl.within                         PANIC
 genericparm.group                  PANIC
 prelude.cbor-any                   PANIC
 prelude.eb16                       PANIC
@@ -59,9 +56,3 @@ prelude.float16-32                 PANIC
 prelude.float16                    PANIC
 prelude.float32-64                 PANIC
 prelude.undefined                  PANIC
-type2.any                          PANIC
-type2.choice_from_group            PANIC
-type2.choice_from_inline_group     PANIC
-type2.major                        PANIC
-type2.major7                       PANIC
-type2.unwrap                       PANIC

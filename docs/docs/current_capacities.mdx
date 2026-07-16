@@ -89,12 +89,12 @@ This section is generated from [`cddl-matrix/matrix.json`](https://github.com/dc
 | null | `x = null` | rejected gracefully at parse |
 | true | `x = true` | rejected gracefully at parse |
 | undefined | `x = undefined` | panics generation |
-| Any (#) | `foo = #` | panics generation |
-| Choice from named group (&) | `color = &colors; colors = (red: 0, green: 1)` | panics generation |
-| Choice from inline group (&) | `color = &(red: 0, green: 1, blue: 2)` | panics generation |
-| Major-type sigil (#N, #N.n) | `foo = #1.2` | panics generation |
-| Major-type 7 / simple sigil (#7, #7.n) | `foo = #7.20` | panics generation |
-| Unwrap (~) | `bar = [uint]; foo = ~bar` | panics generation |
+| Any (#) | `foo = #` | rejected gracefully at parse |
+| Choice from named group (&) | `color = &colors; colors = (red: 0, green: 1)` | rejected gracefully at parse |
+| Choice from inline group (&) | `color = &(red: 0, green: 1, blue: 2)` | rejected gracefully at parse |
+| Major-type sigil (#N, #N.n) | `foo = #1.2` | rejected gracefully at parse |
+| Major-type 7 / simple sigil (#7, #7.n) | `foo = #7.20` | rejected gracefully at parse |
+| Unwrap (~) | `bar = [uint]; foo = ~bar` | rejected gracefully at parse |
 | Literal value as a type | `answer = 42` | rejected gracefully at parse |
 | Byte-string literal value | `magic = h'cafe'` | rejected gracefully at parse |
 | Numeric literal value | `version = 5` | rejected gracefully at parse |

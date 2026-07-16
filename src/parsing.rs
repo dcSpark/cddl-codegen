@@ -577,7 +577,19 @@ fn parse_control_operator(
         RangeCtlOp::CtlOp { ctrl, .. } => match ctrl {
             token::ControlOperator::CBORSEQ
             | token::ControlOperator::WITHIN
-            | token::ControlOperator::AND => todo!("control operator {} not supported", ctrl),
+            | token::ControlOperator::AND => {
+                // `.within` / `.and` are LIVE (`uint .within int`, `uint .and (0..9)`);
+                // `.cbor-seq` is unreachable — the cddl parser rejects it at parse/lex (matrix
+                // `ctl.cborseq` evidence), so no red fixture is constructible for it, but it
+                // converts alongside for one graceful arm. Follows the `.size`-on-`int` sibling
+                // below: `record_rejection` + an inert full-range placeholder, drained into a
+                // graceful `Err` by finalize before generation ever runs.
+                types.record_rejection(format!(
+                    "{}the `{ctrl}` control operator is unsupported",
+                    float_reject_rule_prefix(rule_name)
+                ));
+                ControlOperator::Range((None, None))
+            }
             token::ControlOperator::DEFAULT => {
                 ControlOperator::Default(type2_to_fixed_value(&operator.type2))
             }
@@ -1422,7 +1434,39 @@ fn parse_type(
             }
         }
         x => {
-            panic!("\nignored typename {} -> {:?}\n", type_name, x);
+            // Unsupported `type2` as a rule body (a bare major-type constraint `#N.M`, a `~name`
+            // unwrap, a `&group` / `&( ... )` choice-from-group, the `any` type `#`, …). None has
+            // a storable representation at the rule level — reject gracefully, naming the rule by
+            // its SOURCE spelling and the offending construct (with an honest hint where one
+            // exists), instead of panicking. `finalize` drains the recorded rejection into a
+            // graceful `Err` before any generation runs.
+            let source_name = types
+                .source_rule_name(type_name)
+                .map(str::to_owned)
+                .unwrap_or_else(|| type_name.to_string());
+            let (construct, hint) = match x {
+                Type2::Unwrap { .. } => (
+                    "an unwrap (`~name`)".to_string(),
+                    " — inline the referenced rule's definition manually".to_string(),
+                ),
+                Type2::DataMajorType { .. } => (
+                    "a bare major-type constraint (`#N` / `#N.M`)".to_string(),
+                    String::new(),
+                ),
+                Type2::Any { .. } => ("the `any` type (`#`)".to_string(), String::new()),
+                Type2::ChoiceFromGroup { .. } => (
+                    "a choice-from-group (`&groupname`)".to_string(),
+                    String::new(),
+                ),
+                Type2::ChoiceFromInlineGroup { .. } => (
+                    "a choice-from-inline-group (`&( ... )`)".to_string(),
+                    String::new(),
+                ),
+                other => (format!("this type2 construct ({other:?})"), String::new()),
+            };
+            types.record_rejection(format!(
+                "rule `{source_name}`: {construct} is unsupported as a rule body{hint}"
+            ));
         }
     }
 }

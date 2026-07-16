@@ -450,6 +450,111 @@ fn inline_array_group_choice_member_rejects_gracefully() {
     );
 }
 
+/// An unsupported `type2` construct as a rule body (`foo = #1.2`, a bare major-type constraint;
+/// also `~name` unwrap, `&group`, `&( ... )`, `#`) is rejected BY DESIGN — via a GRACEFUL `Err`
+/// (deferred through `record_rejection` → drained by `finalize`), never a `panic!`. This pins that
+/// the message names the offending rule (by SOURCE spelling `foo`, not the camel-cased `Foo`) and
+/// the construct. The moved matrix_reject fixtures (`type2.major`, `type2.unwrap`, …) pin the
+/// OUTCOME category; this pins the message.
+#[test]
+fn unsupported_type2_rule_body_rejects_gracefully() {
+    let path = std::env::temp_dir().join(format!("cddl_codegen_major_{}.cddl", std::process::id()));
+    std::fs::write(&path, "foo = #1.2\n").unwrap();
+    let cli = Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "major_unused",
+    ]);
+    let result = crate::api::generated_strings(&cli);
+    std::fs::remove_file(&path).ok();
+
+    let err = result.expect_err("unsupported type2 rule body must be a graceful Err, not a panic");
+    let msg = err.to_string();
+    // Names the rule by its SOURCE spelling, not the camel-cased RustIdent.
+    assert!(
+        msg.contains("rule `foo`"),
+        "rejection message should name the offending rule by source spelling, got: {msg}"
+    );
+    // Names the construct (a major-type constraint).
+    assert!(
+        msg.contains("major-type"),
+        "rejection message should name the unsupported construct, got: {msg}"
+    );
+}
+
+/// An `~name` unwrap as a rule body carries an actionable hint (inline the referenced rule's
+/// definition manually), on top of the rule name + construct — this pins that honest remedy.
+#[test]
+fn unsupported_unwrap_rule_body_names_remedy() {
+    let path =
+        std::env::temp_dir().join(format!("cddl_codegen_unwrap_{}.cddl", std::process::id()));
+    std::fs::write(&path, "inner = [uint]\nfoo = ~inner\n").unwrap();
+    let cli = Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "unwrap_unused",
+    ]);
+    let result = crate::api::generated_strings(&cli);
+    std::fs::remove_file(&path).ok();
+
+    let err = result.expect_err("unsupported unwrap rule body must be a graceful Err, not a panic");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("rule `foo`") && msg.contains("unwrap"),
+        "rejection message should name the rule and the unwrap construct, got: {msg}"
+    );
+    assert!(
+        msg.contains("inline the referenced rule"),
+        "unwrap rejection should carry the inline-manually remedy, got: {msg}"
+    );
+}
+
+/// The `.within` / `.and` control operators are unsupported — rejected BY DESIGN via a GRACEFUL
+/// `Err`, never `todo!()`. Follows the `.size`-on-`int` sibling in `parse_control_operator`
+/// (`record_rejection` + an inert full-range placeholder, drained by `finalize`), including its
+/// `float_reject_rule_prefix` rule naming. Pins the message names the rule and the offending
+/// operator spelling. (The `.cbor-seq` third member of the same arm is unreachable — the cddl
+/// parser rejects it at parse/lex — so no red fixture is constructible for it.)
+#[test]
+fn unsupported_control_operator_rejects_gracefully() {
+    fn run(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, String>, String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_ctlop_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "ctlop_unused",
+        ]);
+        let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
+        std::fs::remove_file(&path).ok();
+        result
+    }
+
+    let within = run("x = uint .within int\n", "within")
+        .expect_err("`.within` must be a graceful Err, not a todo!() panic");
+    assert!(
+        within.contains("rule `X`") && within.contains(".within"),
+        "`.within` rejection should name the rule and the operator, got: {within}"
+    );
+
+    let and = run("x = uint .and (0..9)\n", "and")
+        .expect_err("`.and` must be a graceful Err, not a todo!() panic");
+    assert!(
+        and.contains("rule `X`") && and.contains(".and"),
+        "`.and` rejection should name the rule and the operator, got: {and}"
+    );
+}
+
 /// A ZERO-permitting occurrence (`*` / `0*n` / `*n`) on a keyed struct-map field means the entry
 /// may be ABSENT (RFC 8610) — silently narrowing it to a mandatory field generates a decoder that
 /// rejects valid CBOR, invisible to round-trip tests (only cross-producer data exposes it). This

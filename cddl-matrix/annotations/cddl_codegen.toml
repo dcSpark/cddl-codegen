@@ -782,7 +782,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "type2.any"
 status = "unsupported"
-evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "type2.array"
@@ -796,22 +796,22 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "type2.choice_from_group"
 status = "unsupported"
-evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "type2.choice_from_inline_group"
 status = "unsupported"
-evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "type2.major"
 status = "unsupported"
-evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "type2.major7"
 status = "unsupported"
-evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "type2.map"
@@ -857,7 +857,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "type2.unwrap"
 status = "unsupported"
-evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "type2.value"
@@ -1545,7 +1545,7 @@ evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
 [[support]]
 id = "contain.top-level.type2.unwrap"
 status = "unsupported"
-evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
 
 # --- per-control-op support, keyed by ctl.<name> (IANA registry; ruby/rust corroborate only) ---
 
@@ -1562,7 +1562,7 @@ evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok
 [[support]]
 id = "ctl.and"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=nondet(generate) rust=ok"
+evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=nondet(generate) rust=ok"
 
 [[support]]
 id = "ctl.b32"
@@ -1768,4 +1768,4 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "ctl.within"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=nondet(generate) rust=ok"
+evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=nondet(generate) rust=ok"
