@@ -3,7 +3,7 @@
 ; Record struct (via `set_rep_if_plain_group`, mirroring the homogeneous-array sibling), so the arm
 ; has a storable representation and generation emits a proper enum with a `Coords` variant that
 ; round-trips. This fixture records `ok` (not PANIC): it pins that this shape stays storable, guarding
-; against a regression back to the `Option::unwrap()` on `None` panic in intermediate.rs (variant
+; against a regression back to the `Option::unwrap()` on `None` panic in intermediate/rust_type.rs (variant
 ; naming/representation lookup) that the missing plain-group promotion used to trigger. The `any`-arm
 ; sibling (`any / tstr`, tests/robustness/choice_any_arm.cddl) still panics with the SAME message and
 ; keeps the recombination sweep's KNOWN_PANIC_CLASSES entry alive. Surfaced by the recombination sweep

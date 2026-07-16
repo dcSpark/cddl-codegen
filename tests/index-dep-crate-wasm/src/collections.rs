@@ -8,7 +8,7 @@
 // drift. Downstream crates point `--extern-wrapper-index <dep>=<this file>` here to
 // avoid re-minting these wrappers (a wasm duplicate-symbol link error otherwise).
 //
-// Hand-written stand-in mirroring the exact format `generation.rs` emits, so the
+// Hand-written stand-in mirroring the exact format the `generation/` wasm collections emitters produce, so the
 // `--extern-wrapper-index` line parser is exercised against real generated shape.
 // Deliberately does NOT list MapIdxFooToIdxFoo, so a consumer's all-extern
 // `{* idx_foo => idx_foo}` mints locally + warns (the "candidate not in index" path).

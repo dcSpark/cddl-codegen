@@ -243,7 +243,7 @@ are ledgered here (that's what the probe/gate error messages point at).
   note) — bundle it with the over-allocation report in one upstream conversation.
 - **Cross-module ARRAY structural-wrapper placement breaks the NAMED reference mode of a
   collection-of-records shape** — the residual Array-arm half of the issue-138 TODO in `mark_refs`
-  (intermediate.rs), left in place when the Map arm went sole-owner-aware. `recs = [* foo]` with
+  (intermediate/mod.rs), left in place when the Map arm went sole-owner-aware. `recs = [* foo]` with
   record element `foo` in module `a`: the wasm representation needs a generated structural wrapper
   (`FooList`) — unlike `[* uint]`, which is transparent `Vec<u64>`; that is why the original `coll`
   shape could never probe this class. The ANONYMOUS reference mode is covered: `mark_refs`' Array
@@ -343,7 +343,7 @@ are ledgered here (that's what the probe/gate error messages point at).
   rows carry no decode-conformance row; `project_decode_conformance.ts` enforces that boundary).
 - Map-representation group-choice arm with a fixed-value entry panics:
   `contain.group-choice-arm.type2.value.map` (`t = { a: 0 // b: tstr }`) reaches generation and aborts at
-  `generation.rs:2467` (`assert_eq!(";" vs "")`). This is a new valid-CDDL surface for fixed values in a
+  the `assert_eq!(";" vs "")` site in `generate_deserialize` (generation/deserialize.rs). This is a new valid-CDDL surface for fixed values in a
   map-rep arm, tracked as a known PANIC row in `tests/matrix_panic/`.
 - Fixed-value member containment still has unenumerated variants beyond the precedent rows
   `contain.array-element.prelude.{true,null}`, `contain.map-value.prelude.false`, and
@@ -376,11 +376,11 @@ are ledgered here (that's what the probe/gate error messages point at).
     panics parsing (`group choices in inlined map types not allowed`) — a distinct, earlier site
     than the choice-free "Anonymous groups not allowed" panic. Pinned by
     `tests/robustness/inline_group_choice_member.cddl`.
-  - `any` in member/element position (`a = [any]`, `{ k: any }`) panics intermediate.rs's
+  - `any` in member/element position (`a = [any]`, `{ k: any }`) panics intermediate/mod.rs's
     `generic_instances` assert — distinct from the top-level `x = any` compile-class gap
     (`tests/matrix_reject/prelude.any.cddl`). Pinned by `tests/robustness/any_member.cddl`.
   - A type-choice arm with no storable representation panics `Option::unwrap()` on `None`
-    (intermediate.rs): `a = any / tstr` (the `any` extern arm). The sibling anonymous
+    (intermediate/rust_type.rs): `a = any / tstr` (the `any` extern arm). The sibling anonymous
     array-of-plain-group arm (`a = [coords] / tstr`) is storable — it promotes the plain group
     to an Array-rep Record struct and generates a proper enum variant (pinned by
     `tests/robustness/choice_group_array_arm.cddl`, an `ok` fixture). Panic pinned by
@@ -506,8 +506,8 @@ are ledgered here (that's what the probe/gate error messages point at).
   hitting the same native-float-under-preserve `unimplemented!`).
 - **A CBOR tag wrapping `any` panics generation under `--preserve-encodings`** — `t = #6.11(any)`
   reaches generation (unlike bare `[any]` / `{ k: any }`, which panic earlier at the shared
-  `generic_instances` assert in intermediate.rs under both profiles) and unwraps `None` in
-  `encoding_fields_impl` (generation.rs) building the tag's encoding field, because `any` carries no
+  `generic_instances` assert in intermediate/mod.rs under both profiles) and unwraps `None` in
+  `encoding_fields_impl` (generation/mod.rs) building the tag's encoding field, because `any` carries no
   encoding metadata to attach one. Default-profile the same spec panics at that earlier
   `generic_instances` assert (the any-in-member family, pinned by `tests/robustness/any_member.cddl`),
   so this is a preserve-only divergence surfaced by the recombination fuzzer's preserve layer-2 sweep
