@@ -484,6 +484,25 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   low-headroom case fails fast on every probe/mint path. The triage lesson still generalizes: before
   trusting (or hand-reverting) a wide evidence diff, check `df` and clear stale scratch.
 
+## Registering a new vendor (CDDL_CODEGEN) feature row
+
+The end-to-end gate chain, in order. Each step's gate fails loudly if skipped, but nothing else
+records the ORDER (walked empirically for the `@used_as_elem` registration):
+
+1. Add the feature row in `features/cddl_codegen.toml`, then `bun run build_matrix.ts`.
+2. Full `bun run verify.ts` — writes the row's verdicts into `annotations/cddl_codegen.toml`.
+3. `bun run project_robustness.ts` — mints `tests/matrix_supported/<id>.cddl`.
+4. `bun run verify.ts --mint-decode-foreign --only=<id>` — mints the decode catalog vectors.
+5. Full `verify.ts` again — satisfies the decode-foreign evidence clause.
+6. `build_matrix.ts` again, then the projections: `project_status_headers.ts --write`, a corpus
+   `[[cover]]` entry + `project_corpus.ts`, `project_recombination.ts`, `query_q1_gaps.ts --write`.
+7. Bump `query_q6_diff.ts`'s `VENDOR_FEATURE_COUNT` pin.
+
+If the directive is a comment-DSL tag, `corpus_detect.ts`'s `MIRRORED_DIRECTIVES` lockstep
+tripwire also fires until the mirror (plus selfCheck vectors for any new grammar) is extended —
+or better, move the dsl channel onto the AST floor instead (`tests/TESTING_ROADMAP.md`, the
+twin-implementation drift entry).
+
 ## Evidence/id convention
 
 `id`s and evidence use **spec anchors (production / RFC section) and grep-able code anchors, never line

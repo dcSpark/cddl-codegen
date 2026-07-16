@@ -379,64 +379,58 @@ dead loses the lesson.
   the dep in the json-gen manifest and a `schemars::JsonSchema` impl on the dep type, both user
   responsibilities by design).
 - **Twin in-repo implementations of one semantic decision drifting apart (emission spellings,
-  detection walkers) — two same-cycle read-caught instances recorded, single-owner extraction is
-  the fix pattern, no detector machinery yet.** Both instances are the in-repo sibling of the
-  parallel-constructor residual's predicate lesson above ("when a fix needs the same decision an
-  existing function already makes, extract the decision, never mirror it") — but where that entry's
-  scope is parsers over EXTERNAL input, this class is two implementations of one decision both
-  living in `src/`, drifting apart while every behavioral oracle stays green. (1)
-  `generate_wrapper_struct` hand-built its range-check `cond`/`failure_expr` beside the shared
-  `bounds_check_if_block`/`range_check_err` helpers and drifted three spellings apart (`!= N`
-  collapse, zero-min lower-leg elision, an inline float-payload duplicate) — semantically
-  IDENTICAL emissions, so decode-conformance (equal accept/reject sets), the mutation sweep (no
-  behavioral delta to detect), and the compile gates were all blind by construction; caught only
-  by review reading. Fixed by making `bounds_check_if_block` + `range_check_err` the single owner
-  (`non_negative`/`location` params), pinned by the `bounds_spellings` corpus fixture. (2)
-  `uses_non_empty_{vec,map}` hand-walked the `RustStructType` variants, mirroring
-  `visit_all_rust_types`' position enumeration, and drifted two legs short (named-array
-  `element_type`, table `domain`) — MASKED by the transparent alias every top-level array/table
-  rule co-registers, so even the nested-cargo compile gates that own the active flavor of this
-  bug (a missing `NonEmptyVec`/`NonEmptyMap` import, E0433) could never fire; also read-caught.
-  Fixed by folding the canonical visitor, corner shapes pinned by `nonempty_nested_positions`.
-  Pending-system coverage check (done at recording time): the grammar-fuzzer escalations own only
-  the ACTIVE missing-import flavor (a recombination shape table extended to nested container
-  positions would compile-fail it); NO pending item sees semantically-equivalent drift — that
-  flavor has no oracle but reading. Two residuals recorded with the instances: (a) the same
-  authored zero-min bound still REPORTS differently by site (`min: Some(0)` in wrapper
-  RangeCheck payloads vs `min: None` at member sites) because the drop-the-redundant-zero
-  decision itself has multiple owners — `RustType::with_bounds` normalizes at IR build (member
-  channel) while the wrapper's `min_max` channel bypasses it, and parsing's occurrence filter
-  plus `classify_sign_arm`'s uint-arm filter spell the same decision in their own domains;
-  unifying the payload is a user-visible error-message change needing its own reviewed change,
-  not a drive-by. (b) `bounds_check_expr_non_negative`'s Array/Map leg and the member-side
-  zero-min elision are DEFENSIVE-ONLY today — every zero lower bound is dropped upstream by (a)'s
-  owners before emission, so the corner is unreachable end-to-end and a fixture cannot pin it;
-  recorded here so it isn't re-litigated as a coverage gap. Mechanical layer on the NEXT
-  read-caught instance of the class: a same-construct differential sweep — emit one
-  bounded/flagged construct per site class (member ctor/setter, wrapper `new()`/deserialize,
-  primitive-deserialize `.and_then`, collection len check) and diff the check conditions +
-  failure payloads, ledgering deliberate site-specific differences — plus the cheap grep half, a
-  snapshot-wide wart scan (same-N `< N || > N`, dead `< 0` over unsigned/`len()` exprs) in the
-  spirit of the doubled-doc-marker scan above. A third flavor of the class, CROSS-LANGUAGE this
-  time, surfaced on the first full-tier run after the `@used_as_elem` delivery:
+  detection walkers, cross-language scanner mirrors) — single-owner extraction is the fix
+  pattern; only the directive-SET flavor has a firing detector so far.** The in-repo sibling of
+  the parallel-constructor residual's predicate lesson above ("when a fix needs the same decision
+  an existing function already makes, extract the decision, never mirror it"): two implementations
+  of one decision, both living in this repo, drift apart while every behavioral oracle stays
+  green — semantically-equivalent drift has no oracle but reading (decode conformance sees equal
+  accept/reject sets, the mutation sweep sees no behavioral delta, the compile gates stay green;
+  pending-system coverage check done at recording time: the grammar-fuzzer escalations own only
+  the ACTIVE missing-import flavor of the walker instance — a recombination shape table extended
+  to nested container positions would compile-fail it, E0433 — and NO pending item sees the
+  semantically-equivalent flavor). Three read-caught instances, each fixed by single-owner
+  extraction and pinned: (1) `generate_wrapper_struct` hand-built its range-check
+  `cond`/`failure_expr` beside the shared helpers and drifted three spellings apart (`!= N`
+  collapse, zero-min lower-leg elision, an inline float-payload duplicate) —
+  `bounds_check_if_block` + `range_check_err` (`non_negative`/`location` params) are now the
+  single owner, pinned by the `bounds_spellings` corpus fixture; (2) `uses_non_empty_{vec,map}`
+  hand-walked the `RustStructType` variants, mirroring `visit_all_rust_types`' position
+  enumeration, and drifted two legs short (named-array `element_type`, table `domain`) — masked
+  by the transparent alias every top-level array/table rule co-registers; now folded onto the
+  canonical visitor, pinned by `nonempty_nested_positions`; (3) cross-language:
   `corpus_detect.ts`'s `DSL_TAGS` scanner is a documented hand mirror of `comment_ast.rs`'s
-  directive grammar, and the delivery updated the rust authority (plus docs, fixture, catalog
-  rows) but not the mirror — nor the mirror's own selfCheck vectors, which still encoded the
-  pre-flavor `@used_as_key` grammar (so the "detector" agreed with the drift). `verify.ts`'s
-  docs-lint (documented directive with no feature row → `cddl_codegen_gaps` hard fail) was the
-  layer that fired, and `project_corpus`'s content-drift check A pins fixture↔directive credit
-  once a `[[cover]]` exists — but BOTH trigger only via adjacent artifacts (docs mention, cover
-  entry), not the mirror itself. Directive-SET drift now has a firing detector:
-  `corpus_detect.ts`'s selfCheck lockstep tripwire demands set equality between the mirror's
-  `MIRRORED_DIRECTIVES` and the authority's `tag("@…")` literals, and selfCheck runs at import
-  time, so `project_corpus` (fast tier, CI) fires it the moment a directive is added or removed
-  on either side. The residual with NO detector is ARG-GRAMMAR drift within an unchanged set —
-  the proven `@used_as_key` flavor instance was exactly that shape (no set delta, changed
-  consumption + a new panic path), and any hand-picked selfCheck vectors drift WITH the mirror by
-  construction. The AST floor eliminates that residual by eliminating the mirror: parse the
-  comments with the real `comment_ast` via a small `examples/` binary, as the role floor already
-  does with `ast_roles.rs`. Do the floor on the next `comment_ast` grammar change of ANY form
-  (not just a new directive) rather than hand-extending `DSL_TAGS` again.
+  directive grammar and drifted twice (no `@used_as_elem`; pre-flavor `@used_as_key` grammar),
+  with its hand-picked selfCheck vectors drifting WITH it — the layers that fired
+  (`verify.ts`'s docs-lint, `project_corpus`'s content-drift check A) trigger only via adjacent
+  artifacts (a docs mention, a `[[cover]]` entry), not the mirror itself. Directive-SET drift now
+  has a firing detector: `corpus_detect.ts`'s selfCheck lockstep tripwire demands set equality
+  between the mirror's `MIRRORED_DIRECTIVES` and the authority's `tag("@…")` literals at import
+  time, so `project_corpus` (fast tier, CI) fires the moment a directive is added or removed on
+  either side. Remaining work, each piece behind its trigger:
+  - *On the next read-caught instance of the class:* build the mechanical layer — a
+    same-construct differential sweep (emit one bounded/flagged construct per site class — member
+    ctor/setter, wrapper `new()`/deserialize, primitive-deserialize `.and_then`, collection len
+    check — and diff the check conditions + failure payloads, ledgering deliberate site-specific
+    differences), plus the cheap grep half: a snapshot-wide wart scan (same-N `< N || > N`, dead
+    `< 0` over unsigned/`len()` exprs) in the spirit of the doubled-doc-marker scan above.
+  - *On the next `comment_ast` grammar change of ANY form (not just a new directive):* do the AST
+    floor instead of hand-extending `DSL_TAGS` again — parse the comments with the real
+    `comment_ast` via a small `examples/` binary, as the role floor already does with
+    `ast_roles.rs`. The floor is the only fix for the tripwire's blind spot, ARG-GRAMMAR drift
+    within an unchanged directive set (the proven `@used_as_key` flavor shape: no set delta,
+    changed consumption, a new panic path), because hand-picked selfCheck vectors drift WITH the
+    mirror by construction.
+  - *Its own reviewed change, never a drive-by:* unify the zero-min RangeCheck payload — the same
+    authored zero-min bound reports `min: Some(0)` in wrapper payloads vs `min: None` at member
+    sites because the drop-the-redundant-zero decision itself has multiple owners
+    (`RustType::with_bounds` normalizes the member channel at IR build; the wrapper's `min_max`
+    channel bypasses it; parsing's occurrence filter and `classify_sign_arm`'s uint-arm filter
+    spell the same decision in their own domains). A user-visible error-message change.
+  - *Non-item, recorded so it isn't re-litigated as a coverage gap:*
+    `bounds_check_expr_non_negative`'s Array/Map leg and the member-side zero-min elision are
+    defensive-only — every zero lower bound is dropped upstream by the owners above before
+    emission, so the corner is unreachable end-to-end and a fixture cannot pin it.
 - **Run-local values in gate-cache key material — one proven instance, no machinery yet.** The
   TS-side cache keys hashed the literal nested-cargo argv, which embeds the run's `mkdtempSync`
   probe dir — every key was unique to its run, so verify.ts could never hit its cache across runs
