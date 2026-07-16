@@ -28,7 +28,7 @@ impl BoundsMembers {
         m_int_range: u64,
         m_nint_range: u64,
     ) -> Result<Self, DeserializeError> {
-        if m_exact_size.len() < 3 || m_exact_size.len() > 3 {
+        if m_exact_size.len() != 3 {
             return Err(DeserializeFailure::RangeCheck {
                 found: m_exact_size.len() as i128,
                 min: Some(3),

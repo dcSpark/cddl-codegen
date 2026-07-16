@@ -4324,7 +4324,9 @@ impl GenerationScope {
                                         bounds_check_if_block(
                                             bounds,
                                             &bounds_check_expr(*p, x),
-                                            false
+                                            false,
+                                            primitive_non_negative(*p),
+                                            None,
                                         ),
                                         final_expr(final_exprs, Some(x_expr.to_owned())),
                                     ),
@@ -4521,7 +4523,9 @@ impl GenerationScope {
                                             bounds_check_if_block(
                                                 bounds,
                                                 &bounds_check_expr(*p, "x"),
-                                                false
+                                                false,
+                                                primitive_non_negative(*p),
+                                                None,
                                             ),
                                         )),
                                         None => Cow::Borrowed(""),
@@ -4582,7 +4586,9 @@ impl GenerationScope {
                                         bounds_check_if_block(
                                             bounds,
                                             &bounds_check_expr(*p, "x"),
-                                            false
+                                            false,
+                                            primitive_non_negative(*p),
+                                            None,
                                         ),
                                     )),
                                     None => Cow::Borrowed(
@@ -5103,6 +5109,8 @@ impl GenerationScope {
                             bounds,
                             &format!("{arr_var_name}.len()"),
                             true,
+                            true,
+                            None,
                         ));
                     }
                     if cli.preserve_encodings {
@@ -5332,6 +5340,8 @@ impl GenerationScope {
                                 bounds,
                                 &format!("{table_var}.len()"),
                                 true,
+                                true,
+                                None,
                             ));
                         }
                         if cli.preserve_encodings {
@@ -6474,6 +6484,47 @@ pub(crate) fn bounds_check_expr_rust_type(ty: &RustType, e: &str) -> Option<Stri
     }
 }
 
+/// Whether values of `p` are provably `>= 0` at a bounds-check site, so a `min == 0` lower leg
+/// (`e < 0`, or `e.len() < 0`) is dead and can be elided (also silencing `unused_comparisons`). The
+/// unsigned integers, `bytes`/`text` (checked via `.len()`), and `bool` are non-negative. The signed
+/// integers, floats, and the `nint` u64 magnitude are not — the magnitude IS a u64, but the wrapper
+/// deliberately keeps its long form for a stored-magnitude nint, so `N64` stays `false` here to keep
+/// every nint site byte-identical.
+fn primitive_non_negative(p: Primitive) -> bool {
+    match p {
+        Primitive::Bytes
+        | Primitive::Str
+        | Primitive::Bool
+        | Primitive::U8
+        | Primitive::U16
+        | Primitive::U32
+        | Primitive::U64 => true,
+        Primitive::I8
+        | Primitive::I16
+        | Primitive::I32
+        | Primitive::I64
+        | Primitive::N64
+        | Primitive::F32
+        | Primitive::F64 => false,
+    }
+}
+
+/// The `RustType` analog of `primitive_non_negative` for the member/wrapper bounds-check expression
+/// over `ty`: the `bytes`/`text`/unsigned/`bool` primitives and every array/map (`.len()`) are
+/// non-negative, but ONLY when no CBOR encoding operation wraps the value — a `CBORBytes` wrap changes
+/// the runtime shape and the wrapper's original check was conservative there, so the
+/// `encodings.is_empty()` guard preserves that exact behavior.
+fn bounds_check_expr_non_negative(ty: &RustType) -> bool {
+    if !ty.encodings.is_empty() {
+        return false;
+    }
+    match ty.resolve_alias_shallow() {
+        ConceptualRustType::Primitive(p) => primitive_non_negative(*p),
+        ConceptualRustType::Array(_) | ConceptualRustType::Map(_, _) => true,
+        _ => false,
+    }
+}
+
 // we store nint as its u64 magnitude `m = |v + 1| = -v - 1`, which is *decreasing* in the signed
 // value `v`. So a value bound `vmin <= v <= vmax` maps to a magnitude bound with the endpoints
 // SWAPPED: the value-min becomes the magnitude-max and the value-max becomes the magnitude-min
@@ -6488,16 +6539,30 @@ pub(crate) fn nint_bounds_to_u64(
     )
 }
 
-fn range_check_err(e: &str, min: Option<i128>, max: Option<i128>, return_err: bool) -> String {
+/// The `Err(..)` expression for a failed integer range check. `location` `Some(name)` produces a
+/// `DeserializeError::new(name, ..)` (the wrapper's `new()`/deserialize sites, which annotate the
+/// type), `None` produces a bare `DeserializeFailure::RangeCheck{..}.into()` (member ctor/setter and
+/// primitive deserialize sites). Mirrors `range_check_err_float`'s `location` duality.
+fn range_check_err(
+    e: &str,
+    min: Option<i128>,
+    max: Option<i128>,
+    return_err: bool,
+    location: Option<&str>,
+) -> String {
     let possible_return = if return_err { "return " } else { "" };
     let opt = |b: Option<i128>| b.map_or_else(|| "None".to_owned(), |b| format!("Some({b})"));
-    format!(
-        "{{ {}Err(DeserializeFailure::RangeCheck{{ found: {} as i128, min: {}, max: {}}}.into()) }}",
-        possible_return,
+    let failure = format!(
+        "DeserializeFailure::RangeCheck{{ found: {} as i128, min: {}, max: {}}}",
         e,
         opt(min),
         opt(max),
-    )
+    );
+    let err = match location {
+        Some(loc) => format!("DeserializeError::new(\"{loc}\", {failure})"),
+        None => format!("{failure}.into()"),
+    };
+    format!("{{ {possible_return}Err({err}) }}")
 }
 
 /// Renders a f64 literal that round-trips exactly (Rust's `{:?}` guarantees this for f64), with the
@@ -6629,6 +6694,7 @@ fn value_bounds_check_line(ty: &RustType, e: &str, return_err: bool) -> Option<S
     }
     let bounds = ty.config.bounds.as_ref()?;
     let check_expr = bounds_check_expr_rust_type(ty, e)?;
+    let non_negative = bounds_check_expr_non_negative(ty);
     if matches!(
         ty.resolve_alias_shallow(),
         ConceptualRustType::Primitive(Primitive::N64)
@@ -6637,21 +6703,42 @@ fn value_bounds_check_line(ty: &RustType, e: &str, return_err: bool) -> Option<S
             &nint_bounds_to_u64(bounds),
             &check_expr,
             return_err,
+            non_negative,
+            None,
         ))
     } else {
-        Some(bounds_check_if_block(bounds, &check_expr, return_err))
+        Some(bounds_check_if_block(
+            bounds,
+            &check_expr,
+            return_err,
+            non_negative,
+            None,
+        ))
     }
 }
 
+/// The `if <cond> { Err(RangeCheck..) }` integer bounds check — the single owner of the condition
+/// spelling for every member/setter, primitive-deserialize, and wrapper site. `non_negative` asserts
+/// the checked expression is provably `>= 0` (an unsigned primitive or a `len()`), which lets a
+/// `min == 0` lower leg (`e < 0`, dead there and an `unused_comparisons` wart) be dropped; when
+/// unsure a site passes `false` and keeps the long form. `location` threads through to
+/// `range_check_err` (the wrapper's name-carrying `new()` copy vs the locationless deserialize copy).
+/// The reported `min`/`max` are ALWAYS the original bounds, regardless of how the condition simplifies.
 fn bounds_check_if_block(
     bounds: &(Option<i128>, Option<i128>),
     e: &str,
     return_err: bool,
+    non_negative: bool,
+    location: Option<&str>,
 ) -> String {
     let cond = match bounds {
         // `.ne N` is encoded as Range(N+1, N-1) (see parsing.rs NE): min > max means an
         // EXCLUSION of the single value between them, not an (unsatisfiable) window
         (Some(min), Some(max)) if min > max => format!("{e} == {}", min - 1),
+        // a single-value window (min == max) is one equality, not the redundant `< N || > N`
+        (Some(min), Some(max)) if min == max => format!("{e} != {min}"),
+        // `min == 0` on a provably-non-negative expr: the `e < 0` leg can never fire — drop it
+        (Some(0), Some(max)) if non_negative => format!("{e} > {max}"),
         (Some(min), Some(max)) => format!("{e} < {min} || {e} > {max}"),
         (None, Some(max)) => format!("{e} > {max}"),
         (Some(min), None) => format!("{e} < {min}"),
@@ -6663,7 +6750,7 @@ fn bounds_check_if_block(
     format!(
         "if {} {}",
         cond,
-        range_check_err(e, bounds.0, bounds.1, return_err)
+        range_check_err(e, bounds.0, bounds.1, return_err, location)
     )
 }
 
@@ -6750,10 +6837,14 @@ fn classify_sign_arm(bounds: &Option<(Option<i128>, Option<i128>)>, arm: SignArm
 fn sign_arm_if_block(arm: &SignArmBounds, e: &str, return_err: bool) -> Option<String> {
     match arm {
         SignArmBounds::Unconstrained => None,
-        SignArmBounds::Check(bounds) => Some(bounds_check_if_block(bounds, e, return_err)),
+        // sign-arm classification is its own concern; keep the long spelling (`non_negative = false`)
+        // and stay locationless — the `min == max` collapse is unconditional and still applies.
+        SignArmBounds::Check(bounds) => {
+            Some(bounds_check_if_block(bounds, e, return_err, false, None))
+        }
         SignArmBounds::Empty(orig) => Some(format!(
             "if true {}",
-            range_check_err(e, orig.0, orig.1, return_err)
+            range_check_err(e, orig.0, orig.1, return_err, None)
         )),
     }
 }
@@ -6771,7 +6862,13 @@ fn non_preserve_bounds_fn(
             "{}.and_then(|{}| {} else {{ Ok({}) }})",
             CONVERT_ERR_TO_OURS,
             x,
-            bounds_check_if_block(bounds, &bounds_check_expr(p, x), false),
+            bounds_check_if_block(
+                bounds,
+                &bounds_check_expr(p, x),
+                false,
+                primitive_non_negative(p),
+                None,
+            ),
             x,
         )),
         None => Cow::Borrowed(""),
@@ -12386,130 +12483,66 @@ fn generate_wrapper_struct(
             )
             .add_to(&mut deser_body);
 
-        // Build the range-check `if` condition and its `DeserializeFailure::..` payload once, then
-        // materialize the check per-consumer (see `build_check`): the deserialize() copy is
-        // locationless (`.into()`) when it lands inside the annotate closure, while the `new()` copy
-        // always carries the name (`DeserializeError::new`) since no closure ever wraps it.
-        let (cond, failure_expr) = if let Some(window) = float_min_max {
-            // NaN-safe float window: accept-form negation, value compared as f64 so the authored
-            // decimal literal is exact. Reports the ORIGINAL window with its per-side exclusivity.
-            let cast_f64 = matches!(
-                &field_type.conceptual_type,
-                ConceptualRustType::Primitive(Primitive::F32)
-            );
-            let cond = format!("if !({})", float_accept_cond(&window, "inner", cast_f64));
-            let opt = |side: Option<(f64, bool)>| match side {
-                Some((v, _)) => format!("Some({})", float_literal(v)),
-                None => "None".to_owned(),
-            };
-            let incl = |side: Option<(f64, bool)>| match side {
-                Some((_, exclusive)) => (!exclusive).to_string(),
-                None => "false".to_owned(),
-            };
-            let failure_expr = format!(
-                "DeserializeFailure::RangeCheckFloat{{ found: inner as f64, min: {}, max: {}, min_inclusive: {}, max_inclusive: {} }}",
-                opt(window.0),
-                opt(window.1),
-                incl(window.0),
-                incl(window.1)
-            );
-            (cond, failure_expr)
-        } else {
-            let (min, max) = min_max.unwrap();
-            let against = if field_type
-                .encodings
-                .contains(&CBOREncodingOperation::CBORBytes)
-            {
-                "inner.len()"
+        // Materialize the range check per-consumer via the shared bounds-check owner, so the wrapper
+        // spells its condition exactly as the member/deserialize sites do. Both copies keep the
+        // ORIGINAL failure payload (min/max unchanged) — only the condition unifies. The deserialize()
+        // copy is locationless (`.into()`) when it lands inside the annotate closure, while the
+        // `new()` copy always carries the name (`DeserializeError::new`) since no closure ever wraps
+        // it, so `annotated` maps directly onto `location` (annotated → None, else Some(type_name)).
+        let render_check = |annotated: bool| -> String {
+            let location = if annotated {
+                None
             } else {
-                match &field_type.conceptual_type {
-                    ConceptualRustType::Primitive(p) => match p {
-                        Primitive::Bytes | Primitive::Str => "inner.len()",
-                        Primitive::Bool
-                        | Primitive::F32
-                        | Primitive::F64
-                        | Primitive::U8
-                        | Primitive::U16
-                        | Primitive::U32
-                        | Primitive::U64
-                        | Primitive::I8
-                        | Primitive::I16
-                        | Primitive::I32
-                        | Primitive::I64
-                        | Primitive::N64 => "inner",
-                    },
-                    _ => unimplemented!(),
-                }
+                Some(type_name.as_ref())
             };
-            let cond = match (min, max) {
-                (Some(min), Some(max)) => {
-                    if min == max {
-                        format!("if {against} != {min}")
-                    } else if min > max {
-                        // `.ne N` is encoded as Range(N+1, N-1): an exclusion, not a window
-                        format!("if {against} == {}", min - 1)
-                    } else {
-                        let non_negative = field_type.encodings.is_empty()
-                            && match &field_type.conceptual_type {
-                                ConceptualRustType::Primitive(p) => match p {
-                                    Primitive::Bytes | Primitive::Str => true,
-                                    Primitive::Bool
-                                    | Primitive::U8
-                                    | Primitive::U16
-                                    | Primitive::U32
-                                    | Primitive::U64 => true,
-                                    Primitive::I8
-                                    | Primitive::I16
-                                    | Primitive::I32
-                                    | Primitive::I64
-                                    | Primitive::N64
-                                    | Primitive::F32
-                                    | Primitive::F64 => false,
-                                },
-                                _ => unimplemented!(),
-                            };
-                        if min == 0 && non_negative {
-                            format!("if {against} > {max}")
-                        } else {
-                            format!("if {against} < {min} || {against} > {max}")
-                        }
+            if let Some(window) = &float_min_max {
+                // NaN-safe float window: accept-form negation, value compared as f64 so the authored
+                // decimal literal is exact. Reports the ORIGINAL window with its per-side exclusivity.
+                let cast_f64 = matches!(
+                    &field_type.conceptual_type,
+                    ConceptualRustType::Primitive(Primitive::F32)
+                );
+                bounds_check_if_block_float(window, cast_f64, "inner", true, location)
+            } else {
+                let (min, max) = min_max.unwrap();
+                let against = if field_type
+                    .encodings
+                    .contains(&CBOREncodingOperation::CBORBytes)
+                {
+                    "inner.len()"
+                } else {
+                    match &field_type.conceptual_type {
+                        ConceptualRustType::Primitive(p) => match p {
+                            Primitive::Bytes | Primitive::Str => "inner.len()",
+                            Primitive::Bool
+                            | Primitive::F32
+                            | Primitive::F64
+                            | Primitive::U8
+                            | Primitive::U16
+                            | Primitive::U32
+                            | Primitive::U64
+                            | Primitive::I8
+                            | Primitive::I16
+                            | Primitive::I32
+                            | Primitive::I64
+                            | Primitive::N64 => "inner",
+                        },
+                        _ => unimplemented!(),
                     }
-                }
-                (Some(min), None) => format!("if {against} < {min}"),
-                (None, Some(max)) => format!("if {against} > {max}"),
-                (None, None) => panic!(
-                    "How did we end up with a range requirement of (None, None)? Entire thing should've been None then"
-                ),
-            };
-            let failure_expr = format!(
-                "DeserializeFailure::RangeCheck{{ found: {} as i128, min: {}, max: {} }}",
-                against,
-                match min {
-                    Some(min) => format!("Some({min})"),
-                    None => String::from("None"),
-                },
-                match max {
-                    Some(max) => format!("Some({max})"),
-                    None => String::from("None"),
-                }
-            );
-            (cond, failure_expr)
-        };
-        let build_check = |annotated: bool| {
-            let mut check = Block::new(cond.clone());
-            if annotated {
-                check.line(format!("return Err({failure_expr}.into());"));
-            } else {
-                check.line(format!(
-                    "return Err(DeserializeError::new(\"{type_name}\", {failure_expr}));"
-                ));
+                };
+                bounds_check_if_block(
+                    &(min, max),
+                    against,
+                    true,
+                    bounds_check_expr_non_negative(field_type),
+                    location,
+                )
             }
-            check
         };
-        deser_body.push_block(build_check(cli.annotate_fields));
+        deser_body.line(&render_check(cli.annotate_fields));
         new_func
             .ret("Result<Self, DeserializeError>")
-            .push_block(build_check(false));
+            .line(render_check(false));
         if let Some(enc_fields) = &enc_fields {
             let mut deser_ctor = Block::new("Ok(Self");
             deser_ctor.line("inner,");

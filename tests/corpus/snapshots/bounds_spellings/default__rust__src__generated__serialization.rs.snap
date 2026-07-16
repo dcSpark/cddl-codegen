@@ -39,7 +39,7 @@ impl Deserialize for BoundsMembers {
                 .bytes()
                 .map_err(Into::<DeserializeError>::into)
                 .and_then(|bytes| {
-                    if bytes.len() < 3 || bytes.len() > 3 {
+                    if bytes.len() != 3 {
                         Err(DeserializeFailure::RangeCheck {
                             found: bytes.len() as i128,
                             min: Some(3),
