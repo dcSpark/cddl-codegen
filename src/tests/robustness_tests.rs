@@ -1214,3 +1214,17 @@ fn size_on_signed_int_rejects_gracefully() {
     run("u = uint .size 2\n", "uint_ok")
         .expect("`uint .size N` is spec-defined and supported — must keep generating");
 }
+
+/// `concat_files` must surface an unreadable path as a real `io::Error` (which callers propagate
+/// through `?`), not `panic!` inside its `map_err`. The error message must name the offending path
+/// so the failure is actionable.
+#[test]
+fn concat_files_missing_path_yields_error_not_panic() {
+    let missing = "/nonexistent/cddl-codegen/definitely/not/here.rs";
+    let err = crate::generation::concat_files(&vec![missing])
+        .expect_err("a nonexistent path must yield Err, never panic");
+    assert!(
+        err.to_string().contains(missing),
+        "the io::Error message should name the offending path, got: {err}"
+    );
+}

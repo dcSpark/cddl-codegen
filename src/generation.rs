@@ -463,24 +463,15 @@ impl<'a> DeserializeConfig<'a> {
     }
 }
 
-fn concat_files<P: AsRef<Path>>(paths: &Vec<P>) -> std::io::Result<String> {
+pub(crate) fn concat_files<P: AsRef<Path>>(paths: &Vec<P>) -> std::io::Result<String> {
     let mut buf = String::new();
     for path in paths {
-        buf.push_str(
-            &std::fs::read_to_string(path)
-                .map_err(|e| {
-                    panic!(
-                        "can't read: {}. Err: {:?} | {:?}",
-                        path.as_ref().to_str().unwrap_or("Path is not in unicode"),
-                        e,
-                        paths
-                            .iter()
-                            .map(|p| p.as_ref().to_str().unwrap())
-                            .collect::<Vec<_>>(),
-                    )
-                })
-                .unwrap(),
-        );
+        buf.push_str(&std::fs::read_to_string(path).map_err(|e| {
+            std::io::Error::new(
+                e.kind(),
+                format!("can't read {}: {e}", path.as_ref().display()),
+            )
+        })?);
     }
     Ok(buf)
 }
