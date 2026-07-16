@@ -1933,7 +1933,7 @@ fn encoding_fields_impl(
             let mut encs = encoding_fields_impl(
                 types,
                 &format!("{name}_tag"),
-                (&ConceptualRustType::Fixed(FixedValue::Uint(*tag))).into(),
+                (&ConceptualRustType::Fixed(FixedValue::Uint(*tag as u64))).into(),
                 cli,
             );
             encs.append(&mut encoding_fields_impl(types, name, *child, cli));

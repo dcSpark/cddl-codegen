@@ -648,14 +648,9 @@ impl GenerationScope {
                     }
                     FixedValue::Nint(i) => {
                         assert!(*i < 0);
-                        if !cli.preserve_encodings
-                            && isize::BITS >= i64::BITS
-                            && *i <= i64::MIN as isize
-                        {
+                        if !cli.preserve_encodings && *i <= i64::MIN as i128 {
                             // cbor_event's write_negative_integer doesn't support serializing i64::MIN (https://github.com/primetype/cbor_event/issues/9)
                             // we need to use the write_negative_integer_sz endpoint which does support it.
-                            // the bits check is since the constant parsed by cddl might not even be able to
-                            // be that small e.g. on 32-bit platforms in which case we're already working with garbage
                             let sz_str = if *i >= -24 {
                                 "cbor_event::Sz::Inline"
                             } else if *i >= -0x1_00 {
