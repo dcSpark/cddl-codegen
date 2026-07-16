@@ -9148,6 +9148,208 @@ fn generate_array_struct_deserialization(
     }
 }
 
+/// Builds one map-record field's deserialize `match` arm (the uint/text key dispatch header,
+/// dup-key check, value deserialize + temp-var wiring, and key-encoding capture). Returns the
+/// finished `Block`; the caller routes it into `uint_field_deserializers`/`text_field_deserializers`.
+/// `deser_code` is threaded only for `mark_and_extract_content` (folding the arm body's throws/
+/// read_len bookkeeping into the surrounding deserialize code).
+#[allow(clippy::too_many_arguments)]
+fn build_map_field_deser_arm(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    name: &RustIdent,
+    field: &RustField,
+    field_index: usize,
+    key: &FixedValue,
+    in_embedded: bool,
+    deser_code: &mut DeserializationCode,
+    cli: &Cli,
+) -> Block {
+    // deserialize key + value
+    let mut deser_block = match key {
+        FixedValue::Uint(x) => {
+            if cli.preserve_encodings {
+                Block::new(format!("({x}, key_enc) => "))
+            } else {
+                Block::new(format!("{x} => "))
+            }
+        }
+        FixedValue::Text(x) => Block::new(format!("\"{}\" => ", escape_rust_str(x))),
+        _ => panic!(
+            "unsupported map key type for {}.{}: {:?}",
+            name, field.name, key
+        ),
+    };
+    deser_block.after(",");
+    let mut deser_block_code = DeserializationCode::default();
+    let key_in_rust = match key {
+        FixedValue::Uint(x) => format!("Key::Uint({x})"),
+        FixedValue::Text(x) => {
+            format!("Key::Str(\"{}\".into())", escape_rust_str(x))
+        }
+        _ => unimplemented!(),
+    };
+    if cli.preserve_encodings {
+        let mut dup_check = if field.rust_type.is_fixed_value() {
+            Block::new(format!("if {}_present", field.name))
+        } else {
+            Block::new(format!("if {}.is_some()", field.name))
+        };
+        dup_check.line(format!(
+            "return Err(DeserializeFailure::DuplicateKey({key_in_rust}).into());"
+        ));
+        deser_block_code.content.push_block(dup_check);
+
+        let temp_var_prefix = format!("tmp_{}", field.name);
+        let var_names_str = encoding_var_names_str(types, &temp_var_prefix, &field.rust_type, cli);
+        if cli.annotate_fields {
+            let (before, after) = if var_names_str.is_empty() {
+                // empty binding == a fixed value with no encoding var (bool / null):
+                // there is no `let X =` LHS, so the annotated deserialize is a bare
+                // statement and needs its own terminating `;` (the non-empty branch
+                // gets it from `?;`). Emitting just `?` drops the semicolon and the
+                // next line (`{field}_present = true;`) fails to parse.
+                ("".to_owned(), "?;")
+            } else {
+                (format!("let {var_names_str} = "), "?;")
+            };
+            let deser_config = DeserializeConfig::for_field(field, in_embedded, field.optional);
+            gen_scope
+                .generate_deserialize(
+                    types,
+                    (&field.rust_type).into(),
+                    DeserializeBeforeAfter::new("", "", true),
+                    deser_config,
+                    cli,
+                )
+                .annotate(&field.name, &before, after)
+                .add_to_code(&mut deser_block_code);
+        } else {
+            let (before, after) = if var_names_str.is_empty() {
+                ("".to_owned(), "")
+            } else {
+                (format!("let {var_names_str} = "), ";")
+            };
+            let deser_config = DeserializeConfig::for_field(field, in_embedded, field.optional);
+            gen_scope
+                .generate_deserialize(
+                    types,
+                    (&field.rust_type).into(),
+                    DeserializeBeforeAfter::new(&before, after, false),
+                    deser_config,
+                    cli,
+                )
+                .add_to_code(&mut deser_block_code);
+        }
+        // Due to destructuring assignemnt (RFC 372 / 71156) being unstable we're forced to use temporaries then reassign after
+        // which is not ideal but doing the assignment inside the lambda or otherwise has issues where it's putting lots of
+        // context-sensitive logic into generate_deserialize and you would need to declare temporaries in most cases anyway
+        // as cbor_event encoding-aware functions return tuples which just pushes the problem there instead.
+        // We might be able to write a nice way around this in the annotate_fields=false, preserve_encodings=true case
+        // but I don't think anyone (or many) would care about this as it's incredibly niche
+        // (annotate_fields=false would be for minimizing code size but then preserve_encodings=true generates way more code)
+        if field.rust_type.is_fixed_value() {
+            deser_block_code
+                .content
+                .line(&format!("{}_present = true;", field.name));
+        } else {
+            deser_block_code
+                .content
+                .line(&format!("{} = Some(tmp_{});", field.name, field.name));
+        }
+        for enc_field in encoding_fields(
+            types,
+            &field.name,
+            &field.rust_type.clone().resolve_aliases(),
+            false,
+            cli,
+        ) {
+            deser_block_code.content.line(&format!(
+                "{} = tmp_{};",
+                enc_field.field_name, enc_field.field_name
+            ));
+        }
+    } else if field.rust_type.is_fixed_value() {
+        let mut dup_check = Block::new(format!("if {}_present", field.name));
+        dup_check.line(format!(
+            "return Err(DeserializeFailure::DuplicateKey({key_in_rust}).into());"
+        ));
+        deser_block_code.content.push_block(dup_check);
+        // only does verification and sets the field_present bool to do error checking later
+        if cli.annotate_fields {
+            let deser_config = DeserializeConfig::for_field(field, in_embedded, field.optional);
+            let mut err_deser = gen_scope.generate_deserialize(
+                types,
+                (&field.rust_type).into(),
+                DeserializeBeforeAfter::new("", "", false),
+                deser_config,
+                cli,
+            );
+            err_deser.content.line("Ok(true)");
+            err_deser
+                .annotate(&field.name, &format!("{}_present = ", field.name), "?;")
+                .add_to_code(&mut deser_block_code);
+        } else {
+            let deser_config = DeserializeConfig::for_field(field, in_embedded, field.optional);
+            gen_scope
+                .generate_deserialize(
+                    types,
+                    (&field.rust_type).into(),
+                    DeserializeBeforeAfter::new("", "", false),
+                    deser_config,
+                    cli,
+                )
+                .add_to_code(&mut deser_block_code);
+            deser_block_code
+                .content
+                .line(&format!("{}_present = true;", field.name));
+        }
+    } else {
+        let mut dup_check = Block::new(format!("if {}.is_some()", field.name));
+        dup_check.line(format!(
+            "return Err(DeserializeFailure::DuplicateKey({key_in_rust}).into());"
+        ));
+        deser_block_code.content.push_block(dup_check);
+        if cli.annotate_fields {
+            let deser_config = DeserializeConfig::for_field(field, in_embedded, field.optional);
+            gen_scope
+                .generate_deserialize(
+                    types,
+                    (&field.rust_type).into(),
+                    DeserializeBeforeAfter::new("", "", true),
+                    deser_config,
+                    cli,
+                )
+                .annotate(&field.name, &format!("{} = Some(", field.name), "?);")
+                .add_to_code(&mut deser_block_code);
+        } else {
+            let deser_config = DeserializeConfig::for_field(field, in_embedded, field.optional);
+            gen_scope
+                .generate_deserialize(
+                    types,
+                    (&field.rust_type).into(),
+                    DeserializeBeforeAfter::new(&format!("{} = Some(", field.name), ");", false),
+                    deser_config,
+                    cli,
+                )
+                .add_to_code(&mut deser_block_code);
+        }
+    }
+    if cli.preserve_encodings {
+        let key_encoding = key_encoding_field(&field.name, key);
+        deser_block_code
+            .content
+            .line(&format!(
+                "{} = {};",
+                key_encoding.field_name,
+                key_encoding.enc_conversion("key_enc")
+            ))
+            .line(&format!("orig_deser_order.push({field_index});"));
+    }
+    deser_block.push_all(deser_block_code.mark_and_extract_content(deser_code));
+    deser_block
+}
+
 fn codegen_struct(
     gen_scope: &mut GenerationScope,
     types: &IntermediateTypes,
@@ -9651,199 +9853,17 @@ fn codegen_struct(
 
                     let key = field.key.clone().unwrap();
                     // deserialize key + value
-                    let mut deser_block = match &key {
-                        FixedValue::Uint(x) => {
-                            if cli.preserve_encodings {
-                                Block::new(format!("({x}, key_enc) => "))
-                            } else {
-                                Block::new(format!("{x} => "))
-                            }
-                        }
-                        FixedValue::Text(x) => {
-                            Block::new(format!("\"{}\" => ", escape_rust_str(x)))
-                        }
-                        _ => panic!(
-                            "unsupported map key type for {}.{}: {:?}",
-                            name, field.name, key
-                        ),
-                    };
-                    deser_block.after(",");
-                    let mut deser_block_code = DeserializationCode::default();
-                    let key_in_rust = match &key {
-                        FixedValue::Uint(x) => format!("Key::Uint({x})"),
-                        FixedValue::Text(x) => {
-                            format!("Key::Str(\"{}\".into())", escape_rust_str(x))
-                        }
-                        _ => unimplemented!(),
-                    };
-                    if cli.preserve_encodings {
-                        let mut dup_check = if field.rust_type.is_fixed_value() {
-                            Block::new(format!("if {}_present", field.name))
-                        } else {
-                            Block::new(format!("if {}.is_some()", field.name))
-                        };
-                        dup_check.line(format!(
-                            "return Err(DeserializeFailure::DuplicateKey({key_in_rust}).into());"
-                        ));
-                        deser_block_code.content.push_block(dup_check);
-
-                        let temp_var_prefix = format!("tmp_{}", field.name);
-                        let var_names_str =
-                            encoding_var_names_str(types, &temp_var_prefix, &field.rust_type, cli);
-                        if cli.annotate_fields {
-                            let (before, after) = if var_names_str.is_empty() {
-                                // empty binding == a fixed value with no encoding var (bool / null):
-                                // there is no `let X =` LHS, so the annotated deserialize is a bare
-                                // statement and needs its own terminating `;` (the non-empty branch
-                                // gets it from `?;`). Emitting just `?` drops the semicolon and the
-                                // next line (`{field}_present = true;`) fails to parse.
-                                ("".to_owned(), "?;")
-                            } else {
-                                (format!("let {var_names_str} = "), "?;")
-                            };
-                            let deser_config =
-                                DeserializeConfig::for_field(field, in_embedded, field.optional);
-                            gen_scope
-                                .generate_deserialize(
-                                    types,
-                                    (&field.rust_type).into(),
-                                    DeserializeBeforeAfter::new("", "", true),
-                                    deser_config,
-                                    cli,
-                                )
-                                .annotate(&field.name, &before, after)
-                                .add_to_code(&mut deser_block_code);
-                        } else {
-                            let (before, after) = if var_names_str.is_empty() {
-                                ("".to_owned(), "")
-                            } else {
-                                (format!("let {var_names_str} = "), ";")
-                            };
-                            let deser_config =
-                                DeserializeConfig::for_field(field, in_embedded, field.optional);
-                            gen_scope
-                                .generate_deserialize(
-                                    types,
-                                    (&field.rust_type).into(),
-                                    DeserializeBeforeAfter::new(&before, after, false),
-                                    deser_config,
-                                    cli,
-                                )
-                                .add_to_code(&mut deser_block_code);
-                        }
-                        // Due to destructuring assignemnt (RFC 372 / 71156) being unstable we're forced to use temporaries then reassign after
-                        // which is not ideal but doing the assignment inside the lambda or otherwise has issues where it's putting lots of
-                        // context-sensitive logic into generate_deserialize and you would need to declare temporaries in most cases anyway
-                        // as cbor_event encoding-aware functions return tuples which just pushes the problem there instead.
-                        // We might be able to write a nice way around this in the annotate_fields=false, preserve_encodings=true case
-                        // but I don't think anyone (or many) would care about this as it's incredibly niche
-                        // (annotate_fields=false would be for minimizing code size but then preserve_encodings=true generates way more code)
-                        if field.rust_type.is_fixed_value() {
-                            deser_block_code
-                                .content
-                                .line(&format!("{}_present = true;", field.name));
-                        } else {
-                            deser_block_code
-                                .content
-                                .line(&format!("{} = Some(tmp_{});", field.name, field.name));
-                        }
-                        for enc_field in encoding_fields(
-                            types,
-                            &field.name,
-                            &field.rust_type.clone().resolve_aliases(),
-                            false,
-                            cli,
-                        ) {
-                            deser_block_code.content.line(&format!(
-                                "{} = tmp_{};",
-                                enc_field.field_name, enc_field.field_name
-                            ));
-                        }
-                    } else if field.rust_type.is_fixed_value() {
-                        let mut dup_check = Block::new(format!("if {}_present", field.name));
-                        dup_check.line(format!(
-                            "return Err(DeserializeFailure::DuplicateKey({key_in_rust}).into());"
-                        ));
-                        deser_block_code.content.push_block(dup_check);
-                        // only does verification and sets the field_present bool to do error checking later
-                        if cli.annotate_fields {
-                            let deser_config =
-                                DeserializeConfig::for_field(field, in_embedded, field.optional);
-                            let mut err_deser = gen_scope.generate_deserialize(
-                                types,
-                                (&field.rust_type).into(),
-                                DeserializeBeforeAfter::new("", "", false),
-                                deser_config,
-                                cli,
-                            );
-                            err_deser.content.line("Ok(true)");
-                            err_deser
-                                .annotate(&field.name, &format!("{}_present = ", field.name), "?;")
-                                .add_to_code(&mut deser_block_code);
-                        } else {
-                            let deser_config =
-                                DeserializeConfig::for_field(field, in_embedded, field.optional);
-                            gen_scope
-                                .generate_deserialize(
-                                    types,
-                                    (&field.rust_type).into(),
-                                    DeserializeBeforeAfter::new("", "", false),
-                                    deser_config,
-                                    cli,
-                                )
-                                .add_to_code(&mut deser_block_code);
-                            deser_block_code
-                                .content
-                                .line(&format!("{}_present = true;", field.name));
-                        }
-                    } else {
-                        let mut dup_check = Block::new(format!("if {}.is_some()", field.name));
-                        dup_check.line(format!(
-                            "return Err(DeserializeFailure::DuplicateKey({key_in_rust}).into());"
-                        ));
-                        deser_block_code.content.push_block(dup_check);
-                        if cli.annotate_fields {
-                            let deser_config =
-                                DeserializeConfig::for_field(field, in_embedded, field.optional);
-                            gen_scope
-                                .generate_deserialize(
-                                    types,
-                                    (&field.rust_type).into(),
-                                    DeserializeBeforeAfter::new("", "", true),
-                                    deser_config,
-                                    cli,
-                                )
-                                .annotate(&field.name, &format!("{} = Some(", field.name), "?);")
-                                .add_to_code(&mut deser_block_code);
-                        } else {
-                            let deser_config =
-                                DeserializeConfig::for_field(field, in_embedded, field.optional);
-                            gen_scope
-                                .generate_deserialize(
-                                    types,
-                                    (&field.rust_type).into(),
-                                    DeserializeBeforeAfter::new(
-                                        &format!("{} = Some(", field.name),
-                                        ");",
-                                        false,
-                                    ),
-                                    deser_config,
-                                    cli,
-                                )
-                                .add_to_code(&mut deser_block_code);
-                        }
-                    }
-                    if cli.preserve_encodings {
-                        let key_encoding = key_encoding_field(&field.name, &key);
-                        deser_block_code
-                            .content
-                            .line(&format!(
-                                "{} = {};",
-                                key_encoding.field_name,
-                                key_encoding.enc_conversion("key_enc")
-                            ))
-                            .line(&format!("orig_deser_order.push({field_index});"));
-                    }
+                    let deser_block = build_map_field_deser_arm(
+                        gen_scope,
+                        types,
+                        name,
+                        field,
+                        field_index,
+                        &key,
+                        in_embedded,
+                        &mut deser_code,
+                        cli,
+                    );
 
                     // serialize key
                     let mut map_ser_content = BlocksOrLines::default();
@@ -9852,9 +9872,6 @@ fn codegen_struct(
                         .encoding_var_in_option_struct("self.encodings");
                     let key_encoding_var =
                         serialize_config.encoding_var(Some("key"), key.encoding_var_is_copy(types));
-
-                    deser_block
-                        .push_all(deser_block_code.mark_and_extract_content(&mut deser_code));
                     match &key {
                         FixedValue::Uint(x) => {
                             let expr = format!("{x}u64");
