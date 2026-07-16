@@ -5901,8 +5901,9 @@ impl GenerationScope {
     /// `new(first_key, first_value)`; `insert` stays infallible (an insert can't break a `>= 1`
     /// bound); removal is checked in the core type. `wrapper_ident` is the JS class name — the
     /// synthesized `NonEmptyMapKToV` for inline maps, or the rule ident for a named `{+ …}`. The
-    /// accessor bodies mirror `codegen_table_type` (delegating to `self.0`, whose `NonEmptyMap`
-    /// method surface matches the raw map's `len`/`insert`/`get`/`keys`).
+    /// `insert`/`get`/`has`/`keys` accessors are minted by the shared `push_table_accessors` (also
+    /// used by `codegen_table_type`), delegating to `self.0`, whose `NonEmptyMap` method surface
+    /// matches the raw map's `len`/`insert`/`get`/`keys`.
     #[allow(clippy::too_many_lines)]
     fn generate_non_empty_map_type(
         &mut self,
@@ -6012,166 +6013,10 @@ impl GenerationScope {
             .ret("usize")
             .arg_ref_self()
             .line("self.0.len()");
-        // insert / get / has / keys mirror codegen_table_type's accessor bodies (single source of the
-        // nullable-value flattening convention) — see there for the rationale comments.
-        let value_nullable = matches!(
-            value_type.conceptual_type.resolve_alias_shallow(),
-            ConceptualRustType::Optional(_)
-        );
-        let map_value_ret = || {
-            if value_nullable {
-                value_type.for_wasm_return(types)
-            } else {
-                format!("Option<{}>", value_type.for_wasm_return(types))
-            }
-        };
-        let value_flatten = if value_nullable { ".flatten()" } else { "" };
-        let value_nullable_inner_exposable =
-            match value_type.conceptual_type.resolve_alias_shallow() {
-                ConceptualRustType::Optional(inner) => {
-                    inner.conceptual_type.directly_wasm_exposable_ct(types)
-                }
-                _ => false,
-            };
-        let mut insert_func = codegen::Function::new("insert");
-        insert_func
-            .vis("pub")
-            .arg_mut_self()
-            .arg("key", key_type.for_wasm_param(types))
-            .arg("value", value_type.for_wasm_param(types))
-            .ret(map_value_ret());
-        if value_nullable {
-            insert_func.doc("Returns the displaced value, or None if the key was absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).");
-        }
-        insert_func.line(format!(
-            "self.0.insert({}, {}){}",
-            ToWasmBoundaryOperations::format(
-                key_type
-                    .from_wasm_boundary_clone(types, "key", false)
-                    .into_iter()
-            ),
-            ToWasmBoundaryOperations::format(
-                value_type
-                    .from_wasm_boundary_clone(types, "value", false)
-                    .into_iter()
-            ),
-            if value_nullable {
-                if value_nullable_inner_exposable {
-                    value_flatten.to_owned()
-                } else {
-                    format!("{value_flatten}.map(Into::into)")
-                }
-            } else if value_type.directly_wasm_exposable(types) {
-                String::new()
-            } else {
-                ".map(Into::into)".to_owned()
-            }
-        ));
-        wrapper.s_impl.push_fn(insert_func);
-        // get
-        let get_ret_modifier = if value_type.is_copy(types) {
-            ""
-        } else if value_nullable {
-            if value_nullable_inner_exposable {
-                ".cloned()"
-            } else {
-                ".map(|v| v.clone().map(Into::into))"
-            }
-        } else if value_type.directly_wasm_exposable(types) {
-            ".cloned()"
-        } else {
-            ".map(|v| v.clone().into())"
-        };
-        let mut getter = codegen::Function::new("get");
-        getter
-            .arg_ref_self()
-            .arg("key", key_type.for_wasm_param(types))
-            .ret(map_value_ret())
-            .vis("pub");
-        if value_nullable {
-            getter.doc("Returns None if the key is absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).");
-        }
-        let copied_or = |modifier: &str| {
-            if value_type.is_copy(types) {
-                ".copied()".to_owned()
-            } else {
-                modifier.to_owned()
-            }
-        };
-        if key_type.directly_wasm_exposable(types) {
-            getter.line(format!(
-                "self.0.get({}){}{}",
-                key_type.from_wasm_boundary_ref(types, "key"),
-                copied_or(get_ret_modifier),
-                value_flatten
-            ));
-        } else {
-            getter.line(format!(
-                "self.0.get({}.as_ref()){}{}",
-                key_type.from_wasm_boundary_ref(types, "key"),
-                copied_or(get_ret_modifier),
-                value_flatten
-            ));
-        }
-        wrapper.s_impl.push_fn(getter);
-        if value_nullable {
-            let mut has_func = codegen::Function::new("has");
-            has_func
-                .arg_ref_self()
-                .arg("key", key_type.for_wasm_param(types))
-                .ret("bool")
-                .vis("pub")
-                .doc("Returns whether the key is present, distinguishing an absent key from a present-but-null value (both of which `get` reports as None).");
-            if key_type.directly_wasm_exposable(types) {
-                has_func.line(format!(
-                    "self.0.get({}).is_some()",
-                    key_type.from_wasm_boundary_ref(types, "key")
-                ));
-            } else {
-                has_func.line(format!(
-                    "self.0.get({}.as_ref()).is_some()",
-                    key_type.from_wasm_boundary_ref(types, "key")
-                ));
-            }
-            wrapper.s_impl.push_fn(has_func);
-        }
-        // keys
-        let keys_type = ConceptualRustType::Array(Box::new(key_type.clone()));
-        let mut keys = codegen::Function::new("keys");
-        keys.arg_ref_self()
-            .ret(keys_type.for_wasm_return_ct(types))
-            .vis("pub");
-        let key_clone = if key_type.is_copy(types) {
-            ".keys().copied()"
-        } else {
-            ".keys().cloned()"
-        };
-        // R3d: decide the keys-list wrapper's deferral BEFORE emitting keys() (see the identical
-        // reasoning in `codegen_table_type`). `try_defer_wrapper` is idempotent.
-        let keys_deferred = !keys_type.directly_wasm_exposable_ct(types)
-            && self.try_defer_wrapper(
-                types,
-                &RustIdent::new(CDDLIdent::new(key_type.name_as_wasm_array(types))),
-                &key_type.name_as_wasm_array(types),
-                &[&key_type.conceptual_type],
-                &format!("[* {}]", render_wrapper_shape(&key_type)),
-                false,
-                cli,
-            );
-        if keys_type.directly_wasm_exposable_ct(types) {
-            keys.line(format!("self.0{key_clone}.collect::<Vec<_>>()"));
-        } else if keys_deferred {
-            // R3d: the keys-list wrapper is deferred to a dependency (`--extern-wrapper-index`); its
-            // tuple field is private cross-crate, so build it through `From<Vec<_>>` (`.into()`)
-            // instead of tuple-struct syntax.
-            keys.line(format!("self.0{key_clone}.collect::<Vec<_>>().into()"));
-        } else {
-            keys.line(format!(
-                "{}(self.0{key_clone}.collect::<Vec<_>>())",
-                keys_type.for_wasm_return_ct(types)
-            ));
-        }
-        wrapper.s_impl.push_fn(keys);
+        // insert / get / has / keys are minted by the shared `push_table_accessors` — the single
+        // source of the nullable-value flattening convention, called by both this restricted twin and
+        // the loose `codegen_table_type`. See that helper for the rationale comments.
+        push_table_accessors(self, &mut wrapper, types, &key_type, &value_type, cli);
         // try_from: the single checked door from the loose table wrapper to the restricted wrapper.
         // It BORROWS (and clones) so the source loose `MapKToV` remains valid on the JS side, and the
         // throw happens here — right at the conversion, not inside a parent constructor.
@@ -6317,6 +6162,213 @@ fn push_list_accessors(
                     .into_iter()
             )
         ));
+}
+
+/// Emit the shared wasm table-wrapper accessor surface — `insert`, `get`, the conditional `has`, and
+/// `keys` — onto `wrapper`'s impl, together with the value-nullable machinery all four depend on. The
+/// loose map wrapper (`codegen_table_type`) and its restricted `NonEmptyMap` twin
+/// (`generate_non_empty_map_type`) deliberately expose the SAME method surface, each accessor
+/// delegating to `self.0` identically, so both mint these through here — the nullable-value
+/// flattening convention lives once. `new` differs between the twins and `len` is trivial, so both
+/// stay at each call site (emitted before this); the `try_from` / conversion tails stay too.
+fn push_table_accessors(
+    gen_scope: &mut GenerationScope,
+    wrapper: &mut WasmWrapper,
+    types: &IntermediateTypes,
+    key_type: &RustType,
+    value_type: &RustType,
+    cli: &Cli,
+) {
+    // A nullable value (`* uint => (T / null)` -> `Option<T>`) would make get/insert return
+    // `Option<Option<T>>` — which wasm-bindgen can't represent (`Option<T>: OptionIntoWasmAbi` is not
+    // satisfied). So when the value is itself an `Option`, we flatten the presence-`Option` these
+    // accessors add into it and return a single `Option<T>`. This is the same convention the c-style
+    // enum-getter (`add_wasm_enum_getters`) uses; native storage still holds all three states
+    // (key-absent / present-null / present-value), so CBOR round-trips are unaffected — only the wasm
+    // read conflates absent with present-null.
+    let value_nullable = matches!(
+        value_type.conceptual_type.resolve_alias_shallow(),
+        ConceptualRustType::Optional(_)
+    );
+    let map_value_ret = || {
+        if value_nullable {
+            value_type.for_wasm_return(types)
+        } else {
+            format!("Option<{}>", value_type.for_wasm_return(types))
+        }
+    };
+    let value_flatten = if value_nullable { ".flatten()" } else { "" };
+    // When the value is nullable, the stored inner is `Option<InnerRust>`. If that inner is not
+    // directly wasm-exposable (a named collection / data-enum), the boundary must convert it —
+    // `.map(Into::into)` through the Option — not a blanket `.into()`, which has no
+    // `From<Option<Inner>>` impl (wasm E0277/E0308).
+    let value_nullable_inner_exposable = match value_type.conceptual_type.resolve_alias_shallow() {
+        ConceptualRustType::Optional(inner) => {
+            inner.conceptual_type.directly_wasm_exposable_ct(types)
+        }
+        _ => false,
+    };
+    // insert
+    let mut insert_func = codegen::Function::new("insert");
+    insert_func
+        .vis("pub")
+        .arg_mut_self()
+        .arg("key", key_type.for_wasm_param(types))
+        .arg("value", value_type.for_wasm_param(types))
+        .ret(map_value_ret());
+    if value_nullable {
+        insert_func.doc("Returns the displaced value, or None if the key was absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).");
+    }
+    insert_func.line(format!(
+        "self.0.insert({}, {}){}",
+        ToWasmBoundaryOperations::format(
+            key_type
+                .from_wasm_boundary_clone(types, "key", false)
+                .into_iter()
+        ),
+        ToWasmBoundaryOperations::format(
+            value_type
+                .from_wasm_boundary_clone(types, "value", false)
+                .into_iter()
+        ),
+        if value_nullable {
+            if value_nullable_inner_exposable {
+                value_flatten.to_owned()
+            } else {
+                // displaced value is `Option<InnerRust>` after flatten; convert its inner to wasm.
+                format!("{value_flatten}.map(Into::into)")
+            }
+        } else if value_type.directly_wasm_exposable(types) {
+            String::new()
+        } else {
+            ".map(Into::into)".to_owned()
+        }
+    ));
+    // ^ TODO: support failable types everywhere or just force it to be only a detail in the wrapper?
+    wrapper.s_impl.push_fn(insert_func);
+    // get
+    let get_ret_modifier = if value_type.is_copy(types) {
+        ""
+    } else if value_nullable {
+        // stored value is `Option<InnerRust>`; convert the inner across the boundary (when it is
+        // not directly exposable) THROUGH the Option, yielding `Option<Option<Wrapper>>` which the
+        // trailing `value_flatten` collapses to `Option<Wrapper>`.
+        if value_nullable_inner_exposable {
+            ".cloned()"
+        } else {
+            ".map(|v| v.clone().map(Into::into))"
+        }
+    } else if value_type.directly_wasm_exposable(types) {
+        ".cloned()"
+    } else {
+        ".map(|v| v.clone().into())"
+    };
+    let mut getter = codegen::Function::new("get");
+    getter
+        .arg_ref_self()
+        .arg("key", key_type.for_wasm_param(types))
+        .ret(map_value_ret())
+        .vis("pub");
+    if value_nullable {
+        getter.doc("Returns None if the key is absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).");
+    }
+    // The is_copy value returns `.copied()`, else the boundary modifier computed above applies. The
+    // two twins spelled this differently in source — codegen_table_type inlined the `if` in each key
+    // branch, generate_non_empty_map_type used this closure — but produced the same bytes; the closure
+    // is the single spelling here.
+    let copied_or = |modifier: &str| {
+        if value_type.is_copy(types) {
+            ".copied()".to_owned()
+        } else {
+            modifier.to_owned()
+        }
+    };
+    if key_type.directly_wasm_exposable(types) {
+        getter.line(format!(
+            "self.0.get({}){}{}",
+            key_type.from_wasm_boundary_ref(types, "key"),
+            copied_or(get_ret_modifier),
+            value_flatten
+        ));
+    } else {
+        getter.line(format!(
+            "self.0.get({}.as_ref()){}{}",
+            key_type.from_wasm_boundary_ref(types, "key"),
+            copied_or(get_ret_modifier),
+            value_flatten
+        ));
+    }
+    wrapper.s_impl.push_fn(getter);
+    // has(key): key-presence accessor, emitted from exactly the `value_nullable` flatten condition
+    // above (single source of truth) so it can never drift from `get`. When the value is nullable,
+    // `get` collapses Option<Option<T>> -> Option<T>, so a `None` return conflates an absent key with
+    // a present-but-null one; `has` exposes the key's presence directly (a direct key lookup, not the
+    // `keys()` scan that was the only recovery before). Mirrors `get`'s key-boundary handling.
+    //
+    // No collision check is needed here (unlike the record `has_<field>` accessor): a table wrapper's
+    // method surface is entirely generator-fixed (`len`/`insert`/`get`/`has`/`keys`) with no
+    // user-named methods — a map has no named fields, only key/value TYPES — so `has` cannot clash
+    // with anything the spec author controls.
+    if value_nullable {
+        let mut has_func = codegen::Function::new("has");
+        has_func
+            .arg_ref_self()
+            .arg("key", key_type.for_wasm_param(types))
+            .ret("bool")
+            .vis("pub")
+            .doc("Returns whether the key is present, distinguishing an absent key from a present-but-null value (both of which `get` reports as None).");
+        if key_type.directly_wasm_exposable(types) {
+            has_func.line(format!(
+                "self.0.get({}).is_some()",
+                key_type.from_wasm_boundary_ref(types, "key")
+            ));
+        } else {
+            has_func.line(format!(
+                "self.0.get({}.as_ref()).is_some()",
+                key_type.from_wasm_boundary_ref(types, "key")
+            ));
+        }
+        wrapper.s_impl.push_fn(has_func);
+    }
+    // keys
+    let keys_type = ConceptualRustType::Array(Box::new(key_type.clone()));
+    let mut keys = codegen::Function::new("keys");
+    keys.arg_ref_self()
+        .ret(keys_type.for_wasm_return_ct(types))
+        .vis("pub");
+    let key_clone = if key_type.is_copy(types) {
+        ".keys().copied()"
+    } else {
+        ".keys().cloned()"
+    };
+    // R3d: decide the keys-list wrapper's deferral BEFORE emitting keys() — the keys-list emitter
+    // (`generate_array_type`) may run AFTER this map class, so consulting `deferred_wrappers` alone
+    // would miss it. `try_defer_wrapper` is idempotent, so this both records the decision (the later
+    // emitter re-runs it, suppresses, and the import is routed) and drives the `.into()` here.
+    let keys_deferred = !keys_type.directly_wasm_exposable_ct(types)
+        && gen_scope.try_defer_wrapper(
+            types,
+            &RustIdent::new(CDDLIdent::new(key_type.name_as_wasm_array(types))),
+            &key_type.name_as_wasm_array(types),
+            &[&key_type.conceptual_type],
+            &format!("[* {}]", render_wrapper_shape(key_type)),
+            false,
+            cli,
+        );
+    if keys_type.directly_wasm_exposable_ct(types) {
+        keys.line(format!("self.0{key_clone}.collect::<Vec<_>>()"));
+    } else if keys_deferred {
+        // R3d: the keys-list wrapper is deferred to a dependency (`--extern-wrapper-index`); its tuple
+        // field is private cross-crate, so build it through `From<Vec<_>>` (`.into()`) instead of
+        // tuple-struct syntax.
+        keys.line(format!("self.0{key_clone}.collect::<Vec<_>>().into()"));
+    } else {
+        keys.line(format!(
+            "{}(self.0{key_clone}.collect::<Vec<_>>())",
+            keys_type.for_wasm_return_ct(types)
+        ));
+    }
+    wrapper.s_impl.push_fn(keys);
 }
 
 fn canonical_param(cli: &Cli) -> &'static str {
@@ -8400,193 +8452,10 @@ fn codegen_table_type(
         .ret("usize")
         .arg_ref_self()
         .line("self.0.len()");
-    // A nullable value (`* uint => (T / null)` -> `Option<T>`) would make get/insert return
-    // `Option<Option<T>>` — which wasm-bindgen can't represent (`Option<T>: OptionIntoWasmAbi` is not
-    // satisfied). So when the value is itself an `Option`, we flatten the presence-`Option` these
-    // accessors add into it and return a single `Option<T>`. This is the same convention the c-style
-    // enum-getter (`add_wasm_enum_getters`) uses; native storage still holds all three states
-    // (key-absent / present-null / present-value), so CBOR round-trips are unaffected — only the wasm
-    // read conflates absent with present-null.
-    let value_nullable = matches!(
-        value_type.conceptual_type.resolve_alias_shallow(),
-        ConceptualRustType::Optional(_)
-    );
-    let map_value_ret = || {
-        if value_nullable {
-            value_type.for_wasm_return(types)
-        } else {
-            format!("Option<{}>", value_type.for_wasm_return(types))
-        }
-    };
-    let value_flatten = if value_nullable { ".flatten()" } else { "" };
-    // When the value is nullable, the stored inner is `Option<InnerRust>`. If that inner is not
-    // directly wasm-exposable (a named collection / data-enum), the boundary must convert it —
-    // `.map(Into::into)` through the Option — not a blanket `.into()`, which has no
-    // `From<Option<Inner>>` impl (wasm E0277/E0308).
-    let value_nullable_inner_exposable = match value_type.conceptual_type.resolve_alias_shallow() {
-        ConceptualRustType::Optional(inner) => {
-            inner.conceptual_type.directly_wasm_exposable_ct(types)
-        }
-        _ => false,
-    };
-    // insert
-    let mut insert_func = codegen::Function::new("insert");
-    insert_func
-        .vis("pub")
-        .arg_mut_self()
-        .arg("key", key_type.for_wasm_param(types))
-        .arg("value", value_type.for_wasm_param(types))
-        .ret(map_value_ret());
-    if value_nullable {
-        insert_func.doc("Returns the displaced value, or None if the key was absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).");
-    }
-    insert_func.line(format!(
-        "self.0.insert({}, {}){}",
-        ToWasmBoundaryOperations::format(
-            key_type
-                .from_wasm_boundary_clone(types, "key", false)
-                .into_iter()
-        ),
-        ToWasmBoundaryOperations::format(
-            value_type
-                .from_wasm_boundary_clone(types, "value", false)
-                .into_iter()
-        ),
-        if value_nullable {
-            if value_nullable_inner_exposable {
-                value_flatten.to_owned()
-            } else {
-                // displaced value is `Option<InnerRust>` after flatten; convert its inner to wasm.
-                format!("{value_flatten}.map(Into::into)")
-            }
-        } else if value_type.directly_wasm_exposable(types) {
-            String::new()
-        } else {
-            ".map(Into::into)".to_owned()
-        }
-    ));
-    // ^ TODO: support failable types everywhere or just force it to be only a detail in the wrapper?
-    wrapper.s_impl.push_fn(insert_func);
-    // get
-    let get_ret_modifier = if value_type.is_copy(types) {
-        ""
-    } else if value_nullable {
-        // stored value is `Option<InnerRust>`; convert the inner across the boundary (when it is
-        // not directly exposable) THROUGH the Option, yielding `Option<Option<Wrapper>>` which the
-        // trailing `value_flatten` collapses to `Option<Wrapper>`.
-        if value_nullable_inner_exposable {
-            ".cloned()"
-        } else {
-            ".map(|v| v.clone().map(Into::into))"
-        }
-    } else if value_type.directly_wasm_exposable(types) {
-        ".cloned()"
-    } else {
-        ".map(|v| v.clone().into())"
-    };
-    let mut getter = codegen::Function::new("get");
-    getter
-        .arg_ref_self()
-        .arg("key", key_type.for_wasm_param(types))
-        .ret(map_value_ret())
-        .vis("pub");
-    if value_nullable {
-        getter.doc("Returns None if the key is absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).");
-    }
-    if key_type.directly_wasm_exposable(types) {
-        getter.line(format!(
-            "self.0.get({}){}{}",
-            key_type.from_wasm_boundary_ref(types, "key"),
-            if value_type.is_copy(types) {
-                ".copied()"
-            } else {
-                get_ret_modifier
-            },
-            value_flatten
-        ));
-    } else {
-        getter.line(format!(
-            "self.0.get({}.as_ref()){}{}",
-            key_type.from_wasm_boundary_ref(types, "key"),
-            if value_type.is_copy(types) {
-                ".copied()"
-            } else {
-                get_ret_modifier
-            },
-            value_flatten
-        ));
-    }
-    wrapper.s_impl.push_fn(getter);
-    // has(key): key-presence accessor, emitted from exactly the `value_nullable` flatten condition
-    // above (single source of truth) so it can never drift from `get`. When the value is nullable,
-    // `get` collapses Option<Option<T>> -> Option<T>, so a `None` return conflates an absent key with
-    // a present-but-null one; `has` exposes the key's presence directly (a direct key lookup, not the
-    // `keys()` scan that was the only recovery before). Mirrors `get`'s key-boundary handling.
-    //
-    // No collision check is needed here (unlike the record `has_<field>` accessor): a table wrapper's
-    // method surface is entirely generator-fixed (`len`/`insert`/`get`/`has`/`keys`) with no
-    // user-named methods — a map has no named fields, only key/value TYPES — so `has` cannot clash
-    // with anything the spec author controls.
-    if value_nullable {
-        let mut has_func = codegen::Function::new("has");
-        has_func
-            .arg_ref_self()
-            .arg("key", key_type.for_wasm_param(types))
-            .ret("bool")
-            .vis("pub")
-            .doc("Returns whether the key is present, distinguishing an absent key from a present-but-null value (both of which `get` reports as None).");
-        if key_type.directly_wasm_exposable(types) {
-            has_func.line(format!(
-                "self.0.get({}).is_some()",
-                key_type.from_wasm_boundary_ref(types, "key")
-            ));
-        } else {
-            has_func.line(format!(
-                "self.0.get({}.as_ref()).is_some()",
-                key_type.from_wasm_boundary_ref(types, "key")
-            ));
-        }
-        wrapper.s_impl.push_fn(has_func);
-    }
-    // keys
-    let keys_type = ConceptualRustType::Array(Box::new(key_type.clone()));
-    let mut keys = codegen::Function::new("keys");
-    keys.arg_ref_self()
-        .ret(keys_type.for_wasm_return_ct(types))
-        .vis("pub");
-    let key_clone = if key_type.is_copy(types) {
-        ".keys().copied()"
-    } else {
-        ".keys().cloned()"
-    };
-    // R3d: decide the keys-list wrapper's deferral BEFORE emitting keys() — the keys-list emitter
-    // (`generate_array_type`) may run AFTER this map class, so consulting `deferred_wrappers` alone
-    // would miss it. `try_defer_wrapper` is idempotent, so this both records the decision (the later
-    // emitter re-runs it, suppresses, and the import is routed) and drives the `.into()` here.
-    let keys_deferred = !keys_type.directly_wasm_exposable_ct(types)
-        && gen_scope.try_defer_wrapper(
-            types,
-            &RustIdent::new(CDDLIdent::new(key_type.name_as_wasm_array(types))),
-            &key_type.name_as_wasm_array(types),
-            &[&key_type.conceptual_type],
-            &format!("[* {}]", render_wrapper_shape(&key_type)),
-            false,
-            cli,
-        );
-    if keys_type.directly_wasm_exposable_ct(types) {
-        keys.line(format!("self.0{key_clone}.collect::<Vec<_>>()"));
-    } else if keys_deferred {
-        // R3d: the keys-list wrapper is deferred to a dependency (`--extern-wrapper-index`); its tuple
-        // field is private cross-crate, so build it through `From<Vec<_>>` (`.into()`) instead of
-        // tuple-struct syntax.
-        keys.line(format!("self.0{key_clone}.collect::<Vec<_>>().into()"));
-    } else {
-        keys.line(format!(
-            "{}(self.0{key_clone}.collect::<Vec<_>>())",
-            keys_type.for_wasm_return_ct(types)
-        ));
-    }
-    wrapper.s_impl.push_fn(keys);
+    // insert / get / has / keys (and the nullable-value flattening convention they share) are minted
+    // by `push_table_accessors`, also called by the restricted `NonEmptyMap` twin
+    // (`generate_non_empty_map_type`).
+    push_table_accessors(gen_scope, &mut wrapper, types, &key_type, &value_type, cli);
     wrapper.add_conversion_methods(&inner_type, cli);
     wrapper.push(gen_scope, types);
 }
