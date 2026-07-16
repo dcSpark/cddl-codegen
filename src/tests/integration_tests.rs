@@ -11784,6 +11784,19 @@ fn corpus_decode_replay() {
             "a composite (array) map key is not json-serializable — serde_json requires string keys \
              (cddl-matrix/ROADMAP.md § findings)",
         ),
+        // The non-empty-walker position pins keep a NonEmpty map in map-KEY position (that placement
+        // IS what the fixture pins), so their json legs hit the same non-string-key class as
+        // `composite_map_key.holder`.
+        (
+            "nonempty_nested_positions.dom_nonempty_map",
+            "a composite (map) map key is not json-serializable — serde_json requires string keys \
+             (cddl-matrix/ROADMAP.md § findings)",
+        ),
+        (
+            "nonempty_nested_positions.holder",
+            "a composite (map) map key is not json-serializable — serde_json requires string keys \
+             (cddl-matrix/ROADMAP.md § findings)",
+        ),
         // f64 ULP loss through serde_json's default parse (this row is also on PRESERVE_SKIP for the
         // native-float generation gap) — cddl-matrix/ROADMAP.md § findings.
         (
