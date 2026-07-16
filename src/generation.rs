@@ -4009,7 +4009,7 @@ impl GenerationScope {
                     encoding_exprs.join(", ")
                 }
             };
-        let convert_err_to_ours = ".map_err(Into::<DeserializeError>::into)";
+        let convert_err_to_ours = CONVERT_ERR_TO_OURS;
         // Gives a total final expression including the before_after context
         // as well as dealing with avoiding clippy warning which is why we can
         // be conditionally a direct value (if there are encoding vars thus a tuple)
@@ -4278,73 +4278,6 @@ impl GenerationScope {
                     } else {
                         ""
                     };
-                    let non_preserve_bounds_fn =
-                        |x: &str, bounds: &Option<(Option<i128>, Option<i128>)>| match bounds {
-                            // always convert error to have consistent E for the and_then
-                            Some(bounds) => Cow::Owned(format!(
-                                "{}.and_then(|{}| {} else {{ Ok({}) }})",
-                                convert_err_to_ours,
-                                x,
-                                bounds_check_if_block(bounds, &bounds_check_expr(*p, x), false),
-                                x,
-                            )),
-                            None => Cow::Borrowed(""),
-                        };
-                    // --- width guards for the narrowing casts below ---------------------------
-                    // Every integer read on this path comes back WIDER than the target type (u64
-                    // from the unsigned readers, i64/i128 from the nint readers), so each `as`
-                    // cast must be preceded by a check that makes it lossless: a bare cast
-                    // silently truncated out-of-width values (`uint .size 2` -> u16 decoded 65536
-                    // "successfully" as 0), and the exact-width collapses (`i8 = -128..127`)
-                    // carry NO residual `bounds`, so nothing else rejected. The guard reuses the
-                    // authored-bounds `.and_then(..)` shape and the existing RangeCheck failure
-                    // (reporting the full type window), and is SKIPPED when the authored/
-                    // classified check already caps the failing side (subsuming it), so bounded
-                    // emissions stay byte-identical.
-                    let prim_window = |p: Primitive| match p {
-                        Primitive::U8 => (0i128, u8::MAX as i128),
-                        Primitive::U16 => (0i128, u16::MAX as i128),
-                        Primitive::U32 => (0i128, u32::MAX as i128),
-                        Primitive::I8 => (i8::MIN as i128, i8::MAX as i128),
-                        Primitive::I16 => (i16::MIN as i128, i16::MAX as i128),
-                        Primitive::I32 => (i32::MIN as i128, i32::MAX as i128),
-                        Primitive::I64 => (i64::MIN as i128, i64::MAX as i128),
-                        _ => unreachable!("width guard only applies to narrowing-cast primitives"),
-                    };
-                    // `.and_then(..)` rejecting `cond` with the full type window via RangeCheck.
-                    // `pat`/`ok` carry the value-only vs (value, encoding)-tuple shapes.
-                    // `converted`: whether an earlier chain stage (an authored-bounds fn or the
-                    // site's error_convert) already mapped the error to DeserializeError — when
-                    // nothing did, the guard prepends the conversion itself (same "consistent E
-                    // for the and_then" rule as the bounds fns).
-                    let width_reject = |cond: &str,
-                                        wmin: i128,
-                                        wmax: i128,
-                                        pat: &str,
-                                        ok: &str,
-                                        converted: bool| {
-                        format!(
-                            "{}.and_then(|{pat}| if {cond} {{ Err(DeserializeFailure::RangeCheck{{ found: x as i128, min: Some({wmin}), max: Some({wmax}) }}.into()) }} else {{ Ok({ok}) }})",
-                            if converted { "" } else { convert_err_to_ours },
-                        )
-                    };
-                    // A guard is superfluous when the emitted check already caps the arm's failing
-                    // side: an authored/classified upper bound <= the type max (uint side) or lower
-                    // bound >= the type min (nint side). A min>max pair is the `.ne` EXCLUSION
-                    // encoding — it caps nothing.
-                    let upper_caps = |bounds: &Option<(Option<i128>, Option<i128>)>, wmax: i128| matches!(bounds, Some((mn, Some(mx))) if mn.is_none_or(|mn| mn <= *mx) && *mx <= wmax);
-                    let lower_caps = |bounds: &Option<(Option<i128>, Option<i128>)>, wmin: i128| matches!(bounds, Some((Some(mn), mx)) if mx.is_none_or(|mx| *mn <= mx) && *mn >= wmin);
-                    let uint_arm_needs_width = |arm: &SignArmBounds, wmax: i128| match arm {
-                        // the whole arm rejects unconditionally — no value ever reaches the cast
-                        SignArmBounds::Empty(_) => false,
-                        SignArmBounds::Check(bounds) => !upper_caps(&Some(*bounds), wmax),
-                        SignArmBounds::Unconstrained => true,
-                    };
-                    let nint_arm_needs_width = |arm: &SignArmBounds, wmin: i128| match arm {
-                        SignArmBounds::Empty(_) => false,
-                        SignArmBounds::Check(bounds) => !lower_caps(&Some(*bounds), wmin),
-                        SignArmBounds::Unconstrained => true,
-                    };
                     // `width`: the optional (wmin, wmax) window for a width guard on the value
                     // read — Some only for the narrowing-cast unsigned primitives (u8/u16/u32),
                     // None for every width-safe caller (bytes/text/u64/n64).
@@ -4412,7 +4345,7 @@ impl GenerationScope {
                                     before_after.after_str(true)
                                 ));
                             } else {
-                                let bounds_fn = non_preserve_bounds_fn(x, &type_cfg.bounds);
+                                let bounds_fn = non_preserve_bounds_fn(*p, x, &type_cfg.bounds);
                                 let width_fn = width
                                     .map(|(wmin, wmax)| {
                                         width_reject(
@@ -6822,6 +6755,96 @@ fn sign_arm_if_block(arm: &SignArmBounds, e: &str, return_err: bool) -> Option<S
             "if true {}",
             range_check_err(e, orig.0, orig.1, return_err)
         )),
+    }
+}
+
+const CONVERT_ERR_TO_OURS: &str = ".map_err(Into::<DeserializeError>::into)";
+
+fn non_preserve_bounds_fn(
+    p: Primitive,
+    x: &str,
+    bounds: &Option<(Option<i128>, Option<i128>)>,
+) -> Cow<'static, str> {
+    match bounds {
+        // always convert error to have consistent E for the and_then
+        Some(bounds) => Cow::Owned(format!(
+            "{}.and_then(|{}| {} else {{ Ok({}) }})",
+            CONVERT_ERR_TO_OURS,
+            x,
+            bounds_check_if_block(bounds, &bounds_check_expr(p, x), false),
+            x,
+        )),
+        None => Cow::Borrowed(""),
+    }
+}
+
+// --- width guards for the narrowing casts below ---------------------------
+// Every integer read on this path comes back WIDER than the target type (u64
+// from the unsigned readers, i64/i128 from the nint readers), so each `as`
+// cast must be preceded by a check that makes it lossless: a bare cast
+// silently truncated out-of-width values (`uint .size 2` -> u16 decoded 65536
+// "successfully" as 0), and the exact-width collapses (`i8 = -128..127`)
+// carry NO residual `bounds`, so nothing else rejected. The guard reuses the
+// authored-bounds `.and_then(..)` shape and the existing RangeCheck failure
+// (reporting the full type window), and is SKIPPED when the authored/
+// classified check already caps the failing side (subsuming it), so bounded
+// emissions stay byte-identical.
+fn prim_window(p: Primitive) -> (i128, i128) {
+    match p {
+        Primitive::U8 => (0i128, u8::MAX as i128),
+        Primitive::U16 => (0i128, u16::MAX as i128),
+        Primitive::U32 => (0i128, u32::MAX as i128),
+        Primitive::I8 => (i8::MIN as i128, i8::MAX as i128),
+        Primitive::I16 => (i16::MIN as i128, i16::MAX as i128),
+        Primitive::I32 => (i32::MIN as i128, i32::MAX as i128),
+        Primitive::I64 => (i64::MIN as i128, i64::MAX as i128),
+        _ => unreachable!("width guard only applies to narrowing-cast primitives"),
+    }
+}
+
+// `.and_then(..)` rejecting `cond` with the full type window via RangeCheck.
+// `pat`/`ok` carry the value-only vs (value, encoding)-tuple shapes.
+// `converted`: whether an earlier chain stage (an authored-bounds fn or the
+// site's error_convert) already mapped the error to DeserializeError — when
+// nothing did, the guard prepends the conversion itself (same "consistent E
+// for the and_then" rule as the bounds fns).
+fn width_reject(
+    cond: &str,
+    wmin: i128,
+    wmax: i128,
+    pat: &str,
+    ok: &str,
+    converted: bool,
+) -> String {
+    format!(
+        "{}.and_then(|{pat}| if {cond} {{ Err(DeserializeFailure::RangeCheck{{ found: x as i128, min: Some({wmin}), max: Some({wmax}) }}.into()) }} else {{ Ok({ok}) }})",
+        if converted { "" } else { CONVERT_ERR_TO_OURS },
+    )
+}
+
+// A guard is superfluous when the emitted check already caps the arm's failing
+// side: an authored/classified upper bound <= the type max (uint side) or lower
+// bound >= the type min (nint side). A min>max pair is the `.ne` EXCLUSION
+// encoding — it caps nothing.
+fn upper_caps(bounds: &Option<(Option<i128>, Option<i128>)>, wmax: i128) -> bool {
+    matches!(bounds, Some((mn, Some(mx))) if mn.is_none_or(|mn| mn <= *mx) && *mx <= wmax)
+}
+fn lower_caps(bounds: &Option<(Option<i128>, Option<i128>)>, wmin: i128) -> bool {
+    matches!(bounds, Some((Some(mn), mx)) if mx.is_none_or(|mx| *mn <= mx) && *mn >= wmin)
+}
+fn uint_arm_needs_width(arm: &SignArmBounds, wmax: i128) -> bool {
+    match arm {
+        // the whole arm rejects unconditionally — no value ever reaches the cast
+        SignArmBounds::Empty(_) => false,
+        SignArmBounds::Check(bounds) => !upper_caps(&Some(*bounds), wmax),
+        SignArmBounds::Unconstrained => true,
+    }
+}
+fn nint_arm_needs_width(arm: &SignArmBounds, wmin: i128) -> bool {
+    match arm {
+        SignArmBounds::Empty(_) => false,
+        SignArmBounds::Check(bounds) => !lower_caps(&Some(*bounds), wmin),
+        SignArmBounds::Unconstrained => true,
     }
 }
 
