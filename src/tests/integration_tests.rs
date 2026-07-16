@@ -206,7 +206,7 @@ For more information about this error, try `rustc --explain E0583`.\n";
 /// (E0583 alias/enum-only non-root module declaring `pub mod serialization;` without the file;
 /// E0432 anonymous same-shape table importing the structural name from root scope instead of the
 /// sole owner's module; E0433 cross-module named `.cbor` ref omitting the inner-type import) are all
-/// fixed in `generation.rs`'s module-declaration loop and `intermediate/mod.rs`'s
+/// fixed in `generation/export.rs`'s module-declaration loop and `intermediate/mod.rs`'s
 /// `scope_references`/`mark_refs`. The ANON element-import half of the ARRAY structural-wrapper class
 /// (`collrec__anon` — the `[* <record>]` shape's anonymous use, whose wasm representation needs a
 /// generated `FooList`-style array wrapper) is now fixed too: `mark_refs`' Array arm registers the
@@ -1708,7 +1708,7 @@ fn synthesized_name_interaction_sweep() {
     ];
 
     // Count line-anchored top-level type-namespace definitions of `ident` — the same class the
-    // duplicate-ident backstop keys on (`generation.rs::top_level_type_ident`).
+    // duplicate-ident backstop keys on (`generation/export.rs::top_level_type_ident`).
     fn count_def(src: &str, ident: &str) -> usize {
         src.lines()
             .filter(|line| {
@@ -2255,7 +2255,7 @@ fn multifile_matrix_compiles() {
 }
 
 /// Always-on pin for the multifile `--emit-tests` scope-import emission. For DIRECTORY input the
-/// generated test modules land at the generated ROOT of each crate (`generation.rs` raws them into
+/// generated test modules land at the generated ROOT of each crate (`generation/mod.rs` raws them into
 /// `rust_lib()`/`wasm_lib()`) while the minted values name submodule types bare (`St`, `Bholder`),
 /// so each emitted header must glob-import every declared non-root module (`use super::a::*;`) —
 /// without them EVERY multifile `--emit-tests` crate fails `cargo test` with E0433 ("cannot find
@@ -2926,7 +2926,7 @@ fn wasm_list_macro_compiles() {
 
 /// Smoke gate for documented flag *values* that no other test or profile exercises (closed the
 /// once-open "five documented flag values with zero coverage" gap for the rust-side four). Each selects a whole alternative emit path: `--annotate-fields=false` (a
-/// different deserialization / error-emission mode — 13+ branch sites in generation.rs),
+/// different deserialization / error-emission mode — 13+ branch sites in `generation/`),
 /// `--to-from-bytes-methods=false` (drops the `to_bytes`/`from_bytes` API), and
 /// `--binary-wrappers=true` (byte strings as new rust types). Before this, a generation regression
 /// under any of them compiled nothing anywhere. Cheapest acceptance per the roadmap: generate a
@@ -4345,11 +4345,11 @@ fn corpus_special_map_key_supported() {
 }
 
 /// Float fields under `--preserve-encodings` abort generation (`unimplemented!` at the
-/// generation.rs float serialize arm), which is why no corpus fixture can hold a float in a
+/// generation/deserialize.rs float arm), which is why no corpus fixture can hold a float in a
 /// struct field (the corpus runs every fixture under the preserve profile) and why the float
 /// element wire path has no executed preserve/canonical coverage.
 #[test]
-#[ignore = "float --preserve-encodings is unimplemented: any float struct field aborts generation under the flag (generation.rs 'preserve_encodings is not implemented for float'). Implementing it unblocks float corpus fixtures (see homogeneous_array.cddl's comment) and float KAT vectors."]
+#[ignore = "float --preserve-encodings is unimplemented: any float struct field aborts generation under the flag (generation/deserialize.rs 'preserve_encodings is not implemented for float'). Implementing it unblocks float corpus fixtures (see homogeneous_array.cddl's comment) and float KAT vectors."]
 fn preserve_encodings_supports_floats() {
     unimplemented!(
         "a float struct field + --preserve-encodings=true panics generation. Implement float \
@@ -6158,7 +6158,7 @@ fn js_d_ts_merge() {
 }
 
 /// End-to-end validation of the shipped `--package-json --json-schema-export` consumer pipeline
-/// (`generation.rs`'s `export` copy block + `static/package_json_schemas.json`). It generates a small
+/// (`generation/export.rs`'s `export` copy block + `static/package_json_schemas.json`). It generates a small
 /// fixture with those flags and runs the SHIPPED `npm run rust:build-nodejs` script VERBATIM in the
 /// output dir — `wasm-pack build --target=nodejs` -> `js:ts-json-gen` (json-gen `cargo +stable run`
 /// -> `run-json2ts.js` -> `json-ts-types.js`) -> `wasm-pack pack`. Running the script line itself
@@ -6220,7 +6220,7 @@ fn package_json_pipeline() {
     }
     assert!(generate.status.success());
 
-    // Layout sanity: pins `generation.rs`'s `--package-json` copy block (the three shipped files).
+    // Layout sanity: pins `generation/export.rs`'s `--package-json` copy block (the three shipped files).
     assert!(
         export.join("package.json").exists(),
         "no export/package.json"
@@ -10672,7 +10672,7 @@ fn decode_conformance_replay() {
 
     // Rows whose generation/compile legitimately fails under `--preserve-encodings=true`. EXPECTED
     // members are the native-float class: a float struct/element field hits the pre-existing
-    // `unimplemented!` in generation.rs ("preserve_encodings is not implemented for float"), the same
+    // `unimplemented!` in generation/deserialize.rs ("preserve_encodings is not implemented for float"), the same
     // gap the `preserve_encodings_supports_floats` stub tracks. `prelude.float/float32/float64` are
     // floats directly; `prelude.number` (int / float) and `prelude.time` (~= number) carry a float
     // arm. A row here that starts generating+replaying cleanly under preserve is a stale entry and
@@ -10680,53 +10680,53 @@ fn decode_conformance_replay() {
     const PRESERVE_SKIP: &[(&str, &str)] = &[
         (
             "prelude.float",
-            "native float under --preserve-encodings is unimplemented (generation.rs float arm \
+            "native float under --preserve-encodings is unimplemented (generation/deserialize.rs float arm \
              `unimplemented!`; see the preserve_encodings_supports_floats stub)",
         ),
         (
             "prelude.float32",
-            "native float under --preserve-encodings is unimplemented (generation.rs float arm \
+            "native float under --preserve-encodings is unimplemented (generation/deserialize.rs float arm \
              `unimplemented!`; see the preserve_encodings_supports_floats stub)",
         ),
         (
             "prelude.float64",
-            "native float under --preserve-encodings is unimplemented (generation.rs float arm \
+            "native float under --preserve-encodings is unimplemented (generation/deserialize.rs float arm \
              `unimplemented!`; see the preserve_encodings_supports_floats stub)",
         ),
         (
             "prelude.number",
             "`number` (int / float) carries the native-float arm that is unimplemented under \
-             --preserve-encodings (generation.rs; see the preserve_encodings_supports_floats stub)",
+             --preserve-encodings (generation/deserialize.rs; see the preserve_encodings_supports_floats stub)",
         ),
         (
             "prelude.time",
             "`time` (~= number) carries the native-float arm that is unimplemented under \
-             --preserve-encodings (generation.rs; see the preserve_encodings_supports_floats stub)",
+             --preserve-encodings (generation/deserialize.rs; see the preserve_encodings_supports_floats stub)",
         ),
         (
             "rangeop.inclusive.float",
             "a float-range newtype (`0.5..10.5`) wraps an f64 member, which hits the same native-float \
-             `unimplemented!` under --preserve-encodings (generation.rs float arm; see the \
+             `unimplemented!` under --preserve-encodings (generation/deserialize.rs float arm; see the \
              preserve_encodings_supports_floats stub) — default-profile decode still replays its \
              boundary-violation reject vectors",
         ),
         (
             "rangeop.exclusive.float",
             "a float-range newtype (`0.5...10.5`) wraps an f64 member, which hits the same native-float \
-             `unimplemented!` under --preserve-encodings (generation.rs float arm; see the \
+             `unimplemented!` under --preserve-encodings (generation/deserialize.rs float arm; see the \
              preserve_encodings_supports_floats stub) — default-profile decode still replays its \
              boundary-violation reject vectors",
         ),
         (
             "value.number.hexfloat",
             "a fixed float member (`m = [v: 0x1.8p+1]`) panics generation under --preserve-encodings \
-             (generation.rs fixed-float deserialize arm `unimplemented!` — the same native-float class \
+             (generation/deserialize.rs fixed-float deserialize arm `unimplemented!` — the same native-float class \
              as the rangeop.*.float rows; see the preserve_encodings_supports_floats stub) — \
              default-profile decode still replays its accept + FixedValueMismatch reject vectors",
         ),
         // NOT a float — a separate, pre-existing preserve gap surfaced by this gate. A CBOR tag on a
         // TYPE-CHOICE (`t = #6.10(int / tstr)` generates a rust enum) trips an explicit
-        // `assert!(!cli.preserve_encodings)` in generation.rs's tagged-enum serialize path, guarding
+        // `assert!(!cli.preserve_encodings)` in generation/enums.rs's tagged-enum serialize path, guarding
         // an unimplemented case (its own `// TODO: how to even store these?`): the per-variant
         // encoding metadata preserve needs has no home on the enum. Tags on structs/arrays/maps
         // (contain.tag-content.type2.{array,map}, contain.tag-content.type.choice's non-choice
@@ -10735,7 +10735,7 @@ fn decode_conformance_replay() {
         (
             "contain.tag-content.type.choice",
             "tag over a type-choice enum is unimplemented under --preserve-encodings \
-             (generation.rs `assert!(!cli.preserve_encodings)` in the tagged-enum serialize path, \
+             (generation/enums.rs `assert!(!cli.preserve_encodings)` in the tagged-enum serialize path, \
              with a standing `TODO: how to even store these?`) — a pre-existing generator gap, not a \
              decoder issue; the default-profile decode of this row still replays",
         ),
@@ -11730,14 +11730,14 @@ fn corpus_decode_replay() {
 
     // Rows whose generation/compile legitimately fails under `--preserve-encodings=true`. The one
     // member is `homogeneous_array.floats` (`[* float64]`): a native-float element hits the pre-existing
-    // `unimplemented!` in generation.rs ("preserve_encodings is not implemented for float"), the same
+    // `unimplemented!` in generation/deserialize.rs ("preserve_encodings is not implemented for float"), the same
     // gap the `preserve_encodings_supports_floats` stub tracks and the matrix replay's PRESERVE_SKIP
     // documents for the prelude/rangeop float rows. Default-profile decode of this row still replays.
     // Stale-guarded: a row here that starts generating+replaying cleanly under preserve fails the gate.
     const PRESERVE_SKIP: &[(&str, &str)] = &[(
         "homogeneous_array.floats",
         "`[* float64]` has a native-float element that is unimplemented under --preserve-encodings \
-         (generation.rs float arm `unimplemented!`; see the preserve_encodings_supports_floats stub) — \
+         (generation/deserialize.rs float arm `unimplemented!`; see the preserve_encodings_supports_floats stub) — \
          default-profile decode still replays its accept vectors",
     )];
     // Rows that GENERATE + compile under preserve but re-encode a decoded accept vector to different

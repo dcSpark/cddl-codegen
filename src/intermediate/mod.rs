@@ -476,7 +476,7 @@ impl<'a> IntermediateTypes<'a> {
     /// Which named `Table` rule solely owns each structural wasm-map shape, keyed by the structural
     /// `name_for_wasm_map` string (that string IS the shape identity). A shape owned by EXACTLY ONE
     /// table rule has its wasm class plus the structural `pub type MapKToV = <Owner>;` alias minted in
-    /// that owner's module (`mint_sole_owner_table` in generation.rs); zero-owner (anonymous-only) and
+    /// that owner's module (`mint_sole_owner_table` in generation/collections.rs); zero-owner (anonymous-only) and
     /// multi-owner (same-shape rule pair) shapes keep the structural fallback class at the crate root.
     /// Both the wasm emit path AND `scope_references`'s Map arm consult this single helper so import
     /// placement and emission placement CANNOT disagree. Iterates `rust_structs()` (a BTreeMap) so the
@@ -1108,7 +1108,7 @@ impl<'a> IntermediateTypes<'a> {
     /// preserves the alias's name for naming derivations) and substituted transparently when it
     /// doesn't; an unregistered ident is `None` (the caller decides the fallback). This is the ONE
     /// owner of that rule: `new_type` (the canonical pipeline constructor) and the
-    /// `--wrapper-requests` shape parser (generation.rs `parse_shape_fragment`) both call it, so a
+    /// `--wrapper-requests` shape parser (generation/requests.rs `parse_shape_fragment`) both call it, so a
     /// leaf built outside the pipeline cannot drift from pipeline resolution — the drift is exactly
     /// how alias-element requests once panicked `is_enum`'s registered-struct invariant (pinned by
     /// `workspace_requests_alias_elements_host`). Immutable on purpose: prelude emission for
@@ -1172,7 +1172,7 @@ impl<'a> IntermediateTypes<'a> {
         // Array element types and map KEY types in the Special CBOR class (bool / null /
         // float16-32-64 / simple, major type 7) share their major type with the
         // indefinite-length break byte (`0xff`), so a naive loop can't tell "read another item"
-        // from "stop at the break". `make_deser_loop_break_check` (generation.rs) handles this
+        // from "stop at the break". `make_deser_loop_break_check` (generation/deserialize.rs) handles this
         // correctly in both framings: a definite-length collection reads exactly `n` items and
         // never inspects for a break, and the indefinite case uses the non-consuming
         // `special_break()` probe so a bool/null/float element/key is left in place and read
@@ -2055,7 +2055,7 @@ impl<'a> IntermediateTypes<'a> {
     }
 
     /// The directly-tagged demand roots (pre-transitive-expansion), sorted. Drives the emitted
-    /// compile-time demand assertions (`generation.rs`).
+    /// compile-time demand assertions (`generation/mod.rs`).
     pub fn key_demand_roots(&self) -> &BTreeMap<RustIdent, DemandSet> {
         &self.key_demand_roots
     }
