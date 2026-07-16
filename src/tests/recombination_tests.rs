@@ -1408,7 +1408,7 @@ const PRESERVE_ONLY_PANIC_CLASSES: &[(&str, &str)] = &[
          findings, `float16 / float-choice aliases unsupported ... Under --preserve-encodings the float gap is positional` entry",
     ),
     (
-        "!cli.preserve_encodings @ src/generation/mod.rs @ fn cddl_codegen::generation::generate_enum",
+        "!cli.preserve_encodings @ src/generation/enums.rs @ fn cddl_codegen::generation::enums::generate_enum",
         "a CBOR tag over a type-choice / enum / group-choice (`#6.11(int / tstr)`, `#6.11(<enum>)`) hits \
          the tagged-enum serialize path's explicit `assert!(!cli.preserve_encodings)` — the per-variant \
          encoding metadata has no home on the enum; cddl-matrix/ROADMAP.md § findings, \
