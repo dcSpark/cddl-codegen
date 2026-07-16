@@ -3700,6 +3700,111 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "nonempty_nested_positions.dom_nonempty_map"
+axis = "corpus"
+example = "dom_nonempty_map = { * {+ uint => uint} => text }"
+fixture = "nonempty_nested_positions"
+rule = "dom_nonempty_map"
+spec = "__probe_holder = [0, dom_nonempty_map]\ndom_nonempty_map = { * {+ uint => uint} => text }"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1a21901741911c519097919125168636c616e6e697368"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1a2190ca71907c8191167190c9f656d61757665"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1a3190482190e2a1907af1902251901f41907a1687477656574657273"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "nonempty_nested_positions.holder"
+axis = "corpus"
+example = "nested_plus = [* [+ uint]]\ndom_nonempty_map = { * {+ uint => uint} => text }\nholder = [np: nested_plus, dm: dom_nonempty_map]"
+fixture = "nonempty_nested_positions"
+rule = "holder"
+spec = "__probe_holder = [0, holder]\nnested_plus = [* [+ uint]]\ndom_nonempty_map = { * {+ uint => uint} => text }\nholder = [np: nested_plus, dm: dom_nonempty_map]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82008280a1a41902591906db1911be1906f91909e919094919124c19101369617474656e74697665"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008281811910fba0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "nonempty_nested_positions.nested_plus"
+axis = "corpus"
+example = "nested_plus = [* [+ uint]]"
+fixture = "nonempty_nested_positions"
+rule = "nested_plus"
+spec = "__probe_holder = [0, nested_plus]\nnested_plus = [* [+ uint]]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820080"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200818219035f190a90"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082831902ef1910b6190d3b81190a11"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200838119070984190ce6190e36190f641905c08119058b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200838219016f190f8c81190d42821901c219085e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820084811904c181190217841903c119063c190232189c831908b3190969190ce6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008481190b48831906281908041907b0831904ee1901d61901cd8319018f19042c190460"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008482190376190e7f8218c0190eb0821910a419097b831911ed1910f80b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820084831901f41909e7190ef4841907f319101a19106219021782190c65190c31821905ae190f10"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "nullable.holder"
 axis = "corpus"
 example = "maybe_text = text / null\nholder = [val: maybe_text]"

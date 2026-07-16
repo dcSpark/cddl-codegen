@@ -234,76 +234,60 @@ impl<'a> IntermediateTypes<'a> {
 
     /// Whether ANY generated type uses the `[+ T]` NonEmptyVec shape, so `export`/import wiring can
     /// pull in the `non_empty` runtime module + `NonEmptyVec` import only for crates that need it
-    /// (keeping every non-`+` crate's output byte-identical). Covers named `[+ …]` rules (via their
-    /// registered alias base_type and the `RustStructType::Array` bounds) and inline/nested
-    /// occurrences on record fields, table domain/range, wrappers, and enum variants.
+    /// (keeping every non-`+` crate's output byte-identical).
+    ///
+    /// Detection folds `contains_non_empty_array` over `visit_all_rust_types`, which reaches EVERY
+    /// `RustType` position in the IR — type-alias base types, record fields, table domain AND range,
+    /// wrapper inners, named-array element types, and enum variants (incl. inlined records) —
+    /// recursing into Array/Optional/Map inners at each node. This is a strict superset of a
+    /// per-variant hand-walk: it can't miss a nested occurrence such as an inline `[+ x]` buried in a
+    /// named array's element type (`[* [+ uint]]`) or in a table's domain.
+    ///
+    /// The named-rule bounds special case is kept deliberately. A named `[+ …]` rule registers as a
+    /// `RustStructType::Array` whose `>= 1` lower bound lives on the STRUCT's `bounds`, not on the
+    /// `element_type` `RustType` the visitor walks — so the visitor alone would not see it. Every
+    /// such rule ALSO registers a transparent alias (`pub type Foo = NonEmptyVec<…>`), which the
+    /// visitor's alias-base walk does cover today, so this check is redundant in every shape observed;
+    /// but that redundancy is unproven across all IR shapes, and dropping a cheap belt-and-suspenders
+    /// guard on an unverified premise is how a latent regression ships — so it stays.
     pub fn uses_non_empty_vec(&self) -> bool {
-        if self
-            .type_aliases
-            .values()
-            .any(|a| a.base_type.contains_non_empty_array())
-        {
-            return true;
-        }
-        self.rust_structs.values().any(|rs| match rs.variant() {
-            RustStructType::Array { bounds, .. } => *bounds == Some((Some(1), None)),
-            RustStructType::Record(record) => record
-                .fields
-                .iter()
-                .any(|f| f.rust_type.contains_non_empty_array()),
-            RustStructType::Table { domain, range, .. } => {
-                domain.contains_non_empty_array() || range.contains_non_empty_array()
-            }
-            RustStructType::Wrapper { wrapped, .. } => wrapped.contains_non_empty_array(),
-            RustStructType::GroupChoice { variants, .. }
-            | RustStructType::TypeChoice { variants } => variants.iter().any(|v| match &v.data {
-                EnumVariantData::RustType(t) => t.contains_non_empty_array(),
-                EnumVariantData::Inlined(rec) => rec
-                    .fields
-                    .iter()
-                    .any(|f| f.rust_type.contains_non_empty_array()),
-            }),
-            RustStructType::CStyleEnum { .. }
-            | RustStructType::Extern
-            | RustStructType::RawBytesType => false,
-        })
+        let mut found = false;
+        self.visit_all_rust_types(&mut |rt| found |= rt.contains_non_empty_array());
+        found
+            || self.rust_structs.values().any(|rs| {
+                matches!(
+                    rs.variant(),
+                    RustStructType::Array { bounds, .. } if *bounds == Some((Some(1), None))
+                )
+            })
     }
 
     /// Whether ANY generated type uses the `{+ k => v}` NonEmptyMap shape, so `export`/import wiring
     /// can pull in the `non_empty_map` runtime module + `NonEmptyMap` import only for crates that need
-    /// it (keeping every non-`+`-table crate's output byte-identical). Covers named `{+ …}` table
-    /// rules (via their registered alias base_type, whose `RustType` carries the map bounds) and
-    /// inline/nested occurrences on record fields, table range, wrappers, and enum variants.
+    /// it (keeping every non-`+`-table crate's output byte-identical).
+    ///
+    /// Detection folds `contains_non_empty_map` over `visit_all_rust_types`, which reaches EVERY
+    /// `RustType` position in the IR — type-alias base types, record fields, table domain AND range,
+    /// wrapper inners, named-array element types, and enum variants (incl. inlined records) —
+    /// recursing into Array/Optional/Map inners at each node. This is a strict superset of a
+    /// per-variant hand-walk: it can't miss a nested occurrence such as an inline `{+ k => v}` buried
+    /// in a table's DOMAIN (`{ * {+ uint => uint} => text }`) or in a named array's element type.
+    ///
+    /// The named-rule bounds special case is kept deliberately, for the same reason as
+    /// `uses_non_empty_vec`: a named `{+ …}` table rule registers as a `RustStructType::Table` whose
+    /// `>= 1` lower bound lives on the STRUCT's `bounds`, not on the `domain`/`range` `RustType`s the
+    /// visitor walks. The transparent alias every such rule also registers covers it today, but that
+    /// redundancy is unproven across all IR shapes, so the cheap guard stays.
     pub fn uses_non_empty_map(&self) -> bool {
-        if self
-            .type_aliases
-            .values()
-            .any(|a| a.base_type.contains_non_empty_map())
-        {
-            return true;
-        }
-        self.rust_structs.values().any(|rs| match rs.variant() {
-            RustStructType::Table { bounds, range, .. } => {
-                *bounds == Some((Some(1), None)) || range.contains_non_empty_map()
-            }
-            RustStructType::Array { element_type, .. } => element_type.contains_non_empty_map(),
-            RustStructType::Record(record) => record
-                .fields
-                .iter()
-                .any(|f| f.rust_type.contains_non_empty_map()),
-            RustStructType::Wrapper { wrapped, .. } => wrapped.contains_non_empty_map(),
-            RustStructType::GroupChoice { variants, .. }
-            | RustStructType::TypeChoice { variants } => variants.iter().any(|v| match &v.data {
-                EnumVariantData::RustType(t) => t.contains_non_empty_map(),
-                EnumVariantData::Inlined(rec) => rec
-                    .fields
-                    .iter()
-                    .any(|f| f.rust_type.contains_non_empty_map()),
-            }),
-            RustStructType::CStyleEnum { .. }
-            | RustStructType::Extern
-            | RustStructType::RawBytesType => false,
-        })
+        let mut found = false;
+        self.visit_all_rust_types(&mut |rt| found |= rt.contains_non_empty_map());
+        found
+            || self.rust_structs.values().any(|rs| {
+                matches!(
+                    rs.variant(),
+                    RustStructType::Table { bounds, .. } if *bounds == Some((Some(1), None))
+                )
+            })
     }
 
     pub fn rust_structs(&self) -> &BTreeMap<RustIdent, RustStruct> {

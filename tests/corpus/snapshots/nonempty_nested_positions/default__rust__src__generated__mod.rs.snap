@@ -1,0 +1,37 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod non_empty;
+pub mod non_empty_map;
+pub mod serialization;
+
+use crate::generated::error::*;
+use crate::generated::non_empty::NonEmptyVec;
+use crate::generated::non_empty_map::NonEmptyMap;
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
+pub type DomNonemptyMap = BTreeMap<NonEmptyMap<u64, u64>, String>;
+
+#[derive(Clone, Debug)]
+pub struct Holder {
+    pub np: NestedPlus,
+    pub dm: DomNonemptyMap,
+}
+
+impl Holder {
+    pub fn new(np: NestedPlus, dm: DomNonemptyMap) -> Self {
+        Self { np, dm }
+    }
+}
+
+pub type MapU64ToU64List = Vec<NonEmptyMap<u64, u64>>;
+
+pub type NestedPlus = Vec<NonEmptyVec<u64>>;
