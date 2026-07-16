@@ -268,6 +268,18 @@ impl<'a> SerializeConfig<'a> {
         }
     }
 
+    /// THE constructor for serializing a record field. Use this at every record-field serialize site
+    /// rather than `new(..)` + hand-chained setter: it carries the field's `@custom_serialize`
+    /// directive automatically. Forgetting to re-carry a custom directive when adding a new call site
+    /// is a recurring bug class here, so this owns that carry in one place.
+    fn for_field<S: Into<String>>(expr: S, field: &RustField) -> Self {
+        let mut config = Self::new(expr, &field.name);
+        if let Some(custom_serialize) = &field.rule_metadata.custom_serialize {
+            config = config.custom_serialize(custom_serialize.clone());
+        }
+        config
+    }
+
     fn expr<S: Into<String>>(mut self, expr: S) -> Self {
         self.expr = expr.into();
         self
@@ -420,6 +432,20 @@ impl<'a> DeserializeConfig<'a> {
             read_len_overload: None,
             custom_deserialize: None,
         }
+    }
+
+    /// THE constructor for deserializing a record field. Use this at every record-field deserialize
+    /// site rather than `new(..)` + hand-chained setters: it carries the field's
+    /// `@custom_deserialize` directive automatically. Forgetting to re-carry a custom directive when
+    /// adding a new call site is a recurring bug class here, so this owns that carry in one place.
+    fn for_field(field: &'a RustField, in_embedded: bool, optional: bool) -> Self {
+        let mut config = Self::new(&field.name)
+            .in_embedded(in_embedded)
+            .optional_field(optional);
+        if let Some(custom_deserialize) = &field.rule_metadata.custom_deserialize {
+            config = config.custom_deserialize(custom_deserialize.clone());
+        }
+        config
     }
 
     fn in_embedded(mut self, in_embedded: bool) -> Self {
@@ -8956,10 +8982,7 @@ fn generate_array_struct_serialization(
                 )
             };
             let mut optional_array_ser_block = Block::new(optional_field_check);
-            let mut config = SerializeConfig::new(field_expr, &field.name).expr_is_ref(expr_is_ref);
-            if let Some(custom_serialize) = &field.rule_metadata.custom_serialize {
-                config = config.custom_serialize(custom_serialize.clone());
-            }
+            let mut config = SerializeConfig::for_field(field_expr, field).expr_is_ref(expr_is_ref);
             if vars_in_self {
                 config = config.encoding_var_in_option_struct("self.encodings")
             } else {
@@ -8974,10 +8997,7 @@ fn generate_array_struct_serialization(
             );
             ser_func.push_block(optional_array_ser_block);
         } else {
-            let mut config = SerializeConfig::new(&field_expr, &field.name);
-            if let Some(custom_serialize) = &field.rule_metadata.custom_serialize {
-                config = config.custom_serialize(custom_serialize.clone());
-            }
+            let mut config = SerializeConfig::for_field(&field_expr, field);
             if vars_in_self {
                 config = config.encoding_var_in_option_struct("self.encodings")
             } else {
@@ -9158,12 +9178,7 @@ fn generate_array_struct_deserialization(
                 } else {
                     (Cow::from("Some"), Cow::from("None"))
                 };
-                let mut deser_config = DeserializeConfig::new(&field.name)
-                    .in_embedded(in_embedded)
-                    .optional_field(true);
-                if let Some(custom_deserialize) = &field.rule_metadata.custom_deserialize {
-                    deser_config = deser_config.custom_deserialize(custom_deserialize.clone());
-                }
+                let deser_config = DeserializeConfig::for_field(field, in_embedded, true);
                 gen_scope
                     .generate_deserialize(
                         types,
@@ -9177,12 +9192,7 @@ fn generate_array_struct_deserialization(
                     .add_to_code(&mut deser_code);
                 type_check_else.line(format!("Ok({defaults})"));
             } else {
-                let mut deser_config = DeserializeConfig::new(&field.name)
-                    .in_embedded(in_embedded)
-                    .optional_field(true);
-                if let Some(custom_deserialize) = &field.rule_metadata.custom_deserialize {
-                    deser_config = deser_config.custom_deserialize(custom_deserialize.clone());
-                }
+                let deser_config = DeserializeConfig::for_field(field, in_embedded, true);
                 gen_scope
                     .generate_deserialize(
                         types,
@@ -9200,10 +9210,7 @@ fn generate_array_struct_deserialization(
         } else {
             // mandatory fields
             if cli.annotate_fields {
-                let mut deser_config = DeserializeConfig::new(&field.name).in_embedded(in_embedded);
-                if let Some(custom_deserialize) = &field.rule_metadata.custom_deserialize {
-                    deser_config = deser_config.custom_deserialize(custom_deserialize.clone());
-                }
+                let deser_config = DeserializeConfig::for_field(field, in_embedded, false);
                 gen_scope
                     .generate_deserialize(
                         types,
@@ -9215,10 +9222,7 @@ fn generate_array_struct_deserialization(
                     .annotate(&field.name, before.as_ref(), after.as_ref())
                     .add_to_code(&mut deser_code);
             } else {
-                let mut deser_config = DeserializeConfig::new(&field.name).in_embedded(in_embedded);
-                if let Some(custom_deserialize) = &field.rule_metadata.custom_deserialize {
-                    deser_config = deser_config.custom_deserialize(custom_deserialize.clone());
-                }
+                let deser_config = DeserializeConfig::for_field(field, in_embedded, false);
                 gen_scope
                     .generate_deserialize(
                         types,
@@ -9820,15 +9824,8 @@ fn codegen_struct(
                             } else {
                                 (format!("let {var_names_str} = "), "?;")
                             };
-                            let mut deser_config = DeserializeConfig::new(&field.name)
-                                .in_embedded(in_embedded)
-                                .optional_field(field.optional);
-                            if let Some(custom_deserialize) =
-                                &field.rule_metadata.custom_deserialize
-                            {
-                                deser_config =
-                                    deser_config.custom_deserialize(custom_deserialize.clone());
-                            }
+                            let deser_config =
+                                DeserializeConfig::for_field(field, in_embedded, field.optional);
                             gen_scope
                                 .generate_deserialize(
                                     types,
@@ -9845,15 +9842,8 @@ fn codegen_struct(
                             } else {
                                 (format!("let {var_names_str} = "), ";")
                             };
-                            let mut deser_config = DeserializeConfig::new(&field.name)
-                                .in_embedded(in_embedded)
-                                .optional_field(field.optional);
-                            if let Some(custom_deserialize) =
-                                &field.rule_metadata.custom_deserialize
-                            {
-                                deser_config =
-                                    deser_config.custom_deserialize(custom_deserialize.clone());
-                            }
+                            let deser_config =
+                                DeserializeConfig::for_field(field, in_embedded, field.optional);
                             gen_scope
                                 .generate_deserialize(
                                     types,
@@ -9900,15 +9890,8 @@ fn codegen_struct(
                         deser_block_code.content.push_block(dup_check);
                         // only does verification and sets the field_present bool to do error checking later
                         if cli.annotate_fields {
-                            let mut deser_config = DeserializeConfig::new(&field.name)
-                                .in_embedded(in_embedded)
-                                .optional_field(field.optional);
-                            if let Some(custom_deserialize) =
-                                &field.rule_metadata.custom_deserialize
-                            {
-                                deser_config =
-                                    deser_config.custom_deserialize(custom_deserialize.clone());
-                            }
+                            let deser_config =
+                                DeserializeConfig::for_field(field, in_embedded, field.optional);
                             let mut err_deser = gen_scope.generate_deserialize(
                                 types,
                                 (&field.rust_type).into(),
@@ -9921,15 +9904,8 @@ fn codegen_struct(
                                 .annotate(&field.name, &format!("{}_present = ", field.name), "?;")
                                 .add_to_code(&mut deser_block_code);
                         } else {
-                            let mut deser_config = DeserializeConfig::new(&field.name)
-                                .in_embedded(in_embedded)
-                                .optional_field(field.optional);
-                            if let Some(custom_deserialize) =
-                                &field.rule_metadata.custom_deserialize
-                            {
-                                deser_config =
-                                    deser_config.custom_deserialize(custom_deserialize.clone());
-                            }
+                            let deser_config =
+                                DeserializeConfig::for_field(field, in_embedded, field.optional);
                             gen_scope
                                 .generate_deserialize(
                                     types,
@@ -9950,15 +9926,8 @@ fn codegen_struct(
                         ));
                         deser_block_code.content.push_block(dup_check);
                         if cli.annotate_fields {
-                            let mut deser_config = DeserializeConfig::new(&field.name)
-                                .in_embedded(in_embedded)
-                                .optional_field(field.optional);
-                            if let Some(custom_deserialize) =
-                                &field.rule_metadata.custom_deserialize
-                            {
-                                deser_config =
-                                    deser_config.custom_deserialize(custom_deserialize.clone());
-                            }
+                            let deser_config =
+                                DeserializeConfig::for_field(field, in_embedded, field.optional);
                             gen_scope
                                 .generate_deserialize(
                                     types,
@@ -9970,15 +9939,8 @@ fn codegen_struct(
                                 .annotate(&field.name, &format!("{} = Some(", field.name), "?);")
                                 .add_to_code(&mut deser_block_code);
                         } else {
-                            let mut deser_config = DeserializeConfig::new(&field.name)
-                                .in_embedded(in_embedded)
-                                .optional_field(field.optional);
-                            if let Some(custom_deserialize) =
-                                &field.rule_metadata.custom_deserialize
-                            {
-                                deser_config =
-                                    deser_config.custom_deserialize(custom_deserialize.clone());
-                            }
+                            let deser_config =
+                                DeserializeConfig::for_field(field, in_embedded, field.optional);
                             gen_scope
                                 .generate_deserialize(
                                     types,
