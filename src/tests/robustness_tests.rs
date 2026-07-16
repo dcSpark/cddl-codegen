@@ -628,7 +628,7 @@ fn unsupported_fixed_map_key_on_record_rejects_gracefully() {
 
 /// A literal-key arrow entry `k => v` is the SAME wire entry as the colon spelling `k: v` (RFC 8610),
 /// so a single-entry fixed-value arrow key routes to the record path instead of table-detecting into
-/// a `ConceptualRustType::Fixed` domain (which panicked `for_rust_member`, intermediate.rs ~1876, for
+/// a `ConceptualRustType::Fixed` domain (which panicked `for_rust_member`, intermediate/rust_type.rs, for
 /// EVERY key kind — even uint/text). This pins that routing by asserting the arrow and colon
 /// spellings generate a BYTE-IDENTICAL crate, and that once on the record path every unsupported kind
 /// gets f49d862's graceful rejection. The Fixed-domain table detection is gone; a decay back to it

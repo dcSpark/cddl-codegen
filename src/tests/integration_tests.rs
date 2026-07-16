@@ -1503,7 +1503,7 @@ fn feature_corpus_compiles() {
 }
 
 /// Standing, table-driven sweep over the generator's synthesized wasm-boundary idents. The generator
-/// mints structural wasm classes whose names derive from user type names (`intermediate.rs`):
+/// mints structural wasm classes whose names derive from user type names (`intermediate/rust_type.rs`):
 /// F1 plain list `{Elem}List` (`name_as_wasm_array_ct`), F2 table builder `Map{K}To{V}`
 /// (`name_for_wasm_map`), F3 `NonEmpty{Elem}List` (`non_empty_wasm_wrapper_name`), F4
 /// `NonEmptyMap{K}To{V}` (`non_empty_wasm_map_wrapper_name`), and F5 the table `keys()` list wrapper

@@ -876,7 +876,7 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
         "`any` in member/element position; pinned by tests/robustness/any_member.cddl (recombination finding)",
     ),
     (
-        "called `Option::unwrap()` on a `None` value @ src/intermediate/mod.rs",
+        "called `Option::unwrap()` on a `None` value @ src/intermediate/rust_type.rs",
         "type-choice arm with no storable representation (`any` arm); pinned by tests/robustness/choice_any_arm.cddl (recombination finding). The sibling `[group]`-arm shape (`[coords] / tstr`) is now storable — it promotes the plain group to a Record struct and generates a proper enum variant (pinned by tests/robustness/choice_group_array_arm.cddl, now an `ok` fixture)",
     ),
     (
