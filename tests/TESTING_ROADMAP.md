@@ -426,11 +426,17 @@ dead loses the lesson.
   docs-lint (documented directive with no feature row → `cddl_codegen_gaps` hard fail) was the
   layer that fired, and `project_corpus`'s content-drift check A pins fixture↔directive credit
   once a `[[cover]]` exists — but BOTH trigger only via adjacent artifacts (docs mention, cover
-  entry), not the mirror itself. The mechanical fix direction is already named in
-  `corpus_detect.ts`'s header: move the dsl channel onto an AST floor (parse comments with the
-  real `comment_ast` via a small `examples/` binary, as the role floor already does with
-  `ast_roles.rs`) instead of growing the TS mirror — do that on the next directive addition
-  rather than hand-extending `DSL_TAGS` again.
+  entry), not the mirror itself. Directive-SET drift now has a firing detector:
+  `corpus_detect.ts`'s selfCheck lockstep tripwire demands set equality between the mirror's
+  `MIRRORED_DIRECTIVES` and the authority's `tag("@…")` literals, and selfCheck runs at import
+  time, so `project_corpus` (fast tier, CI) fires it the moment a directive is added or removed
+  on either side. The residual with NO detector is ARG-GRAMMAR drift within an unchanged set —
+  the proven `@used_as_key` flavor instance was exactly that shape (no set delta, changed
+  consumption + a new panic path), and any hand-picked selfCheck vectors drift WITH the mirror by
+  construction. The AST floor eliminates that residual by eliminating the mirror: parse the
+  comments with the real `comment_ast` via a small `examples/` binary, as the role floor already
+  does with `ast_roles.rs`. Do the floor on the next `comment_ast` grammar change of ANY form
+  (not just a new directive) rather than hand-extending `DSL_TAGS` again.
 - **Run-local values in gate-cache key material — one proven instance, no machinery yet.** The
   TS-side cache keys hashed the literal nested-cargo argv, which embeds the run's `mkdtempSync`
   probe dir — every key was unique to its run, so verify.ts could never hit its cache across runs

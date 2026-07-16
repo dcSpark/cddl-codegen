@@ -169,6 +169,13 @@ export const NO_DETECTOR = new Set(["grpchoice.sequence", "grpent.groupname", "g
 //                                                      prose there cannot generate — the mirror credits nothing)
 //   @doc                                             : take_while1(c != '@') — prose runs to the next `@` (arg REQUIRED)
 type TagParse = (s: string) => { id: string; rest: string } | null;
+// The directive VOCABULARY DSL_TAGS models, kept beside it so the selfCheck lockstep tripwire can
+// demand set equality with comment_ast.rs's `tag("@…")` literals. Adding a directive to either
+// side without the other fails every importer's selfCheck (project_corpus runs in the fast tier).
+const MIRRORED_DIRECTIVES = new Set([
+  "@name", "@newtype", "@no_alias", "@used_as_key", "@used_as_elem",
+  "@custom_json", "@custom_serialize", "@custom_deserialize", "@doc",
+]);
 const ws = (s: string) => s.replace(/^\s+/, ""); // take_while(char::is_whitespace)
 const argRequired = (id: string, tag: string): TagParse => s => {
   if (!s.startsWith(tag)) return null;
@@ -401,6 +408,25 @@ function selfCheck() {
   {
     const r = featuresIn("x = uint ; @used_as_elem @newtype").dsl;
     if (!r.has("dsl.used_as_elem") || !r.has("dsl.newtype")) throw new Error("selfCheck: @used_as_elem (+ chained directive) must be credited");
+  }
+  // LOCKSTEP tripwire (directive-SET drift): DSL_TAGS is a hand mirror of comment_ast.rs's
+  // directive grammar, and its `@used_as_elem` gap shipped invisibly because nothing compared the
+  // two vocabularies (the selfCheck vectors above are hand-picked, so they drift WITH the mirror).
+  // Extract the authority's `tag("@…")` literals and demand set equality with MIRRORED_DIRECTIVES;
+  // this fires in every importer (project_corpus = fast tier) the moment a directive is added or
+  // removed on either side. ARG-GRAMMAR drift within an unchanged set is NOT catchable here — the
+  // AST floor is that residual's fix (tests/TESTING_ROADMAP.md, the twin-implementation drift entry).
+  {
+    const rust = readFileSync(`${CODEGEN}/src/comment_ast.rs`, "utf8");
+    const rustSet = new Set([...rust.matchAll(/\btag\("(@[a-z_]+)"\)/g)].map(m => m[1]));
+    const missing = [...rustSet].filter(d => !MIRRORED_DIRECTIVES.has(d)).sort();
+    const extra = [...MIRRORED_DIRECTIVES].filter(d => !rustSet.has(d)).sort();
+    if (missing.length || extra.length)
+      throw new Error(
+        `selfCheck: DSL_TAGS drifted from comment_ast.rs's directive set — in authority but not mirrored: ` +
+        `[${missing.join(", ")}] · mirrored but not in authority: [${extra.join(", ")}]. Update DSL_TAGS + ` +
+        `MIRRORED_DIRECTIVES (+ selfCheck vectors for the new grammar), or better, move the dsl channel onto the AST floor.`,
+      );
   }
   // the asymmetric @doc grammar: @doc's prose runs to the next `@`, so a directive AFTER @doc prose
   // IS still parsed (comment_ast.rs tag_comment = take_while1(c != '@')). A naive stop-at-first rule
