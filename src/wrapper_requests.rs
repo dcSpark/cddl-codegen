@@ -1,7 +1,7 @@
 //! Strict parser for a consumer's committed `wasm/src/generated/borrowed_collections.rs` sidecar —
 //! the machine half a workspace **dependency** re-reads via `--wrapper-requests <consumer>=<path>`
 //! (W2 of the workspace wrapper-placement feature). The consumer emits this file (W1,
-//! `generation.rs`); the dep parses it here, unions the requested shapes across consumers, and hosts
+//! `generation/export.rs`); the dep parses it here, unions the requested shapes across consumers, and hosts
 //! every requested wrapper in its own `requested_collections.rs`.
 //!
 //! ## Why strict
@@ -9,7 +9,7 @@
 //! A request channel must never silently tolerate stray content: a hand-edited or drifted sidecar
 //! that the dep quietly ignored would drop a borrow, and the consumer would then fail to link with
 //! no actionable pointer. So the ONLY content this parser accepts is exactly what the frozen W1
-//! emitter produces (`generation.rs`, the `borrowed_collections.rs` block):
+//! emitter produces (`generation/export.rs`, the `borrowed_collections.rs` block):
 //!
 //! - the tool's two-line codegen header stamp and the four fixed sidecar banner comment lines
 //!   (the fourth is the column legend; any OTHER `//` comment — including one inside the const

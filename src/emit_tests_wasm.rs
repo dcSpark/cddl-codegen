@@ -45,7 +45,7 @@
 //! covers the collection/wrapper shapes as a plausibility cross-check.
 //!
 //! **Mutation-verified (red-first, per repo idiom — the same discipline as `emit_tests.rs`'s
-//! constant-writing-serializer check).** Three hand-applied `generation.rs` mutations — each an
+//! constant-writing-serializer check).** Three hand-applied `generation/` mutations — each an
 //! integer `.wrapping_add(1)` injected at one wasm-boundary site — turned this module RED on exactly
 //! the intended assertion class, and only that class (verified, then reverted):
 //!   (a) integer record GETTER conversion (`codegen_struct` getter) → §3 accessor read-back fires
@@ -74,7 +74,7 @@ type ScopeMap = BTreeMap<String, String>;
 /// configuration replaces the method surface this renderer targets.
 ///
 /// `submodules` — the WASM crate's declared non-root module paths (multifile output; see the call
-/// site in `generation.rs` for the derivation). The module this emits lands at the generated root
+/// site in `generation/mod.rs` for the derivation). The module this emits lands at the generated root
 /// while its minted wrapper values name submodule types bare, so each entry contributes a
 /// `use super::<m>::*;` glob; empty (single-file output) emits nothing extra, keeping that output
 /// byte-identical. (The rust-twin side of each assertion is already fully qualified via

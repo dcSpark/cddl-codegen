@@ -249,7 +249,7 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
 /// nothing at all could be minted.
 ///
 /// `submodules` — the crate's declared non-root module paths (multifile output; see the call site
-/// in `generation.rs` for the derivation). The module this emits lands at the generated root while
+/// in `generation/mod.rs` for the derivation). The module this emits lands at the generated root while
 /// its minted values name submodule types bare, so each entry contributes a `use super::<m>::*;`
 /// glob; empty (single-file output) emits nothing extra, keeping that output byte-identical.
 pub fn emit_generated_tests(
@@ -686,7 +686,7 @@ fn roundtrip_body(
     Some(blocks.join("\n"))
 }
 
-/// Mirrors the record constructor's fallibility rule (`generation.rs` `new_can_fail`): `new()`
+/// Mirrors the record constructor's fallibility rule (`generation/records.rs` `new_can_fail`): `new()`
 /// returns `Result` iff any non-optional field is bounded.
 pub(crate) fn record_ctor_can_fail(record: &RustRecord) -> bool {
     record
@@ -875,7 +875,7 @@ fn wrapper_roundtrip(
     )
 }
 
-/// Mirrors a choice-variant ctor's per-arg fallibility (`generation.rs` per-variant `can_fail`):
+/// Mirrors a choice-variant ctor's per-arg fallibility (`generation/enums.rs` per-variant `can_fail`):
 /// an arg makes `new_<variant>` return `Result` only when it needs an inlined bounds check AND a
 /// check expression exists for its shape (a bounded named wrapper like `Hash` checks at ITS OWN
 /// construction, so passing one in stays infallible).
@@ -1105,7 +1105,7 @@ fn wrapper_construct_reject(
     min_max: Bounds,
 ) -> Option<String> {
     // A bounded nint wrapper stores the inner as a u64 MAGNITUDE (`m = |v + 1|`) and its `new()`
-    // checks the nint-transformed bounds (`generation.rs` applies `nint_bounds_to_u64`). The
+    // checks the nint-transformed bounds (`generation/wrappers.rs` applies `nint_bounds_to_u64`). The
     // out-of-bounds direction is inverted in value space, so synthesize the boundary cases directly
     // in magnitude space: the transformed bounds, measured like a length (magnitude has a floor of 0,
     // so a "below min" case below 0 is dropped by `materialize`). `measure_kind` deliberately excludes
@@ -1292,7 +1292,7 @@ fn float_is_f32(ty: &RustType) -> bool {
 }
 
 /// The in-range inner measure for a bounded wrapper's `new(inner)`. A bounded `nint` wrapper stores
-/// the inner as a `u64` MAGNITUDE and its `new` checks the nint-transformed bounds (`generation.rs`
+/// the inner as a `u64` MAGNITUDE and its `new` checks the nint-transformed bounds (`generation/wrappers.rs`
 /// applies `nint_bounds_to_u64` there), so the baseline must be minted from the transformed bounds —
 /// otherwise a raw negative literal (e.g. `-5`) is passed to a `u64` ctor and the emitted code won't
 /// compile. Non-nint wrappers check the raw measure directly.
@@ -1745,7 +1745,7 @@ fn materialize_at(
 /// The constructor arg list of a choice variant's `new_<variant>` (mirrors `generate_enum`), or
 /// `None` when it isn't cheaply constructible (inlined records with optional fields — deferred).
 ///
-/// `group_choice` mirrors the generator's `rep.and(fields)` flatten rule (`generation.rs`): a
+/// `group_choice` mirrors the generator's `rep.and(fields)` flatten rule (`generation/enums.rs`): a
 /// GROUP-choice variant that names a record flattens its fields into `new_<variant>(field, ..)`,
 /// but a TYPE-choice variant (no representation) passes the whole named value as one arg
 /// (`new_<variant>(WholeType)`). Flattening a type-choice variant emits an uncompilable ctor call.

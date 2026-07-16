@@ -1,6 +1,6 @@
 //! Usage-derived pruning of blindly-emitted type imports.
 //!
-//! Several emission sites in `generation.rs` push a fixed set of collection-type imports into every
+//! Several emission sites in `generation/` push a fixed set of collection-type imports into every
 //! generated struct file unconditionally (or gated only on spec-global facts), so files that never
 //! reference the type still import it — the `warning: unused import` walls consumers see. Rather
 //! than teach each of ~30 emission sites to predict whether it will need `BTreeMap` (an IR-side
@@ -55,7 +55,7 @@ use syn::spanned::Spanned;
 use syn::{Item, ItemUse, UseTree};
 
 /// The concrete-type import names this pass is allowed to remove. These are exactly the four types
-/// that the emission sites in `generation.rs` push blindly. Extending this list later (e.g.
+/// that the emission sites in `generation/` push blindly. Extending this list later (e.g.
 /// `JsValue`) is a one-line change plus a snapshot re-bless — but every addition must be a concrete
 /// type (never a trait/macro/glob), or the soundness argument above breaks.
 const ALLOWLIST: &[&str] = &["BTreeMap", "OrderedHashMap", "NonEmptyVec", "NonEmptyMap"];

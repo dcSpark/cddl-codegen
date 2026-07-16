@@ -655,7 +655,7 @@ enum Outcome {
 ///
 /// COLLAPSE BOUNDARY: the key is per-(message, file, FUNCTION). Two bare sites inside the SAME
 /// function still share a key — `codegen_struct` and `generate_wrapper_struct` each host two bare
-/// `unimplemented!()` sites in `generation.rs`, so a composition newly reaching the *other* site in
+/// `unimplemented!()` sites (`generation/records.rs` / `generation/wrappers.rs`), so a composition newly reaching the *other* site in
 /// one of those functions is still absorbed by that function's entry rather than surfacing as a NEW
 /// finding. Splitting those would need line numbers, which are deliberately excluded (refactor
 /// churn).
