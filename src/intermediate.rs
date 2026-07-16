@@ -1,4 +1,3 @@
-use cbor_event::Special as CBORSpecial;
 use cbor_event::{Special, Type as CBORType};
 use cddl::ast::parent::ParentVisitor;
 use std::borrow::Cow;
@@ -227,33 +226,6 @@ impl<'a> IntermediateTypes<'a> {
     /// the early reserved-name abort so both surface the identical shape.
     pub fn rejections_error(&self) -> Box<dyn std::error::Error> {
         self.rejections.join("\n").into()
-    }
-
-    #[allow(unused)]
-    pub fn has_ident(&self, ident: &RustIdent) -> bool {
-        let idents: Vec<RustIdent> = self.type_aliases.keys().fold(vec![], |mut acc, alias| {
-            match alias {
-                AliasIdent::Reserved(_) => {}
-                AliasIdent::Rust(ident) => acc.push(ident.clone()),
-            };
-            acc
-        });
-        println!(
-            "{:?}",
-            self.plain_groups
-                .keys()
-                .chain(idents.iter())
-                .chain(self.rust_structs.keys())
-                .chain(self.generic_defs.keys())
-                .chain(self.generic_instances.keys())
-        );
-        self.plain_groups.contains_key(ident)
-            || self
-                .type_aliases
-                .contains_key(&AliasIdent::Rust(ident.clone()))
-            || self.rust_structs.contains_key(ident)
-            || self.generic_defs.contains_key(ident)
-            || self.generic_instances.contains_key(ident)
     }
 
     pub fn type_aliases(&self) -> &BTreeMap<AliasIdent, AliasInfo> {
@@ -3230,28 +3202,6 @@ impl RustType {
         }
         self.conceptual_type.from_wasm_boundary_ref(types, expr)
     }
-
-    fn _cbor_special_type(&self) -> Option<CBORSpecial> {
-        unimplemented!()
-    }
-
-    fn _is_serialize_multiline(&self, types: &IntermediateTypes) -> bool {
-        if self.encodings.is_empty() {
-            match &self.conceptual_type {
-                ConceptualRustType::Fixed(_) => false,
-                ConceptualRustType::Primitive(_) => false,
-                ConceptualRustType::Rust(ident) => types.is_enum(ident),
-                ConceptualRustType::Array(_) => true,
-                ConceptualRustType::Optional(_) => false,
-                ConceptualRustType::Map(_, _) => false,
-                ConceptualRustType::Alias(_ident, ty) => {
-                    Self::new((**ty).clone())._is_serialize_multiline(types)
-                }
-            }
-        } else {
-            true
-        }
-    }
 }
 
 impl std::convert::From<ConceptualRustType> for RustType {
@@ -3400,37 +3350,6 @@ impl ConceptualRustType {
         cli: &Cli,
     ) -> String {
         format!("Vec<{}>", self.for_rust_member_ct(types, from_wasm, cli))
-    }
-
-    /// Function parameter TYPE by-non-mut-reference for read-only
-    pub fn _for_rust_read(&self, types: &IntermediateTypes, cli: &Cli) -> String {
-        match self {
-            Self::Fixed(_) => panic!(
-                "should not expose Fixed type, only here for serialization: {:?}",
-                self
-            ),
-            Self::Primitive(p) => p.to_string(),
-            Self::Rust(ident) => {
-                if types.is_enum(ident) {
-                    ident.to_string()
-                } else {
-                    format!("&{ident}")
-                }
-            }
-            Self::Array(ty) => format!(
-                "&{}",
-                ty.conceptual_type.name_as_rust_array_ct(types, false, cli)
-            ),
-            Self::Optional(ty) => {
-                format!("Option<{}>", ty.conceptual_type._for_rust_read(types, cli))
-            }
-            Self::Map(_k, _v) => format!("&{}", self.for_rust_member_ct(types, false, cli)),
-            Self::Alias(ident, ty) => match &**ty {
-                // TODO: ???
-                Self::Rust(_) => format!("&{ident}"),
-                _ => ident.to_string(),
-            },
-        }
     }
 
     /// Function parameter TYPE from wasm (i.e. ref for non-primitives, value for supported primitives)
@@ -5074,45 +4993,4 @@ pub fn enum_variants_have_same_encoding_var(variants: &[EnumVariant]) -> bool {
             },
         )
         .is_some()
-}
-
-/// Some when all variants have the same FixedValue variant (e.g. all Uint, all Nint, all Text, etc)
-/// or None if they differ in any way (including encoding details)
-pub fn _enum_variants_common_constant_type(variants: &[EnumVariant]) -> Option<FixedValue> {
-    variants.iter().fold(
-        variants.first().and_then(enum_variant_constant),
-        |acc: Option<FixedValue>, ev: &EnumVariant| -> Option<FixedValue> {
-            match &ev.data {
-                EnumVariantData::Inlined(_) => return None,
-                EnumVariantData::RustType(ty) => {
-                    if !ty.encodings.is_empty() {
-                        return None;
-                    }
-                }
-            }
-            match (&acc, enum_variant_constant(ev)) {
-                (Some(FixedValue::Uint(_)), Some(FixedValue::Uint(_))) => acc,
-                (Some(FixedValue::Nint(_)), Some(FixedValue::Nint(_))) => acc,
-                (Some(FixedValue::Bool(_)), Some(FixedValue::Bool(_))) => acc,
-                (Some(FixedValue::Float(_)), Some(FixedValue::Float(_))) => acc,
-                (Some(FixedValue::Null), Some(FixedValue::Null)) => acc,
-                (Some(FixedValue::Text(_)), Some(FixedValue::Text(_))) => acc,
-                _ => None,
-            }
-        },
-    )
-}
-
-#[allow(unused)]
-fn try_ident_with_id(
-    intermediate_types: &IntermediateTypes,
-    name: &CDDLIdent,
-    value: u32,
-) -> CDDLIdent {
-    let new_ident = CDDLIdent::new(format!("{name}{value}"));
-    let rust_ident = RustIdent::new(new_ident.clone());
-    match intermediate_types.has_ident(&rust_ident) {
-        false => new_ident,
-        true => try_ident_with_id(intermediate_types, name, value + 1),
-    }
 }

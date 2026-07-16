@@ -7138,34 +7138,6 @@ fn create_base_wasm_wrapper<'a>(
     base
 }
 
-// Always creates directly just Serialize impl. Shortcut for create_serialize_impls when
-// we know we won't need the SerializeEmbeddedGroup impl.
-// See comments for create_serialize_impls for usage.
-#[allow(unused)]
-fn create_serialize_impl(
-    ident: &RustIdent,
-    rep: Option<Representation>,
-    tag: Option<usize>,
-    definite_len: &str,
-    use_this_encoding: Option<&str>,
-    writer: &str,
-    cli: &Cli,
-) -> (codegen::Function, codegen::Impl) {
-    match create_serialize_impls(
-        ident,
-        rep,
-        tag,
-        definite_len,
-        use_this_encoding,
-        false,
-        writer,
-        cli,
-    ) {
-        (ser_func, ser_impl, None) => (ser_func, ser_impl),
-        (_ser_func, _ser_impl, Some(_embedded_impl)) => unreachable!(),
-    }
-}
-
 // Returns (serialize, Serialize, Some(SerializeEmbeddedGroup)) impls for structs that require embedded, in which case
 // the serialize calls the embedded serialize and you implement the embedded serialize
 // Otherwise returns (serialize Serialize, None) impls and you implement the serialize.
@@ -8626,9 +8598,6 @@ struct EncodingField {
     enc_conversion_before: &'static str,
     enc_conversion_after: &'static str,
     is_copy: bool,
-    /// inner encodings - used for map/vec types
-    #[allow(unused)]
-    inner: Vec<EncodingField>,
 }
 
 impl EncodingField {
@@ -8649,7 +8618,6 @@ fn key_encoding_field(name: &str, key: &FixedValue) -> EncodingField {
             enc_conversion_before: "StringEncoding::from(",
             enc_conversion_after: ")",
             is_copy: false,
-            inner: Vec::new(),
         },
         FixedValue::Uint(_) => EncodingField {
             field_name: format!("{name}_key_encoding"),
@@ -8658,7 +8626,6 @@ fn key_encoding_field(name: &str, key: &FixedValue) -> EncodingField {
             enc_conversion_before: "Some(",
             enc_conversion_after: ")",
             is_copy: true,
-            inner: Vec::new(),
         },
         _ => unimplemented!(),
     }
@@ -8682,7 +8649,6 @@ fn encoding_fields(
             enc_conversion_before: "",
             enc_conversion_after: "",
             is_copy: true,
-            inner: Vec::new(),
         });
     }
     encs
@@ -8704,7 +8670,6 @@ fn encoding_fields_impl(
                 enc_conversion_before: "",
                 enc_conversion_after: "",
                 is_copy: true,
-                inner: Vec::new(),
             };
             let inner_encs =
                 encoding_fields_impl(types, &format!("{name}_elem"), (&**elem_ty).into(), cli);
@@ -8732,7 +8697,6 @@ fn encoding_fields_impl(
                         enc_conversion_before: "",
                         enc_conversion_after: "",
                         is_copy: false,
-                        inner: inner_encs,
                     },
                 ]
             }
@@ -8745,7 +8709,6 @@ fn encoding_fields_impl(
                 enc_conversion_before: "",
                 enc_conversion_after: "",
                 is_copy: true,
-                inner: Vec::new(),
             }];
             let key_encs = encoding_fields_impl(types, &format!("{name}_key"), (&**k).into(), cli);
             let val_encs =
@@ -8775,7 +8738,6 @@ fn encoding_fields_impl(
                     enc_conversion_before: "",
                     enc_conversion_after: "",
                     is_copy: false,
-                    inner: key_encs,
                 });
             }
 
@@ -8803,7 +8765,6 @@ fn encoding_fields_impl(
                     enc_conversion_before: "",
                     enc_conversion_after: "",
                     is_copy: false,
-                    inner: val_encs,
                 });
             }
             encs
@@ -8816,7 +8777,6 @@ fn encoding_fields_impl(
                 enc_conversion_before: "StringEncoding::from(",
                 enc_conversion_after: ")",
                 is_copy: false,
-                inner: Vec::new(),
             }],
             Primitive::I8
             | Primitive::I16
@@ -8835,7 +8795,6 @@ fn encoding_fields_impl(
                 enc_conversion_before: "Some(",
                 enc_conversion_after: ")",
                 is_copy: true,
-                inner: Vec::new(),
             }],
             Primitive::Bool =>
             /* bool only has 1 encoding */
@@ -10865,7 +10824,6 @@ impl EnumVariantInRust {
                         enc_conversion_before: "",
                         enc_conversion_after: "",
                         is_copy: true,
-                        inner: Vec::new(),
                     });
                     outer_vars += 1;
                 }
@@ -10894,7 +10852,6 @@ impl EnumVariantInRust {
                         enc_conversion_before: "",
                         enc_conversion_after: "",
                         is_copy: true,
-                        inner: Vec::new(),
                     });
                     for field in record.fields.iter() {
                         enc_fields.extend(encoding_fields(
@@ -11405,7 +11362,7 @@ fn generate_enum(
         e.doc(doc);
     }
     let mut e_impl = codegen::Impl::new(name.to_string());
-    // instead of using create_serialize_impl() and having the length encoded there, we want to make it easier
+    // instead of using create_serialize_impls() and having the length encoded there, we want to make it easier
     // to offer definite length encoding even if we're mixing plain group members and non-plain group members (or mixed length plain ones)
     // by potentially wrapping the choices with the array/map tag in the variant branch when applicable
     add_struct_derives(

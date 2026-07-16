@@ -1868,15 +1868,6 @@ fn type_to_field_name(t: &Type) -> Option<String> {
     }
 }
 
-fn _field_name_from_comments(comments: &Option<Comments<'_>>) -> Option<String> {
-    comments
-        .as_ref()?
-        .0
-        .iter()
-        .find(|c| c.trim().starts_with("field:"))
-        .map(|c| c.trim()[6..].trim().to_owned())
-}
-
 fn combine_comments<'a>(a: &'a Option<Comments>, b: &'a Option<Comments>) -> Option<Vec<&'a str>> {
     match (
         a.as_ref().map(|comment| comment.0.clone()),
