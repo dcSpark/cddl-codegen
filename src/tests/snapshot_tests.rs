@@ -623,7 +623,7 @@ fn deserialize_converts_error_at_most_once() {
 ///
 /// The failure class this guards: an emission site hardcoding the tuple wrapper in the match
 /// pattern (`Ok(({}))` around a joined expr list) without conditioning on the list's length. The
-/// non-value enum dispatch site (src/generation.rs, `names_without_outer.len() > 1` around line
+/// non-value enum dispatch site (src/generation/mod.rs, `names_without_outer.len() > 1` around line
 /// 8879) shows the correct pattern — wrap only for >1 names, empty case emitted separately as
 /// `Ok(())`; every pattern-emitting site owes the same length check.
 #[test]

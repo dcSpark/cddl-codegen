@@ -821,7 +821,7 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 ///
 /// Messages are normalized to `<whitespace-collapsed message> @ <file> @ fn <symbol>` (no line
 /// numbers — see `production_frame_symbol`), so a substring may pin the file AND the panicking
-/// function when the message alone is ambiguous (`not implemented @ src/generation.rs @ fn
+/// function when the message alone is ambiguous (`not implemented @ src/generation/mod.rs @ fn
 /// <symbol>` matches only a BARE `unimplemented!()` in that specific function — any detailed
 /// message breaks the contiguity, and a different function yields a different `<symbol>`). The
 /// remaining collapse boundary is per-(message, file, function): two bare sites in the SAME
@@ -864,7 +864,7 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
         "tag directly inside a tag; pinned by tests/matrix_panic/contain.tag-content.type2.tag.cddl",
     ),
     (
-        "failed left: \";\" right: \"\" @ src/generation.rs",
+        "failed left: \";\" right: \"\" @ src/generation/mod.rs",
         "map-rep group-choice arm with a fixed-value entry; pinned by tests/matrix_panic/contain.group-choice-arm.type2.value.map.cddl",
     ),
     (
@@ -1408,14 +1408,14 @@ const PRESERVE_ONLY_PANIC_CLASSES: &[(&str, &str)] = &[
          findings, `float16 / float-choice aliases unsupported ... Under --preserve-encodings the float gap is positional` entry",
     ),
     (
-        "!cli.preserve_encodings @ src/generation.rs @ fn cddl_codegen::generation::generate_enum",
+        "!cli.preserve_encodings @ src/generation/mod.rs @ fn cddl_codegen::generation::generate_enum",
         "a CBOR tag over a type-choice / enum / group-choice (`#6.11(int / tstr)`, `#6.11(<enum>)`) hits \
          the tagged-enum serialize path's explicit `assert!(!cli.preserve_encodings)` — the per-variant \
          encoding metadata has no home on the enum; cddl-matrix/ROADMAP.md § findings, \
          `A CBOR tag over a type-choice enum is unimplemented under --preserve-encodings` entry",
     ),
     (
-        "called `Option::unwrap()` on a `None` value @ src/generation.rs @ fn cddl_codegen::generation::encoding_fields_impl",
+        "called `Option::unwrap()` on a `None` value @ src/generation/mod.rs @ fn cddl_codegen::generation::encoding_fields_impl",
         "a CBOR tag wrapping `any` reaches generation under --preserve-encodings (unlike bare `[any]` / \
          `{k: any}`, which panic earlier at the shared `generic_instances` assert) and unwraps None \
          building the tag's encoding field — `any` carries no encoding metadata; cddl-matrix/ROADMAP.md \
