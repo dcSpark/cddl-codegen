@@ -848,12 +848,8 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
         "float16 / float16-32 / float32-64 (no native Rust f16 / float-choice); pinned by tests/matrix_panic/prelude.float16.cddl and siblings",
     ),
     (
-        "ignored typename",
-        "top-level alias to an unsupported type2 (major-type / unwrap / &group-choice / any); pinned by tests/matrix_panic/type2.major.cddl, type2.major7, type2.unwrap, type2.choice_from_group, type2.choice_from_inline_group, type2.any",
-    ),
-    (
         "Ignoring Type2:",
-        "unsupported type2 in MEMBER position (same gap family as `ignored typename`, member-side site); pinned by tests/matrix_panic/contain.array-element.type2.unwrap.cddl and role siblings",
+        "unsupported type2 in MEMBER position (top-level rule bodies now reject gracefully via `record_rejection`; this is the member-side site that still panics); pinned by tests/matrix_panic/contain.array-element.type2.unwrap.cddl and role siblings",
     ),
     (
         "non-literal tag heads (#6.<type>(...)) are not supported",
