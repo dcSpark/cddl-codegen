@@ -378,6 +378,46 @@ dead loses the lesson.
   dep's rust path, but no gate generates or executes `--json-schema-export` with extern deps (needs
   the dep in the json-gen manifest and a `schemars::JsonSchema` impl on the dep type, both user
   responsibilities by design).
+- **Twin in-repo implementations of one semantic decision drifting apart (emission spellings,
+  detection walkers) — two same-cycle read-caught instances recorded, single-owner extraction is
+  the fix pattern, no detector machinery yet.** Both instances are the in-repo sibling of the
+  parallel-constructor residual's predicate lesson above ("when a fix needs the same decision an
+  existing function already makes, extract the decision, never mirror it") — but where that entry's
+  scope is parsers over EXTERNAL input, this class is two implementations of one decision both
+  living in `src/`, drifting apart while every behavioral oracle stays green. (1)
+  `generate_wrapper_struct` hand-built its range-check `cond`/`failure_expr` beside the shared
+  `bounds_check_if_block`/`range_check_err` helpers and drifted three spellings apart (`!= N`
+  collapse, zero-min lower-leg elision, an inline float-payload duplicate) — semantically
+  IDENTICAL emissions, so decode-conformance (equal accept/reject sets), the mutation sweep (no
+  behavioral delta to detect), and the compile gates were all blind by construction; caught only
+  by review reading. Fixed by making `bounds_check_if_block` + `range_check_err` the single owner
+  (`non_negative`/`location` params), pinned by the `bounds_spellings` corpus fixture. (2)
+  `uses_non_empty_{vec,map}` hand-walked the `RustStructType` variants, mirroring
+  `visit_all_rust_types`' position enumeration, and drifted two legs short (named-array
+  `element_type`, table `domain`) — MASKED by the transparent alias every top-level array/table
+  rule co-registers, so even the nested-cargo compile gates that own the active flavor of this
+  bug (a missing `NonEmptyVec`/`NonEmptyMap` import, E0433) could never fire; also read-caught.
+  Fixed by folding the canonical visitor, corner shapes pinned by `nonempty_nested_positions`.
+  Pending-system coverage check (done at recording time): the grammar-fuzzer escalations own only
+  the ACTIVE missing-import flavor (a recombination shape table extended to nested container
+  positions would compile-fail it); NO pending item sees semantically-equivalent drift — that
+  flavor has no oracle but reading. Two residuals recorded with the instances: (a) the same
+  authored zero-min bound still REPORTS differently by site (`min: Some(0)` in wrapper
+  RangeCheck payloads vs `min: None` at member sites) because the drop-the-redundant-zero
+  decision itself has multiple owners — `RustType::with_bounds` normalizes at IR build (member
+  channel) while the wrapper's `min_max` channel bypasses it, and parsing's occurrence filter
+  plus `classify_sign_arm`'s uint-arm filter spell the same decision in their own domains;
+  unifying the payload is a user-visible error-message change needing its own reviewed change,
+  not a drive-by. (b) `bounds_check_expr_non_negative`'s Array/Map leg and the member-side
+  zero-min elision are DEFENSIVE-ONLY today — every zero lower bound is dropped upstream by (a)'s
+  owners before emission, so the corner is unreachable end-to-end and a fixture cannot pin it;
+  recorded here so it isn't re-litigated as a coverage gap. Mechanical layer on the NEXT
+  read-caught instance of the class: a same-construct differential sweep — emit one
+  bounded/flagged construct per site class (member ctor/setter, wrapper `new()`/deserialize,
+  primitive-deserialize `.and_then`, collection len check) and diff the check conditions +
+  failure payloads, ledgering deliberate site-specific differences — plus the cheap grep half, a
+  snapshot-wide wart scan (same-N `< N || > N`, dead `< 0` over unsigned/`len()` exprs) in the
+  spirit of the doubled-doc-marker scan above.
 - **Run-local values in gate-cache key material — one proven instance, no machinery yet.** The
   TS-side cache keys hashed the literal nested-cargo argv, which embeds the run's `mkdtempSync`
   probe dir — every key was unique to its run, so verify.ts could never hit its cache across runs
