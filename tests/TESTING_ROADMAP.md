@@ -322,7 +322,7 @@ dead loses the lesson.
   a type through its own direct import can keep an ancestor's copy alive. Expected residue at
   today's emission shapes is near zero (children reach parents via `use super::*;` uniformly). The
   mechanical layer is a nested-cargo check failing on an `unused_imports` rustc warning whose ident
-  is one of the four allowlisted names (`cargo build --message-format=json` filtered to
+  is one of the allowlisted names (`cargo build --message-format=json` filtered to
   `unused_imports` diagnostics naming an allowlist ident); it would also measure the actual residue.
   Build it if it slots into an existing nested-cargo gate in ≤ ~30 lines. Exact glob-EDGE tracking
   (protect only via descendants that actually glob-chain to the file) replaces the descendant
