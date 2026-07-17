@@ -508,11 +508,10 @@ dead loses the lesson.
     `ast_roles.rs`. The floor is the only fix for the tripwire's blind spot, ARG-GRAMMAR drift
     within an unchanged directive set (the proven `@used_as_key` flavor shape: no set delta,
     changed consumption, a new panic path), because hand-picked selfCheck vectors drift WITH the
-    mirror by construction. The mirrored arg-grammar surface has since GROWN without a grammar
-    change (so this trigger deliberately did not fire): the flavor-row registration
-    (`dsl.used_as_key.{hash,ord,hash_ord}`) taught the mirror to credit the narrowed sibling id
-    per flavor set, mirroring `DemandSet`'s bare/flavored exclusivity — more hand-mirrored
-    consumption the floor owns when built.
+    mirror by construction. The floor's scope also includes the mirror's flavor-set→sibling-id
+    crediting (`dsl.used_as_key.{hash,ord,hash_ord}`, mirroring `DemandSet`'s bare/flavored
+    exclusivity) — hand-mirrored consumption accreted without any `comment_ast` grammar change,
+    which is why this trigger has correctly not fired yet.
   - *Its own reviewed change, never a drive-by:* unify the zero-min RangeCheck payload — the same
     authored zero-min bound reports `min: Some(0)` in wrapper payloads vs `min: None` at member
     sites because the drop-the-redundant-zero decision itself has multiple owners
@@ -718,8 +717,8 @@ dead loses the lesson.
   plus the flavored contract's rust-only byte-identity leg. Its read-caught sibling, the
   `--extern-wrapper-index` validation skip under `--wasm=false`, is likewise fixed to
   mode-independent validation (deferral still wasm-gated) and pinned by
-  `extern_wrapper_index_is_validated_under_wasm_false`. Recur-first lesson (its home now that the
-  matrix ROADMAP finding is pruned): a THIRD validating flag turning up mode-inert is the trigger
+  `extern_wrapper_index_is_validated_under_wasm_false`. Recur-first lesson: a THIRD validating
+  flag turning up mode-inert is the trigger
   to build the class-level validation-smoke sweep — each clap flag with documented startup
   validation invoked once with a deliberately invalid value under each `--wasm` mode, asserting
   nonzero exit — rather than accreting per-flag standing cells. The extern-deps surface is now
