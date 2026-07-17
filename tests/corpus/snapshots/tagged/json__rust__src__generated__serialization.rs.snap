@@ -64,7 +64,7 @@ impl Deserialize for Tagged {
                         found: tag,
                         expected: 42,
                     }
-                    .into())
+                    .into());
                 }
             }))
         })()
@@ -92,7 +92,7 @@ impl Deserialize for TaggedNewtype {
                         found: tag,
                         expected: 42,
                     }
-                    .into())
+                    .into());
                 }
             }))
         })()

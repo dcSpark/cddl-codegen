@@ -15,13 +15,13 @@ pub mod b;
 pub mod collections;
 pub mod qux;
 
-use a::c::foo::Foo;
 use a::Baz;
+use a::c::foo::Foo;
 use b::bar::{Bar, BarTypedef};
-use extern_dep_crate::ordered_hash_map::OrderedHashMap;
 use extern_dep_crate::ExternCrateFoo;
+use extern_dep_crate::ordered_hash_map::OrderedHashMap;
 use qux::Qux;
-use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]

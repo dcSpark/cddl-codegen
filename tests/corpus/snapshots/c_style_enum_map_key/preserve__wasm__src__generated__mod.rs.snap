@@ -12,9 +12,9 @@ expression: content
 )]
 pub mod collections;
 
-use cddl_lib::ordered_hash_map::OrderedHashMap;
 pub use cddl_lib::FixedEnum;
-use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+use cddl_lib::ordered_hash_map::OrderedHashMap;
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]

@@ -15,8 +15,8 @@ pub mod serialization;
 pub use crate::ExternalFoo;
 
 use crate::generated::error::*;
-use a::c::foo::Foo;
 use a::Baz;
+use a::c::foo::Foo;
 use b::bar::{Bar, BarTypedef};
 use qux::Qux;
 use std::collections::BTreeMap;

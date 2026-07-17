@@ -89,7 +89,7 @@ impl Deserialize for MapMember {
                         return Err(DeserializeFailure::UnknownKey(Key::Uint(
                             raw.unsigned_integer()?,
                         ))
-                        .into())
+                        .into());
                     }
                     cbor_event::Type::Text => match raw.text()?.as_str() {
                         "k" => {
@@ -126,12 +126,12 @@ impl Deserialize for MapMember {
                             return Err(DeserializeFailure::UnknownKey(Key::Str(
                                 unknown_key.to_owned(),
                             ))
-                            .into())
+                            .into());
                         }
                     },
                     cbor_event::Type::Special => match len {
                         cbor_event::Len::Len(_) => {
-                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
                         }
                         cbor_event::Len::Indefinite => match raw.special()? {
                             cbor_event::Special::Break => break,
@@ -139,7 +139,7 @@ impl Deserialize for MapMember {
                         },
                     },
                     other_type => {
-                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
                     }
                 }
                 read += 1;
@@ -155,7 +155,7 @@ impl Deserialize for MapMember {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("x")))
                             .into(),
-                    )
+                    );
                 }
             };
             Ok(Self { x })

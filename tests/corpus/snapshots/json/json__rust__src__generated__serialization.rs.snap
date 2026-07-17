@@ -249,7 +249,7 @@ impl Deserialize for NemJson {
                         return Err(DeserializeFailure::UnknownKey(Key::Uint(
                             raw.unsigned_integer()?,
                         ))
-                        .into())
+                        .into());
                     }
                     cbor_event::Type::Text => match raw.text()?.as_str() {
                         "xs" => {
@@ -292,12 +292,12 @@ impl Deserialize for NemJson {
                             return Err(DeserializeFailure::UnknownKey(Key::Str(
                                 unknown_key.to_owned(),
                             ))
-                            .into())
+                            .into());
                         }
                     },
                     cbor_event::Type::Special => match len {
                         cbor_event::Len::Len(_) => {
-                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
                         }
                         cbor_event::Len::Indefinite => match raw.special()? {
                             cbor_event::Special::Break => break,
@@ -305,7 +305,7 @@ impl Deserialize for NemJson {
                         },
                     },
                     other_type => {
-                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
                     }
                 }
                 read += 1;
@@ -316,7 +316,7 @@ impl Deserialize for NemJson {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("xs")))
                             .into(),
-                    )
+                    );
                 }
             };
             Ok(Self { xs })
@@ -358,7 +358,7 @@ impl Deserialize for NevJson {
                         return Err(DeserializeFailure::UnknownKey(Key::Uint(
                             raw.unsigned_integer()?,
                         ))
-                        .into())
+                        .into());
                     }
                     cbor_event::Type::Text => match raw.text()?.as_str() {
                         "xs" => {
@@ -394,12 +394,12 @@ impl Deserialize for NevJson {
                             return Err(DeserializeFailure::UnknownKey(Key::Str(
                                 unknown_key.to_owned(),
                             ))
-                            .into())
+                            .into());
                         }
                     },
                     cbor_event::Type::Special => match len {
                         cbor_event::Len::Len(_) => {
-                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
                         }
                         cbor_event::Len::Indefinite => match raw.special()? {
                             cbor_event::Special::Break => break,
@@ -407,7 +407,7 @@ impl Deserialize for NevJson {
                         },
                     },
                     other_type => {
-                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
                     }
                 }
                 read += 1;
@@ -418,7 +418,7 @@ impl Deserialize for NevJson {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("xs")))
                             .into(),
-                    )
+                    );
                 }
             };
             Ok(Self { xs })

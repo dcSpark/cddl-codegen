@@ -7,7 +7,7 @@ expression: content
 
 use crate::generated::a::Baz;
 use crate::generated::{FooList, MapFooToFoo};
-use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]

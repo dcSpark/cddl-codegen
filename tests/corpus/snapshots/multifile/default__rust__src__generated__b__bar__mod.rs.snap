@@ -7,8 +7,8 @@ expression: content
 
 pub mod serialization;
 
-use crate::generated::a::c::foo::Foo;
 use crate::generated::a::Baz;
+use crate::generated::a::c::foo::Foo;
 use crate::generated::error::*;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;

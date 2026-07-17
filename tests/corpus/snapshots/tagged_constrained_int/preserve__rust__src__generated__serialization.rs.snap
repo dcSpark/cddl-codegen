@@ -106,7 +106,7 @@ impl Deserialize for Garm {
                                 found: tag,
                                 expected: 15,
                             }
-                            .into())
+                            .into());
                         }
                     };
                     match len {
@@ -396,7 +396,7 @@ impl Deserialize for TaggedCtlNe {
                         found: tag,
                         expected: 11,
                     }
-                    .into())
+                    .into());
                 }
             };
             if inner == 1 {
@@ -507,7 +507,7 @@ impl Deserialize for TaggedRangeExcl {
                         found: tag,
                         expected: 11,
                     }
-                    .into())
+                    .into());
                 }
             };
             if inner < -10 || inner > 9 {
@@ -618,7 +618,7 @@ impl Deserialize for TaggedRangeIncl {
                         found: tag,
                         expected: 11,
                     }
-                    .into())
+                    .into());
                 }
             };
             if inner < -10 || inner > 10 {
@@ -729,7 +729,7 @@ impl Deserialize for TaggedRangeNint {
                         found: tag,
                         expected: 11,
                     }
-                    .into())
+                    .into());
                 }
             };
             if inner < -10 || inner > -4 {
@@ -792,7 +792,7 @@ impl Deserialize for TaggedRangeUint {
                         found: tag,
                         expected: 11,
                     }
-                    .into())
+                    .into());
                 }
             };
             if inner < 3 || inner > 9 {

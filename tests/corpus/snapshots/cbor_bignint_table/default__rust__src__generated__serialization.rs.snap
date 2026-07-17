@@ -99,7 +99,7 @@ impl Deserialize for PreludeBignint {
                         found: tag,
                         expected: 3,
                     }
-                    .into())
+                    .into());
                 }
             }))
         })()

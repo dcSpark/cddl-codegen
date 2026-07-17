@@ -355,7 +355,7 @@ impl Deserialize for Bar {
                         unknown_key => {
                             return Err(
                                 DeserializeFailure::UnknownKey(Key::Uint(unknown_key)).into()
-                            )
+                            );
                         }
                     },
                     cbor_event::Type::Text => match raw.text()?.as_str() {
@@ -431,12 +431,12 @@ impl Deserialize for Bar {
                             return Err(DeserializeFailure::UnknownKey(Key::Str(
                                 unknown_key.to_owned(),
                             ))
-                            .into())
+                            .into());
                         }
                     },
                     cbor_event::Type::Special => match len {
                         cbor_event::Len::Len(_) => {
-                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
                         }
                         cbor_event::Len::Indefinite => match raw.special()? {
                             cbor_event::Special::Break => break,
@@ -444,7 +444,7 @@ impl Deserialize for Bar {
                         },
                     },
                     other_type => {
-                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
                     }
                 }
                 read += 1;
@@ -455,7 +455,7 @@ impl Deserialize for Bar {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("foo")))
                             .into(),
-                    )
+                    );
                 }
             };
             let one = match one {
@@ -474,7 +474,7 @@ impl Deserialize for Bar {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("float")))
                             .into(),
-                    )
+                    );
                 }
             };
             read_len.finish()?;
@@ -2132,7 +2132,7 @@ impl Deserialize for Externs {
                         return Err(DeserializeFailure::UnknownKey(Key::Uint(
                             raw.unsigned_integer()?,
                         ))
-                        .into())
+                        .into());
                     }
                     cbor_event::Type::Text => match raw.text()?.as_str() {
                         "opt" => {
@@ -2166,12 +2166,12 @@ impl Deserialize for Externs {
                             return Err(DeserializeFailure::UnknownKey(Key::Str(
                                 unknown_key.to_owned(),
                             ))
-                            .into())
+                            .into());
                         }
                     },
                     cbor_event::Type::Special => match len {
                         cbor_event::Len::Len(_) => {
-                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
                         }
                         cbor_event::Len::Indefinite => match raw.special()? {
                             cbor_event::Special::Break => break,
@@ -2179,7 +2179,7 @@ impl Deserialize for Externs {
                         },
                     },
                     other_type => {
-                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
                     }
                 }
                 read += 1;
@@ -2190,7 +2190,7 @@ impl Deserialize for Externs {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("req")))
                             .into(),
-                    )
+                    );
                 }
             };
             read_len.finish()?;
@@ -2867,15 +2867,15 @@ impl Deserialize for MapWithDefaults {
                         unknown_key => {
                             return Err(
                                 DeserializeFailure::UnknownKey(Key::Uint(unknown_key)).into()
-                            )
+                            );
                         }
                     },
                     cbor_event::Type::Text => {
-                        return Err(DeserializeFailure::UnknownKey(Key::Str(raw.text()?)).into())
+                        return Err(DeserializeFailure::UnknownKey(Key::Str(raw.text()?)).into());
                     }
                     cbor_event::Type::Special => match len {
                         cbor_event::Len::Len(_) => {
-                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
                         }
                         cbor_event::Len::Indefinite => match raw.special()? {
                             cbor_event::Special::Break => break,
@@ -2883,7 +2883,7 @@ impl Deserialize for MapWithDefaults {
                         },
                     },
                     other_type => {
-                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
                     }
                 }
                 read += 1;
@@ -2958,7 +2958,7 @@ impl Deserialize for NemHolder {
                         return Err(DeserializeFailure::UnknownKey(Key::Uint(
                             raw.unsigned_integer()?,
                         ))
-                        .into())
+                        .into());
                     }
                     cbor_event::Type::Text => match raw.text()?.as_str() {
                         "maybe" => {
@@ -3118,12 +3118,12 @@ impl Deserialize for NemHolder {
                             return Err(DeserializeFailure::UnknownKey(Key::Str(
                                 unknown_key.to_owned(),
                             ))
-                            .into())
+                            .into());
                         }
                     },
                     cbor_event::Type::Special => match len {
                         cbor_event::Len::Len(_) => {
-                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
                         }
                         cbor_event::Len::Indefinite => match raw.special()? {
                             cbor_event::Special::Break => break,
@@ -3131,7 +3131,7 @@ impl Deserialize for NemHolder {
                         },
                     },
                     other_type => {
-                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
                     }
                 }
                 read += 1;
@@ -3142,7 +3142,7 @@ impl Deserialize for NemHolder {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("inline")))
                             .into(),
-                    )
+                    );
                 }
             };
             let plain = match plain {
@@ -3151,7 +3151,7 @@ impl Deserialize for NemHolder {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("plain")))
                             .into(),
-                    )
+                    );
                 }
             };
             let named = match named {
@@ -3160,7 +3160,7 @@ impl Deserialize for NemHolder {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("named")))
                             .into(),
-                    )
+                    );
                 }
             };
             read_len.finish()?;
@@ -3205,7 +3205,7 @@ impl Deserialize for NemVal {
                         return Err(DeserializeFailure::UnknownKey(Key::Uint(
                             raw.unsigned_integer()?,
                         ))
-                        .into())
+                        .into());
                     }
                     cbor_event::Type::Text => match raw.text()?.as_str() {
                         "v" => {
@@ -3223,12 +3223,12 @@ impl Deserialize for NemVal {
                             return Err(DeserializeFailure::UnknownKey(Key::Str(
                                 unknown_key.to_owned(),
                             ))
-                            .into())
+                            .into());
                         }
                     },
                     cbor_event::Type::Special => match len {
                         cbor_event::Len::Len(_) => {
-                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
                         }
                         cbor_event::Len::Indefinite => match raw.special()? {
                             cbor_event::Special::Break => break,
@@ -3236,7 +3236,7 @@ impl Deserialize for NemVal {
                         },
                     },
                     other_type => {
-                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
                     }
                 }
                 read += 1;
@@ -3247,7 +3247,7 @@ impl Deserialize for NemVal {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("v")))
                             .into(),
-                    )
+                    );
                 }
             };
             Ok(Self { v })
@@ -3290,7 +3290,7 @@ impl Deserialize for NemWire {
                         return Err(DeserializeFailure::UnknownKey(Key::Uint(
                             raw.unsigned_integer()?,
                         ))
-                        .into())
+                        .into());
                     }
                     cbor_event::Type::Text => match raw.text()?.as_str() {
                         "m" => {
@@ -3332,12 +3332,12 @@ impl Deserialize for NemWire {
                             return Err(DeserializeFailure::UnknownKey(Key::Str(
                                 unknown_key.to_owned(),
                             ))
-                            .into())
+                            .into());
                         }
                     },
                     cbor_event::Type::Special => match len {
                         cbor_event::Len::Len(_) => {
-                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
                         }
                         cbor_event::Len::Indefinite => match raw.special()? {
                             cbor_event::Special::Break => break,
@@ -3345,7 +3345,7 @@ impl Deserialize for NemWire {
                         },
                     },
                     other_type => {
-                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
                     }
                 }
                 read += 1;
@@ -3356,7 +3356,7 @@ impl Deserialize for NemWire {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("m")))
                             .into(),
-                    )
+                    );
                 }
             };
             Ok(Self { m })
@@ -3395,7 +3395,7 @@ impl Deserialize for NevBar {
                         return Err(DeserializeFailure::UnknownKey(Key::Uint(
                             raw.unsigned_integer()?,
                         ))
-                        .into())
+                        .into());
                     }
                     cbor_event::Type::Text => match raw.text()?.as_str() {
                         "a" => {
@@ -3413,12 +3413,12 @@ impl Deserialize for NevBar {
                             return Err(DeserializeFailure::UnknownKey(Key::Str(
                                 unknown_key.to_owned(),
                             ))
-                            .into())
+                            .into());
                         }
                     },
                     cbor_event::Type::Special => match len {
                         cbor_event::Len::Len(_) => {
-                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
                         }
                         cbor_event::Len::Indefinite => match raw.special()? {
                             cbor_event::Special::Break => break,
@@ -3426,7 +3426,7 @@ impl Deserialize for NevBar {
                         },
                     },
                     other_type => {
-                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
                     }
                 }
                 read += 1;
@@ -3437,7 +3437,7 @@ impl Deserialize for NevBar {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("a")))
                             .into(),
-                    )
+                    );
                 }
             };
             Ok(Self { a })
@@ -3512,7 +3512,7 @@ impl Deserialize for NevHolder {
                         return Err(DeserializeFailure::UnknownKey(Key::Uint(
                             raw.unsigned_integer()?,
                         ))
-                        .into())
+                        .into());
                     }
                     cbor_event::Type::Text => match raw.text()?.as_str() {
                         "ints" => {
@@ -3682,12 +3682,12 @@ impl Deserialize for NevHolder {
                             return Err(DeserializeFailure::UnknownKey(Key::Str(
                                 unknown_key.to_owned(),
                             ))
-                            .into())
+                            .into());
                         }
                     },
                     cbor_event::Type::Special => match len {
                         cbor_event::Len::Len(_) => {
-                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
                         }
                         cbor_event::Len::Indefinite => match raw.special()? {
                             cbor_event::Special::Break => break,
@@ -3695,7 +3695,7 @@ impl Deserialize for NevHolder {
                         },
                     },
                     other_type => {
-                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
                     }
                 }
                 read += 1;
@@ -3706,7 +3706,7 @@ impl Deserialize for NevHolder {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("tags")))
                             .into(),
-                    )
+                    );
                 }
             };
             let nested = match nested {
@@ -3715,7 +3715,7 @@ impl Deserialize for NevHolder {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("nested")))
                             .into(),
-                    )
+                    );
                 }
             };
             let plain = match plain {
@@ -3724,7 +3724,7 @@ impl Deserialize for NevHolder {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("plain")))
                             .into(),
-                    )
+                    );
                 }
             };
             let ints = match ints {
@@ -3733,7 +3733,7 @@ impl Deserialize for NevHolder {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("ints")))
                             .into(),
-                    )
+                    );
                 }
             };
             read_len.finish()?;
@@ -3794,7 +3794,7 @@ impl Deserialize for NevHolder2 {
                         return Err(DeserializeFailure::UnknownKey(Key::Uint(
                             raw.unsigned_integer()?,
                         ))
-                        .into())
+                        .into());
                     }
                     cbor_event::Type::Text => match raw.text()?.as_str() {
                         "qs" => {
@@ -3890,12 +3890,12 @@ impl Deserialize for NevHolder2 {
                             return Err(DeserializeFailure::UnknownKey(Key::Str(
                                 unknown_key.to_owned(),
                             ))
-                            .into())
+                            .into());
                         }
                     },
                     cbor_event::Type::Special => match len {
                         cbor_event::Len::Len(_) => {
-                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
                         }
                         cbor_event::Len::Indefinite => match raw.special()? {
                             cbor_event::Special::Break => break,
@@ -3903,7 +3903,7 @@ impl Deserialize for NevHolder2 {
                         },
                     },
                     other_type => {
-                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
                     }
                 }
                 read += 1;
@@ -3914,7 +3914,7 @@ impl Deserialize for NevHolder2 {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("pts")))
                             .into(),
-                    )
+                    );
                 }
             };
             let pts_inline =
@@ -3924,7 +3924,7 @@ impl Deserialize for NevHolder2 {
                         return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(
                             String::from("pts_inline"),
                         ))
-                        .into())
+                        .into());
                     }
                 };
             let qs = match qs {
@@ -3933,7 +3933,7 @@ impl Deserialize for NevHolder2 {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("qs")))
                             .into(),
-                    )
+                    );
                 }
             };
             Ok(Self {
@@ -3976,7 +3976,7 @@ impl Deserialize for NevPt {
                         return Err(DeserializeFailure::UnknownKey(Key::Uint(
                             raw.unsigned_integer()?,
                         ))
-                        .into())
+                        .into());
                     }
                     cbor_event::Type::Text => match raw.text()?.as_str() {
                         "p" => {
@@ -3994,12 +3994,12 @@ impl Deserialize for NevPt {
                             return Err(DeserializeFailure::UnknownKey(Key::Str(
                                 unknown_key.to_owned(),
                             ))
-                            .into())
+                            .into());
                         }
                     },
                     cbor_event::Type::Special => match len {
                         cbor_event::Len::Len(_) => {
-                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
                         }
                         cbor_event::Len::Indefinite => match raw.special()? {
                             cbor_event::Special::Break => break,
@@ -4007,7 +4007,7 @@ impl Deserialize for NevPt {
                         },
                     },
                     other_type => {
-                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
                     }
                 }
                 read += 1;
@@ -4018,7 +4018,7 @@ impl Deserialize for NevPt {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("p")))
                             .into(),
-                    )
+                    );
                 }
             };
             Ok(Self { p })
@@ -4590,7 +4590,7 @@ impl Deserialize for NonOverlapBasicNotBasic {
                                 found: tag,
                                 expected: 11,
                             }
-                            .into())
+                            .into());
                         }
                     };
                     match len {
@@ -4690,7 +4690,7 @@ impl Deserialize for NonOverlappingTypeChoiceAll {
                                 found: tag,
                                 expected: 30,
                             }
-                            .into())
+                            .into());
                         }
                     }
                     Ok(NonOverlappingTypeChoiceAll::Helloworld)
@@ -6458,7 +6458,7 @@ impl Deserialize for TableArrMembers {
                         return Err(DeserializeFailure::UnknownKey(Key::Uint(
                             raw.unsigned_integer()?,
                         ))
-                        .into())
+                        .into());
                     }
                     cbor_event::Type::Text => match raw.text()?.as_str() {
                         "arr" => {
@@ -6556,12 +6556,12 @@ impl Deserialize for TableArrMembers {
                             return Err(DeserializeFailure::UnknownKey(Key::Str(
                                 unknown_key.to_owned(),
                             ))
-                            .into())
+                            .into());
                         }
                     },
                     cbor_event::Type::Special => match len {
                         cbor_event::Len::Len(_) => {
-                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
                         }
                         cbor_event::Len::Indefinite => match raw.special()? {
                             cbor_event::Special::Break => break,
@@ -6569,7 +6569,7 @@ impl Deserialize for TableArrMembers {
                         },
                     },
                     other_type => {
-                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
                     }
                 }
                 read += 1;
@@ -6580,7 +6580,7 @@ impl Deserialize for TableArrMembers {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("tab")))
                             .into(),
-                    )
+                    );
                 }
             };
             let arr = match arr {
@@ -6589,7 +6589,7 @@ impl Deserialize for TableArrMembers {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("arr")))
                             .into(),
-                    )
+                    );
                 }
             };
             let arr2 = match arr2 {
@@ -6598,7 +6598,7 @@ impl Deserialize for TableArrMembers {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("arr2")))
                             .into(),
-                    )
+                    );
                 }
             };
             Ok(Self { tab, arr, arr2 })
@@ -6739,15 +6739,15 @@ impl Deserialize for TableMapWrapper {
                         unknown_key => {
                             return Err(
                                 DeserializeFailure::UnknownKey(Key::Uint(unknown_key)).into()
-                            )
+                            );
                         }
                     },
                     cbor_event::Type::Text => {
-                        return Err(DeserializeFailure::UnknownKey(Key::Str(raw.text()?)).into())
+                        return Err(DeserializeFailure::UnknownKey(Key::Str(raw.text()?)).into());
                     }
                     cbor_event::Type::Special => match len {
                         cbor_event::Len::Len(_) => {
-                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
                         }
                         cbor_event::Len::Indefinite => match raw.special()? {
                             cbor_event::Special::Break => break,
@@ -6755,7 +6755,7 @@ impl Deserialize for TableMapWrapper {
                         },
                     },
                     other_type => {
-                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
                     }
                 }
                 read += 1;
@@ -6763,7 +6763,7 @@ impl Deserialize for TableMapWrapper {
             let key_721 = match key_721 {
                 Some(x) => x,
                 None => {
-                    return Err(DeserializeFailure::MandatoryFieldMissing(Key::Uint(721)).into())
+                    return Err(DeserializeFailure::MandatoryFieldMissing(Key::Uint(721)).into());
                 }
             };
             Ok(Self { key_721 })
@@ -6792,7 +6792,7 @@ impl Deserialize for TaggedFloatRange {
                         found: tag,
                         expected: 5,
                     }
-                    .into())
+                    .into());
                 }
             };
             if !(inner >= 0.5f64 && inner <= 10.5f64) {
@@ -6838,7 +6838,7 @@ impl Deserialize for TaggedFooBytes {
                         found: tag,
                         expected: 20,
                     }
-                    .into())
+                    .into());
                 }
             }))
         })()
@@ -6866,7 +6866,7 @@ impl Deserialize for TaggedText {
                         found: tag,
                         expected: 42,
                     }
-                    .into())
+                    .into());
                 }
             }))
         })()
@@ -7041,15 +7041,15 @@ impl Deserialize for TextMapWrapper {
                         unknown_key => {
                             return Err(
                                 DeserializeFailure::UnknownKey(Key::Uint(unknown_key)).into()
-                            )
+                            );
                         }
                     },
                     cbor_event::Type::Text => {
-                        return Err(DeserializeFailure::UnknownKey(Key::Str(raw.text()?)).into())
+                        return Err(DeserializeFailure::UnknownKey(Key::Str(raw.text()?)).into());
                     }
                     cbor_event::Type::Special => match len {
                         cbor_event::Len::Len(_) => {
-                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
                         }
                         cbor_event::Len::Indefinite => match raw.special()? {
                             cbor_event::Special::Break => break,
@@ -7057,7 +7057,7 @@ impl Deserialize for TextMapWrapper {
                         },
                     },
                     other_type => {
-                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
                     }
                 }
                 read += 1;
@@ -7065,7 +7065,7 @@ impl Deserialize for TextMapWrapper {
             let key_721 = match key_721 {
                 Some(x) => x,
                 None => {
-                    return Err(DeserializeFailure::MandatoryFieldMissing(Key::Uint(721)).into())
+                    return Err(DeserializeFailure::MandatoryFieldMissing(Key::Uint(721)).into());
                 }
             };
             Ok(Self { key_721 })
@@ -7296,7 +7296,7 @@ impl Deserialize for TopLevelTaggedRange {
                         found: tag,
                         expected: 5,
                     }
-                    .into())
+                    .into());
                 }
             };
             if inner < 3 || inner > 10 {

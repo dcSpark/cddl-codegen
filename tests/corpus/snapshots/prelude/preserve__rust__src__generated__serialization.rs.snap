@@ -221,7 +221,7 @@ impl Deserialize for PreludeB64legacy {
                         found: tag,
                         expected: 34,
                     }
-                    .into())
+                    .into());
                 }
             };
             Ok(Self {
@@ -274,7 +274,7 @@ impl Deserialize for PreludeB64url {
                         found: tag,
                         expected: 33,
                     }
-                    .into())
+                    .into());
                 }
             };
             Ok(Self {
@@ -441,7 +441,7 @@ impl Deserialize for PreludeBignint {
                         found: tag,
                         expected: 3,
                     }
-                    .into())
+                    .into());
                 }
             };
             Ok(Self {
@@ -494,7 +494,7 @@ impl Deserialize for PreludeBiguint {
                         found: tag,
                         expected: 2,
                     }
-                    .into())
+                    .into());
                 }
             };
             Ok(Self {
@@ -618,7 +618,7 @@ impl Deserialize for PreludeEncodedCbor {
                         found: tag,
                         expected: 24,
                     }
-                    .into())
+                    .into());
                 }
             };
             Ok(Self {
@@ -700,7 +700,7 @@ impl Deserialize for PreludeMimeMessage {
                         found: tag,
                         expected: 36,
                     }
-                    .into())
+                    .into());
                 }
             };
             Ok(Self {
@@ -753,7 +753,7 @@ impl Deserialize for PreludeRegexp {
                         found: tag,
                         expected: 35,
                     }
-                    .into())
+                    .into());
                 }
             };
             Ok(Self {
@@ -806,7 +806,7 @@ impl Deserialize for PreludeTdate {
                         found: tag,
                         expected: 0,
                     }
-                    .into())
+                    .into());
                 }
             };
             Ok(Self {
@@ -898,7 +898,7 @@ impl Deserialize for PreludeUri {
                         found: tag,
                         expected: 32,
                     }
-                    .into())
+                    .into());
                 }
             };
             Ok(Self {

@@ -52,7 +52,7 @@ impl Deserialize for TaggedDefault {
                         found: tag,
                         expected: 42,
                     }
-                    .into())
+                    .into());
                 }
             };
             Ok(Self {
