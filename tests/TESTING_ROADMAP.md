@@ -706,10 +706,14 @@ dead loses the lesson.
   crate emitted `CBORReadLen::new(Len)` against a `new(LenSz)` runtime (E0308). Second:
   `--workspace-dep` × `--wasm=false` silently ignored the flag — validation included — fixed to
   mode-independent honoring and pinned by `workspace_dep_unknown_is_rejected_under_wasm_false`
-  plus the flavored contract's rust-only byte-identity leg (its read-caught sibling, the
-  `--extern-wrapper-index` validation skip under `--wasm=false`, is ledgered with its own
-  decision shape in `cddl-matrix/ROADMAP.md` § findings, which also names the class-level
-  validation-smoke sweep to build on a third instance). The extern-deps surface is now
+  plus the flavored contract's rust-only byte-identity leg. Its read-caught sibling, the
+  `--extern-wrapper-index` validation skip under `--wasm=false`, is likewise fixed to
+  mode-independent validation (deferral still wasm-gated) and pinned by
+  `extern_wrapper_index_is_validated_under_wasm_false`. Recur-first lesson (its home now that the
+  matrix ROADMAP finding is pruned): a THIRD validating flag turning up mode-inert is the trigger
+  to build the class-level validation-smoke sweep — each clap flag with documented startup
+  validation invoked once with a deliberately invalid value under each `--wasm` mode, asserting
+  nonzero exit — rather than accreting per-flag standing cells. The extern-deps surface is now
   probed under both preserve flavors — `integration_tests::extern_deps` (preserve) and
   `integration_tests::extern_deps_non_preserve` (non-preserve, compiled against the preserve-flavored
   `extern-dep-crate` stand-in) — plus the wasm-boundary cell `integration_tests::extern_deps_wasm`

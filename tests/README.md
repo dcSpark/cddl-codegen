@@ -373,7 +373,11 @@ compile against each other, and widening the flavor to `bare` fails the dep comp
 apply under `--wasm=false` exactly as under `--wasm=true` (only the wasm-side deferral surfaces are
 wasm-gated), pinned by the flavored contract's rust-only leg (byte-identical sidecar, no `wasm/`
 tree) and `workspace_dep_unknown_is_rejected_under_wasm_false` (an unknown dep exits nonzero in
-rust-only mode, never a silent ignore); user docs:
+rust-only mode, never a silent ignore). `--extern-wrapper-index`'s startup validation is likewise
+MODE-INDEPENDENT — an unknown dep or a malformed index line is a hard error under `--wasm=false`,
+even though the deferral it feeds is wasm-gated — pinned by
+`extern_wrapper_index_is_validated_under_wasm_false` (both malformation classes exit nonzero in
+rust-only mode). User docs:
 `docs/docs/command_line_flags.mdx` and `docs/docs/output_format.mdx` § "Workspace mode") is pinned
 by three sibling gates plus the parser's unit suite (`src/wrapper_requests.rs` — both the strict
 sidecar grammars and the lenient shape-key extractor):

@@ -199,21 +199,24 @@ impl GenerationScope {
         self.serialize_generic = pick_generic_name(&defined_idents, "W", "Ser");
         self.deserialize_generic = pick_generic_name(&defined_idents, "R", "De");
 
-        // `--workspace-dep` and `--extern-wrapper-index` load separately because their sidecars live on
-        // different sides of the split. `--workspace-dep` loads MODE-INDEPENDENTLY: its primary sidecar
+        // `--workspace-dep` and `--extern-wrapper-index` both LOAD AND VALIDATE mode-independently, so
+        // every documented startup malformation aborts generation whether or not `--wasm` is set; their
+        // DEFERRAL EFFECTS differ in scope. `--workspace-dep`'s primary sidecar
         // (`rust/src/generated/borrowed_key_types.rs`) is a RUST-crate concern — map-key derives that
-        // the dep must carry or the consumer's rust crate fails to build — so the flag is honored (and
-        // its startup validation runs: unknown dep / missing `--extern-wasm-crate` mapping are hard
-        // errors) whether or not `--wasm` is set. `--extern-wrapper-index` loads ONLY under `--wasm`: it
-        // reads each mapped dependency's committed collection-wrapper index (`generated/collections.rs`)
-        // so the wasm struct walk can DEFER any wrapper the dep already owns instead of re-minting it (a
-        // wasm duplicate-symbol link error otherwise) — a purely wasm-side dedup with no rust-crate
-        // effect. Both parse once, up front, so the data is available at every emitter's mint point; a
-        // mapping naming a non-extern dependency is a hard error in either, mirroring `--extern-wasm-crate`
-        // (a typo would otherwise silently disable deferral and reintroduce the link error).
+        // the dep must carry or the consumer's rust crate fails to build — so its effect applies in
+        // either mode. `--extern-wrapper-index` reads each mapped dependency's committed
+        // collection-wrapper index (`generated/collections.rs`) so the wasm struct walk can DEFER any
+        // wrapper the dep already owns instead of re-minting it (a wasm duplicate-symbol link error
+        // otherwise); that dedup is purely wasm-side with no rust-crate effect, so the loaded index is
+        // retained only under `--wasm` and discarded in rust-only mode (the rust output is provably
+        // unaffected). But the VALIDATION must fire in every mode: a mapping naming a non-extern
+        // dependency (or an index file with a malformed line) is a hard error either way, mirroring
+        // `--extern-wasm-crate` — a typo that silently disabled deferral would reintroduce the link
+        // error. Both parse once, up front, so the data is available at every emitter's mint point.
         self.workspace_deps = load_workspace_deps(types, cli);
+        let extern_wrapper_index = load_extern_wrapper_indices(types, cli);
         if cli.wasm {
-            self.extern_wrapper_index = load_extern_wrapper_indices(types, cli);
+            self.extern_wrapper_index = extern_wrapper_index;
         }
 
         // Type aliases
