@@ -202,14 +202,27 @@ const DSL_TAGS: TagParse[] = [
   // @used_as_key: consumes the optional flavor words (`hash`/`ord`) so a directive AFTER them is
   // still reachable, mirroring tag_used_as_key's loop. On any OTHER word comment_ast panics (the
   // fixture couldn't have generated), so the mirror refuses the credit rather than false-crediting.
+  // The credited id mirrors comment_ast's DemandSet, whose `bare`/`hash`/`ord` flags are mutually
+  // exclusive between bare and flavored (`demand.bare` is set only when NO flavor word followed):
+  // no flavor -> dsl.used_as_key; otherwise the narrowed sibling id for the OR-merged flavor set
+  // present (hash / ord / hash_ord — order- and duplicate-insensitive, exactly like the flags).
   s => {
     if (!s.startsWith("@used_as_key")) return null;
     let rest = s.slice("@used_as_key".length);
+    let hash = false, ord = false;
     while (true) {
       const afterWs = ws(rest);
-      if (afterWs === "" || afterWs.startsWith("@")) return { id: "dsl.used_as_key", rest: afterWs };
+      if (afterWs === "" || afterWs.startsWith("@")) {
+        const id = hash && ord ? "dsl.used_as_key.hash_ord"
+          : hash ? "dsl.used_as_key.hash"
+            : ord ? "dsl.used_as_key.ord"
+              : "dsl.used_as_key";
+        return { id, rest: afterWs };
+      }
       const m = afterWs.match(/^[^\s@]+/)!;
-      if (m[0] !== "hash" && m[0] !== "ord") return null; // comment_ast panics here — no credit
+      if (m[0] === "hash") hash = true;
+      else if (m[0] === "ord") ord = true;
+      else return null; // comment_ast panics here — no credit
       rest = afterWs.slice(m[0].length);
     }
   },
@@ -406,10 +419,22 @@ function selfCheck() {
     if (r.has("dsl.newtype")) throw new Error("selfCheck: @newtype in trailing prose after @used_as_key was over-credited (the dsl-prose residual)");
   }
   // @used_as_key flavor words are consumed as its ARGS, so a directive after them is still parsed;
-  // bare @used_as_elem chains like any no-arg directive.
+  // the credited id narrows to the flavor set (mirroring DemandSet), and bare @used_as_elem chains
+  // like any no-arg directive.
   {
     const r = featuresIn("x = uint ; @used_as_key hash ord @newtype").dsl;
-    if (!r.has("dsl.used_as_key") || !r.has("dsl.newtype")) throw new Error("selfCheck: @used_as_key flavor words must be consumed with the directive after them still parsed");
+    if (!r.has("dsl.used_as_key.hash_ord") || !r.has("dsl.newtype")) throw new Error("selfCheck: @used_as_key flavor words must be consumed (crediting the flavor sibling) with the directive after them still parsed");
+    if (r.has("dsl.used_as_key")) throw new Error("selfCheck: a flavored @used_as_key must NOT credit the bare id (bare/flavored are mutually exclusive in DemandSet)");
+  }
+  // Each flavor set credits exactly its narrowed sibling id; bare (no flavor word) stays dsl.used_as_key.
+  {
+    const bare = featuresIn("x = uint ; @used_as_key").dsl;
+    if (!bare.has("dsl.used_as_key") || bare.has("dsl.used_as_key.hash") || bare.has("dsl.used_as_key.ord") || bare.has("dsl.used_as_key.hash_ord"))
+      throw new Error("selfCheck: bare @used_as_key must credit dsl.used_as_key only");
+    if (!featuresIn("x = uint ; @used_as_key hash").dsl.has("dsl.used_as_key.hash")) throw new Error("selfCheck: @used_as_key hash must credit dsl.used_as_key.hash");
+    if (!featuresIn("x = uint ; @used_as_key ord").dsl.has("dsl.used_as_key.ord")) throw new Error("selfCheck: @used_as_key ord must credit dsl.used_as_key.ord");
+    // flavor set is order- and duplicate-insensitive, exactly like the OR-merged DemandSet flags.
+    if (!featuresIn("x = uint ; @used_as_key ord hash").dsl.has("dsl.used_as_key.hash_ord")) throw new Error("selfCheck: @used_as_key ord hash must credit dsl.used_as_key.hash_ord (order-insensitive)");
   }
   {
     const r = featuresIn("x = uint ; @used_as_elem @newtype").dsl;

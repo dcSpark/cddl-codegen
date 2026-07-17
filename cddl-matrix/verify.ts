@@ -305,6 +305,11 @@ const dslSource = readFileSync(`${CODEGEN_DIR}/src/comment_ast.rs`, "utf8") + "\
 // directive that survives only in a comment or unrelated string no longer passes the backward lint.
 const dslDirectives = [...dslSource.matchAll(/tag\("(@[a-z_]+)"\)/g)].map(m => m[1]);
 const dslMarkers = [...dslSource.matchAll(/MARKER[^"]*"(_CDDL_CODEGEN_[^"]+)"/g)].map(m => m[1]);
+// Flavor words: arguments some directives accept AFTER the tag (e.g. `@used_as_key hash`/`ord`),
+// parsed as literal match arms in comment_ast.rs (`"hash" => demand.hash = true`). These aren't
+// `tag("@…")` directives, so a sibling FEATURE row whose alt is `<directive> <flavor…>` (mode-narrowed
+// derive families) resolves to the vendor source only once these words are recognized too.
+const dslFlavors = new Set([...dslSource.matchAll(/"([a-z]+)"\s*=>\s*demand\.\w+\s*=\s*true/g)].map(m => m[1]));
 // Floor assertion: if a refactor of comment_ast.rs/parsing.rs changes the extractable shape, both lints
 // built on these sets would go vacuous (forward) or flag everything (backward) — fail loud instead.
 if (dslDirectives.length === 0 || dslMarkers.length === 0) {
@@ -312,12 +317,25 @@ if (dslDirectives.length === 0 || dslMarkers.length === 0) {
   process.exit(2);
 }
 const dslTokens = new Set([...dslDirectives, ...dslMarkers]);
+// If any vendor row carries a flavored (multi-token) alt but the flavor vocabulary went vacuous, the
+// match-arm extraction pattern broke — every such row would false-flag as fabricated; fail loud instead.
+if (features.some(f => f.profile === "CDDL_CODEGEN" && f.alt && /\s/.test(f.alt)) && dslFlavors.size === 0) {
+  console.error("HARNESS FAILURE: flavored vendor alt present but flavor-word extraction went vacuous; comment_ast.rs no longer matches the flavor match-arm pattern.");
+  process.exit(2);
+}
 const fabricated: { id: string; production: string | null }[] = [];
 for (const f of features) {
   const prod = f.production;
   if (prod === PRELUDE_PSEUDO) continue;
   if (prod && CDDL_CODEGEN_PSEUDO.has(prod)) {
-    if (f.alt && dslTokens.has(f.alt)) continue;         // resolves to the pinned vendor source
+    // Resolves to the pinned vendor source when the alt is a bare extracted directive/marker, OR a base
+    // directive followed only by recognized flavor words (the `@used_as_key hash`/`ord` argument surface).
+    if (f.alt) {
+      const [base, ...flavorWords] = f.alt.split(/\s+/);
+      if (dslTokens.has(f.alt) ||
+          (dslTokens.has(base) && flavorWords.length > 0 && flavorWords.every(w => dslFlavors.has(w))))
+        continue;
+    }
     fabricated.push({ id: f.id, production: prod });     // alt absent from the extracted surface -> fabricated
     continue;
   }

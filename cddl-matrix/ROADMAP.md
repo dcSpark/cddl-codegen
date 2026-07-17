@@ -8,7 +8,7 @@ Running the gates is not a roadmap concern either: `check.ts` at the repo root i
 gate registry + entry point, `tests/README.md` § "Running everything" is the prose overview, each
 script's header docstring is the per-gate detail, and `QUERIES.md` documents the Q1–Q6 query scripts.
 
-**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->108 features (95 RFC8610 + 1 RFC9682 + 12 `CDDL_CODEGEN` vendor profile), 94 containment cells, and 235 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
+**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->111 features (95 RFC8610 + 1 RFC9682 + 15 `CDDL_CODEGEN` vendor profile), 94 containment cells, and 239 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
 execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (<!-- gen:sh:roadmap-ops -->all 37 IANA ops probed<!-- /gen:sh:roadmap-ops -->):
 "supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
@@ -46,16 +46,6 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
   supports it; wire it into `project_corpus.ts` if a consumer wants the complete matrix view.
-- **Matrix rows for the flavored `@used_as_key` DSL surface.** The `dsl.used_as_key` row covers only the
-  bare tag; the flavor arguments (`@used_as_key hash` / `ord` / `hash ord` — narrowed, mode-independent
-  derive families; `docs/docs/comment_dsl.mdx` § `@used_as_key`, `src/comment_ast.rs`) are new
-  vendor-profile surface with no rows, so Q1's generated Limitations projection cannot see them. Mint
-  sibling rows (or per-flavor annotations on `dsl.used_as_key`) riding the same probe machinery. Note
-  the emitted `key_demand_assertions.rs` self-check file is generated output surface for EVERY
-  `@used_as_key` root — bare included — so the existing `dsl.used_as_key` row's probes already exercise
-  it on their next rerun; only the flavor rows are missing (`docs/docs/output_format.mdx` documents the
-  workspace-sidecar flavor column and the file's place in the generated tree; the corpus already
-  carries `dsl_used_as_key_hash`/`_ord`/`_hash_ord`/`_hash_cstyle` fixtures to seed examples from).
 
 ## F4 / F5 follow-ons (only when their consumer exists)
 

@@ -746,6 +746,18 @@
       "reason": "DSL comment in root RHS; not a clean reusable expression"
     },
     {
+      "feature": "dsl.used_as_key.hash",
+      "reason": "DSL comment in root RHS; not a clean reusable expression"
+    },
+    {
+      "feature": "dsl.used_as_key.hash_ord",
+      "reason": "DSL comment in root RHS; not a clean reusable expression"
+    },
+    {
+      "feature": "dsl.used_as_key.ord",
+      "reason": "DSL comment in root RHS; not a clean reusable expression"
+    },
+    {
       "feature": "ext.extern",
       "reason": "extern/raw-bytes placeholder needs a user-provided type, not a self-contained filler"
     },

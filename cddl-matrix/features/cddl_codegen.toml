@@ -80,6 +80,36 @@ desc = "Forces a type to derive Ord/PartialOrd or Hash even if it isn't used as 
 example = "keyed = [a: uint, b: text] ; @used_as_key"
 
 [[feature]]
+id = "dsl.used_as_key.hash"
+production = "comment_dsl"
+alt = "@used_as_key hash"
+rfc = "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@used_as_key; src/comment_ast.rs"
+profile = "CDDL_CODEGEN"
+title = "@used_as_key hash — narrowed Hash derive family"
+desc = "Flavor argument narrowing @used_as_key to the hash family: derives only Hash, Eq, PartialEq (so a downstream HashMap key compiles), mode-independent unlike the bare tag's full mode-dependent bundle. Propagates transitively to contained types."
+example = "keyed = [a: uint, b: text] ; @used_as_key hash"
+
+[[feature]]
+id = "dsl.used_as_key.ord"
+production = "comment_dsl"
+alt = "@used_as_key ord"
+rfc = "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@used_as_key; src/comment_ast.rs"
+profile = "CDDL_CODEGEN"
+title = "@used_as_key ord — narrowed Ord derive family"
+desc = "Flavor argument narrowing @used_as_key to the ord family: derives only Ord, PartialOrd, Eq, PartialEq (so a downstream BTreeMap key compiles), mode-independent unlike the bare tag's full mode-dependent bundle. Propagates transitively to contained types."
+example = "keyed = [a: uint, b: text] ; @used_as_key ord"
+
+[[feature]]
+id = "dsl.used_as_key.hash_ord"
+production = "comment_dsl"
+alt = "@used_as_key hash ord"
+rfc = "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@used_as_key; src/comment_ast.rs"
+profile = "CDDL_CODEGEN"
+title = "@used_as_key hash ord — union of the hash and ord families"
+desc = "Flavor argument combining both narrowed families: derives the union Hash, Ord, PartialOrd, Eq, PartialEq, mode-independent unlike the bare tag whose Hash is mode-dependent. Order of the two words is irrelevant. Propagates transitively to contained types."
+example = "keyed = [a: uint, b: text] ; @used_as_key hash ord"
+
+[[feature]]
 id = "dsl.used_as_elem"
 production = "comment_dsl"
 alt = "@used_as_elem"

@@ -3597,6 +3597,12 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "dsl.raw_bytes_flavor"
+axis = "feature"
+example = "ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_ ; @raw_bytes_flavor"
+pinned_reason = "references user-supplied code; crate cannot compile standalone (references user-provided extern wrapper flavors; integration-tested in tests/extern-generic-raw-bytes)"
+
+[[row]]
 id = "dsl.used_as_elem"
 axis = "feature"
 example = "elem_host = [a: uint, b: text] ; @used_as_elem"
@@ -3709,6 +3715,180 @@ expect = "accept"
 
 [[row.vector]]
 hex = "821911656664696374756d"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "dsl.used_as_key.hash"
+axis = "feature"
+example = "keyed = [a: uint, b: text] ; @used_as_key hash"
+spec = "keyed = [a: uint, b: text] ; @used_as_key hash"
+mode = "standalone"
+type_name = "Keyed"
+
+[[row.vector]]
+hex = "8219037d6873746f726d696572"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "821905536d63617465676f726963616c6c79"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "821906c36a5061726163656c737573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8219078a6c68756d616e69746965732773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "821907ea687472616368656173"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82190a90686c696e6b75702773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82190b4d6a656e6c6973746d656e74"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82190c6969497a616e616d692773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8219109168656e766961626c65"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "821910a76a6e696d626c656e657373"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "dsl.used_as_key.hash_ord"
+axis = "feature"
+example = "keyed = [a: uint, b: text] ; @used_as_key hash ord"
+spec = "keyed = [a: uint, b: text] ; @used_as_key hash ord"
+mode = "standalone"
+type_name = "Keyed"
+
+[[row.vector]]
+hex = "8219040c67746f6464792773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82190540646f617468"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "821907ce6a70656e6d616e73686970"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "821907ea66627573732773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "821908bb656265617273"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "821909fe65436f782773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82190e8b6572696e6473"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "821910076b69746368696e6573732773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8219107765486f666661"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82191179694a616e756172792773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "dsl.used_as_key.ord"
+axis = "feature"
+example = "keyed = [a: uint, b: text] ; @used_as_key ord"
+spec = "keyed = [a: uint, b: text] ; @used_as_key ord"
+mode = "standalone"
+type_name = "Keyed"
+
+[[row.vector]]
+hex = "82190112684d61636b696e6163"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "821902dd6576616c6574"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8219038c6967726f757065722773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "821904b76850696c6174652773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "821907b1686d6572696e6f2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "821909116a4c696e6f747970652773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "821909e76766616c6c696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82190c0c6a67656172736869667473"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82190f3766726566757465"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82190fee6b73796e636f706174696e67"
 source = "ruby-generate"
 expect = "accept"
 
