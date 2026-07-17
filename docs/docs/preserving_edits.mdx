@@ -86,7 +86,10 @@ The recorded original is what makes this work, doing three jobs at once:
 
 - **Placement.** On regeneration the recorded original is uncommented, tokenized, and located in
   the regenerated item; your block is spliced in over that exact spot. No positional guessing —
-  the block finds its place even when unrelated code moved.
+  the block finds its place even when unrelated code moved. When the whole surrounding top-level
+  item regenerates token-identically, the block places by its own position instead, so the recorded
+  original does not need to be unique within the item (this lets you replace one of several identical
+  fragments, or even two different occurrences of the same fragment).
 - **Drift detection.** If the generator's output for that region *changed* — you edited the CDDL,
   or a tool upgrade emits different code — the recorded original no longer matches, and the block
   is trapped in a `compile_error!` showing what you overrode. A stale override can never silently
@@ -96,9 +99,11 @@ The recorded original is what makes this work, doing three jobs at once:
 
 The same syntax scales from one line to a whole item: record a single statement, a run of
 statements, an entire member function, or a whole `impl` — whatever the recorded original spans
-(within one top-level item) is what your code replaces. Both your code and the recorded original
-must be delimiter-balanced; an empty recorded original is an error (there'd be nothing to match
-against).
+(within one top-level item) is what your code replaces. Neither your code nor the recorded original
+may close a delimiter (`{}`, `()`, `[]`) it did not open, and the two must change delimiter depth by
+the same net amount — so an `if flag {` paired with a recorded `if old_cond {` (both open one brace)
+is fine, while a `} else {` fragment (which closes a brace first) is not. An empty recorded original
+is an error (there'd be nothing to match against).
 
 Generated comments *inside* the replaced span are replaced with it; comments outside survive. A
 plain comment of yours whose anchor falls inside a span some replace block deletes fails loudly —
@@ -114,8 +119,10 @@ qualified path (`std::collections::BTreeMap`) rather than relying on a `use` tha
 ## When preservation fails: the two failure channels
 
 **Malformed tags abort the export** (a hard error naming the file, before anything is written).
-This covers: an unclosed block, an orphaned `insert-end`/`replaces`/`replace-end`, unbalanced
-delimiters, an empty or unlexable recorded original, code lines under `replaces` (every line
+This covers: an unclosed block, an orphaned `insert-end`/`replaces`/`replace-end`, a fragment that
+closes a delimiter it did not open (or, for a replace block, a user section and recorded original
+whose net delimiter deltas differ), an empty or unlexable recorded original, code lines under
+`replaces` (every line
 there must be `//`-commented), a recorded original spanning multiple top-level items — and *any*
 unrecognized own-line comment starting with `// cddl-codegen:`. That last rule is what keeps the
 never-silent contract airtight: a typo'd tag can never demote your block to plain text and let
@@ -141,7 +148,7 @@ lost. The reasons you'll see, and what they mean:
 | `…the number of same-named items changed` | same-keyed items (e.g. two `impl Foo` blocks) were added/removed, so "the Nth one" is ambiguous | re-place by hand |
 | `…whose generated code changed` (comment) | the statement your comment annotated changed or is no longer unique | re-place by hand against the new code |
 | `The generated code for …changed, so its recorded original no longer appears (drift)` | the generator now emits different code where your replace block applied | re-review: update your replacement for the new behavior, re-record the new original under `replaces` |
-| `…recorded original is not unique within …` / `…appears more than once…` | the recorded original matches zero-or-multiple spots ambiguously (e.g. a duplicated statement was deleted or added) | include more surrounding lines in the recorded original so it's unique, or re-place by hand |
+| `…recorded original is not unique within …` / `…appears more than once…` | the item *also* changed (so the item-identity fast path didn't apply) and the recorded original then matches zero-or-multiple spots ambiguously | include more surrounding lines in the recorded original so it's unique, or re-place by hand |
 | `Its anchor lies inside code replaced by a …replace-start block` | a separate comment/insert block pointed into a span your replace block overrides | move that comment/block inside the replace block |
 | `It is a trailing (end-of-line) comment` | trailing comments aren't carried | move it to its own line |
 

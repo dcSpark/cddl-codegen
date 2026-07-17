@@ -3,11 +3,12 @@
 
 impl Foo {
     fn go(&self) {
+        emit(field);
         // cddl-codegen:replace-start
-        custom();
+        custom(field);
         // cddl-codegen:replaces
-        //   } old();
+        //   emit(field);
         // cddl-codegen:replace-end
-        write_len(self.a);
+        emit(field);
     }
 }

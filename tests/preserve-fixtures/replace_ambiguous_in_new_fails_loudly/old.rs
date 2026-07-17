@@ -8,7 +8,6 @@ impl Foo {
         // cddl-codegen:replaces
         //   old();
         // cddl-codegen:replace-end
-        old();
         write_len(self.a);
     }
 }

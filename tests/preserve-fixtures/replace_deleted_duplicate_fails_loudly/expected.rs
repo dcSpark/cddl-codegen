@@ -7,6 +7,6 @@ impl Foo {
     fn go(&self) {
         dup();
         dup();
-        write_len(self.a);
+        write_len(self.b);
     }
 }

@@ -4,10 +4,10 @@
 impl Foo {
     fn go(&self) {
         // cddl-codegen:replace-start
-        custom();
+        custom(x)
         // cddl-codegen:replaces
-        //   } old();
+        //   emit(x) {
         // cddl-codegen:replace-end
-        write_len(self.a);
+        rest();
     }
 }
