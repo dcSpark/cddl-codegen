@@ -11,7 +11,6 @@ pub mod error;
 pub mod serialization;
 
 use crate::generated::error::*;
-use std::convert::TryFrom;
 
 #[derive(Clone, Debug)]
 pub struct ArrMember {

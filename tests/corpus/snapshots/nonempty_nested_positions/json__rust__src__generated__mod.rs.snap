@@ -16,7 +16,6 @@ use crate::generated::error::*;
 use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::non_empty_map::NonEmptyMap;
 use std::collections::BTreeMap;
-use std::convert::TryFrom;
 
 pub type DomNonemptyMap = BTreeMap<NonEmptyMap<u64, u64>, String>;
 

@@ -21,7 +21,6 @@ use cbor_encodings::{
     PlainEncoding, String32Encoding, String64Encoding, TableArrMembersEncoding, TaggedTextEncoding,
 };
 use std::collections::BTreeMap;
-use std::convert::TryFrom;
 
 #[derive(Clone, Debug)]
 pub struct Bar {

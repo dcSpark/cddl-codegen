@@ -19,7 +19,6 @@ use crate::generated::serialization::{LenEncoding, StringEncoding};
 use cbor_encodings::{
     NullableCollFieldEncoding, NullableDenumFieldEncoding, NullableOptionalFieldEncoding,
 };
-use std::convert::TryFrom;
 
 #[derive(Clone, Debug)]
 pub enum DataEnum {

@@ -16,7 +16,6 @@ pub mod serialization;
 use crate::generated::error::*;
 use crate::generated::serialization::{LenEncoding, StringEncoding};
 use cbor_encodings::{PairU64TextEncoding, XEncoding};
-use std::convert::TryFrom;
 
 #[derive(Clone, Debug)]
 pub struct PairU64Text {

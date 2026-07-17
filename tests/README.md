@@ -418,9 +418,10 @@ denies a curated rustc style-lint set (`unused_parens`, `unused_braces`, `unused
 catches redundant emitted grouping/allocation without turning the remaining legitimate
 generated-code warnings into failures — `unused_variables`, and `unused_imports` on the trait/glob
 imports that the usage-derived import prune (`import_prune::prune_generated_files`) deliberately
-leaves because they can't be proven unused by ident-scanning (the four concrete collection-type
-imports ARE pruned at generation time; the warning-severity residue gate for those is a
-`TESTING_ROADMAP.md` entry). It is intentionally not `-D warnings` (see `tool_cmd`'s doc comment). The wasm leg uses the same deny/allow set as the rust leg; any new
+leaves because they can't be proven unused by ident-scanning (the concrete allowlisted imports —
+the four collection helpers plus the `--preserve-encodings` enums `LenEncoding`/`StringEncoding` —
+ARE pruned at generation time, as is every private import of a re-export-only extern-glue file; the
+warning-severity residue gate for those is a `TESTING_ROADMAP.md` entry). It is intentionally not `-D warnings` (see `tool_cmd`'s doc comment). The wasm leg uses the same deny/allow set as the rust leg; any new
 `clippy::all` lint class is hard-red on both profiles and both generated crates.
 Tier: check.ts `local` as a plain non-ignored test, kept below the ~90s warm wall-clock threshold.
 A warm run measures ~2s, which looks vacuous but is not: regeneration is byte-identical, so cargo's

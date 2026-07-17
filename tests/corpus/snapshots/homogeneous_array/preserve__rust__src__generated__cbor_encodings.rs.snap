@@ -6,7 +6,7 @@ expression: content
 // https://github.com/dcSpark/cddl-codegen
 
 use super::*;
-use crate::generated::serialization::{LenEncoding, StringEncoding};
+use crate::generated::serialization::LenEncoding;
 
 #[derive(Clone, Debug, Default)]
 pub struct BoolHolderEncoding {

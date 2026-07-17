@@ -12,7 +12,6 @@ mod key_demand_assertions;
 pub mod serialization;
 
 use crate::generated::error::*;
-use std::convert::TryFrom;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[wasm_bindgen::prelude::wasm_bindgen]

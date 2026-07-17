@@ -19,7 +19,6 @@ use cbor_encodings::{
     HolderEncoding, TaggedCtlNeEncoding, TaggedRangeExclEncoding, TaggedRangeInclEncoding,
     TaggedRangeNintEncoding, TaggedRangeUintEncoding,
 };
-use std::convert::TryFrom;
 
 pub type CborCtlNe = i64;
 

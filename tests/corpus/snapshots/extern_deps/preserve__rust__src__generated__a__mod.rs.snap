@@ -12,7 +12,6 @@ pub mod serialization;
 use cbor_encodings::BazEncoding;
 use extern_dep_crate::error::*;
 use extern_dep_crate::serialization::{LenEncoding, StringEncoding};
-use std::convert::TryFrom;
 
 #[derive(Clone, Debug)]
 pub struct Baz {

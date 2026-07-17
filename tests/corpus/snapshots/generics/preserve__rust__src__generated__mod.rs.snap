@@ -16,7 +16,6 @@ pub mod serialization;
 use crate::generated::error::*;
 use crate::generated::serialization::{LenEncoding, StringEncoding};
 use cbor_encodings::{PairUseEncoding, RangedContainerEncoding, UintContainerEncoding};
-use std::convert::TryFrom;
 
 #[derive(Clone, Debug)]
 pub struct PairUse {

@@ -6,7 +6,6 @@ expression: content
 // https://github.com/dcSpark/cddl-codegen
 
 use super::*;
-use crate::generated::serialization::{LenEncoding, StringEncoding};
 
 #[derive(Clone, Debug, Default)]
 pub struct WrappedEnumEncoding {

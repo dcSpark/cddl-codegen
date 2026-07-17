@@ -13,8 +13,6 @@ extern crate derivative;
 pub mod serialization;
 
 use crate::generated::error::*;
-use crate::generated::serialization::{LenEncoding, StringEncoding};
-use std::convert::TryFrom;
 
 #[derive(Copy, Eq, PartialEq, Ord, PartialOrd, Clone, Debug)]
 #[wasm_bindgen::prelude::wasm_bindgen]

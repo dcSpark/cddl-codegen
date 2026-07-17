@@ -803,10 +803,12 @@ impl GenerationScope {
 
         // general common imports (struct files)
         for content in self.rust_scopes.values_mut() {
-            // needed if there's any params that can fail
-            content
-                .push_import("std::convert", "TryFrom", None)
-                .push_import(format!("{}::error", cli.common_import_rust()), "*", None);
+            // `error::*` covers the error types the fallible conversions in these files reference.
+            // `TryFrom` itself is NOT imported: it lives in the edition-2021+ prelude and every
+            // generated crate pins `edition = "2024"` (`static/Cargo_rust.toml`, force-`Set` by the
+            // manifest changeset), so an explicit import would only be an unused-import wall in
+            // files that never do a fallible conversion.
+            content.push_import(format!("{}::error", cli.common_import_rust()), "*", None);
             // in case we store these in enums we're just going to dump them in everywhere
             if cli.preserve_encodings {
                 content

@@ -18,7 +18,6 @@ use crate::generated::error::*;
 use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::serialization::{LenEncoding, StringEncoding};
 use cbor_encodings::{FixedValueArm0Encoding, MultiFieldArm0Encoding, NonemptyArm0Encoding};
-use std::convert::TryFrom;
 
 #[derive(Clone, Debug)]
 pub enum FixedValueArm {

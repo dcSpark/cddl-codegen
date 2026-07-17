@@ -13369,3 +13369,89 @@ fn integration_prune_removes_blind_imports_per_module() {
         );
     }
 }
+
+/// The re-export-only file-shape rule end-to-end (the CML `specs/conway/address.cddl` shape): a
+/// scope declaring ONLY `_CDDL_CODEGEN_EXTERN_TYPE_` rules, referenced from another scope, generated
+/// with `--preserve-encodings`. The declaring scope's `mod.rs` is nothing but extern re-export glue,
+/// yet the unconditional common-import push adds `error::*` and the two encoding enums into it. The
+/// re-export-only prune rule (`import_prune`) must strip ALL of those, leaving the file with only its
+/// header comment and the two `pub use crate::…;` lines — a permanent zero-warning shape.
+/// `--wasm=false` keeps this on the string-emit path (no static dir needed), like the sibling
+/// prune tests.
+#[test]
+fn integration_prune_reexport_only_extern_scope() {
+    use clap::Parser;
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_codegen_prune_reexport_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("address")).unwrap();
+    // Root scope references both externs so they are reachable and their glue is emitted.
+    std::fs::write(
+        dir.join("lib.cddl"),
+        "root = [a: address, b: reward_address]\n",
+    )
+    .unwrap();
+    // The declaring scope is extern-ONLY: nothing but two `_CDDL_CODEGEN_EXTERN_TYPE_` rules.
+    std::fs::write(
+        dir.join("address/mod.cddl"),
+        "address = _CDDL_CODEGEN_EXTERN_TYPE_\nreward_address = _CDDL_CODEGEN_EXTERN_TYPE_\n",
+    )
+    .unwrap();
+
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        dir.to_str().unwrap(),
+        "--output",
+        "prune_reexport_only",
+        "--preserve-encodings=true",
+        "--wasm=false",
+    ]);
+    let files =
+        crate::api::generated_strings(&cli).unwrap_or_else(|e| panic!("generation failed: {e}"));
+    let _ = std::fs::remove_dir_all(&dir);
+
+    // The extern-only scope's generated `mod.rs`: the one rust generated `mod.rs` carrying the glue.
+    let extern_mods: Vec<(&String, &String)> = files
+        .iter()
+        .filter(|(p, _)| {
+            p.starts_with("rust/") && p.contains("/generated/") && p.ends_with("/mod.rs")
+        })
+        .filter(|(_, c)| c.contains("pub use crate::Address;"))
+        .collect();
+    assert_eq!(
+        extern_mods.len(),
+        1,
+        "expected exactly one rust generated mod.rs with the extern glue; files: {:?}",
+        files.keys().collect::<Vec<_>>()
+    );
+    let (_, mod_rs) = extern_mods[0];
+
+    // Every line must be a header comment, blank, or one of the two `pub use crate::…;` re-exports.
+    for line in mod_rs.lines() {
+        let t = line.trim();
+        let ok = t.is_empty()
+            || t.starts_with("//")
+            || t == "pub use crate::Address;"
+            || t == "pub use crate::RewardAddress;";
+        assert!(
+            ok,
+            "extern-only mod.rs must contain only header comments and the two `pub use crate::…;` \
+             lines; offending line: {line:?}\nfull:\n{mod_rs}"
+        );
+    }
+    assert!(
+        mod_rs.contains("pub use crate::Address;")
+            && mod_rs.contains("pub use crate::RewardAddress;"),
+        "both extern re-exports must survive:\n{mod_rs}"
+    );
+    // The blindly-pushed common imports must all be gone (no unused-import walls).
+    for junk in ["TryFrom", "error", "LenEncoding", "StringEncoding"] {
+        assert!(
+            !mod_rs.contains(junk),
+            "blindly-pushed `{junk}` import must be pruned from the extern-only mod.rs:\n{mod_rs}"
+        );
+    }
+}
