@@ -647,31 +647,27 @@ dead loses the lesson.
   The mechanical fix, when the rate warrants: make the emission-embed generation use a fresh output dir
   per cell (mirror the base-probe fix) so a prior cell's minted `mod.rs` can't be read for the current
   holder.
-- **Full-suite flake, now attributed: `acquire_scratch_lock_serializes` — recurrence needs the
-  errno.** The `test` gate failed with exit 101 twice (2026-07-06 unattributed — output truncated
-  before the `failures:` list; 2026-07-08 captured in full): the second sighting names
-  `integration_tests::acquire_scratch_lock_serializes`, panicking on its release-assert ("the
-  lock should be acquirable once the first handle is dropped"). No repro in 60 isolated
-  single-test runs, so it is load/parallelism-dependent (the failing run had
-  `feature_corpus_compiles`/`wasm_matrix_compiles` shelling parallel nested cargo, whose own
-  target-dir flocks pressure the kernel lock accounting). The old assert was `.is_ok()`, which
-  conflates the two very different failures — `WouldBlock` (lock outlived its handle = a real
-  advisory-flock semantics break) vs a syscall `Error` (e.g. ENOLCK under load = transient
-  environment); the assert now `match`es and panics with the concrete error + raw os errno, so
-  the NEXT sighting self-attributes. Keep the capture discipline (save full output before any
-  rerun); once a recurrence lands with an errno, either harden the test against that transient
-  (retry-on-ENOLCK) or escalate a genuine WouldBlock as a std/kernel finding. A THIRD probable
-  sighting (2026-07-09, `test` gate, local tier, under the same nested-cargo load profile) was
-  burned exactly the way this discipline warns about: the run was piped through `tail`, so no
-  `failures:` list or errno survived and two immediate full-suite reruns were green —
-  unattributable, evidence value zero. The discipline is load-bearing for one-command runners
-  too: pipe `check.ts` to a FILE, never through `tail`, even for the local tier. A FOURTH
-  probable sighting (2026-07-17, `test` gate, local tier, same nested-cargo load profile) was
-  burned the same way — the run was piped through `tail`, and two immediate reruns (themselves
-  piped through `grep`, compounding the waste) plus a properly-logged third were all green — so
-  the errno is still outstanding after four sightings, three of them lost to the exact
-  anti-pattern this entry names. The pipe-to-file rule applies from the FIRST invocation of a
-  session, not just reruns after a failure.
+- **Full-suite flake, attributed and hardened: `acquire_scratch_lock_serializes` — watch only for
+  a recurrence that outlives the retry deadline.** Five sightings (2026-07-06 through 2026-07-17),
+  every one in the `test` gate under parallel nested-cargo load, none reproducible isolated (60
+  isolated runs at the second sighting). The FIFTH sighting was the first fully-attributed capture
+  (the pipe-to-file discipline finally paying for itself — the third and fourth sightings were
+  burned through `tail`/`grep` and carried zero evidence), and it landed on the `match` split's
+  **`WouldBlock` arm**, not a syscall errno: the release-assert saw the lock still held
+  immediately after dropping the holder. That attributes the class: `flock` locks are per
+  open-file-description, and a concurrent `Command` spawn on another test thread forks a child
+  that inherits a DUPLICATE of the holder's descriptor until its exec closes the CLOEXEC fds —
+  during that fork-to-exec window the duplicate keeps the lock alive, so an INSTANTANEOUS
+  post-drop `try_lock` can transiently observe `WouldBlock` exactly and only under the suite's
+  constant-subprocess-spawn load profile. The gates' real acquisition path is the BLOCKING
+  `lock()`, which waits out that window by construction, so production serialization was never at
+  risk — only the test's instantaneous assert raced it. Hardening shipped with the attribution:
+  the release assert retries `WouldBlock` on a bounded 5 s deadline (a transient fork-to-exec
+  hold clears as soon as the concurrent child execs; a hold that outlives the deadline still
+  panics as a genuine release-on-drop semantics break), and the syscall-`Error` arm still reports
+  the raw errno for the never-yet-seen ENOLCK-class transient. Standing discipline unchanged and
+  proven load-bearing: pipe every `check.ts` run to a FILE from the FIRST invocation — a
+  deadline-outliving recurrence is a real kernel/std finding and needs its full log.
 
 ## Declined (decided, with the reopening signal)
 

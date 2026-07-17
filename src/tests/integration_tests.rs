@@ -462,27 +462,45 @@ fn acquire_scratch_lock_serializes() {
     );
 
     // Release the first lock; the contender can now take it. Match rather than `.is_ok()` so a
-    // failure names WHICH way it failed: `WouldBlock` (the lock outlived its handle — a real
-    // semantics break) vs a syscall error (e.g. ENOLCK under kernel lock-table pressure from the
-    // suite's parallel cargo children — a transient environment condition, not a semantics break).
-    // This test failed ONCE undiagnosably through the old `.is_ok()` assert (full-suite flake,
-    // 2026-07-08, no repro in 60 isolated runs — ledgered in tests/TESTING_ROADMAP.md); the split
-    // makes any recurrence attributable.
+    // failure names WHICH way it failed: a PERSISTENT `WouldBlock` (the lock outlived its handle —
+    // a real semantics break) vs a syscall error (e.g. ENOLCK under kernel lock-table pressure from
+    // the suite's parallel cargo children — a transient environment condition, not a semantics
+    // break). The release assert RETRIES a transient `WouldBlock` on a bounded deadline, to absorb
+    // the attributed flake class without weakening the semantics pin: `flock` locks are per
+    // open-file-description, and a concurrent `Command` spawn elsewhere in this multithreaded test
+    // process forks a child that inherits a duplicate of `held`'s descriptor until its exec closes
+    // the CLOEXEC fds — during that fork-to-exec window the duplicate keeps the lock alive, so an
+    // INSTANTANEOUS post-drop `try_lock` can observe `WouldBlock` under parallel nested-cargo load
+    // (the profile of all five ledgered sightings; first self-attributed capture 2026-07-17 after
+    // the match split landed — see the flake ledger in tests/TESTING_ROADMAP.md). The gates' real
+    // acquisition path is the BLOCKING `lock()`, which waits out that window by construction; only
+    // this test's instantaneous assert ever raced it. A hold that outlives the deadline still
+    // fails loudly — that remains a genuine release-on-drop break.
     std::mem::drop(held);
-    match contender.try_lock() {
-        Ok(()) => {}
-        Err(std::fs::TryLockError::WouldBlock) => panic!(
-            "the lock should be acquirable once the first handle is dropped, but try_lock \
-             reported it still HELD (WouldBlock) — the advisory-flock release-on-drop semantics \
-             the gates rely on are broken"
-        ),
-        Err(std::fs::TryLockError::Error(e)) => panic!(
-            "the lock should be acquirable once the first handle is dropped, but try_lock \
-             errored: {e} (raw_os_error {:?}) — a syscall failure, not a lock-semantics break; \
-             if transient (e.g. ENOLCK under load), see the flake ledger in \
-             tests/TESTING_ROADMAP.md",
-            e.raw_os_error()
-        ),
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        match contender.try_lock() {
+            Ok(()) => break,
+            Err(std::fs::TryLockError::WouldBlock) => {
+                if std::time::Instant::now() >= deadline {
+                    panic!(
+                        "the lock should be acquirable once the first handle is dropped, but \
+                         try_lock reported it still HELD (WouldBlock) for 5s of retries — a \
+                         persistent hold, not the transient fork-to-exec fd-duplication window \
+                         (which clears as soon as the concurrent child execs): the advisory-flock \
+                         release-on-drop semantics the gates rely on are broken"
+                    );
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            Err(std::fs::TryLockError::Error(e)) => panic!(
+                "the lock should be acquirable once the first handle is dropped, but try_lock \
+                 errored: {e} (raw_os_error {:?}) — a syscall failure, not a lock-semantics break; \
+                 if transient (e.g. ENOLCK under load), see the flake ledger in \
+                 tests/TESTING_ROADMAP.md",
+                e.raw_os_error()
+            ),
+        }
     }
     std::mem::drop(contender);
     let _ = std::fs::remove_file(&lock_path);
