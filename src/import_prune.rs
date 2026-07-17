@@ -30,8 +30,37 @@
 //! type can only be used by naming it, so "ident absent from the module family" ⇒ unused. That
 //! implication does NOT hold for traits (`use std::io::Write;` is exercised by `w.write_all(..)` —
 //! the ident `Write` never appears), macros, or globs (no ident to check). So this pass prunes
-//! ONLY the explicit [`ALLOWLIST`] of concrete-type imports — exactly the four blindly-pushed
-//! types. Everything else is kept untouched.
+//! ONLY the explicit [`ALLOWLIST`] of concrete-type imports — exactly the blindly-pushed types
+//! (the four collection helpers plus the two `--preserve-encodings` encoding enums). Everything
+//! else is kept untouched.
+//!
+//! **Second rule — re-export-only files (file-shape scoped).** An extern-only CDDL scope generates
+//! a `mod.rs` containing nothing but extern re-export glue (`pub use crate::Address;`). The
+//! unconditional common-import push still adds `error::*` and (under `--preserve-encodings`) the
+//! encoding enums into it, none of which the allowlist rule above can touch (`error::*` is a glob;
+//! before Deliverable-2's edition bump `TryFrom` was a trait). For a file whose *shape* proves
+//! nothing local can consume any import, [`prune_generated_files`] applies a stronger rule that
+//! removes ALL private `use` items (traits, globs, macros included — allowlist irrelevant). A file
+//! F **qualifies** (see [`is_reexport_only_file`] plus the driver's descendant check) when: (a) it
+//! is a prunable generated `.rs`; (b) it parses and every top-level `syn::Item` is `Item::Use`
+//! (comments are trivia, not items — `Item::Mod` even bodyless, `Item::Macro`, verbatim, any code
+//! item disqualifies); (c) the file map holds no other `.rs` under F's module dir in the same crate
+//! (no descendant modules — regardless of whether that descendant parses); and (d) every NON-private
+//! `use` is a plain `crate::`-anchored path chain ending in `Name`/`Rename` (a glob or group
+//! anywhere in a non-private use disqualifies — conservatively).
+//!
+//! Soundness of the second rule: a private `use` binding is consumable only by (1) code in the same
+//! file — none exists (condition b: only `use` items), or (2) descendant modules via `use super::*;`
+//! chains — none exist (condition c). A glob from a NON-descendant (`use crate::generated::x::*;`
+//! from a sibling) imports only `pub` items, never private bindings. So nothing can consume the
+//! private imports; wholesale removal is total and sound. Condition (d) guards the one escape hatch:
+//! 2018+ uniform paths let a relative `pub use self::Foo;` resolve *through* a private glob we would
+//! be deleting; a `crate::`-anchored `pub use` cannot (these files are never the crate root — a
+//! generated root carries `mod` declarations, excluded by (b)). Removal is all-or-nothing, so import
+//! chaining (`use a::B; use B::c;`) is moot. This preserves the pass's failure asymmetry
+//! (conservative-keep: parse failure, any descendant, a non-anchored `pub use`, or any code item all
+//! leave the file untouched) and future-proofs the wasm side — if the wasm glue/blanket-import
+//! ordering ever flips, the otherwise-unprunable `wasm_bindgen` macro import would be removed here.
 //!
 //! **Only private imports are candidates.** A `pub use` is API surface: a downstream crate may
 //! import the re-exported name, so no amount of in-crate usage analysis can justify removing it.
@@ -54,11 +83,22 @@ use quote::ToTokens;
 use syn::spanned::Spanned;
 use syn::{Item, ItemUse, UseTree};
 
-/// The concrete-type import names this pass is allowed to remove. These are exactly the four types
-/// that the emission sites in `generation/` push blindly. Extending this list later (e.g.
-/// `JsValue`) is a one-line change plus a snapshot re-bless — but every addition must be a concrete
-/// type (never a trait/macro/glob), or the soundness argument above breaks.
-const ALLOWLIST: &[&str] = &["BTreeMap", "OrderedHashMap", "NonEmptyVec", "NonEmptyMap"];
+/// The concrete-type import names this pass is allowed to remove. These are exactly the
+/// blindly-pushed types that the emission sites in `generation/` add unconditionally (or gated only
+/// on spec-global facts): the four collection helpers plus the two `--preserve-encodings` encoding
+/// enums. Extending this list later (e.g. `JsValue`) is a one-line change plus a snapshot re-bless —
+/// but every addition must be a concrete type (never a trait/macro/glob), or the soundness argument
+/// above breaks. Both encoding enums are concrete enums (`static/serialization_preserve.rs`) only
+/// ever consumed by being named, so the "ident absent from the module family ⇒ unused" implication
+/// holds for them exactly as for the collection types.
+const ALLOWLIST: &[&str] = &[
+    "BTreeMap",
+    "OrderedHashMap",
+    "NonEmptyVec",
+    "NonEmptyMap",
+    "LenEncoding",
+    "StringEncoding",
+];
 
 fn is_allowlisted(ident: &str) -> bool {
     ALLOWLIST.contains(&ident)
@@ -86,6 +126,27 @@ pub(crate) fn prune_unused_type_imports_with_used<'a>(
     source: &'a str,
     used: &HashSet<String>,
 ) -> Cow<'a, str> {
+    prune_private_use_items(source, &PruneMode::Allowlist(used))
+}
+
+/// Which private `use` items a splice pass targets — the two rules documented on this module.
+enum PruneMode<'u> {
+    /// Allowlist-scoped: within each private `use`, drop only allowlisted leaves absent from the
+    /// supplied protected ident set; every other leaf (traits, globs, renames, non-allowlisted
+    /// names) is kept. Non-qualifying files always take this path — byte-identical to the pass's
+    /// long-standing behaviour.
+    Allowlist(&'u HashSet<String>),
+    /// Re-export-only file shape: drop EVERY private `use` item wholesale (allowlist irrelevant).
+    /// Only reached for files that qualify via [`is_reexport_only_file`] + the driver's
+    /// no-descendant check, where the file-shape soundness argument (module docs) proves nothing
+    /// can consume a private import.
+    ReexportOnly,
+}
+
+/// Shared span-splicing edit loop for both prune rules. Iterates top-level PRIVATE `use` items;
+/// non-`use` items and `pub use` re-exports are never edited. Re-emission is targeted byte-range
+/// splicing (never whole-file token re-printing), so comments survive byte-for-byte.
+fn prune_private_use_items<'a>(source: &'a str, mode: &PruneMode) -> Cow<'a, str> {
     let file = match syn::parse_file(source) {
         Ok(file) => file,
         // Conservative-keep: unparseable input (a generator bug rustfmt will also reject loudly)
@@ -106,20 +167,30 @@ pub(crate) fn prune_unused_type_imports_with_used<'a>(
             // may import the name, so usage analysis inside this crate can never justify removal.
             continue;
         }
-        if let Some(pruned_tree) = prune_tree(&use_item.tree, used) {
-            // Tree changed but is non-empty: replace with the filtered use item.
-            if !trees_equal(&use_item.tree, &pruned_tree) {
-                let mut new_item = use_item.clone();
-                new_item.tree = pruned_tree;
-                let (start, end) = item_byte_range(use_item, &line_starts, source);
-                edits.push((start, end, Some(new_item.to_token_stream().to_string())));
+        match mode {
+            PruneMode::Allowlist(used) => {
+                if let Some(pruned_tree) = prune_tree(&use_item.tree, used) {
+                    // Tree changed but is non-empty: replace with the filtered use item.
+                    if !trees_equal(&use_item.tree, &pruned_tree) {
+                        let mut new_item = use_item.clone();
+                        new_item.tree = pruned_tree;
+                        let (start, end) = item_byte_range(use_item, &line_starts, source);
+                        edits.push((start, end, Some(new_item.to_token_stream().to_string())));
+                    }
+                } else {
+                    // Tree emptied entirely: drop the whole item, including the line it occupied —
+                    // plain span deletion would leave a blank-line scar rustfmt does not collapse.
+                    let (start, end) = item_byte_range(use_item, &line_starts, source);
+                    let (start, end) = expand_to_whole_line(source, start, end);
+                    edits.push((start, end, None));
+                }
             }
-        } else {
-            // Tree emptied entirely: drop the whole item, including the line it occupied — plain
-            // span deletion would leave a blank-line scar that rustfmt does not collapse.
-            let (start, end) = item_byte_range(use_item, &line_starts, source);
-            let (start, end) = expand_to_whole_line(source, start, end);
-            edits.push((start, end, None));
+            PruneMode::ReexportOnly => {
+                // Drop the whole private `use` item (same whole-line deletion as an emptied tree).
+                let (start, end) = item_byte_range(use_item, &line_starts, source);
+                let (start, end) = expand_to_whole_line(source, start, end);
+                edits.push((start, end, None));
+            }
         }
     }
 
@@ -193,6 +264,7 @@ pub(crate) fn prune_generated_files(files: &BTreeMap<String, String>) -> Vec<(St
         let key = crate_key(path);
         let mut protected = own_used.clone();
         let mut poisoned = false;
+        let mut has_descendant = false;
         for (desc_path, desc_used) in &used_by_path {
             if *desc_path == path.as_str()
                 || !desc_path.starts_with(&dir)
@@ -200,6 +272,7 @@ pub(crate) fn prune_generated_files(files: &BTreeMap<String, String>) -> Vec<(St
             {
                 continue;
             }
+            has_descendant = true;
             match desc_used {
                 Some(idents) => protected.extend(idents.iter().cloned()),
                 // An unparseable descendant might consume ANY of this file's private imports.
@@ -208,6 +281,18 @@ pub(crate) fn prune_generated_files(files: &BTreeMap<String, String>) -> Vec<(St
                     break;
                 }
             }
+        }
+        // Re-export-only file shape (module docs, second rule): no descendant module can consume a
+        // private import (`has_descendant` is false, so `poisoned` is too), and the file is all
+        // `use` items with only `crate::`-anchored `pub use`s — so every private `use` is provably
+        // dead and removed wholesale, regardless of the allowlist. Non-qualifying files fall through
+        // to the byte-identical allowlist rule below.
+        if !has_descendant && is_reexport_only_file(content) {
+            let pruned = prune_private_use_items(content, &PruneMode::ReexportOnly);
+            if let Cow::Owned(new_content) = pruned {
+                changed.push((path.clone(), new_content));
+            }
+            continue;
         }
         if poisoned {
             continue;
@@ -251,6 +336,50 @@ fn module_dir(path: &str) -> String {
 /// and manifests, which carry no allowlisted imports anyway.
 fn is_prunable_generated_rs(path: &str) -> bool {
     path.ends_with(".rs") && path.contains("/generated/")
+}
+
+/// Local half of the re-export-only file-shape qualifier (conditions (b) and (d) — see the module
+/// docs). True iff `source` parses, every top-level item is a `use`, and every NON-private `use` is
+/// a plain `crate::`-anchored path chain ending in `Name`/`Rename`. The driver adds the
+/// no-descendant check (condition (c)); a qualifying file has ALL its private `use` items removed.
+fn is_reexport_only_file(source: &str) -> bool {
+    let Ok(file) = syn::parse_file(source) else {
+        return false;
+    };
+    for item in &file.items {
+        let Item::Use(use_item) = item else {
+            // Any code item — `fn`, `struct`, `Item::Mod` (even bodyless), `Item::Macro`,
+            // `Item::ExternCrate`, verbatim — means a private import could be consumed locally.
+            return false;
+        };
+        // A non-private (`pub`, `pub(crate)`, …) `use` is API surface we keep; it must be
+        // `crate::`-anchored so it cannot resolve through a private glob we would be deleting.
+        if !matches!(use_item.vis, syn::Visibility::Inherited)
+            && !is_crate_anchored_use_tree(&use_item.tree)
+        {
+            return false;
+        }
+    }
+    true
+}
+
+/// A non-private `use` tree we can safely leave standing in a re-export-only file: a plain path
+/// chain whose first segment is `crate`, ending in a `Name` or `Rename` leaf. Any `Glob` or `Group`
+/// anywhere in the chain → false (conservative: a group/glob could pull in relative bindings).
+fn is_crate_anchored_use_tree(tree: &UseTree) -> bool {
+    match tree {
+        UseTree::Path(path) if path.ident == "crate" => is_plain_path_tail(&path.tree),
+        _ => false,
+    }
+}
+
+/// The tail of a `crate::`-anchored path: only nested `Path` segments ending in `Name`/`Rename`.
+fn is_plain_path_tail(tree: &UseTree) -> bool {
+    match tree {
+        UseTree::Path(path) => is_plain_path_tail(&path.tree),
+        UseTree::Name(_) | UseTree::Rename(_) => true,
+        UseTree::Glob(_) | UseTree::Group(_) => false,
+    }
 }
 
 /// Collect every `Ident` that appears in `source` outside a top-level PRIVATE `use` item, recursing
@@ -820,6 +949,227 @@ mod tests {
         assert!(
             changed.iter().all(|(p, _)| p != "rust/src/lib.rs"),
             "lib.rs must not be rewritten: {changed:?}"
+        );
+    }
+
+    // ----- re-export-only file-shape rule (second prune rule) -----
+
+    /// The CML extern-only-scope shape: a `mod.rs` that is nothing but a header comment, three
+    /// blindly-pushed private imports (a trait, a glob, a group), and two `crate::`-anchored
+    /// `pub use` re-exports. All three private uses are dropped WHOLESALE (the allowlist can touch
+    /// none of them), whole lines with no blank-line scars, and the comments + `pub use`s survive
+    /// byte-for-byte.
+    #[test]
+    fn reexport_only_file_drops_all_private_uses_byte_exactly() {
+        let content = concat!(
+            "// This file was code-generated using an experimental CDDL to rust tool:\n",
+            "// https://github.com/dcSpark/cddl-codegen\n",
+            "use std::convert::TryFrom;\n",
+            "use cml_core::error::*;\n",
+            "use std::collections::{BTreeMap, BTreeSet};\n",
+            "pub use crate::Address;\n",
+            "pub use crate::RewardAddress;\n",
+        );
+        let map = files(&[("rust/src/generated/address/mod.rs", content)]);
+        let changed = prune_generated_files(&map);
+        assert_eq!(
+            changed.len(),
+            1,
+            "the re-export-only file changes: {changed:?}"
+        );
+        assert_eq!(changed[0].0, "rust/src/generated/address/mod.rs");
+        let expected = concat!(
+            "// This file was code-generated using an experimental CDDL to rust tool:\n",
+            "// https://github.com/dcSpark/cddl-codegen\n",
+            "pub use crate::Address;\n",
+            "pub use crate::RewardAddress;\n",
+        );
+        assert_eq!(
+            changed[0].1, expected,
+            "all private uses removed; comments + pub uses byte-identical"
+        );
+    }
+
+    /// A descendant module in the map means `use super::*;` could consume a private import, so the
+    /// wholesale rule must NOT fire — only the ordinary allowlist prune applies. With the descendant
+    /// naming `BTreeMap`, that prune keeps everything, so the re-export-only file is left unchanged
+    /// (its trait/glob imports are NOT removed).
+    #[test]
+    fn reexport_rule_skips_when_descendant_present() {
+        let content = concat!(
+            "use std::convert::TryFrom;\n",
+            "use cml_core::error::*;\n",
+            "use std::collections::{BTreeMap, BTreeSet};\n",
+            "pub use crate::Address;\n",
+        );
+        let map = files(&[
+            ("rust/src/generated/address/mod.rs", content),
+            (
+                "rust/src/generated/address/child.rs",
+                "use super::*;\nfn f() { let _ = BTreeMap::<u8, u8>::new(); }\n",
+            ),
+        ]);
+        let changed = prune_generated_files(&map);
+        assert!(
+            !changed
+                .iter()
+                .any(|(p, _)| p == "rust/src/generated/address/mod.rs"),
+            "descendant present: wholesale rule must not fire, allowlist keeps everything: {changed:?}"
+        );
+    }
+
+    /// A single code item (here a `struct`) disqualifies the wholesale rule; the ordinary allowlist
+    /// prune still runs, so the trait import and `error::*` glob survive while the unused `BTreeMap`
+    /// leaf is dropped from the group.
+    #[test]
+    fn reexport_rule_skips_when_a_code_item_present() {
+        let content = concat!(
+            "use std::convert::TryFrom;\n",
+            "use cml_core::error::*;\n",
+            "use std::collections::{BTreeMap, BTreeSet};\n",
+            "pub use crate::Address;\n",
+            "pub struct Foo;\n",
+        );
+        let map = files(&[("rust/src/generated/mod.rs", content)]);
+        let changed = prune_generated_files(&map);
+        assert_eq!(
+            changed.len(),
+            1,
+            "allowlist prune drops BTreeMap: {changed:?}"
+        );
+        let out = &changed[0].1;
+        assert!(
+            out.contains("use std::convert::TryFrom"),
+            "trait import NOT removed wholesale (rule did not fire): {out}"
+        );
+        assert!(out.contains("use cml_core::error::*"), "glob kept: {out}");
+        assert!(
+            out.contains("pub use crate::Address"),
+            "pub use kept: {out}"
+        );
+        assert!(out.contains("pub struct Foo"), "code item kept: {out}");
+        assert!(
+            !out.contains("BTreeMap"),
+            "unused allowlisted leaf pruned: {out}"
+        );
+    }
+
+    /// The local qualifier `is_reexport_only_file`: every top-level item must be a `use`. Any code
+    /// item — `fn`, a bodyless `mod`, a top-level macro invocation, a `struct` — disqualifies.
+    #[test]
+    fn reexport_shape_rejects_non_use_items() {
+        assert!(is_reexport_only_file("pub use crate::Address;\n"));
+        assert!(is_reexport_only_file(
+            "use std::convert::TryFrom;\npub use crate::Address;\n"
+        ));
+        assert!(!is_reexport_only_file(
+            "pub use crate::Address;\nfn f() {}\n"
+        ));
+        assert!(!is_reexport_only_file(
+            "pub use crate::Address;\npub mod x;\n"
+        ));
+        assert!(!is_reexport_only_file(
+            "pub use crate::Address;\nmy_macro!();\n"
+        ));
+        assert!(!is_reexport_only_file(
+            "pub use crate::Address;\npub struct S;\n"
+        ));
+    }
+
+    /// The `crate::`-anchoring guard (condition d): a non-private `use` that is relative
+    /// (`self::`/`super::`) or carries a glob/group anywhere disqualifies the whole file — such a
+    /// `pub use` could resolve through a private glob we would be deleting. A crate-anchored rename
+    /// is fine.
+    #[test]
+    fn reexport_shape_rejects_non_crate_anchored_pub_use() {
+        assert!(!is_reexport_only_file(
+            "pub use self::Foo;\npub use crate::Address;\n"
+        ));
+        assert!(!is_reexport_only_file(
+            "pub use super::x::Foo;\npub use crate::Address;\n"
+        ));
+        assert!(!is_reexport_only_file("pub use crate::generated::x::*;\n"));
+        assert!(!is_reexport_only_file("pub use crate::{A, B};\n"));
+        assert!(is_reexport_only_file("pub use crate::inner::Foo as Bar;\n"));
+    }
+
+    /// A `pub(crate) use crate::X;` is non-private (kept as API surface) but still `crate::`-anchored,
+    /// so the file qualifies: the wholesale rule fires on the PRIVATE imports while the `pub(crate)`
+    /// and `pub` re-exports and the header comment survive.
+    #[test]
+    fn reexport_rule_fires_with_pub_crate_use() {
+        let content = concat!(
+            "// header\n",
+            "use std::convert::TryFrom;\n",
+            "pub(crate) use crate::Address;\n",
+            "pub use crate::RewardAddress;\n",
+        );
+        let map = files(&[("rust/src/generated/a/mod.rs", content)]);
+        let changed = prune_generated_files(&map);
+        assert_eq!(changed.len(), 1, "{changed:?}");
+        let out = &changed[0].1;
+        assert!(
+            !out.contains("use std::convert::TryFrom"),
+            "private import removed: {out}"
+        );
+        assert!(
+            out.contains("pub(crate) use crate::Address;"),
+            "pub(crate) re-export kept: {out}"
+        );
+        assert!(
+            out.contains("pub use crate::RewardAddress;"),
+            "pub re-export kept: {out}"
+        );
+        assert!(out.contains("// header"), "header comment kept: {out}");
+    }
+
+    // ----- allowlist extension: encoding enums -----
+
+    /// `LenEncoding`/`StringEncoding` (the `--preserve-encodings` push) are allowlisted, so a
+    /// code-bearing file whose module family never names them has them pruned.
+    #[test]
+    fn encoding_enums_pruned_when_family_never_names_them() {
+        let map = files(&[(
+            "rust/src/generated/mod.rs",
+            "use cml_core::serialization::LenEncoding;\n\
+             use cml_core::serialization::StringEncoding;\n\
+             pub struct Foo;\n",
+        )]);
+        let changed = prune_generated_files(&map);
+        assert_eq!(changed.len(), 1, "{changed:?}");
+        let out = &changed[0].1;
+        assert!(
+            !out.contains("LenEncoding"),
+            "unused LenEncoding pruned: {out}"
+        );
+        assert!(
+            !out.contains("StringEncoding"),
+            "unused StringEncoding pruned: {out}"
+        );
+        assert!(out.contains("pub struct Foo"));
+    }
+
+    /// The encoding-enum imports are KEPT when a descendant module names them via `use super::*;`
+    /// (same descendant-protection contract as the collection types).
+    #[test]
+    fn encoding_enums_kept_when_descendant_names_them() {
+        let map = files(&[
+            (
+                "rust/src/generated/mod.rs",
+                "use cml_core::serialization::LenEncoding;\n\
+                 use cml_core::serialization::StringEncoding;\n\
+                 pub mod serialization;\n\
+                 pub struct Foo;\n",
+            ),
+            (
+                "rust/src/generated/serialization.rs",
+                "use super::*;\nfn f(a: LenEncoding, b: StringEncoding) {}\n",
+            ),
+        ]);
+        let changed = prune_generated_files(&map);
+        assert!(
+            changed.is_empty(),
+            "descendant names both encodings; nothing pruned: {changed:?}"
         );
     }
 }

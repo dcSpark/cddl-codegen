@@ -14,7 +14,5 @@ pub mod serialization;
 
 use crate::generated::error::*;
 use crate::generated::ordered_hash_map::OrderedHashMap;
-use crate::generated::serialization::{LenEncoding, StringEncoding};
-use std::convert::TryFrom;
 
 pub type Table = OrderedHashMap<u64, String>;

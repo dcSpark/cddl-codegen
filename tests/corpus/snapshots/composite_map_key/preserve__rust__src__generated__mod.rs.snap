@@ -17,10 +17,9 @@ pub mod serialization;
 use crate::generated::error::*;
 use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::ordered_hash_map::OrderedHashMap;
-use crate::generated::serialization::{LenEncoding, StringEncoding};
+use crate::generated::serialization::LenEncoding;
 use cbor_encodings::HolderEncoding;
 use std::collections::BTreeMap;
-use std::convert::TryFrom;
 
 pub type ArrU64List = Vec<NonEmptyVec<u64>>;
 

@@ -14,7 +14,6 @@ use cbor_encodings::BarEncoding;
 use extern_dep_crate::error::*;
 use extern_dep_crate::ordered_hash_map::OrderedHashMap;
 use extern_dep_crate::serialization::{LenEncoding, StringEncoding};
-use std::convert::TryFrom;
 
 #[derive(Clone, Debug)]
 pub struct Bar {

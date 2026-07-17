@@ -20,7 +20,6 @@ use a::c::foo::Foo;
 use b::bar::{Bar, BarTypedef};
 use qux::Qux;
 use std::collections::BTreeMap;
-use std::convert::TryFrom;
 
 #[derive(Clone, Debug)]
 pub struct Everything {

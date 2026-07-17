@@ -22,7 +22,6 @@ use crate::generated::ordered_hash_map::OrderedHashMap;
 use crate::generated::serialization::{LenEncoding, StringEncoding};
 use cbor_encodings::HolderEncoding;
 use std::collections::BTreeMap;
-use std::convert::TryFrom;
 
 pub type DomNonemptyMap = OrderedHashMap<NonEmptyMap<u64, u64>, String>;
 

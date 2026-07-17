@@ -14,8 +14,6 @@ mod key_demand_assertions;
 pub mod serialization;
 
 use crate::generated::error::*;
-use crate::generated::serialization::{LenEncoding, StringEncoding};
-use std::convert::TryFrom;
 
 #[derive(Copy, Clone, Debug, derivative::Derivative)]
 #[derivative(

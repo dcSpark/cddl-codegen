@@ -19,7 +19,6 @@ use crate::generated::ordered_hash_map::OrderedHashMap;
 use crate::generated::serialization::{LenEncoding, StringEncoding};
 use cbor_encodings::EnumKeyHolderEncoding;
 use std::collections::BTreeMap;
-use std::convert::TryFrom;
 
 #[derive(Clone, Debug)]
 pub struct EnumKeyHolder {

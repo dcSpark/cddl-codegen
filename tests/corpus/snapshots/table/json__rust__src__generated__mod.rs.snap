@@ -12,6 +12,5 @@ pub mod serialization;
 
 use crate::generated::error::*;
 use std::collections::BTreeMap;
-use std::convert::TryFrom;
 
 pub type Table = BTreeMap<u64, String>;

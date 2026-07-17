@@ -16,9 +16,8 @@ use cbor_encodings::EverythingEncoding;
 use extern_dep_crate::ExternCrateFoo;
 use extern_dep_crate::error::*;
 use extern_dep_crate::ordered_hash_map::OrderedHashMap;
-use extern_dep_crate::serialization::{LenEncoding, StringEncoding};
+use extern_dep_crate::serialization::LenEncoding;
 use std::collections::BTreeMap;
-use std::convert::TryFrom;
 
 #[derive(Clone, Debug)]
 pub struct Everything {

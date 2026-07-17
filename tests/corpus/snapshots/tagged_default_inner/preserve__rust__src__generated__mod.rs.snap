@@ -14,9 +14,7 @@ pub mod cbor_encodings;
 pub mod serialization;
 
 use crate::generated::error::*;
-use crate::generated::serialization::{LenEncoding, StringEncoding};
 use cbor_encodings::TaggedDefaultEncoding;
-use std::convert::TryFrom;
 
 #[derive(Clone, Debug)]
 pub struct TaggedDefault {

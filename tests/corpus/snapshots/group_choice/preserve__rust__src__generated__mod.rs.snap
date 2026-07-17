@@ -14,7 +14,6 @@ pub mod serialization;
 
 use crate::generated::error::*;
 use crate::generated::serialization::{LenEncoding, StringEncoding};
-use std::convert::TryFrom;
 
 #[derive(Clone, Debug)]
 pub enum GroupChoice {

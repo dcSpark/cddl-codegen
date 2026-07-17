@@ -6,7 +6,7 @@ expression: content
 // https://github.com/dcSpark/cddl-codegen
 
 use super::*;
-use extern_dep_crate::serialization::{LenEncoding, StringEncoding};
+use extern_dep_crate::serialization::LenEncoding;
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Default)]

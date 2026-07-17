@@ -19,7 +19,6 @@ use cbor_encodings::{
     BoundsMembersEncoding, WExactSizeEncoding, WIntRangeEncoding, WNintRangeEncoding,
     WZeroLenEncoding,
 };
-use std::convert::TryFrom;
 
 #[derive(Clone, Debug)]
 pub struct BoundsMembers {

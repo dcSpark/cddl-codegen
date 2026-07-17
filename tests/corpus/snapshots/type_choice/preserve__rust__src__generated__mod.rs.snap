@@ -13,8 +13,7 @@ extern crate derivative;
 pub mod serialization;
 
 use crate::generated::error::*;
-use crate::generated::serialization::{LenEncoding, StringEncoding};
-use std::convert::TryFrom;
+use crate::generated::serialization::StringEncoding;
 
 #[derive(Clone, Debug)]
 pub enum TypeChoice {

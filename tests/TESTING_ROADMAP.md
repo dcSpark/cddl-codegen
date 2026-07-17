@@ -310,8 +310,9 @@ dead loses the lesson.
   positives). Act on a second instance or a consumer report, not before.
 - **`unused_imports` on the pruned collection-type imports — no rustc-warning gate yet.** The
   usage-derived prune (`import_prune::prune_generated_files`, run once over the whole file map in
-  `generation/export.rs`'s `generated_files`) removes the four blindly-pushed collection imports
-  (`BTreeMap`/`OrderedHashMap`/`NonEmptyVec`/`NonEmptyMap`) that a file's module family — the file
+  `generation/export.rs`'s `generated_files`) removes the blindly-pushed imports on its allowlist
+  (`BTreeMap`/`OrderedHashMap`/`NonEmptyVec`/`NonEmptyMap` plus the `--preserve-encodings` enums
+  `LenEncoding`/`StringEncoding`) that a file's module family — the file
   plus its strict path-descendant modules, the complete set of possible consumers of its private
   imports — names nowhere. An over-prune that removes a needed import is caught LOUD by the
   existing nested-cargo compile gates (E0412/E0433 — exactly what caught the first per-file

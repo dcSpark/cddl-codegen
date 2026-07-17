@@ -14,9 +14,8 @@ pub mod cbor_encodings;
 pub mod serialization;
 
 use crate::generated::error::*;
-use crate::generated::serialization::{LenEncoding, StringEncoding};
+use crate::generated::serialization::LenEncoding;
 use cbor_encodings::UsesNoAliasEncoding;
-use std::convert::TryFrom;
 
 #[derive(Clone, Debug)]
 pub struct UsesNoAlias {

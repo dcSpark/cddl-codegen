@@ -18,7 +18,6 @@ use crate::generated::error::*;
 use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::serialization::{LenEncoding, StringEncoding};
 use cbor_encodings::OccurrenceHolderEncoding;
-use std::convert::TryFrom;
 
 pub type Bounded = Vec<u64>;
 

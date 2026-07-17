@@ -33,7 +33,6 @@ use cbor_encodings::{
     WidthCollapseEncoding, WrapperListEncoding, WrapperTableEncoding,
 };
 use std::collections::BTreeMap;
-use std::convert::TryFrom;
 
 #[derive(Clone, Debug)]
 pub struct A {

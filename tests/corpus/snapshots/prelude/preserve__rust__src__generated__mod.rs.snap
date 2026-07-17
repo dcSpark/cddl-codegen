@@ -21,7 +21,6 @@ use cbor_encodings::{
     PreludeEncodedCborEncoding, PreludeEncoding, PreludeMimeMessageEncoding, PreludeRegexpEncoding,
     PreludeTdateEncoding, PreludeUriEncoding,
 };
-use std::convert::TryFrom;
 
 #[derive(Clone, Debug)]
 pub enum Int {
