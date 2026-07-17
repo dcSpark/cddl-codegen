@@ -78,7 +78,12 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
   (the `@raw_bytes_flavor` registration) shipped CI-green with THREE local drift gates red
   (`tests/recomb/ingredients.json` stale, the Q6 `VENDOR_FEATURE_COUNT` pin, the status-header
   count spans), and check.ts's fail-fast meant only the first showed per run — the rot surfaced
-  one layer at a time in an unrelated later session. Promotion is a maintainer decision (CI
+  one layer at a time in an unrelated later session. The same commit also left the FULL-tier
+  `ir_conformance_corpus` deterministically red (its extern fixture ledgered in `COMPILE_SKIP`
+  but not the gate's then-twin `GEN_SKIP` — since unified onto `COMPILE_SKIP` as single owner),
+  invisible until an unrelated session's next manual full-tier run — the full-tier flavor of the
+  same skipped-tier cost, with no promotion remedy (full stays manual by design; the mitigations
+  are the single-owner unification and running full before shipping a feature). Promotion is a maintainer decision (CI
   policy, § above); until then the mitigating discipline is unchanged: run `local` before
   considering matrix-surface work done, and expect stacked reds behind fail-fast when de-rotting.
 
