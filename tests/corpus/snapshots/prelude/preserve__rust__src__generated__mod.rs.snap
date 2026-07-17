@@ -157,7 +157,7 @@ impl Prelude {
 
 #[derive(Clone, Debug)]
 pub struct PreludeB64legacy {
-    inner: String,
+    pub(crate) inner: String,
     pub encodings: Option<PreludeB64legacyEncoding>,
 }
 
@@ -182,7 +182,7 @@ impl From<String> for PreludeB64legacy {
 
 #[derive(Clone, Debug)]
 pub struct PreludeB64url {
-    inner: String,
+    pub(crate) inner: String,
     pub encodings: Option<PreludeB64urlEncoding>,
 }
 
@@ -240,7 +240,7 @@ impl PreludeBigint {
 
 #[derive(Clone, Debug)]
 pub struct PreludeBignint {
-    inner: Vec<u8>,
+    pub(crate) inner: Vec<u8>,
     pub encodings: Option<PreludeBignintEncoding>,
 }
 
@@ -271,7 +271,7 @@ impl From<PreludeBignint> for Vec<u8> {
 
 #[derive(Clone, Debug)]
 pub struct PreludeBiguint {
-    inner: Vec<u8>,
+    pub(crate) inner: Vec<u8>,
     pub encodings: Option<PreludeBiguintEncoding>,
 }
 
@@ -319,7 +319,7 @@ impl PreludeDecfrac {
 
 #[derive(Clone, Debug)]
 pub struct PreludeEncodedCbor {
-    inner: Vec<u8>,
+    pub(crate) inner: Vec<u8>,
     pub encodings: Option<PreludeEncodedCborEncoding>,
 }
 
@@ -366,7 +366,7 @@ impl PreludeInteger {
 
 #[derive(Clone, Debug)]
 pub struct PreludeMimeMessage {
-    inner: String,
+    pub(crate) inner: String,
     pub encodings: Option<PreludeMimeMessageEncoding>,
 }
 
@@ -391,7 +391,7 @@ impl From<String> for PreludeMimeMessage {
 
 #[derive(Clone, Debug)]
 pub struct PreludeRegexp {
-    inner: String,
+    pub(crate) inner: String,
     pub encodings: Option<PreludeRegexpEncoding>,
 }
 
@@ -416,7 +416,7 @@ impl From<String> for PreludeRegexp {
 
 #[derive(Clone, Debug)]
 pub struct PreludeTdate {
-    inner: String,
+    pub(crate) inner: String,
     pub encodings: Option<PreludeTdateEncoding>,
 }
 
@@ -463,7 +463,7 @@ impl PreludeUnsigned {
 
 #[derive(Clone, Debug)]
 pub struct PreludeUri {
-    inner: String,
+    pub(crate) inner: String,
     pub encodings: Option<PreludeUriEncoding>,
 }
 

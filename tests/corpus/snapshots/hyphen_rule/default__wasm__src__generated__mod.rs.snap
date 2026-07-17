@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct HyphenRule(cddl_lib::HyphenRule);
+pub struct HyphenRule(pub(crate) cddl_lib::HyphenRule);
 
 #[wasm_bindgen]
 impl HyphenRule {

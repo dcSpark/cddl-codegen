@@ -80,7 +80,7 @@ impl BoundsMembers {
 
 #[derive(Clone, Debug)]
 pub struct WExactSize {
-    inner: Vec<u8>,
+    pub(crate) inner: Vec<u8>,
     pub encodings: Option<WExactSizeEncoding>,
 }
 
@@ -123,7 +123,7 @@ impl From<WExactSize> for Vec<u8> {
 
 #[derive(Clone, Debug)]
 pub struct WIntRange {
-    inner: u64,
+    pub(crate) inner: u64,
     pub encodings: Option<WIntRangeEncoding>,
 }
 
@@ -160,7 +160,7 @@ impl TryFrom<u64> for WIntRange {
 
 #[derive(Clone, Debug)]
 pub struct WNintRange {
-    inner: u64,
+    pub(crate) inner: u64,
     pub encodings: Option<WNintRangeEncoding>,
 }
 
@@ -197,7 +197,7 @@ impl TryFrom<u64> for WNintRange {
 
 #[derive(Clone, Debug)]
 pub struct WZeroLen {
-    inner: Vec<u8>,
+    pub(crate) inner: Vec<u8>,
     pub encodings: Option<WZeroLenEncoding>,
 }
 

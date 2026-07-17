@@ -21,7 +21,7 @@ use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
 pub struct WrappedArr {
-    inner: Vec<u64>,
+    pub(crate) inner: Vec<u64>,
     pub encodings: Option<WrappedArrEncoding>,
 }
 
@@ -52,7 +52,7 @@ impl From<WrappedArr> for Vec<u64> {
 
 #[derive(Clone, Debug)]
 pub struct WrappedMap {
-    inner: OrderedHashMap<u64, String>,
+    pub(crate) inner: OrderedHashMap<u64, String>,
     pub encodings: Option<WrappedMapEncoding>,
 }
 

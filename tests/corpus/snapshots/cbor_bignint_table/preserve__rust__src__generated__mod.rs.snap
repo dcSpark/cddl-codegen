@@ -37,7 +37,7 @@ impl Holder {
 #[derive(Clone, Debug, derivative::Derivative)]
 #[derivative(Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct PreludeBignint {
-    inner: Vec<u8>,
+    pub(crate) inner: Vec<u8>,
     #[derivative(
         PartialEq = "ignore",
         Ord = "ignore",

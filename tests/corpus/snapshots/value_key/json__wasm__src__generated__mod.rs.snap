@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct ArrowValueKeys(cddl_lib::ArrowValueKeys);
+pub struct ArrowValueKeys(pub(crate) cddl_lib::ArrowValueKeys);
 
 #[wasm_bindgen]
 impl ArrowValueKeys {
@@ -86,7 +86,7 @@ impl AsRef<cddl_lib::ArrowValueKeys> for ArrowValueKeys {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct ValueKeys(cddl_lib::ValueKeys);
+pub struct ValueKeys(pub(crate) cddl_lib::ValueKeys);
 
 #[wasm_bindgen]
 impl ValueKeys {

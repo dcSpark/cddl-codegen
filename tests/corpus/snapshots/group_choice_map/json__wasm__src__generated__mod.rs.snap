@@ -17,7 +17,7 @@ use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct FixedValueArm(cddl_lib::FixedValueArm);
+pub struct FixedValueArm(pub(crate) cddl_lib::FixedValueArm);
 
 #[wasm_bindgen]
 impl FixedValueArm {
@@ -98,7 +98,7 @@ impl AsRef<cddl_lib::FixedValueArm> for FixedValueArm {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct FixedValueArm0(cddl_lib::FixedValueArm0);
+pub struct FixedValueArm0(pub(crate) cddl_lib::FixedValueArm0);
 
 #[wasm_bindgen]
 impl FixedValueArm0 {
@@ -162,7 +162,7 @@ pub enum FixedValueArmKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MixedKeyTypes(cddl_lib::MixedKeyTypes);
+pub struct MixedKeyTypes(pub(crate) cddl_lib::MixedKeyTypes);
 
 #[wasm_bindgen]
 impl MixedKeyTypes {
@@ -247,7 +247,7 @@ pub enum MixedKeyTypesKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MultiFieldArm(cddl_lib::MultiFieldArm);
+pub struct MultiFieldArm(pub(crate) cddl_lib::MultiFieldArm);
 
 #[wasm_bindgen]
 impl MultiFieldArm {
@@ -328,7 +328,7 @@ impl AsRef<cddl_lib::MultiFieldArm> for MultiFieldArm {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MultiFieldArm0(cddl_lib::MultiFieldArm0);
+pub struct MultiFieldArm0(pub(crate) cddl_lib::MultiFieldArm0);
 
 #[wasm_bindgen]
 impl MultiFieldArm0 {
@@ -446,7 +446,7 @@ impl AsRef<NonEmptyVec<u64>> for NonEmptyU64List {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NonemptyArm(cddl_lib::NonemptyArm);
+pub struct NonemptyArm(pub(crate) cddl_lib::NonemptyArm);
 
 #[wasm_bindgen]
 impl NonemptyArm {
@@ -529,7 +529,7 @@ impl AsRef<cddl_lib::NonemptyArm> for NonemptyArm {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NonemptyArm0(cddl_lib::NonemptyArm0);
+pub struct NonemptyArm0(pub(crate) cddl_lib::NonemptyArm0);
 
 #[wasm_bindgen]
 impl NonemptyArm0 {
@@ -599,7 +599,7 @@ pub enum NonemptyArmKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TextKeyed(cddl_lib::TextKeyed);
+pub struct TextKeyed(pub(crate) cddl_lib::TextKeyed);
 
 #[wasm_bindgen]
 impl TextKeyed {
@@ -684,7 +684,7 @@ pub enum TextKeyedKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct UintKeyed(cddl_lib::UintKeyed);
+pub struct UintKeyed(pub(crate) cddl_lib::UintKeyed);
 
 #[wasm_bindgen]
 impl UintKeyed {

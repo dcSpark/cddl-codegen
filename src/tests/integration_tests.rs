@@ -13543,3 +13543,85 @@ fn integration_extern_only_scope_declared_in_root() {
         );
     }
 }
+
+/// Pin: generated wrapper (bounded newtype) fields are emitted `pub(crate)`, not private. The
+/// bound-check boundary that matters is the CRATE boundary — external crates still cannot
+/// literal-construct or mutate the wrapper — while hand-written modules in the consumer's OWN crate
+/// (which under the thin-root layout live outside the always-clobbered generated subtree) legitimately
+/// need field access (e.g. a `RawBytesEncoding` impl on a bounded newtype). In-crate privacy was
+/// already bypassable by dropping a hand file inside the scope subtree, so it protected nothing real.
+/// Asserts all three emission sites: the rust `inner` named field under `--preserve-encodings=true`,
+/// the rust tuple field under the default profile, and the wasm wrapper's tuple field. Generated as
+/// strings (no static dir / nested cargo), like the sibling wrapper/scope tests.
+#[test]
+fn integration_wrapper_fields_are_pub_crate() {
+    use clap::Parser;
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_codegen_wrapper_pub_crate_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    // A bounded-bytes newtype: `new()` enforces the size bound, so the wrapper has a single backing
+    // field (rust `inner`/tuple `.0`, wasm tuple `.0`) whose visibility this test pins.
+    std::fs::write(dir.join("lib.cddl"), "bounded = bytes .size (2..4)\n").unwrap();
+
+    let get = |files: &std::collections::BTreeMap<String, String>, key: &str| -> String {
+        files
+            .get(key)
+            .unwrap_or_else(|| {
+                panic!(
+                    "no `{key}` among generated files; got: {:?}",
+                    files.keys().collect::<Vec<_>>()
+                )
+            })
+            .clone()
+    };
+
+    // --preserve-encodings=true: rust wrapper uses a named `inner` field; wasm wraps the rust type.
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        dir.to_str().unwrap(),
+        "--output",
+        "wrapper_pub_crate_pe",
+        "--preserve-encodings=true",
+        "--wasm=true",
+    ]);
+    let files = crate::api::generated_strings(&cli).unwrap_or_else(|e| panic!("gen failed: {e}"));
+    let rust = get(&files, "rust/src/generated/mod.rs");
+    assert!(
+        rust.lines()
+            .any(|l| l.trim() == "pub(crate) inner: Vec<u8>,"),
+        "preserve-encodings rust wrapper `inner` field must be `pub(crate)` (crate-boundary bound \
+         check; hand files outside the generated subtree need field access):\n{rust}"
+    );
+    let wasm = get(&files, "wasm/src/generated/mod.rs");
+    assert!(
+        wasm.contains("pub struct Bounded(pub(crate) cddl_lib::Bounded);"),
+        "preserve-encodings wasm wrapper tuple field must be `pub(crate)` (unblocks consumer wasm \
+         hand files doing `self.0`; wasm_bindgen ignores non-pub fields so the ABI is unchanged):\n{wasm}"
+    );
+
+    // Default profile: rust wrapper uses an anonymous tuple field.
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        dir.to_str().unwrap(),
+        "--output",
+        "wrapper_pub_crate_def",
+        "--wasm=true",
+    ]);
+    let files = crate::api::generated_strings(&cli).unwrap_or_else(|e| panic!("gen failed: {e}"));
+    let _ = std::fs::remove_dir_all(&dir);
+    let rust = get(&files, "rust/src/generated/mod.rs");
+    assert!(
+        rust.contains("pub struct Bounded(pub(crate) Vec<u8>);"),
+        "default-profile rust wrapper tuple field must be `pub(crate)`:\n{rust}"
+    );
+    let wasm = get(&files, "wasm/src/generated/mod.rs");
+    assert!(
+        wasm.contains("pub struct Bounded(pub(crate) cddl_lib::Bounded);"),
+        "default-profile wasm wrapper tuple field must be `pub(crate)`:\n{wasm}"
+    );
+}

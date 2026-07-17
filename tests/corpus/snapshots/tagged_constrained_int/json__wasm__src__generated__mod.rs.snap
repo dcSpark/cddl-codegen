@@ -18,7 +18,7 @@ pub type CborCtlNe = i64;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Garm(cddl_lib::Garm);
+pub struct Garm(pub(crate) cddl_lib::Garm);
 
 #[wasm_bindgen]
 impl Garm {
@@ -105,7 +105,7 @@ pub enum GarmKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Holder(cddl_lib::Holder);
+pub struct Holder(pub(crate) cddl_lib::Holder);
 
 #[wasm_bindgen]
 impl Holder {
@@ -205,7 +205,7 @@ impl AsRef<cddl_lib::Holder> for Holder {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TaggedCtlNe(cddl_lib::TaggedCtlNe);
+pub struct TaggedCtlNe(pub(crate) cddl_lib::TaggedCtlNe);
 
 #[wasm_bindgen]
 impl TaggedCtlNe {
@@ -265,7 +265,7 @@ impl AsRef<cddl_lib::TaggedCtlNe> for TaggedCtlNe {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TaggedRangeExcl(cddl_lib::TaggedRangeExcl);
+pub struct TaggedRangeExcl(pub(crate) cddl_lib::TaggedRangeExcl);
 
 #[wasm_bindgen]
 impl TaggedRangeExcl {
@@ -325,7 +325,7 @@ impl AsRef<cddl_lib::TaggedRangeExcl> for TaggedRangeExcl {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TaggedRangeIncl(cddl_lib::TaggedRangeIncl);
+pub struct TaggedRangeIncl(pub(crate) cddl_lib::TaggedRangeIncl);
 
 #[wasm_bindgen]
 impl TaggedRangeIncl {
@@ -385,7 +385,7 @@ impl AsRef<cddl_lib::TaggedRangeIncl> for TaggedRangeIncl {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TaggedRangeNint(cddl_lib::TaggedRangeNint);
+pub struct TaggedRangeNint(pub(crate) cddl_lib::TaggedRangeNint);
 
 #[wasm_bindgen]
 impl TaggedRangeNint {
@@ -445,7 +445,7 @@ impl AsRef<cddl_lib::TaggedRangeNint> for TaggedRangeNint {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TaggedRangeUint(cddl_lib::TaggedRangeUint);
+pub struct TaggedRangeUint(pub(crate) cddl_lib::TaggedRangeUint);
 
 #[wasm_bindgen]
 impl TaggedRangeUint {

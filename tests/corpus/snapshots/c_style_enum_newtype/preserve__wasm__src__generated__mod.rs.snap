@@ -17,7 +17,7 @@ use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct WrappedEnum(cddl_lib::WrappedEnum);
+pub struct WrappedEnum(pub(crate) cddl_lib::WrappedEnum);
 
 #[wasm_bindgen]
 impl WrappedEnum {

@@ -36,7 +36,7 @@ impl From<TaggedNewtype> for String {
 }
 
 #[derive(Clone, Debug)]
-pub struct Tagged(String);
+pub struct Tagged(pub(crate) String);
 
 impl Tagged {
     pub fn get(&self) -> &String {
@@ -88,7 +88,7 @@ impl schemars::JsonSchema for Tagged {
 }
 
 #[derive(Clone, Debug)]
-pub struct TaggedNewtype(String);
+pub struct TaggedNewtype(pub(crate) String);
 
 impl TaggedNewtype {
     pub fn get(&self) -> &String {

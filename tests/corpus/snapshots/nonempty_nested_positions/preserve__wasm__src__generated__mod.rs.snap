@@ -64,7 +64,7 @@ impl AsRef<cddl_lib::DomNonemptyMap> for DomNonemptyMap {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Holder(cddl_lib::Holder);
+pub struct Holder(pub(crate) cddl_lib::Holder);
 
 #[wasm_bindgen]
 impl Holder {

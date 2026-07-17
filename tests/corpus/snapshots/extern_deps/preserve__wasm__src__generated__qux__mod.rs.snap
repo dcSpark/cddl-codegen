@@ -9,7 +9,7 @@ use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Qux(cddl_lib::qux::Qux);
+pub struct Qux(pub(crate) cddl_lib::qux::Qux);
 
 #[wasm_bindgen]
 impl Qux {

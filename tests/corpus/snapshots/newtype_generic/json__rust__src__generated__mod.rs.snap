@@ -14,7 +14,7 @@ use crate::generated::error::*;
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
-pub struct WrappedArr(Vec<u64>);
+pub struct WrappedArr(pub(crate) Vec<u64>);
 
 impl WrappedArr {
     pub fn get(&self) -> &Vec<u64> {
@@ -72,7 +72,7 @@ impl schemars::JsonSchema for WrappedArr {
 }
 
 #[derive(Clone, Debug)]
-pub struct WrappedMap(BTreeMap<u64, String>);
+pub struct WrappedMap(pub(crate) BTreeMap<u64, String>);
 
 impl WrappedMap {
     pub fn get(&self) -> &BTreeMap<u64, String> {

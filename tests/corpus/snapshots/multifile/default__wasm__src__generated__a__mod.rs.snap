@@ -11,7 +11,7 @@ use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Baz(cddl_lib::a::Baz);
+pub struct Baz(pub(crate) cddl_lib::a::Baz);
 
 #[wasm_bindgen]
 impl Baz {

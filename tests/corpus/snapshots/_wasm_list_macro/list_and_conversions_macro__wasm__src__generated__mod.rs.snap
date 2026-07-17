@@ -20,7 +20,7 @@ impl_wasm_list!(Color, Color, Colors, false, true);
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Foo(cddl_lib::Foo);
+pub struct Foo(pub(crate) cddl_lib::Foo);
 
 impl_wasm_conversions!(cddl_lib::Foo, Foo);
 

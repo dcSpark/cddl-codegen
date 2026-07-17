@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Elem(cddl_lib::Elem);
+pub struct Elem(pub(crate) cddl_lib::Elem);
 
 #[wasm_bindgen]
 impl Elem {

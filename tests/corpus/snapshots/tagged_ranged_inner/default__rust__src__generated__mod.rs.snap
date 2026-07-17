@@ -13,7 +13,7 @@ pub mod serialization;
 use crate::generated::error::*;
 
 #[derive(Clone, Debug, Copy)]
-pub struct TaggedRanged(u8);
+pub struct TaggedRanged(pub(crate) u8);
 
 impl TaggedRanged {
     pub fn get(&self) -> u8 {

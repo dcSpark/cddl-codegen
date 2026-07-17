@@ -58,7 +58,7 @@ impl AsRef<Vec<u64>> for Bounded {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct OccurrenceHolder(cddl_lib::OccurrenceHolder);
+pub struct OccurrenceHolder(pub(crate) cddl_lib::OccurrenceHolder);
 
 #[wasm_bindgen]
 impl OccurrenceHolder {

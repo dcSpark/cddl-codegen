@@ -66,7 +66,7 @@ impl AsRef<Vec<cddl_lib::b::bar::Bar>> for BarList {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Everything(cddl_lib::Everything);
+pub struct Everything(pub(crate) cddl_lib::Everything);
 
 #[wasm_bindgen]
 impl Everything {

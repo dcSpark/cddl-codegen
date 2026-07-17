@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct PairUse(cddl_lib::PairUse);
+pub struct PairUse(pub(crate) cddl_lib::PairUse);
 
 #[wasm_bindgen]
 impl PairUse {
@@ -78,7 +78,7 @@ impl AsRef<cddl_lib::PairUse> for PairUse {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct RangedContainer(cddl_lib::RangedContainer);
+pub struct RangedContainer(pub(crate) cddl_lib::RangedContainer);
 
 #[wasm_bindgen]
 impl RangedContainer {
@@ -138,7 +138,7 @@ impl AsRef<cddl_lib::RangedContainer> for RangedContainer {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct UintContainer(cddl_lib::UintContainer);
+pub struct UintContainer(pub(crate) cddl_lib::UintContainer);
 
 #[wasm_bindgen]
 impl UintContainer {

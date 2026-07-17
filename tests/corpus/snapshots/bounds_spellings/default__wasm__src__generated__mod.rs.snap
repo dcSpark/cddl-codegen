@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct BoundsMembers(cddl_lib::BoundsMembers);
+pub struct BoundsMembers(pub(crate) cddl_lib::BoundsMembers);
 
 #[wasm_bindgen]
 impl BoundsMembers {
@@ -78,7 +78,7 @@ impl AsRef<cddl_lib::BoundsMembers> for BoundsMembers {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct WExactSize(cddl_lib::WExactSize);
+pub struct WExactSize(pub(crate) cddl_lib::WExactSize);
 
 #[wasm_bindgen]
 impl WExactSize {
@@ -123,7 +123,7 @@ impl AsRef<cddl_lib::WExactSize> for WExactSize {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct WIntRange(cddl_lib::WIntRange);
+pub struct WIntRange(pub(crate) cddl_lib::WIntRange);
 
 #[wasm_bindgen]
 impl WIntRange {
@@ -168,7 +168,7 @@ impl AsRef<cddl_lib::WIntRange> for WIntRange {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct WNintRange(cddl_lib::WNintRange);
+pub struct WNintRange(pub(crate) cddl_lib::WNintRange);
 
 #[wasm_bindgen]
 impl WNintRange {
@@ -213,7 +213,7 @@ impl AsRef<cddl_lib::WNintRange> for WNintRange {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct WZeroLen(cddl_lib::WZeroLen);
+pub struct WZeroLen(pub(crate) cddl_lib::WZeroLen);
 
 #[wasm_bindgen]
 impl WZeroLen {

@@ -19,7 +19,7 @@ use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct BytesWrapper(cddl_lib::BytesWrapper);
+pub struct BytesWrapper(pub(crate) cddl_lib::BytesWrapper);
 
 #[wasm_bindgen]
 impl BytesWrapper {
@@ -77,7 +77,7 @@ impl AsRef<cddl_lib::BytesWrapper> for BytesWrapper {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct CustomWrapper(cddl_lib::CustomWrapper);
+pub struct CustomWrapper(pub(crate) cddl_lib::CustomWrapper);
 
 #[wasm_bindgen]
 impl CustomWrapper {
@@ -135,7 +135,7 @@ impl AsRef<cddl_lib::CustomWrapper> for CustomWrapper {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct I16Wrapper(cddl_lib::I16Wrapper);
+pub struct I16Wrapper(pub(crate) cddl_lib::I16Wrapper);
 
 #[wasm_bindgen]
 impl I16Wrapper {
@@ -195,7 +195,7 @@ impl AsRef<cddl_lib::I16Wrapper> for I16Wrapper {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct I64Wrapper(cddl_lib::I64Wrapper);
+pub struct I64Wrapper(pub(crate) cddl_lib::I64Wrapper);
 
 #[wasm_bindgen]
 impl I64Wrapper {
@@ -255,7 +255,7 @@ impl AsRef<cddl_lib::I64Wrapper> for I64Wrapper {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Int(cddl_lib::Int);
+pub struct Int(pub(crate) cddl_lib::Int);
 
 #[wasm_bindgen]
 impl Int {
@@ -336,7 +336,7 @@ pub type IntError = JsError;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct IntWrapper(cddl_lib::IntWrapper);
+pub struct IntWrapper(pub(crate) cddl_lib::IntWrapper);
 
 #[wasm_bindgen]
 impl IntWrapper {
@@ -396,7 +396,7 @@ pub type MapTextToU64 = Table;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NemJson(cddl_lib::NemJson);
+pub struct NemJson(pub(crate) cddl_lib::NemJson);
 
 #[wasm_bindgen]
 impl NemJson {
@@ -454,7 +454,7 @@ impl AsRef<cddl_lib::NemJson> for NemJson {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NevJson(cddl_lib::NevJson);
+pub struct NevJson(pub(crate) cddl_lib::NevJson);
 
 #[wasm_bindgen]
 impl NevJson {
@@ -512,7 +512,7 @@ impl AsRef<cddl_lib::NevJson> for NevJson {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NintWrapper(cddl_lib::NintWrapper);
+pub struct NintWrapper(pub(crate) cddl_lib::NintWrapper);
 
 #[wasm_bindgen]
 impl NintWrapper {
@@ -675,7 +675,7 @@ impl AsRef<NonEmptyVec<u64>> for NonEmptyU64List {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct StrWrapper(cddl_lib::StrWrapper);
+pub struct StrWrapper(pub(crate) cddl_lib::StrWrapper);
 
 #[wasm_bindgen]
 impl StrWrapper {
@@ -733,7 +733,7 @@ impl AsRef<cddl_lib::StrWrapper> for StrWrapper {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct StructWrapper(cddl_lib::StructWrapper);
+pub struct StructWrapper(pub(crate) cddl_lib::StructWrapper);
 
 #[wasm_bindgen]
 impl StructWrapper {
@@ -836,7 +836,7 @@ impl AsRef<cddl_lib::Table> for Table {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TableHolder(cddl_lib::TableHolder);
+pub struct TableHolder(pub(crate) cddl_lib::TableHolder);
 
 #[wasm_bindgen]
 impl TableHolder {
@@ -894,7 +894,7 @@ impl AsRef<cddl_lib::TableHolder> for TableHolder {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct U64Wrapper(cddl_lib::U64Wrapper);
+pub struct U64Wrapper(pub(crate) cddl_lib::U64Wrapper);
 
 #[wasm_bindgen]
 impl U64Wrapper {
@@ -952,7 +952,7 @@ impl AsRef<cddl_lib::U64Wrapper> for U64Wrapper {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct U8Wrapper(cddl_lib::U8Wrapper);
+pub struct U8Wrapper(pub(crate) cddl_lib::U8Wrapper);
 
 #[wasm_bindgen]
 impl U8Wrapper {

@@ -62,7 +62,7 @@ impl AsRef<OrderedHashMap<u64, String>> for MapU64ToText {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct WrappedArr(cddl_lib::WrappedArr);
+pub struct WrappedArr(pub(crate) cddl_lib::WrappedArr);
 
 #[wasm_bindgen]
 impl WrappedArr {
@@ -105,7 +105,7 @@ impl AsRef<cddl_lib::WrappedArr> for WrappedArr {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct WrappedMap(cddl_lib::WrappedMap);
+pub struct WrappedMap(pub(crate) cddl_lib::WrappedMap);
 
 #[wasm_bindgen]
 impl WrappedMap {

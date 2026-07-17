@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct QuotedMapKey(cddl_lib::QuotedMapKey);
+pub struct QuotedMapKey(pub(crate) cddl_lib::QuotedMapKey);
 
 #[wasm_bindgen]
 impl QuotedMapKey {

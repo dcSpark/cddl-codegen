@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Inner(cddl_lib::Inner);
+pub struct Inner(pub(crate) cddl_lib::Inner);
 
 #[wasm_bindgen]
 impl Inner {

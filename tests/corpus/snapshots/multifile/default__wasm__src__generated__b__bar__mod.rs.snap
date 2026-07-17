@@ -11,7 +11,7 @@ use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Bar(cddl_lib::b::bar::Bar);
+pub struct Bar(pub(crate) cddl_lib::b::bar::Bar);
 
 #[wasm_bindgen]
 impl Bar {
@@ -92,7 +92,7 @@ pub type BarTypedef = Bar;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct RelayHost(cddl_lib::b::bar::RelayHost);
+pub struct RelayHost(pub(crate) cddl_lib::b::bar::RelayHost);
 
 #[wasm_bindgen]
 impl RelayHost {
@@ -142,7 +142,7 @@ impl AsRef<cddl_lib::b::bar::RelayHost> for RelayHost {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct RelayPort(cddl_lib::b::bar::RelayPort);
+pub struct RelayPort(pub(crate) cddl_lib::b::bar::RelayPort);
 
 #[wasm_bindgen]
 impl RelayPort {

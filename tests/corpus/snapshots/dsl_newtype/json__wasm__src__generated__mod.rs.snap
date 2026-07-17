@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct ProtocolMagic(cddl_lib::ProtocolMagic);
+pub struct ProtocolMagic(pub(crate) cddl_lib::ProtocolMagic);
 
 #[wasm_bindgen]
 impl ProtocolMagic {

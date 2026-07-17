@@ -644,7 +644,7 @@ impl GroupChoice {
 
 #[derive(Clone, Debug)]
 pub struct Hash {
-    inner: Vec<u8>,
+    pub(crate) inner: Vec<u8>,
     pub encodings: Option<HashEncoding>,
 }
 
@@ -1360,7 +1360,7 @@ impl From<TaggedText> for String {
 
 #[derive(Clone, Debug)]
 pub struct String1632 {
-    inner: String,
+    pub(crate) inner: String,
     pub encodings: Option<String1632Encoding>,
 }
 
@@ -1397,7 +1397,7 @@ impl TryFrom<String> for String1632 {
 
 #[derive(Clone, Debug)]
 pub struct String64 {
-    inner: String,
+    pub(crate) inner: String,
     pub encodings: Option<String64Encoding>,
 }
 
@@ -1484,7 +1484,7 @@ impl TableArrMembers {
 
 #[derive(Clone, Debug)]
 pub struct TaggedFooBytes {
-    inner: Foo,
+    pub(crate) inner: Foo,
     pub encodings: Option<TaggedFooBytesEncoding>,
 }
 
@@ -1509,7 +1509,7 @@ impl From<Foo> for TaggedFooBytes {
 
 #[derive(Clone, Debug)]
 pub struct TaggedText {
-    inner: String,
+    pub(crate) inner: String,
     pub encodings: Option<TaggedTextEncoding>,
 }
 
@@ -1551,7 +1551,7 @@ impl Three {
 
 #[derive(Clone, Debug)]
 pub struct TopLevelNegRange {
-    inner: i64,
+    pub(crate) inner: i64,
     pub encodings: Option<TopLevelNegRangeEncoding>,
 }
 
@@ -1588,7 +1588,7 @@ impl TryFrom<i64> for TopLevelNegRange {
 
 #[derive(Clone, Debug)]
 pub struct TopLevelPosRange {
-    inner: u64,
+    pub(crate) inner: u64,
     pub encodings: Option<TopLevelPosRangeEncoding>,
 }
 
@@ -1625,7 +1625,7 @@ impl TryFrom<u64> for TopLevelPosRange {
 
 #[derive(Clone, Debug)]
 pub struct TopLevelTaggedRange {
-    inner: u64,
+    pub(crate) inner: u64,
     pub encodings: Option<TopLevelTaggedRangeEncoding>,
 }
 
@@ -1742,7 +1742,7 @@ impl WidthCollapse {
 
 #[derive(Clone, Debug)]
 pub struct WrapperList {
-    inner: Vec<u64>,
+    pub(crate) inner: Vec<u64>,
     pub encodings: Option<WrapperListEncoding>,
 }
 
@@ -1773,7 +1773,7 @@ impl From<WrapperList> for Vec<u64> {
 
 #[derive(Clone, Debug)]
 pub struct WrapperTable {
-    inner: OrderedHashMap<u64, u64>,
+    pub(crate) inner: OrderedHashMap<u64, u64>,
     pub encodings: Option<WrapperTableEncoding>,
 }
 

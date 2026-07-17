@@ -46,7 +46,7 @@ impl From<TaggedNewtype> for String {
 
 #[derive(Clone, Debug)]
 pub struct Tagged {
-    inner: String,
+    pub(crate) inner: String,
     pub encodings: Option<TaggedEncoding>,
 }
 
@@ -71,7 +71,7 @@ impl From<String> for Tagged {
 
 #[derive(Clone, Debug)]
 pub struct TaggedNewtype {
-    inner: String,
+    pub(crate) inner: String,
     pub encodings: Option<TaggedNewtypeEncoding>,
 }
 

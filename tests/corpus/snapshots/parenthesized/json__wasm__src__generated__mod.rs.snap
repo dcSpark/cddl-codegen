@@ -18,7 +18,7 @@ pub type Basic = u64;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Choice(cddl_lib::Choice);
+pub struct Choice(pub(crate) cddl_lib::Choice);
 
 #[wasm_bindgen]
 impl Choice {
@@ -103,7 +103,7 @@ pub enum ChoiceKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Holder(cddl_lib::Holder);
+pub struct Holder(pub(crate) cddl_lib::Holder);
 
 #[wasm_bindgen]
 impl Holder {
@@ -173,7 +173,7 @@ impl AsRef<cddl_lib::Holder> for Holder {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Nested(cddl_lib::Nested);
+pub struct Nested(pub(crate) cddl_lib::Nested);
 
 #[wasm_bindgen]
 impl Nested {
@@ -235,7 +235,7 @@ impl AsRef<cddl_lib::Nested> for Nested {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NewtypeViaParens(cddl_lib::NewtypeViaParens);
+pub struct NewtypeViaParens(pub(crate) cddl_lib::NewtypeViaParens);
 
 #[wasm_bindgen]
 impl NewtypeViaParens {

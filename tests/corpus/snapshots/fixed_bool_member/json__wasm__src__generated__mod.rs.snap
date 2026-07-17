@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct ArrMember(cddl_lib::ArrMember);
+pub struct ArrMember(pub(crate) cddl_lib::ArrMember);
 
 #[wasm_bindgen]
 impl ArrMember {
@@ -74,7 +74,7 @@ impl AsRef<cddl_lib::ArrMember> for ArrMember {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MapMember(cddl_lib::MapMember);
+pub struct MapMember(pub(crate) cddl_lib::MapMember);
 
 #[wasm_bindgen]
 impl MapMember {
@@ -132,7 +132,7 @@ impl AsRef<cddl_lib::MapMember> for MapMember {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TaggedMembers(cddl_lib::TaggedMembers);
+pub struct TaggedMembers(pub(crate) cddl_lib::TaggedMembers);
 
 #[wasm_bindgen]
 impl TaggedMembers {

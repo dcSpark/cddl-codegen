@@ -38,7 +38,7 @@ impl From<WrappedEnum> for FixedEnum {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct WrappedEnum(FixedEnum);
+pub struct WrappedEnum(pub(crate) FixedEnum);
 
 impl WrappedEnum {
     pub fn get(&self) -> FixedEnum {

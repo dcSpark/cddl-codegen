@@ -17,7 +17,7 @@ use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct BkeyHolder(cddl_lib::BkeyHolder);
+pub struct BkeyHolder(pub(crate) cddl_lib::BkeyHolder);
 
 #[wasm_bindgen]
 impl BkeyHolder {

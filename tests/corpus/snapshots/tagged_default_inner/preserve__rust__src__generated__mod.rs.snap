@@ -18,7 +18,7 @@ use cbor_encodings::TaggedDefaultEncoding;
 
 #[derive(Clone, Debug)]
 pub struct TaggedDefault {
-    inner: u64,
+    pub(crate) inner: u64,
     pub encodings: Option<TaggedDefaultEncoding>,
 }
 

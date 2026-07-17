@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Int(cddl_lib::Int);
+pub struct Int(pub(crate) cddl_lib::Int);
 
 #[wasm_bindgen]
 impl Int {
@@ -97,7 +97,7 @@ pub type IntError = JsError;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Primitives(cddl_lib::Primitives);
+pub struct Primitives(pub(crate) cddl_lib::Primitives);
 
 #[wasm_bindgen]
 impl Primitives {

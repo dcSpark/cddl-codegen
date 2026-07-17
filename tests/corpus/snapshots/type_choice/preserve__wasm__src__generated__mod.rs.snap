@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TypeChoice(cddl_lib::TypeChoice);
+pub struct TypeChoice(pub(crate) cddl_lib::TypeChoice);
 
 #[wasm_bindgen]
 impl TypeChoice {

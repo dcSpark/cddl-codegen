@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct ExclusiveRange(cddl_lib::ExclusiveRange);
+pub struct ExclusiveRange(pub(crate) cddl_lib::ExclusiveRange);
 
 #[wasm_bindgen]
 impl ExclusiveRange {
