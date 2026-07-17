@@ -508,6 +508,15 @@ tripwire also fires until the mirror (plus selfCheck vectors for any new grammar
 or better, move the dsl channel onto the AST floor instead (`tests/TESTING_ROADMAP.md`, the
 twin-implementation drift entry).
 
+A FLAVORED sibling row — a multi-token `alt` (`@used_as_key hash`: an existing directive plus
+argument words) — engages two more recognition surfaces without tripping `MIRRORED_DIRECTIVES`
+(the directive set is unchanged), walked empirically for the `dsl.used_as_key.{hash,ord,hash_ord}`
+registration: `verify.ts`'s backward (FABRICATED) lint resolves the alt only when every trailing
+word is in the flavor vocabulary extracted from `comment_ast.rs`'s match arms (a fabricated
+flavor word still flags, and a vacuity guard fails loud if the extraction pattern rots), and
+`corpus_detect.ts`'s directive mirror must credit the narrowed sibling id per flavor set (with
+matching selfCheck vectors) or `project_corpus`'s coverage floors drift.
+
 ## Evidence/id convention
 
 `id`s and evidence use **spec anchors (production / RFC section) and grep-able code anchors, never line

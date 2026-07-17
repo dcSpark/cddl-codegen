@@ -503,7 +503,11 @@ dead loses the lesson.
     `ast_roles.rs`. The floor is the only fix for the tripwire's blind spot, ARG-GRAMMAR drift
     within an unchanged directive set (the proven `@used_as_key` flavor shape: no set delta,
     changed consumption, a new panic path), because hand-picked selfCheck vectors drift WITH the
-    mirror by construction.
+    mirror by construction. The mirrored arg-grammar surface has since GROWN without a grammar
+    change (so this trigger deliberately did not fire): the flavor-row registration
+    (`dsl.used_as_key.{hash,ord,hash_ord}`) taught the mirror to credit the narrowed sibling id
+    per flavor set, mirroring `DemandSet`'s bare/flavored exclusivity — more hand-mirrored
+    consumption the floor owns when built.
   - *Its own reviewed change, never a drive-by:* unify the zero-min RangeCheck payload — the same
     authored zero-min bound reports `min: Some(0)` in wrapper payloads vs `min: None` at member
     sites because the drop-the-redundant-zero decision itself has multiple owners
