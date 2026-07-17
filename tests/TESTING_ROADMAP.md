@@ -141,6 +141,27 @@ justifies building the named mechanical layer. Building before the trigger fires
 over-engineering; deleting an entry without either building the layer or recording why the class is
 dead loses the lesson.
 
+- **Stale "known limitation" prose surviving its fix — a finding ledgered in TWO homes where the
+  fixing commit prunes only one.** Proven instance (read-caught during the facade-pin delivery,
+  not by any gate): the extern-only-scope undeclared-module finding was ledgered both in
+  `cddl-matrix/ROADMAP.md` and as a hand "Known limitation" paragraph in
+  `docs/docs/comment_dsl.mdx`; the fix (`e07c3a0`) pruned the roadmap entry and minted the pin
+  (`integration_extern_only_scope_declared_in_root`) but the user-docs paragraph survived — still
+  advising users to keep a non-extern rule in every extern file — INCLUDING through a later docs
+  pass that edited the same file (`6f33565`), until the facade compile pin
+  (`facade_composition_compiles`) compiled the composition end to end and the delivery pruned it.
+  No existing or pending layer sees the class: `lint_doc_citations` checks that citations RESOLVE
+  (the paragraph cited nothing, and a fix typically mints a NEW pin rather than dangling an old
+  identifier), the declined docs-conformance harness explicitly excludes prose semantics, and the
+  matrix's Limitations projection (`query_q1_gaps.ts`) owns only the generated span in
+  `current_capacities.mdx` — hand limitation prose in any other doc is outside every scanner.
+  Working rules meanwhile: a limitation recorded in user docs names its tracking artifact (the
+  reject/panic fixture, pin, or ledger entry) in the same paragraph; and a fixing session greps
+  `docs/` for the limitation's key phrases before shipping. Mechanical layer on the SECOND
+  instance: a limitation-claims arm on `lint_doc_citations` — every known-limitation-classed
+  paragraph outside a generated span must carry a resolvable tracking citation — or fold such
+  prose into a projected span (the matrix north star's "more docs follow"), making hand-maintained
+  limitation claims structurally impossible to orphan.
 - **Extreme-value boundary correctness of generation-time encode paths: a value that FITS the
   type can still encode wrong at the type's boundary, and no fixture minted from "supported
   shapes" ever lands there.** Proven instance (read-caught during the `FixedValue` i128/u64
