@@ -11265,39 +11265,6 @@ fn decode_conformance_replay() {
     // fails the gate). A row skipped here still runs the wasm accept + cbor differential leg (only its
     // wasm from_json sub-leg is suppressed too, since that shares the same serde parse path).
     const JSON_SURFACE_SKIP: &[(&str, &str)] = &[
-        // The native-float rows: serde_json's default (non-`float_roundtrip`) f64 parse loses 1 ULP, so
-        // the json round-trip re-encodes to different CBOR (cddl-matrix/ROADMAP.md § findings, the
-        // `serde_json` `float_roundtrip` entry). f32 rows round-trip exactly, so they are NOT here.
-        (
-            "prelude.float",
-            "serde_json's default f64 parse loses 1 ULP on the json round-trip — the generated crate's \
-             serde_json dep lacks `float_roundtrip` (cddl-matrix/ROADMAP.md § findings)",
-        ),
-        (
-            "prelude.float64",
-            "serde_json's default f64 parse loses 1 ULP on the json round-trip — the generated crate's \
-             serde_json dep lacks `float_roundtrip` (cddl-matrix/ROADMAP.md § findings)",
-        ),
-        (
-            "prelude.number",
-            "the `int / float` float arm loses 1 ULP through serde_json's default f64 parse on the json \
-             round-trip — serde_json lacks `float_roundtrip` (cddl-matrix/ROADMAP.md § findings)",
-        ),
-        (
-            "prelude.time",
-            "the `~= number` float arm loses 1 ULP through serde_json's default f64 parse on the json \
-             round-trip — serde_json lacks `float_roundtrip` (cddl-matrix/ROADMAP.md § findings)",
-        ),
-        (
-            "rangeop.inclusive.float",
-            "the f64-range newtype loses 1 ULP through serde_json's default f64 parse on the json \
-             round-trip — serde_json lacks `float_roundtrip` (cddl-matrix/ROADMAP.md § findings)",
-        ),
-        (
-            "rangeop.exclusive.float",
-            "the f64-range newtype loses 1 ULP through serde_json's default f64 parse on the json \
-             round-trip — serde_json lacks `float_roundtrip` (cddl-matrix/ROADMAP.md § findings)",
-        ),
         // `@custom_json` omits serde derives on the rust type, so `serde_json::to_string(&T)` in the
         // json test module won't compile standalone — the user is expected to supply custom json code
         // (cddl-matrix/ROADMAP.md § findings, the `@custom_json` json/wasm-surface entry).
@@ -12272,13 +12239,6 @@ fn corpus_decode_replay() {
             "a composite (map) map key is not json-serializable — serde_json requires string keys \
              (cddl-matrix/ROADMAP.md § findings)",
         ),
-        // f64 ULP loss through serde_json's default parse (this row is also on PRESERVE_SKIP for the
-        // native-float generation gap) — cddl-matrix/ROADMAP.md § findings.
-        (
-            "homogeneous_array.floats",
-            "`[* float64]` loses 1 ULP per element through serde_json's default f64 parse — serde_json \
-             lacks `float_roundtrip` (cddl-matrix/ROADMAP.md § findings)",
-        ),
         // Present-null optional field: json preserves present-null, the CBOR re-encode drops it — the
         // to_cbor_bytes fidelity proxy diverges (cddl-matrix/ROADMAP.md § findings).
         (
@@ -12312,7 +12272,7 @@ fn corpus_decode_replay() {
     const FLOOR_HEADER: usize = 1900;
     // json/wasm decode-surface vacuity floors, pinned from the confirm run's actuals with ~10% headroom
     // (1014 json-round-trip asserts over 118 rows, 1054 wasm-accept asserts over 123 rows, 0 mechanical
-    // wasm skips — every ProbeHolder carries a from_cbor_bytes wrapper surface; 6 rows on
+    // wasm skips — every ProbeHolder carries a from_cbor_bytes wrapper surface; 7 rows on
     // JSON_SURFACE_SKIP, 1 on WASM_SURFACE_SKIP).
     const JSON_ACCEPT_FLOOR: usize = 910;
     const JSON_ROWS_FLOOR: usize = 106;

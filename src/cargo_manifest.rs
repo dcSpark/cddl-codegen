@@ -553,7 +553,14 @@ pub fn ops_for_rust(
         "{ version = \"1.0\", features = [\"derive\"] }",
         cli.json_serde_derives,
     ));
-    ops.push(dep("serde_json", "\"1.0.57\"", cli.json_serde_derives));
+    // `float_roundtrip`: serde_json's default (fast) f64 parse loses 1 ULP; the feature switches to
+    // an exact parse so the generated json surface round-trips f64 bit-for-bit. The merge machinery
+    // unions features, so a user-customized serde_json spec keeps its own features and gains this one.
+    ops.push(dep(
+        "serde_json",
+        "{ version = \"1.0.57\", features = [\"float_roundtrip\"] }",
+        cli.json_serde_derives,
+    ));
     ops.push(dep("schemars", "\"1.2.1\"", cli.json_schema_export));
 
     // type-conditional deps (mirrors the old `rust_cargo_toml` conditions exactly)
@@ -589,7 +596,13 @@ pub fn ops_for_rust(
 pub fn ops_for_wasm(cli: &Cli) -> std::io::Result<Vec<(KeyPath, ManifestOp)>> {
     let mut ops = ops_from_log(cli, "manifest_changes/wasm.toml")?;
     ops.push(dep("serde", "\"1.0\"", cli.json_serde_derives));
-    ops.push(dep("serde_json", "\"1.0.57\"", cli.json_serde_derives));
+    // `float_roundtrip`: the wasm crate's `from_json` also parses via `serde_json::from_str`, so it
+    // needs the exact-parse feature to round-trip f64 bit-for-bit (see the rust-manifest note).
+    ops.push(dep(
+        "serde_json",
+        "{ version = \"1.0.57\", features = [\"float_roundtrip\"] }",
+        cli.json_serde_derives,
+    ));
     ops.push(dep(
         "serde-wasm-bindgen",
         "\"0.6.5\"",
@@ -601,6 +614,9 @@ pub fn ops_for_wasm(cli: &Cli) -> std::io::Result<Vec<(KeyPath, ManifestOp)>> {
 
 /// The declarative changeset for `wasm/json-gen/Cargo.toml` (no conditional deps of its own).
 pub fn ops_for_json_gen(cli: &Cli) -> std::io::Result<Vec<(KeyPath, ManifestOp)>> {
+    // Deliberately no `float_roundtrip`: the json-gen runner only SERIALIZES schemas
+    // (`serde_json::to_string_pretty`) — it never parses untrusted floats, so the lossy default
+    // parse can't bite here (the exact-parse feature lives on the rust/wasm manifests instead).
     let mut ops = ops_from_log(cli, "manifest_changes/json_gen.toml")?;
     ops.push(version_stamp());
     Ok(ops)
@@ -825,6 +841,25 @@ linked-hash-map = \"0.5.6\"
         assert!(
             line.contains("arbitrary_precision"),
             "feature dropped: {line}"
+        );
+    }
+
+    #[test]
+    fn merge_unions_serde_json_float_roundtrip_with_user_feature() {
+        // The production shape shipped by `ops_for_rust`/`ops_for_wasm`: a user who customized
+        // serde_json with `arbitrary_precision` must keep it AND gain the tool's `float_roundtrip`.
+        let line = merged_dep(
+            cml_shaped_manifest(),
+            "serde_json",
+            "{ version = \"1.0.57\", features = [\"float_roundtrip\"] }",
+        );
+        assert!(
+            line.contains("arbitrary_precision"),
+            "user feature dropped: {line}"
+        );
+        assert!(
+            line.contains("float_roundtrip"),
+            "tool feature not appended: {line}"
         );
     }
 
