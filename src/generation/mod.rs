@@ -696,44 +696,6 @@ impl GenerationScope {
         if cli.preserve_encodings {
             self.rust_lib().raw("extern crate derivative;");
         }
-        let scope_names = self
-            .rust_scopes
-            .keys()
-            .filter(|scope| **scope != *ROOT_SCOPE)
-            .cloned()
-            .collect::<Vec<_>>();
-        for scope in scope_names
-            .iter()
-            .filter_map(|s| {
-                if s.export() {
-                    s.components().first()
-                } else {
-                    None
-                }
-            })
-            .collect::<BTreeSet<_>>()
-        {
-            self.rust_lib().raw(format!("pub mod {scope};"));
-        }
-
-        // The borrowed-key-types sidecar module (materialized as `generated/borrowed_key_types.rs` in
-        // `generated_files`). RUST crate, not wasm — key derives are a rust-crate concern (the
-        // consumer's rust crate is what fails to build without them). PRIVATE (`mod`): its
-        // `BORROWED_KEY_TYPES` const is `pub(crate)`-machine-read output and the compiled self-check
-        // fails THIS crate's build if a dep drops a derive; nothing is re-exported. Declared whenever
-        // `--workspace-dep` is present (stable presence, stable diffs), even when nothing is borrowed.
-        if !self.workspace_deps.is_empty() {
-            self.rust_lib().raw("mod borrowed_key_types;");
-        }
-
-        // The key-demand assertions module (materialized as `generated/key_demand_assertions.rs` in
-        // `generated_files`), declared only when some `@used_as_key` root — flavored or bare — exists,
-        // so a key-free crate emits neither the decl nor the file. PRIVATE (`mod`): its `_demand_*`
-        // fns are compile-time-only self-checks.
-        if !assertion_roots(types).is_empty() {
-            self.rust_lib().raw("mod key_demand_assertions;");
-        }
-
         // declare common modules in each module (struct files). serialization / cbor_encodings are
         // each declared only where the corresponding .rs is actually emitted (mirror the conditions
         // in generated_files / merge_scopes_to_strings): declaring a `pub mod` with no backing file
@@ -813,6 +775,51 @@ impl GenerationScope {
                 let content = self.rust_scopes.entry(scope.clone()).or_default();
                 content.raw(format!("pub use crate::{base}RawBytes;"));
             }
+        }
+
+        // Declare the per-scope modules AFTER the extern / `@raw_bytes_flavor` glue above: an
+        // extern-ONLY scope (all its rules are `_CDDL_CODEGEN_EXTERN_TYPE_`) has no generated struct,
+        // so the glue's `rust_scopes.entry(..).or_default()` is the ONLY thing that creates its scope
+        // entry — snapshotting `rust_scopes.keys()` before the glue would emit that scope's
+        // `generated/<scope>/mod.rs` (the re-export glue) yet never declare `pub mod <scope>;`,
+        // leaving the root's `use <scope>::…;` referring to an undeclared module (E0432). `rust_lib`
+        // ordering is unchanged: nothing between the old and new positions writes `rust_lib`.
+        let scope_names = self
+            .rust_scopes
+            .keys()
+            .filter(|scope| **scope != *ROOT_SCOPE)
+            .cloned()
+            .collect::<Vec<_>>();
+        for scope in scope_names
+            .iter()
+            .filter_map(|s| {
+                if s.export() {
+                    s.components().first()
+                } else {
+                    None
+                }
+            })
+            .collect::<BTreeSet<_>>()
+        {
+            self.rust_lib().raw(format!("pub mod {scope};"));
+        }
+
+        // The borrowed-key-types sidecar module (materialized as `generated/borrowed_key_types.rs` in
+        // `generated_files`). RUST crate, not wasm — key derives are a rust-crate concern (the
+        // consumer's rust crate is what fails to build without them). PRIVATE (`mod`): its
+        // `BORROWED_KEY_TYPES` const is `pub(crate)`-machine-read output and the compiled self-check
+        // fails THIS crate's build if a dep drops a derive; nothing is re-exported. Declared whenever
+        // `--workspace-dep` is present (stable presence, stable diffs), even when nothing is borrowed.
+        if !self.workspace_deps.is_empty() {
+            self.rust_lib().raw("mod borrowed_key_types;");
+        }
+
+        // The key-demand assertions module (materialized as `generated/key_demand_assertions.rs` in
+        // `generated_files`), declared only when some `@used_as_key` root — flavored or bare — exists,
+        // so a key-free crate emits neither the decl nor the file. PRIVATE (`mod`): its `_demand_*`
+        // fns are compile-time-only self-checks.
+        if !assertion_roots(types).is_empty() {
+            self.rust_lib().raw("mod key_demand_assertions;");
         }
 
         // general common imports (struct files)
@@ -1067,40 +1074,6 @@ impl GenerationScope {
             self
             .wasm_lib()
             .raw("#![allow(clippy::len_without_is_empty, clippy::too_many_arguments, clippy::new_without_default)]");
-            // wasm module declarations
-            let wasm_scope_names = self
-                .wasm_scopes
-                .keys()
-                .filter(|scope| **scope != *ROOT_SCOPE)
-                .cloned()
-                .collect::<Vec<_>>();
-            for scope in wasm_scope_names
-                .iter()
-                .filter_map(|s| {
-                    if s.export() {
-                        s.components().first()
-                    } else {
-                        None
-                    }
-                })
-                .collect::<BTreeSet<_>>()
-            {
-                self.wasm_lib().raw(format!("pub mod {scope};"));
-            }
-            // The collection-wrapper index module (materialized as `generated/collections.rs` in
-            // `generated_files`). Declared unconditionally for every wasm run — even one that mints
-            // zero wrappers — from the always-regenerated generated root, never the seed-once
-            // crate-root lib.rs.
-            self.wasm_lib().raw("pub mod collections;");
-            // The borrowed-collections sidecar module (materialized as `generated/borrowed_collections.rs`
-            // in `generated_files`). PRIVATE (`mod`, never `pub mod`) — its `use` lines only
-            // existence-check the borrowed wrapper names; borrowed wrappers are never re-exported (the
-            // consumer's own `collections.rs` lists only wrappers it defines). Declared whenever
-            // `--workspace-dep` is present (stable presence, stable diffs), even when nothing is
-            // borrowed.
-            if !self.workspace_deps.is_empty() {
-                self.wasm_lib().raw("mod borrowed_collections;");
-            }
             // wasm imports
             // `deferred_wrappers` was fully populated during the wasm struct walk above (every
             // deferred wrapper's mint point recorded it), so referencing modules now get a plain
@@ -1216,6 +1189,45 @@ impl GenerationScope {
                 for ident in idents {
                     content.raw(format!("pub use crate::{ident};"));
                 }
+            }
+            // wasm module declarations. Emitted AFTER the extern re-export glue above, for the same
+            // reason as the rust crate: an extern-ONLY scope's entry is created solely by the glue's
+            // `wasm_scopes.entry(..).or_default()`, so a scope list snapshotted before the glue would
+            // materialize that scope's `generated/<scope>/mod.rs` yet never declare `pub mod <scope>;`
+            // in the root (E0432). `wasm_lib` ordering is unchanged: nothing between the old and new
+            // positions writes `wasm_lib`.
+            let wasm_scope_names = self
+                .wasm_scopes
+                .keys()
+                .filter(|scope| **scope != *ROOT_SCOPE)
+                .cloned()
+                .collect::<Vec<_>>();
+            for scope in wasm_scope_names
+                .iter()
+                .filter_map(|s| {
+                    if s.export() {
+                        s.components().first()
+                    } else {
+                        None
+                    }
+                })
+                .collect::<BTreeSet<_>>()
+            {
+                self.wasm_lib().raw(format!("pub mod {scope};"));
+            }
+            // The collection-wrapper index module (materialized as `generated/collections.rs` in
+            // `generated_files`). Declared unconditionally for every wasm run — even one that mints
+            // zero wrappers — from the always-regenerated generated root, never the seed-once
+            // crate-root lib.rs.
+            self.wasm_lib().raw("pub mod collections;");
+            // The borrowed-collections sidecar module (materialized as `generated/borrowed_collections.rs`
+            // in `generated_files`). PRIVATE (`mod`, never `pub mod`) — its `use` lines only
+            // existence-check the borrowed wrapper names; borrowed wrappers are never re-exported (the
+            // consumer's own `collections.rs` lists only wrappers it defines). Declared whenever
+            // `--workspace-dep` is present (stable presence, stable diffs), even when nothing is
+            // borrowed.
+            if !self.workspace_deps.is_empty() {
+                self.wasm_lib().raw("mod borrowed_collections;");
             }
             // declare submodules
             // we do this after the rest to avoid declaring serialization mod/cbor encodings/etc

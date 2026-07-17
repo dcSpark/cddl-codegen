@@ -408,8 +408,10 @@ and the inverse, don't *invent* a gap from a degenerate example.**
 - **Execution-gate exemptions.** 5 user-code features stay `supported` via the documented
   `COMPILE_GATE_EXEMPT` allowlist — they reference user-supplied code, so they can't compile (or
   test) standalone: `ext.extern`, `ext.raw_bytes`, `dsl.custom_serialize`, `dsl.custom_deserialize`,
-  `dsl.raw_bytes_flavor` (integration-tested instead). The exemption has a recorded cost: it let an extern-only-scope
-  compile break ship unseen (`ROADMAP.md` § findings, the extern-only undeclared-module entry). `prelude.any` is correctly ➖: `x = any` exits 0 but emits
+  `dsl.raw_bytes_flavor` (integration-tested instead). The exemption has a recorded cost: it once let
+  an extern-only-scope undeclared-module compile break ship unseen (since fixed and pinned by
+  `integration_extern_only_scope_declared_in_root`; the residual compile-gate hole for multi-scope
+  extern shapes is tracked in `ROADMAP.md` § findings). `prelude.any` is correctly ➖: `x = any` exits 0 but emits
   `pub type X = Any;` — an undefined type (root cause: `any` absent from `is_identifier_reserved`).
 - **Role floor (role × feature coverage) — NOT a serde JSON-AST dump.** The `cddl` AST's `Serialize`
   is gated on `target_arch = "wasm32"`, so there's no free serde dump on a native build;

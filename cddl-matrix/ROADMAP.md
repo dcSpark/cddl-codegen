@@ -583,24 +583,18 @@ are ledgered here (that's what the probe/gate error messages point at).
   candidate fix needs a call on which representation is canonical (a faithful codec should preserve the
   distinction — the CBOR re-encode dropping the present null is the likelier defect) and a matching
   serde/serialize alignment; until then the row's json round-trip can't assert `to_cbor_bytes` fidelity.
-- **An extern-only input file yields an undeclared generated module — the generated crate does not
-  compile.** A non-root scope whose rules are ALL `_CDDL_CODEGEN_EXTERN_TYPE_` (the shape of CML's
-  `specs/conway/address.cddl`) still gets its `mod.rs` emitted with the extern re-export glue
-  (`pub use crate::Address;` — required so cross-scope references resolve), but the parent never
-  declares the module: the declaration pass captures its scope list from `rust_scopes` BEFORE the
-  "Extern-type re-export glue" block creates the scope's entry, and nothing else writes into a scope
-  that has no generated structs — so the generated root carries `use <scope>::…` imports against a
-  module that is never declared (E0432 in the emitted crate). Long-standing, not a recent
-  regression: reproduces on CML's real conway spec at current HEAD and at CML's pinned codegen rev,
-  so CML's committed `pub mod address;` is a hand-correction its baseline carries. Systematically
-  unseen because every extern corpus row is compile-gate-exempt (`COMPILE_GATE_EXEMPT` — extern
-  references user-supplied code) and the multifile matrix carries the same permanent extern
-  exclusion, so no gate ever compiles a multi-scope extern shape; the import-prune pin for this file
-  shape (`integration_prune_reexport_only_extern_scope`) generates strings only and cannot see the
-  missing declaration either. Candidate fix: derive the module declarations from the post-glue scope
-  map (or declare extern-only scopes explicitly alongside the glue). The mechanical catch is the
-  def-splice the compile gate already does for `rawbytes` cells (`append_raw_bytes_defs`): seed a
-  trivial extern definition + crate-root re-export so extern cells stop being compile-exempt —
+- **Compile a multi-scope extern shape in a gate — no gate `cargo check`s the emitted crate for a
+  spec that splits an extern across scopes.** Every extern corpus row is compile-gate-exempt
+  (`COMPILE_GATE_EXEMPT` — extern references user-supplied code) and the multifile matrix carries the
+  same permanent extern exclusion, so nothing compiles a multi-scope extern shape end to end. That
+  hole let an extern-only-scope undeclared-module break ship unseen once: a non-root scope whose
+  rules are ALL `_CDDL_CODEGEN_EXTERN_TYPE_` got its `mod.rs` emitted with the re-export glue but the
+  generated root omitted its `pub mod <scope>;`, so `use <scope>::…` referred to an undeclared module
+  (E0432). That bug is fixed (declarations now derive from the post-glue scope map) and pinned by
+  `integration_extern_only_scope_declared_in_root`, but that pin generates strings only — it asserts
+  the declaration, not that the crate builds, so the compile-gate hole itself remains. The mechanical
+  catch is the def-splice the compile gate already does for `rawbytes` cells (`append_raw_bytes_defs`):
+  seed a trivial extern definition + crate-root re-export so extern cells stop being compile-exempt —
   shared machinery with the extern half of "Mint the two remaining unminted wasm-surface classes"
   below.
 
