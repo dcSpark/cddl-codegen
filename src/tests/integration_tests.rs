@@ -7838,6 +7838,268 @@ fn workspace_key_requests_derive_effect_and_hard_errors() {
     );
 }
 
+/// The FLAVORED map-key-derive channel (`@used_as_key hash`) end-to-end across two crates — the
+/// compiled cross-crate seam the unit layer (`key_types_accepts_flavor_column` /
+/// `key_types_rejects_unknown_flavor` in `wrapper_requests.rs`, plus the emitter's conditional
+/// three-column form in `generation/export.rs`) structurally cannot see. Same rationale as
+/// `workspace_key_requests_derive_effect_and_hard_errors` for the bare channel: the unit tests pin
+/// that the sidecar grammar round-trips and that the emitter chooses the three-column form, but only
+/// a real consumer + dep compiled against each other proves that a `hash` borrow derives exactly
+/// Hash/Eq (NOT Ord) on the dep type, that the narrower demand keeps a dep whose fields refuse `Ord`
+/// compiling, and that WIDENING the flavor to `bare` is what forces `Ord` through those fields
+/// (leg e — the flavor column is load-bearing, not cosmetic).
+///
+/// Fixtures: `consumer_inputs_flavored` (tags the dep extern `idx_key` `@used_as_key hash`, uses it
+/// as a plain field so nothing adds bare demand; keys a map on the untagged `idx_plain` for auto bare
+/// demand) and `dep_inputs_flavored` (owns `idx_key = [h: opaque]` over an Ord-refusing extern
+/// `opaque`, plus `idx_plain`). Default profile (no `--preserve-encodings`), so derives are plain
+/// `#[derive(...)]` and the bare bundle carries no `Hash`.
+#[test]
+fn workspace_key_requests_flavored_contract() {
+    use std::io::Write;
+    use std::str::FromStr;
+    if !tool_exists("cargo") {
+        return;
+    }
+    let base = std::path::PathBuf::from_str("tests/workspace-requests").unwrap();
+    // One shared CARGO_TARGET_DIR (per-checkout, like the wasm-matrix gate) so cbor_event + the dep
+    // crate build once across the nested checks rather than per crate.
+    let target_dir = std::env::temp_dir().join(format!(
+        "cddl_codegen_flavored_key_requests_{:016x}",
+        checkout_hash()
+    ));
+
+    // Wipe each export dir at start (gitignored `tests/*/export*/`).
+    for out in [
+        "export_flavored_consumer",
+        "export_flavored_dep",
+        "export_flavored_dep_bare",
+    ] {
+        let _ = std::fs::remove_dir_all(base.join(out));
+    }
+
+    // Append a hand-written `Opaque` extern (Hash+Eq, deliberately NOT Ord) plus the Serialize /
+    // Deserialize impls the generated dep code calls, to a generated crate's seed-once lib.rs. The
+    // Ord-refusal is what makes the flavor's Ord question compile-observable in legs (c)/(e).
+    let inject_opaque = |crate_root: &std::path::Path| {
+        let mut lib_rs = std::fs::OpenOptions::new()
+            .append(true)
+            .open(crate_root.join("src/lib.rs"))
+            .unwrap();
+        lib_rs
+            .write_all(
+                b"\nuse serialization::*;\n\n\
+                #[derive(Clone, Debug, Eq, PartialEq, Hash)]\n\
+                pub struct Opaque(pub u64);\n\
+                impl cbor_event::se::Serialize for Opaque {\n\
+                    fn serialize<'se, W: std::io::Write>(&self, serializer: &'se mut cbor_event::se::Serializer<W>) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {\n\
+                        serializer.write_unsigned_integer(self.0)\n\
+                    }\n\
+                }\n\
+                impl serialization::Deserialize for Opaque {\n\
+                    fn deserialize<R: std::io::BufRead + std::io::Seek>(raw: &mut cbor_event::de::Deserializer<R>) -> Result<Self, error::DeserializeError> {\n\
+                        Ok(Opaque(raw.unsigned_integer()?))\n\
+                    }\n\
+                }\n",
+            )
+            .unwrap();
+    };
+    let check = |crate_root: &std::path::Path| -> std::process::Output {
+        tool_cmd("cargo")
+            .arg("check")
+            .current_dir(crate_root)
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap()
+    };
+
+    // ===== Leg (a): CONSUMER EMIT — the three-column flavored sidecar + per-flavor self-check. =====
+    // --wasm is mandatory here: workspace deferral (and thus borrowed_key_types.rs) only loads under
+    // it (`load_workspace_deps` is gated on `cli.wasm`), and --workspace-dep requires the dep's
+    // --extern-wasm-crate mapping. The wasm crate is generated but never built.
+    let consumer_out = base.join("export_flavored_consumer");
+    let c = tool_cmd("cargo")
+        .arg("run")
+        .arg("--")
+        .arg("--input=tests/workspace-requests/consumer_inputs_flavored")
+        .arg("--output=tests/workspace-requests/export_flavored_consumer")
+        .arg("--lib-name=flavored-consumer")
+        .arg("--workspace-dep=wr_dep")
+        .arg("--common-import-override=wr_dep")
+        .arg("--extern-wasm-crate=wr_dep=wr_dep_wasm")
+        .arg("--wasm=true")
+        .output()
+        .unwrap();
+    assert!(
+        c.status.success(),
+        "consumer generate failed:\n{}",
+        String::from_utf8_lossy(&c.stderr)
+    );
+    let sidecar_rel = "rust/src/generated/borrowed_key_types.rs";
+    let sidecar = std::fs::read_to_string(consumer_out.join(sidecar_rel)).unwrap();
+    // The three-column const type (the flavored form) and both rows with their exact flavors.
+    assert!(
+        sidecar.contains("pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str, &str)] = &["),
+        "a flavored borrow must switch the table to the three-column form:\n{sidecar}"
+    );
+    assert!(
+        sidecar.contains("(\"wr_dep\", \"idx_key\", \"hash\"),"),
+        "idx_key's `@used_as_key hash` extern tag must emit a `hash`-flavored row:\n{sidecar}"
+    );
+    assert!(
+        sidecar.contains("(\"wr_dep\", \"idx_plain\", \"bare\"),"),
+        "the untagged, map-keyed idx_plain must emit a `bare` row:\n{sidecar}"
+    );
+    // Per-flavor bound carriers (default profile: bare has no Hash; hash is mode-independent).
+    assert!(
+        sidecar.contains("fn _assert_key_traits_hash<K: Eq + core::hash::Hash>() {}"),
+        "the hash carrier must bound Eq + Hash (mode-independent):\n{sidecar}"
+    );
+    assert!(
+        sidecar.contains("fn _assert_key_traits_bare<K: Eq + Ord + PartialOrd>() {}"),
+        "the bare carrier must bound the mode-dependent bundle (no Hash under default):\n{sidecar}"
+    );
+    // The self-check routes each row through ITS OWN flavor's carrier.
+    assert!(
+        sidecar.contains("_assert_key_traits_hash::<wr_dep::IdxKey>();")
+            && sidecar.contains("_assert_key_traits_bare::<wr_dep::IdxPlain>();"),
+        "each borrowed key must be self-checked through its flavor's carrier:\n{sidecar}"
+    );
+
+    // ===== Leg (b): DEP DERIVE — --key-requests derives exactly the named family per row. =====
+    let sidecar_abs = consumer_out.join(sidecar_rel).canonicalize().unwrap();
+    let gen_dep = |out: &str, key_sidecar: &std::path::Path| -> std::process::Output {
+        let out_dir = base.join(out);
+        let _ = std::fs::remove_dir_all(&out_dir);
+        tool_cmd("cargo")
+            .arg("run")
+            .arg("--")
+            .arg("--input=tests/workspace-requests/dep_inputs_flavored")
+            .arg(format!("--output=tests/workspace-requests/{out}"))
+            .arg("--lib-name=wr-dep")
+            .arg("--wasm=false")
+            .arg(format!(
+                "--key-requests=flavored_consumer={}",
+                key_sidecar.to_str().unwrap()
+            ))
+            .output()
+            .unwrap()
+    };
+    let d = gen_dep("export_flavored_dep", &sidecar_abs);
+    assert!(
+        d.status.success(),
+        "dep generate failed:\n{}",
+        String::from_utf8_lossy(&d.stderr)
+    );
+    let dep_out = base.join("export_flavored_dep");
+    let dep_mod = std::fs::read_to_string(dep_out.join("rust/src/generated/mod.rs")).unwrap();
+    // hash flavor: IdxKey derives Hash/Eq/PartialEq and NOT Ord/PartialOrd.
+    assert!(
+        dep_mod.contains("#[derive(Clone, Debug, Eq, PartialEq, Hash)]\npub struct IdxKey"),
+        "a `hash` borrow must derive Hash/Eq/PartialEq on IdxKey:\n{dep_mod}"
+    );
+    assert!(
+        !dep_mod.contains("Ord, PartialOrd)]\npub struct IdxKey"),
+        "a `hash` borrow must NOT force Ord/PartialOrd on IdxKey:\n{dep_mod}"
+    );
+    // bare flavor: IdxPlain gets the full bare bundle (no Hash under the default profile).
+    assert!(
+        dep_mod.contains(
+            "#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]\npub struct IdxPlain"
+        ),
+        "a `bare` borrow must derive the full Eq/Ord bundle on IdxPlain:\n{dep_mod}"
+    );
+
+    // ===== Leg (c): DEP COMPILES — the hash-only borrow must not need Ord on opaque's supply. =====
+    inject_opaque(&dep_out.join("rust"));
+    let c_check = check(&dep_out.join("rust"));
+    assert!(
+        c_check.status.success(),
+        "the dep must compile: `hash` demand derives only Hash/Eq on IdxKey, which its Ord-refusing \
+         `Opaque` field satisfies:\n{}",
+        String::from_utf8_lossy(&c_check.stderr)
+    );
+
+    // ===== Leg (d): CONSUMER COMPILES AGAINST DEP — the cross-crate seam. =====
+    // Wire the freshly-generated dep as a path-dep and check the consumer's rust crate: this compiles
+    // `_assert_key_traits_hash::<wr_dep::IdxKey>()` (needs the dep's Hash/Eq derive) and the generated
+    // `BTreeMap<IdxPlain, _>` (needs the dep-derived Ord on IdxPlain).
+    let mut cargo_toml = std::fs::OpenOptions::new()
+        .append(true)
+        .open(consumer_out.join("rust/Cargo.toml"))
+        .unwrap();
+    cargo_toml
+        .write_all(b"\nwr-dep = { path = \"../../export_flavored_dep/rust\" }\n")
+        .unwrap();
+    std::mem::drop(cargo_toml);
+    let d_check = check(&consumer_out.join("rust"));
+    assert!(
+        d_check.status.success(),
+        "the consumer must compile against the dep: the hash self-check and BTreeMap<IdxPlain, _> \
+         both resolve against the dep's flavored derives:\n{}",
+        String::from_utf8_lossy(&d_check.stderr)
+    );
+
+    // ===== Leg (e): RED — widening idx_key's flavor to `bare` forces Ord through the dep's fields. ==
+    // A hand-built variant sidecar identical to (a) but with idx_key's flavor `bare` (replicating the
+    // frozen three-column emitter grammar). The dep then derives Ord on IdxKey, whose `Opaque` field
+    // refuses it — the compile fails naming Ord and Opaque, proving the narrower `hash` flavor is
+    // exactly what kept leg (c) green.
+    let bare_sidecar = std::env::temp_dir().join(format!(
+        "cddl_codegen_flavored_bare_sidecar_{:016x}.rs",
+        checkout_hash()
+    ));
+    std::fs::write(
+        &bare_sidecar,
+        "// This file was code-generated using an experimental CDDL to rust tool:\n\
+         // https://github.com/dcSpark/cddl-codegen\n\n\
+         // This file records every map-key type this crate borrows from workspace deps.\n\
+         // It is machine-read by those deps' generation runs (--key-requests) so they derive the key\n\
+         // traits (Eq/Ord/PartialOrd, plus Hash under --preserve-encodings) on the borrowed type; the\n\
+         // compiled self-check below fails THIS crate's build if a dep drops such a derive.\n\
+         // Rows are (dep rust-crate name, cddl ident, demand flavor) of each borrowed map-key type.\n\
+         #[allow(dead_code)]\n\
+         fn _assert_key_traits_bare<K: Eq + Ord + PartialOrd>() {}\n\
+         #[allow(dead_code)]\n\
+         fn _borrowed_key_types_self_check() {\n\
+         \x20   _assert_key_traits_bare::<wr_dep::IdxKey>();\n\
+         \x20   _assert_key_traits_bare::<wr_dep::IdxPlain>();\n\
+         }\n\
+         #[allow(dead_code)]\n\
+         pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str, &str)] = &[\n\
+         \x20   (\"wr_dep\", \"idx_key\", \"bare\"),\n\
+         \x20   (\"wr_dep\", \"idx_plain\", \"bare\"),\n];\n",
+    )
+    .unwrap();
+    let e = gen_dep("export_flavored_dep_bare", &bare_sidecar);
+    assert!(
+        e.status.success(),
+        "bare-variant dep generate failed:\n{}",
+        String::from_utf8_lossy(&e.stderr)
+    );
+    let dep_bare_out = base.join("export_flavored_dep_bare");
+    // Sanity: the widened flavor really did add Ord to IdxKey's derive (else the red below is vacuous).
+    let dep_bare_mod =
+        std::fs::read_to_string(dep_bare_out.join("rust/src/generated/mod.rs")).unwrap();
+    assert!(
+        dep_bare_mod
+            .contains("#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]\npub struct IdxKey"),
+        "the `bare` widening must add Ord to IdxKey's derive:\n{dep_bare_mod}"
+    );
+    inject_opaque(&dep_bare_out.join("rust"));
+    let e_check = check(&dep_bare_out.join("rust"));
+    assert!(
+        !e_check.status.success(),
+        "widening idx_key to `bare` must fail the dep compile: IdxKey's derived Ord needs `Opaque: Ord`"
+    );
+    let e_stderr = String::from_utf8_lossy(&e_check.stderr);
+    assert!(
+        e_stderr.contains("Ord") && e_stderr.contains("Opaque"),
+        "the red compile must name the missing Ord supply on the extern the widened flavor demands; \
+         stderr:\n{e_stderr}"
+    );
+}
+
 /// Regression: a requested wrapper whose element is an ALIAS in the dep's spec — a named-type
 /// alias (`stake_credential = credential`), a primitive alias (`transaction_index = uint .size 2`),
 /// or an extern declaration (`metadata = _CDDL_CODEGEN_EXTERN_TYPE_`) — must be hosted like any

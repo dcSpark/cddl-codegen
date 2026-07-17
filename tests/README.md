@@ -364,8 +364,12 @@ both request channels, so a dep type keyed only by a consumer still derives `Eq/
 (`hash`/`ord`), exactly that family via an optional third row column with per-flavor compiled
 self-checks (all-bare sidecars keep the two-column form byte-identically; the flavored
 column/parse legs are covered by the `wrapper_requests` unit suite — `key_types_accepts_flavor_column`,
-`key_types_rejects_unknown_flavor` — with no flavored-borrow workspace *fixture* yet, see
-`TESTING_ROADMAP.md`); user docs:
+`key_types_rejects_unknown_flavor` — and the compiled cross-crate seam by
+`workspace_key_requests_flavored_contract`: a `@used_as_key hash`-tagged dep extern emits the
+three-column row + per-flavor self-check, the dep's `--key-requests` regen derives exactly the named
+family (a hash-only borrow does NOT force `Ord` through the dep's Ord-refusing field), both crates
+compile against each other, and widening the flavor to `bare` fails the dep compile naming `Ord`);
+user docs:
 `docs/docs/command_line_flags.mdx` and `docs/docs/output_format.mdx` § "Workspace mode") is pinned
 by three sibling gates plus the parser's unit suite (`src/wrapper_requests.rs` — both the strict
 sidecar grammars and the lenient shape-key extractor):
@@ -375,7 +379,9 @@ sidecar format asserted as full-file equality — it is a cross-crate contract �
 ownerless/mixed composition with `--extern-wrapper-index` and the rule-declared shadowing
 warning); `workspace_requests_hosts_borrowed_wrappers` + the hard-error tests (including
 `workspace_key_requests_derive_effect_and_hard_errors`, the `--key-requests` intake: derive effect,
-unknown-ident hard error, other-dep row filtering) +
+unknown-ident hard error, other-dep row filtering; and `workspace_key_requests_flavored_contract`,
+the flavored `@used_as_key hash` cross-crate contract over `tests/workspace-requests/*_flavored`:
+three-column emit, per-family dep derive, both-directions compile, and the bare-widening red proof) +
 `workspace_requests_alias_elements_host` (dep side over `tests/workspace-requests/`: strict sidecar
 intake, union-by-shape with sorted requester attribution, own-spec-shape satisfaction, flag-order
 byte-identity, the criterion-8 hard errors plus the review-hardened classes — the stub-fidelity

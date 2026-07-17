@@ -1,0 +1,14 @@
+; Flavored-borrow DEP spec. The dep OWNS the borrowed types `idx_key` / `idx_plain` (real structs).
+;
+; `idx_key` contains a field of the Ord-REFUSING extern `opaque` (a hand-written type in the
+; generated crate's lib.rs that derives Hash+Eq but deliberately NOT Ord). This makes the Ord
+; question compile-observable: under the consumer's `hash` flavor the dep derives only Hash/Eq on
+; IdxKey (green — opaque supplies Hash), but widen the borrow to `bare` and IdxKey's derived Ord
+; forces `Opaque: Ord`, which fails to compile. That red proof is exactly what the flavor column buys.
+;
+; `idx_plain` is a plain uint record; a bare borrow makes the dep derive the full Eq/Ord/PartialOrd
+; bundle on it. `root` references both so all rules are reachable.
+opaque = _CDDL_CODEGEN_EXTERN_TYPE_
+idx_key = [h: opaque]
+idx_plain = [n: uint]
+root = [a: idx_key, b: idx_plain]

@@ -1,0 +1,13 @@
+; Flavored-borrow consumer over the workspace dep `wr_dep`. Companion to `consumer_inputs`, but for
+; the FLAVORED map-key-derive channel (`@used_as_key hash`) instead of the bare one.
+;
+; `idx_key` is tagged `@used_as_key hash` in the extern-deps decl (see
+; `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/wr_dep/mod.cddl`), so the consumer records it in
+; borrowed_key_types.rs with a `hash` demand flavor — a HASH-only borrow, which must NOT force `Ord`
+; through the dep's fields. It is used here as a PLAIN field `k: idx_key` (not a map key) so nothing
+; adds an inferred bare demand on top of the tag; the tag is the sole source of its demand.
+;
+; `idx_plain` is untagged and used as an actual map key in `table`, so it gets AUTO bare demand
+; (the mode-dependent full bundle: Eq/Ord/PartialOrd). The two rows together exercise the emitter's
+; three-column form (a mixed hash + bare table) end-to-end.
+holder = [k: idx_key, table: { * idx_plain => uint }]

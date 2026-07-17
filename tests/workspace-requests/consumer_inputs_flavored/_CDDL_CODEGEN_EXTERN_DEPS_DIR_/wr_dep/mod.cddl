@@ -1,0 +1,6 @@
+; Extern-deps decls for the flavored-borrow consumer. `idx_key` carries a `@used_as_key hash` tag so
+; the consumer emits a `hash`-flavored borrowed_key_types.rs row for it (the dep must then derive
+; Hash/Eq/PartialEq but NOT Ord/PartialOrd). `idx_plain` is untagged; its bare demand comes from
+; being used as a real map key in the consumer's `table`.
+idx_key = _CDDL_CODEGEN_EXTERN_TYPE_ ; @used_as_key hash
+idx_plain = _CDDL_CODEGEN_EXTERN_TYPE_

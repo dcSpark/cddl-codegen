@@ -133,22 +133,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    - **Real-world corpus differential** (see `draft/testing-recommendations/RECOMMENDATIONS.md`):
      synthetic breadth vs real-world depth — recombination does not replace it.
 
-2. **A flavored-borrow workspace fixture (`@used_as_key hash`/`ord` across the `--key-requests`
-   channel).** The flavor legs of the map-key-derive channel are pinned at the unit layer
-   (`key_types_accepts_flavor_column` / `key_types_rejects_unknown_flavor` in
-   `src/wrapper_requests.rs`, plus the emitter's conditional three-column form), and the all-bare
-   workspace fixtures prove byte-identity — but no workspace fixture yet runs the flavored
-   contract end-to-end: a consumer whose spec tags a dep extern with a flavor emits the
-   three-column row + per-flavor self-check, the dep's `--key-requests` regen derives exactly the
-   named family (a hash-only borrow must NOT force `Ord` through the dep's fields), and both
-   crates compile against each other. The compiled cross-crate seam is what the unit tests
-   structurally can't see — the same rationale that justified
-   `workspace_key_requests_derive_effect_and_hard_errors` for the bare channel. Extend one of the
-   existing `tests/workspace-*` fixtures (or mint a sibling) rather than a new gate shape; user
-   docs for the format are `docs/docs/output_format.mdx` § Workspace mode and
-   `docs/docs/comment_dsl.mdx` § `@used_as_key`.
-
-3. **Enroll `@raw_bytes_flavor` (and `@used_as_elem`) in the comment-DSL position sweep.**
+2. **Enroll `@raw_bytes_flavor` (and `@used_as_elem`) in the comment-DSL position sweep.**
    `dsl_position_tests.rs` is the docs-contract home for directive × attachment-position drift,
    but neither tag has cells there. `@raw_bytes_flavor`'s misuse rejection is pinned at three
    seams by `raw_bytes_flavor_misuse_rejects_gracefully` (single-choice type rule, multi-choice
@@ -158,7 +143,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    `Expect::Reject` kind models exactly this). `@used_as_elem` predates the sweep and is absent
    for the same reason; enroll both in one pass since the cell-authoring overhead is shared.
 
-4. **Compile-level pin for the per-scope facade contract.** `docs/output_format` § "Per-scope hand
+3. **Compile-level pin for the per-scope facade contract.** `docs/output_format` § "Per-scope hand
    modules: the facade pattern" promises a consumer composition — a hand facade module in the
    seed-once `lib.rs` (item-beats-glob shadowing over `pub use generated::*;`) declaring hand files
    at `src/<scope>/*.rs` that impl generated types, read `pub(crate)` wrapper fields, and merge into
