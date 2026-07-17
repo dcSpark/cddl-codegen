@@ -58,7 +58,7 @@ impl AsRef<Vec<Vec<String>>> for ArrTextList {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Bar(cddl_lib::Bar);
+pub struct Bar(pub(crate) cddl_lib::Bar);
 
 #[wasm_bindgen]
 impl Bar {
@@ -162,7 +162,7 @@ impl AsRef<Vec<Vec<u8>>> for BytesList {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct CborInCbor(cddl_lib::CborInCbor);
+pub struct CborInCbor(pub(crate) cddl_lib::CborInCbor);
 
 #[wasm_bindgen]
 impl CborInCbor {
@@ -261,7 +261,7 @@ impl AsRef<cddl_lib::Data> for Data {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct DeeplyNested(cddl_lib::DeeplyNested);
+pub struct DeeplyNested(pub(crate) cddl_lib::DeeplyNested);
 
 #[wasm_bindgen]
 impl DeeplyNested {
@@ -304,7 +304,7 @@ impl AsRef<cddl_lib::DeeplyNested> for DeeplyNested {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Foo(cddl_lib::Foo);
+pub struct Foo(pub(crate) cddl_lib::Foo);
 
 #[wasm_bindgen]
 impl Foo {
@@ -398,7 +398,7 @@ impl AsRef<Vec<cddl_lib::Foo>> for FooList {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct GroupChoice(cddl_lib::GroupChoice);
+pub struct GroupChoice(pub(crate) cddl_lib::GroupChoice);
 
 #[wasm_bindgen]
 impl GroupChoice {
@@ -636,7 +636,7 @@ impl AsRef<OrderedHashMap<u64, String>> for MapU64ToText {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MixedLenKeys(cddl_lib::MixedLenKeys);
+pub struct MixedLenKeys(pub(crate) cddl_lib::MixedLenKeys);
 
 #[wasm_bindgen]
 impl MixedLenKeys {
@@ -683,7 +683,7 @@ impl AsRef<cddl_lib::MixedLenKeys> for MixedLenKeys {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Plain(cddl_lib::Plain);
+pub struct Plain(pub(crate) cddl_lib::Plain);
 
 #[wasm_bindgen]
 impl Plain {
@@ -730,7 +730,7 @@ impl AsRef<cddl_lib::Plain> for Plain {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct String32(cddl_lib::String32);
+pub struct String32(pub(crate) cddl_lib::String32);
 
 #[wasm_bindgen]
 impl String32 {
@@ -775,7 +775,7 @@ impl AsRef<cddl_lib::String32> for String32 {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct String64(cddl_lib::String64);
+pub struct String64(pub(crate) cddl_lib::String64);
 
 #[wasm_bindgen]
 impl String64 {
@@ -820,7 +820,7 @@ impl AsRef<cddl_lib::String64> for String64 {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TableArrMembers(cddl_lib::TableArrMembers);
+pub struct TableArrMembers(pub(crate) cddl_lib::TableArrMembers);
 
 #[wasm_bindgen]
 impl TableArrMembers {
@@ -875,7 +875,7 @@ impl AsRef<cddl_lib::TableArrMembers> for TableArrMembers {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TaggedText(cddl_lib::TaggedText);
+pub struct TaggedText(pub(crate) cddl_lib::TaggedText);
 
 #[wasm_bindgen]
 impl TaggedText {
@@ -918,7 +918,7 @@ impl AsRef<cddl_lib::TaggedText> for TaggedText {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TypeChoice(cddl_lib::TypeChoice);
+pub struct TypeChoice(pub(crate) cddl_lib::TypeChoice);
 
 #[wasm_bindgen]
 impl TypeChoice {

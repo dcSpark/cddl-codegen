@@ -13,7 +13,7 @@ pub mod serialization;
 use crate::generated::error::*;
 
 #[derive(Clone, Debug)]
-pub struct Hash(Vec<u8>);
+pub struct Hash(pub(crate) Vec<u8>);
 
 impl Hash {
     pub fn get(&self) -> &Vec<u8> {

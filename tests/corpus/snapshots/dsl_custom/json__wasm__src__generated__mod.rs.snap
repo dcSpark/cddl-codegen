@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct CustomNewtype(cddl_lib::CustomNewtype);
+pub struct CustomNewtype(pub(crate) cddl_lib::CustomNewtype);
 
 #[wasm_bindgen]
 impl CustomNewtype {
@@ -74,7 +74,7 @@ impl AsRef<cddl_lib::CustomNewtype> for CustomNewtype {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Customized(cddl_lib::Customized);
+pub struct Customized(pub(crate) cddl_lib::Customized);
 
 #[wasm_bindgen]
 impl Customized {

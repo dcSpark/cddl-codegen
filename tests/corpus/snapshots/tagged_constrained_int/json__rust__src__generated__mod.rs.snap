@@ -80,7 +80,7 @@ impl Holder {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct TaggedCtlNe(i64);
+pub struct TaggedCtlNe(pub(crate) i64);
 
 impl TaggedCtlNe {
     pub fn get(&self) -> i64 {
@@ -149,7 +149,7 @@ impl schemars::JsonSchema for TaggedCtlNe {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct TaggedRangeExcl(i64);
+pub struct TaggedRangeExcl(pub(crate) i64);
 
 impl TaggedRangeExcl {
     pub fn get(&self) -> i64 {
@@ -218,7 +218,7 @@ impl schemars::JsonSchema for TaggedRangeExcl {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct TaggedRangeIncl(i64);
+pub struct TaggedRangeIncl(pub(crate) i64);
 
 impl TaggedRangeIncl {
     pub fn get(&self) -> i64 {
@@ -287,7 +287,7 @@ impl schemars::JsonSchema for TaggedRangeIncl {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct TaggedRangeNint(i64);
+pub struct TaggedRangeNint(pub(crate) i64);
 
 impl TaggedRangeNint {
     pub fn get(&self) -> i64 {
@@ -356,7 +356,7 @@ impl schemars::JsonSchema for TaggedRangeNint {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct TaggedRangeUint(u64);
+pub struct TaggedRangeUint(pub(crate) u64);
 
 impl TaggedRangeUint {
     pub fn get(&self) -> u64 {

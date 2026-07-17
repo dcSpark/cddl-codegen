@@ -17,7 +17,7 @@ use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Holder(cddl_lib::Holder);
+pub struct Holder(pub(crate) cddl_lib::Holder);
 
 #[wasm_bindgen]
 impl Holder {
@@ -105,7 +105,7 @@ impl AsRef<OrderedHashMap<cddl_lib::PreludeBignint, u64>> for MapPreludeBignintT
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct PreludeBignint(cddl_lib::PreludeBignint);
+pub struct PreludeBignint(pub(crate) cddl_lib::PreludeBignint);
 
 #[wasm_bindgen]
 impl PreludeBignint {

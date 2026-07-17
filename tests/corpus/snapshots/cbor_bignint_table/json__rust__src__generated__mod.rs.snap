@@ -25,7 +25,7 @@ impl Holder {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
-pub struct PreludeBignint(Vec<u8>);
+pub struct PreludeBignint(pub(crate) Vec<u8>);
 
 impl PreludeBignint {
     pub fn get(&self) -> &Vec<u8> {

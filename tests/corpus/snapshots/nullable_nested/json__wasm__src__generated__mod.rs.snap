@@ -17,7 +17,7 @@ use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct DataEnum(cddl_lib::DataEnum);
+pub struct DataEnum(pub(crate) cddl_lib::DataEnum);
 
 #[wasm_bindgen]
 impl DataEnum {
@@ -112,7 +112,7 @@ pub type MaybeUint = Option<u64>;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NullableCollField(cddl_lib::NullableCollField);
+pub struct NullableCollField(pub(crate) cddl_lib::NullableCollField);
 
 #[wasm_bindgen]
 impl NullableCollField {
@@ -228,7 +228,7 @@ impl AsRef<cddl_lib::NullableCollMap> for NullableCollMap {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NullableDenumField(cddl_lib::NullableDenumField);
+pub struct NullableDenumField(pub(crate) cddl_lib::NullableDenumField);
 
 #[wasm_bindgen]
 impl NullableDenumField {
@@ -338,7 +338,7 @@ impl AsRef<cddl_lib::NullableMapValue> for NullableMapValue {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NullableOptionalField(cddl_lib::NullableOptionalField);
+pub struct NullableOptionalField(pub(crate) cddl_lib::NullableOptionalField);
 
 #[wasm_bindgen]
 impl NullableOptionalField {

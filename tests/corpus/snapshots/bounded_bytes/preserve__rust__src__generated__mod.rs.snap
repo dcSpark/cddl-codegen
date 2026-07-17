@@ -19,7 +19,7 @@ use cbor_encodings::HashEncoding;
 
 #[derive(Clone, Debug)]
 pub struct Hash {
-    inner: Vec<u8>,
+    pub(crate) inner: Vec<u8>,
     pub encodings: Option<HashEncoding>,
 }
 

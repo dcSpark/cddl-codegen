@@ -18,7 +18,7 @@ use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Plain(cddl_lib::Plain);
+pub struct Plain(pub(crate) cddl_lib::Plain);
 
 #[wasm_bindgen]
 impl Plain {
@@ -65,7 +65,7 @@ impl AsRef<cddl_lib::Plain> for Plain {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct UsingFlavored(cddl_lib::UsingFlavored);
+pub struct UsingFlavored(pub(crate) cddl_lib::UsingFlavored);
 
 #[wasm_bindgen]
 impl UsingFlavored {

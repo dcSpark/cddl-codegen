@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct RecordArm(cddl_lib::RecordArm);
+pub struct RecordArm(pub(crate) cddl_lib::RecordArm);
 
 #[wasm_bindgen]
 impl RecordArm {
@@ -101,7 +101,7 @@ pub enum RecordArmKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct St(cddl_lib::St);
+pub struct St(pub(crate) cddl_lib::St);
 
 #[wasm_bindgen]
 impl St {

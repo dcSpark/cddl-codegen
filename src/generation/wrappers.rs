@@ -235,11 +235,17 @@ pub(super) fn generate_wrapper_struct(
     s.vis("pub");
     let encoding_name = RustIdent::new(CDDLIdent::new(format!("{type_name}Encoding")));
     let enc_fields = if cli.preserve_encodings {
-        // PRIVATE, matching the default profile's private tuple field: a pub `inner` would let
-        // downstream code literal-construct or mutate the wrapper, bypassing the bound check
-        // `new()` enforces. Access goes through the getter (same as default); `serialization.rs`
-        // is a child module so it still reads/constructs the field directly.
-        s.field("inner", field_type.for_rust_member(types, false, cli));
+        // `pub(crate)`, matching the default profile's tuple field: the bound-check boundary that
+        // matters is the CRATE boundary — external crates still cannot literal-construct or mutate
+        // the wrapper (bypassing the `new()` bound check), so the invariant holds where it's
+        // observable. Within the crate, hand-written modules — which under the thin-root layout live
+        // OUTSIDE the always-clobbered generated subtree — legitimately need field access (e.g. a
+        // `RawBytesEncoding` impl on a bounded newtype). In-crate privacy was already bypassable by
+        // dropping a hand file inside the scope subtree, so it protected nothing real.
+        s.field(
+            "pub(crate) inner",
+            field_type.for_rust_member(types, false, cli),
+        );
         let enc_fields = encoding_fields(
             types,
             "inner",
@@ -275,7 +281,10 @@ pub(super) fn generate_wrapper_struct(
         }
         Some(enc_fields)
     } else {
-        s.tuple_field(None, field_type.for_rust_member(types, false, cli));
+        s.tuple_field(
+            Some("pub(crate)".to_string()),
+            field_type.for_rust_member(types, false, cli),
+        );
         None
     };
     // TODO: is there a way to know if the encoding object is also copyable?

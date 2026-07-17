@@ -18,7 +18,7 @@ use cbor_encodings::TaggedRangedEncoding;
 
 #[derive(Clone, Debug)]
 pub struct TaggedRanged {
-    inner: u8,
+    pub(crate) inner: u8,
     pub encodings: Option<TaggedRangedEncoding>,
 }
 

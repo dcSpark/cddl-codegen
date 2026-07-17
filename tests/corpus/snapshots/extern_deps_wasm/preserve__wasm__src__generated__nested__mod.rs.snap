@@ -13,7 +13,7 @@ use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NestedHolder(cddl_lib::nested::NestedHolder);
+pub struct NestedHolder(pub(crate) cddl_lib::nested::NestedHolder);
 
 #[wasm_bindgen]
 impl NestedHolder {
@@ -90,7 +90,7 @@ impl AsRef<cddl_lib::nested::NestedHolder> for NestedHolder {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NestedItem(cddl_lib::nested::NestedItem);
+pub struct NestedItem(pub(crate) cddl_lib::nested::NestedItem);
 
 #[wasm_bindgen]
 impl NestedItem {

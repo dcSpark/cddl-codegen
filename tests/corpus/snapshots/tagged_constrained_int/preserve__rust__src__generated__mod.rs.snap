@@ -109,7 +109,7 @@ impl Holder {
 
 #[derive(Clone, Debug)]
 pub struct TaggedCtlNe {
-    inner: i64,
+    pub(crate) inner: i64,
     pub encodings: Option<TaggedCtlNeEncoding>,
 }
 
@@ -146,7 +146,7 @@ impl TryFrom<i64> for TaggedCtlNe {
 
 #[derive(Clone, Debug)]
 pub struct TaggedRangeExcl {
-    inner: i64,
+    pub(crate) inner: i64,
     pub encodings: Option<TaggedRangeExclEncoding>,
 }
 
@@ -183,7 +183,7 @@ impl TryFrom<i64> for TaggedRangeExcl {
 
 #[derive(Clone, Debug)]
 pub struct TaggedRangeIncl {
-    inner: i64,
+    pub(crate) inner: i64,
     pub encodings: Option<TaggedRangeInclEncoding>,
 }
 
@@ -220,7 +220,7 @@ impl TryFrom<i64> for TaggedRangeIncl {
 
 #[derive(Clone, Debug)]
 pub struct TaggedRangeNint {
-    inner: i64,
+    pub(crate) inner: i64,
     pub encodings: Option<TaggedRangeNintEncoding>,
 }
 
@@ -257,7 +257,7 @@ impl TryFrom<i64> for TaggedRangeNint {
 
 #[derive(Clone, Debug)]
 pub struct TaggedRangeUint {
-    inner: u64,
+    pub(crate) inner: u64,
     pub encodings: Option<TaggedRangeUintEncoding>,
 }
 

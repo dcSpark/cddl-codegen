@@ -85,7 +85,7 @@ impl Nested {
 
 #[derive(Clone, Debug)]
 pub struct NewtypeViaParens {
-    inner: u64,
+    pub(crate) inner: u64,
     pub encodings: Option<NewtypeViaParensEncoding>,
 }
 

@@ -215,7 +215,7 @@ impl From<TaggedText> for String {
 
 #[derive(Clone, Debug)]
 pub struct String32 {
-    inner: String,
+    pub(crate) inner: String,
     pub encodings: Option<String32Encoding>,
 }
 
@@ -252,7 +252,7 @@ impl TryFrom<String> for String32 {
 
 #[derive(Clone, Debug)]
 pub struct String64 {
-    inner: String,
+    pub(crate) inner: String,
     pub encodings: Option<String64Encoding>,
 }
 
@@ -308,7 +308,7 @@ impl TableArrMembers {
 
 #[derive(Clone, Debug)]
 pub struct TaggedText {
-    inner: String,
+    pub(crate) inner: String,
     pub encodings: Option<TaggedTextEncoding>,
 }
 

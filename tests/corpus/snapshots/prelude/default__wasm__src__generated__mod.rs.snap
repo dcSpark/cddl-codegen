@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Int(cddl_lib::Int);
+pub struct Int(pub(crate) cddl_lib::Int);
 
 #[wasm_bindgen]
 impl Int {
@@ -82,7 +82,7 @@ pub type IntError = JsError;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Prelude(cddl_lib::Prelude);
+pub struct Prelude(pub(crate) cddl_lib::Prelude);
 
 #[wasm_bindgen]
 impl Prelude {
@@ -219,7 +219,7 @@ impl AsRef<cddl_lib::Prelude> for Prelude {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct PreludeB64legacy(cddl_lib::PreludeB64legacy);
+pub struct PreludeB64legacy(pub(crate) cddl_lib::PreludeB64legacy);
 
 #[wasm_bindgen]
 impl PreludeB64legacy {
@@ -262,7 +262,7 @@ impl AsRef<cddl_lib::PreludeB64legacy> for PreludeB64legacy {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct PreludeB64url(cddl_lib::PreludeB64url);
+pub struct PreludeB64url(pub(crate) cddl_lib::PreludeB64url);
 
 #[wasm_bindgen]
 impl PreludeB64url {
@@ -305,7 +305,7 @@ impl AsRef<cddl_lib::PreludeB64url> for PreludeB64url {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct PreludeBigfloat(cddl_lib::PreludeBigfloat);
+pub struct PreludeBigfloat(pub(crate) cddl_lib::PreludeBigfloat);
 
 #[wasm_bindgen]
 impl PreludeBigfloat {
@@ -355,7 +355,7 @@ impl AsRef<cddl_lib::PreludeBigfloat> for PreludeBigfloat {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct PreludeBigint(cddl_lib::PreludeBigint);
+pub struct PreludeBigint(pub(crate) cddl_lib::PreludeBigint);
 
 #[wasm_bindgen]
 impl PreludeBigint {
@@ -433,7 +433,7 @@ pub enum PreludeBigintKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct PreludeBignint(cddl_lib::PreludeBignint);
+pub struct PreludeBignint(pub(crate) cddl_lib::PreludeBignint);
 
 #[wasm_bindgen]
 impl PreludeBignint {
@@ -476,7 +476,7 @@ impl AsRef<cddl_lib::PreludeBignint> for PreludeBignint {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct PreludeBiguint(cddl_lib::PreludeBiguint);
+pub struct PreludeBiguint(pub(crate) cddl_lib::PreludeBiguint);
 
 #[wasm_bindgen]
 impl PreludeBiguint {
@@ -519,7 +519,7 @@ impl AsRef<cddl_lib::PreludeBiguint> for PreludeBiguint {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct PreludeDecfrac(cddl_lib::PreludeDecfrac);
+pub struct PreludeDecfrac(pub(crate) cddl_lib::PreludeDecfrac);
 
 #[wasm_bindgen]
 impl PreludeDecfrac {
@@ -569,7 +569,7 @@ impl AsRef<cddl_lib::PreludeDecfrac> for PreludeDecfrac {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct PreludeEncodedCbor(cddl_lib::PreludeEncodedCbor);
+pub struct PreludeEncodedCbor(pub(crate) cddl_lib::PreludeEncodedCbor);
 
 #[wasm_bindgen]
 impl PreludeEncodedCbor {
@@ -612,7 +612,7 @@ impl AsRef<cddl_lib::PreludeEncodedCbor> for PreludeEncodedCbor {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct PreludeInteger(cddl_lib::PreludeInteger);
+pub struct PreludeInteger(pub(crate) cddl_lib::PreludeInteger);
 
 #[wasm_bindgen]
 impl PreludeInteger {
@@ -686,7 +686,7 @@ pub enum PreludeIntegerKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct PreludeMimeMessage(cddl_lib::PreludeMimeMessage);
+pub struct PreludeMimeMessage(pub(crate) cddl_lib::PreludeMimeMessage);
 
 #[wasm_bindgen]
 impl PreludeMimeMessage {
@@ -729,7 +729,7 @@ impl AsRef<cddl_lib::PreludeMimeMessage> for PreludeMimeMessage {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct PreludeRegexp(cddl_lib::PreludeRegexp);
+pub struct PreludeRegexp(pub(crate) cddl_lib::PreludeRegexp);
 
 #[wasm_bindgen]
 impl PreludeRegexp {
@@ -772,7 +772,7 @@ impl AsRef<cddl_lib::PreludeRegexp> for PreludeRegexp {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct PreludeTdate(cddl_lib::PreludeTdate);
+pub struct PreludeTdate(pub(crate) cddl_lib::PreludeTdate);
 
 #[wasm_bindgen]
 impl PreludeTdate {
@@ -815,7 +815,7 @@ impl AsRef<cddl_lib::PreludeTdate> for PreludeTdate {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct PreludeUnsigned(cddl_lib::PreludeUnsigned);
+pub struct PreludeUnsigned(pub(crate) cddl_lib::PreludeUnsigned);
 
 #[wasm_bindgen]
 impl PreludeUnsigned {
@@ -889,7 +889,7 @@ pub enum PreludeUnsignedKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct PreludeUri(cddl_lib::PreludeUri);
+pub struct PreludeUri(pub(crate) cddl_lib::PreludeUri);
 
 #[wasm_bindgen]
 impl PreludeUri {

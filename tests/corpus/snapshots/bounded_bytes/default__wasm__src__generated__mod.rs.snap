@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Hash(cddl_lib::Hash);
+pub struct Hash(pub(crate) cddl_lib::Hash);
 
 #[wasm_bindgen]
 impl Hash {

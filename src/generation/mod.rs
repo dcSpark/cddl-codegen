@@ -1710,7 +1710,11 @@ fn create_base_wasm_wrapper<'a>(
     let mut base = create_base_wasm_struct(gen_scope, ident, true, cli);
     if default_structure {
         let native_name = rust_crate_struct_from_wasm(types, ident, cli);
-        base.s.tuple_field(None, &native_name);
+        // `pub(crate)`, not private: wasm_bindgen ignores non-pub fields so the ABI/API surface is
+        // unchanged, while consumer wasm hand files (living outside the always-clobbered generated
+        // subtree under the thin-root layout) can reach the wrapped native value via `self.0`.
+        base.s
+            .tuple_field(Some("pub(crate)".to_string()), &native_name);
         base.add_conversion_methods(&native_name, cli);
     }
     base

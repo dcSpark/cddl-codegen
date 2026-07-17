@@ -19,7 +19,7 @@ use cbor_encodings::SizedTextEncoding;
 
 #[derive(Clone, Debug)]
 pub struct SizedText {
-    inner: String,
+    pub(crate) inner: String,
     pub encodings: Option<SizedTextEncoding>,
 }
 

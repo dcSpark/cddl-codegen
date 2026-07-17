@@ -50,7 +50,7 @@ impl RelayHost {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct RelayPort(u64);
+pub struct RelayPort(pub(crate) u64);
 
 impl RelayPort {
     pub fn get(&self) -> u64 {

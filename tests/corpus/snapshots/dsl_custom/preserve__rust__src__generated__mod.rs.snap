@@ -19,7 +19,7 @@ use cbor_encodings::{CustomNewtypeEncoding, CustomizedEncoding};
 
 #[derive(Clone, Debug)]
 pub struct CustomNewtype {
-    inner: u64,
+    pub(crate) inner: u64,
     pub encodings: Option<CustomNewtypeEncoding>,
 }
 

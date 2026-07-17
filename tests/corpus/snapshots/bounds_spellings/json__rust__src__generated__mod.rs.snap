@@ -69,7 +69,7 @@ impl BoundsMembers {
 }
 
 #[derive(Clone, Debug)]
-pub struct WExactSize(Vec<u8>);
+pub struct WExactSize(pub(crate) Vec<u8>);
 
 impl WExactSize {
     pub fn get(&self) -> &Vec<u8> {
@@ -147,7 +147,7 @@ impl schemars::JsonSchema for WExactSize {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct WIntRange(u64);
+pub struct WIntRange(pub(crate) u64);
 
 impl WIntRange {
     pub fn get(&self) -> u64 {
@@ -216,7 +216,7 @@ impl schemars::JsonSchema for WIntRange {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct WNintRange(u64);
+pub struct WNintRange(pub(crate) u64);
 
 impl WNintRange {
     pub fn get(&self) -> u64 {
@@ -285,7 +285,7 @@ impl schemars::JsonSchema for WNintRange {
 }
 
 #[derive(Clone, Debug)]
-pub struct WZeroLen(Vec<u8>);
+pub struct WZeroLen(pub(crate) Vec<u8>);
 
 impl WZeroLen {
     pub fn get(&self) -> &Vec<u8> {

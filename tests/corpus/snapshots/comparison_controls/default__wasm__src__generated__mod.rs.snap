@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct ComparisonControls(cddl_lib::ComparisonControls);
+pub struct ComparisonControls(pub(crate) cddl_lib::ComparisonControls);
 
 #[wasm_bindgen]
 impl ComparisonControls {

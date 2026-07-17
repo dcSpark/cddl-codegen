@@ -126,7 +126,7 @@ impl Prelude {
 }
 
 #[derive(Clone, Debug)]
-pub struct PreludeB64legacy(String);
+pub struct PreludeB64legacy(pub(crate) String);
 
 impl PreludeB64legacy {
     pub fn get(&self) -> &String {
@@ -145,7 +145,7 @@ impl From<String> for PreludeB64legacy {
 }
 
 #[derive(Clone, Debug)]
-pub struct PreludeB64url(String);
+pub struct PreludeB64url(pub(crate) String);
 
 impl PreludeB64url {
     pub fn get(&self) -> &String {
@@ -192,7 +192,7 @@ impl PreludeBigint {
 }
 
 #[derive(Clone, Debug)]
-pub struct PreludeBignint(Vec<u8>);
+pub struct PreludeBignint(pub(crate) Vec<u8>);
 
 impl PreludeBignint {
     pub fn get(&self) -> &Vec<u8> {
@@ -217,7 +217,7 @@ impl From<PreludeBignint> for Vec<u8> {
 }
 
 #[derive(Clone, Debug)]
-pub struct PreludeBiguint(Vec<u8>);
+pub struct PreludeBiguint(pub(crate) Vec<u8>);
 
 impl PreludeBiguint {
     pub fn get(&self) -> &Vec<u8> {
@@ -254,7 +254,7 @@ impl PreludeDecfrac {
 }
 
 #[derive(Clone, Debug)]
-pub struct PreludeEncodedCbor(Vec<u8>);
+pub struct PreludeEncodedCbor(pub(crate) Vec<u8>);
 
 impl PreludeEncodedCbor {
     pub fn get(&self) -> &Vec<u8> {
@@ -295,7 +295,7 @@ impl PreludeInteger {
 }
 
 #[derive(Clone, Debug)]
-pub struct PreludeMimeMessage(String);
+pub struct PreludeMimeMessage(pub(crate) String);
 
 impl PreludeMimeMessage {
     pub fn get(&self) -> &String {
@@ -314,7 +314,7 @@ impl From<String> for PreludeMimeMessage {
 }
 
 #[derive(Clone, Debug)]
-pub struct PreludeRegexp(String);
+pub struct PreludeRegexp(pub(crate) String);
 
 impl PreludeRegexp {
     pub fn get(&self) -> &String {
@@ -333,7 +333,7 @@ impl From<String> for PreludeRegexp {
 }
 
 #[derive(Clone, Debug)]
-pub struct PreludeTdate(String);
+pub struct PreludeTdate(pub(crate) String);
 
 impl PreludeTdate {
     pub fn get(&self) -> &String {
@@ -368,7 +368,7 @@ impl PreludeUnsigned {
 }
 
 #[derive(Clone, Debug)]
-pub struct PreludeUri(String);
+pub struct PreludeUri(pub(crate) String);
 
 impl PreludeUri {
     pub fn get(&self) -> &String {

@@ -570,7 +570,7 @@ impl Default for FloatFixedWhole {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct FloatRange(f64);
+pub struct FloatRange(pub(crate) f64);
 
 impl FloatRange {
     pub fn get(&self) -> f64 {
@@ -603,7 +603,7 @@ impl TryFrom<f64> for FloatRange {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct FloatRangeExcl(f64);
+pub struct FloatRangeExcl(pub(crate) f64);
 
 impl FloatRangeExcl {
     pub fn get(&self) -> f64 {
@@ -694,7 +694,7 @@ impl GroupChoice {
 }
 
 #[derive(Clone, Debug)]
-pub struct Hash(Vec<u8>);
+pub struct Hash(pub(crate) Vec<u8>);
 
 impl Hash {
     pub fn get(&self) -> &Vec<u8> {
@@ -911,7 +911,7 @@ impl NevWire {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct NintGeNewtype(u64);
+pub struct NintGeNewtype(pub(crate) u64);
 
 impl NintGeNewtype {
     pub fn get(&self) -> u64 {
@@ -942,7 +942,7 @@ impl TryFrom<u64> for NintGeNewtype {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct NintLeNewtype(u64);
+pub struct NintLeNewtype(pub(crate) u64);
 
 impl NintLeNewtype {
     pub fn get(&self) -> u64 {
@@ -1543,7 +1543,7 @@ impl TableMapWrapper {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct TaggedFloatRange(f64);
+pub struct TaggedFloatRange(pub(crate) f64);
 
 impl TaggedFloatRange {
     pub fn get(&self) -> f64 {
@@ -1576,7 +1576,7 @@ impl TryFrom<f64> for TaggedFloatRange {
 }
 
 #[derive(Clone, Debug)]
-pub struct TaggedFooBytes(Foo);
+pub struct TaggedFooBytes(pub(crate) Foo);
 
 impl TaggedFooBytes {
     pub fn get(&self) -> &Foo {
@@ -1595,7 +1595,7 @@ impl From<Foo> for TaggedFooBytes {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
-pub struct TaggedText(String);
+pub struct TaggedText(pub(crate) String);
 
 impl TaggedText {
     pub fn get(&self) -> &String {
@@ -1666,7 +1666,7 @@ impl Three {
 pub type TopLevelArray = Vec<u64>;
 
 #[derive(Clone, Debug, Copy)]
-pub struct TopLevelNegRange(i64);
+pub struct TopLevelNegRange(pub(crate) i64);
 
 impl TopLevelNegRange {
     pub fn get(&self) -> i64 {
@@ -1697,7 +1697,7 @@ impl TryFrom<i64> for TopLevelNegRange {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct TopLevelPosRange(u64);
+pub struct TopLevelPosRange(pub(crate) u64);
 
 impl TopLevelPosRange {
     pub fn get(&self) -> u64 {
@@ -1739,7 +1739,7 @@ impl TopLevelSingleElem {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct TopLevelTaggedRange(u64);
+pub struct TopLevelTaggedRange(pub(crate) u64);
 
 impl TopLevelTaggedRange {
     pub fn get(&self) -> u64 {
@@ -1825,7 +1825,7 @@ impl UsingExternGeneric {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct WrapperInt(u64);
+pub struct WrapperInt(pub(crate) u64);
 
 impl WrapperInt {
     pub fn custom_getter(&self) -> u64 {
@@ -1844,7 +1844,7 @@ impl From<u64> for WrapperInt {
 }
 
 #[derive(Clone, Debug)]
-pub struct WrapperList(Vec<u64>);
+pub struct WrapperList(pub(crate) Vec<u64>);
 
 impl WrapperList {
     pub fn get(&self) -> &Vec<u64> {
@@ -1869,7 +1869,7 @@ impl From<WrapperList> for Vec<u64> {
 }
 
 #[derive(Clone, Debug)]
-pub struct WrapperTable(BTreeMap<u64, u64>);
+pub struct WrapperTable(pub(crate) BTreeMap<u64, u64>);
 
 impl WrapperTable {
     pub fn get(&self) -> &BTreeMap<u64, u64> {

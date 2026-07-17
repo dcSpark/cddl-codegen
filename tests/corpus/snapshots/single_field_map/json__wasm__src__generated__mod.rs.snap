@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct SingleFieldMap(cddl_lib::SingleFieldMap);
+pub struct SingleFieldMap(pub(crate) cddl_lib::SingleFieldMap);
 
 #[wasm_bindgen]
 impl SingleFieldMap {
@@ -74,7 +74,7 @@ impl AsRef<cddl_lib::SingleFieldMap> for SingleFieldMap {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct SingleFieldMapOpt(cddl_lib::SingleFieldMapOpt);
+pub struct SingleFieldMapOpt(pub(crate) cddl_lib::SingleFieldMapOpt);
 
 #[wasm_bindgen]
 impl SingleFieldMapOpt {

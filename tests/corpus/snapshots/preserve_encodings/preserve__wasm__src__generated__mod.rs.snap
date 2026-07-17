@@ -20,7 +20,7 @@ use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct A(cddl_lib::A);
+pub struct A(pub(crate) cddl_lib::A);
 
 #[wasm_bindgen]
 impl A {
@@ -108,7 +108,7 @@ impl AsRef<Vec<Vec<String>>> for ArrTextList {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct ArrayOptFields(cddl_lib::ArrayOptFields);
+pub struct ArrayOptFields(pub(crate) cddl_lib::ArrayOptFields);
 
 #[wasm_bindgen]
 impl ArrayOptFields {
@@ -183,7 +183,7 @@ impl AsRef<cddl_lib::ArrayOptFields> for ArrayOptFields {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Bar(cddl_lib::Bar);
+pub struct Bar(pub(crate) cddl_lib::Bar);
 
 #[wasm_bindgen]
 impl Bar {
@@ -246,7 +246,7 @@ impl AsRef<cddl_lib::Bar> for Bar {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Basic(cddl_lib::Basic);
+pub struct Basic(pub(crate) cddl_lib::Basic);
 
 #[wasm_bindgen]
 impl Basic {
@@ -293,7 +293,7 @@ impl AsRef<cddl_lib::Basic> for Basic {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct BasicArr(cddl_lib::BasicArr);
+pub struct BasicArr(pub(crate) cddl_lib::BasicArr);
 
 #[wasm_bindgen]
 impl BasicArr {
@@ -336,7 +336,7 @@ impl AsRef<cddl_lib::BasicArr> for BasicArr {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Bounds(cddl_lib::Bounds);
+pub struct Bounds(pub(crate) cddl_lib::Bounds);
 
 #[wasm_bindgen]
 impl Bounds {
@@ -408,7 +408,7 @@ impl AsRef<cddl_lib::Bounds> for Bounds {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct BoundsGroupChoice(cddl_lib::BoundsGroupChoice);
+pub struct BoundsGroupChoice(pub(crate) cddl_lib::BoundsGroupChoice);
 
 #[wasm_bindgen]
 impl BoundsGroupChoice {
@@ -496,7 +496,7 @@ pub enum BoundsGroupChoiceKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct BoundsTypeChoice(cddl_lib::BoundsTypeChoice);
+pub struct BoundsTypeChoice(pub(crate) cddl_lib::BoundsTypeChoice);
 
 #[wasm_bindgen]
 impl BoundsTypeChoice {
@@ -611,7 +611,7 @@ impl AsRef<Vec<Vec<u8>>> for BytesList {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct BytesUint(cddl_lib::BytesUint);
+pub struct BytesUint(pub(crate) cddl_lib::BytesUint);
 
 #[wasm_bindgen]
 impl BytesUint {
@@ -658,7 +658,7 @@ impl AsRef<cddl_lib::BytesUint> for BytesUint {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct C(cddl_lib::C);
+pub struct C(pub(crate) cddl_lib::C);
 
 #[wasm_bindgen]
 impl C {
@@ -705,7 +705,7 @@ impl AsRef<cddl_lib::C> for C {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct CborInCbor(cddl_lib::CborInCbor);
+pub struct CborInCbor(pub(crate) cddl_lib::CborInCbor);
 
 #[wasm_bindgen]
 impl CborInCbor {
@@ -762,7 +762,7 @@ pub type CustomBytes = Vec<u8>;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct CustomFieldHolder(cddl_lib::CustomFieldHolder);
+pub struct CustomFieldHolder(pub(crate) cddl_lib::CustomFieldHolder);
 
 #[wasm_bindgen]
 impl CustomFieldHolder {
@@ -854,7 +854,7 @@ impl AsRef<cddl_lib::Data> for Data {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct DeeplyNested(cddl_lib::DeeplyNested);
+pub struct DeeplyNested(pub(crate) cddl_lib::DeeplyNested);
 
 #[wasm_bindgen]
 impl DeeplyNested {
@@ -899,7 +899,7 @@ pub type DefaultUint = u64;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Ed(cddl_lib::Ed);
+pub struct Ed(pub(crate) cddl_lib::Ed);
 
 #[wasm_bindgen]
 impl Ed {
@@ -950,7 +950,7 @@ impl AsRef<cddl_lib::Ed> for Ed {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Ee(cddl_lib::Ee);
+pub struct Ee(pub(crate) cddl_lib::Ee);
 
 #[wasm_bindgen]
 impl Ee {
@@ -1005,7 +1005,7 @@ impl AsRef<cddl_lib::Ee> for Ee {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct EnumOptEmbedFields(cddl_lib::EnumOptEmbedFields);
+pub struct EnumOptEmbedFields(pub(crate) cddl_lib::EnumOptEmbedFields);
 
 #[wasm_bindgen]
 impl EnumOptEmbedFields {
@@ -1151,7 +1151,7 @@ pub enum EnumOptEmbedFieldsKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Enums(cddl_lib::Enums);
+pub struct Enums(pub(crate) cddl_lib::Enums);
 
 #[wasm_bindgen]
 impl Enums {
@@ -1201,7 +1201,7 @@ impl AsRef<cddl_lib::Enums> for Enums {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct First(cddl_lib::First);
+pub struct First(pub(crate) cddl_lib::First);
 
 #[wasm_bindgen]
 impl First {
@@ -1248,7 +1248,7 @@ impl AsRef<cddl_lib::First> for First {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Foo(cddl_lib::Foo);
+pub struct Foo(pub(crate) cddl_lib::Foo);
 
 #[wasm_bindgen]
 impl Foo {
@@ -1342,7 +1342,7 @@ impl AsRef<Vec<cddl_lib::Foo>> for FooList {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct GroupChoice(cddl_lib::GroupChoice);
+pub struct GroupChoice(pub(crate) cddl_lib::GroupChoice);
 
 #[wasm_bindgen]
 impl GroupChoice {
@@ -1437,7 +1437,7 @@ pub enum GroupChoiceKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Hash(cddl_lib::Hash);
+pub struct Hash(pub(crate) cddl_lib::Hash);
 
 #[wasm_bindgen]
 impl Hash {
@@ -1672,7 +1672,7 @@ impl AsRef<OrderedHashMap<u64, u64>> for MapU64ToU64 {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MapWithDefaults(cddl_lib::MapWithDefaults);
+pub struct MapWithDefaults(pub(crate) cddl_lib::MapWithDefaults);
 
 #[wasm_bindgen]
 impl MapWithDefaults {
@@ -1727,7 +1727,7 @@ impl AsRef<cddl_lib::MapWithDefaults> for MapWithDefaults {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NemPreserve(cddl_lib::NemPreserve);
+pub struct NemPreserve(pub(crate) cddl_lib::NemPreserve);
 
 #[wasm_bindgen]
 impl NemPreserve {
@@ -1770,7 +1770,7 @@ impl AsRef<cddl_lib::NemPreserve> for NemPreserve {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NevPreserve(cddl_lib::NevPreserve);
+pub struct NevPreserve(pub(crate) cddl_lib::NevPreserve);
 
 #[wasm_bindgen]
 impl NevPreserve {
@@ -1918,7 +1918,7 @@ impl AsRef<NonEmptyVec<u64>> for NonEmptyU64List {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NonOverlapBasicEmbed(cddl_lib::NonOverlapBasicEmbed);
+pub struct NonOverlapBasicEmbed(pub(crate) cddl_lib::NonOverlapBasicEmbed);
 
 #[wasm_bindgen]
 impl NonOverlapBasicEmbed {
@@ -1988,7 +1988,7 @@ pub enum NonOverlapBasicEmbedKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NonOverlapBasicEmbedMixed(cddl_lib::NonOverlapBasicEmbedMixed);
+pub struct NonOverlapBasicEmbedMixed(pub(crate) cddl_lib::NonOverlapBasicEmbedMixed);
 
 #[wasm_bindgen]
 impl NonOverlapBasicEmbedMixed {
@@ -2054,7 +2054,9 @@ impl AsRef<cddl_lib::NonOverlapBasicEmbedMixed> for NonOverlapBasicEmbedMixed {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NonOverlapBasicEmbedMixedExplicit(cddl_lib::NonOverlapBasicEmbedMixedExplicit);
+pub struct NonOverlapBasicEmbedMixedExplicit(
+    pub(crate) cddl_lib::NonOverlapBasicEmbedMixedExplicit,
+);
 
 #[wasm_bindgen]
 impl NonOverlapBasicEmbedMixedExplicit {
@@ -2157,7 +2159,7 @@ pub enum NonOverlapBasicEmbedMixedKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NonOverlapBasicEmbedMultiFields(cddl_lib::NonOverlapBasicEmbedMultiFields);
+pub struct NonOverlapBasicEmbedMultiFields(pub(crate) cddl_lib::NonOverlapBasicEmbedMultiFields);
 
 #[wasm_bindgen]
 impl NonOverlapBasicEmbedMultiFields {
@@ -2233,7 +2235,7 @@ pub enum NonOverlapBasicEmbedMultiFieldsKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NonOverlapBasicNotBasic(cddl_lib::NonOverlapBasicNotBasic);
+pub struct NonOverlapBasicNotBasic(pub(crate) cddl_lib::NonOverlapBasicNotBasic);
 
 #[wasm_bindgen]
 impl NonOverlapBasicNotBasic {
@@ -2349,7 +2351,7 @@ pub enum NonOverlapBasicNotBasicKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NonOverlappingTypeChoiceAll(cddl_lib::NonOverlappingTypeChoiceAll);
+pub struct NonOverlappingTypeChoiceAll(pub(crate) cddl_lib::NonOverlappingTypeChoiceAll);
 
 #[wasm_bindgen]
 impl NonOverlappingTypeChoiceAll {
@@ -2495,7 +2497,7 @@ pub enum NonOverlappingTypeChoiceAllKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NonOverlappingTypeChoiceSome(cddl_lib::NonOverlappingTypeChoiceSome);
+pub struct NonOverlappingTypeChoiceSome(pub(crate) cddl_lib::NonOverlappingTypeChoiceSome);
 
 #[wasm_bindgen]
 impl NonOverlappingTypeChoiceSome {
@@ -2584,7 +2586,7 @@ pub enum NonOverlappingTypeChoiceSomeKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct OverlapBasicEmbed(cddl_lib::OverlapBasicEmbed);
+pub struct OverlapBasicEmbed(pub(crate) cddl_lib::OverlapBasicEmbed);
 
 #[wasm_bindgen]
 impl OverlapBasicEmbed {
@@ -2649,7 +2651,7 @@ pub enum OverlapBasicEmbedKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct OverlappingInlined(cddl_lib::OverlappingInlined);
+pub struct OverlappingInlined(pub(crate) cddl_lib::OverlappingInlined);
 
 #[wasm_bindgen]
 impl OverlappingInlined {
@@ -2725,7 +2727,7 @@ pub enum OverlappingInlinedKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Plain(cddl_lib::Plain);
+pub struct Plain(pub(crate) cddl_lib::Plain);
 
 #[wasm_bindgen]
 impl Plain {
@@ -2772,7 +2774,7 @@ impl AsRef<cddl_lib::Plain> for Plain {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct PlainArrays(cddl_lib::PlainArrays);
+pub struct PlainArrays(pub(crate) cddl_lib::PlainArrays);
 
 #[wasm_bindgen]
 impl PlainArrays {
@@ -2868,7 +2870,7 @@ impl AsRef<Vec<cddl_lib::Plain>> for PlainList {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Second(cddl_lib::Second);
+pub struct Second(pub(crate) cddl_lib::Second);
 
 #[wasm_bindgen]
 impl Second {
@@ -2915,7 +2917,7 @@ impl AsRef<cddl_lib::Second> for Second {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct SignBounds(cddl_lib::SignBounds);
+pub struct SignBounds(pub(crate) cddl_lib::SignBounds);
 
 #[wasm_bindgen]
 impl SignBounds {
@@ -3009,7 +3011,7 @@ impl AsRef<cddl_lib::SignBounds> for SignBounds {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct SignedInts(cddl_lib::SignedInts);
+pub struct SignedInts(pub(crate) cddl_lib::SignedInts);
 
 #[wasm_bindgen]
 impl SignedInts {
@@ -3096,7 +3098,7 @@ impl AsRef<cddl_lib::SignedInts> for SignedInts {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct String1632(cddl_lib::String1632);
+pub struct String1632(pub(crate) cddl_lib::String1632);
 
 #[wasm_bindgen]
 impl String1632 {
@@ -3141,7 +3143,7 @@ impl AsRef<cddl_lib::String1632> for String1632 {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct String64(cddl_lib::String64);
+pub struct String64(pub(crate) cddl_lib::String64);
 
 #[wasm_bindgen]
 impl String64 {
@@ -3186,7 +3188,7 @@ impl AsRef<cddl_lib::String64> for String64 {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct StructWithCustomSerialization(cddl_lib::StructWithCustomSerialization);
+pub struct StructWithCustomSerialization(pub(crate) cddl_lib::StructWithCustomSerialization);
 
 #[wasm_bindgen]
 impl StructWithCustomSerialization {
@@ -3302,7 +3304,7 @@ impl AsRef<cddl_lib::Table> for Table {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TableArrMembers(cddl_lib::TableArrMembers);
+pub struct TableArrMembers(pub(crate) cddl_lib::TableArrMembers);
 
 #[wasm_bindgen]
 impl TableArrMembers {
@@ -3357,7 +3359,7 @@ impl AsRef<cddl_lib::TableArrMembers> for TableArrMembers {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TaggedFooBytes(cddl_lib::TaggedFooBytes);
+pub struct TaggedFooBytes(pub(crate) cddl_lib::TaggedFooBytes);
 
 #[wasm_bindgen]
 impl TaggedFooBytes {
@@ -3400,7 +3402,7 @@ impl AsRef<cddl_lib::TaggedFooBytes> for TaggedFooBytes {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TaggedText(cddl_lib::TaggedText);
+pub struct TaggedText(pub(crate) cddl_lib::TaggedText);
 
 #[wasm_bindgen]
 impl TaggedText {
@@ -3443,7 +3445,7 @@ impl AsRef<cddl_lib::TaggedText> for TaggedText {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Three(cddl_lib::Three);
+pub struct Three(pub(crate) cddl_lib::Three);
 
 #[wasm_bindgen]
 impl Three {
@@ -3490,7 +3492,7 @@ impl AsRef<cddl_lib::Three> for Three {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TopLevelNegRange(cddl_lib::TopLevelNegRange);
+pub struct TopLevelNegRange(pub(crate) cddl_lib::TopLevelNegRange);
 
 #[wasm_bindgen]
 impl TopLevelNegRange {
@@ -3535,7 +3537,7 @@ impl AsRef<cddl_lib::TopLevelNegRange> for TopLevelNegRange {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TopLevelPosRange(cddl_lib::TopLevelPosRange);
+pub struct TopLevelPosRange(pub(crate) cddl_lib::TopLevelPosRange);
 
 #[wasm_bindgen]
 impl TopLevelPosRange {
@@ -3580,7 +3582,7 @@ impl AsRef<cddl_lib::TopLevelPosRange> for TopLevelPosRange {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TopLevelTaggedRange(cddl_lib::TopLevelTaggedRange);
+pub struct TopLevelTaggedRange(pub(crate) cddl_lib::TopLevelTaggedRange);
 
 #[wasm_bindgen]
 impl TopLevelTaggedRange {
@@ -3625,7 +3627,7 @@ impl AsRef<cddl_lib::TopLevelTaggedRange> for TopLevelTaggedRange {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TypeChoice(cddl_lib::TypeChoice);
+pub struct TypeChoice(pub(crate) cddl_lib::TypeChoice);
 
 #[wasm_bindgen]
 impl TypeChoice {
@@ -3722,7 +3724,7 @@ pub type U32 = u32;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct WidthCollapse(cddl_lib::WidthCollapse);
+pub struct WidthCollapse(pub(crate) cddl_lib::WidthCollapse);
 
 #[wasm_bindgen]
 impl WidthCollapse {
@@ -3773,7 +3775,7 @@ impl AsRef<cddl_lib::WidthCollapse> for WidthCollapse {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct WrapperList(cddl_lib::WrapperList);
+pub struct WrapperList(pub(crate) cddl_lib::WrapperList);
 
 #[wasm_bindgen]
 impl WrapperList {
@@ -3816,7 +3818,7 @@ impl AsRef<cddl_lib::WrapperList> for WrapperList {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct WrapperTable(cddl_lib::WrapperTable);
+pub struct WrapperTable(pub(crate) cddl_lib::WrapperTable);
 
 #[wasm_bindgen]
 impl WrapperTable {

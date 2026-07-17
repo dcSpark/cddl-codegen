@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TaggedRanged(cddl_lib::TaggedRanged);
+pub struct TaggedRanged(pub(crate) cddl_lib::TaggedRanged);
 
 #[wasm_bindgen]
 impl TaggedRanged {

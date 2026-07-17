@@ -18,7 +18,7 @@ use cbor_encodings::ProtocolMagicEncoding;
 
 #[derive(Clone, Debug)]
 pub struct ProtocolMagic {
-    inner: u64,
+    pub(crate) inner: u64,
     pub encodings: Option<ProtocolMagicEncoding>,
 }
 

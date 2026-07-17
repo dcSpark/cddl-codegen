@@ -13,7 +13,7 @@ pub mod serialization;
 use crate::generated::error::*;
 
 #[derive(Clone, Debug)]
-pub struct SizedText(String);
+pub struct SizedText(pub(crate) String);
 
 impl SizedText {
     pub fn get(&self) -> &String {

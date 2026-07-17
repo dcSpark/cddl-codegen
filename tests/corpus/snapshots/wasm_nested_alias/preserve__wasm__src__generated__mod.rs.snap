@@ -107,7 +107,7 @@ impl AsRef<Vec<u64>> for Nums {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct OptHolder(cddl_lib::OptHolder);
+pub struct OptHolder(pub(crate) cddl_lib::OptHolder);
 
 #[wasm_bindgen]
 impl OptHolder {

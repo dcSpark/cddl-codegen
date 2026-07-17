@@ -62,7 +62,7 @@ impl AsRef<cddl_lib::Bkeys> for Bkeys {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct BytesKeyHolder(cddl_lib::BytesKeyHolder);
+pub struct BytesKeyHolder(pub(crate) cddl_lib::BytesKeyHolder);
 
 #[wasm_bindgen]
 impl BytesKeyHolder {
