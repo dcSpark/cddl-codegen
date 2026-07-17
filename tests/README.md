@@ -1535,9 +1535,11 @@ remedy spelled out (fix the emitter, or deliberately ledger it with a reason). T
 the named-table wasm alias emitted as a private `type` instead of `pub type` (`generation/`'s
 already-generated-map branch now carries `.vis("pub")`, matching its sibling passthrough-alias site);
 the preserve-profile wrapper `inner` field emitted `pub` (caught by the profile sweep's first run;
-now private like the default profile's tuple field, so downstream code can't literal-construct or
-mutate a wrapper past the bound check `new()` enforces — access goes through the getter in every
-profile); and the rule-5 usage-dependent JS-class-name bug, where a named table rule's wrapper
+now `pub(crate)` like the default profile's tuple field — deliberately crate-visible so hand
+modules outside the generated subtree can reach it, while EXTERNAL code still can't
+literal-construct or mutate a wrapper past the bound check `new()` enforces and goes through the
+getter; the finding class stays retired because the sweep's `is_pub` matches only
+`syn::Visibility::Public`, so `pub(crate)` reads as non-pub to it); and the rule-5 usage-dependent JS-class-name bug, where a named table rule's wrapper
 degraded to a `pub type` alias pointing at the generator-invented structural map class (so the CDDL
 rule name never reached JS and the shape's class name flipped with unrelated spec content). The fix
 (`generation/`'s up-front table-shape ownership pass): a shape owned by a SINGLE named rule now
