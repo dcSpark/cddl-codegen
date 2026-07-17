@@ -183,6 +183,46 @@ Because the root is user-owned, the tool never re-clobbers this wiring — the f
 regeneration dropped a hand-added `pub mod utils;` and broke every reference to the extern type is
 gone by construction.
 
+### Per-scope hand modules: the facade pattern
+
+To publish hand-written code under a *scope's* public path (e.g. `my_crate::assets::utils::…`
+merged with the generated `my_crate::assets::…` namespace), do **not** place hand files inside
+`src/generated/<scope>/` — that subtree is clobbered on every regeneration, and its machine-owned
+`mod.rs` would drop your `pub mod utils;` line. Instead declare a **facade module** in the
+user-owned thin root:
+
+```rust
+// src/lib.rs (user-owned)
+mod generated;
+pub use generated::*;
+
+pub mod assets {                         // shadows the glob-imported generated `assets` module
+    pub use crate::generated::assets::*; // generated items, incl. `pub mod serialization` etc.
+    pub mod utils;                       // your hand file, at src/assets/utils.rs
+    pub use utils::*;                    // per-scope glob policy — your call, per scope
+}
+```
+
+An explicit item shadows a glob import, so `my_crate::assets` resolves to your facade while
+`pub use generated::*;` keeps re-exporting every other scope untouched — this is the same
+item-beats-glob rule the extern glue above already relies on. Hand files live at
+`src/<scope>/*.rs`, entirely outside the machine-owned tree, so `rm -rf src/generated && regen`
+remains a valid clean rebuild and generated file paths (and any
+[preserved comment/replace blocks](./preserving_edits) in them) never move. Scopes
+without hand files need no facade. Impl blocks on generated types compile from any module in the
+crate, so a facade is only needed when hand *items* must appear under the scope's path.
+
+### Generated wrapper fields are `pub(crate)`
+
+Newtype wrappers (bare tags, [`@newtype`](./comment_dsl), bounded ranges) and the wasm crate's
+`pub struct X(rust::X)` wrappers back their inner value with a **`pub(crate)`** field (named
+`inner` under `--preserve-encodings=true`, an anonymous tuple field otherwise). External crates
+still cannot construct or mutate a wrapper directly — the `new()` bound check holds at the crate
+boundary, the one where it is observable — but your own hand modules (which live outside the
+generated subtree, per the layout above) can reach the field, e.g. to write a `RawBytesEncoding`
+impl on a bounded newtype or to access a wasm wrapper's native value via `self.0`. wasm_bindgen
+ignores non-`pub` fields, so the wasm ABI is unchanged.
+
 ### Migrating from pre-split layouts
 
 Crates generated **before** the thin-root split have a monolithic `src/lib.rs` that carries the
