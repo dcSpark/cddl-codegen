@@ -477,7 +477,7 @@ are ledgered here (that's what the probe/gate error messages point at).
   support is owned by the float-table-key boundary entry's ordered-float question); flipping either
   row to `ok` requires real support, not a decay back to the old `group_entry_to_field_name`
   panics.
-- Two comment-DSL candidate fixes surfaced by the `src/tests/dsl_position_tests.rs` position sweep
+- Four comment-DSL candidate fixes surfaced by the `src/tests/dsl_position_tests.rs` position sweep
   (held in its `KNOWN_SILENT_DROP` pin list — pinned, not fixed; the pins flip loudly when a fix
   lands): (1) `@name` at a MEMBER-position anonymous inline group never reaches the naming site
   (`get_comment_after(type2)` ascends only through Type1/TypeChoice), so the "Anonymous groups not
@@ -485,6 +485,13 @@ are ledgered here (that's what the probe/gate error messages point at).
   in choice-member position; either make the member-position comment reachable or scope the panic
   message's advertised remedy. (2) `@doc` on a fixed-value (dataless C-style enum) type-choice
   variant is captured into the IR but never emitted — data-carrying variants render the `///` fine.
+  (3) `@raw_bytes_flavor` on a NON-generic `_CDDL_CODEGEN_EXTERN_TYPE_` rule is silently accepted
+  as a no-op — the extern-only validity gate rejects only non-extern rules while the docs scope the
+  tag to extern GENERICS, and a non-generic extern has no instances to flavor; either hard-error
+  the non-generic case or document the inertness deliberately. (4) `@used_as_elem` in field
+  position is silently dropped — the field-trailing comment binds to the field's
+  `trailing_comments`, which the rule-level metadata detector never reads, so no wrapper is minted;
+  either make the field comment reachable or hard-error it, so the tag never silently no-ops.
 - **Real nint support is ONE cross-cutting candidate feature — its per-shape gaps are enumeration
   cells of the matrix, not separate tasks.** Nint intersects every containment role (fixed map
   keys — rejected gracefully above; table domains and `@newtype` bounds — work; bare values, json,
@@ -602,20 +609,21 @@ are ledgered here (that's what the probe/gate error messages point at).
   candidate fix needs a call on which representation is canonical (a faithful codec should preserve the
   distinction — the CBOR re-encode dropping the present null is the likelier defect) and a matching
   serde/serialize alignment; until then the row's json round-trip can't assert `to_cbor_bytes` fidelity.
-- **Compile a multi-scope extern shape in a gate — no gate `cargo check`s the emitted crate for a
-  spec that splits an extern across scopes.** Every extern corpus row is compile-gate-exempt
-  (`COMPILE_GATE_EXEMPT` — extern references user-supplied code) and the multifile matrix carries the
-  same permanent extern exclusion, so nothing compiles a multi-scope extern shape end to end. That
-  hole let an extern-only-scope undeclared-module break ship unseen once: a non-root scope whose
-  rules are ALL `_CDDL_CODEGEN_EXTERN_TYPE_` got its `mod.rs` emitted with the re-export glue but the
-  generated root omitted its `pub mod <scope>;`, so `use <scope>::…` referred to an undeclared module
-  (E0432). That bug is fixed (declarations now derive from the post-glue scope map) and pinned by
-  `integration_extern_only_scope_declared_in_root`, but that pin generates strings only — it asserts
-  the declaration, not that the crate builds, so the compile-gate hole itself remains. The mechanical
-  catch is the def-splice the compile gate already does for `rawbytes` cells (`append_raw_bytes_defs`):
-  seed a trivial extern definition + crate-root re-export so extern cells stop being compile-exempt —
-  shared machinery with the extern half of "Mint the two remaining unminted wasm-surface classes"
-  below.
+- **Extern compile coverage at BREADTH — every extern corpus/matrix cell is still compile-exempt.**
+  Every extern corpus row is compile-gate-exempt (`COMPILE_GATE_EXEMPT` — extern references
+  user-supplied code) and the multifile matrix carries the same permanent extern exclusion. The
+  recorded cost is closed at the hand-fixture level: the extern-only-scope undeclared-module break
+  (a non-root scope whose rules are ALL `_CDDL_CODEGEN_EXTERN_TYPE_` got its `mod.rs` emitted with
+  the re-export glue but no `pub mod <scope>;` in the generated root — E0432 wherever another scope
+  referenced its types) is fixed (declarations derive from the post-glue scope map), string-pinned
+  by `integration_extern_only_scope_declared_in_root`, and the full multi-scope composition —
+  extern-only scope, hand definition, crate-root re-export — now `cargo check`s in a gate
+  (`facade_composition_compiles`, the documented facade consumer built over exactly this shape).
+  What remains is BREADTH: that gate compiles ONE hand-curated shape, so an extern break in any
+  OTHER corpus/matrix shape still ships unseen. The mechanical catch is the def-splice the compile
+  gate already does for `rawbytes` cells (`append_raw_bytes_defs`): seed a trivial extern
+  definition + crate-root re-export so extern cells stop being compile-exempt — shared machinery
+  with the extern half of "Mint the two remaining unminted wasm-surface classes" below.
 
 ## wasm-ABI & multifile placement matrices — remaining work
 

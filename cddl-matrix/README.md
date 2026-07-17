@@ -409,9 +409,11 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   `COMPILE_GATE_EXEMPT` allowlist — they reference user-supplied code, so they can't compile (or
   test) standalone: `ext.extern`, `ext.raw_bytes`, `dsl.custom_serialize`, `dsl.custom_deserialize`,
   `dsl.raw_bytes_flavor` (integration-tested instead). The exemption has a recorded cost: it once let
-  an extern-only-scope undeclared-module compile break ship unseen (since fixed and pinned by
-  `integration_extern_only_scope_declared_in_root`; the residual compile-gate hole for multi-scope
-  extern shapes is tracked in `ROADMAP.md` § findings). `prelude.any` is correctly ➖: `x = any` exits 0 but emits
+  an extern-only-scope undeclared-module compile break ship unseen (since fixed — string-pinned by
+  `integration_extern_only_scope_declared_in_root` and compile-pinned at the hand-fixture level by
+  `facade_composition_compiles`, which builds the documented facade consumer over exactly that
+  multi-scope extern shape; the residual BREADTH hole — extern cells at corpus/matrix breadth stay
+  compile-exempt — is tracked in `ROADMAP.md` § findings). `prelude.any` is correctly ➖: `x = any` exits 0 but emits
   `pub type X = Any;` — an undefined type (root cause: `any` absent from `is_identifier_reserved`).
 - **Role floor (role × feature coverage) — NOT a serde JSON-AST dump.** The `cddl` AST's `Serialize`
   is gated on `target_arch = "wasm32"`, so there's no free serde dump on a native build;
