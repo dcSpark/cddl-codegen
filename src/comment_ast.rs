@@ -55,6 +55,13 @@ pub struct RuleMetadata {
     /// rule's type as if the spec contained an inline `[* foo]` usage, so a downstream crate can
     /// import the canonical wrapper class from THIS crate. See `IntermediateTypes::mark_used_as_elem`.
     pub used_as_elem: bool,
+    /// `@raw_bytes_flavor`: valid ONLY on a `_CDDL_CODEGEN_EXTERN_TYPE_` generic rule. When a
+    /// generic instance of the tagged extern has any argument that resolves to a
+    /// `_CDDL_CODEGEN_RAW_BYTES_TYPE_`, the monomorphized alias references the convention-named
+    /// `<ExternName>RawBytes` flavor instead of the plain name. Opt-in (never automatic): a wrapper
+    /// bound solely on `RawBytesEncoding` compiles today under the plain name, so auto-flavoring
+    /// would silently break working output. See `IntermediateTypes::mark_raw_bytes_flavor`.
+    pub raw_bytes_flavor: bool,
     pub custom_json: bool,
     pub custom_serialize: Option<String>,
     pub custom_deserialize: Option<String>,
@@ -83,6 +90,7 @@ pub fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
         no_alias: r1.no_alias || r2.no_alias,
         key_demand: merge_key_demand(r1.key_demand, r2.key_demand),
         used_as_elem: r1.used_as_elem || r2.used_as_elem,
+        raw_bytes_flavor: r1.raw_bytes_flavor || r2.raw_bytes_flavor,
         custom_json: r1.custom_json || r2.custom_json,
         custom_serialize: merge_metadata_fields!(
             r1.custom_serialize,
@@ -106,6 +114,7 @@ enum ParseResult {
     DontGenAlias,
     UsedAsKey(DemandSet),
     UsedAsElem,
+    RawBytesFlavor,
     CustomJson,
     CustomSerialize(String),
     CustomDeserialize(String),
@@ -146,6 +155,9 @@ impl RuleMetadata {
                 }
                 ParseResult::UsedAsElem => {
                     base.used_as_elem = true;
+                }
+                ParseResult::RawBytesFlavor => {
+                    base.raw_bytes_flavor = true;
                 }
                 ParseResult::CustomJson => {
                     base.custom_json = true;
@@ -245,6 +257,12 @@ fn tag_used_as_elem(input: &str) -> IResult<&str, ParseResult> {
     Ok((input, ParseResult::UsedAsElem))
 }
 
+fn tag_raw_bytes_flavor(input: &str) -> IResult<&str, ParseResult> {
+    let (input, _) = tag("@raw_bytes_flavor")(input)?;
+
+    Ok((input, ParseResult::RawBytesFlavor))
+}
+
 fn tag_custom_json(input: &str) -> IResult<&str, ParseResult> {
     let (input, _) = tag("@custom_json")(input)?;
 
@@ -288,6 +306,7 @@ fn whitespace_then_tag(input: &str) -> IResult<&str, ParseResult> {
         tag_no_alias,
         tag_used_as_key,
         tag_used_as_elem,
+        tag_raw_bytes_flavor,
         tag_custom_json,
         tag_custom_serialize,
         tag_custom_deserialize,
@@ -335,6 +354,7 @@ fn parse_comment_name() {
                 no_alias: false,
                 key_demand: None,
                 used_as_elem: false,
+                raw_bytes_flavor: false,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -356,6 +376,7 @@ fn parse_comment_newtype() {
                 no_alias: false,
                 key_demand: None,
                 used_as_elem: false,
+                raw_bytes_flavor: false,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -381,6 +402,7 @@ fn parse_comment_newtype_getter_before() {
                     ord: false
                 }),
                 used_as_elem: false,
+                raw_bytes_flavor: false,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -406,6 +428,7 @@ fn parse_comment_newtype_getter_after() {
                     ord: false
                 }),
                 used_as_elem: false,
+                raw_bytes_flavor: false,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -427,6 +450,7 @@ fn parse_comment_newtype_and_name() {
                 no_alias: false,
                 key_demand: None,
                 used_as_elem: false,
+                raw_bytes_flavor: false,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -452,6 +476,7 @@ fn parse_comment_newtype_and_name_and_used_as_key() {
                     ord: false
                 }),
                 used_as_elem: false,
+                raw_bytes_flavor: false,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -477,6 +502,7 @@ fn parse_comment_used_as_key() {
                     ord: false
                 }),
                 used_as_elem: false,
+                raw_bytes_flavor: false,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -600,6 +626,7 @@ fn parse_comment_used_as_elem() {
                 no_alias: false,
                 key_demand: None,
                 used_as_elem: true,
+                raw_bytes_flavor: false,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -626,6 +653,7 @@ fn parse_comment_used_as_elem_and_key() {
                     ord: false
                 }),
                 used_as_elem: true,
+                raw_bytes_flavor: false,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -651,6 +679,7 @@ fn parse_comment_used_as_key_and_elem_inverse() {
                     ord: false
                 }),
                 used_as_elem: true,
+                raw_bytes_flavor: false,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -673,6 +702,7 @@ fn parse_comment_newtype_getter_before_used_as_elem() {
                 no_alias: false,
                 key_demand: None,
                 used_as_elem: true,
+                raw_bytes_flavor: false,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -694,6 +724,7 @@ fn parse_comment_used_as_elem_before_newtype_getter() {
                 no_alias: false,
                 key_demand: None,
                 used_as_elem: true,
+                raw_bytes_flavor: false,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -717,6 +748,41 @@ fn merge_metadata_ors_used_as_elem() {
 }
 
 #[test]
+fn parse_comment_raw_bytes_flavor() {
+    assert!(
+        rule_metadata("@raw_bytes_flavor")
+            .unwrap()
+            .1
+            .raw_bytes_flavor
+    );
+}
+
+// `@raw_bytes_flavor` is an independent flag that co-occurs with other tags, in either order,
+// without swallowing them (mirrors `@used_as_elem`'s ordering coverage).
+#[test]
+fn parse_comment_raw_bytes_flavor_and_name() {
+    let md = rule_metadata("@raw_bytes_flavor @name foo").unwrap().1;
+    assert!(md.raw_bytes_flavor);
+    assert_eq!(md.name, Some("foo".to_string()));
+    let inverse = rule_metadata("@name foo @raw_bytes_flavor").unwrap().1;
+    assert!(inverse.raw_bytes_flavor);
+    assert_eq!(inverse.name, Some("foo".to_string()));
+}
+
+// Merging two comment lines OR-folds the flag, matching the other boolean tags' merge semantics.
+#[test]
+fn merge_metadata_ors_raw_bytes_flavor() {
+    let lhs = RuleMetadata {
+        raw_bytes_flavor: true,
+        ..Default::default()
+    };
+    let rhs = RuleMetadata::default();
+    assert!(merge_metadata(&lhs, &rhs).raw_bytes_flavor);
+    assert!(merge_metadata(&rhs, &lhs).raw_bytes_flavor);
+    assert!(!merge_metadata(&rhs, &rhs).raw_bytes_flavor);
+}
+
+#[test]
 fn parse_comment_newtype_and_name_inverse() {
     assert_eq!(
         rule_metadata("@name foo @newtype"),
@@ -728,6 +794,7 @@ fn parse_comment_newtype_and_name_inverse() {
                 no_alias: false,
                 key_demand: None,
                 used_as_elem: false,
+                raw_bytes_flavor: false,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -749,6 +816,7 @@ fn parse_comment_name_noalias() {
                 no_alias: true,
                 key_demand: None,
                 used_as_elem: false,
+                raw_bytes_flavor: false,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -770,6 +838,7 @@ fn parse_comment_newtype_and_custom_json() {
                 no_alias: false,
                 key_demand: None,
                 used_as_elem: false,
+                raw_bytes_flavor: false,
                 custom_json: true,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -797,6 +866,7 @@ fn parse_comment_custom_serialize_deserialize() {
                 no_alias: false,
                 key_demand: None,
                 used_as_elem: false,
+                raw_bytes_flavor: false,
                 custom_json: false,
                 custom_serialize: Some("foo".to_string()),
                 custom_deserialize: Some("bar".to_string()),
@@ -825,6 +895,7 @@ fn parse_comment_all_except_no_alias() {
                     ord: false
                 }),
                 used_as_elem: true,
+                raw_bytes_flavor: false,
                 custom_json: true,
                 custom_serialize: Some("foo".to_string()),
                 custom_deserialize: Some("bar".to_string()),

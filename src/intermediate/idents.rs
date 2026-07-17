@@ -84,9 +84,22 @@ impl RustIdent {
         types: &IntermediateTypes,
         cli: &Cli,
     ) -> Self {
+        Self::new_generic_with_base(generic_ident.as_ref(), generic_args, types, cli)
+    }
+
+    /// Like [`Self::new_generic`] but with an explicit base name, used by the `@raw_bytes_flavor`
+    /// extern generic to reference the `<Base>RawBytes` wrapper flavor (e.g. `ExtSetRawBytes<PubKey>`)
+    /// instead of the plain base. The base is already a formatted Rust identifier, so it is emitted
+    /// verbatim (no camel-casing or reserved-name check — those apply to CDDL-sourced idents).
+    pub fn new_generic_with_base(
+        base: &str,
+        generic_args: &[RustType],
+        types: &IntermediateTypes,
+        cli: &Cli,
+    ) -> Self {
         Self(format!(
             "{}<{}>",
-            generic_ident,
+            base,
             generic_args
                 .iter()
                 .map(|a| a.for_rust_member(types, false, cli))

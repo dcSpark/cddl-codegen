@@ -240,7 +240,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 ## cddl-codegen vendor profile (comment DSL + sentinels — not RFC 8610)
 
-### `comment_dsl` (9)
+### `comment_dsl` (10)
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
@@ -251,6 +251,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `dsl.name` | ✅ | @name — explicit field/variant name | `dsl_name.cddl` |
 | `dsl.newtype` | ✅ | @newtype — wrapper struct instead of alias | `dsl_newtype.cddl` |
 | `dsl.no_alias` | ✅ | @no_alias — inline the type, emit no alias | `dsl_no_alias.cddl` |
+| `dsl.raw_bytes_flavor` | ✅ | @raw_bytes_flavor — extern generic raw-bytes wrapper flavor | `extern_generic_raw_bytes.cddl` |
 | `dsl.used_as_elem` | ✅ | @used_as_elem — mint the canonical loose-list wasm wrapper | `dsl_used_as_elem.cddl` |
 | `dsl.used_as_key` | ✅ | @used_as_key — force Ord/Hash derives | `dsl_used_as_key.cddl` |
 
@@ -258,8 +259,8 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
-| `ext.extern` | ➕ | _CDDL_CODEGEN_EXTERN_TYPE_ — compose in a hand-written type | supported; requires a user-provided extern type; integration-tested in tests/extern-deps |
-| `ext.raw_bytes` | ➕ | _CDDL_CODEGEN_RAW_BYTES_TYPE_ — bytes with hand-written constraints | supported; requires a user-provided raw-bytes impl; integration-tested in tests/raw-bytes |
+| `ext.extern` | ✅ | _CDDL_CODEGEN_EXTERN_TYPE_ — compose in a hand-written type | `extern_generic_raw_bytes.cddl` |
+| `ext.raw_bytes` | ✅ | _CDDL_CODEGEN_RAW_BYTES_TYPE_ — bytes with hand-written constraints | `extern_generic_raw_bytes.cddl` |
 
 ## Control operators (`ctlop`, §3.8 + IANA registry)
 
@@ -325,9 +326,9 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 ## Summary
 
-- Features: **107** — ✅ 55 covered · ➕ 21 supported-untested · ⚠️ 4 partial · ➖ 27 not supported
+- Features: **108** — ✅ 58 covered · ➕ 19 supported-untested · ⚠️ 4 partial · ➖ 27 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
-- Corpus fixtures: 67
+- Corpus fixtures: 68
 
 **Per-cell coverage (role × feature).** Where a construct's support *differs by role*,
 coverage is keyed on the (role × feature) cell, derived from a real `cddl`-crate AST walk

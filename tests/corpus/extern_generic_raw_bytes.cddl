@@ -1,0 +1,13 @@
+pub_key = _CDDL_CODEGEN_RAW_BYTES_TYPE_
+
+ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_ ; @raw_bytes_flavor
+
+plain = [
+  a: uint,
+  b: text,
+]
+
+using_flavored = [
+  keys: ext_set<pub_key>,
+  plains: ext_set<plain>,
+]

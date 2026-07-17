@@ -405,10 +405,10 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   `cbor-payload` / `choice-member` / `generic-arg` / `occurrence-target`) use 2-field map examples so
   any panic is attributable to the real **anonymous-group** reason (an inline map inside a role needs
   a name), with no single-field-map shape to confound it.
-- **Execution-gate exemptions.** 4 user-code features stay `supported` via the documented
+- **Execution-gate exemptions.** 5 user-code features stay `supported` via the documented
   `COMPILE_GATE_EXEMPT` allowlist — they reference user-supplied code, so they can't compile (or
-  test) standalone: `ext.extern`, `ext.raw_bytes`, `dsl.custom_serialize`, `dsl.custom_deserialize`
-  (integration-tested instead). The exemption has a recorded cost: it let an extern-only-scope
+  test) standalone: `ext.extern`, `ext.raw_bytes`, `dsl.custom_serialize`, `dsl.custom_deserialize`,
+  `dsl.raw_bytes_flavor` (integration-tested instead). The exemption has a recorded cost: it let an extern-only-scope
   compile break ship unseen (`ROADMAP.md` § findings, the extern-only undeclared-module entry). `prelude.any` is correctly ➖: `x = any` exits 0 but emits
   `pub type X = Any;` — an undefined type (root cause: `any` absent from `is_identifier_reserved`).
 - **Role floor (role × feature coverage) — NOT a serde JSON-AST dump.** The `cddl` AST's `Serialize`

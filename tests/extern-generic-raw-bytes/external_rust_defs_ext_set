@@ -1,0 +1,95 @@
+// User-supplied wrappers for the `ext_set<T>` extern generic. Two flavors with OVERLAPPING element
+// contracts (a single wrapper type cannot carry both, as they would be conflicting blanket impls):
+//   - `ExtSet<T>` bounds `T` on the CBOR traits and serializes each element through them.
+//   - `ExtSetRawBytes<T>` bounds `T` on `RawBytesEncoding` and frames each element as a bytestring.
+// The `@raw_bytes_flavor` tag makes `ext_set<pub_key>` (a raw-bytes element) alias `ExtSetRawBytes`
+// while `ext_set<plain>` keeps the plain `ExtSet` — the whole point of the feature.
+
+#[derive(Clone, Debug)]
+pub struct ExtSet<T>(pub Vec<T>);
+
+impl<T> ExtSet<T> {
+    pub fn new(elems: Vec<T>) -> Self {
+        Self(elems)
+    }
+}
+
+impl<T: cbor_event::se::Serialize> cbor_event::se::Serialize for ExtSet<T> {
+    fn serialize<'se, W: std::io::Write>(
+        &self,
+        serializer: &'se mut cbor_event::se::Serializer<W>,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {
+        serializer.write_array(cbor_event::Len::Len(self.0.len() as u64))?;
+        for elem in &self.0 {
+            elem.serialize(serializer)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl<T: serialization::Deserialize> serialization::Deserialize for ExtSet<T> {
+    fn deserialize<R: std::io::BufRead + std::io::Seek>(
+        raw: &mut cbor_event::de::Deserializer<R>,
+    ) -> Result<Self, error::DeserializeError> {
+        let mut elems = Vec::new();
+        let len = raw.array()?;
+        while match len {
+            cbor_event::Len::Len(n) => (elems.len() as u64) < n,
+            cbor_event::Len::Indefinite => true,
+        } {
+            if let cbor_event::Len::Indefinite = len {
+                if raw.cbor_type()? == cbor_event::Type::Special {
+                    assert_eq!(raw.special()?, cbor_event::Special::Break);
+                    break;
+                }
+            }
+            elems.push(T::deserialize(raw)?);
+        }
+        Ok(Self(elems))
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ExtSetRawBytes<T: crate::serialization::RawBytesEncoding>(pub Vec<T>);
+
+impl<T: crate::serialization::RawBytesEncoding> ExtSetRawBytes<T> {
+    pub fn new(elems: Vec<T>) -> Self {
+        Self(elems)
+    }
+}
+
+impl<T: crate::serialization::RawBytesEncoding> cbor_event::se::Serialize for ExtSetRawBytes<T> {
+    fn serialize<'se, W: std::io::Write>(
+        &self,
+        serializer: &'se mut cbor_event::se::Serializer<W>,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {
+        serializer.write_array(cbor_event::Len::Len(self.0.len() as u64))?;
+        for elem in &self.0 {
+            serializer.write_bytes(elem.to_raw_bytes())?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl<T: crate::serialization::RawBytesEncoding> serialization::Deserialize for ExtSetRawBytes<T> {
+    fn deserialize<R: std::io::BufRead + std::io::Seek>(
+        raw: &mut cbor_event::de::Deserializer<R>,
+    ) -> Result<Self, error::DeserializeError> {
+        let mut elems = Vec::new();
+        let len = raw.array()?;
+        while match len {
+            cbor_event::Len::Len(n) => (elems.len() as u64) < n,
+            cbor_event::Len::Indefinite => true,
+        } {
+            if let cbor_event::Len::Indefinite = len {
+                if raw.cbor_type()? == cbor_event::Type::Special {
+                    assert_eq!(raw.special()?, cbor_event::Special::Break);
+                    break;
+                }
+            }
+            let bytes = raw.bytes()?;
+            elems.push(T::from_raw_bytes(&bytes)?);
+        }
+        Ok(Self(elems))
+    }
+}

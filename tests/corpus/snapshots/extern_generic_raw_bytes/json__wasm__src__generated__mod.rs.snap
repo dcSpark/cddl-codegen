@@ -1,0 +1,144 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+pub use crate::ExtSetPlain;
+pub use crate::ExtSetPubKey;
+
+use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Plain(cddl_lib::Plain);
+
+#[wasm_bindgen]
+impl Plain {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Plain, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<Plain, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn a(&self) -> u64 {
+        self.0.a
+    }
+
+    pub fn b(&self) -> String {
+        self.0.b.clone()
+    }
+
+    pub fn new(a: u64, b: String) -> Self {
+        Self(cddl_lib::Plain::new(a, b))
+    }
+}
+
+impl From<cddl_lib::Plain> for Plain {
+    fn from(native: cddl_lib::Plain) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Plain> for cddl_lib::Plain {
+    fn from(wasm: Plain) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Plain> for Plain {
+    fn as_ref(&self) -> &cddl_lib::Plain {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct UsingFlavored(cddl_lib::UsingFlavored);
+
+#[wasm_bindgen]
+impl UsingFlavored {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<UsingFlavored, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<UsingFlavored, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn keys(&self) -> ExtSetPubKey {
+        self.0.keys.clone().into()
+    }
+
+    pub fn plains(&self) -> ExtSetPlain {
+        self.0.plains.clone().into()
+    }
+
+    pub fn new(keys: &ExtSetPubKey, plains: &ExtSetPlain) -> Self {
+        Self(cddl_lib::UsingFlavored::new(
+            keys.clone().into(),
+            plains.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::UsingFlavored> for UsingFlavored {
+    fn from(native: cddl_lib::UsingFlavored) -> Self {
+        Self(native)
+    }
+}
+
+impl From<UsingFlavored> for cddl_lib::UsingFlavored {
+    fn from(wasm: UsingFlavored) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::UsingFlavored> for UsingFlavored {
+    fn as_ref(&self) -> &cddl_lib::UsingFlavored {
+        &self.0
+    }
+}

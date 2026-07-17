@@ -895,6 +895,10 @@ pub enum GenericResolved {
         instance_ident: RustIdent,
         // actual data type e.g. Foo<Bar>
         real_ident: RustIdent,
+        // Some(base) when `@raw_bytes_flavor` selected the `<base>RawBytes` wrapper for this
+        // instance (a raw-bytes argument was supplied); `finalize` records the base so the extern
+        // re-export glue emits `pub use crate::<base>RawBytes;`. None for the plain path.
+        flavored_base: Option<RustIdent>,
     },
 }
 
@@ -928,14 +932,41 @@ impl GenericInstance {
                     .map(|rs| matches!(rs.variant(), RustStructType::Extern))
                     .unwrap_or(false)
                 {
+                    // `@raw_bytes_flavor`: when the base extern is tagged AND any argument resolves
+                    // to a `_CDDL_CODEGEN_RAW_BYTES_TYPE_`, reference the convention-named
+                    // `<Base>RawBytes` wrapper flavor instead of the plain `<Base>`. Opt-in only —
+                    // a plain-name instance keeps compiling for wrappers bound solely on
+                    // `RawBytesEncoding`, so this never fires without the tag.
+                    let flavored = types.raw_bytes_flavor().contains(&self.generic_ident)
+                        && self
+                            .generic_args
+                            .iter()
+                            .any(|arg| Self::arg_is_raw_bytes(types, arg));
+                    let (real_ident, flavored_base) = if flavored {
+                        (
+                            RustIdent::new_generic_with_base(
+                                &format!("{}RawBytes", self.generic_ident),
+                                &self.generic_args,
+                                types,
+                                cli,
+                            ),
+                            Some(self.generic_ident.clone()),
+                        )
+                    } else {
+                        (
+                            RustIdent::new_generic(
+                                &self.generic_ident,
+                                &self.generic_args,
+                                types,
+                                cli,
+                            ),
+                            None,
+                        )
+                    };
                     return Ok(GenericResolved::Extern {
                         instance_ident: self.instance_ident.clone(),
-                        real_ident: RustIdent::new_generic(
-                            &self.generic_ident,
-                            &self.generic_args,
-                            types,
-                            cli,
-                        ),
+                        real_ident,
+                        flavored_base,
                     });
                 }
                 return Err(format!(
@@ -1012,6 +1043,33 @@ impl GenericInstance {
             return (*resolved_type).clone();
         }
         orig.clone()
+    }
+
+    /// Whether a generic argument ultimately names a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` struct. Follows
+    /// inline conceptual aliases (`resolve_alias_shallow`) and named type aliases so an argument that
+    /// reaches a raw-bytes struct through an intermediate alias still selects the flavor. The chain is
+    /// bounded to guard against a pathological self-referential alias.
+    fn arg_is_raw_bytes(types: &IntermediateTypes, arg: &RustType) -> bool {
+        let mut ct = arg.conceptual_type.resolve_alias_shallow().clone();
+        for _ in 0..16 {
+            let ident = match ct {
+                ConceptualRustType::Rust(ident) => ident,
+                _ => return false,
+            };
+            if types
+                .rust_struct(&ident)
+                .map(|rs| matches!(rs.variant(), RustStructType::RawBytesType))
+                .unwrap_or(false)
+            {
+                return true;
+            }
+            // Not a struct we recognize as raw-bytes — follow a named type alias if there is one.
+            match types.resolve_alias(&AliasIdent::Rust(ident)) {
+                Some(next) => ct = next.conceptual_type.resolve_alias_shallow().clone(),
+                None => return false,
+            }
+        }
+        false
     }
 }
 

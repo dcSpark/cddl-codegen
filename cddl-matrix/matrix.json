@@ -4120,6 +4120,16 @@
       "title": "@used_as_elem — mint the canonical loose-list wasm wrapper"
     },
     {
+      "alt": "@raw_bytes_flavor",
+      "desc": "On a _CDDL_CODEGEN_EXTERN_TYPE_ generic, makes instances whose argument is a _CDDL_CODEGEN_RAW_BYTES_TYPE_ alias the user-owned <ExternName>RawBytes wrapper flavor instead of the plain name (one wrapper type cannot serve both trait-bound and raw-bytes elements — the blanket impls would conflict). Opt-in only, so a wrapper bound solely on RawBytesEncoding keeps compiling under the plain name.",
+      "example": "ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_ ; @raw_bytes_flavor",
+      "id": "dsl.raw_bytes_flavor",
+      "production": "comment_dsl",
+      "profile": "CDDL_CODEGEN",
+      "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@raw_bytes_flavor; src/comment_ast.rs",
+      "title": "@raw_bytes_flavor — extern generic raw-bytes wrapper flavor"
+    },
+    {
       "alt": "@custom_json",
       "desc": "Avoids generating/deriving JSON-related traits, on the assumption the user supplies their own.",
       "example": "cj = uint ; @newtype @custom_json",

@@ -1,0 +1,250 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: ir
+---
+{
+    RustIdent(
+        "ExtSet",
+    ): RustStruct {
+        ident: RustIdent(
+            "ExtSet",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Extern,
+    },
+    RustIdent(
+        "ExtSetPlain",
+    ): RustStruct {
+        ident: RustIdent(
+            "ExtSetPlain",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Extern,
+    },
+    RustIdent(
+        "ExtSetPubKey",
+    ): RustStruct {
+        ident: RustIdent(
+            "ExtSetPubKey",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Extern,
+    },
+    RustIdent(
+        "Int",
+    ): RustStruct {
+        ident: RustIdent(
+            "Int",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Extern,
+    },
+    RustIdent(
+        "Plain",
+    ): RustStruct {
+        ident: RustIdent(
+            "Plain",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "a",
+                        rust_type: RustType {
+                            conceptual_type: Primitive(
+                                U64,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            raw_bytes_flavor: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                    RustField {
+                        name: "b",
+                        rust_type: RustType {
+                            conceptual_type: Primitive(
+                                Str,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            raw_bytes_flavor: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                ],
+            },
+        ),
+    },
+    RustIdent(
+        "PubKey",
+    ): RustStruct {
+        ident: RustIdent(
+            "PubKey",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: RawBytesType,
+    },
+    RustIdent(
+        "UsingFlavored",
+    ): RustStruct {
+        ident: RustIdent(
+            "UsingFlavored",
+        ),
+        tag: None,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "keys",
+                        rust_type: RustType {
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "ExtSetPubKey",
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            raw_bytes_flavor: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                    RustField {
+                        name: "plains",
+                        rust_type: RustType {
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "ExtSetPlain",
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            raw_bytes_flavor: false,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                ],
+            },
+        ),
+    },
+}

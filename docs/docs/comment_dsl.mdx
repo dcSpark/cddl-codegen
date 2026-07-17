@@ -346,6 +346,20 @@ This can also be useful when you have a spec that is either very awkward to use 
 
 This also works with generics e.g. you can refer to `foo<T>`. As with other generics this will create a `pub type FooT = Foo<T>;` definition in rust to work with wasm-bindgen's restrictions (no generics) as on the wasm side there will be references to a `FooT` in wasm. The wasm type definition is not emitted as that will be implementation-dependent. For an example see `extern_generic` in the `core` unit test.
 
+## @raw_bytes_flavor
+
+A bare tag valid **only** on a `_CDDL_CODEGEN_EXTERN_TYPE_` generic. It lets one extern generic reference a second, differently-bounded wrapper for the instances whose element is a raw-bytes type:
+
+```cddl
+ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_ ; @raw_bytes_flavor
+```
+
+When an instance's argument resolves to a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` (e.g. `x = ext_set<pub_key>`), the monomorphized alias references the convention-named `<ExternName>RawBytes` flavor instead of the plain name — `pub type ExtSetPubKey = ExtSetRawBytes<PubKey>;` — and the crate-root re-export glue emits `pub use crate::ExtSetRawBytes;` alongside the base `pub use crate::ExtSet;`. Every instance whose arguments are all non-raw-bytes keeps the plain `Foo<T>` name.
+
+This exists because a raw-bytes type implements `RawBytesEncoding` (the caller frames its CBOR bytes) rather than the CBOR `Serialize`/`Deserialize` traits, and a single wrapper type cannot serve both element contracts at once — `impl<T: Serialize> Serialize for Foo<T>` and `impl<T: RawBytesEncoding> Serialize for Foo<T>` are conflicting blanket impls. The `<ExternName>RawBytes` flavor is a second, separately-bounded user-owned wrapper for exactly the raw-bytes instances.
+
+The tag is **opt-in and never automatic**: a consumer whose single wrapper is bound solely on `RawBytesEncoding` already compiles today under the plain name, so flavoring the plain name whenever the two markers compose would silently break that working output. The tag takes no name argument — the wrapper is user-owned, so any preferred name is one `pub type <ExternName>RawBytes<T> = Whatever<T>;` alias away. Using it on any rule other than a `_CDDL_CODEGEN_EXTERN_TYPE_` definition is a hard error.
+
 ## _CDDL_CODEGEN_RAW_BYTES_TYPE_
 
 Allows encoding as `bytes` but imposing hand-written constraints defined elsewhere.

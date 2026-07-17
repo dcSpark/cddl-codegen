@@ -1,0 +1,58 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+pub mod cbor_encodings;
+pub mod serialization;
+pub use crate::ExtSet;
+pub use crate::ExtSetRawBytes;
+
+use crate::generated::error::*;
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+use cbor_encodings::{PlainEncoding, UsingFlavoredEncoding};
+
+pub type ExtSetPlain = ExtSet<Plain>;
+
+pub type ExtSetPubKey = ExtSetRawBytes<PubKey>;
+
+#[derive(Clone, Debug)]
+pub struct Plain {
+    pub a: u64,
+    pub b: String,
+    pub encodings: Option<PlainEncoding>,
+}
+
+impl Plain {
+    pub fn new(a: u64, b: String) -> Self {
+        Self {
+            a,
+            b,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct UsingFlavored {
+    pub keys: ExtSetPubKey,
+    pub plains: ExtSetPlain,
+    pub encodings: Option<UsingFlavoredEncoding>,
+}
+
+impl UsingFlavored {
+    pub fn new(keys: ExtSetPubKey, plains: ExtSetPlain) -> Self {
+        Self {
+            keys,
+            plains,
+            encodings: None,
+        }
+    }
+}

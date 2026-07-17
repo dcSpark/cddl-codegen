@@ -1,0 +1,21 @@
+// User-supplied raw-bytes type for `pub_key = _CDDL_CODEGEN_RAW_BYTES_TYPE_`. Implements only
+// `RawBytesEncoding` (no CBOR `Serialize`/`Deserialize`), which is exactly why an `ext_set<pub_key>`
+// instance must alias the `ExtSetRawBytes` flavor rather than the trait-bound `ExtSet`.
+use crate::serialization::RawBytesEncoding;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct PubKey([u8; 32]);
+
+impl RawBytesEncoding for PubKey {
+    fn to_raw_bytes(&self) -> &[u8] {
+        &self.0
+    }
+
+    fn from_raw_bytes(bytes: &[u8]) -> Result<Self, DeserializeError> {
+        use std::convert::TryInto;
+        bytes
+            .try_into()
+            .map(PubKey)
+            .map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)).into())
+    }
+}

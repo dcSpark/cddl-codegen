@@ -800,6 +800,20 @@ impl GenerationScope {
                 content.raw(format!("pub use crate::{ident};"));
             }
         }
+        // `@raw_bytes_flavor` re-export glue. A tagged extern generic instantiated with a raw-bytes
+        // argument aliases the user-owned `<Base>RawBytes` wrapper flavor (the `pub type` alias sits
+        // in the declaring scope's module), so that scope needs `pub use crate::<Base>RawBytes;` too
+        // — in ADDITION to the base `pub use crate::<Base>;` above when other instances use the plain
+        // name. The flavored name isn't a registered struct (the flavor is user-owned, like the base
+        // generic extern's wasm side), so it's emitted here from the recorded-emitted set rather than
+        // by the struct loop; placed in the SAME scope as the base extern so the alias resolves.
+        for base in types.raw_bytes_flavor_emitted() {
+            let scope = types.scope(base);
+            if scope.export() {
+                let content = self.rust_scopes.entry(scope.clone()).or_default();
+                content.raw(format!("pub use crate::{base}RawBytes;"));
+            }
+        }
 
         // general common imports (struct files)
         for content in self.rust_scopes.values_mut() {

@@ -92,6 +92,7 @@ const COMPILE_GATE_EXEMPT: Record<string, string> = {
   "ext.raw_bytes": "requires a user-provided raw-bytes impl; integration-tested in tests/raw-bytes",
   "dsl.custom_serialize": "references a user-provided serialize fn; integration-tested in tests/custom_serialization",
   "dsl.custom_deserialize": "references a user-provided deserialize fn; integration-tested in tests/custom_serialization",
+  "dsl.raw_bytes_flavor": "references user-provided extern wrapper flavors; integration-tested in tests/extern-generic-raw-bytes",
 };
 
 // --- EMISSION-PROFILE axis (design rationale: see README.md + ROADMAP.md) ----------------------------------------------
