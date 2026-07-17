@@ -1,0 +1,6 @@
+; Fixture for `facade_composition_compiles` (src/tests/integration_tests.rs).
+; A two-scope directory spec whose generated crate is composed with the documented
+; per-scope facade (docs/docs/output_format.mdx § "Per-scope hand modules: the facade pattern")
+; plus the extern-glue re-export, then `cargo check`ed. The root scope references both other
+; scopes so their modules are reachable (and the extern-only scope's glue is emitted).
+root = [b: bounded, addr: address]

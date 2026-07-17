@@ -1,0 +1,5 @@
+; The scope that carries the hand-written facade. A bounded-bytes newtype so the generated
+; `Bounded` wrapper backs its value with a `pub(crate)` field (named `inner` under
+; --preserve-encodings=true) that the hand facade module reads — exercising the pub(crate)
+; wrapper-field half of the contract.
+bounded = bytes .size (2..4)
