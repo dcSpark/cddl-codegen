@@ -142,10 +142,12 @@ Rules:
   the failure detail (check.ts gates inherit stdout, so the detail exists nowhere else) and masks
   the exit code (the pipeline reports `tail`'s). A one-line summary of a failed run is unactionable;
   you end up re-running the gate blind. This rule is NOT background-only: pipe every `check.ts`
-  invocation to a file from the FIRST run — a transient failure (see the
-  `acquire_scratch_lock_serializes` watch in `tests/TESTING_ROADMAP.md`) whose only sighting went
+  invocation to a file from the FIRST run — a transient failure whose only sighting went
   through `tail`/`grep` is evidence burned; reruns come back green and the flake stays
-  unattributed (proven four times now).
+  unattributed. Proven end to end by the `acquire_scratch_lock_serializes` watch in
+  `tests/TESTING_ROADMAP.md`: four unattributed sightings (three lost to `tail`/`grep`/truncation),
+  then the fifth — full-logged under this rule — attributed and retired the flake in the same
+  session.
 - **TDD.** For every failure, ask what could have systematically caught it: add the missing test
   vector, or record the missing system in `tests/TESTING_ROADMAP.md`.
 
