@@ -10,7 +10,7 @@
  * check`s the wasm crate, so an un-covered cell surfaces as a specific red cell instead of a
  * production surprise (the enumeration writes the failing test; the emitter gets fixed cell by cell).
  *
- * The crux (see draft/handoff-wasm-abi-matrix.md): wrapper-vs-transparent is a STRUCT-TABLE fact, not
+ * The crux: wrapper-vs-transparent is a STRUCT-TABLE fact, not
  * an IR-shape fact — `coll` (`nums = [* uint]`, a wrapper struct) and `passthru` (`pt = nums`, a
  * transparent `pub type`) share the identical IR shape but cross the boundary differently. Hence both
  * are distinct shapes here.

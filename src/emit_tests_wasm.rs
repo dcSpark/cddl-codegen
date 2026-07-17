@@ -3,8 +3,8 @@
 //! This is the SECOND renderer over the shared `emit_tests::MintValue` derivation surface: the rust
 //! half (`emit_tests.rs`) renders each minted value as a rust-crate API string; this half renders
 //! the SAME minted tree two ways at once — through the generated wasm WRAPPER API and through the
-//! `cddl_lib::` rust API it path-depends on — and asserts they agree. The teeth (see the plan in
-//! `draft/emit-wasm-tests/PLAN.md` §1) are, per mintable type:
+//! `cddl_lib::` rust API it path-depends on — and asserts they agree. The teeth are, per mintable
+//! type:
 //!
 //! 1. **Cross-crate byte differential** — build the value through the wasm wrapper ctor/`new_*` AND,
 //!    independently, through the `cddl_lib::` rust ctor; assert `to_cbor_bytes()` is byte-equal. A
