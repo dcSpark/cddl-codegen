@@ -68,6 +68,20 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
   transitively via the proc-macro derives). Lower urgency only because the pinned toolchain already
   mitigates churn.
 
+- **Consider promoting the sub-second drift/count gates from `local` into `fast` (CI).** The
+  local-tier placement of `project_recombination_check`, `project_decode_conformance`, the
+  `query_q*` gates, `project_status_headers`, and `lint_doc_citations` is the registry's DEFAULT
+  for new gates, not a considered cost decision — their older siblings
+  (`build_matrix_check`/`project_robustness_check`/`project_wasm_matrix_check`/
+  `project_golden_hex_check`/`project_corpus`, the same no-cargo file-scanner class) are already
+  `fast`, and all of these run in well under a second. Proven cost of the split: a HEAD commit
+  (the `@raw_bytes_flavor` registration) shipped CI-green with THREE local drift gates red
+  (`tests/recomb/ingredients.json` stale, the Q6 `VENDOR_FEATURE_COUNT` pin, the status-header
+  count spans), and check.ts's fail-fast meant only the first showed per run — the rot surfaced
+  one layer at a time in an unrelated later session. Promotion is a maintainer decision (CI
+  policy, § above); until then the mitigating discipline is unchanged: run `local` before
+  considering matrix-surface work done, and expect stacked reds behind fail-fast when de-rotting.
+
 ## Next work items, in priority order
 
 1. **Grammar-fuzzer escalations.** The lazy-first shape-recombination fuzzer is shipped
@@ -233,6 +247,20 @@ dead loses the lesson.
   duplicate-ident backstop. (A fourth, CROSS-CRATE flavor — duplicate symbols at link under
   `--extern-wrapper-index`, invisible to any in-crate layer — is owned by that flag's
   deferral-boundaries entry below.)
+- **Multifile reference-POSITION coverage: the placement matrix only ever references a cross-module
+  shape as a record field.** The group-ctor import bug (a GROUP choice over a Record living in
+  another module expands that record's field types into `new_<variant>` ctor params in both passes,
+  but `scope_references` never marked them — E0412/E0425 in the generated crate; fixed by routing
+  both emitters and the collector through `EnumVariant::group_ctor_record_fields`) was invisible to
+  `tests/matrix_multifile` because every mode (`named`/`anon`/`anonb`/`unref`) embeds the shape as a
+  `bholder` record FIELD — a group-choice variant is a different reference *position* with its own
+  import-collection path. The vector now lives in the hand fixture (`tests/multifile`:
+  `relay`/`relay_host`, test `cross_module_group_choice_ctor`) plus the `multifile` snapshots. The
+  mechanical layer, if a second position-keyed cross-module import bug appears: add a
+  reference-position axis to `project_multifile_matrix.ts` — at minimum a `gcvariant` mode
+  (`bholder = [<ty> // 1, uint]`) over a curated shape subset (the Record-resolving shapes
+  `struct`/`mstruct`/`ralias` are the discriminating cells), same participation-pin idiom as
+  `anonForm`/`EXPECTED_ANON_SHAPES`.
 - **Reason-keyed rejection evidence for the reject catalogs — one proven near-miss recorded, no
   machinery yet.** The robustness/matrix reject catalogs snapshot the OUTCOME label only
   (`error (graceful)`), so a fixture stays green when a NEW, earlier rejection absorbs the one it
@@ -637,7 +665,13 @@ dead loses the lesson.
   burned exactly the way this discipline warns about: the run was piped through `tail`, so no
   `failures:` list or errno survived and two immediate full-suite reruns were green —
   unattributable, evidence value zero. The discipline is load-bearing for one-command runners
-  too: pipe `check.ts` to a FILE, never through `tail`, even for the local tier.
+  too: pipe `check.ts` to a FILE, never through `tail`, even for the local tier. A FOURTH
+  probable sighting (2026-07-17, `test` gate, local tier, same nested-cargo load profile) was
+  burned the same way — the run was piped through `tail`, and two immediate reruns (themselves
+  piped through `grep`, compounding the waste) plus a properly-logged third were all green — so
+  the errno is still outstanding after four sightings, three of them lost to the exact
+  anti-pattern this entry names. The pipe-to-file rule applies from the FIRST invocation of a
+  session, not just reruns after a failure.
 
 ## Declined (decided, with the reopening signal)
 

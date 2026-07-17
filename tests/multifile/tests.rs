@@ -13,8 +13,8 @@ mod tests {
     use super::*;
     use crate::a::c::foo::Foo;
     use crate::a::Baz;
-    use crate::b::bar::{Bar, BarTypedef};
-    use crate::qux::Qux;
+    use crate::b::bar::{Bar, BarTypedef, RelayPort};
+    use crate::qux::{Qux, Relay};
     use cbor_event::de::Deserializer;
     use serialization::Deserialize;
 
@@ -119,6 +119,18 @@ mod tests {
         assert_eq!(everything.baz.index_1, 7);
         assert_eq!(everything.qux.index_1, "hi");
         deser_test(&everything);
+    }
+
+    // relay (qux.cddl) is a group choice whose `relay_host` variant is a record from ANOTHER
+    // scope (b::bar): the expanded `new_relay_host(port, dns_name)` ctor names RelayPort in
+    // qux's module, which nothing else there references — the ctor-expansion import class
+    // (E0412 when scope_references drops the field types). Array struct → hex pin is
+    // profile-agnostic: embedded group variant flattens as [0, port, dns_name].
+    #[test]
+    fn cross_module_group_choice_ctor() {
+        let relay = Relay::new_relay_host(RelayPort::new(7), String::from("x"));
+        assert_eq!(relay.to_cbor_bytes(), vec![0x83, 0x00, 0x07, 0x61, 0x78]);
+        deser_test(&relay);
     }
 
     // bar (b/bar.cddl) is a map struct in scope b whose fields resolve to types from two OTHER

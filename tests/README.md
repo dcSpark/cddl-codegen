@@ -1560,7 +1560,8 @@ generator-invented structural wrappers (owner-resolved for map shapes via
 wherever `types.scope(ident)` puts them — and that region had exactly one hand fixture
 (`tests/multifile`, which covers NAMED cross-module refs but no structural-wrapper-ownership
 cells). This sweep enumerates the placement grid, compile-floors it (always-on), and round-trips it
-(manual, full tier).
+(manual, full tier). The hand fixture still owns one placement vector the grid does NOT
+enumerate: the group-choice-VARIANT reference position (see Axis 2 below).
 
 Pipeline (projection → fixtures → gates), the same two-gate shape as the wasm-ABI matrix:
 
@@ -1602,6 +1603,15 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   module `a` already emits serialization, so nothing masks their b-side verdict and a ballast
   variant adds no discrimination (their `anon` cells are green except the pinned `necollrec__anon`
   and the other structural-wrapper-class pins below).
+  All four modes reference the shape from a record-FIELD position; other reference POSITIONS are
+  not enumerated. The one known position-keyed import class — a group-choice VARIANT over a
+  foreign-scope Record, whose expanded `new_<variant>` ctor names the record's field types in the
+  choice's module (marked by `scope_references` via the shared
+  `EnumVariant::group_ctor_record_fields` helper) — is pinned by the hand fixture instead
+  (`tests/multifile`: `relay` in `qux.cddl` over `relay_host` in `b/bar.cddl`, test
+  `cross_module_group_choice_ctor`, compiled rust+wasm under both fixture profiles); the mode-axis
+  extension is recorded recur-first in `tests/TESTING_ROADMAP.md` ("Multifile reference-POSITION
+  coverage").
 - **The compile floor** (`integration_tests::multifile_matrix_compiles`) globs the cell dirs,
   generates each with DIRECTORY input `--wasm=true`, and `cargo check`s the wasm crate ONLY (which
   path-depends on the rust crate, so rust-side breakage surfaces transitively). Own scratch +

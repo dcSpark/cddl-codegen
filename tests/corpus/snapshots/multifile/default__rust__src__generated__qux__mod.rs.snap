@@ -7,6 +7,7 @@ expression: content
 
 pub mod serialization;
 
+use crate::generated::b::bar::{RelayHost, RelayPort};
 use crate::generated::error::*;
 
 #[derive(Clone, Debug)]
@@ -17,5 +18,21 @@ pub struct Qux {
 impl Qux {
     pub fn new(index_1: String) -> Self {
         Self { index_1 }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum Relay {
+    RelayHost(RelayHost),
+    Relay1(u64),
+}
+
+impl Relay {
+    pub fn new_relay_host(port: RelayPort, dns_name: String) -> Self {
+        Self::RelayHost(RelayHost::new(port, dns_name))
+    }
+
+    pub fn new_relay1(index_1: u64) -> Self {
+        Self::Relay1(index_1)
     }
 }

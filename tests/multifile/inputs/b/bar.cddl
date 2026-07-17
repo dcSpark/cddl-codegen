@@ -10,3 +10,10 @@ bar = {
 
 ; test refs too
 bar_typedef = bar
+
+; consumed as a group-choice variant by `relay` (qux.cddl): the choice's expanded
+; `new_relay_host(port, dns_name)` ctor names THIS record's field types in qux's scope, so
+; `relay_port` must be imported there even though nothing else in qux references it
+; (scope_references' group-ctor field marking)
+relay_port = uint ; @newtype
+relay_host = (0, port: relay_port, dns_name: text)

@@ -119,29 +119,22 @@ pub(super) fn codegen_group_choices(
             let mut output_comma = false;
             // We only want to generate Variant::new() calls when we created a special struct
             // for the variant, which happens in the general case for multi-field group choices
-            let fields = match &variant.data {
-                EnumVariantData::RustType(ty) => {
-                    match &ty.conceptual_type {
-                        // we need to check for sanity here, as if we're referring to the ident
-                        // it should at this stage be registered
-                        ConceptualRustType::Rust(ident) => {
-                            match types.rust_struct(ident).unwrap().variant() {
-                                RustStructType::Record(record) => Some(&record.fields),
-                                _ => None,
-                            }
-                        }
-                        _ => None,
-                    }
-                }
-                EnumVariantData::Inlined(record) => Some(&record.fields),
-            };
-            match fields {
-                Some(fields) => {
-                    let inlined = matches!(&variant.data, EnumVariantData::Inlined(_));
-                    let ctor_fields: Vec<&RustField> = fields
+            let ctor_fields: Option<Vec<&RustField>> = match &variant.data {
+                // named type resolving to a Record — the shared helper (also what the
+                // `scope_references` import walk marks, so params and imports can't drift)
+                EnumVariantData::RustType(_) => variant.group_ctor_record_fields(types, name),
+                // an inlined record has no named struct to construct separately, so even its
+                // OPTIONAL fields stay direct ctor params (hence no `!f.optional` filter here)
+                EnumVariantData::Inlined(record) => Some(
+                    record
+                        .fields
                         .iter()
-                        .filter(|f| (!f.optional || inlined) && !f.rust_type.is_fixed_value())
-                        .collect();
+                        .filter(|f| !f.rust_type.is_fixed_value())
+                        .collect(),
+                ),
+            };
+            match ctor_fields {
+                Some(ctor_fields) => {
                     let can_fail = ctor_fields.iter().any(|f| f.rust_type.has_value_bounds());
                     match ctor_fields.len() {
                         0 => {
@@ -175,8 +168,9 @@ pub(super) fn codegen_group_choices(
                                 } else {
                                     output_comma = true;
                                 }
-                                // always okay - if not inlined this field would be skipped earlier
-                                assert!(!field.optional || inlined);
+                                // optional only reaches here on the Inlined arm (the named-Record
+                                // arm filters `!f.optional`), where it wraps as Option via
+                                // `to_embedded_rust_type`
                                 let wasm_param_type = field.to_embedded_rust_type();
                                 new_func.arg(&field.name, wasm_param_type.for_wasm_param(types));
                                 ctor.push_str(&ToWasmBoundaryOperations::format(
@@ -1068,29 +1062,9 @@ fn generate_enum(
             EnumVariantData::RustType(ty) => {
                 // We only want to generate Variant::new() calls when we created a special struct
                 // for the variant, which happens in the general case for multi-field group choices
-                let fields = match &ty.conceptual_type {
-                    // we need to check for sanity here, as if we're referring to the ident
-                    // it should at this stage be registered
-                    ConceptualRustType::Rust(ident) => {
-                        match types
-                            .rust_struct(ident)
-                            .unwrap_or_else(|| {
-                                panic!("{} refers to undefined ident: {}", name, ident)
-                            })
-                            .variant()
-                        {
-                            RustStructType::Record(record) => Some(&record.fields),
-                            _ => None,
-                        }
-                    }
-                    _ => None,
-                };
+                let fields = variant.group_ctor_record_fields(types, name);
                 match rep.and(fields) {
-                    Some(fields) => {
-                        let ctor_fields: Vec<&RustField> = fields
-                            .iter()
-                            .filter(|f| !f.optional && !f.rust_type.is_fixed_value())
-                            .collect();
+                    Some(ctor_fields) => {
                         let can_fail = ctor_fields
                             .iter()
                             .any(|field| field.rust_type.has_value_bounds());

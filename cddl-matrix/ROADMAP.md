@@ -648,6 +648,21 @@ composition-space cross-check that complements this matrix's curated per-shape g
   defs" claim until a doc-coherence review caught it — a SECOND such near-miss is the signal to
   make `project_multifile_matrix.ts --check` assert its `SHAPES` is a superset of the wasm
   projection's (minus its documented exclusions) instead of relying on review.
+  A first instance on the multifile matrix's MODE axis is also on record (the axes-honesty rule's
+  fourth quadrant — until it, every instance was SHAPES-side or wasm-ROLES-side): all four
+  reference modes embed the shape from a record-FIELD position, so the group-choice-VARIANT
+  position — whose ctor expands a foreign-scope Record's field types into `new_<variant>` params
+  in both passes, an import class `scope_references` never marked (E0412/E0425) — was invisible to
+  the whole sweep. Its discovery signature is a third tell, distinct from fix-review reach-analysis
+  and steering comments: HAND-PATCHED GENERATED OUTPUT IN A CONSUMER (CML's committed
+  `src/generated/**` carried hand-added `use` lines that every regen deleted — a workaround
+  living in generated output is a coverage hole wearing the same disguise as a steering comment,
+  and grepping consumers' generated-output diffs for hand edits is the corresponding cheap sweep
+  arm). Fixed via the shared `EnumVariant::group_ctor_record_fields` helper (emitters + import
+  walk); the vector is hand-pinned (`tests/multifile` `relay`, test
+  `cross_module_group_choice_ctor`), and the mode-axis extension (`gcvariant` over the
+  Record-resolving shapes) is recorded recur-first in `tests/TESTING_ROADMAP.md`
+  ("Multifile reference-POSITION coverage").
 - **Third honesty axis — flag-gated EMISSION SURFACES × input mode (periodic, same footing as the
   SHAPES/ROLES rule above).** SHAPES/ROLES cover what types look like and where they sit; a whole
   flag-gated emission surface can still be built against single-file assumptions and break only

@@ -36,3 +36,40 @@ impl Bar {
 }
 
 pub type BarTypedef = Bar;
+
+#[derive(Clone, Debug)]
+pub struct RelayHost {
+    pub port: RelayPort,
+    pub dns_name: String,
+}
+
+impl RelayHost {
+    pub fn new(port: RelayPort, dns_name: String) -> Self {
+        Self { port, dns_name }
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct RelayPort(u64);
+
+impl RelayPort {
+    pub fn get(&self) -> u64 {
+        self.0
+    }
+
+    pub fn new(inner: u64) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<u64> for RelayPort {
+    fn from(inner: u64) -> Self {
+        RelayPort::new(inner)
+    }
+}
+
+impl From<RelayPort> for u64 {
+    fn from(wrapper: RelayPort) -> Self {
+        wrapper.0
+    }
+}
