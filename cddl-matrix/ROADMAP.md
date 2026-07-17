@@ -188,25 +188,6 @@ are ledgered here (that's what the probe/gate error messages point at).
   list below — each names its prune/re-mint steps.
 
 **Bugs / gaps surfaced as findings (candidate cddl-codegen fixes):**
-- **`--workspace-dep` is silently IGNORED under `--wasm=false` — including its own startup
-  validation — while the docs promise the rust-side key sidecar on flag presence.**
-  `load_workspace_deps` (generation/requests.rs) is both the flag's validator (unknown-dep /
-  missing `--extern-wasm-crate` mapping are hard errors there) and the populater of
-  `workspace_deps`, and it is only CALLED under `cli.wasm` (generation/mod.rs), so a rust-only
-  generation with `--workspace-dep` emits no `rust/src/generated/borrowed_key_types.rs` and never
-  runs the validation — a silent flag ignore, while `docs/docs/output_format.mdx`
-  § "borrowed_key_types.rs" claims emission "whenever `--workspace-dep` is set". The map-key-derive
-  channel is rust-side (BTreeMap/derive concerns, no wasm content), so the wasm gating is not
-  obviously the intended boundary; wrapper deferral proper IS wasm-motivated, which is likely how
-  the key channel inherited the gate. Probe/read-caught during the flavored-borrow fixture delivery
-  (`workspace_key_requests_flavored_contract` consequently generates its consumer with
-  `--wasm=true`), not by any gate — and no pending honesty axis owns the class: the third honesty
-  axis enumerates flag-gated surfaces × INPUT MODE, not flag × flag, and the flag-powerset decline
-  in `tests/TESTING_ROADMAP.md` explicitly routes escaped interactions to their own standing cells.
-  Candidate fix needs a decision first — either emit the rust-side sidecar (and run the validation)
-  without `--wasm`, aligning behavior with the docs, or hard-error the combination — and EITHER
-  outcome lands with a `flag_value_smoke`-style cell pinning the chosen posture (present-and-honored
-  or loud rejection, never a silent ignore), plus the docs sentence corrected in the same change.
 - **Real incremental choice extension (`/=` type-choice, `//=` group-choice) is a candidate
   feature.** Extending an already-defined ident is rejected gracefully at the `api.rs` pre-scan
   (pinned by `incremental_choice_extension_rejects_gracefully`; the initial-definition-via-`/=`
