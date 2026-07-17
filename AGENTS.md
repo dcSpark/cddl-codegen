@@ -103,7 +103,9 @@ changing the *runtime behaviour* of generated code usually means editing `static
 - New features should be built on master directly instead of branching unless justified (ex: a worktree)
 - Commit unsigned to avoid GPG prompts
 - **The conversation-start git snapshot can be stale — never baseline against it.** The harness's
-  session-start "Recent commits"/HEAD snapshot once lagged 14 commits behind the repo's real HEAD;
+  session-start "Recent commits"/HEAD snapshot once lagged 14 commits behind the repo's real HEAD
+  (and its dirty-status flavor has also fired: a snapshot listing ~30 modified files over a tree
+  that `git status` showed clean — run `git status` fresh before reasoning about tree state);
   a "pre-feature baseline" repro run at the snapshot's HEAD attributed another commit's behavior
   change to the session's own work, and the wrong root-cause shipped in a commit before review
   caught it. Before any attribution that depends on a commit range (bisecting, baselining a repro,
@@ -135,7 +137,11 @@ Rules:
   background task, but redirect its FULL output to a file** — piping through `tail` both truncates
   the failure detail (check.ts gates inherit stdout, so the detail exists nowhere else) and masks
   the exit code (the pipeline reports `tail`'s). A one-line summary of a failed run is unactionable;
-  you end up re-running the gate blind.
+  you end up re-running the gate blind. This rule is NOT background-only: pipe every `check.ts`
+  invocation to a file from the FIRST run — a transient failure (see the
+  `acquire_scratch_lock_serializes` watch in `tests/TESTING_ROADMAP.md`) whose only sighting went
+  through `tail`/`grep` is evidence burned; reruns come back green and the flake stays
+  unattributed (proven four times now).
 - **TDD.** For every failure, ask what could have systematically caught it: add the missing test
   vector, or record the missing system in `tests/TESTING_ROADMAP.md`.
 
