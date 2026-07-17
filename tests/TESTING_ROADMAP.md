@@ -133,17 +133,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    - **Real-world corpus differential** (see `draft/testing-recommendations/RECOMMENDATIONS.md`):
      synthetic breadth vs real-world depth — recombination does not replace it.
 
-2. **Enroll `@raw_bytes_flavor` (and `@used_as_elem`) in the comment-DSL position sweep.**
-   `dsl_position_tests.rs` is the docs-contract home for directive × attachment-position drift,
-   but neither tag has cells there. `@raw_bytes_flavor`'s misuse rejection is pinned at three
-   seams by `raw_bytes_flavor_misuse_rejects_gracefully` (single-choice type rule, multi-choice
-   type rule, field position), and ad-hoc probes confirmed the array/map group-choice rule
-   spellings reject through the same funnels — but only sweep cells make the remaining
-   attachment positions mechanical and pin the docs' "hard error" claim per position (its
-   `Expect::Reject` kind models exactly this). `@used_as_elem` predates the sweep and is absent
-   for the same reason; enroll both in one pass since the cell-authoring overhead is shared.
-
-3. **Compile-level pin for the per-scope facade contract.** `docs/output_format` § "Per-scope hand
+2. **Compile-level pin for the per-scope facade contract.** `docs/output_format` § "Per-scope hand
    modules: the facade pattern" promises a consumer composition — a hand facade module in the
    seed-once `lib.rs` (item-beats-glob shadowing over `pub use generated::*;`) declaring hand files
    at `src/<scope>/*.rs` that impl generated types, read `pub(crate)` wrapper fields, and merge into
