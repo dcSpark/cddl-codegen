@@ -14,14 +14,14 @@ pub mod cbor_encodings;
 pub mod qux;
 pub mod serialization;
 
-use a::c::foo::Foo;
 use a::Baz;
+use a::c::foo::Foo;
 use b::bar::{Bar, BarTypedef};
 use cbor_encodings::EverythingEncoding;
+use extern_dep_crate::ExternCrateFoo;
 use extern_dep_crate::error::*;
 use extern_dep_crate::ordered_hash_map::OrderedHashMap;
 use extern_dep_crate::serialization::{LenEncoding, StringEncoding};
-use extern_dep_crate::ExternCrateFoo;
 use qux::Qux;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;

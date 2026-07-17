@@ -45,7 +45,7 @@ impl Deserialize for TaggedRanged {
                         found: tag,
                         expected: 42,
                     }
-                    .into())
+                    .into());
                 }
             }))
         })()

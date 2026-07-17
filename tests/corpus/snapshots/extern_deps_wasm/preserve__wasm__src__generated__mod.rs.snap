@@ -14,10 +14,10 @@ pub mod collections;
 pub mod nested;
 
 use extern_dep_crate::ordered_hash_map::OrderedHashMap;
-use extern_dep_crate_wasm::sub::module::ExternCrateBar;
 use extern_dep_crate_wasm::ExternCrateFoo;
+use extern_dep_crate_wasm::sub::module::ExternCrateBar;
 use nested::NestedItem;
-use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]

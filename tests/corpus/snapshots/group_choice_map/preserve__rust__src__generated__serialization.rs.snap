@@ -265,15 +265,15 @@ impl DeserializeEmbeddedGroup for FixedValueArm0 {
                         (unknown_key, _enc) => {
                             return Err(
                                 DeserializeFailure::UnknownKey(Key::Uint(unknown_key)).into()
-                            )
+                            );
                         }
                     },
                     cbor_event::Type::Text => {
-                        return Err(DeserializeFailure::UnknownKey(Key::Str(raw.text()?)).into())
+                        return Err(DeserializeFailure::UnknownKey(Key::Str(raw.text()?)).into());
                     }
                     cbor_event::Type::Special => match len {
                         cbor_event::LenSz::Len(_, _) => {
-                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
                         }
                         cbor_event::LenSz::Indefinite => match raw.special()? {
                             cbor_event::Special::Break => break,
@@ -281,7 +281,7 @@ impl DeserializeEmbeddedGroup for FixedValueArm0 {
                         },
                     },
                     other_type => {
-                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
                     }
                 }
                 read += 1;
@@ -627,7 +627,7 @@ impl DeserializeEmbeddedGroup for MultiFieldArm0 {
                         return Err(DeserializeFailure::UnknownKey(Key::Uint(
                             raw.unsigned_integer()?,
                         ))
-                        .into())
+                        .into());
                     }
                     cbor_event::Type::Text => {
                         let (text_key, key_enc) = raw.text_sz()?;
@@ -670,13 +670,13 @@ impl DeserializeEmbeddedGroup for MultiFieldArm0 {
                                 return Err(DeserializeFailure::UnknownKey(Key::Str(
                                     unknown_key.to_owned(),
                                 ))
-                                .into())
+                                .into());
                             }
                         }
                     }
                     cbor_event::Type::Special => match len {
                         cbor_event::LenSz::Len(_, _) => {
-                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
                         }
                         cbor_event::LenSz::Indefinite => match raw.special()? {
                             cbor_event::Special::Break => break,
@@ -684,7 +684,7 @@ impl DeserializeEmbeddedGroup for MultiFieldArm0 {
                         },
                     },
                     other_type => {
-                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
                     }
                 }
                 read += 1;
@@ -695,7 +695,7 @@ impl DeserializeEmbeddedGroup for MultiFieldArm0 {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("a")))
                             .into(),
-                    )
+                    );
                 }
             };
             let x = match x {
@@ -704,7 +704,7 @@ impl DeserializeEmbeddedGroup for MultiFieldArm0 {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("x")))
                             .into(),
-                    )
+                    );
                 }
             };
             Ok(Self {
@@ -951,7 +951,7 @@ impl DeserializeEmbeddedGroup for NonemptyArm0 {
                         return Err(DeserializeFailure::UnknownKey(Key::Uint(
                             raw.unsigned_integer()?,
                         ))
-                        .into())
+                        .into());
                     }
                     cbor_event::Type::Text => {
                         let (text_key, key_enc) = raw.text_sz()?;
@@ -1029,13 +1029,13 @@ impl DeserializeEmbeddedGroup for NonemptyArm0 {
                                 return Err(DeserializeFailure::UnknownKey(Key::Str(
                                     unknown_key.to_owned(),
                                 ))
-                                .into())
+                                .into());
                             }
                         }
                     }
                     cbor_event::Type::Special => match len {
                         cbor_event::LenSz::Len(_, _) => {
-                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
                         }
                         cbor_event::LenSz::Indefinite => match raw.special()? {
                             cbor_event::Special::Break => break,
@@ -1043,7 +1043,7 @@ impl DeserializeEmbeddedGroup for NonemptyArm0 {
                         },
                     },
                     other_type => {
-                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
                     }
                 }
                 read += 1;
@@ -1054,7 +1054,7 @@ impl DeserializeEmbeddedGroup for NonemptyArm0 {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("f0")))
                             .into(),
-                    )
+                    );
                 }
             };
             let f1 = match f1 {
@@ -1063,7 +1063,7 @@ impl DeserializeEmbeddedGroup for NonemptyArm0 {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("f1")))
                             .into(),
-                    )
+                    );
                 }
             };
             Ok(Self {

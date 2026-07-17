@@ -278,7 +278,10 @@ pub fn rustfmt_generated_string(source: &str) -> std::io::Result<Cow<'_, str>> {
     let mut cmd = Command::new(rustfmt_path().unwrap());
     cmd.stdin(Stdio::piped()).stdout(Stdio::piped());
 
-    // cmd.args(&["--config-path", path]);
+    // We invoke rustfmt directly on stdin, so it has no Cargo.toml to read the edition from and
+    // defaults to 2015. Pass the generated crates' edition explicitly (as `cargo fmt` would) so our
+    // output is already canonical and doesn't churn under a downstream `cargo fmt`.
+    cmd.args(["--edition", "2024"]);
 
     let mut child = cmd.spawn()?;
     let mut child_stdin = child.stdin.take().unwrap();

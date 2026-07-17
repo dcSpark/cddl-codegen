@@ -12,7 +12,7 @@ expression: content
 )]
 pub mod collections;
 
-use wasm_bindgen::prelude::{wasm_bindgen, JsError, JsValue};
+use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]

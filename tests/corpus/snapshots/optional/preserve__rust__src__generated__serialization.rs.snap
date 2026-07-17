@@ -118,7 +118,7 @@ impl Deserialize for OptionalFields {
                         return Err(DeserializeFailure::UnknownKey(Key::Uint(
                             raw.unsigned_integer()?,
                         ))
-                        .into())
+                        .into());
                     }
                     cbor_event::Type::Text => {
                         let (text_key, key_enc) = raw.text_sz()?;
@@ -164,13 +164,13 @@ impl Deserialize for OptionalFields {
                                 return Err(DeserializeFailure::UnknownKey(Key::Str(
                                     unknown_key.to_owned(),
                                 ))
-                                .into())
+                                .into());
                             }
                         }
                     }
                     cbor_event::Type::Special => match len {
                         cbor_event::LenSz::Len(_, _) => {
-                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
                         }
                         cbor_event::LenSz::Indefinite => match raw.special()? {
                             cbor_event::Special::Break => break,
@@ -178,7 +178,7 @@ impl Deserialize for OptionalFields {
                         },
                     },
                     other_type => {
-                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
                     }
                 }
                 read += 1;
@@ -189,7 +189,7 @@ impl Deserialize for OptionalFields {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("a")))
                             .into(),
-                    )
+                    );
                 }
             };
             read_len.finish()?;

@@ -259,7 +259,7 @@ impl Deserialize for Bar {
                         (unknown_key, _enc) => {
                             return Err(
                                 DeserializeFailure::UnknownKey(Key::Uint(unknown_key)).into()
-                            )
+                            );
                         }
                     },
                     cbor_event::Type::Text => {
@@ -339,13 +339,13 @@ impl Deserialize for Bar {
                                 return Err(DeserializeFailure::UnknownKey(Key::Str(
                                     unknown_key.to_owned(),
                                 ))
-                                .into())
+                                .into());
                             }
                         }
                     }
                     cbor_event::Type::Special => match len {
                         cbor_event::LenSz::Len(_, _) => {
-                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
                         }
                         cbor_event::LenSz::Indefinite => match raw.special()? {
                             cbor_event::Special::Break => break,
@@ -353,7 +353,7 @@ impl Deserialize for Bar {
                         },
                     },
                     other_type => {
-                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
                     }
                 }
                 read += 1;
@@ -364,7 +364,7 @@ impl Deserialize for Bar {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("foo")))
                             .into(),
-                    )
+                    );
                 }
             };
             let key_1 = match key_1 {
@@ -731,7 +731,7 @@ impl Deserialize for DeeplyNested {
                                         found: tag,
                                         expected: 14,
                                     }
-                                    .into())
+                                    .into());
                                 }
                             };
                         let mut data_value_table = OrderedHashMap::new();
@@ -781,7 +781,7 @@ impl Deserialize for DeeplyNested {
                                             found: tag,
                                             expected: 9,
                                         }
-                                        .into())
+                                        .into());
                                     }
                                 };
                                 let mut data_value_value_value_arr = Vec::new();
@@ -849,7 +849,7 @@ impl Deserialize for DeeplyNested {
                                                 found: tag,
                                                 expected: 18,
                                             }
-                                            .into())
+                                            .into());
                                         }
                                     };
                                     data_value_value_value_arr.push(data_value_value_value_elem);
@@ -1184,7 +1184,7 @@ impl Deserialize for GroupChoice {
                     return Ok(Self::I3 {
                         i3_encoding,
                         len_encoding,
-                    })
+                    });
                 }
                 Err(e) => {
                     errs.push(e.annotate("I3"));
@@ -1230,7 +1230,7 @@ impl Deserialize for GroupChoice {
                         i2_tag_encoding,
                         i2_encoding,
                         len_encoding,
-                    })
+                    });
                 }
                 Err(e) => {
                     errs.push(e.annotate("I2"));
@@ -1451,7 +1451,7 @@ impl Deserialize for MixedLenKeys {
                         (unknown_key, _enc) => {
                             return Err(
                                 DeserializeFailure::UnknownKey(Key::Uint(unknown_key)).into()
-                            )
+                            );
                         }
                     },
                     cbor_event::Type::Text => {
@@ -1478,13 +1478,13 @@ impl Deserialize for MixedLenKeys {
                                 return Err(DeserializeFailure::UnknownKey(Key::Str(
                                     unknown_key.to_owned(),
                                 ))
-                                .into())
+                                .into());
                             }
                         }
                     }
                     cbor_event::Type::Special => match len {
                         cbor_event::LenSz::Len(_, _) => {
-                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
                         }
                         cbor_event::LenSz::Indefinite => match raw.special()? {
                             cbor_event::Special::Break => break,
@@ -1492,7 +1492,7 @@ impl Deserialize for MixedLenKeys {
                         },
                     },
                     other_type => {
-                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
                     }
                 }
                 read += 1;
@@ -1500,7 +1500,7 @@ impl Deserialize for MixedLenKeys {
             let key_256 = match key_256 {
                 Some(x) => x,
                 None => {
-                    return Err(DeserializeFailure::MandatoryFieldMissing(Key::Uint(256)).into())
+                    return Err(DeserializeFailure::MandatoryFieldMissing(Key::Uint(256)).into());
                 }
             };
             let a = match a {
@@ -1509,7 +1509,7 @@ impl Deserialize for MixedLenKeys {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("a")))
                             .into(),
-                    )
+                    );
                 }
             };
             Ok(Self {
@@ -1687,7 +1687,7 @@ impl Deserialize for String32 {
                         found: tag,
                         expected: 7,
                     }
-                    .into())
+                    .into());
                 }
             };
             if inner.len() < 16 || inner.len() > 32 {
@@ -1933,7 +1933,7 @@ impl Deserialize for TableArrMembers {
                         return Err(DeserializeFailure::UnknownKey(Key::Uint(
                             raw.unsigned_integer()?,
                         ))
-                        .into())
+                        .into());
                     }
                     cbor_event::Type::Text => {
                         let (text_key, key_enc) = raw.text_sz()?;
@@ -2090,13 +2090,13 @@ impl Deserialize for TableArrMembers {
                                 return Err(DeserializeFailure::UnknownKey(Key::Str(
                                     unknown_key.to_owned(),
                                 ))
-                                .into())
+                                .into());
                             }
                         }
                     }
                     cbor_event::Type::Special => match len {
                         cbor_event::LenSz::Len(_, _) => {
-                            return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
                         }
                         cbor_event::LenSz::Indefinite => match raw.special()? {
                             cbor_event::Special::Break => break,
@@ -2104,7 +2104,7 @@ impl Deserialize for TableArrMembers {
                         },
                     },
                     other_type => {
-                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
                     }
                 }
                 read += 1;
@@ -2115,7 +2115,7 @@ impl Deserialize for TableArrMembers {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("arr")))
                             .into(),
-                    )
+                    );
                 }
             };
             let arr2 = match arr2 {
@@ -2124,7 +2124,7 @@ impl Deserialize for TableArrMembers {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("arr2")))
                             .into(),
-                    )
+                    );
                 }
             };
             let table = match table {
@@ -2133,7 +2133,7 @@ impl Deserialize for TableArrMembers {
                     return Err(
                         DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("table")))
                             .into(),
-                    )
+                    );
                 }
             };
             Ok(Self {
@@ -2199,7 +2199,7 @@ impl Deserialize for TaggedText {
                         found: tag,
                         expected: 9,
                     }
-                    .into())
+                    .into());
                 }
             };
             Ok(Self {
@@ -2306,7 +2306,7 @@ impl Deserialize for TypeChoice {
                 Ok(helloworld_encoding) => {
                     return Ok(Self::Helloworld {
                         helloworld_encoding,
-                    })
+                    });
                 }
                 Err(e) => {
                     errs.push(e.annotate("Helloworld"));
@@ -2324,7 +2324,7 @@ impl Deserialize for TypeChoice {
                     return Ok(Self::U64 {
                         uint,
                         uint_encoding,
-                    })
+                    });
                 }
                 Err(e) => {
                     errs.push(e.annotate("U64"));
@@ -2342,7 +2342,7 @@ impl Deserialize for TypeChoice {
                     return Ok(Self::Text {
                         text,
                         text_encoding,
-                    })
+                    });
                 }
                 Err(e) => {
                     errs.push(e.annotate("Text"));
@@ -2394,7 +2394,7 @@ impl Deserialize for TypeChoice {
                         arr_u64_tag_encoding,
                         arr_u64_encoding,
                         arr_u64_elem_encodings,
-                    })
+                    });
                 }
                 Err(e) => {
                     errs.push(e.annotate("ArrU64"));

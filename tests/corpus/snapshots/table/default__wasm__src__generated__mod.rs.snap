@@ -13,7 +13,7 @@ expression: content
 pub mod collections;
 
 use std::collections::BTreeMap;
-use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 pub type MapU64ToText = Table;
 

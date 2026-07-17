@@ -27,7 +27,7 @@ use cbor_encodings::{
     DeeplyNestedEncoding, EdEncoding, EeEncoding, EnumsEncoding, FirstEncoding, FooEncoding,
     HashEncoding, MapWithDefaultsEncoding, NemPreserveEncoding, NevPreserveEncoding,
     PlainArraysEncoding, PlainEncoding, SecondEncoding, SignBoundsEncoding, SignedIntsEncoding,
-    String1632Encoding, String64Encoding, StructWithCustomSerializationEncoding,
+    String64Encoding, String1632Encoding, StructWithCustomSerializationEncoding,
     TableArrMembersEncoding, TaggedFooBytesEncoding, TaggedTextEncoding, ThreeEncoding,
     TopLevelNegRangeEncoding, TopLevelPosRangeEncoding, TopLevelTaggedRangeEncoding,
     WidthCollapseEncoding, WrapperListEncoding, WrapperTableEncoding,

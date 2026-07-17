@@ -6,7 +6,7 @@ expression: content
 // https://github.com/dcSpark/cddl-codegen
 
 use extern_dep_crate::sub::module::UintTypedef;
-use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]

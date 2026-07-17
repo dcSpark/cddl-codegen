@@ -16,12 +16,12 @@ pub mod collections;
 pub mod qux;
 pub use crate::ExternalFoo;
 
-use a::c::foo::Foo;
 use a::Baz;
+use a::c::foo::Foo;
 use b::bar::{Bar, BarTypedef};
 use qux::Qux;
 use std::collections::BTreeMap;
-use wasm_bindgen::prelude::{wasm_bindgen, JsError};
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
