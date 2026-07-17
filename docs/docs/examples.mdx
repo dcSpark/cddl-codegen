@@ -59,7 +59,7 @@ special_hash = bytes ; @newtype
 
 ```rust
 #[derive(Clone, Debug)]
-pub struct SpecialHash(pub Vec<u8>);
+pub struct SpecialHash(pub(crate) Vec<u8>);
 
 impl SpecialHash {
     pub fn get(&self) -> &Vec<u8> {
@@ -147,7 +147,7 @@ impl Hashes {
 }
 
 #[derive(Clone, Debug)]
-pub struct SpecialHash(pub Vec<u8>);
+pub struct SpecialHash(pub(crate) Vec<u8>);
 
 impl SpecialHash {
     pub fn get(&self) -> &Vec<u8> {

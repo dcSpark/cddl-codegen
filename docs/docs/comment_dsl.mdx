@@ -58,7 +58,7 @@ group nor errors.
 
 ## @newtype
 
-With code like `foo = uint` this creates an alias e.g. `pub type Foo = u64;` in rust. When we use `foo = uint ; @newtype` it instead creates a `pub struct Foo(u64);`.
+With code like `foo = uint` this creates an alias e.g. `pub type Foo = u64;` in rust. When we use `foo = uint ; @newtype` it instead creates a `pub struct Foo(pub(crate) u64);` (the wrapped field is crate-visible so hand-written modules in the same crate can reach it — see [the wrapper-field contract](./output_format#generated-wrapper-fields-are-pubcrate); external crates go through the getter and `new`).
 
 The wrapper always emits an inner-value getter, named `get` by default:
 
