@@ -188,6 +188,26 @@ are ledgered here (that's what the probe/gate error messages point at).
   list below — each names its prune/re-mint steps.
 
 **Bugs / gaps surfaced as findings (candidate cddl-codegen fixes):**
+- **`--extern-wrapper-index`'s documented validation is silently SKIPPED under `--wasm=false` —
+  the read-caught sibling of the fixed `--workspace-dep` silent-ignore.**
+  `load_extern_wrapper_indices` (generation/requests.rs) is both the flag's validator (a `<dep>`
+  naming no extern dependency, or an index file with a non-`pub use` line, are hard errors there)
+  and the index loader, and it is only CALLED under `cli.wasm` (generation/mod.rs — deliberately,
+  and commented as such: the index feeds a purely wasm-side wrapper dedup with no rust-crate
+  effect), so a rust-only run with a typo'd or wrong `--extern-wrapper-index` exits 0 without ever
+  reading the file — while `docs/docs/command_line_flags.mdx` § `--extern-wrapper-index` claims
+  those malformations "abort generation" unconditionally. The deferral INERTNESS under
+  `--wasm=false` is a defensible boundary (no wasm crate, nothing to defer); the silent skip of
+  documented validation is not. Read-caught while tracing the `--workspace-dep` fix (pinned by
+  `workspace_dep_unknown_is_rejected_under_wasm_false`), not by any gate — the same coverage
+  shape as that sibling: the third honesty axis enumerates flag-gated surfaces × INPUT MODE, not
+  flag × flag, and the flag-powerset decline routes escaped interactions to standing cells only
+  once they escape. Candidate fix needs the sibling's decision shape: either run the VALIDATION
+  (not the deferral) mode-independently, or scope the docs' abort claim to `--wasm` runs — either
+  outcome lands with a loud-posture pin, never a silent ignore. Class-level layer if a THIRD
+  validating flag turns up mode-inert: a validation-smoke sweep — each clap flag with documented
+  startup validation invoked once with a deliberately invalid value under each `--wasm` mode,
+  asserting nonzero exit — rather than accreting per-flag cells.
 - **Real incremental choice extension (`/=` type-choice, `//=` group-choice) is a candidate
   feature.** Extending an already-defined ident is rejected gracefully at the `api.rs` pre-scan
   (pinned by `incremental_choice_extension_rejects_gracefully`; the initial-definition-via-`/=`

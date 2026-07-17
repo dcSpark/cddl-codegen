@@ -129,7 +129,15 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      comments next to each gate's floors are informational and review-maintained (a stale one
      shipped once); if one misleads triage again, replace them with exact pinned counts asserted by
      the gate, accepting the churn on every ingredient addition — the floors stay the enforced
-     artifact either way.
+     artifact either way. A SECOND instance of that comment class is on record from a different
+     home with a different rot mode, caught by review, not a gate: `corpus_decode_replay`'s floors
+     comment carried a skip-ledger tally ("6 rows on JSON_SURFACE_SKIP") that was accurate as a
+     pinning-time observation but READS as a live count — two later ledger changes each treated it
+     one way or the other (an addition left it alone as history; a retirement hand-bumped it as a
+     live tally, landing a number that matched neither reading). Working rule from the fix: floor
+     comments state pinning-time observations in explicitly past-tense framing ("AT THAT confirm
+     run …"), never present-tense tallies — the consts themselves are the live ledger. The
+     replace-with-asserted-counts trigger is unchanged (a stale one actually misleading triage).
    - **Real-world corpus differential** (see `draft/testing-recommendations/RECOMMENDATIONS.md`):
      synthetic breadth vs real-world depth — recombination does not replace it.
 
