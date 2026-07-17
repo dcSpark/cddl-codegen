@@ -7962,6 +7962,7 @@ fn workspace_key_requests_flavored_contract() {
     // Wipe each export dir at start (gitignored `tests/*/export*/`).
     for out in [
         "export_flavored_consumer",
+        "export_flavored_consumer_rustonly",
         "export_flavored_dep",
         "export_flavored_dep_bare",
     ] {
@@ -8004,9 +8005,10 @@ fn workspace_key_requests_flavored_contract() {
     };
 
     // ===== Leg (a): CONSUMER EMIT — the three-column flavored sidecar + per-flavor self-check. =====
-    // --wasm is mandatory here: workspace deferral (and thus borrowed_key_types.rs) only loads under
-    // it (`load_workspace_deps` is gated on `cli.wasm`), and --workspace-dep requires the dep's
-    // --extern-wasm-crate mapping. The wasm crate is generated but never built.
+    // `--wasm=true` here is only to exercise the wasm side alongside; the borrowed_key_types.rs sidecar
+    // is a RUST-crate concern that `--workspace-dep` loads MODE-INDEPENDENTLY (leg (a2) below asserts
+    // the `--wasm=false` sidecar is byte-identical). `--workspace-dep` requires the dep's
+    // `--extern-wasm-crate` mapping in EITHER mode. The wasm crate is generated but never built.
     let consumer_out = base.join("export_flavored_consumer");
     let c = tool_cmd("cargo")
         .arg("run")
@@ -8054,6 +8056,48 @@ fn workspace_key_requests_flavored_contract() {
         sidecar.contains("_assert_key_traits_hash::<wr_dep::IdxKey>();")
             && sidecar.contains("_assert_key_traits_bare::<wr_dep::IdxPlain>();"),
         "each borrowed key must be self-checked through its flavor's carrier:\n{sidecar}"
+    );
+
+    // ===== Leg (a2): RUST-ONLY EMIT — `--workspace-dep` is honored mode-independently. =====
+    // The same consumer inputs generated with `--wasm=false` must produce a BYTE-IDENTICAL
+    // borrowed_key_types.rs (the sidecar is a rust-crate concern — map-key derives the dep must carry).
+    // The `--extern-wasm-crate` mapping is still required (uniform validation), but no wasm crate is
+    // emitted. This pins the fix for the "silently ignored under --wasm=false" gap: pre-fix this leg
+    // emitted no sidecar (and no `mod borrowed_key_types;` decl) at all.
+    let consumer_rustonly_out = base.join("export_flavored_consumer_rustonly");
+    let cr = tool_cmd("cargo")
+        .arg("run")
+        .arg("--")
+        .arg("--input=tests/workspace-requests/consumer_inputs_flavored")
+        .arg("--output=tests/workspace-requests/export_flavored_consumer_rustonly")
+        .arg("--lib-name=flavored-consumer")
+        .arg("--workspace-dep=wr_dep")
+        .arg("--common-import-override=wr_dep")
+        .arg("--extern-wasm-crate=wr_dep=wr_dep_wasm")
+        .arg("--wasm=false")
+        .output()
+        .unwrap();
+    assert!(
+        cr.status.success(),
+        "rust-only consumer generate failed:\n{}",
+        String::from_utf8_lossy(&cr.stderr)
+    );
+    let sidecar_rustonly =
+        std::fs::read_to_string(consumer_rustonly_out.join(sidecar_rel)).unwrap();
+    assert_eq!(
+        sidecar_rustonly, sidecar,
+        "the `--wasm=false` sidecar must be byte-identical to the wasm-mode sidecar (mode-independent \
+         honoring); rust-only:\n{sidecar_rustonly}"
+    );
+    let rustonly_root =
+        std::fs::read_to_string(consumer_rustonly_out.join("rust/src/generated/mod.rs")).unwrap();
+    assert!(
+        rustonly_root.contains("mod borrowed_key_types;"),
+        "the rust generated root must declare `mod borrowed_key_types;` under `--wasm=false`:\n{rustonly_root}"
+    );
+    assert!(
+        !consumer_rustonly_out.join("wasm").exists(),
+        "no wasm/ directory must be emitted under `--wasm=false`"
     );
 
     // ===== Leg (b): DEP DERIVE — --key-requests derives exactly the named family per row. =====
@@ -8187,6 +8231,39 @@ fn workspace_key_requests_flavored_contract() {
         e_stderr.contains("Ord") && e_stderr.contains("Opaque"),
         "the red compile must name the missing Ord supply on the extern the widened flavor demands; \
          stderr:\n{e_stderr}"
+    );
+}
+
+/// `--workspace-dep` is honored MODE-INDEPENDENTLY, including its startup validation: under
+/// `--wasm=false`, a `--workspace-dep` naming something that is not an extern dependency must still
+/// exit NONZERO naming the unknown dep (the `load_workspace_deps` panic), never a silent ignore.
+/// This pins the chosen posture for the "silently ignored under --wasm=false" gap — pre-fix this
+/// exact invocation exited 0 because `load_workspace_deps` was only called under `if cli.wasm`.
+#[test]
+fn workspace_dep_unknown_is_rejected_under_wasm_false() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let out = "tests/workspace-requests/export_wsdep_reject_scratch";
+    let _ = std::fs::remove_dir_all(out);
+    let o = tool_cmd("cargo")
+        .arg("run")
+        .arg("--")
+        .arg("--input=tests/workspace-requests/consumer_inputs_flavored")
+        .arg(format!("--output={out}"))
+        .arg("--lib-name=flavored-consumer")
+        .arg("--workspace-dep=not_a_real_dep")
+        .arg("--wasm=false")
+        .output()
+        .unwrap();
+    assert!(
+        !o.status.success(),
+        "an unknown --workspace-dep must be rejected under --wasm=false, not silently ignored"
+    );
+    let stderr = String::from_utf8_lossy(&o.stderr);
+    assert!(
+        stderr.contains("not_a_real_dep") && stderr.contains("--workspace-dep"),
+        "the rejection must name the unknown dep and the flag; stderr:\n{stderr}"
     );
 }
 
