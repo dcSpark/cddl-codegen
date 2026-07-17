@@ -19,7 +19,7 @@
  *
  * `--check` (NO-ARGS mode only): consistency — every feature's `profile` ∈ the known set — plus a
  * vacuity floor (>= 2 profiles present; RFC9682 introduces >= 1 feature; CDDL_CODEGEN introduces exactly
- * the 10 vendor features). It never rewrites anything.
+ * the pinned `VENDOR_FEATURE_COUNT` vendor features). It never rewrites anything.
  *
  * Run from cddl-matrix/:
  *   bun run query_q6_diff.ts                       -> the per-profile view (introduced + support split)
@@ -50,7 +50,7 @@ function loadMatrix(path: string): MatrixJson {
 // The known profile universe (F1). Spec order, not alphabetical — the diff reads "what P+1 added".
 const KNOWN_PROFILES = ["RFC8610", "RFC9682", "CDDL_CODEGEN"];
 const VENDOR_PROFILE = "CDDL_CODEGEN";
-const VENDOR_FEATURE_COUNT = 12; // the comment-DSL / sentinel surface — pinned (README.md § the model); 12 since dsl.raw_bytes_flavor's registration
+const VENDOR_FEATURE_COUNT = 15; // the comment-DSL / sentinel surface — pinned (README.md § the model); 15 since the dsl.used_as_key flavor rows' registration
 
 // ==================================================================================================
 // MODE 2 — snapshot diff (two positional args).

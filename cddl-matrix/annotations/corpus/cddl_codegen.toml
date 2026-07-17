@@ -299,6 +299,18 @@ id = "dsl.used_as_key"
 fixture = "dsl_used_as_key.cddl"
 
 [[cover]]
+id = "dsl.used_as_key.hash"
+fixture = "dsl_used_as_key_hash.cddl"
+
+[[cover]]
+id = "dsl.used_as_key.ord"
+fixture = "dsl_used_as_key_ord.cddl"
+
+[[cover]]
+id = "dsl.used_as_key.hash_ord"
+fixture = "dsl_used_as_key_hash_ord.cddl"
+
+[[cover]]
 id = "dsl.used_as_elem"
 fixture = "dsl_used_as_elem.cddl"
 

@@ -152,6 +152,15 @@ emission.preserve.status = "supported"
 emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
 [[support]]
+id = "dsl.raw_bytes_flavor"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; standalone-compile N/A (references user-provided extern wrapper flavors; integration-tested in tests/extern-generic-raw-bytes); wasm standalone-test N/A (user-supplied code); no committed decode vectors (see catalog); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (references user-provided extern wrapper flavors; integration-tested in tests/extern-generic-raw-bytes)"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; standalone-compile N/A (references user-provided extern wrapper flavors; integration-tested in tests/extern-generic-raw-bytes)"
+
+[[support]]
 id = "dsl.used_as_elem"
 status = "supported"
 evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
@@ -162,6 +171,33 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 
 [[support]]
 id = "dsl.used_as_key"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
+
+[[support]]
+id = "dsl.used_as_key.hash"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
+
+[[support]]
+id = "dsl.used_as_key.hash_ord"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
+
+[[support]]
+id = "dsl.used_as_key.ord"
 status = "supported"
 evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
 emission.json.status = "supported"

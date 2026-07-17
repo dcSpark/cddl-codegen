@@ -240,7 +240,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 ## cddl-codegen vendor profile (comment DSL + sentinels — not RFC 8610)
 
-### `comment_dsl` (10)
+### `comment_dsl` (13)
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
@@ -254,6 +254,9 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `dsl.raw_bytes_flavor` | ✅ | @raw_bytes_flavor — extern generic raw-bytes wrapper flavor | `extern_generic_raw_bytes.cddl` |
 | `dsl.used_as_elem` | ✅ | @used_as_elem — mint the canonical loose-list wasm wrapper | `dsl_used_as_elem.cddl` |
 | `dsl.used_as_key` | ✅ | @used_as_key — force Ord/Hash derives | `dsl_used_as_key.cddl` |
+| `dsl.used_as_key.hash` | ✅ | @used_as_key hash — narrowed Hash derive family | `dsl_used_as_key_hash.cddl` |
+| `dsl.used_as_key.hash_ord` | ✅ | @used_as_key hash ord — union of the hash and ord families | `dsl_used_as_key_hash_ord.cddl` |
+| `dsl.used_as_key.ord` | ✅ | @used_as_key ord — narrowed Ord derive family | `dsl_used_as_key_ord.cddl` |
 
 ### `sentinel` (2)
 
@@ -326,7 +329,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 ## Summary
 
-- Features: **108** — ✅ 58 covered · ➕ 19 supported-untested · ⚠️ 4 partial · ➖ 27 not supported
+- Features: **111** — ✅ 61 covered · ➕ 19 supported-untested · ⚠️ 4 partial · ➖ 27 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
 - Corpus fixtures: 68
 

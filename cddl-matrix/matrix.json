@@ -164,6 +164,21 @@
       {
         "emission": {
           "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (references user-provided extern wrapper flavors; integration-tested in tests/extern-generic-raw-bytes)",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; standalone-compile N/A (references user-provided extern wrapper flavors; integration-tested in tests/extern-generic-raw-bytes)",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; standalone-compile N/A (references user-provided extern wrapper flavors; integration-tested in tests/extern-generic-raw-bytes); wasm standalone-test N/A (user-supplied code); no committed decode vectors (see catalog); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "id": "dsl.raw_bytes_flavor",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
             "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           },
@@ -189,6 +204,51 @@
         },
         "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "dsl.used_as_key",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "id": "dsl.used_as_key.hash",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "id": "dsl.used_as_key.hash_ord",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "id": "dsl.used_as_key.ord",
         "status": "supported"
       },
       {
@@ -4108,6 +4168,36 @@
       "profile": "CDDL_CODEGEN",
       "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@used_as_key; src/comment_ast.rs",
       "title": "@used_as_key — force Ord/Hash derives"
+    },
+    {
+      "alt": "@used_as_key hash",
+      "desc": "Flavor argument narrowing @used_as_key to the hash family: derives only Hash, Eq, PartialEq (so a downstream HashMap key compiles), mode-independent unlike the bare tag's full mode-dependent bundle. Propagates transitively to contained types.",
+      "example": "keyed = [a: uint, b: text] ; @used_as_key hash",
+      "id": "dsl.used_as_key.hash",
+      "production": "comment_dsl",
+      "profile": "CDDL_CODEGEN",
+      "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@used_as_key; src/comment_ast.rs",
+      "title": "@used_as_key hash — narrowed Hash derive family"
+    },
+    {
+      "alt": "@used_as_key ord",
+      "desc": "Flavor argument narrowing @used_as_key to the ord family: derives only Ord, PartialOrd, Eq, PartialEq (so a downstream BTreeMap key compiles), mode-independent unlike the bare tag's full mode-dependent bundle. Propagates transitively to contained types.",
+      "example": "keyed = [a: uint, b: text] ; @used_as_key ord",
+      "id": "dsl.used_as_key.ord",
+      "production": "comment_dsl",
+      "profile": "CDDL_CODEGEN",
+      "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@used_as_key; src/comment_ast.rs",
+      "title": "@used_as_key ord — narrowed Ord derive family"
+    },
+    {
+      "alt": "@used_as_key hash ord",
+      "desc": "Flavor argument combining both narrowed families: derives the union Hash, Ord, PartialOrd, Eq, PartialEq, mode-independent unlike the bare tag whose Hash is mode-dependent. Order of the two words is irrelevant. Propagates transitively to contained types.",
+      "example": "keyed = [a: uint, b: text] ; @used_as_key hash ord",
+      "id": "dsl.used_as_key.hash_ord",
+      "production": "comment_dsl",
+      "profile": "CDDL_CODEGEN",
+      "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@used_as_key; src/comment_ast.rs",
+      "title": "@used_as_key hash ord — union of the hash and ord families"
     },
     {
       "alt": "@used_as_elem",
