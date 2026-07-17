@@ -48,6 +48,11 @@ struct Cell {
     position: &'static str,
     spec: &'static str,
     flags: &'static [&'static str],
+    /// Opt this cell into `--wasm=true` generation (the baseline is `--wasm=false`). Only the
+    /// `@used_as_elem` cells need it — its whole effect is the wasm-side loose-list wrapper class,
+    /// invisible under the rust-only baseline. Every other cell stays `false` so its expectation
+    /// isn't coupled to the wasm build.
+    wasm: bool,
     expect: Expect,
 }
 
@@ -63,7 +68,7 @@ struct Cell {
 /// a position where the directive DOES work, isolating position as the variable — the anon-group
 /// pin's control is the `anon-group-choice-member` cell.
 ///
-/// Two live findings (neither fixed by this task — the scoped fix is rule-position `@name` rejection):
+/// Four live findings (none fixed by this task — the scoped fix is rule-position `@name` rejection):
 ///   - `@name` @ `anon-group-member`: the "Anonymous groups not allowed" panic advertises `@name` as
 ///     the remedy, but at a MEMBER-position anonymous inline group the comment lands on the enclosing
 ///     group entry's trailing_comments, which the naming site's `get_comment_after(type2)` never
@@ -74,6 +79,16 @@ struct Cell {
 ///     threads `rule_metadata.comment`) but never emitted — the dataless-variant rendering drops it.
 ///     `@doc` on DATA-carrying type-choice variants (`uint / tstr`) IS emitted, so the drop is
 ///     specific to the C-style-enum shape.
+///   - `@raw_bytes_flavor` @ `non-generic-extern-rule`: the docs say the tag is valid ONLY on an
+///     extern GENERIC, but the extern-only validity gate rejects only NON-extern rules, so on a
+///     non-generic `_CDDL_CODEGEN_EXTERN_TYPE_` rule the tag is silently ACCEPTED as a no-op (no
+///     generic instances exist to flavor). Control: the valid `extern-generic-rule` cell, same
+///     rule-trailing placement but generic — it emits the alias, so the pin isn't vacuous.
+///   - `@used_as_elem` @ `field`: a rule-level tag read from rule metadata; a field-trailing
+///     `; @used_as_elem` binds to the field's trailing_comments (like the `@name plain-group-trailing`
+///     seam), which the rule-level detector never reads, so no wrapper is minted even though the
+///     element would mint one at rule position. Control: the field-trailing comment slot is proven
+///     live by the `@name array-element-*` / `@doc array-field` cells.
 const KNOWN_SILENT_DROP: &[(&str, &str, &str)] = &[
     (
         "@name",
@@ -88,6 +103,20 @@ const KNOWN_SILENT_DROP: &[(&str, &str, &str)] = &[
         "@doc on a fixed-value (dataless C-style enum) type-choice variant is captured into the IR \
          but never emitted; only data-carrying type-choice variants render the /// doc comment",
     ),
+    (
+        "@raw_bytes_flavor",
+        "non-generic-extern-rule",
+        "@raw_bytes_flavor on a NON-generic _CDDL_CODEGEN_EXTERN_TYPE_ rule is silently accepted as a \
+         no-op: the docs say the tag is valid only on an extern GENERIC, but the validity gate rejects \
+         only non-extern rules, so there is no generic instance to flavor and no error fires",
+    ),
+    (
+        "@used_as_elem",
+        "field",
+        "@used_as_elem is a rule-level tag read from rule metadata; a field-trailing comment binds to \
+         the field's trailing_comments, which the rule-level detector never reads, so the loose-list \
+         wrapper is silently not minted (the field-position tag is dropped)",
+    ),
 ];
 
 /// The docs-claimed grid. Anchors were verified empirically against emitted source while authoring;
@@ -100,6 +129,7 @@ const GRID: &[Cell] = &[
         position: "map-value-key-int",
         spec: "t = {\n  0: uint, ; @name inputs\n}\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Effect {
             must: &["pub inputs"],
             must_not: &["key_0"],
@@ -111,6 +141,7 @@ const GRID: &[Cell] = &[
         position: "map-value-key-text",
         spec: "t = {\n  \"k\": uint, ; @name renamed\n}\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Effect {
             must: &["pub renamed"],
             must_not: &["pub k:"],
@@ -122,6 +153,7 @@ const GRID: &[Cell] = &[
         position: "map-arrow-key",
         spec: "t = {\n  0 => uint, ; @name x\n}\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Effect {
             must: &["pub x"],
             must_not: &["key_0"],
@@ -134,6 +166,7 @@ const GRID: &[Cell] = &[
         position: "map-bareword-key",
         spec: "kw = {\n  if: uint, ; @name if_flag\n}\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Effect {
             must: &["pub if_flag"],
             must_not: &["r#if"],
@@ -145,6 +178,7 @@ const GRID: &[Cell] = &[
         position: "array-element-unkeyed",
         spec: "named = [\n  bytes, ; @name address\n  uint ; @name checksum\n]\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Effect {
             must: &["pub address", "pub checksum"],
             must_not: &["index_0"],
@@ -156,6 +190,7 @@ const GRID: &[Cell] = &[
         position: "array-element-keyed",
         spec: "t = [foo: uint, ; @name renamed\n]\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Effect {
             must: &["pub renamed"],
             must_not: &["pub foo"],
@@ -167,6 +202,7 @@ const GRID: &[Cell] = &[
         position: "type-choice-variant",
         spec: "foo = 0 ; @name mainnet\n    / 1 ; @name testnet\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Effect {
             must: &["Mainnet", "Testnet"],
             must_not: &["I0", "I1"],
@@ -178,6 +214,7 @@ const GRID: &[Cell] = &[
         position: "group-choice-arm",
         spec: "script = [\n  ; @name native\n  tag: 0, script_native: uint //\n  ; @name plutus_v1\n  tag: 1, script_v1: bytes\n]\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Effect {
             must: &["Native", "PlutusV1"],
             must_not: &[],
@@ -190,6 +227,7 @@ const GRID: &[Cell] = &[
         position: "anon-group-member",
         spec: "t = [0, [1, bytes] ; @name inner\n]\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Effect {
             must: &["struct Inner"],
             must_not: &[],
@@ -205,6 +243,7 @@ const GRID: &[Cell] = &[
         position: "anon-group-choice-member",
         spec: "x = [1, bytes] ; @name arr_variant\n  / uint\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Effect {
             must: &["struct ArrVariant"],
             must_not: &[],
@@ -216,6 +255,7 @@ const GRID: &[Cell] = &[
         position: "rule-type-alias",
         spec: "foo = uint ; @name bar\nholder = [f: foo]\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Reject("does not rename a top-level"),
     },
     // 10b. rule-position @name, single-type-choice STRUCT rule → graceful Reject (the drop is
@@ -225,6 +265,7 @@ const GRID: &[Cell] = &[
         position: "rule-type-struct",
         spec: "foo = [a: uint] ; @name bar\nholder = [f: foo]\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Reject("does not rename a top-level"),
     },
     // 10c/10d. rule-position @name, T/null two-choice rule → graceful Reject. The rule-name
@@ -238,6 +279,7 @@ const GRID: &[Cell] = &[
         position: "rule-type-tnull",
         spec: "foo = uint ; @name bar\n    / null\nholder = [f: foo]\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Reject("does not rename a top-level"),
     },
     Cell {
@@ -245,6 +287,7 @@ const GRID: &[Cell] = &[
         position: "rule-type-tnull-trailing",
         spec: "foo = uint / null ; @name bar\nholder = [f: foo]\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Reject("does not rename a top-level"),
     },
     // 11. rule-position @name, plain-GROUP rule. FINDING: unlike a type rule, a trailing `@name`
@@ -261,6 +304,7 @@ const GRID: &[Cell] = &[
         position: "plain-group-trailing",
         spec: "grp = (a: uint) ; @name other\nholder = [grp]\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Effect {
             must: &["pub other: u64"],
             must_not: &["pub a: u64"],
@@ -273,6 +317,7 @@ const GRID: &[Cell] = &[
         position: "map-field",
         spec: "docs = {\n  foo: text, ; @doc field comment\n}\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Effect {
             must: &["/// field comment"],
             must_not: &[],
@@ -284,6 +329,7 @@ const GRID: &[Cell] = &[
         position: "array-field",
         spec: "docs = [\n  foo: text, ; @doc field comment\n]\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Effect {
             must: &["/// field comment"],
             must_not: &[],
@@ -295,6 +341,7 @@ const GRID: &[Cell] = &[
         position: "struct-level",
         spec: "docs = [\n  foo: text,\n] ; @doc struct documentation here\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Effect {
             must: &["/// struct documentation here"],
             must_not: &[],
@@ -307,6 +354,7 @@ const GRID: &[Cell] = &[
         position: "type-choice-variant",
         spec: "foo = 0 ; @doc about-first\n    / 1 ; @doc about-second\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Effect {
             must: &["/// about-first", "/// about-second"],
             must_not: &[],
@@ -318,6 +366,7 @@ const GRID: &[Cell] = &[
         position: "group-choice-arm",
         spec: "docs_groupchoice = [\n  ; @name first @doc comment-about-first\n  0, uint //\n  ; @doc comments about second @name second\n  text\n] ; @doc type-level comment\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Effect {
             must: &[
                 "/// comment-about-first",
@@ -334,6 +383,7 @@ const GRID: &[Cell] = &[
         position: "rule",
         spec: "foo = uint ; @newtype\nholder = [f: foo]\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Effect {
             must: &["pub struct Foo"],
             must_not: &["pub type Foo"],
@@ -345,6 +395,7 @@ const GRID: &[Cell] = &[
         position: "rule",
         spec: "foo = uint ; @newtype custom_getter\nholder = [f: foo]\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Effect {
             must: &["pub fn custom_getter"],
             must_not: &[],
@@ -357,6 +408,7 @@ const GRID: &[Cell] = &[
         position: "rule",
         spec: "inner_alias = uint ; @no_alias\nuses = [field: inner_alias]\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Effect {
             must: &["pub struct Uses"],
             must_not: &["InnerAlias"],
@@ -368,6 +420,7 @@ const GRID: &[Cell] = &[
         position: "rule",
         spec: "keyed = [a: uint, b: text] ; @used_as_key\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Effect {
             must: &["Ord, PartialOrd"],
             must_not: &[],
@@ -380,6 +433,7 @@ const GRID: &[Cell] = &[
         position: "rule",
         spec: "cj = uint ; @newtype @custom_json\nctrl = uint ; @newtype\n",
         flags: &["--json-serde-derives=true"],
+        wasm: false,
         expect: Expect::Effect {
             must: &["impl serde::Serialize for Ctrl"],
             must_not: &["impl serde::Serialize for Cj"],
@@ -397,6 +451,7 @@ const GRID: &[Cell] = &[
         position: "type-choice-rule",
         spec: "my_sum =\n    uint ; @name integer\n  / bytes ; @name raw @custom_json\nctrl_sum =\n    uint ; @name cint\n  / bytes ; @name craw\n",
         flags: &["--preserve-encodings=true", "--json-serde-derives=true"],
+        wasm: false,
         expect: Expect::Effect {
             must: &[
                 "integer_encoding: Option<cbor_event::Sz>",
@@ -418,6 +473,7 @@ const GRID: &[Cell] = &[
         position: "map-group-rule",
         spec: "my_rec = { 0: uint } ; @custom_json\nctrl_rec = { 1: uint }\n",
         flags: &["--preserve-encodings=true", "--json-serde-derives=true"],
+        wasm: false,
         expect: Expect::Effect {
             must: &[
                 "pub encodings: Option<MyRecEncoding>",
@@ -437,6 +493,7 @@ const GRID: &[Cell] = &[
         position: "type-level",
         spec: "cb = bytes ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: cb]\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Effect {
             must: &["my_ser(", "my_deser("],
             must_not: &[],
@@ -448,19 +505,170 @@ const GRID: &[Cell] = &[
         position: "field-level",
         spec: "holder = [f: bytes, ; @custom_serialize my_ser @custom_deserialize my_deser\n]\n",
         flags: &[],
+        wasm: false,
         expect: Expect::Effect {
             must: &["my_ser(", "my_deser("],
+            must_not: &[],
+        },
+    },
+    // ---- @raw_bytes_flavor -------------------------------------------------------------------
+    // 24. VALID position (the only one): a `_CDDL_CODEGEN_EXTERN_TYPE_` GENERIC. One spec carries
+    //     BOTH a raw-bytes-argument instance (`ext_set<pub_key>` → the `ExtSetRawBytes<PubKey>`
+    //     flavor) and a non-raw control instance (`ext_set<plain>` → the plain `ExtSet<Plain>`), so
+    //     this doubles as the sweep-side positive control: it proves the Reject cells below fail for
+    //     the extern-only rule, not for some unrelated parse error. Anchors are chosen so neither can
+    //     substring-match the other (`= ExtSetRawBytes<` never contains `= ExtSet<`, and vice-versa).
+    //     Rust-only (`wasm: false`) — the fixture `tests/extern-generic-raw-bytes` uses `--wasm=false`
+    //     too: the alias/glue is emitted rust-side regardless of the wasm build.
+    Cell {
+        directive: "@raw_bytes_flavor",
+        position: "extern-generic-rule",
+        spec: "pub_key = _CDDL_CODEGEN_RAW_BYTES_TYPE_\next_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_ ; @raw_bytes_flavor\nplain = [a: uint, b: text]\nusing = [keys: ext_set<pub_key>, plains: ext_set<plain>]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &["= ExtSetRawBytes<PubKey>", "= ExtSet<Plain>"],
+            must_not: &[],
+        },
+    },
+    // 25. array-struct rule → hard error (docs: "hard error on any rule other than an extern").
+    //     Not covered by `raw_bytes_flavor_misuse_rejects_gracefully`'s three seams (single-choice
+    //     type, multi-choice type, field), so pinned here per attachment position.
+    Cell {
+        directive: "@raw_bytes_flavor",
+        position: "array-struct-rule",
+        spec: "foo = [a: uint] ; @raw_bytes_flavor\nholder = [f: foo]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("only valid on"),
+    },
+    // 26. map-struct rule → hard error.
+    Cell {
+        directive: "@raw_bytes_flavor",
+        position: "map-struct-rule",
+        spec: "foo = {0: uint} ; @raw_bytes_flavor\nholder = [f: foo]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("only valid on"),
+    },
+    // 27. group-choice rule → hard error.
+    Cell {
+        directive: "@raw_bytes_flavor",
+        position: "group-choice-rule",
+        spec: "foo = [ a: uint // b: tstr ] ; @raw_bytes_flavor\nholder = [f: foo]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("only valid on"),
+    },
+    // 28. plain-GROUP rule, trailing position → hard error, but via the FIELD seam: like the
+    //     `@name plain-group-trailing` finding, cddl binds the trailing `; @raw_bytes_flavor` to the
+    //     LAST group entry (field `a`), so the FIELD rejection ("only valid on … not a field") fires
+    //     rather than a rule-level one. The docs' hard-error claim still holds (`only valid on`), so
+    //     this is a Reject cell, not a pin. The plain-group-trailing @name cell is the placement
+    //     control proving this trailing slot binds to the last field.
+    Cell {
+        directive: "@raw_bytes_flavor",
+        position: "plain-group-trailing",
+        spec: "grp = (a: uint) ; @raw_bytes_flavor\nholder = [grp]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("only valid on"),
+    },
+    // 29. NON-generic extern rule. FINDING (pinned in KNOWN_SILENT_DROP): the docs say the tag is
+    //     valid ONLY on an extern GENERIC, but on a non-generic `_CDDL_CODEGEN_EXTERN_TYPE_` rule it
+    //     is silently ACCEPTED as a no-op — there are no generic instances to flavor, and the
+    //     extern-only validity gate only rejects NON-extern rules, so a non-generic extern slips
+    //     through unerrored. Docs-claimed expectation (Reject) is NOT satisfied → the pin holds and
+    //     flips the day the gate learns to reject the non-generic case. The valid `extern-generic-rule`
+    //     cell (same `; @raw_bytes_flavor` rule-trailing placement, but generic) is the placement
+    //     control — it emits the flavor alias, so the pin cannot hold vacuously on a placement typo;
+    //     the only isolated variable is generic-vs-non-generic.
+    Cell {
+        directive: "@raw_bytes_flavor",
+        position: "non-generic-extern-rule",
+        spec: "foo = _CDDL_CODEGEN_EXTERN_TYPE_ ; @raw_bytes_flavor\nholder = [f: foo]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("only valid on"),
+    },
+    // ---- @used_as_elem (wasm-side loose-list wrapper; needs `wasm: true`) ---------------------
+    // 30. EFFECT, rule position: a non-exposable struct rule tagged `@used_as_elem` with NO inline
+    //     `[* x]` usage anywhere mints the loose-list wrapper class + its `collections.rs` index
+    //     entry. The untagged sibling `sibling` is the positive control: it mints no `SiblingList`,
+    //     attributing the wrapper to the directive rather than the wasm build. `wasm: true` (the whole
+    //     effect is wasm-side).
+    Cell {
+        directive: "@used_as_elem",
+        position: "rule",
+        spec: "bootstrap_witness = [\n  vkey: bytes,\n  signature: bytes,\n] ; @used_as_elem\nsibling = [\n  a: uint,\n  b: text,\n]\n",
+        flags: &[],
+        wasm: true,
+        expect: Expect::Effect {
+            must: &[
+                "pub struct BootstrapWitnessList(",
+                "pub use crate::generated::BootstrapWitnessList;",
+            ],
+            must_not: &["SiblingList"],
+        },
+    },
+    // 31. REJECT, directly-wasm-exposable element: `[* coin]` lowers to a bare `Vec<Coin>` with no
+    //     wrapper class, so there is nothing to mint → graceful hard error. `wasm: true` (the
+    //     exposability check only runs on the wasm path).
+    Cell {
+        directive: "@used_as_elem",
+        position: "rule-exposable-element",
+        spec: "coin = uint ; @used_as_elem\nroot = [c: coin]\n",
+        flags: &[],
+        wasm: true,
+        expect: Expect::Reject("directly wasm-exposable"),
+    },
+    // 32. NO-OP WITHOUT --wasm: the SAME tagged spec as cell 30 under the `wasm: false` baseline.
+    //     Docs: "It is a no-op without `--wasm`." Generation succeeds and the rust struct is present,
+    //     but NO list wrapper appears anywhere (the wrapper is a wasm-boundary concern only). Pins the
+    //     documented no-op posture — an Effect cell, not a pin, because a no-op here is CORRECT.
+    Cell {
+        directive: "@used_as_elem",
+        position: "rule-no-wasm",
+        spec: "bootstrap_witness = [\n  vkey: bytes,\n  signature: bytes,\n] ; @used_as_elem\nsibling = [\n  a: uint,\n  b: text,\n]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &["pub struct BootstrapWitness {"],
+            must_not: &["BootstrapWitnessList"],
+        },
+    },
+    // 33. FIELD position. FINDING (pinned in KNOWN_SILENT_DROP): `@used_as_elem` is a rule-level tag
+    //     read from rule metadata; a field-trailing `; @used_as_elem` binds to field `f`'s trailing
+    //     comment (like the `@name plain-group-trailing` field seam) which the rule-level detector
+    //     never reads, so it is silently DROPPED — no `BwList` wrapper is minted even though the
+    //     element (`bw`, a non-exposable struct) WOULD mint one at rule position. Docs-claimed effect
+    //     (a wrapper for the tagged element) is NOT satisfied → the pin holds. `wasm: true` so the
+    //     wrapper WOULD be observable if the tag were honored — ruling out "invisible because rust-
+    //     only". The field-trailing comment slot is proven live by the many `x: T, ; @directive` field
+    //     cells above (`@name array-element-*`, `@doc array-field`), so the drop is the rule-level
+    //     detector ignoring the field comment, not a placement typo.
+    Cell {
+        directive: "@used_as_elem",
+        position: "field",
+        spec: "bw = [vkey: bytes, signature: bytes]\nholder = [\n  f: bw, ; @used_as_elem\n]\n",
+        flags: &[],
+        wasm: true,
+        expect: Expect::Effect {
+            must: &["pub struct BwList("],
             must_not: &[],
         },
     },
 ];
 
 /// Generate a standalone crate's source map for `spec` (writes to a unique temp `.cddl`).
-/// `--wasm=false` EXPLICITLY (the CLI default is true) — this is the string-emit path, so it needs
-/// no static dir; the sweep asserts on the concatenated generated source only.
+/// `--wasm` defaults to `false` (the string-emit path needs no static dir; the sweep asserts on the
+/// concatenated generated source only) but a cell can opt into `--wasm=true` — `generated_strings`
+/// emits the wasm files as strings too, so the wasm-side anchors (`@used_as_elem`'s loose-list
+/// wrapper) are reachable without a static dir.
 fn generate(
     spec: &str,
     flags: &[&str],
+    wasm: bool,
     tag: &str,
 ) -> Result<std::collections::BTreeMap<String, String>, String> {
     let path = std::env::temp_dir().join(format!(
@@ -476,7 +684,7 @@ fn generate(
         "--output",
         "dsl_position_unused",
         "--wasm",
-        "false",
+        if wasm { "true" } else { "false" },
     ];
     args.extend_from_slice(flags);
     let cli = Cli::parse_from(args);
@@ -494,7 +702,7 @@ enum Outcome {
 
 fn run(cell: &Cell, tag: &str) -> Outcome {
     let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        generate(cell.spec, cell.flags, tag)
+        generate(cell.spec, cell.flags, cell.wasm, tag)
     }));
     match out {
         Ok(Ok(map)) => Outcome::Source(map.into_values().collect::<Vec<_>>().join("\n")),
