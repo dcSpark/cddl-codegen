@@ -5,6 +5,7 @@ expression: content
 // This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
 
+use crate::generated::b::bar::{RelayHost, RelayPort};
 use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
@@ -48,4 +49,77 @@ impl AsRef<cddl_lib::qux::Qux> for Qux {
     fn as_ref(&self) -> &cddl_lib::qux::Qux {
         &self.0
     }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Relay(cddl_lib::qux::Relay);
+
+#[wasm_bindgen]
+impl Relay {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Relay, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_relay_host(port: &RelayPort, dns_name: String) -> Self {
+        Self(cddl_lib::qux::Relay::new_relay_host(
+            port.clone().into(),
+            dns_name,
+        ))
+    }
+
+    pub fn new_relay1(index_1: u64) -> Self {
+        Self(cddl_lib::qux::Relay::new_relay1(index_1))
+    }
+
+    pub fn kind(&self) -> RelayKind {
+        match &self.0 {
+            cddl_lib::qux::Relay::RelayHost(_) => RelayKind::RelayHost,
+            cddl_lib::qux::Relay::Relay1(_) => RelayKind::Relay1,
+        }
+    }
+
+    pub fn as_relay_host(&self) -> Option<RelayHost> {
+        match &self.0 {
+            cddl_lib::qux::Relay::RelayHost(relay_host) => Some(relay_host.clone().into()),
+            _ => None,
+        }
+    }
+
+    pub fn as_relay1(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::qux::Relay::Relay1(index_1) => Some(*index_1),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::qux::Relay> for Relay {
+    fn from(native: cddl_lib::qux::Relay) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Relay> for cddl_lib::qux::Relay {
+    fn from(wasm: Relay) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::qux::Relay> for Relay {
+    fn as_ref(&self) -> &cddl_lib::qux::Relay {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum RelayKind {
+    RelayHost,
+    Relay1,
 }

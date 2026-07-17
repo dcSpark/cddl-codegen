@@ -89,3 +89,96 @@ impl AsRef<cddl_lib::b::bar::Bar> for Bar {
 }
 
 pub type BarTypedef = Bar;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct RelayHost(cddl_lib::b::bar::RelayHost);
+
+#[wasm_bindgen]
+impl RelayHost {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<RelayHost, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn port(&self) -> RelayPort {
+        self.0.port.clone().into()
+    }
+
+    pub fn dns_name(&self) -> String {
+        self.0.dns_name.clone()
+    }
+
+    pub fn new(port: &RelayPort, dns_name: String) -> Self {
+        Self(cddl_lib::b::bar::RelayHost::new(
+            port.clone().into(),
+            dns_name,
+        ))
+    }
+}
+
+impl From<cddl_lib::b::bar::RelayHost> for RelayHost {
+    fn from(native: cddl_lib::b::bar::RelayHost) -> Self {
+        Self(native)
+    }
+}
+
+impl From<RelayHost> for cddl_lib::b::bar::RelayHost {
+    fn from(wasm: RelayHost) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::b::bar::RelayHost> for RelayHost {
+    fn as_ref(&self) -> &cddl_lib::b::bar::RelayHost {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct RelayPort(cddl_lib::b::bar::RelayPort);
+
+#[wasm_bindgen]
+impl RelayPort {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<RelayPort, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: u64) -> Self {
+        Self(cddl_lib::b::bar::RelayPort::new(inner))
+    }
+
+    pub fn get(&self) -> u64 {
+        self.0.get()
+    }
+}
+
+impl From<cddl_lib::b::bar::RelayPort> for RelayPort {
+    fn from(native: cddl_lib::b::bar::RelayPort) -> Self {
+        Self(native)
+    }
+}
+
+impl From<RelayPort> for cddl_lib::b::bar::RelayPort {
+    fn from(wasm: RelayPort) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::b::bar::RelayPort> for RelayPort {
+    fn as_ref(&self) -> &cddl_lib::b::bar::RelayPort {
+        &self.0
+    }
+}

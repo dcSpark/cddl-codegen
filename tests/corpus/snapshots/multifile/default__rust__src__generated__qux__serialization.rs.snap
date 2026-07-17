@@ -56,3 +56,91 @@ impl Deserialize for Qux {
         .map_err(|e| e.annotate("Qux"))
     }
 }
+
+impl cbor_event::se::Serialize for Relay {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        match self {
+            Relay::RelayHost(relay_host) => relay_host.serialize(serializer),
+            Relay::Relay1(index_1) => {
+                serializer.write_array(cbor_event::Len::Len(2))?;
+                serializer.write_unsigned_integer(1u64)?;
+                serializer.write_unsigned_integer(*index_1)?;
+                Ok(serializer)
+            }
+        }
+    }
+}
+
+impl Deserialize for Relay {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let initial_position = raw.as_mut_ref().stream_position().unwrap();
+            let mut errs = Vec::new();
+            let deser_variant = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::from(len);
+                read_len.read_elems(3)?;
+                read_len.finish()?;
+                let ret = RelayHost::deserialize_as_embedded_group(raw, &mut read_len, len);
+                match len {
+                    cbor_event::Len::Len(_) => (),
+                    cbor_event::Len::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                ret
+            })(raw);
+            match deser_variant {
+                Ok(relay_host) => return Ok(Self::RelayHost(relay_host)),
+                Err(e) => {
+                    errs.push(e.annotate("RelayHost"));
+                    raw.as_mut_ref()
+                        .seek(SeekFrom::Start(initial_position))
+                        .unwrap();
+                }
+            };
+            let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::from(len);
+                read_len.read_elems(2)?;
+                read_len.finish()?;
+                (|| -> Result<_, DeserializeError> {
+                    let index_0_value = raw.unsigned_integer()?;
+                    if index_0_value != 1 {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Uint(index_0_value),
+                            expected: Key::Uint(1),
+                        }
+                        .into());
+                    }
+                    Ok(())
+                })()
+                .map_err(|e| e.annotate("index_0"))?;
+                let index_1 = Ok(raw.unsigned_integer()?)
+                    .map_err(|e: DeserializeError| e.annotate("index_1"))?;
+                match len {
+                    cbor_event::Len::Len(_) => (),
+                    cbor_event::Len::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                Ok(Self::Relay1(index_1))
+            })(raw);
+            match variant_deser {
+                Ok(variant) => return Ok(variant),
+                Err(e) => {
+                    errs.push(e.annotate("Relay1"));
+                    raw.as_mut_ref()
+                        .seek(SeekFrom::Start(initial_position))
+                        .unwrap();
+                }
+            };
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
+        })()
+        .map_err(|e| e.annotate("Relay"))
+    }
+}

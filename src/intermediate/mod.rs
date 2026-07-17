@@ -958,16 +958,45 @@ impl<'a> IntermediateTypes<'a> {
                 }
                 RustStructType::GroupChoice { variants, .. }
                 | RustStructType::TypeChoice { variants, .. } => {
+                    let is_group_choice =
+                        matches!(rust_struct.variant(), RustStructType::GroupChoice { .. });
                     variants.iter().for_each(|ev| match &ev.data {
-                        EnumVariantData::RustType(ty) => mark_refs(
-                            &mut refs,
-                            self,
-                            wasm,
-                            &table_shape_sole_owners,
-                            deferred,
-                            current_scope,
-                            ty,
-                        ),
+                        EnumVariantData::RustType(ty) => {
+                            mark_refs(
+                                &mut refs,
+                                self,
+                                wasm,
+                                &table_shape_sole_owners,
+                                deferred,
+                                current_scope,
+                                ty,
+                            );
+                            // A GROUP choice's `new_<variant>` ctor (both passes) expands a
+                            // named-Record variant's fields into direct parameters, so the
+                            // emitted code names those FIELD types in THIS scope — a Record
+                            // living in another module otherwise only registers them for its
+                            // own scope (its Record arm below) and the expanded ctor fails
+                            // E0412. Mark exactly the ctor-visible set via the same helper the
+                            // emitters use (a TYPE choice never expands — `generate_enum`'s
+                            // `rep.and(..)` gate — so marking it here would only add unused
+                            // imports).
+                            if is_group_choice {
+                                for field in ev
+                                    .group_ctor_record_fields(self, &rust_struct.ident)
+                                    .unwrap_or_default()
+                                {
+                                    mark_refs(
+                                        &mut refs,
+                                        self,
+                                        wasm,
+                                        &table_shape_sole_owners,
+                                        deferred,
+                                        current_scope,
+                                        &field.rust_type,
+                                    )
+                                }
+                            }
+                        }
                         EnumVariantData::Inlined(record) => {
                             record.fields.iter().for_each(|field| {
                                 mark_refs(

@@ -160,6 +160,42 @@ impl EnumVariant {
         }
     }
 
+    /// The Record fields a GROUP choice expands into this variant's `new_<variant>` ctor as
+    /// direct parameters (both the rust and the wasm pass), when the variant is a NAMED type
+    /// resolving to a Record struct — `None` for every other variant shape (incl. aliases to
+    /// records: the emitters match the bare `Rust` ident only, deliberately not
+    /// `resolve_alias_shallow`, and an alias arm gets the single-arg ctor instead).
+    /// `scope_references` marks exactly these field types so a ctor expanded from a record in
+    /// ANOTHER module still imports what its parameters name; the emitters and that import walk
+    /// all go through this one helper so the parameter list and the import set can't drift.
+    /// Panics on an unresolvable ident (`enum_ident` names the enum for the message) — the
+    /// resolution the emitters previously did inline.
+    pub fn group_ctor_record_fields<'a>(
+        &self,
+        types: &'a IntermediateTypes,
+        enum_ident: &RustIdent,
+    ) -> Option<Vec<&'a RustField>> {
+        let EnumVariantData::RustType(ty) = &self.data else {
+            return None;
+        };
+        let ConceptualRustType::Rust(ident) = &ty.conceptual_type else {
+            return None;
+        };
+        let resolved = types
+            .rust_struct(ident)
+            .unwrap_or_else(|| panic!("{enum_ident} refers to undefined ident: {ident}"));
+        let RustStructType::Record(record) = resolved.variant() else {
+            return None;
+        };
+        Some(
+            record
+                .fields
+                .iter()
+                .filter(|f| !f.optional && !f.rust_type.is_fixed_value())
+                .collect(),
+        )
+    }
+
     // Can only be used on RustType variants, panics otherwise.
     // So don't call this when we're embedding the variant types
     pub fn rust_type(&self) -> &RustType {

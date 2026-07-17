@@ -1,1 +1,6 @@
 qux = [2, text]
+
+; group choice over a record living in ANOTHER module (relay_host, b/bar.cddl) — pins the
+; ctor-expansion import class: `Relay::new_relay_host(..)` takes relay_host's fields directly
+; (rust and wasm passes), so RelayPort must be imported here despite no other reference
+relay = [relay_host // 1, uint]
