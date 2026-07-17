@@ -46,6 +46,20 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
   supports it; wire it into `project_corpus.ts` if a consumer wants the complete matrix view.
+- **Annotation-completeness floor: every registered feature must carry a support annotation, checked
+  sub-second.** The support annotations are machine-minted only by a passing full `verify.ts` run
+  (the full-tier `verify` gate), so a feature registration whose session never commits that
+  regeneration ships an annotation HOLE no fast/local gate can see — the projections render the row
+  without a verdict, every generated count span stays self-consistent with the hole, and the next
+  wholesale regeneration backfills it silently inside unrelated work. Proven instance:
+  `dsl.raw_bytes_flavor` was registered (`422bbde`) with no `[[support]]` row and stayed green at
+  every sub-full tier until the `dsl.used_as_key` flavor-row delivery's full verify run backfilled
+  it (`6013724`) — surfaced by regeneration side effect, not by any gate or reader. The mechanical
+  layer is a no-cargo set-inclusion check — every `[[feature]]` id in the authored `features/*.toml`
+  appears as a `[[support]]` id in `annotations/cddl_codegen.toml` — homed in an existing
+  sub-second `--check` gate (`build_matrix_check`, or `query_q6_diff.ts --check` beside its
+  `VENDOR_FEATURE_COUNT` vacuity floor), so an unannotated registration fails at local tier instead
+  of waiting for the next full `verify.ts` run.
 
 ## F4 / F5 follow-ons (only when their consumer exists)
 
