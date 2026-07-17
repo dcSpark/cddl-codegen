@@ -736,8 +736,10 @@ consolidation — are recorded in the code + git history; not re-litigated here.
 Upstream specs churn (IANA registries, the grammar). Refresh with `sources/fetch.sh` (re-fetches + verifies
 against `SHA256SUMS`); a checksum mismatch flags upstream drift to review before re-pinning and regenerating.
 
-Hand-counted prose lists in this doc (e.g. the findings ledger's "Five panic-class families" /
-"Six compile/round-trip-class families" headers) are maintained by review: pruning or adding a
+Hand-counted prose lists in this doc (e.g. the findings ledger's panic-class and
+compile/round-trip-class family-count headers — cited here count-free on purpose: a hard-coded
+example count is itself this rot class, and one went stale exactly that way) are maintained by
+review: pruning or adding a
 family must update the count and keep the entry in the list whose framing matches its failure
 stage (generation-failure vs layer-2 compile/round-trip). If a count or a mis-homed entry slips
 through review again, fold these counts into `project_status_headers.ts`'s generated-counter
