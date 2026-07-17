@@ -1,1 +1,1 @@
-old.rs:6: The recorded original of the `// cddl-codegen:replace-start` block has unbalanced
+old.rs:6: The recorded original of the `// cddl-codegen:replace-start` block closes a delimiter ({}, (), or []) it does not open

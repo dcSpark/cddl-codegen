@@ -53,7 +53,9 @@ harness module docs for the byte-for-byte assertion and the three cross-cutting 
 A replace block records the generated code it overrides (`//`-commented under `replaces`); that
 recorded original is both the placement anchor (lex it, find the token run in the regenerated item,
 splice the user block over it) and the drift detector (needle gone ⇒ the generator changed ⇒ fail
-loudly). The needle must be unique on BOTH sides. Idempotent re-splice is not a separate fixture —
+loudly). When the whole enclosing item regenerates token-identically the block places by its own
+position (the item-identity fast path — no uniqueness needed); otherwise the needle must be unique
+on BOTH sides. Idempotent re-splice is not a separate fixture —
 the harness's fixed-point property (`preserve(expected, new) == expected`) exercises it on every
 `expected.rs` case below.
 
@@ -68,6 +70,9 @@ the harness's fixed-point property (`preserve(expected, new) == expected`) exerc
 - `replace_empty_user_section_pinned` — an empty user section (undocumented deletion) is pinned: the recorded original is deleted and the tag-only block sits in its place.
 - `replace_insert_block_above_lands_above` — an insert block immediately above a replace block lands ABOVE the spliced code.
 - `replace_insert_plain_comment_coexist` — a replace block, an insert block, and two plain comments coexist in one file.
+- `replace_duplicate_fragment_positional` — a balanced fragment appears 3× in one item and a replace block over one occurrence records only that bare (non-unique) fragment; when the item regenerates token-identically the block places by its own position (item-identity fast path), round-tripping byte-identically.
+- `replace_equal_delta_unbalanced_block_round_trips` — the CML CIP36 shape: one item with an insert block declaring a local flag plus three replace blocks, the third a Δ+1 `if flag {` / `if self.vp != 0 {` pair (equal-delta rule), the condition appearing 3× in the item; a pristine regeneration round-trips byte-identically via the item-identity path.
+- `replace_two_occurrences_of_duplicated_fragment` — two replace blocks in one item replace two different occurrences of the same duplicated fragment (identical recorded originals); both place positionally under a token-identical regeneration (impossible under both-sides uniqueness alone).
 
 ## Replace-block fail-loudly cases (`compile_error!`, blessed `expected.rs`)
 
@@ -77,6 +82,7 @@ the harness's fixed-point property (`preserve(expected, new) == expected`) exerc
 - `replace_vanished_item_fails_loudly` — the enclosing item was deleted.
 - `replace_same_key_count_change_fails_loudly` — the same-keyed item count changed, so occurrence matching is unsound.
 - `replace_comment_inside_replaced_span_conflict_fails_loudly` — a plain user comment whose anchor lands strictly inside a replaced byte span (op-composition conflict); the replace still splices, the comment fails loudly.
+- `replace_positional_blocked_by_in_item_drift_fails_loudly` — a duplicated-fragment block whose item ALSO changed (unrelated in-item drift), so the item-identity fast path does not apply and the non-unique needle is trapped in a `compile_error!`.
 
 ## Hard-error cases (`error.txt`)
 
@@ -88,8 +94,9 @@ the harness's fixed-point property (`preserve(expected, new) == expected`) exerc
 - `replace_missing_replaces_errors` — a replace block with no `replaces` marker (nothing separates user code from the recorded original).
 - `replace_missing_end_errors` — a replace block with no `replace-end`.
 - `replace_empty_recorded_original_errors` — a `replaces` section that lexes to zero code tokens.
-- `replace_unbalanced_user_section_errors` — the user section has unbalanced delimiters.
-- `replace_unbalanced_recorded_original_errors` — the recorded original has unbalanced delimiters.
+- `replace_unbalanced_user_section_errors` — the user section closes a delimiter it does not open (an interior dip, e.g. `} else {`).
+- `replace_unbalanced_recorded_original_errors` — the recorded original closes a delimiter it does not open.
+- `replace_unequal_delta_errors` — the user section and recorded original change delimiter depth by unequal net amounts (Δ0 vs Δ+1).
 - `replace_unlexable_recorded_original_errors` — the recorded original fails to lex (an unterminated string literal after uncommenting).
 - `replace_orphaned_replaces_errors` — `replaces` outside any replace block.
 - `replace_orphaned_end_errors` — `replace-end` with no matching `replace-start`.

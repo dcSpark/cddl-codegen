@@ -1,0 +1,1 @@
+old.rs:6: The user section and the recorded original of the `// cddl-codegen:replace-start` block must change delimiter depth identically

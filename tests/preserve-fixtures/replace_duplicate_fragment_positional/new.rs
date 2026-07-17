@@ -3,8 +3,8 @@
 
 impl Foo {
     fn go(&self) {
-        dup();
-        dup();
-        write_len(self.b);
+        emit(field);
+        emit(field);
+        emit(field);
     }
 }

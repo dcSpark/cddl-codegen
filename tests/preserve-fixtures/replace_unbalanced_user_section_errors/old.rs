@@ -4,7 +4,7 @@
 impl Foo {
     fn go(&self) {
         // cddl-codegen:replace-start
-        foo(
+        } else {
         // cddl-codegen:replaces
         //   old();
         // cddl-codegen:replace-end

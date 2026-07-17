@@ -67,10 +67,17 @@
 //! record (every override is visible in diffs next to what it replaced). To anchor it we substitute
 //! the block's user-code span in the virtual pristine stream with the NEEDLE (not merely remove it):
 //! then the identity tier still fires when generator output is unchanged, and the needle regains
-//! BOTH-sides uniqueness. The needle must be unique in the virtual old item AND in the matched new
-//! item — the deleted-duplicate hazard the comment engine documents is here a LOUD failure, not a
-//! residual: a recorded original that is non-unique in the virtual old (a genuine duplicate the
-//! generator still emits twice) fails loudly rather than guessing which occurrence it overrides. The
+//! BOTH-sides uniqueness. Placement anchors by one of two paths. First the ITEM-IDENTITY fast path: if
+//! the whole enclosing top-level item regenerated token-identically, the block splices at the same
+//! offset it physically occupied — position disambiguates, so the recorded original need NOT be unique
+//! within the item, which is what lets two different occurrences of a duplicated fragment both be
+//! replaced. It is sound by construction: the substitution placed the needle at that offset, so an
+//! identical item carries the recorded original's exact tokens there; a wrong/drifted needle makes the
+//! item non-identical and falls through. Otherwise the strict BOTH-sides-uniqueness path: the needle
+//! must be unique in the virtual old item AND in the matched new item — the deleted-duplicate hazard
+//! the comment engine documents is here a LOUD failure, not a residual: a recorded original that is
+//! non-unique in the virtual old (a genuine duplicate the generator still emits twice, when the item
+//! also changed) fails loudly rather than guessing which occurrence it overrides. The
 //! splice is BYTE-RANGE, not line-based (from the first matched token's start to the last's end), so
 //! a needle beginning mid-line in a one-liner match arm splices correctly and generator comments
 //! interior to that span are deleted with it while comments before/after survive. Whole-item replaces
@@ -81,9 +88,10 @@
 //! loudly (its referent is being replaced — move it into the block); an insert block or comment at a
 //! splice's START byte lands ABOVE the spliced code (ordered before the splice). Hard `PreserveError`
 //! (pre-splice) on a malformed block: a missing `replaces`/`replace-end`, an empty recorded original
-//! (lexes to zero code tokens), unbalanced delimiters in the user section OR the recorded original, a
-//! recorded original that fails to lex, an orphaned/nested tag, or a recorded original that straddles
-//! a top-level item boundary. The block-shape errors (unbalanced delimiters, empty recorded original)
+//! (lexes to zero code tokens), a user section or recorded original that closes a delimiter it does not
+//! open, a user section and recorded original whose net delimiter deltas differ (the delta rule below),
+//! a recorded original that fails to lex, an orphaned/nested tag, or a recorded original that straddles
+//! a top-level item boundary. The block-shape errors (delimiter deltas, empty recorded original)
 //! tag the offending block's `*-start` line on the [`PreserveError`], so the caller renders a
 //! `file:line:` prefix editors turn into a clickable jump (one on-disk file can hold many blocks). An
 //! empty user section is a (undocumented) deletion — allowed, pinned by
@@ -99,9 +107,24 @@
 //! which errors instead of truncating. So a bare `unpreserved-comment` marker NOT backed by the
 //! `compile_error!` shape is a hard error too (it is a malformed fail-loudly block, not a user
 //! comment), and an orphaned `replaces`/`replace-end` errors rather than degrading to a user comment.
-//! The user section of an insert block — and both the user section and the recorded original of a
-//! replace block — must have balanced `{}`/`()`/`[]` (hard error otherwise): an unbalanced fragment
-//! cannot be placed by the statement-run model and would corrupt item splitting for the whole file.
+//! An INSERT block's user section must have absolutely balanced `{}`/`()`/`[]` (it has no recorded
+//! original to pair against). A REPLACE block instead obeys the DELTA rule: the user section and the
+//! recorded original must each be never-negative (neither closes a delimiter it does not open) and must
+//! change delimiter depth by the SAME per-delimiter net amount (each of `{}`/`()`/`[]` compared
+//! separately). Equal net delta means every token downstream of the splice keeps its exact delimiter
+//! depth, so top-level item splitting is preserved even under a wrong needle (which then still fails
+//! loudly as drift/ambiguity/straddle) — absolute balance was sufficient but not necessary. So a
+//! natural `if flag {` paired with a recorded `if <long generated cond> {` (both Δ+1 on `{}`) is legal.
+//! Interior dips are rejected because a `} else {` fragment (net Δ0 with a −1 dip) could close the
+//! enclosing item in the splitter's view; a hard error otherwise, since an ill-formed fragment cannot
+//! be placed by the statement-run model and would corrupt item splitting for the whole file.
+//!
+//! Rejected alternatives (do not "rediscover" as shortcuts): a `#[cfg(any())]`-style insert-block hack
+//! that compiles out a generated statement while carrying a duplicated copy is rejected — it has ZERO
+//! drift detection, so the copy goes silently stale on any generator change, defeating the overlay's
+//! purpose. Occurrence-ordinal matching (pick the Nth duplicate) WITHOUT a whole-item identity guard is
+//! rejected — it silently retargets under a canonical reorder; the item-identity fast path gets the
+//! same disambiguation safely only because it is gated on whole-item token identity.
 //!
 //! The lexer is string-aware by necessity, not thoroughness: Rust string/raw-string literals span
 //! lines, so a line can begin with `//` while inside a literal; a comment cannot be classified
@@ -931,8 +954,15 @@ fn uncomment_line(comment_text: &str) -> &str {
     s.strip_prefix(' ').unwrap_or(s)
 }
 
-/// True iff `{}`/`()`/`[]` are balanced across `toks` (and never close before they open).
-fn delimiters_balanced(toks: &[CodeTok]) -> bool {
+/// Per-delimiter NET deltas `({}, (), [])` across `toks`, each counted separately — or `None` if any
+/// of the three counters dips below zero mid-scan (the fragment closes a delimiter it never opened,
+/// e.g. the leading `}` of a `} else {` fragment). A replace block pairs the user section's deltas
+/// against the recorded original's: equal per-delimiter net delta means every token downstream of the
+/// splice keeps its exact delimiter depth, so top-level item splitting is preserved even under a wrong
+/// needle (which then still fails loudly as drift/ambiguity/straddle). The never-negative requirement
+/// rejects interior dips because a `} else {`-shaped fragment (net Δ0 on `{}` but a −1 dip) could close
+/// the enclosing item in `split_items`' view.
+fn delim_deltas(toks: &[CodeTok]) -> Option<(i32, i32, i32)> {
     let (mut c, mut p, mut b) = (0i32, 0i32, 0i32);
     for t in toks {
         match t.text {
@@ -940,27 +970,34 @@ fn delimiters_balanced(toks: &[CodeTok]) -> bool {
             "}" => {
                 c -= 1;
                 if c < 0 {
-                    return false;
+                    return None;
                 }
             }
             "(" => p += 1,
             ")" => {
                 p -= 1;
                 if p < 0 {
-                    return false;
+                    return None;
                 }
             }
             "[" => b += 1,
             "]" => {
                 b -= 1;
                 if b < 0 {
-                    return false;
+                    return None;
                 }
             }
             _ => {}
         }
     }
-    c == 0 && p == 0 && b == 0
+    Some((c, p, b))
+}
+
+/// True iff `{}`/`()`/`[]` are balanced across `toks` (and never close before they open). Used by
+/// INSERT blocks, which have no recorded original to pair a delta against, so they require absolute
+/// balance (a replace block instead uses the equal-delta rule on [`delim_deltas`]).
+fn delimiters_balanced(toks: &[CodeTok]) -> bool {
+    delim_deltas(toks) == Some((0, 0, 0))
 }
 
 /// Recognize insert blocks and enforce the `cddl-codegen:` namespace reservation over `old`'s own-line
@@ -1083,11 +1120,15 @@ fn scan_blocks(
                         .to_owned(),
                 );
             }
-            if !delimiters_balanced(&lexed.code[user_code_start..user_code_end]) {
+            // Replace blocks use the equal-delta rule (not absolute balance): the user section need
+            // only be never-negative here (it must not close a delimiter it does not open); its net
+            // deltas are matched against the recorded original's in `preserve`, once the needle lexes.
+            if delim_deltas(&lexed.code[user_code_start..user_code_end]).is_none() {
                 return err_at(
                     line_of(lexed.src, comments[start_ci].start),
-                    "The user section of the `// cddl-codegen:replace-start` block has unbalanced \
-                     delimiters ({}, (), or []); wrap a complete, balanced fragment."
+                    "The user section of the `// cddl-codegen:replace-start` block closes a \
+                     delimiter ({}, (), or []) it does not open; wrap a fragment that never dips \
+                     below its starting depth."
                         .to_owned(),
                 );
             }
@@ -1299,7 +1340,10 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
     // Lex each replace block's recorded original into its NEEDLE tokens (owned via the block's
     // `needle_text`, which outlives this borrow). Validate here (all hard errors, pre-splice): the
     // recorded original must lex, be non-empty (a section that lexes to zero code tokens — e.g. all
-    // `// //` lines — records nothing to place against), and be delimiter-balanced.
+    // `// //` lines — records nothing to place against), be never-negative (never close a delimiter it
+    // does not open), and change delimiter depth by the SAME net amount as the user section. Equal net
+    // delta means every token downstream of the splice keeps its exact delimiter depth, so top-level
+    // item splitting survives even a wrong needle (absolute balance was sufficient but not necessary).
     let needle_lexed: Vec<Lexed> = block_scan
         .replace_blocks
         .iter()
@@ -1315,11 +1359,28 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
                     .to_owned(),
             );
         }
-        if !delimiters_balanced(&nl.code) {
+        let needle_deltas = match delim_deltas(&nl.code) {
+            Some(d) => d,
+            None => {
+                return err_at(
+                    line,
+                    "The recorded original of the `// cddl-codegen:replace-start` block closes a \
+                     delimiter ({}, (), or []) it does not open; record a fragment that never dips \
+                     below its starting depth."
+                        .to_owned(),
+                );
+            }
+        };
+        // The user section was already checked never-negative in `scan_blocks`, so its deltas are
+        // `Some`; pair them against the needle's so the surrounding generated code stays balanced.
+        let user_deltas = delim_deltas(&old_lex.code[rb.user_code_start..rb.user_code_end])
+            .expect("replace-block user section is never-negative (checked in scan_blocks)");
+        if needle_deltas != user_deltas {
             return err_at(
                 line,
-                "The recorded original of the `// cddl-codegen:replace-start` block has unbalanced \
-                 delimiters ({}, (), or []); record a complete, balanced fragment."
+                "The user section and the recorded original of the `// cddl-codegen:replace-start` \
+                 block must change delimiter depth identically (their net {}, (), and [] deltas must \
+                 match) so the surrounding generated code stays balanced."
                     .to_owned(),
             );
         }
@@ -1865,11 +1926,15 @@ fn match_new_item(
 }
 
 /// Place a replace block: match the enclosing item (containing the needle's virtual-stream start
-/// `vstart`) into `new`, then require the needle unique in the virtual old item AND unique in the
-/// matched new item (the same both-sides rule as the comment engine — unique-in-new alone would let a
-/// deleted duplicate's block silently re-attach to the survivor). On success returns the matched new
-/// token run as `(start_index, len)`; otherwise a fail-loudly reason (drift / ambiguity / vanished /
-/// reshaped item) that names the item.
+/// `vstart`) into `new`, then anchor by one of two paths. First the ITEM-IDENTITY fast path: if the
+/// whole enclosing item regenerated token-identically, position disambiguates — the block splices at
+/// the same offset it occupied, so the recorded original need not be unique within the item (this is
+/// what lets two different occurrences of a duplicated fragment both be replaced). Otherwise the strict
+/// BOTH-SIDES-UNIQUENESS path: the needle must be unique in the virtual old item AND in the matched new
+/// item (the same rule as the comment engine — unique-in-new alone would let a deleted duplicate's
+/// block silently re-attach to the survivor). On success returns the matched new token run as
+/// `(start_index, len)`; otherwise a fail-loudly reason (drift / ambiguity / vanished / reshaped item)
+/// that names the item.
 #[allow(clippy::too_many_arguments)]
 fn place_replace(
     vstart: usize,
@@ -1893,6 +1958,18 @@ fn place_replace(
     let nitem = &new_items[ni];
     let old_slice = &old_code[item.start..item.end];
     let new_slice = &new_code[nitem.start..nitem.end];
+    // Item-identity fast path. The virtual old item carries the needle at offset `rel` by
+    // construction — the substitution put the recorded original there in place of the user tokens. So
+    // when the whole enclosing item regenerated token-identically, the new item carries the recorded
+    // original's exact tokens at exactly that offset: position — where the user's block physically sits
+    // — disambiguates duplicated fragments perfectly, no uniqueness needed. Soundness is by
+    // construction, not heuristic: a wrong or drifted needle makes `code_eq` false and falls through to
+    // the strict both-sides-uniqueness path below, which fails loudly. The straddle check in the caller
+    // (`vstart + vlen <= item.end`) plus token identity (equal length) keep the returned span in-bounds.
+    if code_eq(old_slice, new_slice) {
+        let rel = vstart - item.start;
+        return Ok((nitem.start + rel, needle.len()));
+    }
     // Both-sides uniqueness. Non-unique in the virtual old item = a deleted duplicate; the block's
     // referent is ambiguous, so fail loudly rather than guess (the deleted-duplicate hazard the comment
     // engine also refuses).
