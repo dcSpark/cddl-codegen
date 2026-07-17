@@ -240,6 +240,12 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
          integration gate generates with --wasm=false and injects a hand-written extern, so there is \
          no wasm surface to differential and the crate is intended NOT to compile",
     ),
+    (
+        "extern-generic-raw-bytes",
+        "rust-only `@raw_bytes_flavor` fixture (an extern generic instantiated with a raw-bytes \
+         element): its integration gate generates with --wasm=false and injects hand-written extern \
+         wrappers + a raw-bytes impl, so there is no generated wasm surface to differential",
+    ),
 ];
 
 /// Only these `.rs` basenames may appear under `rust/src/generated/` (default/json profiles); only

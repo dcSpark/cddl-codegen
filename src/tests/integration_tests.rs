@@ -130,10 +130,12 @@ pub(crate) fn checkout_hash() -> u64 {
 }
 
 /// Corpus fixtures whose generated crate references user-supplied code (for example,
-/// `@custom_serialize` / `@custom_deserialize` functions like `my_ser`/`my_deser`), so they cannot
-/// be compiled or round-tripped standalone under any emission profile. They remain covered by
-/// source snapshots.
-const COMPILE_SKIP: &[&str] = &["dsl_custom"];
+/// `@custom_serialize` / `@custom_deserialize` functions like `my_ser`/`my_deser`, or the extern /
+/// raw-bytes wrapper types an `@raw_bytes_flavor` extern generic references), so they cannot be
+/// compiled or round-tripped standalone under any emission profile. They remain covered by source
+/// snapshots — and, where a hand-written side exists, by a dedicated integration fixture (e.g.
+/// `extern_generic_raw_bytes`).
+const COMPILE_SKIP: &[&str] = &["dsl_custom", "extern_generic_raw_bytes"];
 
 /// Wasm-matrix cells that deliberately never compile standalone in this harness. Each entry pairs
 /// with a ledger entry in `cddl-matrix/ROADMAP.md` § findings (which shape/role, the exact `E####`,
@@ -5951,6 +5953,32 @@ fn raw_bytes_preserve() {
         None,
         &[extern_rust_path],
         &[extern_wasm_path],
+        false,
+        &[],
+    );
+}
+
+// A `@raw_bytes_flavor`-tagged extern generic instantiated with BOTH a raw-bytes element
+// (`ext_set<pub_key>` → `ExtSetRawBytes<PubKey>`) and a trait-bound element (`ext_set<plain>` →
+// `ExtSet<Plain>`) in one struct. The two element contracts are conflicting blanket impls, so a
+// single wrapper cannot serve both — the flavor alias is what makes the raw-bytes instance compile.
+// Rust-only: the wasm side is user-owned under the extern contract, so `--wasm=false` keeps scope
+// tight. The `ExtSet`/`ExtSetRawBytes` wrappers land in the thin crate root (extern-def routing);
+// the `PubKey` raw-bytes impl lands in `generated/mod.rs` (raw-bytes-def routing).
+#[test]
+fn extern_generic_raw_bytes() {
+    use std::str::FromStr;
+    let dir = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("extern-generic-raw-bytes");
+    let ext_set_path = dir.join("external_rust_defs_ext_set");
+    let pub_key_path = dir.join("external_rust_raw_bytes_pub_key");
+    run_test(
+        "extern-generic-raw-bytes",
+        &["--wasm=false"],
+        None,
+        &[ext_set_path, pub_key_path],
+        &[],
         false,
         &[],
     );

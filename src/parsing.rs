@@ -326,6 +326,15 @@ fn parse_type_choices(
         if rule_metadata.used_as_elem {
             types.mark_used_as_elem(name.clone());
         }
+        // A multi-choice type rule can never be an extern marker, so `@raw_bytes_flavor` cannot
+        // apply here — reject loudly rather than silently ignore it.
+        if rule_metadata.raw_bytes_flavor {
+            types.record_rejection(format!(
+                "@raw_bytes_flavor on `{name}`: this tag is only valid on a {EXTERN_MARKER} \
+                 rule — it selects the `<ExternName>RawBytes` wrapper flavor for generic instances \
+                 whose argument is a {RAW_BYTES_MARKER} type. Remove it from this rule."
+            ));
+        }
         let variants = create_variants_from_type_choices(types, parent_visitor, type_choices, cli);
         let rust_struct =
             RustStruct::new_type_choice(name.clone(), tag, Some(&rule_metadata), variants, cli);
@@ -904,6 +913,20 @@ fn parse_type(
     if rule_metadata.used_as_elem {
         types.mark_used_as_elem(type_name.clone());
     }
+    // `@raw_bytes_flavor` is valid ONLY on a `_CDDL_CODEGEN_EXTERN_TYPE_` rule (the extern-marker
+    // branch below marks it). Anywhere else it would silently do nothing, so reject loudly here in
+    // the house style of the other comment-DSL misuse rejections.
+    let is_extern_marker = matches!(
+        &type1.type2,
+        Type2::Typename { ident, .. } if ident.ident == EXTERN_MARKER
+    );
+    if rule_metadata.raw_bytes_flavor && !is_extern_marker {
+        types.record_rejection(format!(
+            "@raw_bytes_flavor on `{type_name}`: this tag is only valid on a {EXTERN_MARKER} \
+             rule — it selects the `<ExternName>RawBytes` wrapper flavor for generic instances \
+             whose argument is a {RAW_BYTES_MARKER} type. Remove it from this rule."
+        ));
+    }
     match &type1.type2 {
         Type2::Typename {
             ident,
@@ -916,6 +939,9 @@ fn parse_type(
                     RustStruct::new_extern(type_name.clone()),
                     cli,
                 );
+                if rule_metadata.raw_bytes_flavor {
+                    types.mark_raw_bytes_flavor(type_name.clone());
+                }
             } else if ident.ident == RAW_BYTES_MARKER {
                 types.register_rust_struct(
                     parent_visitor,
@@ -2681,6 +2707,19 @@ fn parse_record_from_group_choice(
                 return None;
             }
             let rule_metadata = group_entry_rule_metadata(group_entry, optional_comma);
+            // `@raw_bytes_flavor` only applies to a `_CDDL_CODEGEN_EXTERN_TYPE_` rule definition,
+            // never a field/member position — reject loudly instead of silently ignoring it.
+            if rule_metadata.raw_bytes_flavor {
+                let source_name = types
+                    .source_rule_name(name)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| name.to_string());
+                types.record_rejection(format!(
+                    "@raw_bytes_flavor on field `{field_name}` of rule `{source_name}`: this tag \
+                     is only valid on a {EXTERN_MARKER} rule definition, not a field. Remove it \
+                     from this entry."
+                ));
+            }
             // does not exist for fixed values importantly
             let field_type = group_entry_to_type(types, parent_visitor, group_entry, cli);
             if let ConceptualRustType::Rust(ident) = &field_type.conceptual_type {

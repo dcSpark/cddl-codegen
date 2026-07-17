@@ -156,6 +156,15 @@ pub struct IntermediateTypes<'a> {
     // `used_as_key`, there is NO transitive expansion — the tag names the element directly, and the
     // wrapper's identity is fully determined by that one element type.
     used_as_elem: BTreeSet<RustIdent>,
+    // Base generic extern idents tagged `@raw_bytes_flavor`: an instance of one whose argument
+    // resolves to a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` aliases the `<Base>RawBytes` wrapper flavor
+    // instead of the plain `<Base>`. Opt-in only — see `RuleMetadata::raw_bytes_flavor`.
+    raw_bytes_flavor: BTreeSet<RustIdent>,
+    // Subset of `raw_bytes_flavor` for which an actual flavored instance was emitted during
+    // `finalize` (a raw-bytes argument was supplied at least once). The extern re-export glue emits
+    // `pub use crate::<Base>RawBytes;` only for these, so a tag with no raw-bytes instance never
+    // forces the user to define an unused flavor type.
+    raw_bytes_flavor_emitted: BTreeSet<RustIdent>,
     // which scope an ident is declared in
     scopes: BTreeMap<RustIdent, ModuleScope>,
     // The ORIGINAL CDDL source name for each top-level rule's `RustIdent`. `RustIdent::new`
@@ -199,6 +208,8 @@ impl<'a> IntermediateTypes<'a> {
             key_demand: BTreeMap::new(),
             key_demand_roots: BTreeMap::new(),
             used_as_elem: BTreeSet::new(),
+            raw_bytes_flavor: BTreeSet::new(),
+            raw_bytes_flavor_emitted: BTreeSet::new(),
             scopes: BTreeMap::new(),
             rule_source_names: BTreeMap::new(),
             rejections: Vec::new(),
@@ -1425,7 +1436,14 @@ impl<'a> IntermediateTypes<'a> {
                 GenericResolved::Extern {
                     instance_ident,
                     real_ident,
+                    flavored_base,
                 } => {
+                    // `@raw_bytes_flavor` selected the `<Base>RawBytes` wrapper for this instance;
+                    // record the base so the extern re-export glue emits `pub use crate::<Base>RawBytes;`
+                    // (in addition to the plain `pub use crate::<Base>;` the base extern carries).
+                    if let Some(base) = flavored_base {
+                        self.mark_raw_bytes_flavor_emitted(base);
+                    }
                     // must be generic extern - register it so other lookups don't fail
                     self.register_rust_struct(
                         parent_visitor,
@@ -2084,6 +2102,28 @@ impl<'a> IntermediateTypes<'a> {
 
     pub fn mark_used_as_elem(&mut self, name: RustIdent) {
         self.used_as_elem.insert(name);
+    }
+
+    /// The set of base generic extern idents tagged `@raw_bytes_flavor` (see `mark_raw_bytes_flavor`).
+    /// `GenericInstance::resolve` consults this to decide whether an instance carrying a raw-bytes
+    /// argument aliases the `<Base>RawBytes` flavor instead of the plain base name.
+    pub fn raw_bytes_flavor(&self) -> &BTreeSet<RustIdent> {
+        &self.raw_bytes_flavor
+    }
+
+    pub fn mark_raw_bytes_flavor(&mut self, name: RustIdent) {
+        self.raw_bytes_flavor.insert(name);
+    }
+
+    /// The base generic extern idents for which a flavored (`<Base>RawBytes`) instance was actually
+    /// emitted during `finalize`. The extern re-export glue emits `pub use crate::<Base>RawBytes;`
+    /// for exactly these (see `mark_raw_bytes_flavor_emitted`).
+    pub fn raw_bytes_flavor_emitted(&self) -> &BTreeSet<RustIdent> {
+        &self.raw_bytes_flavor_emitted
+    }
+
+    pub fn mark_raw_bytes_flavor_emitted(&mut self, base: RustIdent) {
+        self.raw_bytes_flavor_emitted.insert(base);
     }
 
     /// Resolve a marked-`@used_as_elem` ident to the ELEMENT `RustType` of its loose-list wrapper,

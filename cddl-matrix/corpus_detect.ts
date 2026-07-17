@@ -178,7 +178,7 @@ type TagParse = (s: string) => { id: string; rest: string } | null;
 // side without the other fails every importer's selfCheck (project_corpus runs in the fast tier).
 const MIRRORED_DIRECTIVES = new Set([
   "@name", "@newtype", "@no_alias", "@used_as_key", "@used_as_elem",
-  "@custom_json", "@custom_serialize", "@custom_deserialize", "@doc",
+  "@raw_bytes_flavor", "@custom_json", "@custom_serialize", "@custom_deserialize", "@doc",
 ]);
 const ws = (s: string) => s.replace(/^\s+/, ""); // take_while(char::is_whitespace)
 const argRequired = (id: string, tag: string): TagParse => s => {
@@ -214,6 +214,8 @@ const DSL_TAGS: TagParse[] = [
     }
   },
   noArg("dsl.used_as_elem", "@used_as_elem"),
+  // @raw_bytes_flavor: bare no-arg tag (valid only on a `_CDDL_CODEGEN_EXTERN_TYPE_` generic).
+  noArg("dsl.raw_bytes_flavor", "@raw_bytes_flavor"),
   noArg("dsl.custom_json", "@custom_json"),
   argRequired("dsl.custom_serialize", "@custom_serialize"),
   argRequired("dsl.custom_deserialize", "@custom_deserialize"),

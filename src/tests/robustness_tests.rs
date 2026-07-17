@@ -450,6 +450,64 @@ fn inline_array_group_choice_member_rejects_gracefully() {
     );
 }
 
+/// `@raw_bytes_flavor` anywhere other than a `_CDDL_CODEGEN_EXTERN_TYPE_` rule definition is
+/// rejected BY DESIGN — via a GRACEFUL `Err` (deferred through `record_rejection` → drained by
+/// `finalize`), never a `panic!` and never a silent no-op. One vector per rejecting seam: a
+/// single-choice non-extern type rule, a multi-choice type rule, and a field/member position.
+/// This pins that each seam fires and that the message names the tag and the extern-only rule.
+#[test]
+fn raw_bytes_flavor_misuse_rejects_gracefully() {
+    // (seam, cddl, seam-specific message fragment) — the fragment proves the vector reached ITS
+    // seam, not just any rejection (the field seam has its own "not a field" wording).
+    let vectors = [
+        (
+            "single-choice non-extern type rule",
+            "foo = uint ; @raw_bytes_flavor\n",
+            "Remove it from this rule",
+        ),
+        (
+            "multi-choice type rule",
+            "foo = uint / text ; @raw_bytes_flavor\n",
+            "Remove it from this rule",
+        ),
+        (
+            "field position",
+            "s = [\n  x: uint, ; @raw_bytes_flavor\n]\n",
+            "not a field",
+        ),
+    ];
+    for (seam, cddl, seam_fragment) in vectors {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_rbf_misuse_{}_{}.cddl",
+            std::process::id(),
+            seam.len()
+        ));
+        std::fs::write(&path, cddl).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "rbf_misuse_unused",
+        ]);
+        let result = crate::api::generated_strings(&cli);
+        std::fs::remove_file(&path).ok();
+
+        let err = result.expect_err(&format!(
+            "@raw_bytes_flavor on a {seam} must be a graceful Err, not Ok (and not a panic)"
+        ));
+        let msg = err.to_string();
+        assert!(
+            msg.contains("@raw_bytes_flavor") && msg.contains("only valid on"),
+            "rejection for {seam} should name the tag and the extern-only rule, got: {msg}"
+        );
+        assert!(
+            msg.contains(seam_fragment),
+            "rejection for {seam} should carry its seam-specific wording ({seam_fragment:?}), got: {msg}"
+        );
+    }
+}
+
 /// An unsupported `type2` construct as a rule body (`foo = #1.2`, a bare major-type constraint;
 /// also `~name` unwrap, `&group`, `&( ... )`, `#`) is rejected BY DESIGN — via a GRACEFUL `Err`
 /// (deferred through `record_rejection` → drained by `finalize`), never a `panic!`. This pins that

@@ -314,6 +314,23 @@ fixture = "dsl_custom.cddl"
 id = "dsl.custom_deserialize"
 fixture = "dsl_custom.cddl"
 
+# Sentinel typenames + the flavor tag. `extern_generic_raw_bytes.cddl` composes all three (an
+# `@raw_bytes_flavor` extern generic instantiated with a raw-bytes element) — the first corpus cell
+# to exercise them. Its generated crate references user-owned wrapper/raw-bytes types, so it is
+# COMPILE_SKIP in the integration corpus gate; behavioral coverage is the
+# `extern_generic_raw_bytes` integration fixture.
+[[cover]]
+id = "ext.extern"
+fixture = "extern_generic_raw_bytes.cddl"
+
+[[cover]]
+id = "ext.raw_bytes"
+fixture = "extern_generic_raw_bytes.cddl"
+
+[[cover]]
+id = "dsl.raw_bytes_flavor"
+fixture = "extern_generic_raw_bytes.cddl"
+
 # ============================================================================================
 # PER-CELL (role × feature) COVERAGE. A [[cover]] with a `role` is a per-CELL claim:
 # "feature F is exercised in container-role R by fixture X." It is verified two ways by project_corpus.ts:
