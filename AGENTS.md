@@ -102,6 +102,13 @@ changing the *runtime behaviour* of generated code usually means editing `static
 
 - New features should be built on master directly instead of branching unless justified (ex: a worktree)
 - Commit unsigned to avoid GPG prompts
+- **Another session can COMMIT to master while yours runs — re-read `git status`/`git log` at every
+  commit point, not just at session start.** Proven 2026-07-18: a concurrent editor session landed
+  `c7a3289` between one agent session's own commits, and that session's sub-agent separately watched
+  the same foreign edits appear and vanish in the working tree mid-task. Two concrete traps: a
+  `git add -A` without an immediately-preceding fresh `git status` read can sweep a concurrent
+  session's uncommitted edits into your commit; and any commit-range reasoning done at session start
+  (attribution, "my parent commit is X") silently retargets when a foreign commit interleaves.
 - **The conversation-start git snapshot can be stale — never baseline against it.** The harness's
   session-start "Recent commits"/HEAD snapshot once lagged 14 commits behind the repo's real HEAD
   (and its dirty-status flavor has also fired: a snapshot listing ~30 modified files over a tree
