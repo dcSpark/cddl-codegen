@@ -133,21 +133,6 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    - **Real-world corpus differential** (see `draft/testing-recommendations/RECOMMENDATIONS.md`):
      synthetic breadth vs real-world depth — recombination does not replace it.
 
-2. **Compile-level pin for the per-scope facade contract.** `docs/output_format` § "Per-scope hand
-   modules: the facade pattern" promises a consumer composition — a hand facade module in the
-   seed-once `lib.rs` (item-beats-glob shadowing over `pub use generated::*;`) declaring hand files
-   at `src/<scope>/*.rs` that impl generated types, read `pub(crate)` wrapper fields, and merge into
-   the scope's public namespace — but no gate compiles that composition. Its ingredients are
-   string-pinned separately (`integration_wrapper_fields_are_pub_crate`,
-   `integration_extern_only_scope_declared_in_root`), which cannot catch composition regressions:
-   generated code starting to reference public `crate::<scope>::…` paths (which a facade would then
-   shadow and rebind), a scope module losing its `pub mod` in the generated root, or the root glob
-   disappearing. The mechanical shape exists: a nested-cargo integration test in the
-   `workspace_regen_two_consumer_contract` mold that generates a two-scope spec (one scope
-   extern-only), writes the documented facade `lib.rs` + a hand `src/<scope>/utils.rs` (impl block +
-   `inner` read + public-path assertions) over the output, and `cargo check`s it — the exact fixture
-   already proven by hand on 2026-07-17 during the facade-vs-layout-mode decision.
-
 ## Standing-system residuals (recur-first)
 
 Each entry here is a ledger record for a proven-once failure class: what happened, which standing

@@ -3912,6 +3912,96 @@ fn thin_root_in_crate_extern_type_compiles() {
     run_wasm();
 }
 
+/// Compile-level pin for the documented per-scope FACADE COMPOSITION
+/// (docs/docs/output_format.mdx § "Per-scope hand modules: the facade pattern", plus the preceding
+/// extern-glue section and the following "Generated wrapper fields are pub(crate)" section). The
+/// composition's ingredients are already string-pinned separately —
+/// `integration_extern_only_scope_declared_in_root` (the extern-only scope gets a generated `pub mod`
+/// in the root) and `integration_wrapper_fields_are_pub_crate` (the wrapper's backing field is
+/// `pub(crate)`) — but no string pin can catch a COMPOSITION regression, where the pieces are each
+/// individually correct yet no longer compose: generated code beginning to reference a public
+/// `crate::<scope>::…` path (which the facade shadows and would silently rebind), a scope module
+/// losing its `pub mod` in the generated root, or the root `pub use generated::*;` glob disappearing.
+/// Only actually BUILDING the documented consumer composition catches those.
+///
+/// So this gate generates the committed two-scope fixture in `tests/facade/input` (`assets`: a
+/// bounded-bytes newtype carrying the `pub(crate) inner` field; `address`: an extern-ONLY scope,
+/// which also compiles the e07c3a0 extern-only-scope module-declaration contract end to end),
+/// overlays the committed hand files from `tests/facade/hand/` (a facade `lib.rs`, a per-scope
+/// `assets/utils.rs` whose `_assert_paths` fn pins every public path the facade promises, and the
+/// `addr_impl.rs` extern definition), and `cargo check`s the result. `cargo`-guarded so the
+/// string-level self-diagnosing assertions still run on a toolchain-less box. Shared
+/// `CARGO_TARGET_DIR` under `temp_dir()` keyed by `checkout_hash()`, like the sibling generate+check
+/// gates. Generation is in-process (`generate_to_disk`) rather than a nested `cargo run` — the same
+/// code path, cheaper, and matching `thin_root_in_crate_extern_type_compiles`.
+#[test]
+fn facade_composition_compiles() {
+    use clap::Parser;
+
+    // Committed fixture (input + hand overlay) and the gitignored `tests/*/export*` output dir,
+    // relative to the repo root (the cwd during `cargo test`, like the multifile-matrix gate).
+    let input = "tests/facade/input";
+    let out = std::path::PathBuf::from("tests/facade/export");
+    let hand = std::path::PathBuf::from("tests/facade/hand");
+
+    let _ = std::fs::remove_dir_all(&out);
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        input,
+        "--output",
+        out.to_str().unwrap(),
+        "--preserve-encodings=true",
+        "--wasm=false",
+    ]);
+    crate::api::generate_to_disk(&cli).unwrap_or_else(|e| panic!("generation failed: {e}"));
+
+    // Self-diagnosing string checks BEFORE the compile so a broken ingredient names itself rather
+    // than surfacing as an opaque rustc failure downstream.
+    let root_mod = std::fs::read_to_string(out.join("rust/src/generated/mod.rs")).unwrap();
+    for decl in ["pub mod assets;", "pub mod address;"] {
+        assert!(
+            root_mod.lines().any(|l| l.trim() == decl),
+            "generated root mod.rs must declare `{decl}` (the facade shadows the glob re-export of \
+             this scope):\n{root_mod}"
+        );
+    }
+    let addr_mod = std::fs::read_to_string(out.join("rust/src/generated/address/mod.rs")).unwrap();
+    assert!(
+        addr_mod.contains("pub use crate::Address;"),
+        "extern-only `address` scope's generated mod.rs must emit the re-export glue \
+         `pub use crate::Address;`:\n{addr_mod}"
+    );
+
+    // Overlay the documented consumer composition: the facade thin root, the per-scope hand module
+    // at `src/assets/utils.rs`, and the extern definition at `src/addr_impl.rs`.
+    std::fs::copy(hand.join("lib.rs"), out.join("rust/src/lib.rs")).unwrap();
+    std::fs::create_dir_all(out.join("rust/src/assets")).unwrap();
+    std::fs::copy(
+        hand.join("assets_utils.rs"),
+        out.join("rust/src/assets/utils.rs"),
+    )
+    .unwrap();
+    std::fs::copy(hand.join("addr_impl.rs"), out.join("rust/src/addr_impl.rs")).unwrap();
+
+    if tool_exists("cargo") {
+        let target_dir =
+            std::env::temp_dir().join(format!("cddl_codegen_facade_{:016x}", checkout_hash()));
+        let check = tool_cmd("cargo")
+            .arg("check")
+            .current_dir(out.join("rust"))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        assert!(
+            check.status.success(),
+            "the documented per-scope facade composition must compile\n{}\n{}",
+            String::from_utf8_lossy(&check.stdout),
+            String::from_utf8_lossy(&check.stderr)
+        );
+    }
+}
+
 /// The documented migration trap for pre-split consumers must fail LOUD, not silent. A consumer whose
 /// `lib.rs` predates the thin-root split still carries `pub mod serialization;` (and inline generated
 /// type defs) pointing at siblings the split relocated under `src/generated/**`. Seed-once leaves that

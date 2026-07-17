@@ -1,0 +1,4 @@
+; An extern-ONLY scope: its sole rule is an extern, so the ONLY thing that creates this scope's
+; generated module is the extern re-export glue. Compiling the composition end-to-end pins the
+; extern-only-scope module-declaration contract (else the module is undeclared -> crate fails).
+address = _CDDL_CODEGEN_EXTERN_TYPE_
