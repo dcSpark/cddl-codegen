@@ -360,11 +360,7 @@ The workspace-mode surface (`--workspace-dep` / `--wrapper-requests` / `--key-re
 placement of all-one-dep collection wrappers via request sidecars, and the map-key-derive channel:
 the consumer's `borrowed_key_types.rs` sidecar plus dep-side pre-finalize `used_as_key` seeding from
 both request channels, so a dep type keyed only by a consumer still derives `Eq/Ord/PartialOrd`
-(+`Hash` under preserve-encodings). `--workspace-dep` is honored MODE-INDEPENDENTLY — the key
-sidecar and the flag's startup validation apply under `--wasm=false` exactly as under `--wasm=true`
-(only the wasm-side deferral surfaces are wasm-gated), pinned by the flavored contract's rust-only
-leg (byte-identical sidecar, no `wasm/` tree) and `workspace_dep_unknown_is_rejected_under_wasm_false`
-(an unknown dep exits nonzero in rust-only mode, never a silent ignore) — or, when the borrow carries a `@used_as_key` flavor
+(+`Hash` under preserve-encodings) — or, when the borrow carries a `@used_as_key` flavor
 (`hash`/`ord`), exactly that family via an optional third row column with per-flavor compiled
 self-checks (all-bare sidecars keep the two-column form byte-identically; the flavored
 column/parse legs are covered by the `wrapper_requests` unit suite — `key_types_accepts_flavor_column`,
@@ -372,8 +368,12 @@ column/parse legs are covered by the `wrapper_requests` unit suite — `key_type
 `workspace_key_requests_flavored_contract`: a `@used_as_key hash`-tagged dep extern emits the
 three-column row + per-flavor self-check, the dep's `--key-requests` regen derives exactly the named
 family (a hash-only borrow does NOT force `Ord` through the dep's Ord-refusing field), both crates
-compile against each other, and widening the flavor to `bare` fails the dep compile naming `Ord`);
-user docs:
+compile against each other, and widening the flavor to `bare` fails the dep compile naming `Ord`).
+`--workspace-dep` is honored MODE-INDEPENDENTLY — the key sidecar and the flag's startup validation
+apply under `--wasm=false` exactly as under `--wasm=true` (only the wasm-side deferral surfaces are
+wasm-gated), pinned by the flavored contract's rust-only leg (byte-identical sidecar, no `wasm/`
+tree) and `workspace_dep_unknown_is_rejected_under_wasm_false` (an unknown dep exits nonzero in
+rust-only mode, never a silent ignore); user docs:
 `docs/docs/command_line_flags.mdx` and `docs/docs/output_format.mdx` § "Workspace mode") is pinned
 by three sibling gates plus the parser's unit suite (`src/wrapper_requests.rs` — both the strict
 sidecar grammars and the lenient shape-key extractor):

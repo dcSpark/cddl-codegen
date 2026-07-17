@@ -125,19 +125,8 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      singleton's re-runs skip every batch whose composition didn't change — the detector got
      materially cheaper to adopt. Either also owns the
      misfiled-ledger-contradiction class (an entry claiming profile-specificity while masked in its
-     home profile — how this instance actually surfaced). Related but decided: the observed-baseline
-     comments next to each gate's floors are informational and review-maintained (a stale one
-     shipped once); if one misleads triage again, replace them with exact pinned counts asserted by
-     the gate, accepting the churn on every ingredient addition — the floors stay the enforced
-     artifact either way. A SECOND instance of that comment class is on record from a different
-     home with a different rot mode, caught by review, not a gate: `corpus_decode_replay`'s floors
-     comment carried a skip-ledger tally ("6 rows on JSON_SURFACE_SKIP") that was accurate as a
-     pinning-time observation but READS as a live count — two later ledger changes each treated it
-     one way or the other (an addition left it alone as history; a retirement hand-bumped it as a
-     live tally, landing a number that matched neither reading). Working rule from the fix: floor
-     comments state pinning-time observations in explicitly past-tense framing ("AT THAT confirm
-     run …"), never present-tense tallies — the consts themselves are the live ledger. The
-     replace-with-asserted-counts trigger is unchanged (a stale one actually misleading triage).
+     home profile — how this instance actually surfaced). (The observed-baseline comments beside
+     these gates' floors have their own rot class — see the standing residual below.)
    - **Real-world corpus differential** (see `draft/testing-recommendations/RECOMMENDATIONS.md`):
      synthetic breadth vs real-world depth — recombination does not replace it.
 
@@ -170,6 +159,20 @@ dead loses the lesson.
   paragraph outside a generated span must carry a resolvable tracking citation — or fold such
   prose into a projected span (the matrix north star's "more docs follow"), making hand-maintained
   limitation claims structurally impossible to orphan.
+- **Observed-baseline comments beside gate floors rot silently — TWO instances, two homes, two
+  distinct rot modes; the floors/consts stay the enforced artifact.** These comments are
+  informational and review-maintained by design (replacing them with exact gate-asserted counts
+  buys churn on every ingredient addition), so no gate can see them go stale. First instance: a
+  layer-2 recombination gate's observed-baseline comment shipped stale. Second instance, a
+  different rot mode (a tally with two incompatible READINGS): `corpus_decode_replay`'s floors
+  comment carried a skip-ledger tally ("6 rows on `JSON_SURFACE_SKIP`") that was accurate as a
+  pinning-time observation but reads as a live count — two later ledger changes each treated it one
+  way or the other (an addition left it alone as history; a retirement hand-bumped it as a live
+  tally), landing a number that matched neither reading. Both caught by review, not a gate.
+  Working rule: floor comments state pinning-time observations in explicitly past-tense framing
+  ("AT THAT confirm run …"), never present-tense tallies — the consts themselves are the live
+  ledger. Mechanical layer, on a stale baseline comment actually misleading triage: replace the
+  comments with exact pinned counts asserted by the gate, accepting the churn.
 - **Extreme-value boundary correctness of generation-time encode paths: a value that FITS the
   type can still encode wrong at the type's boundary, and no fixture minted from "supported
   shapes" ever lands there.** Proven instance (read-caught during the `FixedValue` i128/u64
