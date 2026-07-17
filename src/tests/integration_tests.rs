@@ -12272,8 +12272,11 @@ fn corpus_decode_replay() {
     const FLOOR_HEADER: usize = 1900;
     // json/wasm decode-surface vacuity floors, pinned from the confirm run's actuals with ~10% headroom
     // (1014 json-round-trip asserts over 118 rows, 1054 wasm-accept asserts over 123 rows, 0 mechanical
-    // wasm skips — every ProbeHolder carries a from_cbor_bytes wrapper surface; 7 rows on
-    // JSON_SURFACE_SKIP, 1 on WASM_SURFACE_SKIP).
+    // wasm skips — every ProbeHolder carries a from_cbor_bytes wrapper surface; AT THAT confirm run 6
+    // rows sat on JSON_SURFACE_SKIP and 1 on WASM_SURFACE_SKIP). Deliberately a pinning-time
+    // observation, never a live tally: the consts above are the live ledger, and a hand count here
+    // rots on every ledger change (it did — twice; see the observed-baseline-comment note in
+    // tests/TESTING_ROADMAP.md).
     const JSON_ACCEPT_FLOOR: usize = 910;
     const JSON_ROWS_FLOOR: usize = 106;
     const WASM_ACCEPT_FLOOR: usize = 945;
