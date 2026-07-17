@@ -904,9 +904,7 @@ skip row's leg still RUNS, and the entry is consumed only if the leg still fails
 emitted test passes fails the gate as a stale pin): a row skipped on one leg still runs the other.
 `JSON_SURFACE_SKIP` — rows whose json boundary legitimately can't round-trip; each resident cites a
 `cddl-matrix/ROADMAP.md` finding, and it also suppresses the wasm `from_json` sub-leg (same serde
-path). Resident classes at HEAD (all first-sweep findings, ledgered in § findings): the **f64 1-ULP
-loss** through serde_json's default (non-`float_roundtrip`) parse (`prelude.float`/`float64`/`number`/
-`time`, `rangeop.{inclusive,exclusive}.float` matrix-side; `homogeneous_array.floats` corpus-side);
+path). Resident classes at HEAD (ledgered in § findings):
 **`@custom_json`** omitting the serde derives the leg's serde_json usage needs (`dsl.custom_json` /
 `dsl_custom.custom_newtype` — can't compile standalone); **non-string map keys** serde_json can't
 serialize (`bytes_map_key.*`, `composite_map_key.holder`, corpus); and the **present-null optional

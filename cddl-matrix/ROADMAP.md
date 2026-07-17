@@ -543,19 +543,6 @@ are ledgered here (that's what the probe/gate error messages point at).
   generated crates float on semver `cbor_event = "2.4.0"`, so nothing tests the version RANGE
   consumers actually resolve — the upstream fix will arrive as exactly such a version event; a
   `--minimal-versions`-style or pinned-latest check of a generated crate would own it.
-- **The generated `--json-serde-derives` json surface loses 1 ULP on `f64` round-trips.**
-  `serde_json` parses `f64` with its fast (lossy) path unless the `float_roundtrip` feature is
-  enabled; the generated `Cargo.toml` requests `serde_json = "1.0.57"` with default features, so a
-  value the CBOR decoder accepts and re-encodes as `fb …` re-encodes to DIFFERENT bytes (off by one
-  mantissa ULP) after `serde_json::to_string` → `from_str`. `f32` values round-trip exactly (fewer
-  mantissa bits), so only `f64`-headed vectors are affected. Surfaced decode-direction by the json/wasm
-  decode-surface legs of `decode_conformance_replay` (tests/README.md § "json/wasm surface legs"): the
-  affected rows (`prelude.float`, `prelude.float64`, `prelude.number`, `prelude.time`,
-  `rangeop.inclusive.float`, `rangeop.exclusive.float`) are on those gates' `JSON_SURFACE_SKIP` ledgers
-  citing this entry (which also suppresses their wasm `from_json` sub-leg — same serde parse path). The
-  candidate fix is a generated-manifest change: add `features = ["float_roundtrip"]` to the `serde_json`
-  dependency (via `static/manifest_changes/`), which restores bit-exact `f64` parsing; retire the
-  JSON_SURFACE_SKIP entries and this finding together when it lands.
 - **A `@custom_json` type produces a non-compiling json/wasm surface standalone (the same
   can't-compile-standalone class as `dsl_custom`).** `@custom_json` intentionally omits the serde
   derives on the rust type (the user is expected to supply custom json (de)serialize code), but the
