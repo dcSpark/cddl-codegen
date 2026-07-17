@@ -13483,3 +13483,63 @@ fn integration_prune_reexport_only_extern_scope() {
         );
     }
 }
+
+/// Regression pin: a non-root scope whose rules are ALL `_CDDL_CODEGEN_EXTERN_TYPE_` gets its
+/// `generated/<scope>/mod.rs` emitted (nothing but extern re-export glue), so the generated ROOT
+/// `mod.rs` MUST ALSO declare `pub mod <scope>;` — otherwise the module is undeclared and every
+/// cross-scope `use <scope>::…;` is E0432 in the emitted crate. The declaration set is derived from
+/// the POST-glue scope map, because the extern re-export glue is what first creates such a scope's
+/// entry: snapshotting the scope list before the glue drops it. Both the rust and wasm crate roots
+/// have this glue-after-snapshot shape, so both are asserted here. Generated as strings (no static
+/// dir needed), like the sibling extern-scope tests.
+#[test]
+fn integration_extern_only_scope_declared_in_root() {
+    use clap::Parser;
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_codegen_extern_only_decl_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("address")).unwrap();
+    // Root scope references the extern so it is reachable and its glue is emitted.
+    std::fs::write(dir.join("lib.cddl"), "root = [a: address]\n").unwrap();
+    // The declaring scope is extern-ONLY: nothing but one `_CDDL_CODEGEN_EXTERN_TYPE_` rule, so the
+    // ONLY thing that creates its scope entry is the extern re-export glue.
+    std::fs::write(
+        dir.join("address/mod.cddl"),
+        "address = _CDDL_CODEGEN_EXTERN_TYPE_\n",
+    )
+    .unwrap();
+
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        dir.to_str().unwrap(),
+        "--output",
+        "extern_only_decl",
+        "--preserve-encodings=true",
+        "--wasm=true",
+    ]);
+    let files =
+        crate::api::generated_strings(&cli).unwrap_or_else(|e| panic!("generation failed: {e}"));
+    let _ = std::fs::remove_dir_all(&dir);
+
+    // For BOTH crates: the extern-only scope's own generated file is emitted, and the generated ROOT
+    // mod.rs must declare `pub mod address;` against it.
+    for crate_dir in ["rust", "wasm"] {
+        let scope_file = format!("{crate_dir}/src/generated/address/mod.rs");
+        assert!(
+            files.contains_key(&scope_file),
+            "extern-only scope's generated file `{scope_file}` must be emitted; files: {:?}",
+            files.keys().collect::<Vec<_>>()
+        );
+        let root = files
+            .get(&format!("{crate_dir}/src/generated/mod.rs"))
+            .unwrap_or_else(|| panic!("{crate_dir} generated root mod.rs must exist"));
+        assert!(
+            root.lines().any(|l| l.trim() == "pub mod address;"),
+            "{crate_dir} generated root mod.rs must declare `pub mod address;` for the extern-only \
+             scope (else the crate does not compile):\n{root}"
+        );
+    }
+}
