@@ -5333,10 +5333,13 @@ fn ir_conformance_corpus() {
     // is not the other's).
     //
     // GEN_SKIP: genuinely can't be generated/compiled standalone, so it's skipped ENTIRELY (no
-    // generation, no dump, no sweep of any kind).
-    //   - dsl_custom: references user-supplied @custom_serialize fns; can't compile standalone (same
-    //     reason feature_corpus_compiles skips it).
-    const GEN_SKIP: &[&str] = &["dsl_custom"];
+    // generation, no dump, no sweep of any kind). This is the SAME decision `feature_corpus_compiles`
+    // makes (a generated crate referencing user-supplied code — `@custom_serialize` fns, extern /
+    // raw-bytes wrapper types — cannot compile standalone), so it consumes that gate's ledger
+    // (`COMPILE_SKIP`) as the single owner rather than mirroring it: the twin-list form drifted once
+    // (`extern_generic_raw_bytes` landed in `COMPILE_SKIP` only, leaving this gate deterministically
+    // red from that registration until the next manual full-tier run surfaced it).
+    const GEN_SKIP: &[&str] = COMPILE_SKIP;
     // RUST_ORACLE_SKIP: fixtures whose minted bytes are valid but hit a documented RUST conformance
     // validator gap. Such fixtures still generate, round-trip, and dump, but are generated WITHOUT
     // --emit-tests-conformance (rust validate half off) so the decorrelated ruby gem can continue
