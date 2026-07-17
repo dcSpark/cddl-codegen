@@ -8285,6 +8285,74 @@ fn workspace_dep_unknown_is_rejected_under_wasm_false() {
     );
 }
 
+/// `--extern-wrapper-index`'s documented startup validation is honored MODE-INDEPENDENTLY: under
+/// `--wasm=false`, both malformation classes must exit NONZERO, never a silent skip. Only the
+/// DEFERRAL effect (populating the index the wasm struct walk consults) is wasm-gated; the loader
+/// that IS the validator now runs in every mode. This pins the chosen posture for the "documented
+/// validation silently skipped under --wasm=false" gap — pre-fix both of these exact invocations
+/// exited 0 because `load_extern_wrapper_indices` was only called under `if cli.wasm`. Sibling of
+/// `workspace_dep_unknown_is_rejected_under_wasm_false`.
+#[test]
+fn extern_wrapper_index_is_validated_under_wasm_false() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    // (a) A `<dep>` naming no extern dependency of the spec is rejected — the name check fires
+    // without `--wasm`.
+    let unknown_out = "tests/workspace-requests/export_ewi_unknown_scratch";
+    let _ = std::fs::remove_dir_all(unknown_out);
+    let o = tool_cmd("cargo")
+        .arg("run")
+        .arg("--")
+        .arg("--input=tests/workspace-requests/consumer_inputs_flavored")
+        .arg(format!("--output={unknown_out}"))
+        .arg("--lib-name=flavored-consumer")
+        .arg("--extern-wrapper-index=not_a_real_dep=/nonexistent/collections.rs")
+        .arg("--wasm=false")
+        .output()
+        .unwrap();
+    assert!(
+        !o.status.success(),
+        "an unknown --extern-wrapper-index dep must be rejected under --wasm=false, not silently ignored"
+    );
+    let stderr = String::from_utf8_lossy(&o.stderr);
+    assert!(
+        stderr.contains("not_a_real_dep") && stderr.contains("--extern-wrapper-index"),
+        "the rejection must name the unknown dep and the flag; stderr:\n{stderr}"
+    );
+
+    // (b) A VALID dep (`wr_dep` is the extern dep of that input) pointed at an index file with a
+    // stray non-`pub use` line is rejected — proving the file is actually READ and parsed in
+    // rust-only mode, not merely that the dep name matched.
+    let idx_dir = "tests/workspace-requests/export_ewi_idx_scratch";
+    let _ = std::fs::remove_dir_all(idx_dir);
+    std::fs::create_dir_all(idx_dir).unwrap();
+    let idx_file = format!("{idx_dir}/bad_collections.rs");
+    std::fs::write(&idx_file, "struct NotAReExport;\n").unwrap();
+    let malformed_out = "tests/workspace-requests/export_ewi_malformed_scratch";
+    let _ = std::fs::remove_dir_all(malformed_out);
+    let o = tool_cmd("cargo")
+        .arg("run")
+        .arg("--")
+        .arg("--input=tests/workspace-requests/consumer_inputs_flavored")
+        .arg(format!("--output={malformed_out}"))
+        .arg("--lib-name=flavored-consumer")
+        .arg(format!("--extern-wrapper-index=wr_dep={idx_file}"))
+        .arg("--wasm=false")
+        .output()
+        .unwrap();
+    assert!(
+        !o.status.success(),
+        "a malformed --extern-wrapper-index file must be rejected under --wasm=false, not silently ignored"
+    );
+    let stderr = String::from_utf8_lossy(&o.stderr);
+    assert!(
+        stderr.contains("unexpected line"),
+        "the rejection must show the index file was read and parsed (the `unexpected line` panic); \
+         stderr:\n{stderr}"
+    );
+}
+
 /// Regression: a requested wrapper whose element is an ALIAS in the dep's spec — a named-type
 /// alias (`stake_credential = credential`), a primitive alias (`transaction_index = uint .size 2`),
 /// or an extern declaration (`metadata = _CDDL_CODEGEN_EXTERN_TYPE_`) — must be hosted like any
