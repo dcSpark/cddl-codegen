@@ -183,23 +183,16 @@ over-engineering; deleting an entry without either building the layer or recordi
 dead loses the lesson. When a trigger DOES fire, land the DETECTOR half of the named layer before
 the FIX half, and let the detector's arming-run measurement re-test the entry's premises before
 implementing its sketched remedy: residue predictions and escalation sketches are recorded against
-premises nobody has tested, and three falsified-premise instances are on record — the extreme-value
+premises nobody has tested — three falsified-premise instances are on record: the extreme-value
 entry's "generation already uses `_sz` where the `i64` limit bites" premise (falsified by the
-`FixedValue::to_bytes` bug its own entry named as a mere range cap); the unused-imports entry,
-whose "near zero" residue prediction measured 104 warning cells at the arming run and whose
-sketched glob-EDGE escalation would NOT have fixed the class the measurement exposed (the pruner's
-generated-only view, invisible to any glob-edge model); and the OPTIONAL fixed-FLOAT findings entry's
-"data-lossy but non-crashing" premise (the default profile "mints no presence field … the presence
-bit is lost"), whose UNIVERSAL "non-crashing" half the arming measurement falsified: the silent-drop
-half was real when the float sits ALONGSIDE other dynamic-length optionals (`array_opt_fields` in
-`tests/core/input.cddl` had `? x: 1.010101` / `? z: 2.71828` dropped with no presence field — visible
-in the pre-fix committed `core` snapshot), but an ISOLATED optional fixed float (a lone dynamic-length
-member, the shape an enumeration naturally picks) did NOT silently drop — it FAILED generation loudly
-(a malformed `Len(1 + )` length term → rustfmt error, exit 1). So the row's "certifies the drop as a
-pinned fidelity gap OR forces the fix" fork mis-modeled the isolated case, which had no drop to
-certify. Delivered by `tests/corpus/optional_fixed_float.cddl` + the float presence-field arms (which
-also fixed `array_opt_fields`'s silent drop); the residue is the preserve-only float class
-(`preserve_encodings_supports_floats`).
+`FixedValue::to_bytes` bug its own entry had named as a mere range cap); the unused-imports entry's
+"near zero" residue prediction (104 warning cells at the arming run, from a generated-only-view
+class its sketched glob-EDGE escalation could not have seen); and the optional-fixed-FLOAT findings
+entry's "data-lossy but non-crashing" premise (the silent drop was real only for a float ALONGSIDE
+other dynamic-length optionals — an ISOLATED one FAILED generation loudly, so the entry's
+certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks; delivered by
+`tests/corpus/optional_fixed_float.cddl` + the float presence-field arms, residue owned by
+`preserve_encodings_supports_floats`).
 
 - **An emission branch whose generated OUTPUT no fixture exercises is invisible to every gate —
   it can rot to uncompilable and hide behavioral bugs in both directions.** Proven instance
@@ -235,66 +228,45 @@ also fixed `array_opt_fields`'s silent drop); the residue is the preserve-only f
   round-tripped type's public fields ⊆ the fields its suite's asserts mention — buildable as a
   grep-level floor over `tests/*/tests.rs`), accepting its enumeration cost then, not before.
 - **Stale "known limitation" prose surviving its fix — a finding ledgered in TWO homes where the
-  fixing commit prunes only one.** Proven instance (read-caught during the facade-pin delivery,
-  not by any gate): the extern-only-scope undeclared-module finding was ledgered both in
+  fixing commit prunes only one.** First instance (read-caught during the facade-pin delivery, not
+  by any gate): the extern-only-scope undeclared-module finding was ledgered both in
   `cddl-matrix/ROADMAP.md` and as a hand "Known limitation" paragraph in
-  `docs/docs/comment_dsl.mdx`; the fix (`e07c3a0`) pruned the roadmap entry and minted the pin
-  (`integration_extern_only_scope_declared_in_root`) but the user-docs paragraph survived — still
-  advising users to keep a non-extern rule in every extern file — INCLUDING through a later docs
-  pass that edited the same file (`6f33565`), until the facade compile pin
-  (`facade_composition_compiles`) compiled the composition end to end and the delivery pruned it.
-  No existing or pending layer sees the class: `lint_doc_citations` checks that citations RESOLVE
-  (the paragraph cited nothing, and a fix typically mints a NEW pin rather than dangling an old
-  identifier), the declined docs-conformance harness explicitly excludes prose semantics, and the
-  matrix's Limitations projection (`query_q1_gaps.ts`) owns only the generated span in
-  `current_capacities.mdx` — hand limitation prose in any other doc is outside every scanner.
+  `docs/docs/comment_dsl.mdx`; the fix pruned the roadmap entry and minted the pin
+  (`integration_extern_only_scope_declared_in_root`) but the user-docs paragraph survived — through
+  a later docs pass over the same file — until the facade compile pin
+  (`facade_composition_compiles`) delivery pruned it. SECOND instance SET, a DIFFERENT home
+  (read-caught during the findings-sweep delivery): the corpus findings ledger
+  (`cddl-matrix/annotations/corpus/cddl_codegen.toml`) carried four failure-claim `[[finding]]`s /
+  sibling `[[note]]`s whose defects had been fixed out from under them (the `bool`-in-type-choice
+  E0282, the single-letter-`r` E0574, the inline-group data-loss "Bug", and the top-level
+  fixed-value "panics" prose) — these render into `tests/corpus/COVERAGE.md`, a GENERATED span
+  `lint_doc_citations` never scans, so that gate could never have caught them. The mechanical layer
+  is now BUILT for that home: the findings-claims arm (`project_corpus.ts` check `I`, local tier)
+  fails a failure-claim finding that names no resolvable tracking pin — current state, including
+  its accepted looseness (a resolving citation does not validate claim SEMANTICS, which stay
+  review-owned; any backtick token matching `src/tests/` text satisfies resolution — tighten on the
+  first vacuous pass observed), is documented in `cddl-matrix/README.md` § "Gotchas". Still future:
+  the USER-DOCS home has no arm — a parallel limitation-claims arm on `lint_doc_citations` (every
+  known-limitation-classed paragraph outside a generated span carries a resolvable tracking
+  citation, or folds into a projected span — the matrix north star's "more docs follow") remains
+  unbuilt, since the two homes have different scanners and neither arm sees the other's prose.
   Working rules meanwhile: a limitation recorded in user docs names its tracking artifact (the
-  reject/panic fixture, pin, or ledger entry) in the same paragraph; and a fixing session greps
-  `docs/` for the limitation's key phrases before shipping.
-  SECOND instance SET, a DIFFERENT home (the corpus findings ledger, read-caught during the
-  findings-sweep delivery): `cddl-matrix/annotations/corpus/cddl_codegen.toml` carried failure-claim
-  `[[finding]]`s (and the sibling `prelude.*`/`value.*` `[[note]]`s) whose defects had been fixed out
-  from under them — the `bool`-in-type-choice E0282 finding (closed by the bool-arm emission switch to
-  `bool::deserialize(raw)`, whose load-bearing comment in the `Primitive::Bool` arm of
-  src/generation/deserialize.rs names the inference class; transition-verified — stable probes at
-  the fix commit and its parent, and a corrected-polarity bisect converging on the same commit —
-  see `draft/bisect-verdict-discipline.md`), the single-letter-`r`
-  E0574 finding (closed by the generic-name collision-proofing fix, whose machinery the cbor_event 3.x
-  de-generification later retired by dropping the fn generics entirely), the inline-group
-  data-loss "Bug" (closed by the inline-group flatten fix — the entry now generates a 2-field struct),
-  and the top-level fixed-value "panics" prose (the values now REJECT GRACEFULLY, and the "fails as a
-  member too" half was falsified by fixed-value member support). These render into `tests/corpus/COVERAGE.md`,
-  a GENERATED span — invisible to `lint_doc_citations`, which scans hand docs only — so that gate could
-  never have caught them. The named mechanical layer is now BUILT for THIS home: a findings-claims arm in
-  `project_corpus.ts` (check `I`) fails the local tier when a failure-claim finding ("Bug —"/"Gap —" or
-  "Candidate cddl-codegen fix") names no resolvable tracking pin (a `tests/…` file or a `src/tests/`
-  symbol) — the bool-choice closure now owned by the `bool_choice.cddl` corpus fixture, the `r`/`w`
-  hazard by `identifier_hazard_tests.rs`, and the graceful top-level rejects by the
-  `unsupported_construct_reject_catalog` scorecard. What stays OUTSIDE the
-  arm: a citation that RESOLVES does not validate the claim's SEMANTICS (whether a fix is genuinely
-  needed / the claim is still true) — that stays review-owned. And the USER-DOCS home from the first
-  instance is still working-rule-only: a parallel limitation-claims arm on `lint_doc_citations` — every
-  known-limitation-classed paragraph outside a generated span must carry a resolvable tracking citation,
-  or be folded into a projected span (the matrix north star's "more docs follow") — remains future work,
-  since the two homes have different scanners and neither arm sees the other's prose. A closure
-  working rule this delivery itself proved necessary: the prose that CLOSES a stale finding must
-  attribute the fix by REPRODUCING against the candidate commit's parent (a throwaway worktree +
-  the probe is minutes), never by narrative plausibility — the sweep's first closure draft
-  attributed both compile-bug fixes to the cbor_event 3.x de-generification, and a worktree
-  REPRODUCTION at the upgrade's parent falsified that for E0282 (the real fix was the bool-arm
-  emission switch, days earlier) before the wrong story shipped past review. This rule is REVIEW-OWNED by explicit
-  decision, not pending a mechanical layer: whether a reproduction was actually performed leaves
-  no machine-checkable artifact (probe logs are gitignored run evidence), so a detector could only
-  check that prose CLAIMS verification — the same claim-semantics boundary check I stops at. Same
-  disposition class as the declined docs-conformance harness (prose semantics are review's job at
-  review's error rate); the reopening signal is a false attribution SHIPPING past review, not one
-  being caught by it. Bisect/reproduction mechanics for whoever next needs them:
-  `draft/bisect-verdict-discipline.md` — chiefly the `git bisect run` exit-convention POLARITY
-  trap (exit 0 always means the OLD term, so a fix-hunting script that exits 0 on "works" is
-  inverted; four runs each returned the search's own fixed endpoint as "first fixed", the tell
-  that was missed twice), plus the specific-error-keyed verdict shape and the cheaper
-  reproduce-at-parent/pickaxe-first alternatives. Check I's own accepted looseness is documented at the arm (any backtick token matching
-  src/tests/ text satisfies resolution; tighten on the first vacuous pass observed, not before).
+  reject/panic fixture, pin, or ledger entry) in the same paragraph; a fixing session greps `docs/`
+  for the limitation's key phrases before shipping; and the prose that CLOSES a stale finding
+  attributes the fix by REPRODUCING against the candidate commit's parent (a throwaway worktree +
+  the probe is minutes), never by narrative plausibility — the findings sweep's first closure draft
+  attributed both compile-bug closures to a plausible-but-wrong commit, falsified only by a
+  worktree reproduction at that commit's parent before the wrong story shipped. The
+  reproduce-at-parent rule is REVIEW-OWNED by explicit decision, not pending a mechanical layer:
+  whether a reproduction happened leaves no machine-checkable artifact, so a detector could only
+  check that prose CLAIMS verification — the same claim-semantics boundary check I stops at (same
+  disposition class as the declined docs-conformance harness; the reopening signal is a false
+  attribution SHIPPING past review, not one being caught by it). Bisect/reproduction mechanics for
+  whoever next needs them — chiefly the `git bisect run` exit-convention POLARITY trap (exit 0
+  always means the OLD term, so a fix-hunting script that exits 0 on "works" is inverted and the
+  search returns its own fixed endpoint), plus the specific-error-keyed verdict shape and the
+  cheaper reproduce-at-parent/pickaxe-first alternatives — live in
+  `draft/bisect-verdict-discipline.md`.
 - **Observed-baseline comments beside gate floors rot silently — TWO instances, two homes, two
   distinct rot modes; the floors/consts stay the enforced artifact.** These comments are
   informational and review-maintained by design (replacing them with exact gate-asserted counts
@@ -491,31 +463,18 @@ also fixed `array_opt_fields`'s silent drop); the residue is the preserve-only f
   deny only if it is currently green-able on both profiles (nursery lints carry known false
   positives). Act on a second instance or a consumer report, not before.
 - **`unused_imports` on the pruned collection-type imports — residual imprecision classes not yet
-  escalated.** The usage-derived prune (`import_prune::prune_generated_files`, run once over the whole
-  file map in `generation/export.rs`'s `generated_files`) removes the blindly-pushed allowlist imports
-  (`BTreeMap`/`OrderedHashMap`/`NonEmptyVec`/`NonEmptyMap` plus the `--preserve-encodings` enums
-  `LenEncoding`/`StringEncoding`) that no descendant in a file's module family genuinely consumes. The
-  rustc-warning DETECTOR is now live: the unused-allowlisted-import scan
-  (`unused_allowlisted_import_lines`) inside `feature_corpus_compiles` fails on any `unused import`
-  warning naming an allowlist ident across the corpus fixtures × 3 profiles × {rust, wasm, and — under
-  the json profile — json-gen} crates of
-  purely-generated code, cache-key-versioned by the `lint=unused-imports-v1` marker so a closure-logic
-  change re-runs every cell. At its arming run it fired on **104 warning cells** (52 preserve-profile
-  fixtures × {rust, wasm}, every one a `LenEncoding`/`StringEncoding` import in a scope's `mod.rs`).
-  Root cause: the prune's view is generated-only — `serialization.rs`'s static prelude, which DEFINES
-  the two encoding enums, concatenates onto the root file AFTER the pass — so the `serialization.rs`
-  descendant appeared to consume `mod.rs`'s blindly-pushed re-import via `use super::*;` when at
-  compile time it resolves the enums at its own definition site. Closed in the same change by two
-  nearest-binding disqualifiers on a descendant's protection: it does not protect an ancestor's import
-  of X when it directly imports X, or when its module is at/under the module the import targets
-  (`use crate::<segs>::X;` → module `crate::<segs>`, derived from the import path precisely because the
-  definition is invisible to this pass). Still future-facing: the two deliberately-conservative
-  keep classes the disqualifiers do not cover — (a) an intermediate module between the ancestor and a
-  deeper protector that consumes the ancestor's copy for everything below it, and (b) descendants that
-  never actually glob-chain back to the ancestor (exact glob-EDGE tracking). Both are warning-severity
-  only (never a compile error) and now watched by the live arm; replacing the descendant-closure
-  approximation with exact resolution modelling happens only on a real warning report from that arm —
-  not before.
+  escalated.** The rustc-warning DETECTOR is live — the unused-allowlisted-import scan
+  (`unused_allowlisted_import_lines`) inside `feature_corpus_compiles`, cache-key-versioned by the
+  `lint=unused-imports-v1` marker; current state in `tests/README.md`'s description of that gate —
+  and its arming-run find (104 warning cells, from the prune's generated-only view of the
+  encoding-enum prelude) is closed by the two nearest-binding disqualifiers on a descendant's
+  protection (direct-import; target-module) in `import_prune::prune_generated_files`. Still
+  future-facing: the two deliberately-conservative keep classes the disqualifiers do not cover —
+  (a) an intermediate module between the ancestor and a deeper protector that consumes the
+  ancestor's copy for everything below it, and (b) descendants that never actually glob-chain back
+  to the ancestor (exact glob-EDGE tracking). Both are warning-severity only (never a compile
+  error) and watched by the live arm; replace the descendant-closure approximation with exact
+  resolution modelling only on a real warning report from that arm — not before.
 - **Mechanical layers for the two review-owned design rules in `tests/README.md` § "Design
   rules" (invariant-softening, vacuity-floor witness) — build only if a class recurs.** The
   vacuity-floor detector is a scoped mutation sweep over the harness's emission helpers — a
