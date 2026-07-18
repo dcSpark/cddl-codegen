@@ -8,6 +8,7 @@ manifest:
 | `rust.toml` | `rust/Cargo.toml` | `static/Cargo_rust.toml` |
 | `wasm.toml` | `wasm/Cargo.toml` | `static/Cargo_wasm.toml` |
 | `json_gen.toml` | `wasm/json-gen/Cargo.toml` | `static/Cargo_json_gen.toml` |
+| `static_runtime.toml` | the `--export-static-crate` target's `Cargo.toml` | `static/Cargo_static_runtime.toml` |
 
 At runtime, cddl-codegen folds a log per-path **last-write-wins** and *merges* the result into
 whatever `Cargo.toml` the user already has (keys the log never mentions are never touched — see

@@ -124,7 +124,7 @@ halves so your hand edits to the crate root survive regeneration:
   carries [`@used_as_key`](./comment_dsl) — `key_demand_assertions.rs`. (Under
   [`--common-import-override`](./command_line_flags) the runtime modules are
   **not** emitted — the override crate owns its copy, and
-  [`--export-static-dir`](./command_line_flags) is the supported path for keeping
+  [`--export-static-crate`](./command_line_flags) is the supported path for keeping
   that copy current.) This subtree is
   overwritten wholesale on every export — untagged hand edits to the *code* are clobbered. What
   DOES survive regeneration: **own-line comments** (carried automatically by symbol identity —
@@ -483,6 +483,11 @@ Every key falls into one of three categories:
 The tool also writes a `package.metadata.cddl-codegen.generated-with` stamp recording the
 cddl-codegen version. It is write-only — the tool never reads it back (reading prior output would
 make generation depend on disk contents), so it's purely informational for debugging/support.
+
+A fourth manifest rides the same merge machinery with a **co-owned** variant of this contract: the
+[`--export-static-crate`](./command_line_flags) target's `Cargo.toml`. There the tool asserts only
+the dependencies its exported runtime source references, seeds (never rewrites) `package` identity,
+and never removes a dependency — see that flag's documentation for the exact contract.
 
 If an existing manifest is **not valid TOML**, regeneration is a **hard error naming the file** — the
 tool never falls back to clobbering, because a parse failure is exactly the case where it can't

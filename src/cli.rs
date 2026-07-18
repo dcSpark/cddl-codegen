@@ -211,25 +211,31 @@ pub struct Cli {
     #[clap(long = "key-requests", value_parser)]
     pub key_requests: Vec<String>,
 
-    /// Additionally write the composed rust static runtime (error.rs, the serialization.rs prelude,
-    /// ordered_hash_map.rs, non_empty.rs, non_empty_map.rs) into `<dir>` (created if needed),
-    /// regardless of whether in-crate static export happens. The upgrade path for
-    /// `--common-import-override` users, who own their runtime copy and otherwise get no static
-    /// export. The exported set is a PURE FUNCTION OF THE FLAG SET, never of the spec: unlike the
-    /// in-crate path (which gates non_empty/non_empty_map/raw_bytes on spec usage), the exported dir
-    /// ALWAYS includes non_empty.rs, non_empty_map.rs, and raw_bytes_encoding — a shared runtime
-    /// crate serves many specs, so which spec was run must not change the output. Flavor selection
-    /// (preserve-encodings / canonical / json / schemars / depth-guard) is identical to the in-crate
-    /// composer. No mod.rs/lib.rs is written — the target crate owns its module declarations; static
-    /// files reference siblings via `super::…`. Files pass through the same comment-preservation
-    /// overlay as in-crate output. The dir is OUTSIDE the output crate and is not part of the
-    /// stale-file bookkeeping.
+    /// Additionally export the composed rust static runtime into the CRATE at `<dir>` (created if
+    /// needed), regardless of whether in-crate static export happens: the runtime files (error.rs,
+    /// the serialization.rs prelude, ordered_hash_map.rs, non_empty.rs, non_empty_map.rs) go to
+    /// `<dir>/src/`, and `<dir>/Cargo.toml` gets the static-runtime manifest changeset merged in
+    /// (`cargo_manifest::ops_for_static_runtime`) so the dependency versions the exported source
+    /// requires can never skew from the source itself — source and the manifest that satisfies it
+    /// are one artifact. The upgrade path for `--common-import-override` users, who own their
+    /// runtime copy and otherwise get no static export. The exported set is a PURE FUNCTION OF THE
+    /// FLAG SET, never of the spec: unlike the in-crate path (which gates
+    /// non_empty/non_empty_map/raw_bytes on spec usage), the export ALWAYS includes non_empty.rs,
+    /// non_empty_map.rs, and raw_bytes_encoding — a shared runtime crate serves many specs, so
+    /// which spec was run must not change the output. Flavor selection (preserve-encodings /
+    /// canonical / json / schemars / depth-guard) is identical to the in-crate composer. No
+    /// mod.rs/lib.rs is written — the target crate owns its module declarations; static files
+    /// reference siblings via `super::…`. Files pass through the same comment-preservation overlay
+    /// as in-crate output. The crate is OUTSIDE the output crate and is not part of the stale-file
+    /// bookkeeping. (This flag replaced `--export-static-dir`, which took the src dir itself and
+    /// left the manifest untouched — the rename is deliberately a loud break, since reinterpreting
+    /// the old value as a crate root would silently write `src/src/` and seed a stray Cargo.toml.)
     #[clap(
-        long = "export-static-dir",
+        long = "export-static-crate",
         value_parser,
-        value_name = "EXPORT_STATIC_DIR"
+        value_name = "EXPORT_STATIC_CRATE"
     )]
-    pub export_static_dir: Option<std::path::PathBuf>,
+    pub export_static_crate: Option<std::path::PathBuf>,
 }
 
 impl Cli {

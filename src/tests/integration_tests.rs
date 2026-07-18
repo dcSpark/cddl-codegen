@@ -13615,23 +13615,30 @@ fn comment_preservation_disk_round_trip() {
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
-/// `--export-static-dir=<dir>` writes the composed rust static runtime into `<dir>`, independent of
-/// in-crate static export, as a PURE FUNCTION OF THE FLAG SET (not of the spec). Covers, in the
+/// `--export-static-crate=<dir>` writes the composed rust static runtime into `<dir>/src/` AND
+/// merges the static-runtime manifest changeset into `<dir>/Cargo.toml`, independent of in-crate
+/// static export, as a PURE FUNCTION OF THE FLAG SET (not of the spec). Covers, in the
 /// preserve-encodings + canonical + json flavor over a spec that uses NEITHER `[+ T]` NOR
 /// `{+ k => v}` (so the always-include rule is meaningfully exercised — the in-crate path would emit
 /// no NonEmpty runtime here):
-///   (a) the dir holds error.rs / serialization.rs / ordered_hash_map.rs / non_empty.rs /
+///   (a) `<dir>/src/` holds error.rs / serialization.rs / ordered_hash_map.rs / non_empty.rs /
 ///       non_empty_map.rs with the expected composed content — serialization.rs is the PRELUDE ONLY
 ///       (a prelude trait present, raw_bytes always included, and NO generated per-type impl for the
 ///       distinctively-named spec type); non_empty_map.rs carries OrderedHashMap not BTreeMap under
-///       preserve;
+///       preserve; and a fresh `<dir>/Cargo.toml` is seeded with the flavor's dep set (cbor_event,
+///       hex, linked-hash-map, serde — and NOT schemars, since json-schema-export is off);
 ///   (b) a `cddl-codegen:insert` block hand-added to an exported file survives a re-export
 ///       (the comment/code-preservation overlay runs in this dir too);
-///   (c) with the flag unset the dir is untouched (a pre-existing sentinel file is neither read nor
-///       clobbered, and no runtime file appears).
+///   (c) with the flag unset the crate dir is untouched (a pre-existing sentinel file is neither
+///       read nor clobbered, and no runtime file appears);
+///   (d) an EXISTING hand-owned Cargo.toml is merged, not clobbered: package identity and hand deps
+///       survive verbatim (seed/pass-through), a stale cbor_event pin is bumped to the version the
+///       exported source requires, and a hand serde pin that satisfies the tool's floor is kept —
+///       the exact skew class where source targeting a new cbor_event landed next to a manifest
+///       still pinning the old one, which this flag's pre-crate-shaped form silently allowed.
 /// `--wasm=false` keeps it to the single rust crate.
 #[test]
-fn export_static_dir_writes_composed_runtime() {
+fn export_static_crate_writes_composed_runtime_and_manifest() {
     use clap::Parser;
     let scratch = std::env::temp_dir().join(format!(
         "cddl_codegen_export_static_{:016x}",
@@ -13645,7 +13652,8 @@ fn export_static_dir_writes_composed_runtime() {
     // for "serialization.rs is prelude-only" (no static prelude mentions it).
     std::fs::write(&input, "myuniqueexporttype = [x: uint, y: tstr]\n").unwrap();
     let out = scratch.join("crate");
-    let static_dir = scratch.join("exported-runtime");
+    let runtime_crate = scratch.join("exported-runtime");
+    let static_dir = runtime_crate.join("src");
 
     let flavor = [
         "cddl-codegen",
@@ -13657,12 +13665,12 @@ fn export_static_dir_writes_composed_runtime() {
         "--preserve-encodings=true",
         "--canonical-form=true",
         "--json-serde-derives=true",
-        "--export-static-dir",
-        static_dir.to_str().unwrap(),
+        "--export-static-crate",
+        runtime_crate.to_str().unwrap(),
     ];
     let cli = crate::cli::Cli::parse_from(flavor);
 
-    // (a) First export: the exported dir holds the composed runtime.
+    // (a) First export: the exported crate's src/ holds the composed runtime.
     crate::api::generate_to_disk(&cli).unwrap();
     let read = |name: &str| {
         std::fs::read_to_string(static_dir.join(name))
@@ -13721,6 +13729,26 @@ fn export_static_dir_writes_composed_runtime() {
         !static_dir.join("mod.rs").exists() && !static_dir.join("lib.rs").exists(),
         "the exported dir must NOT contain mod.rs/lib.rs"
     );
+    // A fresh crate dir gets a seeded Cargo.toml carrying exactly the deps this flavor's exported
+    // source references: cbor_event + hex always, linked-hash-map (preserve-encodings), serde
+    // (json-serde-derives) — and NOT schemars, since json-schema-export is off (set-or-SKIP: absent
+    // is fine, but the tool must not have added it).
+    let manifest = std::fs::read_to_string(runtime_crate.join("Cargo.toml"))
+        .expect("a fresh export-static-crate dir must get a seeded Cargo.toml");
+    assert!(
+        manifest.contains("name = \"cddl-runtime\""),
+        "fresh manifest must seed the package identity:\n{manifest}"
+    );
+    for dep in ["cbor_event", "hex", "linked-hash-map", "serde"] {
+        assert!(
+            manifest.contains(&format!("{dep} = ")),
+            "fresh manifest must declare {dep} (this flavor's exported source references it):\n{manifest}"
+        );
+    }
+    assert!(
+        !manifest.contains("schemars"),
+        "fresh manifest must NOT declare schemars — json-schema-export is off:\n{manifest}"
+    );
 
     // (b) Inject a `cddl-codegen:insert` block into the exported serialization.rs (before a stable
     // prelude statement inside a fn body) and re-export: the preservation overlay must carry it.
@@ -13749,11 +13777,11 @@ fn export_static_dir_writes_composed_runtime() {
         "preservation in the exported dir must not fail loudly on an unchanged re-export:\n{ser_second}"
     );
 
-    // (c) Flag unset → the exported dir is untouched. A pre-existing sentinel with content that is
-    // NOT valid Rust proves the dir is neither read for preservation nor clobbered.
+    // (c) Flag unset → the exported crate dir is untouched. A pre-existing sentinel with content
+    // that is NOT valid Rust proves the dir is neither read for preservation nor clobbered.
     let untouched_dir = scratch.join("untouched-runtime");
-    std::fs::create_dir_all(&untouched_dir).unwrap();
-    let sentinel = untouched_dir.join("error.rs");
+    std::fs::create_dir_all(untouched_dir.join("src")).unwrap();
+    let sentinel = untouched_dir.join("src").join("error.rs");
     std::fs::write(&sentinel, "this is not rust {{{").unwrap();
     let cli_no_flag = crate::cli::Cli::parse_from([
         "cddl-codegen",
@@ -13770,11 +13798,59 @@ fn export_static_dir_writes_composed_runtime() {
     assert_eq!(
         std::fs::read_to_string(&sentinel).unwrap(),
         "this is not rust {{{",
-        "with --export-static-dir unset, a same-named dir must be left completely untouched"
+        "with --export-static-crate unset, a same-named dir must be left completely untouched"
     );
     assert!(
-        !untouched_dir.join("serialization.rs").exists(),
-        "with --export-static-dir unset, no runtime file may be written anywhere but the crate"
+        !untouched_dir.join("src").join("serialization.rs").exists()
+            && !untouched_dir.join("Cargo.toml").exists(),
+        "with --export-static-crate unset, no runtime file or manifest may be written anywhere \
+         but the output crate"
+    );
+
+    // (d) An existing hand-owned Cargo.toml is MERGED: identity + hand deps survive, the stale
+    // cbor_event pin is bumped to what the exported source requires, a satisfying hand serde pin is
+    // kept. This is the regression test for the manifest-skew class the crate-shaped flag exists to
+    // close (exported source targeting a new cbor_event beside a manifest still pinning the old).
+    let hand_crate = scratch.join("hand-runtime");
+    std::fs::create_dir_all(&hand_crate).unwrap();
+    std::fs::write(
+        hand_crate.join("Cargo.toml"),
+        "[package]\n\
+         name = \"my-hand-core\"\n\
+         version = \"6.2.0\"\n\
+         edition = \"2024\"\n\
+         \n\
+         [dependencies]\n\
+         cbor_event = \"2.4.0\"\n\
+         serde = { version = \"1.0.152\", features = [\"derive\"] }\n\
+         bech32 = \"0.12.0\"\n",
+    )
+    .unwrap();
+    let mut hand_flavor = flavor;
+    hand_flavor[hand_flavor.len() - 1] = hand_crate.to_str().unwrap();
+    let cli_hand = crate::cli::Cli::parse_from(hand_flavor);
+    crate::api::generate_to_disk(&cli_hand).unwrap();
+    let hand_manifest = std::fs::read_to_string(hand_crate.join("Cargo.toml")).unwrap();
+    assert!(
+        hand_manifest.contains("name = \"my-hand-core\"")
+            && hand_manifest.contains("version = \"6.2.0\""),
+        "hand package identity must survive the merge (seed-once):\n{hand_manifest}"
+    );
+    assert!(
+        hand_manifest.contains("bech32 = \"0.12.0\""),
+        "hand deps the changeset never mentions must pass through:\n{hand_manifest}"
+    );
+    assert!(
+        hand_manifest.contains("cbor_event = \"3.2.0\"") && !hand_manifest.contains("2.4.0"),
+        "the stale cbor_event pin must be bumped to the version the exported source requires:\n{hand_manifest}"
+    );
+    assert!(
+        hand_manifest.contains("1.0.152"),
+        "a hand serde pin satisfying the tool's floor must be kept verbatim:\n{hand_manifest}"
+    );
+    assert!(
+        hand_crate.join("src").join("error.rs").exists(),
+        "the runtime files land in the hand crate's src/ alongside the merged manifest"
     );
 
     let _ = std::fs::remove_dir_all(&scratch);
