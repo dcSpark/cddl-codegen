@@ -502,6 +502,12 @@ fn render_f64(f: f64) -> String {
 /// carries its seam.
 pub(crate) const EXTERN_INTERFACE_HEADER: &str = "; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1";
 
+/// The version-agnostic prefix of the seam header (everything before the ` v1` version token). A
+/// flag-fed file whose first line starts with this prefix but is not exactly [`EXTERN_INTERFACE_HEADER`]
+/// carries an UNSUPPORTED version (distinct diagnostic from a MISSING header); see the consumer-side
+/// strict scan in `api::scan_extern_import_seam`.
+pub(crate) const EXTERN_INTERFACE_HEADER_PREFIX: &str = "; _CDDL_CODEGEN_EXTERN_INTERFACE_";
+
 /// The dep-side compiled self-check's assertion for an included row (commit 5). Derived from the
 /// SAME projection the export emits, so the export and its self-check cannot drift.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
