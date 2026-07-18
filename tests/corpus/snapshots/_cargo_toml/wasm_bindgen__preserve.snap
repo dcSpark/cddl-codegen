@@ -14,7 +14,7 @@ generated-with = "0.1.0"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-cbor_event = "2.4.0"
+cbor_event = "3.2.0"
 linked-hash-map = "0.5.3"
 derivative = "2.2.0"
 wasm-bindgen = "0.2"

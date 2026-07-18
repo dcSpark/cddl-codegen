@@ -9,13 +9,12 @@ use super::*;
 use crate::generated::error::*;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
-use std::io::{BufRead, Seek, SeekFrom, Write};
 
 impl cbor_event::se::Serialize for Holder {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array(cbor_event::Len::Len(1))?;
         let mut payload_inner_se = Serializer::new_vec();
         payload_inner_se.write_map(cbor_event::Len::Len(self.payload.len() as u64))?;
@@ -30,7 +29,7 @@ impl cbor_event::se::Serialize for Holder {
 }
 
 impl Deserialize for Holder {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.array()?;
             let mut read_len = CBORReadLen::from(len);
@@ -38,7 +37,7 @@ impl Deserialize for Holder {
             read_len.finish()?;
             let payload = (|| -> Result<_, DeserializeError> {
                 let payload_bytes = raw.bytes()?;
-                let inner_de = &mut Deserializer::from(std::io::Cursor::new(payload_bytes));
+                let inner_de = &mut Deserializer::from(payload_bytes);
                 let mut payload_table = BTreeMap::new();
                 let payload_len = inner_de.map()?;
                 while match payload_len {
@@ -80,17 +79,17 @@ impl Deserialize for Holder {
 }
 
 impl cbor_event::se::Serialize for PreludeBignint {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag(3u64)?;
         serializer.write_bytes(&self.0)
     }
 }
 
 impl Deserialize for PreludeBignint {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             Ok(Self(match raw.tag()? {
                 3 => raw.bytes()?,

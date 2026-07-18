@@ -143,12 +143,6 @@ pub struct GenerationScope {
     requested_non_empty_vec: bool,
     requested_non_empty_map: bool,
     no_deser_reasons: BTreeMap<RustIdent, Vec<String>>,
-    /// Type-parameter names for the emitted `serialize` / `deserialize` fns. Normally `"W"` / `"R"`,
-    /// but if a rule camel-cases to a type named `W`/`R` (which would shadow the generic and break
-    /// compilation) these fall back to the first non-colliding candidate. Computed once in
-    /// `generate()` from the ident set; see `pick_generic_name`.
-    serialize_generic: String,
-    deserialize_generic: String,
 }
 
 impl Default for GenerationScope {
@@ -181,24 +175,12 @@ impl GenerationScope {
             requested_non_empty_vec: false,
             requested_non_empty_map: false,
             no_deser_reasons: BTreeMap::new(),
-            serialize_generic: "W".to_string(),
-            deserialize_generic: "R".to_string(),
         }
     }
 
     /// Generates, i.e. populates the state, based on `types`.
     /// this does not create any files, call export() after.
     pub fn generate(&mut self, types: &IntermediateTypes, cli: &Cli) {
-        // Pick collision-proof generic-parameter names for the emitted serialize/deserialize fns
-        // BEFORE emitting anything: a rule named `w`/`r` camel-cases to a type `W`/`R` that would
-        // shadow the hardcoded `fn serialize<'se, W: Write>` / `fn deserialize<R: BufRead + Seek>`
-        // parameters, so we thread the chosen names through `make_{serialization,deserialization}_
-        // function`. Depends only on the (deterministic) ident set, so output stays byte-identical:
-        // with no collision these resolve to the defaults `"W"` / `"R"` and nothing churns.
-        let defined_idents = types.defined_rust_idents();
-        self.serialize_generic = pick_generic_name(&defined_idents, "W", "Ser");
-        self.deserialize_generic = pick_generic_name(&defined_idents, "R", "De");
-
         // `--workspace-dep` and `--extern-wrapper-index` both LOAD AND VALIDATE mode-independently, so
         // every documented startup malformation aborts generation whether or not `--wasm` is set; their
         // DEFERRAL EFFECTS differ in scope. `--workspace-dep`'s primary sidecar
@@ -1012,10 +994,6 @@ impl GenerationScope {
         let push_base_serialize_imports = |scope: &mut codegen::Scope| {
             scope
                 .push_import("super", "*", None)
-                .push_import("std::io", "BufRead", None)
-                .push_import("std::io", "Seek", None)
-                .push_import("std::io", "SeekFrom", None)
-                .push_import("std::io", "Write", None)
                 .push_import("cbor_event::de", "Deserializer", None)
                 .push_import("cbor_event::se", "Serializer", None)
                 .push_import(format!("{}::error", cli.common_import_rust()), "*", None);
@@ -1045,7 +1023,7 @@ impl GenerationScope {
         }
 
         // The static serialization prelude prepended to the root serialization.rs (when we own the
-        // static files) references Serializer/Deserializer/BufRead/DeserializeError/etc. Those
+        // static files) references Serializer/Deserializer/DeserializeError/etc. Those
         // imports are added to the ROOT_SCOPE serialize scope by the loop above — but a spec whose
         // root has no per-type serialization (e.g. only c-style enums) produces no ROOT_SCOPE entry,
         // leaving the prelude (and any rust_serialize_lib impls) without imports and the crate
@@ -2080,28 +2058,6 @@ fn cbor_read_len_ctor(cli: &Cli) -> &'static str {
     } else {
         "CBORReadLen::from"
     }
-}
-
-/// First name in a deterministic candidate sequence that does NOT collide with a defined type
-/// ident: `base` (`"W"`/`"R"`), then `base+suffix` (`"WSer"`/`"RDe"`), then `base+suffix+index`
-/// (`"WSer0"`, `"WSer1"`, …). The bare `base` wins whenever nothing is named it, so a spec with no
-/// `w`/`r` collision keeps the historical `"W"`/`"R"` names and the snapshot corpus does not churn.
-fn pick_generic_name(
-    taken: &std::collections::BTreeSet<String>,
-    base: &str,
-    suffix: &str,
-) -> String {
-    if !taken.contains(base) {
-        return base.to_string();
-    }
-    let combined = format!("{base}{suffix}");
-    if !taken.contains(&combined) {
-        return combined;
-    }
-    (0..)
-        .map(|i| format!("{base}{suffix}{i}"))
-        .find(|candidate| !taken.contains(candidate))
-        .expect("infinite candidate sequence always yields a free name")
 }
 
 fn make_encoding_struct(encoding_name: &str) -> codegen::Struct {

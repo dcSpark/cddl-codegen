@@ -10,13 +10,12 @@ use super::*;
 use crate::generated::error::*;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
-use std::io::{BufRead, Seek, SeekFrom, Write};
 
 impl cbor_event::se::Serialize for ArrMember {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array_sz(
             self.encodings
                 .as_ref()
@@ -44,7 +43,7 @@ impl cbor_event::se::Serialize for ArrMember {
 }
 
 impl Deserialize for ArrMember {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.array_sz()?;
             let len_encoding: LenEncoding = len.into();
@@ -88,10 +87,10 @@ impl Deserialize for ArrMember {
 }
 
 impl cbor_event::se::Serialize for MapMember {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_map_sz(
             self.encodings
                 .as_ref()
@@ -150,7 +149,7 @@ impl cbor_event::se::Serialize for MapMember {
 }
 
 impl Deserialize for MapMember {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.map_sz()?;
             let len_encoding: LenEncoding = len.into();
@@ -271,10 +270,10 @@ impl Deserialize for MapMember {
 }
 
 impl cbor_event::se::Serialize for TaggedMembers {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array_sz(
             self.encodings
                 .as_ref()
@@ -333,7 +332,7 @@ impl cbor_event::se::Serialize for TaggedMembers {
 }
 
 impl Deserialize for TaggedMembers {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.array_sz()?;
             let len_encoding: LenEncoding = len.into();

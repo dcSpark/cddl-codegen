@@ -402,3 +402,11 @@ nem_holder = {
 ; single-field map-record whose deserialize routes an empty wire map through the same TryFrom door as
 ; the API (identical RangeCheck error at both doors)
 nem_wire = { m: {+ uint => uint} }
+
+; --- cbor_event 3.2.0 upgrade vectors: nullable fields whose INNER type also lives in CBOR major 7 ---
+; The `T / null` null-peek must not assume a 1-byte Special: bool/null are 1 byte but two-byte simples
+; (f8 xx) are 2 and f16/f32/f64 are 3/5/9, so the emitted peek saves/restores the reader position
+; around `special()` instead of rewinding a fixed width.
+nullable_bool = bool / null
+nullable_float = float64 / null
+nullable_specials = [b: nullable_bool, f: nullable_float]

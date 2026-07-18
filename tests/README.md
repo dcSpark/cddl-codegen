@@ -772,15 +772,7 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
   got/want), and `DECODE_FLOOR_ARM_EXEMPT` (`lib.ts`, stale-guarded) ledgers a genuinely unmintable arm
   class with a citation. Mint side (`verify.ts mintRow`): a **resample-until-covered loop** draws extra
   bounded `generate` batches for any missing class, keeping only two-oracle-valid candidates; on cap
-  exhaustion with an unledgered missing class the mint exits 1, naming the row and class. Related but
-  distinct: **half-precision (`f9`) item heads are banned from accept vectors entirely** — mint-side
-  (every accept-candidate path drops them, logged as DROPPED) and statically (the drift gate fails a
-  committed f9-headed accept). cbor_event 2.4.0 mis-decodes `f9` heads (`cddl-matrix/ROADMAP.md`
-  § findings), and an f9 accept would replay GREEN-but-CORRUPTED — the accept assert is Ok-only, the
-  encoding-variant mutator copies float heads verbatim (`encoding_variants_copy_float_heads_verbatim`),
-  and the float class is preserve-skipped — so it would pin nothing about the decoded value; the mint
-  takes an f32/f64 encoding instead. Prune the ban (both sides together) when a fixed cbor_event ships.
-  At HEAD the ledger is EMPTY — its one past resident (`prelude.number`'s float arm, unmintable while
+  exhaustion with an unledgered missing class the mint exits 1, naming the row and class. At HEAD the ledger is EMPTY — its one past resident (`prelude.number`'s float arm, unmintable while
   the rust reference rejected a float against the prelude `number` keyword) was re-minted with real
   f32/f64 accept vectors once the fork fix landed at the `ac1b98e` pin; the stale-guard is what forces
   that removal whenever a ledgered gap closes.
@@ -852,8 +844,7 @@ Two gates mirror the matrix legs:
   reads): its corpus half re-derives the glob × enumerator obligation set and asserts completeness
   (vectors XOR `pinned_reason`), staleness (each active row's committed `spec` byte-equals the
   reconstruction from the current fixture via the shared enumerator/closure builder — a drifted
-  fixture reads "re-mint"), the holder `82 00` / wider-`83 00` preamble shape, and the whole-item f9
-  ban below.
+  fixture reads "re-mint"), and the holder `82 00` / wider-`83 00` preamble shape.
 - **Replay gate** — `integration_tests::corpus_decode_replay` (`#[ignore]`d, check.ts `full` tier —
   one of the generated `#[ignore]`d-gate roll-call in "Running everything"). It reuses
   `decode_conformance_replay`'s `decode_replay_generate` / `decode_replay_run` helpers and every leg
@@ -867,12 +858,6 @@ Two gates mirror the matrix legs:
   `homogeneous_array.floats` (`[* float64]`, the `preserve_encodings_supports_floats` gap), the
   json/wasm surface ledgers hold this gate's corpus residents (listed in § "json/wasm surface
   legs"), and every other ledger is empty and stale-guarded.
-
-**Whole-item f9 ban.** The matrix f9 ban is item-HEAD-scoped; a corpus vector is a composite where an
-`f9` half-float head (mis-decoded by cbor_event 2.4.0 — `cddl-matrix/ROADMAP.md` § findings) can sit
-NESTED, so the corpus mint drops any accept candidate whose CBOR item tree contains an `f9` head
-ANYWHERE and the drift gate statically bans a committed one. It shares the matrix ban's prune
-condition — remove both halves together when a fixed cbor_event ships.
 
 #### json/wasm surface legs
 
@@ -1382,10 +1367,10 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`, `
 > Sibling system: `src/tests/identifier_hazard_tests.rs` is the same catalog+gate shape on a
 > **NAME-shaped** axis a construct enumeration can never catch — collisions between a user-chosen CDDL
 > *name* and the Rust the generator *emits* (the axis IS the name). It sweeps a static hazard table
-> (`RUST_KEYWORDS` reused from `parsing.rs`, the emitted generics `r`/`w`, and prelude/std type names
+> (`RUST_KEYWORDS` reused from `parsing.rs`, the single-letter names `r`/`w`, and prelude/std type names
 > like `Option`/`Vec`/`Int`) × six name positions (rule name in BOTH emitted type shapes — record
-> struct and type-choice enum, since the generic collision is shape-dependent and a struct-only sweep
-> would launder enum-shaped `w` as clean — bareword map key, bareword array key, plain group name,
+> struct and type-choice enum, since the historical generic collision was shape-dependent and a
+> struct-only sweep would launder enum-shaped `w` as clean — bareword map key, bareword array key, plain group name,
 > `@name` directive value). It is a Rust module rather than a `project_robustness.ts`
 > projection **on purpose**: the hazard × position table has no matrix verdict upstream to drift from,
 > so a TS layer would only copy a constant into fixtures. Two layers: `identifier_hazard_robustness_catalog`
@@ -1396,9 +1381,9 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`, `
 > the `ok` cells — bundling each position's non-pinned hazards into one crate to avoid ~hundreds of
 > `cargo check`s, minus a pinned `EXPECTED_COMPILE_FAIL` set of known does-not-compile cells asserted
 > to fail INDIVIDUALLY so a pin flips loudly when its fix lands (currently EMPTY: the shape-dependent
-> `r`/`w` generic-collision pins it launched with were flipped by the collision-proof generic names —
-> `pick_generic_name` renames the emitted `R`/`W` off any defined ident, pinned by
-> `generic_names_are_collision_proofed_against_rw_idents`).
+> `r`/`w` generic-collision pins it launched with dissolved when cbor_event 3.x de-generified the
+> emitted `serialize`/`deserialize` signatures — no fn type parameters remain to shadow, pinned by
+> `emitted_signatures_carry_no_reader_writer_generics`).
 > A non-pinned bundle that fails to compile is a NEW hazard finding to add to the pin list (with a
 > reason) and report — not to paper over by editing the generator.
 

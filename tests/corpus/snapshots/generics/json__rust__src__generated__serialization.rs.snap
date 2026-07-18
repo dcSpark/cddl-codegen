@@ -9,13 +9,12 @@ use super::*;
 use crate::generated::error::*;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
-use std::io::{BufRead, Seek, SeekFrom, Write};
 
 impl cbor_event::se::Serialize for PairUse {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array(cbor_event::Len::Len(2))?;
         serializer.write_unsigned_integer(self.k)?;
         serializer.write_text(&self.v)?;
@@ -24,7 +23,7 @@ impl cbor_event::se::Serialize for PairUse {
 }
 
 impl Deserialize for PairUse {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.array()?;
             let mut read_len = CBORReadLen::from(len);
@@ -46,10 +45,10 @@ impl Deserialize for PairUse {
 }
 
 impl cbor_event::se::Serialize for RangedContainer {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array(cbor_event::Len::Len(1))?;
         serializer.write_unsigned_integer(self.value)?;
         Ok(serializer)
@@ -57,7 +56,7 @@ impl cbor_event::se::Serialize for RangedContainer {
 }
 
 impl Deserialize for RangedContainer {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.array()?;
             let mut read_len = CBORReadLen::from(len);
@@ -93,10 +92,10 @@ impl Deserialize for RangedContainer {
 }
 
 impl cbor_event::se::Serialize for UintContainer {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array(cbor_event::Len::Len(1))?;
         serializer.write_unsigned_integer(self.value)?;
         Ok(serializer)
@@ -104,7 +103,7 @@ impl cbor_event::se::Serialize for UintContainer {
 }
 
 impl Deserialize for UintContainer {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.array()?;
             let mut read_len = CBORReadLen::from(len);

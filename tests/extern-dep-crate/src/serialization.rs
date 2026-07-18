@@ -1,6 +1,6 @@
 // same as cbor_event::de::Deserialize but with our DeserializeError
 pub trait Deserialize {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError>
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError>
     where
         Self: Sized;
 
@@ -8,13 +8,13 @@ pub trait Deserialize {
     where
         Self: Sized,
     {
-        let mut raw = Deserializer::from(std::io::Cursor::new(data));
+        let mut raw = Deserializer::from(data.to_vec());
         Self::deserialize(&mut raw)
     }
 }
 
 impl<T: cbor_event::de::Deserialize> Deserialize for T {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<T, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<T, DeserializeError> {
         T::deserialize(raw).map_err(DeserializeError::from)
     }
 }
@@ -79,8 +79,8 @@ impl From<cbor_event::Len> for CBORReadLen {
 }
 
 pub trait DeserializeEmbeddedGroup {
-    fn deserialize_as_embedded_group<R: BufRead + Seek>(
-        raw: &mut Deserializer<R>,
+    fn deserialize_as_embedded_group(
+        raw: &mut Deserializer,
         read_len: &mut CBORReadLen,
         len: cbor_event::LenSz,
     ) -> Result<Self, DeserializeError>
@@ -177,10 +177,10 @@ impl LenEncoding {
         }
     }
 
-    pub fn end<'a, W: Write + Sized>(
+    pub fn end<'a>(
         &self,
-        serializer: &'a mut Serializer<W>,
-    ) -> cbor_event::Result<&'a mut Serializer<W>> {
+        serializer: &'a mut Serializer,
+    ) -> cbor_event::Result<&'a mut Serializer> {
         if *self == Self::Indefinite {
             serializer.write_special(cbor_event::Special::Break)?;
         }
@@ -204,10 +204,10 @@ impl StringEncoding {
     }
 }
 pub trait SerializeEmbeddedGroup {
-    fn serialize_as_embedded_group<'a, W: Write + Sized>(
+    fn serialize_as_embedded_group<'a>(
         &self,
-        serializer: &'a mut Serializer<W>,
-    ) -> cbor_event::Result<&'a mut Serializer<W>>;
+        serializer: &'a mut Serializer,
+    ) -> cbor_event::Result<&'a mut Serializer>;
 }
 
 pub trait ToCBORBytes {
@@ -230,13 +230,12 @@ use super::*;
 use crate::error::*;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
-use std::io::{BufRead, Seek, SeekFrom, Write};
 
 impl cbor_event::se::Serialize for ExternCrateFoo {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag_sz(
             11u64,
             fit_sz(
@@ -289,7 +288,7 @@ impl cbor_event::se::Serialize for ExternCrateFoo {
 }
 
 impl Deserialize for ExternCrateFoo {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         let (tag, tag_encoding) = raw.tag_sz()?;
         if tag != 11 {
             return Err(DeserializeError::new(

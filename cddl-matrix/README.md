@@ -303,8 +303,7 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    int/float/both classifier replaces the asymmetric per-type checks, in both the CBOR and JSON
    validators). The fix unblocked the one class the decode-conformance **arm-coverage floor**
    (§ "Decode-direction conformance" in `tests/README.md`) had ledgered in `DECODE_FLOOR_ARM_EXEMPT`
-   (`lib.ts`): `prelude.number`'s float arm is re-minted with real f32/f64 accept vectors (the `f9`
-   half-precision ban stays — that's the separate cbor_event mis-decode, `ROADMAP.md` § findings)
+   (`lib.ts`): `prelude.number`'s float arm is re-minted with real f32/f64 accept vectors
    and the exemption ledger is empty again. Two fingerprint probes
    (`prelude-number-float-accepts`, `prelude-number-tstr-rejects`) pin the fixed behavior,
    refusing a stale pre-fix (old-pin) oracle build. A stale claim in the retired repro note is

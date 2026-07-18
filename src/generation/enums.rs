@@ -681,7 +681,7 @@ pub(super) fn make_enum_variant_return_if_deserialized(
         }
         _ => {
             let mut variant_deser = Block::new(
-                "let deser_variant = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError>",
+                "let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError>",
             );
             variant_deser.after(")(raw);");
             variant_deser.push_all(variant_deser_code.content);
@@ -946,15 +946,14 @@ fn generate_enum(
         cli,
     );
     let mut ser_impl = make_serialization_impl(name.as_ref(), cli);
-    let mut ser_func = make_serialization_function("serialize", &gen_scope.serialize_generic, cli);
+    let mut ser_func = make_serialization_function("serialize", cli);
     if let Some(tag) = tag {
         // TODO: how to even store these? (maybe it could be a new field in every enum variant)
         assert!(!cli.preserve_encodings);
         ser_func.line(format!("serializer.write_tag({tag}u64)?;"));
     }
     let mut ser_array_match_block = Block::new("match self");
-    let mut deser_func =
-        make_deserialization_function("deserialize", &gen_scope.deserialize_generic, cli);
+    let mut deser_func = make_deserialization_function("deserialize", cli);
     let mut error_annotator = make_err_annotate_block(name.as_ref(), "", "");
     let deser_body: &mut dyn CodeBlock = if cli.annotate_fields {
         &mut error_annotator
@@ -1024,7 +1023,7 @@ fn generate_enum(
     };
     if non_overlapping_types_match.is_none() {
         deser_body
-            .line("let initial_position = raw.as_mut_ref().stream_position().unwrap();")
+            .line("let initial_position = raw.position();")
             .line("let mut errs = Vec::new();");
     }
     for variant in variants.iter() {
@@ -1427,7 +1426,7 @@ fn generate_enum(
                             cli,
                         );
                         let mut variant_deser = Block::new(
-                            "let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError>",
+                            "let variant_deser = (|raw: &mut Deserializer| -> Result<_, DeserializeError>",
                         );
                         variant_deser.after(")(raw);");
                         variant_deser.push_all(variant_deser_code.content);
@@ -1488,7 +1487,7 @@ fn generate_enum(
                             cli,
                         );
                         let mut variant_deser = Block::new(
-                            "let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError>",
+                            "let variant_deser = (|raw: &mut Deserializer| -> Result<_, DeserializeError>",
                         );
                         variant_deser.after(")(raw);");
                         variant_deser.push_all(variant_deser_code.content);
@@ -1502,7 +1501,7 @@ fn generate_enum(
                 let mut variant_deser_failed_block = Block::new("Err(e) =>");
                 variant_deser_failed_block
                     .line(format!("errs.push(e.annotate(\"{}\"));", variant.name))
-                    .line("raw.as_mut_ref().seek(SeekFrom::Start(initial_position)).unwrap();");
+                    .line("raw.set_position(initial_position).unwrap();");
                 return_if_deserialized.push_block(variant_deser_failed_block);
                 return_if_deserialized.after(";");
                 deser_body.push_block(return_if_deserialized);

@@ -9,23 +9,22 @@ use super::*;
 use crate::generated::error::*;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
-use std::io::{BufRead, Seek, SeekFrom, Write};
 
 impl cbor_event::se::Serialize for Coords {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array(cbor_event::Len::Len(2))?;
         self.serialize_as_embedded_group(serializer)
     }
 }
 
 impl SerializeEmbeddedGroup for Coords {
-    fn serialize_as_embedded_group<'se, W: Write>(
+    fn serialize_as_embedded_group<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_unsigned_integer(self.index_0)?;
         serializer.write_unsigned_integer(self.index_1)?;
         Ok(serializer)
@@ -33,7 +32,7 @@ impl SerializeEmbeddedGroup for Coords {
 }
 
 impl Deserialize for Coords {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         let (len, mut read_len) = (|| -> Result<_, DeserializeError> {
             let len = raw.array()?;
             let mut read_len = CBORReadLen::from(len);
@@ -59,8 +58,8 @@ impl Deserialize for Coords {
 }
 
 impl DeserializeEmbeddedGroup for Coords {
-    fn deserialize_as_embedded_group<R: BufRead + Seek>(
-        raw: &mut Deserializer<R>,
+    fn deserialize_as_embedded_group(
+        raw: &mut Deserializer,
         _read_len: &mut CBORReadLen,
         len: cbor_event::Len,
     ) -> Result<Self, DeserializeError> {
@@ -76,10 +75,10 @@ impl DeserializeEmbeddedGroup for Coords {
 }
 
 impl cbor_event::se::Serialize for Holder {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array(cbor_event::Len::Len(1))?;
         self.c.serialize(serializer)?;
         Ok(serializer)
@@ -87,7 +86,7 @@ impl cbor_event::se::Serialize for Holder {
 }
 
 impl Deserialize for Holder {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.array()?;
             let mut read_len = CBORReadLen::from(len);

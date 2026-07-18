@@ -190,7 +190,7 @@ pub(super) fn generate_array_struct_deserialization(
                     // There's no nice way to access this as Deserializer::special_break() consumes
                     // the byte so we'll just inline this ugly code instead
                     if field_cbor_types.contains(&cbor_event::Type::Special) {
-                        "if raw.as_mut_ref().fill_buf().ok().and_then(|buf| buf.get(0)).map(|byte: &u8| cbor_event::Type::from(*byte) == cbor_event::Type::Special && (*byte & 0b0001_1111) != 0x1f).unwrap_or(false)".to_owned()
+                        "if raw.as_slice().first().map(|byte: &u8| cbor_event::Type::from(*byte) == cbor_event::Type::Special && (*byte & 0b0001_1111) != 0x1f).unwrap_or(false)".to_owned()
                     } else {
                         format!("if raw.cbor_type().map(|ty| ty == {type_str}).unwrap_or(false)")
                     }
@@ -210,7 +210,7 @@ pub(super) fn generate_array_struct_deserialization(
                     // the byte so we'll just inline this ugly code instead
                     if field_cbor_types.contains(&cbor_event::Type::Special) {
                         format!(
-                            "if raw.as_mut_ref().fill_buf().ok().and_then(|buf| buf.get(0)).map(|byte: &u8| vec![{types_str}].contains(&cbor_event::Type::from(*byte)) && (*byte & 0b0001_1111) != 0x1f).unwrap_or(false)",
+                            "if raw.as_slice().first().map(|byte: &u8| vec![{types_str}].contains(&cbor_event::Type::from(*byte)) && (*byte & 0b0001_1111) != 0x1f).unwrap_or(false)",
                         )
                     } else {
                         format!(
@@ -925,17 +925,12 @@ pub(super) fn codegen_struct(
                 })
                 .as_deref(),
             types.is_plain_group(name),
-            &gen_scope.serialize_generic,
             cli,
         );
         let mut ser_func = match ser_embedded_impl {
             Some(_) => {
                 ser_impl.push_fn(ser_func);
-                make_serialization_function(
-                    "serialize_as_embedded_group",
-                    &gen_scope.serialize_generic,
-                    cli,
-                )
+                make_serialization_function("serialize_as_embedded_group", cli)
             }
             None => ser_func,
         };
@@ -1434,15 +1429,11 @@ pub(super) fn codegen_struct(
         }
 
         if let Some(deser_embedded_impl) = &mut deser_embedded_impl {
-            let mut deser_f =
-                make_deserialization_function("deserialize", &gen_scope.deserialize_generic, cli);
+            let mut deser_f = make_deserialization_function("deserialize", cli);
             deser_f.push_all(deser_scaffolding);
             deser_impl.push_fn(deser_f);
-            let mut deser_embed_f = make_deserialization_function(
-                "deserialize_as_embedded_group",
-                &gen_scope.deserialize_generic,
-                cli,
-            );
+            let mut deser_embed_f =
+                make_deserialization_function("deserialize_as_embedded_group", cli);
             let read_len_arg = if deser_code.read_len_used {
                 "read_len"
             } else {
@@ -1464,8 +1455,7 @@ pub(super) fn codegen_struct(
         } else {
             // Non-embedded: `deser_scaffolding` was merged into `deser_code.content` above (inside
             // the annotate closure), so the whole deserialize() body is just the annotated code.
-            let mut deser_f =
-                make_deserialization_function("deserialize", &gen_scope.deserialize_generic, cli);
+            let mut deser_f = make_deserialization_function("deserialize", cli);
             deser_f.push_all(deser_code.content);
             deser_impl.push_fn(deser_f);
         }

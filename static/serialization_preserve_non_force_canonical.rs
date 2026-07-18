@@ -23,7 +23,7 @@ impl LenEncoding {
         }
     }
 
-    pub fn end<'a, W: Write + Sized>(&self, serializer: &'a mut Serializer<W>) -> cbor_event::Result<&'a mut Serializer<W>> {
+    pub fn end<'a>(&self, serializer: &'a mut Serializer) -> cbor_event::Result<&'a mut Serializer> {
         if *self == Self::Indefinite {
             serializer.write_special(cbor_event::Special::Break)?;
         }

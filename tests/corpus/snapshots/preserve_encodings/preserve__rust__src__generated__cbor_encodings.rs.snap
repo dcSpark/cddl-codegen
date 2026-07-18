@@ -197,6 +197,11 @@ pub struct NevPreserveEncoding {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct NullableSpecialsEncoding {
+    pub len_encoding: LenEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct PlainArraysEncoding {
     pub len_encoding: LenEncoding,
     pub multi_encoding: LenEncoding,

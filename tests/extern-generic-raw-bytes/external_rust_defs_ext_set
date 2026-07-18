@@ -15,10 +15,10 @@ impl<T> ExtSet<T> {
 }
 
 impl<T: cbor_event::se::Serialize> cbor_event::se::Serialize for ExtSet<T> {
-    fn serialize<'se, W: std::io::Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut cbor_event::se::Serializer<W>,
-    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {
+        serializer: &'se mut cbor_event::se::Serializer,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
         serializer.write_array(cbor_event::Len::Len(self.0.len() as u64))?;
         for elem in &self.0 {
             elem.serialize(serializer)?;
@@ -28,8 +28,8 @@ impl<T: cbor_event::se::Serialize> cbor_event::se::Serialize for ExtSet<T> {
 }
 
 impl<T: serialization::Deserialize> serialization::Deserialize for ExtSet<T> {
-    fn deserialize<R: std::io::BufRead + std::io::Seek>(
-        raw: &mut cbor_event::de::Deserializer<R>,
+    fn deserialize(
+        raw: &mut cbor_event::de::Deserializer,
     ) -> Result<Self, error::DeserializeError> {
         let mut elems = Vec::new();
         let len = raw.array()?;
@@ -59,10 +59,10 @@ impl<T: crate::serialization::RawBytesEncoding> ExtSetRawBytes<T> {
 }
 
 impl<T: crate::serialization::RawBytesEncoding> cbor_event::se::Serialize for ExtSetRawBytes<T> {
-    fn serialize<'se, W: std::io::Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut cbor_event::se::Serializer<W>,
-    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {
+        serializer: &'se mut cbor_event::se::Serializer,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
         serializer.write_array(cbor_event::Len::Len(self.0.len() as u64))?;
         for elem in &self.0 {
             serializer.write_bytes(elem.to_raw_bytes())?;
@@ -72,8 +72,8 @@ impl<T: crate::serialization::RawBytesEncoding> cbor_event::se::Serialize for Ex
 }
 
 impl<T: crate::serialization::RawBytesEncoding> serialization::Deserialize for ExtSetRawBytes<T> {
-    fn deserialize<R: std::io::BufRead + std::io::Seek>(
-        raw: &mut cbor_event::de::Deserializer<R>,
+    fn deserialize(
+        raw: &mut cbor_event::de::Deserializer,
     ) -> Result<Self, error::DeserializeError> {
         let mut elems = Vec::new();
         let len = raw.array()?;

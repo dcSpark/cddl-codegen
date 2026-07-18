@@ -7,11 +7,11 @@ mod tests {
     fn deser_test<T: Deserialize + ToCBORBytes>(orig: &T) {
         let orig_bytes = orig.to_cbor_bytes();
         print_cbor_types("orig", &orig_bytes);
-        let mut deserializer = Deserializer::from(std::io::Cursor::new(orig_bytes.clone()));
+        let mut deserializer = Deserializer::from(orig_bytes.clone());
         let deser = T::deserialize(&mut deserializer).unwrap();
         print_cbor_types("deser", &deser.to_cbor_bytes());
         assert_eq!(orig.to_cbor_bytes(), deser.to_cbor_bytes());
-        assert_eq!(deserializer.as_ref().position(), orig_bytes.len() as u64);
+        assert_eq!(deserializer.position(), orig_bytes.len());
     }
 
     // Second, independent oracle: validate our *encoder output* against the source .cddl via the
@@ -1674,5 +1674,34 @@ mod tests {
             BREAK,
             "indefinite inner map must terminate with BREAK"
         );
+    }
+
+    #[test]
+    fn nullable_specials() {
+        // Preserve-mode flavor of the `T / null` null-peek flip vectors (see the core suite's
+        // twin — bool-only: preserve-encodings does not support floats): the peek must rewind by
+        // the ACTUAL width `special()` consumed, not a hardcoded 1 byte.
+        let some: Vec<u8> = [arr_def(1), vec![0xf5]].concat();
+        let d = NullableSpecials::from_cbor_bytes(&some).unwrap();
+        assert_eq!(d.b, Some(true));
+        assert_eq!(d.to_cbor_bytes(), some);
+        let none: Vec<u8> = [arr_def(1), vec![0xf6]].concat();
+        let d = NullableSpecials::from_cbor_bytes(&none).unwrap();
+        assert!(d.b.is_none());
+        // malformed two-byte simple in the nullable-bool slot (`f8 f5`): the 2.4.0 peek consumed
+        // 2 bytes, rewound 1, and re-read the PAYLOAD byte f5 as `true` — accepting malformed
+        // input. This and the RFC 8949 §3.3 non-well-formed simples all reject; an f9 float in
+        // the bool slot rejects as a type mismatch (not a mis-decode).
+        for bad in [
+            &[0x81u8, 0xf8, 0xf5][..],
+            &[0x81, 0xfc],
+            &[0x81, 0xfd],
+            &[0x81, 0xfe],
+            &[0x81, 0xf8, 0x1f],
+            &[0x81, 0xff],
+            &[0x81, 0xf9, 0x42, 0x00],
+        ] {
+            assert!(NullableSpecials::from_cbor_bytes(bad).is_err());
+        }
     }
 }

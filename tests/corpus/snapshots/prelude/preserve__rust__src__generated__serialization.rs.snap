@@ -10,13 +10,12 @@ use super::*;
 use crate::generated::error::*;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
-use std::io::{BufRead, Seek, SeekFrom, Write};
 
 impl cbor_event::se::Serialize for Int {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         match self {
             Self::Uint { value, encoding } => {
                 serializer.write_unsigned_integer_sz(*value, fit_sz(*value, *encoding))
@@ -28,7 +27,7 @@ impl cbor_event::se::Serialize for Int {
 }
 
 impl Deserialize for Int {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             match raw.cbor_type()? {
                 cbor_event::Type::UnsignedInteger => raw
@@ -53,10 +52,10 @@ impl Deserialize for Int {
 }
 
 impl cbor_event::se::Serialize for Prelude {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array_sz(
             self.encodings
                 .as_ref()
@@ -103,7 +102,7 @@ impl cbor_event::se::Serialize for Prelude {
 }
 
 impl Deserialize for Prelude {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.array_sz()?;
             let len_encoding: LenEncoding = len.into();
@@ -184,10 +183,10 @@ impl Deserialize for Prelude {
 }
 
 impl cbor_event::se::Serialize for PreludeB64legacy {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag_sz(
             34u64,
             fit_sz(
@@ -210,7 +209,7 @@ impl cbor_event::se::Serialize for PreludeB64legacy {
 }
 
 impl Deserialize for PreludeB64legacy {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
                 (34, tag_enc) => raw
@@ -237,10 +236,10 @@ impl Deserialize for PreludeB64legacy {
 }
 
 impl cbor_event::se::Serialize for PreludeB64url {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag_sz(
             33u64,
             fit_sz(
@@ -263,7 +262,7 @@ impl cbor_event::se::Serialize for PreludeB64url {
 }
 
 impl Deserialize for PreludeB64url {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
                 (33, tag_enc) => raw
@@ -290,10 +289,10 @@ impl Deserialize for PreludeB64url {
 }
 
 impl cbor_event::se::Serialize for PreludeBigfloat {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag_sz(
             5u64,
             fit_sz(
@@ -322,7 +321,7 @@ impl cbor_event::se::Serialize for PreludeBigfloat {
 }
 
 impl Deserialize for PreludeBigfloat {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let (tag, tag_encoding) = raw.tag_sz()?;
             if tag != 5 {
@@ -361,10 +360,10 @@ impl Deserialize for PreludeBigfloat {
 }
 
 impl cbor_event::se::Serialize for PreludeBigint {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         match self {
             PreludeBigint::PreludeBiguint(prelude_biguint) => prelude_biguint.serialize(serializer),
             PreludeBigint::PreludeBignint(prelude_bignint) => prelude_bignint.serialize(serializer),
@@ -373,18 +372,16 @@ impl cbor_event::se::Serialize for PreludeBigint {
 }
 
 impl Deserialize for PreludeBigint {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
-            let initial_position = raw.as_mut_ref().stream_position().unwrap();
+            let initial_position = raw.position();
             let mut errs = Vec::new();
             let deser_variant: Result<_, DeserializeError> = PreludeBiguint::deserialize(raw);
             match deser_variant {
                 Ok(prelude_biguint) => return Ok(Self::PreludeBiguint(prelude_biguint)),
                 Err(e) => {
                     errs.push(e.annotate("PreludeBiguint"));
-                    raw.as_mut_ref()
-                        .seek(SeekFrom::Start(initial_position))
-                        .unwrap();
+                    raw.set_position(initial_position).unwrap();
                 }
             };
             let deser_variant: Result<_, DeserializeError> = PreludeBignint::deserialize(raw);
@@ -392,9 +389,7 @@ impl Deserialize for PreludeBigint {
                 Ok(prelude_bignint) => return Ok(Self::PreludeBignint(prelude_bignint)),
                 Err(e) => {
                     errs.push(e.annotate("PreludeBignint"));
-                    raw.as_mut_ref()
-                        .seek(SeekFrom::Start(initial_position))
-                        .unwrap();
+                    raw.set_position(initial_position).unwrap();
                 }
             };
             Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
@@ -404,10 +399,10 @@ impl Deserialize for PreludeBigint {
 }
 
 impl cbor_event::se::Serialize for PreludeBignint {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag_sz(
             3u64,
             fit_sz(
@@ -430,7 +425,7 @@ impl cbor_event::se::Serialize for PreludeBignint {
 }
 
 impl Deserialize for PreludeBignint {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
                 (3, tag_enc) => raw
@@ -457,10 +452,10 @@ impl Deserialize for PreludeBignint {
 }
 
 impl cbor_event::se::Serialize for PreludeBiguint {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag_sz(
             2u64,
             fit_sz(
@@ -483,7 +478,7 @@ impl cbor_event::se::Serialize for PreludeBiguint {
 }
 
 impl Deserialize for PreludeBiguint {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
                 (2, tag_enc) => raw
@@ -510,10 +505,10 @@ impl Deserialize for PreludeBiguint {
 }
 
 impl cbor_event::se::Serialize for PreludeDecfrac {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag_sz(
             4u64,
             fit_sz(
@@ -542,7 +537,7 @@ impl cbor_event::se::Serialize for PreludeDecfrac {
 }
 
 impl Deserialize for PreludeDecfrac {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let (tag, tag_encoding) = raw.tag_sz()?;
             if tag != 4 {
@@ -581,10 +576,10 @@ impl Deserialize for PreludeDecfrac {
 }
 
 impl cbor_event::se::Serialize for PreludeEncodedCbor {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag_sz(
             24u64,
             fit_sz(
@@ -607,7 +602,7 @@ impl cbor_event::se::Serialize for PreludeEncodedCbor {
 }
 
 impl Deserialize for PreludeEncodedCbor {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
                 (24, tag_enc) => raw
@@ -634,10 +629,10 @@ impl Deserialize for PreludeEncodedCbor {
 }
 
 impl cbor_event::se::Serialize for PreludeInteger {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         match self {
             PreludeInteger::Int(int) => int.serialize(serializer),
             PreludeInteger::PreludeBigint(prelude_bigint) => prelude_bigint.serialize(serializer),
@@ -646,7 +641,7 @@ impl cbor_event::se::Serialize for PreludeInteger {
 }
 
 impl Deserialize for PreludeInteger {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             match raw.cbor_type()? {
                 cbor_event::Type::UnsignedInteger | cbor_event::Type::NegativeInteger => {
@@ -663,10 +658,10 @@ impl Deserialize for PreludeInteger {
 }
 
 impl cbor_event::se::Serialize for PreludeMimeMessage {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag_sz(
             36u64,
             fit_sz(
@@ -689,7 +684,7 @@ impl cbor_event::se::Serialize for PreludeMimeMessage {
 }
 
 impl Deserialize for PreludeMimeMessage {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
                 (36, tag_enc) => raw
@@ -716,10 +711,10 @@ impl Deserialize for PreludeMimeMessage {
 }
 
 impl cbor_event::se::Serialize for PreludeRegexp {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag_sz(
             35u64,
             fit_sz(
@@ -742,7 +737,7 @@ impl cbor_event::se::Serialize for PreludeRegexp {
 }
 
 impl Deserialize for PreludeRegexp {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
                 (35, tag_enc) => raw
@@ -769,10 +764,10 @@ impl Deserialize for PreludeRegexp {
 }
 
 impl cbor_event::se::Serialize for PreludeTdate {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag_sz(
             0u64,
             fit_sz(
@@ -795,7 +790,7 @@ impl cbor_event::se::Serialize for PreludeTdate {
 }
 
 impl Deserialize for PreludeTdate {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
                 (0, tag_enc) => raw
@@ -822,10 +817,10 @@ impl Deserialize for PreludeTdate {
 }
 
 impl cbor_event::se::Serialize for PreludeUnsigned {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         match self {
             PreludeUnsigned::U64 {
                 uint,
@@ -839,7 +834,7 @@ impl cbor_event::se::Serialize for PreludeUnsigned {
 }
 
 impl Deserialize for PreludeUnsigned {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             match raw.cbor_type()? {
                 cbor_event::Type::UnsignedInteger => {
@@ -861,10 +856,10 @@ impl Deserialize for PreludeUnsigned {
 }
 
 impl cbor_event::se::Serialize for PreludeUri {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag_sz(
             32u64,
             fit_sz(
@@ -887,7 +882,7 @@ impl cbor_event::se::Serialize for PreludeUri {
 }
 
 impl Deserialize for PreludeUri {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
                 (32, tag_enc) => raw

@@ -14,10 +14,7 @@
  *      gate asserts), which is forbidden on every other vector. An `expect="accept"` vector carries EITHER
  *      no class (spec-VALID, correctly accepted) OR exactly `class="over-acceptance"` (spec-INVALID CBOR
  *      the decoder wrongly accepts — a certified silent-acceptance pin) with a nonempty `reason` and NO
- *      `expect_err`; any other class on an accept vector is a schema error. An accept vector must not have
- *      an f9 half-precision ITEM head (cbor_event 2.4.0 mis-decodes f9, so it would be green-but-corrupted
- *      decode evidence — the ban and its prune condition live with the mint's draw-side skip; ROADMAP
- *      § findings, the f16 entry). Every hex is well-formed (nonempty, even
+ *      `expect_err`; any other class on an accept vector is a schema error. Every hex is well-formed (nonempty, even
  *      length, lowercase); `spec`/`mode`/`type_name` are present together on an active
  *      row and consistent (mode ∈ {standalone, holder}; holder ⇒ spec starts with the holder prefix and
  *      type_name === "ProbeHolder"; standalone ⇒ spec === example); a pinned row carries none of them.
@@ -90,10 +87,6 @@
  *   - Shape (§ 3): every active corpus row is HOLDER mode (`type_name = "ProbeHolder"`, spec
  *     starts with the holder prefix); every vector begins with a major-4 array head + literal-0
  *     first element (`8200…`, or `8N00…` for a spliced bare group).
- *   - WHOLE-ITEM f9 ban (§ 3 cont.): an accept vector must not contain an f9 half-precision head
- *     ANYWHERE in its CBOR item tree (`cborContainsF9` — corpus vectors are composites, so a
- *     nested f9 is the same green-but-corrupted evidence the matrix head-only ban catches; prune
- *     both bans together when a fixed cbor_event ships).
  *   - Arm-coverage floor trio (§ 7): CORPUS_EXPECTED_FLOOR_SCOPE decay pin (resolver fires via
  *     `corpusArmExample`, target rule first), per-class coverage floor, and the stale-exempt
  *     guard over CORPUS_DECODE_FLOOR_ARM_EXEMPT (lib.ts — a SEPARATE ledger from the matrix one:
@@ -103,10 +96,10 @@
  *     byte-identical to the committed file; the synthetic all-fields sample covers the
  *     fixture/rule fields on both active and pinned rows.
  *   - Vacuity floors (§ 5): >= 55 fixtures enumerated, >= 120 obligation rows.
- *   - Self-checks: the shared enumerator/closure builder and the f9 walker are exercised against
- *     synthetic samples (strings with escaped quotes/semicolons, comments, generics, hyphens;
- *     hand-derived nested-f9 bytes both caught and clean) so a regression in the ONE shared
- *     implementation is caught here regardless of what the committed corpus exercises.
+ *   - Self-checks: the shared enumerator/closure builder is exercised against
+ *     synthetic samples (strings with escaped quotes/semicolons, comments, generics, hyphens) so a
+ *     regression in the ONE shared implementation is caught here regardless of what the committed
+ *     corpus exercises.
  *
  * This script NEVER writes (there is nothing to project/rewrite in v1), so the DEFAULT run IS the check
  * — no `--check` flag is needed. A `--check` arg is accepted and ignored for symmetry with the
@@ -119,7 +112,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { CatalogRow, CorpusRule } from "./lib";
-import { CORPUS_CATALOG_INTRO, CORPUS_DECODE_FLOOR_ARM_EXEMPT, CORPUS_HOLDER_RULE, DECODE_FLOOR_ARM_EXEMPT, PRELUDE_NAMES, cborContainsF9, composeCatalog, corpusClosureBody, corpusProbeSpec, corpusArmExample, dependencyClosure, enumerateCorpusRules, parseCatalogContent, resolveChoiceArmClasses, vectorShapeClass } from "./lib";
+import { CORPUS_CATALOG_INTRO, CORPUS_DECODE_FLOOR_ARM_EXEMPT, CORPUS_HOLDER_RULE, DECODE_FLOOR_ARM_EXEMPT, PRELUDE_NAMES, composeCatalog, corpusClosureBody, corpusProbeSpec, corpusArmExample, dependencyClosure, enumerateCorpusRules, parseCatalogContent, resolveChoiceArmClasses, vectorShapeClass } from "./lib";
 
 const HERE = import.meta.dir;
 const CATALOG_REL = "tests/decode_conformance/catalog.toml";
@@ -307,19 +300,6 @@ for (const r of rows) {
         problems.push(`${where}: an accept vector may carry no class or class="over-acceptance" (got ${JSON.stringify(v.class)})`);
       if (v.class === "over-acceptance" && (typeof v.reason !== "string" || v.reason.length === 0))
         problems.push(`${where}: class="over-acceptance" vector needs a nonempty \`reason\` (cite the ledgered finding + the promotion flow: flips to class="constraint" with an expect_err when the fix lands)`);
-      // f9 HALF-PRECISION item-head ban on accept vectors (mode-aware: the holder preamble is stripped
-      // before classifying). cbor_event 2.4.0 mis-decodes f9 heads (the raw 16 bits cast to f64), so an
-      // f9-headed accept replays GREEN-but-CORRUPTED: the accept assert is Ok-only, the encoding-variant
-      // mutator copies float heads verbatim (`encoding_variants_copy_float_heads_verbatim`), and the
-      // float class is preserve-skipped — the committed evidence pins nothing about the decoded value.
-      // The mint enforces the same ban draw-side; prune BOTH together when a fixed cbor_event ships
-      // (cddl-matrix/ROADMAP.md § findings, the f16 entry). Reject vectors stay allowed (e.g. the NaN
-      // range-boundary constraint vectors — their rejection is the assertion, not the decoded value).
-      if (typeof hex === "string" && hex.length >= (mode === "holder" ? 6 : 2)) {
-        const itemHead = parseInt((mode === "holder" ? hex.slice(4) : hex).slice(0, 2), 16);
-        if (itemHead === 0xf9)
-          problems.push(`${where}: accept vector \`${hex}\` has an f9 half-precision item head — cbor_event 2.4.0 mis-decodes f9, so this is green-but-corrupted decode evidence (re-mint the row; the mint skips f9 accept candidates). Prune this ban when a fixed cbor_event ships (ROADMAP § findings, the f16 entry)`);
-      }
     }
     if (expect === "reject") {
       if (v.class !== "bug" && v.class !== "limitation" && v.class !== "constraint")
@@ -672,7 +652,7 @@ const CORPUS_CATALOG_REL = "tests/decode_conformance/corpus_catalog.toml";
 const CORPUS_DIR = `${HERE}/../tests/corpus`;
 const corpusProblems: string[] = [];
 
-// --- self-checks for the shared enumerator / closure builder / f9 walker (mirrors the § 8/§ 9 pattern):
+// --- self-checks for the shared enumerator / closure builder (mirrors the § 8/§ 9 pattern):
 // a synthetic multi-rule sample exercising strings, comments, generics, and hyphens, so a regression in
 // the ONE shared implementation the mint and this gate both call is caught here regardless of what the
 // committed corpus happens to exercise.
@@ -692,13 +672,7 @@ const corpusProblems: string[] = [];
   const closure = dependencyClosure("lit-holder", rules).map(r => r.name).join(",");
   if (closure !== "lit-holder,gen")  // fixture order; `unref` excluded (never referenced), string content ignored
     selfProblems.push(`closure drifted: got ${JSON.stringify(closure)} (want "lit-holder,gen" — string content must not add a ref, unref must be excluded)`);
-  const hx = (s: string) => Uint8Array.from(Buffer.from(s, "hex"));
-  if (cborContainsF9(hx("820080")))                     selfProblems.push("f9 walker false-positive on 820080 ([0,[]])");
-  if (!cborContainsF9(hx("8200f94200")))                selfProblems.push("f9 walker missed a top-level-item f9 (8200f94200)");
-  if (!cborContainsF9(hx("82008201f94200")))            selfProblems.push("f9 walker missed a NESTED f9 (82008201f94200)");
-  if (cborContainsF9(hx("43f94200")))                   selfProblems.push("f9 walker false-positive on an f9 byte inside a bytestring payload (43f94200)");
-  if (cborContainsF9(hx("8200fb4008000000000000")))     selfProblems.push("f9 walker false-positive on an f64 (fb…)");
-  for (const p of selfProblems) corpusProblems.push(`corpus enumerator/closure/walker self-test: ${p}`);
+  for (const p of selfProblems) corpusProblems.push(`corpus enumerator/closure self-test: ${p}`);
 }
 
 // --- enumerate the CURRENT fixtures (the obligation-set source of truth) --------------------------
@@ -834,13 +808,6 @@ for (const r of corpusRows) {
         corpusProblems.push(`${where}: an accept vector may carry no class or class="over-acceptance" (got ${JSON.stringify(v.class)})`);
       if (v.class === "over-acceptance" && (typeof v.reason !== "string" || (v.reason as string).length === 0))
         corpusProblems.push(`${where}: class="over-acceptance" vector needs a nonempty \`reason\``);
-      // WHOLE-ITEM f9 ban (not head-only): cbor_event 2.4.0 mis-decodes any f9 head, so a nested f9
-      // (`[* float64]`) is green-but-corrupted decode evidence. Prune with the mint's draw-side skip.
-      if (typeof hex === "string" && hex.length >= 2) {
-        let bad = false;
-        try { bad = cborContainsF9(Uint8Array.from(Buffer.from(hex, "hex"))); } catch { bad = true; }
-        if (bad) corpusProblems.push(`${where}: accept vector \`${hex}\` contains an f9 half-precision head somewhere in its item tree — cbor_event 2.4.0 mis-decodes f9 (green-but-corrupted). Re-mint; prune this ban when a fixed cbor_event ships (ROADMAP § findings, the f16 entry)`);
-      }
     }
     if (expect === "reject") {
       if (v.class !== "bug" && v.class !== "limitation" && v.class !== "constraint")

@@ -9,13 +9,12 @@ use super::*;
 use crate::generated::error::*;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
-use std::io::{BufRead, Seek, SeekFrom, Write};
 
 impl cbor_event::se::Serialize for Defaulted {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_map(cbor_event::Len::Len(
             1 + if self.b != 1337 { 1 } else { 0 } + if self.c != "he\"llo\\world" { 1 } else { 0 },
         ))?;
@@ -34,7 +33,7 @@ impl cbor_event::se::Serialize for Defaulted {
 }
 
 impl Deserialize for Defaulted {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.map()?;
             let mut read_len = CBORReadLen::from(len);

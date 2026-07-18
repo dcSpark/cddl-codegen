@@ -265,3 +265,8 @@ nev_preserve = [ pts: [+ uint] ]
 ; FIELD in the parent's encoding struct, so an indefinite-length / non-canonical-order encoding
 ; round-trips byte-identically.
 nem_preserve = [ m: {+ uint => tstr} ]
+
+; --- cbor_event 3.2.0 upgrade vectors: the preserve flavor of the nullable-Special null-peek ---
+; (see tests/core/input.cddl — bool-only here: preserve-encodings does not support floats)
+nullable_bool = bool / null
+nullable_specials = [b: nullable_bool]

@@ -10,13 +10,12 @@ use super::*;
 use crate::generated::error::*;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
-use std::io::{BufRead, Seek, SeekFrom, Write};
 
 impl cbor_event::se::Serialize for BoundsMembers {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array_sz(
             self.encodings
                 .as_ref()
@@ -69,7 +68,7 @@ impl cbor_event::se::Serialize for BoundsMembers {
 }
 
 impl Deserialize for BoundsMembers {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.array_sz()?;
             let len_encoding: LenEncoding = len.into();
@@ -166,10 +165,10 @@ impl Deserialize for BoundsMembers {
 }
 
 impl cbor_event::se::Serialize for WExactSize {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_bytes_sz(
             &self.inner,
             self.encodings
@@ -182,7 +181,7 @@ impl cbor_event::se::Serialize for WExactSize {
 }
 
 impl Deserialize for WExactSize {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let (inner, inner_encoding) = raw
                 .bytes_sz()
@@ -205,10 +204,10 @@ impl Deserialize for WExactSize {
 }
 
 impl cbor_event::se::Serialize for WIntRange {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_unsigned_integer_sz(
             self.inner,
             fit_sz(
@@ -223,7 +222,7 @@ impl cbor_event::se::Serialize for WIntRange {
 }
 
 impl Deserialize for WIntRange {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let (inner, inner_encoding) =
                 raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
@@ -245,10 +244,10 @@ impl Deserialize for WIntRange {
 }
 
 impl cbor_event::se::Serialize for WNintRange {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_negative_integer_sz(
             -(self.inner as i128 + 1),
             fit_sz(
@@ -263,7 +262,7 @@ impl cbor_event::se::Serialize for WNintRange {
 }
 
 impl Deserialize for WNintRange {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let (inner, inner_encoding) = raw
                 .negative_integer_sz()
@@ -286,10 +285,10 @@ impl Deserialize for WNintRange {
 }
 
 impl cbor_event::se::Serialize for WZeroLen {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_bytes_sz(
             &self.inner,
             self.encodings
@@ -302,7 +301,7 @@ impl cbor_event::se::Serialize for WZeroLen {
 }
 
 impl Deserialize for WZeroLen {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let (inner, inner_encoding) = raw
                 .bytes_sz()

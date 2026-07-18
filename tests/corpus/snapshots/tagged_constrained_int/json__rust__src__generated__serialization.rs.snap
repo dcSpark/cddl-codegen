@@ -9,13 +9,12 @@ use super::*;
 use crate::generated::error::*;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
-use std::io::{BufRead, Seek, SeekFrom, Write};
 
 impl cbor_event::se::Serialize for Garm {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         match self {
             Garm::Ga(ga) => {
                 serializer.write_array(cbor_event::Len::Len(1))?;
@@ -38,7 +37,7 @@ impl cbor_event::se::Serialize for Garm {
 }
 
 impl Deserialize for Garm {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.array()?;
             match raw.cbor_type()? {
@@ -120,10 +119,10 @@ impl Deserialize for Garm {
 }
 
 impl cbor_event::se::Serialize for Holder {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array(cbor_event::Len::Len(7))?;
         self.a.serialize(serializer)?;
         self.b.serialize(serializer)?;
@@ -147,7 +146,7 @@ impl cbor_event::se::Serialize for Holder {
 }
 
 impl Deserialize for Holder {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.array()?;
             let mut read_len = CBORReadLen::from(len);
@@ -165,7 +164,7 @@ impl Deserialize for Holder {
             let f = Garm::deserialize(raw).map_err(|e: DeserializeError| e.annotate("f"))?;
             let g = (|| -> Result<_, DeserializeError> {
                 let g_bytes = raw.bytes()?;
-                let inner_de = &mut Deserializer::from(std::io::Cursor::new(g_bytes));
+                let inner_de = &mut Deserializer::from(g_bytes);
                 Ok(match inner_de.cbor_type()? {
                     cbor_event::Type::UnsignedInteger => inner_de
                         .unsigned_integer()
@@ -247,10 +246,10 @@ impl Deserialize for Holder {
 }
 
 impl cbor_event::se::Serialize for TaggedCtlNe {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag(11u64)?;
         if self.0 >= 0 {
             serializer.write_unsigned_integer(self.0 as u64)
@@ -264,7 +263,7 @@ impl cbor_event::se::Serialize for TaggedCtlNe {
 }
 
 impl Deserialize for TaggedCtlNe {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let inner = match raw.tag()? {
                 11 => match raw.cbor_type()? {
@@ -323,10 +322,10 @@ impl Deserialize for TaggedCtlNe {
 }
 
 impl cbor_event::se::Serialize for TaggedRangeExcl {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag(11u64)?;
         if self.0 >= 0 {
             serializer.write_unsigned_integer(self.0 as u64)
@@ -340,7 +339,7 @@ impl cbor_event::se::Serialize for TaggedRangeExcl {
 }
 
 impl Deserialize for TaggedRangeExcl {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let inner = match raw.tag()? {
                 11 => match raw.cbor_type()? {
@@ -399,10 +398,10 @@ impl Deserialize for TaggedRangeExcl {
 }
 
 impl cbor_event::se::Serialize for TaggedRangeIncl {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag(11u64)?;
         if self.0 >= 0 {
             serializer.write_unsigned_integer(self.0 as u64)
@@ -416,7 +415,7 @@ impl cbor_event::se::Serialize for TaggedRangeIncl {
 }
 
 impl Deserialize for TaggedRangeIncl {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let inner = match raw.tag()? {
                 11 => match raw.cbor_type()? {
@@ -475,10 +474,10 @@ impl Deserialize for TaggedRangeIncl {
 }
 
 impl cbor_event::se::Serialize for TaggedRangeNint {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag(11u64)?;
         if self.0 >= 0 {
             serializer.write_unsigned_integer(self.0 as u64)
@@ -492,7 +491,7 @@ impl cbor_event::se::Serialize for TaggedRangeNint {
 }
 
 impl Deserialize for TaggedRangeNint {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let inner = match raw.tag()? {
                 11 => match raw.cbor_type()? {
@@ -551,17 +550,17 @@ impl Deserialize for TaggedRangeNint {
 }
 
 impl cbor_event::se::Serialize for TaggedRangeUint {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag(11u64)?;
         serializer.write_unsigned_integer(self.0)
     }
 }
 
 impl Deserialize for TaggedRangeUint {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let inner = match raw.tag()? {
                 11 => raw.unsigned_integer()?,

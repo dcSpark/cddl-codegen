@@ -14,7 +14,7 @@ generated-with = "0.1.0"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-cbor_event = "2.4.0"
+cbor_event = "3.2.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0.57", features = ["float_roundtrip"] }
 schemars = "1.2.1"

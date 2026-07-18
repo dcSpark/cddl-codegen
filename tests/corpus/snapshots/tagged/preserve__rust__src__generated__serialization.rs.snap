@@ -10,13 +10,12 @@ use super::*;
 use crate::generated::error::*;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
-use std::io::{BufRead, Seek, SeekFrom, Write};
 
 impl cbor_event::se::Serialize for Holder {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array_sz(
             self.encodings
                 .as_ref()
@@ -34,7 +33,7 @@ impl cbor_event::se::Serialize for Holder {
 }
 
 impl Deserialize for Holder {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.array_sz()?;
             let len_encoding: LenEncoding = len.into();
@@ -60,10 +59,10 @@ impl Deserialize for Holder {
 }
 
 impl cbor_event::se::Serialize for Tagged {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag_sz(
             42u64,
             fit_sz(
@@ -86,7 +85,7 @@ impl cbor_event::se::Serialize for Tagged {
 }
 
 impl Deserialize for Tagged {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
                 (42, tag_enc) => raw
@@ -113,10 +112,10 @@ impl Deserialize for Tagged {
 }
 
 impl cbor_event::se::Serialize for TaggedNewtype {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag_sz(
             42u64,
             fit_sz(
@@ -139,7 +138,7 @@ impl cbor_event::se::Serialize for TaggedNewtype {
 }
 
 impl Deserialize for TaggedNewtype {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let (inner, inner_tag_encoding, inner_encoding) = match raw.tag_sz()? {
                 (42, tag_enc) => raw

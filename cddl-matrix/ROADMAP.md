@@ -185,8 +185,6 @@ are ledgered here (that's what the probe/gate error messages point at).
   still-open adjacent map-matching gaps found during that fix (a fourth, the float-key/null
   copy-paste, is since fork-fixed — README gap #10) — bundle them into the upstream conversation
   when convenient.
-- The `cbor_event` close-outs (f16 mis-decode, length-prefix over-allocation) are entries in the
-  list below — each names its prune/re-mint steps.
 
 **Bugs / gaps surfaced as findings (candidate cddl-codegen fixes):**
 - **Real incremental choice extension (`/=` type-choice, `//=` group-choice) is a candidate
@@ -214,34 +212,6 @@ are ledgered here (that's what the probe/gate error messages point at).
   `contain.occurrence-target.grpent.member.{zero,plus}_array`. Real support needs decode
   lookahead: a repeated-item run bounded by the following fields' types — middle-position repeats
   (`[uint, * bytes, tstr]`) need peek-type disambiguation.
-- **cbor_event 2.4.0 mis-decodes HALF-PRECISION (f9) floats — dependency-level, fix deferred
-  upstream like the over-allocation entry.** Its Special decoder's `0x19` arm casts the raw 16-bit
-  pattern to f64 (`Special::Float(f as f64)` — `f9 4200` = 3.0 decodes as 16896.0) instead of
-  decoding the half-float bits the way the `0x1a` arm does `f32::from_bits`. Blast radius: EVERY
-  f16-encoded value read by any generated decoder is silently corrupted; it became VISIBLE only on a
-  fixed-value member, where the wrong value fails the equality check (ruby's generator minted
-  `[3.0]` as `81 f9 4200`, both oracles accept it, our decoder rejects with FixedValueMismatch
-  found=16896). Recorded on the `value.number.hexfloat` catalog row as its `class="bug"` reject pin
-  (spec-valid, wrongly rejected; the mint re-validates it and it is pruned when a fixed cbor_event
-  ships). A second, GREEN-but-corrupted instance sits on the `prelude.time` catalog row: its
-  `c1 f9 068e` accept vector replays Ok while the decoded value is the mis-cast one — an accept
-  vector asserts Ok only, and this row's preserve byte-identity leg (which would expose the f16
-  re-encode) is on the replay gate's `PRESERVE_SKIP` for the unrelated float-generation gap, so
-  nothing pins the wrong value. When a fixed cbor_event ships, that vector's decoded value silently
-  changes; the repro/prune steps in the local note above cover both instances. Containment while the
-  bug stands: **f9 item heads are banned from decode-catalog accept vectors** — the mint drops every
-  f9-headed accept candidate (logged as DROPPED) and `project_decode_conformance.ts` fails a committed
-  one — because such a vector is GREEN-but-corrupted by construction (Ok-only assert; the
-  encoding-variant mutator copies float heads verbatim; the float class is preserve-skipped), i.e.
-  decode evidence that pins nothing about the decoded value. The ban is item-HEAD-scoped, so the
-  tag-nested `prelude.time` instance above (`c1`-headed) stays ledgered here rather than lint-caught.
-  Prune the ban (mint + drift-gate sides together) with this entry when a fixed cbor_event ships. Same disposition as the length-prefix over-allocation entry below: generated crates
-  depend on crates.io `cbor_event` directly, so the fix belongs upstream, not in `static/`. Known
-  upstream already: issue #16 reports the wrong data, and open PR #18 carries the exact arm fix but
-  gates the crate on the nightly-only `f16` primitive, so it cannot ship for stable consumers as
-  written — the stable-severable decode fix to propose there, plus the standalone repro and the
-  prune/re-mint steps for when a fix ships, are in `draft/cbor-event-f16-decode-fix.md` (local
-  note) — bundle it with the over-allocation report in one upstream conversation.
 - **Cross-module ARRAY structural-wrapper placement breaks the NAMED reference mode of a
   collection-of-records shape** — the residual Array-arm half of the issue-138 TODO in `mark_refs`
   (intermediate/mod.rs), left in place when the Map arm went sole-owner-aware. `recs = [* foo]` with
@@ -479,9 +449,10 @@ are ledgered here (that's what the probe/gate error messages point at).
   keys — rejected gracefully above; table domains and `@newtype` bounds — work; bare values, json,
   preserve-encodings — partial), so probing any role re-surfaces a nint cell and per-finding
   sessions keep landing small nint conversions without moving the support boundary. Two facts for
-  whoever picks this up: (1) upstream `cbor_event` issue #9 is NOT the blocker it appears — the
-  crate already ships full-range endpoints (`write_negative_integer_sz` / `negative_integer_sz`,
-  `i128`) and generation uses them wherever the `i64` limit bites (`i64::MIN`,
+  whoever picks this up: (1) `cbor_event` is NOT a blocker — the crate ships full-range endpoints
+  (`write_negative_integer_sz` / `negative_integer_sz`, `i128`; since 3.x the non-`_sz` endpoints
+  also REJECT out-of-i64-range values cleanly, header unconsumed, instead of silently wrapping)
+  and generation uses the `_sz` endpoints wherever the `i64` limit bites (`i64::MIN`,
   preserve-encodings, and `FixedValue::to_bytes` — full-range `_sz` since the `FixedValue`
   widening, pinned by `nint_to_bytes_canonical_across_boundaries`); (2) the IR-side limiters are
   gone — `FixedValue::Nint` is `i128` and can represent the whole CBOR nint range — so the
@@ -530,20 +501,6 @@ are ledgered here (that's what the probe/gate error messages point at).
   encoding) and a decimal bound on an integer-primitive head (`uint .le 10.5` — silently flooring
   it onto the int head would mis-enforce). Both route through `record_rejection`; pinned alongside
   the float-window enforcement in the `tests/core` `float_bounds` fixtures.
-- **Untrusted length-prefix over-allocation (DoS — dependency-level, fix deferred upstream).**
-  `cbor_event` 2.4.0's definite-length string branches pre-size from the untrusted length header
-  (`vec![0; len as usize]` at three `de.rs` sites), so an 11-byte input claiming a ~2 GB text string
-  drives a single ~2 GB allocation before any payload byte is read — an OOM abort in every consumer
-  parsing untrusted chain data. Generated crates are standalone and depend on crates.io `cbor_event`
-  directly (`static/Cargo_rust.toml`), so the fix needs a published/forked `cbor_event`, not a
-  codegen change. The exact 3-hunk patch, standalone repro, and repoint steps are in
-  `draft/cbor-event-overallocation-fix.md`; the ready-to-submit upstream PR text is in
-  `draft/cbor-event-upstream-pr.md` — bundle it with the f16 report above in one upstream
-  conversation. Surfaced by `fuzz/`; it has no cargo-test crash-replay because an OOM kills the test
-  process — the fuzz process boundary is the only oracle for this class. Related, unowned axis:
-  generated crates float on semver `cbor_event = "2.4.0"`, so nothing tests the version RANGE
-  consumers actually resolve — the upstream fix will arrive as exactly such a version event; a
-  `--minimal-versions`-style or pinned-latest check of a generated crate would own it.
 - **A `@custom_json` type produces a non-compiling json/wasm surface standalone (the same
   can't-compile-standalone class as `dsl_custom`).** `@custom_json` intentionally omits the serde
   derives on the rust type (the user is expected to supply custom json (de)serialize code), but the

@@ -8,4 +8,4 @@ crate-type = ["rlib"]
 
 [dependencies]
 extern-dep-crate = { path = "../extern-dep-crate" }
-cbor_event = "2.4.0"
+cbor_event = "3.2.0"

@@ -386,7 +386,6 @@ pub(super) fn create_serialize_impls(
     definite_len: &str,
     use_this_encoding: Option<&str>,
     generate_serialize_embedded: bool,
-    writer: &str,
     cli: &Cli,
 ) -> (codegen::Function, codegen::Impl, Option<codegen::Impl>) {
     if generate_serialize_embedded {
@@ -396,7 +395,7 @@ pub(super) fn create_serialize_impls(
     }
     let name = &ident.to_string();
     let ser_impl = make_serialization_impl(name, cli);
-    let mut ser_func = make_serialization_function("serialize", writer, cli);
+    let mut ser_func = make_serialization_function("serialize", cli);
     if let Some(tag) = tag {
         let expr = format!("{tag}u64");
         write_using_sz(
@@ -477,16 +476,12 @@ pub(super) fn create_serialize_impls(
     }
 }
 
-pub(super) fn make_serialization_function(
-    name: &str,
-    writer: &str,
-    cli: &Cli,
-) -> codegen::Function {
+pub(super) fn make_serialization_function(name: &str, cli: &Cli) -> codegen::Function {
     let mut f = codegen::Function::new(name);
-    f.generic(format!("'se, {writer}: Write"))
-        .ret(format!("cbor_event::Result<&'se mut Serializer<{writer}>>"))
+    f.generic("'se")
+        .ret("cbor_event::Result<&'se mut Serializer>")
         .arg_ref_self()
-        .arg("serializer", format!("&'se mut Serializer<{writer}>"));
+        .arg("serializer", "&'se mut Serializer");
     if cli.preserve_encodings && cli.canonical_form {
         f.arg("force_canonical", "bool");
     }

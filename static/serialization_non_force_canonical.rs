@@ -1,8 +1,8 @@
 pub trait SerializeEmbeddedGroup {
-    fn serialize_as_embedded_group<'a, W: Write + Sized>(
+    fn serialize_as_embedded_group<'a>(
         &self,
-        serializer: &'a mut Serializer<W>,
-    ) -> cbor_event::Result<&'a mut Serializer<W>>;
+        serializer: &'a mut Serializer,
+    ) -> cbor_event::Result<&'a mut Serializer>;
 }
 
 pub trait ToCBORBytes {

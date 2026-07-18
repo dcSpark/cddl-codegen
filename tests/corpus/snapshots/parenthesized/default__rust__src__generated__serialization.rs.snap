@@ -9,13 +9,12 @@ use super::*;
 use crate::generated::error::*;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
-use std::io::{BufRead, Seek, SeekFrom, Write};
 
 impl cbor_event::se::Serialize for Choice {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         match self {
             Choice::U64(uint) => serializer.write_unsigned_integer(*uint),
             Choice::Text(text) => serializer.write_text(text),
@@ -24,7 +23,7 @@ impl cbor_event::se::Serialize for Choice {
 }
 
 impl Deserialize for Choice {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             match raw.cbor_type()? {
                 cbor_event::Type::UnsignedInteger => Ok(Choice::U64(raw.unsigned_integer()?)),
@@ -37,10 +36,10 @@ impl Deserialize for Choice {
 }
 
 impl cbor_event::se::Serialize for Holder {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array(cbor_event::Len::Len(3))?;
         serializer.write_unsigned_integer(self.ref_basic)?;
         self.ref_choice.serialize(serializer)?;
@@ -50,7 +49,7 @@ impl cbor_event::se::Serialize for Holder {
 }
 
 impl Deserialize for Holder {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.array()?;
             let mut read_len = CBORReadLen::from(len);
@@ -80,10 +79,10 @@ impl Deserialize for Holder {
 }
 
 impl cbor_event::se::Serialize for Nested {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array(cbor_event::Len::Len(2))?;
         serializer.write_unsigned_integer(self.a)?;
         serializer.write_text(&self.b)?;
@@ -92,7 +91,7 @@ impl cbor_event::se::Serialize for Nested {
 }
 
 impl Deserialize for Nested {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.array()?;
             let mut read_len = CBORReadLen::from(len);
@@ -114,16 +113,16 @@ impl Deserialize for Nested {
 }
 
 impl cbor_event::se::Serialize for NewtypeViaParens {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_unsigned_integer(self.0)
     }
 }
 
 impl Deserialize for NewtypeViaParens {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> { Ok(Self(raw.unsigned_integer()?)) })()
             .map_err(|e| e.annotate("NewtypeViaParens"))
     }
