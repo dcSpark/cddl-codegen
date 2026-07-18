@@ -365,7 +365,7 @@ export const REGISTRY: Gate[] = [
   { id: "query_q5_completeness", tier: "local", kind: "cmd", cmd: ["bun", "run", "query_q5_completeness.ts", "--check"], cwd: MATRIX,
     script: "query_q5_completeness.ts", desc: "Q5 matrix-self-completeness query + reconciliation gate (matrix.json + sources/*.abnf/.prelude, no cargo)" },
   { id: "query_q6_diff", tier: "local", kind: "cmd", cmd: ["bun", "run", "query_q6_diff.ts", "--check"], cwd: MATRIX,
-    script: "query_q6_diff.ts", desc: "Q6 profile/version-diff query + profile-set consistency gate (matrix.json, no cargo)" },
+    script: "query_q6_diff.ts", desc: "Q6 profile/version-diff query + profile-set consistency, vacuity & annotation-completeness gate (matrix.json, no cargo)" },
   { id: "project_status_headers", tier: "local", kind: "cmd",
     cmd: ["bun", "run", "project_status_headers.ts", "--check"], cwd: MATRIX,
     script: "project_status_headers.ts",

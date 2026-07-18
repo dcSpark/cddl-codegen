@@ -87,7 +87,10 @@ from tool version V to V+1?"
   annotation statuses, e.g. from `git show REF:cddl-matrix/matrix.json`). `--check` (no-args mode) runs
   the profile-set consistency invariant (every feature's profile ∈ the known set) + a vacuity floor
   (≥ 2 profiles, RFC9682 introduces ≥ 1 feature, CDDL_CODEGEN introduces exactly the pinned
-  vendor-feature count — `VENDOR_FEATURE_COUNT` in `query_q6_diff.ts` — check.ts local tier).
+  vendor-feature count — `VENDOR_FEATURE_COUNT` in `query_q6_diff.ts`) + an annotation-completeness
+  floor (every registered feature id carries a `[[support]]` annotation id in
+  `annotations/cddl_codegen.toml`, so an unannotated registration fails here rather than shipping an
+  invisible annotation hole — check.ts local tier).
 
 ### Q7 (stretch) — Hazardous nesting interactions
 "For construct C, list known-hazardous compositions (C inside D inside role R with operator E) and tool
