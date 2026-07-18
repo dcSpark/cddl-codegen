@@ -120,10 +120,23 @@ pub fn parse_rule(
                 "{}: Generics not supported on plain groups",
                 rule.name
             );
-            // Freely defined group - no need to generate anything outside of group module
-            // already handled in main.rs
+            // Freely defined group - the group body itself is already handled in `api::with_types`
+            // (`mark_plain_group`); the only per-rule work here is honoring a rule-position
+            // `@rust_name` pin, so a consumer reads the dependency's final Rust name across the crate
+            // boundary (the extern-interface export appends this pin to every exported group-body
+            // row). It was never called on the group-rule path before, so a pin on a plain group was
+            // silently dropped — the type-rule paths already call `handle_rust_name_pin`.
             match &rule.entry {
-                cddl::ast::GroupEntry::InlineGroup { .. } => (),
+                cddl::ast::GroupEntry::InlineGroup {
+                    group,
+                    comments_after_group,
+                    ..
+                } => {
+                    let rust_ident = RustIdent::new(CDDLIdent::new(rule.name.to_string()));
+                    let pin_metadata =
+                        group_rule_pin_metadata(group, comments_after_group.as_ref());
+                    handle_rust_name_pin(types, &rust_ident, &pin_metadata);
+                }
                 x => panic!("Group rule with non-inline group? {:?}", x),
             }
         }
@@ -918,6 +931,41 @@ fn handle_rust_name_pin(
     } else {
         types.mark_rust_name_pin(type_name.clone(), pin.clone());
     }
+}
+
+/// The rule-position `@rust_name` metadata for a plain GROUP rule. cddl binds a group rule's TRAILING
+/// comment (`grp = (a: uint) ; @rust_name X`) to the LAST group entry's trailing comment slot, not
+/// `comments_after_group` (empirically verified — that slot is `None` for a single-line group rule),
+/// the same slot `group_entry_to_field_name` reads for a field-position `@name`. So read the pin from
+/// there, falling back to `comments_after_group` for robustness. ONLY `.rust_name` is lifted onto the
+/// rule: a field-position `@name` sharing the last entry's slot legitimately renames that field and is
+/// left to the field-naming site, so it must not leak onto the rule here.
+fn group_rule_pin_metadata(group: &Group, comments_after_group: Option<&Comments>) -> RuleMetadata {
+    let mut metadata = RuleMetadata::from(comments_after_group);
+    if metadata.rust_name.is_some() {
+        return metadata;
+    }
+    if let Some((entry, optional_comma)) = group
+        .group_choices
+        .last()
+        .and_then(|gc| gc.group_entries.last())
+    {
+        // An inline-group last entry has no trailing-comment slot in this position (its members are
+        // flattened before a record forms) — unreachable in practice; fall back to the empty slot.
+        let empty: Option<Comments> = None;
+        let entry_trailing = match entry {
+            GroupEntry::ValueMemberKey {
+                trailing_comments, ..
+            } => trailing_comments,
+            GroupEntry::TypeGroupname {
+                trailing_comments, ..
+            } => trailing_comments,
+            GroupEntry::InlineGroup { .. } => &empty,
+        };
+        let combined = combine_comments(entry_trailing, &optional_comma.trailing_comments);
+        metadata.rust_name = metadata_from_comments(&combined.unwrap_or_default()).rust_name;
+    }
+    metadata
 }
 
 #[allow(clippy::too_many_arguments)]
