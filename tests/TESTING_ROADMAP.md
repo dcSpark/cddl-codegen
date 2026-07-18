@@ -672,7 +672,12 @@ dead loses the lesson.
   two local-tier runs, plus a full-tier `decode_conformance_replay` wasm-surface leg, same flavor,
   all full-logged and green on isolated retry — widening the observed surface from the three
   named compile gates to effectively ANY nested-cargo site, suite wasm legs and the full-tier
-  replay gates included). The shifting-cell + registry-error signature distinguishes
+  replay gates included; and a FOURTH 2026-07-18 sighting — the post-Phase-3 online full-tier run
+  died at the same `decode_conformance_replay` leg, the second consecutive online full-tier kill
+  at that gate that day, cleared by a `CARGO_NET_OFFLINE=true` full-tier run that came back green
+  end to end, covering the fail-fast-skipped remainder in the same pass. Back-to-back full-tier
+  kills mean the rate has reached this entry's "bites harder" threshold: the next sighting
+  justifies BUILDING the offline-after-warmup hardening below rather than re-ledgering). The shifting-cell + registry-error signature distinguishes
   it from a real red cell at a glance; isolated re-run of the named gate is the confirm, and
   `CARGO_NET_OFFLINE=true bun run check.ts` is the clean-confirm when the rate makes consecutive
   online runs impractical (deps are already in cargo home after any warm run). The confirm clears
