@@ -1815,8 +1815,10 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   keyed, vacuity-guarded like the layer-1 ledger) is a NEW finding with the same promotion flow.
   BATCH-MASKING CAVEAT (applies to every layer-2 leg): a green batch is not a per-composition
   guarantee for failure classes whose symptom is a missing CRATE-GLOBAL definition — a batch-mate
-  can define the global (the note on `LAYER2_RULES_PER_BATCH`; proven instance: the undefined-`Int`
-  `.cbor`-payload-table cell). Consequence: a known-bad class proven by a STANDALONE repro is
+  can define the global (the note on `LAYER2_RULES_PER_BATCH`; the proven instance was the
+  undefined-`Int` `.cbor`-payload-table cell, since fixed — the reference walk covers emitted type
+  aliases, pinned by tests/corpus/int_alias.cddl — but the caveat stands for the next
+  crate-global-definition class). Consequence: a known-bad class proven by a STANDALONE repro is
   ledgered even when current batch boundaries compile it green; the mechanical detector (a second
   deterministic batch permutation / singleton mode) is a `tests/TESTING_ROADMAP.md` item.
 - `recombination_preserve_crates_execute` (`#[ignore]`, check.ts full tier): the PRESERVE escalation

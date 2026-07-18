@@ -323,7 +323,26 @@ are ledgered here (that's what the probe/gate error messages point at).
   `--preserve-encodings` it joins the float `unimplemented!` class (the
   `preserve_encodings_supports_floats` stub / `EXPECTED_GENERATION_FAIL` pin). Folding float into the
   presence-field treatment needs the preserve-float encoding vars first, so it rides with that class
-  rather than the general optional-fixed feature.
+  rather than the general optional-fixed feature. The default-profile drop is reachable by STANDING
+  machinery, not just reading, the moment a fixture enumerates it: a corpus fixture with an
+  optional fixed-float member generates and compiles, so `--mint-decode-corpus` would mint
+  spec-derived vectors including the PRESENT-float instance, and `corpus_decode_replay`'s
+  spec-equal re-encode leg fails on the dropped element — landing the row either certifies the
+  drop as a pinned fidelity gap or forces the fix. Enumerate that row FIRST when this entry is
+  picked up (the "Intra-alternative variation rows" rule applied to the presence-fidelity axis),
+  rather than trusting the compile green.
+- **A nint fixed-value mismatch reports the CBOR wire representation, not the authored value** —
+  `Key` (static/error.rs) has no signed variant, so the emitted check for `? neg: -3` renders
+  `FixedValueMismatch { found: Key::Uint((neg_value + 1).unsigned_abs()), expected: Key::Uint(2) }`:
+  a user sees "Expected fixed value 2" for a spec that says `-3` (read-caught during the
+  optional-fixed-value delivery; the mandatory path shares the spelling, so this is the fixed-nint
+  error-rendering convention, not an optional-path bug). Behavior is correct — only the message
+  misleads. Candidate fix: a signed `Key` variant (or signed rendering for the nint arm) so the
+  message names the authored value; any reason-asserted decode vector pinning the current "2"
+  spelling flips loudly with it. Cosmetic until a reason-asserted reject vector or a consumer
+  report makes it user-visible; enumerating a wrong-value reject vector for a nint fixed member is
+  what would surface it systematically (the vector author confronts the rendered message at
+  pin-authoring time).
 - Array-representation group-choice arm with an inline group panics:
   `contain.group-choice-arm.grpent.inline_group.array` (`t = [ (uint, tstr) // bytes ]`) aborts in
   `parsing.rs`'s `group_entry_to_type` (`inline group entries are not implemented`). This is a

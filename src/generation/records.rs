@@ -604,7 +604,15 @@ fn build_map_field_deser_arm(
             } else {
                 (format!("let {var_names_str} = "), ";")
             };
-            let deser_config = DeserializeConfig::for_field(field, in_embedded, field.optional);
+            let mut deser_config = DeserializeConfig::for_field(field, in_embedded, field.optional);
+            if field.rust_type.is_fixed_value() {
+                // A fixed value's deserialize binds `{var}_value` / `{var}_encoding` INLINE — with
+                // annotate=false no closure isolates them, so the un-prefixed `{field}_encoding`
+                // would shadow this match arm's outer accumulator and the trailing reassignment
+                // below would assign the shadow (E0308: `Sz` vs `Option<Sz>`). Bind the temporaries
+                // under the same `tmp_` prefix the non-fixed path uses.
+                deser_config = deser_config.overload_var_name(&temp_var_prefix);
+            }
             gen_scope
                 .generate_deserialize(
                     types,
