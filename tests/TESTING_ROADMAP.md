@@ -47,19 +47,6 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
 
 ## Pending maintainer action
 
-- **Fix `fuzz/generate.sh`'s pre-thin-root probe-list paths (cold runs die; warm runs launder).**
-  The `gen_probe_list` calls read `fuzz/generated/rust/src/serialization.rs` /
-  `fuzz/generated/recursive/rust/src/serialization.rs`, but the thin-root split moved generated
-  serialization to `src/generated/serialization.rs` — so a COLD regeneration (fresh worktree/
-  checkout, or `--refresh-fuzz`) exits at the probe-list step after generating the crates
-  (verified 2026-07-18 in a fresh worktree during the rustfmt-skip delivery). Warm machines never
-  see it: `fuzz_compile_rot` re-runs `generate.sh` only when `fuzz/generated` is absent
-  (`tests/README.md` § the fuzz gate), so pre-split state keeps the gate green — an instance of
-  the general hazard that gate SCRIPT health is in no cache or staleness key; a fresh worktree is
-  currently the only cold-run detector. Fix is the two path literals (+ a cold
-  `bash fuzz/generate.sh` run to verify, and consider whether the probe-list floor still holds
-  against the post-split file before re-greening).
-
 - **Complete the `cargo-mutants` sweep and triage the survivors.** The system is built and its
   invocation pinned (`.cargo/mutants.toml` + `tests/README.md` § "Mutation testing": emit-core
   scope, behavioral-only scoring via a nextest filterset excluding `snapshot_tests` — snapshot
@@ -601,6 +588,23 @@ dead loses the lesson.
   tracked-source text-cleanliness lint — every tracked `*.ts`/`*.rs`/`*.toml`/`*.md` must be valid
   UTF-8 with no control bytes outside tab/LF/CR (a one-command scan; natural sibling of
   `lint_doc_citations` in the local tier).
+- **Gate-script health is in no cache or staleness key — a fresh worktree/cold run is the only
+  detector, and warm runs launder pre-split rot.** Proven instance: `fuzz/generate.sh` predated the
+  thin-root split and still read generated serialization from the pre-split `src/serialization.rs`
+  and appended the custom-serialization helpers into the seed-once crate root `lib.rs`; a COLD
+  regeneration (fresh worktree, or `--refresh-fuzz`) therefore died at the probe-list step while warm
+  machines never re-ran the script (`fuzz_compile_rot` re-runs `generate.sh` only when
+  `fuzz/generated` is absent — see `tests/README.md` § the fuzz gate), so pre-split state kept the
+  gate green. Fixed by pointing the probe lists at `src/generated/serialization.rs`, appending the
+  helpers into the clobbered `generated/mod.rs` (with `rm -f` of the stale root `lib.rs` and
+  `--no-preserve-comments`, mirroring `integration_tests::preserve_encodings`' `run_test`), and adding
+  a pointed existence check inside `gen_probe_list` so the NEXT layout move fails with a diagnosis
+  rather than an opaque grep failure under `set -e`. Working rule meanwhile: after any generated-crate
+  LAYOUT change, cold-run the regeneration scripts that consume generated layout (`rm -rf
+  fuzz/generated` or `--refresh-fuzz` before the run), since no gate re-runs them on a warm tree.
+  Mechanical layer on a SECOND regeneration-script rot instance: a periodic cold-regen leg (or a
+  script-consumed-path staleness key that forces `generate.sh` to re-run when the generated layout
+  changes) — the only layer that catches script rot without a human remembering to cold-run.
 
 ## Deferred features (build when a real consumer needs them)
 
