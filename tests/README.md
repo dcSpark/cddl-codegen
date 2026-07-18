@@ -255,6 +255,17 @@ cargo insta review                    # interactive per-snapshot accept/reject
 `*.snap` files are committed (they're the golden reference); `*.snap.new` / `*.pending-snap` are
 gitignored.
 
+To audit a MASS re-bless (hundreds of snapshots, e.g. a dependency upgrade), classify the changed
+lines by frequency instead of eyeballing files:
+
+```sh
+git diff tests/corpus/snapshots/ | grep '^[+-]' | grep -v '^[+-][+-]' | sort | uniq -c | sort -rn
+```
+
+The intended change classes surface as high-count lines; anything unexpected hides in the
+singleton tail, so read that tail line by line — an audit that stops at the common classes proves
+nothing about strays.
+
 CI also runs `cargo insta test --unreferenced=reject` so a snapshot orphaned by a refactor (one
 that stops generating a file) fails the build instead of lingering unnoticed.
 

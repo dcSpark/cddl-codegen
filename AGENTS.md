@@ -155,6 +155,12 @@ Rules:
   `tests/TESTING_ROADMAP.md`: four unattributed sightings (three lost to `tail`/`grep`/truncation),
   then the fifth — full-logged under this rule — attributed and retired the flake in the same
   session.
+- **A fail-fast FAIL plus a single-gate retry is NOT a tier pass.** Fail-fast SKIPS every gate
+  after the failure point, so "the failed gate passed on isolated retry" leaves the rest unrun —
+  re-run the tier before claiming it green (the gate cache keeps already-passed cells cheap). A
+  shipped "check.ts full green" commit claim was falsified exactly this way (2026-07-18, caught in
+  review: 8 full-tier gates never ran on the shipped tree; the registry-transient watch in
+  `tests/TESTING_ROADMAP.md` carries the instance).
 - **TDD.** For every failure, ask what could have systematically caught it: add the missing test
   vector, or record the missing system in `tests/TESTING_ROADMAP.md`.
 
