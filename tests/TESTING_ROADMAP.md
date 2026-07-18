@@ -564,6 +564,10 @@ dead loses the lesson.
 
 ## Deferred features (build when a real consumer needs them)
 
+- **no_std generated crates.** cbor_event supports no_std since 3.0.0, so a CLI flag (`cli.rs` +
+  docs) emitting no_std-compatible crates is possible; the static runtime and generated code would
+  need their own std-usage sweep (collections, error impls). The mechanical layer when a consumer
+  asks: a no_std cross-compile gate over one generated crate.
 - **Dependency version-RANGE resolution is untested: generated crates float on semver
   `cbor_event = "3.2.0"`, and nothing gates what that range actually resolves to over time.** The
   heavy gates resolve `cbor_event` from crates.io per temp cell (the registry-transient watch

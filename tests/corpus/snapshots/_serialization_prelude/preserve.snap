@@ -14,6 +14,9 @@ pub trait Deserialize {
         let value = Self::deserialize(&mut raw)?;
         // Reject leftover bytes after a complete value instead of silently ignoring them: otherwise a
         // truncated/corrupt or accidentally-concatenated buffer would deserialize as Ok.
+        // Hand-rolled rather than cbor_event's deserialize_complete(): that helper is bounded to
+        // cbor_event's own Deserialize trait and error type, while this trait must surface the
+        // annotated DeserializeError.
         if !raw.as_slice().is_empty() {
             return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
         }
