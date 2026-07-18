@@ -20,8 +20,11 @@ Retrieved: **2026-06-28**. Upstream branches move; the committed files are the p
 | `rfc9165.txt` | Additional general CDDL control operators | `www.rfc-editor.org/rfc/rfc9165.txt` | `94f86116…41976774` |
 | `rfc9682.txt` | Updates to the CDDL grammar | `www.rfc-editor.org/rfc/rfc9682.txt` | `d35602e7…6cdea89c` |
 | `rfc9741.txt` | Additional CDDL text conversion/processing control operators | `www.rfc-editor.org/rfc/rfc9741.txt` | `3234aeea…1e7a9ee3` |
+| `draft-ietf-cbor-cddl-modules-06.txt` | CDDL Module Structure (Internet-Draft, not yet an RFC) | `www.ietf.org/archive/id/draft-ietf-cbor-cddl-modules-06.txt` | `913f49b4…5978ec8c` |
 
-Full RFC bodies are human reference, not regeneration inputs.
+Full RFC bodies are human reference, not regeneration inputs. The same goes for the Internet-Draft: its
+URL is version-pinned and immutable, so a new draft means bumping the filename, URL and sum together
+(check <https://datatracker.ietf.org/doc/draft-ietf-cbor-cddl-modules/> for the current version).
 
 ## Refresh / verify
 ```sh
@@ -41,4 +44,5 @@ f1164a5b31a39350ad46abe29b83575eb933ca6c45366989c118b6b1058a214a  rfc8949.txt
 94f86116c04fde0f11d54576465181090ec33983d78db82527c0703a41976774  rfc9165.txt
 d35602e7f784e509a5984283ea8d998adfee23f086ad0d77bd22f98c6cdea89c  rfc9682.txt
 3234aeea39d01b7c1c8e9c70d4d7dc8745852e0b6edbea167a3e55b91e7a9ee3  rfc9741.txt
+913f49b4810ac08d6d6e9fd04e93351aa2010f605a0315f112423b6b5978ec8c  draft-ietf-cbor-cddl-modules-06.txt
 ```
