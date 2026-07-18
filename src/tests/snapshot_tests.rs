@@ -388,7 +388,7 @@ fn cargo_toml_matrix() {
     });
 }
 
-/// Drift gate for the derived `static/Cargo_{rust,wasm,json_gen}.toml` templates.
+/// Drift gate for the derived `static/Cargo_{rust,wasm,json_gen,static_runtime}.toml` templates.
 ///
 /// The templates are generated snapshots of each manifest's append-only change log
 /// (`static/manifest_changes/*.toml`), rendered by the SAME fold+apply the runtime uses — so the
@@ -405,6 +405,10 @@ fn manifest_template_drift() {
         ("manifest_changes/rust.toml", "Cargo_rust.toml"),
         ("manifest_changes/wasm.toml", "Cargo_wasm.toml"),
         ("manifest_changes/json_gen.toml", "Cargo_json_gen.toml"),
+        (
+            "manifest_changes/static_runtime.toml",
+            "Cargo_static_runtime.toml",
+        ),
     ];
     let mut stale = Vec::new();
     for (log_name, template_name) in cases {

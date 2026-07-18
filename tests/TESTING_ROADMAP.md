@@ -660,6 +660,28 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   Mechanical layer on a SECOND regeneration-script rot instance: a periodic cold-regen leg (or a
   script-consumed-path staleness key that forces `generate.sh` to re-run when the generated layout
   changes) — the only layer that catches script rot without a human remembering to cold-run.
+- **A hand-maintained source→dependency mapping in a manifest changeset can silently under-assert:
+  the tool exports source referencing a crate that no changeset op guarantees.** Proven instance
+  (consumer-reported, not caught by any gate): the pre-crate-shaped `--export-static-dir` wrote the
+  composed runtime source into a consumer's shared crate while owning no manifest at all, so a
+  cbor_event major bump updated every generated crate's manifest EXCEPT the shared runtime's, which
+  kept the old pin — caught only because the 2.x→3.x API break fails compilation loudly; a
+  source-compatible-looking skew would have shipped silently. Fixed structurally by the
+  crate-shaped `--export-static-crate` (the export merges the target's `Cargo.toml`;
+  regression-pinned by `export_static_crate_writes_composed_runtime_and_manifest`'s hand-manifest
+  leg), and the warm-up dep-universe gate sweeps `ops_for_static_runtime` alongside the other three
+  op sets. The RESIDUAL: the mapping from composed runtime files to dep ops (`cbor_event`/`hex`
+  always; `linked-hash-map`/`serde`/`schemars` per flag) is hand-derived from grepping the static
+  files, and nothing re-checks it — a `static/*.rs` runtime file gaining a reference to a new
+  external crate (or to an existing one under a flag combination whose op condition doesn't match)
+  would under-assert again, and only the consumer's build would notice. Working rule meanwhile: a
+  change touching the static runtime files or `composed_runtime_static_files` re-greps the composed
+  file set for foreign-crate path roots and reconciles `ops_for_static_runtime` in the same commit.
+  Mechanical layer on a SECOND instance: a bidirectional drift gate over the maximal-flavor
+  composed file set — every known dep name appearing as a path root in the composed text must be
+  asserted by a static-runtime op, and every asserted dep must appear in the text — a natural
+  sibling of `warmup_manifest_covers_registry_dep_universe`, accepting the source-scan heuristics
+  then, not before.
 
 ## Deferred features (build when a real consumer needs them)
 

@@ -70,7 +70,7 @@ fn write_rs_with_preserve(
 }
 
 /// The composed rust runtime static files (`error.rs`, `ordered_hash_map.rs`, `non_empty.rs`,
-/// `non_empty_map.rs`) shared by the in-crate static export and the `--export-static-dir` path so
+/// `non_empty_map.rs`) shared by the in-crate static export and the `--export-static-crate` path so
 /// the two can't drift. Each returned entry is (bare filename, rustfmt'd content). The content
 /// COMPOSITION (file concatenation, json/schemars companions, the preserve-encodings
 /// BTreeMap→OrderedHashMap substitution for non_empty_map) is identical between the two callers —
@@ -492,7 +492,7 @@ impl GenerationScope {
 
         // static files copied/assembled verbatim (only when we own the common types). The runtime
         // composition (error.rs / ordered_hash_map.rs / non_empty.rs / non_empty_map.rs) is shared
-        // with the `--export-static-dir` path via `composed_runtime_static_files` so the two can't
+        // with the `--export-static-crate` path via `composed_runtime_static_files` so the two can't
         // drift; the returned content is already rustfmt'd (load-bearing for the overlay — see that
         // helper). In-crate the NonEmpty runtimes are gated on spec usage: only for crates that use
         // `[+ T]` / `{+ k => v}`. `--wrapper-requests`: a dep hosting a requested NonEmpty wrapper
@@ -511,18 +511,20 @@ impl GenerationScope {
             }
         }
 
-        // `--export-static-dir`: ADDITIONALLY write the composed rust runtime into the named dir,
-        // independent of the in-crate export above (the upgrade path for --common-import-override
-        // users). The exported set is a PURE FUNCTION OF THE FLAG SET, never of the spec: the two
-        // NonEmpty runtimes are ALWAYS included (unlike the spec-usage gating in-crate) and
-        // serialization.rs always includes raw_bytes_encoding — a shared runtime crate serves many
-        // specs, so which spec was run must not change the output. serialization.rs here is the
-        // composed static PRELUDE ONLY (no generated per-type impls appended). No mod.rs/lib.rs is
-        // written — the target crate owns its module declarations; static files reference siblings
-        // via `super::…`, so a flat module dir works. This dir is OUTSIDE the output crate, so its
-        // paths are deliberately not added to `written_generated_rs` / the stale-file scan.
-        if let Some(export_dir) = &cli.export_static_dir {
-            std::fs::create_dir_all(export_dir)?;
+        // `--export-static-crate`: ADDITIONALLY write the composed rust runtime into the named
+        // crate's `src/`, independent of the in-crate export above (the upgrade path for
+        // --common-import-override users). The exported set is a PURE FUNCTION OF THE FLAG SET,
+        // never of the spec: the two NonEmpty runtimes are ALWAYS included (unlike the spec-usage
+        // gating in-crate) and serialization.rs always includes raw_bytes_encoding — a shared
+        // runtime crate serves many specs, so which spec was run must not change the output.
+        // serialization.rs here is the composed static PRELUDE ONLY (no generated per-type impls
+        // appended). No mod.rs/lib.rs is written — the target crate owns its module declarations;
+        // static files reference siblings via `super::…`, so a flat module dir works. This crate is
+        // OUTSIDE the output crate, so its paths are deliberately not added to
+        // `written_generated_rs` / the stale-file scan.
+        if let Some(export_crate) = &cli.export_static_crate {
+            let export_dir = export_crate.join("src");
+            std::fs::create_dir_all(&export_dir)?;
             let runtime_files = composed_runtime_static_files(cli, true, true)?;
             for (filename, content) in &runtime_files {
                 let path = export_dir.join(filename);
@@ -550,6 +552,23 @@ impl GenerationScope {
                 rustfmt_generated_string(&prelude)?.as_ref(),
                 cli.preserve_comments,
             )?;
+
+            // The crate's Cargo.toml gets the static-runtime changeset merged in — the exported
+            // source and the manifest that has to satisfy its dependencies are one artifact, so the
+            // tool never writes one without the other (the pre-crate-shaped flag left the manifest
+            // untouched, and a cbor_event bump in the exported source silently skewed against the
+            // target crate's pin). Same declarative-merge contract as the generated crates' three
+            // manifests: hand keys the changeset doesn't mention pass through, an unparseable
+            // existing manifest is a hard error naming the file.
+            let manifest_path = export_crate.join("Cargo.toml");
+            let existing = std::fs::read_to_string(&manifest_path).ok();
+            let merged = crate::cargo_manifest::apply(
+                &crate::cargo_manifest::ops_for_static_runtime(cli)?,
+                existing.as_deref(),
+                &manifest_path.display().to_string(),
+            )
+            .map_err(std::io::Error::other)?;
+            std::fs::write(&manifest_path, merged)?;
         }
 
         // Stale-file scan: a `.rs` under a tool-owned generated tree that this run did not produce

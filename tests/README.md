@@ -222,7 +222,10 @@ with [`insta`]. No subprocess, no compilation, no `target/` bloat. Three sub-sui
   `whole_program` doesn't produce every combination, so this is where they're all pinned. Beyond the
   snapshots it asserts each conditional dep is present *exactly* when its flag/type condition holds —
   the absence half guards the manifest changeset's set-or-**remove** contract (a dep whose condition
-  turned off must be removed from an existing manifest, not skipped; see `cargo_manifest.rs`). The
+  turned off must be removed from an existing manifest, not skipped; see `cargo_manifest.rs` — the
+  one deliberate exception is the `--export-static-crate` target's changeset,
+  `ops_for_static_runtime`, whose conditional deps are set-or-SKIP because that manifest is co-owned
+  with a hand-owned crate whose hand code may need a dep the current flavor doesn't). The
   unconditional keys come from a per-manifest append-only change log (`static/manifest_changes/*.toml`,
   the single source of truth — format and editing rules in `static/manifest_changes/README.md`);
   its fold reader hard-errors on non-contiguous ids or a malformed
@@ -338,12 +341,14 @@ fixtures.
 Lexer-level tests (char-vs-lifetime, raw identifiers, in-string `//`) stay inline in
 `comment_preserve.rs` — they test `lex`, not the merge.
 
-The overlay's one out-of-crate surface — `--export-static-dir`, which writes the composed static
-runtime into a consumer-named dir (the upgrade path for `--common-import-override` runtime crates)
-— is pinned by `export_static_dir_writes_composed_runtime` (integration): the flag-set-pure file
+The overlay's one out-of-crate surface — `--export-static-crate`, which writes the composed static
+runtime into a consumer-named crate's `src/` and merges that crate's `Cargo.toml` (the upgrade
+path for `--common-import-override` runtime crates) — is pinned by
+`export_static_crate_writes_composed_runtime_and_manifest` (integration): the flag-set-pure file
 set (non_empty\*/raw_bytes always included, prelude-only serialization.rs carrying its own import
-header), insert-block survival across a re-export in that dir, and flag-off leaving a same-named
-dir untouched.
+header), insert-block survival across a re-export in that dir, flag-off leaving a same-named dir
+untouched, the fresh-manifest seed, and the hand-manifest merge (identity/hand deps survive, a
+stale `cbor_event` pin is bumped to what the exported source requires).
 
 ## Integration tests (`integration_tests.rs`)
 

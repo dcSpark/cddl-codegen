@@ -48,7 +48,9 @@ changing the *runtime behaviour* of generated code usually means editing `static
     directory. Three bounded exceptions, none feeding back into *what code* is generated: (1) the
     generated `Cargo.toml`s — `export()` merges a declarative changeset (`cargo_manifest.rs`) onto the
     existing manifest so user edits survive, bounded to "keys the op set doesn't mention pass through;
-    `SeedOnce` keys check existence only"; (2) each generated crate root `src/lib.rs` (rust, wasm,
+    `SeedOnce` keys check existence only" (the `--export-static-crate` target's `Cargo.toml` is the
+    same exception class applied to a crate *outside* the output dir — same changeset machinery,
+    with a co-owned contract: deps only asserted never removed, package identity seed-only); (2) each generated crate root `src/lib.rs` (rust, wasm,
     json-gen) is a seed-once thin root — written on a first export, then skipped if the file exists
     (existence check only, same bounded wording as the manifest `SeedOnce`; all generated code lives
     under the always-clobbered `src/generated/**`); (3) the comment/code-preservation overlay

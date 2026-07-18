@@ -1,0 +1,37 @@
+# Append-only change log for the `--export-static-crate` target's `Cargo.toml`.
+# APPEND-ONLY: never edit, delete, or renumber an existing entry — change = append (last write
+# wins), removal = append `remove = true`. Format and rules: README.md in this folder.
+#
+# Unlike the three generated-crate logs, this manifest is CO-OWNED: the target is a hand-owned
+# crate (e.g. CML's cml-core) that the tool contributes only the runtime source files and their
+# required dependency versions to. Hence package identity is `seed` (only a fresh crate gets it;
+# an existing crate's name/version/edition are never touched), and only the dependencies the
+# exported source unconditionally references are `set` here. Flag-conditional runtime deps live in
+# `ops_for_static_runtime` (src/cargo_manifest.rs) — and, deviating from the generated-crate
+# set-or-remove rule, they are set-or-SKIP: the tool cannot know a dep it no longer needs isn't
+# still needed by the crate's hand code, so it never removes a dep from a co-owned manifest.
+
+[[change]]
+id = 1
+path = "package.name"
+seed = '"cddl-runtime"'
+
+[[change]]
+id = 2
+path = "package.version"
+seed = '"0.1.0"'
+
+[[change]]
+id = 3
+path = "package.edition"
+seed = '"2024"'
+
+[[change]]
+id = 4
+path = "dependencies.cbor_event"
+set = '"3.2.0"'
+
+[[change]]
+id = 5
+path = "dependencies.hex"
+set = '"0.4.3"'
