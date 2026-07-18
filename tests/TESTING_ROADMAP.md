@@ -912,6 +912,18 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   the raw errno for the never-yet-seen ENOLCK-class transient. Standing discipline unchanged and
   proven load-bearing: pipe every `check.ts` run to a FILE from the FIRST invocation — a
   deadline-outliving recurrence is a real kernel/std finding and needs its full log.
+- **`verify.ts` warm-up `cargo test exit -15` (2026-07-19): ATTRIBUTED on the first sighting — not
+  a flake, do not watch for it.** One session's `verify.ts` run
+  (`draft/logs/verify-rustname-registration-2026-07-18T22-48-50Z.log`, json warm-up, "generate
+  exit 0, cargo test exit -15, minted=true") died because a CONCURRENT session ran
+  `pkill -f cddl_verify` to clean up what it believed were its own killed run's orphans — but its
+  killed `check.ts full` had died in `corpus_decode_replay`, BEFORE its verify gate ever ran, so
+  the `/tmp/cddl_verify_*` nested-cargo processes it pattern-matched belonged to the other
+  session's LIVE run (exit -15 = pkill's default SIGTERM; window and scratch naming match). A
+  recurrence of this signature under multi-session load should FIRST be checked against
+  process-kill activity in the other session before any harness attribution. The standing
+  discipline it feeds is in `AGENTS.md` (never pattern-kill by tool-generic substring on a shared
+  machine).
 
 ## Declined (decided, with the reopening signal)
 

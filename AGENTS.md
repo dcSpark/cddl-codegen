@@ -152,6 +152,16 @@ Rules:
   survives the session's turn ends (proven 2026-07-17 — a `check.ts` local run kept executing across
   a turn boundary to a clean exit-0; `pgrep` the process before assuming orphaning and re-running a
   multi-minute gate).
+- **Never kill processes by tool-generic pattern (`pkill -f cddl_verify`, `pkill -f cargo`) —
+  another session's live run matches the same substring.** Proven 2026-07-19: after stopping a
+  `check.ts full` background task, a session pkilled `/tmp/cddl_verify_*` cargo processes it
+  believed were its run's orphans; its run had died BEFORE the verify gate, so the processes were a
+  concurrent session's LIVE `verify.ts` warm-up — which failed with an exit -15 the other session
+  flagged as a possible harness flake (attribution:
+  `tests/TESTING_ROADMAP.md` § the verify warm-up -15 entry). Before killing "orphans": derive the
+  candidate PIDs from the stopped task's own process tree / scratch paths (the task output names
+  them), confirm the parent is dead, and kill by PID — and treat an unexplained exit -15 in any
+  log as possible cross-session kill before suspecting the harness.
 - **Evidence preservation: every multi-minute run leaves its FULL output in a file under
   `draft/logs/`.** `check.ts` does this ITSELF — every run tees its complete output to a
   timestamped `draft/logs/check-<tier>-<stamp>.log` and prints the path at start and end; cite

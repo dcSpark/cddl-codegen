@@ -95,7 +95,7 @@ artifacts, kept byte-identical so they stay diffable / re-syncable against upstr
 
 | file | what | axis |
 |------|------|------|
-| `features/*.toml` | one row per **serialization-relevant construct** (+ `profile` + stable ids); ABNF is a lint, not the spine — see "What is a feature?" | constructs + variations (A/B) |
+| `features/*.toml` | one row per **serialization-relevant construct** (+ `profile` + stable ids); ABNF is a lint, not the spine — see "What is a feature?". A row whose directive is legal ONLY in an extern-deps scope (e.g. `@rust_name`) carries `example_extern_stub` alongside `example`: `verify.ts` synthesizes a directory input (the example as `lib.cddl`, the stub under `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/extern_dep/`) so generation-exit is honestly probed for a directive no single-file example can legally use | constructs + variations (A/B) |
 | `roles.toml` | nesting container-contexts (array-element, map-key, tag-content, …) | nesting (C) |
 | `containment/*.toml` | `role × feature → spec-allowed?` — **where nesting/variation gaps live**; each cell carries an `example` that `verify.ts` also probes for **per-cell tool support** | nesting (C) |
 | `encodings.toml` | CBOR major-type × form grid (RFC 8949); **legality is major-type-dependent** (e.g. ints have no indefinite form), not a free orthogonal axis | encoding (D) |
@@ -507,8 +507,18 @@ records the ORDER (walked empirically for the `@used_as_elem` registration):
 4. `bun run verify.ts --mint-decode-foreign --only=<id>` — mints the decode catalog vectors.
 5. Full `verify.ts` again — satisfies the decode-foreign evidence clause.
 6. `build_matrix.ts` again, then the projections: `project_status_headers.ts --write`, a corpus
-   `[[cover]]` entry + `project_corpus.ts`, `project_recombination.ts`, `query_q1_gaps.ts --write`.
+   `[[cover]]` entry + `project_corpus.ts`, `project_recombination.ts`, `query_q1_gaps.ts --write`,
+   and a `tests/decode_conformance/catalog.toml` row (for an extern-referencing/user-code feature,
+   a `pinned_reason` row per the `ext.extern` precedent replaces steps 4–5's minted vectors —
+   `project_decode_conformance` fails until one exists either way). Do not stop at the gates a
+   quick subset validates: the `dsl.rust_name` registration shipped with exactly this step
+   half-done, and four drift gates (coverage_md, decode-conformance, recombination, status
+   headers) failed on the next tier run in another session.
 7. Bump `query_q6_diff.ts`'s `VENDOR_FEATURE_COUNT` pin.
+8. Expect the regenerated recombination ingredients to SHIFT the sweep's deterministic composition
+   indices: newly-explored compositions can surface latent panic classes that predate the feature
+   (the `dsl.rust_name` regen surfaced two). That is the fuzzer working, not a regression from the
+   feature — run the sweep and walk its promotion protocol before shipping the registration.
 
 If the directive is a comment-DSL tag, `corpus_detect.ts`'s `MIRRORED_DIRECTIVES` lockstep
 tripwire also fires until the mirror (plus selfCheck vectors for any new grammar) is extended —
