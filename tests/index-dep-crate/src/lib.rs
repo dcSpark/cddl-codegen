@@ -24,17 +24,17 @@ impl IdxFoo {
 }
 
 impl cbor_event::se::Serialize for IdxFoo {
-    fn serialize<'se, W: std::io::Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut cbor_event::se::Serializer<W>,
-    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {
+        serializer: &'se mut cbor_event::se::Serializer,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
         serializer.write_unsigned_integer(self.inner)
     }
 }
 
 impl serialization::Deserialize for IdxFoo {
-    fn deserialize<R: std::io::BufRead + std::io::Seek>(
-        raw: &mut cbor_event::de::Deserializer<R>,
+    fn deserialize(
+        raw: &mut cbor_event::de::Deserializer,
     ) -> Result<Self, error::DeserializeError> {
         Ok(Self {
             inner: raw.unsigned_integer()?,
@@ -61,17 +61,17 @@ impl IdxBar {
 }
 
 impl cbor_event::se::Serialize for IdxBar {
-    fn serialize<'se, W: std::io::Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut cbor_event::se::Serializer<W>,
-    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {
+        serializer: &'se mut cbor_event::se::Serializer,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
         serializer.write_unsigned_integer(self.inner)
     }
 }
 
 impl serialization::Deserialize for IdxBar {
-    fn deserialize<R: std::io::BufRead + std::io::Seek>(
-        raw: &mut cbor_event::de::Deserializer<R>,
+    fn deserialize(
+        raw: &mut cbor_event::de::Deserializer,
     ) -> Result<Self, error::DeserializeError> {
         Ok(Self {
             inner: raw.unsigned_integer()?,
@@ -98,17 +98,17 @@ impl IdxBaz {
 }
 
 impl cbor_event::se::Serialize for IdxBaz {
-    fn serialize<'se, W: std::io::Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut cbor_event::se::Serializer<W>,
-    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {
+        serializer: &'se mut cbor_event::se::Serializer,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
         serializer.write_unsigned_integer(self.inner)
     }
 }
 
 impl serialization::Deserialize for IdxBaz {
-    fn deserialize<R: std::io::BufRead + std::io::Seek>(
-        raw: &mut cbor_event::de::Deserializer<R>,
+    fn deserialize(
+        raw: &mut cbor_event::de::Deserializer,
     ) -> Result<Self, error::DeserializeError> {
         Ok(Self {
             inner: raw.unsigned_integer()?,

@@ -27,7 +27,7 @@ impl LenEncoding {
         }
     }
 
-    pub fn end<'a, W: Write + Sized>(&self, serializer: &'a mut Serializer<W>, force_canonical: bool) -> cbor_event::Result<&'a mut Serializer<W>> {
+    pub fn end<'a>(&self, serializer: &'a mut Serializer, force_canonical: bool) -> cbor_event::Result<&'a mut Serializer> {
         if !force_canonical && *self == Self::Indefinite {
             serializer.write_special(cbor_event::Special::Break)?;
         }
@@ -54,11 +54,11 @@ impl StringEncoding {
 }
 
 pub trait Serialize {
-    fn serialize<'a, W: Write + Sized>(
+    fn serialize<'a>(
         &self,
-        serializer: &'a mut Serializer<W>,
+        serializer: &'a mut Serializer,
         force_canonical: bool,
-    ) -> cbor_event::Result<&'a mut Serializer<W>>;
+    ) -> cbor_event::Result<&'a mut Serializer>;
 
     /// Bytes of a structure using the CBOR bytes as per the CDDL spec
     /// which for foo = bytes will include the CBOR bytes type/len, etc.
@@ -82,9 +82,9 @@ pub trait Serialize {
 }
 
 pub trait SerializeEmbeddedGroup {
-    fn serialize_as_embedded_group<'a, W: Write + Sized>(
+    fn serialize_as_embedded_group<'a>(
         &self,
-        serializer: &'a mut Serializer<W>,
+        serializer: &'a mut Serializer,
         force_canonical: bool,
-    ) -> cbor_event::Result<&'a mut Serializer<W>>;
+    ) -> cbor_event::Result<&'a mut Serializer>;
 }

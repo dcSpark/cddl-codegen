@@ -183,7 +183,8 @@ dead loses the lesson.
   shapes" ever lands there.** Proven instance (read-caught during the `FixedValue` i128/u64
   widening, not by any test): `FixedValue::to_bytes` — the generation-time canonical-ordering
   encoder for fixed map keys — called cbor_event's `write_negative_integer(*i as i64)`, which
-  produces wrong bytes for `i64::MIN` (primetype/cbor_event#9: `-i64::MIN` overflows), so a
+  produced wrong bytes for `i64::MIN` on the then-current cbor_event 2.4.0 (`-i64::MIN` overflowed
+  i64; the 3.x endpoint computes in i128), so a
   canonical spec with a fixed `-9223372036854775808` map key would have gotten wrong key
   ordering silently. `i64::MIN` is representable in the old `isize` field, so this was a
   correctness hole at a representable boundary — a different class from the representability

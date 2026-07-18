@@ -1387,7 +1387,7 @@
             "status": "unsupported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 2 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "value.number.hexfloat",
         "status": "supported"
       },

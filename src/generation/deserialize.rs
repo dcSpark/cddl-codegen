@@ -533,10 +533,8 @@ fn make_deser_loop_break_check(len_var: &str, cli: &Cli) -> Block {
     // `false` WITHOUT advancing on any other Special (a bool/null/float element or key), which then
     // falls through to the element/key deserializer and reads normally. This is why the whole prior
     // "indefinite container of value-specials" limitation is gone — a non-break special is no longer
-    // consumed-and-rejected. `special_break` sits in the same `impl<R: BufRead>` block as
-    // `cbor_type()`, which this check already calls inside the reader-type-erased type-choice
-    // deserializer closures (`|raw: &mut Deserializer<_>|`), so it carries no new bound and no E0282
-    // risk. The `cbor_type` guard stays load-bearing: `special_break` errors on non-Special input.
+    // consumed-and-rejected. The `cbor_type` guard stays load-bearing: `special_break` errors on
+    // non-Special input.
     let mut brk = Block::new(format!(
         "if matches!({len_var}, {}) && raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()?",
         cbor_event_len_indef(cli)
@@ -545,15 +543,10 @@ fn make_deser_loop_break_check(len_var: &str, cli: &Cli) -> Block {
     brk
 }
 
-pub(super) fn make_deserialization_function(
-    name: &str,
-    reader: &str,
-    cli: &Cli,
-) -> codegen::Function {
+pub(super) fn make_deserialization_function(name: &str, cli: &Cli) -> codegen::Function {
     let mut f = codegen::Function::new(name);
-    f.generic(format!("{reader}: BufRead + Seek"))
-        .ret("Result<Self, DeserializeError>")
-        .arg("raw", format!("&mut Deserializer<{reader}>"));
+    f.ret("Result<Self, DeserializeError>")
+        .arg("raw", "&mut Deserializer");
     // Opt-in recursion depth guard: the first statement of every composite `deserialize` acquires
     // an RAII guard whose Drop restores the thread-local depth on any return path (including `?`).
     // Bound in the outer function scope so it stays alive across the annotator closure the body may
@@ -1315,9 +1308,7 @@ impl GenerationScope {
                                         Some(b) => b,
                                         None => &mut deser_code.content,
                                     };
-                                    target.line(
-                                        "let initial_position = raw.as_mut_ref().stream_position().unwrap();",
-                                    );
+                                    target.line("let initial_position = raw.position();");
                                     let mut variant_final_exprs = config.final_exprs.clone();
                                     if cli.preserve_encodings {
                                         for enc_var in encoding_fields(
@@ -1353,7 +1344,7 @@ impl GenerationScope {
                             .line(format!("Ok({}) => return Ok({}),",
                             ok_pattern,
                             final_expr(variant_final_exprs.clone(), Some(format!("{}::{}", ident, variant.name)))))
-                            .line("Err(_) => raw.as_mut_ref().seek(SeekFrom::Start(initial_position)).unwrap(),")
+                            .line("Err(_) => raw.set_position(initial_position).unwrap(),")
                             .after(";");
                                         target.push_block(return_if_deserialized);
                                     }
@@ -1447,13 +1438,20 @@ impl GenerationScope {
                     // so we need to create a local bool var and use a match instead
                     let if_label = if ty.cbor_types(types).contains(&cbor_event::Type::Special) {
                         let is_some_check_var = format!("{}_is_some", config.var_name);
-                        let mut is_some_check =
-                            Block::new(format!("let {is_some_check_var} = match cbor_type()?"));
+                        let mut is_some_check = Block::new(format!(
+                            "let {is_some_check_var} = match {deserializer_name}.cbor_type()?"
+                        ));
                         let mut special_block = Block::new("cbor_event::Type::Special =>");
+                        // `special()` consumes 1-9 bytes depending on the payload (bool/null are 1
+                        // byte, two-byte simples 2, f16/f32/f64 are 3/5/9), so this null-peek must
+                        // save/restore the position around it rather than rewind a fixed width.
+                        special_block.line(format!(
+                            "let initial_position = {deserializer_name}.position();"
+                        ));
                         special_block
                             .line(format!("let special = {deserializer_name}.special()?;"));
                         special_block.line(format!(
-                            "{deserializer_name}.as_mut_ref().seek(SeekFrom::Current(-1)).unwrap();"
+                            "{deserializer_name}.set_position(initial_position).unwrap();"
                         ));
                         let mut special_match = Block::new("match special");
                         // TODO: we need to check that we don't have null / null somewhere
@@ -2011,7 +2009,7 @@ impl GenerationScope {
                     };
                     let name_overload = "inner_de";
                     deser_code.content.line(&format!(
-                        "let {} = &mut Deserializer::from(std::io::Cursor::new({}_bytes));",
+                        "let {} = &mut Deserializer::from({}_bytes);",
                         name_overload, config.var_name
                     ));
                     self.generate_deserialize(

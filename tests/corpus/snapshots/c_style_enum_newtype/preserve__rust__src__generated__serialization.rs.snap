@@ -10,13 +10,12 @@ use super::*;
 use crate::generated::error::*;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
-use std::io::{BufRead, Seek, SeekFrom, Write};
 
 impl cbor_event::se::Serialize for WrappedEnum {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         match &self.inner {
             FixedEnum::I0 => serializer.write_unsigned_integer_sz(
                 0u64,
@@ -53,11 +52,11 @@ impl cbor_event::se::Serialize for WrappedEnum {
 }
 
 impl Deserialize for WrappedEnum {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let (inner, inner_encoding) = (|| -> Result<_, DeserializeError> {
-                let initial_position = raw.as_mut_ref().stream_position().unwrap();
-                let deser_variant = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+                let initial_position = raw.position();
+                let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
                     let (i0_value, i0_encoding) = raw.unsigned_integer_sz()?;
                     if i0_value != 0 {
                         return Err(DeserializeFailure::FixedValueMismatch {
@@ -70,12 +69,9 @@ impl Deserialize for WrappedEnum {
                 })(raw);
                 match deser_variant {
                     Ok(inner_encoding) => return Ok((FixedEnum::I0, inner_encoding)),
-                    Err(_) => raw
-                        .as_mut_ref()
-                        .seek(SeekFrom::Start(initial_position))
-                        .unwrap(),
+                    Err(_) => raw.set_position(initial_position).unwrap(),
                 };
-                let deser_variant = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+                let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
                     let (i1_value, i1_encoding) = raw.unsigned_integer_sz()?;
                     if i1_value != 1 {
                         return Err(DeserializeFailure::FixedValueMismatch {
@@ -88,12 +84,9 @@ impl Deserialize for WrappedEnum {
                 })(raw);
                 match deser_variant {
                     Ok(inner_encoding) => return Ok((FixedEnum::I1, inner_encoding)),
-                    Err(_) => raw
-                        .as_mut_ref()
-                        .seek(SeekFrom::Start(initial_position))
-                        .unwrap(),
+                    Err(_) => raw.set_position(initial_position).unwrap(),
                 };
-                let deser_variant = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+                let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
                     let (i2_value, i2_encoding) = raw.unsigned_integer_sz()?;
                     if i2_value != 2 {
                         return Err(DeserializeFailure::FixedValueMismatch {
@@ -106,10 +99,7 @@ impl Deserialize for WrappedEnum {
                 })(raw);
                 match deser_variant {
                     Ok(inner_encoding) => return Ok((FixedEnum::I2, inner_encoding)),
-                    Err(_) => raw
-                        .as_mut_ref()
-                        .seek(SeekFrom::Start(initial_position))
-                        .unwrap(),
+                    Err(_) => raw.set_position(initial_position).unwrap(),
                 };
                 Err(DeserializeError::new(
                     "FixedEnum",

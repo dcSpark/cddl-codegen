@@ -2584,6 +2584,51 @@ pub enum NonOverlappingTypeChoiceSomeKind {
     Text,
 }
 
+pub type NullableBool = Option<bool>;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NullableSpecials(pub(crate) cddl_lib::NullableSpecials);
+
+#[wasm_bindgen]
+impl NullableSpecials {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NullableSpecials, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn b(&self) -> NullableBool {
+        self.0.b
+    }
+
+    pub fn new(b: Option<bool>) -> Self {
+        Self(cddl_lib::NullableSpecials::new(b))
+    }
+}
+
+impl From<cddl_lib::NullableSpecials> for NullableSpecials {
+    fn from(native: cddl_lib::NullableSpecials) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NullableSpecials> for cddl_lib::NullableSpecials {
+    fn from(wasm: NullableSpecials) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NullableSpecials> for NullableSpecials {
+    fn as_ref(&self) -> &cddl_lib::NullableSpecials {
+        &self.0
+    }
+}
+
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct OverlapBasicEmbed(pub(crate) cddl_lib::OverlapBasicEmbed);

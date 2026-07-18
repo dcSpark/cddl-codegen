@@ -245,28 +245,28 @@ There are two ways to use this comment DSL:
 Example function signatures for `--preserve-encodings=false` for `custom_serialize_bytes` / `custom_deserialize_bytes` above:
 
 ```rust
-pub fn custom_serialize_bytes<'se, W: std::io::Write>(
-    serializer: &'se mut cbor_event::se::Serializer<W>,
+pub fn custom_serialize_bytes<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
     bytes: &[u8],
-) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>>
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer>
 
-pub fn custom_deserialize_bytes<R: std::io::BufRead + std::io::Seek>(
-    raw: &mut cbor_event::de::Deserializer<R>,
+pub fn custom_deserialize_bytes(
+    raw: &mut cbor_event::de::Deserializer,
 ) -> Result<Vec<u8>, DeserializeError>
 ```
 
 Example function signatures for `--preserve-encodings=true` for `write_tagged_uint_str` / `read_tagged_uint_str` above:
 
 ```rust
-pub fn write_tagged_uint_str<'se, W: std::io::Write>(
-    serializer: &'se mut cbor_event::se::Serializer<W>,
+pub fn write_tagged_uint_str<'se>(
+    serializer: &'se mut cbor_event::se::Serializer,
     uint: &u64,
     tag_encoding: Option<cbor_event::Sz>,
     text_encoding: Option<cbor_event::Sz>,
-) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>>
+) -> cbor_event::Result<&'se mut cbor_event::se::Serializer>
 
-pub fn read_tagged_uint_str<R: std::io::BufRead + std::io::Seek>(
-    raw: &mut cbor_event::de::Deserializer<R>,
+pub fn read_tagged_uint_str(
+    raw: &mut cbor_event::de::Deserializer,
 ) -> Result<(u64, Option<cbor_event::Sz>, Option<cbor_event::Sz>), DeserializeError>
 ```
 

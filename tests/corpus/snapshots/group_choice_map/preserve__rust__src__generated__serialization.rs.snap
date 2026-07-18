@@ -10,13 +10,12 @@ use super::*;
 use crate::generated::error::*;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
-use std::io::{BufRead, Seek, SeekFrom, Write};
 
 impl cbor_event::se::Serialize for FixedValueArm {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         match self {
             FixedValueArm::FixedValueArm0(fixed_value_arm0) => {
                 fixed_value_arm0.serialize(serializer)
@@ -38,13 +37,13 @@ impl cbor_event::se::Serialize for FixedValueArm {
 }
 
 impl Deserialize for FixedValueArm {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.map_sz()?;
             let len_encoding: LenEncoding = len.into();
-            let initial_position = raw.as_mut_ref().stream_position().unwrap();
+            let initial_position = raw.position();
             let mut errs = Vec::new();
-            let deser_variant = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+            let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
                 let mut read_len = CBORReadLen::new(len);
                 read_len.read_elems(2)?;
                 read_len.finish()?;
@@ -55,12 +54,10 @@ impl Deserialize for FixedValueArm {
                 Ok(fixed_value_arm0) => return Ok(Self::FixedValueArm0(fixed_value_arm0)),
                 Err(e) => {
                     errs.push(e.annotate("FixedValueArm0"));
-                    raw.as_mut_ref()
-                        .seek(SeekFrom::Start(initial_position))
-                        .unwrap();
+                    raw.set_position(initial_position).unwrap();
                 }
             };
-            let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+            let variant_deser = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
                 let mut read_len = CBORReadLen::new(len);
                 read_len.read_elems(1)?;
                 read_len.finish()?;
@@ -94,9 +91,7 @@ impl Deserialize for FixedValueArm {
                 Ok(variant) => return Ok(variant),
                 Err(e) => {
                     errs.push(e.annotate("Text"));
-                    raw.as_mut_ref()
-                        .seek(SeekFrom::Start(initial_position))
-                        .unwrap();
+                    raw.set_position(initial_position).unwrap();
                 }
             };
             Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
@@ -106,10 +101,10 @@ impl Deserialize for FixedValueArm {
 }
 
 impl cbor_event::se::Serialize for FixedValueArm0 {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_map_sz(
             self.encodings
                 .as_ref()
@@ -127,10 +122,10 @@ impl cbor_event::se::Serialize for FixedValueArm0 {
 }
 
 impl SerializeEmbeddedGroup for FixedValueArm0 {
-    fn serialize_as_embedded_group<'se, W: Write>(
+    fn serialize_as_embedded_group<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         let deser_order = self
             .encodings
             .as_ref()
@@ -191,7 +186,7 @@ impl SerializeEmbeddedGroup for FixedValueArm0 {
 }
 
 impl Deserialize for FixedValueArm0 {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         let (len, mut read_len) = (|| -> Result<_, DeserializeError> {
             let len = raw.map_sz()?;
             let mut read_len = CBORReadLen::new(len);
@@ -206,8 +201,8 @@ impl Deserialize for FixedValueArm0 {
 }
 
 impl DeserializeEmbeddedGroup for FixedValueArm0 {
-    fn deserialize_as_embedded_group<R: BufRead + Seek>(
-        raw: &mut Deserializer<R>,
+    fn deserialize_as_embedded_group(
+        raw: &mut Deserializer,
         _read_len: &mut CBORReadLen,
         len: cbor_event::LenSz,
     ) -> Result<Self, DeserializeError> {
@@ -310,10 +305,10 @@ impl DeserializeEmbeddedGroup for FixedValueArm0 {
 }
 
 impl cbor_event::se::Serialize for MixedKeyTypes {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         match self {
             MixedKeyTypes::U64 {
                 uint,
@@ -344,7 +339,7 @@ impl cbor_event::se::Serialize for MixedKeyTypes {
 }
 
 impl Deserialize for MixedKeyTypes {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.map_sz()?;
             let len_encoding: LenEncoding = len.into();
@@ -416,10 +411,10 @@ impl Deserialize for MixedKeyTypes {
 }
 
 impl cbor_event::se::Serialize for MultiFieldArm {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         match self {
             MultiFieldArm::MultiFieldArm0(multi_field_arm0) => {
                 multi_field_arm0.serialize(serializer)
@@ -441,13 +436,13 @@ impl cbor_event::se::Serialize for MultiFieldArm {
 }
 
 impl Deserialize for MultiFieldArm {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.map_sz()?;
             let len_encoding: LenEncoding = len.into();
-            let initial_position = raw.as_mut_ref().stream_position().unwrap();
+            let initial_position = raw.position();
             let mut errs = Vec::new();
-            let deser_variant = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+            let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
                 let mut read_len = CBORReadLen::new(len);
                 read_len.read_elems(2)?;
                 read_len.finish()?;
@@ -458,12 +453,10 @@ impl Deserialize for MultiFieldArm {
                 Ok(multi_field_arm0) => return Ok(Self::MultiFieldArm0(multi_field_arm0)),
                 Err(e) => {
                     errs.push(e.annotate("MultiFieldArm0"));
-                    raw.as_mut_ref()
-                        .seek(SeekFrom::Start(initial_position))
-                        .unwrap();
+                    raw.set_position(initial_position).unwrap();
                 }
             };
-            let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+            let variant_deser = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
                 let mut read_len = CBORReadLen::new(len);
                 read_len.read_elems(1)?;
                 read_len.finish()?;
@@ -497,9 +490,7 @@ impl Deserialize for MultiFieldArm {
                 Ok(variant) => return Ok(variant),
                 Err(e) => {
                     errs.push(e.annotate("B"));
-                    raw.as_mut_ref()
-                        .seek(SeekFrom::Start(initial_position))
-                        .unwrap();
+                    raw.set_position(initial_position).unwrap();
                 }
             };
             Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
@@ -509,10 +500,10 @@ impl Deserialize for MultiFieldArm {
 }
 
 impl cbor_event::se::Serialize for MultiFieldArm0 {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_map_sz(
             self.encodings
                 .as_ref()
@@ -530,10 +521,10 @@ impl cbor_event::se::Serialize for MultiFieldArm0 {
 }
 
 impl SerializeEmbeddedGroup for MultiFieldArm0 {
-    fn serialize_as_embedded_group<'se, W: Write>(
+    fn serialize_as_embedded_group<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         let deser_order = self
             .encodings
             .as_ref()
@@ -588,7 +579,7 @@ impl SerializeEmbeddedGroup for MultiFieldArm0 {
 }
 
 impl Deserialize for MultiFieldArm0 {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         let (len, mut read_len) = (|| -> Result<_, DeserializeError> {
             let len = raw.map_sz()?;
             let mut read_len = CBORReadLen::new(len);
@@ -603,8 +594,8 @@ impl Deserialize for MultiFieldArm0 {
 }
 
 impl DeserializeEmbeddedGroup for MultiFieldArm0 {
-    fn deserialize_as_embedded_group<R: BufRead + Seek>(
-        raw: &mut Deserializer<R>,
+    fn deserialize_as_embedded_group(
+        raw: &mut Deserializer,
         _read_len: &mut CBORReadLen,
         len: cbor_event::LenSz,
     ) -> Result<Self, DeserializeError> {
@@ -725,10 +716,10 @@ impl DeserializeEmbeddedGroup for MultiFieldArm0 {
 }
 
 impl cbor_event::se::Serialize for NonemptyArm {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         match self {
             NonemptyArm::NonemptyArm0(nonempty_arm0) => nonempty_arm0.serialize(serializer),
             NonemptyArm::Zz {
@@ -748,13 +739,13 @@ impl cbor_event::se::Serialize for NonemptyArm {
 }
 
 impl Deserialize for NonemptyArm {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.map_sz()?;
             let len_encoding: LenEncoding = len.into();
-            let initial_position = raw.as_mut_ref().stream_position().unwrap();
+            let initial_position = raw.position();
             let mut errs = Vec::new();
-            let deser_variant = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+            let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
                 let mut read_len = CBORReadLen::new(len);
                 read_len.read_elems(2)?;
                 read_len.finish()?;
@@ -765,12 +756,10 @@ impl Deserialize for NonemptyArm {
                 Ok(nonempty_arm0) => return Ok(Self::NonemptyArm0(nonempty_arm0)),
                 Err(e) => {
                     errs.push(e.annotate("NonemptyArm0"));
-                    raw.as_mut_ref()
-                        .seek(SeekFrom::Start(initial_position))
-                        .unwrap();
+                    raw.set_position(initial_position).unwrap();
                 }
             };
-            let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+            let variant_deser = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
                 let mut read_len = CBORReadLen::new(len);
                 read_len.read_elems(1)?;
                 read_len.finish()?;
@@ -804,9 +793,7 @@ impl Deserialize for NonemptyArm {
                 Ok(variant) => return Ok(variant),
                 Err(e) => {
                     errs.push(e.annotate("Zz"));
-                    raw.as_mut_ref()
-                        .seek(SeekFrom::Start(initial_position))
-                        .unwrap();
+                    raw.set_position(initial_position).unwrap();
                 }
             };
             Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
@@ -816,10 +803,10 @@ impl Deserialize for NonemptyArm {
 }
 
 impl cbor_event::se::Serialize for NonemptyArm0 {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_map_sz(
             self.encodings
                 .as_ref()
@@ -837,10 +824,10 @@ impl cbor_event::se::Serialize for NonemptyArm0 {
 }
 
 impl SerializeEmbeddedGroup for NonemptyArm0 {
-    fn serialize_as_embedded_group<'se, W: Write>(
+    fn serialize_as_embedded_group<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         let deser_order = self
             .encodings
             .as_ref()
@@ -911,7 +898,7 @@ impl SerializeEmbeddedGroup for NonemptyArm0 {
 }
 
 impl Deserialize for NonemptyArm0 {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         let (len, mut read_len) = (|| -> Result<_, DeserializeError> {
             let len = raw.map_sz()?;
             let mut read_len = CBORReadLen::new(len);
@@ -926,8 +913,8 @@ impl Deserialize for NonemptyArm0 {
 }
 
 impl DeserializeEmbeddedGroup for NonemptyArm0 {
-    fn deserialize_as_embedded_group<R: BufRead + Seek>(
-        raw: &mut Deserializer<R>,
+    fn deserialize_as_embedded_group(
+        raw: &mut Deserializer,
         _read_len: &mut CBORReadLen,
         len: cbor_event::LenSz,
     ) -> Result<Self, DeserializeError> {
@@ -1085,10 +1072,10 @@ impl DeserializeEmbeddedGroup for NonemptyArm0 {
 }
 
 impl cbor_event::se::Serialize for TextKeyed {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         match self {
             TextKeyed::A {
                 a,
@@ -1119,13 +1106,13 @@ impl cbor_event::se::Serialize for TextKeyed {
 }
 
 impl Deserialize for TextKeyed {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.map_sz()?;
             let len_encoding: LenEncoding = len.into();
-            let initial_position = raw.as_mut_ref().stream_position().unwrap();
+            let initial_position = raw.position();
             let mut errs = Vec::new();
-            let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+            let variant_deser = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
                 let mut read_len = CBORReadLen::new(len);
                 read_len.read_elems(1)?;
                 read_len.finish()?;
@@ -1157,12 +1144,10 @@ impl Deserialize for TextKeyed {
                 Ok(variant) => return Ok(variant),
                 Err(e) => {
                     errs.push(e.annotate("A"));
-                    raw.as_mut_ref()
-                        .seek(SeekFrom::Start(initial_position))
-                        .unwrap();
+                    raw.set_position(initial_position).unwrap();
                 }
             };
-            let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+            let variant_deser = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
                 let mut read_len = CBORReadLen::new(len);
                 read_len.read_elems(1)?;
                 read_len.finish()?;
@@ -1196,9 +1181,7 @@ impl Deserialize for TextKeyed {
                 Ok(variant) => return Ok(variant),
                 Err(e) => {
                     errs.push(e.annotate("B"));
-                    raw.as_mut_ref()
-                        .seek(SeekFrom::Start(initial_position))
-                        .unwrap();
+                    raw.set_position(initial_position).unwrap();
                 }
             };
             Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
@@ -1208,10 +1191,10 @@ impl Deserialize for TextKeyed {
 }
 
 impl cbor_event::se::Serialize for UintKeyed {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         match self {
             UintKeyed::U64 {
                 uint,
@@ -1242,13 +1225,13 @@ impl cbor_event::se::Serialize for UintKeyed {
 }
 
 impl Deserialize for UintKeyed {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.map_sz()?;
             let len_encoding: LenEncoding = len.into();
-            let initial_position = raw.as_mut_ref().stream_position().unwrap();
+            let initial_position = raw.position();
             let mut errs = Vec::new();
-            let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+            let variant_deser = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
                 let mut read_len = CBORReadLen::new(len);
                 read_len.read_elems(1)?;
                 read_len.finish()?;
@@ -1281,12 +1264,10 @@ impl Deserialize for UintKeyed {
                 Ok(variant) => return Ok(variant),
                 Err(e) => {
                     errs.push(e.annotate("U64"));
-                    raw.as_mut_ref()
-                        .seek(SeekFrom::Start(initial_position))
-                        .unwrap();
+                    raw.set_position(initial_position).unwrap();
                 }
             };
-            let variant_deser = (|raw: &mut Deserializer<_>| -> Result<_, DeserializeError> {
+            let variant_deser = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
                 let mut read_len = CBORReadLen::new(len);
                 read_len.read_elems(1)?;
                 read_len.finish()?;
@@ -1320,9 +1301,7 @@ impl Deserialize for UintKeyed {
                 Ok(variant) => return Ok(variant),
                 Err(e) => {
                     errs.push(e.annotate("Text"));
-                    raw.as_mut_ref()
-                        .seek(SeekFrom::Start(initial_position))
-                        .unwrap();
+                    raw.set_position(initial_position).unwrap();
                 }
             };
             Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())

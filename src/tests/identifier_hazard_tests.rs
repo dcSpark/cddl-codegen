@@ -4,9 +4,9 @@
 //! construct shapes: the axis IS the name, so `verify.ts`'s construct probes can never surface them.
 //! Two prior instances motivated the sweep — a bareword map key that is a Rust keyword (`{ if: uint }`,
 //! now rejected gracefully at parse time, pinned in `robustness_tests`) and single-letter rule names
-//! colliding with the emitted reader/writer generics (`r`/`w` vs `R`/`W`, now fixed by
-//! collision-proof generic names — see `generic_names_are_collision_proofed_against_rw_idents` and
-//! the empty `EXPECTED_COMPILE_FAIL`). This module sweeps a hazard list ×
+//! colliding with the reader/writer generics the pre-cbor_event-3.x emission carried (`r`/`w` vs
+//! `R`/`W`; the 3.x de-generified `Serializer`/`Deserializer` removed those fn generics, and the
+//! collision class with them — see the empty `EXPECTED_COMPILE_FAIL`). This module sweeps a hazard list ×
 //! name-position table so the whole keyword list (and the std/prelude type names) get verdicted
 //! alongside the cases we already knew about, instead of each being rediscovered by hand.
 //!
@@ -37,16 +37,17 @@ use crate::tests::robustness_tests::with_thread_silenced_panics;
 use clap::Parser;
 
 /// Hazards beyond `RUST_KEYWORDS` (reused from `parsing.rs`, never re-typed):
-/// - `r` / `w` camel-case to `R` / `W`, which formerly collided with the emitted reader/writer
-///   generics `R` / `W` (now collision-proofed — the generics rename off any defined ident).
+/// - `r` / `w` camel-case to `R` / `W` — single-letter type names that collided with the emitted
+///   reader/writer fn generics before cbor_event 3.x de-generified `Serializer`/`Deserializer`.
+///   The generics are gone, but the cells stay swept: they cost nothing and would catch any future
+///   emission that reintroduces a single-letter identifier.
 /// - std/prelude type names: camel-cased they shadow `Option` / `String` / `Vec` / … in the generated
 ///   module, so a rule/group named `option` emits `pub …Option…` that shadows the prelude the emitted
 ///   code itself uses.
 ///
-/// The list is `["r", "w"]` (emitted-generic collisions) followed by the std/prelude type names.
 /// `box` overlaps `RUST_KEYWORDS`; the dedup in `hazards()` keeps the first (keyword) occurrence.
 const EXTRA_HAZARDS: &[&str] = &[
-    "r", "w", // emitted reader/writer generics
+    "r", "w", // historical reader/writer-generic collisions (see above)
     "option", "some", "none", "result", "ok", "err", "vec", "string", "box", "int", "error",
 ];
 
@@ -83,9 +84,9 @@ fn build_rule_name(h: &str, _i: usize) -> String {
 }
 /// The rule name of a type-choice rule, ENUM shape → the emitted `pub enum` name is the camel-cased
 /// hazard, and BOTH serialize and deserialize bodies name it (`Self::`-equivalent `<Name>::Variant`
-/// paths inside `fn serialize<'se, W: Write>` / `fn deserialize<R: BufRead + Seek>`), so a name
-/// camel-casing to `W` or `R` resolves to the fn's type parameter instead (E0599). This shape is why
-/// the axis exists: the struct template alone verdicted `w` as compiling.
+/// paths inside the emitted `serialize`/`deserialize` fns). Under the pre-cbor_event-3.x generic
+/// signatures a name camel-casing to `W`/`R` resolved to the fn's type parameter instead (E0599) —
+/// this shape is why the axis exists: the struct template alone verdicted `w` as compiling.
 fn build_rule_name_enum(h: &str, _i: usize) -> String {
     format!("{h} = uint / tstr\n")
 }
@@ -171,58 +172,29 @@ fn generated_source(spec: &str, tag: &str) -> String {
         .join("\n")
 }
 
-/// FAST-TIER guard for Item C (collision-proof generic names), the compile-layer complement to
-/// `identifier_hazard_crates_compile`'s now-green `r`/`w` bundles. When a rule camel-cases to a type
-/// named `R`/`W`, the emitted `serialize`/`deserialize` fn generics MUST be renamed off the default
-/// `R`/`W` (else the user type is shadowed → E0574/E0599). This is a string check so it runs in the
-/// default `cargo test` tier; the standalone `cargo check` proof rides the `#[ignore]` compile gate.
-/// The inverse — a non-colliding spec keeps `R`/`W`, so the snapshot corpus never churns — is
-/// asserted too, since a naive "always rename" fix would pass the collision cases but break every
-/// committed snapshot.
+/// FAST-TIER guard: the emitted `serialize`/`deserialize` fns carry NO reader/writer type
+/// parameters (cbor_event 3.x's `Serializer`/`Deserializer` are concrete), so a rule camel-casing
+/// to `R`/`W` defines an ordinary type with nothing to shadow. Pin the absence — a reintroduced fn
+/// generic would silently resurrect the whole shape-dependent collision class this sweep launched
+/// with. String check so it runs in the default `cargo test` tier; the standalone `cargo check`
+/// proof rides the `#[ignore]` compile gate's `r`/`w` bundle cells.
 #[test]
-fn generic_names_are_collision_proofed_against_rw_idents() {
-    // `r` (→ type `R`) forces the reader generic off `R`; `w` (→ `W`) forces the writer off `W`.
-    // Cover both emitted shapes (struct + type-choice enum) and the plain-group struct registration
-    // — the exact cells pinned in `EXPECTED_COMPILE_FAIL`.
+fn emitted_signatures_carry_no_reader_writer_generics() {
     for (spec, tag) in [
-        ("r = [a: uint]\n", "unit_r_struct"),
         ("r = uint / tstr\n", "unit_r_enum"),
-        ("r = (a: uint, b: uint)\nholder = [r]\n", "unit_r_group"),
+        ("w = uint / tstr\n", "unit_w_enum"),
+        (
+            "foo = uint / tstr\nholder = [a: uint]\n",
+            "unit_no_collision",
+        ),
     ] {
         let src = generated_source(spec, tag);
         assert!(
-            !src.contains("<R: BufRead"),
-            "{tag}: reader generic still named `R`, shadows the user type `R` (E0574/E0599):\n{src}"
-        );
-        assert!(
-            src.contains("RDe"),
-            "{tag}: expected the reader generic renamed to `RDe`, not found:\n{src}"
+            !src.contains(": BufRead") && !src.contains(": Write"),
+            "{tag}: emitted signatures grew a reader/writer generic bound again — that reintroduces \
+             the `r`/`w` ident-collision class (E0574/E0599):\n{src}"
         );
     }
-    let w_src = generated_source("w = uint / tstr\n", "unit_w_enum");
-    assert!(
-        !w_src.contains("<'se, W: Write"),
-        "w enum: writer generic still named `W`, shadows the user type `W` (E0599):\n{w_src}"
-    );
-    assert!(
-        w_src.contains("WSer"),
-        "w enum: expected the writer generic renamed to `WSer`, not found:\n{w_src}"
-    );
-
-    // No collision → the historical `R`/`W` names survive and no fallback token leaks (the
-    // no-churn invariant). A spec whose only idents are `Foo`/`Holder` cannot collide.
-    let clean = generated_source(
-        "foo = uint / tstr\nholder = [a: uint]\n",
-        "unit_no_collision",
-    );
-    assert!(
-        clean.contains("<R: BufRead") && clean.contains("<'se, W: Write"),
-        "non-colliding spec must keep the default `R`/`W` generics:\n{clean}"
-    );
-    assert!(
-        !clean.contains("RDe") && !clean.contains("WSer"),
-        "non-colliding spec must NOT emit any fallback generic name:\n{clean}"
-    );
 }
 
 /// LAYER 1 — the generation-outcome catalog (default `cargo test`). A snapshot of `ok` /
@@ -302,13 +274,12 @@ fn checkout_hash() -> u64 {
 /// is the sweep's whole payoff: a red cell the bundle would otherwise launder, held explicit — NOT a
 /// license to fix the generator here.
 ///
-/// EMPTY: the `r`/`w` reader/writer-generic collisions that formerly lived here are FIXED by
-/// collision-proof generic names (`generic_names_are_collision_proofed_against_
-/// rw_idents` pins the string-level guard, and the emitted `serialize`/`deserialize` fn generics now
-/// rename off any user type named `R`/`W`, so all four cells `cargo check` clean and ride the position
-/// bundles below). The pinning machinery stays wired: a NEW hazard that generates but does not compile
-/// gets an entry here, asserted red individually, and the `resurfaced` guard flips loudly the day it's
-/// fixed.
+/// EMPTY: the `r`/`w` reader/writer-generic collisions that formerly lived here are GONE — the
+/// emitted `serialize`/`deserialize` fns carry no type parameters since cbor_event 3.x
+/// (`emitted_signatures_carry_no_reader_writer_generics` pins the absence), so all four cells
+/// `cargo check` clean and ride the position bundles below. The pinning machinery stays wired: a
+/// NEW hazard that generates but does not compile gets an entry here, asserted red individually,
+/// and the `resurfaced` guard flips loudly the day it's fixed.
 const EXPECTED_COMPILE_FAIL: &[(&str, &str, &str)] = &[];
 
 /// Generate a crate for `spec` into `out` and `cargo check` its rust crate against `target_dir`.

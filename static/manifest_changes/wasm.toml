@@ -41,3 +41,8 @@ set = '"0.2"'
 id = 8
 path = "dependencies.linked-hash-map"
 set = '"0.5.3"'
+
+[[change]]
+id = 9
+path = "dependencies.cbor_event"
+set = '"3.2.0"'

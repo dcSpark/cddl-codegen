@@ -306,7 +306,7 @@ pub(super) fn generate_wrapper_struct(
         }
         s_impl.push_fn(get);
     }
-    let mut ser_func = make_serialization_function("serialize", &gen_scope.serialize_generic, cli);
+    let mut ser_func = make_serialization_function("serialize", cli);
     let mut ser_impl = make_serialization_impl(type_name.as_ref(), cli);
     gen_scope.generate_serialize(
         types,
@@ -318,8 +318,7 @@ pub(super) fn generate_wrapper_struct(
         cli,
     );
     ser_impl.push_fn(ser_func);
-    let mut deser_func =
-        make_deserialization_function("deserialize", &gen_scope.deserialize_generic, cli);
+    let mut deser_func = make_deserialization_function("deserialize", cli);
     let mut deser_impl = codegen::Impl::new(type_name.to_string());
     deser_impl.impl_trait("Deserialize");
     if let ConceptualRustType::Rust(id) = &field_type.conceptual_type
@@ -790,7 +789,7 @@ pub(super) fn generate_int(gen_scope: &mut GenerationScope, types: &Intermediate
 
     // serialization
     let mut ser_impl = make_serialization_impl("Int", cli);
-    let mut ser_func = make_serialization_function("serialize", &gen_scope.serialize_generic, cli);
+    let mut ser_func = make_serialization_function("serialize", cli);
     let mut ser_block = Block::new("match self");
     if cli.preserve_encodings {
         ser_block
@@ -807,8 +806,7 @@ pub(super) fn generate_int(gen_scope: &mut GenerationScope, types: &Intermediate
     // deserialization
     let mut deser_impl = codegen::Impl::new("Int");
     deser_impl.impl_trait("Deserialize");
-    let mut deser_func =
-        make_deserialization_function("deserialize", &gen_scope.deserialize_generic, cli);
+    let mut deser_func = make_deserialization_function("deserialize", cli);
     let mut annotate = make_err_annotate_block("Int", "", "");
     let mut deser_match = Block::new("match raw.cbor_type()?");
     if cli.preserve_encodings {

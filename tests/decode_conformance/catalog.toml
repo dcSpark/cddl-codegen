@@ -7361,9 +7361,7 @@ type_name = "M"
 [[row.vector]]
 hex = "81f94200"
 source = "ruby-generate"
-expect = "reject"
-class = "bug"
-reason = "spec-valid [3.0] encoded as a HALF-PRECISION float (f9 4200): cbor_event 2.4.0's Special decoder casts the raw 16-bit pattern to f64 (16896.0) instead of decoding the half-float bits (src/de.rs, the 0x19 arm; the 0x1a arm correctly does f32::from_bits) — so the fixed-value compare sees 16896 != 3.0 and rejects. A dependency-level decode bug that silently corrupts ANY half-precision float value (ledgered in cddl-matrix/ROADMAP.md § findings); prune when a fixed cbor_event ships"
+expect = "accept"
 
 [[row.vector]]
 hex = "81fb4008000000000000"

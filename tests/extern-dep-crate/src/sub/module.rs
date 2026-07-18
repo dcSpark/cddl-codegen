@@ -22,17 +22,17 @@ impl ExternCrateBar {
 }
 
 impl cbor_event::se::Serialize for ExternCrateBar {
-    fn serialize<'se, W: std::io::Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut cbor_event::se::Serializer<W>,
-    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {
+        serializer: &'se mut cbor_event::se::Serializer,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
         serializer.write_unsigned_integer(self.inner)
     }
 }
 
 impl crate::serialization::Deserialize for ExternCrateBar {
-    fn deserialize<R: std::io::BufRead + std::io::Seek>(
-        raw: &mut cbor_event::de::Deserializer<R>,
+    fn deserialize(
+        raw: &mut cbor_event::de::Deserializer,
     ) -> Result<Self, crate::error::DeserializeError> {
         Ok(Self {
             inner: raw.unsigned_integer()?,

@@ -15,11 +15,11 @@ mod tests {
     fn deser_test<T: Deserialize + ToCBORBytes>(orig: &T) {
         let orig_bytes = orig.to_cbor_bytes();
         print_cbor_types("orig", &orig_bytes);
-        let mut deserializer = Deserializer::from(std::io::Cursor::new(orig_bytes.clone()));
+        let mut deserializer = Deserializer::from(orig_bytes.clone());
         let deser = T::deserialize(&mut deserializer).unwrap();
         print_cbor_types("deser", &deser.to_cbor_bytes());
         assert_eq!(orig.to_cbor_bytes(), deser.to_cbor_bytes());
-        assert_eq!(deserializer.as_ref().position(), orig_bytes.len() as u64);
+        assert_eq!(deserializer.position(), orig_bytes.len());
     }
 
     #[test]
@@ -506,6 +506,15 @@ mod tests {
         // arm reads an i128 and must not wrap below i64::MIN.
         assert!(make(7, (i64::MAX as i128) + 1).is_err());
         assert!(make(7, (i64::MIN as i128) - 1).is_err());
+        // The nint domain floor (-2^64) into NARROW int fields: cbor_event 2.4.0's
+        // negative_integer() silently WRAPPED -2^64 to 0 and these fields ACCEPTED the corrupted
+        // value; 3.2.0 errors instead (cbor_event 3.2.0 upgrade flip vectors).
+        assert!(make(4, -(1i128 << 64)).is_err());
+        assert!(make(5, -(1i128 << 64)).is_err());
+        assert!(make(6, -(1i128 << 64)).is_err());
+        assert!(make(7, -(1i128 << 64)).is_err());
+        // ...while the full-range nint field still accepts the domain floor.
+        make(8, -(1i128 << 64)).unwrap();
     }
 
     #[test]
@@ -1535,12 +1544,12 @@ mod tests {
     #[test]
     fn non_empty_vec_wire_rejects_empty_same_error() {
         // valid: outer array(1) [ inner [+ uint] array(1) [ 1 ] ] = 81 81 01
-        let mut ok = Deserializer::from(std::io::Cursor::new(vec![0x81u8, 0x81, 0x01]));
+        let mut ok = Deserializer::from(vec![0x81u8, 0x81, 0x01]);
         NevWire::deserialize(&mut ok).expect("valid single-element [+ uint] wire must deserialize");
         // invalid: outer array(1) [ EMPTY inner array(0) ] = 81 80 — the `[+ uint]` field routes the
         // empty Vec through the same NonEmptyVec::try_from door, so the wire error text MATCHES the
         // API error text asserted in non_empty_vec_try_from_enforces_and_from_lossless.
-        let mut bad = Deserializer::from(std::io::Cursor::new(vec![0x81u8, 0x80]));
+        let mut bad = Deserializer::from(vec![0x81u8, 0x80]);
         let err = NevWire::deserialize(&mut bad).unwrap_err();
         assert!(
             err.to_string().contains("0 not at least 1"),
@@ -1610,14 +1619,14 @@ mod tests {
     #[test]
     fn non_empty_map_wire_rejects_empty_same_error() {
         // valid: outer map(1) { "m": inner map(1) { 0: 1 } } = a1 61 6d a1 00 01
-        let mut ok = Deserializer::from(std::io::Cursor::new(vec![
+        let mut ok = Deserializer::from(vec![
             0xa1u8, 0x61, 0x6d, 0xa1, 0x00, 0x01,
-        ]));
+        ]);
         NemWire::deserialize(&mut ok).expect("valid single-entry {+ uint => uint} wire");
         // invalid: outer map(1) { "m": EMPTY inner map(0) } = a1 61 6d a0 — the `{+ uint => uint}`
         // field routes the empty map through the same NonEmptyMap::try_from door, so the wire error
         // text MATCHES the API error text asserted above.
-        let mut bad = Deserializer::from(std::io::Cursor::new(vec![0xa1u8, 0x61, 0x6d, 0xa0]));
+        let mut bad = Deserializer::from(vec![0xa1u8, 0x61, 0x6d, 0xa0]);
         let err = NemWire::deserialize(&mut bad).unwrap_err();
         assert!(
             err.to_string().contains("0 not at least 1"),
@@ -1648,5 +1657,80 @@ mod tests {
         m.insert(2, "b".to_string());
         assert_eq!(m.remove(&1).unwrap(), Some("a".to_string()));
         assert_eq!(m.len(), 1);
+    }
+
+    #[test]
+    fn nullable_specials() {
+        // The `T / null` null-peek over Special-typed inners must rewind by the ACTUAL width
+        // `special()` consumed (1/2/3/5/9 bytes), not a hardcoded 1 byte (cbor_event 3.2.0 upgrade
+        // flip vectors — the 2.4.0-era emission both rejected valid multi-byte specials and
+        // accepted malformed two-byte simples).
+        // [true, 1.5(fb)] — the 9-byte float after the peek; rejected by the old 1-byte rewind.
+        let fb_1_5 = [0xfbu8, 0x3f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let good: Vec<u8> = [arr_def(2), vec![0xf5], fb_1_5.to_vec()].concat();
+        let d = NullableSpecials::from_cbor_bytes(&good).unwrap();
+        assert_eq!(d.b, Some(true));
+        assert_eq!(d.f, Some(1.5));
+        // fb is also the canonical float emission, so this vector round-trips byte-identically
+        assert_eq!(d.to_cbor_bytes(), good);
+        // [null, null]
+        let nulls: Vec<u8> = [arr_def(2), vec![0xf6, 0xf6]].concat();
+        let d = NullableSpecials::from_cbor_bytes(&nulls).unwrap();
+        assert!(d.b.is_none() && d.f.is_none());
+        // half-precision decode correctness (the f16 flip): f9 3e00 = 1.5, not the raw bit pattern
+        let f16v: Vec<u8> = [arr_def(2), vec![0xf6, 0xf9, 0x3e, 0x00]].concat();
+        let d = NullableSpecials::from_cbor_bytes(&f16v).unwrap();
+        assert_eq!(d.f, Some(1.5));
+        // two-byte simple `f8 f5` in the nullable-bool slot: the 2.4.0 peek consumed 2 bytes,
+        // rewound 1, and re-read the PAYLOAD byte f5 as `true` — accepting malformed input. Reject.
+        assert!(NullableSpecials::from_cbor_bytes(&[0x82, 0xf8, 0xf5, 0xf6]).is_err());
+        // RFC 8949 §3.3: fc/fd/fe and two-byte simples < 0x20 are not well-formed — reject
+        for bad in [
+            &[0x82u8, 0xfc, 0xf6][..],
+            &[0x82, 0xfd, 0xf6],
+            &[0x82, 0xfe, 0xf6],
+            &[0x82, 0xf8, 0x1f, 0xf6],
+        ] {
+            assert!(NullableSpecials::from_cbor_bytes(bad).is_err());
+        }
+        // a lone Break where the bool item should be — an error, not a mis-decode
+        assert!(NullableSpecials::from_cbor_bytes(&[0x82, 0xff, 0xf6]).is_err());
+    }
+
+    #[test]
+    fn invalid_utf8_text_rejects() {
+        // UTF-8 strictness fence: 2.4.0 and 3.1.0+ are strict (the yanked 3.0.0 was lossy) — an
+        // invalid-UTF-8 major-type-3 payload must reject, never decode lossily.
+        // foo = [uint, text, bytes] → [0, <2-byte text ff fe>, h'']
+        assert!(Foo::from_cbor_bytes(&[0x83, 0x00, 0x62, 0xff, 0xfe, 0x40]).is_err());
+    }
+
+    #[test]
+    fn hostile_inputs_error_not_panic() {
+        // Absorbed-fix fences for the cbor_event 3.2.0 upgrade (hostile/truncated input must yield
+        // Err — never panic, never pre-allocate a claimed length).
+        // truncated 8-byte length argument on an array head
+        assert!(Foo::from_cbor_bytes(&[0x9b, 0xff, 0xff]).is_err());
+        // definite bytes head claiming ~2 GiB with no payload: must Err promptly instead of
+        // pre-allocating the claimed length (the 2.4.0 over-allocation class)
+        let huge: Vec<u8> = [
+            &[0x83u8, 0x00, 0x60][..],
+            &[0x5b, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00],
+        ]
+        .concat();
+        assert!(Foo::from_cbor_bytes(&huge).is_err());
+        // a lone Break as the whole document
+        assert!(Foo::from_cbor_bytes(&[0xff]).is_err());
+        // Break where the first element of a definite array should be
+        assert!(Foo::from_cbor_bytes(&[0x83, 0xff, 0x60, 0x40]).is_err());
+        // ALIAS-typed target: `top_level_array = [* uint]` is a bare `pub type = Vec<u64>`, so its
+        // from_cbor_bytes routes through cbor_event's own generic container impls (the one
+        // generated-code route into the upstream indefinite-loop helper).
+        // truncated indefinite array (no Break)
+        assert!(TopLevelArray::from_cbor_bytes(&[0x9f, 0x00]).is_err());
+        // reserved simple value as an element
+        assert!(TopLevelArray::from_cbor_bytes(&[0x9f, 0xfc, 0xff]).is_err());
+        // truncated definite element list
+        assert!(TopLevelArray::from_cbor_bytes(&[0x83, 0x00]).is_err());
     }
 }

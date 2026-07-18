@@ -10,13 +10,12 @@ use super::*;
 use crate::generated::error::*;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
-use std::io::{BufRead, Seek, SeekFrom, Write};
 
 impl cbor_event::se::Serialize for DataEnum {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         match self {
             DataEnum::U64 {
                 uint,
@@ -31,7 +30,7 @@ impl cbor_event::se::Serialize for DataEnum {
 }
 
 impl Deserialize for DataEnum {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             match raw.cbor_type()? {
                 cbor_event::Type::UnsignedInteger => {
@@ -59,10 +58,10 @@ impl Deserialize for DataEnum {
 }
 
 impl cbor_event::se::Serialize for NullableCollField {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array_sz(
             self.encodings
                 .as_ref()
@@ -108,7 +107,7 @@ impl cbor_event::se::Serialize for NullableCollField {
 }
 
 impl Deserialize for NullableCollField {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.array_sz()?;
             let len_encoding: LenEncoding = len.into();
@@ -172,10 +171,10 @@ impl Deserialize for NullableCollField {
 }
 
 impl cbor_event::se::Serialize for NullableDenumField {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array_sz(
             self.encodings
                 .as_ref()
@@ -200,7 +199,7 @@ impl cbor_event::se::Serialize for NullableDenumField {
 }
 
 impl Deserialize for NullableDenumField {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.array_sz()?;
             let len_encoding: LenEncoding = len.into();
@@ -236,10 +235,10 @@ impl Deserialize for NullableDenumField {
 }
 
 impl cbor_event::se::Serialize for NullableOptionalField {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array_sz(
             self.encodings
                 .as_ref()
@@ -290,7 +289,7 @@ impl cbor_event::se::Serialize for NullableOptionalField {
 }
 
 impl Deserialize for NullableOptionalField {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.array_sz()?;
             let len_encoding: LenEncoding = len.into();
@@ -302,10 +301,8 @@ impl Deserialize for NullableOptionalField {
                 .map(|(x, enc)| (x, Some(enc)))
                 .map_err(|e: DeserializeError| e.annotate("pre"))?;
             let (field0, field0_encoding) = if raw
-                .as_mut_ref()
-                .fill_buf()
-                .ok()
-                .and_then(|buf| buf.get(0))
+                .as_slice()
+                .first()
                 .map(|byte: &u8| {
                     vec![cbor_event::Type::UnsignedInteger, cbor_event::Type::Special]
                         .contains(&cbor_event::Type::from(*byte))

@@ -11,17 +11,17 @@ use crate::serialization::Deserialize;
 pub struct Address(pub u64);
 
 impl cbor_event::se::Serialize for Address {
-    fn serialize<'se, W: std::io::Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut cbor_event::se::Serializer<W>,
-    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {
+        serializer: &'se mut cbor_event::se::Serializer,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
         serializer.write_unsigned_integer(self.0)
     }
 }
 
 impl Deserialize for Address {
-    fn deserialize<R: std::io::BufRead + std::io::Seek>(
-        raw: &mut cbor_event::de::Deserializer<R>,
+    fn deserialize(
+        raw: &mut cbor_event::de::Deserializer,
     ) -> Result<Self, DeserializeError> {
         Ok(Self(raw.unsigned_integer()?))
     }

@@ -9,13 +9,12 @@ use super::*;
 use crate::generated::error::*;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
-use std::io::{BufRead, Seek, SeekFrom, Write};
 
 impl cbor_event::se::Serialize for EnumKeyHolder {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array(cbor_event::Len::Len(2))?;
         serializer.write_map(cbor_event::Len::Len(self.choice_keyed.len() as u64))?;
         for (key, value) in self.choice_keyed.iter() {
@@ -32,7 +31,7 @@ impl cbor_event::se::Serialize for EnumKeyHolder {
 }
 
 impl Deserialize for EnumKeyHolder {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let len = raw.array()?;
             let mut read_len = CBORReadLen::from(len);
@@ -111,10 +110,10 @@ impl Deserialize for EnumKeyHolder {
 }
 
 impl cbor_event::se::Serialize for Ikey {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         match self {
             Ikey::U64(uint) => serializer.write_unsigned_integer(*uint),
             Ikey::N64(n64) => serializer
@@ -124,7 +123,7 @@ impl cbor_event::se::Serialize for Ikey {
 }
 
 impl Deserialize for Ikey {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             match raw.cbor_type()? {
                 cbor_event::Type::UnsignedInteger => Ok(Ikey::U64(raw.unsigned_integer()?)),
@@ -140,10 +139,10 @@ impl Deserialize for Ikey {
 }
 
 impl cbor_event::se::Serialize for Int {
-    fn serialize<'se, W: Write>(
+    fn serialize<'se>(
         &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
         match self {
             Self::Uint(x) => serializer.write_unsigned_integer(*x),
             Self::Nint(x) => serializer
@@ -153,7 +152,7 @@ impl cbor_event::se::Serialize for Int {
 }
 
 impl Deserialize for Int {
-    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             match raw.cbor_type()? {
                 cbor_event::Type::UnsignedInteger => Ok(Self::Uint(raw.unsigned_integer()?)),

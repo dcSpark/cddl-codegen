@@ -26,11 +26,11 @@ use cbor_encodings::{
     BoundsEncoding, BytesUintEncoding, CEncoding, CborInCborEncoding, CustomFieldHolderEncoding,
     DeeplyNestedEncoding, EdEncoding, EeEncoding, EnumsEncoding, FirstEncoding, FooEncoding,
     HashEncoding, MapWithDefaultsEncoding, NemPreserveEncoding, NevPreserveEncoding,
-    PlainArraysEncoding, PlainEncoding, SecondEncoding, SignBoundsEncoding, SignedIntsEncoding,
-    String64Encoding, String1632Encoding, StructWithCustomSerializationEncoding,
-    TableArrMembersEncoding, TaggedFooBytesEncoding, TaggedTextEncoding, ThreeEncoding,
-    TopLevelNegRangeEncoding, TopLevelPosRangeEncoding, TopLevelTaggedRangeEncoding,
-    WidthCollapseEncoding, WrapperListEncoding, WrapperTableEncoding,
+    NullableSpecialsEncoding, PlainArraysEncoding, PlainEncoding, SecondEncoding,
+    SignBoundsEncoding, SignedIntsEncoding, String64Encoding, String1632Encoding,
+    StructWithCustomSerializationEncoding, TableArrMembersEncoding, TaggedFooBytesEncoding,
+    TaggedTextEncoding, ThreeEncoding, TopLevelNegRangeEncoding, TopLevelPosRangeEncoding,
+    TopLevelTaggedRangeEncoding, WidthCollapseEncoding, WrapperListEncoding, WrapperTableEncoding,
 };
 use std::collections::BTreeMap;
 
@@ -1042,6 +1042,20 @@ impl NonOverlappingTypeChoiceSome {
             text,
             text_encoding: StringEncoding::default(),
         }
+    }
+}
+
+pub type NullableBool = Option<bool>;
+
+#[derive(Clone, Debug)]
+pub struct NullableSpecials {
+    pub b: NullableBool,
+    pub encodings: Option<NullableSpecialsEncoding>,
+}
+
+impl NullableSpecials {
+    pub fn new(b: NullableBool) -> Self {
+        Self { b, encodings: None }
     }
 }
 

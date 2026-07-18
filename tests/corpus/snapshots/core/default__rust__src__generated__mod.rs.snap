@@ -1144,6 +1144,22 @@ impl NonOverlappingTypeChoiceSome {
     }
 }
 
+pub type NullableBool = Option<bool>;
+
+pub type NullableFloat = Option<f64>;
+
+#[derive(Clone, Debug)]
+pub struct NullableSpecials {
+    pub b: NullableBool,
+    pub f: NullableFloat,
+}
+
+impl NullableSpecials {
+    pub fn new(b: NullableBool, f: NullableFloat) -> Self {
+        Self { b, f }
+    }
+}
+
 pub type OptText = Option<TaggedText>;
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]

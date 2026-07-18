@@ -26,3 +26,8 @@ set = '["cdylib", "rlib"]'
 id = 5
 path = "dependencies.cbor_event"
 set = '"2.4.0"'
+
+[[change]]
+id = 6
+path = "dependencies.cbor_event"
+set = '"3.2.0"'

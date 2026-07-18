@@ -3406,7 +3406,7 @@ fn cargo_manifest_disk_round_trip() {
     // (the reshape exercises the field-level dep merge on a real disk round trip); the stamp must be
     // restored.
     assert!(
-        first.contains("cbor_event = \"2.4.0\""),
+        first.contains("cbor_event = \"3.2.0\""),
         "expected the plain-string cbor_event dep to reshape:\n{first}"
     );
     let edited = format!(
@@ -3414,8 +3414,8 @@ fn cargo_manifest_disk_round_trip() {
         first
             .replace("version = \"0.1.0\"", "version = \"9.9.9\"")
             .replace(
-                "cbor_event = \"2.4.0\"",
-                "cbor_event = { version = \"2.4.0\", optional = false }",
+                "cbor_event = \"3.2.0\"",
+                "cbor_event = { version = \"3.2.0\", optional = false }",
             )
             .replace(
                 &format!("generated-with = \"{tool_version}\""),
@@ -3458,7 +3458,7 @@ fn cargo_manifest_disk_round_trip() {
         "user-added dep field must survive the dep merge:\n{second}"
     );
     assert!(
-        second.contains("version = \"2.4.0\""),
+        second.contains("version = \"3.2.0\""),
         "compatible pin must be kept on the merged dep:\n{second}"
     );
 
@@ -3724,17 +3724,17 @@ fn thin_root_in_crate_extern_type_compiles() {
              pub struct MyExt(pub u64);\n\
              \n\
              impl cbor_event::se::Serialize for MyExt {\n\
-             \x20   fn serialize<'se, W: std::io::Write>(\n\
+             \x20   fn serialize<'se>(\n\
              \x20       &self,\n\
-             \x20       serializer: &'se mut cbor_event::se::Serializer<W>,\n\
-             \x20   ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {\n\
+             \x20       serializer: &'se mut cbor_event::se::Serializer,\n\
+             \x20   ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {\n\
              \x20       serializer.write_unsigned_integer(self.0)\n\
              \x20   }\n\
              }\n\
              \n\
              impl Deserialize for MyExt {\n\
-             \x20   fn deserialize<R: std::io::BufRead + std::io::Seek>(\n\
-             \x20       raw: &mut cbor_event::de::Deserializer<R>,\n\
+             \x20   fn deserialize(\n\
+             \x20       raw: &mut cbor_event::de::Deserializer,\n\
              \x20   ) -> Result<Self, DeserializeError> {\n\
              \x20       Ok(Self(raw.unsigned_integer()?))\n\
              \x20   }\n\
@@ -3826,17 +3826,17 @@ fn thin_root_in_crate_extern_type_compiles() {
              pub struct MyExt(pub u64);\n\
              \n\
              impl cbor_event::se::Serialize for MyExt {\n\
-             \x20   fn serialize<'se, W: std::io::Write>(\n\
+             \x20   fn serialize<'se>(\n\
              \x20       &self,\n\
-             \x20       serializer: &'se mut cbor_event::se::Serializer<W>,\n\
-             \x20   ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {\n\
+             \x20       serializer: &'se mut cbor_event::se::Serializer,\n\
+             \x20   ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {\n\
              \x20       serializer.write_unsigned_integer(self.0)\n\
              \x20   }\n\
              }\n\
              \n\
              impl Deserialize for MyExt {\n\
-             \x20   fn deserialize<R: std::io::BufRead + std::io::Seek>(\n\
-             \x20       raw: &mut cbor_event::de::Deserializer<R>,\n\
+             \x20   fn deserialize(\n\
+             \x20       raw: &mut cbor_event::de::Deserializer,\n\
              \x20   ) -> Result<Self, DeserializeError> {\n\
              \x20       Ok(Self(raw.unsigned_integer()?))\n\
              \x20   }\n\
@@ -4790,12 +4790,12 @@ fn used_as_key_ord_flavor_assertion_fails_on_missing_supply() {
             #[derive(Clone, Debug, Eq, PartialEq, Hash)]\n\
             pub struct Value(pub u64);\n\
             impl cbor_event::se::Serialize for Value {\n\
-                fn serialize<'se, W: std::io::Write>(&self, serializer: &'se mut cbor_event::se::Serializer<W>) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {\n\
+                fn serialize<'se>(&self, serializer: &'se mut cbor_event::se::Serializer) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {\n\
                     serializer.write_unsigned_integer(self.0)\n\
                 }\n\
             }\n\
             impl serialization::Deserialize for Value {\n\
-                fn deserialize<R: std::io::BufRead + std::io::Seek>(raw: &mut cbor_event::de::Deserializer<R>) -> Result<Self, error::DeserializeError> {\n\
+                fn deserialize(raw: &mut cbor_event::de::Deserializer) -> Result<Self, error::DeserializeError> {\n\
                     Ok(Value(raw.unsigned_integer()?))\n\
                 }\n\
             }\n",
@@ -8004,12 +8004,12 @@ fn workspace_key_requests_flavored_contract() {
                 #[derive(Clone, Debug, Eq, PartialEq, Hash)]\n\
                 pub struct Opaque(pub u64);\n\
                 impl cbor_event::se::Serialize for Opaque {\n\
-                    fn serialize<'se, W: std::io::Write>(&self, serializer: &'se mut cbor_event::se::Serializer<W>) -> cbor_event::Result<&'se mut cbor_event::se::Serializer<W>> {\n\
+                    fn serialize<'se>(&self, serializer: &'se mut cbor_event::se::Serializer) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {\n\
                         serializer.write_unsigned_integer(self.0)\n\
                     }\n\
                 }\n\
                 impl serialization::Deserialize for Opaque {\n\
-                    fn deserialize<R: std::io::BufRead + std::io::Seek>(raw: &mut cbor_event::de::Deserializer<R>) -> Result<Self, error::DeserializeError> {\n\
+                    fn deserialize(raw: &mut cbor_event::de::Deserializer) -> Result<Self, error::DeserializeError> {\n\
                         Ok(Opaque(raw.unsigned_integer()?))\n\
                     }\n\
                 }\n",

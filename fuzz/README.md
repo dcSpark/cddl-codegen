@@ -61,10 +61,10 @@ Findings graduate to committed regressions: codegen-owned crashes become a `test
 `structural_rejects` case; dependency-level ones are ledgered in `cddl-matrix/ROADMAP.md`.
 
 - The **`cbor_event` untrusted length-prefix over-allocation** (a `0x7b`/`0x5b`… 8-byte length
-  header drives a multi-GB `Vec::with_capacity` before any payload byte is read → `capacity overflow`
-  / OOM) is surfaced by `from_cbor_bytes` and already ledgered there (dependency-level, fix deferred
-  upstream — see the "Untrusted length-prefix over-allocation" entry). It is not a codegen bug; the
-  derived probe list simply exercises it across every deserializable type.
+  header drove a multi-GB `Vec::with_capacity` before any payload byte was read) was fixed upstream
+  in cbor_event 3.x (the Vec-backed `Deserializer` bounds-checks claimed lengths against the buffer
+  before slicing); the committed regression vector is the ~2 GiB-claim case in
+  `tests/core/tests.rs`'s `hostile_inputs_error_not_panic`.
 - The recursive target's depth guard was **validated against the failure class it defends**: built
   once *without* `--deserialize-depth-limit`, the hostile-deep seed reproduces
   `AddressSanitizer: stack-overflow … ABORTING` (confirming the fuzz process boundary can see the

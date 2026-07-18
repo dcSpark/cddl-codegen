@@ -540,8 +540,7 @@ impl GenerationScope {
             let prelude = format!(
                 "use super::error::{{DeserializeError, DeserializeFailure}};\n\
                  use cbor_event::de::Deserializer;\n\
-                 use cbor_event::se::Serializer;\n\
-                 use std::io::{{BufRead, Seek, Write}};\n\n{}",
+                 use cbor_event::se::Serializer;\n\n{}",
                 Self::serialization_prelude(true, cli)?
             );
             let serialization_path = export_dir.join("serialization.rs");

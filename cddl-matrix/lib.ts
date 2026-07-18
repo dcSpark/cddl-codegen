@@ -562,8 +562,8 @@ export const CORPUS_DECODE_FLOOR_ARM_EXEMPT: Record<string, string> = {};
 export const PRELUDE_NAMES: ReadonlySet<string> = new Set(preludeDefById.keys());
 
 // ==================================================================================================
-// CORPUS decode-conformance support — the SHARED rule enumerator, dependency-closure builder, and
-// whole-item CBOR f9 walker used by BOTH the corpus mint (verify.ts `--mint-decode-corpus`) and the
+// CORPUS decode-conformance support — the SHARED rule enumerator and dependency-closure builder
+// used by BOTH the corpus mint (verify.ts `--mint-decode-corpus`) and the
 // corpus drift gate (project_decode_conformance.ts). ONE implementation so the drift gate re-derives
 // exactly what the mint derived; any asymmetry would be drift-gate-invisible. Self-checked inline in
 // the drift gate against a synthetic multi-rule sample (strings, comments, generics, hyphens).
@@ -675,53 +675,6 @@ export function corpusArmExample(target: string, rules: CorpusRule[]): string {
   const closure = dependencyClosure(target, rules);
   const tgt = closure.find(r => r.name === target)!;
   return [tgt, ...closure.filter(r => r.name !== target)].map(r => r.span).join("\n");
-}
-
-// Minimal whole-item CBOR walker: heads + lengths only, recursing every nested item, returning true iff
-// ANY item HEAD byte is 0xf9 (a half-precision float head) ANYWHERE in the tree. The corpus f9 ban is
-// whole-item (not head-only like the matrix's): a corpus vector is a composite where an f9 can sit
-// NESTED (`[* float64]`), and cbor_event 2.4.0 mis-decodes f9 (green-but-corrupted accept evidence).
-// NEVER a byte-grep: 0xf9 also occurs inside payloads (string bytes, deeper float mantissas). Throws on
-// malformed/truncated input so a walker bug can't silently pass an f9 vector as clean.
-export function cborContainsF9(bytes: Uint8Array): boolean {
-  let pos = 0, found = false;
-  const need = (n: number) => { if (pos + n > bytes.length) throw new Error(`truncated CBOR at ${pos} (need ${n})`); };
-  const readItem = (): void => {
-    need(1);
-    const head = bytes[pos++];
-    if (head === 0xf9) found = true;
-    const major = head >> 5, ai = head & 0x1f;
-    let arg = 0, indefinite = false;
-    if (ai < 24) arg = ai;
-    else if (ai === 24) { need(1); arg = bytes[pos]; pos += 1; }
-    else if (ai === 25) { need(2); arg = (bytes[pos] << 8) | bytes[pos + 1]; pos += 2; }
-    else if (ai === 26) { need(4); for (let i = 0; i < 4; i++) arg = arg * 256 + bytes[pos + i]; pos += 4; }
-    else if (ai === 27) { need(8); for (let i = 0; i < 8; i++) arg = arg * 256 + bytes[pos + i]; pos += 8; }
-    else if (ai === 31) indefinite = true;            // indefinite length (or, for major 7, the break)
-    else throw new Error(`reserved additional-info ${ai} at ${pos - 1}`);
-    const atBreak = () => { need(1); return bytes[pos] === 0xff; };
-    switch (major) {
-      case 0: case 1: break;                           // uint / nint — argument is the value
-      case 2: case 3:                                  // byte / text string
-        if (indefinite) { while (!atBreak()) readItem(); pos++; }
-        else { need(arg); pos += arg; }
-        break;
-      case 4:                                          // array
-        if (indefinite) { while (!atBreak()) readItem(); pos++; }
-        else for (let i = 0; i < arg; i++) readItem();
-        break;
-      case 5:                                          // map
-        if (indefinite) { while (!atBreak()) { readItem(); readItem(); } pos++; }
-        else for (let i = 0; i < arg; i++) { readItem(); readItem(); }
-        break;
-      case 6: readItem(); break;                       // tag — one following item
-      case 7:                                          // simple / float / break
-        if (ai === 31) throw new Error(`unexpected break at ${pos - 1}`);
-        break;                                         // f16/f32/f64 argument bytes already consumed above
-    }
-  };
-  readItem();
-  return found;
 }
 
 // ==================================================================================================

@@ -41,7 +41,7 @@ import { dirname, join, resolve } from "node:path";
 import {
   ALT_PRODUCTIONS, CORPUS_CATALOG_INTRO, CORPUS_DECODE_FLOOR_ARM_EXEMPT, CORPUS_HOLDER_RULE, CatalogRow,
   CatalogVector, CorpusRule, DECODE_FLOOR_ARM_EXEMPT, GATE_CACHE_SCHEMA, GateCacheEntry, PRELUDE_NAMES, ROOT,
-  cborContainsF9, composeCatalog, corpusArmExample, corpusClosureBody, corpusProbeSpec, enumerateCorpusRules,
+  composeCatalog, corpusArmExample, corpusClosureBody, corpusProbeSpec, enumerateCorpusRules,
   gateCacheEnabled, gateCacheKey, grammarAltCoverage, hashTree, loadMatrixInputs, parseCatalog,
   readGateCacheEntry, resolveChoiceArmClasses, rubyGenerateIsBernoulli, stableJson, vectorShapeClass,
   writeGateCacheEntry,
@@ -1181,7 +1181,7 @@ function decodeForeignEvidence(fo?: ForeignOutcome): string {
 // For a choice row in the arm-coverage floor's scope (`resolveChoiceArmClasses`, shared with the drift
 // gate's § 7), a resample-until-covered loop (below) ensures the committed vectors carry >=1 spec-valid
 // accept per resolvable arm class, so a randomized draw that misses a whole arm can't under-claim the
-// row; half-precision (f9) float candidates are skipped there (cbor_event 2.4.0 mis-decode).
+// row.
 function mintRow(id: string, axis: string, example: string, prev: CatalogRow | undefined,
                  triage: string[], pinBreak: string[], dropped: string[]): CatalogRow {
   const pin = (reason: string): CatalogRow => ({ id, axis, example, pinned_reason: reason, vectors: [] });
@@ -1235,21 +1235,11 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
   const rejectHexes = new Set(rejectPins.map(v => v.hex));
   const overAcceptHexes = new Set(overAcceptPins.map(v => v.hex));
   const excludedHex = (h: string) => rejectHexes.has(h) || overAcceptHexes.has(h);
-  // f9 HALF-PRECISION item heads are banned from accept candidates (generated AND hand): cbor_event
-  // 2.4.0 mis-decodes f9 (the raw 16 bits cast to f64), and an f9 accept vector replays GREEN-but-
-  // CORRUPTED — the accept assert is Ok-only, the encoding-variant mutator copies float heads verbatim
-  // (`encoding_variants_copy_float_heads_verbatim`), and the float class is preserve-skipped — so the
-  // committed evidence would pin nothing about the decoded value. The decode-conformance drift gate
-  // bans committed f9-headed accepts the same way; prune BOTH together when a fixed cbor_event ships
-  // (cddl-matrix/ROADMAP.md § findings, the f16 entry).
-  const f9Head = (h: string) => h.length >= (mode === "holder" ? 6 : 2)
-    && parseInt((mode === "holder" ? h.slice(4) : h).slice(0, 2), 16) === 0xf9;
   const acDedup = new Map<string, { hex: string; source: string }>();
   for (const c of [
     ...candidates.filter(h => !excludedHex(h)).map(h => ({ hex: h, source: "ruby-generate" })),
     ...handVecs.filter(v => v.expect === "accept" && v.class !== "over-acceptance" && !excludedHex(v.hex)).map(v => ({ hex: v.hex, source: "hand" })),
   ]) {
-    if (f9Head(c.hex)) { dropped.push(`${id}/${c.hex} (f9 half-precision item head; cbor_event f16 mis-decode — green-but-corrupted accept evidence, skipped)`); continue; }
     if (!acDedup.has(c.hex)) acDedup.set(c.hex, c);
   }
 
@@ -1266,15 +1256,7 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
   // § 7 uses (`resolveChoiceArmClasses` in lib.ts — ONE source of truth; its twin consumer is
   // project_decode_conformance.ts). While any resolvable arm class lacks a validated spec-valid accept
   // vector, draw extra ruby candidates (bounded) and keep the two-oracle-valid ones that cover a MISSING
-  // class. HALF-PRECISION (f9) float candidates are SKIPPED (`f9Head` — the same ban the primary
-  // candidate path above applies): cbor_event 2.4.0 mis-decodes f9 heads (`Special::Float(f as f64)`
-  // casts the raw 16 bits — `f9 4200` = 3.0 decodes as 16896.0; cddl-matrix/ROADMAP.md § findings,
-  // "cbor_event 2.4.0 mis-decodes HALF-PRECISION (f9) floats"), and ruby's diag2cbor prefers the
-  // shortest float encoding so a float sample often arrives f9. An f9 accept vector would replay
-  // GREEN-but-CORRUPTED — Ok-only assert, float heads copied verbatim by the variant mutator,
-  // preserve-skipped float class — pinning nothing about the decoded value; take an f32/f64 (fa/fb)
-  // float instead. Prune the skip when a fixed cbor_event ships. On cap exhaustion with a
-  // genuinely-uncovered (unledgered) class, exit 1.
+  // class. On cap exhaustion with a genuinely-uncovered (unledgered) class, exit 1.
   const floor = resolveChoiceArmClasses(example);
   if (floor) {
     // A genuinely-unmintable arm class (a documented oracle gap) is ledgered exempt — don't pursue it
@@ -1294,7 +1276,6 @@ function mintRow(id: string, axis: string, example: string, prev: CatalogRow | u
       seen.add(hex);
       const cls = vectorShapeClass(hex, mode === "holder");
       if (!missing().includes(cls)) continue;  // an already-covered (or exempt) class — don't bloat the row
-      if (f9Head(hex)) continue;  // half-precision float: cbor_event 2.4.0 mis-decode (see above)
       const { ruby, rust } = validateBoth(spec, hex);
       if (ruby === 0 && rust === 0) validatedAccept.push({ hex, source: "ruby-generate" });
       else dropped.push(`${id}/${hex} (arm-coverage resample for class ${cls}; ruby ${ruby} rust ${rust})`);
@@ -1479,7 +1460,7 @@ function runMintDecodeForeign(): never {
 // CORPUS DECODE-CONFORMANCE MINT (`--mint-decode-corpus`) — the composition-depth leg. Structured
 // exactly like runMintDecodeForeign (negative control, two-oracle validation, replay, arm-floor,
 // triage/pin posture) but the obligation set is tests/corpus/*.cddl × the shared rule enumerator, every
-// row is HOLDER mode (spec = `__probe_holder = [0, <rule>]\n<closure>`), and the f9 ban is WHOLE-ITEM.
+// row is HOLDER mode (spec = `__probe_holder = [0, <rule>]\n<closure>`).
 // ==================================================================================================
 
 // A corpus row id: "<fixture stem>.<rule>". Kept greppable and stable.
@@ -1515,14 +1496,6 @@ function mintCorpusRow(fixture: string, rule: CorpusRule, allRules: CorpusRule[]
   const mode = "holder";
   // ccOut now holds the crate generated from `spec`.
 
-  // WHOLE-ITEM f9 ban: drop any candidate whose CBOR item tree contains an f9 head ANYWHERE (not just at
-  // the item head like the matrix ban). An unparseable candidate (never expected from a diag2cbor round-
-  // trip) is dropped the same way rather than risking a throw.
-  const containsF9OrBad = (hex: string): boolean => {
-    try { return cborContainsF9(Uint8Array.from(Buffer.from(hex, "hex"))); }
-    catch { return true; }
-  };
-
   const seen = new Set<string>();
   const candidates: string[] = [];
   let lastRubyExit = 0;
@@ -1556,7 +1529,6 @@ function mintCorpusRow(fixture: string, rule: CorpusRule, allRules: CorpusRule[]
     ...candidates.filter(h => !excludedHex(h)).map(h => ({ hex: h, source: "ruby-generate" })),
     ...handVecs.filter(v => v.expect === "accept" && v.class !== "over-acceptance" && !excludedHex(v.hex)).map(v => ({ hex: v.hex, source: "hand" })),
   ]) {
-    if (containsF9OrBad(c.hex)) { dropped.push(`${id}/${c.hex} (whole-item f9 half-precision head; cbor_event f16 mis-decode — green-but-corrupted accept evidence, skipped)`); continue; }
     if (!acDedup.has(c.hex)) acDedup.set(c.hex, c);
   }
 
@@ -1575,7 +1547,7 @@ function mintCorpusRow(fixture: string, rule: CorpusRule, allRules: CorpusRule[]
 
   // Accept-vector ARM-COVERAGE floor (resample-until-covered) — reuse the SAME resolver the drift gate's
   // corpus half uses, applied to the TARGET-FIRST closure example (corpusArmExample) so the root scan
-  // lands on the target's RHS. WHOLE-ITEM f9 candidates are skipped (same cbor_event gap). Exemptions
+  // lands on the target's RHS. Exemptions
   // come from the CORPUS ledger (CORPUS_DECODE_FLOOR_ARM_EXEMPT — corpus keys must never enter the
   // matrix ledger, whose stale-guard iterates matrix row ids only).
   const floor = resolveChoiceArmClasses(corpusArmExample(rule.name, allRules));
@@ -1594,7 +1566,6 @@ function mintCorpusRow(fixture: string, rule: CorpusRule, allRules: CorpusRule[]
       seen.add(hex);
       const cls = vectorShapeClass(hex, true);
       if (!missing().includes(cls)) continue;
-      if (containsF9OrBad(hex)) continue;
       const { ruby, rust } = validateBoth(spec, hex);
       if (ruby === 0 && rust === 0) validatedAccept.push({ hex, source: "ruby-generate" });
       else dropped.push(`${id}/${hex} (arm-coverage resample for class ${cls}; ruby ${ruby} rust ${rust})`);
@@ -1785,7 +1756,7 @@ function runMintDecodeCorpus(): never {
   console.log(`active / pinned     : ${active.length} active, ${outRows.size - active.length} pinned_reason`);
   console.log(`vectors             : ${nVectors} across ${active.length} active row(s)`);
   if (pinnedRows.length) { console.log("\nPINNED (mechanically un-mintable):"); for (const p of pinnedRows) console.log(`  - ${p}`); }
-  if (dropped.length) { console.log("\nDROPPED VECTORS (contested / oracle artifact / f9 — not committed):"); for (const d of dropped) console.log(`  - ${d}`); }
+  if (dropped.length) { console.log("\nDROPPED VECTORS (contested / oracle artifact — not committed):"); for (const d of dropped) console.log(`  - ${d}`); }
   console.log(`\nwrote ${CORPUS_CATALOG_PATH}`);
   if (triage.length) {
     console.log("\nTRIAGE-PENDING (spec-valid vectors our decoder REJECTED — committed as class-less reject rows; the drift gate stays RED until a human classifies each):");

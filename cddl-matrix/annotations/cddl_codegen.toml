@@ -931,7 +931,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "value.number.hexfloat"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 1 foreign spec-derived vector(s); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 2 foreign spec-derived vector(s); ruby=ok rust=ok"
 emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
 emission.preserve.status = "unsupported"
