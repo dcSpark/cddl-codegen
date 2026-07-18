@@ -315,32 +315,27 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   the fix routes raw-bytes defs through the real contract (appended to the user-owned thin
   `lib.rs`, same as extern-type defs), and the glue's own `pub use crate::<Name>;` line makes any
   regression to the masked routing fail loudly (E0255 duplicate definition) rather than silently
-  re-masking. TWO siblings from the same incident: (1) LATENT, deliberately NOT built (no failing
-  case): `IntermediateTypes::scope_references` walks `rust_structs` only, never `type_aliases`,
-  so a CROSS-scope alias to a non-extern type may also under-import — if a consumer hits E0412 on
-  an alias whose target lives in another module, that's this; (2) PROVEN, fix owed: the WASM half
-  of the class is still the masked shape — wasm generated code names an in-crate raw-bytes wasm
-  wrapper by bare ident (the `raw_bytes` corpus wasm snapshot pins
-  `pub fn pub_key(&self) -> PubKey`), the wasm glue covers only `Extern` wrappers, and the
-  fixture appends the wasm def into `wasm/src/generated/mod.rs` — same no-real-user-contract
-  residence. Proven by scratch repro (cip36-shaped spec — in-crate raw-bytes rule + alias + field
-  reference — generated `--wasm=true`, defs applied per the real crate-root contract: rust crate
-  compiles via the landed glue, wasm crate fails 3× E0425 `PubKey`; full log
-  `draft/logs/wasm-rawbytes-glue-repro-2026-07-19.log`). Consumer impact: CML cip36 declares
-  `public_key = _CDDL_CODEGEN_RAW_BYTES_TYPE_` in its OWN spec (in-crate shape, NOT dep-import),
-  so its next regen clears the rust E0412 and then hits this in the wasm crate — the rust failure
-  was masking the wasm one. The fix is the mirror image of the rust half: wasm glue covers
-  `RawBytesType`, wasm raw-bytes defs route to the wasm thin `lib.rs` (the extern wasm-def path,
-  which already writes the `wasm_bindgen` prelude import), snapshot churn is the added
-  `pub use crate::<Name>;` lines. (Genuinely dep-crate raw-bytes types resolve through the dep
-  import path and are unaffected either side; the limitation is stated in
-  `docs/docs/output_format.mdx`'s glue section, citing this entry.) Working rule meanwhile: a
-  fixture that injects hand-written code into `generated/**` carries a comment justifying the
-  residence — and the justification must name a contract a real user can follow, or explicitly
-  flag itself as a modeled-obsolete shape citing this entry (the `use super::*;`
-  serializer-helper appends qualify; the wasm raw-bytes def does NOT — it is sibling (2)).
-  Mechanical layer on a SECOND instance: an audit sweep enumerating every test append-site that
-  writes into a `generated/**` path and failing any not on a justified allowlist.
+  re-masking. The WASM half of the incident was the class's second occurrence, caught by
+  interrogating this entry's own first write-up rather than by any gate: the wasm glue covered
+  only `Extern` wrappers while the fixture appended the wasm raw-bytes def into
+  `wasm/src/generated/mod.rs` (the same no-real-user-contract residence), proven by a
+  cip36-shaped scratch repro — rust crate compiled via the landed rust glue, wasm crate failed 3×
+  E0425 `PubKey` (`draft/logs/wasm-rawbytes-glue-repro-2026-07-19.log`; the consumer's rust
+  E0412 had masked the wasm failure, since the regen never got past the rust crate). Both halves
+  are now standing coverage: glue covers `Extern | RawBytesType` in BOTH crates, both def
+  routings model the real crate-root contract (thin `lib.rs`), and regression to the masked
+  residence collides E0255 with the glue's own re-export in either crate. Known-latent sibling,
+  deliberately NOT built (no failing case): `IntermediateTypes::scope_references` walks
+  `rust_structs` only, never `type_aliases`, so a CROSS-scope alias to a non-extern type may
+  also under-import — if a consumer hits E0412 on an alias whose target lives in another module,
+  that's this. Working rule meanwhile: a fixture that injects hand-written code into
+  `generated/**` carries a comment justifying the residence — and the justification must name a
+  contract a real user can follow, or explicitly flag itself as a modeled-obsolete shape citing
+  this entry (the `use super::*;` serializer-helper appends qualify). Mechanical layer on the
+  NEXT instance: an audit sweep enumerating every test append-site that writes into a
+  `generated/**` path and failing any not on a justified allowlist — the wasm half already being
+  the class's second occurrence is the argument for building it on any further sighting rather
+  than deferring again.
 - **Panic-site un-shadowing: converting a shallow panic to a graceful rejection exposes deeper
   panic sites for inputs that previously died early — and the outcome catalogs, which record
   CATEGORY only by design, cannot see a PANIC→PANIC site shift.** Proven instance: converting
