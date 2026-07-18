@@ -76,6 +76,23 @@ Depth is the only hostile-input class that needs an opt-in flag. The other class
 
 {/* BEGIN GENERATED q1-limitations — regenerate with: cd cddl-matrix && bun run query_q1_gaps.ts --write */}
 
+## Multi-file specs, cross-crate dependencies & CDDL modules
+
+- **Directory input**: a directory of `.cddl` files generates one crate with a Rust module per
+  file (subdirectories nest; see [Output format](./output_format)). Rule names must be unique
+  across the whole directory (duplicates are rejected at parse).
+- **Cross-crate dependencies**: a spec can reference types generated (or hand-written) in another
+  cddl-codegen crate — the dependency's regen emits a machine-generated `extern-interface/`
+  description of its surface, consumed via `--extern-import`
+  (see [Integration with other cddl-codegen libraries](./integration-other)).
+- **CDDL module directives** (`;# import` / `;# include`, draft-ietf-cbor-cddl-modules) are
+  **recognized and refused** with a precise error rather than misread as comments: silently
+  ignoring a directive would yield a misleading undefined-reference error, or silently-incomplete
+  output for `include`-composed rules. Resolve modules with `cddlc` before feeding cddl-codegen —
+  but note `as`-namespaced output (dotted rule names like `cose.label`) is also rejected, since
+  dots cannot map to Rust identifiers; only un-prefixed expansion is consumable today. Other
+  `;# `-prefixed comment lines warn; `;#####` banner comments stay plain comments.
+
 ## Limitations
 
 This section is generated from [`cddl-matrix/matrix.json`](https://github.com/dcSpark/cddl-codegen/tree/master/cddl-matrix) by `cddl-matrix/query_q1_gaps.ts` (regenerate with `cd cddl-matrix && bun run query_q1_gaps.ts --write`). It lists the constructs **in cddl-codegen's target CDDL profile (RFC 8610 + the IANA control-op registry) that the generator does not yet support** — its actionable gaps. "Supported" means the generated crate's emitted round-trip tests pass, not merely that it generates and compiles. Constructs that post-date the target profile are listed separately at the end (they are not gaps).
