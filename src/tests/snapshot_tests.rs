@@ -830,10 +830,10 @@ fn generate_tag_check_arms() {
 /// transparent named collections (Array + Table) via the alias spelling, c-style enum, `@no_alias`,
 /// an alias chain, a prelude (`bignint`) reference that renders (not excluded), a named generic
 /// instance (opaque), a plain group / generic definition / extern-dep-scope rule (all ABSENT), a
-/// nested-scope subfile, a never-referenced plain group (excluded-with-record, Ask 0), a generic
-/// definition / extern-dep-scope rule (both ABSENT), and the exclude-with-record + reference-closure
-/// paths (custom-serialize alias, its transitive dependent, an anonymous-generic-instance reference).
-/// Snapshots live beside
+/// nested-scope subfile, a REFERENCED plain group (a transparent group-body row) and a
+/// never-referenced one (excluded-with-record, Ask 0), a generic definition / extern-dep-scope rule
+/// (both ABSENT), and the exclude-with-record + reference-closure paths (custom-serialize alias, its
+/// transitive dependent, an anonymous-generic-instance reference). Snapshots live beside
 /// the fixture. Bless with `INSTA_UPDATE=always cargo test extern_interface_emit`.
 #[test]
 fn extern_interface_emit() {
@@ -985,7 +985,8 @@ fn extern_interface_emit_exclusions_and_closure() {
 /// covers every assertion kind in one file: `Serialize`(+`Deserialize`) on opaque rows
 /// (record/wrapper/type-choice/group-choice/named-generic-instance), `RawBytesEncoding` on the
 /// raw-bytes row (`hash`), the `use … as _;` existence check on transparent rows (aliases /
-/// c-style enum / named collections), the `@no_alias` skip (`na` gets no assertion), and a
+/// c-style enum / named collections), the `@no_alias` skip (`na` gets no assertion), the group-body
+/// row's four-bound assertion (`pg` — whole-value + embedded-group Serialize/Deserialize), and a
 /// nested-scope path (`sub::module::NestedRec`). Bless with
 /// `INSTA_UPDATE=always cargo test extern_interface_check_emit`.
 #[test]

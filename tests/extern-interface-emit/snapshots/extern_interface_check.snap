@@ -19,6 +19,13 @@ fn _assert_serialize<T: cbor_event::se::Serialize>() {}
 fn _assert_deserialize<T: crate::generated::serialization::Deserialize>() {}
 #[allow(dead_code)]
 fn _assert_raw_bytes<T: crate::generated::serialization::RawBytesEncoding>() {}
+#[allow(dead_code)]
+fn _assert_serialize_embedded_group<T: crate::generated::serialization::SerializeEmbeddedGroup>() {}
+#[allow(dead_code)]
+fn _assert_deserialize_embedded_group<
+    T: crate::generated::serialization::DeserializeEmbeddedGroup,
+>() {
+}
 #[allow(unused_imports)]
 use crate::generated::BigCoin as _; // big_coin
 #[allow(unused_imports)]
@@ -42,10 +49,16 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::Inst>();
     _assert_serialize::<crate::generated::sub::module::NestedRec>(); // nested_rec
     _assert_deserialize::<crate::generated::sub::module::NestedRec>();
+    _assert_serialize::<crate::generated::Pg>(); // pg
+    _assert_serialize_embedded_group::<crate::generated::Pg>();
+    _assert_deserialize::<crate::generated::Pg>();
+    _assert_deserialize_embedded_group::<crate::generated::Pg>();
     _assert_serialize::<crate::generated::Rec>(); // rec
     _assert_deserialize::<crate::generated::Rec>();
     _assert_serialize::<crate::generated::Tc>(); // tc
     _assert_deserialize::<crate::generated::Tc>();
+    _assert_serialize::<crate::generated::UsesPg>(); // uses_pg
+    _assert_deserialize::<crate::generated::UsesPg>();
     _assert_serialize::<crate::generated::Wrap>(); // wrap
     _assert_deserialize::<crate::generated::Wrap>();
 }
