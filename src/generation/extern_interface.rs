@@ -1,0 +1,983 @@
+//! IR → CDDL renderer for the dep-side extern-interface export (commit 3 of the export series).
+//!
+//! The export emitter (commit 4) spells one CDDL rule per exported name. **Class-backed** rows
+//! (records, wrappers, type/group choices, externs, raw-bytes) export as opaque markers and need no
+//! renderer. **Transparent** rows — transparent aliases, c-style enums, and named collections (whose
+//! rust surface is a `pub type`) — must be spelled truthfully, as the real CDDL shape a consumer's
+//! generator will re-derive identically. That truthful spelling is this module's job: turn a
+//! finalized `RustType`/`ConceptualRustType` back into CDDL text.
+//!
+//! ## Domain inventory (what a transparent row can carry, all handled below)
+//!
+//! - **Primitives** — `bool`, `uint`, `nint`, `int`, `tstr`, `bytes`, `float32`, `float64`. The
+//!   fixed-width integer identities (`u8`/`u16`/`u32`, `i8`/`i16`/`i32`) have no bare CDDL prelude
+//!   name — they arise only from a bound-collapse (`uint .size 2` → `u16`), so they render back to a
+//!   provably-equivalent size/range form (`uint .size 2`, `-128..127`, …) that round-trips.
+//! - **Value-range / `.size` bounds** — a primitive carrying `config.bounds` (integer window,
+//!   endpoints normalized inclusive) or `config.float_bounds` (per-side NaN-safe float window). Text
+//!   / bytes `.size` (exact `.size n`, ranged `.size (n..m)`) live here too.
+//! - **`#6.n` tags** — a `CBOREncodingOperation::Tagged(n)` wraps the inner spelling as `#6.n(inner)`.
+//! - **`.cbor`-wrapped types** — a `CBOREncodingOperation::CBORBytes` renders `bytes .cbor inner`.
+//! - **`Optional`** (`T / null`).
+//! - **Fixed values** — `null`, `true`/`false`, integers, floats, text literals (c-style enum arms
+//!   are exactly a list of these: `0 / 1 / 2`).
+//! - **Nested arrays / maps with occurrence bounds** — `[* elem]`, `[+ elem]`, `[n*m elem]`,
+//!   `{* k => v}`, occurrence taken from the container `RustType`'s `config.bounds`.
+//! - **References to named rules** — a `Rust(ident)` / `Alias(Rust(ident), _)` renders as the
+//!   referenced rule's ORIGINAL CDDL ident (from the source-spelling registry,
+//!   `IntermediateTypes::source_rule_name`), never a re-derived spelling — the consumer resolves it
+//!   by that ident.
+//!
+//! ## Discipline
+//!
+//! - **No lossy or guessed spelling.** Any shape that cannot be spelled faithfully is a hard `Err`
+//!   naming the rule and the shape — a lossy export is worse than none (the hand-stub escape hatch
+//!   covers the gap until the renderer grows the case).
+//! - **Exhaustive matches** over `ConceptualRustType`, `Primitive`, and `FixedValue` — no `_ =>`
+//!   arm — so a future variant forces an explicit render decision at compile time.
+//! - **Custom-serialize is a projection hard error.** A transparent rule whose `RuleMetadata`
+//!   carries `@custom_serialize`/`@custom_deserialize` diverges from default wire logic; exporting
+//!   its plain definition would make the consumer emit default (de)serialization — a silent
+//!   wire-format divergence, the worst failure class here. The entry points TAKE the metadata so
+//!   this check cannot be bypassed.
+//!
+//! Every entry point is a `Result` — no panics.
+
+// The renderer is `pub` API on the LIB target, but until commit 4 wires the export emitter walk
+// (`GenerationScope::export`) nothing in the BIN target calls it, so the non-test bin build flags it
+// dead. Scoped to this module and the single lint; REMOVE this attribute when commit 4 lands.
+#![allow(dead_code)]
+
+use crate::comment_ast::RuleMetadata;
+use crate::intermediate::{
+    AliasIdent, CBOREncodingOperation, ConceptualRustType, EnumVariant, EnumVariantData,
+    FixedValue, FloatWindow, IntermediateTypes, Primitive, RustIdent, RustType,
+    RustTypeSerializeConfig,
+};
+
+/// A rendering failure. Both variants name the rule; `Unrenderable` also names the offending shape.
+/// Result-based (never a panic) so the export emitter can attribute the failure and fall back to the
+/// hand-stub escape hatch.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum ExternInterfaceError {
+    /// A shape the renderer cannot spell faithfully back to CDDL (naming rule + shape).
+    Unrenderable { rule: String, shape: String },
+    /// A transparent rule carrying `@custom_serialize` / `@custom_deserialize`: exporting its plain
+    /// CDDL would make the consumer emit DEFAULT wire logic, silently diverging from the dep's real
+    /// wire format. Projection-level hard error (hand-stub escape hatch).
+    CustomSerializeTransparent {
+        rule: String,
+        annotation: &'static str,
+    },
+}
+
+impl std::fmt::Display for ExternInterfaceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExternInterfaceError::Unrenderable { rule, shape } => write!(
+                f,
+                "rule `{rule}`: cannot render {shape} back to CDDL for the extern-interface export \
+                 (a lossy export is worse than none — hand-stub this rule instead)"
+            ),
+            ExternInterfaceError::CustomSerializeTransparent { rule, annotation } => write!(
+                f,
+                "rule `{rule}`: a transparent rule carrying `{annotation}` cannot be exported — its \
+                 plain CDDL would make the consumer emit default wire logic, silently diverging from \
+                 the dependency's real wire format (hand-stub this rule instead)"
+            ),
+        }
+    }
+}
+
+type RenderResult = Result<String, ExternInterfaceError>;
+
+fn unrenderable(rule: &str, shape: impl Into<String>) -> ExternInterfaceError {
+    ExternInterfaceError::Unrenderable {
+        rule: rule.to_string(),
+        shape: shape.into(),
+    }
+}
+
+// --- Entry points ------------------------------------------------------------------------------
+
+/// Render the right-hand side (body) of a TRANSPARENT rule (a transparent alias, or a named
+/// collection whose alias `RustType` carries the `Array`/`Map` shape + occurrence bounds + any tag).
+/// The emitter prepends `<ident> = ` and appends the `@rust_name` pin / header.
+///
+/// `rule` is the rule's ORIGINAL CDDL ident (for diagnostics). `metadata` is the rule's
+/// `RuleMetadata` (or `None`) — passing it here makes the custom-serialize projection error
+/// impossible to bypass.
+pub(crate) fn render_transparent_rule_body(
+    rule: &str,
+    ty: &RustType,
+    metadata: Option<&RuleMetadata>,
+    types: &IntermediateTypes,
+) -> RenderResult {
+    reject_custom_serialize(rule, metadata)?;
+    render_rust_type(rule, ty, types)
+}
+
+/// Render the body of a c-style enum rule as its value choices (`0 / 1 / 2`), reading each variant's
+/// fixed value from the IR. A c-style enum is transparent (a real Rust enum lives in the dep, but the
+/// consumer sees only the value choices), so it is gated on the same custom-serialize projection
+/// error.
+pub(crate) fn render_c_style_enum_body(
+    rule: &str,
+    variants: &[EnumVariant],
+    metadata: Option<&RuleMetadata>,
+    types: &IntermediateTypes,
+) -> RenderResult {
+    reject_custom_serialize(rule, metadata)?;
+    let _ = types; // symmetry with the transparent-rule entry; not needed for pure value choices
+    if variants.is_empty() {
+        return Err(unrenderable(rule, "a c-style enum with no variants"));
+    }
+    let mut choices = Vec::with_capacity(variants.len());
+    for variant in variants {
+        match &variant.data {
+            EnumVariantData::RustType(ty) => match ty.conceptual_type.resolve_alias_shallow() {
+                ConceptualRustType::Fixed(fixed) => choices.push(render_fixed_value(fixed)),
+                other => {
+                    return Err(unrenderable(
+                        rule,
+                        format!("a c-style enum variant that is not a fixed value ({other:?})"),
+                    ));
+                }
+            },
+            EnumVariantData::Inlined(_) => {
+                return Err(unrenderable(
+                    rule,
+                    "a c-style enum variant with an inlined record",
+                ));
+            }
+        }
+    }
+    Ok(choices.join(" / "))
+}
+
+fn reject_custom_serialize(
+    rule: &str,
+    metadata: Option<&RuleMetadata>,
+) -> Result<(), ExternInterfaceError> {
+    if let Some(md) = metadata {
+        if md.custom_serialize.is_some() {
+            return Err(ExternInterfaceError::CustomSerializeTransparent {
+                rule: rule.to_string(),
+                annotation: "@custom_serialize",
+            });
+        }
+        if md.custom_deserialize.is_some() {
+            return Err(ExternInterfaceError::CustomSerializeTransparent {
+                rule: rule.to_string(),
+                annotation: "@custom_deserialize",
+            });
+        }
+    }
+    Ok(())
+}
+
+// --- Core recursion ----------------------------------------------------------------------------
+
+/// Render a full `RustType`: peel encoding operations (outermost = last in the vec) as CDDL
+/// wrappers, then render the conceptual type with its value config at the base.
+fn render_rust_type(rule: &str, ty: &RustType, types: &IntermediateTypes) -> RenderResult {
+    if let Some((last, rest)) = ty.encodings.split_last() {
+        // Peel one encoding, keeping the value config with the (still-inner) conceptual type so the
+        // base render applies bounds exactly once.
+        let inner = RustType {
+            conceptual_type: ty.conceptual_type.clone(),
+            encodings: rest.to_vec(),
+            config: ty.config.clone(),
+        };
+        let inner_s = render_rust_type(rule, &inner, types)?;
+        return Ok(match last {
+            CBOREncodingOperation::Tagged(tag) => format!("#6.{tag}({inner_s})"),
+            CBOREncodingOperation::CBORBytes => format!("bytes .cbor {inner_s}"),
+        });
+    }
+    render_conceptual(rule, &ty.conceptual_type, &ty.config, types)
+}
+
+fn render_conceptual(
+    rule: &str,
+    ct: &ConceptualRustType,
+    config: &RustTypeSerializeConfig,
+    types: &IntermediateTypes,
+) -> RenderResult {
+    // A `.default` is a member-position construct (`? field: uint .default 0`), never a standalone
+    // transparent-rule RHS — its presence here is an unexpected shape, not something to silently drop.
+    if config.default.is_some() {
+        return Err(unrenderable(rule, "a type carrying a `.default` value"));
+    }
+    match ct {
+        // Value config (bounds/float_bounds) is consumed only by Primitive / Array / Map; on every
+        // other shape it is unexpected and must not be silently dropped.
+        ConceptualRustType::Fixed(fixed) => {
+            reject_value_config(rule, config, "a fixed value")?;
+            Ok(render_fixed_value(fixed))
+        }
+        ConceptualRustType::Primitive(p) => render_primitive(rule, *p, config),
+        ConceptualRustType::Rust(ident) => {
+            reject_value_config(rule, config, "a named-rule reference")?;
+            render_rust_ref(rule, ident, types)
+        }
+        ConceptualRustType::Optional(inner) => {
+            reject_value_config(rule, config, "an optional")?;
+            // The inner RustType carries its own encodings/config (e.g. `#6.n(inner) / null`).
+            let inner_s = render_rust_type(rule, inner, types)?;
+            Ok(format!("{inner_s} / null"))
+        }
+        ConceptualRustType::Array(inner) => {
+            let occ = occurrence_marker(rule, config.float_bounds, config.bounds)?;
+            let inner_s = render_rust_type(rule, inner, types)?;
+            Ok(format!("[{occ} {inner_s}]"))
+        }
+        ConceptualRustType::Map(key, value) => {
+            let occ = occurrence_marker(rule, config.float_bounds, config.bounds)?;
+            let key_s = render_rust_type(rule, key, types)?;
+            let value_s = render_rust_type(rule, value, types)?;
+            Ok(format!("{{{occ} {key_s} => {value_s}}}"))
+        }
+        ConceptualRustType::Alias(alias_ident, _inner) => {
+            reject_value_config(rule, config, "an alias reference")?;
+            render_alias_ref(rule, alias_ident, types)
+        }
+    }
+}
+
+/// Guard for arms that do not consume `config.bounds`/`float_bounds`: a value window on such a shape
+/// is unexpected, so hard-error rather than drop it.
+fn reject_value_config(
+    rule: &str,
+    config: &RustTypeSerializeConfig,
+    shape: &str,
+) -> Result<(), ExternInterfaceError> {
+    if config.bounds.is_some() || config.float_bounds.is_some() {
+        return Err(unrenderable(
+            rule,
+            format!("{shape} carrying an unexpected value/size bound"),
+        ));
+    }
+    Ok(())
+}
+
+// --- References --------------------------------------------------------------------------------
+
+/// A reference to a named rule renders as its ORIGINAL CDDL ident (from the source-spelling
+/// registry) — the consumer resolves it by that ident. The reserved prelude `int` extern (registered
+/// as the `Int` struct) is the one ref with no user source name; it renders as `int`.
+fn render_rust_ref(rule: &str, ident: &RustIdent, types: &IntermediateTypes) -> RenderResult {
+    if let Some(source) = types.source_rule_name(ident) {
+        return Ok(source.to_string());
+    }
+    if ident.to_string() == "Int" {
+        return Ok("int".to_string());
+    }
+    Err(unrenderable(
+        rule,
+        format!("a reference to `{ident}` with no recorded source CDDL rule name"),
+    ))
+}
+
+fn render_alias_ref(rule: &str, alias: &AliasIdent, types: &IntermediateTypes) -> RenderResult {
+    match alias {
+        // A reserved-prelude alias is the CDDL prelude name itself.
+        AliasIdent::Reserved(name) => Ok(name.clone()),
+        // A user alias resolves through the source-spelling registry to its original CDDL ident.
+        AliasIdent::Rust(rust_ident) => render_rust_ref(rule, rust_ident, types),
+    }
+}
+
+// --- Primitives & bounds -----------------------------------------------------------------------
+
+fn render_primitive(rule: &str, p: Primitive, config: &RustTypeSerializeConfig) -> RenderResult {
+    if let Some(window) = config.float_bounds {
+        return render_float_primitive(rule, p, window);
+    }
+    let bounds = config.bounds;
+    match p {
+        Primitive::Bool => plain_primitive(rule, "bool", bounds),
+        // float windows (the only bound a float carries) are handled above; a float with an INTEGER
+        // window is an unexpected shape.
+        Primitive::F32 => plain_primitive(rule, "float32", bounds),
+        Primitive::F64 => plain_primitive(rule, "float64", bounds),
+        Primitive::Str => render_text_or_bytes_size(rule, "tstr", bounds),
+        Primitive::Bytes => render_text_or_bytes_size(rule, "bytes", bounds),
+        // Fixed-width integer identities: no bare CDDL name — spelled as a provably-equivalent
+        // size/range form (`uint .size 2` re-collapses to `u16`, etc.). Never carries extra bounds.
+        Primitive::U8 => fixed_width_int(rule, "uint .size 1", bounds),
+        Primitive::U16 => fixed_width_int(rule, "uint .size 2", bounds),
+        Primitive::U32 => fixed_width_int(rule, "uint .size 4", bounds),
+        Primitive::I8 => fixed_width_int(rule, "-128..127", bounds),
+        Primitive::I16 => fixed_width_int(rule, "-32768..32767", bounds),
+        Primitive::I32 => fixed_width_int(rule, "-2147483648..2147483647", bounds),
+        // The wide/named integer types carry an explicit (inclusive-normalized) window.
+        Primitive::U64 => render_int_bounds(rule, "uint", bounds),
+        Primitive::I64 => render_int_bounds(rule, "int", bounds),
+        Primitive::N64 => render_int_bounds(rule, "nint", bounds),
+    }
+}
+
+/// A primitive whose only faithful spelling is its bare name; any window is an unexpected shape.
+fn plain_primitive(
+    rule: &str,
+    name: &str,
+    bounds: Option<(Option<i128>, Option<i128>)>,
+) -> RenderResult {
+    match bounds {
+        None => Ok(name.to_string()),
+        Some(_) => Err(unrenderable(
+            rule,
+            format!("`{name}` carrying an unexpected value bound"),
+        )),
+    }
+}
+
+/// A fixed-width integer identity: the collapsed type IS the constraint, so it carries no further
+/// bounds. Its identity spelling (`text`) round-trips.
+fn fixed_width_int(
+    rule: &str,
+    text: &str,
+    bounds: Option<(Option<i128>, Option<i128>)>,
+) -> RenderResult {
+    match bounds {
+        None => Ok(text.to_string()),
+        Some(_) => Err(unrenderable(
+            rule,
+            format!("a fixed-width integer (`{text}`) carrying an unexpected extra bound"),
+        )),
+    }
+}
+
+/// `.size` on `tstr`/`bytes`: exact (`.size n`) or ranged (`.size (n..m)`). The parser normalizes a
+/// bare `.size n` to the exact window `(Some(n), Some(n))` and a `.size (0..m)` to `(None, Some(m))`
+/// (unsigned min-0 stripped). Anything else (a lone lower bound) has no faithful `.size` spelling.
+fn render_text_or_bytes_size(
+    rule: &str,
+    base: &str,
+    bounds: Option<(Option<i128>, Option<i128>)>,
+) -> RenderResult {
+    match bounds {
+        None => Ok(base.to_string()),
+        Some((Some(n), Some(m))) if n == m => Ok(format!("{base} .size {n}")),
+        Some((Some(n), Some(m))) => Ok(format!("{base} .size ({n}..{m})")),
+        Some((None, Some(m))) => Ok(format!("{base} .size (0..{m})")),
+        Some((Some(n), None)) => Err(unrenderable(
+            rule,
+            format!(
+                "`{base}` with a lower-only size bound (>= {n}) — no faithful `.size` spelling"
+            ),
+        )),
+        Some((None, None)) => Ok(base.to_string()),
+    }
+}
+
+/// Integer window on a wide/named type. Endpoints are inclusive (parser-normalized). One-sided →
+/// `.ge`/`.le` (preserves the base typename). Two-sided → a literal range `a..b`, which round-trips
+/// for `uint`/`int` (the literal sign re-derives the same base). Two-sided on `nint` has no faithful
+/// literal-range form (a negative literal range parses as `int`), so it hard-errors.
+fn render_int_bounds(
+    rule: &str,
+    base: &str,
+    bounds: Option<(Option<i128>, Option<i128>)>,
+) -> RenderResult {
+    match bounds {
+        None | Some((None, None)) => Ok(base.to_string()),
+        Some((Some(a), None)) => Ok(format!("{base} .ge {a}")),
+        Some((None, Some(b))) => Ok(format!("{base} .le {b}")),
+        Some((Some(a), Some(b))) => {
+            if base == "nint" {
+                return Err(unrenderable(
+                    rule,
+                    format!(
+                        "`nint` with a two-sided window ({a}..{b}) — no faithful CDDL spelling"
+                    ),
+                ));
+            }
+            Ok(format!("{a}..{b}"))
+        }
+    }
+}
+
+/// A NaN-safe float window `(min, max)`, each side `Some((value, exclusive))`. One-sided renders
+/// `.ge`/`.gt`/`.le`/`.lt` (preserving the base typename). Two-sided renders a literal range (`..`
+/// inclusive both sides, `...` exclusive both sides) — but a literal float range parses back as
+/// `float64`, so a two-sided window on `float32` would change the wire precision and a
+/// mixed-exclusivity window has no single-op form; both hard-error.
+fn render_float_primitive(rule: &str, p: Primitive, window: FloatWindow) -> RenderResult {
+    let base = match p {
+        Primitive::F32 => "float32",
+        Primitive::F64 => "float64",
+        _ => {
+            return Err(unrenderable(
+                rule,
+                "a float value window on a non-float primitive",
+            ));
+        }
+    };
+    match window {
+        (Some((lo, lo_excl)), None) => {
+            let op = if lo_excl { ".gt" } else { ".ge" };
+            Ok(format!("{base} {op} {}", render_f64(lo)))
+        }
+        (None, Some((hi, hi_excl))) => {
+            let op = if hi_excl { ".lt" } else { ".le" };
+            Ok(format!("{base} {op} {}", render_f64(hi)))
+        }
+        (Some((lo, lo_excl)), Some((hi, hi_excl))) => {
+            if p == Primitive::F32 {
+                return Err(unrenderable(
+                    rule,
+                    "a two-sided window on `float32` — a literal float range parses as `float64`, \
+                     changing the wire precision",
+                ));
+            }
+            match (lo_excl, hi_excl) {
+                (false, false) => Ok(format!("{}..{}", render_f64(lo), render_f64(hi))),
+                (true, true) => Ok(format!("{}...{}", render_f64(lo), render_f64(hi))),
+                _ => Err(unrenderable(
+                    rule,
+                    "a two-sided float window with mixed inclusive/exclusive endpoints — no \
+                     single-operator CDDL form",
+                )),
+            }
+        }
+        (None, None) => Ok(base.to_string()),
+    }
+}
+
+// --- Occurrence & fixed values -----------------------------------------------------------------
+
+/// The CDDL occurrence marker for a container's count bounds: `*` (unbounded), `+` (`1*`, one+),
+/// `n*m`, `n*`, `*m`. A float window is never valid on a container.
+fn occurrence_marker(
+    rule: &str,
+    float_bounds: Option<FloatWindow>,
+    bounds: Option<(Option<i128>, Option<i128>)>,
+) -> RenderResult {
+    if float_bounds.is_some() {
+        return Err(unrenderable(
+            rule,
+            "a container carrying a float value window",
+        ));
+    }
+    Ok(match bounds {
+        None | Some((None, None)) => "*".to_string(),
+        Some((Some(1), None)) => "+".to_string(),
+        Some((Some(n), None)) => format!("{n}*"),
+        Some((None, Some(m))) => format!("*{m}"),
+        Some((Some(n), Some(m))) => format!("{n}*{m}"),
+    })
+}
+
+/// A CDDL literal for a fixed value. Infallible: every `FixedValue` has a literal form.
+fn render_fixed_value(fixed: &FixedValue) -> String {
+    match fixed {
+        FixedValue::Null => "null".to_string(),
+        FixedValue::Bool(true) => "true".to_string(),
+        FixedValue::Bool(false) => "false".to_string(),
+        FixedValue::Uint(u) => u.to_string(),
+        FixedValue::Nint(i) => i.to_string(),
+        FixedValue::Float(f) => render_f64(*f),
+        // `{:?}` yields a JSON-ish quoted/escaped literal, matching CDDL text-literal escaping for
+        // the common cases (quotes, backslashes).
+        FixedValue::Text(s) => format!("{s:?}"),
+    }
+}
+
+/// Render an f64 as a CDDL float literal. `{:?}` keeps the decimal point on whole values (`3.0`, not
+/// `3`) so the literal stays a float rather than degrading to an integer literal.
+fn render_f64(f: f64) -> String {
+    format!("{f:?}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::intermediate::{CDDLIdent, VariantIdent};
+
+    fn types_with_sources(sources: &[(&str, &str)]) -> IntermediateTypes<'static> {
+        let mut types = IntermediateTypes::new();
+        for (rust, cddl) in sources {
+            types.mark_source_rule_name(RustIdent::new(CDDLIdent::new(*rust)), (*cddl).to_string());
+        }
+        types
+    }
+
+    fn prim(p: Primitive) -> RustType {
+        RustType::new(ConceptualRustType::Primitive(p))
+    }
+
+    fn render(ty: &RustType, types: &IntermediateTypes) -> RenderResult {
+        render_transparent_rule_body("test_rule", ty, None, types)
+    }
+
+    fn ok(ty: &RustType, types: &IntermediateTypes) -> String {
+        render(ty, types).expect("expected a renderable shape")
+    }
+
+    // --- Primitives ---------------------------------------------------------------------------
+
+    #[test]
+    fn primitives_named() {
+        let t = IntermediateTypes::new();
+        assert_eq!(ok(&prim(Primitive::Bool), &t), "bool");
+        assert_eq!(ok(&prim(Primitive::U64), &t), "uint");
+        assert_eq!(ok(&prim(Primitive::N64), &t), "nint");
+        assert_eq!(ok(&prim(Primitive::I64), &t), "int");
+        assert_eq!(ok(&prim(Primitive::Str), &t), "tstr");
+        assert_eq!(ok(&prim(Primitive::Bytes), &t), "bytes");
+        assert_eq!(ok(&prim(Primitive::F32), &t), "float32");
+        assert_eq!(ok(&prim(Primitive::F64), &t), "float64");
+    }
+
+    #[test]
+    fn fixed_width_integers_render_equivalent_size_or_range() {
+        let t = IntermediateTypes::new();
+        // `uint .size K` for byte-aligned unsigned widths (round-trips: `.size 2` re-collapses to u16)
+        assert_eq!(ok(&prim(Primitive::U8), &t), "uint .size 1");
+        assert_eq!(ok(&prim(Primitive::U16), &t), "uint .size 2");
+        assert_eq!(ok(&prim(Primitive::U32), &t), "uint .size 4");
+        // explicit ranges for signed widths (no `int .size` form exists)
+        assert_eq!(ok(&prim(Primitive::I8), &t), "-128..127");
+        assert_eq!(ok(&prim(Primitive::I16), &t), "-32768..32767");
+        assert_eq!(ok(&prim(Primitive::I32), &t), "-2147483648..2147483647");
+    }
+
+    // --- Integer value bounds ------------------------------------------------------------------
+
+    #[test]
+    fn integer_bounds_one_and_two_sided() {
+        let t = IntermediateTypes::new();
+        // one-sided preserves the base typename
+        assert_eq!(
+            ok(&prim(Primitive::U64).with_bounds((None, Some(1000))), &t),
+            "uint .le 1000"
+        );
+        assert_eq!(
+            ok(&prim(Primitive::U64).with_bounds((Some(5), None)), &t),
+            "uint .ge 5"
+        );
+        assert_eq!(
+            ok(&prim(Primitive::I64).with_bounds((Some(-10), None)), &t),
+            "int .ge -10"
+        );
+        // two-sided uint/int → literal range (round-trips via literal sign)
+        assert_eq!(
+            ok(&prim(Primitive::U64).with_bounds((Some(5), Some(100))), &t),
+            "5..100"
+        );
+        assert_eq!(
+            ok(&prim(Primitive::I64).with_bounds((Some(-5), Some(100))), &t),
+            "-5..100"
+        );
+    }
+
+    // --- Text / bytes sizes --------------------------------------------------------------------
+
+    #[test]
+    fn text_and_bytes_sizes() {
+        let t = IntermediateTypes::new();
+        assert_eq!(
+            ok(
+                &prim(Primitive::Bytes).with_bounds((Some(32), Some(32))),
+                &t
+            ),
+            "bytes .size 32"
+        );
+        assert_eq!(
+            ok(&prim(Primitive::Str).with_bounds((Some(1), Some(64))), &t),
+            "tstr .size (1..64)"
+        );
+        // `.size (0..m)` form (parser strips the unsigned min-0, storing (None, Some(m)))
+        assert_eq!(
+            ok(&prim(Primitive::Bytes).with_bounds((None, Some(8))), &t),
+            "bytes .size (0..8)"
+        );
+    }
+
+    // --- Fixed values --------------------------------------------------------------------------
+
+    #[test]
+    fn fixed_values() {
+        assert_eq!(render_fixed_value(&FixedValue::Null), "null");
+        assert_eq!(render_fixed_value(&FixedValue::Bool(true)), "true");
+        assert_eq!(render_fixed_value(&FixedValue::Bool(false)), "false");
+        assert_eq!(render_fixed_value(&FixedValue::Uint(7)), "7");
+        assert_eq!(render_fixed_value(&FixedValue::Nint(-3)), "-3");
+        assert_eq!(render_fixed_value(&FixedValue::Float(3.0)), "3.0");
+        assert_eq!(render_fixed_value(&FixedValue::Float(1.5)), "1.5");
+        assert_eq!(
+            render_fixed_value(&FixedValue::Text("abc".to_string())),
+            "\"abc\""
+        );
+    }
+
+    #[test]
+    fn standalone_fixed_value_type() {
+        let t = IntermediateTypes::new();
+        assert_eq!(
+            ok(
+                &RustType::new(ConceptualRustType::Fixed(FixedValue::Uint(0))),
+                &t
+            ),
+            "0"
+        );
+    }
+
+    // --- Tags & .cbor --------------------------------------------------------------------------
+
+    #[test]
+    fn tag_wraps_inner() {
+        let t = types_with_sources(&[("Foo", "foo")]);
+        let ty = RustType::new(ConceptualRustType::Rust(RustIdent::new(CDDLIdent::new(
+            "Foo",
+        ))))
+        .tag(24);
+        assert_eq!(ok(&ty, &t), "#6.24(foo)");
+    }
+
+    #[test]
+    fn tag_over_primitive() {
+        let t = IntermediateTypes::new();
+        assert_eq!(ok(&prim(Primitive::U64).tag(2), &t), "#6.2(uint)");
+    }
+
+    #[test]
+    fn cbor_bytes_wraps_inner() {
+        let t = types_with_sources(&[("Foo", "foo")]);
+        let ty = RustType::new(ConceptualRustType::Rust(RustIdent::new(CDDLIdent::new(
+            "Foo",
+        ))))
+        .as_bytes();
+        assert_eq!(ok(&ty, &t), "bytes .cbor foo");
+    }
+
+    #[test]
+    fn tag_over_cbor_bytes() {
+        // `#6.24(bytes .cbor foo)` — encodings [CBORBytes, Tagged(24)], last (tag) outermost.
+        let t = types_with_sources(&[("Foo", "foo")]);
+        let ty = RustType::new(ConceptualRustType::Rust(RustIdent::new(CDDLIdent::new(
+            "Foo",
+        ))))
+        .as_bytes()
+        .tag(24);
+        assert_eq!(ok(&ty, &t), "#6.24(bytes .cbor foo)");
+    }
+
+    // --- Optional ------------------------------------------------------------------------------
+
+    #[test]
+    fn optional_renders_or_null() {
+        let t = IntermediateTypes::new();
+        let ty = RustType::new(ConceptualRustType::Optional(Box::new(prim(Primitive::U64))));
+        assert_eq!(ok(&ty, &t), "uint / null");
+    }
+
+    #[test]
+    fn optional_of_named_ref() {
+        let t = types_with_sources(&[("Foo", "foo")]);
+        let inner = RustType::new(ConceptualRustType::Rust(RustIdent::new(CDDLIdent::new(
+            "Foo",
+        ))));
+        let ty = RustType::new(ConceptualRustType::Optional(Box::new(inner)));
+        assert_eq!(ok(&ty, &t), "foo / null");
+    }
+
+    // --- Named references ----------------------------------------------------------------------
+
+    #[test]
+    fn rust_ref_uses_source_name() {
+        let t = types_with_sources(&[("MyRule", "my-rule")]);
+        let ty = RustType::new(ConceptualRustType::Rust(RustIdent::new(CDDLIdent::new(
+            "MyRule",
+        ))));
+        // original CDDL spelling (with the hyphen), not the camel-cased ident
+        assert_eq!(ok(&ty, &t), "my-rule");
+    }
+
+    #[test]
+    fn alias_ref_uses_source_name() {
+        let t = types_with_sources(&[("Coin", "coin")]);
+        let ty = RustType::new(ConceptualRustType::Alias(
+            AliasIdent::Rust(RustIdent::new(CDDLIdent::new("Coin"))),
+            Box::new(ConceptualRustType::Primitive(Primitive::U64)),
+        ));
+        assert_eq!(ok(&ty, &t), "coin");
+    }
+
+    #[test]
+    fn reserved_int_ref_renders_int() {
+        let t = IntermediateTypes::new();
+        let ty = RustType::new(ConceptualRustType::Rust(RustIdent::new(CDDLIdent::new(
+            "Int",
+        ))));
+        assert_eq!(ok(&ty, &t), "int");
+    }
+
+    #[test]
+    fn unknown_rust_ref_hard_errors() {
+        let t = IntermediateTypes::new();
+        let ty = RustType::new(ConceptualRustType::Rust(RustIdent::new(CDDLIdent::new(
+            "Unknown",
+        ))));
+        let err = render(&ty, &t).unwrap_err();
+        match err {
+            ExternInterfaceError::Unrenderable { rule, shape } => {
+                assert_eq!(rule, "test_rule");
+                assert!(shape.contains("Unknown"), "shape names the ref: {shape}");
+            }
+            other => panic!("expected Unrenderable, got {other:?}"),
+        }
+    }
+
+    // --- Arrays / maps with occurrence bounds --------------------------------------------------
+
+    fn array_of(inner: RustType, bounds: Option<(Option<i128>, Option<i128>)>) -> RustType {
+        let mut ty = RustType::new(ConceptualRustType::Array(Box::new(inner)));
+        if let Some(b) = bounds {
+            ty = ty.with_bounds(b);
+        }
+        ty
+    }
+
+    #[test]
+    fn array_unbounded_and_occurrence() {
+        let t = types_with_sources(&[("Foo", "foo")]);
+        let foo = || {
+            RustType::new(ConceptualRustType::Rust(RustIdent::new(CDDLIdent::new(
+                "Foo",
+            ))))
+        };
+        assert_eq!(ok(&array_of(foo(), None), &t), "[* foo]");
+        assert_eq!(ok(&array_of(foo(), Some((Some(1), None))), &t), "[+ foo]");
+        assert_eq!(
+            ok(&array_of(foo(), Some((Some(2), Some(5)))), &t),
+            "[2*5 foo]"
+        );
+        assert_eq!(ok(&array_of(foo(), Some((Some(3), None))), &t), "[3* foo]");
+        assert_eq!(ok(&array_of(foo(), Some((None, Some(4)))), &t), "[*4 foo]");
+    }
+
+    #[test]
+    fn array_of_primitive() {
+        let t = IntermediateTypes::new();
+        assert_eq!(ok(&array_of(prim(Primitive::U64), None), &t), "[* uint]");
+    }
+
+    #[test]
+    fn nested_array() {
+        let t = IntermediateTypes::new();
+        let inner = array_of(prim(Primitive::U64), None);
+        assert_eq!(
+            ok(&array_of(inner, Some((Some(1), None))), &t),
+            "[+ [* uint]]"
+        );
+    }
+
+    #[test]
+    fn map_with_occurrence() {
+        let t = IntermediateTypes::new();
+        let mut ty = RustType::new(ConceptualRustType::Map(
+            Box::new(prim(Primitive::Str)),
+            Box::new(prim(Primitive::U64)),
+        ));
+        assert_eq!(ok(&ty, &t), "{* tstr => uint}");
+        ty = RustType::new(ConceptualRustType::Map(
+            Box::new(prim(Primitive::Str)),
+            Box::new(prim(Primitive::U64)),
+        ))
+        .with_bounds((Some(1), None));
+        assert_eq!(ok(&ty, &t), "{+ tstr => uint}");
+    }
+
+    #[test]
+    fn tagged_named_collection() {
+        // A named collection alias carrying a tag: `#6.30([* uint])`.
+        let t = IntermediateTypes::new();
+        let ty = array_of(prim(Primitive::U64), None).tag(30);
+        assert_eq!(ok(&ty, &t), "#6.30([* uint])");
+    }
+
+    // --- C-style enum --------------------------------------------------------------------------
+
+    fn fixed_variant(name: &str, value: FixedValue) -> EnumVariant {
+        EnumVariant::new(
+            VariantIdent::new_custom(name),
+            RustType::new(ConceptualRustType::Fixed(value)),
+            false,
+            None,
+        )
+    }
+
+    #[test]
+    fn c_style_enum_value_choices() {
+        let t = IntermediateTypes::new();
+        let variants = vec![
+            fixed_variant("I0", FixedValue::Uint(0)),
+            fixed_variant("I1", FixedValue::Uint(1)),
+            fixed_variant("I2", FixedValue::Uint(2)),
+        ];
+        assert_eq!(
+            render_c_style_enum_body("fe", &variants, None, &t).unwrap(),
+            "0 / 1 / 2"
+        );
+    }
+
+    #[test]
+    fn c_style_enum_empty_hard_errors() {
+        let t = IntermediateTypes::new();
+        render_c_style_enum_body("fe", &[], None, &t).unwrap_err();
+    }
+
+    #[test]
+    fn c_style_enum_non_fixed_variant_hard_errors() {
+        let t = IntermediateTypes::new();
+        let variants = vec![EnumVariant::new(
+            VariantIdent::new_custom("X"),
+            RustType::new(ConceptualRustType::Primitive(Primitive::U64)),
+            false,
+            None,
+        )];
+        render_c_style_enum_body("fe", &variants, None, &t).unwrap_err();
+    }
+
+    // --- Custom-serialize projection hard error ------------------------------------------------
+
+    fn metadata_with_custom_serialize() -> RuleMetadata {
+        RuleMetadata {
+            custom_serialize: Some("my_ser".to_string()),
+            ..Default::default()
+        }
+    }
+
+    fn metadata_with_custom_deserialize() -> RuleMetadata {
+        RuleMetadata {
+            custom_deserialize: Some("my_deser".to_string()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn custom_serialize_on_transparent_alias_hard_errors() {
+        let t = IntermediateTypes::new();
+        let md = metadata_with_custom_serialize();
+        let err =
+            render_transparent_rule_body("coin", &prim(Primitive::U64), Some(&md), &t).unwrap_err();
+        match err {
+            ExternInterfaceError::CustomSerializeTransparent { rule, annotation } => {
+                assert_eq!(rule, "coin");
+                assert_eq!(annotation, "@custom_serialize");
+            }
+            other => panic!("expected CustomSerializeTransparent, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn custom_deserialize_on_transparent_alias_hard_errors() {
+        let t = IntermediateTypes::new();
+        let md = metadata_with_custom_deserialize();
+        let err =
+            render_transparent_rule_body("coin", &prim(Primitive::U64), Some(&md), &t).unwrap_err();
+        assert!(matches!(
+            err,
+            ExternInterfaceError::CustomSerializeTransparent { .. }
+        ));
+    }
+
+    #[test]
+    fn custom_serialize_on_c_style_enum_hard_errors() {
+        let t = IntermediateTypes::new();
+        let md = metadata_with_custom_serialize();
+        let variants = vec![fixed_variant("I0", FixedValue::Uint(0))];
+        render_c_style_enum_body("fe", &variants, Some(&md), &t).unwrap_err();
+    }
+
+    // --- Float value windows -------------------------------------------------------------------
+
+    fn float_windowed(p: Primitive, window: FloatWindow) -> RustType {
+        RustType::new(ConceptualRustType::Primitive(p)).with_float_bounds(window)
+    }
+
+    #[test]
+    fn float_one_sided_windows() {
+        let t = IntermediateTypes::new();
+        assert_eq!(
+            ok(
+                &float_windowed(Primitive::F64, (None, Some((10.5, false)))),
+                &t
+            ),
+            "float64 .le 10.5"
+        );
+        assert_eq!(
+            ok(
+                &float_windowed(Primitive::F64, (None, Some((10.5, true)))),
+                &t
+            ),
+            "float64 .lt 10.5"
+        );
+        assert_eq!(
+            ok(
+                &float_windowed(Primitive::F64, (Some((0.5, false)), None)),
+                &t
+            ),
+            "float64 .ge 0.5"
+        );
+        assert_eq!(
+            ok(
+                &float_windowed(Primitive::F64, (Some((0.5, true)), None)),
+                &t
+            ),
+            "float64 .gt 0.5"
+        );
+        // base typename preserved on the F32 one-sided case
+        assert_eq!(
+            ok(
+                &float_windowed(Primitive::F32, (None, Some((10.5, false)))),
+                &t
+            ),
+            "float32 .le 10.5"
+        );
+    }
+
+    #[test]
+    fn float_two_sided_windows() {
+        let t = IntermediateTypes::new();
+        assert_eq!(
+            ok(
+                &float_windowed(Primitive::F64, (Some((0.5, false)), Some((10.5, false)))),
+                &t
+            ),
+            "0.5..10.5"
+        );
+        assert_eq!(
+            ok(
+                &float_windowed(Primitive::F64, (Some((0.5, true)), Some((10.5, true)))),
+                &t
+            ),
+            "0.5...10.5"
+        );
+    }
+
+    #[test]
+    fn float_two_sided_f32_is_lossy_hard_error() {
+        // A literal float range parses back as float64, so a two-sided float32 window cannot be
+        // spelled without changing wire precision — hard error rather than a lossy spelling.
+        let t = IntermediateTypes::new();
+        render(
+            &float_windowed(Primitive::F32, (Some((0.5, false)), Some((10.5, false)))),
+            &t,
+        )
+        .unwrap_err();
+    }
+
+    #[test]
+    fn float_two_sided_mixed_exclusivity_hard_error() {
+        let t = IntermediateTypes::new();
+        render(
+            &float_windowed(Primitive::F64, (Some((0.5, false)), Some((10.5, true)))),
+            &t,
+        )
+        .unwrap_err();
+    }
+}

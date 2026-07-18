@@ -17,6 +17,11 @@ use crate::utils::{cbor_type_code_str, convert_to_camel_case, convert_to_snake_c
 
 mod export;
 use export::declare_modules;
+
+// Commit 3 of the dep-side extern-interface export series: the IR->CDDL renderer for TRANSPARENT
+// export rows. Not yet driven from `export()` — that emitter walk lands in commit 4. Its own
+// `#[allow(dead_code)]` (see the module) covers the interim unused state.
+mod extern_interface;
 // Re-exports keeping the pre-split paths (`generation::X`) resolving for callers outside this
 // module: the public `rustfmt_generated_string` and the test-only helpers. None are used in the
 // crate's non-test compilations, so the aliases read as unused there — allow the lint on them.
