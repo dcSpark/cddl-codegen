@@ -256,7 +256,9 @@ also fixed `array_opt_fields`'s silent drop); the residue is the preserve-only f
   `[[finding]]`s (and the sibling `prelude.*`/`value.*` `[[note]]`s) whose defects had been fixed out
   from under them — the `bool`-in-type-choice E0282 finding (closed by the bool-arm emission switch to
   `bool::deserialize(raw)`, whose load-bearing comment in the `Primitive::Bool` arm of
-  src/generation/deserialize.rs names the inference class; bisect-verified), the single-letter-`r`
+  src/generation/deserialize.rs names the inference class; transition-verified — stable probes at
+  the fix commit and its parent, and a corrected-polarity bisect converging on the same commit —
+  see `draft/bisect-verdict-discipline.md`), the single-letter-`r`
   E0574 finding (closed by the generic-name collision-proofing fix, whose machinery the cbor_event 3.x
   de-generification later retired by dropping the fn generics entirely), the inline-group
   data-loss "Bug" (closed by the inline-group flatten fix — the entry now generates a 2-field struct),
@@ -278,18 +280,20 @@ also fixed `array_opt_fields`'s silent drop); the residue is the preserve-only f
   working rule this delivery itself proved necessary: the prose that CLOSES a stale finding must
   attribute the fix by REPRODUCING against the candidate commit's parent (a throwaway worktree +
   the probe is minutes), never by narrative plausibility — the sweep's first closure draft
-  attributed both compile-bug fixes to the cbor_event 3.x de-generification, and a
-  worktree-bisect falsified that for E0282 (the real fix was the bool-arm emission switch, days
-  earlier) before the wrong story shipped past review. This rule is REVIEW-OWNED by explicit
+  attributed both compile-bug fixes to the cbor_event 3.x de-generification, and a worktree
+  REPRODUCTION at the upgrade's parent falsified that for E0282 (the real fix was the bool-arm
+  emission switch, days earlier) before the wrong story shipped past review. This rule is REVIEW-OWNED by explicit
   decision, not pending a mechanical layer: whether a reproduction was actually performed leaves
   no machine-checkable artifact (probe logs are gitignored run evidence), so a detector could only
   check that prose CLAIMS verification — the same claim-semantics boundary check I stops at. Same
   disposition class as the declined docs-conformance harness (prose semantics are review's job at
   review's error rate); the reopening signal is a false attribution SHIPPING past review, not one
   being caught by it. Bisect/reproduction mechanics for whoever next needs them:
-  `draft/bisect-verdict-discipline.md` (why any-failure bisect verdicts mislead in this repo —
-  two polluted runs converged on a docs-only commit — and the specific-error-keyed script that
-  worked). Check I's own accepted looseness is documented at the arm (any backtick token matching
+  `draft/bisect-verdict-discipline.md` — chiefly the `git bisect run` exit-convention POLARITY
+  trap (exit 0 always means the OLD term, so a fix-hunting script that exits 0 on "works" is
+  inverted; four runs each returned the search's own fixed endpoint as "first fixed", the tell
+  that was missed twice), plus the specific-error-keyed verdict shape and the cheaper
+  reproduce-at-parent/pickaxe-first alternatives. Check I's own accepted looseness is documented at the arm (any backtick token matching
   src/tests/ text satisfies resolution; tighten on the first vacuous pass observed, not before).
 - **Observed-baseline comments beside gate floors rot silently — TWO instances, two homes, two
   distinct rot modes; the floors/consts stay the enforced artifact.** These comments are
