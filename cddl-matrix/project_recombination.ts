@@ -96,6 +96,10 @@ for (const f of matrix.features) {
   const skip = (reason: string) => skipped.push({ feature: f.id, reason });
   if (ex === "") { skip("empty example"); continue; }
   if (f.id.startsWith("ext.")) { skip("extern/raw-bytes placeholder needs a user-provided type, not a self-contained filler"); continue; }
+  // An extern-scope directive's example depends on its `example_extern_stub` (a DIRECTORY input the
+  // single-file composer cannot express) — the bare example dangles an undefined reference, so every
+  // composition would be a vacuous parse error. Registered as skipped, same principle as `ext.*`.
+  if (f.example_extern_stub !== undefined) { skip("extern-scope directive: example depends on a directory-input stub, not self-contained"); continue; }
 
   const ruleTexts = splitRules(ex);
   const parsed = ruleTexts.map(parseRule);
