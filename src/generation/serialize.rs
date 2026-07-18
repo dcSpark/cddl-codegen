@@ -644,8 +644,12 @@ impl GenerationScope {
                     FixedValue::Nint(i) => {
                         assert!(*i < 0);
                         if !cli.preserve_encodings && *i <= i64::MIN as i128 {
-                            // cbor_event's write_negative_integer doesn't support serializing i64::MIN (https://github.com/primetype/cbor_event/issues/9)
-                            // we need to use the write_negative_integer_sz endpoint which does support it.
+                            // Nint literals are i128: below i64::MIN they don't fit the plain
+                            // write_negative_integer endpoint's i64 argument (upstream keeps the
+                            // narrow argument by design — the i128-taking _sz endpoint is the
+                            // documented full-range form), and the i64::MIN literal itself stays on
+                            // the explicit-Sz spelling pinned by
+                            // `i64_min_fixed_value_emits_width_correct_nint`.
                             let sz_str = if *i >= -24 {
                                 "cbor_event::Sz::Inline"
                             } else if *i >= -0x1_00 {
@@ -750,37 +754,31 @@ impl GenerationScope {
                             );
                             body.push_block(pos);
                             let mut neg = Block::new("else");
-                            // only the _sz variants support i128, the other endpoint is i64
+                            // only the _sz variants support i128, the plain endpoint takes i64
+                            // (and negates internally in i128, so i64::MIN needs no special-casing)
                             let expr = if cli.preserve_encodings {
                                 format!("{expr_deref} as i128")
                             } else {
                                 format!("{expr_deref} as i64")
                             };
-                            if !cli.preserve_encodings && *primitive == Primitive::I64 {
-                                // https://github.com/primetype/cbor_event/issues/9
-                                // cbor_event doesn't support i64::MIN on write_negative_integer() so we use write_negative_integer_sz() for i64s
-                                // even when not preserving encodings
-                                neg.line(format!("{serializer_use}.write_negative_integer_sz({expr_deref} as i128, cbor_event::Sz::canonical(({expr_deref} + 1).unsigned_abs())){line_ender}"));
+                            // unsigned_abs() on i8/i16/i32 yields the same-width unsigned type;
+                            // widen to u64 for Sz::canonical (a bare `as u64` on the i64 case
+                            // would be a no-op cast)
+                            let sz_expr = if *primitive == Primitive::I64 {
+                                format!("({expr_deref} + 1).unsigned_abs()")
                             } else {
-                                // unsigned_abs() on i8/i16/i32 yields the same-width unsigned type;
-                                // widen to u64 for Sz::canonical (a bare `as u64` on the i64 case
-                                // would be a no-op cast)
-                                let sz_expr = if *primitive == Primitive::I64 {
-                                    format!("({expr_deref} + 1).unsigned_abs()")
-                                } else {
-                                    format!("({expr_deref} + 1).unsigned_abs() as u64")
-                                };
-                                write_using_sz(
-                                    &mut neg,
-                                    "write_negative_integer",
-                                    serializer_use,
-                                    &expr,
-                                    &sz_expr,
-                                    line_ender,
-                                    &encoding_var_deref,
-                                    cli,
-                                );
-                            }
+                                format!("({expr_deref} + 1).unsigned_abs() as u64")
+                            };
+                            write_using_sz(
+                                &mut neg,
+                                "write_negative_integer",
+                                serializer_use,
+                                &expr,
+                                &sz_expr,
+                                line_ender,
+                                &encoding_var_deref,
+                                cli,
+                            );
                             body.push_block(neg);
                         }
                         Primitive::U8 | Primitive::U16 | Primitive::U32 => {
@@ -821,9 +819,10 @@ impl GenerationScope {
                                     cli,
                                 );
                             } else {
-                                // https://github.com/primetype/cbor_event/issues/9
-                                // cbor_event doesn't support i64::MIN on write_negative_integer() so we use write_negative_integer_sz()
-                                // even when not preserving encodings
+                                // N64 covers the full CBOR nint range down to -2^64, whose bottom
+                                // half doesn't fit the plain write_negative_integer endpoint's i64
+                                // argument — only the i128 _sz endpoint reaches it. Sz::canonical
+                                // keeps the bytes identical to the plain endpoint's derived width.
                                 body.line(&format!("{serializer_use}.write_negative_integer_sz(-({expr_deref} as i128 + 1), cbor_event::Sz::canonical({expr_deref})){line_ender}"));
                             }
                         }

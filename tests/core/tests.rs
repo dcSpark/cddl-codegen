@@ -453,6 +453,13 @@ mod tests {
         deser_test(&min);
         let max = SignedInts::new(u8::MAX, u16::MAX, u32::MAX, u64::MAX, i8::MAX, i16::MAX, i32::MAX, i64::MAX, u64::MAX);
         deser_test(&max);
+        // Width-correct canonical nint bytes at the encoder boundaries (the plain
+        // write_negative_integer endpoint negates internally in i128 since cbor_event 3.x):
+        // i_64 = i64::MIN -> 3b 7fff..., n_64 = -2^64 (magnitude u64::MAX) -> 3b ffff...
+        let i64_min_nint = [0x3bu8, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff];
+        assert!(min.to_cbor_bytes().windows(9).any(|w| w == i64_min_nint));
+        let n64_floor_nint = [0x3bu8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff];
+        assert!(max.to_cbor_bytes().windows(9).any(|w| w == n64_floor_nint));
     }
 
     #[test]

@@ -54,7 +54,8 @@ impl FixedValue {
         match self {
             FixedValue::Null => buf.write_special(cbor_event::Special::Null),
             FixedValue::Bool(b) => buf.write_special(cbor_event::Special::Bool(*b)),
-            // write_negative_integer(i64) can't encode i64::MIN (cbor_event#9); the _sz form
+            // Nint holds i128, whose values below i64::MIN don't fit the plain
+            // write_negative_integer endpoint's i64 argument; the _sz form
             // takes i128 and encodes the full CBOR nint range. Passing Sz::canonical(magnitude)
             // reproduces the default endpoint's byte-for-byte canonical layout (write_type_definite
             // derives the same Sz from the magnitude when no Sz is supplied).
@@ -1585,8 +1586,9 @@ mod tests {
     use cbor_event::Sz;
 
     /// `FixedValue::to_bytes` for negative literals must produce canonical CBOR nint bytes across
-    /// the full magnitude ladder, and — critically — for `i64::MIN`, which the old
-    /// `write_negative_integer(i64)` path could not encode (cbor_event#9: `-i64::MIN` overflows).
+    /// the full magnitude ladder, and — critically — for `i64::MIN`, the boundary where a
+    /// same-width negation overflows (pre-3.x cbor_event rejected it on the plain endpoint; the
+    /// `_sz` form takes i128 and covers the full nint range).
     ///
     /// Expected bytes are hard-coded literals (NOT computed via the old code path) so a width or
     /// endpoint regression that silently changed the bytes would be caught here rather than

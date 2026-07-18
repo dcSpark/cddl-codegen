@@ -296,8 +296,8 @@ fn bareword_and_quoted_keys_converge() {
     );
 }
 
-/// `i64::MIN` (`-9223372036854775808`) is the CBOR nint boundary that `write_negative_integer(i64)`
-/// cannot encode (cbor_event#9: `-i64::MIN` overflows `i64`). Since `FixedValue::Nint` is `i128`,
+/// `i64::MIN` (`-9223372036854775808`) is the CBOR nint boundary where a same-width negation
+/// overflows `i64` (pre-3.x cbor_event rejected it on the plain endpoint). Since `FixedValue::Nint` is `i128`,
 /// the generator must emit the width-correct `write_negative_integer_sz` form for this literal —
 /// under DEFAULT with a hard-coded `cbor_event::Sz::Eight`, and under `--preserve-encodings` with
 /// the `fit_sz(... .unsigned_abs() as u64, ...)` runtime-encoding form. Pinning both spellings

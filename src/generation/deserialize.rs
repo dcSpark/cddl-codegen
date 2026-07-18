@@ -1097,9 +1097,11 @@ impl GenerationScope {
                                         String::new()
                                     },
                                     p));
-                                // https://github.com/primetype/cbor_event/issues/9
-                                // cbor_event's negative_integer() doesn't support i64::MIN so we use the _sz function here instead as that one supports all nints.
-                                // The _sz reader yields the real signed value, so the nint arm checks the full window directly (no sign partition needed).
+                                // negative_integer() reads into i64 and errors on nints below
+                                // i64::MIN (upstream's documented pattern is retrying via _sz);
+                                // the _sz reader yields i128 across the full nint range, so we use
+                                // it directly. It yields the real signed value, so the nint arm
+                                // checks the full window directly (no sign partition needed).
                                 if *p == Primitive::I64 {
                                     let bounds_fn = match &type_cfg.bounds {
                                         Some(bounds) => Cow::Owned(format!(
@@ -1163,8 +1165,9 @@ impl GenerationScope {
                                     None,
                                 )
                             } else {
-                                // https://github.com/primetype/cbor_event/issues/9
-                                // cbor_event's negative_integer() doesn't support full nint range so we use the _sz function here instead as that one supports all nints
+                                // negative_integer() reads into i64 and errors on the bottom half
+                                // of the nint range (below i64::MIN); the _sz reader yields i128
+                                // across the full range, so we use it directly
                                 let bounds_fn = match &type_cfg.bounds {
                                     Some(bounds) => Cow::Owned(format!(
                                         ".and_then(|(x, _enc)| {} else {{ Ok((x + 1).unsigned_abs() as u64) }})",
