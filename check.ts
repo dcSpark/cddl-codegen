@@ -23,6 +23,10 @@
  *   --cache-transparency  enable the flag-gated `verify_cache_transparency` full-tier gate (two verify
  *                   runs — cached vs GATE_CACHE=0 — asserted byte-identical; otherwise SKIPPED).
  *
+ * LOGGING: every run tees its FULL output to a timestamped `draft/logs/check-<tier>-<stamp>.log`
+ * (path printed at start and end) — evidence preservation is the tool's job, not a piping habit.
+ * Never pipe a run through `tail`/`grep` as its only capture; cite the printed log path instead.
+ *
  * NETWORK: local/full runs start with a retried `cargo fetch` warm-up (workspace + fuzz +
  * tests/warmup dep-universe manifest), then force CARGO_NET_OFFLINE=true for every gate — nested-
  * cargo cells resolve from the cargo cache instead of hitting crates.io per cell, which removes
@@ -543,4 +547,44 @@ function main() {
   process.exit(0);
 }
 
-if (import.meta.main) main();
+// ---- self-logging: every run tees its FULL output to draft/logs/ ---------------------------------
+// The evidence-preservation rule ("full output to a file from the FIRST run") kept being violated
+// by hand — transient-failure sightings whose only capture went through `tail`/`grep` were burned
+// repeatedly before the class was learned. So the tool does it: a run re-execs itself with output
+// piped, pumping every chunk to the terminal AND a timestamped log (reruns can never clobber the
+// evidence they're investigating). The path is printed at start and end; cite it instead of piping.
+async function runSelfLogged(): Promise<never> {
+  const { mkdirSync, openSync, writeSync, closeSync } = await import("node:fs");
+  const logsDir = join(ROOT, "draft", "logs");
+  mkdirSync(logsDir, { recursive: true });
+  const tierArg = process.argv.slice(2).find(a => !a.startsWith("--"));
+  const tier = TIERS.includes(tierArg as Tier) ? tierArg : "local";
+  const stamp = new Date().toISOString().replace(/\.\d+Z$/, "Z").replace(/:/g, "-");
+  const logPath = join(logsDir, `check-${tier}-${stamp}.log`);
+  console.log(`check.ts: full log → ${logPath}`);
+  const fd = openSync(logPath, "w");
+  const child = Bun.spawn([process.argv[0], process.argv[1], ...process.argv.slice(2)], {
+    cwd: ROOT,
+    env: { ...process.env, CHECK_SELF_LOG: logPath },
+    stdout: "pipe",
+    stderr: "pipe",
+    stdin: "inherit",
+  });
+  const pump = async (stream: ReadableStream<Uint8Array>, out: NodeJS.WriteStream) => {
+    for await (const chunk of stream) {
+      out.write(chunk);
+      writeSync(fd, chunk);
+    }
+  };
+  await Promise.all([pump(child.stdout, process.stdout), pump(child.stderr, process.stderr)]);
+  const exit = await child.exited;
+  closeSync(fd);
+  console.log(`check.ts: full log at ${logPath}`);
+  process.exit(exit);
+}
+
+if (import.meta.main) {
+  // --help prints and exits; no evidence to preserve, so no log file for it.
+  if (process.env.CHECK_SELF_LOG || process.argv.includes("--help")) main();
+  else await runSelfLogged();
+}

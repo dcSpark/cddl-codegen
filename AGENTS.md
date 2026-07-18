@@ -141,20 +141,26 @@ Rules:
 - **Run multi-minute gates in the foreground** with an extended tool timeout (up to 10 min), never
   detached into background monitors — detached runs strand their results when the agent stops.
 - **A gate too long for a foreground timeout (e.g. `check.ts full`) may run as a harness-tracked
-  background task, but redirect its FULL output to a file** — and note the death-with-turn failure
+  background task** — and note the death-with-turn failure
   mode is specific to SUB-AGENTS' backgrounded runs: a MAIN-session harness-tracked background task
   survives the session's turn ends (proven 2026-07-17 — a `check.ts` local run kept executing across
   a turn boundary to a clean exit-0; `pgrep` the process before assuming orphaning and re-running a
-  multi-minute gate). Piping through `tail` both truncates
-  the failure detail (check.ts gates inherit stdout, so the detail exists nowhere else) and masks
-  the exit code (the pipeline reports `tail`'s). A one-line summary of a failed run is unactionable;
-  you end up re-running the gate blind. This rule is NOT background-only: pipe every `check.ts`
-  invocation to a file from the FIRST run — a transient failure whose only sighting went
-  through `tail`/`grep` is evidence burned; reruns come back green and the flake stays
-  unattributed. Proven end to end by the `acquire_scratch_lock_serializes` watch in
-  `tests/TESTING_ROADMAP.md`: four unattributed sightings (three lost to `tail`/`grep`/truncation),
-  then the fifth — full-logged under this rule — attributed and retired the flake in the same
-  session.
+  multi-minute gate).
+- **Evidence preservation: every multi-minute run leaves its FULL output in a file under
+  `draft/logs/`.** `check.ts` does this ITSELF — every run tees its complete output to a
+  timestamped `draft/logs/check-<tier>-<stamp>.log` and prints the path at start and end; cite
+  that path, never re-pipe the run. For everything ELSE that runs minutes (an isolated
+  `cargo test --bin cddl-codegen <gate>` confirm, a standalone `bun run verify.ts`, corpus
+  mints), redirect full output to a `draft/logs/` file yourself from the FIRST run. Rationale,
+  learned expensively: piping through `tail` truncates the failure detail and masks the exit code
+  (the pipeline reports `tail`'s); a one-line summary of a failed run is unactionable, and a
+  transient failure whose only sighting went through `tail`/`grep` is evidence burned — reruns
+  come back green and the flake stays unattributed. Proven end to end by the
+  `acquire_scratch_lock_serializes` watch in `tests/TESTING_ROADMAP.md`: four unattributed
+  sightings (three lost to `tail`/`grep`/truncation), then the fifth — full-logged under this
+  rule — attributed and retired the flake in the same session. Logs are run evidence, not
+  write-ups: they live in `draft/logs/` (gitignored, bulk-cleanable), never loose in `draft/`,
+  which is reserved for investigation/proposal documents.
 - **A fail-fast FAIL plus a single-gate retry is NOT a tier pass.** Fail-fast SKIPS every gate
   after the failure point, so "the failed gate passed on isolated retry" leaves the rest unrun —
   re-run the tier before claiming it green (the gate cache keeps already-passed cells cheap). A
@@ -219,7 +225,7 @@ Given this means we actively prune ROADMAP as features are implemented, code sho
 
 Note: there is no roadmap that isn't related to the testing framework. That's because a "feature" roadmap is encoded indirectly in tests: any test that fail is a feature we need to support, and any new feature we decide to add should be encoded as a test (that first fails, then passes when the test is implemented)
 
-Additionally, `draft/` is the recommended location for scratchpads (for agents to write/iterate on investigations, etc.)
+Additionally, `draft/` is the recommended location for scratchpads (for agents to write/iterate on investigations, etc.). Run LOGS do not go in the `draft/` root — they go in `draft/logs/` (`check.ts` writes its own there automatically; put ad-hoc command logs there too), so the root stays readable as documents-only.
 
 ## Testing & further docs
 
