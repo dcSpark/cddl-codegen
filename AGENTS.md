@@ -159,8 +159,7 @@ Rules:
   after the failure point, so "the failed gate passed on isolated retry" leaves the rest unrun —
   re-run the tier before claiming it green (the gate cache keeps already-passed cells cheap). A
   shipped "check.ts full green" commit claim was falsified exactly this way (2026-07-18, caught in
-  review: 8 full-tier gates never ran on the shipped tree; the registry-transient watch in
-  `tests/TESTING_ROADMAP.md` carries the instance).
+  review: 8 full-tier gates never ran on the shipped tree).
 - **TDD.** For every failure, ask what could have systematically caught it: add the missing test
   vector, or record the missing system in `tests/TESTING_ROADMAP.md`.
 
