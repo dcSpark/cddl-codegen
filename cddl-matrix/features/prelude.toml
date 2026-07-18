@@ -58,9 +58,7 @@ rfc = "RFC8610 App. D; prelude / int"
 profile = "RFC8610"
 title = "int"
 desc = "Signed integer: a uint or an nint."
-# Record form, not a bare `x = int`: a top-level alias to `int` emits `pub type X = Int;` (the generator's
-# Int wrapper isn't emitted for a bare alias) which fails the compile-gate. `int` works in any real context.
-example = "holder = [x: int]"
+example = "x = int"
 encodings = ["enc.major0", "enc.major1"]
 
 [[feature]]

@@ -1893,6 +1893,24 @@ impl<'a> IntermediateTypes<'a> {
         for rust_struct in self.rust_structs().values() {
             rust_struct.visit_types(self, f);
         }
+        // Emitted type aliases (`x = int`, `x = bytes .cbor int`, `x = bytes .cbor { * tstr => int }`)
+        // are `pub type` definitions whose base type never surfaces through any rust struct, so the
+        // rust-struct walk above cannot see the built-in `Int` extern they reference — leaving a
+        // dangling `Int` name (its `generate_int` emission is gated on `is_referenced`, whose only
+        // walk is this one). Walk each emitted alias base type through the same conceptual visitor the
+        // rust structs use, so references reachable only from an alias base (bare, `.cbor`-wrapped, or
+        // a Map value) still register. A `@no_alias` rule (neither `gen_rust_alias` nor `gen_wasm_alias`)
+        // is substituted transparently at its use sites, so its base type surfaces where it is actually
+        // used — walking it from the alias table too would be redundant, not wrong. Reserved built-in
+        // aliases (`AliasIdent::Reserved`) are filtered out; determinism holds — `type_aliases` is a
+        // `BTreeMap`.
+        for (alias_ident, alias_info) in self.type_aliases() {
+            if matches!(alias_ident, AliasIdent::Rust(_))
+                && (alias_info.gen_rust_alias || alias_info.gen_wasm_alias)
+            {
+                alias_info.base_type.conceptual_type.visit_types(self, f);
+            }
+        }
     }
 
     pub fn is_referenced(&self, ident: &RustIdent) -> bool {

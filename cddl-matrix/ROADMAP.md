@@ -451,15 +451,6 @@ are ledgered here (that's what the probe/gate error messages point at).
   nint shapes land as graceful rejections + enumeration cells; when one does, the work is the
   runtime/emitted-type design plus the upstream literal-width question, not IR plumbing — then
   flip the pinned rejection rows (record path first, then the group-choice arm).
-- Bare `x = int` / an `int` `.cbor` payload emit an undefined `Int` wrapper (`cannot find type Int`); `int`
-  works as a member / array element. Third instance from the recombination fuzzer's layer-2 run: an
-  `int`-VALUED table under a `.cbor` payload (`x = bytes .cbor { tstr => int }`) dangles the same
-  undefined `Int` (held in the sweep's `LAYER2_KNOWN_BAD` ledger citing this entry), and its
-  `{ * tstr => int }` sibling is a fourth. The sibling carries a harness lesson: `Int` is a
-  crate-global extern emitted iff any rule registers a reference, so the sweep's BATCHING can mask
-  the dangle when a batch-mate registers it — the class stayed green in the default gate for that
-  reason and surfaced only under the wasm leg's different batch boundaries (the batch-masking note
-  on `LAYER2_RULES_PER_BATCH` in `src/tests/recombination_tests.rs`).
 - `float16` / float-choice aliases unsupported (no native Rust f16) while `float32/64` work; generics on
   plain groups rejected. Under `--preserve-encodings` the float gap is positional, and the emission axis
   records it honestly: a bare `float`/`float32`/`float64` alias still generates and compiles

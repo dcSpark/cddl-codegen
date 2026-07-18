@@ -371,6 +371,7 @@ const EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
   "prelude.bigint": ["6"],
   "prelude.bool": ["7"],
   "prelude.float": ["7"],
+  "prelude.int": ["int"],   // bare `x = int` — the uint/nint arm merges to "int"
   "prelude.integer": ["6", "int"],
   "prelude.number": ["7", "int"],
   "prelude.unsigned": ["6", "int"],
@@ -637,6 +638,7 @@ const CORPUS_EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
   "c_style_enum_map_key.fixed_enum": ["int"],
   "c_style_enum_newtype.fixed_enum": ["int"],
   "dsl_used_as_key_hash_cstyle.fixed_enum": ["int"],
+  "int_alias.bare_int": ["int"],   // `bare_int = int` — the uint/nint arm merges to "int"
   "nullable.maybe_text": ["3", "7"],
   "nullable_nested.data_enum": ["3", "int"],
   "nullable_nested.maybe_coll": ["7"],   // `nums_arr / null` — the array arm is exempt (a named collection), null → 7

@@ -66,13 +66,15 @@ const HAZARD_EVERY: u64 = 16;
 /// Layer 2 batching: ~this many RULES per generated crate (a composition is 1 root + its aux rules).
 ///
 /// BATCH-MASKING CAVEAT: batching compiles many compositions into ONE crate, so a failure class
-/// whose symptom is a missing CRATE-GLOBAL definition (the undefined-`Int` class: `Int` is emitted
-/// iff any rule registers a reference) can be masked by a batch-mate that happens to define the
-/// global — the per-member attribution rerun only fires when the BATCH fails, so a green batch is
-/// not a per-composition guarantee for this class. Consequence: a known-bad class proven by a
-/// STANDALONE repro belongs in the ledger even if the current batch boundaries happen to compile it
-/// (the `outer=cbor_payload filler=type2.map` entry is the precedent — masked in the default gate,
-/// surfaced by the wasm leg's different batch boundaries).
+/// whose symptom is a missing CRATE-GLOBAL definition can be masked by a batch-mate that happens to
+/// define the global — the per-member attribution rerun only fires when the BATCH fails, so a green
+/// batch is not a per-composition guarantee for such a class. Consequence: a known-bad class proven
+/// by a STANDALONE repro belongs in the ledger even if the current batch boundaries happen to compile
+/// it. The precedent was the undefined-`Int` class (`Int` was emitted iff any rule registered a
+/// reference): `outer=cbor_payload filler=type2.map` was masked in the default gate and surfaced only
+/// by the wasm leg's different batch boundaries. That class is now fixed — the reference walk covers
+/// emitted type aliases (pinned by tests/corpus/int_alias.cddl) — so it no longer rides the ledger,
+/// but the caveat stands for the next crate-global-definition class.
 const LAYER2_RULES_PER_BATCH: usize = 40;
 
 // ---- deterministic rng ----------------------------------------------------------------------------
@@ -1000,20 +1002,13 @@ const LAYER2_KNOWN_BAD: &[(&str, &str)] = &[
     // A `.cbor` payload wrapping an anonymous array-of-plain-group (`bytes .cbor [coords]`) now
     // promotes the plain group to a Record struct and compiles + round-trips (pinned by
     // tests/corpus/cbor_wrapped_group_array.cddl), so those compositions execute — no entry needed.
-    // -- `.cbor` payload shapes --------------------------------------------------------------------
-    (
-        "outer=cbor_payload filler=memberkey.type1",
-        "int-valued table under a .cbor payload dangles the undefined `Int` wrapper; cddl-matrix/ROADMAP.md § findings, `cannot find type Int` entry",
-    ),
-    (
-        "outer=cbor_payload filler=type2.map",
-        "the `{ * tstr => int }` sibling of the entry above — same undefined-`Int` class, profile-independent \
-         (fails default `cargo test` standalone). First surfaced by the WASM leg's different batch \
-         boundaries because default batching MASKS it: `Int` is a crate-global extern emitted iff any \
-         rule registers a reference, so a batch-mate whose `int` usage registers it defines `Int` for \
-         the whole batch crate (the batch-masking note on `LAYER2_RULES_PER_BATCH`); \
-         cddl-matrix/ROADMAP.md § findings, `cannot find type Int` entry",
-    ),
+    // A `.cbor` payload wrapping an int-valued table (`bytes .cbor { * tstr => int }`, reached via
+    // both the `filler=memberkey.type1` and `filler=type2.map` axes) now emits its `Int` extern: the
+    // reference walk covers emitted type aliases, so an alias-only `int` reference registers `Int`
+    // (pinned by tests/corpus/int_alias.cddl), and those compositions compile + execute — no entry
+    // needed. This retired the two undefined-`Int` entries that formerly rode here, one masked in the
+    // default gate and surfaced only by the wasm leg's different batch boundaries (see the batch-masking
+    // caveat on `LAYER2_RULES_PER_BATCH`).
     // -- tagged fixed value inside a map-rep group-choice arm (E0618) ------------------------------
     (
         "outer=garm_map inner=tag_content filler=type2.value",

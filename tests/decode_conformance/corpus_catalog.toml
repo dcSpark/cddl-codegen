@@ -3494,6 +3494,134 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "int_alias.bare_int"
+axis = "corpus"
+example = "bare_int = int"
+fixture = "int_alias"
+rule = "bare_int"
+spec = "__probe_holder = [0, bare_int]\nbare_int = int"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82001903db"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190714"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190a0f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190a71"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190a78"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190ae1"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200388b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82003902a9"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82003902d0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82003902d1"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "int_alias.cbor_int"
+axis = "corpus"
+example = "cbor_int = bytes .cbor int"
+fixture = "int_alias"
+rule = "cbor_int"
+spec = "__probe_holder = [0, cbor_int]\ncbor_int = bytes .cbor int"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820043190224"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820043190301"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200431904ef"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004319070c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820043190b67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820043190f4d"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820043190f57"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82004339015d"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200433902f8"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200433902fb"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "int_alias.cbor_int_table"
+axis = "corpus"
+example = "cbor_int_table = bytes .cbor { * tstr => int }"
+fixture = "int_alias"
+rule = "cbor_int_table"
+pinned_reason = "ruby generator cannot mint this construct (last exit 65) — ruby 0.12.14 inline-composite `.cbor`-controller parse gap (draft/ruby-cddl-inline-composite-control-arg-gap.md; re-mint when the gem fix ships)"
+
+[[row]]
 id = "map_struct.record"
 axis = "corpus"
 example = "record = { a: uint, b: text }"

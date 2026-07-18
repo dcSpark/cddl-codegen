@@ -5587,58 +5587,58 @@ expect = "accept"
 [[row]]
 id = "prelude.int"
 axis = "feature"
-example = "holder = [x: int]"
-spec = "holder = [x: int]"
-mode = "standalone"
-type_name = "Holder"
+example = "x = int"
+spec = "__probe_holder = [0, x]\nx = int"
+mode = "holder"
+type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "81190831"
+hex = "820019087e"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "811908ff"
+hex = "82001909f4"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "81190959"
+hex = "8200190cc6"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "81190cd9"
+hex = "82001911c6"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8119105c"
+hex = "820023"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "811910b0"
+hex = "82003861"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8139013a"
+hex = "8200390139"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "81390147"
+hex = "8200390148"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "813901f6"
+hex = "8200390193"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "81390235"
+hex = "8200390271"
 source = "ruby-generate"
 expect = "accept"
 
