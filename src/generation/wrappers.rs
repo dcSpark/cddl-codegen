@@ -242,6 +242,7 @@ pub(super) fn generate_wrapper_struct(
         // OUTSIDE the always-clobbered generated subtree — legitimately need field access (e.g. a
         // `RawBytesEncoding` impl on a bounded newtype). In-crate privacy was already bypassable by
         // dropping a hand file inside the scope subtree, so it protected nothing real.
+        // (The wasm-crate wrappers reach the same `pub(crate)` via `WasmWrapper::push_inner_field`.)
         s.field(
             "pub(crate) inner",
             field_type.for_rust_member(types, false, cli),

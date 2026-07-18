@@ -17,7 +17,7 @@ use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MapU64ToText(BTreeMap<u64, String>);
+pub struct MapU64ToText(pub(crate) BTreeMap<u64, String>);
 
 #[wasm_bindgen]
 impl MapU64ToText {

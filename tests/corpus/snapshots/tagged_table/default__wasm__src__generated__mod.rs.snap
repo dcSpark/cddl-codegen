@@ -62,7 +62,7 @@ pub type MapTextToU64 = TaggedTable;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TaggedTable(cddl_lib::TaggedTable);
+pub struct TaggedTable(pub(crate) cddl_lib::TaggedTable);
 
 #[wasm_bindgen]
 impl TaggedTable {

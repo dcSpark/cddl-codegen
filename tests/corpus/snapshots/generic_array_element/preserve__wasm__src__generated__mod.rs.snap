@@ -110,7 +110,7 @@ impl AsRef<cddl_lib::PairU64Text> for PairU64Text {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Pairs(Vec<cddl_lib::PairU64Text>);
+pub struct Pairs(pub(crate) Vec<cddl_lib::PairU64Text>);
 
 #[wasm_bindgen]
 impl Pairs {

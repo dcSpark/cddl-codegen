@@ -63,7 +63,7 @@ impl AsRef<cddl_lib::Tree> for Tree {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TreeList(Vec<cddl_lib::Tree>);
+pub struct TreeList(pub(crate) Vec<cddl_lib::Tree>);
 
 #[wasm_bindgen]
 impl TreeList {

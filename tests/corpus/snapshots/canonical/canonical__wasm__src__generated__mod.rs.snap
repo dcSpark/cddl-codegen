@@ -17,7 +17,7 @@ use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct ArrTextList(Vec<Vec<String>>);
+pub struct ArrTextList(pub(crate) Vec<Vec<String>>);
 
 #[wasm_bindgen]
 impl ArrTextList {
@@ -121,7 +121,7 @@ impl AsRef<cddl_lib::Bar> for Bar {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct BytesList(Vec<Vec<u8>>);
+pub struct BytesList(pub(crate) Vec<Vec<u8>>);
 
 #[wasm_bindgen]
 impl BytesList {
@@ -212,7 +212,7 @@ impl AsRef<cddl_lib::CborInCbor> for CborInCbor {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Data(cddl_lib::Data);
+pub struct Data(pub(crate) cddl_lib::Data);
 
 #[wasm_bindgen]
 impl Data {
@@ -357,7 +357,7 @@ pub type FooBytes = Foo;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct FooList(Vec<cddl_lib::Foo>);
+pub struct FooList(pub(crate) Vec<cddl_lib::Foo>);
 
 #[wasm_bindgen]
 impl FooList {
@@ -495,7 +495,7 @@ pub type MapBytesToMapU64ToMapU64ToArrArrText = Data;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MapU64ToArrArrText(OrderedHashMap<u64, Vec<Vec<String>>>);
+pub struct MapU64ToArrArrText(pub(crate) OrderedHashMap<u64, Vec<Vec<String>>>);
 
 #[wasm_bindgen]
 impl MapU64ToArrArrText {
@@ -540,7 +540,9 @@ impl AsRef<OrderedHashMap<u64, Vec<Vec<String>>>> for MapU64ToArrArrText {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MapU64ToMapU64ToArrArrText(OrderedHashMap<u64, OrderedHashMap<u64, Vec<Vec<String>>>>);
+pub struct MapU64ToMapU64ToArrArrText(
+    pub(crate) OrderedHashMap<u64, OrderedHashMap<u64, Vec<Vec<String>>>>,
+);
 
 #[wasm_bindgen]
 impl MapU64ToMapU64ToArrArrText {
@@ -591,7 +593,7 @@ impl AsRef<OrderedHashMap<u64, OrderedHashMap<u64, Vec<Vec<String>>>>>
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MapU64ToText(OrderedHashMap<u64, String>);
+pub struct MapU64ToText(pub(crate) OrderedHashMap<u64, String>);
 
 #[wasm_bindgen]
 impl MapU64ToText {

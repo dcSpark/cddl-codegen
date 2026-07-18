@@ -74,7 +74,7 @@ impl AsRef<cddl_lib::BoolHolder> for BoolHolder {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Bools(Vec<bool>);
+pub struct Bools(pub(crate) Vec<bool>);
 
 #[wasm_bindgen]
 impl Bools {
@@ -115,7 +115,7 @@ impl AsRef<Vec<bool>> for Bools {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Floats(Vec<f64>);
+pub struct Floats(pub(crate) Vec<f64>);
 
 #[wasm_bindgen]
 impl Floats {
@@ -156,7 +156,7 @@ impl AsRef<Vec<f64>> for Floats {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Nums(Vec<u64>);
+pub struct Nums(pub(crate) Vec<u64>);
 
 #[wasm_bindgen]
 impl Nums {

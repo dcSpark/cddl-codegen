@@ -82,7 +82,7 @@ impl AsRef<cddl_lib::EnumKeyHolder> for EnumKeyHolder {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct EnumKeyed(cddl_lib::EnumKeyed);
+pub struct EnumKeyed(pub(crate) cddl_lib::EnumKeyed);
 
 #[wasm_bindgen]
 impl EnumKeyed {
@@ -212,7 +212,7 @@ pub enum IkeyKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct IkeyList(Vec<cddl_lib::Ikey>);
+pub struct IkeyList(pub(crate) Vec<cddl_lib::Ikey>);
 
 #[wasm_bindgen]
 impl IkeyList {
@@ -334,7 +334,7 @@ pub type IntError = JsError;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct IntKeyed(cddl_lib::IntKeyed);
+pub struct IntKeyed(pub(crate) cddl_lib::IntKeyed);
 
 #[wasm_bindgen]
 impl IntKeyed {
@@ -379,7 +379,7 @@ impl AsRef<cddl_lib::IntKeyed> for IntKeyed {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct IntList(Vec<cddl_lib::Int>);
+pub struct IntList(pub(crate) Vec<cddl_lib::Int>);
 
 #[wasm_bindgen]
 impl IntList {

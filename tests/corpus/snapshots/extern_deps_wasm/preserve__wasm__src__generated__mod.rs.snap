@@ -80,7 +80,7 @@ impl AsRef<cddl_lib::Everything> for Everything {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct ExternCrateBarList(Vec<extern_dep_crate::sub::module::ExternCrateBar>);
+pub struct ExternCrateBarList(pub(crate) Vec<extern_dep_crate::sub::module::ExternCrateBar>);
 
 #[wasm_bindgen]
 impl ExternCrateBarList {
@@ -121,7 +121,7 @@ impl AsRef<Vec<extern_dep_crate::sub::module::ExternCrateBar>> for ExternCrateBa
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct ExternCrateFooList(Vec<extern_dep_crate::ExternCrateFoo>);
+pub struct ExternCrateFooList(pub(crate) Vec<extern_dep_crate::ExternCrateFoo>);
 
 #[wasm_bindgen]
 impl ExternCrateFooList {
@@ -163,7 +163,7 @@ impl AsRef<Vec<extern_dep_crate::ExternCrateFoo>> for ExternCrateFooList {
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct MapExternCrateBarToU64(
-    OrderedHashMap<extern_dep_crate::sub::module::ExternCrateBar, u64>,
+    pub(crate) OrderedHashMap<extern_dep_crate::sub::module::ExternCrateBar, u64>,
 );
 
 #[wasm_bindgen]
@@ -215,7 +215,7 @@ impl AsRef<OrderedHashMap<extern_dep_crate::sub::module::ExternCrateBar, u64>>
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MapNestedItemToU64(OrderedHashMap<cddl_lib::nested::NestedItem, u64>);
+pub struct MapNestedItemToU64(pub(crate) OrderedHashMap<cddl_lib::nested::NestedItem, u64>);
 
 #[wasm_bindgen]
 impl MapNestedItemToU64 {
@@ -261,7 +261,7 @@ impl AsRef<OrderedHashMap<cddl_lib::nested::NestedItem, u64>> for MapNestedItemT
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct MapU64ToExternCrateBar(
-    OrderedHashMap<u64, extern_dep_crate::sub::module::ExternCrateBar>,
+    pub(crate) OrderedHashMap<u64, extern_dep_crate::sub::module::ExternCrateBar>,
 );
 
 #[wasm_bindgen]
@@ -313,7 +313,7 @@ impl AsRef<OrderedHashMap<u64, extern_dep_crate::sub::module::ExternCrateBar>>
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MapU64ToExternCrateFoo(OrderedHashMap<u64, extern_dep_crate::ExternCrateFoo>);
+pub struct MapU64ToExternCrateFoo(pub(crate) OrderedHashMap<u64, extern_dep_crate::ExternCrateFoo>);
 
 #[wasm_bindgen]
 impl MapU64ToExternCrateFoo {
@@ -358,7 +358,7 @@ impl AsRef<OrderedHashMap<u64, extern_dep_crate::ExternCrateFoo>> for MapU64ToEx
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MapU64ToNestedItem(OrderedHashMap<u64, cddl_lib::nested::NestedItem>);
+pub struct MapU64ToNestedItem(pub(crate) OrderedHashMap<u64, cddl_lib::nested::NestedItem>);
 
 #[wasm_bindgen]
 impl MapU64ToNestedItem {
@@ -403,7 +403,7 @@ impl AsRef<OrderedHashMap<u64, cddl_lib::nested::NestedItem>> for MapU64ToNested
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NestedItemList(Vec<cddl_lib::nested::NestedItem>);
+pub struct NestedItemList(pub(crate) Vec<cddl_lib::nested::NestedItem>);
 
 #[wasm_bindgen]
 impl NestedItemList {

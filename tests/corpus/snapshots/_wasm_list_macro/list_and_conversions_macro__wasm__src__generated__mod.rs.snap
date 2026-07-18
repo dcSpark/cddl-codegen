@@ -51,7 +51,7 @@ pub type Maybe = Option<String>;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Maybes(Vec<cddl_lib::Maybe>);
+pub struct Maybes(pub(crate) Vec<cddl_lib::Maybe>);
 
 impl_wasm_conversions!(Vec<cddl_lib::Maybe>, Maybes);
 

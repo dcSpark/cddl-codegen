@@ -25,7 +25,7 @@ use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct BarList(Vec<cddl_lib::b::bar::Bar>);
+pub struct BarList(pub(crate) Vec<cddl_lib::b::bar::Bar>);
 
 #[wasm_bindgen]
 impl BarList {
@@ -149,7 +149,7 @@ impl AsRef<cddl_lib::Everything> for Everything {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct ExternCrateFooList(Vec<extern_dep_crate::ExternCrateFoo>);
+pub struct ExternCrateFooList(pub(crate) Vec<extern_dep_crate::ExternCrateFoo>);
 
 #[wasm_bindgen]
 impl ExternCrateFooList {
@@ -190,7 +190,7 @@ impl AsRef<Vec<extern_dep_crate::ExternCrateFoo>> for ExternCrateFooList {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct FooList(Vec<cddl_lib::a::c::foo::Foo>);
+pub struct FooList(pub(crate) Vec<cddl_lib::a::c::foo::Foo>);
 
 #[wasm_bindgen]
 impl FooList {
@@ -231,7 +231,9 @@ impl AsRef<Vec<cddl_lib::a::c::foo::Foo>> for FooList {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MapFooToFoo(OrderedHashMap<cddl_lib::a::c::foo::Foo, cddl_lib::a::c::foo::Foo>);
+pub struct MapFooToFoo(
+    pub(crate) OrderedHashMap<cddl_lib::a::c::foo::Foo, cddl_lib::a::c::foo::Foo>,
+);
 
 #[wasm_bindgen]
 impl MapFooToFoo {
@@ -278,7 +280,7 @@ impl AsRef<OrderedHashMap<cddl_lib::a::c::foo::Foo, cddl_lib::a::c::foo::Foo>> f
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MapU64ToBarTypedef(OrderedHashMap<u64, cddl_lib::b::bar::BarTypedef>);
+pub struct MapU64ToBarTypedef(pub(crate) OrderedHashMap<u64, cddl_lib::b::bar::BarTypedef>);
 
 #[wasm_bindgen]
 impl MapU64ToBarTypedef {

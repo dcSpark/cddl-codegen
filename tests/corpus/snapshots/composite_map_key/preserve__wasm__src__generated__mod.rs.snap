@@ -18,7 +18,7 @@ use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct ArrU64List(Vec<NonEmptyVec<u64>>);
+pub struct ArrU64List(pub(crate) Vec<NonEmptyVec<u64>>);
 
 #[wasm_bindgen]
 impl ArrU64List {
@@ -107,7 +107,7 @@ pub type MapArrU64ToU64 = T;
 /// `add` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NonEmptyU64List(NonEmptyVec<u64>);
+pub struct NonEmptyU64List(pub(crate) NonEmptyVec<u64>);
 
 #[wasm_bindgen]
 impl NonEmptyU64List {
@@ -154,7 +154,7 @@ impl AsRef<NonEmptyVec<u64>> for NonEmptyU64List {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct T(cddl_lib::T);
+pub struct T(pub(crate) cddl_lib::T);
 
 #[wasm_bindgen]
 impl T {

@@ -17,7 +17,7 @@ use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Bkeys(cddl_lib::Bkeys);
+pub struct Bkeys(pub(crate) cddl_lib::Bkeys);
 
 #[wasm_bindgen]
 impl Bkeys {
@@ -112,7 +112,7 @@ impl AsRef<cddl_lib::BytesKeyHolder> for BytesKeyHolder {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct BytesList(Vec<Vec<u8>>);
+pub struct BytesList(pub(crate) Vec<Vec<u8>>);
 
 #[wasm_bindgen]
 impl BytesList {

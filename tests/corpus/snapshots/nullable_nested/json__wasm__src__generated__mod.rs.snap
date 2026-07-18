@@ -170,7 +170,7 @@ impl AsRef<cddl_lib::NullableCollField> for NullableCollField {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NullableCollMap(cddl_lib::NullableCollMap);
+pub struct NullableCollMap(pub(crate) cddl_lib::NullableCollMap);
 
 #[wasm_bindgen]
 impl NullableCollMap {
@@ -286,7 +286,7 @@ impl AsRef<cddl_lib::NullableDenumField> for NullableDenumField {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NullableMapValue(cddl_lib::NullableMapValue);
+pub struct NullableMapValue(pub(crate) cddl_lib::NullableMapValue);
 
 #[wasm_bindgen]
 impl NullableMapValue {
@@ -410,7 +410,7 @@ impl AsRef<cddl_lib::NullableOptionalField> for NullableOptionalField {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NumsArr(Vec<u64>);
+pub struct NumsArr(pub(crate) Vec<u64>);
 
 #[wasm_bindgen]
 impl NumsArr {
