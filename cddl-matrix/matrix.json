@@ -179,6 +179,21 @@
       {
         "emission": {
           "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (pins a dependency-crate type name, so the generated `use extern_dep::…` cannot compile standalone; integration-tested in src/tests/rust_name_tests.rs and the extern_import byte-identity pair)",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; standalone-compile N/A (pins a dependency-crate type name, so the generated `use extern_dep::…` cannot compile standalone; integration-tested in src/tests/rust_name_tests.rs and the extern_import byte-identity pair)",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; standalone-compile N/A (pins a dependency-crate type name, so the generated `use extern_dep::…` cannot compile standalone; integration-tested in src/tests/rust_name_tests.rs and the extern_import byte-identity pair); no committed decode vectors (see catalog); ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "id": "dsl.rust_name",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
             "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           },
@@ -4128,6 +4143,17 @@
       "profile": "CDDL_CODEGEN",
       "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@name; src/comment_ast.rs",
       "title": "@name — explicit field/variant name"
+    },
+    {
+      "alt": "@rust_name",
+      "desc": "On a rule in an extern-deps scope (a stub or an extern-interface export), pins the FINAL Rust name the dependency's own codegen version derived, so the consumer reads the name instead of re-deriving it — killing cross-version naming skew. Rejected gracefully on exported rules (the consumer IS the deriving version there); a pin equal to today's derivation changes nothing (plain grouped import), so faithful-stub migration stays byte-identical.",
+      "example": "\nthing = [x: foo, y: uint]",
+      "example_extern_stub": "\nfoo = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name RenamedFoo",
+      "id": "dsl.rust_name",
+      "production": "comment_dsl",
+      "profile": "CDDL_CODEGEN",
+      "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@rust_name; src/comment_ast.rs",
+      "title": "@rust_name — dependency-pinned Rust type name"
     },
     {
       "alt": "@doc",

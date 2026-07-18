@@ -93,6 +93,8 @@ const COMPILE_GATE_EXEMPT: Record<string, string> = {
   "dsl.custom_serialize": "references a user-provided serialize fn; integration-tested in tests/custom_serialization",
   "dsl.custom_deserialize": "references a user-provided deserialize fn; integration-tested in tests/custom_serialization",
   "dsl.raw_bytes_flavor": "references user-provided extern wrapper flavors; integration-tested in tests/extern-generic-raw-bytes",
+  "dsl.rust_name":
+    "pins a dependency-crate type name, so the generated `use extern_dep::…` cannot compile standalone; integration-tested in src/tests/rust_name_tests.rs and the extern_import byte-identity pair",
 };
 
 // --- EMISSION-PROFILE axis (design rationale: see README.md + ROADMAP.md) ----------------------------------------------
@@ -728,9 +730,29 @@ const nextForeignOut = (): string => { rmSync(ccOutForeign, { recursive: true, f
 const nextOut = (): string => { cleanOut(); return ccOut; };
 // `extraFlags` appends an emission profile's CLI flags (preserve/json) so the SAME generate pipeline
 // serves both the default probe (no extra flags) and the per-emission-profile probes.
+// The codegen probes' input path: `probeFile` for ordinary single-file examples, or a synthesized
+// directory for features carrying `example_extern_stub` — extern-scope directives (`@rust_name`)
+// REJECT on exported rules by design, so their only legal probe home is a stub under
+// `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/`, which requires directory input. `oracles()` sets this per
+// feature (and the feature loop resets it afterwards); the ruby/rust reference oracles keep
+// probing the single-file `probeFile` text (informational for the vendor profile either way).
+let codegenInput = probeFile;
+const probeMultiDir = () => join(probeDir, "probe_multi");
+function setCodegenInput(example: string, externStub?: string) {
+  if (externStub === undefined) {
+    codegenInput = probeFile;
+    return;
+  }
+  const dir = probeMultiDir();
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(join(dir, "_CDDL_CODEGEN_EXTERN_DEPS_DIR_", "extern_dep"), { recursive: true });
+  writeFileSync(join(dir, "lib.cddl"), example + "\n");
+  writeFileSync(join(dir, "_CDDL_CODEGEN_EXTERN_DEPS_DIR_", "extern_dep", "lib.cddl"), externStub + "\n");
+  codegenInput = dir;
+}
 function runCodegen(extraFlags: string[] = []): number {
   cleanOut();
-  return runProbe(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOut}`, "--wasm=false", "--emit-tests=true", ...extraFlags], CODEGEN_DIR);
+  return runProbe(["cargo", "run", "-q", "--", `--input=${codegenInput}`, `--output=${ccOut}`, "--wasm=false", "--emit-tests=true", ...extraFlags], CODEGEN_DIR);
 }
 
 // WASM oracle (default-on): generate the SAME example with `--wasm=true` into a separate out dir, then
@@ -740,7 +762,7 @@ function runCodegen(extraFlags: string[] = []): number {
 const cleanOutWasm = () => { rmSync(ccOutWasm, { recursive: true, force: true }); ccOutWasm = join(probeDir, `cc_out_wasm_${outSeq++}`); };
 function runCodegenWasm(): number {
   cleanOutWasm();
-  return runProbe(["cargo", "run", "-q", "--", `--input=${probeFile}`, `--output=${ccOutWasm}`, "--wasm=true", "--emit-tests=true"], CODEGEN_DIR);
+  return runProbe(["cargo", "run", "-q", "--", `--input=${codegenInput}`, `--output=${ccOutWasm}`, "--wasm=true", "--emit-tests=true"], CODEGEN_DIR);
 }
 function runWasmTest(cell: string, timeoutS = PROBE_TIMEOUT): number {
   const manifest = join(ccOutWasm, "wasm", "Cargo.toml");
@@ -919,8 +941,9 @@ function probeEmissions(id: string, example: string): Record<string, EmissionOut
 }
 
 // [ruby, rust, codegen probe].
-function oracles(cell: string, example: string): [number, number, CodegenProbe] {
+function oracles(cell: string, example: string, externStub?: string): [number, number, CodegenProbe] {
   writeFileSync(probeFile, example + "\n");
+  setCodegenInput(example, externStub);
   const a = RUBY_CDDL ? runProbe([RUBY_CDDL, probeFile, "generate", "1"]) : -2;
   const b = runProbe([RUST_CDDL, "compile-cddl", "--cddl", probeFile]);
   return [a, b, probeCodegen(cell)];
@@ -1868,7 +1891,7 @@ const sortedFeatures = [...features].sort((a, b) => (a.id < b.id ? -1 : a.id > b
 // --smoke=N probes only the first N features (see the flag comment near the top).
 const featureList = SMOKE ? sortedFeatures.slice(0, SMOKE_N) : sortedFeatures;
 for (const f of featureList) {
-  const [a, b, cg] = oracles(f.id, f.example);
+  const [a, b, cg] = oracles(f.id, f.example, f.example_extern_stub);
   const profile = f.profile ?? "RFC8610";
   // Change A: route the ruby verdict through the deterministic source (never the raw Bernoulli generate
   // exit for value-narrowing controllers). specValid feeds derive()'s spec_valid; token feeds evidence.
@@ -1876,7 +1899,9 @@ for (const f of featureList) {
   const d = derive(f.id, profile, rc.specValid, b, cg);
   // Embed fallback (evidence-only): re-probe unmintable shapes wrapped in a synthetic record holder so
   // their embed-site wire path executes. Never changes `d.support` — only enriches the evidence text.
-  const embedded = embedFallback(f.id, f.example, cg);
+  // Not applicable to extern-stub features: the fallback writes single-file `probeFile`, but their
+  // codegen input is the synthesized directory, so it would re-probe the unchanged dir and log noise.
+  const embedded = f.example_extern_stub !== undefined ? undefined : embedFallback(f.id, f.example, cg);
   // Emission-profile axis: probe preserve/json iff the FINAL default verdict is supported (scoping rule
   // (a) — unsupported-at-default is unsupported everywhere, a derived fact recorded by ABSENCE of keys).
   // status === "supported" captures COMPILE_GATE_EXEMPT and vendor rows (both land status="supported").
@@ -1886,6 +1911,9 @@ for (const f of featureList) {
   const foreign = d.status === "supported" ? decodeForeignProbe(f.id, f.example) : {};
   probe_results.push({ id: f.id, production: f.production ?? null, profile, example: f.example, ruby: a, ruby_clause: rc.token, rust: b, codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted, minted_wasm: cg.minted_wasm, wasm_roundtrips: cg.wasm_roundtrips, accepts_foreign: foreign.accepts_foreign, foreign_vectors: foreign.foreign_vectors, embedded, emission, ...d });
 }
+// The later loops (containment, control-op, decode-foreign replay) write `probeFile` and expect the
+// codegen probes to read it — reset the input in case the LAST feature above was extern-stub-shaped.
+codegenInput = probeFile;
 
 // Second harness-health layer (the warm-up catches a broken environment at startup; this catches one
 // that degrades mid-run): zero supported features is not a plausible verdict shape for this repo.

@@ -13,6 +13,11 @@ export interface Feature {
   production?: string;
   profile?: string;
   example: string;
+  /** Extern-scope companion for the probe: when present, `example` is generated as a DIRECTORY
+   * input (`lib.cddl` = example) with this content at
+   * `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/extern_dep/lib.cddl` — the only legal home for extern-scope
+   * directives like `@rust_name`, which reject on exported rules by design. */
+  example_extern_stub?: string;
   alt?: string;
   encodings?: string[];
   roles?: string[];
