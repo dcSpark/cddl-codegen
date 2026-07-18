@@ -440,6 +440,97 @@ loose `try_from` source wrapper as an (unattributed) transitive support type.
   its attribution doc — an ordinary code diff. Between the two regens the dependency carries an extra
   unused wrapper, which is harmless.
 
+## Extern-interface export
+
+Every regeneration emits an `extern-interface/<dep>/**` directory — a sibling of `rust/` and `wasm/`
+under the output directory — describing the crate's own extern-visible type surface so that a
+**consumer** crate can depend on it with [`--extern-import`](./command_line_flags) instead of
+hand-maintaining a stub. `<dep>` is the crate's normalized lib name (underscored — the same key the
+`--extern-wasm-crate` / `--extern-wrapper-index` / `--workspace-dep` flag family already uses). This
+is the machine-generated form of the stub dialect a human otherwise writes under
+`_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/`.
+
+- **Always-clobbered, tool-owned, committed** — same class as `src/generated/**`, but a distinct
+  sibling tree. The whole directory is delete-and-recreated each run (a removed rule's stale `.cddl`
+  never lingers), and it is committed so consumers read it as an input. It is **outside** the
+  comment/code-preservation overlay (which is scoped to `.rs` under the generated trees) — user
+  edits are not preserved here; the compiled self-check below is what catches them.
+- **Emitted unconditionally, in every mode.** Rust-only (`--wasm=false`) regens emit it too — there
+  is no flag to suppress it (a suppress flag would just manufacture the stale-export state the design
+  exists to prevent). An empty surface still emits a single header-only root file (`<dep>/mod.cddl`),
+  so "was this dependency regenerated?" stays answerable.
+- **Directory shape mirrors the crate's module tree** (`sub/module` scope →
+  `extern-interface/<dep>/sub/module/mod.cddl`), the same scope-as-directory encoding the stub
+  channel uses, so a consumer's `--extern-import` recovers the scope from the path.
+
+Each file begins with a strict versioned **seam header** on its first line:
+
+```cddl
+; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1
+```
+
+The header is per-file (not a manifest) so a physically-copied single file still carries its seam. A
+consumer feeding a file through `--extern-import` **strictly parses** it against this header: a
+missing/unknown header, or any `@`-annotation outside the recognized comment-DSL set, is a hard error
+naming the file (physical hand-stubs under the extern-deps directory carry no header and stay lenient
+— see [`--extern-import`](./command_line_flags)).
+
+**Rule idents are the dependency's original CDDL idents**, verbatim (the
+`--wrapper-requests`/`--key-requests` channels resolve by CDDL ident, so renaming would break them),
+sorted within each file. The dependency's final Rust name rides in a
+[`@rust_name`](./comment_dsl) pin so the consumer **reads** the name instead of re-deriving it,
+eliminating cross-version naming skew:
+
+```cddl
+; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1
+plutus_data = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name PlutusData
+coin        = uint                       ; @rust_name Coin
+fe          = 0 / 1 / 2                  ; @rust_name Fe
+hash32      = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @rust_name Hash32
+```
+
+Class-backed types (records, wrappers, type/group choices, externs, raw-bytes) export as **opaque
+markers** (`_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_`); transparent types
+(primitive aliases, c-style value enums, named collections whose rust surface is a `pub type`) export
+as their **post-DSL truthful CDDL shape**, also pinned — spelling a transparent type opaque would make
+the consumer manufacture calls to impls that don't exist.
+
+**`; unexported:` records and reference-closure.** The projection runs on *every* regenerated spec —
+including leaf/test specs that will never be dependencies — so a rule it cannot export faithfully is
+**excluded-with-record** rather than aborting generation. Each excluded rule leaves a sorted comment
+block after the header:
+
+```cddl
+; unexported: cs — @custom_serialize/@custom_deserialize does not travel through the export
+```
+
+The reasons are informational for humans, never parsed. The export is **reference-closed**: because a
+consumer runs a checked parse over the whole file, any rule whose body references an excluded ident is
+itself transitively excluded (to fixpoint), each with its own record naming the chain root. The
+failure then surfaces only at a consumer that actually references an excluded ident — via the
+undefined-reference path, whose diagnostic points back at these records (regenerate the dependency, or
+hand-stub that one type). A custom-serialize transparent alias is the canonical exclusion: it has no
+dep-crate class to delegate to, and exporting its plain definition would silently diverge the wire
+format.
+
+### `rust/src/generated/extern_interface_check.rs`
+
+Alongside the export, every rust crate gets a compiled self-check module (always-clobbered under
+`src/generated/**`, wired in every mode like the export it guards). It is derived from the **same
+projection** as the export — they cannot drift — and asserts that every exported name is a real,
+correctly-typed surface in *this* crate:
+
+- **opaque rows** must implement `Serialize` — and `Deserialize` too, but only for the types the crate
+  actually generates a deserializer for (the bound is weakened per type, so a legitimately
+  deserialize-less type does not fail the check);
+- **raw-bytes rows** must implement `RawBytesEncoding`;
+- **transparent rows** (aliases, c-style enums, named collections) must simply exist (a `use … as _;`
+  existence check).
+
+The bound assertions ride bound-carrier fns (`_assert_serialize::<T>()`, …) instantiated inside a
+never-called `_extern_interface_self_check()`. Effect: a hand-edited or stale export — or a projection
+bug — fails the **dependency's own build**, naming the type, so a drifted export cannot ship silently.
+
 ## Generated `Cargo.toml` (merge, not clobber)
 
 The generated manifests — `rust/Cargo.toml`, and (when enabled) `wasm/Cargo.toml` and

@@ -143,8 +143,6 @@ fn extern_import_matches_hand_stub_byte_for_byte() {
     }
 }
 
-/// The export minus its `; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1` header line — the faithful physical
-/// stub a careful human authors today (a hand-stub carries no seam header).
 /// The MIGRATION half of the acceptance criterion (plan §6 commit 6: "a consumer migrated from a
 /// faithful hand-stub produces byte-identical generated output"). A faithful hand-stub written
 /// today carries NO `@rust_name` pins — a careful author derives names the same way the consumer
