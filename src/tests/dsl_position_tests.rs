@@ -376,6 +376,46 @@ const GRID: &[Cell] = &[
             must_not: &[],
         },
     },
+    // 16b. rule-position @doc on a plain ALIAS rule → /// on the emitted `pub type`. The two-line
+    //      anchor pins the doc to the alias itself, not just presence somewhere in the source.
+    Cell {
+        directive: "@doc",
+        position: "rule-type-alias",
+        spec: "foo = uint ; @doc alias-rule doc-comment\nholder = [f: foo]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &["/// alias-rule doc-comment\npub type Foo = u64;"],
+            must_not: &[],
+        },
+    },
+    // 16c. rule-position @doc on a NEWTYPE rule → /// on the emitted wrapper struct.
+    Cell {
+        directive: "@doc",
+        position: "rule-newtype",
+        spec: "foo = uint ; @newtype @doc newtype-rule doc-comment\nholder = [f: foo]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &["/// newtype-rule doc-comment"],
+            must_not: &[],
+        },
+    },
+    // 16d. rule-position @doc on a named `[+ T]` rule → COMPOSED doc: user line first, then the
+    //      synthesized non-empty bound note, in one doc block on the same alias (the codegen
+    //      crate's `.doc()` replaces rather than appends, so composition must join into a single
+    //      call — this anchor would catch a second `.doc()` clobbering either half).
+    Cell {
+        directive: "@doc",
+        position: "rule-nonempty-array-alias",
+        spec: "foo_list = [+ uint] ; @doc user-half of composed doc\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &["/// user-half of composed doc\n/// `[+ u64]`: at least one element"],
+            must_not: &[],
+        },
+    },
     // ---- rule-level-only directives ----------------------------------------------------------
     // 17. @newtype → `pub struct Foo`, no `pub type Foo`.
     Cell {

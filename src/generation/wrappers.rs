@@ -51,6 +51,9 @@ pub(super) fn generate_wrapper_struct(
     };
     if cli.wasm {
         let mut wrapper = create_base_wasm_wrapper(gen_scope, types, type_name, true, cli);
+        if let Some(doc) = struct_config.doc.as_ref() {
+            wrapper.s.doc(doc);
+        }
         let mut wasm_new = codegen::Function::new("new");
         wasm_new
             .arg("inner", field_type.for_wasm_param(types))
@@ -88,6 +91,9 @@ pub(super) fn generate_wrapper_struct(
     // TODO: do we want to get rid of the rust struct and embed the tag / min/max size here?
     // The tag is easy but the min/max size would require error types in any place that sets/modifies these in other structs.
     let (mut s, mut s_impl) = create_base_rust_struct(types, type_name, true, cli);
+    if let Some(doc) = struct_config.doc.as_ref() {
+        s.doc(doc);
+    }
     let (inner_var, self_var) = if cli.preserve_encodings {
         ("inner", "self.inner")
     } else {

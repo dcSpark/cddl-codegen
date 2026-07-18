@@ -276,7 +276,7 @@ For more examples see `tests/custom_serialization` (used in the `core` and `core
 
 ## @doc
 
-This can be placed at field-level, struct-level or variant-level to specify a comment to be placed as a rust doc-comment.
+This can be placed at field-level, struct-level, variant-level or rule-level (including plain alias rules and `@newtype` rules) to specify a comment to be placed as a rust doc-comment.
 
 ```cddl
 docs = [
@@ -319,6 +319,18 @@ pub enum DocsGroupchoice {
     /// comments about second
     Second(String),
 }
+```
+
+On an alias rule the doc lands on the emitted `pub type`, composed with any note the generator
+synthesizes itself (e.g. the non-empty `[+ T]` bound note) — user doc first, mechanical note after:
+
+```cddl
+positive_coin = coin ; @doc Does not enforce > 0: plain u64 alias for API convenience.
+```
+
+```rust
+/// Does not enforce > 0: plain u64 alias for API convenience.
+pub type PositiveCoin = u64;
 ```
 
 Due to the comment dsl parsing this doc comment cannot contain the character `@`.

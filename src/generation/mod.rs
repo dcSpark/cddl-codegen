@@ -215,6 +215,26 @@ impl GenerationScope {
                         alias_info.base_type.for_rust_member(types, false, cli),
                     );
                     type_alias.vis("pub");
+                    // `.doc()` replaces rather than appends, so every doc line is collected here
+                    // and attached in ONE call: the user's rule-level `@doc` first, then the
+                    // mechanical bound notes (which document generator behavior the user can't
+                    // know to write). The user doc has two sources: plain alias rules carry it in
+                    // `rule_metadata`, while authored collection rules (`foo_list = [* foo]`)
+                    // register their alias via `new_manual` (metadata `None`) but carry the rule's
+                    // `@doc` on their RustStruct config.
+                    let mut doc_lines: Vec<String> = Vec::new();
+                    if let Some(comment) = alias_info
+                        .rule_metadata
+                        .as_ref()
+                        .and_then(|m| m.comment.as_deref())
+                        .or_else(|| {
+                            types
+                                .rust_struct(ident)
+                                .and_then(|rs| rs.config().doc.as_deref())
+                        })
+                    {
+                        doc_lines.push(comment.to_owned());
+                    }
                     // Decision 11 (two-type design doc): a named `[+ T]` rule's alias quotes the
                     // originating occurrence — the type name, doc comment, and TryFrom signature
                     // are three redundant discovery signals for the constraint.
@@ -222,7 +242,7 @@ impl GenerationScope {
                         && let ConceptualRustType::Array(elem) =
                             &alias_info.base_type.conceptual_type
                     {
-                        type_alias.doc(format!(
+                        doc_lines.push(format!(
                             "`[+ {}]`: at least one element, enforced at the `NonEmptyVec` \
                              `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same \
                              door, so wire-side and API-side rejection are identical).",
@@ -233,13 +253,16 @@ impl GenerationScope {
                     if alias_info.base_type.is_non_empty_map()
                         && let ConceptualRustType::Map(k, v) = &alias_info.base_type.conceptual_type
                     {
-                        type_alias.doc(format!(
+                        doc_lines.push(format!(
                             "`{{+ {} => {}}}`: at least one entry, enforced at the `NonEmptyMap` \
                              `TryFrom` door (the CBOR decoder routes through the same door, so \
                              wire-side and API-side rejection are identical).",
                             k.for_rust_member(types, false, cli),
                             v.for_rust_member(types, false, cli)
                         ));
+                    }
+                    if !doc_lines.is_empty() {
+                        type_alias.doc(doc_lines.join("\n"));
                     }
                     self.rust(types, ident).push_type_alias(type_alias);
                 }
