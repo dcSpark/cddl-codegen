@@ -31,7 +31,10 @@ manual gates (<!-- status-header gate roll-call is generated — regenerate with
 the fuzz-crate compile-rot check, plus the two gate-cache soundness gates — the input-closure audit `gate_cache_closure_audit` and the flag-gated `verify_cache_transparency` — see the gate-cache section below) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
 `SKIPPED(reason)` / `STUB` / `not-in-tier` + per-gate durations), so a gate that didn't run is always
 *visibly* not-run. Exit is non-zero on any `FAIL`; the run fails fast by default (`--keep-going` runs
-every in-tier gate first).
+every in-tier gate first). Every run also tees its FULL output to a timestamped
+`draft/logs/check-<tier>-<stamp>.log` (path printed at start and end) — evidence preservation is
+the tool's job, so never pipe a run through `tail`/`grep` as its only capture; cite the printed
+path.
 
 `verify.ts` needs two oracles (ruby `cddl`, rust `cddl`); the runner preflights them and prints
 install one-liners on failure (`--skip-missing` downgrades a missing oracle to `SKIPPED`). It is the
