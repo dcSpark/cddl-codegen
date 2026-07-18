@@ -47,6 +47,19 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
 
 ## Pending maintainer action
 
+- **Fix `fuzz/generate.sh`'s pre-thin-root probe-list paths (cold runs die; warm runs launder).**
+  The `gen_probe_list` calls read `fuzz/generated/rust/src/serialization.rs` /
+  `fuzz/generated/recursive/rust/src/serialization.rs`, but the thin-root split moved generated
+  serialization to `src/generated/serialization.rs` — so a COLD regeneration (fresh worktree/
+  checkout, or `--refresh-fuzz`) exits at the probe-list step after generating the crates
+  (verified 2026-07-18 in a fresh worktree during the rustfmt-skip delivery). Warm machines never
+  see it: `fuzz_compile_rot` re-runs `generate.sh` only when `fuzz/generated` is absent
+  (`tests/README.md` § the fuzz gate), so pre-split state keeps the gate green — an instance of
+  the general hazard that gate SCRIPT health is in no cache or staleness key; a fresh worktree is
+  currently the only cold-run detector. Fix is the two path literals (+ a cold
+  `bash fuzz/generate.sh` run to verify, and consider whether the probe-list floor still holds
+  against the post-split file before re-greening).
+
 - **Complete the `cargo-mutants` sweep and triage the survivors.** The system is built and its
   invocation pinned (`.cargo/mutants.toml` + `tests/README.md` § "Mutation testing": emit-core
   scope, behavioral-only scoring via a nextest filterset excluding `snapshot_tests` — snapshot
@@ -65,8 +78,17 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
 
 - **`prettyplease` instead of shelling to `rustfmt`.** Removes toolchain-dependent formatting
   churn and the `which` dependency, compiles fast, never bails (it reuses `syn`, already built
-  transitively via the proc-macro derives). Lower urgency only because the pinned toolchain already
-  mitigates churn.
+  transitively via the proc-macro derives). No longer just a churn mitigation: shelling to rustfmt
+  is a proven correctness exposure — rust-lang/rustfmt#5703 (an internal error on over-width
+  `pub(crate)` tuple fields, fatal under `export.rs`'s deliberate non-0/3-exit-is-fatal contract)
+  aborted consumer regens outright and forced a `#[rustfmt::skip]` + hand-canonical-layout
+  workaround into shipped output (`WasmWrapper::push_inner_field`; pinned by
+  `integration_overwidth_wasm_wrapper_field_gets_rustfmt_skip`). `prettyplease` has no
+  internal-error/bail class, so adopting it retires that workaround (grep `rustfmt::skip` in
+  `src/generation/` and remove the over-width branch in the same change) — weigh that retirement
+  plus the exposure against the emitted-token-stability constraints in AGENTS.md (the snapshot
+  corpus and comment-preservation overlay key on the formatter's exact output, so the swap
+  re-blesses broadly and must hold the overlay's idempotent-fixed-point property).
 
 - **Consider promoting the sub-second drift/count gates from `local` into `fast` (CI).** The
   local-tier placement of `project_recombination_check`, `project_decode_conformance`, the
@@ -134,6 +156,24 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      these gates' floors have their own rot class — see the standing residual below.)
    - **Real-world corpus differential** (see `draft/testing-recommendations/RECOMMENDATIONS.md`):
      synthetic breadth vs real-world depth — recombination does not replace it.
+
+2. **Identifier-length realism (a fixture-corpus dimension, recur-first).** Every fixture corpus
+   uses short synthetic names, so any emission-width-driven failure class is structurally
+   unreachable by every gate — proven by escape: consumer-scale names (CML's
+   `MapTransactionIndexTo…AuxiliaryData` wrappers, fully-qualified extern paths) pushed wasm
+   wrapper tuple-field lines past rustfmt's `max_width`, tripping rust-lang/rustfmt#5703's fatal
+   internal error and aborting regen — first surfaced as hand-placed `#[rustfmt::skip]` blocks in
+   CML's committed generated output (the hand-patched-consumer-output tell; see
+   `cddl-matrix/ROADMAP.md` § "wasm-ABI & multifile placement matrices"). The instance is fixed
+   and pinned both directions (`integration_overwidth_wasm_wrapper_field_gets_rustfmt_skip`), but
+   only for the wasm tuple-field site; other emission sites that concatenate names into one line
+   (named struct fields — today verified to wrap safely after the colon — enum variants, fn
+   signatures, `impl` headers) are unswept against the formatter internal-error class. The cheap
+   mechanical layer, to build on the next width-class instance rather than speculatively: one
+   long-identifier stress fixture (names sized so common emission sites exceed 100 columns) swept
+   across the emission profiles, whose whole gate is "generation succeeds" — `export.rs`'s
+   non-0/3-rustfmt-exit-is-fatal contract already turns any formatter internal error into a
+   generation failure, so no new assertion machinery is needed.
 
 ## Standing-system residuals (recur-first)
 
