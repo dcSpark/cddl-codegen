@@ -53,7 +53,10 @@ changing the *runtime behaviour* of generated code usually means editing `static
     with a co-owned contract: deps only asserted never removed, package identity seed-only); (2) each generated crate root `src/lib.rs` (rust, wasm,
     json-gen) is a seed-once thin root — written on a first export, then skipped if the file exists
     (existence check only, same bounded wording as the manifest `SeedOnce`; all generated code lives
-    under the always-clobbered `src/generated/**`); (3) the comment/code-preservation overlay
+    under the always-clobbered `src/generated/**`, alongside the dep-side extern-interface export
+    `extern-interface/<dep>/**` — a committed, tool-owned, always-clobbered sibling tree
+    delete-and-recreated each run, freshly projected from the finalized IR with no prior-output read);
+    (3) the comment/code-preservation overlay
     (`comment_preserve.rs`) — `export()` reads a prior generated `src/generated/**` `.rs` whose only
     effects on fresh content are (a) inserting comment bytes and tagged regions
     (`cddl-codegen:unpreserved-comment` compile_error blocks and `cddl-codegen:replace`/`insert` user
@@ -65,8 +68,9 @@ changing the *runtime behaviour* of generated code usually means editing `static
     trees). Nothing reads prior *tool* output to decide what code to generate, so "run twice = run
     once = clean run" still holds. (Cross-crate request sidecars — `--wrapper-requests` /
     `--key-requests` reading a CONSUMER's committed `borrowed_collections.rs` /
-    `borrowed_key_types.rs` — are explicit INPUTS from another crate, not this run's prior output;
-    same inputs → same bytes still holds.)
+    `borrowed_key_types.rs`, and `--extern-import` reading a DEPENDENCY's committed
+    `extern-interface/<dep>/**` export — are explicit INPUTS from another crate, not this run's prior
+    output; same inputs → same bytes still holds.)
 - **Never regenerate a downstream CONSUMER repo (e.g. a CML checkout) to validate a change.**
   Generation clobbers the consumer's `src/generated/**`, and those working trees may hold large
   uncommitted migrations — a "just regen it to prove the fix" step nearly destroyed one. Validate

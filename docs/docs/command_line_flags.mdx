@@ -329,11 +329,23 @@ cddl-codegen --input=cml_core.cddl --output=export --lib-name=cml-core --wasm=tr
 <br/><br/>
 
 :::info `--extern-import`
-Consume a dependency's committed **extern-interface export** (`extern-interface/<dep>/**`, emitted by that dependency's own regeneration) instead of hand-maintaining a stub under `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/`. Each mapped path is read and concatenated with `_CDDL_CODEGEN_EXTERN_DEPS_DIR_` scope markers, so its rules land in the same **non-exported** `<dep>` scope a physical stub tree would — after which the whole extern-deps pathway (scope filter, extern resolution, wasm crate mapping, request sidecars) is unchanged. Because the export carries the dependency's final Rust names as `@rust_name` pins, the consumer **reads** names instead of re-deriving them, eliminating the cross-version naming-skew class.
+Consume a dependency's committed **extern-interface export** (`extern-interface/<dep>/**`, emitted by that dependency's own regeneration — see [Output format](./output_format#extern-interface-export)) instead of hand-maintaining a stub under `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/`. Repeatable; each value is `<dep>=<path/to/extern-interface/<dep>>` (a value with no `=` aborts generation, like the other cross-crate flag parsers). Each mapped path is read and concatenated with `_CDDL_CODEGEN_EXTERN_DEPS_DIR_` scope markers, so its rules land in the same **non-exported** `<dep>` scope a physical stub tree would — after which the whole extern-deps pathway (scope filter, extern resolution, wasm crate mapping, request sidecars) is unchanged. Because the export carries the dependency's final Rust names as [`@rust_name`](./comment_dsl) pins, the consumer **reads** names instead of re-deriving them, eliminating the cross-version naming-skew class.
 
-Flag-fed files are **strictly parsed**: each must begin with the versioned seam header (`; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1`) and carry only recognized `@`-annotations. A missing/unknown version header or an unknown `@`-token is a hard error naming the file; declaring `<dep>` here **and** as a physical `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/` input directory is a hard error (ambiguous double declaration, never a merge); a path that does not exist or contains no `.cddl` files is a hard error naming the flag value. A physical hand-stub under the extern-deps directory remains supported (same dialect, parsed leniently) as the escape hatch for an un-regenerable dependency.
+Flag-fed files are **strictly parsed**: each must begin with the versioned seam header (`; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1`) and carry only recognized `@`-annotations. The hard errors (each naming the flag value or the offending file):
 
-Same **input category** and determinism wording as `--extern-wrapper-index`: the export is an explicit cross-crate input, so *same inputs → same bytes*. **Regenerate the dependency before the consumer** so its export is fresh (a consumer referencing an identifier absent from the export gets a hard error naming the declared dependencies, their export paths, and the regenerate / check-`; unexported:`-records / hand-stub remedies). Repeatable; each value is `<dep>=<path/to/extern-interface/<dep>>`.
+- a **malformed value** (no `=` separating `<dep>` from the path);
+- a **missing** version header, or an **unknown** version (a header naming a version this cddl-codegen does not understand — the seam is versioned, so bump the tool);
+- an **unknown `@`-annotation** token (a typo or a newer dialect — the strict seam refuses to silently misread it);
+- declaring `<dep>` here **and** as a physical `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/` input directory (ambiguous **double declaration**, never a merge — a dependency is declared exactly once);
+- a path that **does not exist** or contains **no `.cddl` files**.
+
+A physical hand-stub under the extern-deps directory remains supported (same dialect, parsed leniently) as the escape hatch for an un-regenerable dependency.
+
+**Determinism.** Same **input category** and wording as `--extern-wrapper-index` / `--wrapper-requests`: the export is an explicit cross-crate input, so *same inputs → same bytes* holds.
+
+**Interaction with the other extern-dep flags is by design unchanged — the flag only changes where `<dep>`'s stub text comes from, not how it is keyed.** The imported rules land in the same non-exported `<dep>` scope with the dependency's original CDDL idents, so `--extern-wasm-crate` (wasm-crate qualification), `--extern-wrapper-index` / `--workspace-dep` (collection-wrapper deferral), and the `--wrapper-requests`/`--key-requests` sidecar resolution all key on `<dep>` and those idents exactly as they do against a physical stub. Combine `--extern-import` with any of them for the same dependency.
+
+**Regenerate the dependency before the consumer** so its export is fresh — the same discipline `--extern-wrapper-index` demands. A consumer referencing an identifier absent from the export gets a hard error, augmented (never swallowed) with the declared dependencies, their export paths, and the remedies: regenerate the dependency, check the export's `; unexported:` records (the ident may be a rule the dependency could not project), or hand-stub the missing rule.
 
 ```bash
 cddl-codegen --input=cml_chain.cddl --output=export --lib-name=cml-chain --wasm=false \
