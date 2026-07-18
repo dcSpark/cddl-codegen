@@ -508,6 +508,87 @@ fn raw_bytes_flavor_misuse_rejects_gracefully() {
     }
 }
 
+/// Helper for the CDDL-module-directive and dotted-ident vectors: write `spec` to a temp file, run
+/// the pipeline, and return the `Result` so the caller can assert success or inspect the `Err`.
+fn run_spec(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, String>, String> {
+    let path = std::env::temp_dir().join(format!("cddl_codegen_{tag}_{}.cddl", std::process::id()));
+    std::fs::write(&path, spec).unwrap();
+    let cli = Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "directive_scan_unused",
+        "--wasm",
+        "false",
+    ]);
+    let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
+    std::fs::remove_file(&path).ok();
+    result
+}
+
+/// A `;#####` banner comment is legal basic CDDL (`;#` not followed by a space is not a directive
+/// per the modules-draft ABNF), so generation must PROCEED normally — no abort, no directive
+/// handling. Guards that the directive scan is scoped strictly to the ABNF and does not blanket-
+/// reject every `;#` line.
+#[test]
+fn module_directive_banner_comment_generates() {
+    run_spec(";#####  section banner  #####\nfoo = [x: uint]\n", "banner")
+        .expect("a `;#####` banner comment is a plain comment and must not abort generation");
+}
+
+/// A `;# import <module>` directive is a CDDL-module preprocessor directive cddl-codegen does not
+/// support; it is a HARD abort (not a silent ignore, which would yield a misleading undefined-
+/// reference error), with a message naming the directive.
+#[test]
+fn module_directive_import_aborts() {
+    let err = run_spec(";# import foo\nstart = [x: uint]\n", "import")
+        .expect_err("a `;# import` module directive must abort generation, not be ignored");
+    assert!(
+        err.contains("module directive") && err.contains("import"),
+        "abort message must name the CDDL module directive and the `import` keyword, got: {err}"
+    );
+}
+
+/// The `include … from …` directive form aborts identically (`;# include a, b from foo`).
+#[test]
+fn module_directive_include_aborts() {
+    let err = run_spec(";# include a, b from foo\nstart = [x: uint]\n", "include")
+        .expect_err("a `;# include` module directive must abort generation, not be ignored");
+    assert!(
+        err.contains("module directive") && err.contains("include"),
+        "abort message must name the CDDL module directive and the `include` keyword, got: {err}"
+    );
+}
+
+/// A `;# `-prefixed line whose first token is neither `import` nor `include` is an unrecognized
+/// directive-shaped comment: it WARNS (to stderr) but must NOT abort — generation proceeds.
+#[test]
+fn module_directive_nondirective_warns_not_aborts() {
+    run_spec(
+        ";# something-nondirective here\nfoo = [x: uint]\n",
+        "nondirective",
+    )
+    .expect("an unrecognized `;# …` directive-shaped comment must warn, not abort generation");
+}
+
+/// A rule whose name contains `.` (e.g. from cddlc `as`-namespacing, `cose.label`) is rejected
+/// GRACEFULLY at the reserved-name pre-scan seam — never flowed through `convert_to_camel_case`
+/// into an invalid-Rust crate. The message names the offending dotted ident by source spelling.
+#[test]
+fn dotted_rule_name_rejects_gracefully() {
+    let err = run_spec("cose.label = int\n", "dotted")
+        .expect_err("a dotted rule name must reject gracefully, not generate invalid Rust");
+    assert!(
+        err.contains("cose.label"),
+        "rejection must name the offending dotted ident by source spelling, got: {err}"
+    );
+    assert!(
+        err.contains('.') && err.contains("does not support"),
+        "rejection must explain that dotted rule names are unsupported, got: {err}"
+    );
+}
+
 /// An unsupported `type2` construct as a rule body (`foo = #1.2`, a bare major-type constraint;
 /// also `~name` unwrap, `&group`, `&( ... )`, `#`) is rejected BY DESIGN — via a GRACEFUL `Err`
 /// (deferred through `record_rejection` → drained by `finalize`), never a `panic!`. This pins that

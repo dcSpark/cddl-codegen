@@ -39,6 +39,60 @@ fn cddl_paths(
     Ok(())
 }
 
+/// Recognize CDDL-module preprocessor directives (`draft-ietf-cbor-cddl-modules-06`, Appendix A)
+/// in a single raw input file BEFORE it is concatenated with the others, so a diagnostic can name
+/// the offending file and line.
+///
+/// Per the draft's ABNF a directive is `";#" RS (%s"import" / %s"include") RS …`, where `RS` is
+/// one-or-more spaces (`WS`/`SP` = `%x20` only). We are not a module-aware tool: adopting the
+/// directive's real inlining semantics is out of scope. But silently ignoring them is worse than
+/// aborting — the concatenated body then references rules the directive was supposed to pull in,
+/// yielding a misleading "undefined reference" parse error, or (for `include`-style composition
+/// whose rules aren't referenced) silently-incomplete output. So:
+///   - `;#` + space(s) + `import`/`include` → hard error naming the file, line and directive.
+///   - `;#` + space(s) + anything else → stderr warning (an unrecognized `;# `-form, not fatal).
+///   - `;#` NOT followed by a space (e.g. `;#####` banner comments) → legal basic CDDL, silent.
+///
+/// A `;#`-prefixed line inside a (hypothetical) multi-line CDDL text literal would be mis-scanned
+/// as a directive — accepted collateral: the scan is line-oriented and pre-parse, and such a
+/// literal spanning a directive-looking line is pathological.
+fn scan_module_directives(
+    input_file: &std::path::Path,
+    content: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    for (idx, line) in content.lines().enumerate() {
+        let line_no = idx + 1;
+        // Directives may be indented; a `;#` reached only past leading whitespace is still one.
+        let Some(after_hash) = line.trim_start().strip_prefix(";#") else {
+            continue;
+        };
+        // `RS` is one-or-more ASCII spaces. No space after `;#` ⇒ a plain `;#…` comment (banner).
+        if !after_hash.starts_with(' ') {
+            continue;
+        }
+        let first_word = after_hash.split_whitespace().next().unwrap_or("");
+        if first_word == "import" || first_word == "include" {
+            return Err(format!(
+                "CDDL module directive `;# {first_word} …` at {}:{line_no} — CDDL module directives \
+                 (draft-ietf-cbor-cddl-modules) are not supported by cddl-codegen. They cannot be \
+                 ignored: doing so would make the concatenated spec reference rules the directive \
+                 was meant to pull in (a misleading \"undefined reference\" error) or, for \
+                 unreferenced `include`d rules, silently emit incomplete output. Inline the required \
+                 rules directly, or resolve the modules with `cddlc` before feeding cddl-codegen.",
+                input_file.display()
+            )
+            .into());
+        } else {
+            eprintln!(
+                "warning: unrecognized `;# …` directive-shaped comment at {}:{line_no} — \
+                 cddl-codegen does not process CDDL module directives; treating it as a comment.",
+                input_file.display()
+            );
+        }
+    }
+    Ok(())
+}
+
 /// Parse the CDDL input described by `cli`, build the intermediate representation, and invoke
 /// `f` with a borrow of it plus the `export_raw_bytes_encoding_trait` flag. The AST and IR are
 /// owned for the duration of the call, so `f` must return owned data (it cannot leak the borrow).
@@ -116,17 +170,19 @@ pub fn with_types<R>(
             } else {
                 ROOT_SCOPE.to_string()
             };
-            std::fs::read_to_string(input_file).map(|raw| {
-                format!(
-                    "\n{}{} = \"{}\"\n{}\n",
-                    parsing::SCOPE_MARKER,
-                    i,
-                    scope,
-                    raw
-                )
-            })
+            let raw = std::fs::read_to_string(input_file)?;
+            // Recognize (and refuse) CDDL-module directives per-file, before concatenation, so the
+            // diagnostic can name the offending file — the concatenated buffer has no provenance.
+            scan_module_directives(input_file, &raw)?;
+            Ok(format!(
+                "\n{}{} = \"{}\"\n{}\n",
+                parsing::SCOPE_MARKER,
+                i,
+                scope,
+                raw
+            ))
         })
-        .collect::<Result<String, _>>()?;
+        .collect::<Result<String, Box<dyn std::error::Error>>>()?;
     let export_raw_bytes_encoding_trait = input_files_content.contains(parsing::RAW_BYTES_MARKER);
     // we also need to mark the extern marker to a placeholder struct that won't get codegened
     input_files_content.push_str(&format!("{} = [0]", parsing::EXTERN_MARKER));
@@ -160,6 +216,11 @@ pub fn with_types<R>(
             continue;
         }
         if let Some(msg) = crate::intermediate::reserved_ident_rejection(&cddl_rule.name()) {
+            types.record_rejection(msg);
+        }
+        // A dotted rule name (e.g. from cddlc `as`-namespacing, `cose.label`) passes through
+        // `convert_to_camel_case` unchanged into invalid Rust; reject it here, at the same seam.
+        if let Some(msg) = crate::intermediate::dotted_ident_rejection(&cddl_rule.name()) {
             types.record_rejection(msg);
         }
         // Rule-position `@name` is a directive drop (silent on type rules, mis-applied on plain
