@@ -8,7 +8,7 @@ use crate::intermediate::{
     AliasIdent, AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant,
     FixedValue, FloatWindow, GenericDef, GenericInstance, IntermediateTypes, ModuleScope,
     PlainGroupInfo, Primitive, Representation, RustField, RustIdent, RustRecord, RustStruct,
-    RustStructType, RustType, VariantIdent,
+    RustStructType, RustType, VariantIdent, reserved_pin_rejection,
 };
 use crate::utils::{
     append_number_if_duplicate, convert_to_camel_case, convert_to_snake_case,
@@ -335,6 +335,7 @@ fn parse_type_choices(
                  whose argument is a {RAW_BYTES_MARKER} type. Remove it from this rule."
             ));
         }
+        handle_rust_name_pin(types, name, &rule_metadata);
         let variants = create_variants_from_type_choices(types, parent_visitor, type_choices, cli);
         let rust_struct =
             RustStruct::new_type_choice(name.clone(), tag, Some(&rule_metadata), variants, cli);
@@ -884,6 +885,41 @@ fn register_literal_range(
     }
 }
 
+/// Validate and record a `@rust_name` pin for the rule `type_name`, following the
+/// `@raw_bytes_flavor`-only-on-extern precedent (graceful `record_rejection`, never a panic).
+///
+/// `@rust_name` pins the dependency's FINAL Rust type name so a consumer reads it across the crate
+/// boundary instead of re-deriving it (killing the cross-version naming-skew class). It is therefore
+/// valid ONLY on a rule in a non-exported (`EXTERN_DEPS_DIR`) scope — an extern-interface / stub
+/// file. On a normally-generated (exported) rule the consumer IS the version that spells the name,
+/// so a pin there would silently do nothing: reject it. A pin that camel-cases to a reserved Rust
+/// std/prelude type (or a CDDL keyword) is rejected exactly as a derived name would be, so a
+/// `@rust_name Option` pin can't slip past the reserved-ident bar that guards derived names.
+///
+/// The rule's scope is known here: `api::with_types` calls `mark_scope` for every rule before the
+/// parse walk runs, so `types.scope(type_name)` is already populated.
+fn handle_rust_name_pin(
+    types: &mut IntermediateTypes,
+    type_name: &RustIdent,
+    rule_metadata: &RuleMetadata,
+) {
+    let Some(pin) = rule_metadata.rust_name.as_ref() else {
+        return;
+    };
+    if types.scope(type_name).export() {
+        types.record_rejection(format!(
+            "@rust_name on `{type_name}`: reserved for extern-interface / stub files (rules in a \
+             {EXTERN_DEPS_DIR} scope). It pins a dependency's final Rust name so a consumer reads it \
+             across the crate boundary instead of deriving it; on a normally-generated (exported) \
+             rule it would silently do nothing. Remove it."
+        ));
+    } else if let Some(msg) = reserved_pin_rejection(pin, type_name.as_ref()) {
+        types.record_rejection(msg);
+    } else {
+        types.mark_rust_name_pin(type_name.clone(), pin.clone());
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn parse_type(
     types: &mut IntermediateTypes,
@@ -927,6 +963,7 @@ fn parse_type(
              whose argument is a {RAW_BYTES_MARKER} type. Remove it from this rule."
         ));
     }
+    handle_rust_name_pin(types, type_name, &rule_metadata);
     match &type1.type2 {
         Type2::Typename {
             ident,

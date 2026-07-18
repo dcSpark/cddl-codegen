@@ -44,6 +44,15 @@ fn merge_key_demand(a: Option<DemandSet>, b: Option<DemandSet>) -> Option<Demand
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct RuleMetadata {
     pub name: Option<String>,
+    /// `@rust_name`: pins the FINAL derived Rust type name for a rule living in an extern-deps
+    /// (`_CDDL_CODEGEN_EXTERN_DEPS_DIR_`) scope. Unlike `@name` (which renames fields/variants, never
+    /// the top-level rule type), this renames the type — but ONLY across the crate boundary: a
+    /// consumer imports the dependency's real type under this pinned name (`use dep::Pinned as
+    /// Derived;`) instead of re-deriving the name from the CDDL ident with its own (possibly newer)
+    /// codegen version. This is what kills the cross-version naming-skew class. Rejected on any
+    /// exported rule (see `parsing::handle_rust_name_pin`); a pin that camel-cases to a reserved Rust
+    /// type is rejected exactly as a derived name would be.
+    pub rust_name: Option<String>,
     /// None = not newtype, Some(None) = getter under the default name `get`,
     /// Some(Some(name)) = getter renamed to `name`
     pub newtype: Option<Option<String>>,
@@ -86,6 +95,7 @@ macro_rules! merge_metadata_fields {
 pub fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
     let merged = RuleMetadata {
         name: merge_metadata_fields!(r1.name, r2.name, "name"),
+        rust_name: merge_metadata_fields!(r1.rust_name, r2.rust_name, "rust_name"),
         newtype: merge_metadata_fields!(r1.newtype, r2.newtype, "newtype"),
         no_alias: r1.no_alias || r2.no_alias,
         key_demand: merge_key_demand(r1.key_demand, r2.key_demand),
@@ -111,6 +121,7 @@ pub fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
 enum ParseResult {
     NewType(Option<String>),
     Name(String),
+    RustName(String),
     DontGenAlias,
     UsedAsKey(DemandSet),
     UsedAsElem,
@@ -143,6 +154,9 @@ impl RuleMetadata {
         for result in results {
             match result {
                 ParseResult::Name(name) => merge_parse_fields!(base.name, name, "name"),
+                ParseResult::RustName(rust_name) => {
+                    merge_parse_fields!(base.rust_name, rust_name, "rust_name")
+                }
                 ParseResult::NewType(newtype) => {
                     merge_parse_fields!(base.newtype, newtype, "newtype")
                 }
@@ -193,6 +207,14 @@ fn tag_name(input: &str) -> IResult<&str, ParseResult> {
     let (input, name) = take_while1(|ch| !char::is_whitespace(ch))(input)?;
 
     Ok((input, ParseResult::Name(name.to_string())))
+}
+
+fn tag_rust_name(input: &str) -> IResult<&str, ParseResult> {
+    let (input, _) = tag("@rust_name")(input)?;
+    let (input, _) = take_while(char::is_whitespace)(input)?;
+    let (input, rust_name) = take_while1(|ch| !char::is_whitespace(ch))(input)?;
+
+    Ok((input, ParseResult::RustName(rust_name.to_string())))
 }
 
 fn tag_newtype(input: &str) -> IResult<&str, ParseResult> {
@@ -302,6 +324,7 @@ fn whitespace_then_tag(input: &str) -> IResult<&str, ParseResult> {
     let (input, _) = take_while(char::is_whitespace)(input)?;
     let (input, result) = alt((
         tag_name,
+        tag_rust_name,
         tag_newtype,
         tag_no_alias,
         tag_used_as_key,
@@ -350,6 +373,7 @@ fn parse_comment_name() {
             "",
             RuleMetadata {
                 name: Some("foo".to_string()),
+                rust_name: None,
                 newtype: None,
                 no_alias: false,
                 key_demand: None,
@@ -372,6 +396,7 @@ fn parse_comment_newtype() {
             "",
             RuleMetadata {
                 name: None,
+                rust_name: None,
                 newtype: Some(None),
                 no_alias: false,
                 key_demand: None,
@@ -394,6 +419,7 @@ fn parse_comment_newtype_getter_before() {
             "",
             RuleMetadata {
                 name: None,
+                rust_name: None,
                 newtype: Some(Some("custom_getter".to_owned())),
                 no_alias: false,
                 key_demand: Some(DemandSet {
@@ -420,6 +446,7 @@ fn parse_comment_newtype_getter_after() {
             "",
             RuleMetadata {
                 name: None,
+                rust_name: None,
                 newtype: Some(Some("custom_getter".to_owned())),
                 no_alias: false,
                 key_demand: Some(DemandSet {
@@ -446,6 +473,7 @@ fn parse_comment_newtype_and_name() {
             "",
             RuleMetadata {
                 name: Some("foo".to_string()),
+                rust_name: None,
                 newtype: Some(None),
                 no_alias: false,
                 key_demand: None,
@@ -468,6 +496,7 @@ fn parse_comment_newtype_and_name_and_used_as_key() {
             "",
             RuleMetadata {
                 name: Some("foo".to_string()),
+                rust_name: None,
                 newtype: Some(None),
                 no_alias: false,
                 key_demand: Some(DemandSet {
@@ -494,6 +523,7 @@ fn parse_comment_used_as_key() {
             "",
             RuleMetadata {
                 name: None,
+                rust_name: None,
                 newtype: None,
                 no_alias: false,
                 key_demand: Some(DemandSet {
@@ -622,6 +652,7 @@ fn parse_comment_used_as_elem() {
             "",
             RuleMetadata {
                 name: None,
+                rust_name: None,
                 newtype: None,
                 no_alias: false,
                 key_demand: None,
@@ -645,6 +676,7 @@ fn parse_comment_used_as_elem_and_key() {
             "",
             RuleMetadata {
                 name: None,
+                rust_name: None,
                 newtype: None,
                 no_alias: false,
                 key_demand: Some(DemandSet {
@@ -671,6 +703,7 @@ fn parse_comment_used_as_key_and_elem_inverse() {
             "",
             RuleMetadata {
                 name: None,
+                rust_name: None,
                 newtype: None,
                 no_alias: false,
                 key_demand: Some(DemandSet {
@@ -698,6 +731,7 @@ fn parse_comment_newtype_getter_before_used_as_elem() {
             "",
             RuleMetadata {
                 name: None,
+                rust_name: None,
                 newtype: Some(Some("custom_getter".to_owned())),
                 no_alias: false,
                 key_demand: None,
@@ -720,6 +754,7 @@ fn parse_comment_used_as_elem_before_newtype_getter() {
             "",
             RuleMetadata {
                 name: None,
+                rust_name: None,
                 newtype: Some(Some("custom_getter".to_owned())),
                 no_alias: false,
                 key_demand: None,
@@ -790,6 +825,7 @@ fn parse_comment_newtype_and_name_inverse() {
             "",
             RuleMetadata {
                 name: Some("foo".to_string()),
+                rust_name: None,
                 newtype: Some(None),
                 no_alias: false,
                 key_demand: None,
@@ -812,6 +848,7 @@ fn parse_comment_name_noalias() {
             "",
             RuleMetadata {
                 name: Some("foo".to_string()),
+                rust_name: None,
                 newtype: None,
                 no_alias: true,
                 key_demand: None,
@@ -834,6 +871,7 @@ fn parse_comment_newtype_and_custom_json() {
             "",
             RuleMetadata {
                 name: None,
+                rust_name: None,
                 newtype: Some(None),
                 no_alias: false,
                 key_demand: None,
@@ -862,6 +900,7 @@ fn parse_comment_custom_serialize_deserialize() {
             "",
             RuleMetadata {
                 name: None,
+                rust_name: None,
                 newtype: None,
                 no_alias: false,
                 key_demand: None,
@@ -887,6 +926,7 @@ fn parse_comment_all_except_no_alias() {
             "",
             RuleMetadata {
                 name: Some("baz".to_string()),
+                rust_name: None,
                 newtype: Some(None),
                 no_alias: false,
                 key_demand: Some(DemandSet {
@@ -903,4 +943,52 @@ fn parse_comment_all_except_no_alias() {
             }
         ))
     );
+}
+
+#[test]
+fn parse_comment_rust_name() {
+    assert_eq!(
+        rule_metadata("@rust_name PlutusData").unwrap().1.rust_name,
+        Some("PlutusData".to_string())
+    );
+}
+
+// `@rust_name` (renames the TOP-LEVEL type across the crate boundary) and `@name` (renames a
+// field/variant) are independent single-ident tags that co-occur, in either order, without one
+// swallowing the other. `@rust_name` must NOT be mistaken for `@name` by the parser.
+#[test]
+fn parse_comment_rust_name_and_name() {
+    let md = rule_metadata("@name field_alias @rust_name TypeAlias")
+        .unwrap()
+        .1;
+    assert_eq!(md.name, Some("field_alias".to_string()));
+    assert_eq!(md.rust_name, Some("TypeAlias".to_string()));
+    let inverse = rule_metadata("@rust_name TypeAlias @name field_alias")
+        .unwrap()
+        .1;
+    assert_eq!(inverse.name, Some("field_alias".to_string()));
+    assert_eq!(inverse.rust_name, Some("TypeAlias".to_string()));
+}
+
+// A second `@rust_name` on the same rule is a hard error (the duplicate-key panic, matching `@name`).
+#[test]
+#[should_panic(expected = "\"rust_name\" specified twice")]
+fn parse_comment_rust_name_duplicate_panics() {
+    let _ = rule_metadata("@rust_name Foo @rust_name Bar");
+}
+
+// Two comment lines carrying `@rust_name` also collide through the merge path (field-wise, like
+// `@name`), not only within a single line.
+#[test]
+#[should_panic(expected = "\"rust_name\" specified twice")]
+fn merge_metadata_rust_name_twice_panics() {
+    let a = RuleMetadata {
+        rust_name: Some("Foo".to_string()),
+        ..Default::default()
+    };
+    let b = RuleMetadata {
+        rust_name: Some("Bar".to_string()),
+        ..Default::default()
+    };
+    let _ = merge_metadata(&a, &b);
 }

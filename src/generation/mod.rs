@@ -922,6 +922,13 @@ impl GenerationScope {
             // rust type has no wasm-bindgen bindings under the split `<dep>`/`<dep>-wasm` layout).
             // `None` for the rust pass and for unmapped deps => import path stays verbatim.
             extern_wasm_crate_map: Option<&BTreeMap<String, String>>,
+            // `@rust_name` pins: a consumer-derived `RustIdent` -> the dependency's own final Rust
+            // name. Only extern-dep (non-exported) idents ever appear here. A pinned ident is imported
+            // under the dependency's real name and aliased back to the derived spelling
+            // (`use <dep>::<Pinned> as <Derived>;`) so every internal reference stays unchanged; the
+            // wasm pass aliases identically (the dep's wasm wrapper is named after its rust ident =
+            // the pin). Empty map => today's plain imports for every ident.
+            rust_name_pins: &BTreeMap<RustIdent, String>,
         ) {
             // might not exist if we don't use stuff from other scopes
             if let Some(scope_imports) = imports.get(scope) {
@@ -949,13 +956,30 @@ impl GenerationScope {
                     } else {
                         Cow::from(format!("{crate_prefix}::{import_scope}"))
                     };
+                    // Split off `@rust_name`-pinned idents: each is imported under the dependency's
+                    // real (pinned) name and aliased back to the consumer-derived spelling, so the
+                    // grouped `use` below — and every reference in the emitted body — stay in the
+                    // derived name. Only extern-dep idents are ever pinned, so an empty pin map (the
+                    // common case) leaves `plain == idents` and the output byte-identical.
+                    let mut plain: Vec<&RustIdent> = Vec::new();
+                    for ident in idents.iter() {
+                        if let Some(pinned) = rust_name_pins.get(ident) {
+                            content.push_import(
+                                import_scope.clone(),
+                                pinned.clone(),
+                                Some(ident.as_ref()),
+                            );
+                        } else {
+                            plain.push(ident);
+                        }
+                    }
                     #[allow(clippy::comparison_chain)]
-                    if idents.len() > 1 {
+                    if plain.len() > 1 {
                         content.push_import(
                             import_scope,
                             format!(
                                 "{{{}}}",
-                                idents
+                                plain
                                     .iter()
                                     .map(|i| i.to_string())
                                     .collect::<Vec<_>>()
@@ -963,12 +987,8 @@ impl GenerationScope {
                             ),
                             None,
                         );
-                    } else if idents.len() == 1 {
-                        content.push_import(
-                            import_scope,
-                            idents.first().unwrap().to_string(),
-                            None,
-                        );
+                    } else if plain.len() == 1 {
+                        content.push_import(import_scope, plain[0].to_string(), None);
                     }
                 }
             }
@@ -978,7 +998,14 @@ impl GenerationScope {
         // deferral never applies here — pass an empty map so rust output is untouched by the flag.
         let rust_imports = types.scope_references(false, &BTreeMap::new());
         for (scope, content) in self.rust_scopes.iter_mut() {
-            add_imports_from_scope_refs(scope, content, &rust_imports, "crate::generated", None);
+            add_imports_from_scope_refs(
+                scope,
+                content,
+                &rust_imports,
+                "crate::generated",
+                None,
+                types.rust_name_pins(),
+            );
             // These collection-type imports are pushed unconditionally (or on spec-global gates)
             // even into files that never reference them: dumb-push here, and the usage-derived
             // prune pass (`import_prune::prune_generated_files`, run once over the whole file map in
@@ -1097,6 +1124,7 @@ impl GenerationScope {
                     &wasm_imports,
                     "crate::generated",
                     Some(&extern_wasm_crate_map),
+                    types.rust_name_pins(),
                 );
                 // common imports. The collection-type imports below (`BTreeMap`/`OrderedHashMap`
                 // and the two NonEmpty types) are pushed on spec-global gates even into wasm files
@@ -1496,10 +1524,16 @@ pub fn rust_crate_struct_from_wasm(
     ident: &RustIdent,
     cli: &Cli,
 ) -> String {
+    // This full path bypasses the `use`-import seam (which aliases `@rust_name` pins), so it must
+    // apply the pin itself: a pinned extern-dep type lives in the dependency's crate under its own
+    // (pinned) name, not the consumer-derived one. `rust_crate_struct_scope_from_wasm` yields the
+    // dep's `<crate>::<sub>` path; the leaf must be the dep's real name. Pin-less idents (every
+    // in-crate type, and hand-stub extern deps) keep the derived spelling.
+    let leaf = types.rust_name_pin(ident).unwrap_or(ident.as_ref());
     format!(
         "{}::{}",
         rust_crate_struct_scope_from_wasm(types, ident, cli),
-        ident
+        leaf
     )
 }
 

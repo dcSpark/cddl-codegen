@@ -56,6 +56,39 @@ belongs to the last group entry, not the rule: `grp = (a: uint) ; @name other` r
 *field* `a` to `other` (exactly like `grp = (a: uint ; @name other)`) — it neither renames the
 group nor errors.
 
+## @rust_name
+
+`@rust_name <Ident>` pins the emitted Rust **type** name of a rule. This is the deliberate
+opposite of `@name`: where `@name` renames a *field/variant* and never touches the top-level type
+(above), `@rust_name` renames the top-level type — but **only across the crate boundary**, and
+**only** on a rule in an extern-dependency (`_CDDL_CODEGEN_EXTERN_DEPS_DIR_`) scope. On a
+normally-generated (exported) rule it is rejected with a clean error (there, the identifier already
+*is* the emitted type name — rename the identifier, exactly as for `@name`).
+
+Its purpose is cross-crate name fidelity. When a consumer references a dependency's type, it
+otherwise re-derives the Rust name from the CDDL identifier using **its own** codegen version's
+naming rules — which can differ from the version that actually built the dependency (naming rules
+evolve). `@rust_name` records the dependency's final name once, at the point it is knowable, so the
+consumer reads it instead of guessing:
+
+```cddl
+plutus_data = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name PlutusData
+coin        = uint                       ; @rust_name Coin
+```
+
+Honoring is a boundary-only translation — every *internal* spelling keeps the consumer-derived
+name, and only the import seam differs, emitting an alias:
+
+```rust
+use plutus_dep::PlutusData as PlutusDatum; // when the consumer would derive `PlutusDatum`
+```
+
+so the rest of the generated code (and the wasm↔rust conversions) keep referring to the derived
+name. A pin-less rule falls back to today's consumer-side derivation (hand-stub compatibility). A
+pin that camel-cases to a reserved Rust std/prelude type (`Option`, `Box`, …) or a CDDL keyword is
+rejected, exactly as a derived rule name by that spelling would be — a dependency could never have
+emitted a type by that name, so the pin could never be honored.
+
 ## @newtype
 
 With code like `foo = uint` this creates an alias e.g. `pub type Foo = u64;` in rust. When we use `foo = uint ; @newtype` it instead creates a `pub struct Foo(pub(crate) u64);` (the wrapped field is crate-visible so hand-written modules in the same crate can reach it — see [the wrapper-field contract](./output_format#generated-wrapper-fields-are-pubcrate); external crates go through the getter and `new`).

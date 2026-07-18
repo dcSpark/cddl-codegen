@@ -57,6 +57,7 @@ expression: ir
                             name: Some(
                                 "address",
                             ),
+                            rust_name: None,
                             newtype: None,
                             no_alias: false,
                             key_demand: None,
@@ -88,6 +89,7 @@ expression: ir
                             name: Some(
                                 "checksum",
                             ),
+                            rust_name: None,
                             newtype: None,
                             no_alias: false,
                             key_demand: None,
