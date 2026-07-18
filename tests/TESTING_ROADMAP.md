@@ -303,6 +303,27 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   a generated crate whose emitted tests execute. A SECOND read-caught extreme-value bug in any
   encode/compare path is the trigger to build that boundary-vector sweep as a corpus/matrix
   axis rather than hand-pinning per instance.
+- **A fixture that models an OBSOLETE user contract stays green while the real contract path is
+  broken — the executed-but-wrong-shape sibling of the never-executed emission-branch class
+  above.** Proven instance (consumer-reported, not by any gate): every raw-bytes fixture appended
+  the user-supplied `_CDDL_CODEGEN_RAW_BYTES_TYPE_` definition INTO `rust/src/generated/mod.rs` —
+  the pre-thin-root layout no real user can have (that subtree is clobbered every regen) — so bare
+  references resolved locally and all raw-bytes gates stayed green while the extern re-export glue
+  (`pub use crate::Name;`) covered only `RustStructType::Extern`, not `RawBytesType`; regenerating
+  CML's cip36 (`public_key = _CDDL_CODEGEN_RAW_BYTES_TYPE_` referenced only through `pub type`
+  aliases, which have no other resolution path) failed E0412 at five sites. Standing coverage now:
+  the fix routes raw-bytes defs through the real contract (appended to the user-owned thin
+  `lib.rs`, same as extern-type defs), and the glue's own `pub use crate::<Name>;` line makes any
+  regression to the masked routing fail loudly (E0255 duplicate definition) rather than silently
+  re-masking. Known-latent sibling from the same incident, deliberately NOT built (no failing
+  case): `IntermediateTypes::scope_references` walks `rust_structs` only, never `type_aliases`, so
+  a CROSS-scope alias to a non-extern type may also under-import — if a consumer hits E0412 on an
+  alias whose target lives in another module, that's this. Working rule meanwhile: a fixture that
+  injects hand-written code into `generated/**` carries a comment justifying why same-module
+  residence matches a contract a real user can follow (the legitimate cases — `use super::*;`
+  helpers the generated serializer calls, `#[wasm_bindgen]`-scoped wasm defs — all have one).
+  Mechanical layer on a SECOND instance: an audit sweep enumerating every test append-site that
+  writes into a `generated/**` path and failing any not on a justified allowlist.
 - **Panic-site un-shadowing: converting a shallow panic to a graceful rejection exposes deeper
   panic sites for inputs that previously died early — and the outcome catalogs, which record
   CATEGORY only by design, cannot see a PANIC→PANIC site shift.** Proven instance: converting
