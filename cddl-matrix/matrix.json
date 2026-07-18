@@ -844,15 +844,15 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "prelude.int",
         "status": "supported"
       },
@@ -4576,7 +4576,7 @@
         "enc.major0",
         "enc.major1"
       ],
-      "example": "holder = [x: int]",
+      "example": "x = int",
       "id": "prelude.int",
       "production": "prelude",
       "profile": "RFC8610",

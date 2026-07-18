@@ -602,9 +602,6 @@ text = "Bug — a type choice containing `bool` generates non-compiling Rust (`e
 text = "Bug — a single-letter rule named `r` capitalizes to a struct `R` that collides with the generated deserializer's reader generic parameter `R` (`error[E0574]: ... found type parameter R`), so the crate fails to compile. Surfaced incidentally by the compile-gate; avoid `r` as a rule name. Candidate cddl-codegen fix."
 
 [[finding]]
-text = "Bug — the generator's `Int` wrapper isn't emitted for a bare alias, so a top-level `x = int` emits `pub type X = Int;` and an `int` payload (`bytes .cbor int`) emits an undefined `Int` too (`cannot find type Int`) — both fail the compile-gate. This is the SAME false-positive class as `any` (the compile-gate caught it). `int` works as a struct member / array element (its normal use, e.g. `[x: int]` and `int / tstr` compile), so `prelude.int`'s probe example is member-form and `ctl.cbor`'s payload is `uint` to isolate each construct. Candidate cddl-codegen fix."
-
-[[finding]]
 text = "Gap — top-level fixed-value / null TYPES panic (`answer = 42`, `x = null` -> `should not expose Fixed type in member`), even though fixed values serialize fine as struct members. A singleton-value type is a reasonable feature; candidate cddl-codegen fix. (Surfaced by the matrix, not hidden by editing the example.)"
 
 [[finding]]

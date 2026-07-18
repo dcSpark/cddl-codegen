@@ -1,0 +1,133 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use cddl_lib::ordered_hash_map::OrderedHashMap;
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+
+pub type BareInt = Int;
+
+pub type CborInt = Int;
+
+pub type CborIntTable = MapTextToInt;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Int(pub(crate) cddl_lib::Int);
+
+#[wasm_bindgen]
+impl Int {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Int, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(x: i64) -> Self {
+        if x >= 0 {
+            Self(cddl_lib::Int::new_uint(x as u64))
+        } else {
+            Self(cddl_lib::Int::new_nint((x + 1).unsigned_abs()))
+        }
+    }
+
+    pub fn new_uint(value: u64) -> Self {
+        Self(cddl_lib::Int::new_uint(value))
+    }
+
+    /// * `value` - Value as encoded in CBOR - note: a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. to represent -5, pass in 4.
+    pub fn new_nint(value: u64) -> Self {
+        Self(cddl_lib::Int::new_nint(value))
+    }
+
+    pub fn to_str(&self) -> String {
+        self.0.to_string()
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(string: &str) -> Result<Int, JsError> {
+        // have to redefine so it's visible in WASM
+        std::str::FromStr::from_str(string)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("Int.from_str({}): {:?}", string, e)))
+    }
+}
+
+impl From<cddl_lib::Int> for Int {
+    fn from(native: cddl_lib::Int) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Int> for cddl_lib::Int {
+    fn from(wasm: Int) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Int> for Int {
+    fn as_ref(&self) -> &cddl_lib::Int {
+        &self.0
+    }
+}
+
+pub type IntError = JsError;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapTextToInt(pub(crate) OrderedHashMap<String, cddl_lib::Int>);
+
+#[wasm_bindgen]
+impl MapTextToInt {
+    pub fn new() -> Self {
+        Self(OrderedHashMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: String, value: &Int) -> Option<Int> {
+        self.0.insert(key, value.clone().into()).map(Into::into)
+    }
+
+    pub fn get(&self, key: String) -> Option<Int> {
+        self.0.get(&key).map(|v| v.clone().into())
+    }
+
+    pub fn keys(&self) -> Vec<String> {
+        self.0.keys().cloned().collect::<Vec<_>>()
+    }
+}
+
+impl From<OrderedHashMap<String, cddl_lib::Int>> for MapTextToInt {
+    fn from(native: OrderedHashMap<String, cddl_lib::Int>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapTextToInt> for OrderedHashMap<String, cddl_lib::Int> {
+    fn from(wasm: MapTextToInt) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<OrderedHashMap<String, cddl_lib::Int>> for MapTextToInt {
+    fn as_ref(&self) -> &OrderedHashMap<String, cddl_lib::Int> {
+        &self.0
+    }
+}

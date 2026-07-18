@@ -26,7 +26,7 @@ example = "x = bytes .size 4"
 
 [[example]]
 id = "ctl.cbor"
-example = "x = bytes .cbor uint"   # uint payload, not bare int (a bare Int wrapper isn't emitted -> won't compile)
+example = "x = bytes .cbor uint"   # uint payload keeps this row on the `.cbor` control-op axis; the int-emission axis (a bare `int` alias / `.cbor int` payload) is covered by prelude.int + tests/corpus/int_alias.cddl
 
 [[example]]
 id = "ctl.default"
