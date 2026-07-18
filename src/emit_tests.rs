@@ -731,10 +731,10 @@ fn record_roundtrip(
     });
     let mut cases = vec![(base.clone(), "baseline".to_owned())];
     for f in record.fields.iter().filter(|f| f.optional) {
-        // An optional non-float fixed value is stored as a `bool` presence field, not `Option<T>`:
-        // the present case just flips it true so the round-trip exercises writing (and verifying)
-        // the constant on the wire.
-        if f.rust_type.is_fixed_value_non_float() {
+        // An optional fixed value (any kind, including float) is stored as a `bool` presence field,
+        // not `Option<T>`: the present case just flips it true so the round-trip exercises writing
+        // (and verifying) the constant on the wire.
+        if f.rust_type.is_fixed_value() {
             cases.push((
                 format!("{{ let mut v = {base}; v.{} = true; v }}", f.name),
                 format!("optional `{}` present", f.name),

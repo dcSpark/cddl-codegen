@@ -1,0 +1,17 @@
+; OPTIONAL fixed FLOAT members mint a `pub <name>: bool` presence field, exactly like the
+; non-float optional fixed kinds (uint/text/nint/bool/null in optional_fixed_member.cddl): an
+; optional fixed value carries exactly one bit — present or absent. Serialize writes
+; `write_special(cbor_event::Special::Float(<lit>))` iff the bool is set and the length term flips
+; with it; deserialize peeks CBOR Special, verifies the constant (`raw.float()?` + exact `!= <lit>`
+; compare -> FixedValueMismatch { found/expected: Key::Float(..) }), and records presence — the same
+; spellings the MANDATORY fixed-float path already emits. Default and json profiles work;
+; --preserve-encodings is a separate unimplemented class for floats (the
+; preserve_encodings_supports_floats stub aborts generation at the float deserialize site), so this
+; fixture is preserve-generation-fail-ledgered in feature_corpus_compiles / corpus_decode_replay.
+;
+; A fixed float peeks as CBOR Special (same class as bool/null), so in the ARRAY form the optional
+; float member must not be followed by another Special-classed field (the ambiguity guard) —
+; `? f: 2.5` (Special) precedes `label: text` (Text). Literals are exactly representable in binary
+; float (2.5 = 5/2, 1.5 = 3/2) so the exact `!=` verify compare is well-defined.
+opt_fixed_float_array = [x: uint, ? f: 2.5, label: text]
+opt_fixed_float_map = {x: uint, ? amount: 1.5, ? rate: 2.5}

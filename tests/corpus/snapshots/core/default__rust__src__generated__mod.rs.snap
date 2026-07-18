@@ -42,21 +42,27 @@ impl A {
 
 #[derive(Clone, Debug)]
 pub struct ArrayOptFields {
+    /// Whether the optional fixed value `1.010101` (CDDL `? x: 1.010101`) is present; `false` means absent.
+    pub x: bool,
     pub a: Option<u64>,
     pub b: Option<String>,
     pub c: u64,
     pub d: Option<String>,
     pub e: Option<NonOverlappingTypeChoiceSome>,
+    /// Whether the optional fixed value `2.71828` (CDDL `? z: 2.71828`) is present; `false` means absent.
+    pub z: bool,
 }
 
 impl ArrayOptFields {
     pub fn new(c: u64) -> Self {
         Self {
+            x: false,
             a: None,
             b: None,
             c,
             d: None,
             e: None,
+            z: false,
         }
     }
 }
@@ -1175,6 +1181,20 @@ impl OptFixedArr {
 }
 
 #[derive(Clone, Debug)]
+pub struct OptFixedArrFloat {
+    pub a: u64,
+    /// Whether the optional fixed value `2.5` (CDDL `? ffix: 2.5`) is present; `false` means absent.
+    pub ffix: bool,
+    pub b: String,
+}
+
+impl OptFixedArrFloat {
+    pub fn new(a: u64, b: String) -> Self {
+        Self { a, ffix: false, b }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct OptFixedArrLast {
     pub a: String,
     /// Whether the optional fixed value `5` (CDDL `? ufix: 5`) is present; `false` means absent.
@@ -1225,6 +1245,19 @@ impl OptFixedMap {
             m_bool: false,
             m_null: false,
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct OptFixedMapFloat {
+    pub a: u64,
+    /// Whether the optional fixed value `2.5` (CDDL `? m_float: 2.5`) is present; `false` means absent.
+    pub m_float: bool,
+}
+
+impl OptFixedMapFloat {
+    pub fn new(a: u64) -> Self {
+        Self { a, m_float: false }
     }
 }
 

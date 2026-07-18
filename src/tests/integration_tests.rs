@@ -137,6 +137,21 @@ pub(crate) fn checkout_hash() -> u64 {
 /// `extern_generic_raw_bytes`).
 const COMPILE_SKIP: &[&str] = &["dsl_custom", "extern_generic_raw_bytes"];
 
+/// `(fixture stem, profile, reason)` triples whose GENERATION deliberately aborts under that
+/// profile because the fixture reaches a tracked unimplemented path. Unlike `COMPILE_SKIP` (whole
+/// fixture, every profile), this is per-profile: the fixture still generates and compile-gates
+/// under its other profiles. Stale-guarded BOTH directions (mirrors
+/// `wasm_parity_tests::EXPECTED_GENERATION_FAIL`): a listed pair that now GENERATES fails the gate
+/// as "gap closed — remove the pin"; an unlisted generation failure fails as a normal generation
+/// failure; and a listed stem absent from `tests/corpus` fails as a stale pin.
+const EXPECTED_GENERATION_FAIL: &[(&str, &str, &str)] = &[(
+    "optional_fixed_float",
+    "preserve",
+    "an optional fixed FLOAT member aborts generation under --preserve-encodings at the float \
+     deserialize stub (\"preserve_encodings is not implemented for float\" — the \
+     preserve_encodings_supports_floats stub class); default/json generate the `bool` presence field",
+)];
+
 /// Wasm-matrix cells that deliberately never compile standalone in this harness. Each entry pairs
 /// with a ledger entry in `cddl-matrix/ROADMAP.md` § findings (which shape/role, the exact `E####`,
 /// root cause):
@@ -1410,6 +1425,13 @@ fn feature_corpus_compiles() {
              stale pin, remove or fix it"
         );
     }
+    for (stem, _profile, _reason) in EXPECTED_GENERATION_FAIL {
+        assert!(
+            corpus_stems.contains(stem),
+            "EXPECTED_GENERATION_FAIL names corpus fixture `{stem}` that no longer exists in \
+             tests/corpus — stale pin, remove or fix it"
+        );
+    }
 
     // Scratch dir + one shared target so cbor_event & friends build once (~30 tiny crates × 3).
     let root = std::env::temp_dir().join(format!(
@@ -1446,10 +1468,27 @@ fn feature_corpus_compiles() {
                 .args(*extra)
                 .output()
                 .unwrap();
+            let expected_gen_fail = EXPECTED_GENERATION_FAIL
+                .iter()
+                .any(|(s, p, _)| *s == stem && *p == *profile);
             if !gen_out.status.success() {
+                if !expected_gen_fail {
+                    failures.push(format!(
+                        "{label}: generation failed\n{}",
+                        String::from_utf8_lossy(&gen_out.stderr)
+                    ));
+                }
+                // Expected aborts don't compile-gate (there is no crate to check); unexpected ones
+                // were already recorded. Either way, move on.
+                continue;
+            }
+            if expected_gen_fail {
+                // Resurfaced guard: a fixture ledgered as expected-generation-fail under this
+                // profile now GENERATES — the tracked unimplemented path was implemented. Retire
+                // the EXPECTED_GENERATION_FAIL entry (and start compile-gating this cell).
                 failures.push(format!(
-                    "{label}: generation failed\n{}",
-                    String::from_utf8_lossy(&gen_out.stderr)
+                    "{label}: generation SUCCEEDED but is pinned in EXPECTED_GENERATION_FAIL — \
+                     the gap closed; remove the pin so this cell is compile-gated"
                 ));
                 continue;
             }
@@ -9412,7 +9451,13 @@ fn feature_corpus_roundtrips_nondefault_profiles() {
     // `special_break()` (so a major-type-7 element/key falls through to its deserializer), letting
     // the encoding-fidelity oracle run ALL its variant classes — including the two
     // container-reframing ones (`indef_containers`/`everything`) — on those cells, fully green.
-    const SKIP: &[(&str, &str, &str)] = &[];
+    const SKIP: &[(&str, &str, &str)] = &[(
+        "preserve",
+        "optional_fixed_float",
+        "an optional fixed FLOAT member aborts generation under --preserve-encodings at the float \
+         deserialize stub (\"preserve_encodings is not implemented for float\" — the \
+         preserve_encodings_supports_floats stub class); the json leg round-trips normally",
+    )];
 
     // Per-profile floor on how many fixtures emit a generated-test module — anti-vacuity guard
     // mirroring `feature_corpus_compiles`. Discovered empirically (see the assert below).
@@ -12374,12 +12419,27 @@ fn corpus_decode_replay() {
     // gap the `preserve_encodings_supports_floats` stub tracks and the matrix replay's PRESERVE_SKIP
     // documents for the prelude/rangeop float rows. Default-profile decode of this row still replays.
     // Stale-guarded: a row here that starts generating+replaying cleanly under preserve fails the gate.
-    const PRESERVE_SKIP: &[(&str, &str)] = &[(
-        "homogeneous_array.floats",
-        "`[* float64]` has a native-float element that is unimplemented under --preserve-encodings \
-         (generation/deserialize.rs float arm `unimplemented!`; see the preserve_encodings_supports_floats stub) — \
-         default-profile decode still replays its accept vectors",
-    )];
+    const PRESERVE_SKIP: &[(&str, &str)] = &[
+        (
+            "homogeneous_array.floats",
+            "`[* float64]` has a native-float element that is unimplemented under --preserve-encodings \
+             (generation/deserialize.rs float arm `unimplemented!`; see the preserve_encodings_supports_floats stub) — \
+             default-profile decode still replays its accept vectors",
+        ),
+        (
+            "optional_fixed_float.opt_fixed_float_array",
+            "an optional fixed FLOAT member (`? f: 2.5`) hits the same native-float `unimplemented!` \
+             under --preserve-encodings (generation/deserialize.rs float arm; see the \
+             preserve_encodings_supports_floats stub) — default-profile decode still replays its \
+             present/absent accept vectors (the present-float instance witnesses the presence bit surviving)",
+        ),
+        (
+            "optional_fixed_float.opt_fixed_float_map",
+            "optional fixed FLOAT map values (`? amount: 1.5`, `? rate: 2.5`) hit the same native-float \
+             `unimplemented!` under --preserve-encodings (generation/deserialize.rs float arm; see the \
+             preserve_encodings_supports_floats stub) — default-profile decode still replays its accept vectors",
+        ),
+    ];
     // Rows that GENERATE + compile under preserve but re-encode a decoded accept vector to different
     // bytes. Empty at HEAD — a newly-appearing byte-identity mismatch is a FINDING to triage.
     const EXPECTED_MISMATCH: &[(&str, &str)] = &[];

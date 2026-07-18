@@ -183,12 +183,23 @@ over-engineering; deleting an entry without either building the layer or recordi
 dead loses the lesson. When a trigger DOES fire, land the DETECTOR half of the named layer before
 the FIX half, and let the detector's arming-run measurement re-test the entry's premises before
 implementing its sketched remedy: residue predictions and escalation sketches are recorded against
-premises nobody has tested, and two falsified-premise instances are on record — the extreme-value
+premises nobody has tested, and three falsified-premise instances are on record — the extreme-value
 entry's "generation already uses `_sz` where the `i64` limit bites" premise (falsified by the
-`FixedValue::to_bytes` bug its own entry named as a mere range cap), and the unused-imports entry,
+`FixedValue::to_bytes` bug its own entry named as a mere range cap); the unused-imports entry,
 whose "near zero" residue prediction measured 104 warning cells at the arming run and whose
 sketched glob-EDGE escalation would NOT have fixed the class the measurement exposed (the pruner's
-generated-only view, invisible to any glob-edge model).
+generated-only view, invisible to any glob-edge model); and the OPTIONAL fixed-FLOAT findings entry's
+"data-lossy but non-crashing" premise (the default profile "mints no presence field … the presence
+bit is lost"), whose UNIVERSAL "non-crashing" half the arming measurement falsified: the silent-drop
+half was real when the float sits ALONGSIDE other dynamic-length optionals (`array_opt_fields` in
+`tests/core/input.cddl` had `? x: 1.010101` / `? z: 2.71828` dropped with no presence field — visible
+in the pre-fix committed `core` snapshot), but an ISOLATED optional fixed float (a lone dynamic-length
+member, the shape an enumeration naturally picks) did NOT silently drop — it FAILED generation loudly
+(a malformed `Len(1 + )` length term → rustfmt error, exit 1). So the row's "certifies the drop as a
+pinned fidelity gap OR forces the fix" fork mis-modeled the isolated case, which had no drop to
+certify. Delivered by `tests/corpus/optional_fixed_float.cddl` + the float presence-field arms (which
+also fixed `array_opt_fields`'s silent drop); the residue is the preserve-only float class
+(`preserve_encodings_supports_floats`).
 
 - **An emission branch whose generated OUTPUT no fixture exercises is invisible to every gate —
   it can rot to uncompilable and hide behavioral bugs in both directions.** Proven instance

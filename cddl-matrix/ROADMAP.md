@@ -314,23 +314,6 @@ are ledgered here (that's what the probe/gate error messages point at).
   `tests/corpus/fixed_bool_member.cddl`). This is the "Intra-alternative variation rows" expansion
   rule (this doc) applied to the fixed-value member role: enumerate the wrapped variants as rows
   BEFORE trusting a green.
-- **An OPTIONAL fixed FLOAT member is silently dropped under the default profile** — the
-  non-float kinds (bool/null/uint/nint/text) now round-trip via a `bool` presence field
-  (`tests/corpus/optional_fixed_member.cddl`, hand vectors in `tests/core/tests.rs` +
-  `tests/preserve-encodings/tests.rs`). A fixed FLOAT stays on the pre-existing unbound path: under
-  the default profile `[? x: 1.5, …]` mints no presence field and the serialize/length code omits
-  the value entirely (the presence bit is lost — data-lossy but non-crashing), and under
-  `--preserve-encodings` it joins the float `unimplemented!` class (the
-  `preserve_encodings_supports_floats` stub / `EXPECTED_GENERATION_FAIL` pin). Folding float into the
-  presence-field treatment needs the preserve-float encoding vars first, so it rides with that class
-  rather than the general optional-fixed feature. The default-profile drop is reachable by STANDING
-  machinery, not just reading, the moment a fixture enumerates it: a corpus fixture with an
-  optional fixed-float member generates and compiles, so `--mint-decode-corpus` would mint
-  spec-derived vectors including the PRESENT-float instance, and `corpus_decode_replay`'s
-  spec-equal re-encode leg fails on the dropped element — landing the row either certifies the
-  drop as a pinned fidelity gap or forces the fix. Enumerate that row FIRST when this entry is
-  picked up (the "Intra-alternative variation rows" rule applied to the presence-fidelity axis),
-  rather than trusting the compile green.
 - **A nint fixed-value mismatch reports the CBOR wire representation, not the authored value** —
   `Key` (static/error.rs) has no signed variant, so the emitted check for `? neg: -3` renders
   `FixedValueMismatch { found: Key::Uint((neg_value + 1).unsigned_abs()), expected: Key::Uint(2) }`:
@@ -475,7 +458,14 @@ are ledgered here (that's what the probe/gate error messages point at).
   records it honestly: a bare `float`/`float32`/`float64` alias still generates and compiles
   (`emission.preserve = supported`, but compile-only evidence — the synthetic embed holder panics
   generation, so floats **as members** are the broken shape), while the choice-carrying prelude types
-  `number` / `time` panic outright (`emission.preserve = unsupported`).
+  `number` / `time` panic outright (`emission.preserve = unsupported`). An OPTIONAL fixed FLOAT member
+  (`[? f: 2.5, …]`, `{? amount: 1.5}`) rides this same class: default and json generate the `bool`
+  presence field (`tests/corpus/optional_fixed_float.cddl`, hand vectors in `tests/core/tests.rs`'s
+  `opt_fixed_member_float`), but `--preserve-encodings` aborts at the float deserialize stub. Its
+  preserve leg is ledgered in `feature_corpus_compiles`'s `EXPECTED_GENERATION_FAIL`,
+  `feature_corpus_roundtrips_nondefault_profiles`'s `SKIP`, and the decode replay `PRESERVE_SKIP`.
+  Landing the `preserve_encodings_supports_floats` encoding-var work retires all these preserve-float
+  member gaps together.
 - **A CBOR tag over a type-choice enum is unimplemented under `--preserve-encodings`** — a non-float
   preserve gap: `t = #6.10(int / tstr)` panics generation at the tagged-enum serialize path's explicit
   `assert!(!cli.preserve_encodings)` (its own `TODO: how to even store these?` — the per-variant encoding

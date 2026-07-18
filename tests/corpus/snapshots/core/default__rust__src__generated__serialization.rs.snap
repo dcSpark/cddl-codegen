@@ -93,20 +93,28 @@ impl cbor_event::se::Serialize for ArrayOptFields {
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array(cbor_event::Len::Len(
-            2 + match &self.a {
-                Some(x) => 1,
-                None => 0,
-            } + match &self.b {
-                Some(x) => 1,
-                None => 0,
-            } + match &self.d {
-                Some(x) => 1,
-                None => 0,
-            } + match &self.e {
-                Some(x) => 1,
-                None => 0,
-            },
+            2 + if self.x { 1 } else { 0 }
+                + match &self.a {
+                    Some(x) => 1,
+                    None => 0,
+                }
+                + match &self.b {
+                    Some(x) => 1,
+                    None => 0,
+                }
+                + match &self.d {
+                    Some(x) => 1,
+                    None => 0,
+                }
+                + match &self.e {
+                    Some(x) => 1,
+                    None => 0,
+                }
+                + if self.z { 1 } else { 0 },
         ))?;
+        if self.x {
+            serializer.write_special(cbor_event::Special::Float(1.010101))?;
+        }
         if let Some(field) = &self.a {
             serializer.write_unsigned_integer(*field)?;
         }
@@ -122,6 +130,9 @@ impl cbor_event::se::Serialize for ArrayOptFields {
         if let Some(field) = &self.e {
             field.serialize(serializer)?;
         }
+        if self.z {
+            serializer.write_special(cbor_event::Special::Float(2.71828))?;
+        }
         Ok(serializer)
     }
 }
@@ -132,7 +143,7 @@ impl Deserialize for ArrayOptFields {
             let len = raw.array()?;
             let mut read_len = CBORReadLen::from(len);
             read_len.read_elems(2)?;
-            if raw.cbor_type()? == cbor_event::Type::Special {
+            let x = if raw.cbor_type()? == cbor_event::Type::Special {
                 (|| -> Result<_, DeserializeError> {
                     read_len.read_elems(1)?;
                     let x_value = raw.float()?;
@@ -143,12 +154,11 @@ impl Deserialize for ArrayOptFields {
                         }
                         .into());
                     }
-                    Ok(())
+                    Ok(true)
                 })()
                 .map_err(|e| e.annotate("x"))
-                .map(Some)
             } else {
-                Ok(None)
+                Ok(false)
             }?;
             let a = if raw.cbor_type()? == cbor_event::Type::UnsignedInteger {
                 (|| -> Result<_, DeserializeError> {
@@ -218,7 +228,7 @@ impl Deserialize for ArrayOptFields {
             } else {
                 Ok(None)
             }?;
-            if raw
+            let z = if raw
                 .as_slice()
                 .first()
                 .map(|byte: &u8| {
@@ -237,12 +247,11 @@ impl Deserialize for ArrayOptFields {
                         }
                         .into());
                     }
-                    Ok(())
+                    Ok(true)
                 })()
                 .map_err(|e| e.annotate("z"))
-                .map(Some)
             } else {
-                Ok(None)
+                Ok(false)
             }?;
             match len {
                 cbor_event::Len::Len(_) => read_len.finish()?,
@@ -251,7 +260,15 @@ impl Deserialize for ArrayOptFields {
                     _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
                 },
             }
-            Ok(ArrayOptFields { a, b, c, d, e })
+            Ok(ArrayOptFields {
+                x,
+                a,
+                b,
+                c,
+                d,
+                e,
+                z,
+            })
         })()
         .map_err(|e| e.annotate("ArrayOptFields"))
     }
@@ -4893,6 +4910,67 @@ impl Deserialize for OptFixedArr {
     }
 }
 
+impl cbor_event::se::Serialize for OptFixedArrFloat {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(2 + if self.ffix { 1 } else { 0 }))?;
+        serializer.write_unsigned_integer(self.a)?;
+        if self.ffix {
+            serializer.write_special(cbor_event::Special::Float(2.5))?;
+        }
+        serializer.write_text(&self.b)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for OptFixedArrFloat {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            let a = Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("a"))?;
+            let ffix = if raw
+                .as_slice()
+                .first()
+                .map(|byte: &u8| {
+                    cbor_event::Type::from(*byte) == cbor_event::Type::Special
+                        && (*byte & 0b0001_1111) != 0x1f
+                })
+                .unwrap_or(false)
+            {
+                (|| -> Result<_, DeserializeError> {
+                    read_len.read_elems(1)?;
+                    let ffix_value = raw.float()?;
+                    if ffix_value != 2.5 {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Float(ffix_value),
+                            expected: Key::Float(2.5),
+                        }
+                        .into());
+                    }
+                    Ok(true)
+                })()
+                .map_err(|e| e.annotate("ffix"))
+            } else {
+                Ok(false)
+            }?;
+            let b = Ok(raw.text()?).map_err(|e: DeserializeError| e.annotate("b"))?;
+            match len {
+                cbor_event::Len::Len(_) => read_len.finish()?,
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(OptFixedArrFloat { a, ffix, b })
+        })()
+        .map_err(|e| e.annotate("OptFixedArrFloat"))
+    }
+}
+
 impl cbor_event::se::Serialize for OptFixedArrLast {
     fn serialize<'se>(
         &self,
@@ -5218,6 +5296,116 @@ impl Deserialize for OptFixedMap {
             })
         })()
         .map_err(|e| e.annotate("OptFixedMap"))
+    }
+}
+
+impl cbor_event::se::Serialize for OptFixedMapFloat {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map(cbor_event::Len::Len(1 + if self.m_float { 1 } else { 0 }))?;
+        serializer.write_text("a")?;
+        serializer.write_unsigned_integer(self.a)?;
+        if self.m_float {
+            serializer.write_text("m_float")?;
+            serializer.write_special(cbor_event::Special::Float(2.5))?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for OptFixedMapFloat {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            let mut a = None;
+            let mut m_float_present = false;
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Uint(
+                            raw.unsigned_integer()?,
+                        ))
+                        .into());
+                    }
+                    cbor_event::Type::Text => match raw.text()?.as_str() {
+                        "a" => {
+                            if a.is_some() {
+                                return Err(
+                                    DeserializeFailure::DuplicateKey(Key::Str("a".into())).into()
+                                );
+                            }
+                            a = Some(
+                                Ok(raw.unsigned_integer()?)
+                                    .map_err(|e: DeserializeError| e.annotate("a"))?,
+                            );
+                        }
+                        "m_float" => {
+                            if m_float_present {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "m_float".into(),
+                                ))
+                                .into());
+                            }
+                            m_float_present = (|| -> Result<_, DeserializeError> {
+                                read_len.read_elems(1)?;
+                                let m_float_value = raw.float()?;
+                                if m_float_value != 2.5 {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Float(m_float_value),
+                                        expected: Key::Float(2.5),
+                                    }
+                                    .into());
+                                }
+                                Ok(true)
+                            })()
+                            .map_err(|e| e.annotate("m_float"))?;
+                        }
+                        unknown_key => {
+                            return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                unknown_key.to_owned(),
+                            ))
+                            .into());
+                        }
+                    },
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                        }
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
+                    }
+                }
+                read += 1;
+            }
+            let a = match a {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("a")))
+                            .into(),
+                    );
+                }
+            };
+            read_len.finish()?;
+            Ok(Self {
+                a,
+                m_float: m_float_present,
+            })
+        })()
+        .map_err(|e| e.annotate("OptFixedMapFloat"))
     }
 }
 
