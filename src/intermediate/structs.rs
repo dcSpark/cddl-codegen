@@ -181,9 +181,11 @@ impl EnumVariant {
         let ConceptualRustType::Rust(ident) = &ty.conceptual_type else {
             return None;
         };
-        let resolved = types
-            .rust_struct(ident)
-            .unwrap_or_else(|| panic!("{enum_ident} refers to undefined ident: {ident}"));
+        let resolved = types.rust_struct(ident).unwrap_or_else(|| {
+            // Constant text LEADS so the recombination sweep's panic-class ledger can key on the
+            // message (its key-shape floor rejects site-only keys; the idents vary per spec).
+            panic!("variant ctor refers to undefined ident: {enum_ident} -> {ident}")
+        });
         let RustStructType::Record(record) = resolved.variant() else {
             return None;
         };

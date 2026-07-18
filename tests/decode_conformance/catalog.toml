@@ -3603,6 +3603,12 @@ example = "ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_ ; @raw_bytes_flavor"
 pinned_reason = "references user-supplied code; crate cannot compile standalone (references user-provided extern wrapper flavors; integration-tested in tests/extern-generic-raw-bytes)"
 
 [[row]]
+id = "dsl.rust_name"
+axis = "feature"
+example = "\nthing = [x: foo, y: uint]"
+pinned_reason = "references a dependency crate; crate cannot compile standalone (the pinned `use extern_dep::RenamedFoo as Foo;` names a crate only real consumers have; extern-scope-only directive, integration-tested in src/tests/rust_name_tests.rs and the extern_import byte-identity pair)"
+
+[[row]]
 id = "dsl.used_as_elem"
 axis = "feature"
 example = "elem_host = [a: uint, b: text] ; @used_as_elem"

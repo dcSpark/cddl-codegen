@@ -8,7 +8,7 @@ Running the gates is not a roadmap concern either: `check.ts` at the repo root i
 gate registry + entry point, `tests/README.md` § "Running everything" is the prose overview, each
 script's header docstring is the per-gate detail, and `QUERIES.md` documents the Q1–Q6 query scripts.
 
-**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->111 features (95 RFC8610 + 1 RFC9682 + 15 `CDDL_CODEGEN` vendor profile), 94 containment cells, and 239 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
+**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->112 features (95 RFC8610 + 1 RFC9682 + 16 `CDDL_CODEGEN` vendor profile), 94 containment cells, and 240 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
 execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (<!-- gen:sh:roadmap-ops -->all 37 IANA ops probed<!-- /gen:sh:roadmap-ops -->):
 "supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
@@ -343,7 +343,7 @@ are ledgered here (that's what the probe/gate error messages point at).
   `parsing.rs`'s `group_entry_to_type` (`inline group entries are not implemented`). This is a
   distinct inline-group arm
   limitation, tracked as a known PANIC row in `tests/matrix_panic/`.
-- **Four panic-class families remaining from the recombination fuzzer's sweeps**
+- **Six panic-class families remaining from the recombination fuzzer's sweeps**
   (`src/tests/recombination_tests.rs`; each pinned as a `tests/robustness/` PANIC row and cited in
   the sweep's `KNOWN_PANIC_CLASSES` ledger — the matrix has no containment cells for these shapes,
   which is itself the coverage gap the fuzzer exists to find; a fifth, the inline map carrying a
@@ -367,6 +367,21 @@ are ledgered here (that's what the probe/gate error messages point at).
     inner (`#6.5(5)`, `tests/robustness/tagged_literal.cddl`) is rejected gracefully, but a prelude
     constant resolves through the prelude alias on a path the guard does not classify. Pinned by
     `tests/robustness/tagged_prelude_constant.cddl`.
+  - An ARRAY-of-`any` as a type-choice arm (`a = [* any] / tstr`) panics `Option::unwrap()` on
+    `None` in generation/serialize.rs (`encoding_var_is_copy`) under `--wasm=false`: unlike the
+    bare-`any` arm above, the array arm IS storable, so IR construction succeeds and the variant's
+    serialize emission is what dies walking `any`'s encoding vars (with wasm on it dies earlier at
+    the member-position `generic_instances` assert). Pinned by
+    `tests/robustness/choice_array_any_arm.cddl`.
+  - A `.cbor`-over-a-REFERENCE as a type-choice arm (`a = bytes .cbor bar / tstr`) panics "variant
+    ctor refers to undefined ident" in intermediate/structs.rs
+    (`EnumVariant::group_ctor_record_fields`): the
+    variant ctor resolves the arm's synthesized `.cbor` wrapper ident before the alias target
+    registers. Both the reference AND the choice position are required — the inline form
+    (`bytes .cbor uint / tstr`) and the choice-free form (`x = bytes .cbor bar`) take other paths
+    (the latter panics at a distinct, separately-unledgered site in intermediate/mod.rs
+    cross-reference resolution — same family, surfaced by the same probe). Pinned by
+    `tests/robustness/choice_cbor_ref_arm.cddl`.
 - **Six compile/round-trip-class families remaining from the recombination fuzzer's layer-2 sweeps**
   (`recombination_crates_execute`: generation is ok, but the generated crate fails `cargo test`
   under `--emit-tests`, default profile). Generation-outcome catalogs cannot see these, so each

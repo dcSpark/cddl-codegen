@@ -30,6 +30,11 @@
       "feature": "ctl.size.uint"
     },
     {
+      "aux": [],
+      "expr": "[x: foo, y: uint]",
+      "feature": "dsl.rust_name"
+    },
+    {
       "aux": [
         "pair<k, v> = [k, v]"
       ],

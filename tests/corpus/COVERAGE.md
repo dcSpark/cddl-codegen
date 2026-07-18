@@ -240,7 +240,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 ## cddl-codegen vendor profile (comment DSL + sentinels — not RFC 8610)
 
-### `comment_dsl` (13)
+### `comment_dsl` (14)
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
@@ -252,6 +252,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `dsl.newtype` | ✅ | @newtype — wrapper struct instead of alias | `dsl_newtype.cddl` |
 | `dsl.no_alias` | ✅ | @no_alias — inline the type, emit no alias | `dsl_no_alias.cddl` |
 | `dsl.raw_bytes_flavor` | ✅ | @raw_bytes_flavor — extern generic raw-bytes wrapper flavor | `extern_generic_raw_bytes.cddl` |
+| `dsl.rust_name` | ➕ | @rust_name — dependency-pinned Rust type name | supported; pins a dependency-crate type name, so the generated `use extern_dep::…` cannot compile standalone; integration-tested in src/tests/rust_name_tests.rs and the extern_import byte-identity pair |
 | `dsl.used_as_elem` | ✅ | @used_as_elem — mint the canonical loose-list wasm wrapper | `dsl_used_as_elem.cddl` |
 | `dsl.used_as_key` | ✅ | @used_as_key — force Ord/Hash derives | `dsl_used_as_key.cddl` |
 | `dsl.used_as_key.hash` | ✅ | @used_as_key hash — narrowed Hash derive family | `dsl_used_as_key_hash.cddl` |
@@ -325,7 +326,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 ## Summary
 
-- Features: **111** — ✅ 61 covered · ➕ 19 supported-untested · ⚠️ 4 partial · ➖ 27 not supported
+- Features: **112** — ✅ 61 covered · ➕ 20 supported-untested · ⚠️ 4 partial · ➖ 27 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
 - Corpus fixtures: 72
 
