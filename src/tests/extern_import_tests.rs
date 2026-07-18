@@ -527,6 +527,49 @@ dele = (tag: 2, credential, ? pool: bytes) ; @name pool_thing\n";
     );
 }
 
+/// A `@rust_name` pin on a plain GROUP rule in an extern-deps stub is honored (parsing's group-rule
+/// path now calls `handle_rust_name_pin`, reading the pin from the last group entry's trailing comment
+/// where cddl binds it). A consumer that splices the group delegates to the dep's PINNED type name: a
+/// pin DIFFERING from the derived name yields `use <dep>::<Pinned> as <Derived>;`, while a pin EQUAL
+/// to the derived name stays alias-free (mirroring `extern_import_matches_pinless_hand_stub…`).
+#[test]
+fn extern_import_honors_group_rust_name_pin() {
+    let consumer = "holder = [h: uint, stake_registration]\n";
+
+    // Differing pin -> aliased import.
+    let diff_root = scratch("grouppin_diff");
+    write(&diff_root, "lib.cddl", consumer);
+    write(
+        &diff_root,
+        "_CDDL_CODEGEN_EXTERN_DEPS_DIR_/dep/mod.cddl",
+        "stake_registration = (tag: 0, cred: uint) ; @rust_name RenamedReg\n",
+    );
+    let diff = generate(&diff_root, &[]).expect("differing-pin generation must succeed");
+    let _ = std::fs::remove_dir_all(&diff_root);
+    let modrs = &diff["rust/src/generated/mod.rs"];
+    assert!(
+        modrs.contains("use dep::RenamedReg as StakeRegistration;"),
+        "a differing group-rule pin must alias the dep's pinned name to the derived name: {modrs}"
+    );
+
+    // Equal pin (= the derived name) -> alias-free import.
+    let eq_root = scratch("grouppin_eq");
+    write(&eq_root, "lib.cddl", consumer);
+    write(
+        &eq_root,
+        "_CDDL_CODEGEN_EXTERN_DEPS_DIR_/dep/mod.cddl",
+        "stake_registration = (tag: 0, cred: uint) ; @rust_name StakeRegistration\n",
+    );
+    let eq = generate(&eq_root, &[]).expect("equal-pin generation must succeed");
+    let _ = std::fs::remove_dir_all(&eq_root);
+    let eq_modrs = &eq["rust/src/generated/mod.rs"];
+    assert!(
+        eq_modrs.contains("use dep::StakeRegistration;")
+            && !eq_modrs.contains("use dep::StakeRegistration as "),
+        "a pin equal to the derived name must stay alias-free: {eq_modrs}"
+    );
+}
+
 /// Declaring a dep BOTH via `--extern-import` AND as a physical `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/`
 /// input directory is an ambiguous double declaration — a hard error, never a merge.
 #[test]
