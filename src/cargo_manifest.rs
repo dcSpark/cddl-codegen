@@ -1178,4 +1178,76 @@ set = 'not = valid = toml'
             "tombstoned key must be absent:\n{out}"
         );
     }
+
+    /// `tests/warmup/Cargo.toml` must cover every crates-io dep the manifest ops can emit:
+    /// check.ts's local/full warm-up fetches that manifest once, then forces
+    /// CARGO_NET_OFFLINE=true for every gate, so an emittable dep missing there (or with a
+    /// drifted version/feature spec) would fail nested-cargo cells offline. Union taken with
+    /// every flag/type-conditional dep enabled; path deps (`cddl-lib`) are never fetched from
+    /// the registry and are excluded. Fixture crates under tests/ with hand-written manifests
+    /// are outside the ops universe — a fixture-only dep fails offline loudly by name (see the
+    /// warmup manifest's header).
+    #[test]
+    fn warmup_manifest_covers_registry_dep_universe() {
+        use clap::Parser;
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            "unused",
+            "--output",
+            "unused",
+            "--static-dir",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/static"),
+            "--wasm",
+            "true",
+            "--preserve-encodings",
+            "true",
+            "--json-serde-derives",
+            "true",
+            "--json-schema-export",
+            "true",
+        ]);
+        let types = IntermediateTypes::new();
+        let mut ops = ops_for_rust(&types, true, &cli).unwrap();
+        ops.extend(ops_for_wasm(&cli).unwrap());
+        ops.extend(ops_for_json_gen(&cli).unwrap());
+
+        let warmup_path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/warmup/Cargo.toml");
+        let warmup: DocumentMut = std::fs::read_to_string(warmup_path)
+            .unwrap()
+            .parse()
+            .unwrap();
+        let warmup_deps = warmup["dependencies"]
+            .as_table_like()
+            .expect("warmup manifest has a [dependencies] table");
+
+        for (path, op) in &ops {
+            let ManifestOp::Set(spec) = op else { continue };
+            if !is_dependency_entry(path) {
+                continue;
+            }
+            if spec
+                .as_table_like()
+                .is_some_and(|t| t.get("path").is_some())
+            {
+                continue;
+            }
+            let name = path[1].as_str();
+            let entry = warmup_deps.get(name).unwrap_or_else(|| {
+                panic!("tests/warmup/Cargo.toml is missing `{name}` — add it so the offline warm-up covers every emittable dep")
+            });
+            assert_eq!(
+                dep_version(entry),
+                dep_version(spec),
+                "warmup version req for `{name}` drifted from the manifest ops"
+            );
+            let have = dep_feature_names(entry);
+            for f in dep_feature_names(spec) {
+                assert!(
+                    have.contains(&f),
+                    "warmup `{name}` is missing feature `{f}` — features gate optional transitive deps, which `cargo fetch` only pulls when enabled"
+                );
+            }
+        }
+    }
 }

@@ -64,6 +64,29 @@ uncached worst case — a touch-everything change); after a run on unchanged tre
 mostly skip (see the next section). A cold build adds the one-time dependency + test-binary
 compile.
 
+### Offline-after-warmup (nested cargo never touches the network)
+
+Local/full runs start with a retried `cargo fetch` warm-up — the workspace (`--locked`), the fuzz
+crate, and `tests/warmup/Cargo.toml` (the dep-universe manifest: the union of every crates-io dep
+the generated crates can declare) — then set `CARGO_NET_OFFLINE=true` for every gate. The env
+propagates through `cargo test` → the suite's nested `Command` spawns and the cddl-matrix scripts,
+so every nested-cargo cell resolves from the cargo cache instead of hitting crates.io per temp
+crate. This removes the registry-transient flake class by construction (a flaky network/proxy used
+to kill otherwise-green runs at a random cell with `unable to update registry crates-io` /
+`curl [56] Proxy CONNECT aborted` — cargo's own transient retry never engages on that flavor), and
+drops the per-cell `Updating crates.io index` latency as a side effect. The fast tier (CI) is
+untouched.
+
+The warm-up manifest is drift-gated: `warmup_manifest_covers_registry_dep_universe`
+(`src/cargo_manifest.rs`) asserts every dep the manifest ops can emit appears there with the same
+version req and features (features gate optional transitive deps, which `cargo fetch` only pulls
+when enabled). Fixture crates under `tests/` with hand-written manifests are the manual tail: a
+fixture-only dep missing from the warm-up manifest fails offline cells loudly with
+`no matching package named <dep>` — add it to `tests/warmup/Cargo.toml`. Escape hatches:
+`CHECK_ONLINE=1` keeps the run online (no offline forcing); a pre-set `CARGO_NET_OFFLINE=true`
+skips the fetch and trusts the cache. The warm-up is the ONE place a network retry is honest (a
+pure fetch, no assertions behind it); if it fails all attempts the run stops before any gate.
+
 ### The gate cache (memoize-and-skip for nested cargo)
 
 The heavy gates spend nearly all their wall time cargo-compiling/testing GENERATED crates whose

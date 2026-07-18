@@ -23,6 +23,13 @@
  *   --cache-transparency  enable the flag-gated `verify_cache_transparency` full-tier gate (two verify
  *                   runs — cached vs GATE_CACHE=0 — asserted byte-identical; otherwise SKIPPED).
  *
+ * NETWORK: local/full runs start with a retried `cargo fetch` warm-up (workspace + fuzz +
+ * tests/warmup dep-universe manifest), then force CARGO_NET_OFFLINE=true for every gate — nested-
+ * cargo cells resolve from the cargo cache instead of hitting crates.io per cell, which removes
+ * the registry-transient flake class outright (tests/README.md § "Offline-after-warmup").
+ * CHECK_ONLINE=1 skips the offline forcing; a pre-set CARGO_NET_OFFLINE=true skips the fetch.
+ * The fast tier (CI) is untouched.
+ *
  * SELF-COMPLETENESS (the systematic catch, TDD): the first gate `self_checks` runs three meta-checks
  * so a new gate that nobody registers fails the run rather than silently not existing:
  *   1. ignored-test classification — every `#[ignore]` test must be registered here as either a
@@ -76,6 +83,47 @@ function sh(cmd: string[], cwd = ROOT, env?: Record<string, string>): number {
     stdin: "inherit",
   });
   return r.exitCode ?? 1;
+}
+
+// ---- registry warm-up: fetch once online, then force every gate offline (local/full only) --------
+// Each nested-cargo cell (compile matrices, suite wasm legs, replay gates) resolves a fresh temp
+// crate against crates.io, so a flaky network/proxy kills otherwise-green runs at a random cell —
+// and cargo's built-in transient retry never engages on the proxy-CONNECT-abort flavor (zero
+// `spurious network error` lines across full-tier logs that died this way). The fix is removing
+// the per-cell network dependency, not retrying it: one retried `cargo fetch` (workspace + fuzz +
+// the tests/warmup dep-universe manifest, drift-gated by `warmup_manifest_covers_registry_dep_universe`),
+// then CARGO_NET_OFFLINE=true — the env propagates through `cargo test` → nested Command spawns and
+// the cddl-matrix scripts, so no cell touches the network. The retry here is honest: a pure fetch
+// with no assertions behind it.
+function warmupThenOffline(tier: Tier) {
+  if (rank(tier) < rank("local")) return; // fast tier is CI: stays online, zero added cost
+  if (process.env.CHECK_ONLINE === "1") {
+    console.log("warm-up: CHECK_ONLINE=1 — staying online (registry transients possible)");
+    return;
+  }
+  if (process.env.CARGO_NET_OFFLINE === "true") {
+    console.log("warm-up: CARGO_NET_OFFLINE already set — skipping fetch, cargo cache assumed warm");
+    return;
+  }
+  const fetches: string[][] = [
+    ["cargo", "fetch", "--locked"], // matches the build/clippy gates' --locked
+    ["cargo", "fetch", "--manifest-path", "fuzz/Cargo.toml"],
+    ["cargo", "fetch", "--manifest-path", "tests/warmup/Cargo.toml"],
+  ];
+  const ATTEMPTS = 3;
+  for (let attempt = 1; ; attempt++) {
+    console.log(`warm-up: cargo fetch (workspace + fuzz + dep universe), attempt ${attempt}/${ATTEMPTS}`);
+    if (fetches.every(cmd => sh(cmd) === 0)) break;
+    if (attempt === ATTEMPTS) {
+      console.error(
+        "check.ts: warm-up fetch failed after 3 attempts — one online fetch is required to populate " +
+        "the cargo cache before gates run offline (CHECK_ONLINE=1 forces the old online behavior)",
+      );
+      process.exit(2);
+    }
+  }
+  process.env.CARGO_NET_OFFLINE = "true";
+  console.log("warm-up: fetched — CARGO_NET_OFFLINE=true for all gates");
 }
 
 // ---- oracle resolution (mirrors cddl-matrix/verify.ts so the preflight can't disagree with it) ---
@@ -436,6 +484,8 @@ function main() {
   const opts: Opts = { skipMissing: flags.has("--skip-missing"), refreshFuzz: flags.has("--refresh-fuzz"), cacheTransparency: flags.has("--cache-transparency") };
 
   console.log(`\ncheck.ts — tier=${tier}${keepGoing ? " --keep-going" : ""}${opts.skipMissing ? " --skip-missing" : ""}${opts.refreshFuzz ? " --refresh-fuzz" : ""}${opts.cacheTransparency ? " --cache-transparency" : ""}`);
+
+  warmupThenOffline(tier);
 
   const results = new Map<string, { out: Outcome; ms: number }>();
   let anyFail = false;

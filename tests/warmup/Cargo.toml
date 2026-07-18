@@ -1,0 +1,29 @@
+# The dep-universe warm-up manifest: the union of every crates-io dependency the generated crates
+# (and the tests/ fixture crates) can declare. check.ts's local/full preflight runs one retried
+# `cargo fetch` against this manifest, then forces CARGO_NET_OFFLINE=true for every gate, so the
+# nested-cargo cells never touch the network (the registry-transient hardening —
+# tests/README.md § "Offline-after-warmup").
+#
+# Maintenance:
+#   - Deps the manifest ops can emit are drift-gated: `warmup_manifest_covers_registry_dep_universe`
+#     (src/cargo_manifest.rs) fails if an emittable dep is missing here or its spec drifted.
+#   - Fixture crates under tests/ are the manual tail: a fixture-only dep missing here fails
+#     offline cells loudly with `no matching package named <dep>` — add it below.
+#
+# This crate is never built — `cargo fetch` only. Its Cargo.lock is transient (gitignored).
+
+[package]
+name = "cddl-codegen-dep-warmup"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+cbor_event = "3.2.0"
+linked-hash-map = "0.5.3"
+derivative = "2.2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0.57", features = ["float_roundtrip"] }
+schemars = "1.2.1"
+hex = "0.4.3"
+wasm-bindgen = "0.2"
+serde-wasm-bindgen = "0.6.5"

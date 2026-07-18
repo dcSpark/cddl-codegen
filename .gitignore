@@ -22,6 +22,9 @@ tests/*/export*/
 # The hand-written umbrella cdylib (workspace_regen gate) resolves a fresh lock against the
 # regenerated export dirs on every run; the lock is a transient artifact, not a source of truth.
 tests/workspace-regen/umbrella/Cargo.lock
+# The dep-universe warm-up crate is only ever `cargo fetch`ed (check.ts offline preflight);
+# its lock is re-resolved per warm-up, not a source of truth.
+tests/warmup/Cargo.lock
 # getting_started_example generates the documented first-run output here (see getting_started.mdx)
 example/export*/
 

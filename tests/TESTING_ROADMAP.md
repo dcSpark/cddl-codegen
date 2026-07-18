@@ -569,10 +569,12 @@ dead loses the lesson.
   need their own std-usage sweep (collections, error impls). The mechanical layer when a consumer
   asks: a no_std cross-compile gate over one generated crate.
 - **Dependency version-RANGE resolution is untested: generated crates float on semver
-  `cbor_event = "3.2.0"`, and nothing gates what that range actually resolves to over time.** The
-  heavy gates resolve `cbor_event` from crates.io per temp cell (the registry-transient watch
-  below), so a new semver-compatible upstream release changes what every nested-cargo cell — and
-  every downstream consumer — builds against, with no gate noticing until something breaks. The
+  `cbor_event = "3.2.0"`, and nothing gates what that range actually resolves to over time.** In
+  check.ts runs the nested-cargo cells now resolve OFFLINE from the cargo cache (the
+  registry-transient watch below), so the float enters one step removed — through the warm-up
+  fetch, which pulls the newest semver-compatible releases into the cache — but the exposure is
+  the same: a new upstream release changes what every nested-cargo cell — and every downstream
+  consumer — builds against, with no gate noticing until something breaks. The
   3.2.0 upgrade itself arrived as exactly such a version event (the 2.4.0-era prediction this
   entry re-captures), absorbed deliberately with flip vectors; an UNPLANNED 3.x release would be
   absorbed silently. The mechanical layer when a release actually bites: a pinned-latest or
@@ -657,44 +659,31 @@ dead loses the lesson.
   - The pre-cache remedies stay valid if the UNCACHED path ever bites (a touch-everything change
     pays full price): batch cells into fewer crates, or adopt `cargo-nextest` as the suite runner
     (`multifile_matrix_compiles` measured ~35 s cold / ~30 s warm at 43 cells; 62 at HEAD).
-- **Registry-fetch transients in nested-cargo cells.** The same nested-cargo gates as the
-  gate-cache watch above (`feature_corpus_compiles`, `wasm_matrix_compiles`,
-  `multifile_matrix_compiles`) each resolve `cbor_event` from crates.io per temp cell, so a flaky
-  network/proxy fails otherwise-green local-tier runs with `unable to update registry crates-io`
-  on a DIFFERENT cell each run (three consecutive local runs, 2026-07-12, all this signature; every
-  affected gate green in isolation; root-caused the same day to the local proxy aborting roughly
-  1-in-6 CONNECTs to index.crates.io; corroborated 2026-07-17 — four more sightings across three
-  local-tier runs and one isolated `feature_corpus_compiles` run, each hitting a different
-  test/cell with the `curl [56] Proxy CONNECT aborted` flavor of the signature, all full-logged,
-  green on immediate retry, and the last cleared via the `CARGO_NET_OFFLINE=true` clean-confirm
-  this entry prescribes; three further sightings 2026-07-18 during the cbor_event 3.2.0 upgrade —
-  a `core_with_wasm` wasm-crate cell and a `deserialize_depth_limit_guards_recursion` cell across
-  two local-tier runs, plus a full-tier `decode_conformance_replay` wasm-surface leg, same flavor,
-  all full-logged and green on isolated retry — widening the observed surface from the three
-  named compile gates to effectively ANY nested-cargo site, suite wasm legs and the full-tier
-  replay gates included; and a FOURTH 2026-07-18 sighting — the post-Phase-3 online full-tier run
-  died at the same `decode_conformance_replay` leg, the second consecutive online full-tier kill
-  at that gate that day, cleared by a `CARGO_NET_OFFLINE=true` full-tier run that came back green
-  end to end, covering the fail-fast-skipped remainder in the same pass. Back-to-back full-tier
-  kills mean the rate has reached this entry's "bites harder" threshold: the next sighting
-  justifies BUILDING the offline-after-warmup hardening below rather than re-ledgering). The shifting-cell + registry-error signature distinguishes
-  it from a real red cell at a glance; isolated re-run of the named gate is the confirm, and
-  `CARGO_NET_OFFLINE=true bun run check.ts` is the clean-confirm when the rate makes consecutive
-  online runs impractical (deps are already in cargo home after any warm run). The confirm clears
-  the FAILED gate only: fail-fast SKIPS every gate downstream of the failure, so a tier-level
-  claim ("check.ts full green") additionally needs those skipped gates run — re-run the tier (the
-  gate cache makes already-passed cells cheap) rather than compositing a failed run with a
-  one-gate retry. Proven 2026-07-18: the 3.2.0 upgrade commit claimed full-tier green off exactly
-  that composite, leaving 8 full-tier gates unrun on the shipped tree until the review session
-  re-ran the tier. The class also
-  reaches verify.ts EVIDENCE (not just gate exits): a transient null replay flips a row's
-  decode-foreign clause to "FAILED", which `verify_cache_transparency` reads as an A/B divergence —
-  absorbed since 2026-07-12 by decodeForeignProbe's regenerate-retry-once (the same retry the mint
-  paths carry); the transparency gate itself is the standing detector if the class outruns the
-  retry. If the rate bites harder, the mechanical hardening is removing the per-cell network
-  dependency: run nested `cargo check`/`test` with `--offline` after one warm-up fetch (the shared
-  `CARGO_TARGET_DIR` and cargo home already hold the deps), or vendor the handful of
-  generated-crate deps.
+- **Registry-fetch transients in nested-cargo cells.** Nested-cargo cells used to resolve deps
+  from crates.io per temp crate, so a flaky network/proxy (a proxy aborting ~1-in-6 CONNECTs to
+  index.crates.io, a class cargo's own transient retry never engages on) killed otherwise-green
+  runs at a random cell with `unable to update registry crates-io` / `curl [56] Proxy CONNECT
+  aborted` — the shifting-cell + registry-error signature, distinguishable from a real red cell
+  at a glance. Hardened by construction in check.ts: local/full runs warm-fetch once (retried)
+  and force `CARGO_NET_OFFLINE=true` for every gate, so no cell touches the network
+  (`tests/README.md` § "Offline-after-warmup"; the warm-up dep-universe manifest is drift-gated by
+  `warmup_manifest_covers_registry_dep_universe`). What remains under watch:
+  - **Surfaces still online**: standalone script/gate runs outside check.ts (a bare
+    `bun run verify.ts`, an isolated `cargo test --bin cddl-codegen <gate>` confirm) — prefix
+    `CARGO_NET_OFFLINE=true` there after any warm run; and the warm-up fetch itself (retried,
+    hard-stop before any gate if it can't fetch, `CHECK_ONLINE=1` to opt back into online runs).
+  - **verify.ts evidence absorber stays**: a transient null replay would flip a row's
+    decode-foreign clause to "FAILED", which `verify_cache_transparency` reads as an A/B
+    divergence — absorbed by decodeForeignProbe's regenerate-retry-once (the same retry the mint
+    paths carry); the transparency gate is the standing detector if a null-replay class outruns
+    the retry.
+  - **A sighting under an offline gate run is a NEW class**, not this one — an offline cell
+    cannot hit the registry; investigate it, don't re-ledger it here. A
+    `no matching package named <dep>` failure offline is the known manual tail: a tests/ fixture
+    crate grew a dep outside the warm-up manifest — add it to `tests/warmup/Cargo.toml`.
+  Fail-fast discipline is unchanged and general: a failed run plus a one-gate retry is NOT a tier
+  pass — fail-fast SKIPS every downstream gate, so a tier-level claim needs the tier re-run (the
+  gate cache keeps already-passed cells cheap).
 - **`verify_cache_transparency` A/B split on an emission-profile EMBED cell — intermittent, distinct
   from the ruby and registry classes.** Observed 2026-07-13: one `cache_transparency.ts` leg diverged
   on `prelude.tstr`'s `emission.preserve.evidence` — the synthetic-holder embed round-trip
