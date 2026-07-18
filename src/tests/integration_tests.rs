@@ -1327,6 +1327,51 @@ fn run_test(
 /// Generate + gate every `tests/corpus/*.cddl` crate under each emission profile. The snapshot
 /// suite (`snapshot_tests::feature_corpus`) only pins the generated *source*, so a construct that
 /// emits non-compiling Rust would be snapshotted as "correct"; this is the compile gate for it.
+/// Scan rustc/cargo stderr for rendered `unused import` warnings whose import path names an
+/// allowlisted collection-type ident (`crate::import_prune::ALLOWLIST` — single owner, never
+/// mirrored here). Rustc renders these as a single line `warning: unused import: `PATH`` (or the
+/// plural `warning: unused imports: `A`, `B``) with the path(s) inline in backticks, so matching
+/// that line for the marker AND an allowlisted ident catches the whole class. Returns each
+/// offending line (trimmed) so the caller can name it in the failure.
+fn unused_allowlisted_import_lines(stderr: &str) -> Vec<String> {
+    stderr
+        .lines()
+        .filter(|line| {
+            line.contains("warning: unused import")
+                && crate::import_prune::ALLOWLIST
+                    .iter()
+                    .any(|ident| line.contains(ident))
+        })
+        .map(|line| line.trim().to_string())
+        .collect()
+}
+
+/// Red-path guard for the scan above: a planted `unused import` warning naming an allowlisted ident
+/// is flagged, while a warning naming a non-allowlisted (user) type is ignored. Durable proof the
+/// arm can fire, without needing a real under-prune to occur.
+#[test]
+fn unused_allowlisted_import_scan_flags_allowlisted_and_ignores_user_types() {
+    let allowlisted = "warning: unused import: `std::collections::BTreeMap`\n \
+                       --> src/generated/mod.rs:3:5";
+    let hits = unused_allowlisted_import_lines(allowlisted);
+    assert_eq!(
+        hits.len(),
+        1,
+        "allowlisted unused import must be flagged: {hits:?}"
+    );
+    assert!(hits[0].contains("BTreeMap"));
+
+    let user_type = "warning: unused import: `self::SomeUserType`\n \
+                     --> src/generated/mod.rs:3:5";
+    assert!(
+        unused_allowlisted_import_lines(user_type).is_empty(),
+        "a non-allowlisted (user) unused import must be ignored"
+    );
+
+    // A clean build has no such warning at all.
+    assert!(unused_allowlisted_import_lines("   Compiling foo v0.1.0\n    Finished").is_empty());
+}
+
 /// Runs all three `default`/`preserve`/`json` profiles the corpus is snapshotted under, since
 /// non-compiling output can be flag-specific (a bare construct compiled but its preserve/json
 /// variant did not). Generates with `--wasm=true` and `cargo check`s BOTH the `rust` and (when
@@ -1465,6 +1510,10 @@ fn feature_corpus_compiles() {
                     (*cargo_cmd).to_string(),
                 ]);
             }
+            // Closure-logic version marker: the cached cell now ALSO scans stderr for allowlisted
+            // unused-import warnings, so pre-scan cached PASSes must be invalidated (bump on any
+            // future change to that scan's verdict).
+            argv_for_key.push("lint=unused-imports-v1".to_string());
             let outcome = gate_cache::run_cached(
                 "feature_corpus_compiles",
                 &label,
@@ -1481,11 +1530,25 @@ fn feature_corpus_compiles() {
                             .env("CARGO_TARGET_DIR", &target_dir)
                             .output()
                             .unwrap();
+                        let stderr = String::from_utf8_lossy(&check.stderr);
                         if !check.status.success() {
                             failures.push(format!(
                                 "{label} ({crate_sub}): cargo {cargo_cmd} failed\n{}\n{}",
                                 String::from_utf8_lossy(&check.stdout),
-                                String::from_utf8_lossy(&check.stderr)
+                                stderr
+                            ));
+                            ok = false;
+                        }
+                        // Warning-severity residue the compile gates (over-prune only) can't see: an
+                        // `unused import` naming an allowlisted ident means the usage-derived import
+                        // prune (crate::import_prune) under-pruned. These crates are PURELY generated,
+                        // so any such warning is generator-owned. `ok = false` so a warning cell is
+                        // never cached as PASS.
+                        let unused = unused_allowlisted_import_lines(&stderr);
+                        if !unused.is_empty() {
+                            failures.push(format!(
+                                "{label} ({crate_sub}): allowlisted unused-import residue — import prune under-pruned:\n{}",
+                                unused.join("\n")
                             ));
                             ok = false;
                         }

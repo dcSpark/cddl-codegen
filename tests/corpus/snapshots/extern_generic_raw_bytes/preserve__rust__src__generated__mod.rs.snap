@@ -16,7 +16,6 @@ pub use crate::ExtSet;
 pub use crate::ExtSetRawBytes;
 
 use crate::generated::error::*;
-use crate::generated::serialization::{LenEncoding, StringEncoding};
 use cbor_encodings::{PlainEncoding, UsingFlavoredEncoding};
 
 pub type ExtSetPlain = ExtSet<Plain>;

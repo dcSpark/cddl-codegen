@@ -15,7 +15,6 @@ pub mod serialization;
 
 use crate::generated::error::*;
 use crate::generated::ordered_hash_map::OrderedHashMap;
-use crate::generated::serialization::LenEncoding;
 use cbor_encodings::BkeyHolderEncoding;
 use std::collections::BTreeMap;
 
