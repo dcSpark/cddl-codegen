@@ -23,6 +23,8 @@ fetch https://www.rfc-editor.org/rfc/rfc9090.txt                                
 fetch https://www.rfc-editor.org/rfc/rfc9165.txt                                                   rfc9165.txt
 fetch https://www.rfc-editor.org/rfc/rfc9682.txt                                                   rfc9682.txt
 fetch https://www.rfc-editor.org/rfc/rfc9741.txt                                                   rfc9741.txt
+# Internet-Draft: the URL is version-pinned, so bump the filename+URL together when a new draft lands.
+fetch https://www.ietf.org/archive/id/draft-ietf-cbor-cddl-modules-06.txt                          draft-ietf-cbor-cddl-modules-06.txt
 
 echo "verifying against pinned SHA256SUMS:"
 sha256sum -c SHA256SUMS
