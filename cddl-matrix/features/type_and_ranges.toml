@@ -33,10 +33,12 @@ profile = "RFC8610"
 title = "Type choice (/)"
 desc = "Assembles two or more type1 alternatives into a single type with the `/` operator; a value matches if it matches any branch."
 # Members steered off `bool`: a `bool` member USED to make the generated choice need type annotations
-# (E0282); that is now fixed (the cbor_event 3.x de-generification removed the reader/writer fn generics
-# that left the bool arm's type unconstrained) and pinned by `tests/corpus/bool_choice.cddl`. These three
-# still isolate the `/` construct itself — `bool` is owned by `bool.cddl`, so a `bool` member here would
-# conflate the two constructs — and compile cleanly.
+# (E0282); that is now fixed — the bool arm emits `bool::deserialize(raw)` instead of the old
+# `raw.bool().map_err(Into::into)`, whose unconstrained intermediate error type failed inference against
+# `DeserializeError`'s multiple `From<_>` impls (the `Primitive::Bool` arm comment in
+# src/generation/deserialize.rs owns the class) — and pinned by `tests/corpus/bool_choice.cddl`. These
+# three still isolate the `/` construct itself — `bool` is owned by `bool.cddl`, so a `bool` member here
+# would conflate the two constructs — and compile cleanly.
 example = "t = uint / tstr / bytes"
 roles = ["role.choice-member"]
 
