@@ -74,8 +74,6 @@ Consumers that deserialize **untrusted input** (e.g. on-chain data) should gener
 
 Depth is the only hostile-input class that needs an opt-in flag. The other classes are handled by the runtime (`cbor_event` 3.x): truncated input, over-claiming length headers, reserved simple values, and stray break codes all return a `DeserializeError` — no panic, and no allocation sized from an untrusted claimed length (an 8-byte header claiming gigabytes errors before any allocation).
 
-{/* BEGIN GENERATED q1-limitations — regenerate with: cd cddl-matrix && bun run query_q1_gaps.ts --write */}
-
 ## Multi-file specs, cross-crate dependencies & CDDL modules
 
 - **Directory input**: a directory of `.cddl` files generates one crate with a Rust module per
@@ -92,6 +90,8 @@ Depth is the only hostile-input class that needs an opt-in flag. The other class
   but note `as`-namespaced output (dotted rule names like `cose.label`) is also rejected, since
   dots cannot map to Rust identifiers; only un-prefixed expansion is consumable today. Other
   `;# `-prefixed comment lines warn; `;#####` banner comments stay plain comments.
+
+{/* BEGIN GENERATED q1-limitations — regenerate with: cd cddl-matrix && bun run query_q1_gaps.ts --write */}
 
 ## Limitations
 
