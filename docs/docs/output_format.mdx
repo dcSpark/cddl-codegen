@@ -239,8 +239,9 @@ columns) — long generic map/list types with fully-qualified paths — the wrap
 canonical two-line tuple shape by the generator itself. This works around
 [rust-lang/rustfmt#5703](https://github.com/rust-lang/rustfmt/issues/5703), where rustfmt breaks the
 line right after the field visibility, leaves trailing whitespace, and exits with an internal error
-(which the generator treats as fatal). The skip freezes exactly the bytes rustfmt would otherwise
-produce, so it is removable once the upstream fix (PR #5708) ships and reaches consumers.
+(which the generator treats as fatal). The skip freezes the canonical layout rustfmt would produce
+absent the bug, so it is removable — as a pure-formatting no-op — once the upstream fix (PR #5708)
+ships and reaches consumers.
 
 ### Migrating from pre-split layouts
 

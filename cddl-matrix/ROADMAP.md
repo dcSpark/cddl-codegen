@@ -610,6 +610,16 @@ composition-space cross-check that complements this matrix's curated per-shape g
   `cross_module_group_choice_ctor`), and the mode-axis extension (`gcvariant` over the
   Record-resolving shapes) is recorded recur-first in `tests/TESTING_ROADMAP.md`
   ("Multifile reference-POSITION coverage").
+  Two further instances of the hand-patched-consumer-output tell landed together in the
+  wasm-wrapper visibility + rustfmt-skip delivery: CML replace-overlay blocks whose entire payload
+  flipped a wasm tuple field's visibility (retired by the uniform `pub(crate)` policy —
+  `WasmWrapper::push_inner_field`, pinned by `integration_collection_wrapper_fields_are_pub_crate`),
+  and seven hand-placed `#[rustfmt::skip]` blocks working around rust-lang/rustfmt#5703 fatally
+  aborting regen on over-width fields (retired by the generator emitting the skip itself, pinned by
+  `integration_overwidth_wasm_wrapper_field_gets_rustfmt_skip`). The second instance exposed a hole
+  in a dimension none of the matrix axes enumerate — input REALISM (consumer-scale identifier
+  length; every fixture's short names kept the over-width class unreachable) — recorded recur-first
+  in `tests/TESTING_ROADMAP.md` ("Identifier-length realism").
 - **Third honesty axis — flag-gated EMISSION SURFACES × input mode (periodic, same footing as the
   SHAPES/ROLES rule above).** SHAPES/ROLES cover what types look like and where they sit; a whole
   flag-gated emission surface can still be built against single-file assumptions and break only
