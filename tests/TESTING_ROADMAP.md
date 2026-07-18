@@ -225,8 +225,11 @@ generated-only view, invisible to any glob-edge model).
   SECOND instance SET, a DIFFERENT home (the corpus findings ledger, read-caught during the
   findings-sweep delivery): `cddl-matrix/annotations/corpus/cddl_codegen.toml` carried failure-claim
   `[[finding]]`s (and the sibling `prelude.*`/`value.*` `[[note]]`s) whose defects had been fixed out
-  from under them — the `bool`-in-type-choice E0282 and single-letter-`r` E0574 findings (closed by the
-  cbor_event 3.x de-generification, which dropped the reader/writer fn generics), the inline-group
+  from under them — the `bool`-in-type-choice E0282 finding (closed by the bool-arm emission switch to
+  `bool::deserialize(raw)`, whose load-bearing comment in the `Primitive::Bool` arm of
+  src/generation/deserialize.rs names the inference class; bisect-verified), the single-letter-`r`
+  E0574 finding (closed by the generic-name collision-proofing fix, whose machinery the cbor_event 3.x
+  de-generification later retired by dropping the fn generics entirely), the inline-group
   data-loss "Bug" (closed by the inline-group flatten fix — the entry now generates a 2-field struct),
   and the top-level fixed-value "panics" prose (the values now REJECT GRACEFULLY, and the "fails as a
   member too" half was falsified by fixed-value member support). These render into `tests/corpus/COVERAGE.md`,
@@ -242,7 +245,13 @@ generated-only view, invisible to any glob-edge model).
   instance is still working-rule-only: a parallel limitation-claims arm on `lint_doc_citations` — every
   known-limitation-classed paragraph outside a generated span must carry a resolvable tracking citation,
   or be folded into a projected span (the matrix north star's "more docs follow") — remains future work,
-  since the two homes have different scanners and neither arm sees the other's prose.
+  since the two homes have different scanners and neither arm sees the other's prose. A closure
+  working rule this delivery itself proved necessary: the prose that CLOSES a stale finding must
+  attribute the fix by REPRODUCING against the candidate commit's parent (a throwaway worktree +
+  the probe is minutes), never by narrative plausibility — the sweep's first closure draft
+  attributed both compile-bug fixes to the cbor_event 3.x de-generification, and a
+  worktree-bisect falsified that for E0282 (the real fix was the bool-arm emission switch, days
+  earlier) before the wrong story shipped past review.
 - **Observed-baseline comments beside gate floors rot silently — TWO instances, two homes, two
   distinct rot modes; the floors/consts stay the enforced artifact.** These comments are
   informational and review-maintained by design (replacing them with exact gate-asserted counts

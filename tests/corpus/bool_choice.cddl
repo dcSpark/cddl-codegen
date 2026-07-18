@@ -1,13 +1,16 @@
 ; A type choice containing `bool` — pins the CLOSURE of the former "type annotations needed"
 ; (E0282) finding. `bool / tstr` and `uint / bool` once generated non-compiling Rust because the
-; pre-cbor_event-3.x serialize/deserialize fns carried reader/writer generics that left the
-; bool-arm's inferred type unconstrained; the 3.x de-generification (concrete `Serializer`/
-; `Deserializer`) removed that hazard, so both orderings now generate and round-trip under every
-; profile (default / preserve / json). Both bool-first (`bool / tstr`) and bool-last
-; (`uint / bool`) orderings are exercised because the annotation hazard was position-sensitive.
-; The canonical `type.choice` fixture stays `type_choice.cddl` (steered off `bool` to isolate the
-; `/` construct itself, per the type_and_ranges.toml example note); this file isolates the
-; bool-in-choice hazard specifically, so a regression re-introducing the generics fails the corpus
-; compile gate here rather than going unpinned.
+; bool arm emitted `raw.bool().map_err(Into::into)`, whose intermediate error type is
+; unconstrained where the expression's target type is inferred — and `DeserializeError` carries
+; multiple `From<_>` impls, so inference fails (E0282/E0283). Fixed by emitting
+; `bool::deserialize(raw)` instead (the `Primitive::Bool` arm in src/generation/deserialize.rs
+; carries the load-bearing comment naming this class; bisect-verified against the pre-fix tree).
+; Both bool-first (`bool / tstr`) and bool-last (`uint / bool`) orderings are exercised — the
+; original finding named both spellings. Both now generate and round-trip under every profile
+; (default / preserve / json). The canonical `type.choice` fixture stays `type_choice.cddl`
+; (steered off `bool` to isolate the `/` construct itself, per the type_and_ranges.toml example
+; note); this file isolates the bool-in-choice hazard specifically, so a regression re-introducing
+; an unconstrained-error-type bool emission fails the corpus compile gate here rather than going
+; unpinned.
 bool_or_text = bool / tstr
 uint_or_bool = uint / bool
