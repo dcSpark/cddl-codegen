@@ -719,7 +719,7 @@
     },
     {
       "feature": "dsl.doc",
-      "reason": "DSL comment in root RHS; not a clean reusable expression"
+      "reason": "expected exactly one root rule, found 2"
     },
     {
       "feature": "dsl.name",

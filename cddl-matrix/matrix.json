@@ -4131,8 +4131,8 @@
     },
     {
       "alt": "@doc",
-      "desc": "Attaches a rust doc-comment at field, struct, or variant level. Cannot contain '@'.",
-      "example": "\ndocumented = [\n  foo: text, ; @doc a field comment\n  bar: uint\n] ; @doc struct doc",
+      "desc": "Attaches a rust doc-comment at field, struct, variant, or rule level (plain alias and @newtype rules). Cannot contain '@'.",
+      "example": "\ndocumented = [\n  foo: text, ; @doc a field comment\n  bar: uint\n] ; @doc struct doc\ndocumented_alias = uint ; @doc an alias rule doc",
       "id": "dsl.doc",
       "production": "comment_dsl",
       "profile": "CDDL_CODEGEN",
