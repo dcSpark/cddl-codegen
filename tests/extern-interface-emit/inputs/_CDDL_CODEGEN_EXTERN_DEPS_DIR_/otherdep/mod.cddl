@@ -1,0 +1,3 @@
+; A rule the dep itself declares as ITS OWN extern dep (non-exported scope). A dep's own deps never
+; appear in its export (depth-1 rule) -> asserted ABSENT.
+hidden = [z: uint]

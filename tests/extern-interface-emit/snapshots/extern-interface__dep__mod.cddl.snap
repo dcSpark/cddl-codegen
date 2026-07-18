@@ -1,0 +1,22 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1
+; unexported: anon_arr — unrenderable shape: a reference to `PairU64Text` with no recorded source CDDL rule name
+; unexported: cs — @custom_serialize — plain export would make the consumer emit default wire logic, diverging from the dependency's real format
+; unexported: dep_cs — references excluded cs
+big_coin = coin ; @rust_name BigCoin
+bn = bytes .cbor {* bignint => uint} ; @rust_name Bn
+ce = 0 / 1 / 2 ; @rust_name Ce
+coin = uint ; @rust_name Coin
+foo_list = [* rec] ; @rust_name FooList
+gc = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name Gc
+hash = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @rust_name Hash
+holder = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name Holder
+inst = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name Inst
+na = uint ; @no_alias @rust_name Na
+rec = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name Rec
+tbl = {* uint => tstr} ; @rust_name Tbl
+tc = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name Tc
+wrap = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name Wrap

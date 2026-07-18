@@ -2085,6 +2085,18 @@ impl<'a> IntermediateTypes<'a> {
         self.rust_name_pins.get(derived).map(|s| s.as_str())
     }
 
+    /// The CDDL prelude name a synthesized `prelude_<name>` rule ident stands for (`PreludeBignint`
+    /// → `bignint`), or `None` for any other ident. A CDDL-prelude type referenced from a transparent
+    /// extern-interface row renders back to this bare prelude name (the consumer re-expands the
+    /// prelude identically) rather than dangling on the synthesized, never-exported `prelude_<name>`
+    /// rule. Covers whatever prelude subset the IR actually materialized (`prelude_to_emit`).
+    pub fn prelude_cddl_name(&self, ident: &RustIdent) -> Option<String> {
+        self.prelude_to_emit.iter().find_map(|name| {
+            (RustIdent::new(CDDLIdent::new(format!("prelude_{name}"))) == *ident)
+                .then(|| name.clone())
+        })
+    }
+
     /// The exact CDDL source rule name `ident` was registered under (e.g. `my-rule`, which
     /// `RustIdent` camel-cases to `MyRule`, indistinguishable from `my_rule`). `None` for a struct
     /// synthesized during IR build (no source rule). The conformance oracle roots its validator here

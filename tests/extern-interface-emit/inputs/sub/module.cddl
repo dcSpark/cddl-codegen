@@ -1,0 +1,2 @@
+; A rule in a nested module scope -> its own extern-interface/<dep>/sub/module/mod.cddl file.
+nested_rec = [n: uint]

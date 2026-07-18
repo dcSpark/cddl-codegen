@@ -1,0 +1,6 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1
+nested_rec = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name NestedRec

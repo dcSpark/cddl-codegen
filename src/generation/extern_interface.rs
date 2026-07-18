@@ -43,16 +43,14 @@
 //!
 //! Every entry point is a `Result` — no panics.
 
-// The renderer is `pub` API on the LIB target, but until commit 4 wires the export emitter walk
-// (`GenerationScope::export`) nothing in the BIN target calls it, so the non-test bin build flags it
-// dead. Scoped to this module and the single lint; REMOVE this attribute when commit 4 lands.
-#![allow(dead_code)]
+use std::collections::{BTreeMap, BTreeSet};
 
+use crate::cli::Cli;
 use crate::comment_ast::RuleMetadata;
 use crate::intermediate::{
     AliasIdent, CBOREncodingOperation, ConceptualRustType, EnumVariant, EnumVariantData,
-    FixedValue, FloatWindow, IntermediateTypes, Primitive, RustIdent, RustType,
-    RustTypeSerializeConfig,
+    FixedValue, FloatWindow, IntermediateTypes, Primitive, ROOT_SCOPE, RustIdent, RustStructConfig,
+    RustStructType, RustType, RustTypeSerializeConfig,
 };
 
 /// A rendering failure. Both variants name the rule; `Unrenderable` also names the offending shape.
@@ -264,14 +262,20 @@ fn reject_value_config(
 // --- References --------------------------------------------------------------------------------
 
 /// A reference to a named rule renders as its ORIGINAL CDDL ident (from the source-spelling
-/// registry) — the consumer resolves it by that ident. The reserved prelude `int` extern (registered
-/// as the `Int` struct) is the one ref with no user source name; it renders as `int`.
+/// registry) — the consumer resolves it by that ident. Two references carry no user source name and
+/// render by their CDDL prelude name instead (the consumer re-expands the prelude identically): the
+/// reserved `int` extern (the `Int` struct) → `int`, and any synthesized `prelude_<name>` rule
+/// (`PreludeBignint` → `bignint`, …). Anything else with no source name (e.g. an anonymous generic
+/// instance) has no faithful CDDL spelling — a hard `Err` the emitter walk converts to an exclusion.
 fn render_rust_ref(rule: &str, ident: &RustIdent, types: &IntermediateTypes) -> RenderResult {
     if let Some(source) = types.source_rule_name(ident) {
         return Ok(source.to_string());
     }
     if ident.to_string() == "Int" {
         return Ok("int".to_string());
+    }
+    if let Some(prelude) = types.prelude_cddl_name(ident) {
+        return Ok(prelude);
     }
     Err(unrenderable(
         rule,
@@ -489,6 +493,413 @@ fn render_fixed_value(fixed: &FixedValue) -> String {
 /// `3`) so the literal stays a float rather than degrading to an integer literal.
 fn render_f64(f: f64) -> String {
     format!("{f:?}")
+}
+
+// --- The projection walk (the export emitter) --------------------------------------------------
+
+/// The strict per-file header opting a machine-generated export into strict parsing (§2). Every
+/// emitted file begins with this exact line; a physically-copied single file therefore still
+/// carries its seam.
+pub(crate) const EXTERN_INTERFACE_HEADER: &str = "; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1";
+
+/// A successfully-projected rule staged for emission, plus the set of EXPORTED-rule idents its
+/// exported CDDL text references (empty for opaque rows — their marker body is self-contained, and
+/// for prelude/fixed refs — those render self-contained by prelude name). The reference set drives
+/// reference-closure: if any referenced rule ends up excluded (or was never exported), this rule
+/// dangles for every consumer and is excluded too.
+struct IncludedRule {
+    components: Vec<String>,
+    source: String,
+    line: String,
+    rule_refs: BTreeSet<RustIdent>,
+}
+
+/// A rule kept OUT of the export, recorded as a sorted `; unexported: <ident> — <reason>` comment
+/// after the header. `root` is the CDDL ident of the primary failure at the head of the reference
+/// chain (the rule itself for a direct projection failure), so a transitively-excluded rule names
+/// the original cause, not just its immediate neighbour.
+struct ExcludedRule {
+    components: Vec<String>,
+    source: String,
+    reason: String,
+    root: String,
+}
+
+/// Project the finalized IR into the dep-side extern-interface export, keyed by path RELATIVE to
+/// `<output>` (`extern-interface/<dep_key>/<scope-path>/mod.cddl`, sibling of `rust/`). One rule per
+/// exported name; the dep's own extern-deps scopes are skipped (depth-1 rule). INFALLIBLE by design:
+/// a rule whose projection fails (custom-serialize transparent alias, unrenderable shape, or — via
+/// reference-closure — a reference to an unexportable name) is EXCLUDED-WITH-RECORD and generation
+/// still succeeds, so a leaf/test spec that will never be a dependency still regenerates cleanly.
+/// The failure surfaces later, only at a consumer that actually references an excluded ident.
+///
+/// The projection `match` over `RustStructType` is EXHAUSTIVE (no `_ =>` arm) so a future variant
+/// forces an explicit export-spelling decision at compile time.
+pub(crate) fn extern_interface_files(
+    types: &IntermediateTypes,
+    cli: &Cli,
+) -> BTreeMap<String, String> {
+    let dep_key = cli.lib_name_code();
+    let mut included: BTreeMap<RustIdent, IncludedRule> = BTreeMap::new();
+    let mut excluded: BTreeMap<RustIdent, ExcludedRule> = BTreeMap::new();
+    // Dedup across the two passes: a named collection / named generic-extern instance registers BOTH
+    // a `rust_structs` entry AND a `type_aliases` entry; project each ident exactly once (pass 1
+    // wins), so pass 2 skips anything pass 1 already staged.
+    let mut seen: BTreeSet<RustIdent> = BTreeSet::new();
+
+    // Pass 1 — `rust_structs`. The variant decides the spelling (exhaustive match).
+    for (ident, rust_struct) in types.rust_structs() {
+        let scope = types.scope(ident);
+        // Exported scopes only: a dep's own deps never appear in its export.
+        if !scope.export() {
+            continue;
+        }
+        // Plain groups are inlined at use sites (a referenced one materializes as a Record here) and
+        // are not a cross-crate type surface — not a candidate at all.
+        if types.is_plain_group(ident) {
+            continue;
+        }
+        // Only top-level CDDL rules project; a struct synthesized during IR build (embedded record,
+        // collection-keys wrapper, …) and the reserved prelude `int` extern carry no source rule
+        // name and are not candidates.
+        let Some(source) = types.source_rule_name(ident) else {
+            continue;
+        };
+        seen.insert(ident.clone());
+        let components = scope_path(scope);
+        // `RustStructConfig` retains the custom-serialize annotations; rebuild the minimal
+        // `RuleMetadata` the transparent renderer consults so the projection exclusion cannot be
+        // bypassed on the class-backed transparent rows (Array/Table/CStyleEnum).
+        let md = rule_metadata_from_config(rust_struct.config());
+        let projected: RuleProjection = match rust_struct.variant() {
+            // Genuinely class-backed types: opaque. `@newtype`/custom-(de)serialize/custom-json do
+            // NOT travel — they shape the dep's internals; the consumer sees only "class exists,
+            // named X". A generic-extern base carrying `@raw_bytes_flavor` re-exports the tag verbatim
+            // (the flavor lives in `types.raw_bytes_flavor()`, keyed by the base ident). An opaque
+            // marker body is self-contained, so it references nothing (never closure-excluded).
+            RustStructType::Record(_)
+            | RustStructType::TypeChoice { .. }
+            | RustStructType::GroupChoice { .. }
+            | RustStructType::Wrapper { .. }
+            | RustStructType::Extern => {
+                let mut annotations = Vec::new();
+                if types.raw_bytes_flavor().contains(ident) {
+                    annotations.push("@raw_bytes_flavor".to_string());
+                }
+                Ok((
+                    crate::parsing::EXTERN_MARKER.to_string(),
+                    annotations,
+                    BTreeSet::new(),
+                ))
+            }
+            // A raw-bytes type is opaque behind its own marker.
+            RustStructType::RawBytesType => Ok((
+                crate::parsing::RAW_BYTES_MARKER.to_string(),
+                Vec::new(),
+                BTreeSet::new(),
+            )),
+            // Named collections: transparent. The rust surface is a `pub type`, so spelling it opaque
+            // would violate the fidelity contract — render the registered transparent alias body and
+            // collect the rule idents it references for the closure.
+            RustStructType::Array { .. } | RustStructType::Table { .. } => {
+                match types.type_aliases().get(&AliasIdent::Rust(ident.clone())) {
+                    Some(alias) => {
+                        render_transparent_rule_body(source, &alias.base_type, Some(&md), types)
+                            .map(|body| {
+                                (body, Vec::new(), collect_rule_refs(&alias.base_type, types))
+                            })
+                    }
+                    None => Err(unrenderable(
+                        source,
+                        "a named collection with no registered transparent alias",
+                    )),
+                }
+            }
+            // A c-style enum is transparent — its value choices (`0 / 1 / 2`) — but a real Rust enum
+            // lives in the dep, so it still needs the `@rust_name` pin. Value choices reference no
+            // rules.
+            RustStructType::CStyleEnum { variants } => {
+                render_c_style_enum_body(source, variants, Some(&md), types)
+                    .map(|body| (body, Vec::new(), BTreeSet::new()))
+            }
+        };
+        stage_rule(
+            &mut included,
+            &mut excluded,
+            ident,
+            source,
+            components,
+            projected,
+        );
+    }
+
+    // Pass 2 — `type_aliases`: the transparent aliases (`coin = uint`, alias chains, `@no_alias`
+    // rules) with no `rust_structs` entry. Reserved prelude aliases (`uint`, `tstr`, …) are
+    // `AliasIdent::Reserved` and carry no source name, so they never project.
+    for (alias_ident, alias_info) in types.type_aliases() {
+        let AliasIdent::Rust(ident) = alias_ident else {
+            continue;
+        };
+        if seen.contains(ident) {
+            continue;
+        }
+        let scope = types.scope(ident);
+        if !scope.export() {
+            continue;
+        }
+        let Some(source) = types.source_rule_name(ident) else {
+            continue;
+        };
+        seen.insert(ident.clone());
+        let components = scope_path(scope);
+        // `@no_alias` travels verbatim: a truthful export makes the consumer's generator treat the
+        // rule exactly as the dep's did.
+        let mut extra_annotations = Vec::new();
+        if alias_info
+            .rule_metadata
+            .as_ref()
+            .is_some_and(|m| m.no_alias)
+        {
+            extra_annotations.push("@no_alias".to_string());
+        }
+        let projected: RuleProjection = if let Some(target) = &alias_info.wasm_alias_target {
+            // A `ptm = mp` rule whose `Alias(mp, …)` wrapper was stripped to inline the type keeps a
+            // `wasm_alias_target`; spell it truthfully as a reference to that target's original ident
+            // rather than re-inlining the whole collection shape.
+            render_rust_ref(source, target, types).map(|body| {
+                let mut refs = BTreeSet::new();
+                if types.source_rule_name(target).is_some() {
+                    refs.insert(target.clone());
+                }
+                (body, extra_annotations, refs)
+            })
+        } else {
+            render_transparent_rule_body(
+                source,
+                &alias_info.base_type,
+                alias_info.rule_metadata.as_ref(),
+                types,
+            )
+            .map(|body| {
+                (
+                    body,
+                    extra_annotations,
+                    collect_rule_refs(&alias_info.base_type, types),
+                )
+            })
+        };
+        stage_rule(
+            &mut included,
+            &mut excluded,
+            ident,
+            source,
+            components,
+            projected,
+        );
+    }
+
+    // Reference-closure to fixpoint: consumers run the checked parse over the whole export, so a rule
+    // whose exported body references an ident that is NOT itself exported (excluded, or never a
+    // candidate — e.g. an extern-dep-scope rule) would dangle for EVERY consumer. Exclude it too,
+    // naming the chain root. Monotone (only moves rules out of `included`), so it terminates;
+    // deterministic (`BTreeMap` iteration, first offending ref in `BTreeSet` order).
+    loop {
+        let next = included.iter().find_map(|(ident, inc)| {
+            inc.rule_refs
+                .iter()
+                .find(|r| !included.contains_key(*r))
+                .map(|r| {
+                    let root = excluded
+                        .get(r)
+                        .map(|e| e.root.clone())
+                        .or_else(|| types.source_rule_name(r).map(str::to_owned))
+                        .unwrap_or_else(|| r.to_string());
+                    (ident.clone(), root)
+                })
+        });
+        let Some((ident, root)) = next else {
+            break;
+        };
+        let inc = included.remove(&ident).unwrap();
+        excluded.insert(
+            ident,
+            ExcludedRule {
+                components: inc.components,
+                source: inc.source,
+                reason: format!("references excluded {root}"),
+                root,
+            },
+        );
+    }
+
+    render_export_files(&dep_key, &included, &excluded)
+}
+
+/// A per-rule projection: `Ok((body, extra annotations, referenced rule idents))` or an `Err` the
+/// walk converts to an exclusion. The `@rust_name` pin is appended by `stage_rule`, so `extra
+/// annotations` holds only the row-specific ones (`@no_alias`, `@raw_bytes_flavor`).
+type RuleProjection = Result<(String, Vec<String>, BTreeSet<RustIdent>), ExternInterfaceError>;
+
+/// Stage one projected candidate: an `Ok` becomes an included rule (with the `@rust_name` pin
+/// appended); an `Err` becomes a primary exclusion whose `root` is the rule itself.
+fn stage_rule(
+    included: &mut BTreeMap<RustIdent, IncludedRule>,
+    excluded: &mut BTreeMap<RustIdent, ExcludedRule>,
+    ident: &RustIdent,
+    source: &str,
+    components: Vec<String>,
+    projected: RuleProjection,
+) {
+    match projected {
+        Ok((body, mut annotations, rule_refs)) => {
+            annotations.push(format!("@rust_name {ident}"));
+            included.insert(
+                ident.clone(),
+                IncludedRule {
+                    components,
+                    source: source.to_string(),
+                    line: format_rule_line(source, &body, &annotations),
+                    rule_refs,
+                },
+            );
+        }
+        Err(e) => {
+            excluded.insert(
+                ident.clone(),
+                ExcludedRule {
+                    components,
+                    source: source.to_string(),
+                    reason: exclusion_reason(&e),
+                    root: source.to_string(),
+                },
+            );
+        }
+    }
+}
+
+/// The human-facing (never parsed) reason recorded for a primary exclusion.
+fn exclusion_reason(err: &ExternInterfaceError) -> String {
+    match err {
+        ExternInterfaceError::CustomSerializeTransparent { annotation, .. } => format!(
+            "{annotation} — plain export would make the consumer emit default wire logic, diverging \
+             from the dependency's real format"
+        ),
+        ExternInterfaceError::Unrenderable { shape, .. } => format!("unrenderable shape: {shape}"),
+    }
+}
+
+/// The EXPORTED-rule idents a transparent body references (for the reference-closure). Only idents
+/// with a recorded source rule name count: a prelude ref (`bignint`) or the `int` extern renders
+/// self-contained by its prelude name and needs no exported rule to resolve against, and a fixed
+/// value references nothing. An `Alias(Rust(ident), _)` renders as the reference `ident` itself, so
+/// its inner is deliberately NOT recursed into.
+fn collect_rule_refs(ty: &RustType, types: &IntermediateTypes) -> BTreeSet<RustIdent> {
+    fn walk(ty: &RustType, types: &IntermediateTypes, out: &mut BTreeSet<RustIdent>) {
+        match &ty.conceptual_type {
+            ConceptualRustType::Rust(ident)
+            | ConceptualRustType::Alias(AliasIdent::Rust(ident), _) => {
+                if types.source_rule_name(ident).is_some() {
+                    out.insert(ident.clone());
+                }
+            }
+            ConceptualRustType::Alias(AliasIdent::Reserved(_), _) => {}
+            ConceptualRustType::Optional(inner) | ConceptualRustType::Array(inner) => {
+                walk(inner, types, out)
+            }
+            ConceptualRustType::Map(key, value) => {
+                walk(key, types, out);
+                walk(value, types, out);
+            }
+            ConceptualRustType::Primitive(_) | ConceptualRustType::Fixed(_) => {}
+        }
+    }
+    let mut out = BTreeSet::new();
+    walk(ty, types, &mut out);
+    out
+}
+
+/// Render the included rules and exclusion records into per-scope files. Each file is the header, a
+/// sorted `; unexported:` block, then the sorted rule lines. The root file (`<dep_key>/mod.cddl`)
+/// always emits — an empty surface still leaves a stable, header-only presence.
+fn render_export_files(
+    dep_key: &str,
+    included: &BTreeMap<RustIdent, IncludedRule>,
+    excluded: &BTreeMap<RustIdent, ExcludedRule>,
+) -> BTreeMap<String, String> {
+    // scope components -> sorted (source ident -> line / reason).
+    let mut rules_by_scope: BTreeMap<Vec<String>, BTreeMap<String, String>> = BTreeMap::new();
+    let mut excluded_by_scope: BTreeMap<Vec<String>, BTreeMap<String, String>> = BTreeMap::new();
+    rules_by_scope.entry(Vec::new()).or_default();
+    for inc in included.values() {
+        rules_by_scope
+            .entry(inc.components.clone())
+            .or_default()
+            .insert(inc.source.clone(), inc.line.clone());
+    }
+    for exc in excluded.values() {
+        excluded_by_scope
+            .entry(exc.components.clone())
+            .or_default()
+            .insert(exc.source.clone(), exc.reason.clone());
+        // Ensure a scope carrying only exclusions still emits its file.
+        rules_by_scope.entry(exc.components.clone()).or_default();
+    }
+
+    let mut all_scopes: BTreeSet<&Vec<String>> = BTreeSet::new();
+    all_scopes.extend(rules_by_scope.keys());
+    all_scopes.extend(excluded_by_scope.keys());
+
+    let mut files = BTreeMap::new();
+    for components in all_scopes {
+        let subpath = if components.is_empty() {
+            "mod.cddl".to_string()
+        } else {
+            format!("{}/mod.cddl", components.join("/"))
+        };
+        let mut content = String::from(EXTERN_INTERFACE_HEADER);
+        content.push('\n');
+        if let Some(records) = excluded_by_scope.get(components) {
+            for (source, reason) in records {
+                content.push_str(&format!("; unexported: {source} — {reason}\n"));
+            }
+        }
+        if let Some(rules) = rules_by_scope.get(components) {
+            for line in rules.values() {
+                content.push_str(line);
+                content.push('\n');
+            }
+        }
+        files.insert(format!("extern-interface/{dep_key}/{subpath}"), content);
+    }
+    files
+}
+
+/// The scope-path components a scope's file lives under: empty for `ROOT_SCOPE` (the dep-root
+/// `mod.cddl`), else the scope's own components (`a::c::foo` → `a/c/foo/mod.cddl`), mirroring the
+/// generated rust tree so the "drop `mod` stems" consumer derivation recovers the scope.
+fn scope_path(scope: &crate::intermediate::ModuleScope) -> Vec<String> {
+    if *scope == *ROOT_SCOPE {
+        Vec::new()
+    } else {
+        scope.components().clone()
+    }
+}
+
+/// A `RuleMetadata` carrying only the custom-(de)serialize annotations `RustStructConfig` retains —
+/// enough for the transparent renderer's projection exclusion check on the class-backed transparent
+/// rows (named collections, c-style enums).
+fn rule_metadata_from_config(config: &RustStructConfig) -> RuleMetadata {
+    RuleMetadata {
+        custom_serialize: config.custom_serialize.clone(),
+        custom_deserialize: config.custom_deserialize.clone(),
+        ..Default::default()
+    }
+}
+
+/// Assemble one export rule line: `<source> = <body> ; <annotations...>`. Every rule carries at
+/// least the `@rust_name` pin (appended by `stage_rule`), so `annotations` is never empty.
+fn format_rule_line(source: &str, body: &str, annotations: &[String]) -> String {
+    format!("{source} = {body} ; {}", annotations.join(" "))
 }
 
 #[cfg(test)]
