@@ -927,7 +927,13 @@ mod tests {
             for a in [false, true] {
                 for b in [false, true] {
                     for d in [false, true] {
-                        // round-trip on non-constants
+                        // round-trip on non-constants — plus the x/z presence bits (the optional
+                        // fixed floats), piggybacked on the a/d booleans so all four presence
+                        // combinations round-trip through THIS long-optional-chain shape (the
+                        // formerly-dropped serialize side; the isolated shape is
+                        // opt_fixed_member_float's)
+                        foo.x = a;
+                        foo.z = d;
                         foo.a = if a { Some(0) } else { None };
                         foo.b = if b { Some("hello, world".to_owned()) } else { None };
                         foo.d = if d { Some("cddl-codegen".to_owned()) } else { None };
@@ -966,10 +972,14 @@ mod tests {
                                     components.push(vec![BREAK]);
                                     let bytes = components.into_iter().flatten().clone().collect::<Vec<u8>>();
                                     // value anchors: decode-accepts alone proved nothing — pin every
-                                    // field to what the hand-built bytes above encode (x/y/z are the
-                                    // fixed float constants, not fields; c: nint -10 is stored as the
-                                    // magnitude m = |v + 1| = 9)
+                                    // field to what the hand-built bytes above encode (y is the
+                                    // MANDATORY fixed float constant — no field; the OPTIONAL fixed
+                                    // floats x/z are `bool` presence fields since the float
+                                    // presence-field delivery, asserted below; c: nint -10 is stored
+                                    // as the magnitude m = |v + 1| = 9)
                                     let decoded = ArrayOptFields::from_cbor_bytes(&bytes).unwrap();
+                                    assert_eq!(decoded.x, x);
+                                    assert_eq!(decoded.z, z);
                                     assert_eq!(decoded.a, if a { Some(0) } else { None });
                                     assert_eq!(decoded.b, if b { Some("hello, world".to_owned()) } else { None });
                                     assert_eq!(decoded.c, 9);
