@@ -344,10 +344,14 @@ are ledgered here (that's what the probe/gate error messages point at).
   distinct inline-group arm
   limitation, tracked as a known PANIC row in `tests/matrix_panic/`.
 - **Six panic-class families remaining from the recombination fuzzer's sweeps**
-  (`src/tests/recombination_tests.rs`; each pinned as a `tests/robustness/` PANIC row and cited in
-  the sweep's `KNOWN_PANIC_CLASSES` ledger — the matrix has no containment cells for these shapes,
-  which is itself the coverage gap the fuzzer exists to find; a fifth, the inline map carrying a
-  group choice as a member/element type, now rejects gracefully with its array sibling —
+  (`src/tests/recombination_tests.rs`; each pinned as a `tests/robustness/` PANIC row — the first
+  four also cited in the sweep's `KNOWN_PANIC_CLASSES` ledger, while the last two were surfaced by
+  a TRANSIENT enumeration (a since-skipped vacuous filler shifted the composition indices) that the
+  current enumeration no longer composes, so the robustness rows alone keep them exercised (the
+  ledger's stale-pin guard forbids unobserved entries; a comment beside the ledger records the
+  re-add protocol). The matrix has no containment cells for any of these shapes,
+  which is itself the coverage gap the fuzzer exists to find; a further one, the inline map carrying
+  a group choice as a member/element type, now rejects gracefully with its array sibling —
   `tests/robustness/inline_group_choice_member.cddl` / `inline_array_group_choice_member.cddl`,
   both `error (graceful)` rows — though the matrix-cell coverage gap for those shapes stands):
   - `any` in member/element position (`a = [any]`, `{ k: any }`) panics intermediate/mod.rs's

@@ -517,8 +517,12 @@ records the ORDER (walked empirically for the `@used_as_elem` registration):
 7. Bump `query_q6_diff.ts`'s `VENDOR_FEATURE_COUNT` pin.
 8. Expect the regenerated recombination ingredients to SHIFT the sweep's deterministic composition
    indices: newly-explored compositions can surface latent panic classes that predate the feature
-   (the `dsl.rust_name` regen surfaced two). That is the fuzzer working, not a regression from the
-   feature — run the sweep and walk its promotion protocol before shipping the registration.
+   (the `dsl.rust_name` regen surfaced two — both robustness-pinned before the projection learned
+   to skip `example_extern_stub` rows as non-self-contained fillers, which reverted the shift).
+   That is the fuzzer working, not a regression from the feature — run the sweep AND the layer-2
+   execute gates, and walk the promotion/stale-pin protocol both directions before shipping the
+   registration (an index shift can also strand a `LAYER2_KNOWN_BAD` pin whose composition
+   disappears).
 
 If the directive is a comment-DSL tag, `corpus_detect.ts`'s `MIRRORED_DIRECTIVES` lockstep
 tripwire also fires until the mirror (plus selfCheck vectors for any new grammar) is extended —

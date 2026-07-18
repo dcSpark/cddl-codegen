@@ -30,11 +30,6 @@
       "feature": "ctl.size.uint"
     },
     {
-      "aux": [],
-      "expr": "[x: foo, y: uint]",
-      "feature": "dsl.rust_name"
-    },
-    {
       "aux": [
         "pair<k, v> = [k, v]"
       ],
@@ -741,6 +736,10 @@
     {
       "feature": "dsl.raw_bytes_flavor",
       "reason": "generic-parameterized root; RHS is not a standalone expression"
+    },
+    {
+      "feature": "dsl.rust_name",
+      "reason": "extern-scope directive: example depends on a directory-input stub, not self-contained"
     },
     {
       "feature": "dsl.used_as_elem",
