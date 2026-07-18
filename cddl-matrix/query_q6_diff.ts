@@ -19,13 +19,16 @@
  *
  * `--check` (NO-ARGS mode only): consistency — every feature's `profile` ∈ the known set — plus a
  * vacuity floor (>= 2 profiles present; RFC9682 introduces >= 1 feature; CDDL_CODEGEN introduces exactly
- * the pinned `VENDOR_FEATURE_COUNT` vendor features). It never rewrites anything.
+ * the pinned `VENDOR_FEATURE_COUNT` vendor features) plus an annotation-completeness floor (every
+ * registered feature id carries a `[[support]]` annotation id in annotations/cddl_codegen.toml —
+ * one-directional inclusion, since the annotation set is a SUPERSET that also covers containment /
+ * control-op ids). It never rewrites anything.
  *
  * Run from cddl-matrix/:
  *   bun run query_q6_diff.ts                       -> the per-profile view (introduced + support split)
  *   bun run query_q6_diff.ts RFC9682               -> only the profile whose name contains "RFC9682"
  *   bun run query_q6_diff.ts old.json new.json      -> structural diff between two snapshots
- *   bun run query_q6_diff.ts --check                -> profile-set consistency + vacuity floor; exit nonzero on any
+ *   bun run query_q6_diff.ts --check                -> profile-set consistency + vacuity + annotation-completeness floors; exit nonzero on any
  */
 import { readFileSync } from "node:fs";
 
@@ -144,6 +147,26 @@ function profileView(filter: string | undefined): void {
   }
 }
 
+// The annotation-completeness floor, extracted so a selfCheck can exercise it without matrix.json.
+// One-directional inclusion: the annotation set is a SUPERSET of the feature set (it also carries
+// containment-cell and control-op ids), so we assert only that every feature id appears among the
+// annotation ids — not the reverse. Returns the missing feature ids, sorted (deterministic).
+function missingFeatureAnnotations(featureIds: Iterable<string>, annotationIds: Iterable<string>): string[] {
+  const annos = new Set(annotationIds);
+  return [...featureIds].filter(id => !annos.has(id)).sort();
+}
+
+// selfCheck: the inclusion floor can't silently go vacuous — a synthetic hole must flag exactly the
+// missing id, and a complete (superset) annotation set must flag nothing. Run in the --check path.
+function selfCheck(): void {
+  const hole = missingFeatureAnnotations(["a", "b", "c"], ["a", "c", "extra"]);
+  if (hole.length !== 1 || hole[0] !== "b")
+    throw new Error(`selfCheck: annotation floor should flag exactly \`b\`, got [${hole.join(", ")}]`);
+  const inclusive = missingFeatureAnnotations(["a", "b"], ["a", "b", "containment.x"]);
+  if (inclusive.length)
+    throw new Error(`selfCheck: annotation floor false-flagged [${inclusive.join(", ")}] on a complete (superset) annotation set`);
+}
+
 function checkProblems(): string[] {
   const matrix = loadMatrix(`${HERE}/matrix.json`);
   const ps: string[] = [];
@@ -159,6 +182,17 @@ function checkProblems(): string[] {
   if (count("RFC9682") < 1) ps.push(`RFC9682 introduces ${count("RFC9682")} features (expected >= 1) — the profile split broke`);
   if (count(VENDOR_PROFILE) !== VENDOR_FEATURE_COUNT)
     ps.push(`${VENDOR_PROFILE} introduces ${count(VENDOR_PROFILE)} features (expected exactly ${VENDOR_FEATURE_COUNT}) — the vendor surface changed`);
+  // Annotation-completeness floor: every registered feature must carry a [[support]] annotation.
+  const missing = missingFeatureAnnotations(
+    matrix.features.map(f => f.id),
+    matrix.annotations.cddl_codegen.map(a => a.id),
+  );
+  if (missing.length)
+    ps.push(
+      `${missing.length} registered feature(s) carry no [[support]] annotation: ${missing.join(", ")} — ` +
+        `support rows are machine-minted by a passing full \`bun run verify.ts\` (see the annotations/cddl_codegen.toml header), ` +
+        `so run it to mint the missing row(s), or consciously ledger why the feature can't be probed`,
+    );
   return ps;
 }
 
@@ -179,6 +213,7 @@ if (positional.length > 2) {
 }
 
 if (isCheck) {
+  selfCheck(); // the inclusion floor can't go vacuous unnoticed
   const ps = checkProblems();
   if (ps.length) {
     console.log(`Q6 profile-diff gate: ${ps.length} problem(s)`);
@@ -190,7 +225,8 @@ if (isCheck) {
   const count = (p: string) => matrix.features.filter(f => f.profile === p).length;
   console.log(
     `Q6 profile-diff gate OK — ${present.length} profiles (${present.map(p => `${p}=${count(p)}`).join(", ")}) · ` +
-      `all feature profiles ∈ known set · ${VENDOR_PROFILE} introduces exactly ${VENDOR_FEATURE_COUNT} vendor features`,
+      `all feature profiles ∈ known set · ${VENDOR_PROFILE} introduces exactly ${VENDOR_FEATURE_COUNT} vendor features · ` +
+      `all ${matrix.features.length} registered features carry a [[support]] annotation`,
   );
   process.exit(0);
 }

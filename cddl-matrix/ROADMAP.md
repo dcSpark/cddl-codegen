@@ -46,17 +46,6 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
   supports it; wire it into `project_corpus.ts` if a consumer wants the complete matrix view.
-- **Annotation-completeness floor: every registered feature must carry a support annotation, checked
-  sub-second.** Add a no-cargo set-inclusion check — every `[[feature]]` id in the authored
-  `features/*.toml` appears as a `[[support]]` id in `annotations/cddl_codegen.toml` — homed in an
-  existing sub-second `--check` gate (`build_matrix_check`, or `query_q6_diff.ts --check` beside its
-  `VENDOR_FEATURE_COUNT` vacuity floor), so an unannotated registration fails at local tier. This
-  closes the class where a registration ships an annotation HOLE no fast/local gate can see: support
-  annotations are machine-minted only by a passing full `verify.ts` run, so the projections render
-  the hole's row without a verdict, every generated count span stays self-consistent with the hole,
-  and the next wholesale regeneration backfills it silently inside unrelated work (proven:
-  `dsl.raw_bytes_flavor` registered without a `[[support]]` row in `422bbde`, green at every
-  sub-full tier until the flavor-row delivery's full verify run backfilled it in `6013724`).
 
 ## F4 / F5 follow-ons (only when their consumer exists)
 
