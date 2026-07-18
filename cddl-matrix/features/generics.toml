@@ -96,8 +96,11 @@ rfc = "RFC8610 §3.10; ABNF genericarg / type1"
 profile = "RFC8610"
 title = "Type-expression argument"
 desc = "A generic argument may be any type1 expression (e.g. a range or controlled type), not just a named type."
-# Rule named `inst`, not `r`: a single-letter rule `r` capitalizes to `R`, which collides with the
-# generated deserializer's reader generic `R` (a cddl-codegen bug, recorded as a finding) and fails to
-# compile. The construct (a type1 range as a generic arg) works fine under any non-colliding name.
+# Rule named `inst`, not `r`: a single-letter rule `r` USED to capitalize to `R` and collide with the
+# deserializer's reader generic `R` (E0574); the cbor_event 3.x de-generification dropped those
+# serialize/deserialize fn generics and the collision class with them — now swept and pinned by
+# `src/tests/identifier_hazard_tests.rs` (its `EXPECTED_COMPILE_FAIL` list is empty). The name stays
+# `inst` to avoid re-minting this example's evidence; the construct (a type1 range as a generic arg)
+# works under any name.
 example = "foo<a> = [a]\ninst = foo<1..10>"
 roles = ["role.generic-arg"]

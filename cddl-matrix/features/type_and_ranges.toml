@@ -32,8 +32,11 @@ rfc = "RFC8610 §2.2.2; ABNF type / type-choice"
 profile = "RFC8610"
 title = "Type choice (/)"
 desc = "Assembles two or more type1 alternatives into a single type with the `/` operator; a value matches if it matches any branch."
-# Members chosen to compile: a `bool` member makes the generated choice need type annotations (E0282, a
-# cddl-codegen bug recorded as a finding). These three isolate the `/` construct and compile cleanly.
+# Members steered off `bool`: a `bool` member USED to make the generated choice need type annotations
+# (E0282); that is now fixed (the cbor_event 3.x de-generification removed the reader/writer fn generics
+# that left the bool arm's type unconstrained) and pinned by `tests/corpus/bool_choice.cddl`. These three
+# still isolate the `/` construct itself — `bool` is owned by `bool.cddl`, so a `bool` member here would
+# conflate the two constructs — and compile cleanly.
 example = "t = uint / tstr / bytes"
 roles = ["role.choice-member"]
 

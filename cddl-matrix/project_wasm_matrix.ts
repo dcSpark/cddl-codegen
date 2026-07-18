@@ -28,8 +28,11 @@ const DIR = `${HERE}/../tests/matrix_wasm`;
 const CHECK = process.argv.includes("--check");
 
 // --- Axis 1: wasm-ABI type-shapes. Each shape supplies its named-type definition(s) plus the type
-// name to place in a role. Type names are multi-letter to dodge the single-letter reader/writer/generic
-// generics (`R`/`W`/`T`) the deserializer/serializer emit (a rule named `r`/`w` collides -> E0574).
+// name to place in a role. Type names are kept multi-letter for historical reasons: a single-letter rule
+// `r`/`w` USED to collide (E0574) with the reader/writer generics `R`/`W` the pre-cbor_event-3.x
+// serialize/deserialize fns carried. The 3.x de-generification dropped those fn generics (and cddl-codegen
+// monomorphizes user generics, so no live `T` param survives either), closing the class — swept and pinned
+// by `src/tests/identifier_hazard_tests.rs`. Names stay multi-letter to avoid re-minting every wasm fixture.
 interface Shape {
   defs: string[]; // named-type definitions, authored dependency order (CDDL itself is order-free)
   ty: string; // the type placed in the role

@@ -115,6 +115,71 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "bool_choice.bool_or_text"
+axis = "corpus"
+example = "bool_or_text = bool / tstr"
+fixture = "bool_choice"
+rule = "bool_or_text"
+spec = "__probe_holder = [0, bool_or_text]\nbool_or_text = bool / tstr"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82006662726964616c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200686f6d6e69766f7265"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200f4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200f5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "bool_choice.uint_or_bool"
+axis = "corpus"
+example = "uint_or_bool = uint / bool"
+fixture = "bool_choice"
+rule = "uint_or_bool"
+spec = "__probe_holder = [0, uint_or_bool]\nuint_or_bool = uint / bool"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820019092b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200190e7c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200191112"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200f4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200f5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "bounded_bytes.hash"
 axis = "corpus"
 example = "hash = bytes .size (0..32)"

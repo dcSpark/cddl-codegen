@@ -1,0 +1,45 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod serialization;
+
+use crate::generated::error::*;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub enum BoolOrText {
+    Bool(bool),
+    Text(String),
+}
+
+impl BoolOrText {
+    pub fn new_bool(bool: bool) -> Self {
+        Self::Bool(bool)
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text(text)
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub enum UintOrBool {
+    U64(u64),
+    Bool(bool),
+}
+
+impl UintOrBool {
+    pub fn new_uint(uint: u64) -> Self {
+        Self::U64(uint)
+    }
+
+    pub fn new_bool(bool: bool) -> Self {
+        Self::Bool(bool)
+    }
+}

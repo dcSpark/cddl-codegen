@@ -221,11 +221,28 @@ generated-only view, invisible to any glob-edge model).
   `current_capacities.mdx` — hand limitation prose in any other doc is outside every scanner.
   Working rules meanwhile: a limitation recorded in user docs names its tracking artifact (the
   reject/panic fixture, pin, or ledger entry) in the same paragraph; and a fixing session greps
-  `docs/` for the limitation's key phrases before shipping. Mechanical layer on the SECOND
-  instance: a limitation-claims arm on `lint_doc_citations` — every known-limitation-classed
-  paragraph outside a generated span must carry a resolvable tracking citation — or fold such
-  prose into a projected span (the matrix north star's "more docs follow"), making hand-maintained
-  limitation claims structurally impossible to orphan.
+  `docs/` for the limitation's key phrases before shipping.
+  SECOND instance SET, a DIFFERENT home (the corpus findings ledger, read-caught during the
+  findings-sweep delivery): `cddl-matrix/annotations/corpus/cddl_codegen.toml` carried failure-claim
+  `[[finding]]`s (and the sibling `prelude.*`/`value.*` `[[note]]`s) whose defects had been fixed out
+  from under them — the `bool`-in-type-choice E0282 and single-letter-`r` E0574 findings (closed by the
+  cbor_event 3.x de-generification, which dropped the reader/writer fn generics), the inline-group
+  data-loss "Bug" (closed by the inline-group flatten fix — the entry now generates a 2-field struct),
+  and the top-level fixed-value "panics" prose (the values now REJECT GRACEFULLY, and the "fails as a
+  member too" half was falsified by fixed-value member support). These render into `tests/corpus/COVERAGE.md`,
+  a GENERATED span — invisible to `lint_doc_citations`, which scans hand docs only — so that gate could
+  never have caught them. The named mechanical layer is now BUILT for THIS home: a findings-claims arm in
+  `project_corpus.ts` (check `I`) fails the local tier when a failure-claim finding ("Bug —"/"Gap —" or
+  "Candidate cddl-codegen fix") names no resolvable tracking pin (a `tests/…` file or a `src/tests/`
+  symbol) — the bool-choice closure now owned by the `bool_choice.cddl` corpus fixture, the `r`/`w`
+  hazard by `identifier_hazard_tests.rs`, and the graceful top-level rejects by the
+  `unsupported_construct_reject_catalog` scorecard. What stays OUTSIDE the
+  arm: a citation that RESOLVES does not validate the claim's SEMANTICS (whether a fix is genuinely
+  needed / the claim is still true) — that stays review-owned. And the USER-DOCS home from the first
+  instance is still working-rule-only: a parallel limitation-claims arm on `lint_doc_citations` — every
+  known-limitation-classed paragraph outside a generated span must carry a resolvable tracking citation,
+  or be folded into a projected span (the matrix north star's "more docs follow") — remains future work,
+  since the two homes have different scanners and neither arm sees the other's prose.
 - **Observed-baseline comments beside gate floors rot silently — TWO instances, two homes, two
   distinct rot modes; the floors/consts stay the enforced artifact.** These comments are
   informational and review-maintained by design (replacing them with exact gate-asserted counts

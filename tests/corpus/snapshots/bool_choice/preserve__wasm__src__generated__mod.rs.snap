@@ -1,0 +1,155 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct BoolOrText(pub(crate) cddl_lib::BoolOrText);
+
+#[wasm_bindgen]
+impl BoolOrText {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<BoolOrText, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_bool(bool: bool) -> Self {
+        Self(cddl_lib::BoolOrText::new_bool(bool))
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self(cddl_lib::BoolOrText::new_text(text))
+    }
+
+    pub fn kind(&self) -> BoolOrTextKind {
+        match &self.0 {
+            cddl_lib::BoolOrText::Bool(_) => BoolOrTextKind::Bool,
+            cddl_lib::BoolOrText::Text { .. } => BoolOrTextKind::Text,
+        }
+    }
+
+    pub fn as_bool(&self) -> Option<bool> {
+        match &self.0 {
+            cddl_lib::BoolOrText::Bool(bool) => Some(*bool),
+            _ => None,
+        }
+    }
+
+    pub fn as_text(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::BoolOrText::Text { text, .. } => Some(text.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::BoolOrText> for BoolOrText {
+    fn from(native: cddl_lib::BoolOrText) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BoolOrText> for cddl_lib::BoolOrText {
+    fn from(wasm: BoolOrText) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::BoolOrText> for BoolOrText {
+    fn as_ref(&self) -> &cddl_lib::BoolOrText {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum BoolOrTextKind {
+    Bool,
+    Text,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct UintOrBool(pub(crate) cddl_lib::UintOrBool);
+
+#[wasm_bindgen]
+impl UintOrBool {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<UintOrBool, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_uint(uint: u64) -> Self {
+        Self(cddl_lib::UintOrBool::new_uint(uint))
+    }
+
+    pub fn new_bool(bool: bool) -> Self {
+        Self(cddl_lib::UintOrBool::new_bool(bool))
+    }
+
+    pub fn kind(&self) -> UintOrBoolKind {
+        match &self.0 {
+            cddl_lib::UintOrBool::U64 { .. } => UintOrBoolKind::U64,
+            cddl_lib::UintOrBool::Bool(_) => UintOrBoolKind::Bool,
+        }
+    }
+
+    pub fn as_uint(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::UintOrBool::U64 { uint, .. } => Some(*uint),
+            _ => None,
+        }
+    }
+
+    pub fn as_bool(&self) -> Option<bool> {
+        match &self.0 {
+            cddl_lib::UintOrBool::Bool(bool) => Some(*bool),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::UintOrBool> for UintOrBool {
+    fn from(native: cddl_lib::UintOrBool) -> Self {
+        Self(native)
+    }
+}
+
+impl From<UintOrBool> for cddl_lib::UintOrBool {
+    fn from(wasm: UintOrBool) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::UintOrBool> for UintOrBool {
+    fn as_ref(&self) -> &cddl_lib::UintOrBool {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum UintOrBoolKind {
+    U64,
+    Bool,
+}

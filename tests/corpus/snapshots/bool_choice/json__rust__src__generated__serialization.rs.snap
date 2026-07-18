@@ -1,0 +1,61 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for BoolOrText {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            BoolOrText::Bool(bool) => serializer.write_special(cbor_event::Special::Bool(*bool)),
+            BoolOrText::Text(text) => serializer.write_text(text),
+        }
+    }
+}
+
+impl Deserialize for BoolOrText {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::Special => Ok(BoolOrText::Bool(bool::deserialize(raw)?)),
+                cbor_event::Type::Text => Ok(BoolOrText::Text(raw.text()?)),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("BoolOrText"))
+    }
+}
+
+impl cbor_event::se::Serialize for UintOrBool {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            UintOrBool::U64(uint) => serializer.write_unsigned_integer(*uint),
+            UintOrBool::Bool(bool) => serializer.write_special(cbor_event::Special::Bool(*bool)),
+        }
+    }
+}
+
+impl Deserialize for UintOrBool {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => Ok(UintOrBool::U64(raw.unsigned_integer()?)),
+                cbor_event::Type::Special => Ok(UintOrBool::Bool(bool::deserialize(raw)?)),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("UintOrBool"))
+    }
+}

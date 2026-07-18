@@ -1,0 +1,60 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+pub mod serialization;
+
+use crate::generated::error::*;
+use crate::generated::serialization::StringEncoding;
+
+#[derive(Clone, Debug)]
+pub enum BoolOrText {
+    Bool(bool),
+    Text {
+        text: String,
+        text_encoding: StringEncoding,
+    },
+}
+
+impl BoolOrText {
+    pub fn new_bool(bool: bool) -> Self {
+        Self::Bool(bool)
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text {
+            text,
+            text_encoding: StringEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum UintOrBool {
+    U64 {
+        uint: u64,
+        uint_encoding: Option<cbor_event::Sz>,
+    },
+    Bool(bool),
+}
+
+impl UintOrBool {
+    pub fn new_uint(uint: u64) -> Self {
+        Self::U64 {
+            uint,
+            uint_encoding: None,
+        }
+    }
+
+    pub fn new_bool(bool: bool) -> Self {
+        Self::Bool(bool)
+    }
+}
