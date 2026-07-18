@@ -233,6 +233,15 @@ wrappers all back their inner `Vec`/`BTreeMap`/`OrderedHashMap`/`NonEmptyVec`/`N
 visibility is the macro's choice, not the generator's — give that macro a `pub(crate)` field if its
 wrappers are hand-augmented.
 
+When a wasm wrapper's `pub(crate)` tuple-field line would exceed rustfmt's default `max_width` (100
+columns) — long generic map/list types with fully-qualified paths — the wrapper is emitted with a
+`#[rustfmt::skip]` attribute and a two-line citation comment, and its field is laid out in the
+canonical two-line tuple shape by the generator itself. This works around
+[rust-lang/rustfmt#5703](https://github.com/rust-lang/rustfmt/issues/5703), where rustfmt breaks the
+line right after the field visibility, leaves trailing whitespace, and exits with an internal error
+(which the generator treats as fatal). The skip freezes exactly the bytes rustfmt would otherwise
+produce, so it is removable once the upstream fix (PR #5708) ships and reaches consumers.
+
 ### Migrating from pre-split layouts
 
 Crates generated **before** the thin-root split have a monolithic `src/lib.rs` that carries the
