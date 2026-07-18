@@ -137,7 +137,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `prelude.eb64legacy` | ➖ | eb64legacy | extended-bytes prelude type reduces to `any`; rejected  [`unsupported cddl prelude type`] |
 | `prelude.eb64url` | ➖ | eb64url | extended-bytes prelude type reduces to `any`; rejected  [`unsupported cddl prelude type`] |
 | `prelude.encoded-cbor` | ✅ | encoded-cbor | `prelude.cddl` |
-| `prelude.false` | ➖ | false | the fixed boolean `false` used as a standalone type panics — same Fixed-type gap as `true`/`null` (fails as a struct member too).  [`should not expose Fixed type in member`] |
+| `prelude.false` | ➖ | false | the fixed boolean `false` used as a standalone top-level type is rejected gracefully — same graceful path as `true`/`null`; works as a struct/array member (`tests/corpus/fixed_bool_member.cddl`). Pinned by `tests/matrix_reject/prelude.false.cddl`.  [`a top-level rule whose entire body is a bare fixed value`] |
 | `prelude.float` | ⚠️ | float | de/ser works under default/json, but --preserve-encodings and bounds are unimplemented for floats (so float-bearing types can't be corpus entries — the corpus runs preserve; float JSON emission is covered by tests/json-float/ + its whole_program snapshot instead)  [`preserve_encodings is not implemented for float`] |
 | `prelude.float16` | ➖ | float16 | no native Rust f16 — the float alias system doesn't handle float16, so it panics even as a struct member (float32/float64 work).  [`should be handled by the alias system instead`] |
 | `prelude.float16-32` | ➖ | float16-32 | the float16/float32 choice alias isn't handled by the float alias system (it includes the unsupported float16); panics even as a member.  [`should be handled by the alias system instead`] |
@@ -147,15 +147,15 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `prelude.int` | ✅ | int | `primitives.cddl` |
 | `prelude.integer` | ✅ | integer | `prelude.cddl` |
 | `prelude.mime-message` | ✅ | mime-message | `prelude.cddl` |
-| `prelude.nil` | ➖ | nil | top-level `x = nil` (fixed null value) panics — same Fixed-type gap as `null`; works as a struct member (`[x: nil]`) but not as a standalone type.  [`should not expose Fixed type in member`] |
+| `prelude.nil` | ➖ | nil | top-level `x = nil` (fixed null value) is rejected gracefully — same graceful path as `null`; works as a struct member (`[x: nil]`) but not as a standalone type. Pinned by `tests/matrix_reject/prelude.nil.cddl`.  [`a top-level rule whose entire body is a bare fixed value`] |
 | `prelude.nint` | ✅ | nint | `primitives.cddl` |
-| `prelude.null` | ➖ | null | top-level `x = null` type panics — cddl-codegen exposes Fixed only as a struct member, not as a standalone type (same Fixed-type gap as the literal values). Its supported choice-member role is the [[cover]] above.  [`should not expose Fixed type in member`] — also ✅ @choice-member (`nullable.cddl`: the `T / null` -> Option<T> nullable pattern) |
+| `prelude.null` | ➖ | null | top-level `x = null` type is rejected gracefully — cddl-codegen exposes Fixed only as a struct member, not as a standalone type (same Fixed-type gap as the literal values); pinned by `tests/matrix_reject/prelude.null.cddl`. Its supported choice-member role is the [[cover]] above.  [`a top-level rule whose entire body is a bare fixed value`] — also ✅ @choice-member (`nullable.cddl`: the `T / null` -> Option<T> nullable pattern) |
 | `prelude.number` | ➕ | number | supported, no corpus fixture (cddl-codegen exit 0); --preserve-encodings unsupported (cddl-codegen panic (exit 101)) |
 | `prelude.regexp` | ✅ | regexp | `prelude.cddl` |
 | `prelude.tdate` | ✅ | tdate | `prelude.cddl` |
 | `prelude.text` | ✅ | text | `primitives.cddl` |
 | `prelude.time` | ➕ | time | supported, no corpus fixture (cddl-codegen exit 0); --preserve-encodings unsupported (cddl-codegen panic (exit 101)) |
-| `prelude.true` | ➖ | true | the fixed boolean `true` used as a standalone type panics; cddl-codegen exposes fixed values only for serialization, not as types (fails as a struct member too). Same Fixed-type gap as `null`.  [`should not expose Fixed type in member`] |
+| `prelude.true` | ➖ | true | the fixed boolean `true` used as a standalone top-level type is rejected gracefully (it used to panic); a fixed value has no standalone type representation, only meaning as a struct/array member — which DOES work (`tests/corpus/fixed_bool_member.cddl`). Pinned by `tests/matrix_reject/prelude.true.cddl`. Same Fixed-type gap as `null`.  [`a top-level rule whose entire body is a bare fixed value`] |
 | `prelude.tstr` | ✅ | tstr | `prelude.cddl` |
 | `prelude.uint` | ✅ | uint | `primitives.cddl` |
 | `prelude.undefined` | ➖ | undefined | the `undefined` simple value is rejected  [`unsupported cddl prelude type`] |
@@ -217,18 +217,18 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `type2.tag` | ✅ | Tagged data item (#6.n) | `tagged.cddl` |
 | `type2.typename` | ✅ | Type reference (with optional generic args) | `type_alias.cddl` |
 | `type2.unwrap` | ➖ | Unwrap (~) | unwrap `~` — Type2::Unwrap unmatched, catch-all panic  [`Type2::Unwrap`] |
-| `type2.value` | ➖ | Literal value as a type | a literal used as a top-level type (`answer = 42`) panics; cddl-codegen exposes Fixed only as a struct member, not as a standalone type. A real gap. Its supported array-element role is the [[cover]] above.  [`should not expose Fixed type in member`] — also ✅ @array-element (`fixed_value.cddl`: a literal as a fixed array-element value (`c: 5`)) |
+| `type2.value` | ➖ | Literal value as a type | a literal used as a top-level type (`answer = 42`) is rejected gracefully; cddl-codegen exposes Fixed only as a struct member, not as a standalone type. A real gap; pinned by `tests/matrix_reject/type2.value.cddl`. Its supported array-element role is the [[cover]] above.  [`a top-level rule whose entire body is a bare fixed value`] — also ✅ @array-element (`fixed_value.cddl`: a literal as a fixed array-element value (`c: 5`)) |
 
 ### `value` (6)
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
 | `value.bytes` | ➖ | Byte-string literal value | byte-string literal (h'..'/b64'..'/'..') as a value — Type2 unmatched (also a rust-parser limitation: ruby/ABNF accept)  [`Ignoring Type2`] |
-| `value.number` | ➖ | Numeric literal value | top-level numeric-literal type (`version = 5`) panics — same Fixed-type gap. Its supported array-element role is the [[cover]] above.  [`should not expose Fixed type in member`] — also ✅ @array-element (`fixed_value.cddl`: numeric literal member (`c: 5`)) |
+| `value.number` | ➖ | Numeric literal value | top-level numeric-literal type (`version = 5`) is rejected gracefully — same Fixed-type gap; pinned by `tests/matrix_reject/value.number.cddl`. Its supported array-element role is the [[cover]] above.  [`a top-level rule whose entire body is a bare fixed value`] — also ✅ @array-element (`fixed_value.cddl`: numeric literal member (`c: 5`)) |
 | `value.number.bin` | ➕ | Binary integer literal (0b…) | supported, no corpus fixture (cddl-codegen exit 0) |
 | `value.number.hex` | ➕ | Hexadecimal integer literal (0x…) | supported, no corpus fixture (cddl-codegen exit 0) |
 | `value.number.hexfloat` | ➕ | Hexadecimal float literal (hexfloat) | supported, no corpus fixture (cddl-codegen exit 0); --preserve-encodings unsupported (cddl-codegen panic (exit 101)) |
-| `value.text` | ➖ | Text literal value | top-level text-literal type (`marker = "v1"`) panics — same Fixed-type gap. Its supported array-element role is the [[cover]] above.  [`should not expose Fixed type in member`] — also ✅ @array-element (`fixed_value.cddl`: text literal member (`b: "marker"`)) |
+| `value.text` | ➖ | Text literal value | top-level text-literal type (`marker = "v1"`) is rejected gracefully — same Fixed-type gap; pinned by `tests/matrix_reject/value.text.cddl`. Its supported array-element role is the [[cover]] above.  [`a top-level rule whose entire body is a bare fixed value`] — also ✅ @array-element (`fixed_value.cddl`: text literal member (`b: "marker"`)) |
 
 ## RFC 9682 additions (newer than cddl-codegen's RFC 8610 target — out of profile)
 
@@ -320,17 +320,14 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 4. Sockets aren't really implemented — `$`/`$$` are stripped to plain identifiers, so `$x` silently aliases to `x`. Incremental choice extension via the `/=` / `//=` plug (extending an already-defined ident) is rejected gracefully at generation rather than silently narrowing to the last arm (see the assignt/assigng.extend notes).
 5. Float is fine until `--preserve-encodings` or bounds (the two `unimplemented!` sites) — the reason the corpus avoids floats.
 6. Methodology — the support probe is COMPILE-GATED (generate + `cargo check`), not exit-code-only. This caught a former false positive: `x = any` exits 0 but emits `pub type X = Any;` (a type defined nowhere) which fails to compile, so `prelude.any` is correctly ➖ (root cause: `any` is absent from `is_identifier_reserved` in src/utils.rs, so it's treated as an undefined user type). The same standalone-compile failure is expected-by-design for the extern/raw-bytes sentinels and @custom_serialize/@custom_deserialize — those are exempt (supported, but compile only with user-provided code; integration-tested).
-7. Bug — a type choice containing `bool` generates non-compiling Rust (`error[E0282]: type annotations needed`): `bool / tstr` and `uint / bool` fail, while `int / tstr` and `uint / text / bytes` compile. Surfaced by the compile-gate (the `type.choice` example was changed off `bool` to isolate the construct). Candidate cddl-codegen fix.
-8. Bug — a single-letter rule named `r` capitalizes to a struct `R` that collides with the generated deserializer's reader generic parameter `R` (`error[E0574]: ... found type parameter R`), so the crate fails to compile. Surfaced incidentally by the compile-gate; avoid `r` as a rule name. Candidate cddl-codegen fix.
-9. Gap — top-level fixed-value / null TYPES panic (`answer = 42`, `x = null` -> `should not expose Fixed type in member`), even though fixed values serialize fine as struct members. A singleton-value type is a reasonable feature; candidate cddl-codegen fix. (Surfaced by the matrix, not hidden by editing the example.)
-10. Single-field STRUCT maps are supported: `{ a: uint }` is a 1-field struct (a bareword key is sugar for the equivalent text-string value key), identical in wire shape to the multi-field `{ a: uint, b: text }` form. MIXED struct+table maps (`{ a: uint, * k => v }`) remain unsupported — a map is detected as EITHER a struct or a homogenous table, never both. Candidate cddl-codegen feature.
-11. Bug — an inline parenthesized group as an array entry drops all but its FIRST member: `[(uint, tstr)]` generates a 1-field `InlineGroup { index_0: u64 }` (`read_elems(1)`), silently losing the `tstr` (inline_group.cddl snapshot). It compiles (matrix probe = supported), but loses data — `grpent.inline_group` is marked ⚠️. Candidate cddl-codegen fix: inline-group entries aren't flattened into the record.
+7. Gap — top-level fixed-value / null TYPES (`answer = 42`, `x = null`) have no standalone type representation, so the generator REJECTS them gracefully (not a panic), pinned by the `tests/matrix_reject/` expect-reject catalog (`tests/matrix_reject/prelude.null.cddl`, `tests/matrix_reject/type2.value.cddl`, `tests/matrix_reject/value.number.cddl`, `tests/matrix_reject/value.text.cddl`) via `robustness_tests::unsupported_construct_reject_catalog`. The same fixed values serialize fine as struct/array MEMBERS (`tests/corpus/fixed_bool_member.cddl`). A singleton-value type that materializes the constant is still a reasonable feature; candidate cddl-codegen fix. (Surfaced by the matrix, not hidden by editing the example.)
+8. Single-field STRUCT maps are supported: `{ a: uint }` is a 1-field struct (a bareword key is sugar for the equivalent text-string value key), identical in wire shape to the multi-field `{ a: uint, b: text }` form. MIXED struct+table maps (`{ a: uint, * k => v }`) remain unsupported — a map is detected as EITHER a struct or a homogenous table, never both (now rejected gracefully). Candidate cddl-codegen feature.
 
 ## Summary
 
 - Features: **111** — ✅ 61 covered · ➕ 19 supported-untested · ⚠️ 4 partial · ➖ 27 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
-- Corpus fixtures: 70
+- Corpus fixtures: 71
 
 **Per-cell coverage (role × feature).** Where a construct's support *differs by role*,
 coverage is keyed on the (role × feature) cell, derived from a real `cddl`-crate AST walk

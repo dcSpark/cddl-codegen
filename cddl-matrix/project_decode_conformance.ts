@@ -634,6 +634,8 @@ for (const a of supportedAnnotations) {
 // the matrix § 7 EXPECTED_FLOOR_SCOPE pattern): a resolver change that silently widens/narrows the
 // in-scope set fails got/want. Classes are majors-0/1-merged ("int"). Pinned from the mint's actuals.
 const CORPUS_EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
+  "bool_choice.bool_or_text": ["3", "7"],   // `bool / tstr` — tstr → major 3, bool → major 7
+  "bool_choice.uint_or_bool": ["7", "int"], // `uint / bool` — uint → int (0/1-merged), bool → major 7
   "c_style_enum.fixed_enum": ["int"],
   "c_style_enum_map_key.fixed_enum": ["int"],
   "c_style_enum_newtype.fixed_enum": ["int"],

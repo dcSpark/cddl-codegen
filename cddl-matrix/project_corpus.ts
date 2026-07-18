@@ -32,7 +32,7 @@
  * ➖ as a standalone type still shows its supported member/choice role. The support seam (C) is reported
  * non-fatal — reconciling isolated-probe vs in-context support is its own step.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { featuresIn, rolesIn, NO_DETECTOR } from "./corpus_detect.ts";
 import overlay from "./annotations/corpus/cddl_codegen.toml";
 
@@ -200,6 +200,32 @@ for (const n of notes) {
     driftG.push(`\`${n.id}\`: code_anchor \`${n.code_anchor}\` not found in src/ (renamed/removed? the note is stale)`);
 }
 
+// --- I. findings-claims arm: a [[finding]] that states a FAILURE claim — a defect ("Bug —"/"Gap —") or
+//     a proposed "Candidate cddl-codegen fix" — must name at least one resolvable tracking artifact (an
+//     existing file under tests/, or a test-fn / ledger-const symbol in src/tests/), checked against the
+//     tree, so a finding whose pin disappears (or that never had one) fails LOUDLY here instead of rotting
+//     as prose. This is the FINDINGS-LEDGER home of the TESTING_ROADMAP "stale known-limitation prose
+//     surviving its fix" residual (fired by findings 7/8/11 + the prelude/value notes going stale in one
+//     new home): findings live in THIS overlay and render into COVERAGE.md — a GENERATED span — so
+//     lint_doc_citations (which scans hand docs only) can never see them; project_corpus.ts already parses
+//     and renders the `findings` array and reads src/, making it the arm's architectural home. A citation
+//     that RESOLVES does not validate the claim's SEMANTICS (whether a fix is genuinely needed) — that
+//     stays review-owned; this arm catches only an ABSENT pin.
+const TESTS_SRC = `${SRC}/tests`;
+const testsText = [...new Glob("**/*.rs").scanSync({ cwd: TESTS_SRC })].map(f => readFileSync(`${TESTS_SRC}/${f}`, "utf8")).join("\n");
+const isFailureClaim = (t: string) => /^(Bug|Gap)\s+—/.test(t) || /[Cc]andidate cddl-codegen fix/.test(t);
+const findingTokenResolves = (tok: string): boolean => {
+  if (tok.startsWith("tests/") && existsSync(`${HERE}/../${tok}`)) return true;   // fixture / hand vector / reject row
+  return testsText.includes(tok);                                                 // test fn name / ledger const in src/tests/
+};
+const staleFindingClaims: string[] = [];
+for (const f of findings) {
+  if (!isFailureClaim(f.text)) continue;
+  const tokens = [...f.text.matchAll(/`([^`\n]+)`/g)].map(m => m[1]!);
+  if (!tokens.some(findingTokenResolves))
+    staleFindingClaims.push(`failure-claim finding names no resolvable pin (need a \`tests/…\` file or a src/tests/ symbol): "${f.text.slice(0, 100)}…"`);
+}
+
 const w = (s = "") => console.log(s);
 w(`corpus overlay: ${featureCovers.length} feature-axis + ${cellCovers.length} per-cell (role×feature) assignments over ${files.length} fixtures`);
 w(`detected floor: ${detected.size} constructs exercised; ${coverIds.size} assigned a canonical fixture`);
@@ -223,6 +249,8 @@ if (staleF.length) { w(`❌ F. STALE NOTES (${staleF.length}):`); for (const x o
 else w(`✅ F. every note id is a real matrix id with a valid status.`);
 if (driftG.length) { w(`❌ G. BROKEN ANCHORS (${driftG.length}) — self-invalidating evidence no longer in src/:`); for (const x of driftG) w(`   - ${x}`); }
 else w(`✅ G. every code_anchor is still present in src/ (evidence holds).`);
+if (staleFindingClaims.length) { w(`❌ I. STALE FINDING CLAIMS (${staleFindingClaims.length}) — a failure-claim finding with no resolvable pin:`); for (const x of staleFindingClaims) w(`   - ${x}`); }
+else w(`✅ I. every failure-claim finding names a resolvable tracking pin (tests/ file or src/tests/ symbol).`);
 w();
 w(`ℹ️  C. SUPPORT SEAM (${seamC.length}) — a construct with a ✅ cover entry yet marked not-supported by the`);
 w(`   matrix (a directional mismatch — covered in one context, unsupported in another). Reported, not fatal;`);
@@ -411,7 +439,7 @@ o();
 // The committed doc is written only when the gate passes: a hard-failing overlay must not rewrite
 // COVERAGE.md with rows rendered from the very claims that just failed validation (CI would catch
 // the nonzero exit either way; this protects the LOCAL working tree from a poisoned regeneration).
-const hardFail = driftA.length || staleB.length || driftH.length || unassigned.length || driftE.length || staleF.length || driftG.length;
+const hardFail = driftA.length || staleB.length || driftH.length || unassigned.length || driftE.length || staleF.length || driftG.length || staleFindingClaims.length;
 w();
 if (hardFail) {
   w(`SKIPPED writing ${OUT.replace(`${HERE}/../`, "")} (hard failure — the committed doc is left untouched)`);
