@@ -401,25 +401,32 @@ dead loses the lesson.
   (`unused_parens` et al.): evaluate specific beyond-`all` lints one at a time, adding a per-lint
   deny only if it is currently green-able on both profiles (nursery lints carry known false
   positives). Act on a second instance or a consumer report, not before.
-- **`unused_imports` on the pruned collection-type imports — no rustc-warning gate yet.** The
-  usage-derived prune (`import_prune::prune_generated_files`, run once over the whole file map in
-  `generation/export.rs`'s `generated_files`) removes the blindly-pushed imports on its allowlist
+- **`unused_imports` on the pruned collection-type imports — residual imprecision classes not yet
+  escalated.** The usage-derived prune (`import_prune::prune_generated_files`, run once over the whole
+  file map in `generation/export.rs`'s `generated_files`) removes the blindly-pushed allowlist imports
   (`BTreeMap`/`OrderedHashMap`/`NonEmptyVec`/`NonEmptyMap` plus the `--preserve-encodings` enums
-  `LenEncoding`/`StringEncoding`) that a file's module family — the file
-  plus its strict path-descendant modules, the complete set of possible consumers of its private
-  imports — names nowhere. An over-prune that removes a needed import is caught LOUD by the
-  existing nested-cargo compile gates (E0412/E0433 — exactly what caught the first per-file
-  prototype); the uncovered direction is warning-severity residue: a future under-prune, or the
-  model's one remaining imprecision — a file is protected by ALL its descendants, including ones
-  that never actually glob-chain (`use super::*;` at each level) back to it, so a descendant using
-  a type through its own direct import can keep an ancestor's copy alive. Expected residue at
-  today's emission shapes is near zero (children reach parents via `use super::*;` uniformly). The
-  mechanical layer is a nested-cargo check failing on an `unused_imports` rustc warning whose ident
-  is one of the allowlisted names (`cargo build --message-format=json` filtered to
-  `unused_imports` diagnostics naming an allowlist ident); it would also measure the actual residue.
-  Build it if it slots into an existing nested-cargo gate in ≤ ~30 lines. Exact glob-EDGE tracking
-  (protect only via descendants that actually glob-chain to the file) replaces the descendant
-  closure only on a real warning report — not before.
+  `LenEncoding`/`StringEncoding`) that no descendant in a file's module family genuinely consumes. The
+  rustc-warning DETECTOR is now live: the unused-allowlisted-import scan
+  (`unused_allowlisted_import_lines`) inside `feature_corpus_compiles` fails on any `unused import`
+  warning naming an allowlist ident across the corpus fixtures × 3 profiles × {rust, wasm, and — under
+  the json profile — json-gen} crates of
+  purely-generated code, cache-key-versioned by the `lint=unused-imports-v1` marker so a closure-logic
+  change re-runs every cell. At its arming run it fired on **104 warning cells** (52 preserve-profile
+  fixtures × {rust, wasm}, every one a `LenEncoding`/`StringEncoding` import in a scope's `mod.rs`).
+  Root cause: the prune's view is generated-only — `serialization.rs`'s static prelude, which DEFINES
+  the two encoding enums, concatenates onto the root file AFTER the pass — so the `serialization.rs`
+  descendant appeared to consume `mod.rs`'s blindly-pushed re-import via `use super::*;` when at
+  compile time it resolves the enums at its own definition site. Closed in the same change by two
+  nearest-binding disqualifiers on a descendant's protection: it does not protect an ancestor's import
+  of X when it directly imports X, or when its module is at/under the module the import targets
+  (`use crate::<segs>::X;` → module `crate::<segs>`, derived from the import path precisely because the
+  definition is invisible to this pass). Still future-facing: the two deliberately-conservative
+  keep classes the disqualifiers do not cover — (a) an intermediate module between the ancestor and a
+  deeper protector that consumes the ancestor's copy for everything below it, and (b) descendants that
+  never actually glob-chain back to the ancestor (exact glob-EDGE tracking). Both are warning-severity
+  only (never a compile error) and now watched by the live arm; replacing the descendant-closure
+  approximation with exact resolution modelling happens only on a real warning report from that arm —
+  not before.
 - **Mechanical layers for the two review-owned design rules in `tests/README.md` § "Design
   rules" (invariant-softening, vacuity-floor witness) — build only if a class recurs.** The
   vacuity-floor detector is a scoped mutation sweep over the harness's emission helpers — a

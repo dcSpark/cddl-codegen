@@ -15,7 +15,6 @@ mod key_demand_assertions;
 pub mod serialization;
 
 use crate::generated::error::*;
-use crate::generated::serialization::{LenEncoding, StringEncoding};
 use cbor_encodings::KeyedEncoding;
 
 #[derive(Clone, Debug, derivative::Derivative)]

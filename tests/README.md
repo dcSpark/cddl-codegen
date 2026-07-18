@@ -1018,6 +1018,14 @@ construct must round-trip, not just compile, on both the rust and the wasm side.
 never compiles `#[cfg(test)]` code, so nothing but `cargo test` type-checks or runs the emitted
 `cddl_generated_wasm_tests` module below; the preserve/json profiles and json-gen stay check-only.)
 
+Because these crates are purely generated (no hand-appended scaffolding), the gate also doubles as
+the rustc-warning detector for the usage-derived import prune (`import_prune`): after each nested
+cargo invocation it scans stderr (`unused_allowlisted_import_lines`) and fails on any `unused
+import` warning naming an allowlisted collection/encoding ident — a warning-severity under-prune the
+compile-error gates (E0412/E0433, over-prune only) cannot see. The scan is versioned into the
+gate-cache key via a `lint=unused-imports-v1` marker so a change to its verdict re-runs every cached
+cell.
+
 Generated output lands in `tests/<dir>/export*/` — disposable, gitignored, and safe to
 `git clean -fdx tests` if the ~GBs of build artifacts pile up locally. CI starts clean each run.
 
