@@ -172,6 +172,14 @@ Rules:
   re-run the tier before claiming it green (the gate cache keeps already-passed cells cheap). A
   shipped "check.ts full green" commit claim was falsified exactly this way (2026-07-18, caught in
   review: 8 full-tier gates never ran on the shipped tree).
+- **When the tier CANNOT go green (e.g. another session's uncommitted state fails an early gate),
+  a "my work is green" decomposition must enumerate every gate fail-fast skipped and run each
+  one's underlying suite — omitting one is the same falsified-claim class.** Proven 2026-07-18: a
+  commit adding a comment-DSL directive ran its tier, fail-fasted on a foreign `build_matrix_check`
+  failure BEFORE `project_corpus` ever ran, and shipped with the directive missing from
+  `corpus_detect.ts`'s LOCKSTEP mirror — the drift its skipped gate exists to catch — masked for
+  two further commits until a clean-tree tier run surfaced it. The skipped-gate list is in the
+  tier's own output; walk it, don't sample it.
 - **TDD.** For every failure, ask what could have systematically caught it: add the missing test
   vector, or record the missing system in `tests/TESTING_ROADMAP.md`.
 
