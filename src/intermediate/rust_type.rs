@@ -970,6 +970,21 @@ impl ConceptualRustType {
         }
     }
 
+    /// A fixed value whose OPTIONAL member position is modeled with a `bool` presence field —
+    /// every fixed kind EXCEPT float. Float fixed members keep their pre-existing (unbound)
+    /// handling: under the default profile an optional fixed float silently contributes nothing,
+    /// and `--preserve-encodings` is a separate `unimplemented!` class for floats. Mandatory fixed
+    /// values (any kind) carry zero information and still get no field, so callers gate on
+    /// `field.optional` alongside this predicate.
+    pub fn is_fixed_value_non_float(&self) -> bool {
+        match self {
+            Self::Fixed(FixedValue::Float(_)) => false,
+            Self::Fixed(_) => true,
+            Self::Alias(_ident, ty) => ty.is_fixed_value_non_float(),
+            _ => false,
+        }
+    }
+
     pub fn name_as_wasm_array_ct(&self, types: &IntermediateTypes) -> String {
         if Self::Array(Box::new(self.clone().into())).directly_wasm_exposable_ct(types) {
             format!("Vec<{}>", self.for_wasm_member_ct(types))

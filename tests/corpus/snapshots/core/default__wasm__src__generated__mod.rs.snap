@@ -4035,6 +4035,246 @@ impl AsRef<cddl_lib::NullableSpecials> for NullableSpecials {
     }
 }
 
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OptFixedArr(pub(crate) cddl_lib::OptFixedArr);
+
+#[wasm_bindgen]
+impl OptFixedArr {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OptFixedArr, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn a(&self) -> u64 {
+        self.0.a
+    }
+
+    pub fn bfix(&self) -> bool {
+        self.0.bfix
+    }
+
+    pub fn set_bfix(&mut self, present: bool) {
+        self.0.bfix = present
+    }
+
+    pub fn b(&self) -> String {
+        self.0.b.clone()
+    }
+
+    pub fn new(a: u64, b: String) -> Self {
+        Self(cddl_lib::OptFixedArr::new(a, b))
+    }
+}
+
+impl From<cddl_lib::OptFixedArr> for OptFixedArr {
+    fn from(native: cddl_lib::OptFixedArr) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OptFixedArr> for cddl_lib::OptFixedArr {
+    fn from(wasm: OptFixedArr) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::OptFixedArr> for OptFixedArr {
+    fn as_ref(&self) -> &cddl_lib::OptFixedArr {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OptFixedArrLast(pub(crate) cddl_lib::OptFixedArrLast);
+
+#[wasm_bindgen]
+impl OptFixedArrLast {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OptFixedArrLast, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn a(&self) -> String {
+        self.0.a.clone()
+    }
+
+    pub fn ufix(&self) -> bool {
+        self.0.ufix
+    }
+
+    pub fn set_ufix(&mut self, present: bool) {
+        self.0.ufix = present
+    }
+
+    pub fn new(a: String) -> Self {
+        Self(cddl_lib::OptFixedArrLast::new(a))
+    }
+}
+
+impl From<cddl_lib::OptFixedArrLast> for OptFixedArrLast {
+    fn from(native: cddl_lib::OptFixedArrLast) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OptFixedArrLast> for cddl_lib::OptFixedArrLast {
+    fn from(wasm: OptFixedArrLast) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::OptFixedArrLast> for OptFixedArrLast {
+    fn as_ref(&self) -> &cddl_lib::OptFixedArrLast {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OptFixedArrNull(pub(crate) cddl_lib::OptFixedArrNull);
+
+#[wasm_bindgen]
+impl OptFixedArrNull {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OptFixedArrNull, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn a(&self) -> u64 {
+        self.0.a
+    }
+
+    pub fn nfix(&self) -> bool {
+        self.0.nfix
+    }
+
+    pub fn set_nfix(&mut self, present: bool) {
+        self.0.nfix = present
+    }
+
+    pub fn new(a: u64) -> Self {
+        Self(cddl_lib::OptFixedArrNull::new(a))
+    }
+}
+
+impl From<cddl_lib::OptFixedArrNull> for OptFixedArrNull {
+    fn from(native: cddl_lib::OptFixedArrNull) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OptFixedArrNull> for cddl_lib::OptFixedArrNull {
+    fn from(wasm: OptFixedArrNull) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::OptFixedArrNull> for OptFixedArrNull {
+    fn as_ref(&self) -> &cddl_lib::OptFixedArrNull {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OptFixedMap(pub(crate) cddl_lib::OptFixedMap);
+
+#[wasm_bindgen]
+impl OptFixedMap {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OptFixedMap, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn a(&self) -> u64 {
+        self.0.a
+    }
+
+    pub fn m_uint(&self) -> bool {
+        self.0.m_uint
+    }
+
+    pub fn set_m_uint(&mut self, present: bool) {
+        self.0.m_uint = present
+    }
+
+    pub fn m_text(&self) -> bool {
+        self.0.m_text
+    }
+
+    pub fn set_m_text(&mut self, present: bool) {
+        self.0.m_text = present
+    }
+
+    pub fn m_nint(&self) -> bool {
+        self.0.m_nint
+    }
+
+    pub fn set_m_nint(&mut self, present: bool) {
+        self.0.m_nint = present
+    }
+
+    pub fn m_bool(&self) -> bool {
+        self.0.m_bool
+    }
+
+    pub fn set_m_bool(&mut self, present: bool) {
+        self.0.m_bool = present
+    }
+
+    pub fn m_null(&self) -> bool {
+        self.0.m_null
+    }
+
+    pub fn set_m_null(&mut self, present: bool) {
+        self.0.m_null = present
+    }
+
+    pub fn new(a: u64) -> Self {
+        Self(cddl_lib::OptFixedMap::new(a))
+    }
+}
+
+impl From<cddl_lib::OptFixedMap> for OptFixedMap {
+    fn from(native: cddl_lib::OptFixedMap) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OptFixedMap> for cddl_lib::OptFixedMap {
+    fn from(wasm: OptFixedMap) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::OptFixedMap> for OptFixedMap {
+    fn as_ref(&self) -> &cddl_lib::OptFixedMap {
+        &self.0
+    }
+}
+
 pub type OptText = Option<TaggedText>;
 
 #[derive(Clone, Debug)]

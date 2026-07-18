@@ -1,0 +1,241 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OptFixedArray(pub(crate) cddl_lib::OptFixedArray);
+
+#[wasm_bindgen]
+impl OptFixedArray {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OptFixedArray, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<OptFixedArray, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn x(&self) -> u64 {
+        self.0.x
+    }
+
+    pub fn flag(&self) -> bool {
+        self.0.flag
+    }
+
+    pub fn set_flag(&mut self, present: bool) {
+        self.0.flag = present
+    }
+
+    pub fn label(&self) -> String {
+        self.0.label.clone()
+    }
+
+    pub fn new(x: u64, label: String) -> Self {
+        Self(cddl_lib::OptFixedArray::new(x, label))
+    }
+}
+
+impl From<cddl_lib::OptFixedArray> for OptFixedArray {
+    fn from(native: cddl_lib::OptFixedArray) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OptFixedArray> for cddl_lib::OptFixedArray {
+    fn from(wasm: OptFixedArray) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::OptFixedArray> for OptFixedArray {
+    fn as_ref(&self) -> &cddl_lib::OptFixedArray {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OptFixedArrayNull(pub(crate) cddl_lib::OptFixedArrayNull);
+
+#[wasm_bindgen]
+impl OptFixedArrayNull {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OptFixedArrayNull, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<OptFixedArrayNull, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn x(&self) -> u64 {
+        self.0.x
+    }
+
+    pub fn nothing(&self) -> bool {
+        self.0.nothing
+    }
+
+    pub fn set_nothing(&mut self, present: bool) {
+        self.0.nothing = present
+    }
+
+    pub fn new(x: u64) -> Self {
+        Self(cddl_lib::OptFixedArrayNull::new(x))
+    }
+}
+
+impl From<cddl_lib::OptFixedArrayNull> for OptFixedArrayNull {
+    fn from(native: cddl_lib::OptFixedArrayNull) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OptFixedArrayNull> for cddl_lib::OptFixedArrayNull {
+    fn from(wasm: OptFixedArrayNull) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::OptFixedArrayNull> for OptFixedArrayNull {
+    fn as_ref(&self) -> &cddl_lib::OptFixedArrayNull {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OptFixedMap(pub(crate) cddl_lib::OptFixedMap);
+
+#[wasm_bindgen]
+impl OptFixedMap {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OptFixedMap, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<OptFixedMap, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn x(&self) -> u64 {
+        self.0.x
+    }
+
+    pub fn code(&self) -> bool {
+        self.0.code
+    }
+
+    pub fn set_code(&mut self, present: bool) {
+        self.0.code = present
+    }
+
+    pub fn tag(&self) -> bool {
+        self.0.tag
+    }
+
+    pub fn set_tag(&mut self, present: bool) {
+        self.0.tag = present
+    }
+
+    pub fn neg(&self) -> bool {
+        self.0.neg
+    }
+
+    pub fn set_neg(&mut self, present: bool) {
+        self.0.neg = present
+    }
+
+    pub fn off(&self) -> bool {
+        self.0.off
+    }
+
+    pub fn set_off(&mut self, present: bool) {
+        self.0.off = present
+    }
+
+    pub fn new(x: u64) -> Self {
+        Self(cddl_lib::OptFixedMap::new(x))
+    }
+}
+
+impl From<cddl_lib::OptFixedMap> for OptFixedMap {
+    fn from(native: cddl_lib::OptFixedMap) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OptFixedMap> for cddl_lib::OptFixedMap {
+    fn from(wasm: OptFixedMap) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::OptFixedMap> for OptFixedMap {
+    fn as_ref(&self) -> &cddl_lib::OptFixedMap {
+        &self.0
+    }
+}

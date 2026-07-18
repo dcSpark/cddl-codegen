@@ -270,3 +270,12 @@ nem_preserve = [ m: {+ uint => tstr} ]
 ; (see tests/core/input.cddl — bool-only here: preserve-encodings does not support floats)
 nullable_bool = bool / null
 nullable_specials = [b: nullable_bool]
+
+; --- OPTIONAL fixed-value members under --preserve-encodings ---
+; The presence `bool` coexists with the encoding vars: an encoding-ful fixed value (uint/nint/text)
+; keeps its width metadata keyed off the FIELD in the parent encoding struct, so a NON-CANONICAL
+; encoding of the constant (e.g. `? ufix: 5` written 0x1805 — a 2-byte uint) round-trips
+; byte-identically; the encoding-less bool/null carry only the presence bit. (No float: preserve is
+; unimplemented for floats.)
+opt_fixed_arr = [a: uint, ? ufix: 5, b: text]
+opt_fixed_map = {a: uint, ? m_uint: 5, ? m_text: "tag", ? m_nint: -7, ? m_bool: true, ? m_null: null}

@@ -4832,6 +4832,186 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "optional_fixed_member.opt_fixed_array"
+axis = "corpus"
+example = "opt_fixed_array = [x: uint, ? flag: true, label: text]"
+fixture = "optional_fixed_member"
+rule = "opt_fixed_array"
+spec = "__probe_holder = [0, opt_fixed_array]\nopt_fixed_array = [x: uint, ? flag: true, label: text]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200821906616b6469736170706f696e7473"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008219096b657768696368"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083190271f569677573736574696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200831906b9f5646d656e64"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200831909a6f56847616e6468692773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200831909d4f5686c6f6f6e65792773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083190a26f563746965"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083190a87f5687572696e61746573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083190f96f56b66756e64616d656e74616c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200831910c6f565436f782773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "optional_fixed_member.opt_fixed_array_null"
+axis = "corpus"
+example = "opt_fixed_array_null = [x: uint, ? nothing: null]"
+fixture = "optional_fixed_member"
+rule = "opt_fixed_array_null"
+spec = "__probe_holder = [0, opt_fixed_array_null]\nopt_fixed_array_null = [x: uint, ? nothing: null]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200811906df"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190896"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200811908f0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190cf5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082182df6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008219061cf6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190b45f6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190df1f6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190e03f6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190f77f6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "optional_fixed_member.opt_fixed_map"
+axis = "corpus"
+example = "opt_fixed_map = {x: uint, ? code: 5, ? tag: \"on\", ? neg: -3, ? off: false}"
+fixture = "optional_fixed_member"
+rule = "opt_fixed_map"
+spec = "__probe_holder = [0, opt_fixed_map]\nopt_fixed_map = {x: uint, ? code: 5, ? tag: \"on\", ? neg: -3, ? off: false}"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a161781901e1"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a2617819094463746167626f6e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a26178190dc5636f6666f4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a26178191155636e656722"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a3617819010f64636f64650563746167626f6e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a361781908ca64636f646505636e656722"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a36178190ed363746167626f6e636f6666f4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a4617819056664636f64650563746167626f6e636f6666f4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a4617819093864636f64650563746167626f6e636f6666f4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a56178190b0d64636f64650563746167626f6e636e656722636f6666f4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "parenthesized.basic"
 axis = "corpus"
 example = "basic = (uint)"

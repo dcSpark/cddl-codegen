@@ -14,8 +14,29 @@ pub(super) fn generate_array_struct_serialization(
     for field in record.fields.iter() {
         let field_expr = format!("{}{}", opt_self, field.name);
         if field.optional {
+            if field.rust_type.is_fixed_value_non_float() {
+                // Optional non-float fixed value: the `bool` presence field guards writing the
+                // constant. generate_serialize ignores the data expr for a Fixed type (it writes
+                // the literal), but still reads the encoding var under --preserve-encodings.
+                let mut opt_block = Block::new(format!("if {}{}", opt_self, field.name));
+                let mut config = SerializeConfig::for_field(&field_expr, field);
+                if vars_in_self {
+                    config = config.encoding_var_in_option_struct("self.encodings")
+                } else {
+                    config = config.expr_is_ref(true).encoding_var_is_ref(true)
+                }
+                gen_scope.generate_serialize(
+                    types,
+                    (&field.rust_type).into(),
+                    &mut opt_block,
+                    config,
+                    cli,
+                );
+                ser_func.push_block(opt_block);
+                continue;
+            }
             if field.rust_type.is_fixed_value() && !cli.preserve_encodings {
-                // we just want to skip this entirely if we aren't remembering enecodings
+                // fixed FLOAT value with encodings off: skip entirely (no field, nothing to write)
                 continue;
             }
             let (optional_field_check, field_expr, expr_is_ref) = if let Some(default_value) =
@@ -139,6 +160,12 @@ pub(super) fn generate_array_struct_deserialization(
             // don't set anything, only verify data
             if cli.annotate_fields {
                 (Cow::from(""), Cow::from("?;"))
+            } else if cli.preserve_encodings {
+                // preserve bool/null: the deserialize emits a trailing `()` value expr; without a
+                // terminating `;` the following statement fails to parse. (Non-preserve fixed
+                // deserialize asserts an empty `after` — it emits no value — so keep it empty
+                // there.)
+                (Cow::from(""), Cow::from(";"))
             } else {
                 (Cow::from(""), Cow::from(""))
             }
@@ -221,71 +248,205 @@ pub(super) fn generate_array_struct_deserialization(
                     format!("if vec![{types_str}].contains(&raw.cbor_type()?)")
                 }
             };
-            let type_check_block = Block::new(format!("{before}{type_check_cond}"));
-            let mut type_check_else = Block::new("else");
-            if cli.annotate_fields {
+            if field.rust_type.is_fixed_value_non_float() {
+                // === OPTIONAL non-float FIXED value -> `bool` presence field ===
+                // Peek the CBOR type; when it matches, verify the constant exactly as the
+                // mandatory path does (FixedValueMismatch on the wrong value) and record `true`;
+                // otherwise the presence stays `false`. Under --preserve-encodings the fixed value
+                // additionally carries encoding var(s) (uint/nint/text widths), threaded into the
+                // presence tuple `(true, enc)` alongside the bool exactly like the non-fixed
+                // optional path threads `(Some(value), enc)`.
                 let enc_fields = if cli.preserve_encodings {
-                    let resolved_rust_type = field.rust_type.clone().resolve_aliases();
-                    assert!(
-                        !resolved_rust_type.is_fixed_value(),
-                        "https://github.com/dcSpark/cddl-codegen/issues/205"
-                    );
-                    encoding_fields(types, &field.name, &resolved_rust_type, false, cli)
+                    encoding_fields(
+                        types,
+                        &field.name,
+                        &field.rust_type.clone().resolve_aliases(),
+                        false,
+                        cli,
+                    )
                 } else {
                     vec![]
                 };
-                let (some_map, defaults) = if !enc_fields.is_empty() {
-                    let enc_names_str = enc_fields
-                        .iter()
-                        .map(|enc| enc.field_name.clone())
-                        .collect::<Vec<String>>()
-                        .join(", ");
-                    (
-                        Cow::from(format!(
-                            "|({}, {})| (Some({}), {})",
-                            field.name, enc_names_str, field.name, enc_names_str
-                        )),
-                        Cow::from(format!(
-                            "(None, {})",
-                            enc_fields
-                                .iter()
-                                .map(|enc| enc.default_expr.to_owned())
-                                .collect::<Vec<String>>()
-                                .join(", ")
-                        )),
-                    )
+                let enc_names = enc_fields
+                    .iter()
+                    .map(|enc| enc.field_name.clone())
+                    .collect::<Vec<String>>();
+                // LHS binds the presence bool, plus any encoding vars under preserve.
+                let lhs = if enc_names.is_empty() {
+                    field.name.clone()
                 } else {
-                    (Cow::from("Some"), Cow::from("None"))
+                    format!("({}, {})", field.name, enc_names.join(", "))
                 };
+                let defaults = if enc_fields.is_empty() {
+                    "false".to_owned()
+                } else {
+                    format!(
+                        "(false, {})",
+                        enc_fields
+                            .iter()
+                            .map(|enc| enc.default_expr.to_owned())
+                            .collect::<Vec<String>>()
+                            .join(", ")
+                    )
+                };
+                let type_check_block = Block::new(format!("let {lhs} = {type_check_cond}"));
+                let mut type_check_else = Block::new("else");
                 let deser_config = DeserializeConfig::for_field(field, in_embedded, true);
-                gen_scope
-                    .generate_deserialize(
+                if cli.preserve_encodings {
+                    // Preserve: the fixed-value deserialize itself yields a Result whose Ok payload
+                    // is the encoding expr(s) (`Some(enc)` for uint/nint/text) or unit `()` for the
+                    // encoding-less bool/null. Map it to the presence tuple.
+                    let some_map = if enc_names.is_empty() {
+                        "|()| true".to_owned()
+                    } else {
+                        format!(
+                            "|{}| (true, {})",
+                            tuple_str(enc_names.clone()),
+                            enc_names.join(", ")
+                        )
+                    };
+                    if cli.annotate_fields {
+                        gen_scope
+                            .generate_deserialize(
+                                types,
+                                (&field.rust_type).into(),
+                                DeserializeBeforeAfter::new("", "", true),
+                                deser_config,
+                                cli,
+                            )
+                            .annotate(&field.name, "", &format!(".map({some_map})"))
+                            .wrap_in_block(type_check_block)
+                            .add_to_code(&mut deser_code);
+                        type_check_else.line(format!("Ok({defaults})"));
+                        type_check_else.after("?;");
+                    } else if enc_names.is_empty() {
+                        // encoding-less (bool/null): the deserialize emits its verify plus a
+                        // trailing `()` value expr. Terminate it (`;`) so the appended `true`
+                        // becomes the block's tail expression rather than a parse error.
+                        let mut present = gen_scope.generate_deserialize(
+                            types,
+                            (&field.rust_type).into(),
+                            DeserializeBeforeAfter::new("", ";", false),
+                            deser_config,
+                            cli,
+                        );
+                        present.content.line("true");
+                        present
+                            .wrap_in_block(type_check_block)
+                            .add_to_code(&mut deser_code);
+                        type_check_else.line(defaults);
+                        type_check_else.after(";");
+                    } else {
+                        // uint/nint/text: build the `(true, enc)` tuple directly around the
+                        // deserialize's encoding value expr.
+                        gen_scope
+                            .generate_deserialize(
+                                types,
+                                (&field.rust_type).into(),
+                                DeserializeBeforeAfter::new("(true, ", ")", false),
+                                deser_config,
+                                cli,
+                            )
+                            .wrap_in_block(type_check_block)
+                            .add_to_code(&mut deser_code);
+                        type_check_else.line(defaults);
+                        type_check_else.after(";");
+                    }
+                } else {
+                    // Non-preserve: verify only, no encoding vars — presence is a lone bool.
+                    let mut present = gen_scope.generate_deserialize(
                         types,
                         (&field.rust_type).into(),
-                        DeserializeBeforeAfter::new("", "", true),
+                        DeserializeBeforeAfter::new("", "", false),
                         deser_config,
                         cli,
-                    )
-                    .annotate(&field.name, "", &format!(".map({some_map})"))
-                    .wrap_in_block(type_check_block)
-                    .add_to_code(&mut deser_code);
-                type_check_else.line(format!("Ok({defaults})"));
+                    );
+                    if cli.annotate_fields {
+                        present.content.line("Ok(true)");
+                        present
+                            .annotate(&field.name, "", "")
+                            .wrap_in_block(type_check_block)
+                            .add_to_code(&mut deser_code);
+                        type_check_else.line("Ok(false)");
+                        type_check_else.after("?;");
+                    } else {
+                        present.content.line("true");
+                        present
+                            .wrap_in_block(type_check_block)
+                            .add_to_code(&mut deser_code);
+                        type_check_else.line("false");
+                        type_check_else.after(";");
+                    }
+                }
+                deser_code.content.push_block(type_check_else);
             } else {
-                let deser_config = DeserializeConfig::for_field(field, in_embedded, true);
-                gen_scope
-                    .generate_deserialize(
-                        types,
-                        (&field.rust_type).into(),
-                        DeserializeBeforeAfter::new("Some(", ")", false),
-                        deser_config,
-                        cli,
-                    )
-                    .wrap_in_block(type_check_block)
-                    .add_to_code(&mut deser_code);
-                type_check_else.line("None");
+                let type_check_block = Block::new(format!("{before}{type_check_cond}"));
+                let mut type_check_else = Block::new("else");
+                if cli.annotate_fields {
+                    let enc_fields = if cli.preserve_encodings {
+                        encoding_fields(
+                            types,
+                            &field.name,
+                            &field.rust_type.clone().resolve_aliases(),
+                            false,
+                            cli,
+                        )
+                    } else {
+                        vec![]
+                    };
+                    let (some_map, defaults) = if !enc_fields.is_empty() {
+                        let enc_names_str = enc_fields
+                            .iter()
+                            .map(|enc| enc.field_name.clone())
+                            .collect::<Vec<String>>()
+                            .join(", ");
+                        (
+                            Cow::from(format!(
+                                "|({}, {})| (Some({}), {})",
+                                field.name, enc_names_str, field.name, enc_names_str
+                            )),
+                            Cow::from(format!(
+                                "(None, {})",
+                                enc_fields
+                                    .iter()
+                                    .map(|enc| enc.default_expr.to_owned())
+                                    .collect::<Vec<String>>()
+                                    .join(", ")
+                            )),
+                        )
+                    } else {
+                        (Cow::from("Some"), Cow::from("None"))
+                    };
+                    let deser_config = DeserializeConfig::for_field(field, in_embedded, true);
+                    gen_scope
+                        .generate_deserialize(
+                            types,
+                            (&field.rust_type).into(),
+                            DeserializeBeforeAfter::new("", "", true),
+                            deser_config,
+                            cli,
+                        )
+                        .annotate(&field.name, "", &format!(".map({some_map})"))
+                        .wrap_in_block(type_check_block)
+                        .add_to_code(&mut deser_code);
+                    type_check_else.line(format!("Ok({defaults})"));
+                } else {
+                    let deser_config = DeserializeConfig::for_field(field, in_embedded, true);
+                    gen_scope
+                        .generate_deserialize(
+                            types,
+                            (&field.rust_type).into(),
+                            DeserializeBeforeAfter::new("Some(", ")", false),
+                            deser_config,
+                            cli,
+                        )
+                        .wrap_in_block(type_check_block)
+                        .add_to_code(&mut deser_code);
+                    type_check_else.line("None");
+                }
+                type_check_else.after(after);
+                deser_code.content.push_block(type_check_else);
             }
-            type_check_else.after(after);
-            deser_code.content.push_block(type_check_else);
         } else {
             // mandatory fields
             if cli.annotate_fields {
@@ -313,7 +474,13 @@ pub(super) fn generate_array_struct_deserialization(
                     .add_to_code(&mut deser_code);
             }
         }
-        if !field.rust_type.is_fixed_value() {
+        // A non-fixed field (its value) and an optional non-float fixed field (its `bool` presence)
+        // both contribute a struct field to the constructor; a mandatory fixed value (zero
+        // information) and an optional fixed FLOAT (kept unbound, see is_fixed_value_non_float) do
+        // not.
+        if !field.rust_type.is_fixed_value()
+            || (field.optional && field.rust_type.is_fixed_value_non_float())
+        {
             deser_ctor_fields.push((field.name.clone(), field.name.clone()));
         }
     }
@@ -428,7 +595,12 @@ fn build_map_field_deser_arm(
                 .add_to_code(&mut deser_block_code);
         } else {
             let (before, after) = if var_names_str.is_empty() {
-                ("".to_owned(), "")
+                // empty binding == a fixed value with no encoding var (bool / null): the
+                // deserialize emits a trailing `()` value expr. Terminate it (`;`) so the following
+                // `{field}_present = true;` parses — emitting a bare `()` leaves two adjacent
+                // statements without a separator (pre-existing under --annotate-fields=false, the
+                // sibling of the annotate branch's `?;`).
+                ("".to_owned(), ";")
             } else {
                 (format!("let {var_names_str} = "), ";")
             };
@@ -740,6 +912,24 @@ pub(super) fn codegen_struct(
                         ));
                     wrapper.s_impl.push_fn(getter);
                 }
+            } else if field.optional && field.rust_type.is_fixed_value_non_float() {
+                // Optional fixed value: the native struct stores presence as a `bool`. Expose that
+                // bit across the wasm boundary — getter returns it, setter sets it. (Mandatory
+                // fixed values carry no information and get no accessor, same as the rust side.)
+                let mut getter = codegen::Function::new(&field.name);
+                getter
+                    .arg_ref_self()
+                    .ret("bool")
+                    .vis("pub")
+                    .line(format!("self.0.{}", field.name));
+                wrapper.s_impl.push_fn(getter);
+                let mut setter = codegen::Function::new(format!("set_{}", field.name));
+                setter
+                    .arg_mut_self()
+                    .arg("present", "bool")
+                    .vis("pub")
+                    .line(format!("self.0.{} = present", field.name));
+                wrapper.s_impl.push_fn(setter);
             }
         }
         if new_can_fail {
@@ -844,6 +1034,26 @@ pub(super) fn codegen_struct(
             if let Some(comment) = &field.rule_metadata.comment {
                 codegen_field.doc(comment);
             }
+            native_struct.push_field(codegen_field);
+        } else if field.optional && field.rust_type.is_fixed_value_non_float() {
+            // An OPTIONAL fixed value carries exactly one bit — present or absent — so it needs a
+            // struct field to store it (a MANDATORY fixed value carries zero information and gets
+            // none). A `bool` (not `Option<()>`) crosses the wasm and serde/schemars boundaries
+            // cleanly. Optional fields aren't constructor args, so `new` defaults it to `false`.
+            let fixed_lit = match &field.rust_type.clone().resolve_aliases().conceptual_type {
+                ConceptualRustType::Fixed(FixedValue::Bool(b)) => b.to_string(),
+                ConceptualRustType::Fixed(FixedValue::Uint(u)) => u.to_string(),
+                ConceptualRustType::Fixed(FixedValue::Nint(i)) => i.to_string(),
+                ConceptualRustType::Fixed(FixedValue::Null) => "null".to_owned(),
+                ConceptualRustType::Fixed(FixedValue::Text(s)) => format!("\"{s}\""),
+                _ => unreachable!("is_fixed_value_non_float excludes float and non-fixed"),
+            };
+            native_new_block.line(format!("{}: false,", field.name));
+            let mut codegen_field = codegen::Field::new(format!("pub {}", field.name), "bool");
+            codegen_field.doc(format!(
+                "Whether the optional fixed value `{fixed_lit}` (CDDL `? {}: {fixed_lit}`) is present; `false` means absent.",
+                field.name
+            ));
             native_struct.push_field(codegen_field);
         }
     }
@@ -1141,8 +1351,11 @@ pub(super) fn codegen_struct(
                         //} else {
                         //}
                         let mut field_ser_block = if field.optional
-                            && field.rust_type.config.default.is_none()
+                            && field.rust_type.is_fixed_value_non_float()
                         {
+                            // optional fixed value: the `bool` presence field guards the write
+                            Block::new(format!("{} => if self.{}", field_index, field.name))
+                        } else if field.optional && field.rust_type.config.default.is_none() {
                             Block::new(format!(
                                 "{} => if let Some(field) = &self.{}",
                                 field_index, field.name
@@ -1174,7 +1387,11 @@ pub(super) fn codegen_struct(
                     for (_field_index, field, content) in ser_content.into_iter() {
                         if field.optional {
                             let optional_ser_field_check =
-                                if let Some(default_value) = &field.rust_type.config.default {
+                                if field.rust_type.is_fixed_value_non_float() {
+                                    // optional fixed value: the `bool` presence field guards the write
+                                    format!("if self.{}", field.name)
+                                } else if let Some(default_value) = &field.rust_type.config.default
+                                {
                                     format!(
                                         "if self.{} != {}",
                                         field.name,
@@ -1329,6 +1546,10 @@ pub(super) fn codegen_struct(
                     }
                     if !field.rust_type.is_fixed_value() {
                         ctor_block.line(format!("{},", field.name));
+                    } else if field.optional && field.rust_type.is_fixed_value_non_float() {
+                        // optional fixed value -> the struct's `bool` presence field is the
+                        // `{field}_present` flag (true iff the key was seen during the map loop)
+                        ctor_block.line(format!("{}: {}_present,", field.name, field.name));
                     }
                 }
                 if cli.preserve_encodings {

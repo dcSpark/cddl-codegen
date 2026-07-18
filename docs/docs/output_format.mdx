@@ -26,6 +26,41 @@ So the tag / fixed-value encoding for these is emitted at each use site. A conse
 
 **Item ordering within a file is alphabetical by name, not by kind.** Top-level items are emitted sorted **name-primary, kind-secondary**: alphabetically by the type's bare name (module path and generics ignored), interleaving structs, enums, impls, type aliases, and modules — so a type's `struct`/`enum` and its `impl`s sit together, and `type Foo` is placed alphabetically among everything rather than grouped with the other aliases. Within a single name the struct/enum definition comes first, then its impls. This canonical ordering is stable across unrelated changes to the input, which keeps diffs of generated code small. (It is independent of run-to-run determinism, which holds regardless.)
 
+## Optional fixed-value members
+
+A **mandatory** fixed-value member (`[v: true, x: uint]`, `{k: 5, x: uint}`) carries zero
+information — the constant is implied — so it gets no struct field; it only shows up in the
+(de)serialization code, which writes the literal and rejects a mismatch on read.
+
+An **optional** fixed-value member (`[x: uint, ? v: true]`, `{? k: 5, x: uint}`) carries exactly one
+bit: present or absent. That bit needs somewhere to live, so the field becomes a **`pub <name>:
+bool`** (`false` = absent, `true` = present), defaulted to `false` in `new()` (optional fields are
+never constructor arguments):
+
+```rust
+pub struct A {
+    pub x: u64,
+    /// Whether the optional fixed value `true` (CDDL `? v: true`) is present; `false` means absent.
+    pub v: bool,
+}
+```
+
+- **Serialize** writes the constant (and, under `--preserve-encodings`, replays its stored width)
+  iff the bool is `true`; the array length / map entry count includes the member only then.
+- **Deserialize** peeks the next item's CBOR type; on a match it verifies the constant exactly as a
+  mandatory member does (a wrong value is a `FixedValueMismatch`) and records `true`, otherwise
+  leaves the field `false`.
+- **wasm** exposes the bit as a getter `v() -> bool` and setter `set_v(present: bool)` on the
+  wrapper.
+- **JSON** (serde / schemars) treats it as a plain `bool` — `"v": false` when absent.
+
+`bool` is used rather than `Option<()>` precisely because it crosses the wasm and serde/schemars
+boundaries cleanly (wasm-bindgen has no `()` ABI, and serde collapses `Some(())`/`None`). Every
+in-scope fixed-value kind is covered — bool, null, uint, nint, text. (A fixed **float** in optional
+member position is the one exception: it keeps a pre-existing unbound handling and is unimplemented
+under `--preserve-encodings` — tracked by the "OPTIONAL fixed FLOAT member" entry in
+`cddl-matrix/ROADMAP.md`'s findings ledger and the `preserve_encodings_supports_floats` stub gate.)
+
 ## Non-empty containers
 
 An occurrence lower bound of exactly one — `[+ T]` and the equivalent `[1* T]` on arrays, `{+ k => v}`

@@ -410,3 +410,14 @@ nem_wire = { m: {+ uint => uint} }
 nullable_bool = bool / null
 nullable_float = float64 / null
 nullable_specials = [b: nullable_bool, f: nullable_float]
+
+; --- OPTIONAL fixed-value members: a `bool` presence field (false=absent, true=present) ---
+; An optional fixed value carries exactly one bit (present/absent), so it gets a `pub <name>: bool`
+; struct field — unlike a MANDATORY fixed value, which carries zero information and gets no field.
+; Array rep: the presence peek + verify honors the ambiguity guard (each optional fixed value's cbor
+; type must not overlap the following field) and the possibly-last Special-peek path (`? nfix: null`
+; in final position). Map rep spans all in-scope kinds (uint/text/nint/bool/null) as keyed entries.
+opt_fixed_arr = [a: uint, ? bfix: true, b: text]
+opt_fixed_arr_last = [a: text, ? ufix: 5]
+opt_fixed_arr_null = [a: uint, ? nfix: null]
+opt_fixed_map = {a: uint, ? m_uint: 5, ? m_text: "tag", ? m_nint: -7, ? m_bool: true, ? m_null: null}

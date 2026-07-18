@@ -1,0 +1,37 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+
+#[derive(Clone, Debug, Default)]
+pub struct OptFixedArrayEncoding {
+    pub len_encoding: LenEncoding,
+    pub x_encoding: Option<cbor_event::Sz>,
+    pub label_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct OptFixedArrayNullEncoding {
+    pub len_encoding: LenEncoding,
+    pub x_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct OptFixedMapEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub x_encoding: Option<cbor_event::Sz>,
+    pub x_key_encoding: StringEncoding,
+    pub code_encoding: Option<cbor_event::Sz>,
+    pub code_key_encoding: StringEncoding,
+    pub tag_encoding: StringEncoding,
+    pub tag_key_encoding: StringEncoding,
+    pub neg_encoding: Option<cbor_event::Sz>,
+    pub neg_key_encoding: StringEncoding,
+    pub off_key_encoding: StringEncoding,
+}

@@ -1,0 +1,82 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+pub mod cbor_encodings;
+pub mod serialization;
+
+use crate::generated::error::*;
+use cbor_encodings::{OptFixedArrayEncoding, OptFixedArrayNullEncoding, OptFixedMapEncoding};
+
+#[derive(Clone, Debug)]
+pub struct OptFixedArray {
+    pub x: u64,
+    /// Whether the optional fixed value `true` (CDDL `? flag: true`) is present; `false` means absent.
+    pub flag: bool,
+    pub label: String,
+    pub encodings: Option<OptFixedArrayEncoding>,
+}
+
+impl OptFixedArray {
+    pub fn new(x: u64, label: String) -> Self {
+        Self {
+            x,
+            flag: false,
+            label,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct OptFixedArrayNull {
+    pub x: u64,
+    /// Whether the optional fixed value `null` (CDDL `? nothing: null`) is present; `false` means absent.
+    pub nothing: bool,
+    pub encodings: Option<OptFixedArrayNullEncoding>,
+}
+
+impl OptFixedArrayNull {
+    pub fn new(x: u64) -> Self {
+        Self {
+            x,
+            nothing: false,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct OptFixedMap {
+    pub x: u64,
+    /// Whether the optional fixed value `5` (CDDL `? code: 5`) is present; `false` means absent.
+    pub code: bool,
+    /// Whether the optional fixed value `"on"` (CDDL `? tag: "on"`) is present; `false` means absent.
+    pub tag: bool,
+    /// Whether the optional fixed value `-3` (CDDL `? neg: -3`) is present; `false` means absent.
+    pub neg: bool,
+    /// Whether the optional fixed value `false` (CDDL `? off: false`) is present; `false` means absent.
+    pub off: bool,
+    pub encodings: Option<OptFixedMapEncoding>,
+}
+
+impl OptFixedMap {
+    pub fn new(x: u64) -> Self {
+        Self {
+            x,
+            code: false,
+            tag: false,
+            neg: false,
+            off: false,
+            encodings: None,
+        }
+    }
+}

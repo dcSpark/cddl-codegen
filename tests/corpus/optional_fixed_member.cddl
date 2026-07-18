@@ -1,0 +1,13 @@
+; OPTIONAL fixed-value members mint a `pub <name>: bool` presence field (false=absent, true=present):
+; an optional fixed value carries exactly one bit, unlike a MANDATORY fixed value (zero information,
+; no field — that role is `fixed_bool_member.cddl`). Serialize writes the constant iff the bool is
+; set and the length term flips with it; deserialize peeks the CBOR type, verifies the constant
+; (FixedValueMismatch on the wrong value), and records presence. Covered across value kinds
+; (uint/text/nint/bool/null — float is excluded: an optional fixed float keeps its pre-existing
+; unbound handling and --preserve-encodings is unimplemented for floats) and both representations
+; under every profile (default / preserve / json). The array optional's cbor type must not overlap the
+; following field (the ambiguity guard) — `? flag: true` (Special) precedes `label: text` (Text) —
+; and the map keys are distinct, so presence is unambiguous per entry.
+opt_fixed_array = [x: uint, ? flag: true, label: text]
+opt_fixed_array_null = [x: uint, ? nothing: null]
+opt_fixed_map = {x: uint, ? code: 5, ? tag: "on", ? neg: -3, ? off: false}

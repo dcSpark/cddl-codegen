@@ -314,16 +314,16 @@ are ledgered here (that's what the probe/gate error messages point at).
   `tests/corpus/fixed_bool_member.cddl`). This is the "Intra-alternative variation rows" expansion
   rule (this doc) applied to the fixed-value member role: enumerate the wrapped variants as rows
   BEFORE trusting a green.
-- **An OPTIONAL fixed value with no encoding variation (bool / null) in member position fails
-  generation** — independent of the mandatory case, which round-trips
-  (`tests/corpus/fixed_bool_member.cddl`). `[x: uint, ? v: true]` / `{? k: true, x: uint}` (and the
-  same shapes with `? v: 5` / `? v: null`, so this is not bool-specific): the serialize length
-  emits `Len(1 + )` — an empty count because the encoding-less optional contributes no length
-  term — which rustfmt rejects, and under `--preserve-encodings` the annotate path asserts
-  issue-205 (`is_fixed_value` in the optional type-check branch). Loud either way (Err / assert),
-  never silently wrong — a GENERATION-failure class, so it lives here rather than in the layer-2
-  `LAYER2_KNOWN_BAD` family list below. Candidate fix: treat an encoding-less optional fixed value
-  as a present/absent flag in the length computation (mirroring the mandatory fixed-value handling).
+- **An OPTIONAL fixed FLOAT member is silently dropped under the default profile** — the
+  non-float kinds (bool/null/uint/nint/text) now round-trip via a `bool` presence field
+  (`tests/corpus/optional_fixed_member.cddl`, hand vectors in `tests/core/tests.rs` +
+  `tests/preserve-encodings/tests.rs`). A fixed FLOAT stays on the pre-existing unbound path: under
+  the default profile `[? x: 1.5, …]` mints no presence field and the serialize/length code omits
+  the value entirely (the presence bit is lost — data-lossy but non-crashing), and under
+  `--preserve-encodings` it joins the float `unimplemented!` class (the
+  `preserve_encodings_supports_floats` stub / `EXPECTED_GENERATION_FAIL` pin). Folding float into the
+  presence-field treatment needs the preserve-float encoding vars first, so it rides with that class
+  rather than the general optional-fixed feature.
 - Array-representation group-choice arm with an inline group panics:
   `contain.group-choice-arm.grpent.inline_group.array` (`t = [ (uint, tstr) // bytes ]`) aborts in
   `parsing.rs`'s `group_entry_to_type` (`inline group entries are not implemented`). This is a
