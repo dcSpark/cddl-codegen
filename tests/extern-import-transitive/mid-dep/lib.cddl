@@ -1,0 +1,23 @@
+; Middle link of the transitive chain: mid-dep's OWN spec, which consumes base-dep. During mid-dep's
+; own generation base-dep is declared via `--extern-import` (the same channel the consumer uses),
+; modelling the real transitive shape — mid-dep is itself a consumer of base-dep — and proving the
+; depth-1 export purity rule holds even when the intermediate dep pulls its dep through the export
+; channel rather than a physical stub (the physical-stub equivalence is already covered by commit 6's
+; byte-identity test). base-dep's `base_point` therefore lands in a NON-exported (`EXTERN_DEPS_DIR`)
+; scope, so mid-dep's own export must contain nothing of it.
+;
+; Three own rows, each exercising a distinct projection outcome against a base-dep reference:
+;   * mid_record  — opaque class-backed record embedding `base_point`. Exports as
+;                   `_CDDL_CODEGEN_EXTERN_TYPE_`: the opaque marker body is self-contained, so the
+;                   `base_point` reference is HIDDEN (the opaque-boundary row of item 3). A consumer
+;                   can embed `mid_record` knowing nothing of base-dep.
+;   * mid_points  — TRANSPARENT named collection over `base_point`. A `pub type Vec<BasePoint>`, so it
+;                   must be spelled truthfully (`[* base_point]`) — but that body references
+;                   `base_point`, which is depth-1-excluded from mid-dep's export. Reference-closure
+;                   therefore EXCLUDES `mid_points` with an `; unexported:` record (item 1's
+;                   interesting case).
+;   * mid_label   — transparent alias with NO base-dep reference: the positive control proving
+;                   mid-dep's own surface IS present in the export.
+mid_record = [p: base_point, n: uint]
+mid_points = [* base_point]
+mid_label = text

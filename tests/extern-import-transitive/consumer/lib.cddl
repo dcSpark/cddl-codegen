@@ -1,0 +1,13 @@
+; Terminal consumer of the transitive chain. It consumes BOTH exports via two `--extern-import`
+; flags: mid-dep (for `mid_record`) AND base-dep DIRECTLY (for `base_point` / `base_coin`). The
+; direct base-dep declaration is the depth-1 rule made concrete — mid-dep's export hides base-dep, so
+; a consumer that names a base-dep type must declare base-dep itself.
+;
+;   * m — a mid-dep type (opaque; itself embeds `base_point`, hidden behind mid_record's class).
+;   * b — a base-dep type referenced directly (opaque record).
+;   * c — a base-dep transparent alias referenced directly.
+;
+; A single-file consumer, so `consumer_thing` stays in ROOT_SCOPE. Generated two ways — physical
+; stubs for both deps vs two `--extern-import` flags — with byte-identical output the acceptance
+; criterion (item 5).
+consumer_thing = [m: mid_record, b: base_point, c: base_coin]

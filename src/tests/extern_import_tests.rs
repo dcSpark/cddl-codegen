@@ -528,3 +528,420 @@ fn extern_import_malformed_flag_value_panics() {
     ]);
     let _ = cli.extern_import_paths();
 }
+
+// ============================================================================================
+// Transitive fixture (commit 7): a three-crate chain consumer -> mid-dep -> base-dep.
+//
+// base-dep is a leaf; mid-dep consumes base-dep (via `--extern-import` — the same channel, so its
+// own build models the real transitive shape and the depth-1 rule is proven even when the dep is
+// pulled through the export channel, not a physical stub); the consumer consumes BOTH mid-dep and
+// base-dep via two `--extern-import` flags. The load-bearing invariant is depth-1: a dep's own deps
+// never travel through its export ("each export describes one crate's own opaque surface; depth
+// never exceeds one"), so a consumer that names a base-dep type must declare base-dep DIRECTLY.
+//
+// The three fixture specs live under `tests/extern-import-transitive/`. These tests reuse the
+// commit-6 helpers (`scratch`, `write`, `generate`, `strip_header`) and add three transitive-only
+// helpers below.
+// ============================================================================================
+
+/// Read a committed spec from the transitive fixture tree.
+fn tfixture(rel: &str) -> String {
+    std::fs::read_to_string(std::path::Path::new("tests/extern-import-transitive").join(rel))
+        .unwrap_or_else(|e| panic!("reading transitive fixture {rel}: {e}"))
+}
+
+/// Mint a dep's extern-interface export while it itself consumes other deps via `--extern-import`
+/// (the transitive case — mid-dep consuming base-dep). `extra` carries the `--extern-import` flags.
+/// `mint_export` above is the leaf case (no `extra`); this is its flag-carrying generalization.
+fn mint_export_flags(
+    dep_spec: &str,
+    dep_key: &str,
+    tag: &str,
+    extra: &[&str],
+) -> BTreeMap<String, String> {
+    let root = scratch(&format!("tmint_{tag}"));
+    write(&root, "lib.cddl", dep_spec);
+    let input = root.join("lib.cddl");
+    let mut args = vec![
+        "cddl-codegen",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        "extern_import_unused",
+        "--wasm",
+        "false",
+        "--lib-name",
+        dep_key,
+    ];
+    args.extend_from_slice(extra);
+    let cli = Cli::parse_from(args);
+    let files = crate::api::extern_interface_strings(&cli)
+        .expect("dep export projection must succeed (exclude-with-record, never abort)");
+    let _ = std::fs::remove_dir_all(&root);
+    files
+}
+
+/// Write a minted export map to a fresh scratch tree and return the `extern-interface/<dep_key>`
+/// directory a `--extern-import <dep>=<path>` flag points at.
+fn write_export(export: &BTreeMap<String, String>, dep_key: &str, tag: &str) -> std::path::PathBuf {
+    let dir = scratch(&format!("texport_{tag}"));
+    for (path, content) in export {
+        write(&dir, path, content);
+    }
+    dir.join(format!("extern-interface/{dep_key}"))
+}
+
+/// A wasm-mode consumer generation (the sidecar channels are a wasm/workspace concern, so the
+/// rust-only `generate` above cannot exercise them). Returns post-rustfmt source keyed by path.
+fn generate_wasm(
+    input: &std::path::Path,
+    extra: &[&str],
+) -> Result<BTreeMap<String, String>, String> {
+    let mut args = vec![
+        "cddl-codegen",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        "extern_import_unused",
+        "--wasm",
+        "true",
+    ];
+    args.extend_from_slice(extra);
+    let cli = Cli::parse_from(args);
+    crate::api::generated_strings(&cli).map_err(|e| e.to_string())
+}
+
+/// Mint base-dep's export and mid-dep's export (mid-dep consuming base-dep via `--extern-import`),
+/// returning both maps plus the on-disk export directories the consumer's flags point at. Shared by
+/// the composition / opaque-boundary / byte-identity tests.
+fn mint_chain(
+    tag: &str,
+) -> (
+    BTreeMap<String, String>,
+    std::path::PathBuf,
+    std::path::PathBuf,
+) {
+    let base_export = mint_export(
+        &tfixture("base-dep/lib.cddl"),
+        "base_dep",
+        &format!("{tag}b"),
+    );
+    let base_dir = write_export(&base_export, "base_dep", &format!("{tag}b"));
+    let base_import = format!("base_dep={}", base_dir.to_str().unwrap());
+    let mid_export = mint_export_flags(
+        &tfixture("mid-dep/lib.cddl"),
+        "mid_dep",
+        &format!("{tag}m"),
+        &["--extern-import", &base_import],
+    );
+    let mid_dir = write_export(&mid_export, "mid_dep", &format!("{tag}m"));
+    (base_export, base_dir, mid_dir)
+}
+
+/// Item 1 — depth-1 export purity. mid-dep's export (minted WITH base-dep declared via
+/// `--extern-import`) must contain ONLY mid-dep's own surface: no base-dep idents appear as rules or
+/// in any exported body. The interesting case is `mid_points = [* base_point]`: a TRANSPARENT named
+/// collection referencing a base-dep type. Its truthful spelling references `base_point`, which is
+/// depth-1-excluded from mid-dep's export, so reference-closure EXCLUDES it with an `; unexported:`
+/// record naming the chain root. `mid_record` (opaque) and `mid_label` (base-free alias) survive as
+/// the positive control that mid-dep's own surface IS present.
+#[test]
+fn transitive_mid_dep_export_excludes_base_dep() {
+    let base_export = mint_export(&tfixture("base-dep/lib.cddl"), "base_dep", "t1b");
+    let base_dir = write_export(&base_export, "base_dep", "t1b");
+    let base_import = format!("base_dep={}", base_dir.to_str().unwrap());
+    let mid_export = mint_export_flags(
+        &tfixture("mid-dep/lib.cddl"),
+        "mid_dep",
+        "t1m",
+        &["--extern-import", &base_import],
+    );
+    let _ = std::fs::remove_dir_all(&base_dir);
+
+    let root = &mid_export["extern-interface/mid_dep/mod.cddl"];
+
+    // Positive control: mid-dep's OWN surface is present.
+    assert!(
+        root.contains("mid_record = _CDDL_CODEGEN_EXTERN_TYPE_"),
+        "mid-dep's own opaque record must be exported: {root}"
+    );
+    assert!(
+        root.contains("mid_label = tstr"),
+        "mid-dep's own base-free transparent alias must be exported: {root}"
+    );
+
+    // No base-dep ident appears in any RULE or exported body — checked on the CODE portion of every
+    // line (before the first `;`), so the legitimate `; unexported:` record (a comment) that names
+    // `base_point` as the exclusion root does not trip the scan.
+    for f in mid_export.values() {
+        for line in f.lines() {
+            let code = line.split(';').next().unwrap_or("");
+            for needle in ["base_point", "base_coin", "BasePoint", "BaseCoin"] {
+                assert!(
+                    !code.contains(needle),
+                    "mid-dep export code must not reference base-dep ident `{needle}`: {line:?}"
+                );
+            }
+        }
+    }
+
+    // The interesting case: the transparent collection over a base-dep type is EXCLUDED-with-record,
+    // and is NOT emitted as an included rule.
+    assert!(
+        root.contains("; unexported: mid_points \u{2014} references excluded base_point"),
+        "mid_points (transparent collection over base_point) must be excluded with a reference-closure record: {root}"
+    );
+    assert!(
+        !root
+            .lines()
+            .any(|l| l.split(';').next().unwrap_or("").contains("mid_points")),
+        "mid_points must be excluded, never an included rule: {root}"
+    );
+}
+
+/// Item 2 — consumer composition. The consumer generates successfully consuming BOTH exports via two
+/// `--extern-import` flags, referencing types from each. The generated `use` statements must target
+/// the right crate: base-dep types from `base_dep`, the mid-dep type from `mid_dep` — never crossed.
+#[test]
+fn transitive_consumer_composes_both_deps() {
+    let (_base_export, base_dir, mid_dir) = mint_chain("t2");
+    let cons_root = scratch("t2consumer");
+    write(&cons_root, "lib.cddl", &tfixture("consumer/lib.cddl"));
+    let base_import = format!("base_dep={}", base_dir.to_str().unwrap());
+    let mid_import = format!("mid_dep={}", mid_dir.to_str().unwrap());
+    let map = generate(
+        &cons_root.join("lib.cddl"),
+        &[
+            "--extern-import",
+            &base_import,
+            "--extern-import",
+            &mid_import,
+        ],
+    )
+    .expect("consumer must generate consuming both deps");
+    let _ = std::fs::remove_dir_all(&cons_root);
+    let _ = std::fs::remove_dir_all(&base_dir);
+    let _ = std::fs::remove_dir_all(&mid_dir);
+
+    let modrs = &map["rust/src/generated/mod.rs"];
+    // base-dep's two types import from the base_dep crate; the mid-dep type from the mid_dep crate.
+    assert!(
+        modrs.contains("use base_dep::{BaseCoin, BasePoint};"),
+        "base-dep types must import from the base_dep crate: {modrs}"
+    );
+    assert!(
+        modrs.contains("use mid_dep::MidRecord;"),
+        "the mid-dep type must import from the mid_dep crate: {modrs}"
+    );
+    // Never crossed: base-dep types never come from mid_dep and vice-versa.
+    assert!(
+        !modrs.contains("use mid_dep::BasePoint")
+            && !modrs.contains("use mid_dep::BaseCoin")
+            && !modrs.contains("use base_dep::MidRecord"),
+        "a dep's type must never be imported from the wrong crate: {modrs}"
+    );
+}
+
+/// Item 3 — opaque-boundary. A consumer embeds `mid_record`, which in mid-dep's real spec itself
+/// embeds `base_point`. Because mid-dep exports `mid_record` opaquely, the consumer resolves the
+/// whole chain while declaring ONLY mid-dep — knowing nothing of base-dep. Generation succeeds and
+/// no base-dep ident leaks into the consumer's output for that chain.
+#[test]
+fn transitive_opaque_boundary_hides_base_dep() {
+    let (_base_export, base_dir, mid_dir) = mint_chain("t3");
+    let _ = std::fs::remove_dir_all(&base_dir); // consumer declares ONLY mid-dep
+    let cons_root = scratch("t3consumer");
+    write(&cons_root, "lib.cddl", "opaque_holder = [m: mid_record]\n");
+    let mid_import = format!("mid_dep={}", mid_dir.to_str().unwrap());
+    let map = generate(
+        &cons_root.join("lib.cddl"),
+        &["--extern-import", &mid_import],
+    )
+    .expect("the opaque-boundary consumer must generate knowing nothing of base-dep");
+    let _ = std::fs::remove_dir_all(&cons_root);
+    let _ = std::fs::remove_dir_all(&mid_dir);
+
+    let modrs = &map["rust/src/generated/mod.rs"];
+    assert!(
+        modrs.contains("use mid_dep::MidRecord;") && modrs.contains("struct OpaqueHolder"),
+        "the consumer embeds the mid-dep type opaquely: {modrs}"
+    );
+    // The whole base-dep surface stays hidden behind mid_record's opaque class.
+    for content in map.values() {
+        assert!(
+            !content.contains("base_dep") && !content.contains("BasePoint"),
+            "no base-dep ident may leak into the opaque-boundary consumer: {content}"
+        );
+    }
+}
+
+/// Item 4 — sidecar-channel preservation. A wasm consumer that BORROWS collection/key shapes from a
+/// workspace dep consumed via `--extern-import` (`[* base_point]` and `{* base_point => uint}`, both
+/// all-one-dep) must record those shapes in `borrowed_collections.rs` / `borrowed_key_types.rs`
+/// carrying base-dep's ORIGINAL CDDL idents (`base_point`, not the Rust `BasePoint`) — byte-identical
+/// to the physical-stub channel. The `--extern-import` text uses the dep's original idents verbatim,
+/// so original-ident resolution through the sidecars is undisturbed.
+#[test]
+fn transitive_wasm_sidecars_carry_dep_cddl_idents() {
+    let base_export = mint_export(&tfixture("base-dep/lib.cddl"), "base_dep", "t4b");
+    let base_dir = write_export(&base_export, "base_dep", "t4b");
+    let base_import = format!("base_dep={}", base_dir.to_str().unwrap());
+    // A named collection over base_point (a wasm borrowed wrapper) AND a map keyed on base_point (a
+    // borrowed map key) — one shape into each sidecar channel.
+    let spec = "wthing = [pts: [* base_point], m: { * base_point => uint }]\n";
+
+    // Run A — via `--extern-import`.
+    let flag_root = scratch("t4flag");
+    write(&flag_root, "lib.cddl", spec);
+    let via_flag = generate_wasm(
+        &flag_root.join("lib.cddl"),
+        &[
+            "--extern-import",
+            &base_import,
+            "--workspace-dep",
+            "base_dep",
+            "--extern-wasm-crate",
+            "base_dep=base_dep_wasm",
+        ],
+    )
+    .expect("the wasm consumer must generate via --extern-import");
+
+    // Run B — via a physical stub of base-dep (export minus header).
+    let stub_root = scratch("t4stub");
+    write(&stub_root, "lib.cddl", spec);
+    for (path, content) in &base_export {
+        let sub = path
+            .strip_prefix("extern-interface/base_dep/")
+            .expect("export path shape");
+        write(
+            &stub_root,
+            &format!("_CDDL_CODEGEN_EXTERN_DEPS_DIR_/base_dep/{sub}"),
+            &strip_header(content),
+        );
+    }
+    let via_stub = generate_wasm(
+        &stub_root,
+        &[
+            "--workspace-dep",
+            "base_dep",
+            "--extern-wasm-crate",
+            "base_dep=base_dep_wasm",
+        ],
+    )
+    .expect("the wasm consumer must generate via a physical stub");
+
+    let _ = std::fs::remove_dir_all(&flag_root);
+    let _ = std::fs::remove_dir_all(&stub_root);
+    let _ = std::fs::remove_dir_all(&base_dir);
+
+    // The borrowed-collections rows carry base-dep's ORIGINAL CDDL idents in the shape column.
+    let coll = &via_flag["wasm/src/generated/borrowed_collections.rs"];
+    assert!(
+        coll.contains(r#"("base_dep", "BasePointList", "[* base_point]")"#),
+        "the borrowed loose-list row must carry the dep's original CDDL ident: {coll}"
+    );
+    assert!(
+        coll.contains(r#"("base_dep", "MapBasePointToU64", "{* base_point => uint}")"#),
+        "the borrowed map row must carry the dep's original CDDL idents: {coll}"
+    );
+    // The borrowed-key-types row carries the original CDDL ident and asserts on the dep-crate type.
+    let keys = &via_flag["rust/src/generated/borrowed_key_types.rs"];
+    assert!(
+        keys.contains(r#"("base_dep", "base_point")"#)
+            && keys.contains("_assert_key_traits::<base_dep::BasePoint>()"),
+        "the borrowed key-type row must carry the dep's original CDDL ident + crate type: {keys}"
+    );
+    // Byte-identical through either channel — the extern-import assembly seam does not perturb the
+    // sidecars (the original-ident resolution the `--wrapper-requests` / `--key-requests` channels
+    // read back is undisturbed).
+    assert_eq!(
+        via_flag.get("wasm/src/generated/borrowed_collections.rs"),
+        via_stub.get("wasm/src/generated/borrowed_collections.rs"),
+        "borrowed_collections.rs must be identical via --extern-import and via the physical stub"
+    );
+    assert_eq!(
+        via_flag.get("rust/src/generated/borrowed_key_types.rs"),
+        via_stub.get("rust/src/generated/borrowed_key_types.rs"),
+        "borrowed_key_types.rs must be identical via --extern-import and via the physical stub"
+    );
+}
+
+/// Item 5 — byte-identity at transitive scale. The consumer built once from physical stubs of BOTH
+/// deps and once via two `--extern-import` flags must produce byte-identical rust output. This is the
+/// commit-6 acceptance pattern scaled to two deps; the pinless-migration variant is unnecessary here
+/// — commit 6 already covers pin/derivation-agreement, and these fixtures carry no divergent pins.
+#[test]
+fn transitive_consumer_byte_identity_stubs_vs_flags() {
+    let (base_export, base_dir, mid_dir) = mint_chain("t5");
+    // The minted export maps re-read from the on-disk export dirs written by `mint_chain`.
+    let mid_export = mint_export_flags(
+        &tfixture("mid-dep/lib.cddl"),
+        "mid_dep",
+        "t5m2",
+        &[
+            "--extern-import",
+            &format!("base_dep={}", base_dir.to_str().unwrap()),
+        ],
+    );
+    let consumer = tfixture("consumer/lib.cddl");
+
+    // Run A — two physical stubs (each export minus its header) under the extern-deps dir.
+    let stub_root = scratch("t5stub");
+    write(&stub_root, "lib.cddl", &consumer);
+    for (path, content) in &base_export {
+        let sub = path
+            .strip_prefix("extern-interface/base_dep/")
+            .expect("base export path shape");
+        write(
+            &stub_root,
+            &format!("_CDDL_CODEGEN_EXTERN_DEPS_DIR_/base_dep/{sub}"),
+            &strip_header(content),
+        );
+    }
+    for (path, content) in &mid_export {
+        let sub = path
+            .strip_prefix("extern-interface/mid_dep/")
+            .expect("mid export path shape");
+        write(
+            &stub_root,
+            &format!("_CDDL_CODEGEN_EXTERN_DEPS_DIR_/mid_dep/{sub}"),
+            &strip_header(content),
+        );
+    }
+    let via_stub = generate(&stub_root, &[]).expect("two-stub generation must succeed");
+
+    // Run B — two `--extern-import` flags at the minted export trees.
+    let flag_root = scratch("t5flag");
+    write(&flag_root, "lib.cddl", &consumer);
+    let base_import = format!("base_dep={}", base_dir.to_str().unwrap());
+    let mid_import = format!("mid_dep={}", mid_dir.to_str().unwrap());
+    let via_flag = generate(
+        &flag_root.join("lib.cddl"),
+        &[
+            "--extern-import",
+            &base_import,
+            "--extern-import",
+            &mid_import,
+        ],
+    )
+    .expect("two-flag generation must succeed");
+
+    let _ = std::fs::remove_dir_all(&stub_root);
+    let _ = std::fs::remove_dir_all(&flag_root);
+    let _ = std::fs::remove_dir_all(&base_dir);
+    let _ = std::fs::remove_dir_all(&mid_dir);
+
+    assert_eq!(
+        via_flag.keys().collect::<Vec<_>>(),
+        via_stub.keys().collect::<Vec<_>>(),
+        "the generated file SET must match between two --extern-import flags and two physical stubs"
+    );
+    for (path, stub_content) in &via_stub {
+        assert_eq!(
+            via_flag.get(path),
+            Some(stub_content),
+            "transitive byte-identity broke for {path}:\n--- via --extern-import ---\n{}\n--- via physical stubs ---\n{stub_content}",
+            via_flag.get(path).map(String::as_str).unwrap_or("<absent>")
+        );
+    }
+}
