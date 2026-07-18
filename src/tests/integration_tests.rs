@@ -14186,3 +14186,123 @@ fn integration_collection_wrapper_fields_are_pub_crate() {
         );
     }
 }
+
+/// Pin BOTH directions of the over-width wrapper-field `#[rustfmt::skip]` workaround, end-to-end
+/// through `generated_strings` (whose output IS run through the internal rustfmt pass). A wasm
+/// wrapper whose tuple-field line `    pub(crate) <type>,` exceeds rustfmt's 100-col max_width trips
+/// rust-lang/rustfmt#5703 — rustfmt breaks the line right after the field visibility, leaves trailing
+/// whitespace, emits `error[internal]`, and exits 1. `rustfmt_generated_string` treats any non-0/3
+/// rustfmt exit as FATAL, so WITHOUT this feature the over-width fixture below would abort generation
+/// entirely (that is the point of pinning it through `generated_strings`). `WasmWrapper::push_inner_field`
+/// therefore freezes the struct with `#[rustfmt::skip]` + a citation comment and emits the canonical
+/// two-line tuple shape itself. The long rule mirrors CML's failing `MapTransactionIndexTo…` wrappers;
+/// `tiny_map` is the short control that stays well under max_width and must gain NO skip.
+///
+/// Note there is no separate "did the file round-trip rustfmt?" assertion: a successful
+/// `generated_strings` return already proves it, since a non-0/3 rustfmt exit would have been fatal.
+#[test]
+fn integration_overwidth_wasm_wrapper_field_gets_rustfmt_skip() {
+    use clap::Parser;
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_codegen_overwidth_skip_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    // The long `{* k => v}` rule mints a wasm wrapper whose field type is `cddl_lib::<PascalName>`
+    // (lib_name defaults to `cddl-lib`); the name is long enough that
+    // `4 + "pub(crate) ".len() + type.len() + 1` > 100. `tiny_map` stays short.
+    std::fs::write(
+        dir.join("lib.cddl"),
+        "transaction_index = uint\n\
+         allegra_auxiliary_data = uint\n\
+         map_transaction_index_to_allegra_auxiliary_data_with_an_extremely_long_generated_wrapper_name = {* transaction_index => allegra_auxiliary_data}\n\
+         tiny_map = {* uint => text}\n",
+    )
+    .unwrap();
+
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        dir.to_str().unwrap(),
+        "--output",
+        "overwidth_skip",
+        "--wasm=true",
+    ]);
+    let files = crate::api::generated_strings(&cli).unwrap_or_else(|e| panic!("gen failed: {e}"));
+    let _ = std::fs::remove_dir_all(&dir);
+    let wasm = files
+        .get("wasm/src/generated/mod.rs")
+        .unwrap_or_else(|| {
+            panic!(
+                "no `wasm/src/generated/mod.rs` among generated files; got: {:?}",
+                files.keys().collect::<Vec<_>>()
+            )
+        })
+        .clone();
+
+    let long_name =
+        "MapTransactionIndexToAllegraAuxiliaryDataWithAnExtremelyLongGeneratedWrapperName";
+    let lines: Vec<&str> = wasm.lines().collect();
+
+    // --- Over-width wrapper: canonical two-line shape, frozen by the skip. ---
+    // The header line is the BARE `pub struct <Name>(` on its own line (the field is NOT on it — a
+    // single-line `(pub(crate) …)` would mean rustfmt reformatted / the skip did not take).
+    let header_idx = lines
+        .iter()
+        .position(|l| *l == format!("pub struct {long_name}("))
+        .unwrap_or_else(|| {
+            panic!(
+                "no canonical `pub struct {long_name}(` header (own line, trailing `(`) in:\n{wasm}"
+            )
+        });
+    // Field on its own 4-space-indented `pub(crate) …,` line.
+    assert_eq!(
+        lines[header_idx + 1],
+        format!("    pub(crate) cddl_lib::{long_name},"),
+        "over-width wrapper field must be its own 4-space-indented `pub(crate) …,` line:\n{wasm}"
+    );
+    assert_eq!(
+        lines[header_idx + 2],
+        ");",
+        "canonical two-line tuple shape must close with `);` on its own line:\n{wasm}"
+    );
+    // `#[rustfmt::skip]` and the two-line citation comment attach directly above the header.
+    assert_eq!(
+        lines[header_idx - 1],
+        "#[rustfmt::skip]",
+        "over-width struct must carry #[rustfmt::skip] directly above `pub struct`:\n{wasm}"
+    );
+    assert_eq!(
+        lines[header_idx - 2],
+        "// (rust-lang/rustfmt#5703, fix PR #5708 unmerged). Remove when #5708 ships.",
+        "over-width struct must carry the second citation comment line:\n{wasm}"
+    );
+    assert_eq!(
+        lines[header_idx - 3],
+        "// rustfmt::skip: rustfmt breaks after the field vis leaving trailing whitespace and errors",
+        "over-width struct must carry the first citation comment line:\n{wasm}"
+    );
+
+    // --- Short wrapper: no skip anywhere near it. ---
+    let tiny_idx = lines
+        .iter()
+        .position(|l| l.starts_with("pub struct TinyMap("))
+        .unwrap_or_else(|| panic!("no `pub struct TinyMap(` wrapper line in:\n{wasm}"));
+    assert!(
+        lines[tiny_idx].contains("(pub(crate) ") && lines[tiny_idx].ends_with(");"),
+        "short wrapper must stay single-line `pub struct TinyMap(pub(crate) …);`:\n{}",
+        lines[tiny_idx]
+    );
+    let window = &lines[tiny_idx.saturating_sub(5)..tiny_idx];
+    assert!(
+        !window.iter().any(|l| l.contains("rustfmt::skip")),
+        "short wrapper must NOT carry any rustfmt::skip attribute/comment:\n{window:?}"
+    );
+    // Exactly one skip in the whole file — only the over-width struct's.
+    assert_eq!(
+        wasm.matches("#[rustfmt::skip]").count(),
+        1,
+        "exactly one wrapper (the over-width one) should be skipped:\n{wasm}"
+    );
+}
