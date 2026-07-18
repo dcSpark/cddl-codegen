@@ -168,7 +168,15 @@ Each entry here is a ledger record for a proven-once failure class: what happene
 system (or working rule) owns it meanwhile, and the trigger — usually a SECOND instance — that
 justifies building the named mechanical layer. Building before the trigger fires is deliberate
 over-engineering; deleting an entry without either building the layer or recording why the class is
-dead loses the lesson.
+dead loses the lesson. When a trigger DOES fire, land the DETECTOR half of the named layer before
+the FIX half, and let the detector's arming-run measurement re-test the entry's premises before
+implementing its sketched remedy: residue predictions and escalation sketches are recorded against
+premises nobody has tested, and two falsified-premise instances are on record — the extreme-value
+entry's "generation already uses `_sz` where the `i64` limit bites" premise (falsified by the
+`FixedValue::to_bytes` bug its own entry named as a mere range cap), and the unused-imports entry,
+whose "near zero" residue prediction measured 104 warning cells at the arming run and whose
+sketched glob-EDGE escalation would NOT have fixed the class the measurement exposed (the pruner's
+generated-only view, invisible to any glob-edge model).
 
 - **An emission branch whose generated OUTPUT no fixture exercises is invisible to every gate —
   it can rot to uncompilable and hide behavioral bugs in both directions.** Proven instance

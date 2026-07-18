@@ -102,7 +102,11 @@ so dependency resolution is pinned into the tree and the skipped build would hav
 resolution by construction), the full `rustc -vV`, `RUSTFLAGS` as the nested invocation sees it,
 the command sequence in path-normalized form (scratch paths are run- or checkout-local, so keys
 carry the command SHAPE — subcommand + crate role within the hashed tree — never a literal
-scratch path, which would make every key unique to its run), and a schema version. Soundness
+scratch path, which would make every key unique to its run), and a schema version. A gate whose
+cached closure ALSO asserts something beyond the cargo exit code versions that extra verdict logic
+into the key as an explicit argv marker (`feature_corpus_compiles`' `lint=unused-imports-v1`), so
+changing what the closure checks re-runs every previously-cached cell instead of laundering old
+PASSes past the new check. Soundness
 rests on the same enforced determinism
 invariant the rest of the repo leans on (byte-identical regeneration; `generated_code_clippy_clean`
 already relies on the identical-bytes→identical-verdict form of it): an unchanged key means
