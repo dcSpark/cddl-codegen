@@ -35,7 +35,7 @@ const OUT_DIR = `${ROOT}/../tests/recomb`;
 const OUT = `${OUT_DIR}/ingredients.json`;
 const CHECK = process.argv.includes("--check");
 
-interface Ex { id: string; example: string }
+interface Ex { id: string; example: string; example_extern_stub?: string }
 const matrix = JSON.parse(readFileSync(`${ROOT}/matrix.json`, "utf8")) as {
   features: Ex[];
   containment: (Ex & { role: string; feature: string; spec?: string })[];
