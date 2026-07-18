@@ -918,15 +918,21 @@ fn append_raw_bytes_defs(out: &std::path::Path, json: bool) {
         "tests/external_rust_raw_bytes_def"
     };
     let rust_def = std::fs::read_to_string(rust_def_path).unwrap();
-    // Append into the generated root scope (see `run_test`): the raw-bytes defs need the root scope's
-    // imports and `use serialization::*;`, which live in `generated/mod.rs`, not the thin `lib.rs`.
+    // Append into the user-owned thin `lib.rs` — the SAME contract as extern-type defs (see
+    // `run_test`'s `is_extern_type_def` path): a real consumer defines a
+    // `_CDDL_CODEGEN_RAW_BYTES_TYPE_` type in hand-written code re-exported at the crate root, and
+    // the generator's extern re-export glue (`pub use crate::Name;` in the declaring scope's
+    // generated module) resolves the bare `generated/**` references back to it. Appending into
+    // `generated/mod.rs` instead would model the pre-thin-root contract no real user can follow
+    // (that subtree is clobbered every run) — and it MASKED the glue not covering `RawBytesType`
+    // (CML cip36's `public_key` aliases failed E0412 on regen while this fixture stayed green);
+    // it now also collides with the glue's own `pub use crate::<Name>;` line. The def files carry
+    // their own explicit imports, so no `use serialization::*;` prefix is needed here.
     let mut rust_lib = std::fs::OpenOptions::new()
         .append(true)
-        .open(out.join("rust/src/generated/mod.rs"))
+        .open(out.join("rust/src/lib.rs"))
         .unwrap();
-    rust_lib
-        .write_all(b"\n\nuse serialization::*;\n\n")
-        .unwrap();
+    rust_lib.write_all(b"\n\n").unwrap();
     rust_lib.write_all(rust_def.as_bytes()).unwrap();
     std::mem::drop(rust_lib);
     let wasm_def = std::fs::read_to_string("tests/external_wasm_raw_bytes_def").unwrap();
@@ -1031,21 +1037,23 @@ fn run_test(
         .unwrap();
     // `external_rust_file_paths` carries two kinds of hand-written code that belong in DIFFERENT scopes
     // under the thin-root split:
-    //   - extern-TYPE definitions (`external_rust_defs*`): the Rust definition of a type declared
-    //     `_CDDL_CODEGEN_EXTERN_TYPE_`. This CANNOT live in `generated/**` (clobbered every run, and the
-    //     generator now re-exports each in-crate extern with `pub use crate::Name;` into that subtree, so
-    //     a definition there would collide). A real consumer defines the extern in a hand-written module
-    //     and re-exports it at the crate root; the glue resolves the bare `generated/**` references back
-    //     to it. Model that by appending these into the user-owned thin `lib.rs`.
+    //   - extern-TYPE definitions (`external_rust_defs*` AND the raw-bytes defs
+    //     `external_rust_raw_bytes*`): the Rust definition of a type declared
+    //     `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_`. These CANNOT live in
+    //     `generated/**` (clobbered every run, and the generator re-exports each in-crate extern —
+    //     both flavors — with `pub use crate::Name;` into that subtree, so a definition there
+    //     collides E0255). A real consumer defines the extern in a hand-written module and
+    //     re-exports it at the crate root; the glue resolves the bare `generated/**` references
+    //     back to it. Model that by appending these into the user-owned thin `lib.rs`.
     //   - generated-scope helpers (`custom_serialization*`, conformance harnesses): free functions the
     //     generated `serialization.rs` calls via `use super::*;`, so they must land in the `generated`
     //     module scope — append them into `generated/mod.rs` exactly as before.
     // Both need `use serialization::*;` (reachable at the crate root through the seeded
     // `pub use generated::*;` glob), written into whichever file receives defs.
     let is_extern_type_def = |path: &std::path::Path| {
-        path.file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(|n| n.starts_with("external_rust_defs"))
+        path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
+            n.starts_with("external_rust_defs") || n.starts_with("external_rust_raw_bytes")
+        })
     };
     if external_rust_file_paths
         .iter()
@@ -6352,7 +6360,8 @@ fn raw_bytes_preserve() {
 // single wrapper cannot serve both — the flavor alias is what makes the raw-bytes instance compile.
 // Rust-only: the wasm side is user-owned under the extern contract, so `--wasm=false` keeps scope
 // tight. The `ExtSet`/`ExtSetRawBytes` wrappers land in the thin crate root (extern-def routing);
-// the `PubKey` raw-bytes impl lands in `generated/mod.rs` (raw-bytes-def routing).
+// the `PubKey` raw-bytes impl also lands in the thin crate root (raw-bytes defs are extern-type
+// defs under the thin-root contract — the glue re-exports both flavors into `generated/**`).
 #[test]
 fn extern_generic_raw_bytes() {
     use std::str::FromStr;

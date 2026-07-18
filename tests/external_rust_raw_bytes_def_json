@@ -3,6 +3,7 @@
 // representation to the user-supplied type, so this flavor adds the serde/schemars derives that
 // contract imposes (see docs/docs/comment_dsl.mdx, _CDDL_CODEGEN_RAW_BYTES_TYPE_). Derives, not
 // hand impls, so they stay compatible with whatever serde/schemars API the generated crate uses.
+use crate::error::{DeserializeError, DeserializeFailure};
 use crate::serialization::RawBytesEncoding;
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
