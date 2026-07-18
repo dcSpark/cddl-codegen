@@ -1,0 +1,5 @@
+; Consumer spec referencing the dependency's extern types (`foo`, `coin`). Generated twice — once
+; consuming a physical hand-stub under _CDDL_CODEGEN_EXTERN_DEPS_DIR_/dep/, once via
+; --extern-import at the minted export — with byte-identical generated output the acceptance
+; criterion. A single-file consumer, so its own `thing` must stay in ROOT_SCOPE (the root module).
+thing = [f: foo, c: coin, extra: uint]

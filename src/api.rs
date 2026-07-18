@@ -93,6 +93,227 @@ fn scan_module_directives(
     Ok(())
 }
 
+/// Read every `--extern-import <dep>=<path>` export and append it to `content` with EXTERN_DEPS_DIR
+/// scope markers (a SEPARATE assembly loop from the main input's — see the call site). `marker_start`
+/// is the first free scope-marker index (the main loop used `0..input_files.len()`), so imported
+/// markers get distinct indices (a duplicate rule ident would be a parse error).
+///
+/// Hard errors (each naming the flag value): a `<dep>` also declared as a physical
+/// `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/` input directory (ambiguous double declaration, never a
+/// merge); a path that does not exist or contains no `.cddl` files; a flag-fed file missing the
+/// versioned seam header or carrying an unknown `@`-annotation (the strict seam — physical stubs stay
+/// lenient because they are not routed here).
+fn append_extern_imports(
+    cli: &Cli,
+    extern_imports: &std::collections::BTreeMap<String, String>,
+    marker_start: usize,
+    content: &mut String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut marker_index = marker_start;
+    for (dep, import_path) in extern_imports {
+        // Double declaration: a physical extern-deps dir AND the flag is ambiguous — refuse both.
+        if cli.input.is_dir() {
+            let physical = cli.input.join(parsing::EXTERN_DEPS_DIR).join(dep);
+            if physical.is_dir() {
+                return Err(format!(
+                    "--extern-import {dep}={import_path} conflicts with a physical \
+                     {}/{dep}/ directory in the input tree: a dependency is declared exactly once — \
+                     either via --extern-import or as an in-tree stub, never both (ambiguous double \
+                     declaration, never a merge). Remove one.",
+                    parsing::EXTERN_DEPS_DIR
+                )
+                .into());
+            }
+        }
+        let import_root = std::path::PathBuf::from(import_path);
+        if !import_root.exists() {
+            return Err(format!(
+                "--extern-import {dep}={import_path} — the path does not exist. Point it at the \
+                 dependency's committed extern-interface/{dep}/ export tree."
+            )
+            .into());
+        }
+        let mut imported = Vec::new();
+        if import_root.is_dir() {
+            cddl_paths(&mut imported, &import_root)?;
+        } else if import_root.extension().is_some_and(|ext| ext == "cddl") {
+            imported.push(import_root.clone());
+        }
+        if imported.is_empty() {
+            return Err(format!(
+                "--extern-import {dep}={import_path} — no .cddl files found under the path. Point it \
+                 at the dependency's committed extern-interface/{dep}/ export tree."
+            )
+            .into());
+        }
+        for import_file in &imported {
+            let raw = std::fs::read_to_string(import_file)?;
+            // The general per-file directive guard applies to imported files too (an export never
+            // carries `;#` directives, but the check is cheap and keeps the invariant uniform).
+            scan_module_directives(import_file, &raw)?;
+            // The strict extern-interface seam: header + `@`-token whitelist (flag-fed files ONLY).
+            scan_extern_import_seam(import_file, &raw)?;
+            let scope = extern_import_scope(dep, &import_root, import_file);
+            content.push_str(&format!(
+                "\n{}{} = \"{}\"\n{}\n",
+                parsing::SCOPE_MARKER,
+                marker_index,
+                scope,
+                raw
+            ));
+            marker_index += 1;
+        }
+    }
+    Ok(())
+}
+
+/// The EXTERN_DEPS_DIR scope-marker string for a file pulled in via `--extern-import`, in the marker
+/// channel's `::`-joined form: `_CDDL_CODEGEN_EXTERN_DEPS_DIR_::<dep>::<subpath>`. Subpath components
+/// apply the established pathdiff conventions (strip the `.cddl` extension, drop a trailing `mod`
+/// stem), so the export tree (`extern-interface/<dep>/sub/module/mod.cddl`) lands in scope
+/// `<dep>::sub::module` — byte-identical to a physical `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/sub/module.cddl`
+/// stub. A single-file import maps to the bare `<dep>` root scope.
+fn extern_import_scope(
+    dep: &str,
+    import_root: &std::path::Path,
+    import_file: &std::path::Path,
+) -> String {
+    use std::path::Component;
+    let mut components = vec![parsing::EXTERN_DEPS_DIR.to_string(), dep.to_string()];
+    if import_root.is_dir()
+        && let Some(relative) = pathdiff::diff_paths(import_file, import_root)
+    {
+        let mut sub = relative
+            .components()
+            .filter_map(|p| match p {
+                Component::Normal(part) => Some(
+                    std::path::Path::new(part)
+                        .file_stem()
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .to_owned(),
+                ),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if let Some(c) = sub.last()
+            && *c == "mod"
+        {
+            sub.pop();
+        }
+        components.extend(sub);
+    }
+    components.join("::")
+}
+
+/// The strict extern-interface seam check for a file fed via `--extern-import` (a machine-generated
+/// dependency export). Two guards: the first line must be the versioned seam header, and every
+/// `@`-token in the file must be a recognized comment-DSL annotation. A missing/unknown header, or an
+/// unknown `@`-token, is a hard error naming the file (and the offending token). Physical hand-stub
+/// files keep today's lenient behavior — they are never routed here.
+fn scan_extern_import_seam(
+    path: &std::path::Path,
+    content: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::generation::extern_interface::{
+        EXTERN_INTERFACE_HEADER, EXTERN_INTERFACE_HEADER_PREFIX,
+    };
+    let first = content.lines().next().unwrap_or("").trim_end();
+    if first != EXTERN_INTERFACE_HEADER {
+        let msg = if first
+            .trim_start()
+            .starts_with(EXTERN_INTERFACE_HEADER_PREFIX)
+        {
+            format!(
+                "extern-interface file {} carries an unsupported version header {first:?}; this \
+                 cddl-codegen understands only `{EXTERN_INTERFACE_HEADER}`. Regenerate the \
+                 dependency with a compatible cddl-codegen — the extern-interface seam is versioned.",
+                path.display()
+            )
+        } else {
+            format!(
+                "extern-interface file {} is missing the required seam header \
+                 `{EXTERN_INTERFACE_HEADER}` on its first line. --extern-import only accepts \
+                 machine-generated exports carrying the versioned seam; point the flag at a committed \
+                 extern-interface/<dep>/ tree, or hand-stub the dependency under {}/<dep>/ instead \
+                 (physical stubs are parsed leniently).",
+                path.display(),
+                parsing::EXTERN_DEPS_DIR
+            )
+        };
+        return Err(msg.into());
+    }
+    if let Some(bad) = first_unknown_annotation_token(content) {
+        return Err(format!(
+            "extern-interface file {} contains an unknown annotation token `{bad}` outside the \
+             recognized comment-DSL set — the strict extern-interface seam rejects it (a typo, or a \
+             newer dialect this cddl-codegen does not understand). Regenerate the dependency with a \
+             compatible cddl-codegen.",
+            path.display()
+        )
+        .into());
+    }
+    Ok(())
+}
+
+/// The first `@`-token in `content` that no known rule-metadata DSL tag is a PREFIX of (the strict
+/// extern-interface whitelist, matching comment_ast's prefix semantics — `@namefoo` credits `@name`).
+/// An `@`-token runs from `@` to the next whitespace or `@`, so a buried `@doc@import` splits and the
+/// unknown `@import` is still caught. `None` = every `@`-token is recognized. Reason text in
+/// `; unexported:` records only ever contains whitelisted tokens (`@custom_serialize` /
+/// `@custom_deserialize`), so a records-carrying export passes.
+fn first_unknown_annotation_token(content: &str) -> Option<String> {
+    let known = crate::comment_ast::KNOWN_RULE_METADATA_TAGS;
+    let mut chars = content.chars().peekable();
+    while let Some(&c) = chars.peek() {
+        if c != '@' {
+            chars.next();
+            continue;
+        }
+        let mut token = String::from('@');
+        chars.next();
+        while let Some(&next) = chars.peek() {
+            if next.is_whitespace() || next == '@' {
+                break;
+            }
+            token.push(next);
+            chars.next();
+        }
+        if !known.iter().any(|tag| token.starts_with(tag)) {
+            return Some(token);
+        }
+    }
+    None
+}
+
+/// Augment (never swallow) a checked-parse failure with the `--extern-import` staleness hint: the
+/// declared dep list, their export paths, and what to do when a referenced ident is undefined. The
+/// original parse error stays at the head so its "undefined reference" detail is preserved.
+fn extern_import_staleness_error(
+    parse_error: String,
+    extern_imports: &std::collections::BTreeMap<String, String>,
+) -> String {
+    let deps = extern_imports
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(", ");
+    let paths = extern_imports
+        .iter()
+        .map(|(dep, path)| format!("{dep}={path}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "{parse_error}\n\nnote: --extern-import is in use (declared dependencies: {deps}). If a \
+         referenced identifier is undefined above, it may be recorded as `; unexported:` in the \
+         dependency's export (a rule the dep could not project — hand-stub it), or the export may \
+         predate the dependency's current spec. Regenerate the dependency so its extern-interface \
+         export is fresh, check the export's `; unexported:` records, or hand-stub the missing rule. \
+         Export paths: {paths}."
+    )
+}
+
 /// Parse the CDDL input described by `cli`, build the intermediate representation, and invoke
 /// `f` with a borrow of it plus the `export_raw_bytes_encoding_trait` flag. The AST and IR are
 /// owned for the duration of the call, so `f` must return owned data (it cannot leak the borrow).
@@ -183,6 +404,23 @@ pub fn with_types<R>(
             ))
         })
         .collect::<Result<String, Box<dyn std::error::Error>>>()?;
+    // Consumer-side consumption of a dependency's committed extern-interface export
+    // (`--extern-import <dep>=<path>`). The mapped files are read and appended to the concatenation
+    // with EXTERN_DEPS_DIR scope markers, so their rules land in a non-exported `<dep>` scope exactly
+    // as a physical `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/` stub tree would — after which the entire
+    // downstream pathway (scope filter, extern resolution, wasm crate mapping, request sidecars) is
+    // UNCHANGED. Assembled in a SEPARATE loop from the main input's on purpose: the main loop keys
+    // scope computation on `input_files.len() > 1` and pathdiffs against `cli.input`, so folding these
+    // markers into it would flip a single-file consumer off its ROOT_SCOPE behavior. Appended BEFORE
+    // the raw-bytes-marker scan below so a dep's raw-bytes export sets the trait flag identically to a
+    // physical stub carrying the same marker.
+    let extern_imports = cli.extern_import_paths();
+    append_extern_imports(
+        cli,
+        &extern_imports,
+        input_files.len(),
+        &mut input_files_content,
+    )?;
     let export_raw_bytes_encoding_trait = input_files_content.contains(parsing::RAW_BYTES_MARKER);
     // we also need to mark the extern marker to a placeholder struct that won't get codegened
     input_files_content.push_str(&format!("{} = [0]", parsing::EXTERN_MARKER));
@@ -193,7 +431,19 @@ pub fn with_types<R>(
     // Note: we use the checked parse entry (validates that every referenced type/group name is defined)
     //       so an undefined reference is a graceful error here rather than downstream panic during IR build
     //       (i.e. we don't use the unchecked `cddl_from_str`)
-    let cddl = cddl::ast::CDDL::from_slice(input_files_content.as_bytes())?;
+    let cddl = match cddl::ast::CDDL::from_slice(input_files_content.as_bytes()) {
+        Ok(cddl) => cddl,
+        // Staleness diagnostic: the checked parse validates every referenced type/group name is
+        // defined, so a consumer referencing an ident absent from a dep's export fails HERE with the
+        // fork's generic "undefined reference" error, which knows nothing about deps. When
+        // `--extern-import` is in use, AUGMENT (never swallow) that error with the declared dep list
+        // and the "referenced ident may be `; unexported:` in the export, or predate the dep's current
+        // spec — regenerate the dependency / check the export's records / hand-stub" hint.
+        Err(e) if !extern_imports.is_empty() => {
+            return Err(extern_import_staleness_error(e, &extern_imports).into());
+        }
+        Err(e) => return Err(e.into()),
+    };
     let pv = cddl::ast::parent::ParentVisitor::new(&cddl).unwrap();
     let mut types = IntermediateTypes::new();
 

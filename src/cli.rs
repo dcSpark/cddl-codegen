@@ -211,6 +211,24 @@ pub struct Cli {
     #[clap(long = "key-requests", value_parser)]
     pub key_requests: Vec<String>,
 
+    /// Consume a dependency's committed extern-interface export (`extern-interface/<dep>/**`, emitted
+    /// by the dep's own regen) instead of hand-maintaining a stub under
+    /// `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/`. Each mapped path is read and concatenated with
+    /// EXTERN_DEPS_DIR scope markers so its rules land in the same non-exported scope a physical stub
+    /// tree would — after which the whole extern-deps pathway is unchanged. The export carries the
+    /// dep's final Rust names as `@rust_name` pins, so the consumer READS names instead of re-deriving
+    /// them (killing the cross-version naming-skew class). Flag-fed files are STRICTLY parsed: each
+    /// must begin with the versioned seam header (`; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1`) and carry
+    /// only recognized `@`-annotations — a missing/unknown version or an unknown token is a hard error
+    /// naming the file. Declaring `<dep>` here AND as a physical `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/`
+    /// input directory is a hard error (ambiguous double declaration, never a merge). Same INPUT
+    /// category and determinism wording as `--extern-wrapper-index` (explicit cross-crate input; same
+    /// inputs -> same bytes). Regenerate the dependency BEFORE the consumer so its export is fresh.
+    /// Repeatable; each value is `<dep>=<path/to/extern-interface/<dep>>` (e.g.
+    /// `--extern-import cml_core=../cml-core/rust/extern-interface/cml_core`).
+    #[clap(long = "extern-import", value_parser)]
+    pub extern_import: Vec<String>,
+
     /// Additionally export the composed rust static runtime into the CRATE at `<dir>` (created if
     /// needed), regardless of whether in-crate static export happens: the runtime files (error.rs,
     /// the serialization.rs prelude, ordered_hash_map.rs, non_empty.rs, non_empty_map.rs) go to
@@ -357,6 +375,32 @@ impl Cli {
                 );
             }
             map.insert(consumer.to_owned(), path.to_owned());
+        }
+        map
+    }
+
+    /// Parsed `--extern-import` mappings: extern-deps directory name -> path to the dep's committed
+    /// `extern-interface/<dep>/` export tree. BTreeMap (never HashMap) for deterministic output — the
+    /// concatenation order of imported deps must not depend on flag order. A malformed value (no `=`,
+    /// or an empty side) is a hard error naming the flag; a missing/empty-of-cddl path and a
+    /// double-declaration against a physical stub dir are hard errors at load time (see the api input
+    /// assembly). Mirrors `extern_wrapper_index_files`.
+    pub fn extern_import_paths(&self) -> std::collections::BTreeMap<String, String> {
+        let mut map = std::collections::BTreeMap::new();
+        for entry in &self.extern_import {
+            let (dep, path) = entry.split_once('=').unwrap_or_else(|| {
+                panic!(
+                    "--extern-import value must be <dep>=<path/to/extern-interface/dep>, got: {entry:?}"
+                )
+            });
+            let dep = dep.trim();
+            let path = path.trim();
+            if dep.is_empty() || path.is_empty() {
+                panic!(
+                    "--extern-import value must be <dep>=<path/to/extern-interface/dep> with both sides non-empty, got: {entry:?}"
+                );
+            }
+            map.insert(dep.to_owned(), path.to_owned());
         }
         map
     }

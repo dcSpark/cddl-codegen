@@ -328,6 +328,21 @@ cddl-codegen --input=cml_core.cddl --output=export --lib-name=cml-core --wasm=tr
 
 <br/><br/>
 
+:::info `--extern-import`
+Consume a dependency's committed **extern-interface export** (`extern-interface/<dep>/**`, emitted by that dependency's own regeneration) instead of hand-maintaining a stub under `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/`. Each mapped path is read and concatenated with `_CDDL_CODEGEN_EXTERN_DEPS_DIR_` scope markers, so its rules land in the same **non-exported** `<dep>` scope a physical stub tree would — after which the whole extern-deps pathway (scope filter, extern resolution, wasm crate mapping, request sidecars) is unchanged. Because the export carries the dependency's final Rust names as `@rust_name` pins, the consumer **reads** names instead of re-deriving them, eliminating the cross-version naming-skew class.
+
+Flag-fed files are **strictly parsed**: each must begin with the versioned seam header (`; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1`) and carry only recognized `@`-annotations. A missing/unknown version header or an unknown `@`-token is a hard error naming the file; declaring `<dep>` here **and** as a physical `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/` input directory is a hard error (ambiguous double declaration, never a merge); a path that does not exist or contains no `.cddl` files is a hard error naming the flag value. A physical hand-stub under the extern-deps directory remains supported (same dialect, parsed leniently) as the escape hatch for an un-regenerable dependency.
+
+Same **input category** and determinism wording as `--extern-wrapper-index`: the export is an explicit cross-crate input, so *same inputs → same bytes*. **Regenerate the dependency before the consumer** so its export is fresh (a consumer referencing an identifier absent from the export gets a hard error naming the declared dependencies, their export paths, and the regenerate / check-`; unexported:`-records / hand-stub remedies). Repeatable; each value is `<dep>=<path/to/extern-interface/<dep>>`.
+
+```bash
+cddl-codegen --input=cml_chain.cddl --output=export --lib-name=cml-chain --wasm=false \
+  --extern-import=cml_core=../cml-core/rust/extern-interface/cml_core
+```
+:::
+
+<br/><br/>
+
 :::info `--wasm-cbor-json-api-macro`
 If it is passed in, it will call the supplied externally defined macro on each exported type, instead of manually exporting the functions for to/from CBOR bytes + to/from JSON API.
 

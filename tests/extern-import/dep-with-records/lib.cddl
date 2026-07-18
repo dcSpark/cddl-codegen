@@ -1,0 +1,7 @@
+; Dependency variant whose export carries a `; unexported:` record: `cs` is a custom-serialize
+; transparent alias the projection cannot export (its plain CDDL would make a consumer emit default
+; wire logic). Used by the "export-with-records parses cleanly" test — the record's reason text
+; contains `@custom_serialize`/`@custom_deserialize`, whitelisted tokens the strict `@`-scan must NOT
+; false-positive on. A consumer referencing only `foo` consumes the export without error.
+foo = [a: uint, b: text]
+cs = bytes ; @custom_serialize my_ser @custom_deserialize my_deser

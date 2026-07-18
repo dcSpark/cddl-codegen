@@ -346,6 +346,27 @@ fn rule_metadata(input: &str) -> IResult<&str, RuleMetadata> {
     Ok((input, RuleMetadata::from_parse_results(&parse_results)))
 }
 
+/// The complete `@`-token vocabulary the rule-metadata DSL recognizes — the `tag("@…")` literals in
+/// `whitespace_then_tag`'s `alt`, surfaced as data for the extern-interface strict `@`-scan
+/// (`api::scan_extern_import_seam`), which hard-errors on any `@`-token outside this set. Because the
+/// tags prefix-match (nom `tag`), the scan treats a known tag as a PREFIX of the scanned token —
+/// `@namefoo` credits `@name` in both places. Keep in lockstep with the `tag_*` fns above (and
+/// `cddl-matrix/corpus_detect.ts`'s `MIRRORED_DIRECTIVES` mirror). Not `tag("@…")`-wrapped, so it does
+/// NOT feed corpus_detect's `tag("@…")`-literal drift tripwire.
+pub const KNOWN_RULE_METADATA_TAGS: &[&str] = &[
+    "@name",
+    "@rust_name",
+    "@newtype",
+    "@no_alias",
+    "@used_as_key",
+    "@used_as_elem",
+    "@raw_bytes_flavor",
+    "@custom_json",
+    "@custom_serialize",
+    "@custom_deserialize",
+    "@doc",
+];
+
 impl<'a> From<Option<&'a cddl::ast::Comments<'a>>> for RuleMetadata {
     fn from(comments: Option<&'a cddl::ast::Comments<'a>>) -> RuleMetadata {
         match comments {

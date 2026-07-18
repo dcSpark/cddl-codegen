@@ -1,0 +1,7 @@
+; Dependency spec for the --extern-import fixture (commit 6). Its minted extern-interface export is
+; consumed by tests/extern-import/consumer/lib.cddl TWO ways — via a physical hand-stub and via
+; --extern-import pointing at the export — and the generated consumer output must be byte-identical.
+; Exercises an opaque class-backed row (foo -> _CDDL_CODEGEN_EXTERN_TYPE_) and a transparent alias
+; (coin -> coin = uint), the two shapes a consumer resolves across the crate boundary.
+foo = [a: uint, b: text]
+coin = uint
