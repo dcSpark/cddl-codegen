@@ -53,6 +53,18 @@ fn is_per_feature_noise(path: &str) -> bool {
     path.ends_with("Cargo.toml") || path == "wasm/json-gen/src/main.rs"
 }
 
+/// `(corpus fixture stem, profile)` whose GENERATION deliberately aborts under that profile, so it
+/// has no snapshot to pin there (the fixture is still snapshotted under its other profiles). Mirrors
+/// `integration_tests::feature_corpus_compiles`'s `EXPECTED_GENERATION_FAIL`; a listed stem absent
+/// from `tests/corpus` fails as a stale pin (checked in [`feature_corpus`]).
+const PROFILE_GENERATION_SKIP: &[(&str, &str)] = &[(
+    // An optional fixed FLOAT member aborts generation under --preserve-encodings at the float
+    // deserialize stub ("preserve_encodings is not implemented for float" — the
+    // preserve_encodings_supports_floats stub class); default/json snapshot the presence field.
+    "optional_fixed_float",
+    "preserve",
+)];
+
 /// Snapshot the generated source for `input` under each profile (grouped under
 /// `tests/corpus/snapshots/<label>/`). `full` keeps every generated file; otherwise the
 /// near-constant manifest/main files are skipped. `with_ir` adds one IR dump.
@@ -191,6 +203,17 @@ fn feature_corpus() {
         "no corpus files found in {:?}",
         corpus_dir
     );
+    let corpus_stems: std::collections::BTreeSet<String> = entries
+        .iter()
+        .map(|p| p.file_stem().unwrap().to_str().unwrap().to_owned())
+        .collect();
+    for (stem, _profile) in PROFILE_GENERATION_SKIP {
+        assert!(
+            corpus_stems.contains(*stem),
+            "PROFILE_GENERATION_SKIP names corpus fixture `{stem}` that no longer exists in \
+             tests/corpus — stale pin, remove or fix it"
+        );
+    }
     for path in entries {
         let label = path.file_stem().unwrap().to_str().unwrap().to_owned();
         assert!(
@@ -200,7 +223,14 @@ fn feature_corpus() {
             "corpus file {:?} collides with a whole_program snapshot dir; rename it",
             path
         );
-        snapshot_input(&path, &label, ALL_PROFILES, false, true);
+        // A fixture whose generation aborts under some profile (float + preserve) is snapshotted
+        // only under the profiles it generates in.
+        let profiles: Vec<Profile> = ALL_PROFILES
+            .iter()
+            .filter(|(profile, _)| !PROFILE_GENERATION_SKIP.contains(&(label.as_str(), *profile)))
+            .copied()
+            .collect();
+        snapshot_input(&path, &label, &profiles, false, true);
     }
 }
 

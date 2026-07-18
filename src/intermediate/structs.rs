@@ -771,12 +771,13 @@ impl RustRecord {
                 let mut conditional_field_expr = String::new();
                 for field in &self.fields {
                     if field.optional {
-                        if field.rust_type.is_fixed_value_non_float() {
-                            // Optional non-float fixed value: modeled by a `bool` presence field
-                            // (present => exactly one encoded item — an array element or a map
-                            // key/value — absent => none). This replaces the former unconditional
-                            // skip, which left `conditional_field_expr` empty and emitted the
-                            // malformed `Len(1 + )` when it was the only dynamic-length field.
+                        if field.rust_type.is_fixed_value() {
+                            // Optional fixed value (any kind, including float): modeled by a `bool`
+                            // presence field (present => exactly one encoded item — an array element
+                            // or a map key/value — absent => none). This replaces the former
+                            // unconditional skip, which left `conditional_field_expr` empty and
+                            // emitted the malformed `Len(1 + )` when it was the only dynamic-length
+                            // field.
                             if !conditional_field_expr.is_empty() {
                                 conditional_field_expr.push_str(" + ");
                             }
@@ -787,10 +788,6 @@ impl RustRecord {
                             };
                             conditional_field_expr
                                 .push_str(&format!("if {self_field_expr} {{ 1 }} else {{ 0 }}"));
-                            continue;
-                        }
-                        if !cli.preserve_encodings && field.rust_type.is_fixed_value() {
-                            // fixed FLOAT value with encodings off: no field, contributes nothing
                             continue;
                         }
                         if !conditional_field_expr.is_empty() {

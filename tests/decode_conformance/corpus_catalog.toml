@@ -4897,6 +4897,126 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "optional_fixed_float.opt_fixed_float_array"
+axis = "corpus"
+example = "opt_fixed_float_array = [x: uint, ? f: 2.5, label: text]"
+fixture = "optional_fixed_float"
+rule = "opt_fixed_float_array"
+spec = "__probe_holder = [0, opt_fixed_float_array]\nopt_fixed_float_array = [x: uint, ? f: 2.5, label: text]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82008219014a676c696e74696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821902aa64456d696c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190548666f6363757273"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190891674b72697374656e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190fdf696d61756e6465726564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200831906c8f9410066776869736b73"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200831907b6f941006a68756d69646966696573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083190d45f94100675061636865636f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200831910c4f941006873747269636b656e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200831911eaf941006d6d697363616c63756c61746564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "optional_fixed_float.opt_fixed_float_map"
+axis = "corpus"
+example = "opt_fixed_float_map = {x: uint, ? amount: 1.5, ? rate: 2.5}"
+fixture = "optional_fixed_float"
+rule = "opt_fixed_float_map"
+spec = "__probe_holder = [0, opt_fixed_float_map]\nopt_fixed_float_map = {x: uint, ? amount: 1.5, ? rate: 2.5}"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a161781880"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a161781902be"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a161781910cb"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a2617819039566616d6f756e74f93e00"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a261781908bb66616d6f756e74f93e00"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a26178190d5466616d6f756e74f93e00"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a361780b66616d6f756e74f93e006472617465f94100"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a3617819065366616d6f756e74f93e006472617465f94100"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a36178190a4966616d6f756e74f93e006472617465f94100"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a361781910f166616d6f756e74f93e006472617465f94100"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "optional_fixed_member.opt_fixed_array"
 axis = "corpus"
 example = "opt_fixed_array = [x: uint, ? flag: true, label: text]"

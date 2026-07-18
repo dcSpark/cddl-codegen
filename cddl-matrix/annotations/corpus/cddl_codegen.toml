@@ -49,12 +49,14 @@ fixture = "bool.cddl"
 # `prelude.float64`'s canonical fixture is `homogeneous_array.cddl`, where it appears as the top-level
 # `floats = [* float64]` transparent `Vec<f64>` alias — generated and compiled under all three
 # profiles. It is NOT round-tripped as its own emit-tests subject: a float in a struct field aborts
-# generation under `--preserve-encodings` (see the `prelude.float*` "partial" notes), and the corpus
-# runs every fixture under preserve, so no float-bearing record can be a corpus entry. The `[* float64]`
-# runtime regression that once rejected every non-empty Special-class (major-type-7) element collection
-# lived in the type-agnostic `make_deser_loop_break_check`; it is locked by `bool_holder`'s
-# default-profile emit-tests round-trip, whose emitted break-check is byte-identical to a float
-# element's (`bool` is the same major type 7).
+# generation under `--preserve-encodings` (see the `prelude.float*` "partial" notes). A float-bearing
+# record CAN be a corpus entry so long as its preserve leg is generation-fail-ledgered:
+# `optional_fixed_float.cddl` carries one (an optional fixed FLOAT member) and default/json round-trip
+# it, with the preserve leg pinned in `feature_corpus_compiles`'s `EXPECTED_GENERATION_FAIL`. The
+# `[* float64]` runtime regression that once rejected every non-empty Special-class (major-type-7)
+# element collection lived in the type-agnostic `make_deser_loop_break_check`; it is locked by
+# `bool_holder`'s default-profile emit-tests round-trip, whose emitted break-check is byte-identical to
+# a float element's (`bool` is the same major type 7).
 [[cover]]
 id = "prelude.float64"
 fixture = "homogeneous_array.cddl"
@@ -595,7 +597,7 @@ text = "Both the IMPLICIT cut on `:`/bareword keys and the EXPLICIT `^` cut are 
 text = "Sockets aren't really implemented — `$`/`$$` are stripped to plain identifiers, so `$x` silently aliases to `x`. Incremental choice extension via the `/=` / `//=` plug (extending an already-defined ident) is rejected gracefully at generation rather than silently narrowing to the last arm (see the assignt/assigng.extend notes)."
 
 [[finding]]
-text = "Float is fine until `--preserve-encodings` or bounds (the two `unimplemented!` sites) — the reason the corpus avoids floats."
+text = "Float is fine until `--preserve-encodings` or bounds (the two `unimplemented!` sites). The corpus no longer avoids floats entirely: `tests/corpus/optional_fixed_float.cddl` carries an optional fixed FLOAT member (default/json generate the `bool` presence field; its preserve leg is generation-fail-ledgered in `feature_corpus_compiles`'s `EXPECTED_GENERATION_FAIL`). The residual preserve-only float gap rides the `preserve_encodings_supports_floats` stub class."
 
 [[finding]]
 text = "Methodology — the support probe is COMPILE-GATED (generate + `cargo check`), not exit-code-only. This caught a former false positive: `x = any` exits 0 but emits `pub type X = Any;` (a type defined nowhere) which fails to compile, so `prelude.any` is correctly ➖ (root cause: `any` is absent from `is_identifier_reserved` in src/utils.rs, so it's treated as an undefined user type). The same standalone-compile failure is expected-by-design for the extern/raw-bytes sentinels and @custom_serialize/@custom_deserialize — those are exempt (supported, but compile only with user-provided code; integration-tested)."

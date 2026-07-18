@@ -181,6 +181,103 @@ mod tests {
         assert!(OptFixedMap::from_cbor_bytes(&wrong).is_err());
     }
 
+    // Optional fixed FLOAT member: identical `bool` presence model, but the constant is a Special
+    // float — written `write_special(Special::Float(2.5))` (canonical `fb` + 8 bytes) and verified
+    // `raw.float()? != 2.5` -> FixedValueMismatch. Default profile only (floats are unimplemented
+    // under --preserve-encodings). Present/absent byte round-trip + wrong-value reject, array + map.
+    #[test]
+    fn opt_fixed_member_float() {
+        // 2.5 = fb 40 04 00 00 00 00 00 00 (canonical double); 1.5 = fb 3f f8 ...
+        let fb_2_5 = [0xfbu8, 0x40, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let fb_1_5 = [0xfbu8, 0x3f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+
+        // array: absent -> [a, b] (no float element)
+        let absent = OptFixedArrFloat::new(5, String::from("hi"));
+        assert!(!absent.ffix);
+        assert_eq!(
+            absent.to_cbor_bytes(),
+            [
+                arr_def(2),
+                cbor_int(5, cbor_event::Sz::Inline),
+                cbor_string("hi")
+            ]
+            .concat()
+        );
+        deser_test(&absent);
+        assert!(
+            !OptFixedArrFloat::from_cbor_bytes(&absent.to_cbor_bytes())
+                .unwrap()
+                .ffix
+        );
+        // present: set true -> [a, 2.5, b] (the fixed float appears) and the presence bit survives
+        let mut present = OptFixedArrFloat::new(5, String::from("hi"));
+        present.ffix = true;
+        let present_bytes = present.to_cbor_bytes();
+        assert_eq!(
+            present_bytes,
+            [
+                arr_def(3),
+                cbor_int(5, cbor_event::Sz::Inline),
+                fb_2_5.to_vec(),
+                cbor_string("hi")
+            ]
+            .concat()
+        );
+        deser_test(&present);
+        assert!(
+            OptFixedArrFloat::from_cbor_bytes(&present_bytes)
+                .unwrap()
+                .ffix
+        );
+        // WRONG constant (1.5 where 2.5 expected) -> FixedValueMismatch, reason-asserted so an
+        // earlier unrelated rejection can't silently absorb this pin
+        let wrong = [
+            arr_def(3),
+            cbor_int(5, cbor_event::Sz::Inline),
+            fb_1_5.to_vec(),
+            cbor_string("hi"),
+        ]
+        .concat();
+        let wrong_err = OptFixedArrFloat::from_cbor_bytes(&wrong).unwrap_err();
+        assert!(
+            wrong_err.to_string().contains("Expected fixed value"),
+            "{wrong_err}"
+        );
+
+        // map: absent -> {a: 5}; present -> the float entry appears and the presence bit survives
+        let map_absent = OptFixedMapFloat::new(5);
+        assert!(!map_absent.m_float);
+        assert_eq!(
+            map_absent.to_cbor_bytes(),
+            [
+                map_def(1),
+                cbor_string("a"),
+                cbor_int(5, cbor_event::Sz::Inline)
+            ]
+            .concat()
+        );
+        deser_test(&map_absent);
+        let mut map_present = OptFixedMapFloat::new(5);
+        map_present.m_float = true;
+        assert_eq!(
+            map_present.to_cbor_bytes(),
+            [
+                map_def(2),
+                cbor_string("a"),
+                cbor_int(5, cbor_event::Sz::Inline),
+                cbor_string("m_float"),
+                fb_2_5.to_vec(),
+            ]
+            .concat()
+        );
+        deser_test(&map_present);
+        assert!(
+            OptFixedMapFloat::from_cbor_bytes(&map_present.to_cbor_bytes())
+                .unwrap()
+                .m_float
+        );
+    }
+
     // Round-trip tests only ever feed well-formed CBOR; these pin that *malformed* input is
     // rejected rather than silently accepted. Structural cases the
     // bounds test doesn't reach: wrong shape, wrong element type, wrong/missing tag. Each case has

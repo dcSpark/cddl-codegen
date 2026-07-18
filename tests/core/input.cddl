@@ -421,3 +421,15 @@ opt_fixed_arr = [a: uint, ? bfix: true, b: text]
 opt_fixed_arr_last = [a: text, ? ufix: 5]
 opt_fixed_arr_null = [a: uint, ? nfix: null]
 opt_fixed_map = {a: uint, ? m_uint: 5, ? m_text: "tag", ? m_nint: -7, ? m_bool: true, ? m_null: null}
+
+; --- OPTIONAL fixed FLOAT member: the `bool` presence field again, constant is a Special float ---
+; Same one-bit presence model as the kinds above; the constant is written with
+; `write_special(Special::Float(<lit>))` (canonical `fb` + 8 bytes) and verified with `raw.float()?`
+; + an exact `!= <lit>` compare -> FixedValueMismatch, the SAME spellings the mandatory fixed-float
+; path emits. Default/json only: --preserve-encodings is unimplemented for floats (the float
+; deserialize stub). The float peeks as CBOR Special like bool/null, so in the array form it must not
+; be followed by another Special-classed field: `? ffix: 2.5` (Special) precedes `b: text`. 2.5 is
+; exactly representable so the verify's exact compare is well-defined. Corpus sibling:
+; tests/corpus/optional_fixed_float.cddl.
+opt_fixed_arr_float = [a: uint, ? ffix: 2.5, b: text]
+opt_fixed_map_float = {a: uint, ? m_float: 2.5}

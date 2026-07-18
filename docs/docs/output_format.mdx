@@ -56,10 +56,14 @@ pub struct A {
 
 `bool` is used rather than `Option<()>` precisely because it crosses the wasm and serde/schemars
 boundaries cleanly (wasm-bindgen has no `()` ABI, and serde collapses `Some(())`/`None`). Every
-in-scope fixed-value kind is covered — bool, null, uint, nint, text. (A fixed **float** in optional
-member position is the one exception: it keeps a pre-existing unbound handling and is unimplemented
-under `--preserve-encodings` — tracked by the "OPTIONAL fixed FLOAT member" entry in
-`cddl-matrix/ROADMAP.md`'s findings ledger and the `preserve_encodings_supports_floats` stub gate.)
+fixed-value kind is covered — bool, null, uint, nint, text, and **float** (`? v: 2.5`): the float
+presence field serializes with `write_special(Special::Float(<lit>))` and verifies on read with an
+exact `raw.float()? != <lit>` compare, the same spellings the mandatory fixed-float path emits
+(`tests/corpus/optional_fixed_float.cddl`, hand vectors in `tests/core/tests.rs`'s
+`opt_fixed_member_float`). The one exception is `--preserve-encodings`: a fixed float member (optional
+or mandatory) aborts generation at the float deserialize stub, the general
+`preserve_encodings_supports_floats` limitation — tracked by that stub gate and the preserve-side
+float rows in `cddl-matrix/ROADMAP.md`'s findings ledger.
 
 ## Non-empty containers
 

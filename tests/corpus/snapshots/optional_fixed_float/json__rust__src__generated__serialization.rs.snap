@@ -1,0 +1,211 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for OptFixedFloatArray {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(2 + if self.f { 1 } else { 0 }))?;
+        serializer.write_unsigned_integer(self.x)?;
+        if self.f {
+            serializer.write_special(cbor_event::Special::Float(2.5))?;
+        }
+        serializer.write_text(&self.label)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for OptFixedFloatArray {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            let x = Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("x"))?;
+            let f = if raw
+                .as_slice()
+                .first()
+                .map(|byte: &u8| {
+                    cbor_event::Type::from(*byte) == cbor_event::Type::Special
+                        && (*byte & 0b0001_1111) != 0x1f
+                })
+                .unwrap_or(false)
+            {
+                (|| -> Result<_, DeserializeError> {
+                    read_len.read_elems(1)?;
+                    let f_value = raw.float()?;
+                    if f_value != 2.5 {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Float(f_value),
+                            expected: Key::Float(2.5),
+                        }
+                        .into());
+                    }
+                    Ok(true)
+                })()
+                .map_err(|e| e.annotate("f"))
+            } else {
+                Ok(false)
+            }?;
+            let label = Ok(raw.text()?).map_err(|e: DeserializeError| e.annotate("label"))?;
+            match len {
+                cbor_event::Len::Len(_) => read_len.finish()?,
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(OptFixedFloatArray { x, f, label })
+        })()
+        .map_err(|e| e.annotate("OptFixedFloatArray"))
+    }
+}
+
+impl cbor_event::se::Serialize for OptFixedFloatMap {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map(cbor_event::Len::Len(
+            1 + if self.amount { 1 } else { 0 } + if self.rate { 1 } else { 0 },
+        ))?;
+        serializer.write_text("x")?;
+        serializer.write_unsigned_integer(self.x)?;
+        if self.rate {
+            serializer.write_text("rate")?;
+            serializer.write_special(cbor_event::Special::Float(2.5))?;
+        }
+        if self.amount {
+            serializer.write_text("amount")?;
+            serializer.write_special(cbor_event::Special::Float(1.5))?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for OptFixedFloatMap {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            let mut x = None;
+            let mut rate_present = false;
+            let mut amount_present = false;
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Uint(
+                            raw.unsigned_integer()?,
+                        ))
+                        .into());
+                    }
+                    cbor_event::Type::Text => match raw.text()?.as_str() {
+                        "x" => {
+                            if x.is_some() {
+                                return Err(
+                                    DeserializeFailure::DuplicateKey(Key::Str("x".into())).into()
+                                );
+                            }
+                            x = Some(
+                                Ok(raw.unsigned_integer()?)
+                                    .map_err(|e: DeserializeError| e.annotate("x"))?,
+                            );
+                        }
+                        "rate" => {
+                            if rate_present {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "rate".into(),
+                                ))
+                                .into());
+                            }
+                            rate_present = (|| -> Result<_, DeserializeError> {
+                                read_len.read_elems(1)?;
+                                let rate_value = raw.float()?;
+                                if rate_value != 2.5 {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Float(rate_value),
+                                        expected: Key::Float(2.5),
+                                    }
+                                    .into());
+                                }
+                                Ok(true)
+                            })()
+                            .map_err(|e| e.annotate("rate"))?;
+                        }
+                        "amount" => {
+                            if amount_present {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "amount".into(),
+                                ))
+                                .into());
+                            }
+                            amount_present = (|| -> Result<_, DeserializeError> {
+                                read_len.read_elems(1)?;
+                                let amount_value = raw.float()?;
+                                if amount_value != 1.5 {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Float(amount_value),
+                                        expected: Key::Float(1.5),
+                                    }
+                                    .into());
+                                }
+                                Ok(true)
+                            })()
+                            .map_err(|e| e.annotate("amount"))?;
+                        }
+                        unknown_key => {
+                            return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                unknown_key.to_owned(),
+                            ))
+                            .into());
+                        }
+                    },
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                        }
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
+                    }
+                }
+                read += 1;
+            }
+            let x = match x {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("x")))
+                            .into(),
+                    );
+                }
+            };
+            read_len.finish()?;
+            Ok(Self {
+                x,
+                amount: amount_present,
+                rate: rate_present,
+            })
+        })()
+        .map_err(|e| e.annotate("OptFixedFloatMap"))
+    }
+}

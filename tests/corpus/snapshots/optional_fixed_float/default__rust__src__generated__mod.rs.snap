@@ -1,0 +1,46 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod serialization;
+
+use crate::generated::error::*;
+
+#[derive(Clone, Debug)]
+pub struct OptFixedFloatArray {
+    pub x: u64,
+    /// Whether the optional fixed value `2.5` (CDDL `? f: 2.5`) is present; `false` means absent.
+    pub f: bool,
+    pub label: String,
+}
+
+impl OptFixedFloatArray {
+    pub fn new(x: u64, label: String) -> Self {
+        Self { x, f: false, label }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct OptFixedFloatMap {
+    pub x: u64,
+    /// Whether the optional fixed value `1.5` (CDDL `? amount: 1.5`) is present; `false` means absent.
+    pub amount: bool,
+    /// Whether the optional fixed value `2.5` (CDDL `? rate: 2.5`) is present; `false` means absent.
+    pub rate: bool,
+}
+
+impl OptFixedFloatMap {
+    pub fn new(x: u64) -> Self {
+        Self {
+            x,
+            amount: false,
+            rate: false,
+        }
+    }
+}

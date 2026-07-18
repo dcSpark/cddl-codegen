@@ -3,8 +3,10 @@
 ; no field — that role is `fixed_bool_member.cddl`). Serialize writes the constant iff the bool is
 ; set and the length term flips with it; deserialize peeks the CBOR type, verifies the constant
 ; (FixedValueMismatch on the wrong value), and records presence. Covered across value kinds
-; (uint/text/nint/bool/null — float is excluded: an optional fixed float keeps its pre-existing
-; unbound handling and --preserve-encodings is unimplemented for floats) and both representations
+; (uint/text/nint/bool/null; the fixed FLOAT kind uses the SAME presence field but lives in its own
+; fixture — tests/corpus/optional_fixed_float.cddl — because --preserve-encodings is unimplemented
+; for floats, so that fixture is preserve-generation-fail-ledgered while these kinds compile under
+; every profile) and both representations
 ; under every profile (default / preserve / json). The array optional's cbor type must not overlap the
 ; following field (the ambiguity guard) — `? flag: true` (Special) precedes `label: text` (Text) —
 ; and the map keys are distinct, so presence is unambiguous per entry.
