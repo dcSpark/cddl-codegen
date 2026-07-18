@@ -143,6 +143,21 @@ justifies building the named mechanical layer. Building before the trigger fires
 over-engineering; deleting an entry without either building the layer or recording why the class is
 dead loses the lesson.
 
+- **An emission branch whose generated OUTPUT no fixture exercises is invisible to every gate —
+  it can rot to uncompilable and hide behavioral bugs in both directions.** Proven instance
+  (plan-review-caught during the cbor_event 3.2.0 upgrade, not by any gate): the
+  nullable-`Special` null-peek (the `Optional`-with-Special arm in `generation/deserialize.rs`)
+  had ZERO checked-in output — no snapshot, export, or suite fixture contained its emission — and
+  had decayed to emitting a receiver-less `match cbor_type()?` (E0425, uncompilable) around a
+  hardcoded 1-byte rewind that both ACCEPTED malformed two-byte simples (`f8 f5` read as
+  `Some(true)`) and REJECTED valid 9-byte floats. Compile, round-trip, and conformance gates were
+  all blind because no input ever reached the branch. Standing coverage now: the
+  `nullable_specials` fixtures (core + preserve suites) execute the emission in both directions.
+  Working rule meanwhile: a new emission branch lands WITH a fixture whose generated output
+  exercises it (compiling the generator is not evidence the emitted string compiles). The
+  mechanical layer on a second instance: a generator branch-coverage sweep — e.g. llvm-cov over
+  the corpus + suite generation runs, red on emission arms no fixture executes — the only layer
+  that catches the class without knowing each branch by name.
 - **Stale "known limitation" prose surviving its fix — a finding ledgered in TWO homes where the
   fixing commit prunes only one.** Proven instance (read-caught during the facade-pin delivery,
   not by any gate): the extern-only-scope undeclared-module finding was ledgered both in
@@ -549,6 +564,16 @@ dead loses the lesson.
 
 ## Deferred features (build when a real consumer needs them)
 
+- **Dependency version-RANGE resolution is untested: generated crates float on semver
+  `cbor_event = "3.2.0"`, and nothing gates what that range actually resolves to over time.** The
+  heavy gates resolve `cbor_event` from crates.io per temp cell (the registry-transient watch
+  below), so a new semver-compatible upstream release changes what every nested-cargo cell — and
+  every downstream consumer — builds against, with no gate noticing until something breaks. The
+  3.2.0 upgrade itself arrived as exactly such a version event (the 2.4.0-era prediction this
+  entry re-captures), absorbed deliberately with flip vectors; an UNPLANNED 3.x release would be
+  absorbed silently. The mechanical layer when a release actually bites: a pinned-latest or
+  `--minimal-versions`-style resolve check over one generated crate, red when the resolved
+  `cbor_event` version drifts from the one the vectors were blessed against.
 - **Bounded occurrences beyond `+` (`n*m` / `*n` / `n*` with n ≥ 2) — half runtime-checked,
   half rejected, neither type-enforced.** Current state is asymmetric by representation:
   ARRAYS (`[2*5 foo]`, `[*3 foo]`) are supported via serialize/deserialize-time length checks
@@ -638,7 +663,12 @@ dead loses the lesson.
   local-tier runs and one isolated `feature_corpus_compiles` run, each hitting a different
   test/cell with the `curl [56] Proxy CONNECT aborted` flavor of the signature, all full-logged,
   green on immediate retry, and the last cleared via the `CARGO_NET_OFFLINE=true` clean-confirm
-  this entry prescribes). The shifting-cell + registry-error signature distinguishes
+  this entry prescribes; three further sightings 2026-07-18 during the cbor_event 3.2.0 upgrade —
+  a `core_with_wasm` wasm-crate cell and a `deserialize_depth_limit_guards_recursion` cell across
+  two local-tier runs, plus a full-tier `decode_conformance_replay` wasm-surface leg, same flavor,
+  all full-logged and green on isolated retry — widening the observed surface from the three
+  named compile gates to effectively ANY nested-cargo site, suite wasm legs and the full-tier
+  replay gates included). The shifting-cell + registry-error signature distinguishes
   it from a real red cell at a glance; isolated re-run of the named gate is the confirm, and
   `CARGO_NET_OFFLINE=true bun run check.ts` is the clean-confirm when the rate makes consecutive
   online runs impractical (deps are already in cargo home after any warm run). The class also

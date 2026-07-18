@@ -63,6 +63,8 @@ The generated deserializer is recursive-descent, so by default it has **no depth
 
 Consumers that deserialize **untrusted input** (e.g. on-chain data) should generate with [`--deserialize-depth-limit=N`](command_line_flags), which makes the generated deserializers return a graceful `DeserializeError` once nesting exceeds `N` instead of overflowing the stack. See the flag's documentation for the tradeoff (it also rejects legitimately deep documents past `N`).
 
+Depth is the only hostile-input class that needs an opt-in flag. The other classes are handled by the runtime (`cbor_event` 3.x): truncated input, over-claiming length headers, reserved simple values, and stray break codes all return a `DeserializeError` — no panic, and no allocation sized from an untrusted claimed length (an 8-byte header claiming gigabytes errors before any allocation).
+
 {/* BEGIN GENERATED q1-limitations — regenerate with: cd cddl-matrix && bun run query_q1_gaps.ts --write */}
 
 ## Limitations
