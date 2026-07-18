@@ -2257,6 +2257,27 @@ pub fn reserved_ident_rejection(source_name: &str) -> Option<String> {
     None
 }
 
+/// A rule/group name containing `.` is rejected at the reserved-name pre-scan seam. RFC 8610 allows
+/// dots in identifiers, but `convert_to_camel_case` passes `.` straight through (`cose.label` →
+/// `Cose.label`, invalid Rust) and `RustIdent::new` adds no dot check — so a dotted name would flow
+/// silently into a crate that does not compile. Dotted idents chiefly arise from `cddlc`'s
+/// `as`-namespacing expansion (`import … as cose` rewrites imported rules to `cose.<name>`), which
+/// cddl-codegen does not yet support; rejecting them loudly is the interop-honest behavior until
+/// scope-qualified idents land.
+pub fn dotted_ident_rejection(source_name: &str) -> Option<String> {
+    if source_name.contains('.') {
+        return Some(format!(
+            "rule `{source_name}`: its name contains a `.`, which cddl-codegen does not support in \
+             a rule/group name — it camel-cases to invalid Rust (`{source_name}` → \
+             `{}`). Dotted identifiers typically come from `cddlc`'s `as`-namespacing expansion \
+             (`import … as <prefix>` rewrites rules to `<prefix>.<name>`); rename the rule to a \
+             dot-free identifier.",
+            convert_to_camel_case(source_name)
+        ));
+    }
+    None
+}
+
 mod idents;
 use crate::cli::Cli;
 pub use idents::*;
