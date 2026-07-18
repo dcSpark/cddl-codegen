@@ -213,18 +213,14 @@ forget to re-export the type at the crate root, the glue fails **loudly** with a
 unresolved-import error naming the type, rather than a confusing "cannot find type" deep in the
 generated code.
 
-The **wasm crate gets the same glue for `_CDDL_CODEGEN_EXTERN_TYPE_`**. Its generated code names the
+The **wasm crate gets the same glue**, again for both markers. Its generated code names the
 extern's hand-written `#[wasm_bindgen]` wrapper (e.g. `pub fn ext(&self) -> MyExt`) by bare ident inside
 `wasm/src/generated/**`, invisible there for the same reason. So the tool emits `pub use crate::MyExt;`
 into the wasm declaring scope's generated module too, and the contract is identical: define the wasm
 wrapper in a hand-written wasm-crate module and re-export it at the **wasm crate root** (`pub mod utils;
 pub use utils::MyExt;` in `wasm/src/lib.rs`, with the wrapper supplying the `From`/`AsRef` conversions
-the generated boundary code calls). A `_CDDL_CODEGEN_RAW_BYTES_TYPE_` declared in the crate's own spec
-gets **no wasm-side glue yet** — its generated wasm code still names the wrapper by bare ident, so a
-crate-root wasm wrapper for it does not resolve (a known limitation; tracked by the
-obsolete-fixture-contract residual in `tests/TESTING_ROADMAP.md` § Standing-system residuals).
-Raw-bytes types imported from a *dependency* crate are unaffected — they resolve through the
-dependency's import path, not this glue.
+the generated boundary code calls). (Types imported from a *dependency* crate — either marker — are
+unaffected by this glue; they resolve through the dependency's import path.)
 
 Because the root is user-owned, the tool never re-clobbers this wiring — the failure mode where a
 regeneration dropped a hand-added `pub mod utils;` and broke every reference to the extern type is
