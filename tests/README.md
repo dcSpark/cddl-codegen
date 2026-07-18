@@ -454,6 +454,57 @@ edit-preservation overlay participates — it is what caught the sidecar's in-co
 trapping on borrow removal (since relocated to the file banner, where comments anchor to
 structure that always exists).
 
+### Extern-interface export & `--extern-import` (the machine-generated stub channel)
+
+Every regen emits `extern-interface/<dep>/**` — a committed CDDL projection of the crate's
+extern-visible surface (opaque `_CDDL_CODEGEN_EXTERN_TYPE_` rows, truthful transparent spellings,
+`@rust_name` pins, `; unexported:` exclude-with-record + reference-closure) that a consumer feeds
+back via `--extern-import` in place of a hand-stub tree (user docs:
+`docs/docs/output_format.mdx` § the export tree, `docs/docs/integration-other.mdx`,
+`docs/docs/command_line_flags.mdx` § `--extern-import`). Its test layers:
+
+- **Renderer floor** (`src/generation/extern_interface.rs` in-file vectors): IR→CDDL spelling per
+  shape, never-lossy by construction — an unrenderable shape is a hard `Err` the projection turns
+  into an exclusion record, never a guessed spelling; the `RustStructType`/`ConceptualRustType`
+  matches carry no `_ =>` arm, so a new IR variant fails compilation until it chooses a spelling.
+- **Projection snapshots** (`snapshot_tests.rs`, fast tier): `extern_interface_emit` pins the full
+  emitted tree over `tests/extern-interface-emit/` (every projection row, depth-1 exclusion of the
+  spec's own extern deps, closure records naming the chain root, prelude refs rendering rather than
+  excluding); `extern_interface_emit_is_deterministic` (double-emit byte-compare),
+  `extern_interface_emit_same_in_both_modes` (rust-only = wasm — emission is mode-unconditional),
+  `extern_interface_emit_empty_surface` (header-only file keeps stable presence),
+  `extern_interface_emit_exclusions_and_closure`, and `extern_interface_check_emit` (the
+  self-check file's content).
+- **Compiled self-check** (`integration_tests.rs`, nested-cargo, local tier): every generated rust
+  crate carries `src/generated/extern_interface_check.rs` asserting each exported name is a real,
+  correctly-bounded type (`Serialize`, per-type-weakened `Deserialize`, `RawBytesEncoding`,
+  existence-`use` for transparent rows) — `extern_interface_check_compiles` is the green half;
+  `extern_interface_check_mutation_fails_build` deletes one generated type and requires the dep's
+  own build to go RED naming it (the stale/hand-edited-export failure mode, proven not assumed);
+  `extern_interface_check_weakens_deserialize_bound` / `extern_interface_check_skips_generic_base`
+  pin the two soundness carve-outs.
+- **Consumer seam** (`src/tests/extern_import_tests.rs`): the acceptance criterion in two halves —
+  `extern_import_matches_hand_stub_byte_for_byte` (seam identity: identical rule text through flag
+  vs physical stub lands identical bytes) and `extern_import_matches_pinless_hand_stub_byte_for_byte`
+  (migration identity: a pin agreeing with today's derivation changes nothing — the half that
+  caught pin==derived emitting `use dep::Foo as Foo;`). Plus the strict-seam vectors (missing
+  header / unknown version / unknown `@`-annotation / flag-vs-physical double declaration / empty
+  path / malformed value all hard-error; an export whose `; unexported:` records mention DSL tags
+  still parses cleanly), the wrapped staleness diagnostic, and single-file-consumer ROOT_SCOPE
+  preservation.
+- **Transitive floor** (same file, `transitive_*` over `tests/extern-import-transitive/`): depth-1
+  export purity (a mid-dep transparent rule referencing a base-dep type is closure-excluded, and
+  no base-dep ident appears in any exported body), two-flag composition with right-crate `use`
+  targeting, the opaque boundary hiding the dep-of-dep, byte-identity at three-crate scale, and
+  `transitive_wasm_sidecars_carry_dep_cddl_idents` — the workspace sidecars above
+  (`borrowed_collections.rs` / `borrowed_key_types.rs`) byte-identical through either channel,
+  rows still keyed by the dep's ORIGINAL CDDL idents (the `--wrapper-requests`/`--key-requests`
+  read-back contract).
+- **`@rust_name` floor**: `comment_ast.rs` unit vectors plus `src/tests/rust_name_tests.rs`
+  (import-seam aliasing, the wasm full-path bypass site, exported-rule rejection, reserved-name
+  pin rejection); the directive is lockstep-mirrored in `cddl-matrix/corpus_detect.ts` (its
+  registration as a matrix feature row is tracked in `cddl-matrix/ROADMAP.md`).
+
 `flag_value_smoke` generate + `cargo check`s a rich extern-free input (`tests/canonical`) under each
 documented flag *value* that no named profile exercises (`--annotate-fields=false`,
 `--to-from-bytes-methods=false`, `--binary-wrappers=true`) — each selects a whole alternative emit

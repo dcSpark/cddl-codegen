@@ -685,6 +685,29 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
 
 ## Deferred features (build when a real consumer needs them)
 
+- **Extern-interface export dialect v2 candidates.** Each bumps the seam header
+  (`_CDDL_CODEGEN_EXTERN_INTERFACE_ v1` — unknown versions hard-error, pinned by
+  `extern_import_unknown_version_hard_errors`), so batch them when one gets a real consumer:
+  (1) per-variant name pins for c-style enums — the type-level `@rust_name` pin covers the enum
+  name but variant names stay consumer-derived, so a variant-naming-rule change reintroduces the
+  cross-version skew class on exactly that row (reopening signal: a consumer compile break naming
+  a dep enum variant after a codegen naming change); (2) synthesized idents for anonymous generic
+  instances — `[* pair<uint,tstr>]` in a dep today closure-excludes the referencing rule
+  (reopening signal: a real dep's export carries that `; unexported:` record and a consumer needs
+  the rule); (3) transparent spellings for the renderer's known lossy-IR case — a two-sided
+  `float32` window has no faithful CDDL form (a literal float range re-parses as `float64`), so
+  such rules exclude-with-record (reopening signal: same, for a float32-windowed alias).
+- **CDDL module directives (draft-ietf-cbor-cddl-modules) with the draft's real inlining
+  semantics, and `as`-namespacing.** Both forms are currently recognized and refused loudly
+  (`module_directive_import_aborts` / `module_directive_include_aborts`;
+  `dotted_rule_name_rejects_gracefully` for cddlc `as`-expansion output) — deliberate: the extern
+  channel shipped on the dep-side export instead (rationale: the dep's extern surface is
+  `f(spec, DSL, flags, tool version)`, which spec-text resolution cannot see; and the draft's
+  `;# import` means inline-and-generate, so extern semantics would contradict it — keep the `;#`
+  namespace clean for a real implementation). Reopening signals: a consumer needs third-party
+  module consumption (RFC extracts) or cross-module name reuse; the latter is the deep one
+  (scope-qualified `RustIdent` through the IR, dep_graph ordering, emitted-test glob imports,
+  JSON schema naming).
 - **no_std generated crates.** cbor_event supports no_std since 3.0.0, so a CLI flag (`cli.rs` +
   docs) emitting no_std-compatible crates is possible; the static runtime and generated code would
   need their own std-usage sweep (collections, error impls). The mechanical layer when a consumer
@@ -756,6 +779,19 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
 
 ## Operational watches
 
+- **The extern-interface export is a public interchange format.** Once a consumer regenerates
+  against a dep's committed `extern-interface/<dep>/**`, its dialect (header line, marker rows,
+  `@rust_name` pins, `; unexported:` records) is cross-crate API: any change to what the emitter
+  writes must version through the seam header, and a dep-tool-newer-than-consumer combination must
+  always hard-error rather than misread (the consumer's strict `@`-token whitelist +
+  version-header scan is the enforcement point; `extern_import_unknown_version_hard_errors` and
+  `extern_import_unknown_annotation_hard_errors` pin it). Watch: a new comment-DSL directive
+  widens the consumer whitelist automatically (it reads `comment_ast`'s tag set), so an OLD
+  consumer tool meeting a NEW directive in an export still hard-errors — that asymmetry is the
+  designed behavior, not a bug report.
+- **Exclusion-record reasons are informational, not interchange.** Consumers never parse the text
+  after `; unexported: <ident> — `; wording may change freely. If tooling ever wants to act on
+  exclusion REASONS, that's a dialect v2 field, not a regex over prose.
 - **Gate-cache residual costs.** The nested-cargo gates (`feature_corpus_compiles`,
   `wasm_matrix_compiles`, `multifile_matrix_compiles`, the layer-2 recombination sweeps, and
   `verify.ts`) memoize per generated-tree content hash (the gate cache), so re-run wall-clock is a
