@@ -26,11 +26,12 @@ use cbor_encodings::{
     BoundsEncoding, BytesUintEncoding, CEncoding, CborInCborEncoding, CustomFieldHolderEncoding,
     DeeplyNestedEncoding, EdEncoding, EeEncoding, EnumsEncoding, FirstEncoding, FooEncoding,
     HashEncoding, MapWithDefaultsEncoding, NemPreserveEncoding, NevPreserveEncoding,
-    NullableSpecialsEncoding, PlainArraysEncoding, PlainEncoding, SecondEncoding,
-    SignBoundsEncoding, SignedIntsEncoding, String64Encoding, String1632Encoding,
-    StructWithCustomSerializationEncoding, TableArrMembersEncoding, TaggedFooBytesEncoding,
-    TaggedTextEncoding, ThreeEncoding, TopLevelNegRangeEncoding, TopLevelPosRangeEncoding,
-    TopLevelTaggedRangeEncoding, WidthCollapseEncoding, WrapperListEncoding, WrapperTableEncoding,
+    NullableSpecialsEncoding, OptFixedArrEncoding, OptFixedMapEncoding, PlainArraysEncoding,
+    PlainEncoding, SecondEncoding, SignBoundsEncoding, SignedIntsEncoding, String64Encoding,
+    String1632Encoding, StructWithCustomSerializationEncoding, TableArrMembersEncoding,
+    TaggedFooBytesEncoding, TaggedTextEncoding, ThreeEncoding, TopLevelNegRangeEncoding,
+    TopLevelPosRangeEncoding, TopLevelTaggedRangeEncoding, WidthCollapseEncoding,
+    WrapperListEncoding, WrapperTableEncoding,
 };
 use std::collections::BTreeMap;
 
@@ -1056,6 +1057,56 @@ pub struct NullableSpecials {
 impl NullableSpecials {
     pub fn new(b: NullableBool) -> Self {
         Self { b, encodings: None }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct OptFixedArr {
+    pub a: u64,
+    /// Whether the optional fixed value `5` (CDDL `? ufix: 5`) is present; `false` means absent.
+    pub ufix: bool,
+    pub b: String,
+    pub encodings: Option<OptFixedArrEncoding>,
+}
+
+impl OptFixedArr {
+    pub fn new(a: u64, b: String) -> Self {
+        Self {
+            a,
+            ufix: false,
+            b,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct OptFixedMap {
+    pub a: u64,
+    /// Whether the optional fixed value `5` (CDDL `? m_uint: 5`) is present; `false` means absent.
+    pub m_uint: bool,
+    /// Whether the optional fixed value `"tag"` (CDDL `? m_text: "tag"`) is present; `false` means absent.
+    pub m_text: bool,
+    /// Whether the optional fixed value `-7` (CDDL `? m_nint: -7`) is present; `false` means absent.
+    pub m_nint: bool,
+    /// Whether the optional fixed value `true` (CDDL `? m_bool: true`) is present; `false` means absent.
+    pub m_bool: bool,
+    /// Whether the optional fixed value `null` (CDDL `? m_null: null`) is present; `false` means absent.
+    pub m_null: bool,
+    pub encodings: Option<OptFixedMapEncoding>,
+}
+
+impl OptFixedMap {
+    pub fn new(a: u64) -> Self {
+        Self {
+            a,
+            m_uint: false,
+            m_text: false,
+            m_nint: false,
+            m_bool: false,
+            m_null: false,
+            encodings: None,
+        }
     }
 }
 

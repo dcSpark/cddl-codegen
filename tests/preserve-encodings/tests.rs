@@ -194,6 +194,61 @@ mod tests {
         }
     }
 
+    // Optional fixed-value members under --preserve-encodings: the presence `bool` coexists with the
+    // fixed value's own width metadata. A NON-CANONICAL encoding of the constant (a fixed `5` spelled
+    // as a wider uint) must round-trip byte-identically, proving the encoding var is captured and
+    // replayed for the fixed value exactly as for a normal member.
+    #[test]
+    fn opt_fixed_member_preserve() {
+        // absent -> presence false, no fixed element on the wire
+        let absent = OptFixedArr::from_cbor_bytes(
+            &[
+                arr_def(2),
+                cbor_int(9, Sz::Inline),
+                cbor_string("hi"),
+            ]
+            .concat(),
+        )
+        .unwrap();
+        assert!(!absent.ufix);
+        deser_test(&absent);
+        // present, with `? ufix: 5` spelled as a 2-byte-wide uint (Sz::Two, 0x19 0x00 0x05):
+        // the width is preserved so re-serialize reproduces the exact bytes.
+        let non_canonical = [
+            arr_def(3),
+            cbor_int(9, Sz::Inline),
+            cbor_int(5, Sz::Two),
+            cbor_string("hi"),
+        ]
+        .concat();
+        let present = OptFixedArr::from_cbor_bytes(&non_canonical).unwrap();
+        assert!(present.ufix);
+        assert_eq!(present.to_cbor_bytes(), non_canonical);
+        deser_test(&present);
+        // wrong constant rejects
+        let wrong = [
+            arr_def(3),
+            cbor_int(9, Sz::Inline),
+            cbor_int(6, Sz::Inline),
+            cbor_string("hi"),
+        ]
+        .concat();
+        assert!(OptFixedArr::from_cbor_bytes(&wrong).is_err());
+
+        // map rep: a fixed map value with a non-canonical width preserves byte-identically too
+        let map_nc = [
+            map_def(2),
+            cbor_string("a"),
+            cbor_int(9, Sz::Inline),
+            cbor_string("m_uint"),
+            cbor_int(5, Sz::Two),
+        ]
+        .concat();
+        let m = OptFixedMap::from_cbor_bytes(&map_nc).unwrap();
+        assert!(m.m_uint && !m.m_text && !m.m_bool && !m.m_null && !m.m_nint);
+        assert_eq!(m.to_cbor_bytes(), map_nc);
+    }
+
     #[test]
     fn table_arr_members() {
         // a more complex test of these encodings is done in the canonical unit tests

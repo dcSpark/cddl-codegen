@@ -1429,10 +1429,11 @@ const LAYER2_PRESERVE_KNOWN_BAD: &[(&str, &str)] = &[];
 ///
 /// Preserve panics for classes that are ok/graceful under default (floats as members; tag over a
 /// type-choice enum; tag wrapping `any`) — those are in `PRESERVE_ONLY_PANIC_CLASSES` and never
-/// reach execution; a NEW preserve panic fails loudly. (The ledgered optional encoding-less
-/// fixed-value preserve assert — cddl-matrix/ROADMAP.md § findings — is NOT here: the composition
-/// set has no optional-FIXED member kind, so that class cannot fire; adding one is the
-/// extended-member-kind residual in tests/TESTING_ROADMAP.md.) Profile flags are sourced from
+/// reach execution; a NEW preserve panic fails loudly. (Optional non-float fixed-value members now
+/// generate and round-trip via a `bool` presence field under both profiles — the former
+/// encoding-less optional-fixed preserve assert is gone; the composition set still has no
+/// optional-FIXED member kind, so adding one is the extended-member-kind residual in
+/// tests/TESTING_ROADMAP.md.) Profile flags are sourced from
 /// `crate::tests::ALL_PROFILES` by name (asserted found), never re-hard-coded.
 ///
 /// NAMING/SELECTION GOTCHA: this name must NOT contain the `recombination_crates_execute` needle

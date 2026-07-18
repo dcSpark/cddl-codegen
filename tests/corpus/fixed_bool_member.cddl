@@ -3,12 +3,11 @@
 ; mandatory array member and a mandatory map member under every profile (default / preserve / json);
 ; matrix rows `contain.array-element.prelude.true` and `contain.map-value.prelude.false` carry the
 ; containment verdicts for those roles.
-; The OPTIONAL placements (`[x: uint, ? v: true]`, `{? k: true, x: uint}`) are deliberately absent:
-; an optional fixed value with no encoding variation is a pre-existing broken class independent of
-; bool — the serialize length emits `Len(1 + )` (empty count for the encoding-less optional) and the
-; preserve path asserts issue-205 — so they are not part of the supported bool-member surface (see
-; cddl-matrix/ROADMAP.md § findings). The panic/reject boundaries for the same literal in
-; non-member position are pinned by tests/robustness/fixed_bool_member.cddl.
+; The OPTIONAL placements (`[x: uint, ? v: true]`, `{? k: true, x: uint}`) live in
+; `optional_fixed_member.cddl`: an optional fixed value carries one bit and gets a `bool` presence
+; field, a distinct role from this file's MANDATORY (zero-information, no-field) members. The
+; panic/reject boundaries for the same literal in non-member position are pinned by
+; tests/robustness/fixed_bool_member.cddl.
 ;
 ; tagged_members pins the TAG-WRAPPED fixed null/bool member under --preserve-encodings: the tag
 ; pushes its encoding expr into the fixed-value arm's final_exprs before recursing, so the arm's

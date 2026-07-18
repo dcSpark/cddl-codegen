@@ -4825,6 +4825,510 @@ impl Deserialize for NullableSpecials {
     }
 }
 
+impl cbor_event::se::Serialize for OptFixedArr {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(2 + if self.ufix { 1 } else { 0 }),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.a,
+            fit_sz(
+                self.a,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.a_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        if self.ufix {
+            serializer.write_unsigned_integer_sz(
+                5u64,
+                fit_sz(
+                    5u64,
+                    self.encodings
+                        .as_ref()
+                        .map(|encs| encs.ufix_encoding)
+                        .unwrap_or_default(),
+                ),
+            )?;
+        }
+        serializer.write_text_sz(
+            &self.b,
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.b_encoding.clone())
+                .unwrap_or_default()
+                .to_str_len_sz(self.b.len() as u64),
+        )?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for OptFixedArr {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(2)?;
+            let (a, a_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("a"))?;
+            let (ufix, ufix_encoding) = if raw
+                .cbor_type()
+                .map(|ty| ty == cbor_event::Type::UnsignedInteger)
+                .unwrap_or(false)
+            {
+                (|| -> Result<_, DeserializeError> {
+                    read_len.read_elems(1)?;
+                    let (ufix_value, ufix_encoding) = raw.unsigned_integer_sz()?;
+                    if ufix_value != 5 {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Uint(ufix_value),
+                            expected: Key::Uint(5),
+                        }
+                        .into());
+                    }
+                    Ok(Some(ufix_encoding))
+                })()
+                .map_err(|e| e.annotate("ufix"))
+                .map(|ufix_encoding| (true, ufix_encoding))
+            } else {
+                Ok((false, None))
+            }?;
+            let (b, b_encoding) = raw
+                .text_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(s, enc)| (s, StringEncoding::from(enc)))
+                .map_err(|e: DeserializeError| e.annotate("b"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => read_len.finish()?,
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(OptFixedArr {
+                a,
+                ufix,
+                b,
+                encodings: Some(OptFixedArrEncoding {
+                    len_encoding,
+                    a_encoding,
+                    ufix_encoding,
+                    b_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("OptFixedArr"))
+    }
+}
+
+impl cbor_event::se::Serialize for OptFixedMap {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(
+                    1 + if self.m_uint { 1 } else { 0 }
+                        + if self.m_text { 1 } else { 0 }
+                        + if self.m_nint { 1 } else { 0 }
+                        + if self.m_bool { 1 } else { 0 }
+                        + if self.m_null { 1 } else { 0 },
+                ),
+        )?;
+        let deser_order = self
+            .encodings
+            .as_ref()
+            .filter(|encs| {
+                encs.orig_deser_order.len()
+                    == 1 + if self.m_uint { 1 } else { 0 }
+                        + if self.m_text { 1 } else { 0 }
+                        + if self.m_nint { 1 } else { 0 }
+                        + if self.m_bool { 1 } else { 0 }
+                        + if self.m_null { 1 } else { 0 }
+            })
+            .map(|encs| encs.orig_deser_order.clone())
+            .unwrap_or_else(|| (0..6).collect());
+        for field_index in deser_order {
+            match field_index {
+                0 => {
+                    serializer.write_text_sz(
+                        "a",
+                        self.encodings
+                            .as_ref()
+                            .map(|encs| encs.a_key_encoding.clone())
+                            .unwrap_or_default()
+                            .to_str_len_sz("a".len() as u64),
+                    )?;
+                    serializer.write_unsigned_integer_sz(
+                        self.a,
+                        fit_sz(
+                            self.a,
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.a_encoding)
+                                .unwrap_or_default(),
+                        ),
+                    )?;
+                }
+                4 => {
+                    if self.m_bool {
+                        serializer.write_text_sz(
+                            "m_bool",
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.m_bool_key_encoding.clone())
+                                .unwrap_or_default()
+                                .to_str_len_sz("m_bool".len() as u64),
+                        )?;
+                        serializer.write_special(cbor_event::Special::Bool(true))?;
+                    }
+                }
+                3 => {
+                    if self.m_nint {
+                        serializer.write_text_sz(
+                            "m_nint",
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.m_nint_key_encoding.clone())
+                                .unwrap_or_default()
+                                .to_str_len_sz("m_nint".len() as u64),
+                        )?;
+                        serializer.write_negative_integer_sz(
+                            -7,
+                            fit_sz(
+                                (-7i128 + 1).unsigned_abs() as u64,
+                                self.encodings
+                                    .as_ref()
+                                    .map(|encs| encs.m_nint_encoding)
+                                    .unwrap_or_default(),
+                            ),
+                        )?;
+                    }
+                }
+                5 => {
+                    if self.m_null {
+                        serializer.write_text_sz(
+                            "m_null",
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.m_null_key_encoding.clone())
+                                .unwrap_or_default()
+                                .to_str_len_sz("m_null".len() as u64),
+                        )?;
+                        serializer.write_special(cbor_event::Special::Null)?;
+                    }
+                }
+                2 => {
+                    if self.m_text {
+                        serializer.write_text_sz(
+                            "m_text",
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.m_text_key_encoding.clone())
+                                .unwrap_or_default()
+                                .to_str_len_sz("m_text".len() as u64),
+                        )?;
+                        serializer.write_text_sz(
+                            "tag",
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.m_text_encoding.clone())
+                                .unwrap_or_default()
+                                .to_str_len_sz("tag".len() as u64),
+                        )?;
+                    }
+                }
+                1 => {
+                    if self.m_uint {
+                        serializer.write_text_sz(
+                            "m_uint",
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.m_uint_key_encoding.clone())
+                                .unwrap_or_default()
+                                .to_str_len_sz("m_uint".len() as u64),
+                        )?;
+                        serializer.write_unsigned_integer_sz(
+                            5u64,
+                            fit_sz(
+                                5u64,
+                                self.encodings
+                                    .as_ref()
+                                    .map(|encs| encs.m_uint_encoding)
+                                    .unwrap_or_default(),
+                            ),
+                        )?;
+                    }
+                }
+                _ => unreachable!(),
+            };
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for OptFixedMap {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(1)?;
+            let mut orig_deser_order = Vec::new();
+            let mut a_encoding = None;
+            let mut a_key_encoding = StringEncoding::default();
+            let mut a = None;
+            let mut m_bool_key_encoding = StringEncoding::default();
+            let mut m_bool_present = false;
+            let mut m_nint_encoding = None;
+            let mut m_nint_key_encoding = StringEncoding::default();
+            let mut m_nint_present = false;
+            let mut m_null_key_encoding = StringEncoding::default();
+            let mut m_null_present = false;
+            let mut m_text_encoding = StringEncoding::default();
+            let mut m_text_key_encoding = StringEncoding::default();
+            let mut m_text_present = false;
+            let mut m_uint_encoding = None;
+            let mut m_uint_key_encoding = StringEncoding::default();
+            let mut m_uint_present = false;
+            let mut read = 0;
+            while match len {
+                cbor_event::LenSz::Len(n, _) => read < n,
+                cbor_event::LenSz::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Uint(
+                            raw.unsigned_integer()?,
+                        ))
+                        .into());
+                    }
+                    cbor_event::Type::Text => {
+                        let (text_key, key_enc) = raw.text_sz()?;
+                        match text_key.as_str() {
+                            "a" => {
+                                if a.is_some() {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                        "a".into(),
+                                    ))
+                                    .into());
+                                }
+                                let (tmp_a, tmp_a_encoding) = raw
+                                    .unsigned_integer_sz()
+                                    .map_err(Into::<DeserializeError>::into)
+                                    .map(|(x, enc)| (x, Some(enc)))
+                                    .map_err(|e: DeserializeError| e.annotate("a"))?;
+                                a = Some(tmp_a);
+                                a_encoding = tmp_a_encoding;
+                                a_key_encoding = StringEncoding::from(key_enc);
+                                orig_deser_order.push(0);
+                            }
+                            "m_bool" => {
+                                if m_bool_present {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                        "m_bool".into(),
+                                    ))
+                                    .into());
+                                }
+                                (|| -> Result<_, DeserializeError> {
+                                    read_len.read_elems(1)?;
+                                    let m_bool_value = raw.bool()?;
+                                    if m_bool_value != true {
+                                        return Err(DeserializeFailure::FixedValueMismatch {
+                                            found: Key::Bool(m_bool_value),
+                                            expected: Key::Bool(true),
+                                        }
+                                        .into());
+                                    }
+                                    Ok(())
+                                })()
+                                .map_err(|e| e.annotate("m_bool"))?;
+                                m_bool_present = true;
+                                m_bool_key_encoding = StringEncoding::from(key_enc);
+                                orig_deser_order.push(4);
+                            }
+                            "m_nint" => {
+                                if m_nint_present {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                        "m_nint".into(),
+                                    ))
+                                    .into());
+                                }
+                                let tmp_m_nint_encoding = (|| -> Result<_, DeserializeError> {
+                                    read_len.read_elems(1)?;
+                                    let (m_nint_value, m_nint_encoding) =
+                                        raw.negative_integer_sz()?;
+                                    if m_nint_value != -7 {
+                                        return Err(DeserializeFailure::FixedValueMismatch {
+                                            found: Key::Uint(
+                                                (m_nint_value + 1).unsigned_abs() as u64
+                                            ),
+                                            expected: Key::Uint(6),
+                                        }
+                                        .into());
+                                    }
+                                    Ok(Some(m_nint_encoding))
+                                })()
+                                .map_err(|e| e.annotate("m_nint"))?;
+                                m_nint_present = true;
+                                m_nint_encoding = tmp_m_nint_encoding;
+                                m_nint_key_encoding = StringEncoding::from(key_enc);
+                                orig_deser_order.push(3);
+                            }
+                            "m_null" => {
+                                if m_null_present {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                        "m_null".into(),
+                                    ))
+                                    .into());
+                                }
+                                (|| -> Result<_, DeserializeError> {
+                                    read_len.read_elems(1)?;
+                                    if raw.special()? != cbor_event::Special::Null {
+                                        return Err(DeserializeFailure::ExpectedNull.into());
+                                    }
+                                    Ok(())
+                                })()
+                                .map_err(|e| e.annotate("m_null"))?;
+                                m_null_present = true;
+                                m_null_key_encoding = StringEncoding::from(key_enc);
+                                orig_deser_order.push(5);
+                            }
+                            "m_text" => {
+                                if m_text_present {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                        "m_text".into(),
+                                    ))
+                                    .into());
+                                }
+                                let tmp_m_text_encoding = (|| -> Result<_, DeserializeError> {
+                                    read_len.read_elems(1)?;
+                                    let (m_text_value, m_text_encoding) = raw.text_sz()?;
+                                    if m_text_value != "tag" {
+                                        return Err(DeserializeFailure::FixedValueMismatch {
+                                            found: Key::Str(m_text_value),
+                                            expected: Key::Str(String::from("tag")),
+                                        }
+                                        .into());
+                                    }
+                                    Ok(StringEncoding::from(m_text_encoding))
+                                })()
+                                .map_err(|e| e.annotate("m_text"))?;
+                                m_text_present = true;
+                                m_text_encoding = tmp_m_text_encoding;
+                                m_text_key_encoding = StringEncoding::from(key_enc);
+                                orig_deser_order.push(2);
+                            }
+                            "m_uint" => {
+                                if m_uint_present {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                        "m_uint".into(),
+                                    ))
+                                    .into());
+                                }
+                                let tmp_m_uint_encoding = (|| -> Result<_, DeserializeError> {
+                                    read_len.read_elems(1)?;
+                                    let (m_uint_value, m_uint_encoding) =
+                                        raw.unsigned_integer_sz()?;
+                                    if m_uint_value != 5 {
+                                        return Err(DeserializeFailure::FixedValueMismatch {
+                                            found: Key::Uint(m_uint_value),
+                                            expected: Key::Uint(5),
+                                        }
+                                        .into());
+                                    }
+                                    Ok(Some(m_uint_encoding))
+                                })()
+                                .map_err(|e| e.annotate("m_uint"))?;
+                                m_uint_present = true;
+                                m_uint_encoding = tmp_m_uint_encoding;
+                                m_uint_key_encoding = StringEncoding::from(key_enc);
+                                orig_deser_order.push(1);
+                            }
+                            unknown_key => {
+                                return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                    unknown_key.to_owned(),
+                                ))
+                                .into());
+                            }
+                        }
+                    }
+                    cbor_event::Type::Special => match len {
+                        cbor_event::LenSz::Len(_, _) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                        }
+                        cbor_event::LenSz::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
+                    }
+                }
+                read += 1;
+            }
+            let a = match a {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("a")))
+                            .into(),
+                    );
+                }
+            };
+            read_len.finish()?;
+            Ok(Self {
+                a,
+                m_uint: m_uint_present,
+                m_text: m_text_present,
+                m_nint: m_nint_present,
+                m_bool: m_bool_present,
+                m_null: m_null_present,
+                encodings: Some(OptFixedMapEncoding {
+                    len_encoding,
+                    orig_deser_order,
+                    a_key_encoding,
+                    a_encoding,
+                    m_uint_key_encoding,
+                    m_uint_encoding,
+                    m_text_key_encoding,
+                    m_text_encoding,
+                    m_nint_key_encoding,
+                    m_nint_encoding,
+                    m_bool_key_encoding,
+                    m_null_key_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("OptFixedMap"))
+    }
+}
+
 impl cbor_event::se::Serialize for OverlapBasicEmbed {
     fn serialize<'se>(
         &self,

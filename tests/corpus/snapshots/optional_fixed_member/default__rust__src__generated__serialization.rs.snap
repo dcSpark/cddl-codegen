@@ -1,0 +1,322 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for OptFixedArray {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(2 + if self.flag { 1 } else { 0 }))?;
+        serializer.write_unsigned_integer(self.x)?;
+        if self.flag {
+            serializer.write_special(cbor_event::Special::Bool(true))?;
+        }
+        serializer.write_text(&self.label)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for OptFixedArray {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            let x = Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("x"))?;
+            let flag = if raw
+                .as_slice()
+                .first()
+                .map(|byte: &u8| {
+                    cbor_event::Type::from(*byte) == cbor_event::Type::Special
+                        && (*byte & 0b0001_1111) != 0x1f
+                })
+                .unwrap_or(false)
+            {
+                (|| -> Result<_, DeserializeError> {
+                    read_len.read_elems(1)?;
+                    let flag_value = raw.bool()?;
+                    if flag_value != true {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Bool(flag_value),
+                            expected: Key::Bool(true),
+                        }
+                        .into());
+                    }
+                    Ok(true)
+                })()
+                .map_err(|e| e.annotate("flag"))
+            } else {
+                Ok(false)
+            }?;
+            let label = Ok(raw.text()?).map_err(|e: DeserializeError| e.annotate("label"))?;
+            match len {
+                cbor_event::Len::Len(_) => read_len.finish()?,
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(OptFixedArray { x, flag, label })
+        })()
+        .map_err(|e| e.annotate("OptFixedArray"))
+    }
+}
+
+impl cbor_event::se::Serialize for OptFixedArrayNull {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(1 + if self.nothing { 1 } else { 0 }))?;
+        serializer.write_unsigned_integer(self.x)?;
+        if self.nothing {
+            serializer.write_special(cbor_event::Special::Null)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for OptFixedArrayNull {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            let x = Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("x"))?;
+            let nothing = if raw
+                .as_slice()
+                .first()
+                .map(|byte: &u8| {
+                    cbor_event::Type::from(*byte) == cbor_event::Type::Special
+                        && (*byte & 0b0001_1111) != 0x1f
+                })
+                .unwrap_or(false)
+            {
+                (|| -> Result<_, DeserializeError> {
+                    read_len.read_elems(1)?;
+                    if raw.special()? != cbor_event::Special::Null {
+                        return Err(DeserializeFailure::ExpectedNull.into());
+                    }
+                    Ok(true)
+                })()
+                .map_err(|e| e.annotate("nothing"))
+            } else {
+                Ok(false)
+            }?;
+            match len {
+                cbor_event::Len::Len(_) => read_len.finish()?,
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(OptFixedArrayNull { x, nothing })
+        })()
+        .map_err(|e| e.annotate("OptFixedArrayNull"))
+    }
+}
+
+impl cbor_event::se::Serialize for OptFixedMap {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map(cbor_event::Len::Len(
+            1 + if self.code { 1 } else { 0 }
+                + if self.tag { 1 } else { 0 }
+                + if self.neg { 1 } else { 0 }
+                + if self.off { 1 } else { 0 },
+        ))?;
+        serializer.write_text("x")?;
+        serializer.write_unsigned_integer(self.x)?;
+        if self.neg {
+            serializer.write_text("neg")?;
+            serializer.write_negative_integer(-3)?;
+        }
+        if self.off {
+            serializer.write_text("off")?;
+            serializer.write_special(cbor_event::Special::Bool(false))?;
+        }
+        if self.tag {
+            serializer.write_text("tag")?;
+            serializer.write_text("on")?;
+        }
+        if self.code {
+            serializer.write_text("code")?;
+            serializer.write_unsigned_integer(5u64)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for OptFixedMap {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            let mut x = None;
+            let mut neg_present = false;
+            let mut off_present = false;
+            let mut tag_present = false;
+            let mut code_present = false;
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Uint(
+                            raw.unsigned_integer()?,
+                        ))
+                        .into());
+                    }
+                    cbor_event::Type::Text => match raw.text()?.as_str() {
+                        "x" => {
+                            if x.is_some() {
+                                return Err(
+                                    DeserializeFailure::DuplicateKey(Key::Str("x".into())).into()
+                                );
+                            }
+                            x = Some(
+                                Ok(raw.unsigned_integer()?)
+                                    .map_err(|e: DeserializeError| e.annotate("x"))?,
+                            );
+                        }
+                        "neg" => {
+                            if neg_present {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "neg".into(),
+                                ))
+                                .into());
+                            }
+                            neg_present = (|| -> Result<_, DeserializeError> {
+                                read_len.read_elems(1)?;
+                                let (neg_value, _) = raw.negative_integer_sz()?;
+                                if neg_value != -3 {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Uint((neg_value + 1).unsigned_abs() as u64),
+                                        expected: Key::Uint(2),
+                                    }
+                                    .into());
+                                }
+                                Ok(true)
+                            })()
+                            .map_err(|e| e.annotate("neg"))?;
+                        }
+                        "off" => {
+                            if off_present {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "off".into(),
+                                ))
+                                .into());
+                            }
+                            off_present = (|| -> Result<_, DeserializeError> {
+                                read_len.read_elems(1)?;
+                                let off_value = raw.bool()?;
+                                if off_value != false {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Bool(off_value),
+                                        expected: Key::Bool(false),
+                                    }
+                                    .into());
+                                }
+                                Ok(true)
+                            })()
+                            .map_err(|e| e.annotate("off"))?;
+                        }
+                        "tag" => {
+                            if tag_present {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "tag".into(),
+                                ))
+                                .into());
+                            }
+                            tag_present = (|| -> Result<_, DeserializeError> {
+                                read_len.read_elems(1)?;
+                                let tag_value = raw.text()?;
+                                if tag_value != "on" {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Str(tag_value),
+                                        expected: Key::Str(String::from("on")),
+                                    }
+                                    .into());
+                                }
+                                Ok(true)
+                            })()
+                            .map_err(|e| e.annotate("tag"))?;
+                        }
+                        "code" => {
+                            if code_present {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "code".into(),
+                                ))
+                                .into());
+                            }
+                            code_present = (|| -> Result<_, DeserializeError> {
+                                read_len.read_elems(1)?;
+                                let code_value = raw.unsigned_integer()?;
+                                if code_value != 5 {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Uint(code_value),
+                                        expected: Key::Uint(5),
+                                    }
+                                    .into());
+                                }
+                                Ok(true)
+                            })()
+                            .map_err(|e| e.annotate("code"))?;
+                        }
+                        unknown_key => {
+                            return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                unknown_key.to_owned(),
+                            ))
+                            .into());
+                        }
+                    },
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                        }
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
+                    }
+                }
+                read += 1;
+            }
+            let x = match x {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("x")))
+                            .into(),
+                    );
+                }
+            };
+            read_len.finish()?;
+            Ok(Self {
+                x,
+                code: code_present,
+                tag: tag_present,
+                neg: neg_present,
+                off: off_present,
+            })
+        })()
+        .map_err(|e| e.annotate("OptFixedMap"))
+    }
+}

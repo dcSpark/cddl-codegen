@@ -44,6 +44,143 @@ mod tests {
         deser_test(&Foo2::new(143546, None));
     }
 
+    // Optional fixed-value members: a `pub <name>: bool` presence field (false=absent, true=present).
+    // Array rep spans bool (non-final), uint (final), null (final Special-peek); the constant is on
+    // the wire iff the bool is true, and the length term flips with it. Wrong constant -> reject.
+    #[test]
+    fn opt_fixed_member_array() {
+        // absent: presence defaults false -> wire is [a, b] (no bool element)
+        let absent = OptFixedArr::new(5, String::from("hi"));
+        assert!(!absent.bfix);
+        let absent_bytes = absent.to_cbor_bytes();
+        assert_eq!(
+            absent_bytes,
+            [
+                arr_def(2),
+                cbor_int(5, cbor_event::Sz::Inline),
+                cbor_string("hi")
+            ]
+            .concat()
+        );
+        deser_test(&absent);
+        assert!(!OptFixedArr::from_cbor_bytes(&absent_bytes).unwrap().bfix);
+        // present: set true -> wire is [a, true, b] (the fixed `true`, 0xf5, appears)
+        let mut present = OptFixedArr::new(5, String::from("hi"));
+        present.bfix = true;
+        let present_bytes = present.to_cbor_bytes();
+        assert_eq!(
+            present_bytes,
+            [
+                arr_def(3),
+                cbor_int(5, cbor_event::Sz::Inline),
+                vec![0xf5u8],
+                cbor_string("hi")
+            ]
+            .concat()
+        );
+        deser_test(&present);
+        assert!(OptFixedArr::from_cbor_bytes(&present_bytes).unwrap().bfix);
+        // the WRONG constant (false where true expected) rejects with FixedValueMismatch —
+        // reason-asserted so an earlier unrelated rejection can't silently absorb this pin
+        let wrong = [
+            arr_def(3),
+            cbor_int(5, cbor_event::Sz::Inline),
+            vec![0xf4u8],
+            cbor_string("hi"),
+        ]
+        .concat();
+        let wrong_err = OptFixedArr::from_cbor_bytes(&wrong).unwrap_err();
+        assert!(
+            wrong_err.to_string().contains("Expected fixed value"),
+            "{wrong_err}"
+        );
+
+        // null in final position (the possibly-last Special-peek path)
+        let null_absent = OptFixedArrNull::new(7);
+        assert_eq!(
+            null_absent.to_cbor_bytes(),
+            [arr_def(1), cbor_int(7, cbor_event::Sz::Inline)].concat()
+        );
+        deser_test(&null_absent);
+        let mut null_present = OptFixedArrNull::new(7);
+        null_present.nfix = true;
+        assert_eq!(
+            null_present.to_cbor_bytes(),
+            [arr_def(2), cbor_int(7, cbor_event::Sz::Inline), vec![0xf6u8]].concat()
+        );
+        deser_test(&null_present);
+
+        // uint in final position
+        let uint_absent = OptFixedArrLast::new(String::from("k"));
+        deser_test(&uint_absent);
+        let mut uint_present = OptFixedArrLast::new(String::from("k"));
+        uint_present.ufix = true;
+        assert_eq!(
+            uint_present.to_cbor_bytes(),
+            [
+                arr_def(2),
+                cbor_string("k"),
+                cbor_int(5, cbor_event::Sz::Inline)
+            ]
+            .concat()
+        );
+        deser_test(&uint_present);
+    }
+
+    // Map rep: each optional fixed value is a keyed entry; presence is per-key. Spans uint/text/nint/
+    // bool/null. Absent keys drop the entry (and shrink the map length); a present key with the wrong
+    // constant rejects.
+    #[test]
+    fn opt_fixed_member_map() {
+        // absent: all presence false -> wire is {a: 5} (single entry)
+        let absent = OptFixedMap::new(5);
+        assert!(
+            !absent.m_uint && !absent.m_text && !absent.m_nint && !absent.m_bool && !absent.m_null
+        );
+        assert_eq!(
+            absent.to_cbor_bytes(),
+            [
+                map_def(1),
+                cbor_string("a"),
+                cbor_int(5, cbor_event::Sz::Inline)
+            ]
+            .concat()
+        );
+        deser_test(&absent);
+        // all present -> byte round-trips and every presence bit survives
+        let mut all = OptFixedMap::new(5);
+        all.m_uint = true;
+        all.m_text = true;
+        all.m_nint = true;
+        all.m_bool = true;
+        all.m_null = true;
+        deser_test(&all);
+        let all_deser = OptFixedMap::from_cbor_bytes(&all.to_cbor_bytes()).unwrap();
+        assert!(
+            all_deser.m_uint
+                && all_deser.m_text
+                && all_deser.m_nint
+                && all_deser.m_bool
+                && all_deser.m_null
+        );
+        // one present -> only that key's bit is set
+        let mut one = OptFixedMap::new(5);
+        one.m_bool = true;
+        deser_test(&one);
+        let one_deser = OptFixedMap::from_cbor_bytes(&one.to_cbor_bytes()).unwrap();
+        assert!(one_deser.m_bool && !one_deser.m_uint && !one_deser.m_null);
+        // present key with the WRONG constant (m_uint => 6, expected 5) rejects
+        let wrong = [
+            map_def(2),
+            cbor_string("a"),
+            cbor_int(5, cbor_event::Sz::Inline),
+            cbor_string("m_uint"),
+            cbor_int(6, cbor_event::Sz::Inline),
+        ]
+        .concat();
+        assert!(OptFixedMap::from_cbor_bytes(&wrong).is_err());
+    }
+
     // Round-trip tests only ever feed well-formed CBOR; these pin that *malformed* input is
     // rejected rather than silently accepted. Structural cases the
     // bounds test doesn't reach: wrong shape, wrong element type, wrong/missing tag. Each case has

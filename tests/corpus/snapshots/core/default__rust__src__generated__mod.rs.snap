@@ -1160,6 +1160,74 @@ impl NullableSpecials {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct OptFixedArr {
+    pub a: u64,
+    /// Whether the optional fixed value `true` (CDDL `? bfix: true`) is present; `false` means absent.
+    pub bfix: bool,
+    pub b: String,
+}
+
+impl OptFixedArr {
+    pub fn new(a: u64, b: String) -> Self {
+        Self { a, bfix: false, b }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct OptFixedArrLast {
+    pub a: String,
+    /// Whether the optional fixed value `5` (CDDL `? ufix: 5`) is present; `false` means absent.
+    pub ufix: bool,
+}
+
+impl OptFixedArrLast {
+    pub fn new(a: String) -> Self {
+        Self { a, ufix: false }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct OptFixedArrNull {
+    pub a: u64,
+    /// Whether the optional fixed value `null` (CDDL `? nfix: null`) is present; `false` means absent.
+    pub nfix: bool,
+}
+
+impl OptFixedArrNull {
+    pub fn new(a: u64) -> Self {
+        Self { a, nfix: false }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct OptFixedMap {
+    pub a: u64,
+    /// Whether the optional fixed value `5` (CDDL `? m_uint: 5`) is present; `false` means absent.
+    pub m_uint: bool,
+    /// Whether the optional fixed value `"tag"` (CDDL `? m_text: "tag"`) is present; `false` means absent.
+    pub m_text: bool,
+    /// Whether the optional fixed value `-7` (CDDL `? m_nint: -7`) is present; `false` means absent.
+    pub m_nint: bool,
+    /// Whether the optional fixed value `true` (CDDL `? m_bool: true`) is present; `false` means absent.
+    pub m_bool: bool,
+    /// Whether the optional fixed value `null` (CDDL `? m_null: null`) is present; `false` means absent.
+    pub m_null: bool,
+}
+
+impl OptFixedMap {
+    pub fn new(a: u64) -> Self {
+        Self {
+            a,
+            m_uint: false,
+            m_text: false,
+            m_nint: false,
+            m_bool: false,
+            m_null: false,
+        }
+    }
+}
+
 pub type OptText = Option<TaggedText>;
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]

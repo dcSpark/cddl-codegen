@@ -202,6 +202,30 @@ pub struct NullableSpecialsEncoding {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct OptFixedArrEncoding {
+    pub len_encoding: LenEncoding,
+    pub a_encoding: Option<cbor_event::Sz>,
+    pub ufix_encoding: Option<cbor_event::Sz>,
+    pub b_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct OptFixedMapEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub a_encoding: Option<cbor_event::Sz>,
+    pub a_key_encoding: StringEncoding,
+    pub m_uint_encoding: Option<cbor_event::Sz>,
+    pub m_uint_key_encoding: StringEncoding,
+    pub m_text_encoding: StringEncoding,
+    pub m_text_key_encoding: StringEncoding,
+    pub m_nint_encoding: Option<cbor_event::Sz>,
+    pub m_nint_key_encoding: StringEncoding,
+    pub m_bool_key_encoding: StringEncoding,
+    pub m_null_key_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct PlainArraysEncoding {
     pub len_encoding: LenEncoding,
     pub multi_encoding: LenEncoding,
