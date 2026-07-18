@@ -2032,6 +2032,117 @@ fn getting_started_example() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// The dep-side compiled self-check (`generated/extern_interface_check.rs`) is emitted into every
+/// crate and references `crate::generated::<Type>` for every exported name, so a bad path or an
+/// unsatisfiable bound is a REAL build break. This generates the `tests/extern-interface-check`
+/// fixture — every row projects to a tool-generated rust surface, so no hand-written externs are
+/// needed — and `cargo check`s the rust crate WITH the self-check present. Covers
+/// `Serialize`(+`Deserialize`), the WEAKENED Serialize-only bound (the ambiguous-optional `ambig`
+/// has no generated deserialize), the `use` existence checks (transparent aliases / c-style enum /
+/// named collections), and the `@no_alias` skip. The raw-bytes + hand-written-extern + generic-base
+/// paths compile-check through `extern_generic_raw_bytes` (a `run_test` fixture whose crate now also
+/// carries the self-check). Modeled on `getting_started_example`.
+#[test]
+fn extern_interface_check_compiles() {
+    let input = std::path::Path::new("tests/extern-interface-check/inputs");
+    assert!(
+        input.exists(),
+        "{input:?} is the self-check compile fixture — it must exist"
+    );
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_extern_interface_check_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let out = root.join("gen");
+
+    let gen_out = tool_cmd("cargo")
+        .args(["run", "--"])
+        .arg(format!("--input={}", input.to_str().unwrap()))
+        .arg(format!("--output={}", out.to_str().unwrap()))
+        .arg("--wasm=false")
+        .output()
+        .unwrap();
+    assert!(
+        gen_out.status.success(),
+        "generation from {input:?} failed:\n{}",
+        String::from_utf8_lossy(&gen_out.stderr)
+    );
+    let check_rs = out.join("rust/src/generated/extern_interface_check.rs");
+    assert!(
+        check_rs.exists(),
+        "the self-check file must be emitted unconditionally at {check_rs:?}"
+    );
+
+    let check = tool_cmd("cargo")
+        .arg("check")
+        .current_dir(out.join("rust"))
+        .env("CARGO_TARGET_DIR", root.join("target"))
+        .output()
+        .unwrap();
+    assert!(
+        check.status.success(),
+        "cargo check failed for the self-check crate generated from {input:?}:\n{}\n{}",
+        String::from_utf8_lossy(&check.stdout),
+        String::from_utf8_lossy(&check.stderr)
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Mutation vector proving the failure mode the self-check design promises: a hand-edited or stale
+/// export — one advertising a surface the dep no longer has — fails THIS crate's build NAMING the
+/// type. After a clean generation, delete a `pub type` the self-check references (`Coin`),
+/// simulating exactly that drift, and assert `cargo check` now FAILS mentioning `Coin`. The clean
+/// baseline is `extern_interface_check_compiles` (same fixture + tool), so the failure here is
+/// attributable to the mutation alone.
+#[test]
+fn extern_interface_check_mutation_fails_build() {
+    let input = std::path::Path::new("tests/extern-interface-check/inputs");
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_extern_interface_check_mut_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let out = root.join("gen");
+
+    let gen_out = tool_cmd("cargo")
+        .args(["run", "--"])
+        .arg(format!("--input={}", input.to_str().unwrap()))
+        .arg(format!("--output={}", out.to_str().unwrap()))
+        .arg("--wasm=false")
+        .output()
+        .unwrap();
+    assert!(gen_out.status.success(), "generation failed");
+
+    // Mutate the generated crate: drop the `coin` surface the export still advertises (and the
+    // self-check still references via `use crate::generated::Coin as _;`).
+    let mod_rs = out.join("rust/src/generated/mod.rs");
+    let content = std::fs::read_to_string(&mod_rs).unwrap();
+    let mutated = content.replace("pub type Coin = u64;\n", "");
+    assert_ne!(
+        content, mutated,
+        "expected `pub type Coin = u64;` in the generated crate to remove"
+    );
+    std::fs::write(&mod_rs, &mutated).unwrap();
+
+    let check = tool_cmd("cargo")
+        .arg("check")
+        .current_dir(out.join("rust"))
+        .env("CARGO_TARGET_DIR", root.join("target"))
+        .output()
+        .unwrap();
+    assert!(
+        !check.status.success(),
+        "removing the `Coin` surface must break the self-check's build"
+    );
+    let stderr = String::from_utf8_lossy(&check.stderr);
+    assert!(
+        stderr.contains("Coin"),
+        "the build failure must NAME the missing type `Coin`:\n{stderr}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// The wasm-ABI matrix compile-gate. `cddl-matrix/project_wasm_matrix.ts` enumerates the cross-product
 /// {wasm-ABI type-shape} × {boundary role} into `tests/matrix_wasm/*.cddl` — one minimal fixture per
 /// cell. This generates each `--wasm=true` and `cargo check`s the wasm crate (which pulls the rust crate

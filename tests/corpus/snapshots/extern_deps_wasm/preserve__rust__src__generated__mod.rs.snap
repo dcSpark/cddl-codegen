@@ -9,6 +9,7 @@ expression: content
 
 extern crate derivative;
 pub mod cbor_encodings;
+mod extern_interface_check;
 pub mod nested;
 pub mod serialization;
 

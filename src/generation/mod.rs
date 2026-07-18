@@ -823,6 +823,14 @@ impl GenerationScope {
             self.rust_lib().raw(format!("pub mod {scope};"));
         }
 
+        // The extern-interface compiled self-check module (materialized as
+        // `generated/extern_interface_check.rs` in `generated_files`). UNCONDITIONAL — declared in
+        // every mode, exactly like the extern-interface export it guards (the analogy is the
+        // commitment level, not gating): it asserts every exported name is a real, correctly-typed
+        // surface in THIS crate, so a hand-edited/stale export or a projection bug fails THIS crate's
+        // build. PRIVATE (`mod`): its assertions are compile-time-only self-checks, nothing re-exported.
+        self.rust_lib().raw("mod extern_interface_check;");
+
         // The borrowed-key-types sidecar module (materialized as `generated/borrowed_key_types.rs` in
         // `generated_files`). RUST crate, not wasm — key derives are a rust-crate concern (the
         // consumer's rust crate is what fails to build without them). PRIVATE (`mod`): its
