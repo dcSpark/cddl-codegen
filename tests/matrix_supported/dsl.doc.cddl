@@ -2,3 +2,4 @@ documented = [
   foo: text, ; @doc a field comment
   bar: uint
 ] ; @doc struct doc
+documented_alias = uint ; @doc an alias rule doc

@@ -40,12 +40,13 @@ alt = "@doc"
 rfc = "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@doc; src/comment_ast.rs"
 profile = "CDDL_CODEGEN"
 title = "@doc — rust doc comment"
-desc = "Attaches a rust doc-comment at field, struct, or variant level. Cannot contain '@'."
+desc = "Attaches a rust doc-comment at field, struct, variant, or rule level (plain alias and @newtype rules). Cannot contain '@'."
 example = '''
 documented = [
   foo: text, ; @doc a field comment
   bar: uint
-] ; @doc struct doc'''
+] ; @doc struct doc
+documented_alias = uint ; @doc an alias rule doc'''
 
 [[feature]]
 id = "dsl.newtype"

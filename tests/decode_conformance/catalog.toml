@@ -3367,58 +3367,58 @@ pinned_reason = "references user-supplied code; crate cannot compile standalone 
 [[row]]
 id = "dsl.doc"
 axis = "feature"
-example = "\ndocumented = [\n  foo: text, ; @doc a field comment\n  bar: uint\n] ; @doc struct doc"
-spec = "\ndocumented = [\n  foo: text, ; @doc a field comment\n  bar: uint\n] ; @doc struct doc"
+example = "\ndocumented = [\n  foo: text, ; @doc a field comment\n  bar: uint\n] ; @doc struct doc\ndocumented_alias = uint ; @doc an alias rule doc"
+spec = "\ndocumented = [\n  foo: text, ; @doc a field comment\n  bar: uint\n] ; @doc struct doc\ndocumented_alias = uint ; @doc an alias rule doc"
 mode = "standalone"
 type_name = "Documented"
 
 [[row.vector]]
-hex = "82666d61696c277319089f"
+hex = "8265426567696e190d4c"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8267436173736975731903e1"
+hex = "82656d696b65641910a1"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "826767616d696e27731909ad"
+hex = "826763686f77696e67190b2e"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "826773636f6f746572190331"
+hex = "8267746570656527731902fb"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8268526f67657273277319093a"
+hex = "8268706963747572656419052f"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82686b6f736865726564190340"
+hex = "82697368616c6c6f742773190cfc"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8269506f746f6d616327731845"
+hex = "826a6e6561726e6573732773191208"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "826972616d706167652773190a2d"
+hex = "826a7374696d756c75732773190762"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8269756e736e61726c6564190676"
+hex = "826b4a6f686e617468616e2773191102"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "826b617070656172616e6365731905e0"
+hex = "826b6f7269656e746174696e67190358"
 source = "ruby-generate"
 expect = "accept"
 
