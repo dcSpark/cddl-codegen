@@ -60,7 +60,7 @@ impl AsRef<cddl_lib::Holder> for Holder {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MapPreludeBignintToU64(OrderedHashMap<cddl_lib::PreludeBignint, u64>);
+pub struct MapPreludeBignintToU64(pub(crate) OrderedHashMap<cddl_lib::PreludeBignint, u64>);
 
 #[wasm_bindgen]
 impl MapPreludeBignintToU64 {
@@ -148,7 +148,7 @@ impl AsRef<cddl_lib::PreludeBignint> for PreludeBignint {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct PreludeBignintList(Vec<cddl_lib::PreludeBignint>);
+pub struct PreludeBignintList(pub(crate) Vec<cddl_lib::PreludeBignint>);
 
 #[wasm_bindgen]
 impl PreludeBignintList {

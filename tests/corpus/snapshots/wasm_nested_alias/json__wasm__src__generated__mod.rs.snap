@@ -25,7 +25,7 @@ pub type MapU64ToText = Tags;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NestedArr(Vec<cddl_lib::Nums>);
+pub struct NestedArr(pub(crate) Vec<cddl_lib::Nums>);
 
 #[wasm_bindgen]
 impl NestedArr {
@@ -66,7 +66,7 @@ impl AsRef<Vec<cddl_lib::Nums>> for NestedArr {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Nums(Vec<u64>);
+pub struct Nums(pub(crate) Vec<u64>);
 
 #[wasm_bindgen]
 impl Nums {
@@ -175,7 +175,7 @@ pub type Passthru = Vec<u64>;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct PassthruMap(cddl_lib::PassthruMap);
+pub struct PassthruMap(pub(crate) cddl_lib::PassthruMap);
 
 #[wasm_bindgen]
 impl PassthruMap {
@@ -222,7 +222,7 @@ pub type PassthruTags = Tags;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct PassthruTagsMap(cddl_lib::PassthruTagsMap);
+pub struct PassthruTagsMap(pub(crate) cddl_lib::PassthruTagsMap);
 
 #[wasm_bindgen]
 impl PassthruTagsMap {
@@ -267,7 +267,7 @@ impl AsRef<cddl_lib::PassthruTagsMap> for PassthruTagsMap {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TaggedList(Vec<cddl_lib::Tags>);
+pub struct TaggedList(pub(crate) Vec<cddl_lib::Tags>);
 
 #[wasm_bindgen]
 impl TaggedList {
@@ -308,7 +308,7 @@ impl AsRef<Vec<cddl_lib::Tags>> for TaggedList {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Tags(cddl_lib::Tags);
+pub struct Tags(pub(crate) cddl_lib::Tags);
 
 #[wasm_bindgen]
 impl Tags {
@@ -353,7 +353,7 @@ impl AsRef<cddl_lib::Tags> for Tags {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct ValueMap(cddl_lib::ValueMap);
+pub struct ValueMap(pub(crate) cddl_lib::ValueMap);
 
 #[wasm_bindgen]
 impl ValueMap {

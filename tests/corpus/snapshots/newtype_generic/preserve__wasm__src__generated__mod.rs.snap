@@ -17,7 +17,7 @@ use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MapU64ToText(OrderedHashMap<u64, String>);
+pub struct MapU64ToText(pub(crate) OrderedHashMap<u64, String>);
 
 #[wasm_bindgen]
 impl MapU64ToText {

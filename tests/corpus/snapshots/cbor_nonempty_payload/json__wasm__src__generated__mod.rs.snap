@@ -19,7 +19,7 @@ use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MapTextToU64(BTreeMap<String, u64>);
+pub struct MapTextToU64(pub(crate) BTreeMap<String, u64>);
 
 #[wasm_bindgen]
 impl MapTextToU64 {
@@ -67,7 +67,7 @@ impl AsRef<BTreeMap<String, u64>> for MapTextToU64 {
 /// `insert` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NonEmptyMapTextToU64(NonEmptyMap<String, u64>);
+pub struct NonEmptyMapTextToU64(pub(crate) NonEmptyMap<String, u64>);
 
 #[wasm_bindgen]
 impl NonEmptyMapTextToU64 {
@@ -122,7 +122,7 @@ impl AsRef<NonEmptyMap<String, u64>> for NonEmptyMapTextToU64 {
 /// `add` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NonEmptyU64List(NonEmptyVec<u64>);
+pub struct NonEmptyU64List(pub(crate) NonEmptyVec<u64>);
 
 #[wasm_bindgen]
 impl NonEmptyU64List {

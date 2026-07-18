@@ -225,6 +225,14 @@ generated subtree, per the layout above) can reach the field, e.g. to write a `R
 impl on a bounded newtype or to access a wasm wrapper's native value via `self.0`. wasm_bindgen
 ignores non-`pub` fields, so the wasm ABI is unchanged.
 
+This applies uniformly to the wasm *collection* wrappers too: the plain list wrappers (`FooList`),
+the structural map wrappers (`MapKToV`) and named map/table rules, and the `NonEmpty*` list/map
+wrappers all back their inner `Vec`/`BTreeMap`/`OrderedHashMap`/`NonEmptyVec`/`NonEmptyMap` with a
+`pub(crate)` tuple field, so hand augmentation reaches `self.0` on any of them. The one exception is
+`--wasm-list-macro`: those list wrappers are defined by a *consumer-supplied* macro, so their field
+visibility is the macro's choice, not the generator's — give that macro a `pub(crate)` field if its
+wrappers are hand-augmented.
+
 ### Migrating from pre-split layouts
 
 Crates generated **before** the thin-root split have a monolithic `src/lib.rs` that carries the

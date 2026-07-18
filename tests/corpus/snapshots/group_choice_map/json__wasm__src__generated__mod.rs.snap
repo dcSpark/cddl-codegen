@@ -399,7 +399,7 @@ pub enum MultiFieldArmKind {
 /// `add` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NonEmptyU64List(NonEmptyVec<u64>);
+pub struct NonEmptyU64List(pub(crate) NonEmptyVec<u64>);
 
 #[wasm_bindgen]
 impl NonEmptyU64List {

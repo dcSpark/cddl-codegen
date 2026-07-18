@@ -67,7 +67,7 @@ impl AsRef<cddl_lib::BkeyHolder> for BkeyHolder {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Bkeys(cddl_lib::Bkeys);
+pub struct Bkeys(pub(crate) cddl_lib::Bkeys);
 
 #[wasm_bindgen]
 impl Bkeys {
@@ -112,7 +112,7 @@ impl AsRef<cddl_lib::Bkeys> for Bkeys {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct BoolList(Vec<bool>);
+pub struct BoolList(pub(crate) Vec<bool>);
 
 #[wasm_bindgen]
 impl BoolList {

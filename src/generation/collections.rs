@@ -295,7 +295,7 @@ impl GenerationScope {
             }
             let inner_type = element_type.name_as_rust_array(types, true, cli);
             let mut wrapper = create_base_wasm_struct(self, array_type_ident, false, cli);
-            wrapper.s.tuple_field(None, &inner_type);
+            wrapper.push_inner_field(&inner_type);
             // other functions
             let mut new_func = codegen::Function::new("new");
             new_func.vis("pub").ret("Self");
@@ -380,7 +380,7 @@ impl GenerationScope {
              representation.\n{entry_doc}\n`add` can never violate the bound; removal is checked \
              in the core type."
         ));
-        wrapper.s.tuple_field(None, &inner_type);
+        wrapper.push_inner_field(&inner_type);
         // new(first) — always valid (length 1)
         let mut new_func = codegen::Function::new("new");
         new_func
@@ -535,7 +535,7 @@ impl GenerationScope {
              `NonEmptyMap` representation.\n{entry_doc}\n`insert` can never violate the bound; \
              removal is checked in the core type."
         ));
-        wrapper.s.tuple_field(None, &inner_type);
+        wrapper.push_inner_field(&inner_type);
         // new(first_key, first_value) — always valid (length 1)
         let mut new_func = codegen::Function::new("new");
         new_func
@@ -1197,7 +1197,7 @@ pub(super) fn codegen_table_type(
     } else {
         ConceptualRustType::name_for_rust_map(types, &key_type, &value_type, true, cli)
     };
-    wrapper.s.tuple_field(None, &inner_type);
+    wrapper.push_inner_field(&inner_type);
     // new
     let mut new_func = codegen::Function::new("new");
     new_func

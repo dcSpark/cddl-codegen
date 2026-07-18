@@ -14106,3 +14106,83 @@ fn integration_wrapper_fields_are_pub_crate() {
         "default-profile wasm wrapper tuple field must be `pub(crate)`:\n{wasm}"
     );
 }
+
+/// Pin: the FOUR collection-wrapper emission paths all reach the same `pub(crate)` inner-field
+/// policy as the named/bounded wrappers above (one owner: `WasmWrapper::push_inner_field`). Each
+/// path predated the pub(crate) reasoning and was silently private before; a private field there
+/// forces consumers into per-repo `cddl-codegen:replace` overlay blocks to hand-augment the class.
+/// wasm_bindgen ignores non-pub fields, so the ABI/API surface is unchanged either way. The fixture
+/// exercises every path: a plain list (`[* foo]`), a non-empty list (`[+ foo]`), a non-empty map
+/// (`{+ k => v}`), a structural map (`{* k => v}` inline — the `!exists_in_rust` branch), and a
+/// NAMED map rule (a table-type top-level rule — the `exists_in_rust` branch). Generated as strings
+/// (no static dir / nested cargo), like the sibling wrapper/scope tests.
+#[test]
+fn integration_collection_wrapper_fields_are_pub_crate() {
+    use clap::Parser;
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_codegen_collection_pub_crate_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    // Each rule targets a distinct collection wrapper path; `holder` forces the structural map
+    // `{* uint => text}` to be minted as an anonymous `MapU64ToText` (the `!exists_in_rust` branch),
+    // while `named_map` is a rule-declared table (the `exists_in_rust` branch that wraps the rust type).
+    std::fs::write(
+        dir.join("lib.cddl"),
+        "foo = uint\n\
+         plain_list = [* foo]\n\
+         ne_list = [+ foo]\n\
+         ne_map = {+ uint => text}\n\
+         named_map = {* text => foo}\n\
+         holder = [tab: {* uint => text}]\n",
+    )
+    .unwrap();
+
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        dir.to_str().unwrap(),
+        "--output",
+        "collection_pub_crate",
+        "--wasm=true",
+    ]);
+    let files = crate::api::generated_strings(&cli).unwrap_or_else(|e| panic!("gen failed: {e}"));
+    let _ = std::fs::remove_dir_all(&dir);
+    let wasm = files
+        .get("wasm/src/generated/mod.rs")
+        .unwrap_or_else(|| {
+            panic!(
+                "no `wasm/src/generated/mod.rs` among generated files; got: {:?}",
+                files.keys().collect::<Vec<_>>()
+            )
+        })
+        .clone();
+
+    // (wrapper struct name, the code path it exercises) — assert each wrapper's tuple field is
+    // emitted `pub(crate)`, i.e. its `pub struct <Name>(` line contains `(pub(crate) `.
+    let expected: &[(&str, &str)] = &[
+        ("PlainList", "plain array wrapper `[* foo]`"),
+        ("NeList", "non-empty array wrapper `[+ foo]`"),
+        ("NeMap", "non-empty map wrapper `{+ k => v}`"),
+        (
+            "MapU64ToText",
+            "structural map wrapper `{* k => v}` (!exists_in_rust)",
+        ),
+        ("NamedMap", "named map rule (exists_in_rust)"),
+    ];
+    for (name, path) in expected {
+        let line = wasm
+            .lines()
+            .find(|l| l.trim_start().starts_with(&format!("pub struct {name}(")))
+            .unwrap_or_else(|| {
+                panic!("no `pub struct {name}(` wrapper line in generated wasm mod.rs:\n{wasm}")
+            });
+        assert!(
+            line.contains("(pub(crate) "),
+            "{path}: wasm wrapper `{name}` tuple field must be `pub(crate)` (uniform \
+             `WasmWrapper::push_inner_field` policy; wasm_bindgen ignores non-pub fields so the ABI \
+             is unchanged, while consumer wasm hand files can reach `self.0`):\n{line}"
+        );
+    }
+}

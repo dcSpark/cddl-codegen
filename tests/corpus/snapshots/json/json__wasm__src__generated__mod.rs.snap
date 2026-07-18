@@ -573,7 +573,7 @@ impl AsRef<cddl_lib::NintWrapper> for NintWrapper {
 /// `insert` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NonEmptyMapTextToU64(NonEmptyMap<String, u64>);
+pub struct NonEmptyMapTextToU64(pub(crate) NonEmptyMap<String, u64>);
 
 #[wasm_bindgen]
 impl NonEmptyMapTextToU64 {
@@ -628,7 +628,7 @@ impl AsRef<NonEmptyMap<String, u64>> for NonEmptyMapTextToU64 {
 /// `add` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NonEmptyU64List(NonEmptyVec<u64>);
+pub struct NonEmptyU64List(pub(crate) NonEmptyVec<u64>);
 
 #[wasm_bindgen]
 impl NonEmptyU64List {
@@ -791,7 +791,7 @@ impl AsRef<cddl_lib::StructWrapper> for StructWrapper {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Table(cddl_lib::Table);
+pub struct Table(pub(crate) cddl_lib::Table);
 
 #[wasm_bindgen]
 impl Table {

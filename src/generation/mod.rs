@@ -1542,6 +1542,24 @@ impl<'a> WasmWrapper<'a> {
         }
     }
 
+    /// Push the wrapper's single inner tuple field with the uniform wasm-wrapper
+    /// visibility policy. This is the ONE owner of that visibility literal for every
+    /// generated wasm wrapper (the named `create_base_wasm_wrapper` path and all four
+    /// `collections.rs` wrappers — plain list, non-empty list/map, structural/named map).
+    ///
+    /// `pub(crate)`, not private: wasm_bindgen ignores non-pub fields so the ABI/API surface is
+    /// unchanged, while consumer wasm hand files (living outside the always-clobbered generated
+    /// subtree under the thin-root layout) can reach the wrapped native value via `self.0`.
+    /// (The rust-crate bounded-newtype sites in `wrappers.rs` reach the same `pub(crate)` for the
+    /// same reason, but are a different crate and emission shape and stay owned there.)
+    fn push_inner_field<T>(&mut self, ty: T) -> &mut Self
+    where
+        T: Into<codegen::Type>,
+    {
+        self.s.tuple_field(Some("pub(crate)".to_string()), ty);
+        self
+    }
+
     /// native_name is &str since we need to possibly prepend namespacing
     /// and where we're calling it we'd have to construct a RustType where we
     /// didn't have to before, but we already had the string.
@@ -1696,11 +1714,7 @@ fn create_base_wasm_wrapper<'a>(
     let mut base = create_base_wasm_struct(gen_scope, ident, true, cli);
     if default_structure {
         let native_name = rust_crate_struct_from_wasm(types, ident, cli);
-        // `pub(crate)`, not private: wasm_bindgen ignores non-pub fields so the ABI/API surface is
-        // unchanged, while consumer wasm hand files (living outside the always-clobbered generated
-        // subtree under the thin-root layout) can reach the wrapped native value via `self.0`.
-        base.s
-            .tuple_field(Some("pub(crate)".to_string()), &native_name);
+        base.push_inner_field(&native_name);
         base.add_conversion_methods(&native_name, cli);
     }
     base

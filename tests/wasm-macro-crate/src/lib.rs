@@ -31,7 +31,7 @@ macro_rules! impl_wasm_list {
 
         #[derive(Clone, Debug)]
         #[wasm_bindgen::prelude::wasm_bindgen]
-        pub struct $wasm_name(Vec<$rust_elem>);
+        pub struct $wasm_name(pub(crate) Vec<$rust_elem>);
 
         #[wasm_bindgen::prelude::wasm_bindgen]
         impl $wasm_name {
@@ -72,7 +72,7 @@ macro_rules! impl_wasm_list {
 
         #[derive(Clone, Debug)]
         #[wasm_bindgen::prelude::wasm_bindgen]
-        pub struct $wasm_name(Vec<$rust_elem>);
+        pub struct $wasm_name(pub(crate) Vec<$rust_elem>);
 
         #[wasm_bindgen::prelude::wasm_bindgen]
         impl $wasm_name {
@@ -108,7 +108,7 @@ macro_rules! impl_wasm_list {
 
         #[derive(Clone, Debug)]
         #[wasm_bindgen::prelude::wasm_bindgen]
-        pub struct $wasm_name(Vec<$rust_elem>);
+        pub struct $wasm_name(pub(crate) Vec<$rust_elem>);
 
         #[wasm_bindgen::prelude::wasm_bindgen]
         impl $wasm_name {

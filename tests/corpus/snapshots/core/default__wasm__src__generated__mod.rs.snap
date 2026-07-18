@@ -69,7 +69,7 @@ impl AsRef<cddl_lib::A> for A {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct ArrU64List(Vec<NonEmptyVec<u64>>);
+pub struct ArrU64List(pub(crate) Vec<NonEmptyVec<u64>>);
 
 #[wasm_bindgen]
 impl ArrU64List {
@@ -1025,7 +1025,7 @@ impl AsRef<cddl_lib::Ee> for Ee {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct EmbeddedTable(cddl_lib::EmbeddedTable);
+pub struct EmbeddedTable(pub(crate) cddl_lib::EmbeddedTable);
 
 #[wasm_bindgen]
 impl EmbeddedTable {
@@ -1070,7 +1070,7 @@ impl AsRef<cddl_lib::EmbeddedTable> for EmbeddedTable {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct EmbeddedText(cddl_lib::EmbeddedText);
+pub struct EmbeddedText(pub(crate) cddl_lib::EmbeddedText);
 
 #[wasm_bindgen]
 impl EmbeddedText {
@@ -1708,7 +1708,7 @@ pub type FooBytes = Foo;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct FooList(Vec<cddl_lib::Foo>);
+pub struct FooList(pub(crate) Vec<cddl_lib::Foo>);
 
 #[wasm_bindgen]
 impl FooList {
@@ -1924,7 +1924,7 @@ impl AsRef<cddl_lib::InlineWrapper> for InlineWrapper {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MapTextToNemVal(BTreeMap<String, cddl_lib::NemVal>);
+pub struct MapTextToNemVal(pub(crate) BTreeMap<String, cddl_lib::NemVal>);
 
 #[wasm_bindgen]
 impl MapTextToNemVal {
@@ -1969,7 +1969,7 @@ impl AsRef<BTreeMap<String, cddl_lib::NemVal>> for MapTextToNemVal {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MapTextToText(BTreeMap<String, String>);
+pub struct MapTextToText(pub(crate) BTreeMap<String, String>);
 
 #[wasm_bindgen]
 impl MapTextToText {
@@ -2014,7 +2014,7 @@ impl AsRef<BTreeMap<String, String>> for MapTextToText {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MapTextToU64(BTreeMap<String, u64>);
+pub struct MapTextToU64(pub(crate) BTreeMap<String, u64>);
 
 #[wasm_bindgen]
 impl MapTextToU64 {
@@ -2059,7 +2059,7 @@ impl AsRef<BTreeMap<String, u64>> for MapTextToU64 {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MapU64ToText(BTreeMap<u64, String>);
+pub struct MapU64ToText(pub(crate) BTreeMap<u64, String>);
 
 #[wasm_bindgen]
 impl MapU64ToText {
@@ -2104,7 +2104,7 @@ impl AsRef<BTreeMap<u64, String>> for MapU64ToText {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct MapU64ToU64(BTreeMap<u64, u64>);
+pub struct MapU64ToU64(pub(crate) BTreeMap<u64, u64>);
 
 #[wasm_bindgen]
 impl MapU64ToU64 {
@@ -2270,7 +2270,7 @@ impl AsRef<cddl_lib::NemHolder> for NemHolder {
 /// `insert` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NemNamed(NonEmptyMap<String, cddl_lib::NemVal>);
+pub struct NemNamed(pub(crate) NonEmptyMap<String, cddl_lib::NemVal>);
 
 #[wasm_bindgen]
 impl NemNamed {
@@ -2451,7 +2451,7 @@ impl AsRef<cddl_lib::NevBar> for NevBar {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NevBarList(Vec<cddl_lib::NevBar>);
+pub struct NevBarList(pub(crate) Vec<cddl_lib::NevBar>);
 
 #[wasm_bindgen]
 impl NevBarList {
@@ -2623,7 +2623,7 @@ impl AsRef<cddl_lib::NevHolder2> for NevHolder2 {
 /// `add` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NevInts(NonEmptyVec<u64>);
+pub struct NevInts(pub(crate) NonEmptyVec<u64>);
 
 #[wasm_bindgen]
 impl NevInts {
@@ -2713,7 +2713,7 @@ impl AsRef<cddl_lib::NevPt> for NevPt {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NevPtList(Vec<cddl_lib::NevPt>);
+pub struct NevPtList(pub(crate) Vec<cddl_lib::NevPt>);
 
 #[wasm_bindgen]
 impl NevPtList {
@@ -2757,7 +2757,7 @@ impl AsRef<Vec<cddl_lib::NevPt>> for NevPtList {
 /// `add` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NevPts(NonEmptyVec<cddl_lib::NevPt>);
+pub struct NevPts(pub(crate) NonEmptyVec<cddl_lib::NevPt>);
 
 #[wasm_bindgen]
 impl NevPts {
@@ -2851,7 +2851,7 @@ impl AsRef<cddl_lib::NevQ> for NevQ {
 /// `add` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NevQList(NonEmptyVec<cddl_lib::NevQ>);
+pub struct NevQList(pub(crate) NonEmptyVec<cddl_lib::NevQ>);
 
 #[wasm_bindgen]
 impl NevQList {
@@ -3075,7 +3075,7 @@ impl AsRef<cddl_lib::NoAlias> for NoAlias {
 /// `add` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NonEmptyArrU64List(NonEmptyVec<NonEmptyVec<u64>>);
+pub struct NonEmptyArrU64List(pub(crate) NonEmptyVec<NonEmptyVec<u64>>);
 
 #[wasm_bindgen]
 impl NonEmptyArrU64List {
@@ -3119,7 +3119,7 @@ impl AsRef<NonEmptyVec<NonEmptyVec<u64>>> for NonEmptyArrU64List {
 /// `insert` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NonEmptyMapTextToU64(NonEmptyMap<String, u64>);
+pub struct NonEmptyMapTextToU64(pub(crate) NonEmptyMap<String, u64>);
 
 #[wasm_bindgen]
 impl NonEmptyMapTextToU64 {
@@ -3174,7 +3174,7 @@ impl AsRef<NonEmptyMap<String, u64>> for NonEmptyMapTextToU64 {
 /// `insert` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NonEmptyMapU64ToText(NonEmptyMap<u64, String>);
+pub struct NonEmptyMapU64ToText(pub(crate) NonEmptyMap<u64, String>);
 
 #[wasm_bindgen]
 impl NonEmptyMapU64ToText {
@@ -3229,7 +3229,7 @@ impl AsRef<NonEmptyMap<u64, String>> for NonEmptyMapU64ToText {
 /// `insert` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NonEmptyMapU64ToU64(NonEmptyMap<u64, u64>);
+pub struct NonEmptyMapU64ToU64(pub(crate) NonEmptyMap<u64, u64>);
 
 #[wasm_bindgen]
 impl NonEmptyMapU64ToU64 {
@@ -3284,7 +3284,7 @@ impl AsRef<NonEmptyMap<u64, u64>> for NonEmptyMapU64ToU64 {
 /// `add` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NonEmptyNevBarList(NonEmptyVec<cddl_lib::NevBar>);
+pub struct NonEmptyNevBarList(pub(crate) NonEmptyVec<cddl_lib::NevBar>);
 
 #[wasm_bindgen]
 impl NonEmptyNevBarList {
@@ -4545,7 +4545,7 @@ impl AsRef<cddl_lib::PlainArrays> for PlainArrays {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct PlainList(Vec<cddl_lib::Plain>);
+pub struct PlainList(pub(crate) Vec<cddl_lib::Plain>);
 
 #[wasm_bindgen]
 impl PlainList {
@@ -4814,7 +4814,7 @@ impl AsRef<cddl_lib::SignedInts> for SignedInts {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct StandaloneTable(cddl_lib::StandaloneTable);
+pub struct StandaloneTable(pub(crate) cddl_lib::StandaloneTable);
 
 #[wasm_bindgen]
 impl StandaloneTable {
@@ -4859,7 +4859,7 @@ impl AsRef<cddl_lib::StandaloneTable> for StandaloneTable {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct StandaloneText(cddl_lib::StandaloneText);
+pub struct StandaloneText(pub(crate) cddl_lib::StandaloneText);
 
 #[wasm_bindgen]
 impl StandaloneText {
@@ -4975,7 +4975,7 @@ impl AsRef<cddl_lib::StructWithCustomSerialization> for StructWithCustomSerializ
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Table(cddl_lib::Table);
+pub struct Table(pub(crate) cddl_lib::Table);
 
 #[wasm_bindgen]
 impl Table {
@@ -5499,7 +5499,7 @@ impl AsRef<cddl_lib::Three> for Three {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TopLevelArray(Vec<u64>);
+pub struct TopLevelArray(pub(crate) Vec<u64>);
 
 #[wasm_bindgen]
 impl TopLevelArray {

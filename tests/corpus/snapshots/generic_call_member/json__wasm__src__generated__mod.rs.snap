@@ -136,7 +136,7 @@ impl AsRef<cddl_lib::X> for X {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Y(Vec<cddl_lib::PairU64Text>);
+pub struct Y(pub(crate) Vec<cddl_lib::PairU64Text>);
 
 #[wasm_bindgen]
 impl Y {

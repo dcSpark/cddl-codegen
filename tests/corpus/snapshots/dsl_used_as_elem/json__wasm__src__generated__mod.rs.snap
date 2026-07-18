@@ -78,7 +78,7 @@ impl AsRef<cddl_lib::Elem> for Elem {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct ElemList(Vec<cddl_lib::Elem>);
+pub struct ElemList(pub(crate) Vec<cddl_lib::Elem>);
 
 #[wasm_bindgen]
 impl ElemList {

@@ -19,7 +19,7 @@ pub type MapU64ToText = Table;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Table(cddl_lib::Table);
+pub struct Table(pub(crate) cddl_lib::Table);
 
 #[wasm_bindgen]
 impl Table {

@@ -17,7 +17,7 @@ use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Bounded(Vec<u64>);
+pub struct Bounded(pub(crate) Vec<u64>);
 
 #[wasm_bindgen]
 impl Bounded {
@@ -118,7 +118,7 @@ impl AsRef<cddl_lib::OccurrenceHolder> for OccurrenceHolder {
 /// `add` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct OneOrMore(NonEmptyVec<u64>);
+pub struct OneOrMore(pub(crate) NonEmptyVec<u64>);
 
 #[wasm_bindgen]
 impl OneOrMore {
