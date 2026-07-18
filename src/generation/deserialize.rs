@@ -53,6 +53,16 @@ impl<'a> DeserializeConfig<'a> {
         self
     }
 
+    /// Rename the temporaries this deserialize binds (`{var}_value` / `{var}_encoding`). Use when
+    /// the emission site inlines the deserialize into a scope that already holds a same-named
+    /// accumulator (no closure isolates the bindings — the `--annotate-fields=false` map-arm case),
+    /// so the un-prefixed name would shadow the accumulator and a trailing reassignment would hit
+    /// the shadow (E0308). Chain AFTER `for_field` so the `@custom_deserialize` carry is kept.
+    pub(super) fn overload_var_name(mut self, var_name: &'a str) -> Self {
+        self.var_name = var_name;
+        self
+    }
+
     pub(super) fn optional_field(mut self, is_optional: bool) -> Self {
         self.optional_field = is_optional;
         self

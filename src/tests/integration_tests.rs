@@ -3075,6 +3075,70 @@ fn flag_value_smoke() {
     assert!(failures.is_empty(), "{}", failures.join("\n\n"));
 }
 
+/// `--preserve-encodings=true --annotate-fields=false` over bool/null fixed-value MEMBERS — a
+/// standing cell for an escaped flag interaction (the third on record; policy per
+/// tests/TESTING_ROADMAP.md's declined flag-powerset entry: escaped interactions earn their own
+/// standing cells rather than the whole powerset). No profile combines preserve with
+/// annotate=false, and `flag_value_smoke`'s annotate=false case runs a spec with no encoding-LESS
+/// fixed member, so the combination's fixed-value deserialize path was unreachable by every gate:
+/// it emitted a bare `()` value expr with no statement terminator before the next statement
+/// (non-parsing output, array and map arms — found by reading during the optional-fixed-value
+/// delivery, fixed by terminating the preserve-only trailing `()` with `;`). This cell generates
+/// the two fixed-member corpus fixtures (mandatory: `fixed_bool_member.cddl`; optional presence
+/// bools: `optional_fixed_member.cddl`) under exactly that flag pair and `cargo check`s the
+/// result, so a regression fails here rather than only in a consumer running annotate=false.
+/// Tier: check.ts `local` (the `test` gate).
+#[test]
+fn preserve_no_annotate_fixed_members_generate() {
+    use std::str::FromStr;
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_pres_noann_fixed_{:016x}",
+        checkout_hash()
+    ));
+    let target_dir = scratch.join("target");
+    let mut failures = Vec::new();
+    for (label, input) in [
+        ("mandatory", "tests/corpus/fixed_bool_member.cddl"),
+        ("optional", "tests/corpus/optional_fixed_member.cddl"),
+    ] {
+        let input = std::path::PathBuf::from_str(input).unwrap();
+        let out = scratch.join(label);
+        let _ = std::fs::remove_dir_all(&out);
+        let gen_out = tool_cmd("cargo")
+            .args(["run", "--"])
+            .arg(format!("--input={}", input.to_str().unwrap()))
+            .arg(format!("--output={}", out.to_str().unwrap()))
+            .arg("--wasm=false")
+            .arg("--preserve-encodings=true")
+            .arg("--annotate-fields=false")
+            .output()
+            .unwrap();
+        if !gen_out.status.success() {
+            failures.push(format!(
+                "{label}: generation failed\n{}",
+                String::from_utf8_lossy(&gen_out.stderr)
+            ));
+            continue;
+        }
+        let check = tool_cmd("cargo")
+            .arg("check")
+            .current_dir(out.join("rust"))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        if !check.status.success() {
+            failures.push(format!(
+                "{label}: cargo check failed\n{}",
+                String::from_utf8_lossy(&check.stderr)
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n\n"));
+}
+
 /// `--no-synthesized-rust-collection-aliases`: suppress ONLY generator-synthesized collection
 /// wrapper rust aliases (a table rule's auto-named keys-list, `pub type FooList = Vec<Foo>;`), never
 /// rule-declared ones. An authored `authored_list = [* foo]` and an authored table `tbl = { * foo =>

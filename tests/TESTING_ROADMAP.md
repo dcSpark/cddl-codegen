@@ -121,6 +121,18 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      building on the THIRD instance: mint each alias-classifying root also as an embedded variant
      (`rcN_embed = [e: rcN]` — the matrix probe's embed-holder pattern), scoped to alias roots to
      bound the layer-2 wall-clock cost.
+     The class also has a SEMANTIC flavor beyond the compile one, read-confirmed during the
+     Int-extern alias-reference delivery (tests/corpus/int_alias.cddl): a bare `.cbor` alias root's
+     STANDALONE (de)serialization is the target type's own (`y = bytes .cbor int` → `pub type Y =
+     Int`, whose impls read/write a plain int — the byte-string wrapping exists only at embed
+     sites), so a consumer using the alias type directly gets spec-divergent bytes with no error.
+     No standing layer sees it: the compile gates can't (it compiles), and the decode-conformance
+     corpus leg deliberately validates through synthetic embed holders (`__probe_holder`), which
+     exercise the wrapped path. The mechanical detector, if the embed-site leg above gets built or
+     a consumer hits the flavor first: a standalone-vs-embedded decode differential on
+     alias-classifying roots — decode each such root's spec-derived vectors through the root
+     type's OWN impls beside the holder leg, red where the two accept/byte sets diverge (rather
+     than certifying standalone semantics that the probe holders never witnessed).
    - **`arbitrary`-derived "supported-CDDL" AST generation** — only if recombination plateaus (its
      first sweep surfaced six new panic-class families, so the plateau is not near; re-evaluate when
      a sweep over an extended member-kind/template table stops minting findings).
@@ -803,7 +815,7 @@ generated-only view, invisible to any glob-edge model).
   `integration_tests::getting_started_example`.)
 - **Full `2^N` flag powerset / PICT pairwise** — the curated named profiles cover the flag
   *combinations* worth testing, so the full powerset stays out of scope. Escaped interactions earn
-  their own standing cells rather than the whole powerset — two so far. First:
+  their own standing cells rather than the whole powerset — three so far. First:
   `--common-import-override` × `--preserve-encodings=false` targeting a preserve-flavored common
   crate emitted `CBORReadLen::new(Len)` against a `new(LenSz)` runtime (E0308). Second:
   `--workspace-dep` × `--wasm=false` silently ignored the flag — validation included — fixed to
@@ -811,7 +823,16 @@ generated-only view, invisible to any glob-edge model).
   plus the flavored contract's rust-only byte-identity leg. Its read-caught sibling, the
   `--extern-wrapper-index` validation skip under `--wasm=false`, is likewise fixed to
   mode-independent validation (deferral still wasm-gated) and pinned by
-  `extern_wrapper_index_is_validated_under_wasm_false`. Recur-first lesson: a THIRD validating
+  `extern_wrapper_index_is_validated_under_wasm_false`. Third, an EMISSION-path flavor (not
+  validation-inertness): `--preserve-encodings=true` × `--annotate-fields=false` — no profile
+  combines them, and `flag_value_smoke`'s annotate=false case runs a spec with no encoding-less
+  fixed member, so the combination's fixed-value deserialize paths were unreachable by every gate.
+  Two bugs lived there: bool/null fixed members emitted a bare `()` with no statement terminator
+  (non-parsing output), and uint/nint/text fixed MAP values bound their inline `{field}_encoding`
+  over the arm's outer accumulator (E0308 assign-to-shadow) — the first found by reading during
+  the optional-fixed-value delivery, the second at the arming run of the standing cell that now
+  owns the combination (`preserve_no_annotate_fixed_members_generate`, generating both fixed-member
+  corpus fixtures under the pair). Both fixed. Recur-first lesson: a THIRD validating
   flag turning up mode-inert is the trigger
   to build the class-level validation-smoke sweep — each clap flag with documented startup
   validation invoked once with a deliberately invalid value under each `--wasm` mode, asserting
