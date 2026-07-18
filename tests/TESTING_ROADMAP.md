@@ -216,6 +216,24 @@ also fixed `array_opt_fields`'s silent drop); the residue is the preserve-only f
   mechanical layer on a second instance: a generator branch-coverage sweep — e.g. llvm-cov over
   the corpus + suite generation runs, red on emission arms no fixture executes — the only layer
   that catches the class without knowing each branch by name.
+- **Value-anchor rot on field addition: a delivery that grows an existing type's fields leaves the
+  type's existing hand-vector sweeps decoding the new data but asserting nothing about it — the
+  EXECUTED-but-unasserted sibling of the never-executed emission-branch class above.** Proven
+  instance (review-caught, not by any gate): the float presence-field delivery gave
+  `array_opt_fields` (`tests/core`) real `x`/`z` presence fields, and the fixture's existing decode
+  sweep — which already fed x/z-present bytes through `from_cbor_bytes`, and whose own comment
+  states the discipline ("decode-accepts alone proved nothing — pin every field") — kept passing
+  without asserting the new fields or exercising their serialize side in that long-optional-chain
+  shape; closed by extending the sweep's anchors + round-trip in the review commit. The
+  pending `cargo-mutants` sweep (§ "Pending maintainer action") covers this class only PARTIALLY:
+  a generator mutant breaking the new behavior dies to any OTHER fixture asserting the same arm
+  (here the corpus fixture's emitted tests), so mutation scoring cannot see that one hand suite's
+  anchors went vacuous for its own distinct shape. Working rule meanwhile: a change that adds
+  fields to a type appearing in an existing hand-vector suite extends that suite's value anchors
+  in the same change, and the review walks the suite's assert list against the type's new field
+  list. Mechanical layer on a SECOND instance: a per-suite anchor-completeness check (each
+  round-tripped type's public fields ⊆ the fields its suite's asserts mention — buildable as a
+  grep-level floor over `tests/*/tests.rs`), accepting its enumeration cost then, not before.
 - **Stale "known limitation" prose surviving its fix — a finding ledgered in TWO homes where the
   fixing commit prunes only one.** Proven instance (read-caught during the facade-pin delivery,
   not by any gate): the extern-only-scope undeclared-module finding was ledgered both in
@@ -262,7 +280,17 @@ also fixed `array_opt_fields`'s silent drop); the residue is the preserve-only f
   the probe is minutes), never by narrative plausibility — the sweep's first closure draft
   attributed both compile-bug fixes to the cbor_event 3.x de-generification, and a
   worktree-bisect falsified that for E0282 (the real fix was the bool-arm emission switch, days
-  earlier) before the wrong story shipped past review.
+  earlier) before the wrong story shipped past review. This rule is REVIEW-OWNED by explicit
+  decision, not pending a mechanical layer: whether a reproduction was actually performed leaves
+  no machine-checkable artifact (probe logs are gitignored run evidence), so a detector could only
+  check that prose CLAIMS verification — the same claim-semantics boundary check I stops at. Same
+  disposition class as the declined docs-conformance harness (prose semantics are review's job at
+  review's error rate); the reopening signal is a false attribution SHIPPING past review, not one
+  being caught by it. Bisect/reproduction mechanics for whoever next needs them:
+  `draft/bisect-verdict-discipline.md` (why any-failure bisect verdicts mislead in this repo —
+  two polluted runs converged on a docs-only commit — and the specific-error-keyed script that
+  worked). Check I's own accepted looseness is documented at the arm (any backtick token matching
+  src/tests/ text satisfies resolution; tighten on the first vacuous pass observed, not before).
 - **Observed-baseline comments beside gate floors rot silently — TWO instances, two homes, two
   distinct rot modes; the floors/consts stay the enforced artifact.** These comments are
   informational and review-maintained by design (replacing them with exact gate-asserted counts
