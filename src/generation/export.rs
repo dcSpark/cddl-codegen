@@ -986,18 +986,39 @@ impl GenerationScope {
                     format!("crate::generated::{}::{ident}", components.join("::"))
                 }
             };
+            // Whole-value `Serialize`/`Deserialize` cover both the opaque `Serialize` rows AND the
+            // transparent group-body `EmbeddedGroup` rows: a group-choice arm that splices a plain
+            // group calls `.serialize()` on the whole value, so the whole-value bounds must hold for
+            // an `EmbeddedGroup` row too (its `Deserialize` gated on the dep generating one, same as
+            // `Serialize` rows).
             let deser_asserted =
                 |entry: &crate::generation::extern_interface::ExternCheckEntry| -> bool {
-                    matches!(entry.kind, ExternCheckKind::Serialize)
-                        && self.deserialize_generated(&entry.ident)
+                    matches!(
+                        entry.kind,
+                        ExternCheckKind::Serialize | ExternCheckKind::EmbeddedGroup
+                    ) && self.deserialize_generated(&entry.ident)
                 };
-            let any_serialize = entries
-                .iter()
-                .any(|e| matches!(e.kind, ExternCheckKind::Serialize));
+            let any_serialize = entries.iter().any(|e| {
+                matches!(
+                    e.kind,
+                    ExternCheckKind::Serialize | ExternCheckKind::EmbeddedGroup
+                )
+            });
             let any_deser = entries.iter().any(deser_asserted);
             let any_raw_bytes = entries
                 .iter()
                 .any(|e| matches!(e.kind, ExternCheckKind::RawBytes));
+            // The embedded-group surface (`serialize_as_embedded_group` / `deserialize_as_embedded_group`)
+            // a spliced record MEMBER delegates through, asserted only for group-body rows. Its
+            // `Deserialize` twin is gated per-type on the dep generating one, exactly like the
+            // whole-value side.
+            let any_embedded_group = entries
+                .iter()
+                .any(|e| matches!(e.kind, ExternCheckKind::EmbeddedGroup));
+            let any_embedded_group_deser = entries.iter().any(|e| {
+                matches!(e.kind, ExternCheckKind::EmbeddedGroup)
+                    && self.deserialize_generated(&e.ident)
+            });
 
             let mut file = String::from(
                 "// Compiled self-check for the dep-side extern-interface export\n\
@@ -1026,6 +1047,18 @@ impl GenerationScope {
                     "#[allow(dead_code)]\nfn _assert_raw_bytes<T: {common}::serialization::RawBytesEncoding>() {{}}\n"
                 ));
             }
+            // The embedded-group traits are the crate's own runtime traits in ALL modes (unlike
+            // whole-value `Serialize`, whose custom canonical variant only exists in canonical mode).
+            if any_embedded_group {
+                file.push_str(&format!(
+                    "#[allow(dead_code)]\nfn _assert_serialize_embedded_group<T: {common}::serialization::SerializeEmbeddedGroup>() {{}}\n"
+                ));
+            }
+            if any_embedded_group_deser {
+                file.push_str(&format!(
+                    "#[allow(dead_code)]\nfn _assert_deserialize_embedded_group<T: {common}::serialization::DeserializeEmbeddedGroup>() {{}}\n"
+                ));
+            }
             // Transparent rows: a module-level `use … as _;` existence check (an anonymous import
             // never triggers unused-import warnings, but stay explicit).
             for entry in &entries {
@@ -1049,6 +1082,25 @@ impl GenerationScope {
                         ));
                         if self.deserialize_generated(&entry.ident) {
                             file.push_str(&format!("    _assert_deserialize::<{path}>();\n"));
+                        }
+                    }
+                    ExternCheckKind::EmbeddedGroup => {
+                        // Both surfaces the consumer's generated code uses for a spliced plain group:
+                        // whole-value (a group-choice arm's `.serialize()`) and embedded (a record
+                        // member's `serialize_as_embedded_group`), each `Deserialize` side gated on
+                        // the dep generating one.
+                        file.push_str(&format!(
+                            "    _assert_serialize::<{path}>(); // {}\n",
+                            entry.source
+                        ));
+                        file.push_str(&format!(
+                            "    _assert_serialize_embedded_group::<{path}>();\n"
+                        ));
+                        if self.deserialize_generated(&entry.ident) {
+                            file.push_str(&format!("    _assert_deserialize::<{path}>();\n"));
+                            file.push_str(&format!(
+                                "    _assert_deserialize_embedded_group::<{path}>();\n"
+                            ));
                         }
                     }
                     ExternCheckKind::RawBytes => {

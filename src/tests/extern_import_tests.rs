@@ -459,6 +459,74 @@ fn extern_import_export_with_records_parses_cleanly() {
     );
 }
 
+/// Ask 0 — the excluded-with-record contract holds for the plain-group shapes that DON'T export as a
+/// group-body row. A plain group is inlined at its use sites, so it never travels as an opaque class;
+/// rather than vanishing silently, a shape with no embedded-group surface leaves a `; unexported:`
+/// record. Two here: a NEVER-referenced plain group (no `rust_structs` entry) and a referenced one
+/// that materialized as a homogeneous `Array` (`homarr`, no embedded-group surface). The
+/// group-body inclusion of a `Record` plain group is covered by
+/// `extern_export_materialized_plain_group_is_group_body_row`.
+#[test]
+fn extern_export_plain_groups_leave_records() {
+    let spec = "block = [v: usehom]\n\
+homarr = (* uint)\n\
+usehom = [homarr]\n\
+never_ref = (unused: uint, x: text)\n";
+    let export = mint_export(spec, "dep", "plaingrouprec");
+    let root = &export["extern-interface/dep/mod.cddl"];
+    assert!(
+        root.contains("; unexported: never_ref — plain group never referenced in the dependency"),
+        "a never-referenced plain group must leave the never-referenced record: {root}"
+    );
+    assert!(
+        root.contains("; unexported: homarr — ") && root.contains("no embedded-group surface"),
+        "a homogeneous-array plain group must leave the no-embedded-group-surface record: {root}"
+    );
+    for name in ["never_ref", "homarr"] {
+        assert!(
+            !root.lines().any(|l| l
+                .split(';')
+                .next()
+                .unwrap_or("")
+                .contains(&format!("{name} ="))),
+            "{name} must not be an included rule line: {root}"
+        );
+    }
+}
+
+/// A materialized `Record` plain group exports TRANSPARENTLY as a group-body row: the truthful
+/// post-DSL `( … )` body, pinned with `@rust_name`. Array-rep members carry their post-DSL field
+/// name as the label (baking in a `@name` rename with no annotation), a fixed tag renders its
+/// literal, a bare reference renders the referenced rule's source ident, and an optional field takes
+/// a `? ` prefix. The referenced `credential` rule survives as a transparent alias so the closure
+/// keeps the group.
+#[test]
+fn extern_export_materialized_plain_group_is_group_body_row() {
+    let spec = "block = [c: cert, d: dele]\n\
+credential = bytes\n\
+cert = (tag: 0, credential)\n\
+dele = (tag: 2, credential, ? pool: bytes) ; @name pool_thing\n";
+    let export = mint_export(spec, "dep", "groupbody");
+    let root = &export["extern-interface/dep/mod.cddl"];
+    // Array-rep record: fixed tag literal, bare-ref labelled by its derived field name, and the
+    // `@name`-renamed optional field spelled with its post-DSL label + `? ` prefix.
+    assert!(
+        root.contains("cert = (tag: 0, credential: credential) ; @rust_name Cert"),
+        "the record plain group must export as a pinned group-body row: {root}"
+    );
+    assert!(
+        root.contains(
+            "dele = (tag: 2, credential: credential, ? pool_thing: bytes) ; @rust_name Dele"
+        ),
+        "the @name rename must be baked into the member label and `?` preserved: {root}"
+    );
+    // neither is an exclusion record
+    assert!(
+        !root.contains("; unexported: cert") && !root.contains("; unexported: dele"),
+        "materialized record plain groups must be included, not excluded: {root}"
+    );
+}
+
 /// Declaring a dep BOTH via `--extern-import` AND as a physical `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/`
 /// input directory is an ambiguous double declaration — a hard error, never a merge.
 #[test]

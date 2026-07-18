@@ -6,6 +6,7 @@ expression: content
 ; unexported: anon_arr — unrenderable shape: a reference to `PairU64Text` with no recorded source CDDL rule name
 ; unexported: cs — @custom_serialize — plain export would make the consumer emit default wire logic, diverging from the dependency's real format
 ; unexported: dep_cs — references excluded cs
+; unexported: helper — plain group never referenced in the dependency's own spec — no materialized shape to project
 big_coin = coin ; @rust_name BigCoin
 bn = bytes .cbor {* bignint => uint} ; @rust_name Bn
 ce = 0 / 1 / 2 ; @rust_name Ce

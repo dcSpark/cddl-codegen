@@ -830,8 +830,10 @@ fn generate_tag_check_arms() {
 /// transparent named collections (Array + Table) via the alias spelling, c-style enum, `@no_alias`,
 /// an alias chain, a prelude (`bignint`) reference that renders (not excluded), a named generic
 /// instance (opaque), a plain group / generic definition / extern-dep-scope rule (all ABSENT), a
-/// nested-scope subfile, and the exclude-with-record + reference-closure paths (custom-serialize
-/// alias, its transitive dependent, an anonymous-generic-instance reference). Snapshots live beside
+/// nested-scope subfile, a never-referenced plain group (excluded-with-record, Ask 0), a generic
+/// definition / extern-dep-scope rule (both ABSENT), and the exclude-with-record + reference-closure
+/// paths (custom-serialize alias, its transitive dependent, an anonymous-generic-instance reference).
+/// Snapshots live beside
 /// the fixture. Bless with `INSTA_UPDATE=always cargo test extern_interface_emit`.
 #[test]
 fn extern_interface_emit() {
@@ -894,8 +896,10 @@ fn extern_interface_emit_same_in_both_modes() {
     );
 }
 
-/// An empty surface (only a plain group, which never projects) still emits a single root file
-/// carrying only the header — stable presence, answering "was this dep regenerated?".
+/// A surface with NO included rules still emits a single root file (stable presence, answering "was
+/// this dep regenerated?"). The lone rule is a never-referenced plain group, which materializes no
+/// shape but — per the excluded-with-record contract (Ask 0) — leaves a `; unexported:` record rather
+/// than vanishing, so the root file is the header plus that one record and nothing else.
 #[test]
 fn extern_interface_emit_empty_surface() {
     let cli = cli_for(
@@ -906,11 +910,14 @@ fn extern_interface_emit_empty_surface() {
     assert_eq!(
         files.keys().collect::<Vec<_>>(),
         vec!["extern-interface/dep/mod.cddl"],
-        "empty surface must emit exactly one header-only root file"
+        "a no-included-rows surface must emit exactly one root file"
     );
     assert_eq!(
-        files["extern-interface/dep/mod.cddl"], "; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1\n",
-        "the empty-surface root file is the header line and nothing else"
+        files["extern-interface/dep/mod.cddl"],
+        "; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1\n\
+         ; unexported: helper — plain group never referenced in the dependency's own spec — no \
+         materialized shape to project\n",
+        "the root file is the header line plus the lone plain group's exclusion record"
     );
 }
 
