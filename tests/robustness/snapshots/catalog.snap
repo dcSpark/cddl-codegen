@@ -8,6 +8,8 @@ expression: catalog
 
 any_member                 PANIC
 choice_any_arm             PANIC
+choice_array_any_arm       PANIC
+choice_cbor_ref_arm        PANIC
 choice_group_array_arm     ok
 duplicate_rule             error (graceful)
 empty                      ok

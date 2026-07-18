@@ -1,0 +1,12 @@
+; A `.cbor`-over-a-REFERENCE as a TYPE-CHOICE ARM (`bytes .cbor bar / tstr`) panics generation at
+; "variant ctor refers to undefined ident" in intermediate/structs.rs
+; (`EnumVariant::group_ctor_record_fields`):
+; the choice's variant ctor resolves the arm's synthesized `.cbor` wrapper ident before the alias
+; target is registered. DISTINCT from the same shape WITHOUT the choice (`x = bytes .cbor bar`),
+; which panics at a different site (intermediate/mod.rs cross-reference resolution), and from the
+; inline-target form (`bytes .cbor uint`), which generates fine both ways — the reference AND the
+; choice-arm position are both required for THIS class. Surfaced by the recombination sweep
+; (src/tests/recombination_tests.rs, composition class outer=choice_member inner=cbor_payload
+; filler=type2.typename).
+a = bytes .cbor bar / tstr
+bar = uint

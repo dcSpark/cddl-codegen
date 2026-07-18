@@ -877,6 +877,14 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
         "should not expose Fixed type",
         "bare fixed value under an occurrence / tagged prelude constant; pinned by tests/robustness/fixed_value_occurrence.cddl and tests/robustness/tagged_prelude_constant.cddl (recombination findings)",
     ),
+    (
+        "called `Option::unwrap()` on a `None` value @ src/generation/serialize.rs @ fn <cddl_codegen::intermediate::rust_type::ConceptualRustType as cddl_codegen::generation::serialize::EncodingVarIsCopy>::encoding_var_is_copy",
+        "array-of-`any` as a type-choice arm (`[* any] / tstr`): the arm is storable so IR succeeds, and the variant's serialize emission dies walking `any`'s encoding vars; pinned by tests/robustness/choice_array_any_arm.cddl (recombination finding)",
+    ),
+    (
+        "variant ctor refers to undefined ident: ",
+        "`.cbor`-over-a-reference as a type-choice arm (`bytes .cbor bar / tstr`): the variant ctor resolves the synthesized `.cbor` wrapper ident before the alias target registers (the trailing idents vary per spec, so the constant message head is the key — the panic site was worded lead-constant for exactly this); pinned by tests/robustness/choice_cbor_ref_arm.cddl (recombination finding)",
+    ),
 ];
 
 // ---- LAYER 1: the generation-classification sweep ---------------------------------------------------
