@@ -17,7 +17,9 @@ hash = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @rust_name Hash
 holder = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name Holder
 inst = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name Inst
 na = uint ; @no_alias @rust_name Na
+pg = (tag: 0, amount: coin, ? opt_field: tstr) ; @rust_name Pg
 rec = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name Rec
 tbl = {* uint => tstr} ; @rust_name Tbl
 tc = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name Tc
+uses_pg = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name UsesPg
 wrap = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name Wrap

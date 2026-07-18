@@ -2057,7 +2057,9 @@ fn getting_started_example() {
 /// needed — and `cargo check`s the rust crate WITH the self-check present. Covers
 /// `Serialize`(+`Deserialize`), the WEAKENED Serialize-only bound (the ambiguous-optional `ambig`
 /// has no generated deserialize), the `use` existence checks (transparent aliases / c-style enum /
-/// named collections), and the `@no_alias` skip. The raw-bytes + hand-written-extern + generic-base
+/// named collections), the `@no_alias` skip, and the group-body row's four-bound assertion (a
+/// referenced plain group asserting whole-value + embedded-group Serialize/Deserialize). The
+/// raw-bytes + hand-written-extern + generic-base
 /// paths compile-check through `extern_generic_raw_bytes` (a `run_test` fixture whose crate now also
 /// carries the self-check). Modeled on `getting_started_example`.
 #[test]

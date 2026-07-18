@@ -22,3 +22,10 @@ lookup = { * uint => text }
 
 ; a @no_alias rule emits NO rust type -> the self-check asserts nothing for it (must not `use` it)
 raw_index = uint ; @no_alias
+
+; a materialized (referenced) plain group -> a transparent group-body row whose self-check asserts
+; ALL FOUR bounds the consumer's generated code uses: whole-value Serialize/Deserialize (a
+; group-choice arm calls `.serialize()`) AND embedded SerializeEmbeddedGroup/DeserializeEmbeddedGroup
+; (a spliced record member delegates inline). Proves the new embedded-group carriers compile.
+pg = (tag: 0, x: uint)
+uses_pg = [outer: uint, pg]

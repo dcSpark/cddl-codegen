@@ -42,3 +42,10 @@ holder = [f: cs]
 
 ; a never-referenced plain group materializes no shape -> excluded-with-record (Ask 0)
 helper = (h: uint)
+
+; a REFERENCED plain group materializes as a Record -> a transparent group-body row (post-DSL body,
+; @rust_name-pinned); the self-check asserts its four bounds (whole-value + embedded-group). A fixed
+; tag renders its literal, `coin` renders the referenced rule's source ident (reference-closure keeps
+; it alive), and opt_field takes a `?` prefix.
+pg = (tag: 0, amount: coin, ? opt_field: text)
+uses_pg = [outer: uint, pg]
