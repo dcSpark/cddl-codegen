@@ -177,7 +177,7 @@ type TagParse = (s: string) => { id: string; rest: string } | null;
 // demand set equality with comment_ast.rs's `tag("@…")` literals. Adding a directive to either
 // side without the other fails every importer's selfCheck (project_corpus runs in the fast tier).
 const MIRRORED_DIRECTIVES = new Set([
-  "@name", "@newtype", "@no_alias", "@used_as_key", "@used_as_elem",
+  "@name", "@rust_name", "@newtype", "@no_alias", "@used_as_key", "@used_as_elem",
   "@raw_bytes_flavor", "@custom_json", "@custom_serialize", "@custom_deserialize", "@doc",
 ]);
 const ws = (s: string) => s.replace(/^\s+/, ""); // take_while(char::is_whitespace)
@@ -190,6 +190,9 @@ const argRequired = (id: string, tag: string): TagParse => s => {
 const noArg = (id: string, tag: string): TagParse => s => (s.startsWith(tag) ? { id, rest: s.slice(tag.length) } : null);
 const DSL_TAGS: TagParse[] = [
   argRequired("dsl.name", "@name"),
+  // @rust_name: grammar-identical to @name in comment_ast.rs (tag then ws then take_while1(!ws)),
+  // and sequenced directly after it, mirroring the alt() order.
+  argRequired("dsl.rust_name", "@rust_name"),
   // @newtype: optional getter arg (chars that are neither ws nor `@`); on no arg, comment_ast returns
   // NewType(None) with the input trim_start()'d (so a following directive is still reachable).
   s => {
@@ -471,6 +474,12 @@ function selfCheck() {
   {
     const r = featuresIn("x = uint ; @newtype my_getter @used_as_key").dsl;
     if (!r.has("dsl.newtype") || !r.has("dsl.used_as_key")) throw new Error("selfCheck: @newtype <getter> @used_as_key must credit BOTH");
+  }
+  // @rust_name consumes its (required) ident arg, so a following directive is still parsed — and
+  // the longer tag must not be shadowed by any prefix (grammar mirrors @name exactly).
+  {
+    const r = featuresIn("x = uint ; @rust_name Foo @no_alias").dsl;
+    if (!r.has("dsl.rust_name") || !r.has("dsl.no_alias")) throw new Error("selfCheck: @rust_name <ident> @no_alias must credit BOTH");
   }
   // keyless inline group directly inside a container is grpent.inline_group, NOT type2.parenthesized
   // (the comma form is covered above at line ~265; this is the keyless single-type form).
