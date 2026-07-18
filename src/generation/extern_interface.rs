@@ -49,8 +49,9 @@ use crate::cli::Cli;
 use crate::comment_ast::RuleMetadata;
 use crate::intermediate::{
     AliasIdent, CBOREncodingOperation, ConceptualRustType, EnumVariant, EnumVariantData,
-    FixedValue, FloatWindow, IntermediateTypes, Primitive, ROOT_SCOPE, RustIdent, RustStructConfig,
-    RustStructType, RustType, RustTypeSerializeConfig,
+    FixedValue, FloatWindow, IntermediateTypes, Primitive, ROOT_SCOPE, Representation, RustField,
+    RustIdent, RustRecord, RustStruct, RustStructConfig, RustStructType, RustType,
+    RustTypeSerializeConfig,
 };
 
 /// A rendering failure. Both variants name the rule; `Unrenderable` also names the offending shape.
@@ -151,6 +152,101 @@ pub(crate) fn render_c_style_enum_body(
         }
     }
     Ok(choices.join(" / "))
+}
+
+/// Render the body of a materialized plain group (a `Record`) as a CDDL group body: `( m, m, … )`,
+/// the truthful post-DSL shape a consumer's generator re-derives identically. A plain group is
+/// TRANSPARENT — it has no cross-crate whole-value class the consumer holds opaquely; instead the
+/// consumer regenerates the shape and delegates the wire code to the dep's own class (whole-value
+/// for a group-choice arm, embedded-group for a spliced record member). So it is gated on the same
+/// custom-serialize projection error as the other transparent rows.
+///
+/// Member rules (all round-trip: the consumer's parse of the rendered member yields the identical
+/// `RustField`):
+/// - **member key** — an ARRAY-rep field carries a bareword label = its post-DSL rust field name (a
+///   snake_case CDDL id that re-derives to itself, baking in any `@name` rename with no annotation);
+///   a MAP-rep field carries its fixed member key (`Uint(n)` → `n:`, `Text(s)` → bareword `s:` when
+///   `s` is a valid CDDL id else the quoted `"s":`).
+/// - **optionality** — a `? ` prefix from the field's occurrence flag ONLY. A `T / null` field is
+///   NOT occurrence-optional (it is a present-or-null `Optional` conceptual type), so it renders its
+///   `… / null` type with no `?` — the two carry different wire formats and must not be conflated.
+/// - **`.default`** — legal only in member position, so it is stripped before the inner render
+///   (`render_conceptual` hard-errors on `config.default`) and re-appended as ` .default <value>`.
+/// - a member type that cannot be spelled hard-`Err`s (propagates to an exclusion record).
+pub(crate) fn render_group_body(
+    rule: &str,
+    record: &RustRecord,
+    metadata: Option<&RuleMetadata>,
+    types: &IntermediateTypes,
+) -> RenderResult {
+    reject_custom_serialize(rule, metadata)?;
+    let mut members = Vec::with_capacity(record.fields.len());
+    for field in &record.fields {
+        members.push(render_group_member(rule, record.rep, field, types)?);
+    }
+    Ok(format!("({})", members.join(", ")))
+}
+
+/// Render one group member: `[? ]<key: >type[ .default v]`. See [`render_group_body`] for the rules.
+fn render_group_member(
+    rule: &str,
+    rep: Representation,
+    field: &RustField,
+    types: &IntermediateTypes,
+) -> RenderResult {
+    // A `.default` on the field's type would make `render_conceptual` hard-error (it is a member-only
+    // construct); strip it for the inner render and re-append it here, where it is legal.
+    let (type_source, default_suffix) = match &field.rust_type.config.default {
+        Some(value) => {
+            let mut stripped = field.rust_type.clone();
+            stripped.config.default = None;
+            (stripped, format!(" .default {}", render_fixed_value(value)))
+        }
+        None => (field.rust_type.clone(), String::new()),
+    };
+    let type_s = render_rust_type(rule, &type_source, types)?;
+    let key_s = render_member_key(rule, rep, field)?;
+    let occurrence = if field.optional { "? " } else { "" };
+    Ok(format!("{occurrence}{key_s}{type_s}{default_suffix}"))
+}
+
+/// The `<key>: ` prefix of a group member. An ARRAY-rep field labels itself with its post-DSL rust
+/// field name; a MAP-rep field spells its fixed member key. A map member with no key, or a non-uint/
+/// non-text fixed key, has no faithful member spelling — hard `Err`.
+fn render_member_key(
+    rule: &str,
+    rep: Representation,
+    field: &RustField,
+) -> Result<String, ExternInterfaceError> {
+    match rep {
+        Representation::Array => Ok(format!("{}: ", field.name)),
+        Representation::Map => match &field.key {
+            Some(FixedValue::Uint(n)) => Ok(format!("{n}: ")),
+            Some(FixedValue::Text(s)) if is_cddl_bareword(s) => Ok(format!("{s}: ")),
+            Some(FixedValue::Text(s)) => Ok(format!("{s:?}: ")),
+            Some(other) => Err(unrenderable(
+                rule,
+                format!("a map-rep group member with an unsupported fixed key kind ({other:?})"),
+            )),
+            None => Err(unrenderable(
+                rule,
+                "a map-rep group member with no member key",
+            )),
+        },
+    }
+}
+
+/// Whether `s` is a valid bare CDDL identifier (so a text map key can spell as `s:` rather than the
+/// quoted `"s":`). CDDL idents start with a letter (or `@`/`_`/`$`) and continue with letters,
+/// digits, `-`, `.`, `@`, `_`, `$`. Conservatively require an ASCII-alpha lead here — the quoted
+/// form is always available as the faithful fallback, so this only chooses the prettier spelling.
+fn is_cddl_bareword(s: &str) -> bool {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '@' | '$'))
 }
 
 fn reject_custom_serialize(
@@ -519,6 +615,13 @@ pub(crate) enum ExternCheckKind {
     Serialize,
     /// A raw-bytes row: assert the type implements `RawBytesEncoding`.
     RawBytes,
+    /// A transparent GROUP-BODY row (a materialized plain group exported as its `( … )` body). The
+    /// dep generates a class for it, which the consumer's own generated code reaches through BOTH
+    /// surfaces: whole-value `Serialize`/`Deserialize` (a group-choice arm splicing it calls
+    /// `.serialize()`) AND the embedded-group surface (`SerializeEmbeddedGroup` /
+    /// `DeserializeEmbeddedGroup` — a record member splicing it delegates inline). The self-check
+    /// asserts all four bounds (each `Deserialize`-side gated on the dep actually generating one).
+    EmbeddedGroup,
     /// A transparent row that materializes a named rust surface (a `pub type` alias, a c-style enum,
     /// a named collection): a `use crate::…::<Name> as _;` existence check.
     Use,
@@ -633,11 +736,6 @@ fn project_extern_interface(
         if !scope.export() {
             continue;
         }
-        // Plain groups are inlined at use sites (a referenced one materializes as a Record here) and
-        // are not a cross-crate type surface — not a candidate at all.
-        if types.is_plain_group(ident) {
-            continue;
-        }
         // Only top-level CDDL rules project; a struct synthesized during IR build (embedded record,
         // collection-keys wrapper, …) and the reserved prelude `int` extern carry no source rule
         // name and are not candidates.
@@ -648,8 +746,27 @@ fn project_extern_interface(
         let components = scope_path(scope);
         // `RustStructConfig` retains the custom-serialize annotations; rebuild the minimal
         // `RuleMetadata` the transparent renderer consults so the projection exclusion cannot be
-        // bypassed on the class-backed transparent rows (Array/Table/CStyleEnum).
+        // bypassed on the class-backed transparent rows (Array/Table/CStyleEnum) or the plain-group
+        // group-body rows.
         let md = rule_metadata_from_config(rust_struct.config());
+        // Plain groups are inlined at use sites; a referenced one materializes here (a Record for a
+        // heterogeneous body, an Array/Table/Wrapper for a homogeneous/newtype one). They are NOT an
+        // opaque cross-crate class surface, so they never take the class-backed variant match below —
+        // a materialized Record exports transparently as a group-body row, every other materialized
+        // shape leaves a `; unexported:` record (Ask 0).
+        if types.is_plain_group(ident) {
+            let (projected, kind) = project_plain_group(source, rust_struct, &md, types);
+            stage_rule(
+                &mut included,
+                &mut excluded,
+                ident,
+                source,
+                components,
+                projected,
+                kind,
+            );
+            continue;
+        }
         let (projected, kind): (RuleProjection, ExternCheckKind) = match rust_struct.variant() {
             // Genuinely class-backed types: opaque. `@newtype`/custom-(de)serialize/custom-json do
             // NOT travel — they shape the dep's internals; the consumer sees only "class exists,
@@ -803,6 +920,37 @@ fn project_extern_interface(
         );
     }
 
+    // Pass 3 — never-materialized plain groups. A plain group that is never referenced in the dep's
+    // own spec materializes no `rust_structs` entry, so neither pass above saw it — but it IS a rule
+    // in the dep's spec, and the excluded-with-record contract demands a trace (a consumer hitting the
+    // undefined-reference path must not get the "regenerate the dependency" hint for a rule no regen
+    // will ever produce). Record it. Guards mirror the passes above: exported scope only, a recorded
+    // source rule name only, and skip anything already staged (a materialized group `seen` in pass 1).
+    for ident in types.directly_defined_plain_group_idents() {
+        if seen.contains(ident) {
+            continue;
+        }
+        let scope = types.scope(ident);
+        if !scope.export() {
+            continue;
+        }
+        let Some(source) = types.source_rule_name(ident) else {
+            continue;
+        };
+        seen.insert(ident.clone());
+        excluded.insert(
+            ident.clone(),
+            ExcludedRule {
+                components: scope_path(scope),
+                source: source.to_string(),
+                reason: "plain group never referenced in the dependency's own spec — no \
+                         materialized shape to project"
+                    .to_string(),
+                root: source.to_string(),
+            },
+        );
+    }
+
     // Reference-closure to fixpoint: consumers run the checked parse over the whole export, so a rule
     // whose exported body references an ident that is NOT itself exported (excluded, or never a
     // candidate — e.g. an extern-dep-scope rule) would dangle for EVERY consumer. Exclude it too,
@@ -844,6 +992,59 @@ fn project_extern_interface(
 /// walk converts to an exclusion. The `@rust_name` pin is appended by `stage_rule`, so `extra
 /// annotations` holds only the row-specific ones (`@no_alias`, `@raw_bytes_flavor`).
 type RuleProjection = Result<(String, Vec<String>, BTreeSet<RustIdent>), ExternInterfaceError>;
+
+/// Project a MATERIALIZED plain group (one referenced somewhere in the dep's own spec, so it has a
+/// `rust_structs` entry). A plain group is inlined at its use sites — it is not an opaque cross-crate
+/// class — so it never takes the class-backed variant match. A heterogeneous body materializes as a
+/// `Record` and exports TRANSPARENTLY as a group-body row (the consumer re-derives the shape and
+/// delegates the wire code to the dep's class through the whole-value + embedded-group surfaces);
+/// every OTHER materialized shape (a homogeneous `Array`/`Table`, a `@newtype` `Wrapper`, and the
+/// shapes a plain group can never actually take — probe-verified) has no embedded-group surface and
+/// leaves a `; unexported:` record (Ask 0). The match over `RustStructType` is EXHAUSTIVE (module
+/// discipline).
+fn project_plain_group(
+    source: &str,
+    rust_struct: &RustStruct,
+    md: &RuleMetadata,
+    types: &IntermediateTypes,
+) -> (RuleProjection, ExternCheckKind) {
+    match rust_struct.variant() {
+        RustStructType::Record(record) => (
+            render_group_body(source, record, Some(md), types).map(|body| {
+                // The group body references every field type; union their rule refs for the
+                // reference-closure (nested plain-group refs included).
+                let mut refs = BTreeSet::new();
+                for field in &record.fields {
+                    refs.extend(collect_rule_refs(&field.rust_type, types));
+                }
+                (body, Vec::new(), refs)
+            }),
+            ExternCheckKind::EmbeddedGroup,
+        ),
+        other => {
+            let shape = match other {
+                RustStructType::Record(_) => unreachable!("handled above"),
+                RustStructType::Array { .. } => "a homogeneous array",
+                RustStructType::Table { .. } => "a homogeneous table",
+                RustStructType::Wrapper { .. } => "a @newtype wrapper",
+                RustStructType::GroupChoice { .. } => "a group choice",
+                RustStructType::TypeChoice { .. } => "a type choice",
+                RustStructType::CStyleEnum { .. } => "a c-style enum",
+                RustStructType::Extern => "an extern",
+                RustStructType::RawBytesType => "a raw-bytes type",
+            };
+            (
+                Err(unrenderable(
+                    source,
+                    format!(
+                        "a plain group materialized as {shape} — no embedded-group surface to project"
+                    ),
+                )),
+                ExternCheckKind::None,
+            )
+        }
+    }
+}
 
 /// Stage one projected candidate: an `Ok` becomes an included rule (with the `@rust_name` pin
 /// appended, carrying its self-check `kind`); an `Err` becomes a primary exclusion whose `root` is
@@ -1498,5 +1699,128 @@ mod tests {
             &t,
         )
         .unwrap_err();
+    }
+
+    // --- Plain-group group bodies --------------------------------------------------------------
+
+    fn field(name: &str, ty: RustType, optional: bool, key: Option<FixedValue>) -> RustField {
+        RustField::new(name.to_string(), ty, optional, key, RuleMetadata::default())
+    }
+
+    fn record(rep: Representation, fields: Vec<RustField>) -> RustRecord {
+        RustRecord { rep, fields }
+    }
+
+    fn rust_ref(rust: &str) -> RustType {
+        RustType::new(ConceptualRustType::Rust(RustIdent::new(CDDLIdent::new(
+            rust,
+        ))))
+    }
+
+    /// Array-rep body: a fixed tag renders its literal, a named ref renders its source ident, an
+    /// optional field takes `? `, and a `.default` re-appends in member position.
+    #[test]
+    fn group_body_array_rep_tag_ref_optional_default() {
+        let t = types_with_sources(&[("Credential", "credential")]);
+        let rec = record(
+            Representation::Array,
+            vec![
+                field(
+                    "tag",
+                    RustType::new(ConceptualRustType::Fixed(FixedValue::Uint(0))),
+                    false,
+                    None,
+                ),
+                field("credential", rust_ref("Credential"), false, None),
+                field(
+                    "count",
+                    prim(Primitive::U64).default(FixedValue::Uint(0)),
+                    true,
+                    None,
+                ),
+            ],
+        );
+        assert_eq!(
+            render_group_body("cert", &rec, None, &t).unwrap(),
+            "(tag: 0, credential: credential, ? count: uint .default 0)"
+        );
+    }
+
+    /// Map-rep body: a `Uint` key renders `n:`, a bareword-valid `Text` key renders `s:`, and a
+    /// non-bareword `Text` key falls back to the quoted `"s":` form.
+    #[test]
+    fn group_body_map_rep_uint_and_text_keys() {
+        let t = IntermediateTypes::new();
+        let rec = record(
+            Representation::Map,
+            vec![
+                field("a", prim(Primitive::U64), false, Some(FixedValue::Uint(1))),
+                field(
+                    "b",
+                    prim(Primitive::Str),
+                    false,
+                    Some(FixedValue::Text("foo".to_string())),
+                ),
+                field(
+                    "c",
+                    prim(Primitive::Bool),
+                    false,
+                    Some(FixedValue::Text("has space".to_string())),
+                ),
+            ],
+        );
+        assert_eq!(
+            render_group_body("m", &rec, None, &t).unwrap(),
+            "(1: uint, foo: tstr, \"has space\": bool)"
+        );
+    }
+
+    /// A map-rep member with no key has no faithful member spelling — hard `Err`.
+    #[test]
+    fn group_body_map_rep_missing_key_hard_errors() {
+        let t = IntermediateTypes::new();
+        let rec = record(
+            Representation::Map,
+            vec![field("a", prim(Primitive::U64), false, None)],
+        );
+        render_group_body("m", &rec, None, &t).unwrap_err();
+    }
+
+    /// A nested plain-group reference renders by its source ident (the closure keeps it alive).
+    #[test]
+    fn group_body_nested_ref_renders_source_ident() {
+        let t = types_with_sources(&[("Inner", "inner")]);
+        let rec = record(
+            Representation::Array,
+            vec![field("inner", rust_ref("Inner"), false, None)],
+        );
+        assert_eq!(
+            render_group_body("outer", &rec, None, &t).unwrap(),
+            "(inner: inner)"
+        );
+    }
+
+    /// A member type the renderer cannot spell (an unknown ref) propagates as a hard `Err`.
+    #[test]
+    fn group_body_unrenderable_member_hard_errors() {
+        let t = IntermediateTypes::new();
+        let rec = record(
+            Representation::Array,
+            vec![field("x", rust_ref("Unknown"), false, None)],
+        );
+        render_group_body("g", &rec, None, &t).unwrap_err();
+    }
+
+    /// A `@custom_serialize` plain group is a projection hard `Err` (its plain body would make the
+    /// consumer emit default wire logic).
+    #[test]
+    fn group_body_custom_serialize_hard_errors() {
+        let t = IntermediateTypes::new();
+        let md = metadata_with_custom_serialize();
+        let rec = record(
+            Representation::Array,
+            vec![field("a", prim(Primitive::U64), false, None)],
+        );
+        render_group_body("g", &rec, Some(&md), &t).unwrap_err();
     }
 }

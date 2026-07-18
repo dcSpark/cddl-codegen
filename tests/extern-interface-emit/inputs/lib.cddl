@@ -40,5 +40,5 @@ anon_arr = [* pair<uint, text>]
 ; holder embeds cs but its opaque marker is self-contained -> NOT excluded
 holder = [f: cs]
 
-; a plain group is inlined at use sites -> not a cross-crate surface, no record at all
+; a never-referenced plain group materializes no shape -> excluded-with-record (Ask 0)
 helper = (h: uint)

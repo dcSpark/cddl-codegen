@@ -2025,6 +2025,20 @@ impl<'a> IntermediateTypes<'a> {
         self.plain_groups.contains_key(name)
     }
 
+    /// The idents of every plain group registered from a `.cddl` rule (directly-defined groups whose
+    /// `PlainGroupInfo` carries a source `Group`), in deterministic (`BTreeMap`) order. The
+    /// extern-interface projection walks these to leave a `; unexported:` record for a plain group
+    /// that never materialized a `rust_structs` entry (never referenced in the dep's own spec) — a
+    /// materialized group is reached through `rust_structs` instead. Anonymous group-choice-variant
+    /// groups (`PlainGroupInfo` with no source `Group`) are excluded: they carry no source rule name
+    /// and are not a projectable surface.
+    pub fn directly_defined_plain_group_idents(&self) -> impl Iterator<Item = &RustIdent> {
+        self.plain_groups
+            .iter()
+            .filter(|(_, info)| info.group.is_some())
+            .map(|(ident, _)| ident)
+    }
+
     fn mark_new_can_fail(&mut self, name: RustIdent) {
         self.news_can_fail.insert(name);
     }
