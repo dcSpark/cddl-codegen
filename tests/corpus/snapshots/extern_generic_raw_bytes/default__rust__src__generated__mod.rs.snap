@@ -12,6 +12,7 @@ mod extern_interface_check;
 pub mod serialization;
 pub use crate::ExtSet;
 pub use crate::ExtSetRawBytes;
+pub use crate::PubKey;
 
 use crate::generated::error::*;
 

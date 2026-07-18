@@ -746,7 +746,12 @@ impl GenerationScope {
         // the thin `lib.rs`). Re-export it from crate root INTO the declaring scope's generated module so
         // every such bare/`use super::*` reference resolves; the explicit `pub use crate::Name;` binds to
         // the user's definition and beats the `pub use generated::*;` glob cycle. Emitted unconditionally
-        // — under `--common-import-override` the extern is still crate-local. Skipped:
+        // — under `--common-import-override` the extern is still crate-local. Covers BOTH user-supplied
+        // extern flavors — `_CDDL_CODEGEN_EXTERN_TYPE_` (`Extern`) and `_CDDL_CODEGEN_RAW_BYTES_TYPE_`
+        // (`RawBytesType`) — the contract is identical, and a raw-bytes rule referenced only through
+        // `pub type` aliases has NO other resolution path (the alias target is a bare ident, and the
+        // struct-field import walk never sees alias-only references — proven by CML cip36's
+        // `public_key = _CDDL_CODEGEN_RAW_BYTES_TYPE_` aliases failing E0412 on regen). Skipped:
         //   - the built-in `Int` extern (the tool generates its definition when referenced),
         //   - generic-extern instances that already emit a `pub type` alias in this module (the base
         //     generic extern carries the glue instead — re-exporting the aliased name would collide),
@@ -762,8 +767,10 @@ impl GenerationScope {
             .collect();
         let mut externs_by_scope: BTreeMap<ModuleScope, BTreeSet<RustIdent>> = BTreeMap::new();
         for (rust_ident, rust_struct) in types.rust_structs() {
-            if matches!(rust_struct.variant(), RustStructType::Extern)
-                && rust_ident.as_ref() != "Int"
+            if matches!(
+                rust_struct.variant(),
+                RustStructType::Extern | RustStructType::RawBytesType
+            ) && rust_ident.as_ref() != "Int"
                 && !rust_aliased.contains(rust_ident)
             {
                 let scope = types.scope(rust_ident);
