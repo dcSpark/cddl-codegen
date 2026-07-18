@@ -822,3 +822,151 @@ fn generate_tag_check_arms() {
         "unannotated arm must annotate the tag read with the ident, got:\n{named}"
     );
 }
+
+// --- Dep-side extern-interface export emitter (commit 4) ----------------------------------------
+
+/// Snapshot the emitted extern-interface tree for the `tests/extern-interface-emit/inputs` fixture,
+/// which exercises EVERY projection row: opaque Record/Wrapper/TypeChoice/GroupChoice, raw-bytes,
+/// transparent named collections (Array + Table) via the alias spelling, c-style enum, `@no_alias`,
+/// an alias chain, a prelude (`bignint`) reference that renders (not excluded), a named generic
+/// instance (opaque), a plain group / generic definition / extern-dep-scope rule (all ABSENT), a
+/// nested-scope subfile, and the exclude-with-record + reference-closure paths (custom-serialize
+/// alias, its transitive dependent, an anonymous-generic-instance reference). Snapshots live beside
+/// the fixture. Bless with `INSTA_UPDATE=always cargo test extern_interface_emit`.
+#[test]
+fn extern_interface_emit() {
+    let cli = cli_for(
+        std::path::Path::new("tests/extern-interface-emit/inputs"),
+        &["--wasm", "false", "--lib-name", "dep"],
+    );
+    let files = crate::api::extern_interface_strings(&cli)
+        .expect("extern-interface projection must succeed (exclude-with-record, never abort)");
+
+    let dir = std::env::current_dir()
+        .unwrap()
+        .join("tests/extern-interface-emit/snapshots");
+    let mut settings = insta::Settings::clone_current();
+    settings.set_snapshot_path(dir);
+    settings.set_prepend_module_to_snapshot(false);
+    settings.bind(|| {
+        assert!(!files.is_empty(), "no extern-interface files emitted");
+        for (path, content) in &files {
+            let name = path.replace('/', "__");
+            insta::assert_snapshot!(name, content);
+        }
+    });
+}
+
+/// The projection is deterministic: emit twice, require byte-identical output (all-`BTreeMap`/`BTreeSet`,
+/// no `HashMap`). Same guarantee `generation_is_deterministic` gives the main output.
+#[test]
+fn extern_interface_emit_is_deterministic() {
+    let cli = cli_for(
+        std::path::Path::new("tests/extern-interface-emit/inputs"),
+        &["--wasm", "false", "--lib-name", "dep"],
+    );
+    let a = crate::api::extern_interface_strings(&cli).unwrap();
+    let b = crate::api::extern_interface_strings(&cli).unwrap();
+    assert_eq!(
+        a, b,
+        "extern-interface export must be byte-identical across runs"
+    );
+}
+
+/// Emission is UNCONDITIONAL in every mode: the export is byte-identical under `--wasm=false` and
+/// `--wasm=true` (it describes named rule surfaces, not the wasm wrapper inventory).
+#[test]
+fn extern_interface_emit_same_in_both_modes() {
+    let base = std::path::Path::new("tests/extern-interface-emit/inputs");
+    let rust_only = crate::api::extern_interface_strings(&cli_for(
+        base,
+        &["--wasm", "false", "--lib-name", "dep"],
+    ))
+    .unwrap();
+    let wasm = crate::api::extern_interface_strings(&cli_for(
+        base,
+        &["--wasm", "true", "--lib-name", "dep"],
+    ))
+    .unwrap();
+    assert_eq!(
+        rust_only, wasm,
+        "extern-interface export must not depend on the wasm/rust-only mode"
+    );
+}
+
+/// An empty surface (only a plain group, which never projects) still emits a single root file
+/// carrying only the header — stable presence, answering "was this dep regenerated?".
+#[test]
+fn extern_interface_emit_empty_surface() {
+    let cli = cli_for(
+        std::path::Path::new("tests/extern-interface-emit/empty/lib.cddl"),
+        &["--wasm", "false", "--lib-name", "dep"],
+    );
+    let files = crate::api::extern_interface_strings(&cli).unwrap();
+    assert_eq!(
+        files.keys().collect::<Vec<_>>(),
+        vec!["extern-interface/dep/mod.cddl"],
+        "empty surface must emit exactly one header-only root file"
+    );
+    assert_eq!(
+        files["extern-interface/dep/mod.cddl"], "; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1\n",
+        "the empty-surface root file is the header line and nothing else"
+    );
+}
+
+/// The exclude-with-record semantics, asserted directly (clearer regression messages than the tree
+/// snapshot alone): generation SUCCEEDS, a custom-serialize transparent alias is excluded with a
+/// record, a rule referencing it is transitively excluded naming the CHAIN ROOT (not its immediate
+/// neighbour), an anonymous-generic-instance reference is excluded, and a prelude (`bignint`)
+/// reference RENDERS rather than being excluded.
+#[test]
+fn extern_interface_emit_exclusions_and_closure() {
+    let cli = cli_for(
+        std::path::Path::new("tests/extern-interface-emit/inputs"),
+        &["--wasm", "false", "--lib-name", "dep"],
+    );
+    let files = crate::api::extern_interface_strings(&cli).unwrap();
+    let root = &files["extern-interface/dep/mod.cddl"];
+
+    // custom-serialize transparent alias -> excluded with a record, generation still succeeded.
+    assert!(
+        root.contains("; unexported: cs — @custom_serialize"),
+        "custom-serialize alias `cs` must be excluded with a record:\n{root}"
+    );
+    assert!(
+        !root.contains("\ncs = "),
+        "excluded `cs` must NOT appear as an exported rule:\n{root}"
+    );
+
+    // reference-closure: dep_cs references excluded cs -> excluded, naming the chain root `cs`.
+    assert!(
+        root.contains("; unexported: dep_cs — references excluded cs"),
+        "`dep_cs` must be closure-excluded naming root `cs`:\n{root}"
+    );
+
+    // anonymous generic instance reference -> excluded (no CDDL ident to spell).
+    assert!(
+        root.contains("; unexported: anon_arr —"),
+        "`anon_arr` (references an anonymous generic instance) must be excluded:\n{root}"
+    );
+
+    // a prelude reference RENDERS by prelude name, it is NOT an exclusion.
+    assert!(
+        root.contains("bn = bytes .cbor {* bignint => uint} ; @rust_name Bn"),
+        "`bn` must render the `bignint` prelude reference, not be excluded:\n{root}"
+    );
+    assert!(
+        !root.contains("; unexported: bn"),
+        "`bn` must not be excluded:\n{root}"
+    );
+
+    // an opaque row that embeds an excluded type is self-contained -> NOT excluded.
+    assert!(
+        root.contains("holder = _CDDL_CODEGEN_EXTERN_TYPE_"),
+        "`holder` (opaque, embeds `cs` internally) must still export:\n{root}"
+    );
+    assert!(
+        !root.contains("; unexported: holder"),
+        "`holder` must not be excluded — its opaque marker is self-contained:\n{root}"
+    );
+}

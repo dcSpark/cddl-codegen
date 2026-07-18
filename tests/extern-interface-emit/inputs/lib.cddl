@@ -1,0 +1,44 @@
+; Fixture for the dep-side extern-interface export emitter (commit 4). Exercises every projection
+; row plus the exclude-with-record / reference-closure / prelude paths. Snapshot-compared by
+; src/tests/snapshot_tests.rs::extern_interface_emit. Descriptive prose stays on its own comment
+; lines: a `;` DSL annotation must be the LAST thing on its rule line (trailing prose would be
+; swallowed into the annotation, e.g. as a @newtype getter name).
+
+; opaque (class-backed) rows: Record / Wrapper / TypeChoice / GroupChoice -> _CDDL_CODEGEN_EXTERN_TYPE_
+rec = [a: uint, b: text]
+wrap = uint ; @newtype
+tc = uint / text
+gc = [0, uint // 1, text]
+; RawBytesType -> the raw-bytes marker
+hash = _CDDL_CODEGEN_RAW_BYTES_TYPE_
+
+; transparent rows
+; named collections (Array + Table) via the transparent alias spelling; foo_list refs rec
+foo_list = [* rec]
+tbl = { * uint => text }
+; c-style enum -> value choices verbatim
+ce = 0 / 1 / 2
+; @no_alias carried verbatim
+na = uint ; @no_alias
+; transparent alias + alias chain (big_coin refs coin)
+coin = uint
+big_coin = coin
+; prelude reference (bignint) renders by prelude name; NOT an exclusion
+bn = bytes .cbor { * bignint => uint }
+
+; generics: the DEFINITION never crosses the boundary (no record); the named instance is opaque
+pair<t0, t1> = [t0, t1]
+inst = pair<uint, text>
+
+; exclude-with-record + reference-closure
+; a custom-serialize transparent alias cannot be exported (would diverge from the dep wire format)
+cs = bytes ; @custom_serialize my_ser @custom_deserialize my_deser
+; dep_cs references excluded cs -> transitively excluded, chain root named
+dep_cs = cs
+; anon_arr references an anonymous generic instance (no CDDL ident) -> excluded
+anon_arr = [* pair<uint, text>]
+; holder embeds cs but its opaque marker is self-contained -> NOT excluded
+holder = [f: cs]
+
+; a plain group is inlined at use sites -> not a cross-crate surface, no record at all
+helper = (h: uint)

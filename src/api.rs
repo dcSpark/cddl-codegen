@@ -356,6 +356,20 @@ pub fn generated_strings(
     .map_err(Into::into)
 }
 
+/// Parse + build the IR and return the dep-side extern-interface export files (post-projection),
+/// keyed by path relative to `<output>` (`extern-interface/<dep_key>/…/mod.cddl`). No disk I/O —
+/// the snapshot-fixture analog of [`generated_strings`], driving the SAME projection walk `export`
+/// writes to disk so the tested and shipped export can't drift. The projection is infallible
+/// (exclude-with-record); the outer `Result` is only the parse/IR-build failure surface.
+#[cfg(test)]
+pub fn extern_interface_strings(
+    cli: &Cli,
+) -> Result<std::collections::BTreeMap<String, String>, Box<dyn std::error::Error>> {
+    with_types(cli, |types, _| {
+        crate::generation::extern_interface::extern_interface_files(types, cli)
+    })
+}
+
 /// Parse + build the IR and return a debug dump of the resolved Rust structures, for IR-level
 /// snapshot tests (localizes a regression to parsing/IR vs generation). Deliberately excludes
 /// the raw cddl AST held in `plain_groups` (noisy byte-span info).

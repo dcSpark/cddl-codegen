@@ -1,0 +1,3 @@
+; Empty-surface variant: only a plain group (excluded), so nothing projects. The export must still
+; emit a single header-only root file (stable presence).
+helper = (h: uint)
