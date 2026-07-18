@@ -675,7 +675,13 @@ dead loses the lesson.
   replay gates included). The shifting-cell + registry-error signature distinguishes
   it from a real red cell at a glance; isolated re-run of the named gate is the confirm, and
   `CARGO_NET_OFFLINE=true bun run check.ts` is the clean-confirm when the rate makes consecutive
-  online runs impractical (deps are already in cargo home after any warm run). The class also
+  online runs impractical (deps are already in cargo home after any warm run). The confirm clears
+  the FAILED gate only: fail-fast SKIPS every gate downstream of the failure, so a tier-level
+  claim ("check.ts full green") additionally needs those skipped gates run — re-run the tier (the
+  gate cache makes already-passed cells cheap) rather than compositing a failed run with a
+  one-gate retry. Proven 2026-07-18: the 3.2.0 upgrade commit claimed full-tier green off exactly
+  that composite, leaving 8 full-tier gates unrun on the shipped tree until the review session
+  re-ran the tier. The class also
   reaches verify.ts EVIDENCE (not just gate exits): a transient null replay flips a row's
   decode-foreign clause to "FAILED", which `verify_cache_transparency` reads as an A/B divergence —
   absorbed since 2026-07-12 by decodeForeignProbe's regenerate-retry-once (the same retry the mint
