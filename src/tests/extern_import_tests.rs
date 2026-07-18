@@ -79,11 +79,11 @@ fn generate(input: &std::path::Path, extra: &[&str]) -> Result<BTreeMap<String, 
     crate::api::generated_strings(&cli).map_err(|e| e.to_string())
 }
 
-/// THE acceptance test. Consume the dep's minted export two ways — a faithful physical hand-stub
-/// (export minus the version header) and `--extern-import` at the export tree — and require the
-/// consumer's generated rust output byte-identical. This is the series' core criterion: the pins the
-/// export carries reproduce the same names a careful stub author would derive today, and the marker
-/// assembly lands the imported rules in exactly the scope the physical stub does.
+/// Seam-identity half of the acceptance criterion. Consume the dep's minted export two ways — a
+/// physical stub that is the export minus the version header (pins INCLUDED) and `--extern-import`
+/// at the export tree — and require the consumer's generated rust output byte-identical. This
+/// isolates the marker-assembly seam: identical rule text through either channel must land in the
+/// same scopes and produce the same bytes. The migration half (pinless stub) is the test below.
 #[test]
 fn extern_import_matches_hand_stub_byte_for_byte() {
     let export = mint_export(&fixture("dep/lib.cddl"), "dep", "byteid");
@@ -145,6 +145,100 @@ fn extern_import_matches_hand_stub_byte_for_byte() {
 
 /// The export minus its `; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1` header line — the faithful physical
 /// stub a careful human authors today (a hand-stub carries no seam header).
+/// The MIGRATION half of the acceptance criterion (plan §6 commit 6: "a consumer migrated from a
+/// faithful hand-stub produces byte-identical generated output"). A faithful hand-stub written
+/// today carries NO `@rust_name` pins — a careful author derives names the same way the consumer
+/// does — so the honest comparison strips the pins from the stub while the export keeps them.
+/// Byte-identity then requires that a pin agreeing with today's derivation changes NOTHING (no
+/// `use dep::Foo as Foo;` noise, no de-grouped imports); a pin only takes effect when it differs.
+#[test]
+fn extern_import_matches_pinless_hand_stub_byte_for_byte() {
+    let export = mint_export(&fixture("dep/lib.cddl"), "dep", "pinless");
+    let consumer = fixture("consumer/lib.cddl");
+
+    // Run A — the genuine migration source: a pinless hand-stub (header AND pins stripped).
+    let stub_root = scratch("pinless_stub");
+    write(&stub_root, "lib.cddl", &consumer);
+    for (path, content) in &export {
+        let sub = path
+            .strip_prefix("extern-interface/dep/")
+            .expect("export path shape");
+        let stub_body = strip_pins(&strip_header(content));
+        write(
+            &stub_root,
+            &format!("_CDDL_CODEGEN_EXTERN_DEPS_DIR_/dep/{sub}"),
+            &stub_body,
+        );
+    }
+    let via_stub = generate(&stub_root, &[]).expect("pinless-stub generation must succeed");
+
+    // Run B — `--extern-import` at the export verbatim (header + pins intact).
+    let flag_root = scratch("pinless_flag");
+    write(&flag_root, "lib.cddl", &consumer);
+    let export_dir = scratch("pinless_export");
+    for (path, content) in &export {
+        write(&export_dir, path, content);
+    }
+    let import_arg = format!(
+        "dep={}",
+        export_dir.join("extern-interface/dep").to_str().unwrap()
+    );
+    let via_flag = generate(
+        &flag_root.join("lib.cddl"),
+        &["--extern-import", &import_arg],
+    )
+    .expect("--extern-import generation must succeed");
+
+    let _ = std::fs::remove_dir_all(&stub_root);
+    let _ = std::fs::remove_dir_all(&flag_root);
+    let _ = std::fs::remove_dir_all(&export_dir);
+
+    assert_eq!(
+        via_flag.keys().collect::<Vec<_>>(),
+        via_stub.keys().collect::<Vec<_>>(),
+        "the generated file SET must match between --extern-import and the pinless stub"
+    );
+    for (path, stub_content) in &via_stub {
+        assert_eq!(
+            via_flag.get(path),
+            Some(stub_content),
+            "migration byte-identity broke for {path}:\n--- via --extern-import ---\n{}\n--- via pinless stub ---\n{stub_content}",
+            via_flag.get(path).map(String::as_str).unwrap_or("<absent>")
+        );
+    }
+}
+
+/// Strip every `@rust_name <ident>` pin from a stub body, keeping any other annotations on the
+/// line (`; @no_alias @rust_name Na` -> `; @no_alias`) and dropping a comment tail left empty by
+/// the strip (`coin = uint ; @rust_name Coin` -> `coin = uint`).
+fn strip_pins(stub_body: &str) -> String {
+    let mut out = String::new();
+    for line in stub_body.lines() {
+        let stripped = match line.find("@rust_name") {
+            Some(at) => {
+                let before = &line[..at];
+                let after = &line[at + "@rust_name".len()..];
+                // drop the pin's single ident argument, keep anything after it
+                let after = after.trim_start();
+                let rest = after
+                    .find(char::is_whitespace)
+                    .map(|i| &after[i..])
+                    .unwrap_or("");
+                let joined = format!("{}{}", before.trim_end(), rest);
+                // a comment marker left with no annotation text is dropped entirely
+                match joined.trim_end().strip_suffix(';') {
+                    Some(code) if !code.trim_end().is_empty() => code.trim_end().to_string(),
+                    _ => joined.trim_end().to_string(),
+                }
+            }
+            None => line.to_string(),
+        };
+        out.push_str(&stripped);
+        out.push('\n');
+    }
+    out
+}
+
 fn strip_header(export_file: &str) -> String {
     let mut lines = export_file.lines();
     let first = lines.next().unwrap_or("");

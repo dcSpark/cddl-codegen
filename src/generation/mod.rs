@@ -977,14 +977,20 @@ impl GenerationScope {
                     // common case) leaves `plain == idents` and the output byte-identical.
                     let mut plain: Vec<&RustIdent> = Vec::new();
                     for ident in idents.iter() {
-                        if let Some(pinned) = rust_name_pins.get(ident) {
-                            content.push_import(
-                                import_scope.clone(),
-                                pinned.clone(),
-                                Some(ident.as_ref()),
-                            );
-                        } else {
-                            plain.push(ident);
+                        match rust_name_pins.get(ident) {
+                            // A pin that MATCHES the consumer-derived spelling imports plainly: an
+                            // aliased `use dep::Foo as Foo;` would be noise, and — decisive for the
+                            // migration acceptance criterion — a consumer moving from a pinless
+                            // hand-stub to a pin-carrying export must produce byte-identical output
+                            // whenever the pins agree with today's derivation.
+                            Some(pinned) if pinned != ident.as_ref() => {
+                                content.push_import(
+                                    import_scope.clone(),
+                                    pinned.clone(),
+                                    Some(ident.as_ref()),
+                                );
+                            }
+                            _ => plain.push(ident),
                         }
                     }
                     #[allow(clippy::comparison_chain)]
