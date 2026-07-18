@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.1">
 <title data-rh="true">Preserving edits to generated code | cddl-codegen</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://dcspark.github.io/cddl-codegen/preserving_edits"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Preserving edits to generated code | cddl-codegen"><meta data-rh="true" name="description" content="Everything under a generated crate&#x27;s src/generated/ is tool-owned and rewritten on every"><meta data-rh="true" property="og:description" content="Everything under a generated crate&#x27;s src/generated/ is tool-owned and rewritten on every"><link data-rh="true" rel="icon" href="/cddl-codegen/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://dcspark.github.io/cddl-codegen/preserving_edits"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/preserving_edits" hreflang="en"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/preserving_edits" hreflang="x-default"><link rel="stylesheet" href="/cddl-codegen/assets/css/styles.472964ba.css">
-<script src="/cddl-codegen/assets/js/runtime~main.eebcd271.js" defer="defer"></script>
+<script src="/cddl-codegen/assets/js/runtime~main.c506fa45.js" defer="defer"></script>
 <script src="/cddl-codegen/assets/js/main.983e6065.js" defer="defer"></script>
 </head>
 <body>
@@ -63,7 +63,10 @@ in the recorded original doesn&#x27;t matter — it is matched token-wise, not t
 <ul>
 <li class=""><strong>Placement.</strong> On regeneration the recorded original is uncommented, tokenized, and located in
 the regenerated item; your block is spliced in over that exact spot. No positional guessing —
-the block finds its place even when unrelated code moved.</li>
+the block finds its place even when unrelated code moved. When the whole surrounding top-level
+item regenerates token-identically, the block places by its own position instead, so the recorded
+original does not need to be unique within the item (this lets you replace one of several identical
+fragments, or even two different occurrences of the same fragment).</li>
 <li class=""><strong>Drift detection.</strong> If the generator&#x27;s output for that region <em>changed</em> — you edited the CDDL,
 or a tool upgrade emits different code — the recorded original no longer matches, and the block
 is trapped in a <code>compile_error!</code> showing what you overrode. A stale override can never silently
@@ -73,9 +76,11 @@ original, and delete the error block.</li>
 </ul>
 <p>The same syntax scales from one line to a whole item: record a single statement, a run of
 statements, an entire member function, or a whole <code>impl</code> — whatever the recorded original spans
-(within one top-level item) is what your code replaces. Both your code and the recorded original
-must be delimiter-balanced; an empty recorded original is an error (there&#x27;d be nothing to match
-against).</p>
+(within one top-level item) is what your code replaces. Neither your code nor the recorded original
+may close a delimiter (<code>{}</code>, <code>()</code>, <code>[]</code>) it did not open, and the two must change delimiter depth by
+the same net amount — so an <code>if flag {</code> paired with a recorded <code>if old_cond {</code> (both open one brace)
+is fine, while a <code>} else {</code> fragment (which closes a brace first) is not. An empty recorded original
+is an error (there&#x27;d be nothing to match against).</p>
 <p>Generated comments <em>inside</em> the replaced span are replaced with it; comments outside survive. A
 plain comment of yours whose anchor falls inside a span some replace block deletes fails loudly —
 move it into the block.</p>
@@ -87,8 +92,10 @@ block references e.g. <code>BTreeMap</code> in a file whose generated code doesn
 qualified path (<code>std::collections::BTreeMap</code>) rather than relying on a <code>use</code> that won&#x27;t be there.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="when-preservation-fails-the-two-failure-channels">When preservation fails: the two failure channels<a href="#when-preservation-fails-the-two-failure-channels" class="hash-link" aria-label="Direct link to When preservation fails: the two failure channels" title="Direct link to When preservation fails: the two failure channels" translate="no">​</a></h2>
 <p><strong>Malformed tags abort the export</strong> (a hard error naming the file, before anything is written).
-This covers: an unclosed block, an orphaned <code>insert-end</code>/<code>replaces</code>/<code>replace-end</code>, unbalanced
-delimiters, an empty or unlexable recorded original, code lines under <code>replaces</code> (every line
+This covers: an unclosed block, an orphaned <code>insert-end</code>/<code>replaces</code>/<code>replace-end</code>, a fragment that
+closes a delimiter it did not open (or, for a replace block, a user section and recorded original
+whose net delimiter deltas differ), an empty or unlexable recorded original, code lines under
+<code>replaces</code> (every line
 there must be <code>//</code>-commented), a recorded original spanning multiple top-level items — and <em>any</em>
 unrecognized own-line comment starting with <code>// cddl-codegen:</code>. That last rule is what keeps the
 never-silent contract airtight: a typo&#x27;d tag can never demote your block to plain text and let
@@ -101,7 +108,7 @@ the file as:</p>
 <p>The generated crate fails to build with your original text in the error message; the block
 carries forward verbatim across further regenerations until you delete it, so nothing is ever
 lost. The reasons you&#x27;ll see, and what they mean:</p>
-<table><thead><tr><th>Reason (abbreviated)</th><th>What happened</th><th>What to do</th></tr></thead><tbody><tr><td><code>…which no longer exists in the regenerated code</code></td><td>the item holding your edit vanished (removed/renamed in the CDDL)</td><td>re-place the edit by hand where it now belongs, or discard it</td></tr><tr><td><code>…the number of same-named items changed</code></td><td>same-keyed items (e.g. two <code>impl Foo</code> blocks) were added/removed, so &quot;the Nth one&quot; is ambiguous</td><td>re-place by hand</td></tr><tr><td><code>…whose generated code changed</code> (comment)</td><td>the statement your comment annotated changed or is no longer unique</td><td>re-place by hand against the new code</td></tr><tr><td><code>The generated code for …changed, so its recorded original no longer appears (drift)</code></td><td>the generator now emits different code where your replace block applied</td><td>re-review: update your replacement for the new behavior, re-record the new original under <code>replaces</code></td></tr><tr><td><code>…recorded original is not unique within …</code> / <code>…appears more than once…</code></td><td>the recorded original matches zero-or-multiple spots ambiguously (e.g. a duplicated statement was deleted or added)</td><td>include more surrounding lines in the recorded original so it&#x27;s unique, or re-place by hand</td></tr><tr><td><code>Its anchor lies inside code replaced by a …replace-start block</code></td><td>a separate comment/insert block pointed into a span your replace block overrides</td><td>move that comment/block inside the replace block</td></tr><tr><td><code>It is a trailing (end-of-line) comment</code></td><td>trailing comments aren&#x27;t carried</td><td>move it to its own line</td></tr></tbody></table>
+<table><thead><tr><th>Reason (abbreviated)</th><th>What happened</th><th>What to do</th></tr></thead><tbody><tr><td><code>…which no longer exists in the regenerated code</code></td><td>the item holding your edit vanished (removed/renamed in the CDDL)</td><td>re-place the edit by hand where it now belongs, or discard it</td></tr><tr><td><code>…the number of same-named items changed</code></td><td>same-keyed items (e.g. two <code>impl Foo</code> blocks) were added/removed, so &quot;the Nth one&quot; is ambiguous</td><td>re-place by hand</td></tr><tr><td><code>…whose generated code changed</code> (comment)</td><td>the statement your comment annotated changed or is no longer unique</td><td>re-place by hand against the new code</td></tr><tr><td><code>The generated code for …changed, so its recorded original no longer appears (drift)</code></td><td>the generator now emits different code where your replace block applied</td><td>re-review: update your replacement for the new behavior, re-record the new original under <code>replaces</code></td></tr><tr><td><code>…recorded original is not unique within …</code> / <code>…appears more than once…</code></td><td>the item <em>also</em> changed (so the item-identity fast path didn&#x27;t apply) and the recorded original then matches zero-or-multiple spots ambiguously</td><td>include more surrounding lines in the recorded original so it&#x27;s unique, or re-place by hand</td></tr><tr><td><code>Its anchor lies inside code replaced by a …replace-start block</code></td><td>a separate comment/insert block pointed into a span your replace block overrides</td><td>move that comment/block inside the replace block</td></tr><tr><td><code>It is a trailing (end-of-line) comment</code></td><td>trailing comments aren&#x27;t carried</td><td>move it to its own line</td></tr></tbody></table>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="guarantees-and-residual-limits">Guarantees and residual limits<a href="#guarantees-and-residual-limits" class="hash-link" aria-label="Direct link to Guarantees and residual limits" title="Direct link to Guarantees and residual limits" translate="no">​</a></h2>
 <p>Running the tool twice equals running it once: re-exporting an unchanged spec reproduces the same
 file byte-for-byte, blocks included. The overlay never touches code tokens outside your tagged
