@@ -936,13 +936,20 @@ fn append_raw_bytes_defs(out: &std::path::Path, json: bool) {
     rust_lib.write_all(rust_def.as_bytes()).unwrap();
     std::mem::drop(rust_lib);
     let wasm_def = std::fs::read_to_string("tests/external_wasm_raw_bytes_def").unwrap();
-    // Append into the generated root scope: the wasm defs carry `#[wasm_bindgen]`, whose macro is
-    // brought into scope by a private `use` in `generated/mod.rs` (not re-exported to the thin `lib.rs`).
+    // Append into the user-owned thin wasm `lib.rs` — the same real-contract routing as the rust def
+    // above (and as `run_test`'s `is_extern_wasm_type_def` path): the wasm glue re-exports raw-bytes
+    // wrappers with `pub use crate::<Name>;` into `wasm/src/generated/**` too, so a definition there
+    // would collide, and `generated/**` residence models a layout no real user can keep (clobbered
+    // every regen — it masked the wasm glue not covering `RawBytesType`). The crate root doesn't see
+    // the `wasm_bindgen` macro `generated/mod.rs` privately `use`s, so bring it along (the raw-bytes
+    // def needs nothing else from the prelude).
     let mut wasm_lib = std::fs::OpenOptions::new()
         .append(true)
-        .open(out.join("wasm/src/generated/mod.rs"))
+        .open(out.join("wasm/src/lib.rs"))
         .unwrap();
-    wasm_lib.write_all(b"\n\n").unwrap();
+    wasm_lib
+        .write_all(b"\nuse wasm_bindgen::prelude::wasm_bindgen;\n\n")
+        .unwrap();
     wasm_lib.write_all(wasm_def.as_bytes()).unwrap();
 }
 
@@ -1153,20 +1160,23 @@ fn run_test(
     });
     // copy external wasm defs if they exist. Two kinds land in DIFFERENT scopes under the thin-root
     // split, mirroring the rust-side routing (see the `is_extern_type_def` split above):
-    //   - extern-TYPE WRAPPER defs (`external_wasm_defs*`): the `#[wasm_bindgen]` wrapper of a type
-    //     declared `_CDDL_CODEGEN_EXTERN_TYPE_`. The generator now re-exports each in-crate extern
-    //     wrapper with `pub use crate::Name;` INTO `generated/**`, so a definition there would collide.
-    //     A real consumer defines the wrapper in a hand-written wasm module and re-exports it at the
-    //     wasm crate root; the glue resolves the bare `generated/**` references back to it. Model that by
-    //     appending these into the user-owned thin wasm `lib.rs`. That crate root doesn't see the
-    //     `wasm_bindgen`/`JsError` names generated/mod.rs privately `use`s, so add them alongside.
-    //   - non-extern wasm helpers (e.g. `external_wasm_raw_bytes_def`): `#[wasm_bindgen]` wrappers for a
-    //     `_CDDL_CODEGEN_RAW_BYTES_TYPE_` (NOT an extern, so no re-export glue), referenced by the
-    //     generated code via same-module resolution — they stay in `generated/mod.rs` (unchanged).
+    //   - extern-TYPE WRAPPER defs (`external_wasm_defs*` AND the raw-bytes wrappers
+    //     `external_wasm_raw_bytes*`): the `#[wasm_bindgen]` wrapper of a type declared
+    //     `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_`. The generator re-exports
+    //     each in-crate extern wrapper — both flavors — with `pub use crate::Name;` INTO
+    //     `generated/**`, so a definition there would collide. A real consumer defines the wrapper in
+    //     a hand-written wasm module and re-exports it at the wasm crate root; the glue resolves the
+    //     bare `generated/**` references back to it. Model that by appending these into the user-owned
+    //     thin wasm `lib.rs`. That crate root doesn't see the `wasm_bindgen`/`JsError` names
+    //     generated/mod.rs privately `use`s, so add them alongside. (Raw-bytes defs previously sat in
+    //     `wasm/src/generated/mod.rs` — the modeled-obsolete residence that masked the wasm glue not
+    //     covering `RawBytesType` while the rust half of the same bug was consumer-reported.)
+    //   - non-extern wasm helpers (`custom_serialization*` etc.): referenced by the generated code via
+    //     same-module resolution — they stay in `generated/mod.rs` (unchanged).
     let is_extern_wasm_type_def = |path: &std::path::Path| {
-        path.file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(|n| n.starts_with("external_wasm_defs"))
+        path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
+            n.starts_with("external_wasm_defs") || n.starts_with("external_wasm_raw_bytes")
+        })
     };
     let append_wasm = |file: &mut std::fs::File, external_wasm_file_path: &std::path::PathBuf| {
         let extern_rs = std::fs::read_to_string(external_wasm_file_path).unwrap();

@@ -1211,7 +1211,12 @@ impl GenerationScope {
             // `mod generated`. The contract mirrors rust: DEFINE the wasm wrapper in a hand-written
             // wasm-crate module and RE-EXPORT it at the wasm crate root (`pub use utils::Name;`); the tool
             // re-exports it from crate root INTO the declaring scope's generated module so every such
-            // reference resolves against the user's wrapper. Skipped:
+            // reference resolves against the user's wrapper. Covers BOTH user-supplied extern flavors —
+            // `Extern` and `RawBytesType` — exactly like the rust-side glue above: the raw-bytes wasm
+            // wrapper is user-owned too, and generated wasm code names it bare (getters/ctors and wasm
+            // `pub type` aliases), so an in-crate raw-bytes type under the real crate-root contract
+            // failed E0425 in the wasm crate while the rust crate compiled (proven by the cip36-shaped
+            // scratch repro after the rust half shipped — the rust E0412 had masked it). Skipped:
             //   - the built-in `Int` extern (the tool generates its own wasm wrapper when referenced, so
             //     `pub use crate::Int;` would collide),
             //   - generic-extern instances that already emit a wasm `pub type` alias here (`gen_wasm_alias`
@@ -1234,8 +1239,10 @@ impl GenerationScope {
             let mut wasm_externs_by_scope: BTreeMap<ModuleScope, BTreeSet<RustIdent>> =
                 BTreeMap::new();
             for (rust_ident, rust_struct) in types.rust_structs() {
-                if matches!(rust_struct.variant(), RustStructType::Extern)
-                    && rust_ident.as_ref() != "Int"
+                if matches!(
+                    rust_struct.variant(),
+                    RustStructType::Extern | RustStructType::RawBytesType
+                ) && rust_ident.as_ref() != "Int"
                     && !wasm_aliased.contains(rust_ident)
                     && !generic_bases.contains(rust_ident)
                 {
