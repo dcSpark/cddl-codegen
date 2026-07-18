@@ -161,6 +161,15 @@ emission.preserve.status = "supported"
 emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; standalone-compile N/A (references user-provided extern wrapper flavors; integration-tested in tests/extern-generic-raw-bytes)"
 
 [[support]]
+id = "dsl.rust_name"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; standalone-compile N/A (pins a dependency-crate type name, so the generated `use extern_dep::…` cannot compile standalone; integration-tested in src/tests/rust_name_tests.rs and the extern_import byte-identity pair); no committed decode vectors (see catalog); ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (pins a dependency-crate type name, so the generated `use extern_dep::…` cannot compile standalone; integration-tested in src/tests/rust_name_tests.rs and the extern_import byte-identity pair)"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; standalone-compile N/A (pins a dependency-crate type name, so the generated `use extern_dep::…` cannot compile standalone; integration-tested in src/tests/rust_name_tests.rs and the extern_import byte-identity pair)"
+
+[[support]]
 id = "dsl.used_as_elem"
 status = "supported"
 evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"

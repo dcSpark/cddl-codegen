@@ -34,6 +34,24 @@ named = [
 ]'''
 
 [[feature]]
+id = "dsl.rust_name"
+production = "comment_dsl"
+alt = "@rust_name"
+rfc = "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@rust_name; src/comment_ast.rs"
+profile = "CDDL_CODEGEN"
+title = "@rust_name — dependency-pinned Rust type name"
+desc = "On a rule in an extern-deps scope (a stub or an extern-interface export), pins the FINAL Rust name the dependency's own codegen version derived, so the consumer reads the name instead of re-deriving it — killing cross-version naming skew. Rejected gracefully on exported rules (the consumer IS the deriving version there); a pin equal to today's derivation changes nothing (plain grouped import), so faithful-stub migration stays byte-identical."
+# The example is the CONSUMER side; the directive itself may only appear in an extern-deps scope,
+# so the probe generates this as directory input with `example_extern_stub` at
+# _CDDL_CODEGEN_EXTERN_DEPS_DIR_/extern_dep/lib.cddl (see verify.ts `setCodegenInput`). The
+# generated `use extern_dep::RenamedFoo as Foo;` references a crate that doesn't exist standalone,
+# so the row is COMPILE_GATE_EXEMPT (generation exit only), like the other extern-referencing rows.
+example = '''
+thing = [x: foo, y: uint]'''
+example_extern_stub = '''
+foo = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name RenamedFoo'''
+
+[[feature]]
 id = "dsl.doc"
 production = "comment_dsl"
 alt = "@doc"

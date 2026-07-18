@@ -46,20 +46,6 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
   supports it; wire it into `project_corpus.ts` if a consumer wants the complete matrix view.
-- **Register `dsl.rust_name` (the vendor surface's 11th directive — currently unrowed).** The
-  `@rust_name` pin (extern-interface exports; `src/comment_ast.rs`, `docs/docs/comment_dsl.mdx`
-  §`@rust_name`) shipped with only the `corpus_detect.ts` mirror half (`MIRRORED_DIRECTIVES` +
-  selfCheck vector — the lockstep tripwire is green); the matrix half is open: a
-  `features/cddl_codegen.toml` row, an annotation with evidence, a corpus `[[cover]]`, projections,
-  and the `VENDOR_FEATURE_COUNT` 15→16 bump in `query_q6_diff.ts`. Registration should follow the
-  extern-scope integration-tested exemption class (README.md's "Execution-gate exemptions" list —
-  the `dsl.raw_bytes_flavor` precedent): the directive is valid only inside a non-exported
-  `_CDDL_CODEGEN_EXTERN_DEPS_DIR_` scope, so a standalone `matrix_supported` mint doesn't fit;
-  evidence points at the integration floor (`rust_name_tests`, the `extern_import_tests`
-  byte-identity pair). Nothing currently gates this drift — `VENDOR_FEATURE_COUNT` pins the rows
-  that exist, and the lockstep tripwire only covers the corpus_detect mirror — so this entry is
-  the tracking mechanism until a comment_ast-tags ⊆ feature-rows check exists (worth considering
-  as part of this item).
 - **Extern-interface seam sentinels — decide whether they're matrix surface.** `--extern-import`
   input files carry vendor constructs beyond the two `ext.*` sentinels: the
   `; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1` header and `; unexported:` records (strictly parsed at

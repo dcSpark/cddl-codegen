@@ -88,6 +88,16 @@ const matrix = JSON.parse(readFileSync(`${HERE}/matrix.json`, "utf8")) as {
 const exampleById = new Map<string, string>(
   [...matrix.features, ...matrix.control_operators, ...matrix.containment].map(f => [f.id, f.example]),
 );
+// Extern-stub features (`example_extern_stub` — e.g. dsl.rust_name) probe as DIRECTORY input in
+// verify.ts (their directive is only legal inside an `_CDDL_CODEGEN_EXTERN_DEPS_DIR_` scope); these
+// flat single-file catalogs cannot represent them, so they are skipped with a loud per-run note
+// (no-silent-caps) — their generate-path coverage lives in verify.ts's probe and the integration
+// suites the annotation evidence cites, not here.
+const externStubIds = new Set<string>(
+  (matrix.features as { id: string; example_extern_stub?: string }[])
+    .filter(f => f.example_extern_stub !== undefined)
+    .map(f => f.id),
+);
 
 const supported: Ex[] = [];
 const panic: Ex[] = [];
@@ -97,7 +107,12 @@ const reject: Ex[] = [];
 const rejectExpect = new Map<string, string>();
 const droppedNoExample: string[] = [];
 const rejectEvidenceDrift: string[] = [];
+const skippedExternStub: string[] = [];
 for (const a of matrix.annotations.cddl_codegen) {
+  if (externStubIds.has(a.id)) {
+    skippedExternStub.push(`${a.id} (${a.status})`);
+    continue;
+  }
   const ex = exampleById.get(a.id);
   if (ex === undefined) {
     // Any annotated row without a projectable example is a silent coverage gap. Surface it.
@@ -136,6 +151,12 @@ if (droppedNoExample.length) {
   );
   process.exit(1);
 }
+if (skippedExternStub.length)
+  console.log(
+    `NOTE: ${skippedExternStub.length} extern-stub feature row(s) not projected into the flat ` +
+      `catalogs (directory-input probes; covered by verify.ts + the integration suites their ` +
+      `evidence cites): ${skippedExternStub.join(", ")}`,
+  );
 supported.sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
 panic.sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
 reject.sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
