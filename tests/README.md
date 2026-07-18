@@ -1021,6 +1021,14 @@ generates with `--emit-tests` and `cargo test`s **both** the rust and the wasm c
 construct must round-trip, not just compile, on both the rust and the wasm side. (`cargo check`
 never compiles `#[cfg(test)]` code, so nothing but `cargo test` type-checks or runs the emitted
 `cddl_generated_wasm_tests` module below; the preserve/json profiles and json-gen stay check-only.)
+A fixture that deliberately reaches a tracked unimplemented path under ONE profile is ledgered
+per-profile in the gate's `EXPECTED_GENERATION_FAIL` (`(stem, profile, reason)` — e.g.
+`optional_fixed_float`/preserve, which aborts at the native-float preserve stub), stale-guarded
+both directions: a listed cell that starts generating fails as "gap closed — remove the pin", an
+unlisted generation failure fails normally. The same cells are mirrored where the other corpus
+walkers would trip over them: the snapshot suite's `PROFILE_GENERATION_SKIP` (`snapshot_tests.rs` —
+no snapshot exists for a profile that never generates) and
+`feature_corpus_roundtrips_nondefault_profiles`' `SKIP`, each with its own stale guard.
 
 Because these crates are purely generated (no hand-appended scaffolding), the gate also doubles as
 the rustc-warning detector for the usage-derived import prune (`import_prune`): after each nested

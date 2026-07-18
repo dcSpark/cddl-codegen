@@ -210,7 +210,12 @@ for (const n of notes) {
 //     lint_doc_citations (which scans hand docs only) can never see them; project_corpus.ts already parses
 //     and renders the `findings` array and reads src/, making it the arm's architectural home. A citation
 //     that RESOLVES does not validate the claim's SEMANTICS (whether a fix is genuinely needed) — that
-//     stays review-owned; this arm catches only an ABSENT pin.
+//     stays review-owned; this arm catches only an ABSENT pin. Known false-negative looseness, accepted
+//     deliberately: resolution succeeds if ANY backtick token matches (src/tests/ text is matched by
+//     substring), so a finding whose only tokens are common spellings (`uint`, a CDDL snippet that
+//     happens to appear in a test) passes vacuously. Tightening (e.g. requiring a tests/-path or
+//     word-boundary symbol match) is warranted on the first finding observed passing on an incidental
+//     token — not before (the current findings all cite real fixture paths/symbols).
 const TESTS_SRC = `${SRC}/tests`;
 const testsText = [...new Glob("**/*.rs").scanSync({ cwd: TESTS_SRC })].map(f => readFileSync(`${TESTS_SRC}/${f}`, "utf8")).join("\n");
 const isFailureClaim = (t: string) => /^(Bug|Gap)\s+—/.test(t) || /[Cc]andidate cddl-codegen fix/.test(t);

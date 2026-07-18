@@ -474,9 +474,8 @@ pub(super) fn generate_array_struct_deserialization(
         }
         // A non-fixed field (its value) and an optional fixed field of any kind (its `bool`
         // presence) both contribute a struct field to the constructor; a mandatory fixed value
-        // (zero information) does not.
-        if !field.rust_type.is_fixed_value() || (field.optional && field.rust_type.is_fixed_value())
-        {
+        // (zero information) does not — i.e. only `fixed && !optional` is skipped.
+        if !field.rust_type.is_fixed_value() || field.optional {
             deser_ctor_fields.push((field.name.clone(), field.name.clone()));
         }
     }

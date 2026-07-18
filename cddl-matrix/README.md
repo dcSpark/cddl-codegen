@@ -420,6 +420,14 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   needs the crate to PARSE (soft caveat) — which it does for the whole corpus by construction.
   `project_corpus.ts` verifies a role-keyed `[[cover]]` against the AST role floor AND the per-cell
   support verdict (check H), so it can't claim ✅ on an unsupported cell.
+- **Failure-claim findings must carry a resolvable pin (check I).** A corpus-overlay `[[finding]]`
+  that states a defect ("Bug —"/"Gap —" or "Candidate cddl-codegen fix") must name at least one
+  backtick-quoted tracking artifact that resolves against the tree (a `tests/…` file or a
+  `src/tests/` symbol), or `project_corpus.ts` hard-fails. Findings render into COVERAGE.md — a
+  generated span `lint_doc_citations` never scans — so this arm is what keeps a fixed-but-unpruned
+  finding from rotting silently (the class is ledgered in `tests/TESTING_ROADMAP.md`'s
+  "stale known-limitation prose" residual). Claim SEMANTICS stay review-owned: a resolving citation
+  does not prove the claim is still true.
 - **Over-acceptance / silent corruption is invisible to round-trip tests by construction** — the
   encoder only produces in-width/in-window values, so a decoder that accepts (or silently wraps)
   spec-invalid data round-trips green. Only an enforcement vector (a spec-invalid instance the
