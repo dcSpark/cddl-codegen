@@ -953,6 +953,120 @@ impl GenerationScope {
             );
         }
 
+        // The extern-interface compiled self-check (`generated/extern_interface_check.rs`). Emitted
+        // UNCONDITIONALLY in every mode, exactly like the extern-interface export it guards (not
+        // wasm-gated, no suppress flag — a flag would just manufacture the stale-export state the
+        // design prevents). It is DERIVED FROM THE SAME PROJECTION as that export
+        // (`extern_interface_check_entries` shares `project_extern_interface` with the file emitter),
+        // so the export and its self-check cannot drift. Each exported name is asserted here to be a
+        // real, correctly-typed surface in THIS crate: opaque rows must implement `Serialize` (and
+        // `Deserialize` where the dep generates one — the projection weakens the bound per type via
+        // `deserialize_generated`), raw-bytes rows `RawBytesEncoding`, and transparent rows (aliases,
+        // c-style enums, named collections) must simply exist. A hand-edited or stale export — or a
+        // projection bug — therefore fails THIS crate's own build, naming the type.
+        {
+            use crate::generation::extern_interface::ExternCheckKind;
+            let entries =
+                crate::generation::extern_interface::extern_interface_check_entries(types, cli);
+            let common = cli.common_import_rust();
+            // The generated `Serialize` bound differs by mode: only the CANONICAL runtime
+            // (`--preserve-encodings --canonical-form`) carries a custom `serialization::Serialize`
+            // trait (its `serialize` takes a `force_canonical` flag); every other mode — including
+            // preserve-without-canonical — serializes through `cbor_event::se::Serialize` directly.
+            // `Deserialize` and `RawBytesEncoding` are the crate's own runtime traits in all modes.
+            let serialize_bound = if cli.preserve_encodings && cli.canonical_form {
+                format!("{common}::serialization::Serialize")
+            } else {
+                "cbor_event::se::Serialize".to_owned()
+            };
+            let path_of = |components: &[String], ident: &RustIdent| -> String {
+                if components.is_empty() {
+                    format!("crate::generated::{ident}")
+                } else {
+                    format!("crate::generated::{}::{ident}", components.join("::"))
+                }
+            };
+            let deser_asserted =
+                |entry: &crate::generation::extern_interface::ExternCheckEntry| -> bool {
+                    matches!(entry.kind, ExternCheckKind::Serialize)
+                        && self.deserialize_generated(&entry.ident)
+                };
+            let any_serialize = entries
+                .iter()
+                .any(|e| matches!(e.kind, ExternCheckKind::Serialize));
+            let any_deser = entries.iter().any(deser_asserted);
+            let any_raw_bytes = entries
+                .iter()
+                .any(|e| matches!(e.kind, ExternCheckKind::RawBytes));
+
+            let mut file = String::from(
+                "// Compiled self-check for the dep-side extern-interface export\n\
+                 // (`extern-interface/<dep>/**`). Machine-generated from the SAME projection as that\n\
+                 // export, so the two cannot drift. Every exported name is asserted to be a real,\n\
+                 // correctly-typed surface in THIS crate: opaque rows implement `Serialize` (and\n\
+                 // `Deserialize` where the dep generates one), raw-bytes rows `RawBytesEncoding`, and\n\
+                 // transparent rows (aliases, c-style enums, named collections) must simply exist. A\n\
+                 // hand-edited or stale export — or a projection bug — therefore fails THIS crate's own\n\
+                 // build, naming the type. Do not edit.\n",
+            );
+            // Bound-carrier fns, emitted only for the kinds actually present so an absent trait (e.g.
+            // `RawBytesEncoding` in a crate with no raw-bytes type) is never named.
+            if any_serialize {
+                file.push_str(&format!(
+                    "#[allow(dead_code)]\nfn _assert_serialize<T: {serialize_bound}>() {{}}\n"
+                ));
+            }
+            if any_deser {
+                file.push_str(&format!(
+                    "#[allow(dead_code)]\nfn _assert_deserialize<T: {common}::serialization::Deserialize>() {{}}\n"
+                ));
+            }
+            if any_raw_bytes {
+                file.push_str(&format!(
+                    "#[allow(dead_code)]\nfn _assert_raw_bytes<T: {common}::serialization::RawBytesEncoding>() {{}}\n"
+                ));
+            }
+            // Transparent rows: a module-level `use … as _;` existence check (an anonymous import
+            // never triggers unused-import warnings, but stay explicit).
+            for entry in &entries {
+                if matches!(entry.kind, ExternCheckKind::Use) {
+                    file.push_str(&format!(
+                        "#[allow(unused_imports)]\nuse {} as _; // {}\n",
+                        path_of(&entry.components, &entry.ident),
+                        entry.source
+                    ));
+                }
+            }
+            // Opaque / raw-bytes rows: bound-carrier instantiations inside a never-called fn.
+            file.push_str("#[allow(dead_code)]\nfn _extern_interface_self_check() {\n");
+            for entry in &entries {
+                let path = path_of(&entry.components, &entry.ident);
+                match entry.kind {
+                    ExternCheckKind::Serialize => {
+                        file.push_str(&format!(
+                            "    _assert_serialize::<{path}>(); // {}\n",
+                            entry.source
+                        ));
+                        if self.deserialize_generated(&entry.ident) {
+                            file.push_str(&format!("    _assert_deserialize::<{path}>();\n"));
+                        }
+                    }
+                    ExternCheckKind::RawBytes => {
+                        file.push_str(&format!(
+                            "    _assert_raw_bytes::<{path}>(); // {}\n",
+                            entry.source
+                        ));
+                    }
+                    ExternCheckKind::Use | ExternCheckKind::None => {}
+                }
+            }
+            file.push_str("}\n");
+            out.insert(
+                "rust/src/generated/extern_interface_check.rs".to_owned(),
+                rustfmt_generated_string(&file)?.into_owned(),
+            );
+        }
+
         // wasm crate
         if cli.wasm {
             // Same split as the rust crate: the tool-owned generated tree lives under

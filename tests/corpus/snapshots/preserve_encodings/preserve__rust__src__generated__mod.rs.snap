@@ -13,6 +13,7 @@ pub mod non_empty_map;
 pub mod ordered_hash_map;
 extern crate derivative;
 pub mod cbor_encodings;
+mod extern_interface_check;
 mod key_demand_assertions;
 pub mod serialization;
 

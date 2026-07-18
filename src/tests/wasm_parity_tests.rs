@@ -256,11 +256,14 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
 /// classes defined in `mod.rs`, so it introduces no new boundary API for the differential to parse.
 /// `key_demand_assertions.rs` (any `@used_as_key`-tagged root) holds private compile-time-only
 /// `_demand_*` self-checks — zero pub items, so nothing for the differential to parse either.
+/// `extern_interface_check.rs` (emitted unconditionally — the dep-side extern-interface self-check)
+/// is likewise private compile-time-only assertions, no boundary API.
 const ALLOWED_RUST_GENERATED: &[&str] = &[
     "mod.rs",
     "serialization.rs",
     "error.rs",
     "key_demand_assertions.rs",
+    "extern_interface_check.rs",
 ];
 const ALLOWED_WASM_GENERATED: &[&str] = &["mod.rs", "collections.rs"];
 

@@ -13,6 +13,7 @@ pub mod non_empty_map;
 pub mod ordered_hash_map;
 extern crate derivative;
 pub mod cbor_encodings;
+mod extern_interface_check;
 pub mod serialization;
 
 use crate::generated::error::*;

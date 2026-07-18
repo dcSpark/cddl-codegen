@@ -502,16 +502,41 @@ fn render_f64(f: f64) -> String {
 /// carries its seam.
 pub(crate) const EXTERN_INTERFACE_HEADER: &str = "; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1";
 
+/// The dep-side compiled self-check's assertion for an included row (commit 5). Derived from the
+/// SAME projection the export emits, so the export and its self-check cannot drift.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ExternCheckKind {
+    /// Opaque class-backed row (record / type-or-group choice / wrapper / hand-written extern):
+    /// assert the type implements `Serialize` (and `Deserialize` where the dep generates one). Sound
+    /// for hand-written externs too — the generated code emits `<Extern>::serialize`/`deserialize`
+    /// calls, so the advertised bound is exactly the contract the hand-written type must satisfy.
+    Serialize,
+    /// A raw-bytes row: assert the type implements `RawBytesEncoding`.
+    RawBytes,
+    /// A transparent row that materializes a named rust surface (a `pub type` alias, a c-style enum,
+    /// a named collection): a `use crate::…::<Name> as _;` existence check.
+    Use,
+    /// No assertable self-check surface. Two cases: a transparent row that emits NO named rust type
+    /// (`@no_alias` — the underlying definition is inlined, there is no `<Name>` on either side), and
+    /// an exported generic-extern BASE (`ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_` → the rust type is
+    /// generic `ExtSet<T>`; bare `ExtSet` names no concrete type, so no bound is assertable on it —
+    /// its instances are asserted individually). The export still carries the row; the self-check
+    /// asserts nothing for it.
+    None,
+}
+
 /// A successfully-projected rule staged for emission, plus the set of EXPORTED-rule idents its
 /// exported CDDL text references (empty for opaque rows — their marker body is self-contained, and
 /// for prelude/fixed refs — those render self-contained by prelude name). The reference set drives
 /// reference-closure: if any referenced rule ends up excluded (or was never exported), this rule
-/// dangles for every consumer and is excluded too.
+/// dangles for every consumer and is excluded too. `check` is the dep-side self-check assertion this
+/// row projects to (commit 5) — carried alongside the CDDL text so both consumers share the walk.
 struct IncludedRule {
     components: Vec<String>,
     source: String,
     line: String,
     rule_refs: BTreeSet<RustIdent>,
+    check: ExternCheckKind,
 }
 
 /// A rule kept OUT of the export, recorded as a sorted `; unexported: <ident> — <reason>` comment
@@ -539,9 +564,57 @@ pub(crate) fn extern_interface_files(
     types: &IntermediateTypes,
     cli: &Cli,
 ) -> BTreeMap<String, String> {
+    let (dep_key, included, excluded) = project_extern_interface(types, cli);
+    render_export_files(&dep_key, &included, &excluded)
+}
+
+/// One entry of the dep-side compiled self-check (commit 5): the exported name, its scope-path
+/// components, and the assertion kind — sorted deterministically by `RustIdent` (`BTreeMap`
+/// iteration). Produced from the SAME projection walk `extern_interface_files` uses, so the export
+/// and its self-check share one membership computation and cannot drift.
+pub(crate) struct ExternCheckEntry {
+    pub components: Vec<String>,
+    pub ident: RustIdent,
+    pub source: String,
+    pub kind: ExternCheckKind,
+}
+
+/// The self-check entries for every INCLUDED export row (excluded rows are asserted nothing — the
+/// export never advertises them). Same projection as [`extern_interface_files`].
+pub(crate) fn extern_interface_check_entries(
+    types: &IntermediateTypes,
+    cli: &Cli,
+) -> Vec<ExternCheckEntry> {
+    let (_dep_key, included, _excluded) = project_extern_interface(types, cli);
+    included
+        .into_iter()
+        .map(|(ident, inc)| ExternCheckEntry {
+            components: inc.components,
+            source: inc.source,
+            kind: inc.check,
+            ident,
+        })
+        .collect()
+}
+
+/// The shared projection walk: finalized IR → the included / excluded rule maps (plus the dep key).
+/// Both the CDDL export ([`extern_interface_files`]) and the compiled self-check
+/// ([`extern_interface_check_entries`]) consume this, so membership is computed once.
+fn project_extern_interface(
+    types: &IntermediateTypes,
+    cli: &Cli,
+) -> (
+    String,
+    BTreeMap<RustIdent, IncludedRule>,
+    BTreeMap<RustIdent, ExcludedRule>,
+) {
     let dep_key = cli.lib_name_code();
     let mut included: BTreeMap<RustIdent, IncludedRule> = BTreeMap::new();
     let mut excluded: BTreeMap<RustIdent, ExcludedRule> = BTreeMap::new();
+    // The base idents of every registered generic instance (`ExtSet` of `ExtSet<Plain>`). An exported
+    // generic-extern base spells `ExtSet<T>` in rust; bare `ExtSet` names no concrete type, so the
+    // self-check can assert no bound on it (its instances are asserted individually).
+    let generic_bases = types.generic_instance_bases();
     // Dedup across the two passes: a named collection / named generic-extern instance registers BOTH
     // a `rust_structs` entry AND a `type_aliases` entry; project each ident exactly once (pass 1
     // wins), so pass 2 skips anything pass 1 already staged.
@@ -571,12 +644,14 @@ pub(crate) fn extern_interface_files(
         // `RuleMetadata` the transparent renderer consults so the projection exclusion cannot be
         // bypassed on the class-backed transparent rows (Array/Table/CStyleEnum).
         let md = rule_metadata_from_config(rust_struct.config());
-        let projected: RuleProjection = match rust_struct.variant() {
+        let (projected, kind): (RuleProjection, ExternCheckKind) = match rust_struct.variant() {
             // Genuinely class-backed types: opaque. `@newtype`/custom-(de)serialize/custom-json do
             // NOT travel — they shape the dep's internals; the consumer sees only "class exists,
             // named X". A generic-extern base carrying `@raw_bytes_flavor` re-exports the tag verbatim
             // (the flavor lives in `types.raw_bytes_flavor()`, keyed by the base ident). An opaque
-            // marker body is self-contained, so it references nothing (never closure-excluded).
+            // marker body is self-contained, so it references nothing (never closure-excluded). The
+            // self-check asserts `Serialize`(+`Deserialize`) on the concrete type — except an exported
+            // generic-extern base, whose bare ident names no concrete type (`None`).
             RustStructType::Record(_)
             | RustStructType::TypeChoice { .. }
             | RustStructType::GroupChoice { .. }
@@ -586,23 +661,35 @@ pub(crate) fn extern_interface_files(
                 if types.raw_bytes_flavor().contains(ident) {
                     annotations.push("@raw_bytes_flavor".to_string());
                 }
-                Ok((
-                    crate::parsing::EXTERN_MARKER.to_string(),
-                    annotations,
-                    BTreeSet::new(),
-                ))
+                let check = if generic_bases.contains(ident) {
+                    ExternCheckKind::None
+                } else {
+                    ExternCheckKind::Serialize
+                };
+                (
+                    Ok((
+                        crate::parsing::EXTERN_MARKER.to_string(),
+                        annotations,
+                        BTreeSet::new(),
+                    )),
+                    check,
+                )
             }
             // A raw-bytes type is opaque behind its own marker.
-            RustStructType::RawBytesType => Ok((
-                crate::parsing::RAW_BYTES_MARKER.to_string(),
-                Vec::new(),
-                BTreeSet::new(),
-            )),
+            RustStructType::RawBytesType => (
+                Ok((
+                    crate::parsing::RAW_BYTES_MARKER.to_string(),
+                    Vec::new(),
+                    BTreeSet::new(),
+                )),
+                ExternCheckKind::RawBytes,
+            ),
             // Named collections: transparent. The rust surface is a `pub type`, so spelling it opaque
             // would violate the fidelity contract — render the registered transparent alias body and
-            // collect the rule idents it references for the closure.
+            // collect the rule idents it references for the closure. The self-check is a `use`
+            // existence check on the `pub type`.
             RustStructType::Array { .. } | RustStructType::Table { .. } => {
-                match types.type_aliases().get(&AliasIdent::Rust(ident.clone())) {
+                let projected = match types.type_aliases().get(&AliasIdent::Rust(ident.clone())) {
                     Some(alias) => {
                         render_transparent_rule_body(source, &alias.base_type, Some(&md), types)
                             .map(|body| {
@@ -613,15 +700,17 @@ pub(crate) fn extern_interface_files(
                         source,
                         "a named collection with no registered transparent alias",
                     )),
-                }
+                };
+                (projected, ExternCheckKind::Use)
             }
             // A c-style enum is transparent — its value choices (`0 / 1 / 2`) — but a real Rust enum
             // lives in the dep, so it still needs the `@rust_name` pin. Value choices reference no
-            // rules.
-            RustStructType::CStyleEnum { variants } => {
+            // rules. The self-check is a `use` existence check on the enum.
+            RustStructType::CStyleEnum { variants } => (
                 render_c_style_enum_body(source, variants, Some(&md), types)
-                    .map(|body| (body, Vec::new(), BTreeSet::new()))
-            }
+                    .map(|body| (body, Vec::new(), BTreeSet::new())),
+                ExternCheckKind::Use,
+            ),
         };
         stage_rule(
             &mut included,
@@ -630,6 +719,7 @@ pub(crate) fn extern_interface_files(
             source,
             components,
             projected,
+            kind,
         );
     }
 
@@ -688,6 +778,14 @@ pub(crate) fn extern_interface_files(
                 )
             })
         };
+        // A transparent alias materializes a named rust surface (a `pub type`) only when
+        // `gen_rust_alias` is set. A `@no_alias` rule (and a `wasm_alias_target` inline) generates no
+        // rust type — nothing for the self-check to `use`, so it asserts nothing (`None`).
+        let kind = if alias_info.gen_rust_alias {
+            ExternCheckKind::Use
+        } else {
+            ExternCheckKind::None
+        };
         stage_rule(
             &mut included,
             &mut excluded,
@@ -695,6 +793,7 @@ pub(crate) fn extern_interface_files(
             source,
             components,
             projected,
+            kind,
         );
     }
 
@@ -732,7 +831,7 @@ pub(crate) fn extern_interface_files(
         );
     }
 
-    render_export_files(&dep_key, &included, &excluded)
+    (dep_key, included, excluded)
 }
 
 /// A per-rule projection: `Ok((body, extra annotations, referenced rule idents))` or an `Err` the
@@ -741,7 +840,8 @@ pub(crate) fn extern_interface_files(
 type RuleProjection = Result<(String, Vec<String>, BTreeSet<RustIdent>), ExternInterfaceError>;
 
 /// Stage one projected candidate: an `Ok` becomes an included rule (with the `@rust_name` pin
-/// appended); an `Err` becomes a primary exclusion whose `root` is the rule itself.
+/// appended, carrying its self-check `kind`); an `Err` becomes a primary exclusion whose `root` is
+/// the rule itself (an excluded row is never in the export, so its `kind` is irrelevant).
 fn stage_rule(
     included: &mut BTreeMap<RustIdent, IncludedRule>,
     excluded: &mut BTreeMap<RustIdent, ExcludedRule>,
@@ -749,6 +849,7 @@ fn stage_rule(
     source: &str,
     components: Vec<String>,
     projected: RuleProjection,
+    kind: ExternCheckKind,
 ) {
     match projected {
         Ok((body, mut annotations, rule_refs)) => {
@@ -760,6 +861,7 @@ fn stage_rule(
                     source: source.to_string(),
                     line: format_rule_line(source, &body, &annotations),
                     rule_refs,
+                    check: kind,
                 },
             );
         }

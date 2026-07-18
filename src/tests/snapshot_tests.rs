@@ -970,3 +970,98 @@ fn extern_interface_emit_exclusions_and_closure() {
         "`holder` must not be excluded — its opaque marker is self-contained:\n{root}"
     );
 }
+
+// --- Dep-side extern-interface compiled self-check (commit 5) ------------------------------------
+
+/// Snapshot the dep-side compiled self-check (`generated/extern_interface_check.rs`) the emit
+/// fixture produces. It is derived from the SAME projection as the export snapshotted above, and
+/// covers every assertion kind in one file: `Serialize`(+`Deserialize`) on opaque rows
+/// (record/wrapper/type-choice/group-choice/named-generic-instance), `RawBytesEncoding` on the
+/// raw-bytes row (`hash`), the `use … as _;` existence check on transparent rows (aliases /
+/// c-style enum / named collections), the `@no_alias` skip (`na` gets no assertion), and a
+/// nested-scope path (`sub::module::NestedRec`). Bless with
+/// `INSTA_UPDATE=always cargo test extern_interface_check_emit`.
+#[test]
+fn extern_interface_check_emit() {
+    let cli = cli_for(
+        std::path::Path::new("tests/extern-interface-emit/inputs"),
+        &["--wasm", "false", "--lib-name", "dep"],
+    );
+    let files = crate::api::generated_strings(&cli)
+        .expect("generation must succeed for the emit fixture (string emission is infallible)");
+    let content = files
+        .get("rust/src/generated/extern_interface_check.rs")
+        .expect("the self-check file must be emitted");
+
+    let dir = std::env::current_dir()
+        .unwrap()
+        .join("tests/extern-interface-emit/snapshots");
+    let mut settings = insta::Settings::clone_current();
+    settings.set_snapshot_path(dir);
+    settings.set_prepend_module_to_snapshot(false);
+    settings.bind(|| {
+        insta::assert_snapshot!("extern_interface_check", content);
+    });
+}
+
+/// The self-check WEAKENS the bound to `Serialize` only for a type with no generated `Deserialize`:
+/// the ambiguous-optional array record `ambig` has no deserialize impl (`print_structs_without_deserialize`),
+/// so asserting `Deserialize` on it would fail the dep's own build. A normal record (`rec`) keeps
+/// both, and a `@no_alias` rule (`raw_index`) — which emits no rust type — is not asserted at all.
+#[test]
+fn extern_interface_check_weakens_deserialize_bound() {
+    let cli = cli_for(
+        std::path::Path::new("tests/extern-interface-check/inputs"),
+        &["--wasm", "false"],
+    );
+    let files = crate::api::generated_strings(&cli).unwrap();
+    let c = files
+        .get("rust/src/generated/extern_interface_check.rs")
+        .expect("self-check emitted");
+    assert!(
+        c.contains("_assert_serialize::<crate::generated::Ambig>()"),
+        "the deserialize-less `ambig` must still assert Serialize:\n{c}"
+    );
+    assert!(
+        !c.contains("_assert_deserialize::<crate::generated::Ambig>()"),
+        "`ambig` has no generated deserialize — its bound must be WEAKENED to Serialize only:\n{c}"
+    );
+    assert!(
+        c.contains("_assert_serialize::<crate::generated::Rec>()")
+            && c.contains("_assert_deserialize::<crate::generated::Rec>()"),
+        "a normal record keeps BOTH bounds:\n{c}"
+    );
+    assert!(
+        !c.contains("RawIndex"),
+        "a `@no_alias` rule emits no rust type — the self-check must assert nothing for it:\n{c}"
+    );
+}
+
+/// A self-check assertion on a generic-extern BASE (`ext_set<T>` → rust `ExtSet<T>`) would not
+/// compile — bare `ExtSet` names no concrete type — so the base is SKIPPED, while its concrete
+/// siblings still assert. The generated crate compiles end-to-end via `extern_generic_raw_bytes`;
+/// this pins the skip decision directly (fast, no nested cargo).
+#[test]
+fn extern_interface_check_skips_generic_base() {
+    let cli = cli_for(
+        std::path::Path::new("tests/extern-generic-raw-bytes/input.cddl"),
+        &["--wasm", "false"],
+    );
+    let files = crate::api::generated_strings(&cli).unwrap();
+    let c = files
+        .get("rust/src/generated/extern_interface_check.rs")
+        .expect("self-check emitted");
+    assert!(
+        !c.contains("ExtSet"),
+        "the generic-extern base `ExtSet<T>` is not a concrete type — it must be skipped:\n{c}"
+    );
+    assert!(
+        c.contains("_assert_raw_bytes::<crate::generated::PubKey>()"),
+        "the raw-bytes row must assert RawBytesEncoding:\n{c}"
+    );
+    assert!(
+        c.contains("_assert_serialize::<crate::generated::Plain>()")
+            && c.contains("_assert_serialize::<crate::generated::UsingFlavored>()"),
+        "the concrete opaque rows must still assert Serialize:\n{c}"
+    );
+}

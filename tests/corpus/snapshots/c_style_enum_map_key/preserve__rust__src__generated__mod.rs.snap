@@ -10,6 +10,7 @@ expression: content
 pub mod error;
 pub mod ordered_hash_map;
 extern crate derivative;
+mod extern_interface_check;
 pub mod serialization;
 
 use crate::generated::error::*;

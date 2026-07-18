@@ -11,6 +11,7 @@ extern crate derivative;
 pub mod a;
 pub mod b;
 pub mod cbor_encodings;
+mod extern_interface_check;
 pub mod qux;
 pub mod serialization;
 
