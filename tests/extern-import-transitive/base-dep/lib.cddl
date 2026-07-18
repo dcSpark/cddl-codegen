@@ -1,0 +1,9 @@
+; Base dependency of the transitive `--extern-import` chain (consumer -> mid-dep -> base-dep).
+; A leaf spec: it declares no deps of its own. Its minted extern-interface export carries exactly
+; two rows a downstream crate resolves across the crate boundary — an opaque class-backed record
+; (`base_point` -> `_CDDL_CODEGEN_EXTERN_TYPE_`) and a transparent alias (`base_coin = uint`).
+; mid-dep embeds `base_point` (opaquely, so it never surfaces in mid-dep's own export); the consumer
+; references both `base_point` and `base_coin` DIRECTLY (depth-1: a dep's deps never travel through
+; an intermediate export, so the consumer must declare base-dep itself).
+base_point = [x: uint, y: uint]
+base_coin = uint
