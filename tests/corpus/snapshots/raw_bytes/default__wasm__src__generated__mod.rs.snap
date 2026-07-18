@@ -11,6 +11,7 @@ expression: content
     clippy::new_without_default
 )]
 pub mod collections;
+pub use crate::PubKey;
 
 use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 

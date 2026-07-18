@@ -13,6 +13,7 @@ expression: content
 pub mod collections;
 pub use crate::ExtSetPlain;
 pub use crate::ExtSetPubKey;
+pub use crate::PubKey;
 
 use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
