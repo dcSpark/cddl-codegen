@@ -45,6 +45,7 @@ expression: ir
                             name: Some(
                                 "first",
                             ),
+                            rust_name: None,
                             newtype: None,
                             no_alias: false,
                             key_demand: None,
@@ -80,6 +81,7 @@ expression: ir
                             name: Some(
                                 "second",
                             ),
+                            rust_name: None,
                             newtype: None,
                             no_alias: false,
                             key_demand: None,
@@ -151,6 +153,7 @@ expression: ir
                         ),
                         rule_metadata: RuleMetadata {
                             name: None,
+                            rust_name: None,
                             newtype: None,
                             no_alias: false,
                             key_demand: None,
@@ -184,6 +187,7 @@ expression: ir
                         ),
                         rule_metadata: RuleMetadata {
                             name: None,
+                            rust_name: None,
                             newtype: None,
                             no_alias: false,
                             key_demand: None,

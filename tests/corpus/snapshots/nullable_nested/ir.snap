@@ -154,6 +154,7 @@ expression: ir
                         key: None,
                         rule_metadata: RuleMetadata {
                             name: None,
+                            rust_name: None,
                             newtype: None,
                             no_alias: false,
                             key_demand: None,
@@ -303,6 +304,7 @@ expression: ir
                         key: None,
                         rule_metadata: RuleMetadata {
                             name: None,
+                            rust_name: None,
                             newtype: None,
                             no_alias: false,
                             key_demand: None,
@@ -414,6 +416,7 @@ expression: ir
                         key: None,
                         rule_metadata: RuleMetadata {
                             name: None,
+                            rust_name: None,
                             newtype: None,
                             no_alias: false,
                             key_demand: None,
@@ -461,6 +464,7 @@ expression: ir
                         key: None,
                         rule_metadata: RuleMetadata {
                             name: None,
+                            rust_name: None,
                             newtype: None,
                             no_alias: false,
                             key_demand: None,

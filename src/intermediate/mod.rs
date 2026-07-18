@@ -165,6 +165,15 @@ pub struct IntermediateTypes<'a> {
     // `pub use crate::<Base>RawBytes;` only for these, so a tag with no raw-bytes instance never
     // forces the user to define an unused flavor type.
     raw_bytes_flavor_emitted: BTreeSet<RustIdent>,
+    // `@rust_name` pins: a derived `RustIdent` (of a rule in a non-exported extern-deps scope) ->
+    // the FINAL Rust type name the dependency's own codegen version spelled into its artifact. Every
+    // INTERNAL spelling keeps the consumer-derived ident (so the ~66 `RustIdent::new` sites and all
+    // references stay untouched); translation to the pin happens only at the crate boundary — the
+    // `use <dep>::<Pinned> as <Derived>;` import alias (`add_imports_from_scope_refs`) and the
+    // wasm→rust full-path sites (`rust_crate_struct_from_wasm`). Pin-less rules keep today's
+    // derivation (hand-stub compatibility). Populated at parse time from extern-scope `RuleMetadata`
+    // (`parsing::handle_rust_name_pin`). Determinism: `BTreeMap`.
+    rust_name_pins: BTreeMap<RustIdent, String>,
     // which scope an ident is declared in
     scopes: BTreeMap<RustIdent, ModuleScope>,
     // The ORIGINAL CDDL source name for each top-level rule's `RustIdent`. `RustIdent::new`
@@ -210,6 +219,7 @@ impl<'a> IntermediateTypes<'a> {
             used_as_elem: BTreeSet::new(),
             raw_bytes_flavor: BTreeSet::new(),
             raw_bytes_flavor_emitted: BTreeSet::new(),
+            rust_name_pins: BTreeMap::new(),
             scopes: BTreeMap::new(),
             rule_source_names: BTreeMap::new(),
             rejections: Vec::new(),
@@ -2056,6 +2066,25 @@ impl<'a> IntermediateTypes<'a> {
         self.rule_source_names.insert(ident, source_name);
     }
 
+    /// Record a `@rust_name` pin: `derived` (the consumer-derived `RustIdent`) is spelled `pinned`
+    /// in the dependency's own crate. See the `rust_name_pins` field doc. Validated in
+    /// `parsing::handle_rust_name_pin` (extern-scope-only, reserved-ident-clean) before this call.
+    pub fn mark_rust_name_pin(&mut self, derived: RustIdent, pinned: String) {
+        self.rust_name_pins.insert(derived, pinned);
+    }
+
+    /// The full pin map (`derived RustIdent` -> `pinned dep name`), for the crate-boundary
+    /// translation sites (`add_imports_from_scope_refs`).
+    pub fn rust_name_pins(&self) -> &BTreeMap<RustIdent, String> {
+        &self.rust_name_pins
+    }
+
+    /// The pinned dependency name for `derived`, if it carries a `@rust_name` pin. `None` = derive
+    /// the name today's way (hand-stub compatibility).
+    pub fn rust_name_pin(&self, derived: &RustIdent) -> Option<&str> {
+        self.rust_name_pins.get(derived).map(|s| s.as_str())
+    }
+
     /// The exact CDDL source rule name `ident` was registered under (e.g. `my-rule`, which
     /// `RustIdent` camel-cases to `MyRule`, indistinguishable from `my_rule`). `None` for a struct
     /// synthesized during IR build (no source rule). The conformance oracle roots its validator here
@@ -2252,6 +2281,24 @@ pub fn reserved_ident_rejection(source_name: &str) -> Option<String> {
              a rule/group name. A rule/group name becomes the emitted Rust type name directly, so \
              (unlike a struct field, which a `; @name` comment renames) the CDDL identifier itself \
              must be renamed to a non-reserved name."
+        ));
+    }
+    None
+}
+
+/// A graceful-rejection message if a `@rust_name` PIN cannot be used as a Rust type name, else
+/// `None`. A pin becomes the emitted Rust name for the dependency's type verbatim (the consumer
+/// imports `use dep::<pin> as <derived>;`), so it must clear the SAME reserved-ident bar a derived
+/// name does — a `@rust_name Option` pin describes a type the dependency could never have emitted
+/// (its own `reserved_ident_rejection` would have fired), so the pin can never be honored. Mirrors
+/// `reserved_ident_rejection` but names the pin and the rule it sits on.
+pub fn reserved_pin_rejection(pin: &str, rule: &str) -> Option<String> {
+    let camel = convert_to_camel_case(pin);
+    if crate::rust_reserved::STD_TYPES.contains(&camel.as_str()) || is_identifier_reserved(pin) {
+        return Some(format!(
+            "@rust_name `{pin}` on rule `{rule}`: the pinned Rust name is a reserved Rust \
+             std/prelude type or CDDL keyword — a dependency could never have emitted a type by that \
+             name, so this pin can never be honored. Choose a non-reserved name."
         ));
     }
     None
