@@ -1153,9 +1153,10 @@ impl<'a> IntermediateTypes<'a> {
             let current_scope = self.scope(ident);
             // A generic-EXTERN instance's alias base is a `Base<Args>` TYPE EXPRESSION minted by
             // `RustIdent::new_generic_with_base` (`ExtSet<Plain>`, `ExtSetRawBytes<PubKey>`), not an
-            // importable path segment — only `finalize`'s `GenericResolved::Extern` arm registers
-            // aliases keyed by a generic-instance ident. Feeding that opaque ident through
-            // `mark_refs`→`set_ref` would land the whole `<…>`-carrying text verbatim in the
+            // importable path segment — `finalize`'s `GenericResolved::Extern` arm registers it as
+            // `Rust(Base<Args>)` (a COLLECTION-bodied generic instance instead registers a transparent
+            // structural alias, handled by the shape guard just below). Feeding that opaque ident
+            // through `mark_refs`→`set_ref` would land the whole `<…>`-carrying text verbatim in the
             // scope's `use crate::generated::{…}` list (invalid Rust; the rustfmt post-pass aborts).
             // Decompose it instead: import the base at the base extern's DECLARING scope (where the
             // re-export glue in `generation/mod.rs` places `pub use crate::<Base>[RawBytes];` — NOT
@@ -1165,33 +1166,40 @@ impl<'a> IntermediateTypes<'a> {
             // out above), so no wasm-side handling is needed.
             if let Some(gi) = self.generic_instances.get(ident) {
                 let base_ident = gi.extern_base_ident(self);
-                debug_assert!(
-                    matches!(
-                        &alias_info.base_type.conceptual_type,
-                        ConceptualRustType::Rust(base) if base.as_ref().starts_with(base_ident.as_ref())
-                    ),
-                    "generic-instance alias base should be the `<Base>[RawBytes]<Args>` type expression"
-                );
-                let base_scope = self.scope(&gi.generic_ident).clone();
-                if base_scope != *current_scope {
-                    refs.entry(current_scope.clone())
-                        .or_default()
-                        .entry(base_scope)
-                        .or_default()
-                        .insert(base_ident);
+                // Only a generic-EXTERN instance's alias base is the opaque `<Base>[RawBytes]<Args>`
+                // type expression this block must decompose. A generated generic def with a
+                // COLLECTION body (`xs<T> = [* T]` / `{* k => T}`, instanced as `xs<uint>`) resolves
+                // to a TRANSPARENT structural alias (`Vec<u64>` / `BTreeMap<..>`) — its base has no
+                // `<Args>` to strip and imports correctly through the normal `mark_refs` walk below,
+                // so fall through rather than misroute it here. The shape guard IS the discriminator:
+                // an instance alias whose base is `Rust(base)` prefixed by the extern base name can
+                // only be the extern type expression (collection instances register `Array`/`Map`
+                // bases, record instances register no alias at all).
+                if matches!(
+                    &alias_info.base_type.conceptual_type,
+                    ConceptualRustType::Rust(base) if base.as_ref().starts_with(base_ident.as_ref())
+                ) {
+                    let base_scope = self.scope(&gi.generic_ident).clone();
+                    if base_scope != *current_scope {
+                        refs.entry(current_scope.clone())
+                            .or_default()
+                            .entry(base_scope)
+                            .or_default()
+                            .insert(base_ident);
+                    }
+                    for arg in gi.generic_args() {
+                        mark_refs(
+                            &mut refs,
+                            self,
+                            wasm,
+                            &table_shape_sole_owners,
+                            deferred,
+                            current_scope,
+                            arg,
+                        );
+                    }
+                    continue;
                 }
-                for arg in gi.generic_args() {
-                    mark_refs(
-                        &mut refs,
-                        self,
-                        wasm,
-                        &table_shape_sole_owners,
-                        deferred,
-                        current_scope,
-                        arg,
-                    );
-                }
-                continue;
             }
             if wasm && let Some(target) = alias_info.resolved_wasm_alias_target(self) {
                 if let Some(dep_scope) = deferred.get(target) {
