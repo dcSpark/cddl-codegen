@@ -19,21 +19,17 @@ use crate::generated::non_empty::NonEmptyVec;
 pub struct Holder {
     pub a: SetU64,
     pub b: NonemptySetText,
-    pub c: NonemptySetBytes,
-    pub d: NonemptyOsetPoint,
+    pub c: NonemptyOsetPoint,
 }
 
 impl Holder {
-    pub fn new(a: SetU64, b: NonemptySetText, c: NonemptySetBytes, d: NonemptyOsetPoint) -> Self {
-        Self { a, b, c, d }
+    pub fn new(a: SetU64, b: NonemptySetText, c: NonemptyOsetPoint) -> Self {
+        Self { a, b, c }
     }
 }
 
 /// `[+ Point]`: at least one element, enforced at the `NonEmptyVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
 pub type NonemptyOsetPoint = NonEmptyVec<Point>;
-
-/// `[+ Vec<u8>]`: at least one element, enforced at the `NonEmptyVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
-pub type NonemptySetBytes = NonEmptyVec<Vec<u8>>;
 
 /// `[+ String]`: at least one element, enforced at the `NonEmptyVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
 pub type NonemptySetText = NonEmptyVec<String>;

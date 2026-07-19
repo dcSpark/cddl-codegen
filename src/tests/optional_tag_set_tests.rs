@@ -216,6 +216,36 @@ fn generic_set_defs_collapse_to_transparent_instances() {
     );
 }
 
+/// A BYTES-element set collapses to a transparent `NonEmptyVec<Vec<u8>>` alias and, under
+/// `--preserve-encodings`, its byte-string elements ride the EXISTING per-element `StringEncoding`
+/// machinery (`..._elem_encodings: Vec<StringEncoding>`) — so `@raw_bytes_flavor` is moot for the
+/// generated type (it stays extern-only). This is asserted in-process on the RUST side only: the
+/// corpus fixtures omit a bytes element because a named bytes-element collection's WASM wrapper class
+/// fails to compile (E0271), a pre-existing limitation independent of this feature (tracked in
+/// `tests/TESTING_ROADMAP.md`).
+#[test]
+fn bytes_element_set_collapses_with_elem_encodings() {
+    let src = generate(
+        "byte_set = #6.258([+ bytes]) / [+ bytes]\nholder = [s: byte_set]\n",
+        "bytes_elem",
+        PRESERVE,
+    )
+    .expect("a bytes-element set must collapse and generate");
+    assert!(
+        src.contains("pub type ByteSet = NonEmptyVec<Vec<u8>>;")
+            && !src.contains("pub enum ByteSet"),
+        "bytes-element set collapses to a transparent NonEmptyVec<Vec<u8>> alias:\n{src}"
+    );
+    assert!(
+        src.contains("s_elem_encodings: Vec<StringEncoding>"),
+        "byte-string elements must carry per-element StringEncoding preservation:\n{src}"
+    );
+    assert!(
+        src.contains("s_tag_encoding: TagPresenceEncoding"),
+        "the optional tag still rides a TagPresenceEncoding var:\n{src}"
+    );
+}
+
 // ---------------------------------------------------------------------------------------------
 // Near misses (the collapse must NOT fire — today's enum is retained)
 // ---------------------------------------------------------------------------------------------
