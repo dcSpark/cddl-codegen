@@ -18,7 +18,9 @@ fn _assert_serialize<T: cbor_event::se::Serialize>() {}
 #[allow(dead_code)]
 fn _assert_deserialize<T: extern_dep_crate::serialization::Deserialize>() {}
 #[allow(unused_imports)]
-use crate::generated::b::bar::BarTypedef as _; // bar_typedef
+use crate::generated::DeltaCoin as _;
+#[allow(unused_imports)]
+use crate::generated::b::bar::BarTypedef as _; // bar_typedef // delta_coin
 #[allow(dead_code)]
 fn _extern_interface_self_check() {
     _assert_serialize::<crate::generated::b::bar::Bar>(); // bar
@@ -29,6 +31,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::Everything>();
     _assert_serialize::<crate::generated::a::c::foo::Foo>(); // foo
     _assert_deserialize::<crate::generated::a::c::foo::Foo>();
+    _assert_serialize::<crate::generated::IntHolder>(); // int_holder
+    _assert_deserialize::<crate::generated::IntHolder>();
     _assert_serialize::<crate::generated::qux::Qux>(); // qux
     _assert_deserialize::<crate::generated::qux::Qux>();
 }

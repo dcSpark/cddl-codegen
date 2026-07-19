@@ -607,6 +607,52 @@ pub(super) fn generate_wrapper_struct(
 
 pub(super) fn generate_int(gen_scope: &mut GenerationScope, types: &IntermediateTypes, cli: &Cli) {
     let ident = RustIdent::new(CDDLIdent::new("int"));
+    // `--common-import-override` set (`!export_static_files()`): `Int` is common scaffolding
+    // parameterized only by CLI flags, the same class as error/serialization/ordered_hash_map. RE-EXPORT
+    // the common crate's `Int`/`IntError` rather than minting a crate-local copy, so this crate's `Int`
+    // shares the common crate's type identity — a forked rust `Int` fails E0308 at every boundary and a
+    // forked wasm `#[wasm_bindgen] Int` cannot link into one cdylib. Emit nothing else (the enum, its
+    // impls, and the ser/deser/serde/schemars impls all live in the common crate).
+    if !cli.export_static_files() {
+        // Place the re-export in Int's ROOT module scope (via `rust`/`wasm`), NOT the `*_lib` scope:
+        // a `*_lib` `raw` is emitted before the crate inner attributes (`#![allow(...)]`) that
+        // finalization pushes there, which is a compile error. The ROOT module scope is merged AFTER
+        // the lib scope, so its `pub use` lands below the attrs — the same placement the in-crate
+        // extern re-export glue uses.
+        gen_scope.rust(types, &ident).raw(format!(
+            "pub use {}::{{Int, IntError}};",
+            cli.common_import_rust()
+        ));
+        if cli.wasm {
+            // Wasm FACE of `Int`: the common crate's WASM crate, NOT its rust crate.
+            // `common_import_wasm()` returns the override string verbatim — but that names the rust
+            // runtime crate (its existing uses import the rust `serialization`/`ordered_hash_map` from
+            // wasm code), so a bare `pub use <override>::Int;` re-exports the rust enum where a
+            // `#[wasm_bindgen]` class is needed and any exported method returning `Int` fails to
+            // compile. Route the override key through `--extern-wasm-crate` (the documented pairing:
+            // `--common-import-override=cml_core --extern-wasm-crate=cml_core=cml_core_wasm`), falling
+            // back to `common_import_wasm()` when unmapped — the same rule the deferred collection
+            // wrappers follow, and the unmapped fallback is what a single-crate target (rust+wasm faces
+            // in one crate) relies on. The lookup key matches the map's convention (the extern-dep
+            // module name, `extern_dep_names()`) exactly as the `mod.rs`/`requests.rs` lookups do — no
+            // extra normalization.
+            let wasm_common = cli
+                .extern_wasm_crate_map()
+                .get(cli.common_import_rust())
+                .cloned()
+                .unwrap_or_else(|| cli.common_import_wasm());
+            gen_scope
+                .wasm(types, &ident)
+                .raw(format!("pub use {wasm_common}::Int;"));
+            // The common wasm crate has no `IntError` (it's not a shared type); keep the local
+            // `JsError` parity alias the non-override wasm path emits below — the wasm `from_str`
+            // maps rust's `FromStr`-associated `IntError` to `JsError`.
+            gen_scope
+                .wasm(types, &ident)
+                .push_type_alias(TypeAlias::new("IntError", "JsError").vis("pub").clone());
+        }
+        return;
+    }
     if cli.wasm {
         let mut wrapper = create_base_wasm_wrapper(gen_scope, types, &ident, true, cli);
         let mut wasm_new = codegen::Function::new("new");

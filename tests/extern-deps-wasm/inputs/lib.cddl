@@ -6,3 +6,13 @@ everything = [
     ; ... and as a table value
     table: { * uint => extern_crate_foo },
 ]
+
+; `int` under `--common-import-override` with a SPLIT rust/wasm dep: the rust re-export points at the
+; rust common crate (`extern_dep_crate`) while the WASM re-export must route through the
+; `--extern-wasm-crate` mapping (`extern_dep_crate_wasm`) — the wasm FACE of the type, not the rust
+; crate. Reference `int` in both shapes so both re-export sites are exercised on the split path.
+delta_coin = int
+
+int_holder = [
+    delta: int,
+]

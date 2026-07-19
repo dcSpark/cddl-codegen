@@ -14,6 +14,7 @@ pub mod a;
 pub mod b;
 pub mod collections;
 pub mod qux;
+pub use extern_dep_crate::Int;
 
 use a::Baz;
 use a::c::foo::Foo;
@@ -63,6 +64,8 @@ impl AsRef<Vec<cddl_lib::b::bar::Bar>> for BarList {
         &self.0
     }
 }
+
+pub type DeltaCoin = Int;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
@@ -225,6 +228,51 @@ impl From<FooList> for Vec<cddl_lib::a::c::foo::Foo> {
 
 impl AsRef<Vec<cddl_lib::a::c::foo::Foo>> for FooList {
     fn as_ref(&self) -> &Vec<cddl_lib::a::c::foo::Foo> {
+        &self.0
+    }
+}
+
+pub type IntError = JsError;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct IntHolder(pub(crate) cddl_lib::IntHolder);
+
+#[wasm_bindgen]
+impl IntHolder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        extern_dep_crate::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<IntHolder, JsError> {
+        extern_dep_crate::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn delta(&self) -> Int {
+        self.0.delta.clone().into()
+    }
+
+    pub fn new(delta: &Int) -> Self {
+        Self(cddl_lib::IntHolder::new(delta.clone().into()))
+    }
+}
+
+impl From<cddl_lib::IntHolder> for IntHolder {
+    fn from(native: cddl_lib::IntHolder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<IntHolder> for cddl_lib::IntHolder {
+    fn from(wasm: IntHolder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::IntHolder> for IntHolder {
+    fn as_ref(&self) -> &cddl_lib::IntHolder {
         &self.0
     }
 }

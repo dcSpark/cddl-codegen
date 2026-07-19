@@ -15,3 +15,12 @@ everything = [
     ; and root dir mod
     qux: qux,
 ]
+
+; `int` is common scaffolding: under `--common-import-override` the generator re-exports the common
+; crate's `Int`/`IntError` instead of minting a crate-local enum. Reference it in BOTH shapes so both
+; re-export sites are exercised: an alias-only use (no struct field) and a direct struct-field use.
+delta_coin = int
+
+int_holder = [
+    delta: int,
+]

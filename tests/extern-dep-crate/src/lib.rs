@@ -50,3 +50,98 @@ impl ExternCrateFoo {
         self.index_2.clone()
     }
 }
+
+// `Int` is common scaffolding a `--common-import-override` consumer RE-EXPORTS rather than mints (see
+// the generator's `generate_int` override path): a spec referencing `int` emits
+// `pub use extern_dep_crate::{Int, IntError};` (rust) and `pub use extern_dep_crate::Int;` (wasm)
+// instead of a crate-local copy, so both crates share ONE `Int` identity. This fixture is single-crate
+// (rust + wasm in one, like `ExternCrateFoo` above), so its `Int` is a single `#[wasm_bindgen]` type
+// serving both faces. The inner representation mirrors what cddl-codegen emits for a preserve-encodings
+// `Int` enum.
+#[derive(Clone, Debug)]
+pub(crate) enum IntEnum {
+    Uint {
+        value: u64,
+        encoding: Option<cbor_event::Sz>,
+    },
+    Nint {
+        value: u64,
+        encoding: Option<cbor_event::Sz>,
+    },
+}
+
+#[wasm_bindgen]
+#[derive(Clone, Debug)]
+pub struct Int(pub(crate) IntEnum);
+
+#[wasm_bindgen]
+impl Int {
+    pub fn new(x: i64) -> Self {
+        if x >= 0 {
+            Self::new_uint(x as u64)
+        } else {
+            Self::new_nint((x + 1).unsigned_abs())
+        }
+    }
+
+    pub fn new_uint(value: u64) -> Self {
+        Self(IntEnum::Uint {
+            value,
+            encoding: None,
+        })
+    }
+
+    /// * `value` - Value as encoded in CBOR - note: a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. to represent -5, pass in 4.
+    pub fn new_nint(value: u64) -> Self {
+        Self(IntEnum::Nint {
+            value,
+            encoding: None,
+        })
+    }
+
+    pub fn to_str(&self) -> String {
+        self.to_string()
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(string: &str) -> Result<Int, JsError> {
+        std::str::FromStr::from_str(string)
+            .map_err(|e| JsError::new(&format!("Int.from_str({}): {:?}", string, e)))
+    }
+}
+
+impl std::fmt::Display for Int {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.0 {
+            IntEnum::Uint { value, .. } => write!(f, "{}", value),
+            IntEnum::Nint { value, .. } => write!(f, "{}", -((*value as i128) + 1)),
+        }
+    }
+}
+
+impl std::str::FromStr for Int {
+    type Err = IntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let x = i128::from_str(s).map_err(IntError::Parsing)?;
+        Self::try_from(x).map_err(IntError::Bounds)
+    }
+}
+
+impl TryFrom<i128> for Int {
+    type Error = std::num::TryFromIntError;
+
+    fn try_from(x: i128) -> Result<Self, Self::Error> {
+        if x >= 0 {
+            u64::try_from(x).map(Self::new_uint)
+        } else {
+            u64::try_from((x + 1).unsigned_abs()).map(Self::new_nint)
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum IntError {
+    Bounds(std::num::TryFromIntError),
+    Parsing(std::num::ParseIntError),
+}
