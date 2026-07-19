@@ -13,12 +13,16 @@ expression: content
 // transparent rows (aliases, c-style enums, named collections) must simply exist. A
 // hand-edited or stale export — or a projection bug — therefore fails THIS crate's own
 // build, naming the type. Do not edit.
+// Rows carry NO per-row comments by design: a spec change can delete any row, and a
+// comment stranded on a deleted row is what the edit-preservation overlay turns into a
+// build-breaking sentinel on the next regen. All commentary lives in this fixed banner;
+// each row's type path is its own traceability.
 #[allow(dead_code)]
 fn _assert_serialize<T: cbor_event::se::Serialize>() {}
 #[allow(dead_code)]
 fn _assert_deserialize<T: crate::generated::serialization::Deserialize>() {}
 #[allow(dead_code)]
 fn _extern_interface_self_check() {
-    _assert_serialize::<crate::generated::TypeChoice>(); // type_choice
+    _assert_serialize::<crate::generated::TypeChoice>();
     _assert_deserialize::<crate::generated::TypeChoice>();
 }

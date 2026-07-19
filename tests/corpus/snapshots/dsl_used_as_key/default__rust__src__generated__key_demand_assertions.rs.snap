@@ -13,6 +13,5 @@ expression: content
 fn _key_demand_ord<T: Ord>() {}
 #[allow(dead_code)]
 fn _demand_keyed() {
-    // required by `@used_as_key` on keyed
     _key_demand_ord::<crate::generated::Keyed>();
 }

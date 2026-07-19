@@ -13,30 +13,34 @@ expression: content
 // transparent rows (aliases, c-style enums, named collections) must simply exist. A
 // hand-edited or stale export — or a projection bug — therefore fails THIS crate's own
 // build, naming the type. Do not edit.
+// Rows carry NO per-row comments by design: a spec change can delete any row, and a
+// comment stranded on a deleted row is what the edit-preservation overlay turns into a
+// build-breaking sentinel on the next regen. All commentary lives in this fixed banner;
+// each row's type path is its own traceability.
 #[allow(dead_code)]
 fn _assert_serialize<T: cbor_event::se::Serialize>() {}
 #[allow(dead_code)]
 fn _assert_deserialize<T: crate::generated::serialization::Deserialize>() {}
 #[allow(unused_imports)]
-use crate::generated::NestedArr as _; // nested_arr
+use crate::generated::NestedArr as _;
 #[allow(unused_imports)]
-use crate::generated::Nums as _; // nums
+use crate::generated::Nums as _;
 #[allow(unused_imports)]
-use crate::generated::Passthru as _; // passthru
+use crate::generated::Passthru as _;
 #[allow(unused_imports)]
-use crate::generated::PassthruMap as _; // passthru_map
+use crate::generated::PassthruMap as _;
 #[allow(unused_imports)]
-use crate::generated::PassthruTags as _; // passthru_tags
+use crate::generated::PassthruTags as _;
 #[allow(unused_imports)]
-use crate::generated::PassthruTagsMap as _; // passthru_tags_map
+use crate::generated::PassthruTagsMap as _;
 #[allow(unused_imports)]
-use crate::generated::TaggedList as _; // tagged_list
+use crate::generated::TaggedList as _;
 #[allow(unused_imports)]
-use crate::generated::Tags as _; // tags
+use crate::generated::Tags as _;
 #[allow(unused_imports)]
-use crate::generated::ValueMap as _; // value_map
+use crate::generated::ValueMap as _;
 #[allow(dead_code)]
 fn _extern_interface_self_check() {
-    _assert_serialize::<crate::generated::OptHolder>(); // opt_holder
+    _assert_serialize::<crate::generated::OptHolder>();
     _assert_deserialize::<crate::generated::OptHolder>();
 }

@@ -680,11 +680,13 @@ pub(crate) fn extern_interface_files(
 /// One entry of the dep-side compiled self-check (commit 5): the exported name, its scope-path
 /// components, and the assertion kind — sorted deterministically by `RustIdent` (`BTreeMap`
 /// iteration). Produced from the SAME projection walk `extern_interface_files` uses, so the export
-/// and its self-check share one membership computation and cannot drift.
+/// and its self-check share one membership computation and cannot drift. The row's source CDDL
+/// ident is deliberately NOT carried: the self-check emits no per-row comments (a comment on a
+/// deletable row is a preservation-overlay trap — see `export.rs`), and each row's type path is
+/// its own traceability.
 pub(crate) struct ExternCheckEntry {
     pub components: Vec<String>,
     pub ident: RustIdent,
-    pub source: String,
     pub kind: ExternCheckKind,
 }
 
@@ -699,7 +701,6 @@ pub(crate) fn extern_interface_check_entries(
         .into_iter()
         .map(|(ident, inc)| ExternCheckEntry {
             components: inc.components,
-            source: inc.source,
             kind: inc.check,
             ident,
         })

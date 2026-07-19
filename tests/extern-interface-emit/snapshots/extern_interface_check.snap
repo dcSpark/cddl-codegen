@@ -13,6 +13,10 @@ expression: content
 // transparent rows (aliases, c-style enums, named collections) must simply exist. A
 // hand-edited or stale export — or a projection bug — therefore fails THIS crate's own
 // build, naming the type. Do not edit.
+// Rows carry NO per-row comments by design: a spec change can delete any row, and a
+// comment stranded on a deleted row is what the edit-preservation overlay turns into a
+// build-breaking sentinel on the next regen. All commentary lives in this fixed banner;
+// each row's type path is its own traceability.
 #[allow(dead_code)]
 fn _assert_serialize<T: cbor_event::se::Serialize>() {}
 #[allow(dead_code)]
@@ -27,38 +31,38 @@ fn _assert_deserialize_embedded_group<
 >() {
 }
 #[allow(unused_imports)]
-use crate::generated::BigCoin as _; // big_coin
+use crate::generated::BigCoin as _;
 #[allow(unused_imports)]
-use crate::generated::Bn as _; // bn
+use crate::generated::Bn as _;
 #[allow(unused_imports)]
-use crate::generated::Ce as _; // ce
+use crate::generated::Ce as _;
 #[allow(unused_imports)]
-use crate::generated::Coin as _; // coin
+use crate::generated::Coin as _;
 #[allow(unused_imports)]
-use crate::generated::FooList as _; // foo_list
+use crate::generated::FooList as _;
 #[allow(unused_imports)]
-use crate::generated::Tbl as _; // tbl
+use crate::generated::Tbl as _;
 #[allow(dead_code)]
 fn _extern_interface_self_check() {
-    _assert_serialize::<crate::generated::Gc>(); // gc
+    _assert_serialize::<crate::generated::Gc>();
     _assert_deserialize::<crate::generated::Gc>();
-    _assert_raw_bytes::<crate::generated::Hash>(); // hash
-    _assert_serialize::<crate::generated::Holder>(); // holder
+    _assert_raw_bytes::<crate::generated::Hash>();
+    _assert_serialize::<crate::generated::Holder>();
     _assert_deserialize::<crate::generated::Holder>();
-    _assert_serialize::<crate::generated::Inst>(); // inst
+    _assert_serialize::<crate::generated::Inst>();
     _assert_deserialize::<crate::generated::Inst>();
-    _assert_serialize::<crate::generated::sub::module::NestedRec>(); // nested_rec
+    _assert_serialize::<crate::generated::sub::module::NestedRec>();
     _assert_deserialize::<crate::generated::sub::module::NestedRec>();
-    _assert_serialize::<crate::generated::Pg>(); // pg
+    _assert_serialize::<crate::generated::Pg>();
     _assert_serialize_embedded_group::<crate::generated::Pg>();
     _assert_deserialize::<crate::generated::Pg>();
     _assert_deserialize_embedded_group::<crate::generated::Pg>();
-    _assert_serialize::<crate::generated::Rec>(); // rec
+    _assert_serialize::<crate::generated::Rec>();
     _assert_deserialize::<crate::generated::Rec>();
-    _assert_serialize::<crate::generated::Tc>(); // tc
+    _assert_serialize::<crate::generated::Tc>();
     _assert_deserialize::<crate::generated::Tc>();
-    _assert_serialize::<crate::generated::UsesPg>(); // uses_pg
+    _assert_serialize::<crate::generated::UsesPg>();
     _assert_deserialize::<crate::generated::UsesPg>();
-    _assert_serialize::<crate::generated::Wrap>(); // wrap
+    _assert_serialize::<crate::generated::Wrap>();
     _assert_deserialize::<crate::generated::Wrap>();
 }

@@ -2191,6 +2191,137 @@ fn extern_interface_check_mutation_fails_build() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// Regression pin for the preservation-overlay sentinel-trap class (feature-requests 03): the two
+/// generated sidecar files whose rows track spec rules — `extern_interface_check.rs` (a `use … as _;`
+/// / `_assert_*::<…>()` row per exported name) and `key_demand_assertions.rs` (a `_demand_<rule>` fn
+/// per `@used_as_key` tag) — must carry NO per-row comments. A trailing/own-line comment on a row a
+/// spec change can delete is stranded on the deleted row and re-injected by the edit-preservation
+/// overlay as a `// cddl-codegen:unpreserved-comment` + `compile_error!` sentinel that every further
+/// regen carries forward (a self-perpetuating trap). This regenerates IN PLACE over prior output
+/// (the only path that runs the overlay) with a rule deletion, and asserts neither file gains a trap
+/// block. Fixed by making both files banner-only (`generation/export.rs`). In-process via
+/// `generate_to_disk` (the overlay lives in the disk-write seam; `generated_strings` never runs it).
+#[test]
+fn extern_interface_check_regen_over_deletion_no_trap() {
+    use clap::Parser;
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_codegen_check_regen_no_trap_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    let input = dir.join("in");
+    let output = dir.join("out");
+    std::fs::create_dir_all(&input).unwrap();
+
+    // v1: transparent aliases (`use … as _;` rows), a record, and two `@used_as_key` tags (two
+    // `_demand_<rule>` fns). v2 deletes `alias_b` and `other_key` (+ the rules referencing them).
+    let v1 = "alias_a = uint\n\
+              alias_b = tstr\n\
+              my_key = [a: uint] ; @used_as_key\n\
+              other_key = [b: uint] ; @used_as_key\n\
+              wrap = [x: alias_a, y: alias_b]\n\
+              stuff = { * my_key => uint }\n\
+              more = { * other_key => uint }\n";
+    let v2 = "alias_a = uint\n\
+              my_key = [a: uint] ; @used_as_key\n\
+              wrap = [x: alias_a]\n\
+              stuff = { * my_key => uint }\n";
+
+    let regen = |spec: &str| {
+        std::fs::write(input.join("lib.cddl"), spec).unwrap();
+        let cli = crate::cli::Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            input.to_str().unwrap(),
+            "--output",
+            output.to_str().unwrap(),
+            "--wasm=false",
+        ]);
+        crate::api::generate_to_disk(&cli).unwrap_or_else(|e| panic!("generation failed: {e}"));
+    };
+    regen(v1);
+    regen(v2); // regenerate IN PLACE — the overlay reads the v1 files still on disk
+
+    for name in ["extern_interface_check.rs", "key_demand_assertions.rs"] {
+        let path = output.join("rust/src/generated").join(name);
+        let content = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("{name} must be emitted at {path:?}: {e}"));
+        assert!(
+            !content.contains("compile_error!"),
+            "{name} gained a `compile_error!` sentinel after regen-over-deletion — a deleted row's \
+             per-row comment was stranded into the preservation-overlay trap:\n{content}"
+        );
+        assert!(
+            !content.contains("cddl-codegen:unpreserved-comment"),
+            "{name} gained a `cddl-codegen:unpreserved-comment` sentinel after regen-over-deletion — \
+             the sidecar files must be banner-only so no row can strand a comment:\n{content}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Pin for feature-requests 03 (the trap corpus) and 04 (rustfmt glue) at once: `extern_interface_check.rs`
+/// must carry NO trailing (end-of-line) `//` comment on any row. The fixture's rule-ident order
+/// (BTreeMap-by-`RustIdent`: the root `Withdrawals`, then scope `plutus`'s `CostModels`, `RedeemerTag`)
+/// differs from rustfmt's import-path sort order, so the pre-fix emission both (a) put a deletable
+/// `// <cddl>` marker on every row — the 03 trap source — and (b) had rustfmt reorder the `use` rows
+/// and GLUE a moved row's marker onto another line (`… as _; // redeemer_tag // withdrawals`, request
+/// 04). Banner-only rows have no marker to strand or glue. Asserts on `generated_strings` output
+/// (post-rustfmt, in-process): every `//` in the check file is either the provenance banner or the
+/// fixed self-check banner, never a trailing row comment.
+#[test]
+fn extern_interface_check_has_no_trailing_row_comments() {
+    use clap::Parser;
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_codegen_check_no_trailing_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("plutus")).unwrap();
+    std::fs::write(
+        dir.join("lib.cddl"),
+        "withdrawals = { * uint => uint }\n\
+         big = [c: cost_models, r: redeemer_tag, w: withdrawals]\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("plutus/mod.cddl"),
+        "redeemer_tag = 0 / 1 / 2 / 3\ncost_models = { * uint => uint }\n",
+    )
+    .unwrap();
+
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        dir.to_str().unwrap(),
+        "--output",
+        "check_no_trailing_unused",
+        "--wasm=false",
+    ]);
+    let files =
+        crate::api::generated_strings(&cli).unwrap_or_else(|e| panic!("generation failed: {e}"));
+    let _ = std::fs::remove_dir_all(&dir);
+    let check = files
+        .get("rust/src/generated/extern_interface_check.rs")
+        .expect("extern_interface_check.rs must be emitted");
+
+    for line in check.lines() {
+        let trimmed = line.trim_start();
+        // A trailing comment is a `//` that follows non-comment code on the same line. Own-line
+        // banner comments (the only comments allowed here) start with `//` after trimming.
+        if trimmed.starts_with("//") {
+            continue;
+        }
+        if let Some(idx) = line.find("//") {
+            panic!(
+                "extern_interface_check.rs has a trailing `//` comment on a code row — the 03/04 \
+                 per-row-marker trap is back (rows must be banner-only): {:?}",
+                &line[idx..]
+            );
+        }
+    }
+}
+
 /// The wasm-ABI matrix compile-gate. `cddl-matrix/project_wasm_matrix.ts` enumerates the cross-product
 /// {wasm-ABI type-shape} × {boundary role} into `tests/matrix_wasm/*.cddl` — one minimal fixture per
 /// cell. This generates each `--wasm=true` and `cargo check`s the wasm crate (which pulls the rust crate
@@ -5100,8 +5231,10 @@ fn used_as_key_ord_flavor_assertion_fails_on_missing_supply() {
             .expect("key_demand_assertions.rs must be emitted for a flavored root");
     assert!(
         assertions.contains("_key_demand_ord::<crate::generated::Keyed>();")
-            && assertions.contains("@used_as_key ord` on keyed"),
-        "the assertion must name the ord carrier and cite the tag:\n{assertions}"
+            && assertions.contains("fn _demand_keyed()"),
+        "the assertion must name the ord carrier and the `_demand_<rule>` fn naming the tagged \
+         rule (the file is banner-only — no per-fn comment, which would strand into a \
+         preservation-overlay trap on tag deletion):\n{assertions}"
     );
 
     // Inject a hand-written `Value` extern that supplies Hash+Eq but deliberately NOT Ord.

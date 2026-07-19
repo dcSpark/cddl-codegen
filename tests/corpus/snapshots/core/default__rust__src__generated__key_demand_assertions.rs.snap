@@ -13,16 +13,13 @@ expression: content
 fn _key_demand_ord<T: Ord>() {}
 #[allow(dead_code)]
 fn _demand_group_choice() {
-    // required by `@used_as_key` on group_choice
     _key_demand_ord::<crate::generated::GroupChoice>();
 }
 #[allow(dead_code)]
 fn _demand_outer() {
-    // required by `@used_as_key` on outer
     _key_demand_ord::<crate::generated::Outer>();
 }
 #[allow(dead_code)]
 fn _demand_type_choice() {
-    // required by `@used_as_key` on type_choice
     _key_demand_ord::<crate::generated::TypeChoice>();
 }
