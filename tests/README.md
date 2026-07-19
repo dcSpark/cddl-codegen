@@ -385,7 +385,15 @@ skips re-minting collection wrappers a dependency's committed `generated/collect
 the dep already owns) over `tests/extern-deps-wasm-index` and the dedicated wasm-clean dep pair
 `tests/index-dep-crate{,-wasm}` — dedicated because the shared `tests/extern-dep-crate` pair
 intentionally double-defines its `#[wasm_bindgen]` class across both crates (the single-crate
-convention `extern_deps` needs) and so can never link for the real wasm target. It is a bespoke
+convention `extern_deps` needs) and so can never link for the real wasm target. The
+`extern-dep-crate` pair also carries the common `Int` the `--common-import-override` cells
+re-export instead of minting: `tests/extern-dep-crate` a single `#[wasm_bindgen]` `Int` serving
+both faces (the same single-crate convention), `tests/extern-dep-crate-wasm` a wrapper over it
+with the `From`/`AsRef` boundary contract. Both are hand mirrors of generated `Int` — the
+preserve-encodings `Uint`/`Nint` representation, wire impls, and encoding-insensitive key
+semantics — enforced today only by round-tripping through the fixture's own impls (the mirror
+drift gate is a recorded `TESTING_ROADMAP.md` item, "Negative failure-SHAPE vectors + the
+fixture-`Int` mirror gate"). It is a bespoke
 harness rather than `run_test`: it asserts the CLI's stderr warning for an all-extern wrapper
 absent from the index, the deferred `use <dep_wasm>::collections::…;` imports (plain `use`, never
 re-exported), the local-mint cells (not-in-index and mixed-element), a cross-crate behavioral
