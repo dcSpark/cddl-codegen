@@ -156,7 +156,19 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    - **Real-world corpus differential** (see `draft/testing-recommendations/RECOMMENDATIONS.md`):
      synthetic breadth vs real-world depth — recombination does not replace it.
 
-2. **Identifier-length realism (a fixture-corpus dimension, recur-first).** Every fixture corpus
+2. **Byte-fuzzer surface rot: the tag-set idiom's deserialize peek path is unfuzzed.** The
+   `from_cbor_bytes` fuzz crate generates from `tests/preserve-encodings/input.cddl`, which
+   predates the transparent tag-set collapse — so the optionally-tagged deserialize arm (peek the
+   major type, conditionally consume + validate the tag, then the collection body; the one
+   hand-rolled branch the tag-set feature added to deserialization) is structurally unreachable
+   by the fuzzer. Hostile inputs the current tests never compose (a tag head with a truncated
+   body, a tag-of-a-tag, a non-array after the tag under indefinite lengths) are exactly what the
+   fuzz boundary exists to find. Remedy: add a collapsed `set`/`nonempty_set` field (as a generic
+   instance, to also cover the convergence path) to the preserve-encodings fixture spec and
+   re-run `fuzz/generate.sh` — costs one snapshot re-bless of that suite; do it in a session that
+   can run the fuzz smoke (`fuzz_compile_rot` is full-tier).
+
+3. **Identifier-length realism (a fixture-corpus dimension, recur-first).** Every fixture corpus
    uses short synthetic names, so any emission-width-driven failure class is structurally
    unreachable by every gate — proven by escape: consumer-scale names (CML's
    `MapTransactionIndexTo…AuxiliaryData` wrappers, fully-qualified extern paths) pushed wasm
