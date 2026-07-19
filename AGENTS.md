@@ -162,6 +162,17 @@ Rules:
   candidate PIDs from the stopped task's own process tree / scratch paths (the task output names
   them), confirm the parent is dead, and kill by PID — and treat an unexplained exit -15 in any
   log as possible cross-session kill before suspecting the harness.
+- **A fresh worktree/clone needs two setup steps before its first tier run** (both proven
+  2026-07-20, REQUEST-08 worktree; each is gitignored state present only in a checkout that has
+  run before): (1) `./fuzz/generate.sh` — the workspace manifest references the gitignored
+  `fuzz/generated` crates, and the warm-up `cargo fetch` needs them to exist BEFORE the fuzz gate
+  that would regenerate them; (2) `bun install` in `cddl-matrix/` — `matrix_typecheck` fails on
+  the absent `node_modules`.
+- **When generating crates e2e outside the repo root, pass `--static-dir <checkout>/static`
+  explicitly.** The default is the RELATIVE path `static`, resolved against the process CWD — a
+  session whose CWD is a different checkout silently generates with THAT checkout's runtime
+  (proven 2026-07-20: a worktree e2e check picked up master's pre-feature `static/` and failed on
+  a type the feature had just added, masquerading as a real bug).
 - **Heavy tiers contend across sessions — coordinate before launching one while another session's
   gates run.** Concurrent multi-minute tiers share `/tmp` scratch and disk headroom; two same-day
   runs saturating it is the ENOSPC ledger entry in `tests/TESTING_ROADMAP.md` (three gates died on

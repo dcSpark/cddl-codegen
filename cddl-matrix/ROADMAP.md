@@ -52,6 +52,21 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   the seam; comments to the grammar). They are tool-interchange rather than user-authored CDDL, so
   rows may be out of scope — but they ARE consumed input surface. A deliberate yes/no belongs
   here rather than silent omission.
+- **Mint a row for the transparent tag-set idiom collapse.** cddl-codegen now collapses a two-arm
+  type choice whose arms are the same collection but for one `Tagged(N)` op
+  (`my_set = #6.258([* a]) / [* a]`, user doc: `docs/docs/current_capacities.mdx`
+  § "Transparent tag-set idiom") into a transparent optionally-tagged alias — a tool-specific
+  SEMANTIC of a spec-valid shape, so it belongs in the matrix the same way the
+  `record_array_tagged` group-choice-arm cell pins tag-head discriminant behavior: a
+  feature/containment row whose execution-gated verdict pins "collapses + both wire arms
+  round-trip", plus a near-miss twin pinning NON-collapse (the existing both-tagged row
+  `t = #6.10(int) / #6.11(tstr)` already pins the enum side by execution; a mismatched-bounds
+  twin would complete it). No current row's example matches the recognized shape in either
+  direction (scanned: no `#6.N([..]) / [..]` arm pairs, no same-type tagged/untagged
+  non-collection pairs), so no existing verdict is stale — this is purely a coverage hole.
+  Interim pins until minted: `tests/corpus/tag_set_idiom.cddl`/`tag_set_generic.cddl`/
+  `tag_set_near_miss.cddl`, the `opt_set` golden_hex vectors, and
+  `src/tests/optional_tag_set_tests.rs`.
 
 ## F4 / F5 follow-ons (only when their consumer exists)
 
