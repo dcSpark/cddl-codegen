@@ -647,6 +647,14 @@ const CORPUS_EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
   "nullable_nested.maybe_denum": ["7"],  // `data_enum / null` — the enum arm is exempt (a named choice), null → 7
   "nullable_nested.maybe_uint": ["7", "int"],
   "table_enum_key.ikey": ["int"],
+  // REQUEST-08 tag-set rows: the CDDL still SPELLS two arms (`#6.258([..]) / [..]` — tag → major 6,
+  // array → major 4) even though codegen collapses the idiom to one transparent type, so the floor
+  // demands an accept vector per WIRE arm — exactly the both-arms decode evidence the collapse needs.
+  // The near-miss row stays a real two-arm choice (mismatched bounds) with the same two majors.
+  "tag_set_idiom.int_neset": ["4", "6"],
+  "tag_set_idiom.int_set": ["4", "6"],
+  "tag_set_idiom.text_set": ["4", "6"],
+  "tag_set_near_miss.near_miss": ["4", "6"],
   "type_choice.type_choice": ["2", "3", "int"],
 };
 const CORPUS_MIN_FIXTURES = 55;   // ≥ 55 corpus fixtures enumerated (adjust to actuals; 60 at HEAD)
