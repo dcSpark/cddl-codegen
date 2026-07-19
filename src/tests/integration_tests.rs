@@ -8928,6 +8928,156 @@ fn workspace_key_requests_flavored_contract() {
     );
 }
 
+/// The borrowed_key_types.rs self-check must assert on a borrowed key type's TRUE module path when
+/// that dep type lives in a NON-ROOT scope — the compiled cross-crate seam the unit layer
+/// (`borrowed_key_types_self_check_carries_scoped_dep_path` in `extern_import_tests.rs`, plus the
+/// parser's `key_types_skips_scoped_self_check_body`) structurally cannot see. A dep type declared in
+/// a scope (`sub/module.cddl`) is reachable only as `wr_dep::sub::module::ScopedKey`; the dep's thin
+/// root does not re-export scope contents, so the old root-path self-check `wr_dep::ScopedKey` was a
+/// "cannot find type" (E0412-class) error in the consumer build — even though the consumer's own
+/// generated `use` line takes the correct scoped path. This pins that the self-check now agrees with
+/// the code it guards, AND that dep-side `--key-requests` resolves the bare `scoped_key` row against
+/// the dep's SCOPED rule (scope-agnostic by RustIdent) so ScopedKey actually gets the key derives.
+///
+/// Fixtures: `consumer_inputs_scoped` (keys a map on the scoped extern `scoped_key`, declared under
+/// `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/wr_dep/sub/module.cddl`) and `dep_inputs_scoped` (owns
+/// `scoped_key = [x: uint]` in its own `sub/module.cddl` scope). Default profile (no
+/// `--preserve-encodings`): the bare bundle is Eq/Ord/PartialOrd (no Hash).
+#[test]
+fn workspace_key_requests_scoped_contract() {
+    use std::io::Write;
+    use std::str::FromStr;
+    if !tool_exists("cargo") {
+        return;
+    }
+    let base = std::path::PathBuf::from_str("tests/workspace-requests").unwrap();
+    // One shared CARGO_TARGET_DIR (per-checkout) so cbor_event + the dep crate build once.
+    let target_dir = std::env::temp_dir().join(format!(
+        "cddl_codegen_scoped_key_requests_{:016x}",
+        checkout_hash()
+    ));
+    for out in ["export_scoped_consumer", "export_scoped_dep"] {
+        let _ = std::fs::remove_dir_all(base.join(out));
+    }
+    let check = |crate_root: &std::path::Path| -> std::process::Output {
+        tool_cmd("cargo")
+            .arg("check")
+            .current_dir(crate_root)
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap()
+    };
+
+    // ===== Leg (a): CONSUMER EMIT — the self-check carries the SCOPED module path; the row is bare. =
+    // `--common-import-override=wr_dep` makes the consumer re-use the dep's serialization traits so
+    // the locally-minted `BTreeMap<ScopedKey, _>` deserializes the dep type (the scoped-borrow analog
+    // of the flavored contract's override); it does NOT affect the scoped self-check path.
+    let consumer_out = base.join("export_scoped_consumer");
+    let c = tool_cmd("cargo")
+        .arg("run")
+        .arg("--")
+        .arg("--input=tests/workspace-requests/consumer_inputs_scoped")
+        .arg("--output=tests/workspace-requests/export_scoped_consumer")
+        .arg("--lib-name=scoped-consumer")
+        .arg("--workspace-dep=wr_dep")
+        .arg("--common-import-override=wr_dep")
+        .arg("--extern-wasm-crate=wr_dep=wr_dep_wasm")
+        .arg("--wasm=false")
+        .output()
+        .unwrap();
+    assert!(
+        c.status.success(),
+        "scoped consumer generate failed:\n{}",
+        String::from_utf8_lossy(&c.stderr)
+    );
+    let sidecar_rel = "rust/src/generated/borrowed_key_types.rs";
+    let sidecar = std::fs::read_to_string(consumer_out.join(sidecar_rel)).unwrap();
+    // The self-check asserts on the dep type's TRUE module path — the same path the consumer's own
+    // generated `use` line takes — NOT a bare `wr_dep::ScopedKey` at the crate root.
+    assert!(
+        sidecar.contains("_assert_key_traits::<wr_dep::sub::module::ScopedKey>();"),
+        "the scoped borrowed key must be self-checked at its true module path:\n{sidecar}"
+    );
+    assert!(
+        !sidecar.contains("_assert_key_traits::<wr_dep::ScopedKey>();"),
+        "the scoped key must NOT be asserted at the dep crate root (the pre-fix E0412 bug):\n{sidecar}"
+    );
+    // The machine ROW stays the bare `(dep, cddl-ident)` two-column form — no scope column.
+    assert!(
+        sidecar.contains("pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] = &[(\"wr_dep\", \"scoped_key\")];"),
+        "the row must stay the bare two-column `(wr_dep, scoped_key)` form:\n{sidecar}"
+    );
+    // The consumer's own generated code takes exactly the scoped path (self-check must agree with it).
+    let consumer_mod =
+        std::fs::read_to_string(consumer_out.join("rust/src/generated/mod.rs")).unwrap();
+    assert!(
+        consumer_mod.contains("use wr_dep::sub::module::ScopedKey;"),
+        "the consumer's own generated code must import the scoped dep type at its true path:\n{consumer_mod}"
+    );
+
+    // ===== Leg (b): DEP DERIVE — --key-requests resolves the bare `scoped_key` against the SCOPED rule.
+    let sidecar_abs = consumer_out.join(sidecar_rel).canonicalize().unwrap();
+    let dep_out = base.join("export_scoped_dep");
+    let d = tool_cmd("cargo")
+        .arg("run")
+        .arg("--")
+        .arg("--input=tests/workspace-requests/dep_inputs_scoped")
+        .arg("--output=tests/workspace-requests/export_scoped_dep")
+        .arg("--lib-name=wr-dep")
+        .arg("--wasm=false")
+        .arg(format!(
+            "--key-requests=scoped_consumer={}",
+            sidecar_abs.to_str().unwrap()
+        ))
+        .output()
+        .unwrap();
+    assert!(
+        d.status.success(),
+        "scoped dep generate failed:\n{}",
+        String::from_utf8_lossy(&d.stderr)
+    );
+    // The dep resolved the bare `scoped_key` row against its OWN `sub::module` scope and derived the
+    // full Eq/Ord bundle on ScopedKey (proving dep-side resolution is scope-agnostic).
+    let dep_scoped_mod =
+        std::fs::read_to_string(dep_out.join("rust/src/generated/sub/module/mod.rs")).unwrap();
+    assert!(
+        dep_scoped_mod.contains(
+            "#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]\npub struct ScopedKey"
+        ),
+        "the scoped `scoped_key` row must make the dep key-derive its SCOPED ScopedKey:\n{dep_scoped_mod}"
+    );
+
+    // ===== Leg (c): DEP COMPILES. =====
+    let c_check = check(&dep_out.join("rust"));
+    assert!(
+        c_check.status.success(),
+        "the dep must compile:\n{}",
+        String::from_utf8_lossy(&c_check.stderr)
+    );
+
+    // ===== Leg (d): CONSUMER COMPILES AGAINST DEP — the scoped self-check resolves (RED at HEAD). ==
+    // Pre-fix the self-check emitted `wr_dep::ScopedKey`, a "cannot find type" error here; the fix
+    // emits the scoped path so both the self-check and the `BTreeMap<ScopedKey, _>` resolve.
+    let mut cargo_toml = std::fs::OpenOptions::new()
+        .append(true)
+        .open(consumer_out.join("rust/Cargo.toml"))
+        .unwrap();
+    write!(
+        cargo_toml,
+        "\nwr-dep = {{ path = \"../../export_scoped_dep/rust\" }}\n"
+    )
+    .unwrap();
+    std::mem::drop(cargo_toml);
+    let d_check = check(&consumer_out.join("rust"));
+    assert!(
+        d_check.status.success(),
+        "the consumer must compile against the dep: the scoped self-check \
+         `_assert_key_traits::<wr_dep::sub::module::ScopedKey>()` and the minted \
+         `BTreeMap<ScopedKey, _>` both resolve at the dep's true module path:\n{}",
+        String::from_utf8_lossy(&d_check.stderr)
+    );
+}
+
 /// `--workspace-dep` is honored MODE-INDEPENDENTLY, including its startup validation: under
 /// `--wasm=false`, a `--workspace-dep` naming something that is not an extern dependency must still
 /// exit NONZERO naming the unknown dep (the `load_workspace_deps` panic), never a silent ignore.

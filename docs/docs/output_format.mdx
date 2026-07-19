@@ -378,6 +378,16 @@ naming the type) and the machine-read `BORROWED_KEY_TYPES` table of
 [`--key-requests`](./command_line_flags) and seeds into its key-derive computation before finalize.
 Strictly parsed under the same never-consume-a-drifted-file principle as `BORROWED_SHAPES`.
 
+The self-check asserts on the borrowed type at the dependency's **real module path** — the exact path
+the consumer already knows it by through the extern-import / extern-deps channel and uses in its own
+generated `use` lines. When the dependency's type lives in a non-root scope, that path is scoped
+(`cml_dep::sub::module::Foo`); the dependency's thin root does not re-export scope contents, so a
+bare `cml_dep::Foo` would be a "cannot find type" error. The `BORROWED_KEY_TYPES` **rows** are
+independent of this: each row stays the bare `(dep rust-crate name, cddl ident)` regardless of scope
+(the first column is the dep crate name = the type's first scope component), and the dependency
+resolves it scope-agnostically by cddl ident — so no scope column is ever added and root-only sidecars
+stay byte-identical.
+
 The one reserved CDDL name that can legally appear as a row ident is `int` — it names the built-in
 `Int`, which under [`--common-import-override`](./command_line_flags) this crate re-exports from the
 common crate rather than minting, so a map keyed on `int` records `(<override>, "int")` and the common

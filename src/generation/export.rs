@@ -782,7 +782,13 @@ impl GenerationScope {
         // `#[allow(dead_code)] pub(crate) const BORROWED_KEY_TYPES` machine table (rows sorted by
         // (dep, ident); the first column is the dep's RUST crate name — the extern-deps dir name).
         if !self.workspace_deps.is_empty() {
-            let mut rows: Vec<(String, String, DemandSet)> = Vec::new();
+            // Each row carries `(dep-crate name, cddl ident, self-check module path, demand)`. The
+            // machine TABLE only emits `(dep, ident[, flavor])`; the module-path column feeds the
+            // compiled self-check ONLY, so a dep type living in a non-root scope is asserted at its
+            // TRUE path (`{dep}::{scope…}::{Ident}`) — the same path the consumer's own generated
+            // `use` lines take. A dep-ROOT type's scope is just the dep crate name, so its path
+            // column equals `{dep}` and root-only sidecars stay byte-identical.
+            let mut rows: Vec<(String, String, String, DemandSet)> = Vec::new();
             let int_ident = RustIdent::new(CDDLIdent::new("int"));
             for ident in types.used_as_key_idents() {
                 // The built-in `Int` extern lives in ROOT (export) scope, so the scope-attribution
@@ -798,7 +804,14 @@ impl GenerationScope {
                         let common = cli.common_import_rust();
                         if self.workspace_deps.contains(common) {
                             let demand = types.key_demand(ident).unwrap_or_default();
-                            rows.push((common.to_owned(), "int".to_owned(), demand));
+                            // `Int` is root-visible in the common crate, so its self-check path is
+                            // just the crate name — `{common}::Int`.
+                            rows.push((
+                                common.to_owned(),
+                                "int".to_owned(),
+                                common.to_owned(),
+                                demand,
+                            ));
                         }
                     }
                     continue;
@@ -814,7 +827,16 @@ impl GenerationScope {
                     continue;
                 }
                 let demand = types.key_demand(ident).unwrap_or_default();
-                rows.push((dep.clone(), convert_to_snake_case(ident.as_ref()), demand));
+                // The full non-export scope path (`{dep}::{scope…}`) is what the self-check asserts
+                // on — the dep's thin root does not re-export scope contents, so a bare `{dep}::Ident`
+                // would be E0412 for a scoped type. For a dep-ROOT type this is just `{dep}`.
+                let scope_path = scope.components().join("::");
+                rows.push((
+                    dep.clone(),
+                    convert_to_snake_case(ident.as_ref()),
+                    scope_path,
+                    demand,
+                ));
             }
             rows.sort();
             rows.dedup();
@@ -822,7 +844,7 @@ impl GenerationScope {
             // through a `@used_as_key hash`/`ord` root) needs the flavored 3-column format + per-flavor
             // self-check bound. When every borrowed key is `bare` (the universal pre-flavor case), the
             // legacy 2-column form is emitted BYTE-IDENTICALLY — no banner/type/self-check churn.
-            let any_flavored = rows.iter().any(|(_, _, d)| d.hash || d.ord);
+            let any_flavored = rows.iter().any(|(_, _, _, d)| d.hash || d.ord);
             let sidecar = if any_flavored {
                 let mut s = String::from(
                     "// This file records every map-key type this crate borrows from workspace deps.\n\
@@ -833,7 +855,7 @@ impl GenerationScope {
                 );
                 // One bound-carrier per distinct demand (the flavor decides the bound), then a
                 // per-row self-check call routed to its flavor's carrier.
-                let mut demands: Vec<DemandSet> = rows.iter().map(|(_, _, d)| *d).collect();
+                let mut demands: Vec<DemandSet> = rows.iter().map(|(_, _, _, d)| *d).collect();
                 demands.sort();
                 demands.dedup();
                 let assert_fn = |d: DemandSet| {
@@ -850,15 +872,15 @@ impl GenerationScope {
                     ));
                 }
                 s.push_str("#[allow(dead_code)]\nfn _borrowed_key_types_self_check() {\n");
-                for (dep, ident, d) in &rows {
+                for (_dep, ident, scope_path, d) in &rows {
                     let ty = RustIdent::new(CDDLIdent::new(ident.clone()));
-                    s.push_str(&format!("    {}::<{dep}::{ty}>();\n", assert_fn(*d)));
+                    s.push_str(&format!("    {}::<{scope_path}::{ty}>();\n", assert_fn(*d)));
                 }
                 s.push_str("}\n");
                 s.push_str(
                     "#[allow(dead_code)]\npub(crate) const BORROWED_KEY_TYPES: &[(&str, &str, &str)] = &[\n",
                 );
-                for (dep, ident, d) in &rows {
+                for (dep, ident, _scope_path, d) in &rows {
                     let flavor = key_flavor_token(*d);
                     s.push_str(&format!("    ({dep:?}, {ident:?}, {flavor:?}),\n"));
                 }
@@ -882,16 +904,18 @@ impl GenerationScope {
                 ));
                 if !rows.is_empty() {
                     s.push_str("#[allow(dead_code)]\nfn _borrowed_key_types_self_check() {\n");
-                    for (dep, ident, _) in &rows {
+                    for (_dep, ident, scope_path, _) in &rows {
                         let ty = RustIdent::new(CDDLIdent::new(ident.clone()));
-                        s.push_str(&format!("    _assert_key_traits::<{dep}::{ty}>();\n"));
+                        s.push_str(&format!(
+                            "    _assert_key_traits::<{scope_path}::{ty}>();\n"
+                        ));
                     }
                     s.push_str("}\n");
                 }
                 s.push_str(
                     "#[allow(dead_code)]\npub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] = &[\n",
                 );
-                for (dep, ident, _) in &rows {
+                for (dep, ident, _scope_path, _) in &rows {
                     s.push_str(&format!("    ({dep:?}, {ident:?}),\n"));
                 }
                 s.push_str("];\n");

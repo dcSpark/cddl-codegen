@@ -1,0 +1,7 @@
+; Scoped-borrow DEP spec. The dep OWNS `scoped_key` (a real struct) but defines it in a NON-ROOT
+; scope (`sub/module.cddl` -> the `sub::module` scope, reachable externally as
+; `wr_dep::sub::module::ScopedKey`). This mirrors the module path the scoped-borrow consumer knows it
+; by. `root` references it so the rule is reachable. The dep-side `--key-requests` resolution is by
+; bare RustIdent (scope-agnostic), so the consumer's bare `scoped_key` row still seeds this scoped
+; rule used-as-key, and the dep derives the Eq/Ord bundle on ScopedKey.
+root = [a: scoped_key]

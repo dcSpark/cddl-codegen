@@ -1463,6 +1463,56 @@ pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str, &str)] = &[
         );
     }
 
+    // The self-check fn body is skipped wholesale by brace depth, so a scoped-path self-check
+    // (`dep::sub::module::Ident`, emitted when a borrowed key lives in a non-root scope) parses to
+    // exactly the same bare-ident rows as the root-path form — an OLD parser reading a NEW sidecar
+    // stays compatible. The ROWS are unchanged; only the self-check body carries the module path.
+    #[test]
+    fn key_types_skips_scoped_self_check_body() {
+        let src = r#"// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+// This file records every map-key type this crate borrows from workspace deps.
+// It is machine-read by those deps' generation runs (--key-requests) so they derive the key
+// traits (Eq/Ord/PartialOrd, plus Hash under --preserve-encodings) on the borrowed type; the
+// compiled self-check below fails THIS crate's build if a dep drops such a derive.
+// Rows are (dep rust-crate name, cddl ident) of each borrowed map-key type.
+#[allow(dead_code)]
+fn _assert_key_traits<K: Eq + Ord + PartialOrd>() {}
+#[allow(dead_code)]
+fn _borrowed_key_types_self_check() {
+    _assert_key_traits::<wr_dep::RootKey>();
+    _assert_key_traits::<wr_dep::sub::module::ScopedKey>();
+}
+#[allow(dead_code)]
+pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] =
+    &[("wr_dep", "root_key"), ("wr_dep", "scoped_key")];
+"#;
+        assert_eq!(
+            parse_key_types_sidecar(src, "borrowed_key_types.rs"),
+            vec![
+                KeyTypeEntry {
+                    dep: "wr_dep".into(),
+                    ident: "root_key".into(),
+                    demand: DemandSet {
+                        bare: true,
+                        hash: false,
+                        ord: false
+                    },
+                },
+                KeyTypeEntry {
+                    dep: "wr_dep".into(),
+                    ident: "scoped_key".into(),
+                    demand: DemandSet {
+                        bare: true,
+                        hash: false,
+                        ord: false
+                    },
+                },
+            ]
+        );
+    }
+
     #[test]
     fn key_types_accepts_empty_file() {
         assert!(parse_key_types_sidecar(EMPTY_KEYS, "borrowed_key_types.rs").is_empty());

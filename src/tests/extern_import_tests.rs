@@ -1046,6 +1046,75 @@ fn transitive_wasm_sidecars_carry_dep_cddl_idents() {
     );
 }
 
+/// The borrowed_key_types.rs self-check must assert on the borrowed key type's TRUE module path — the
+/// same path the consumer's own generated `use` lines take — not a bare `{dep}::{Ident}` at the dep
+/// crate ROOT. A dep type living in a non-root scope (via an extern-deps stub tree
+/// `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/dep_crate/sub/module.cddl`) is reachable only as
+/// `dep_crate::sub::module::ScopedKey` (the thin root does not re-export scope contents), so the old
+/// bare `dep_crate::ScopedKey` self-check was E0412-class in the consumer build. The machine ROW is
+/// unaffected — it stays the bare `(dep, cddl-ident)` the dep resolves scope-agnostically. A dep-ROOT
+/// borrowed key (`root_key`) proves the path column collapses to `{dep}` (byte-identical to before).
+#[test]
+fn borrowed_key_types_self_check_carries_scoped_dep_path() {
+    // A consumer keying two maps: one on a SCOPED dep type (`scoped_key`, in `dep_crate::sub::module`)
+    // and one on a ROOT dep type (`root_key`, at the dep crate root). Both are borrowed key types.
+    let root = scratch("bkt_scoped");
+    write(
+        &root,
+        "lib.cddl",
+        "my_local = uint\nkm = {* scoped_key => my_local}\nkm2 = {* root_key => my_local}\n",
+    );
+    write(
+        &root,
+        "_CDDL_CODEGEN_EXTERN_DEPS_DIR_/dep_crate/mod.cddl",
+        "root_key = _CDDL_CODEGEN_EXTERN_TYPE_\n",
+    );
+    write(
+        &root,
+        "_CDDL_CODEGEN_EXTERN_DEPS_DIR_/dep_crate/sub/module.cddl",
+        "scoped_key = _CDDL_CODEGEN_EXTERN_TYPE_\n",
+    );
+    let map = generate(
+        &root,
+        &[
+            "--workspace-dep",
+            "dep_crate",
+            "--extern-wasm-crate",
+            "dep_crate=dep_crate_wasm",
+        ],
+    )
+    .expect("the scoped-key consumer must generate");
+    let _ = std::fs::remove_dir_all(&root);
+
+    let keys = &map["rust/src/generated/borrowed_key_types.rs"];
+    // The scoped key's self-check carries its FULL module path — matching the consumer's own `use`.
+    assert!(
+        keys.contains("_assert_key_traits::<dep_crate::sub::module::ScopedKey>();"),
+        "the scoped borrowed key must be self-checked at its TRUE module path:\n{keys}"
+    );
+    // The old ROOT-path bug form must be gone.
+    assert!(
+        !keys.contains("_assert_key_traits::<dep_crate::ScopedKey>();"),
+        "the scoped key must NOT be asserted at the dep crate root (the E0412 bug):\n{keys}"
+    );
+    // A dep-ROOT borrowed key keeps its bare `{dep}::{Ident}` self-check (path column == dep name).
+    assert!(
+        keys.contains("_assert_key_traits::<dep_crate::RootKey>();"),
+        "a dep-ROOT borrowed key stays asserted at the crate root:\n{keys}"
+    );
+    // The machine table ROWS are the bare `(dep, cddl-ident)` regardless of scope — the module path
+    // lives only in the self-check, never the table.
+    assert!(
+        keys.contains(r#"("dep_crate", "scoped_key")"#)
+            && keys.contains(r#"("dep_crate", "root_key")"#),
+        "the rows must stay bare `(dep, cddl-ident)` with no scope column:\n{keys}"
+    );
+    assert!(
+        keys.contains("pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)]"),
+        "the table stays the two-column form (no scope column added):\n{keys}"
+    );
+}
+
 /// Item 5 — byte-identity at transitive scale. The consumer built once from physical stubs of BOTH
 /// deps and once via two `--extern-import` flags must produce byte-identical rust output. This is the
 /// commit-6 acceptance pattern scaled to two deps; the pinless-migration variant is unnecessary here

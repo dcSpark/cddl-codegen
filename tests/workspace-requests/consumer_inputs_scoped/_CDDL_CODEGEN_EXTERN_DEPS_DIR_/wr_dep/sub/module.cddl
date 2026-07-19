@@ -1,0 +1,4 @@
+; Scoped extern-deps decl for the scoped-borrow consumer. Placing `scoped_key` under `sub/module.cddl`
+; (not the dep's `mod.cddl` root) puts it in the `wr_dep::sub::module` scope — so the consumer's
+; borrowed_key_types.rs self-check must carry that full module path.
+scoped_key = _CDDL_CODEGEN_EXTERN_TYPE_
