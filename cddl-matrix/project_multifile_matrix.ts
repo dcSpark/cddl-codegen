@@ -53,7 +53,12 @@ const CHECK = process.argv.includes("--check");
 // Excluded shapes (present in the wasm matrix, deliberately absent here):
 //   - `prim` (`ty: uint`, no defs) — nothing to PLACE in a module; a module needs at least one rule.
 //   - `extern` / `rawbytes` — user-supplied types (`_CDDL_CODEGEN_EXTERN_TYPE_` / raw-bytes); can't
-//     compile standalone (same permanent exclusion the wasm matrix carries for `extern`).
+//     compile standalone (same permanent exclusion the wasm matrix carries for `extern`). The
+//     exclusion bounds this gate, not the generator — extern shapes still have placement behavior,
+//     and its alias-position residue escaped to production once (feature request 07: generic-extern
+//     instance alias targets are `Base<Args>` type expressions). Hand-pinned by
+//     tests/extern-generic-scoped; a generation-only excluded-shapes leg is recorded recur-first in
+//     tests/TESTING_ROADMAP.md ("Multifile reference-POSITION coverage").
 interface Shape {
   defs: string[]; // named-type definitions -> module `a` (authored dependency order; CDDL is order-free)
   ty: string; // the shape's named rule, referenced cross-module by the `named` mode

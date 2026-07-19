@@ -652,9 +652,23 @@ composition-space cross-check that complements this matrix's curated per-shape g
   `pub type` line naming a cross-scope target — another position `scope_references` never walked,
   E0412) escaped to a production consumer's regen, discovered not by any sweep tell but as the
   consumer failure the sweep exists to prevent. The position axis now exists as the `aliased` mode
-  (`bal = <ty>`, every shape — fixed by the `scope_references` type-alias walk); the `gcvariant`
-  extension over the Record-resolving shapes remains the recorded remainder in
+  (`bal = <ty>`, every included shape — fixed by the `scope_references` type-alias walk); the
+  `gcvariant` extension over the Record-resolving shapes remains the recorded remainder in
   `tests/TESTING_ROADMAP.md` ("Multifile reference-POSITION coverage").
+  That mode's first day in production then proved a NEW axis surface: the SHAPES list's
+  EXCLUSIONS. The `extern`/`rawbytes` shapes are excluded because the compile floor cannot build
+  them standalone — but the exclusion bounds the gate, not the generator, and the walk's first
+  consumer regen broke exactly there: a generic-EXTERN instance's alias target is a `Base<Args>`
+  TYPE-EXPRESSION ident, emitted verbatim into the scope's `use` list (invalid Rust, rustfmt
+  abort; feature request 07 — same consumer-failure discovery signature as the `aliased` escape
+  itself). Fixed by decomposing in the walk (base imported at its declaring scope via the
+  single-owner `GenericInstance::extern_base_ident`, arguments walked); the residue is hand-pinned
+  (`tests/extern-generic-scoped`) rather than enumerated, since the constraint forcing the
+  exclusion is the compile floor's, and a generation-only excluded-shapes leg is recorded
+  recur-first in `tests/TESTING_ROADMAP.md` ("Multifile reference-POSITION coverage"). Sweep
+  lesson: an exclusion justified by the gate's execution model is not evidence the generator has
+  nothing to get wrong there — the periodic "what are we not enumerating?" question must read the
+  exclusion comments too, not just hunt missing rows.
   Two further instances of the hand-patched-consumer-output tell landed together in the
   wasm-wrapper visibility + rustfmt-skip delivery: CML replace-overlay blocks whose entire payload
   flipped a wasm tuple field's visibility (retired by the uniform `pub(crate)` policy —
