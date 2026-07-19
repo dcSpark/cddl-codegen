@@ -25,26 +25,19 @@ expression: ir
                     RustField {
                         name: "a",
                         rust_type: RustType {
-                            conceptual_type: Alias(
-                                Rust(
-                                    RustIdent(
-                                        "SetU64",
+                            conceptual_type: Array(
+                                RustType {
+                                    conceptual_type: Primitive(
+                                        U64,
                                     ),
-                                ),
-                                Array(
-                                    RustType {
-                                        conceptual_type: Primitive(
-                                            U64,
-                                        ),
-                                        encodings: [],
-                                        config: RustTypeSerializeConfig {
-                                            default: None,
-                                            bounds: None,
-                                            float_bounds: None,
-                                            basic_override: false,
-                                        },
+                                    encodings: [],
+                                    config: RustTypeSerializeConfig {
+                                        default: None,
+                                        bounds: None,
+                                        float_bounds: None,
+                                        basic_override: false,
                                     },
-                                ),
+                                },
                             ),
                             encodings: [
                                 OptionallyTagged(

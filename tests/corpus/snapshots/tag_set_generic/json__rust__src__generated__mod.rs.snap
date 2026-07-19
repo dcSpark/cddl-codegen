@@ -17,13 +17,13 @@ use crate::generated::non_empty::NonEmptyVec;
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct Holder {
-    pub a: SetU64,
+    pub a: Vec<u64>,
     pub b: NonemptySetText,
     pub c: NonemptyOsetPoint,
 }
 
 impl Holder {
-    pub fn new(a: SetU64, b: NonemptySetText, c: NonemptyOsetPoint) -> Self {
+    pub fn new(a: Vec<u64>, b: NonemptySetText, c: NonemptyOsetPoint) -> Self {
         Self { a, b, c }
     }
 }
