@@ -981,6 +981,31 @@ fn append_raw_bytes_defs(out: &std::path::Path, json: bool) {
     wasm_lib.write_all(wasm_def.as_bytes()).unwrap();
 }
 
+/// Append raw dependency snippets to a generated `Cargo.toml` in a position-robust way: insert them
+/// right after the `[dependencies]` header rather than at EOF. The generated rust manifest now ends
+/// with a `[features]` table (the wasm-bindgen feature gate), so a blind EOF append would land the
+/// deps UNDER `[features]`, where cargo reads them as feature values ("expected a sequence"). Each
+/// snippet may hold one or more `name = spec` lines (a leading/trailing blank line is tolerated).
+/// Falls back to seeding a fresh `[dependencies]` table if the manifest has none. These are throwaway
+/// test-scaffolding deps (never asserted byte-wise), so the reordering is immaterial to what's tested.
+fn append_manifest_deps(manifest: &std::path::Path, dep_snippets: &[&str]) {
+    let content = std::fs::read_to_string(manifest).unwrap();
+    let mut block = String::new();
+    for snippet in dep_snippets {
+        block.push_str(snippet.trim_matches('\n'));
+        block.push('\n');
+    }
+    const NEEDLE: &str = "[dependencies]\n";
+    let patched = match content.find(NEEDLE) {
+        Some(pos) => {
+            let at = pos + NEEDLE.len();
+            format!("{}{}{}", &content[..at], block, &content[at..])
+        }
+        None => format!("{}\n[dependencies]\n{}", content.trim_end(), block),
+    };
+    std::fs::write(manifest, patched).unwrap();
+}
+
 fn run_test(
     dir: &str,
     options: &[&str],
@@ -1132,21 +1157,14 @@ fn run_test(
     std::mem::drop(generated_mod);
     // add extra deps used within tests
     if !test_deps.is_empty() {
-        let mut cargo_toml = std::fs::OpenOptions::new()
-            .append(true)
-            .open(test_path.join(format!("{export_path}/rust/Cargo.toml")))
-            .unwrap();
-        for dep in test_deps {
-            cargo_toml.write_all(dep.as_bytes()).unwrap();
-        }
+        append_manifest_deps(
+            &test_path.join(format!("{export_path}/rust/Cargo.toml")),
+            test_deps,
+        );
         // copy test deps to wasm too in case they're used (e.g. extern deps dir crates)
-        if let Ok(mut cargo_toml_wasm) = std::fs::OpenOptions::new()
-            .append(true)
-            .open(test_path.join(format!("{export_path}/wasm/Cargo.toml")))
-        {
-            for dep in test_deps {
-                cargo_toml_wasm.write_all(dep.as_bytes()).unwrap();
-            }
+        let wasm_manifest = test_path.join(format!("{export_path}/wasm/Cargo.toml"));
+        if wasm_manifest.exists() {
+            append_manifest_deps(&wasm_manifest, test_deps);
         }
     }
     // run tests in generated code
@@ -3547,6 +3565,68 @@ fn no_synthesized_rust_collection_aliases_suppresses_only_synthesized() {
         "generated rust crate failed to compile with the flag on:\n{}",
         String::from_utf8_lossy(&check.stderr)
     );
+}
+
+/// The rust crate's c-style-enum `#[wasm_bindgen]` is gated behind the `--rust-wasm-feature` cargo
+/// feature (default `wasm`), so the rust crate compiles STANDALONE — feature off — without the
+/// optional wasm-bindgen dependency (the request this feature closes). Asserts (a) the emitted
+/// attribute is the `cfg_attr` form and NEVER a bare/ungated `#[wasm_bindgen]`, and (b) `cargo check`
+/// of the generated rust crate with the feature off succeeds. There is no workspace root above the
+/// generated `rust/`, so this check exercises the feature-OFF path; a workspace build would instead
+/// enable the feature via the wasm crate's path dep. Tier: check.ts `local`.
+#[test]
+fn rust_wasm_bindgen_feature_gated_crate_compiles_standalone() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_rust_wasm_feature_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    // a c-style enum is the one rust-crate construct that carries `#[wasm_bindgen]`
+    std::fs::write(&input, "fixed_enum = 0 / 1 / 2\n").unwrap();
+    let out = scratch.join("out");
+    let gen_out = tool_cmd("cargo")
+        .args(["run", "--"])
+        .arg(format!("--input={}", input.to_str().unwrap()))
+        .arg(format!("--output={}", out.to_str().unwrap()))
+        .arg("--wasm=true")
+        .output()
+        .unwrap();
+    assert!(
+        gen_out.status.success(),
+        "generation failed:\n{}",
+        String::from_utf8_lossy(&gen_out.stderr)
+    );
+    let rust_mod = std::fs::read_to_string(out.join("rust/src/generated/mod.rs")).unwrap();
+    assert!(
+        rust_mod.contains("#[cfg_attr(feature = \"wasm\", wasm_bindgen::prelude::wasm_bindgen)]"),
+        "c-style enum must carry the feature-gated wasm_bindgen attribute:\n{rust_mod}"
+    );
+    // never an ungated one: a bare `#[wasm_bindgen…]` would force the optional dep on a standalone
+    // rust build (the cfg_attr line starts with `#[cfg_attr`, so it does not match this).
+    for line in rust_mod.lines() {
+        assert!(
+            !line.trim_start().starts_with("#[wasm_bindgen"),
+            "ungated wasm_bindgen attribute in the generated rust crate:\n{line}"
+        );
+    }
+    let target_dir = scratch.join("target");
+    let check = tool_cmd("cargo")
+        .arg("check")
+        .current_dir(out.join("rust"))
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .output()
+        .unwrap();
+    assert!(
+        check.status.success(),
+        "standalone rust crate failed to compile with the wasm feature off:\n{}",
+        String::from_utf8_lossy(&check.stderr)
+    );
+    let _ = std::fs::remove_dir_all(&scratch);
 }
 
 /// The `wasm/src/generated/collections.rs` re-export index (R3a): every wasm run emits exactly one
@@ -6067,12 +6147,7 @@ fn ir_conformance_corpus() {
             // crate's Cargo.toml (CARGO_MANIFEST_DIR) — copy the fixture there.
             std::fs::copy(input, rust_dir.join("cddl_conformance_source.cddl")).unwrap();
             // add the cddl dep (rev-pinned, synced with Cargo.toml by cddl_oracle_dep_rev_matches_cargo_toml)
-            let mut cargo_toml = std::fs::OpenOptions::new()
-                .append(true)
-                .open(rust_dir.join("Cargo.toml"))
-                .unwrap();
-            cargo_toml.write_all(CDDL_ORACLE_DEP.as_bytes()).unwrap();
-            std::mem::drop(cargo_toml);
+            append_manifest_deps(&rust_dir.join("Cargo.toml"), &[CDDL_ORACLE_DEP]);
         }
 
         // The emitted generated-test module (and its `cddl_conformance::validate(..)` calls) lives in
@@ -7299,21 +7374,17 @@ fn extern_wrapper_index_defers_to_dep() {
 
     // Wire the dep crates into the generated manifests (rust needs the rust dep; wasm needs both).
     let append_dep_manifests = |export_dir: &std::path::Path| {
-        use std::io::Write;
-        let mut rust_toml = std::fs::OpenOptions::new()
-            .append(true)
-            .open(export_dir.join("rust/Cargo.toml"))
-            .unwrap();
-        rust_toml
-            .write_all(b"\nindex-dep-crate = { path = \"../../../index-dep-crate\" }\n")
-            .unwrap();
-        let mut wasm_toml = std::fs::OpenOptions::new()
-            .append(true)
-            .open(export_dir.join("wasm/Cargo.toml"))
-            .unwrap();
-        wasm_toml
-            .write_all(b"\nindex-dep-crate = { path = \"../../../index-dep-crate\" }\nindex-dep-crate-wasm = { path = \"../../../index-dep-crate-wasm\" }\n")
-            .unwrap();
+        append_manifest_deps(
+            &export_dir.join("rust/Cargo.toml"),
+            &["index-dep-crate = { path = \"../../../index-dep-crate\" }"],
+        );
+        append_manifest_deps(
+            &export_dir.join("wasm/Cargo.toml"),
+            &[
+                "index-dep-crate = { path = \"../../../index-dep-crate\" }",
+                "index-dep-crate-wasm = { path = \"../../../index-dep-crate-wasm\" }",
+            ],
+        );
     };
     append_dep_manifests(&export);
 
@@ -7445,22 +7516,18 @@ fn workspace_dep_defers_to_dep() {
 
     // Wire the dep crates into the generated manifests (rust needs the rust dep; wasm needs both).
     let append_dep_manifests = |output: &str| {
-        use std::io::Write;
         let export_dir = base.join(output);
-        let mut rust_toml = std::fs::OpenOptions::new()
-            .append(true)
-            .open(export_dir.join("rust/Cargo.toml"))
-            .unwrap();
-        rust_toml
-            .write_all(b"\nindex-dep-crate = { path = \"../../../index-dep-crate\" }\n")
-            .unwrap();
-        let mut wasm_toml = std::fs::OpenOptions::new()
-            .append(true)
-            .open(export_dir.join("wasm/Cargo.toml"))
-            .unwrap();
-        wasm_toml
-            .write_all(b"\nindex-dep-crate = { path = \"../../../index-dep-crate\" }\nindex-dep-crate-wasm = { path = \"../../../index-dep-crate-wasm\" }\n")
-            .unwrap();
+        append_manifest_deps(
+            &export_dir.join("rust/Cargo.toml"),
+            &["index-dep-crate = { path = \"../../../index-dep-crate\" }"],
+        );
+        append_manifest_deps(
+            &export_dir.join("wasm/Cargo.toml"),
+            &[
+                "index-dep-crate = { path = \"../../../index-dep-crate\" }",
+                "index-dep-crate-wasm = { path = \"../../../index-dep-crate-wasm\" }",
+            ],
+        );
     };
 
     // ===== Criterion 1: every all-one-dep wrapper defers, sidecar in the exact frozen format =====
@@ -8065,21 +8132,16 @@ fn workspace_requests_hosts_borrowed_wrappers() {
     }
     // Wire the co-generated crates as path deps: consumer -> dep (rust + wasm), dep wasm -> dep rust
     // is already wired by the tool. The consumer borrows the dep's now-hosted wrappers.
-    use std::io::Write;
-    let append = |manifest: std::path::PathBuf, line: &str| {
-        let mut f = std::fs::OpenOptions::new()
-            .append(true)
-            .open(manifest)
-            .unwrap();
-        f.write_all(line.as_bytes()).unwrap();
-    };
-    append(
-        base.join("export_consumer/rust/Cargo.toml"),
-        "\nwr-dep = { path = \"../../export_dep/rust\" }\n",
+    append_manifest_deps(
+        &base.join("export_consumer/rust/Cargo.toml"),
+        &["wr-dep = { path = \"../../export_dep/rust\" }"],
     );
-    append(
-        base.join("export_consumer/wasm/Cargo.toml"),
-        "\nwr-dep = { path = \"../../export_dep/rust\" }\nwr-dep-wasm = { path = \"../../export_dep/wasm\" }\n",
+    append_manifest_deps(
+        &base.join("export_consumer/wasm/Cargo.toml"),
+        &[
+            "wr-dep = { path = \"../../export_dep/rust\" }",
+            "wr-dep-wasm = { path = \"../../export_dep/wasm\" }",
+        ],
     );
     for wasm_dir in ["export_dep", "export_consumer"] {
         let build = tool_cmd("cargo")
@@ -8491,7 +8553,6 @@ fn workspace_key_requests_derive_effect_and_hard_errors() {
 /// row — the consumer's own map sites are then the loud E0277, by design (no hard error here).
 #[test]
 fn int_key_via_common_import_override_sidecar() {
-    use std::io::Write;
     if !tool_exists("cargo") {
         return;
     }
@@ -8551,17 +8612,11 @@ fn int_key_via_common_import_override_sidecar() {
     );
     // Inject the fixture as a path dep and `cargo check` — the self-check compiles ONLY if the
     // fixture's `Int` carries the key traits the generated key-flavored Int would.
-    let mut manifest = std::fs::OpenOptions::new()
-        .append(true)
-        .open(pos_out.join("rust/Cargo.toml"))
-        .unwrap();
-    write!(
-        manifest,
-        "\nextern-dep-crate = {{ path = {:?} }}\n",
+    let extern_dep_line = format!(
+        "extern-dep-crate = {{ path = {:?} }}",
         fixture.to_str().unwrap()
-    )
-    .unwrap();
-    drop(manifest);
+    );
+    append_manifest_deps(&pos_out.join("rust/Cargo.toml"), &[&extern_dep_line]);
     let check = tool_cmd("cargo")
         .arg("check")
         .current_dir(pos_out.join("rust"))
@@ -8852,14 +8907,10 @@ fn workspace_key_requests_flavored_contract() {
     // Wire the freshly-generated dep as a path-dep and check the consumer's rust crate: this compiles
     // `_assert_key_traits_hash::<wr_dep::IdxKey>()` (needs the dep's Hash/Eq derive) and the generated
     // `BTreeMap<IdxPlain, _>` (needs the dep-derived Ord on IdxPlain).
-    let mut cargo_toml = std::fs::OpenOptions::new()
-        .append(true)
-        .open(consumer_out.join("rust/Cargo.toml"))
-        .unwrap();
-    cargo_toml
-        .write_all(b"\nwr-dep = { path = \"../../export_flavored_dep/rust\" }\n")
-        .unwrap();
-    std::mem::drop(cargo_toml);
+    append_manifest_deps(
+        &consumer_out.join("rust/Cargo.toml"),
+        &["wr-dep = { path = \"../../export_flavored_dep/rust\" }"],
+    );
     let d_check = check(&consumer_out.join("rust"));
     assert!(
         d_check.status.success(),
@@ -8945,7 +8996,6 @@ fn workspace_key_requests_flavored_contract() {
 /// `--preserve-encodings`): the bare bundle is Eq/Ord/PartialOrd (no Hash).
 #[test]
 fn workspace_key_requests_scoped_contract() {
-    use std::io::Write;
     use std::str::FromStr;
     if !tool_exists("cargo") {
         return;
@@ -9058,16 +9108,10 @@ fn workspace_key_requests_scoped_contract() {
     // ===== Leg (d): CONSUMER COMPILES AGAINST DEP — the scoped self-check resolves (RED at HEAD). ==
     // Pre-fix the self-check emitted `wr_dep::ScopedKey`, a "cannot find type" error here; the fix
     // emits the scoped path so both the self-check and the `BTreeMap<ScopedKey, _>` resolve.
-    let mut cargo_toml = std::fs::OpenOptions::new()
-        .append(true)
-        .open(consumer_out.join("rust/Cargo.toml"))
-        .unwrap();
-    write!(
-        cargo_toml,
-        "\nwr-dep = {{ path = \"../../export_scoped_dep/rust\" }}\n"
-    )
-    .unwrap();
-    std::mem::drop(cargo_toml);
+    append_manifest_deps(
+        &consumer_out.join("rust/Cargo.toml"),
+        &["wr-dep = { path = \"../../export_scoped_dep/rust\" }"],
+    );
     let d_check = check(&consumer_out.join("rust"));
     assert!(
         d_check.status.success(),
@@ -9453,22 +9497,18 @@ fn workspace_regen_two_consumer_contract() {
     // Only after a WIPE — the manifest merge passes these keys through on an in-place regen, so a
     // second append would duplicate the dependency key.
     let wire = |output: &str| {
-        use std::io::Write;
         let d = base.join(output);
-        std::fs::OpenOptions::new()
-            .append(true)
-            .open(d.join("rust/Cargo.toml"))
-            .unwrap()
-            .write_all(b"\nregen-dep = { path = \"../../export_dep/rust\" }\n")
-            .unwrap();
-        std::fs::OpenOptions::new()
-            .append(true)
-            .open(d.join("wasm/Cargo.toml"))
-            .unwrap()
-            .write_all(
-                b"\nregen-dep = { path = \"../../export_dep/rust\" }\nregen-dep-wasm = { path = \"../../export_dep/wasm\" }\n",
-            )
-            .unwrap();
+        append_manifest_deps(
+            &d.join("rust/Cargo.toml"),
+            &["regen-dep = { path = \"../../export_dep/rust\" }"],
+        );
+        append_manifest_deps(
+            &d.join("wasm/Cargo.toml"),
+            &[
+                "regen-dep = { path = \"../../export_dep/rust\" }",
+                "regen-dep-wasm = { path = \"../../export_dep/wasm\" }",
+            ],
+        );
     };
     let read = |output: &str, rel: &str| -> String {
         std::fs::read_to_string(base.join(output).join(rel)).unwrap()

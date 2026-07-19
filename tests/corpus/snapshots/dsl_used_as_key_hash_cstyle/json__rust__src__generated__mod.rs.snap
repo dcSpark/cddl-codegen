@@ -27,7 +27,7 @@ use crate::generated::error::*;
     PartialOrd,
     Hash,
 )]
-#[wasm_bindgen::prelude::wasm_bindgen]
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
 pub enum FixedEnum {
     I0,
     I1,

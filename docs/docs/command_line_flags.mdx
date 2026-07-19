@@ -97,6 +97,21 @@ cddl-codegen --input=example --output=export --wasm false
 
 <br/><br/>
 
+:::info `--rust-wasm-feature`
+Names the cargo feature the generated **rust** crate's only `#[wasm_bindgen]` attribute is gated behind. That attribute is emitted solely on c-style enums (all-fixed-value unions), which are exposed to wasm directly rather than through a wrapper type — see [Output format](output_format.mdx). Under `--wasm` the attribute is emitted as `#[cfg_attr(feature = "<name>", wasm_bindgen::prelude::wasm_bindgen)]`, `wasm-bindgen` is an optional dependency of the rust crate, and the `[features]` table always carries `<name>` (as `<name> = ["dep:wasm-bindgen"]` when a c-style enum exists, otherwise `<name> = []`). The rust crate therefore compiles standalone with the feature off; the generated wasm crate enables it via its path dependency (`{ path = "../rust", features = ["<name>"] }`), so wasm builds are unchanged.
+
+The name is only relevant to consumers who compile the rust crate into their own wasm-bindgen build without going through the generated wasm crate — set it to match the feature their manifest already gates `wasm-bindgen` on (e.g. `--rust-wasm-feature=used_from_wasm`).
+
+The value must be a valid cargo feature name (non-empty, characters in `[A-Za-z0-9_+.-]`).
+
+**Default:** wasm
+```bash
+cddl-codegen --input=example --output=export --rust-wasm-feature used_from_wasm
+```
+:::
+
+<br/><br/>
+
 :::info `--binary-wrappers`
 Generates named Rust wrapper types for byte string definitions instead of treating aliases to `bytes`/`bstr` as the primitive byte type. Off by default.
 
