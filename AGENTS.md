@@ -239,6 +239,13 @@ For sessions that spawn their own sub-agents (an orchestrating session, or a sub
   foreground tool call (a `check.ts local` run is silent for ~4 min), so before invoking recovery,
   check the last entry's type (a trailing `tool_use` = mid-call) and for live build processes.
   Same rationale as the foreground rule for multi-minute gates above.
+  Scope refinement (proven 2026-07-19, twice in one session — async Agent-tool agents): async work
+  the harness TRACKS for the MAIN session DOES
+  re-invoke the main session with a task-notification on completion, so the main session may end
+  its turn after launching such work and report interim status to the user. The stall class this
+  rule guards against is everything that is NOT a harness-tracked completion notification: a
+  sub-agent ending its own turn to await anything, and any "armed watcher" that isn't the
+  harness's own task tracking.
 - **Write the operational rules INTO the delegation prompt — sub-agents don't reliably act on this
   file even when instructed to read it (and the review must diff the report against the plan
   item-by-item).** Two same-session instances from the corpus-decode-leg delivery: an implementing
