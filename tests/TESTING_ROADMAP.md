@@ -1001,6 +1001,14 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   types as list elements and table keys/values, from root AND non-root use sites — the non-root
   `nested` cells pin the wrapper-element imports registered from the wrapper's emission scope, which
   root use sites would mask) — so those specific cells are pinned without enumerating the rest.
+  Adjacent but on an orthogonal axis to the First interaction's runtime-flavor mismatch (that one is
+  a `CBORReadLen` construction seam; this one is a derive seam): the cross-crate `Int` **key**-flavor
+  channel under `--common-import-override` is pinned by `int_key_via_common_import_override_sidecar`
+  (consumer — the `borrowed_key_types.rs` `(<override>, "int")` row and its self-check compiling
+  against the `extern-dep-crate` fixture's key-capable `Int`) and the `int` leg of
+  `workspace_key_requests_derive_effect_and_hard_errors` (dep — an `int` `--key-requests` row emits a
+  key-flavored `Int` a spec never references, while a `uint` row still hard-errors), with the
+  `extern_deps`/`extern_deps_wasm` cells covering the plain `Int`/`IntError` re-export path.
   Every individual flag *value* now appears in some profile or test: the five that previously
   didn't are covered by `flag_value_smoke` (`--annotate-fields=false`,
   `--to-from-bytes-methods=false`, `--binary-wrappers=true`), `wasm_cbor_json_api_macro_compiles`
