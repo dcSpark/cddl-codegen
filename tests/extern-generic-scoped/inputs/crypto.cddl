@@ -1,0 +1,3 @@
+pub_key = _CDDL_CODEGEN_RAW_BYTES_TYPE_
+
+ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_ ; @raw_bytes_flavor

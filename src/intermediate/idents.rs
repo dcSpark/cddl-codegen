@@ -78,19 +78,13 @@ impl RustIdent {
         Self(super::convert_to_camel_case(&cddl_ident.0))
     }
 
-    pub fn new_generic(
-        generic_ident: &RustIdent,
-        generic_args: &[RustType],
-        types: &IntermediateTypes,
-        cli: &Cli,
-    ) -> Self {
-        Self::new_generic_with_base(generic_ident.as_ref(), generic_args, types, cli)
-    }
-
-    /// Like [`Self::new_generic`] but with an explicit base name, used by the `@raw_bytes_flavor`
-    /// extern generic to reference the `<Base>RawBytes` wrapper flavor (e.g. `ExtSetRawBytes<PubKey>`)
-    /// instead of the plain base. The base is already a formatted Rust identifier, so it is emitted
-    /// verbatim (no camel-casing or reserved-name check — those apply to CDDL-sourced idents).
+    /// Mints the `Base<Args>` TYPE-EXPRESSION ident a generic-extern instance resolves to
+    /// (`ExtSet<Plain>`, `ExtSetRawBytes<PubKey>`). The base is chosen by
+    /// `GenericInstance::extern_base_ident` (plain `<Base>` or the `@raw_bytes_flavor`
+    /// `<Base>RawBytes` wrapper) and is already a formatted Rust identifier, so it is emitted
+    /// verbatim (no camel-casing or reserved-name check — those apply to CDDL-sourced idents). The
+    /// result is a type expression, not an importable path segment: `scope_references`'s alias walk
+    /// must decompose it into the base ident plus argument types rather than reach `set_ref`.
     pub fn new_generic_with_base(
         base: &str,
         generic_args: &[RustType],

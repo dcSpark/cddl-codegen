@@ -6629,6 +6629,36 @@ fn extern_generic_raw_bytes() {
     );
 }
 
+// Regression pin for feature request 07 (commit `08bc1d9` "scope_references walks type_aliases"):
+// a generic-EXTERN instance named by a rule in a NON-root scope aborted generation, because the
+// alias walk fed the instance's `Base<Args>` type-expression ident into the scope's `use` list.
+// `required_signers = ext_set<pub_key>` (flavored → `ExtSetRawBytes<PubKey>`) and
+// `my_set = ext_set<plain>` (plain → `ExtSet<Plain>`) both live in the `transaction` scope, while
+// the `ext_set`/`pub_key` base externs live in the `crypto` scope and `plain` at root — so this
+// compiles the fix's base-scope import routing AND the args import (`plain` is referenced ONLY as a
+// generic argument, so a dropped args-import would dangle). Reuses the `extern-generic-raw-bytes`
+// external defs (their `ExtSet`/`ExtSetRawBytes`/`PubKey` impls already cover exactly these instance
+// shapes); the file-name prefixes route them under the thin-root extern-def contract. Rust-only
+// (`--wasm=false`): the wasm side is user-owned under the extern contract.
+#[test]
+fn extern_generic_scoped() {
+    use std::str::FromStr;
+    let defs_dir = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("extern-generic-raw-bytes");
+    let ext_set_path = defs_dir.join("external_rust_defs_ext_set");
+    let pub_key_path = defs_dir.join("external_rust_raw_bytes_pub_key");
+    run_test(
+        "extern-generic-scoped",
+        &["--wasm=false"],
+        None,
+        &[ext_set_path, pub_key_path],
+        &[],
+        true,
+        &[],
+    );
+}
+
 #[test]
 fn json() {
     use std::str::FromStr;

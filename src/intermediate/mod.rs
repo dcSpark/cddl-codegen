@@ -1151,6 +1151,48 @@ impl<'a> IntermediateTypes<'a> {
                 continue;
             }
             let current_scope = self.scope(ident);
+            // A generic-EXTERN instance's alias base is a `Base<Args>` TYPE EXPRESSION minted by
+            // `RustIdent::new_generic_with_base` (`ExtSet<Plain>`, `ExtSetRawBytes<PubKey>`), not an
+            // importable path segment — only `finalize`'s `GenericResolved::Extern` arm registers
+            // aliases keyed by a generic-instance ident. Feeding that opaque ident through
+            // `mark_refs`→`set_ref` would land the whole `<…>`-carrying text verbatim in the
+            // scope's `use crate::generated::{…}` list (invalid Rust; the rustfmt post-pass aborts).
+            // Decompose it instead: import the base at the base extern's DECLARING scope (where the
+            // re-export glue in `generation/mod.rs` places `pub use crate::<Base>[RawBytes];` — NOT
+            // `self.scope(&base_ident)`, since the flavored name is unregistered and would misroute
+            // to root), and walk each argument so the bare arg names the alias line renders resolve
+            // too. The wasm pass never reaches here (these aliases are `gen_wasm_alias=false`, gated
+            // out above), so no wasm-side handling is needed.
+            if let Some(gi) = self.generic_instances.get(ident) {
+                let base_ident = gi.extern_base_ident(self);
+                debug_assert!(
+                    matches!(
+                        &alias_info.base_type.conceptual_type,
+                        ConceptualRustType::Rust(base) if base.as_ref().starts_with(base_ident.as_ref())
+                    ),
+                    "generic-instance alias base should be the `<Base>[RawBytes]<Args>` type expression"
+                );
+                let base_scope = self.scope(&gi.generic_ident).clone();
+                if base_scope != *current_scope {
+                    refs.entry(current_scope.clone())
+                        .or_default()
+                        .entry(base_scope)
+                        .or_default()
+                        .insert(base_ident);
+                }
+                for arg in gi.generic_args() {
+                    mark_refs(
+                        &mut refs,
+                        self,
+                        wasm,
+                        &table_shape_sole_owners,
+                        deferred,
+                        current_scope,
+                        arg,
+                    );
+                }
+                continue;
+            }
             if wasm && let Some(target) = alias_info.resolved_wasm_alias_target(self) {
                 if let Some(dep_scope) = deferred.get(target) {
                     refs.entry(current_scope.clone())

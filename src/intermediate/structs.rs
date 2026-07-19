@@ -985,37 +985,20 @@ impl GenericInstance {
                     .map(|rs| matches!(rs.variant(), RustStructType::Extern))
                     .unwrap_or(false)
                 {
-                    // `@raw_bytes_flavor`: when the base extern is tagged AND any argument resolves
-                    // to a `_CDDL_CODEGEN_RAW_BYTES_TYPE_`, reference the convention-named
-                    // `<Base>RawBytes` wrapper flavor instead of the plain `<Base>`. Opt-in only —
-                    // a plain-name instance keeps compiling for wrappers bound solely on
-                    // `RawBytesEncoding`, so this never fires without the tag.
-                    let flavored = types.raw_bytes_flavor().contains(&self.generic_ident)
-                        && self
-                            .generic_args
-                            .iter()
-                            .any(|arg| Self::arg_is_raw_bytes(types, arg));
-                    let (real_ident, flavored_base) = if flavored {
-                        (
-                            RustIdent::new_generic_with_base(
-                                &format!("{}RawBytes", self.generic_ident),
-                                &self.generic_args,
-                                types,
-                                cli,
-                            ),
-                            Some(self.generic_ident.clone()),
-                        )
-                    } else {
-                        (
-                            RustIdent::new_generic(
-                                &self.generic_ident,
-                                &self.generic_args,
-                                types,
-                                cli,
-                            ),
-                            None,
-                        )
-                    };
+                    // The instance's `real_ident` is the full `Base<Args>` type expression: the
+                    // `@raw_bytes_flavor` base name (`extern_base_ident`) plus the concrete args.
+                    // The base-name/flavor decision is owned by `extern_base_ident` /
+                    // `uses_raw_bytes_flavor` so this mint and the alias-import walk in
+                    // `scope_references` reference the same base and cannot drift.
+                    let real_ident = RustIdent::new_generic_with_base(
+                        self.extern_base_ident(types).as_ref(),
+                        &self.generic_args,
+                        types,
+                        cli,
+                    );
+                    let flavored_base = self
+                        .uses_raw_bytes_flavor(types)
+                        .then(|| self.generic_ident.clone());
                     return Ok(GenericResolved::Extern {
                         instance_ident: self.instance_ident.clone(),
                         real_ident,
@@ -1087,6 +1070,42 @@ impl GenericInstance {
             }
         };
         Ok(GenericResolved::Resolved(instance))
+    }
+
+    /// The concrete type arguments this instance was invoked with (`ext_set<pub_key>` → `[pub_key]`).
+    /// Exposed so `scope_references`'s alias walk can import each argument type the resolved alias
+    /// line names bare (`…<PubKey>`).
+    pub(super) fn generic_args(&self) -> &[RustType] {
+        &self.generic_args
+    }
+
+    /// `@raw_bytes_flavor`: the base extern is tagged AND at least one argument resolves to a
+    /// `_CDDL_CODEGEN_RAW_BYTES_TYPE_`, so the instance references the convention-named
+    /// `<Base>RawBytes` wrapper flavor instead of the plain `<Base>`. Opt-in only — a plain-name
+    /// instance keeps compiling for wrappers bound solely on `RawBytesEncoding`, so this never fires
+    /// without the tag.
+    fn uses_raw_bytes_flavor(&self, types: &IntermediateTypes) -> bool {
+        types.raw_bytes_flavor().contains(&self.generic_ident)
+            && self
+                .generic_args
+                .iter()
+                .any(|arg| Self::arg_is_raw_bytes(types, arg))
+    }
+
+    /// The base name the resolved extern alias references: the `<Base>RawBytes` wrapper flavor when
+    /// `@raw_bytes_flavor` selected it (see [`Self::uses_raw_bytes_flavor`]), else the plain
+    /// `<Base>`. The ONE owner of the flavor→base-name decision, called from both `resolve` (which
+    /// mints the full `Base<Args>` real ident) and `scope_references`'s type-alias walk (which
+    /// imports this base at the base extern's declaring scope, where the re-export glue places
+    /// `pub use crate::<Base>[RawBytes];`). Single owner so the emitted alias target and its import
+    /// cannot drift. The flavored name is built the same way the glue does — `{generic_ident}RawBytes`
+    /// (`convert_to_camel_case` is idempotent on an already-camel base, so no name drift).
+    pub(super) fn extern_base_ident(&self, types: &IntermediateTypes) -> RustIdent {
+        if self.uses_raw_bytes_flavor(types) {
+            RustIdent::new(CDDLIdent::new(format!("{}RawBytes", self.generic_ident)))
+        } else {
+            self.generic_ident.clone()
+        }
     }
 
     fn resolve_type(args: &BTreeMap<&RustIdent, &RustType>, orig: &RustType) -> RustType {

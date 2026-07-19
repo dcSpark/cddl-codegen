@@ -1,0 +1,8 @@
+required_signers = ext_set<pub_key>
+
+my_set = ext_set<plain>
+
+tx = [
+  signers: required_signers,
+  things: my_set,
+]
