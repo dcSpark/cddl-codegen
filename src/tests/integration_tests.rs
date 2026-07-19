@@ -14764,6 +14764,63 @@ fn integration_extern_only_scope_declared_in_root() {
     }
 }
 
+/// Regression pin (feature-requests 02, second half): a non-root scope whose rules are ALL extern /
+/// raw-bytes still appears in the dep-side extern-interface export tree — its
+/// `extern-interface/<dep>/<scope>/mod.cddl` is emitted and carries a row per extern rule. The export
+/// is a dep's cross-crate surface, so an all-extern scope (which a consumer legitimately references)
+/// must be advertised, not dropped for having nothing locally-defined. This pins an EXISTING behavior
+/// (no fix needed at HEAD) that no other test covered: the sibling
+/// `integration_extern_only_scope_declared_in_root` pins the in-crate `pub mod` half via
+/// `generated_strings`, which does not carry the extern-interface tree — this half needs
+/// `extern_interface_strings`, the in-process analog of the disk export walk.
+#[test]
+fn integration_extern_only_scope_exported_in_interface_tree() {
+    use clap::Parser;
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_codegen_extern_only_export_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("extern_scope")).unwrap();
+    std::fs::write(
+        dir.join("lib.cddl"),
+        "main_thing = [x: uint, y: my_extern, z: my_raw]\n",
+    )
+    .unwrap();
+    // The scope is extern-ONLY: one extern + one raw-bytes rule, nothing locally-generated.
+    std::fs::write(
+        dir.join("extern_scope/mod.cddl"),
+        "my_extern = _CDDL_CODEGEN_EXTERN_TYPE_\nmy_raw = _CDDL_CODEGEN_RAW_BYTES_TYPE_\n",
+    )
+    .unwrap();
+
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        dir.to_str().unwrap(),
+        "--output",
+        "extern_only_export_unused",
+        "--wasm=false",
+    ]);
+    let files = crate::api::extern_interface_strings(&cli)
+        .unwrap_or_else(|e| panic!("projection failed: {e}"));
+    let _ = std::fs::remove_dir_all(&dir);
+
+    // Default lib name → `cddl_lib` dep key; the extern-only scope's export leaf must exist.
+    let key = "extern-interface/cddl_lib/extern_scope/mod.cddl";
+    let leaf = files.get(key).unwrap_or_else(|| {
+        panic!(
+            "extern-only scope must be exported at `{key}`; keys: {:?}",
+            files.keys().collect::<Vec<_>>()
+        )
+    });
+    assert!(
+        leaf.contains("my_extern = _CDDL_CODEGEN_EXTERN_TYPE_")
+            && leaf.contains("my_raw = _CDDL_CODEGEN_RAW_BYTES_TYPE_"),
+        "the extern-only scope's export leaf must carry both extern rows:\n{leaf}"
+    );
+}
+
 /// Pin: generated wrapper (bounded newtype) fields are emitted `pub(crate)`, not private. The
 /// bound-check boundary that matters is the CRATE boundary — external crates still cannot
 /// literal-construct or mutate the wrapper — while hand-written modules in the consumer's OWN crate
