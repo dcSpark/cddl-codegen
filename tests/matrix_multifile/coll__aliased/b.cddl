@@ -1,0 +1,2 @@
+; cell: coll x aliased (reference from module b)
+bal = nums

@@ -1,0 +1,2 @@
+; cell: talias x aliased (reference from module b)
+bal = ta

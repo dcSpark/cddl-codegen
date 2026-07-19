@@ -1,0 +1,2 @@
+; cell: nullable x aliased (reference from module b)
+bal = opt

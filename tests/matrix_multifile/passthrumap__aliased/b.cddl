@@ -1,0 +1,2 @@
+; cell: passthrumap x aliased (reference from module b)
+bal = ptm

@@ -128,7 +128,12 @@ const SHAPES: Record<string, Shape> = {
 };
 
 // --- Axis 2: cross-module reference mode. The shape's defs go in module `a`; module `b` holds one
-// `bholder = [field0: <...>]` record. `named` references the shape's named rule cross-module; `anon`
+// `bholder = [field0: <...>]` record (or, for `aliased`, one plain alias rule). `named` references
+// the shape's named rule cross-module; `aliased` ALIASES it (`bal = <ty>` — a plain rule alias, so
+// module `b` emits `pub type Bal = …;` naming the cross-module target with no field reference in
+// sight: the `scope_references` type-alias walk, which the field-driven modes can never probe — the
+// reference mode a consumer's `policy_id = script_hash`-style domain naming hits, proven E0412 in
+// production before the walk landed); `anon`
 // embeds the shape's inline anonymous same-shape spelling (the `mark_refs` structural class); `anonb`
 // is `anon` with a ballast record rule added to module `a` (so `a` always emits serialization and an
 // alias-only-module E0583 regression can't mask the b-side import verdict — see `anonBallast` above);
@@ -144,6 +149,10 @@ interface Mode {
   aExtra?: (s: Shape) => string[]; // extra rules appended to module `a`'s defs for this mode
 }
 const MODES: Record<string, Mode> = {
+  // alias-only module `b` on purpose (no bholder ballast): that IS the production shape (a module
+  // of `pub type` domain aliases), and the alias-only-module E0583 class is independently pinned
+  // by the alias shapes' `unref` cells, so a red here stays attributable to the alias-walk import.
+  aliased: { b: (s) => `bal = ${s.ty}` },
   anon: { b: (s) => (s.anonForm ? `bholder = [field0: ${s.anonForm}]` : null) },
   anonb: {
     b: (s) => (s.anonBallast && s.anonForm ? `bholder = [field0: ${s.anonForm}]` : null),
@@ -208,7 +217,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 62; // 23 shapes × {named, unref} = 46 + 11 anon-form shapes × {anon} + 5 anonb shapes × {anonb} -> 62
+const EXPECTED_CELLS = 85; // 23 shapes × {aliased, named, unref} = 69 + 11 anon-form shapes × {anon} + 5 anonb shapes × {anonb} -> 85
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `multifile grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,

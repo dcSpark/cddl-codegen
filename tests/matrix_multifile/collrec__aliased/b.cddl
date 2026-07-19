@@ -1,0 +1,2 @@
+; cell: collrec x aliased (reference from module b)
+bal = recs

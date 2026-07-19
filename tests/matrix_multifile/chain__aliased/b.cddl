@@ -1,0 +1,2 @@
+; cell: chain x aliased (reference from module b)
+bal = cc

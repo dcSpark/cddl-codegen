@@ -1,0 +1,2 @@
+; cell: passthru x aliased (reference from module b)
+bal = pt

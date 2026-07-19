@@ -108,6 +108,20 @@ impl AliasInfo {
         self.wasm_alias_target = target;
         self
     }
+
+    /// The named wrapper the WASM `pub type` alias line points at, when it points at one — the
+    /// single owner of that decision, consulted by BOTH the wasm alias emitter and
+    /// `scope_references`' type-alias walk so the emitted target and its import cannot drift.
+    /// `None` = the alias line renders `for_wasm_member(base_type)` instead (a transparent/
+    /// structural spelling whose imports follow from walking `base_type`). The filter: a stripped
+    /// plain-typename target only substitutes when it has a wasm wrapper class AND the base is not
+    /// directly exposable — an exposable named array's wrapper is bypassed at the boundary
+    /// (`Vec<T>`), so aliasing to the wrapper would desync (E0308).
+    pub fn resolved_wasm_alias_target(&self, types: &IntermediateTypes) -> Option<&RustIdent> {
+        self.wasm_alias_target.as_ref().filter(|target| {
+            types.has_wasm_wrapper(target) && !self.base_type.directly_wasm_exposable(types)
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1073,6 +1087,57 @@ impl<'a> IntermediateTypes<'a> {
                     // should only refer to constants
                 }
             }
+        }
+        // Type aliases are their own emission surface: a plain alias rule (`bal = st`) emits a
+        // `pub type Bal = St;` line naming its TARGET bare in the alias's scope, with no field
+        // reference for the struct walk above to see — a cross-scope target under-imported (E0412,
+        // hit in production by `policy_id = script_hash`-style domain aliasing; the matrix
+        // `aliased` cells pin every shape). Walk each emitted alias's `base_type` through
+        // `mark_refs` — the rust line renders `for_rust_member(base_type)`, and the wasm
+        // alias-base MINT walk (`generation/mod.rs`, the `visit_types_excluding` loop over
+        // `type_aliases`) mints wrappers for the base's structural shapes regardless of what the
+        // alias line names, so the import walk covers the base symmetrically (imports follow
+        // minting; for a named-collection alias this re-records what its struct twin already did,
+        // a `BTreeSet` no-op). The wasm alias line itself substitutes the stripped plain-typename
+        // target's wrapper class when `resolved_wasm_alias_target` says so (the emitter consults
+        // the SAME helper, so the emitted target and its import cannot drift) — that ident is
+        // invisible in the stripped `base_type`, so import it additionally (from the dep's
+        // `collections` module when deferred, like every deferred wrapper reference).
+        // `set_ref`/`mark_refs` record only CROSS-scope idents, so single-module output is
+        // byte-identical.
+        for (alias_ident, alias_info) in self.type_aliases() {
+            let AliasIdent::Rust(ident) = alias_ident else {
+                continue;
+            };
+            let emitted_this_pass = if wasm {
+                alias_info.gen_wasm_alias
+            } else {
+                alias_info.gen_rust_alias
+            };
+            if !emitted_this_pass {
+                continue;
+            }
+            let current_scope = self.scope(ident);
+            if wasm && let Some(target) = alias_info.resolved_wasm_alias_target(self) {
+                if let Some(dep_scope) = deferred.get(target) {
+                    refs.entry(current_scope.clone())
+                        .or_default()
+                        .entry(dep_scope.clone())
+                        .or_default()
+                        .insert(target.clone());
+                } else {
+                    set_ref(&mut refs, self, current_scope, target);
+                }
+            }
+            mark_refs(
+                &mut refs,
+                self,
+                wasm,
+                &table_shape_sole_owners,
+                deferred,
+                current_scope,
+                &alias_info.base_type,
+            );
         }
         refs
     }
