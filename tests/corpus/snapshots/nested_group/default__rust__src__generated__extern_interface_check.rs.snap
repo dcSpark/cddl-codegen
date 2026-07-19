@@ -18,7 +18,18 @@ fn _assert_serialize<T: cbor_event::se::Serialize>() {}
 #[allow(dead_code)]
 fn _assert_deserialize<T: crate::generated::serialization::Deserialize>() {}
 #[allow(dead_code)]
+fn _assert_serialize_embedded_group<T: crate::generated::serialization::SerializeEmbeddedGroup>() {}
+#[allow(dead_code)]
+fn _assert_deserialize_embedded_group<
+    T: crate::generated::serialization::DeserializeEmbeddedGroup,
+>() {
+}
+#[allow(dead_code)]
 fn _extern_interface_self_check() {
+    _assert_serialize::<crate::generated::Inner>(); // inner
+    _assert_serialize_embedded_group::<crate::generated::Inner>();
+    _assert_deserialize::<crate::generated::Inner>();
+    _assert_deserialize_embedded_group::<crate::generated::Inner>();
     _assert_serialize::<crate::generated::Outer>(); // outer
     _assert_deserialize::<crate::generated::Outer>();
 }

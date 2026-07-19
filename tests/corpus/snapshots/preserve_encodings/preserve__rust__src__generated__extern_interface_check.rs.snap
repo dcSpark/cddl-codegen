@@ -17,6 +17,13 @@ expression: content
 fn _assert_serialize<T: cbor_event::se::Serialize>() {}
 #[allow(dead_code)]
 fn _assert_deserialize<T: crate::generated::serialization::Deserialize>() {}
+#[allow(dead_code)]
+fn _assert_serialize_embedded_group<T: crate::generated::serialization::SerializeEmbeddedGroup>() {}
+#[allow(dead_code)]
+fn _assert_deserialize_embedded_group<
+    T: crate::generated::serialization::DeserializeEmbeddedGroup,
+>() {
+}
 #[allow(unused_imports)]
 use crate::generated::CEnum as _; // c_enum
 #[allow(unused_imports)]
@@ -35,6 +42,10 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::ArrayOptFields>();
     _assert_serialize::<crate::generated::Bar>(); // bar
     _assert_deserialize::<crate::generated::Bar>();
+    _assert_serialize::<crate::generated::Basic>(); // basic
+    _assert_serialize_embedded_group::<crate::generated::Basic>();
+    _assert_deserialize::<crate::generated::Basic>();
+    _assert_deserialize_embedded_group::<crate::generated::Basic>();
     _assert_serialize::<crate::generated::BasicArr>(); // basic_arr
     _assert_deserialize::<crate::generated::BasicArr>();
     _assert_serialize::<crate::generated::Bounds>(); // bounds
@@ -43,6 +54,10 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::BoundsGroupChoice>();
     _assert_serialize::<crate::generated::BoundsTypeChoice>(); // bounds_type_choice
     _assert_deserialize::<crate::generated::BoundsTypeChoice>();
+    _assert_serialize::<crate::generated::BytesUint>(); // bytes_uint
+    _assert_serialize_embedded_group::<crate::generated::BytesUint>();
+    _assert_deserialize::<crate::generated::BytesUint>();
+    _assert_deserialize_embedded_group::<crate::generated::BytesUint>();
     _assert_serialize::<crate::generated::CborInCbor>(); // cbor_in_cbor
     _assert_deserialize::<crate::generated::CborInCbor>();
     _assert_serialize::<crate::generated::CustomFieldHolder>(); // custom_field_holder
@@ -89,6 +104,10 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::OverlapBasicEmbed>();
     _assert_serialize::<crate::generated::OverlappingInlined>(); // overlapping_inlined
     _assert_deserialize::<crate::generated::OverlappingInlined>();
+    _assert_serialize::<crate::generated::Plain>(); // plain
+    _assert_serialize_embedded_group::<crate::generated::Plain>();
+    _assert_deserialize::<crate::generated::Plain>();
+    _assert_deserialize_embedded_group::<crate::generated::Plain>();
     _assert_serialize::<crate::generated::PlainArrays>(); // plain_arrays
     _assert_deserialize::<crate::generated::PlainArrays>();
     _assert_serialize::<crate::generated::SignBounds>(); // sign_bounds

@@ -1,0 +1,13 @@
+; CML-shaped dependency exercising plain-group export: a record-member plain group
+; (protocol_version), three group-choice-variant plain groups with fixed tags (stake_registration,
+; stake_delegation, host), an `; @name`-renamed field (pool -> pool_thing), an optional field
+; (? port), and a nested group ref (the tag-groups reference `credential`). The dep references all of
+; them so they materialize as Records and travel as transparent group-body rows in its export.
+; Consumed by tests/extern-import/consumer-groups/lib.cddl.
+credential = bytes
+protocol_version = (major: uint, minor: uint)
+stake_registration = (tag: 0, credential)
+stake_delegation = (tag: 2, credential, pool: bytes) ; @name pool_thing
+host = (tag: 4, ? port: uint)
+dep_holder = [pv: protocol_version, c: dep_cert]
+dep_cert = [ stake_registration // stake_delegation // host ]

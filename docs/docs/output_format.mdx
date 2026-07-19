@@ -497,6 +497,26 @@ markers** (`_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_`); tran
 as their **post-DSL truthful CDDL shape**, also pinned — spelling a transparent type opaque would make
 the consumer manufacture calls to impls that don't exist.
 
+**Plain groups export as transparent group-body rows.** A plain group is inlined at its use sites, so
+it is not an opaque cross-crate class — the consumer's wire format splices the group's fields into its
+own arrays/maps. A *referenced* plain group (one that materializes a struct in the dependency) exports
+as its **truthful post-DSL group body**, pinned:
+
+```cddl
+stake_registration = (tag: 0, credential: credential) ; @rust_name StakeRegistration
+protocol_version   = (major: uint, minor: uint)       ; @rust_name ProtocolVersion
+```
+
+The consumer re-derives the identical shape and **delegates the wire code** to the dependency's own
+class through both surfaces its generated code uses — whole-value `Serialize`/`Deserialize` (a
+group-choice arm that splices the group calls `.serialize()`) and the embedded-group surface (a
+spliced record member delegates through `SerializeEmbeddedGroup`/`DeserializeEmbeddedGroup`). Member
+spelling round-trips by construction: an array-position field carries its post-DSL Rust field name as
+the label (so a `; @name` rename is baked in, no annotation needed), a map-position field carries its
+fixed member key, a `T / null` renders `… / null` (an occurrence-optional `?` field is distinct), and
+a member `.default` rides in member position. Plain groups that materialize a *non*-group shape, or
+that are never referenced at all, are excluded-with-record instead — see the exclusion reasons below.
+
 **`; unexported:` records and reference-closure.** The projection runs on *every* regenerated spec —
 including leaf/test specs that will never be dependencies — so a rule it cannot export faithfully is
 **excluded-with-record** rather than aborting generation. Each excluded rule leaves a sorted comment
@@ -513,7 +533,10 @@ failure then surfaces only at a consumer that actually references an excluded id
 undefined-reference path, whose diagnostic points back at these records (regenerate the dependency, or
 hand-stub that one type). A custom-serialize transparent alias is the canonical exclusion: it has no
 dep-crate class to delegate to, and exporting its plain definition would silently diverge the wire
-format.
+format. Plain groups add two more excluded-with-record cases: a plain group **never referenced** in
+the dependency's own spec materializes no shape to project, and one that materializes a **non-group
+shape** (a homogeneous array/table, a `@newtype` wrapper) has no embedded-group surface — both leave a
+record rather than vanishing.
 
 ### `rust/src/generated/extern_interface_check.rs`
 
@@ -527,7 +550,10 @@ correctly-typed surface in *this* crate:
   deserialize-less type does not fail the check);
 - **raw-bytes rows** must implement `RawBytesEncoding`;
 - **transparent rows** (aliases, c-style enums, named collections) must simply exist (a `use … as _;`
-  existence check).
+  existence check);
+- **group-body rows** (plain groups) must implement all four surfaces the consumer delegates through —
+  whole-value `Serialize`/`Deserialize` and embedded-group `SerializeEmbeddedGroup`/`DeserializeEmbeddedGroup`
+  (each `Deserialize` side gated per type on the crate generating one).
 
 The bound assertions ride bound-carrier fns (`_assert_serialize::<T>()`, …) instantiated inside a
 never-called `_extern_interface_self_check()`. Effect: a hand-edited or stale export — or a projection
