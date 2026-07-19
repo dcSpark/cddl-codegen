@@ -1738,8 +1738,12 @@ generator-invented structural wrappers (owner-resolved for map shapes via
 wherever `types.scope(ident)` puts them — and that region had exactly one hand fixture
 (`tests/multifile`, which covers NAMED cross-module refs but no structural-wrapper-ownership
 cells). This sweep enumerates the placement grid, compile-floors it (always-on), and round-trips it
-(manual, full tier). The hand fixture still owns one placement vector the grid does NOT
-enumerate: the group-choice-VARIANT reference position (see Axis 2 below).
+(manual, full tier). Two placement vectors the grid does NOT enumerate are hand-fixture-owned:
+the group-choice-VARIANT reference position (`tests/multifile`, see Axis 2 below), and the
+extern-shaped type-alias-TARGET position (`tests/extern-generic-scoped` — a generic-EXTERN
+instance aliased from a non-root scope decomposes into a base import at the base's declaring
+scope plus argument imports, never the whole `Base<Args>` type expression; extern shapes sit in
+this grid's SHAPES exclusion, so the compile floor can never enumerate them — see Axis 1).
 
 Pipeline (projection → fixtures → gates), the same two-gate shape as the wasm-ABI matrix:
 
@@ -1762,7 +1766,11 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   non-exposable-KEYED table, whose `keys()` accessor names a root-minted keys-list wrapper that
   likewise only dangles cross-module). Every self-contained shape that HAS defs is
   included; `prim` (no defs — nothing to place in a module) and `extern`/`rawbytes` (user-supplied
-  types, can't compile standalone) are excluded with header comments.
+  types, can't compile standalone) are excluded with header comments. The exclusion bounds the
+  GATE, not the generator: extern shapes still have placement behavior (re-export glue routing;
+  generic-instance alias decomposition), and its alias-position residue escaped to a production
+  regen as feature request 07 — now hand-pinned by `tests/extern-generic-scoped`
+  (`extern_generic_scoped` + `extern_generic_scoped_alias_imports`).
 - **Axis 2 — cross-module reference mode.** `named` — `b` references the shape's named rule
   (`bholder = [field0: <ty>]`); `aliased` — `b` ALIASES it (`bal = <ty>`, a plain rule alias whose
   emitted `pub type Bal = …;` names the cross-module target with no field reference in sight — the

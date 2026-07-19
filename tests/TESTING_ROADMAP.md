@@ -359,7 +359,10 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   project and is fixed: the type-alias walk marks each emitted alias's `base_type` (and, wasm-side,
   the `resolved_wasm_alias_target` wrapper — a helper shared with the wasm alias emitter so the
   emitted target and its import cannot drift), with standing coverage from the placement matrix's
-  `aliased` reference mode (every shape × `bal = <ty>` in module `b`). Working rule meanwhile: a
+  `aliased` reference mode (every INCLUDED shape × `bal = <ty>` in module `b`; the extern-shape
+  exclusion's alias-position residue — the generic-extern-instance `Base<Args>` class, feature
+  request 07 — is hand-pinned by `tests/extern-generic-scoped`, see "Multifile reference-POSITION
+  coverage" below). Working rule meanwhile: a
   fixture that injects hand-written code into
   `generated/**` carries a comment justifying the residence — and the justification must name a
   contract a real user can follow, or explicitly flag itself as a modeled-obsolete shape citing
@@ -439,7 +442,21 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   type-alias-target class (a plain alias rule's `pub type` line names its cross-scope target,
   unwalked — E0412, hit in production; fixed by the `scope_references` type-alias walk). The second
   escape triggered this entry's mechanical layer: the position axis now exists as the `aliased`
-  mode (`bal = <ty>`, every shape). What remains future-facing is the `gcvariant` mode
+  mode (`bal = <ty>`, every INCLUDED shape). A third production escape then hit the same `aliased`
+  position from the SHAPE side — inside the matrix's extern/rawbytes EXCLUSION, not a missing row:
+  a generic-EXTERN instance named by a non-root rule aliases a `Base<Args>` TYPE-EXPRESSION ident
+  (`RustIdent::new_generic_with_base`), which the new walk fed to `set_ref` verbatim — a `<…>` in
+  the scope's `use` list, rustfmt abort, consumer regen dead (feature request 07, the day after
+  the walk landed). Fixed by decomposing in the walk (base imported at the base extern's declaring
+  scope via the single-owner `GenericInstance::extern_base_ident`, each argument walked); pinned
+  by the hand fixture `tests/extern-generic-scoped` (compile+round-trip proof
+  `extern_generic_scoped`; content pin `extern_generic_scoped_alias_imports`, incl. the
+  no-`<`-in-`use`-lines invariant). The exclusion itself stays — the matrix's compile floor cannot
+  build extern shapes standalone — so extern-shaped placement coverage is hand-fixture-owned.
+  Mechanical layer if the excluded region bites again (recur-first): the compile floor forces the
+  exclusion, but a GENERATION-ONLY leg (the in-process `api::generated_strings` probe the content
+  pin already uses) has no such constraint — an excluded-shapes × reference-modes generation sweep
+  needs no hand defs. What remains future-facing is the `gcvariant` mode
   (`bholder = [<ty> // 1, uint]`) over a curated shape subset (the Record-resolving shapes
   `struct`/`mstruct`/`ralias` are the discriminating cells), same participation-pin idiom as
   `anonForm`/`EXPECTED_ANON_SHAPES` — the group-ctor class still rests on the single hand vector
