@@ -342,6 +342,94 @@ fn json_gen_extern_schema_rows() {
     );
 }
 
+/// Regression pin for feature request 07 (commit `08bc1d9` "scope_references walks type_aliases"):
+/// a generic-EXTERN instance named by a rule in a NON-root scope (`required_signers = ext_set<pub_key>`
+/// / `my_set = ext_set<plain>` in the `transaction` scope) registers a type alias whose base is a
+/// `Base<Args>` TYPE EXPRESSION (`ExtSetRawBytes<PubKey>` / `ExtSet<Plain>`). Before the fix the
+/// alias walk fed that opaque ident through `set_ref`, landing the whole `<…>`-carrying text verbatim
+/// in the scope's `use crate::generated::{…}` list — invalid Rust, so the rustfmt post-pass aborted
+/// generation. This pins the corrected shape directly (fast, no nested cargo); the compile proof is
+/// `integration_tests::extern_generic_scoped`.
+///
+/// Not keyed on `@raw_bytes_flavor`: the plain instance (`my_set = ext_set<plain>`) breaks
+/// identically, so both the flavored (`ExtSetRawBytes<PubKey>`) and plain (`ExtSet<Plain>`) shapes
+/// are asserted. The base extern lives in the NON-root `crypto` scope, so this also pins that the
+/// base import routes to the base's declaring scope (the re-export glue's `pub use crate::…` site),
+/// not the default-to-root `set_ref` would misroute to.
+#[test]
+fn extern_generic_scoped_alias_imports() {
+    let cli = cli_for(
+        std::path::Path::new("tests/extern-generic-scoped/inputs"),
+        &["--wasm=false"],
+    );
+    let files = crate::api::generated_strings(&cli).expect("generation must succeed");
+    let tx = files
+        .get("rust/src/generated/transaction/mod.rs")
+        .expect("transaction scope module must be emitted");
+
+    // The alias lines render the `Base<Args>` type expression bare in the transaction module.
+    for alias in [
+        "pub type RequiredSigners = ExtSetRawBytes<PubKey>;",
+        "pub type MySet = ExtSet<Plain>;",
+    ] {
+        assert!(
+            tx.contains(alias),
+            "expected alias line `{alias}` missing:\n{tx}"
+        );
+    }
+
+    // Both alias bases and both argument types must be imported — decomposed from the opaque
+    // `Base<Args>` ident, never emitted whole. Assertions are robust to brace-grouping: they check
+    // that SOME `use` line carries the right path prefix and names the ident.
+    let use_lines: Vec<&str> = tx
+        .lines()
+        .map(str::trim)
+        .filter(|l| l.starts_with("use "))
+        .collect();
+    let imported_from = |prefix: &str, ident: &str| {
+        use_lines
+            .iter()
+            .any(|l| l.starts_with(prefix) && l.contains(ident))
+    };
+    // The base externs (`ExtSet`/`ExtSetRawBytes`) and the raw-bytes arg (`PubKey`) all live in the
+    // non-root `crypto` scope — imported from there, not root.
+    for ident in ["ExtSet", "ExtSetRawBytes", "PubKey"] {
+        assert!(
+            imported_from("use crate::generated::crypto::", ident),
+            "`{ident}` must be imported from the crypto scope:\n{tx}"
+        );
+    }
+    // The plain arg (`plain`) is a ROOT-scope record referenced ONLY as a generic argument — its
+    // import is the args-import half of the fix (dropping it would dangle E0412). Root path is
+    // `crate::generated::` with the ident/`{` immediately after (never the `crypto::` submodule).
+    assert!(
+        use_lines.iter().any(|l| {
+            l.starts_with("use crate::generated::")
+                && !l.starts_with("use crate::generated::crypto::")
+                && l.contains("Plain")
+        }),
+        "`Plain` must be imported from the root scope:\n{tx}"
+    );
+
+    // Class-level invariant: a decomposed importer NEVER lets a `<…>` type expression reach a `use`
+    // line — in the transaction scope or the root generated module.
+    let root = files
+        .get("rust/src/generated/mod.rs")
+        .expect("root generated module must be emitted");
+    for (name, content) in [("transaction/mod.rs", tx), ("generated/mod.rs", root)] {
+        for line in content
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.starts_with("use "))
+        {
+            assert!(
+                !line.contains('<'),
+                "a `use` line in {name} carries a `<…>` type expression (invalid Rust):\n{line}"
+            );
+        }
+    }
+}
+
 /// The static serialization runtime prelude ships verbatim into every generated crate but is
 /// assembled differently per flag combination. It's excluded from the per-feature snapshots (it's
 /// feature-independent and would be pure repeated noise), so snapshot it once per combination here
