@@ -653,6 +653,13 @@ composition-space cross-check that complements this matrix's curated per-shape g
   in a dimension none of the matrix axes enumerate — input REALISM (consumer-scale identifier
   length; every fixture's short names kept the over-width class unreachable) — recorded recur-first
   in `tests/TESTING_ROADMAP.md` ("Identifier-length realism").
+  A further instance: a consumer's hand `pub use cml_core::Int;` (papering over the alias-walk
+  dangling-name bug) plus a planned multi-block replace-overlay workaround spanning the whole
+  `Int` surface, retired by routing `Int`/`IntError` through `--common-import-override` — the
+  re-export plus the `borrowed_key_types.rs` `int` key-flavor row (pinned by
+  `extern_deps` and `extern_deps_wasm` for the re-export,
+  `int_key_via_common_import_override_sidecar` and the `int`
+  leg of `workspace_key_requests_derive_effect_and_hard_errors` for the flavor channel).
 - **Third honesty axis — flag-gated EMISSION SURFACES × input mode (periodic, same footing as the
   SHAPES/ROLES rule above).** SHAPES/ROLES cover what types look like and where they sit; a whole
   flag-gated emission surface can still be built against single-file assumptions and break only
@@ -670,10 +677,12 @@ composition-space cross-check that complements this matrix's curated per-shape g
   (`wasm/json-gen`) against cross-module types (the multifile `json`-profile sweep compiles
   rust+wasm; the json-gen runner gate is single-file-only). NOT on this list:
   `--common-import-override`, `--extern-wasm-crate`, `--extern-wrapper-index`, and the
-  workspace-mode pair `--workspace-dep`/`--wrapper-requests` are exercised
+  workspace-mode set `--workspace-dep`/`--wrapper-requests`/`--key-requests` are exercised
   under directory input by construction — their pins (`integration_tests::extern_deps*`,
   `extern_wrapper_index_defers_to_dep`, `workspace_dep_defers_to_dep`,
-  `workspace_requests_hosts_borrowed_wrappers`, `workspace_regen_two_consumer_contract`) are
+  `workspace_requests_hosts_borrowed_wrappers`, `workspace_regen_two_consumer_contract`, and the
+  `Int`-under-override surfaces' `int_key_via_common_import_override_sidecar` + the `int` leg of
+  `workspace_key_requests_derive_effect_and_hard_errors`) are
   directory-input fixtures, and the extern-deps
   mechanism they extend only exists under directory input. (`--no-synthesized-rust-collection-aliases`
   is emission-only alias suppression with no per-module placement logic; its pin is single-file,

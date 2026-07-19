@@ -1015,7 +1015,23 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   (`--wasm-cbor-json-api-macro`), and — for `--canonical-form=true` without `--preserve-encodings`,
   which emitted a non-compiling crate — a CLI rejection (`api::with_types`, pinned by
   `flag_value_rejects_canonical_without_preserve`).
-- **A compile leg for compile-relevant `dsl_position_tests` Effect cells.** The sweep is
+- **Negative failure-SHAPE vectors + the fixture-`Int` mirror gate for the cross-crate `Int`
+  channel.** The shipped `Int`-under-`--common-import-override` coverage proves the positive paths
+  and asserts row-ABSENCE on the degraded path, but none of the three documented failure shapes is
+  compile-proven by a standing cell: (a) the consumer's `_borrowed_key_types_self_check` going RED
+  when the common crate's `Int` lacks the demanded flavor (needs a de-flavored fixture variant);
+  (b) the unresolved-import failure when the common crate exposes no `Int`/`IntError` (the
+  existence contract's loud half); (c) `E0277` at the consumer's own map sites when the override is
+  not a `--workspace-dep` (today only the no-row half is asserted, by
+  `int_key_via_common_import_override_sidecar`). Each is the documented contract in
+  `command_line_flags.mdx`'s `--common-import-override` section — a contract whose failure shape no
+  gate exercises is prose-only. Related mirror exposure to close with (a): the
+  `tests/extern-dep-crate` hand-written `Int` mirrors generated `Int`'s preserve-encodings wire
+  format and encoding-insensitive key semantics, but the `extern_deps` round-trips serialize AND
+  deserialize through the fixture's own impls, so a generated-`Int` divergence passes silently —
+  unlike the `tests/wasm-macro-crate` mirror, which compilation enforces. A cheap drift gate:
+  cross-serialize one vector between a generated `Int` (any no-override cell's output) and the
+  fixture's, asserting byte equality both ways. The sweep is
   string-level by design, so a cell can be GREEN while the emitted crate is broken: the
   `@custom_json` record-struct cell first landed passing while the generated struct kept its
   serde derives against a now-unskipped `encodings` field (E0277) — caught only by a hand-run

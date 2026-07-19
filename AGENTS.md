@@ -249,9 +249,18 @@ For sessions that spawn their own sub-agents (an orchestrating session, or a sub
   own terms. So: spell out the multi-minute-gate run discipline (foreground, extended timeout,
   full-output-to-file) in every delegation prompt that runs gates, re-assert it in mid-task
   corrections, and treat plan-vs-report diffing as a mandatory review step, not a spot check.
+- **A plan's cited code-behavior premises are claims to verify, not facts — require implementing
+  sub-agents to probe them empirically before building on them, and independently re-verify any
+  premise a reviewer's approval rests on.** Proven 2026-07-19, twice in one reviewed delivery (the
+  `Int`-under-`--common-import-override` feature): the plan asserted a helper returned the wasm
+  crate name (it returned the rust-crate path verbatim — the implementation built on it passed
+  every test because the single-crate fixture masked the split-crate case; caught only by
+  orchestrator review reading the helper), and asserted a hard-reject panic plus a missing
+  registration (neither existed — caught by the implementing agent probing before coding, which
+  deleted a planned dead-code work item). Both premises had survived plan review; one even
+  originated in a misleading code comment at the site itself.
 
 
-## Markdown formatting
 
 A lot of components of this library have markdown files following two different structures:
 1. `README.md` which stores the *current* state of the project. It shouldn't contain historical notes, unless important for backwards-compatibility
