@@ -227,6 +227,25 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   list. Mechanical layer on a SECOND instance: a per-suite anchor-completeness check (each
   round-tripped type's public fields ⊆ the fields its suite's asserts mention — buildable as a
   grep-level floor over `tests/*/tests.rs`), accepting its enumeration cost then, not before.
+- **Regenerating over prior output with a rule DELETION is exercised as a gate for only two files,
+  not corpus-wide — an emitted-comment-on-a-deletable-row trap in any OTHER generated file would
+  ship unseen.** The comment-preservation overlay only runs on the disk-write seam, and its one
+  corpus-scale gate (`comment_preserve_lexer_round_trip_over_corpus`) does SELF-preserve
+  (`preserve(content, content)`), which is a no-op for any trailing comment regardless of whether a
+  real regen would strand it — so it cannot see the sentinel-trap class at all. Proven instance
+  (feature-requests 03/04, reproduced before fixing): `extern_interface_check.rs` and
+  `key_demand_assertions.rs` emitted a per-row `// <cddl>` comment on every row; deleting the rule
+  behind any row stranded that comment into a self-perpetuating `compile_error!` sentinel on the
+  next in-place regen (and rustfmt's import reordering separately GLUED markers onto neighbouring
+  rows). Standing coverage now: `extern_interface_check_regen_over_deletion_no_trap` (regenerates in
+  place with a deletion, asserts neither sidecar gains a trap) and
+  `extern_interface_check_has_no_trailing_row_comments` (a source-shape floor on the one file);
+  emitters made banner-only. But those pin the two KNOWN files by name — a third generated file that
+  grows a per-row comment is invisible again. Working rule meanwhile: no generated file emits a
+  comment on a row a spec change can delete (comments live in fixed banners). Mechanical layer on a
+  second instance: a corpus-wide regen-with-deletion leg (generate each corpus fixture, regenerate a
+  rule-deleted variant IN PLACE, fail on any `cddl-codegen:unpreserved-comment` in the tool-owned
+  trees) — the only layer that catches the class without knowing each file by name.
 - **Stale "known limitation" prose surviving its fix — a finding ledgered in TWO homes where the
   fixing commit prunes only one.** First instance (read-caught during the facade-pin delivery, not
   by any gate): the extern-only-scope undeclared-module finding was ledgered both in
