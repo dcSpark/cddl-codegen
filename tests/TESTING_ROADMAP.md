@@ -825,6 +825,21 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
 - **Exclusion-record reasons are informational, not interchange.** Consumers never parse the text
   after `; unexported: <ident> — `; wording may change freely. If tooling ever wants to act on
   exclusion REASONS, that's a dialect v2 field, not a regex over prose.
+- **Nested-cargo scratch retention: `/tmp/cddl*` leaks until the disk fills.** The nested-cargo
+  gates and the in-process test suites mint per-run scratch dirs under the system temp dir
+  (`cddl_codegen_test_*`, `cddl_codegen_corpus_compile_*`, `cddl_verify_*` — the verify wasm
+  target dirs are ~2 GB each) and rely on end-of-run cleanup that a killed or crashed run never
+  reaches, so debris accumulates silently across sessions. Observed 2026-07-19: 3316 leaked
+  `/tmp/cddl*` entries totaling 43 GB filled the root filesystem to 0 bytes free, which then
+  cascaded — one session's full-tier run died mid-gate (the closure-audit strace could not write,
+  and the death left a half-updated `cddl-matrix/annotations` overlay that failed the NEXT run's
+  `build_matrix_check`), and harness task-output plumbing broke for every concurrent session.
+  Manual remediation (delete only entries older than a day, sparing paths named by live
+  processes' cmdlines — the pattern-kill warning in AGENTS.md applies to deletion too) recovered
+  35 GB. The missing system: scratch dirs should be self-retiring — a run-start sweep of stale
+  entries under a recognizable namespace (age-based, live-process-guarded), or a bounded named
+  scratch root the tiers reuse and truncate. Until built, treat unexplained ENOSPC/mid-gate
+  deaths as possible scratch-debris saturation and sweep before re-attributing.
 - **Gate-cache residual costs.** The nested-cargo gates (`feature_corpus_compiles`,
   `wasm_matrix_compiles`, `multifile_matrix_compiles`, the layer-2 recombination sweeps, and
   `verify.ts`) memoize per generated-tree content hash (the gate cache), so re-run wall-clock is a
