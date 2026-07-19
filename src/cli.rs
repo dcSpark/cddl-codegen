@@ -75,6 +75,9 @@ pub struct Cli {
     /// without the optional `wasm-bindgen` dependency. The generated wasm crate enables this feature
     /// via its path dependency on the rust crate. Must be a valid cargo feature name (non-empty,
     /// chars in `[A-Za-z0-9_+.-]`). Defaults to `wasm`.
+    // NB: the derived `Default` yields `""` here — clap's `default_value` applies only to parsed
+    // invocations (same quirk as `wasm: bool`, whose parse default is true) — so a test built with
+    // `..Default::default()` must set this explicitly if it also sets `wasm: true`.
     #[clap(long, value_parser = parse_rust_wasm_feature, default_value = "wasm")]
     pub rust_wasm_feature: String,
 
