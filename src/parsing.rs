@@ -1024,6 +1024,14 @@ fn parse_type(
                     RustStruct::new_extern(type_name.clone()),
                     cli,
                 );
+                // A GENERIC extern base (`foo<T> = _CDDL_CODEGEN_EXTERN_TYPE_`) registers above as a
+                // plain `Extern` struct that drops its generic params, so record its generic-ness
+                // here (the only surviving signal) — the bare base names no concrete type and must be
+                // skipped by the json-gen schema-row emitter and the extern-interface self-check even
+                // when no `foo<uint>` instance exists.
+                if generic_params.is_some() {
+                    types.mark_generic_extern_base(type_name.clone());
+                }
                 if rule_metadata.raw_bytes_flavor {
                     types.mark_raw_bytes_flavor(type_name.clone());
                 }

@@ -1,0 +1,9 @@
+; Regression fixture for json-gen extern schema rows (feature request 05). The json-gen crate must
+; NOT emit a `gen_json_schema!(cddl_lib::ExtSet)` row for the generic-extern BASE (bare `ExtSet`
+; names no concrete type — E0107), while KEEPING the plain extern (`MyExtern`) and the concrete
+; generic INSTANCE (`MySet = ExtSet<u64>`) rows, which compile because the user's hand-written
+; externs implement `schemars::JsonSchema` (the documented `--json-schema-export` extern contract).
+my_extern = _CDDL_CODEGEN_EXTERN_TYPE_
+ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_
+my_set = ext_set<uint>
+big_thing = [e: my_extern, s: my_set]

@@ -6572,6 +6572,37 @@ fn json() {
     );
 }
 
+/// Regression for feature request 05: json-gen must not emit uncompilable `gen_json_schema!` rows
+/// for extern types. `ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_` instantiated as `my_set =
+/// ext_set<uint>` makes generation see BOTH the generic-extern BASE (`ExtSet`, bare — names no
+/// concrete type, E0107) and the concrete instance (`MySet = ExtSet<u64>`). Before the fix the base
+/// row (`gen_json_schema!(cddl_lib::ExtSet)`) failed the json-gen `cargo run`; the fix skips the
+/// base while keeping the plain extern (`MyExtern`) and the instance (`MySet`), which compile
+/// because the hand-written externs implement `schemars::JsonSchema` (the `--json-schema-export`
+/// extern contract). Rust-only (`--wasm=false`): the extern wasm wrapper is user-owned and out of
+/// scope here, while the json-gen crate builds from the rust crate regardless of `--wasm`.
+#[test]
+fn json_extern() {
+    use std::str::FromStr;
+    let extern_rust_path = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("json-extern")
+        .join("external_rust_defs_json_extern");
+    run_test(
+        "json-extern",
+        &[
+            "--json-serde-derives=true",
+            "--json-schema-export=true",
+            "--wasm=false",
+        ],
+        None,
+        &[extern_rust_path],
+        &[],
+        false,
+        &[],
+    );
+}
+
 /// Float JSON serde/schema, split from `json` because that fixture also runs under
 /// `json_preserve` and preserve-encodings is unimplemented for floats.
 #[test]

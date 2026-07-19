@@ -383,6 +383,8 @@ bar = [
 ]
 ```
 This will treat `Foo` as a type that will exist and that has implemented the `Serialize` and `Deserialize` traits, so the (de)serialization logic in `Bar` here will call `Foo::serialize()` and `Foo::deserialize()`.
+
+Under `--json-serde-derives` the type must additionally implement `serde::Serialize`/`serde::Deserialize`, and under `--json-schema-export` also `schemars::JsonSchema`, since the generated code delegates its JSON representation to the user type (and `--json-schema-export` emits a `gen_json_schema!` schema row for each such extern). Whenever the extern is embedded in a generated struct, that struct's `derive(JsonSchema)` already forces the impl, so this is no new burden in the common case. The generic BASE of an extern generic (`Foo` in `foo<T>`) gets **no** schema row — a bare `Foo` names no concrete type — while each concrete instance (`FooU64` from `foo<uint>`) and every plain extern does.
 This can also be useful when you have a spec that is either very awkward to use (so you hand-write or hand-modify after generation) in some type so you don't generate those types and instead manually merge those hand-written/hand-modified structs back in to the code afterwards. This saves you from having to manually remove all code that is generated regarding `Foo` first before merging in your own.
 
 This can also be useful when you have a spec that is either very awkward to use (so you hand-write or hand-modify after generation) in some type so you don't generate those types and instead manually merge those hand-written/hand-modified structs back in to the code afterwards. This saves you from having to manually remove all code that is generated regarding `Foo` first before merging in your own.

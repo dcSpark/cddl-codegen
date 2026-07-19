@@ -659,6 +659,14 @@ impl GenerationScope {
             path_exists.line("std::fs::create_dir(schema_path).unwrap();");
             self.json_lines.push_block(path_exists);
             let mut main_lines_by_file: BTreeMap<ModuleScope, Vec<String>> = BTreeMap::new();
+            // A generic-extern BASE (`ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_`) names no concrete
+            // type, so `gen_json_schema!(cddl_lib::ExtSet)` is E0107 no matter what the user writes —
+            // the same class the extern-interface self-check skips (`ExternCheckKind::None`). Its
+            // concrete instances (`my_set = ext_set<uint>` -> `MySet`) get their own rows and are
+            // kept. Keyed on `generic_extern_base_idents()` (the union of the parse-time record and
+            // the usage-site instances) so BOTH a base with ZERO instances (`ext_unused<T>`) and a
+            // base declared plain-but-used-generic (`extern_generic<..>`, tests/core) are skipped.
+            let generic_bases = types.generic_extern_base_idents();
             for (rust_ident, rust_struct) in types.rust_structs() {
                 let is_typedef = matches!(
                     rust_struct.variant(),
@@ -667,16 +675,28 @@ impl GenerationScope {
                 // The is_referenced check is for things like Int which are included by default
                 // in order for the CDDL to parse but might not be used.
                 // However, we need to export other root types from the user's spec
-                if !is_typedef && (rust_ident.as_ref() != "Int" || types.is_referenced(rust_ident))
+                if is_typedef || (rust_ident.as_ref() == "Int" && !types.is_referenced(rust_ident))
                 {
-                    main_lines_by_file
-                        .entry(types.scope(rust_ident).clone())
-                        .or_default()
-                        .push(format!(
-                            "gen_json_schema!({});",
-                            rust_crate_struct_from_wasm(types, rust_ident, cli)
-                        ));
+                    continue;
                 }
+                // Skip the generic-extern base (see above).
+                if generic_bases.contains(rust_ident) {
+                    continue;
+                }
+                // Skip types owned by a non-exported (cross-crate extern-dep) scope: the emitted
+                // path would be `dep_crate::sub::Thing`, but this json-gen crate's `Cargo.toml`
+                // depends only on the own rust crate (E0433), and by design each crate's OWN json-gen
+                // run exports its own schemas — the consumer must not re-export a dependency's.
+                if !types.scope(rust_ident).export() {
+                    continue;
+                }
+                main_lines_by_file
+                    .entry(types.scope(rust_ident).clone())
+                    .or_default()
+                    .push(format!(
+                        "gen_json_schema!({});",
+                        rust_crate_struct_from_wasm(types, rust_ident, cli)
+                    ));
             }
             let multiple_files = main_lines_by_file.len() > 1;
             for (scope_name, lines) in main_lines_by_file {
