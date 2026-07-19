@@ -257,4 +257,30 @@ mod golden_hex_canonical {
             assert_eq!(d.x, 5);
         }
     );
+
+    // ---- tag-258 set idiom: --canonical-form minimizes the tag SIZE, never its PRESENCE ----
+    // tagged, non-minimal 8-byte head (0xdb + 0x0000000000000102) -> tagged, minimal 2-byte head
+    // (0xd9 0x01 0x02): the SIZE is minimized, the tag is KEPT. Holder = 1-element array (0x81)
+    // wrapping the set of one text element "a" (0x81 0x61 0x61).
+    kat_canonical!(
+        canon_opt_set_tagged_size_minimized,
+        OptSetHolder,
+        &[0x81, 0xdb, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x81, 0x61, 0x61],
+        &[0x81, 0xd9, 0x01, 0x02, 0x81, 0x61, 0x61],
+        |d: &OptSetHolder| {
+            assert_eq!(d.s, vec!["a".to_string()]);
+        }
+    );
+    // untagged stays untagged: canonicality governs encoding MINIMALITY, not which arm the author
+    // wrote, so the tag is never forced on. Bytes are already minimal, so canonical == input — the
+    // point is that PRESENCE is not canonicalized to tagged (and untagged is a canonical fixed point).
+    kat_canonical!(
+        canon_opt_set_untagged_presence_preserved,
+        OptSetHolder,
+        &[0x81, 0x81, 0x61, 0x61],
+        &[0x81, 0x81, 0x61, 0x61],
+        |d: &OptSetHolder| {
+            assert_eq!(d.s, vec!["a".to_string()]);
+        }
+    );
 }

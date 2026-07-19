@@ -717,6 +717,35 @@ raw-hex sets are the independent spec anchor for those modes. The projection val
 golden byte array in all three dirs (two-digit `0x??` literals, exactly one well-formed CBOR item)
 and hard-fails otherwise; regenerate + commit `COVERAGE.md` after editing any of them.
 
+The `opt_set`/`opt_set_holder` vectors in the preserve and canonical suites are the wire anchor for
+the **transparent tag-set idiom** (`#6.258([* a]) / [* a]`, REQUEST-08): the preserve suite pins
+both arms round-tripping byte-exact (untagged, tagged sz-Two, tagged non-minimal sz-Eight), and the
+canonical suite pins that `--canonical-form` normalizes the tag's SIZE (wide → sz-Two) but never its
+PRESENCE (tagged stays tagged, untagged stays untagged — presence is not canonicalized). These are
+the untagged-arm and size-not-presence directions `--emit-tests` alone cannot reach (it mints from
+construction defaults, which are always tagged).
+
+### Transparent tag-set idiom (`#6.N([* a]) / [* a]`) — test map (REQUEST-08)
+
+The tag-258 set-idiom collapse (user doc: `docs/docs/current_capacities.mdx` § "Transparent tag-set
+idiom") is verified across the layers:
+
+- **Recognition + IR/source shape** — `src/tests/optional_tag_set_tests.rs` (in-process, fast):
+  the collapse to a transparent `Vec`/`NonEmptyVec` alias (arm order irrelevant, any tag number,
+  preserve tri-state + non-preserve default-tagged), the near-misses that KEEP the enum (mismatched
+  bounds, different element types, both arms tagged, 3+ arms), generic-def instances, the
+  reference-site outer-tag PARITY invariant (generic instance vs non-generic equivalent generate
+  byte-identically), and a collapsed set used as a type-choice variant discriminating coherently on
+  the two-entry `cbor_types()` (`Type::Tag | Type::Array`). Generic-instance field convergence
+  (Phase 2.5) is pinned in `src/tests/generic_collection_tests.rs`.
+- **Compile + round-trip** — the `tag_set_idiom` / `tag_set_generic` / `tag_set_near_miss` corpus
+  fixtures (`feature_corpus` snapshots + `feature_corpus_compiles`' three-profile compile and the
+  default-profile `--emit-tests` byte-exact round-trip of the tagged arm).
+- **Wire bytes** — the `opt_set` golden vectors above (both arms + canonical size-not-presence).
+- **Boundary limitations** — `tests/TESTING_ROADMAP.md` § "Deferred features" (non-idiom
+  choice-bodied generic-def crash, alias-of-instance chains, inline choices, and the pre-existing
+  multi-tag-per-field encoding-var collision).
+
 ### Decode-direction conformance (`tests/decode_conformance/` — accept what the spec accepts)
 
 The fourth gate direction. The three above are all blind to an **over-strict decoder**: round-trips

@@ -45,3 +45,10 @@ bool_seq_holder = [bs: bool_seq]
 ; (0xf4/0xf5) must flow to the key deserializer rather than be read as the 0xff break.
 bool_table        = { * bool => text }
 bool_table_holder = [bt: bool_table]
+
+; tag-258 set idiom (`#6.258([* a]) / [* a]`): the tag PRESENCE is an encoding variable, so BOTH
+; wire arms — tagged (at any header size) and untagged — must re-serialize byte-identically under
+; --preserve-encodings, and a non-minimal tag header is preserved verbatim. Transparent alias
+; (Vec<String>), wrap in a record.
+opt_set        = #6.258([* tstr]) / [* tstr]
+opt_set_holder = [s: opt_set]

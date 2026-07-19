@@ -1,0 +1,32 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::generated::serialization::{LenEncoding, StringEncoding, TagPresenceEncoding};
+
+#[derive(Clone, Debug, Default)]
+pub struct HolderEncoding {
+    pub len_encoding: LenEncoding,
+    pub a_tag_encoding: TagPresenceEncoding,
+    pub a_encoding: LenEncoding,
+    pub a_elem_encodings: Vec<Option<cbor_event::Sz>>,
+    pub b_tag_encoding: TagPresenceEncoding,
+    pub b_encoding: LenEncoding,
+    pub b_elem_encodings: Vec<StringEncoding>,
+    pub c_tag_encoding: TagPresenceEncoding,
+    pub c_encoding: LenEncoding,
+    pub c_elem_encodings: Vec<StringEncoding>,
+    pub d_tag_encoding: TagPresenceEncoding,
+    pub d_encoding: LenEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct PointEncoding {
+    pub len_encoding: LenEncoding,
+    pub x_encoding: Option<cbor_event::Sz>,
+    pub y_encoding: Option<cbor_event::Sz>,
+}

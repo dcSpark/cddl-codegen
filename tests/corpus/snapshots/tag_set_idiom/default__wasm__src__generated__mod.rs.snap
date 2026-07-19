@@ -1,0 +1,203 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use cddl_lib::non_empty::NonEmptyVec;
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Holder(pub(crate) cddl_lib::Holder);
+
+#[wasm_bindgen]
+impl Holder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Holder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn s(&self) -> IntSet {
+        self.0.s.clone().into()
+    }
+
+    pub fn ns(&self) -> IntNeset {
+        self.0.ns.clone().into()
+    }
+
+    pub fn set_t(&mut self, t: &TextSet) {
+        self.0.t = Some(t.clone().into())
+    }
+
+    pub fn t(&self) -> Option<TextSet> {
+        self.0.t.clone().map(std::convert::Into::into)
+    }
+
+    pub fn new(s: &IntSet, ns: &IntNeset) -> Self {
+        Self(cddl_lib::Holder::new(s.clone().into(), ns.clone().into()))
+    }
+}
+
+impl From<cddl_lib::Holder> for Holder {
+    fn from(native: cddl_lib::Holder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Holder> for cddl_lib::Holder {
+    fn from(wasm: Holder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Holder> for Holder {
+    fn as_ref(&self) -> &cddl_lib::Holder {
+        &self.0
+    }
+}
+
+/// `[+ u64]`: at least one element, enforced by the `NonEmptyVec` representation.
+/// Enter via `try_from` or `new(first)`.
+/// `add` can never violate the bound; removal is checked in the core type.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct IntNeset(pub(crate) NonEmptyVec<u64>);
+
+#[wasm_bindgen]
+impl IntNeset {
+    pub fn new(first: u64) -> Self {
+        Self(NonEmptyVec::new(first))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) {
+        self.0.push(elem);
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<IntNeset, JsError> {
+        NonEmptyVec::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<NonEmptyVec<u64>> for IntNeset {
+    fn from(native: NonEmptyVec<u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<IntNeset> for NonEmptyVec<u64> {
+    fn from(wasm: IntNeset) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyVec<u64>> for IntNeset {
+    fn as_ref(&self) -> &NonEmptyVec<u64> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct IntSet(pub(crate) Vec<u64>);
+
+#[wasm_bindgen]
+impl IntSet {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) {
+        self.0.push(elem);
+    }
+}
+
+impl From<Vec<u64>> for IntSet {
+    fn from(native: Vec<u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<IntSet> for Vec<u64> {
+    fn from(wasm: IntSet) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<u64>> for IntSet {
+    fn as_ref(&self) -> &Vec<u64> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TextSet(pub(crate) Vec<String>);
+
+#[wasm_bindgen]
+impl TextSet {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> String {
+        self.0[index].clone()
+    }
+
+    pub fn add(&mut self, elem: String) {
+        self.0.push(elem);
+    }
+}
+
+impl From<Vec<String>> for TextSet {
+    fn from(native: Vec<String>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TextSet> for Vec<String> {
+    fn from(wasm: TextSet) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<String>> for TextSet {
+    fn as_ref(&self) -> &Vec<String> {
+        &self.0
+    }
+}

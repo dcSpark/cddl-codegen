@@ -35,3 +35,9 @@ table_holder = [t: uint_table]
 ; after it under bytewise (0x19 < 0x20). The uint_table vectors above can't discriminate.
 int_table  = { * int => text }
 int_holder = [it: int_table]
+
+; tag-258 set idiom (`#6.258([* a]) / [* a]`): --canonical-form normalizes the tag's SIZE (a
+; non-minimal header minimizes) but NEVER its PRESENCE — a tagged value stays tagged, an untagged
+; value stays untagged. Transparent alias (Vec<String>), wrap in a record.
+opt_set        = #6.258([* tstr]) / [* tstr]
+opt_set_holder = [s: opt_set]

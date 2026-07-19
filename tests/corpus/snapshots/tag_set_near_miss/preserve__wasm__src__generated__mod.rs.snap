@@ -1,0 +1,179 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use cddl_lib::non_empty::NonEmptyVec;
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Holder(pub(crate) cddl_lib::Holder);
+
+#[wasm_bindgen]
+impl Holder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Holder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn x(&self) -> NearMiss {
+        self.0.x.clone().into()
+    }
+
+    pub fn new(x: &NearMiss) -> Self {
+        Self(cddl_lib::Holder::new(x.clone().into()))
+    }
+}
+
+impl From<cddl_lib::Holder> for Holder {
+    fn from(native: cddl_lib::Holder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Holder> for cddl_lib::Holder {
+    fn from(wasm: Holder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Holder> for Holder {
+    fn as_ref(&self) -> &cddl_lib::Holder {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NearMiss(pub(crate) cddl_lib::NearMiss);
+
+#[wasm_bindgen]
+impl NearMiss {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NearMiss, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_arr_u64(arr_u64: &NonEmptyU64List) -> Self {
+        Self(cddl_lib::NearMiss::new_arr_u64(arr_u64.clone().into()))
+    }
+
+    pub fn new_arr_u642(arr_u642: Vec<u64>) -> Self {
+        Self(cddl_lib::NearMiss::new_arr_u642(arr_u642))
+    }
+
+    pub fn kind(&self) -> NearMissKind {
+        match &self.0 {
+            cddl_lib::NearMiss::ArrU64 { .. } => NearMissKind::ArrU64,
+            cddl_lib::NearMiss::ArrU642 { .. } => NearMissKind::ArrU642,
+        }
+    }
+
+    pub fn as_arr_u64(&self) -> Option<NonEmptyU64List> {
+        match &self.0 {
+            cddl_lib::NearMiss::ArrU64 { arr_u64, .. } => Some(arr_u64.clone().into()),
+            _ => None,
+        }
+    }
+
+    pub fn as_arr_u642(&self) -> Option<Vec<u64>> {
+        match &self.0 {
+            cddl_lib::NearMiss::ArrU642 { arr_u642, .. } => Some(arr_u642.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::NearMiss> for NearMiss {
+    fn from(native: cddl_lib::NearMiss) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NearMiss> for cddl_lib::NearMiss {
+    fn from(wasm: NearMiss) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NearMiss> for NearMiss {
+    fn as_ref(&self) -> &cddl_lib::NearMiss {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum NearMissKind {
+    ArrU64,
+    ArrU642,
+}
+
+/// `[+ u64]`: at least one element, enforced by the `NonEmptyVec` representation.
+/// Enter via `try_from` or `new(first)`.
+/// `add` can never violate the bound; removal is checked in the core type.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonEmptyU64List(pub(crate) NonEmptyVec<u64>);
+
+#[wasm_bindgen]
+impl NonEmptyU64List {
+    pub fn new(first: u64) -> Self {
+        Self(NonEmptyVec::new(first))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) {
+        self.0.push(elem);
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<NonEmptyU64List, JsError> {
+        NonEmptyVec::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<NonEmptyVec<u64>> for NonEmptyU64List {
+    fn from(native: NonEmptyVec<u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonEmptyU64List> for NonEmptyVec<u64> {
+    fn from(wasm: NonEmptyU64List) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyVec<u64>> for NonEmptyU64List {
+    fn as_ref(&self) -> &NonEmptyVec<u64> {
+        &self.0
+    }
+}

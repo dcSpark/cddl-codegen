@@ -10,6 +10,7 @@ expression: ir
             "ExtSet",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -26,6 +27,7 @@ expression: ir
             "ExtSetPlain",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -42,6 +44,7 @@ expression: ir
             "ExtSetPubKey",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -58,6 +61,7 @@ expression: ir
             "Int",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -74,6 +78,7 @@ expression: ir
             "Plain",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -156,6 +161,7 @@ expression: ir
             "PubKey",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -172,6 +178,7 @@ expression: ir
             "UsingFlavored",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,

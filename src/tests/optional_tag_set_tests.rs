@@ -272,3 +272,105 @@ fn near_miss_three_arms_stays_enum() {
         "Nm",
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// Reference-site encoding parity (Phase 2.5's alias walk appends reference-site encodings OUTSIDE
+// the alias's own) + the collapsed set as a type-choice variant
+// ---------------------------------------------------------------------------------------------
+
+/// Extract a top-level `impl <trait> for <ty> { .. }` block from joined generated source (rustfmt
+/// emits the closing brace at column 0, so the block runs from the marker to the next `\n}\n`).
+fn extract_impl(src: &str, marker: &str) -> String {
+    let start = src
+        .find(marker)
+        .unwrap_or_else(|| panic!("missing `{marker}` in:\n{src}"));
+    let rest = &src[start..];
+    let end = rest
+        .find("\n}\n")
+        .unwrap_or_else(|| panic!("unterminated `{marker}`"));
+    rest[..end + 3].to_string()
+}
+
+/// A field whose reference site adds an OUTER tag (`#6.24(..)`) over a collapsed-set reference must
+/// generate byte-identically whether the reference is a generic INSTANCE (`xs_int = xs<uint>`) or the
+/// non-generic equivalent (`ys_int = #6.258([* uint]) / [* uint]`). Phase 2.5's field-convergence walk
+/// substitutes the instance's transparent alias while KEEPING the reference-site encoding (the `#6.24`
+/// tag) OUTERMOST, so both paths emit the same outer-tag-then-inner-optional-tag ordering. Using the
+/// same field name `g` in both specs makes the whole `Holder` impl comparable byte-for-byte.
+///
+/// NOTE: this pins the SHAPE/ordering, not standalone compilation — an outer tag over an
+/// already-inner-tagged field collides two `<field>_tag_encoding` vars in the encoding struct, a
+/// PRE-EXISTING codegen limitation independent of this feature (`#6.24(#6.258(text))` collides the
+/// same way); tracked in `tests/TESTING_ROADMAP.md`. The parity invariant holds regardless of that fix.
+#[test]
+fn outer_tag_over_instance_matches_non_generic_byte_for_byte() {
+    let generic = generate(
+        "xs<a0> = #6.258([* a0]) / [* a0]\nxs_int = xs<uint>\nholder = [g: #6.24(xs_int)]\n",
+        "outer_generic",
+        PRESERVE,
+    )
+    .expect("generic outer-tag instance must generate");
+    let non_generic = generate(
+        "ys_int = #6.258([* uint]) / [* uint]\nholder = [g: #6.24(ys_int)]\n",
+        "outer_nongeneric",
+        PRESERVE,
+    )
+    .expect("non-generic outer-tag ref must generate");
+
+    for marker in [
+        "impl Serialize for Holder",
+        "impl Deserialize for Holder",
+        "pub struct HolderEncoding",
+    ] {
+        assert_eq!(
+            extract_impl(&generic, marker),
+            extract_impl(&non_generic, marker),
+            "generic-instance and non-generic reference must emit byte-identical `{marker}`"
+        );
+    }
+
+    // ordering: the OUTER #6.24 tag is written before the INNER #6.258 optional-tag branch
+    // (rustfmt wraps `write_tag_sz(` and its `24u64` arg onto separate lines, so match the literal).
+    let ser = extract_impl(&generic, "impl Serialize for Holder");
+    let outer = ser.find("24u64").expect("outer tag 24 must be serialized");
+    let inner = ser
+        .find("if let TagPresenceEncoding::Tagged(tag_sz)")
+        .expect("inner optional-tag branch must be serialized");
+    assert!(
+        outer < inner,
+        "reference-site outer tag must be written OUTSIDE (before) the alias's own optional tag:\n{ser}"
+    );
+}
+
+/// A collapsed set used as a VARIANT of a larger type choice (`thing = my_set / uint`) generates a
+/// coherent discriminator: the optionally-tagged collection variant contributes a TWO-entry
+/// `cbor_types()` (`[Tag, Array]`), which the choice deserializer merges into ONE arm
+/// (`Type::Tag | Type::Array`) routing either wire form to the set variant, while `uint` routes to
+/// its own `UnsignedInteger` arm — no collision, no ambiguity.
+#[test]
+fn collapsed_set_as_type_choice_variant_discriminates_coherently() {
+    let src = generate(
+        "my_set = #6.258([+ uint]) / [+ uint]\nthing = my_set / uint\nholder = [t: thing]\n",
+        "tc_variant",
+        PRESERVE,
+    )
+    .expect("a collapsed set as a type-choice variant must generate");
+    let de = extract_impl(&src, "impl Deserialize for Thing");
+    assert!(
+        de.contains("cbor_event::Type::Tag | cbor_event::Type::Array =>"),
+        "the optionally-tagged set variant must merge Tag+Array into one discriminator arm:\n{de}"
+    );
+    assert!(
+        de.contains("cbor_event::Type::UnsignedInteger =>"),
+        "the uint variant must keep its own discriminator arm:\n{de}"
+    );
+    // the set arm still peeks the optional 258 tag and enforces `[+]` through the NonEmptyVec door
+    assert!(
+        de.contains("TagPresenceEncoding::Untagged") && de.contains("NonEmptyVec::try_from"),
+        "the set arm must peek the optional tag and route through the NonEmptyVec door:\n{de}"
+    );
+    assert!(
+        de.contains("DeserializeFailure::NoVariantMatched"),
+        "an unrecognized major type must fall through to NoVariantMatched:\n{de}"
+    );
+}

@@ -1,0 +1,43 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+mod extern_interface_check;
+pub mod non_empty;
+pub mod serialization;
+
+use crate::generated::error::*;
+use crate::generated::non_empty::NonEmptyVec;
+
+#[derive(Clone, Debug)]
+pub struct Holder {
+    pub x: NearMiss,
+}
+
+impl Holder {
+    pub fn new(x: NearMiss) -> Self {
+        Self { x }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum NearMiss {
+    ArrU64(NonEmptyVec<u64>),
+    ArrU642(Vec<u64>),
+}
+
+impl NearMiss {
+    pub fn new_arr_u64(arr_u64: NonEmptyVec<u64>) -> Self {
+        Self::ArrU64(arr_u64)
+    }
+
+    pub fn new_arr_u642(arr_u642: Vec<u64>) -> Self {
+        Self::ArrU642(arr_u642)
+    }
+}

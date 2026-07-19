@@ -1,0 +1,22 @@
+; The tagged-or-untagged set idiom (`x = #6.N([* a]) / [* a]`), non-generic flavor.
+;
+; A two-arm type choice whose arms are the SAME collection but for exactly one `Tagged(N)` encoding
+; op is not two types: both arms denote the same logical value and which arm was written is an
+; encoding detail (older on-chain data is untagged, the Conway-era Cardano ledger emits tag 258).
+; cddl-codegen recognizes this structurally and collapses it into ONE transparent Vec/NonEmptyVec
+; alias — never an enum — with the tag riding a `TagPresenceEncoding` var under
+; --preserve-encodings so either wire arm roundtrips byte-exact, and defaulting to tagged otherwise.
+; Near misses keep the two-variant enum (see tag_set_near_miss.cddl).
+;
+; - `int_set`   — the `[*]` (empty-allowed) flavor collapses to a transparent `Vec<u64>` alias.
+; - `int_neset` — the `[+]` (non-empty) flavor collapses to a DISTINCT `NonEmptyVec<u64>` alias; the
+;                 `[+]` invariant rides NonEmptyVec's single `TryFrom` door (the empty/non-empty
+;                 split the CML hand impl wrongly conflated into one type).
+; - `text_set`  — untagged arm FIRST: arm order is irrelevant to recognition.
+; - `holder`    — embeds the collapsed rules in record-field position, including an OPTIONAL field, so
+;                 the member-side (de)serialize and the optional-field wrapping both compile and
+;                 round-trip.
+int_set = #6.258([* uint]) / [* uint]
+int_neset = #6.258([+ uint]) / [+ uint]
+text_set = [* text] / #6.258([* text])
+holder = [s: int_set, ns: int_neset, ? t: text_set]

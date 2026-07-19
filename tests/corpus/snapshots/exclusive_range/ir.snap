@@ -10,6 +10,7 @@ expression: ir
             "ExclusiveRange",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -69,6 +70,7 @@ expression: ir
             "Int",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
