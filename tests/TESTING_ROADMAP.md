@@ -630,10 +630,11 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   over the extern fixture. (b) json-gen against extern-dep types — `gen_json_schema!` SKIPS
   dep-owned rows (a dep type's schema is owned by the dep's own json-gen run, and this crate's
   json-gen manifest depends only on the own rust crate), pinned in-memory by
-  `snapshot_tests::json_gen_extern_schema_rows`; the residual is that no gate COMPILES/EXECUTES a
-  json-gen crate built from a spec carrying extern deps (such a crate now compiles precisely because
-  the dep rows are skipped — the unprobed layer is the runtime `export_schemas()` over the surviving
-  in-crate rows in that configuration).
+  `snapshot_tests::json_gen_extern_schema_rows`. COMPILING emitted json-gen crates at breadth is
+  owned by `cddl-matrix/ROADMAP.md`'s extern-compile-breadth entry; the residual owned HERE is
+  execution — no gate RUNS `export_schemas()` from a json-gen crate built from a spec carrying
+  extern deps (such a crate now compiles precisely because the dep rows are skipped; the unprobed
+  layer is the runtime over the surviving in-crate rows in that configuration).
 - **Generic RAW-BYTES base (`foo<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_`) emits the same uncompilable
   self-check / schema row an extern generic base did before its parse-time fix.** The
   `generic_extern_bases` record populated at parse time (which flips both the extern-interface

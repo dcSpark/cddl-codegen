@@ -421,68 +421,81 @@ control-constrained signed-int member
 fields on a 32-bit target — the class where `isize` fields overflowed the `i64::MIN`/`MAX`
 literals, which 64-bit host builds can never see.
 
-The workspace-mode surface (`--workspace-dep` / `--wrapper-requests` / `--key-requests` — dep-owned
-placement of all-one-dep collection wrappers via request sidecars, and the map-key-derive channel:
-the consumer's `borrowed_key_types.rs` sidecar plus dep-side pre-finalize `used_as_key` seeding from
-both request channels, so a dep type keyed only by a consumer still derives `Eq/Ord/PartialOrd`
-(+`Hash` under preserve-encodings) — or, when the borrow carries a `@used_as_key` flavor
-(`hash`/`ord`), exactly that family via an optional third row column with per-flavor compiled
-self-checks (all-bare sidecars keep the two-column form byte-identically; the flavored
-column/parse legs are covered by the `wrapper_requests` unit suite — `key_types_accepts_flavor_column`,
-`key_types_rejects_unknown_flavor` — and the compiled cross-crate seam by
-`workspace_key_requests_flavored_contract`: a `@used_as_key hash`-tagged dep extern emits the
-three-column row + per-flavor self-check, the dep's `--key-requests` regen derives exactly the named
-family (a hash-only borrow does NOT force `Ord` through the dep's Ord-refusing field), both crates
-compile against each other, and widening the flavor to `bare` fails the dep compile naming `Ord`).
-The self-check asserts each borrowed key at the dep's REAL module path — scoped
-(`wr_dep::sub::module::ScopedKey`) when the type lives in a non-root scope, the same path the
-consumer's own generated `use` lines take — while rows stay the bare `(dep, cddl ident)` the dep
-resolves scope-agnostically (no scope column, so the sidecar format is unchanged and root-only
-sidecars are byte-identical); pinned by `borrowed_key_types_self_check_carries_scoped_dep_path`
-(emission: scoped path present, root-path bug form absent, rows bare),
-`key_types_skips_scoped_self_check_body` (an OLD parser reading a NEW scoped sidecar — the
-self-check body is skipped wholesale), and `workspace_key_requests_scoped_contract` (the two-crate
-compile contract over `tests/workspace-requests/consumer_inputs_scoped` +
-`tests/workspace-requests/dep_inputs_scoped`: scoped emit, dep-side bare-ident
-resolution deriving on the SCOPED rule, both directions compile).
-`--workspace-dep` is honored MODE-INDEPENDENTLY — the key sidecar and the flag's startup validation
-apply under `--wasm=false` exactly as under `--wasm=true` (only the wasm-side deferral surfaces are
-wasm-gated), pinned by the flavored contract's rust-only leg (byte-identical sidecar, no `wasm/`
-tree) and `workspace_dep_unknown_is_rejected_under_wasm_false` (an unknown dep exits nonzero in
-rust-only mode, never a silent ignore). `--extern-wrapper-index`'s startup validation is likewise
-MODE-INDEPENDENT — an unknown dep or a malformed index line is a hard error under `--wasm=false`,
-even though the deferral it feeds is wasm-gated — pinned by
-`extern_wrapper_index_is_validated_under_wasm_false` (both malformation classes exit nonzero in
-rust-only mode). User docs:
-`docs/docs/command_line_flags.mdx` and `docs/docs/output_format.mdx` § "Workspace mode") is pinned
-by three sibling gates plus the parser's unit suite (`src/wrapper_requests.rs` — both the strict
-sidecar grammars and the lenient shape-key extractor):
-`workspace_dep_defers_to_dep` (consumer side over `tests/workspace-dep-wasm/`: unconditional
-all-one-dep deferral incl. NonEmpty and nested shapes, the byte-frozen `borrowed_collections.rs`
-sidecar format asserted as full-file equality — it is a cross-crate contract — plus
-ownerless/mixed composition with `--extern-wrapper-index` and the rule-declared shadowing
-warning); `workspace_requests_hosts_borrowed_wrappers` + the hard-error tests (including
-`workspace_key_requests_derive_effect_and_hard_errors`, the `--key-requests` intake: derive effect,
-unknown-ident hard error, other-dep row filtering; and `workspace_key_requests_flavored_contract`,
-the flavored `@used_as_key hash` cross-crate contract over `tests/workspace-requests/*_flavored`:
-three-column emit, per-family dep derive, both-directions compile, and the bare-widening red proof) +
-`workspace_requests_alias_elements_host` (dep side over `tests/workspace-requests/`: strict sidecar
-intake, union-by-shape with sorted requester attribution, own-spec-shape satisfaction, flag-order
-byte-identity, the criterion-8 hard errors plus the review-hardened classes — the stub-fidelity
-diagnosis for directly-exposable shapes, reserved element idents, the shape-nesting depth cap, and
-the element-resolution appendix on name↔shape mismatches — and alias-element hosting: request
-leaves resolve through the pipeline's `resolve_alias`, the single owner of the alias-substitution
-rule, so requested wrappers over `stake_credential = credential`-style aliases, primitive aliases,
-and externs generate exactly what the dep's own spec would); and
-`workspace_regen_two_consumer_contract` (the regen-contract gate over
-`tests/workspace-regen/`: an umbrella wasm cdylib linking one dep + TWO consumers, RED with
-duplicate symbols when both consumers mint and GREEN after a reverse-dependency-order holistic
-regen, then the in-place lifecycle — zero-diff unchanged regen, requester churn without
-preservation traps, last-borrower removal, and the new-borrow-before-dep-regen unresolved-import
-failure). The regen gate runs every generation IN PLACE over prior output precisely so the
-edit-preservation overlay participates — it is what caught the sidecar's in-const legend comment
-trapping on borrow removal (since relocated to the file banner, where comments anchor to
-structure that always exists).
+### Workspace mode (`--workspace-dep` / `--wrapper-requests` / `--key-requests`)
+
+One cross-crate system: dep-owned placement of all-one-dep collection wrappers via request
+sidecars, plus the map-key-derive channel — the consumer's `borrowed_key_types.rs` sidecar and
+dep-side pre-finalize `used_as_key` seeding from both request channels, so a dep type keyed only
+by a consumer still derives `Eq/Ord/PartialOrd` (+`Hash` under preserve-encodings). User docs:
+`docs/docs/command_line_flags.mdx` and `docs/docs/output_format.mdx` § "Workspace mode". Its
+facets, each with its own pins:
+
+- **Key flavors.** A borrow carrying a `@used_as_key` flavor (`hash`/`ord`) requests exactly that
+  trait family via an optional third row column with per-flavor compiled self-checks; all-bare
+  sidecars keep the two-column form byte-identically. The column/parse legs are covered by the
+  `wrapper_requests` unit suite (`key_types_accepts_flavor_column`,
+  `key_types_rejects_unknown_flavor`); the compiled cross-crate seam by
+  `workspace_key_requests_flavored_contract`: a `@used_as_key hash`-tagged dep extern emits the
+  three-column row + per-flavor self-check, the dep's `--key-requests` regen derives exactly the
+  named family (a hash-only borrow does NOT force `Ord` through the dep's Ord-refusing field),
+  both crates compile against each other, and widening the flavor to `bare` fails the dep compile
+  naming `Ord`.
+- **Scoped self-check paths.** The self-check asserts each borrowed key at the dep's REAL module
+  path — scoped (`wr_dep::sub::module::ScopedKey`) when the type lives in a non-root scope, the
+  same path the consumer's own generated `use` lines take — while rows stay the bare
+  `(dep, cddl ident)` the dep resolves scope-agnostically (no scope column, so the sidecar format
+  is unchanged and root-only sidecars are byte-identical). Pinned by
+  `borrowed_key_types_self_check_carries_scoped_dep_path` (emission: scoped path present,
+  root-path bug form absent, rows bare), `key_types_skips_scoped_self_check_body` (an OLD parser
+  reading a NEW scoped sidecar — the self-check body is skipped wholesale), and
+  `workspace_key_requests_scoped_contract` (the two-crate compile contract over
+  `tests/workspace-requests/consumer_inputs_scoped` +
+  `tests/workspace-requests/dep_inputs_scoped`: scoped emit, dep-side bare-ident resolution
+  deriving on the SCOPED rule, both directions compile).
+- **Mode-independence.** `--workspace-dep` is honored under `--wasm=false` exactly as under
+  `--wasm=true` — the key sidecar and the flag's startup validation apply in both modes (only the
+  wasm-side deferral surfaces are wasm-gated) — pinned by the flavored contract's rust-only leg
+  (byte-identical sidecar, no `wasm/` tree) and
+  `workspace_dep_unknown_is_rejected_under_wasm_false` (an unknown dep exits nonzero in rust-only
+  mode, never a silent ignore). `--extern-wrapper-index`'s startup validation is likewise
+  mode-independent — an unknown dep or a malformed index line is a hard error under
+  `--wasm=false`, even though the deferral it feeds is wasm-gated — pinned by
+  `extern_wrapper_index_is_validated_under_wasm_false` (both malformation classes exit nonzero in
+  rust-only mode).
+
+The whole surface is pinned by three sibling gates plus the parser's unit suite
+(`src/wrapper_requests.rs` — both the strict sidecar grammars and the lenient shape-key
+extractor):
+
+- `workspace_dep_defers_to_dep` — consumer side over `tests/workspace-dep-wasm/`: unconditional
+  all-one-dep deferral incl. NonEmpty and nested shapes, the byte-frozen `borrowed_collections.rs`
+  sidecar format asserted as full-file equality — it is a cross-crate contract — plus
+  ownerless/mixed composition with `--extern-wrapper-index` and the rule-declared shadowing
+  warning.
+- `workspace_requests_hosts_borrowed_wrappers` + the hard-error tests (including
+  `workspace_key_requests_derive_effect_and_hard_errors`, the `--key-requests` intake: derive
+  effect, unknown-ident hard error, other-dep row filtering; and
+  `workspace_key_requests_flavored_contract`, the flavored `@used_as_key hash` cross-crate
+  contract over `tests/workspace-requests/*_flavored`: three-column emit, per-family dep derive,
+  both-directions compile, and the bare-widening red proof) +
+  `workspace_requests_alias_elements_host` — dep side over `tests/workspace-requests/`: strict
+  sidecar intake, union-by-shape with sorted requester attribution, own-spec-shape satisfaction,
+  flag-order byte-identity, the criterion-8 hard errors plus the review-hardened classes — the
+  stub-fidelity diagnosis for directly-exposable shapes, reserved element idents, the
+  shape-nesting depth cap, and the element-resolution appendix on name↔shape mismatches — and
+  alias-element hosting: request leaves resolve through the pipeline's `resolve_alias`, the single
+  owner of the alias-substitution rule, so requested wrappers over
+  `stake_credential = credential`-style aliases, primitive aliases, and externs generate exactly
+  what the dep's own spec would.
+- `workspace_regen_two_consumer_contract` — the regen-contract gate over `tests/workspace-regen/`:
+  an umbrella wasm cdylib linking one dep + TWO consumers, RED with duplicate symbols when both
+  consumers mint and GREEN after a reverse-dependency-order holistic regen, then the in-place
+  lifecycle — zero-diff unchanged regen, requester churn without preservation traps, last-borrower
+  removal, and the new-borrow-before-dep-regen unresolved-import failure. The regen gate runs
+  every generation IN PLACE over prior output precisely so the edit-preservation overlay
+  participates — it is what caught the sidecar's in-const legend comment trapping on borrow
+  removal (since relocated to the file banner, where comments anchor to structure that always
+  exists).
 
 ### Extern-interface export & `--extern-import` (the machine-generated stub channel)
 
