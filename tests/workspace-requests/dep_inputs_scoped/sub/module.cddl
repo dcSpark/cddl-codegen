@@ -1,0 +1,4 @@
+; The dep's `scoped_key`, living in the `sub::module` scope (matching the module path the consumer
+; borrows it by). A plain uint record; a bare key-request borrow makes the dep derive the full
+; Eq/Ord/PartialOrd bundle on ScopedKey.
+scoped_key = [x: uint]

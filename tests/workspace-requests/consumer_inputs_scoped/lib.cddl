@@ -1,0 +1,14 @@
+; Scoped-borrow consumer over the workspace dep `wr_dep`. Companion to `consumer_inputs`, but the
+; borrowed map-key type lives in a NON-ROOT scope of the dep.
+;
+; `scoped_key` is declared in the extern-deps SUBDIR `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/wr_dep/sub/module.cddl`,
+; so the consumer knows it at the true module path `wr_dep::sub::module::ScopedKey` (its own generated
+; `use` line takes exactly that path). The `keyed` map (dep KEY + consumer-owned VALUE) is NOT
+; all-one-dep, so it is minted locally here and its key `scoped_key` is recorded in
+; borrowed_key_types.rs — whose compiled self-check must assert on the SCOPED path, not a bare
+; `wr_dep::ScopedKey` at the crate root (which the dep thin root does not re-export -> E0412).
+my_local = [z: uint]
+
+holder = [
+    keyed: { * scoped_key => my_local },
+]
