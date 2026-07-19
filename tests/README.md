@@ -266,6 +266,13 @@ emitted bytes don't *change*, not that they satisfy an invariant; a violation ju
   (supported by wasm-bindgen; strings are copied at the boundary, so the by-value ownership hazard
   that justifies struct `*List` wrappers doesn't apply), so no anonymous `TextList` wrapper may be
   emitted.
+- `rust_tree_wasm_bindgen_only_feature_gated` — the RUST tree may carry `wasm_bindgen` only in the
+  c-style-enum `#[cfg_attr(feature = …)]` form (`--rust-wasm-feature`), never ungated — the
+  corpus-wide placement half of the standalone-compile invariant (the feature-off `cargo check`
+  half lives in integration, see § "Integration tests"). Carries a positive control: it FAILS if
+  no whole_program input emits the gated form, so the sweep can't silently scan a corpus that
+  stopped exercising the construct (the fixture-blind-spot class that once graded the rust crate
+  bindgen-free from a fixture lacking any c-style enum).
 
 The emission-hygiene gates pin specific shapes found by review; `generated_code_clippy_clean`
 provides the systematic lint axis, while needle gates remain for source-shape classes no rustc or
@@ -394,8 +401,8 @@ workspace-style build enables the feature through the wasm crate's path dep (car
 unification), so only a standalone feature-off `cargo check` of the generated `rust/` proves the
 crate compiles without the optional `wasm-bindgen` dep. It also scans the generated rust tree for
 any ungated `#[wasm_bindgen…]` (the c-style-enum `cfg_attr` form is the only sanctioned
-appearance) — per-fixture today; the corpus-wide sweep flavor is a recorded `TESTING_ROADMAP.md`
-item ("Rust-crate wasm-attribute placement sweep").
+appearance) — per-fixture here; the corpus-wide placement half is the
+`rust_tree_wasm_bindgen_only_feature_gated` invariant gate (snapshot suite, fast tier).
 
 The three external-macro flags (`--wasm-list-macro`/`--wasm-conversions-macro` and
 `--wasm-cbor-json-api-macro`) emit invocations of a *user-supplied* macro, so the output can't

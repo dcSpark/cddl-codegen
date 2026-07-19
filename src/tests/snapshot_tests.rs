@@ -807,6 +807,54 @@ fn no_anonymous_text_list_wrapper() {
     );
 }
 
+/// The generated RUST crate may carry `wasm_bindgen` only in the feature-gated `cfg_attr` form
+/// (`generate_c_style_enum` — a c-style enum is the one type kind exposed to wasm by re-export
+/// rather than a wasm-crate wrapper), so the crate compiles standalone without the optional
+/// `wasm-bindgen` dep. Any other appearance in the rust tree — a bare `#[wasm_bindgen…]` from a
+/// new emission site or profile — would force the dep on every rust-crate consumer. This is the
+/// corpus-wide PLACEMENT half of the invariant; the COMPILE half (a feature-off `cargo check`,
+/// unreachable through feature-unified workspace builds) is
+/// `integration_tests::rust_wasm_bindgen_feature_gated_crate_compiles_standalone`. The positive
+/// control (`gated_seen`) keeps the sweep honest: it fails if no whole_program input emits the
+/// gated form at all — the fixture-blind-spot class that once graded the rust crate bindgen-free
+/// from a fixture lacking the one construct that emits the attribute.
+#[test]
+fn rust_tree_wasm_bindgen_only_feature_gated() {
+    let mut failures = Vec::new();
+    let mut gated_seen = false;
+    for (label, input, (profile, extra)) in WHOLE_PROGRAM_CASES {
+        let cli = cli_for(std::path::Path::new(input), extra);
+        let files = crate::api::generated_strings(&cli)
+            .unwrap_or_else(|e| panic!("generation failed for {label}/{profile}: {e}"));
+        for (path, content) in &files {
+            if !path.starts_with("rust/") {
+                continue;
+            }
+            for line in content.lines() {
+                if !line.contains("wasm_bindgen") {
+                    continue;
+                }
+                if line.trim_start().starts_with("#[cfg_attr(feature = ") {
+                    gated_seen = true;
+                } else {
+                    failures.push(format!("[{label}/{profile}] {path}: {line}"));
+                }
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "ungated wasm_bindgen in the generated rust tree — only the c-style-enum \
+         `#[cfg_attr(feature = …, wasm_bindgen::prelude::wasm_bindgen)]` form is sanctioned:\n{}",
+        failures.join("\n")
+    );
+    assert!(
+        gated_seen,
+        "no whole_program input emitted the feature-gated c-style-enum attribute — the sweep \
+         lost its positive control (add a c-style enum to a whole_program input)"
+    );
+}
+
 /// `rustfmt_generated_string` must FAIL LOUD on unparseable output rather than swallowing it and
 /// returning the raw source at exit 0 — the swallow is exactly how the JSON-schema turbofish bug
 /// (`T<..>::method` in expression position) shipped green. Valid Rust still round-trips to `Ok`.
