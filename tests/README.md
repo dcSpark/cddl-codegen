@@ -225,7 +225,13 @@ with [`insta`]. No subprocess, no compilation, no `target/` bloat. Three sub-sui
   turned off must be removed from an existing manifest, not skipped; see `cargo_manifest.rs` — the
   one deliberate exception is the `--export-static-crate` target's changeset,
   `ops_for_static_runtime`, whose conditional deps are set-or-SKIP because that manifest is co-owned
-  with a hand-owned crate whose hand code may need a dep the current flavor doesn't). The
+  with a hand-owned crate whose hand code may need a dep the current flavor doesn't). The manifest's
+  one tool-owned NON-dep conditional key — the `--rust-wasm-feature` `[features]` leaf paired with
+  the now-optional `wasm-bindgen` dep (set under `--wasm` with `["dep:wasm-bindgen"]` or `[]`
+  content by c-style-enum presence, removed without `--wasm`) — is pinned byte-wise by these same
+  snapshots; its lifecycle/merge contract (including the CML-shaped regen and the legacy
+  feature-list repair) lives in the `feature_gate_*` unit tests beside `ops_for_rust`/`ops_for_wasm`
+  in `cargo_manifest.rs`. The
   unconditional keys come from a per-manifest append-only change log (`static/manifest_changes/*.toml`,
   the single source of truth — format and editing rules in `static/manifest_changes/README.md`);
   its fold reader hard-errors on non-contiguous ids or a malformed
@@ -381,6 +387,15 @@ constructs the consumer's wrappers over the mapped dep's types (`--extern-wasm-c
 collection wrappers plus the non-root `nested::NestedHolder`), round-trips to byte-identity, and
 value-anchors every getter through the dep's `From`/`AsRef` boundary impls, so a semantically wrong
 cross-crate conversion fails rather than merely building.
+
+`rust_wasm_bindgen_feature_gated_crate_compiles_standalone` guards the rust crate's
+`--rust-wasm-feature` gate from the one direction no other build can witness: every
+workspace-style build enables the feature through the wasm crate's path dep (cargo feature
+unification), so only a standalone feature-off `cargo check` of the generated `rust/` proves the
+crate compiles without the optional `wasm-bindgen` dep. It also scans the generated rust tree for
+any ungated `#[wasm_bindgen…]` (the c-style-enum `cfg_attr` form is the only sanctioned
+appearance) — per-fixture today; the corpus-wide sweep flavor is a recorded `TESTING_ROADMAP.md`
+item ("Rust-crate wasm-attribute placement sweep").
 
 The three external-macro flags (`--wasm-list-macro`/`--wasm-conversions-macro` and
 `--wasm-cbor-json-api-macro`) emit invocations of a *user-supplied* macro, so the output can't
