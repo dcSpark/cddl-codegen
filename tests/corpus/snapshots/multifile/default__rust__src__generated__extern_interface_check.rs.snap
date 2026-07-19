@@ -13,6 +13,10 @@ expression: content
 // transparent rows (aliases, c-style enums, named collections) must simply exist. A
 // hand-edited or stale export — or a projection bug — therefore fails THIS crate's own
 // build, naming the type. Do not edit.
+// Rows carry NO per-row comments by design: a spec change can delete any row, and a
+// comment stranded on a deleted row is what the edit-preservation overlay turns into a
+// build-breaking sentinel on the next regen. All commentary lives in this fixed banner;
+// each row's type path is its own traceability.
 #[allow(dead_code)]
 fn _assert_serialize<T: cbor_event::se::Serialize>() {}
 #[allow(dead_code)]
@@ -25,27 +29,27 @@ fn _assert_deserialize_embedded_group<
 >() {
 }
 #[allow(unused_imports)]
-use crate::generated::b::bar::BarTypedef as _; // bar_typedef
+use crate::generated::b::bar::BarTypedef as _;
 #[allow(dead_code)]
 fn _extern_interface_self_check() {
-    _assert_serialize::<crate::generated::b::bar::Bar>(); // bar
+    _assert_serialize::<crate::generated::b::bar::Bar>();
     _assert_deserialize::<crate::generated::b::bar::Bar>();
-    _assert_serialize::<crate::generated::a::Baz>(); // baz
+    _assert_serialize::<crate::generated::a::Baz>();
     _assert_deserialize::<crate::generated::a::Baz>();
-    _assert_serialize::<crate::generated::Everything>(); // everything
+    _assert_serialize::<crate::generated::Everything>();
     _assert_deserialize::<crate::generated::Everything>();
-    _assert_serialize::<crate::generated::ExternalFoo>(); // external_foo
+    _assert_serialize::<crate::generated::ExternalFoo>();
     _assert_deserialize::<crate::generated::ExternalFoo>();
-    _assert_serialize::<crate::generated::a::c::foo::Foo>(); // foo
+    _assert_serialize::<crate::generated::a::c::foo::Foo>();
     _assert_deserialize::<crate::generated::a::c::foo::Foo>();
-    _assert_serialize::<crate::generated::qux::Qux>(); // qux
+    _assert_serialize::<crate::generated::qux::Qux>();
     _assert_deserialize::<crate::generated::qux::Qux>();
-    _assert_serialize::<crate::generated::qux::Relay>(); // relay
+    _assert_serialize::<crate::generated::qux::Relay>();
     _assert_deserialize::<crate::generated::qux::Relay>();
-    _assert_serialize::<crate::generated::b::bar::RelayHost>(); // relay_host
+    _assert_serialize::<crate::generated::b::bar::RelayHost>();
     _assert_serialize_embedded_group::<crate::generated::b::bar::RelayHost>();
     _assert_deserialize::<crate::generated::b::bar::RelayHost>();
     _assert_deserialize_embedded_group::<crate::generated::b::bar::RelayHost>();
-    _assert_serialize::<crate::generated::b::bar::RelayPort>(); // relay_port
+    _assert_serialize::<crate::generated::b::bar::RelayPort>();
     _assert_deserialize::<crate::generated::b::bar::RelayPort>();
 }

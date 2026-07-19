@@ -15,7 +15,6 @@ fn _key_demand_hash<T: core::hash::Hash + Eq>() {}
 fn _key_demand_ord<T: Ord>() {}
 #[allow(dead_code)]
 fn _demand_ikey() {
-    // required by `@used_as_key` on ikey
     _key_demand_hash::<crate::generated::Ikey>();
     _key_demand_ord::<crate::generated::Ikey>();
 }

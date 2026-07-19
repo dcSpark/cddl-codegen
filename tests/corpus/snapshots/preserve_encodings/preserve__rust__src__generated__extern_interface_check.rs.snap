@@ -13,6 +13,10 @@ expression: content
 // transparent rows (aliases, c-style enums, named collections) must simply exist. A
 // hand-edited or stale export — or a projection bug — therefore fails THIS crate's own
 // build, naming the type. Do not edit.
+// Rows carry NO per-row comments by design: a spec change can delete any row, and a
+// comment stranded on a deleted row is what the edit-preservation overlay turns into a
+// build-breaking sentinel on the next regen. All commentary lives in this fixed banner;
+// each row's type path is its own traceability.
 #[allow(dead_code)]
 fn _assert_serialize<T: cbor_event::se::Serialize>() {}
 #[allow(dead_code)]
@@ -25,119 +29,119 @@ fn _assert_deserialize_embedded_group<
 >() {
 }
 #[allow(unused_imports)]
-use crate::generated::CEnum as _; // c_enum
+use crate::generated::CEnum as _;
 #[allow(unused_imports)]
-use crate::generated::Data as _; // data
+use crate::generated::Data as _;
 #[allow(unused_imports)]
-use crate::generated::FooBytes as _; // foo_bytes
+use crate::generated::FooBytes as _;
 #[allow(unused_imports)]
-use crate::generated::NullableBool as _; // nullable_bool
+use crate::generated::NullableBool as _;
 #[allow(unused_imports)]
-use crate::generated::Table as _; // table
+use crate::generated::Table as _;
 #[allow(unused_imports)]
-use crate::generated::U32 as _; // u32
+use crate::generated::U32 as _;
 #[allow(dead_code)]
 fn _extern_interface_self_check() {
-    _assert_serialize::<crate::generated::ArrayOptFields>(); // array_opt_fields
+    _assert_serialize::<crate::generated::ArrayOptFields>();
     _assert_deserialize::<crate::generated::ArrayOptFields>();
-    _assert_serialize::<crate::generated::Bar>(); // bar
+    _assert_serialize::<crate::generated::Bar>();
     _assert_deserialize::<crate::generated::Bar>();
-    _assert_serialize::<crate::generated::Basic>(); // basic
+    _assert_serialize::<crate::generated::Basic>();
     _assert_serialize_embedded_group::<crate::generated::Basic>();
     _assert_deserialize::<crate::generated::Basic>();
     _assert_deserialize_embedded_group::<crate::generated::Basic>();
-    _assert_serialize::<crate::generated::BasicArr>(); // basic_arr
+    _assert_serialize::<crate::generated::BasicArr>();
     _assert_deserialize::<crate::generated::BasicArr>();
-    _assert_serialize::<crate::generated::Bounds>(); // bounds
+    _assert_serialize::<crate::generated::Bounds>();
     _assert_deserialize::<crate::generated::Bounds>();
-    _assert_serialize::<crate::generated::BoundsGroupChoice>(); // bounds_group_choice
+    _assert_serialize::<crate::generated::BoundsGroupChoice>();
     _assert_deserialize::<crate::generated::BoundsGroupChoice>();
-    _assert_serialize::<crate::generated::BoundsTypeChoice>(); // bounds_type_choice
+    _assert_serialize::<crate::generated::BoundsTypeChoice>();
     _assert_deserialize::<crate::generated::BoundsTypeChoice>();
-    _assert_serialize::<crate::generated::BytesUint>(); // bytes_uint
+    _assert_serialize::<crate::generated::BytesUint>();
     _assert_serialize_embedded_group::<crate::generated::BytesUint>();
     _assert_deserialize::<crate::generated::BytesUint>();
     _assert_deserialize_embedded_group::<crate::generated::BytesUint>();
-    _assert_serialize::<crate::generated::CborInCbor>(); // cbor_in_cbor
+    _assert_serialize::<crate::generated::CborInCbor>();
     _assert_deserialize::<crate::generated::CborInCbor>();
-    _assert_serialize::<crate::generated::CustomFieldHolder>(); // custom_field_holder
+    _assert_serialize::<crate::generated::CustomFieldHolder>();
     _assert_deserialize::<crate::generated::CustomFieldHolder>();
-    _assert_serialize::<crate::generated::DeeplyNested>(); // deeply_nested
+    _assert_serialize::<crate::generated::DeeplyNested>();
     _assert_deserialize::<crate::generated::DeeplyNested>();
-    _assert_serialize::<crate::generated::EnumOptEmbedFields>(); // enum_opt_embed_fields
+    _assert_serialize::<crate::generated::EnumOptEmbedFields>();
     _assert_deserialize::<crate::generated::EnumOptEmbedFields>();
-    _assert_serialize::<crate::generated::Enums>(); // enums
+    _assert_serialize::<crate::generated::Enums>();
     _assert_deserialize::<crate::generated::Enums>();
-    _assert_serialize::<crate::generated::Foo>(); // foo
+    _assert_serialize::<crate::generated::Foo>();
     _assert_deserialize::<crate::generated::Foo>();
-    _assert_serialize::<crate::generated::GroupChoice>(); // group_choice
+    _assert_serialize::<crate::generated::GroupChoice>();
     _assert_deserialize::<crate::generated::GroupChoice>();
-    _assert_serialize::<crate::generated::Hash>(); // hash
+    _assert_serialize::<crate::generated::Hash>();
     _assert_deserialize::<crate::generated::Hash>();
-    _assert_serialize::<crate::generated::MapWithDefaults>(); // map_with_defaults
+    _assert_serialize::<crate::generated::MapWithDefaults>();
     _assert_deserialize::<crate::generated::MapWithDefaults>();
-    _assert_serialize::<crate::generated::NemPreserve>(); // nem_preserve
+    _assert_serialize::<crate::generated::NemPreserve>();
     _assert_deserialize::<crate::generated::NemPreserve>();
-    _assert_serialize::<crate::generated::NevPreserve>(); // nev_preserve
+    _assert_serialize::<crate::generated::NevPreserve>();
     _assert_deserialize::<crate::generated::NevPreserve>();
-    _assert_serialize::<crate::generated::NonOverlapBasicEmbed>(); // non_overlap_basic_embed
+    _assert_serialize::<crate::generated::NonOverlapBasicEmbed>();
     _assert_deserialize::<crate::generated::NonOverlapBasicEmbed>();
-    _assert_serialize::<crate::generated::NonOverlapBasicEmbedMixed>(); // non_overlap_basic_embed_mixed
+    _assert_serialize::<crate::generated::NonOverlapBasicEmbedMixed>();
     _assert_deserialize::<crate::generated::NonOverlapBasicEmbedMixed>();
-    _assert_serialize::<crate::generated::NonOverlapBasicEmbedMixedExplicit>(); // non_overlap_basic_embed_mixed_explicit
+    _assert_serialize::<crate::generated::NonOverlapBasicEmbedMixedExplicit>();
     _assert_deserialize::<crate::generated::NonOverlapBasicEmbedMixedExplicit>();
-    _assert_serialize::<crate::generated::NonOverlapBasicEmbedMultiFields>(); // non_overlap_basic_embed_multi_fields
+    _assert_serialize::<crate::generated::NonOverlapBasicEmbedMultiFields>();
     _assert_deserialize::<crate::generated::NonOverlapBasicEmbedMultiFields>();
-    _assert_serialize::<crate::generated::NonOverlapBasicNotBasic>(); // non_overlap_basic_not_basic
+    _assert_serialize::<crate::generated::NonOverlapBasicNotBasic>();
     _assert_deserialize::<crate::generated::NonOverlapBasicNotBasic>();
-    _assert_serialize::<crate::generated::NonOverlappingTypeChoiceAll>(); // non_overlapping_type_choice_all
+    _assert_serialize::<crate::generated::NonOverlappingTypeChoiceAll>();
     _assert_deserialize::<crate::generated::NonOverlappingTypeChoiceAll>();
-    _assert_serialize::<crate::generated::NonOverlappingTypeChoiceSome>(); // non_overlapping_type_choice_some
+    _assert_serialize::<crate::generated::NonOverlappingTypeChoiceSome>();
     _assert_deserialize::<crate::generated::NonOverlappingTypeChoiceSome>();
-    _assert_serialize::<crate::generated::NullableSpecials>(); // nullable_specials
+    _assert_serialize::<crate::generated::NullableSpecials>();
     _assert_deserialize::<crate::generated::NullableSpecials>();
-    _assert_serialize::<crate::generated::OptFixedArr>(); // opt_fixed_arr
+    _assert_serialize::<crate::generated::OptFixedArr>();
     _assert_deserialize::<crate::generated::OptFixedArr>();
-    _assert_serialize::<crate::generated::OptFixedMap>(); // opt_fixed_map
+    _assert_serialize::<crate::generated::OptFixedMap>();
     _assert_deserialize::<crate::generated::OptFixedMap>();
-    _assert_serialize::<crate::generated::OverlapBasicEmbed>(); // overlap_basic_embed
+    _assert_serialize::<crate::generated::OverlapBasicEmbed>();
     _assert_deserialize::<crate::generated::OverlapBasicEmbed>();
-    _assert_serialize::<crate::generated::OverlappingInlined>(); // overlapping_inlined
+    _assert_serialize::<crate::generated::OverlappingInlined>();
     _assert_deserialize::<crate::generated::OverlappingInlined>();
-    _assert_serialize::<crate::generated::Plain>(); // plain
+    _assert_serialize::<crate::generated::Plain>();
     _assert_serialize_embedded_group::<crate::generated::Plain>();
     _assert_deserialize::<crate::generated::Plain>();
     _assert_deserialize_embedded_group::<crate::generated::Plain>();
-    _assert_serialize::<crate::generated::PlainArrays>(); // plain_arrays
+    _assert_serialize::<crate::generated::PlainArrays>();
     _assert_deserialize::<crate::generated::PlainArrays>();
-    _assert_serialize::<crate::generated::SignBounds>(); // sign_bounds
+    _assert_serialize::<crate::generated::SignBounds>();
     _assert_deserialize::<crate::generated::SignBounds>();
-    _assert_serialize::<crate::generated::SignedInts>(); // signed_ints
+    _assert_serialize::<crate::generated::SignedInts>();
     _assert_deserialize::<crate::generated::SignedInts>();
-    _assert_serialize::<crate::generated::String1632>(); // string_16_32
+    _assert_serialize::<crate::generated::String1632>();
     _assert_deserialize::<crate::generated::String1632>();
-    _assert_serialize::<crate::generated::String64>(); // string64
+    _assert_serialize::<crate::generated::String64>();
     _assert_deserialize::<crate::generated::String64>();
-    _assert_serialize::<crate::generated::StructWithCustomSerialization>(); // struct_with_custom_serialization
+    _assert_serialize::<crate::generated::StructWithCustomSerialization>();
     _assert_deserialize::<crate::generated::StructWithCustomSerialization>();
-    _assert_serialize::<crate::generated::TableArrMembers>(); // table_arr_members
+    _assert_serialize::<crate::generated::TableArrMembers>();
     _assert_deserialize::<crate::generated::TableArrMembers>();
-    _assert_serialize::<crate::generated::TaggedFooBytes>(); // tagged_foo_bytes
+    _assert_serialize::<crate::generated::TaggedFooBytes>();
     _assert_deserialize::<crate::generated::TaggedFooBytes>();
-    _assert_serialize::<crate::generated::TaggedText>(); // tagged_text
+    _assert_serialize::<crate::generated::TaggedText>();
     _assert_deserialize::<crate::generated::TaggedText>();
-    _assert_serialize::<crate::generated::TopLevelNegRange>(); // top_level_neg_range
+    _assert_serialize::<crate::generated::TopLevelNegRange>();
     _assert_deserialize::<crate::generated::TopLevelNegRange>();
-    _assert_serialize::<crate::generated::TopLevelPosRange>(); // top_level_pos_range
+    _assert_serialize::<crate::generated::TopLevelPosRange>();
     _assert_deserialize::<crate::generated::TopLevelPosRange>();
-    _assert_serialize::<crate::generated::TopLevelTaggedRange>(); // top_level_tagged_range
+    _assert_serialize::<crate::generated::TopLevelTaggedRange>();
     _assert_deserialize::<crate::generated::TopLevelTaggedRange>();
-    _assert_serialize::<crate::generated::TypeChoice>(); // type_choice
+    _assert_serialize::<crate::generated::TypeChoice>();
     _assert_deserialize::<crate::generated::TypeChoice>();
-    _assert_serialize::<crate::generated::WidthCollapse>(); // width_collapse
+    _assert_serialize::<crate::generated::WidthCollapse>();
     _assert_deserialize::<crate::generated::WidthCollapse>();
-    _assert_serialize::<crate::generated::WrapperList>(); // wrapper_list
+    _assert_serialize::<crate::generated::WrapperList>();
     _assert_deserialize::<crate::generated::WrapperList>();
-    _assert_serialize::<crate::generated::WrapperTable>(); // wrapper_table
+    _assert_serialize::<crate::generated::WrapperTable>();
     _assert_deserialize::<crate::generated::WrapperTable>();
 }

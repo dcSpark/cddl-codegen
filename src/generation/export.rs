@@ -941,22 +941,13 @@ impl GenerationScope {
                         scope.components().join("::")
                     )
                 };
-                let src = types
-                    .source_rule_name(ident)
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| ident.to_string());
-                let mut words = Vec::new();
-                if demand.hash {
-                    words.push(" hash");
-                }
-                if demand.ord {
-                    words.push(" ord");
-                }
+                // No per-fn comment: the fn name `_demand_<rule>` already names the tagged rule and
+                // the banner explains the pattern. A comment here would strand into a
+                // `cddl-codegen:unpreserved-comment` compile_error trap whenever the tag (hence the
+                // fn) is deleted — the same preservation-overlay hazard the banner-only rule avoids.
                 file.push_str(&format!(
-                    "#[allow(dead_code)]\nfn _demand_{}() {{\n    // required by `@used_as_key{}` on {}\n",
+                    "#[allow(dead_code)]\nfn _demand_{}() {{\n",
                     convert_to_snake_case(ident.as_ref()),
-                    words.concat(),
-                    src
                 ));
                 if hash_family(demand) {
                     file.push_str(&format!("    _key_demand_hash::<{path}>();\n"));
@@ -1047,7 +1038,11 @@ impl GenerationScope {
                  // `Deserialize` where the dep generates one), raw-bytes rows `RawBytesEncoding`, and\n\
                  // transparent rows (aliases, c-style enums, named collections) must simply exist. A\n\
                  // hand-edited or stale export — or a projection bug — therefore fails THIS crate's own\n\
-                 // build, naming the type. Do not edit.\n",
+                 // build, naming the type. Do not edit.\n\
+                 // Rows carry NO per-row comments by design: a spec change can delete any row, and a\n\
+                 // comment stranded on a deleted row is what the edit-preservation overlay turns into a\n\
+                 // build-breaking sentinel on the next regen. All commentary lives in this fixed banner;\n\
+                 // each row's type path is its own traceability.\n",
             );
             // Bound-carrier fns, emitted only for the kinds actually present so an absent trait (e.g.
             // `RawBytesEncoding` in a crate with no raw-bytes type) is never named.
@@ -1083,9 +1078,8 @@ impl GenerationScope {
             for entry in &entries {
                 if matches!(entry.kind, ExternCheckKind::Use) {
                     file.push_str(&format!(
-                        "#[allow(unused_imports)]\nuse {} as _; // {}\n",
+                        "#[allow(unused_imports)]\nuse {} as _;\n",
                         path_of(&entry.components, &entry.ident),
-                        entry.source
                     ));
                 }
             }
@@ -1095,10 +1089,7 @@ impl GenerationScope {
                 let path = path_of(&entry.components, &entry.ident);
                 match entry.kind {
                     ExternCheckKind::Serialize => {
-                        file.push_str(&format!(
-                            "    _assert_serialize::<{path}>(); // {}\n",
-                            entry.source
-                        ));
+                        file.push_str(&format!("    _assert_serialize::<{path}>();\n"));
                         if self.deserialize_generated(&entry.ident) {
                             file.push_str(&format!("    _assert_deserialize::<{path}>();\n"));
                         }
@@ -1108,10 +1099,7 @@ impl GenerationScope {
                         // whole-value (a group-choice arm's `.serialize()`) and embedded (a record
                         // member's `serialize_as_embedded_group`), each `Deserialize` side gated on
                         // the dep generating one.
-                        file.push_str(&format!(
-                            "    _assert_serialize::<{path}>(); // {}\n",
-                            entry.source
-                        ));
+                        file.push_str(&format!("    _assert_serialize::<{path}>();\n"));
                         file.push_str(&format!(
                             "    _assert_serialize_embedded_group::<{path}>();\n"
                         ));
@@ -1123,10 +1111,7 @@ impl GenerationScope {
                         }
                     }
                     ExternCheckKind::RawBytes => {
-                        file.push_str(&format!(
-                            "    _assert_raw_bytes::<{path}>(); // {}\n",
-                            entry.source
-                        ));
+                        file.push_str(&format!("    _assert_raw_bytes::<{path}>();\n"));
                     }
                     ExternCheckKind::Use | ExternCheckKind::None => {}
                 }

@@ -13,9 +13,13 @@ expression: content
 // transparent rows (aliases, c-style enums, named collections) must simply exist. A
 // hand-edited or stale export — or a projection bug — therefore fails THIS crate's own
 // build, naming the type. Do not edit.
+// Rows carry NO per-row comments by design: a spec change can delete any row, and a
+// comment stranded on a deleted row is what the edit-preservation overlay turns into a
+// build-breaking sentinel on the next regen. All commentary lives in this fixed banner;
+// each row's type path is its own traceability.
 #[allow(unused_imports)]
-use crate::generated::EnumKeyedMap as _; // enum_keyed_map
+use crate::generated::EnumKeyedMap as _;
 #[allow(unused_imports)]
-use crate::generated::FixedEnum as _; // fixed_enum
+use crate::generated::FixedEnum as _;
 #[allow(dead_code)]
 fn _extern_interface_self_check() {}

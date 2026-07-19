@@ -13,38 +13,42 @@ expression: content
 // transparent rows (aliases, c-style enums, named collections) must simply exist. A
 // hand-edited or stale export — or a projection bug — therefore fails THIS crate's own
 // build, naming the type. Do not edit.
+// Rows carry NO per-row comments by design: a spec change can delete any row, and a
+// comment stranded on a deleted row is what the edit-preservation overlay turns into a
+// build-breaking sentinel on the next regen. All commentary lives in this fixed banner;
+// each row's type path is its own traceability.
 #[allow(dead_code)]
 fn _assert_serialize<T: cbor_event::se::Serialize>() {}
 #[allow(dead_code)]
 fn _assert_deserialize<T: crate::generated::serialization::Deserialize>() {}
 #[allow(unused_imports)]
-use crate::generated::Table as _; // table
+use crate::generated::Table as _;
 #[allow(dead_code)]
 fn _extern_interface_self_check() {
-    _assert_serialize::<crate::generated::BytesWrapper>(); // bytes_wrapper
+    _assert_serialize::<crate::generated::BytesWrapper>();
     _assert_deserialize::<crate::generated::BytesWrapper>();
-    _assert_serialize::<crate::generated::CustomWrapper>(); // custom_wrapper
+    _assert_serialize::<crate::generated::CustomWrapper>();
     _assert_deserialize::<crate::generated::CustomWrapper>();
-    _assert_serialize::<crate::generated::I16Wrapper>(); // i16_wrapper
+    _assert_serialize::<crate::generated::I16Wrapper>();
     _assert_deserialize::<crate::generated::I16Wrapper>();
-    _assert_serialize::<crate::generated::I64Wrapper>(); // i64_wrapper
+    _assert_serialize::<crate::generated::I64Wrapper>();
     _assert_deserialize::<crate::generated::I64Wrapper>();
-    _assert_serialize::<crate::generated::IntWrapper>(); // int_wrapper
+    _assert_serialize::<crate::generated::IntWrapper>();
     _assert_deserialize::<crate::generated::IntWrapper>();
-    _assert_serialize::<crate::generated::NemJson>(); // nem_json
+    _assert_serialize::<crate::generated::NemJson>();
     _assert_deserialize::<crate::generated::NemJson>();
-    _assert_serialize::<crate::generated::NevJson>(); // nev_json
+    _assert_serialize::<crate::generated::NevJson>();
     _assert_deserialize::<crate::generated::NevJson>();
-    _assert_serialize::<crate::generated::NintWrapper>(); // nint_wrapper
+    _assert_serialize::<crate::generated::NintWrapper>();
     _assert_deserialize::<crate::generated::NintWrapper>();
-    _assert_serialize::<crate::generated::StrWrapper>(); // str_wrapper
+    _assert_serialize::<crate::generated::StrWrapper>();
     _assert_deserialize::<crate::generated::StrWrapper>();
-    _assert_serialize::<crate::generated::StructWrapper>(); // struct_wrapper
+    _assert_serialize::<crate::generated::StructWrapper>();
     _assert_deserialize::<crate::generated::StructWrapper>();
-    _assert_serialize::<crate::generated::TableHolder>(); // table_holder
+    _assert_serialize::<crate::generated::TableHolder>();
     _assert_deserialize::<crate::generated::TableHolder>();
-    _assert_serialize::<crate::generated::U64Wrapper>(); // u64_wrapper
+    _assert_serialize::<crate::generated::U64Wrapper>();
     _assert_deserialize::<crate::generated::U64Wrapper>();
-    _assert_serialize::<crate::generated::U8Wrapper>(); // u8_wrapper
+    _assert_serialize::<crate::generated::U8Wrapper>();
     _assert_deserialize::<crate::generated::U8Wrapper>();
 }

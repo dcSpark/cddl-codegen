@@ -13,30 +13,34 @@ expression: content
 // transparent rows (aliases, c-style enums, named collections) must simply exist. A
 // hand-edited or stale export — or a projection bug — therefore fails THIS crate's own
 // build, naming the type. Do not edit.
+// Rows carry NO per-row comments by design: a spec change can delete any row, and a
+// comment stranded on a deleted row is what the edit-preservation overlay turns into a
+// build-breaking sentinel on the next regen. All commentary lives in this fixed banner;
+// each row's type path is its own traceability.
 #[allow(dead_code)]
 fn _assert_serialize<T: cbor_event::se::Serialize>() {}
 #[allow(dead_code)]
 fn _assert_deserialize<T: crate::generated::serialization::Deserialize>() {}
 #[allow(unused_imports)]
-use crate::generated::MaybeColl as _; // maybe_coll
+use crate::generated::MaybeColl as _;
 #[allow(unused_imports)]
-use crate::generated::MaybeDenum as _; // maybe_denum
+use crate::generated::MaybeDenum as _;
 #[allow(unused_imports)]
-use crate::generated::MaybeUint as _; // maybe_uint
+use crate::generated::MaybeUint as _;
 #[allow(unused_imports)]
-use crate::generated::NullableCollMap as _; // nullable_coll_map
+use crate::generated::NullableCollMap as _;
 #[allow(unused_imports)]
-use crate::generated::NullableMapValue as _; // nullable_map_value
+use crate::generated::NullableMapValue as _;
 #[allow(unused_imports)]
-use crate::generated::NumsArr as _; // nums_arr
+use crate::generated::NumsArr as _;
 #[allow(dead_code)]
 fn _extern_interface_self_check() {
-    _assert_serialize::<crate::generated::DataEnum>(); // data_enum
+    _assert_serialize::<crate::generated::DataEnum>();
     _assert_deserialize::<crate::generated::DataEnum>();
-    _assert_serialize::<crate::generated::NullableCollField>(); // nullable_coll_field
+    _assert_serialize::<crate::generated::NullableCollField>();
     _assert_deserialize::<crate::generated::NullableCollField>();
-    _assert_serialize::<crate::generated::NullableDenumField>(); // nullable_denum_field
+    _assert_serialize::<crate::generated::NullableDenumField>();
     _assert_deserialize::<crate::generated::NullableDenumField>();
-    _assert_serialize::<crate::generated::NullableOptionalField>(); // nullable_optional_field
+    _assert_serialize::<crate::generated::NullableOptionalField>();
     _assert_deserialize::<crate::generated::NullableOptionalField>();
 }

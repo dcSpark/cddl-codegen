@@ -13,11 +13,15 @@ expression: content
 // transparent rows (aliases, c-style enums, named collections) must simply exist. A
 // hand-edited or stale export — or a projection bug — therefore fails THIS crate's own
 // build, naming the type. Do not edit.
+// Rows carry NO per-row comments by design: a spec change can delete any row, and a
+// comment stranded on a deleted row is what the edit-preservation overlay turns into a
+// build-breaking sentinel on the next regen. All commentary lives in this fixed banner;
+// each row's type path is its own traceability.
 #[allow(unused_imports)]
-use crate::generated::BareInt as _; // bare_int
+use crate::generated::BareInt as _;
 #[allow(unused_imports)]
-use crate::generated::CborInt as _; // cbor_int
+use crate::generated::CborInt as _;
 #[allow(unused_imports)]
-use crate::generated::CborIntTable as _; // cbor_int_table
+use crate::generated::CborIntTable as _;
 #[allow(dead_code)]
 fn _extern_interface_self_check() {}

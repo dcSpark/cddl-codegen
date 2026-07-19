@@ -13,6 +13,5 @@ expression: content
 fn _key_demand_hash<T: core::hash::Hash + Eq>() {}
 #[allow(dead_code)]
 fn _demand_fixed_enum() {
-    // required by `@used_as_key hash` on fixed_enum
     _key_demand_hash::<crate::generated::FixedEnum>();
 }

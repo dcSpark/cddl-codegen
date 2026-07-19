@@ -38,10 +38,14 @@
 //! v1 scope is own-line comments (only whitespace before them on their line). A user-added trailing
 //! (end-of-line) comment is detected but not re-placed — it fails loudly with a hint to move it to
 //! its own line — so the never-silent property holds without a trailing-anchor flavor. Trailing
-//! comments whose exact text appears in `new`'s trailing set cancel silently — the generator emits
-//! NO trailing comments today (the `// <cddl>` lines in some test fixtures are harness-appended
-//! hand-written test modules, not tool output), so this rule is defense-in-depth: if the generator
-//! ever grows one, it must not spam compile errors.
+//! comments whose exact text appears in `new`'s trailing set cancel silently. INVARIANT: the
+//! generator emits NO trailing comment on a row a spec change can delete — such a comment strands on
+//! the deleted row and re-injects as a `compile_error!` trap that carries forward across regens, so
+//! the two generated files that once carried per-row `// <cddl>` markers (`extern_interface_check.rs`,
+//! `key_demand_assertions.rs`) were made banner-only. This cancellation rule is therefore
+//! defense-in-depth: if the generator ever regrows a trailing comment, it must not spam compile
+//! errors. (The `// <cddl>` lines in some `--emit-tests` fixtures live in harness-appended
+//! hand-written test modules outside the overlay-covered trees, not in tool-owned generated code.)
 //!
 //! Beyond comments, a user can keep hand-written CODE across a regen with an
 //! `// cddl-codegen:insert-start` … `// cddl-codegen:insert-end` own-line comment pair. The whole
@@ -1436,10 +1440,18 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
         .filter(|c| c.own_line)
         .map(|c| (c.anchor, c.text))
         .collect();
-    // Trailing comments whose text `new` also carries somewhere cancel silently. The generator
-    // emits no trailing comments today, so this is defense-in-depth (see module docs); cancellation
-    // is by exact text, not position, because trailing anchors shift with any edit. Residual: a
-    // user trailing comment textually identical to one in `new` is skipped rather than failed.
+    // Trailing comments whose text `new` also carries somewhere cancel silently. INVARIANT: the
+    // generator must emit NO trailing (end-of-line) comment on any row a spec change can delete —
+    // such a comment would be stranded on the deleted row and re-injected here as a
+    // `cddl-codegen:unpreserved-comment` compile_error trap that every further regen carries forward
+    // (a self-perpetuating trap the user can only escape by hand-deleting the sentinel). Violating
+    // it recreates that trap class. It DID regress once: `extern_interface_check.rs` and
+    // `key_demand_assertions.rs` carried per-row `// <cddl>` markers; both were made banner-only,
+    // pinned by `extern_interface_check_regen_over_deletion_no_trap` and
+    // `extern_interface_check_has_no_trailing_row_comments`. This cancellation is therefore
+    // defense-in-depth; it matches by exact text, not position, because trailing anchors shift with
+    // any edit. Residual: a user trailing comment textually identical to one in `new` is skipped
+    // rather than failed.
     let new_trailing_texts: BTreeSet<&str> = new_lex
         .comments
         .iter()
