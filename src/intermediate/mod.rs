@@ -1526,6 +1526,103 @@ impl<'a> IntermediateTypes<'a> {
             .insert(rust_struct.ident().clone(), rust_struct);
     }
 
+    /// Re-resolve fields typed as a generic COLLECTION instance's transparent alias.
+    ///
+    /// A non-generic collection rule (`foo = #6.258([* uint])`) registers its transparent alias in
+    /// `type_aliases` at PARSE time, so a use-site field referencing it resolves through `new_type`
+    /// to the structural `Alias(Foo, Array(..))` conceptual type right where the field is built. A
+    /// generic instance's alias (`xs_int = xs<uint>`) is instead registered only in `finalize` (the
+    /// `GenericResolved::Resolved` → [`Self::register_rust_struct`] Array/Table arms), AFTER every
+    /// use-site field was already built — so such a field keeps an unresolved `Rust(xs_int)`
+    /// conceptual type, which generation turns into `self.field.serialize(..)` /
+    /// `XsInt::deserialize(..)` method calls a bare `Vec`/`BTreeMap` alias has no impls for.
+    ///
+    /// Now that the late aliases exist, re-run alias substitution on the affected field leaves so the
+    /// generic path converges on the SAME `Alias(ident, Array/Map)` field type the non-generic path
+    /// gets — one collection code path (inline serialize, per-field len/elem/tag encoding vars), not
+    /// a parallel one. Scoped to instances whose alias base is a structural `Array`/`Map`: generic
+    /// EXTERN instances (alias base `Rust(real_ident)`, registered above with the same
+    /// `gen_rust_alias=true`) resolve to a `Rust` type, are excluded here, and stay byte-identical.
+    fn resolve_generic_collection_instance_fields(&mut self) {
+        // Snapshot the resolved alias `RustType` for each generic-collection instance (base resolves
+        // to Array/Map), cloned out first so the field walk can borrow `rust_structs` mutably. The
+        // snapshot value is exactly what `new_type` would have returned at parse time: the alias's
+        // `Alias(ident, Array/Map)` conceptual type carrying the optional-tag encoding op and the
+        // occurrence bounds.
+        let mut resolved: BTreeMap<RustIdent, RustType> = BTreeMap::new();
+        for ident in self.generic_instances.keys() {
+            if let Some(rt) = self.resolve_alias(&AliasIdent::Rust(ident.clone()))
+                && matches!(
+                    rt.conceptual_type.resolve_alias_shallow(),
+                    ConceptualRustType::Array(_) | ConceptualRustType::Map(_, _)
+                )
+            {
+                resolved.insert(ident.clone(), rt);
+            }
+        }
+        if resolved.is_empty() {
+            return;
+        }
+        // Replace a `Rust(instance)` leaf with the resolved collection alias, keeping any
+        // reference-site encodings (`#6.24(xs_int)`-style outer wraps) OUTSIDE the alias's own by
+        // appending them. Recurses into structural children first so `[* xs_int]` / `? xs_int` reach
+        // the leaf. Does not descend through the inserted `Alias` box — nested collection-of-generic
+        // -instance is out of scope (no such shape reaches here today).
+        fn walk(rt: &mut RustType, resolved: &BTreeMap<RustIdent, RustType>) {
+            match &mut rt.conceptual_type {
+                ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
+                    walk(inner, resolved)
+                }
+                ConceptualRustType::Map(k, v) => {
+                    walk(k, resolved);
+                    walk(v, resolved);
+                }
+                _ => {}
+            }
+            let replacement = match &rt.conceptual_type {
+                ConceptualRustType::Rust(ident) => resolved.get(ident).cloned(),
+                _ => None,
+            };
+            if let Some(mut new_rt) = replacement {
+                new_rt.encodings.append(&mut rt.encodings);
+                *rt = new_rt;
+            }
+        }
+        for rust_struct in self.rust_structs.values_mut() {
+            match &mut rust_struct.variant {
+                RustStructType::Record(record) => {
+                    for field in record.fields.iter_mut() {
+                        walk(&mut field.rust_type, &resolved);
+                    }
+                }
+                RustStructType::Table { domain, range, .. } => {
+                    walk(domain, &resolved);
+                    walk(range, &resolved);
+                }
+                RustStructType::Array { element_type, .. } => {
+                    walk(element_type, &resolved);
+                }
+                RustStructType::GroupChoice { variants, .. }
+                | RustStructType::TypeChoice { variants } => {
+                    for variant in variants.iter_mut() {
+                        match &mut variant.data {
+                            EnumVariantData::RustType(ty) => walk(ty, &resolved),
+                            EnumVariantData::Inlined(rec) => {
+                                for field in rec.fields.iter_mut() {
+                                    walk(&mut field.rust_type, &resolved);
+                                }
+                            }
+                        }
+                    }
+                }
+                RustStructType::Wrapper { wrapped, .. } => walk(wrapped, &resolved),
+                RustStructType::CStyleEnum { .. }
+                | RustStructType::Extern
+                | RustStructType::RawBytesType => {}
+            }
+        }
+    }
+
     // creates a RustType for the array type - and if needed, registers a type to generate
     // TODO: After the split we should be able to only register it directly
     // and then examine those at generation-time and handle things ALWAYS as RustType::Array
@@ -1638,6 +1735,12 @@ impl<'a> IntermediateTypes<'a> {
                 }
             }
         }
+        // The `Resolved` arm above registered each generic COLLECTION instance's transparent alias
+        // (`xs_int = xs<uint>` → `pub type XsInt = Vec<u64>;`) only just now — AFTER every use-site
+        // field was built at parse time. Re-resolve those fields so the generic path converges on
+        // the SAME structural collection field type the non-generic path already has (see the method
+        // doc); must run BEFORE the key-demand / encoding analysis below so they see the collection.
+        self.resolve_generic_collection_instance_fields();
         // recursively check all types used as keys or contained within a type used as a key
         // this is so we only derive comparison or hash traits for those types. Demand is propagated as
         // SETS (`DemandSet`), union-merged: a tagged root spreads ITS flavor to every contained type;

@@ -115,6 +115,154 @@ fn collection_generic_instance_is_a_transparent_alias() {
     );
 }
 
+/// The value of the `rust/src/generated/<basename>` file, or "" if absent (e.g. `cbor_encodings.rs`
+/// only exists under `--preserve-encodings`).
+fn file_ending(files: &std::collections::BTreeMap<String, String>, basename: &str) -> String {
+    files
+        .iter()
+        .find(|(k, _)| k.ends_with(basename))
+        .map(|(_, v)| v.clone())
+        .unwrap_or_default()
+}
+
+/// A field typed as a generic-instance transparent collection alias must emit the SAME inline
+/// collection code the NON-GENERIC equivalent emits — not `self.field.serialize(..)` /
+/// `Alias::deserialize(..)` method calls, which a bare `Vec`/`NonEmptyVec` alias has no impls for
+/// (so they never compile). This is the convergence the fix delivers: the generic instance's alias
+/// is registered only at finalize (after use-site fields were parsed), so the field kept an
+/// unresolved `Rust(instance)` type; re-resolving it onto the alias's `Alias(ident, Array)` shape
+/// routes both paths through the single collection code path. Before the fix the generic serialize
+/// carries the method calls and the two sources differ; after it they are identical modulo the alias
+/// name. Covers the Phase-2 collapsed tagged-or-untagged choice AND the single-arm tagged form,
+/// `[*]` and `[+]`, plain and preserve+canonical.
+#[test]
+fn generic_instance_collection_field_converges_with_nongeneric() {
+    // (generic def, non-generic rule, tag) — same element (`uint`) both sides, so the only expected
+    // source difference is the alias name (`XsInt` vs `Foo`).
+    let cases: &[(&str, &str, &str)] = &[
+        (
+            "xs<a0> = #6.258([* a0]) / [* a0]",
+            "foo = #6.258([* uint]) / [* uint]",
+            "choice_star",
+        ),
+        (
+            "xs<a0> = #6.258([+ a0]) / [+ a0]",
+            "foo = #6.258([+ uint]) / [+ uint]",
+            "choice_plus",
+        ),
+        (
+            "xs<a0> = #6.258([* a0])",
+            "foo = #6.258([* uint])",
+            "tagged_star",
+        ),
+        (
+            "xs<a0> = #6.258([+ a0])",
+            "foo = #6.258([+ uint])",
+            "tagged_plus",
+        ),
+        ("xs<a0> = [* a0]", "foo = [* uint]", "plain_star"),
+        ("xs<a0> = [+ a0]", "foo = [+ uint]", "plain_plus"),
+    ];
+    let profiles: &[(&str, &[&str])] = &[
+        ("default", &["--wasm", "false"]),
+        (
+            "preserve_canonical",
+            &[
+                "--preserve-encodings=true",
+                "--canonical-form=true",
+                "--wasm",
+                "false",
+            ],
+        ),
+    ];
+    for (gdef, nrule, ctag) in cases {
+        for (ptag, flags) in profiles {
+            let g = generate(
+                &format!("{gdef}\nxs_int = xs<uint>\nuses = [a: xs_int]\n"),
+                &format!("conv_g_{ctag}_{ptag}"),
+                flags,
+            )
+            .unwrap_or_else(|e| panic!("generic `{gdef}` ({ptag}) must generate: {e:?}"));
+            let n = generate(
+                &format!("{nrule}\nuses = [a: foo]\n"),
+                &format!("conv_n_{ctag}_{ptag}"),
+                flags,
+            )
+            .unwrap_or_else(|e| panic!("non-generic `{nrule}` ({ptag}) must generate: {e:?}"));
+
+            let g_ser = file_ending(&g, "serialization.rs");
+            // The exact pre-fix breakage: a bare-`Vec` alias field routed through method calls.
+            assert!(
+                !g_ser.contains("self.a.serialize("),
+                "generic `{gdef}` ({ptag}) must inline the collection, not call `self.a.serialize()`:\n{g_ser}"
+            );
+            assert!(
+                !g_ser.contains("XsInt::deserialize("),
+                "generic `{gdef}` ({ptag}) must inline the collection, not call `XsInt::deserialize()`:\n{g_ser}"
+            );
+
+            // Full behavioral convergence: the serialize/deserialize impls and the encoding struct
+            // are byte-identical to the non-generic equivalent once the alias names are unified.
+            let norm = |s: &str| s.replace("XsInt", "ALIAS").replace("Foo", "ALIAS");
+            for basename in ["serialization.rs", "cbor_encodings.rs"] {
+                assert_eq!(
+                    norm(&file_ending(&g, basename)),
+                    norm(&file_ending(&n, basename)),
+                    "generic vs non-generic `{basename}` diverged for `{gdef}` ({ptag})"
+                );
+            }
+            // mod.rs carries the same declarations, but the generic instance's alias is registered at
+            // finalize (vs parse for the named rule), so the `pub type` line and the consumer struct
+            // land in a different relative order. That ordering is immaterial (deterministic per input,
+            // both compile), so compare the type declarations order-independently.
+            let decls = |s: &str| {
+                let mut lines: Vec<String> = norm(s)
+                    .lines()
+                    .map(|l| l.trim().to_owned())
+                    .filter(|l| !l.is_empty())
+                    .collect();
+                lines.sort();
+                lines
+            };
+            assert_eq!(
+                decls(&file_ending(&g, "mod.rs")),
+                decls(&file_ending(&n, "mod.rs")),
+                "generic vs non-generic `mod.rs` declarations diverged for `{gdef}` ({ptag})"
+            );
+        }
+    }
+}
+
+/// Under `--preserve-encodings`, the consumer's encoding struct must carry the collection's
+/// tag/len/elem encoding vars for a generic-instance field, exactly as the non-generic path does —
+/// otherwise the tagged and untagged wire arms could not roundtrip byte-exact. Pins the tag-presence
+/// var specifically (the Phase-2 `TagPresenceEncoding`), which the pre-fix bare-alias field omitted.
+#[test]
+fn generic_instance_collection_field_carries_preserve_encoding_vars() {
+    let files = generate(
+        "xs<a0> = #6.258([* a0]) / [* a0]\nxs_int = xs<uint>\nuses = [a: xs_int]\n",
+        "preserve_vars",
+        &[
+            "--preserve-encodings=true",
+            "--canonical-form=true",
+            "--wasm",
+            "false",
+        ],
+    )
+    .expect("must generate");
+    let encs = file_ending(&files, "cbor_encodings.rs");
+    for field in [
+        "a_tag_encoding: TagPresenceEncoding",
+        "a_encoding: LenEncoding",
+        "a_elem_encodings",
+    ] {
+        assert!(
+            encs.contains(field),
+            "UsesEncoding must carry `{field}` for the generic-instance collection field; got:\n{encs}"
+        );
+    }
+}
+
 /// Boundary regression: a RECORD-bodied generic def registers no instance alias, so it never
 /// reached the panicking walk and generated fine both before and after the fix. Pinning it
 /// documents exactly which body shapes are (and are not) affected, so a future change to the
