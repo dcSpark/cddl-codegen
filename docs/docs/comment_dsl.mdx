@@ -417,7 +417,7 @@ bar = [
 ]
 ```
 This will treat `foo` as some external type called `Foo`. This type must implement the exported (in `serialization.rs`) trait `RawBytesEncoding`.
-Under `--json-serde-derives` the type must additionally implement `serde::Serialize`/`serde::Deserialize`, and under `--json-schema-export` also `schemars::JsonSchema`, since the generated code delegates its JSON representation to the user type.
+The contract under the json flags is the same as `_CDDL_CODEGEN_EXTERN_TYPE_`'s above: `serde::Serialize`/`serde::Deserialize` under `--json-serde-derives`, plus `schemars::JsonSchema` under `--json-schema-export`, since the generated code delegates its JSON representation to the user type — if that contract ever changes, both sections change together.
 This can be useful for example when working with cryptographic primitives e.g. a hash or pubkey, as it allows users to have those crypto structs be from a crypto library then they only need to implement the trait for them and they will be able to be directly used without needing any useless generated wrapper struct for the in between.
 
 Placement follows the same contract as `_CDDL_CODEGEN_EXTERN_TYPE_`: define the type in a hand-written module and re-export it at the crate root — the tool emits `pub use crate::Foo;` glue into the declaring scope's generated module (this matters especially when the rule is referenced only through `pub type` aliases, which have no other way to resolve). The wasm crate mirrors this: define the `#[wasm_bindgen]` wrapper in a hand-written wasm-crate module and re-export it at the wasm crate root. See [Output format § Generated crate roots](./output_format#generated-crate-roots-thin-root-seed-once).
