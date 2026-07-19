@@ -8273,6 +8273,189 @@ fn workspace_key_requests_derive_effect_and_hard_errors() {
         !read("export_k_other", "rust/src/generated/mod.rs").contains("#[derivative("),
         "an other-dep key-request row must not seed this dep's key derives"
     );
+
+    // `int` carve-out: it is the ONE reserved ident that names a real dep-provided type — the
+    // built-in `Int` extern. A row `("wr_dep", "int")` addressed to this dep — whose spec
+    // (`dep_inputs`) never references `int` — must key-flavor `Int` and EMIT it (the
+    // demand-implies-emission gate in `generation`, since `is_referenced` alone would skip it), NOT
+    // hard-error like every other reserved ident. This is the dep half of the cross-crate `int`
+    // key-flavor channel a `--common-import-override` consumer opens via its borrowed_key_types.rs.
+    let s_int = write_key_sidecar("k_int.rs", "    (\"wr_dep\", \"int\"),\n");
+    let o_int = run("export_k_int", &s_int);
+    assert!(
+        o_int.status.success(),
+        "an `int` key-request row must generate (the carve-out), not hard-error:\n{}",
+        String::from_utf8_lossy(&o_int.stderr)
+    );
+    let int_rust = read("export_k_int", "rust/src/generated/mod.rs");
+    let int_pos = int_rust.find("pub enum Int").expect(
+        "the `int` row must make the dep EMIT the built-in Int enum (demand implies emission)",
+    );
+    assert!(
+        int_rust[..int_pos].rfind("#[derivative(").is_some_and(|d| {
+            int_rust[d..int_pos].contains("Ord") && int_rust[d..int_pos].contains("Hash")
+        }),
+        "the `int` key-request row must make the dep emit a key-flavored Int (Ord+Hash derivative under --preserve-encodings):\n{int_rust}"
+    );
+
+    // A DIFFERENT reserved ident (`uint`) is NOT carved out: it still hard-errors with the pinned
+    // "not a type this dep defines" message (byte-identical to the unknown-ident path above) — only
+    // `int` is special-cased.
+    let s_uint = write_key_sidecar("k_uint.rs", "    (\"wr_dep\", \"uint\"),\n");
+    let o_uint = run("export_k_uint", &s_uint);
+    let uint_err = String::from_utf8_lossy(&o_uint.stderr);
+    assert!(
+        !o_uint.status.success()
+            && uint_err.contains("not a type this dep defines")
+            && uint_err.contains("uint"),
+        "a reserved ident other than `int` must still hard-error naming it; stderr:\n{uint_err}"
+    );
+}
+
+/// The CONSUMER half of the cross-crate `int` key-flavor channel: a spec keying a map on `int` under
+/// `--common-import-override` records the row `(<override>, "int"[, flavor])` in `borrowed_key_types.rs`
+/// IFF the override names a configured `--workspace-dep`. The built-in `Int` is export-scope, so the
+/// sidecar's scope-attribution loop skips it — the carve-out (`generation/export.rs`) is what puts the
+/// common crate's re-exported `Int` on the wire so the common crate's regen key-flavors it (the dep
+/// half is `workspace_key_requests_derive_effect_and_hard_errors`'s `int` leg).
+///
+/// Positive leg: the row is emitted AND the crate `cargo check`s — proving the emitted self-check
+/// `_assert_key_traits::<extern_dep_crate::Int>()` builds against the `tests/extern-dep-crate` fixture's
+/// key-capable `Int` (the fixture carries the same encoding-insensitive Eq/Ord/Hash the generated
+/// key-flavored `Int` derives). Negative leg pins the degraded contract: override set but NOT among the
+/// `--workspace-dep`s => the sidecar is present (some other dep is a workspace-dep) but carries NO `int`
+/// row — the consumer's own map sites are then the loud E0277, by design (no hard error here).
+#[test]
+fn int_key_via_common_import_override_sidecar() {
+    use std::io::Write;
+    if !tool_exists("cargo") {
+        return;
+    }
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_int_key_override_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let fixture = std::fs::canonicalize("tests/extern-dep-crate").unwrap();
+
+    // Write a consumer spec: references an extern type from `extern_dep_crate` (so it is a known extern
+    // dependency `--workspace-dep` can name) AND keys a map on `int` (the demand that drives the row).
+    let write_spec = |spec_dir: &std::path::Path, dep: &str| {
+        let ext = spec_dir.join("_CDDL_CODEGEN_EXTERN_DEPS_DIR_").join(dep);
+        std::fs::create_dir_all(&ext).unwrap();
+        std::fs::write(
+            ext.join("mod.cddl"),
+            "extern_crate_foo = _CDDL_CODEGEN_EXTERN_TYPE_\n",
+        )
+        .unwrap();
+        std::fs::write(
+            spec_dir.join("lib.cddl"),
+            "holder = [\n    thing: extern_crate_foo,\n    keyed: { * int => tstr },\n]\n",
+        )
+        .unwrap();
+    };
+
+    // ===== Positive: override IS the workspace-dep => row emitted, self-check compiles =====
+    let pos_spec = root.join("pos_spec");
+    write_spec(&pos_spec, "extern_dep_crate");
+    let pos_out = root.join("pos");
+    let gen_pos = tool_cmd("cargo")
+        .args(["run", "--"])
+        .arg(format!("--input={}", pos_spec.to_str().unwrap()))
+        .arg(format!("--output={}", pos_out.to_str().unwrap()))
+        .arg("--wasm=false")
+        .arg("--preserve-encodings=true")
+        .arg("--common-import-override=extern_dep_crate")
+        .arg("--extern-wasm-crate=extern_dep_crate=extern_dep_crate_wasm")
+        .arg("--workspace-dep=extern_dep_crate")
+        .output()
+        .unwrap();
+    assert!(
+        gen_pos.status.success(),
+        "consumer generation failed:\n{}",
+        String::from_utf8_lossy(&gen_pos.stderr)
+    );
+    let bkt = std::fs::read_to_string(pos_out.join("rust/src/generated/borrowed_key_types.rs"))
+        .expect("borrowed_key_types.rs must be emitted (a --workspace-dep is configured)");
+    assert!(
+        bkt.contains("(\"extern_dep_crate\", \"int\")"),
+        "the keyed `int` must record the row `(\"extern_dep_crate\", \"int\")`:\n{bkt}"
+    );
+    assert!(
+        bkt.contains("_assert_key_traits::<extern_dep_crate::Int>();"),
+        "the compiled self-check must assert key traits on the common crate's Int:\n{bkt}"
+    );
+    // Inject the fixture as a path dep and `cargo check` — the self-check compiles ONLY if the
+    // fixture's `Int` carries the key traits the generated key-flavored Int would.
+    let mut manifest = std::fs::OpenOptions::new()
+        .append(true)
+        .open(pos_out.join("rust/Cargo.toml"))
+        .unwrap();
+    write!(
+        manifest,
+        "\nextern-dep-crate = {{ path = {:?} }}\n",
+        fixture.to_str().unwrap()
+    )
+    .unwrap();
+    drop(manifest);
+    let check = tool_cmd("cargo")
+        .arg("check")
+        .current_dir(pos_out.join("rust"))
+        .env("CARGO_TARGET_DIR", root.join("target"))
+        .output()
+        .unwrap();
+    assert!(
+        check.status.success(),
+        "the generated consumer (with the borrowed_key_types.rs self-check) must compile against the \
+         fixture's key-capable Int:\n{}\n{}",
+        String::from_utf8_lossy(&check.stdout),
+        String::from_utf8_lossy(&check.stderr)
+    );
+
+    // ===== Negative: override set but NOT a workspace-dep => sidecar present, NO int row =====
+    // A different extern dep (`other_dep`) is the workspace-dep, so the sidecar is emitted; the
+    // override (`extern_dep_crate`) is not among the workspace-deps, so the carve-out records no row.
+    // The consumer's own map sites are the loud E0277 in that case (documented degraded path) — there
+    // is deliberately no hard error at generation time.
+    let neg_spec = root.join("neg_spec");
+    let neg_ext = neg_spec
+        .join("_CDDL_CODEGEN_EXTERN_DEPS_DIR_")
+        .join("other_dep");
+    std::fs::create_dir_all(&neg_ext).unwrap();
+    std::fs::write(
+        neg_ext.join("mod.cddl"),
+        "other_thing = _CDDL_CODEGEN_EXTERN_TYPE_\n",
+    )
+    .unwrap();
+    std::fs::write(
+        neg_spec.join("lib.cddl"),
+        "holder = [\n    thing: other_thing,\n    keyed: { * int => tstr },\n]\n",
+    )
+    .unwrap();
+    let neg_out = root.join("neg");
+    let gen_neg = tool_cmd("cargo")
+        .args(["run", "--"])
+        .arg(format!("--input={}", neg_spec.to_str().unwrap()))
+        .arg(format!("--output={}", neg_out.to_str().unwrap()))
+        .arg("--wasm=false")
+        .arg("--preserve-encodings=true")
+        .arg("--common-import-override=extern_dep_crate")
+        .arg("--extern-wasm-crate=other_dep=other_dep_wasm")
+        .arg("--workspace-dep=other_dep")
+        .output()
+        .unwrap();
+    assert!(
+        gen_neg.status.success(),
+        "the negative consumer generation must succeed (no hard error is the contract):\n{}",
+        String::from_utf8_lossy(&gen_neg.stderr)
+    );
+    let bkt_neg = std::fs::read_to_string(neg_out.join("rust/src/generated/borrowed_key_types.rs"))
+        .expect("borrowed_key_types.rs must still be emitted (other_dep is a --workspace-dep)");
+    assert!(
+        !bkt_neg.contains("\"int\""),
+        "no `int` row may appear when the override is not a --workspace-dep:\n{bkt_neg}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
 }
 
 /// The FLAVORED map-key-derive channel (`@used_as_key hash`) end-to-end across two crates — the

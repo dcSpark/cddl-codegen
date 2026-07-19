@@ -783,7 +783,26 @@ impl GenerationScope {
         // (dep, ident); the first column is the dep's RUST crate name — the extern-deps dir name).
         if !self.workspace_deps.is_empty() {
             let mut rows: Vec<(String, String, DemandSet)> = Vec::new();
+            let int_ident = RustIdent::new(CDDLIdent::new("int"));
             for ident in types.used_as_key_idents() {
+                // The built-in `Int` extern lives in ROOT (export) scope, so the scope-attribution
+                // skip below never sees it — but under `--common-import-override` this crate re-exports
+                // the COMMON crate's `Int` (Phase 1), so a key-demanded `Int` is morally a borrowed key
+                // of that crate. Record the row `(<override>, "int", demand)` IFF the override names a
+                // configured `--workspace-dep` (the dep column is a crate name, which also excludes a
+                // path-form override like `crate::common`). When it does not, no row and no error: the
+                // consumer's own map sites fail E0277 naming `Int`, the documented degraded path — the
+                // flavor channel requires the common crate to also be a `--workspace-dep`.
+                if *ident == int_ident {
+                    if !cli.export_static_files() {
+                        let common = cli.common_import_rust();
+                        if self.workspace_deps.contains(common) {
+                            let demand = types.key_demand(ident).unwrap_or_default();
+                            rows.push((common.to_owned(), "int".to_owned(), demand));
+                        }
+                    }
+                    continue;
+                }
                 let scope = types.scope(ident);
                 if scope.export() {
                     continue;

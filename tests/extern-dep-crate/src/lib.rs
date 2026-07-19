@@ -145,3 +145,44 @@ pub enum IntError {
     Bounds(std::num::TryFromIntError),
     Parsing(std::num::ParseIntError),
 }
+
+// Key traits so a `--common-import-override` consumer keying a map on `int` (whose
+// borrowed_key_types.rs self-check is `_assert_key_traits::<extern_dep_crate::Int>()`) compiles.
+// Semantics MATCH cddl-codegen's key-flavored `Int`: it derives Eq/Ord/PartialOrd (+Hash under
+// --preserve-encodings) via the derivative machinery comparing VARIANT + VALUE only, ignoring the
+// `encoding` fields (two Ints equal iff the same signed integer under any CBOR encoding). Hand-impl
+// the same over `IntEnum::cmp_key()` rather than pulling `derivative` into the fixture.
+impl IntEnum {
+    fn cmp_key(&self) -> (u8, u64) {
+        match self {
+            IntEnum::Uint { value, .. } => (0, *value),
+            IntEnum::Nint { value, .. } => (1, *value),
+        }
+    }
+}
+
+impl PartialEq for Int {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.cmp_key() == other.0.cmp_key()
+    }
+}
+
+impl Eq for Int {}
+
+impl Ord for Int {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.cmp_key().cmp(&other.0.cmp_key())
+    }
+}
+
+impl PartialOrd for Int {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl std::hash::Hash for Int {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.cmp_key().hash(state);
+    }
+}

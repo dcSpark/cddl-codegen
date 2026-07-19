@@ -983,15 +983,23 @@ pub fn seed_used_as_key_from_key_requests(types: &mut IntermediateTypes, cli: &C
             if entry.dep.replace('-', "_") != my_lib {
                 continue;
             }
-            // A reserved/primitive ident can never be a dep-defined type and would panic
-            // `RustIdent::new`; treat it as unknown so it takes the actionable hard-error path below.
-            let known = crate::intermediate::reserved_ident_rejection(&entry.ident).is_none() && {
-                let ident = RustIdent::new(CDDLIdent::new(entry.ident.clone()));
-                types.rust_struct(&ident).is_some()
-                    || types
-                        .type_aliases()
-                        .contains_key(&AliasIdent::Rust(ident.clone()))
-            };
+            // `int` is the ONE reserved ident that names a real dep-provided type: the built-in `Int`
+            // extern, which `IntermediateTypes::new` always registers in `rust_structs()`. A consumer
+            // keying a map on `int` under `--common-import-override` records the row `(<override>,
+            // "int")` in its borrowed_key_types.rs (see `generation/export.rs`); the common/dep crate
+            // reading it must key-flavor its `Int`. Resolve it explicitly here — `RustIdent::new` maps
+            // `int` -> `Int` without panicking (it is the deliberate exception in `reserved_reason`),
+            // and the emission gate in `generation` honors key demand — so `generate_int` runs
+            // key-flavored even when this dep's own spec never references `int`. Every OTHER reserved
+            // ident stays an unknown-type hard error below.
+            let known = entry.ident == "int"
+                || (crate::intermediate::reserved_ident_rejection(&entry.ident).is_none() && {
+                    let ident = RustIdent::new(CDDLIdent::new(entry.ident.clone()));
+                    types.rust_struct(&ident).is_some()
+                        || types
+                            .type_aliases()
+                            .contains_key(&AliasIdent::Rust(ident.clone()))
+                });
             if !known {
                 panic!(
                     "--key-requests {consumer} ({path}): the borrowed key type {:?} (row \
