@@ -12,6 +12,12 @@ In the wasm crate we can't always go one to one with the rust crate. Here are so
 Any array of non-primitives such as `[foo]` will generate another type called `FooList` which supports all basic array operations.
 This array wrapper implements `len() -> usize`, `get(usize) -> T` and `add(T)`.
 
+These lowering rules apply **by spelling, not by construct**: an anonymous generic-collection
+instance (`x: set<foo>`, including the transparent tag-set idiom's bases) crosses the wasm
+boundary exactly as its inline equivalent (`x: [* foo]`) would — the structural `FooList` class
+when the element needs a wrapper, or the direct exposure below when it doesn't — while a NAMED
+collection rule (`foos = [* foo]`) exposes a class under its own rule name.
+
 The wrapper exists primarily for **ownership safety**, not just type-support gaps. In `wasm_bindgen`,
 passing an exported class to a function **by value** transfers ownership: the JavaScript object's
 internal pointer is nulled, and any later use of that object throws (`null pointer passed to rust`) —
