@@ -434,6 +434,17 @@ column/parse legs are covered by the `wrapper_requests` unit suite — `key_type
 three-column row + per-flavor self-check, the dep's `--key-requests` regen derives exactly the named
 family (a hash-only borrow does NOT force `Ord` through the dep's Ord-refusing field), both crates
 compile against each other, and widening the flavor to `bare` fails the dep compile naming `Ord`).
+The self-check asserts each borrowed key at the dep's REAL module path — scoped
+(`wr_dep::sub::module::ScopedKey`) when the type lives in a non-root scope, the same path the
+consumer's own generated `use` lines take — while rows stay the bare `(dep, cddl ident)` the dep
+resolves scope-agnostically (no scope column, so the sidecar format is unchanged and root-only
+sidecars are byte-identical); pinned by `borrowed_key_types_self_check_carries_scoped_dep_path`
+(emission: scoped path present, root-path bug form absent, rows bare),
+`key_types_skips_scoped_self_check_body` (an OLD parser reading a NEW scoped sidecar — the
+self-check body is skipped wholesale), and `workspace_key_requests_scoped_contract` (the two-crate
+compile contract over `tests/workspace-requests/consumer_inputs_scoped` +
+`tests/workspace-requests/dep_inputs_scoped`: scoped emit, dep-side bare-ident
+resolution deriving on the SCOPED rule, both directions compile).
 `--workspace-dep` is honored MODE-INDEPENDENTLY — the key sidecar and the flag's startup validation
 apply under `--wasm=false` exactly as under `--wasm=true` (only the wasm-side deferral surfaces are
 wasm-gated), pinned by the flavored contract's rust-only leg (byte-identical sidecar, no `wasm/`

@@ -576,6 +576,21 @@ are ledgered here (that's what the probe/gate error messages point at).
   gate already does for `rawbytes` cells (`append_raw_bytes_defs`): seed a trivial extern
   definition + crate-root re-export so extern cells stop being compile-exempt — shared machinery
   with the extern half of "Mint the two remaining unminted wasm-surface classes" below.
+  Two 2026-07 instances sharpen what breadth must include to catch their CLASSES (both were caught
+  by review reading code, not by any gate): the json-gen schema-row emitter and the
+  extern-interface self-check each emitted rows naming a bare generic-extern BASE — E0107 in an
+  emitted crate no extern cell ever compiled (fixed; pinned by `json_gen_extern_schema_rows` and
+  `extern_interface_check_skips_generic_base_without_instances`) — and json-gen emitted rows for
+  extern-DEP-owned types its own manifest cannot resolve (E0433; fixed, same content pin). So when
+  this is picked up: (1) the def-splice compile scope must include the emitted `wasm/json-gen`
+  crate under the json profile — every instance above is a plain COMPILE error in a crate the
+  extern exemption kept un-built (the sibling execution residual is ledgered in
+  `tests/TESTING_ROADMAP.md`'s extern-deps wasm-boundary entry); and (2) the vendor extern markers
+  need their intra-alternative variation rows enumerated FIRST (the expansion rule above applied to
+  the `CDDL_CODEGEN` profile): a generic extern base WITH vs WITHOUT instances, and the generic
+  raw-bytes base (`foo<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_` — still broken, repro ledgered in
+  `tests/TESTING_ROADMAP.md`; the likely honest fix is parse-time rejection, which lands it as a
+  reject row rather than a compile cell).
 
 ## wasm-ABI & multifile placement matrices — remaining work
 
