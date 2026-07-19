@@ -111,12 +111,12 @@ use syn::{Item, ItemUse, UseTree};
 
 /// The concrete-type import names this pass is allowed to remove. These are exactly the
 /// blindly-pushed types that the emission sites in `generation/` add unconditionally (or gated only
-/// on spec-global facts): the four collection helpers plus the two `--preserve-encodings` encoding
+/// on spec-global facts): the four collection helpers plus the three `--preserve-encodings` encoding
 /// enums. Extending this list later (e.g. `JsValue`) is a one-line change plus a snapshot re-bless —
 /// but every addition must be a concrete type (never a trait/macro/glob), or the soundness argument
-/// above breaks. Both encoding enums are concrete enums (`static/serialization_preserve.rs`) only
-/// ever consumed by being named, so the "ident absent from the module family ⇒ unused" implication
-/// holds for them exactly as for the collection types.
+/// above breaks. All three encoding enums are concrete enums (`static/serialization_preserve.rs`)
+/// only ever consumed by being named, so the "ident absent from the module family ⇒ unused"
+/// implication holds for them exactly as for the collection types.
 ///
 /// `pub(crate)` so the `feature_corpus_compiles` gate (src/tests) can scan generated-crate rustc
 /// stderr for `unused import` warnings naming one of these idents — the warning-severity residue
@@ -128,6 +128,7 @@ pub(crate) const ALLOWLIST: &[&str] = &[
     "NonEmptyMap",
     "LenEncoding",
     "StringEncoding",
+    "TagPresenceEncoding",
 ];
 
 fn is_allowlisted(ident: &str) -> bool {

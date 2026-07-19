@@ -203,6 +203,13 @@ impl Primitive {
 pub enum CBOREncodingOperation {
     /// CBOR tagged type
     Tagged(usize),
+    /// An OPTIONALLY-present CBOR tag: the value may appear tagged (`#6.N(inner)`) or bare (`inner`)
+    /// on the wire and both denote the same logical value. Produced only by the transparent
+    /// tag-set collapse (`x = #6.N([* a]) / [* a]`, see `parse_type_choices`); kept as its own
+    /// variant — never a flag on `Tagged` — so every existing `Tagged` site stays byte-identical.
+    /// Under `--preserve-encodings` the wire arm is stored in a `TagPresenceEncoding` var; without
+    /// it, serialize defaults to tagged and deserialize accepts either.
+    OptionallyTagged(usize),
     /// bytes .cbor T in cddl, outside of serialization is semantically like T
     CBORBytes,
 }
@@ -271,6 +278,14 @@ impl RustType {
 
     pub fn tag_if(self, tag: Option<usize>) -> Self {
         if let Some(t) = tag { self.tag(t) } else { self }
+    }
+
+    /// Push an OPTIONALLY-present tag (the transparent tag-set idiom). See
+    /// [`CBOREncodingOperation::OptionallyTagged`].
+    pub fn optionally_tag(mut self, tag: usize) -> Self {
+        self.encodings
+            .push(CBOREncodingOperation::OptionallyTagged(tag));
+        self
     }
 
     pub fn default(mut self, default_value: FixedValue) -> Self {
@@ -475,6 +490,16 @@ impl RustType {
     pub fn cbor_types(&self, types: &IntermediateTypes) -> Vec<CBORType> {
         match self.encodings.last() {
             Some(CBOREncodingOperation::Tagged(_)) => vec![CBORType::Tag],
+            // An optionally-tagged value can start as the tag OR as the inner value's own starting
+            // types — a two-entry answer type-choice discrimination must tolerate (both arms of the
+            // collapse remain distinguishable on the wire).
+            Some(CBOREncodingOperation::OptionallyTagged(_)) => {
+                let mut inner = self.clone();
+                inner.encodings.pop();
+                let mut types_out = vec![CBORType::Tag];
+                types_out.extend(inner.cbor_types(types));
+                types_out
+            }
             Some(CBOREncodingOperation::CBORBytes) => vec![CBORType::Bytes],
             None => match &self.conceptual_type {
                 ConceptualRustType::Fixed(f) => vec![match f {
@@ -488,7 +513,17 @@ impl RustType {
                 ConceptualRustType::Primitive(p) => p.cbor_types(),
                 ConceptualRustType::Rust(ident) => {
                     let rust_struct = types.rust_struct(ident).unwrap();
-                    if rust_struct.tag.is_some() {
+                    if rust_struct.tag.is_some() && rust_struct.tag_optional() {
+                        // an optionally-tagged collection struct referenced bare (an unresolved
+                        // alias): it starts as the tag OR its inner collection type. Mirrors the
+                        // `OptionallyTagged` encoding-op arm above so both reference paths agree.
+                        let mut types_out = vec![CBORType::Tag];
+                        types_out.extend(match rust_struct.variant() {
+                            RustStructType::Table { .. } => vec![CBORType::Map],
+                            _ => vec![CBORType::Array],
+                        });
+                        types_out
+                    } else if rust_struct.tag.is_some() {
                         vec![CBORType::Tag]
                     } else {
                         match rust_struct.variant() {
