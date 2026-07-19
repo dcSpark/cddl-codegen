@@ -562,7 +562,15 @@ impl GenerationScope {
                     RustStructType::Extern => {
                         #[allow(clippy::single_match)]
                         match rust_ident.to_string().as_ref() {
-                            "Int" if types.is_referenced(rust_ident) => {
+                            // Emit `Int` when the spec references it, OR when a `--key-requests` row
+                            // demanded it used-as-key (a dep whose own spec never references `int` but
+                            // whose consumer keys a map on `int` under `--common-import-override`): the
+                            // demand alone must force key-flavored emission, since `is_referenced`'s
+                            // reference walk would otherwise skip it.
+                            "Int"
+                                if types.is_referenced(rust_ident)
+                                    || types.used_as_key(rust_ident) =>
+                            {
                                 generate_int(self, types, cli)
                             }
                             _ => (), /* user-specified external types */
