@@ -17,6 +17,13 @@ expression: content
 fn _assert_serialize<T: crate::generated::serialization::Serialize>() {}
 #[allow(dead_code)]
 fn _assert_deserialize<T: crate::generated::serialization::Deserialize>() {}
+#[allow(dead_code)]
+fn _assert_serialize_embedded_group<T: crate::generated::serialization::SerializeEmbeddedGroup>() {}
+#[allow(dead_code)]
+fn _assert_deserialize_embedded_group<
+    T: crate::generated::serialization::DeserializeEmbeddedGroup,
+>() {
+}
 #[allow(unused_imports)]
 use crate::generated::Data as _; // data
 #[allow(unused_imports)]
@@ -37,6 +44,10 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::GroupChoice>();
     _assert_serialize::<crate::generated::MixedLenKeys>(); // mixed_len_keys
     _assert_deserialize::<crate::generated::MixedLenKeys>();
+    _assert_serialize::<crate::generated::Plain>(); // plain
+    _assert_serialize_embedded_group::<crate::generated::Plain>();
+    _assert_deserialize::<crate::generated::Plain>();
+    _assert_deserialize_embedded_group::<crate::generated::Plain>();
     _assert_serialize::<crate::generated::String32>(); // string32
     _assert_deserialize::<crate::generated::String32>();
     _assert_serialize::<crate::generated::String64>(); // string64

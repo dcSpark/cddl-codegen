@@ -1,0 +1,8 @@
+; Consumer splicing the dependency's plain groups: protocol_version as a record member, and the
+; three tag-groups as group-choice variants — exactly the CML `specs/multiera` shape, where the wire
+; format splices the dep's group fields into the consumer's own arrays. Generated twice — once from a
+; physical hand-stub carrying the dep's ORIGINAL plain-group spelling (the CML hand-copy, including
+; the `; @name` comment and NO `@rust_name` pins), once via `--extern-import` at the minted export —
+; and the generated rust must be byte-identical (the acceptance criterion).
+my_holder = [v: protocol_version, extra: uint]
+my_cert = [ stake_registration // stake_delegation // host ]

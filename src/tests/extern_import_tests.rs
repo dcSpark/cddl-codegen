@@ -248,6 +248,77 @@ fn strip_header(export_file: &str) -> String {
     format!("{rest}\n")
 }
 
+/// The plain-group acceptance criterion (the proposal's, CML-shaped): a consumer that hand-copied a
+/// dependency's plain groups swaps to `--extern-import` with ZERO generated-output diff. The dep
+/// (`dep-groups`) carries a record-member plain group, three group-choice-variant plain groups with
+/// fixed tags, a `; @name`-renamed field, an optional field, and a nested group ref; the consumer
+/// (`consumer-groups`) splices them as a record member and group-choice variants. Run A feeds a
+/// physical hand-stub carrying the dep's ORIGINAL plain-group spelling (the CML hand-copy — including
+/// the `; @name` comment and NO `@rust_name` pins, plus opaque markers for the two non-group dep
+/// types the export also carries), while Run B feeds `--extern-import` at the minted export (whose
+/// group-body rows spell every member with an explicit label and `@rust_name` pins). The two CDDL
+/// texts DIFFER on purpose — the property is that both re-derive the identical IR, so the consumer's
+/// generated RUST is byte-identical. A pin equal to the derived name changes nothing, and a minted
+/// `credential: credential` member re-derives the same field as the bare `credential`.
+#[test]
+fn extern_import_group_migration_matches_original_hand_stub_byte_for_byte() {
+    let export = mint_export(&fixture("dep-groups/lib.cddl"), "dep", "grpmig");
+    let consumer = fixture("consumer-groups/lib.cddl");
+
+    // Run A — the CML hand-copy: the dep's plain groups in their ORIGINAL spelling (no pins, `@name`
+    // comment intact) plus opaque markers for the two non-group dep types the minted export carries.
+    let original_stub = "credential = bytes\n\
+protocol_version = (major: uint, minor: uint)\n\
+stake_registration = (tag: 0, credential)\n\
+stake_delegation = (tag: 2, credential, pool: bytes) ; @name pool_thing\n\
+host = (tag: 4, ? port: uint)\n\
+dep_holder = _CDDL_CODEGEN_EXTERN_TYPE_\n\
+dep_cert = _CDDL_CODEGEN_EXTERN_TYPE_\n";
+    let stub_root = scratch("grpmig_stub");
+    write(&stub_root, "lib.cddl", &consumer);
+    write(
+        &stub_root,
+        "_CDDL_CODEGEN_EXTERN_DEPS_DIR_/dep/mod.cddl",
+        original_stub,
+    );
+    let via_stub = generate(&stub_root, &[]).expect("original-hand-stub generation must succeed");
+
+    // Run B — `--extern-import` at the minted export (header + group-body rows + pins intact).
+    let flag_root = scratch("grpmig_flag");
+    write(&flag_root, "lib.cddl", &consumer);
+    let export_dir = scratch("grpmig_export");
+    for (path, content) in &export {
+        write(&export_dir, path, content);
+    }
+    let import_arg = format!(
+        "dep={}",
+        export_dir.join("extern-interface/dep").to_str().unwrap()
+    );
+    let via_flag = generate(
+        &flag_root.join("lib.cddl"),
+        &["--extern-import", &import_arg],
+    )
+    .expect("--extern-import generation must succeed");
+
+    let _ = std::fs::remove_dir_all(&stub_root);
+    let _ = std::fs::remove_dir_all(&flag_root);
+    let _ = std::fs::remove_dir_all(&export_dir);
+
+    assert_eq!(
+        via_flag.keys().collect::<Vec<_>>(),
+        via_stub.keys().collect::<Vec<_>>(),
+        "the generated file SET must match between --extern-import and the original hand-stub"
+    );
+    for (path, stub_content) in &via_stub {
+        assert_eq!(
+            via_flag.get(path),
+            Some(stub_content),
+            "group-migration byte-identity broke for {path}:\n--- via --extern-import ---\n{}\n--- via original hand-stub ---\n{stub_content}",
+            via_flag.get(path).map(String::as_str).unwrap_or("<absent>")
+        );
+    }
+}
+
 /// A single-file consumer keeps ROOT_SCOPE for its OWN types even while consuming a dep via
 /// `--extern-import` (the flag markers are assembled in a separate loop, so they never flip the
 /// main-input single-file ROOT_SCOPE behavior). The consumer's `thing` lands in the root module —
