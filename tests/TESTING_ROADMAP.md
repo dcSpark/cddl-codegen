@@ -902,6 +902,19 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   - *Inline/anonymous two-arm choices are not recognized.* Recognition lives at the
     `parse_type_choices` named-rule seam, so an inline `[x: #6.258([* uint]) / [* uint]]` stays a
     two-variant enum. Remedy when it bites: run the recognition on anonymous choices too.
+  - *A directly-exposable anonymous instance keeps its own wasm class (REQUEST-09 residual).* The
+    anonymous-instance wasm convergence (an anonymous `set<key_hash>` instance lowering to the
+    structural `KeyHashList` wrapper — pinned by `generic_collection_tests` and
+    `workspace_requests_anonymous_collapsed_set_satisfies_from_own_spec`) is
+    scoped to instances that actually get a wasm wrapper. A directly-wasm-exposable one
+    (`set<uint>` → `Vec<u64>`) still mints its own `SetU64` wrapper class rather than converging to
+    the bare `Vec<u64>` the inline `[* uint]` exposes, because a `&Vec<u64>` ctor/setter param has
+    no `RefFromWasmAbi` to alias onto. Harmless (the class works) and REQUEST-09 does not need it
+    (an exposable requested shape is screened by the exposable-member guard, not the criterion-8 #3
+    own-spec collision), pinned by
+    `directly_exposable_anonymous_set_keeps_its_wrapper_class`. Remedy
+    when it bites (a consumer wanting the exposable spellings to be one type): teach the field's
+    wasm member/param naming to see through the transparent alias to the exposable member.
 - **Multiple tags on one field collide their encoding vars (pre-existing, not REQUEST-08-specific).**
   A reference site that adds an OUTER tag over an already-inner-tagged field emits two struct fields
   both named `<field>_tag_encoding` — `#6.24(#6.258(text))` collides two `Option<cbor_event::Sz>`

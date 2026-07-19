@@ -8421,6 +8421,128 @@ fn workspace_requests_hard_errors() {
     );
 }
 
+/// REQUEST-09: a collapsed-set shape produced through an ANONYMOUS generic instance
+/// (`[pool_owners: set<key_hash>]`) lowers its wasm wrapper to the STRUCTURAL name (`KeyHashList`),
+/// exactly like the inline `[* key_hash]` — so a consumer's `--wrapper-requests` for the structural
+/// shape is satisfied by own-spec (no criterion-8 #3 hard error on the synthesized `SetKeyHash`
+/// name), two spellings of the shape are ONE wasm class, and the `[+]` flavor behaves identically.
+/// The BOUNDARY: the same shape bound to a NAMED rule (`named_set = set<key_hash>`) keeps its own
+/// class and still hard-errors — a synthesized name carries no author intent, a rule name does.
+#[test]
+fn workspace_requests_anonymous_collapsed_set_satisfies_from_own_spec() {
+    use std::str::FromStr;
+    if !tool_exists("cargo") {
+        return;
+    }
+    let base = std::path::PathBuf::from_str("tests/workspace-requests").unwrap();
+    let scratch = base.join("export_anon_set_scratch");
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let write_sidecar = |name: &str, rows: &str| -> String {
+        let p = scratch.join(name);
+        std::fs::write(
+            &p,
+            format!(
+                "#[allow(dead_code)]\n\
+                 pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[\n{rows}];\n"
+            ),
+        )
+        .unwrap();
+        p.to_str().unwrap().to_owned()
+    };
+    let run = |dep_input: &str, out: &str, sidecar: &str| -> std::process::Output {
+        let out_dir = base.join(out);
+        let _ = std::fs::remove_dir_all(&out_dir);
+        tool_cmd("cargo")
+            .arg("run")
+            .arg("--")
+            .arg(format!("--input=tests/workspace-requests/{dep_input}"))
+            .arg(format!("--output=tests/workspace-requests/{out}"))
+            .arg("--lib-name=wr-dep")
+            .arg("--wasm=true")
+            .arg("--preserve-encodings=true")
+            .arg(format!("--wrapper-requests=c={sidecar}"))
+            .output()
+            .unwrap()
+    };
+
+    // (a)+(c)+(d): the anonymous `set<key_hash>` / `nonempty_set<key_hash>` instances satisfy the
+    // consumer's structural requests from own-spec. The sidecar lists BOTH the loose and the
+    // NonEmpty structural wrappers the dep now produces.
+    let s = write_sidecar(
+        "anon.rs",
+        "    (\"wr_dep\", \"KeyHashList\", \"[* key_hash]\"),\n\
+             (\"wr_dep\", \"NonEmptyKeyHashList\", \"[+ key_hash]\"),\n",
+    );
+    let out = run("dep_inputs_anon_set", "export_anon_set", &s);
+    assert!(
+        out.status.success(),
+        "the anonymous collapsed-set shape must generate cleanly (no criterion-8 #3 panic on the \
+         synthesized instance name):\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let out_dir = base.join("export_anon_set");
+    let read = |rel: &str| std::fs::read_to_string(out_dir.join(rel)).unwrap();
+    let wasm_mod = read("wasm/src/generated/mod.rs");
+    let index = read("wasm/src/generated/collections.rs");
+    let requested = read("wasm/src/generated/requested_collections.rs");
+
+    // BOTH structural requests are satisfied from own-spec => nothing re-emitted into
+    // requested_collections.rs (the file exists but hosts no wrapper).
+    assert!(
+        !requested.contains("pub struct KeyHashList(")
+            && !requested.contains("pub struct NonEmptyKeyHashList("),
+        "both structural shapes are own-produced => neither must be re-emitted into \
+         requested_collections.rs:\n{requested}"
+    );
+    // (c) both spellings (`set<key_hash>` AND inline `[* key_hash]`) collapse to ONE `KeyHashList`.
+    assert_eq!(
+        wasm_mod.matches("pub struct KeyHashList(").count(),
+        1,
+        "the anonymous instance and the inline `[* key_hash]` must define ONE KeyHashList class"
+    );
+    // (d) the [+] flavor mints the structural NonEmpty wrapper, not a `NonemptySetKeyHash` class.
+    assert!(
+        wasm_mod.contains("pub struct NonEmptyKeyHashList(")
+            && !wasm_mod.contains("pub struct NonemptySetKeyHash("),
+        "the nonempty anonymous instance must mint the structural NonEmptyKeyHashList, not a \
+         rule-named class:\n{wasm_mod}"
+    );
+    // The synthesized instance names survive as wasm PASSTHROUGH aliases (rust-side references stay
+    // valid), pointing at the structural classes.
+    assert!(
+        wasm_mod.contains("pub type SetKeyHash = KeyHashList;")
+            && wasm_mod.contains("pub type NonemptySetKeyHash = NonEmptyKeyHashList;"),
+        "the synthesized instance names must survive as wasm passthrough aliases:\n{wasm_mod}"
+    );
+    // The dep's own index re-exports the STRUCTURAL names (never the synthesized ones).
+    assert!(
+        index.contains("pub use crate::generated::KeyHashList;")
+            && index.contains("pub use crate::generated::NonEmptyKeyHashList;")
+            && !index.contains("SetKeyHash")
+            && !index.contains("NonemptySetKeyHash"),
+        "the dep index must re-export only the structural wrapper names:\n{index}"
+    );
+
+    // (b) BOUNDARY: the same shape under a NAMED rule keeps the criterion-8 #3 hard error, and the
+    // message names the rule-declared (`NamedSet`) producer, not a structural name.
+    let sb = write_sidecar(
+        "named.rs",
+        "    (\"wr_dep\", \"KeyHashList\", \"[* key_hash]\"),\n",
+    );
+    let named = run("dep_inputs_named_set", "export_named_set", &sb);
+    assert!(
+        !named.status.success(),
+        "a NAMED collapsed-set instance rule requested by a consumer must still hard-error"
+    );
+    let named_err = String::from_utf8_lossy(&named.stderr);
+    assert!(
+        named_err.contains("non-structural rule name NamedSet"),
+        "the named-rule boundary must hard-error naming the rule-declared NamedSet producer, got: \
+         {named_err}"
+    );
+}
+
 /// Dep side of the map-key-derive channel (`--key-requests`): end-to-end resolution of a consumer's `borrowed_key_types.rs`
 /// against the generated dep. Covers the derive effect (a row addressed to this dep seeds the key
 /// traits), the unknown-ident hard error (a consumer keying on a type the dep no longer defines must
