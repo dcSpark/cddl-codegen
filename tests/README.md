@@ -1746,6 +1746,10 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   `cddl_generated_wasm_tests` modules RUN the cross-module wiring — module `b`'s holder is
   constructed from module `a`'s shape (`Bholder::new(St::new(..))`) and round-tripped, and the wasm
   twin byte-differentials against the fully-qualified `cddl_lib::b::…`/`cddl_lib::a::…` natives.
+  (`aliased` cells have no `bholder` — module `b` is a lone `pub type`, whose transparent alias
+  mints no standalone test surface, so their round-trip value is module `a`'s own surface plus the
+  compile proof that the alias line's cross-module import resolves; the compile floor is those
+  cells' discriminating gate.)
   BOTH generated subcrates are `cargo test`ed (`rust/` then `wasm/`): the rust crate's
   `#[cfg(test)]` module is not compiled when it's built merely as the wasm crate's dep, and the
   proven placement classes are rust-side. Own scratch (`cddl_codegen_multifile_rt`) +
@@ -1753,7 +1757,8 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   Loud-skip contract as the wasm round-trip gate: a cell minting no test surface passes with zero
   tests (the emitter eprintln!s the skip; the floor still pins its ABI) — and a minted-module
   vacuity floor (each generated crate's root `generated/mod.rs` is grepped for its test module;
-  observed 144/144 rust and 144/144 wasm) bounds the aggregate so green can't quietly go vacuous.
+  observed 144/144 rust and 144/144 wasm at the 48-cell grid — the count scales with the cell ×
+  profile grid) bounds the aggregate so green can't quietly go vacuous.
   The multifile `--emit-tests` emission itself (root-level test module + `use super::<m>::*;` scope
   globs, without which every multifile cell is E0433-uncompilable) is pinned always-on by the
   in-process `emit_tests_multifile_scope_imports`, so a regression there doesn't wait for full

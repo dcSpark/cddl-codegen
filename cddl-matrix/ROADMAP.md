@@ -600,7 +600,8 @@ composition-space cross-check that complements this matrix's curated per-shape g
   representation needs a generated structural wrapper) was missing from `SHAPES`, so the Array-arm
   placement class stayed invisible to every gate until review of the Map-arm fix asked what the new
   alias recursion could reach — now enumerated as the `collrec` cells (`collrec__named` red,
-  pinned; `collrec__anon` green under the emission-scope element registration; § findings).
+  pinned; `collrec__anon` and `collrec__aliased` green under the emission-scope element
+  registration; § findings).
   A SECOND multifile-`SHAPES` instance is on record with a different discovery signature — an
   adjacent test STEERING AROUND the hole rather than a fix's review: the non-exposable-KEYED table
   (`{ * <record> => text }`, whose wasm `keys()` names a root-minted keys-list wrapper) was in
@@ -623,7 +624,8 @@ composition-space cross-check that complements this matrix's curated per-shape g
   projection's (minus its documented exclusions) instead of relying on review.
   A first instance on the multifile matrix's MODE axis is also on record (the axes-honesty rule's
   fourth quadrant — until it, every instance was SHAPES-side or wasm-ROLES-side): all four
-  reference modes embed the shape from a record-FIELD position, so the group-choice-VARIANT
+  then-extant reference modes embed the shape from a record-FIELD position, so the
+  group-choice-VARIANT
   position — whose ctor expands a foreign-scope Record's field types into `new_<variant>` params
   in both passes, an import class `scope_references` never marked (E0412/E0425) — was invisible to
   the whole sweep. Its discovery signature is a third tell, distinct from fix-review reach-analysis
@@ -633,9 +635,14 @@ composition-space cross-check that complements this matrix's curated per-shape g
   and grepping consumers' generated-output diffs for hand edits is the corresponding cheap sweep
   arm). Fixed via the shared `EnumVariant::group_ctor_record_fields` helper (emitters + import
   walk); the vector is hand-pinned (`tests/multifile` `relay`, test
-  `cross_module_group_choice_ctor`), and the mode-axis extension (`gcvariant` over the
-  Record-resolving shapes) is recorded recur-first in `tests/TESTING_ROADMAP.md`
-  ("Multifile reference-POSITION coverage").
+  `cross_module_group_choice_ctor`). The mode-axis extension recorded recur-first against a second
+  instance has since had its trigger FIRE: the type-alias-TARGET position (a plain alias rule's
+  `pub type` line naming a cross-scope target — another position `scope_references` never walked,
+  E0412) escaped to a production consumer's regen, discovered not by any sweep tell but as the
+  consumer failure the sweep exists to prevent. The position axis now exists as the `aliased` mode
+  (`bal = <ty>`, every shape — fixed by the `scope_references` type-alias walk); the `gcvariant`
+  extension over the Record-resolving shapes remains the recorded remainder in
+  `tests/TESTING_ROADMAP.md` ("Multifile reference-POSITION coverage").
   Two further instances of the hand-patched-consumer-output tell landed together in the
   wasm-wrapper visibility + rustfmt-skip delivery: CML replace-overlay blocks whose entire payload
   flipped a wasm tuple field's visibility (retired by the uniform `pub(crate)` policy —
