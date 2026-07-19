@@ -844,7 +844,13 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   35 GB. The missing system: scratch dirs should be self-retiring — a run-start sweep of stale
   entries under a recognizable namespace (age-based, live-process-guarded), or a bounded named
   scratch root the tiers reuse and truncate. Until built, treat unexplained ENOSPC/mid-gate
-  deaths as possible scratch-debris saturation and sweep before re-attributing.
+  deaths as possible scratch-debris saturation and sweep before re-attributing. Two corroborating
+  sightings from the concurrent session, same saturation window: a first-ever generation run
+  exiting 1 whose only capture went through `tail -3` (evidence burned — the exact failure mode
+  the evidence-preservation rule names; green on immediate rerun, attribution now unrecoverable
+  but consistent with a full `/tmp`), and a local-tier run failing three nested-cargo gates on
+  os error 28 mid-saturation (all green on the post-remediation rerun; its full log was then
+  destroyed with its worktree — the per-checkout `draft/logs/` lifetime note in AGENTS.md).
 - **Gate-cache residual costs.** The nested-cargo gates (`feature_corpus_compiles`,
   `wasm_matrix_compiles`, `multifile_matrix_compiles`, the layer-2 recombination sweeps, and
   `verify.ts`) memoize per generated-tree content hash (the gate cache), so re-run wall-clock is a
