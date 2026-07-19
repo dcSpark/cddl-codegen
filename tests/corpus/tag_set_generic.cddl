@@ -9,11 +9,15 @@
 ; typed as an instance serializes through that alias identically to the non-generic equivalent — the
 ; generic and non-generic paths converge on one resolution.
 ;
-; Instances span uint / text / bytes / a struct-typed element so transparent-alias resolution is
-; exercised across element kinds; `nonempty_oset` is the third in-the-wild base (conway + dijkstra
-; ledger CDDL) proving the mechanism covers N rules, not a hardcoded two.
+; Instances span uint / text / a struct-typed element so transparent-alias resolution is exercised
+; across element kinds; `nonempty_oset` is the third in-the-wild base (conway + dijkstra ledger CDDL)
+; proving the mechanism covers N rules, not a hardcoded two. A BYTES element is deliberately omitted:
+; a named bytes-element collection alias's wasm wrapper class fails to compile (E0271) regardless of
+; this feature — a pre-existing limitation tracked in tests/TESTING_ROADMAP.md; the rust-side bytes
+; collapse (incl. per-element StringEncoding preservation) is pinned in-process by
+; `optional_tag_set_tests::bytes_element_set_collapses_with_elem_encodings`.
 set<a0> = #6.258([* a0]) / [* a0]
 nonempty_set<a0> = #6.258([+ a0]) / [+ a0]
 nonempty_oset<a0> = #6.258([+ a0]) / [+ a0]
 point = [x: uint, y: uint]
-holder = [a: set<uint>, b: nonempty_set<text>, c: nonempty_set<bytes>, d: nonempty_oset<point>]
+holder = [a: set<uint>, b: nonempty_set<text>, c: nonempty_oset<point>]

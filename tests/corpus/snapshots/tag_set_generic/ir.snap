@@ -139,65 +139,6 @@ expression: ir
                             conceptual_type: Alias(
                                 Rust(
                                     RustIdent(
-                                        "NonemptySetBytes",
-                                    ),
-                                ),
-                                Array(
-                                    RustType {
-                                        conceptual_type: Primitive(
-                                            Bytes,
-                                        ),
-                                        encodings: [],
-                                        config: RustTypeSerializeConfig {
-                                            default: None,
-                                            bounds: None,
-                                            float_bounds: None,
-                                            basic_override: false,
-                                        },
-                                    },
-                                ),
-                            ),
-                            encodings: [
-                                OptionallyTagged(
-                                    258,
-                                ),
-                            ],
-                            config: RustTypeSerializeConfig {
-                                default: None,
-                                bounds: Some(
-                                    (
-                                        Some(
-                                            1,
-                                        ),
-                                        None,
-                                    ),
-                                ),
-                                float_bounds: None,
-                                basic_override: false,
-                            },
-                        },
-                        optional: false,
-                        key: None,
-                        rule_metadata: RuleMetadata {
-                            name: None,
-                            rust_name: None,
-                            newtype: None,
-                            no_alias: false,
-                            key_demand: None,
-                            used_as_elem: false,
-                            raw_bytes_flavor: false,
-                            custom_json: false,
-                            custom_serialize: None,
-                            custom_deserialize: None,
-                            comment: None,
-                        },
-                    },
-                    RustField {
-                        name: "d",
-                        rust_type: RustType {
-                            conceptual_type: Alias(
-                                Rust(
-                                    RustIdent(
                                         "NonemptyOsetPoint",
                                     ),
                                 ),
@@ -297,46 +238,6 @@ expression: ir
                     RustIdent(
                         "Point",
                     ),
-                ),
-                encodings: [],
-                config: RustTypeSerializeConfig {
-                    default: None,
-                    bounds: None,
-                    float_bounds: None,
-                    basic_override: false,
-                },
-            },
-            bounds: Some(
-                (
-                    Some(
-                        1,
-                    ),
-                    None,
-                ),
-            ),
-        },
-    },
-    RustIdent(
-        "NonemptySetBytes",
-    ): RustStruct {
-        ident: RustIdent(
-            "NonemptySetBytes",
-        ),
-        tag: Some(
-            258,
-        ),
-        tag_optional: true,
-        config: RustStructConfig {
-            custom_json: false,
-            custom_serialize: None,
-            custom_deserialize: None,
-            doc: None,
-            newtype_getter: None,
-        },
-        variant: Array {
-            element_type: RustType {
-                conceptual_type: Primitive(
-                    Bytes,
                 ),
                 encodings: [],
                 config: RustTypeSerializeConfig {

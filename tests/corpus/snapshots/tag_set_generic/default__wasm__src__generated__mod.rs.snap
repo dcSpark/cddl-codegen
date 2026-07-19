@@ -39,25 +39,15 @@ impl Holder {
         self.0.b.clone().into()
     }
 
-    pub fn c(&self) -> NonemptySetBytes {
+    pub fn c(&self) -> NonemptyOsetPoint {
         self.0.c.clone().into()
     }
 
-    pub fn d(&self) -> NonemptyOsetPoint {
-        self.0.d.clone().into()
-    }
-
-    pub fn new(
-        a: &SetU64,
-        b: &NonemptySetText,
-        c: &NonemptySetBytes,
-        d: &NonemptyOsetPoint,
-    ) -> Self {
+    pub fn new(a: &SetU64, b: &NonemptySetText, c: &NonemptyOsetPoint) -> Self {
         Self(cddl_lib::Holder::new(
             a.clone().into(),
             b.clone().into(),
             c.clone().into(),
-            d.clone().into(),
         ))
     }
 }
@@ -127,56 +117,6 @@ impl From<NonemptyOsetPoint> for NonEmptyVec<cddl_lib::Point> {
 
 impl AsRef<NonEmptyVec<cddl_lib::Point>> for NonemptyOsetPoint {
     fn as_ref(&self) -> &NonEmptyVec<cddl_lib::Point> {
-        &self.0
-    }
-}
-
-/// `[+ Vec<u8>]`: at least one element, enforced by the `NonEmptyVec` representation.
-/// Enter via `try_from` or `new(first)`.
-/// `add` can never violate the bound; removal is checked in the core type.
-#[derive(Clone, Debug)]
-#[wasm_bindgen]
-pub struct NonemptySetBytes(pub(crate) NonEmptyVec<Vec<u8>>);
-
-#[wasm_bindgen]
-impl NonemptySetBytes {
-    pub fn new(first: Vec<u8>) -> Self {
-        Self(NonEmptyVec::new(first))
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn get(&self, index: usize) -> Vec<u8> {
-        self.0[index].clone()
-    }
-
-    pub fn add(&mut self, elem: Vec<u8>) {
-        self.0.push(elem);
-    }
-
-    pub fn try_from(elements: Vec<Vec<u8>>) -> Result<NonemptySetBytes, JsError> {
-        NonEmptyVec::try_from(elements)
-            .map(Self)
-            .map_err(|e| JsError::new(&e.to_string()))
-    }
-}
-
-impl From<NonEmptyVec<Vec<u8>>> for NonemptySetBytes {
-    fn from(native: NonEmptyVec<Vec<u8>>) -> Self {
-        Self(native)
-    }
-}
-
-impl From<NonemptySetBytes> for NonEmptyVec<Vec<u8>> {
-    fn from(wasm: NonemptySetBytes) -> Self {
-        wasm.0
-    }
-}
-
-impl AsRef<NonEmptyVec<Vec<u8>>> for NonemptySetBytes {
-    fn as_ref(&self) -> &NonEmptyVec<Vec<u8>> {
         &self.0
     }
 }
