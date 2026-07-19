@@ -798,6 +798,29 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
 
 ## Deferred features (build when a real consumer needs them)
 
+- **Duplicates policy for tag-set collections — CML is the waiting consumer (their next
+  hand-code deletion tranche).** The transparent tag-set collapse deliberately ships
+  allow+preserve semantics (`Vec`/`NonEmptyVec` alias targets): historical on-chain data can
+  carry duplicates a multi-era reader must accept and re-emit byte-exactly, so that is the only
+  correct DEFAULT — but it hands the API user a duplicate-shaped footgun where the spec means a
+  mathematical set, and validating writers (Conway-era ledger rules) want rejection. Design,
+  settled at parking time so the building session starts from it:
+  - A per-rule comment-DSL policy (spelling TBD when built) choosing allow+preserve (default,
+    today's behavior) vs reject.
+  - Reject-mode swaps the ALIAS TARGET — the seam the collapse feature created — to a
+    uniqueness-enforcing twin of `NonEmptyVec` (same generated-runtime pattern: single
+    `TryFrom<Vec<T>>` door rejecting duplicates, checked `push`, `Deref`/iter surface,
+    order-preserving because byte-exact roundtrip requires it even for valid sets), with the
+    wire-side check emitting the existing `DeserializeFailure::DuplicateKey` class map keys
+    already use (`generation/deserialize.rs` — the reject stance exists, hard-coded and
+    map-only). Use sites are untouched: the swap is a value-type substitution in the alias slot.
+  - Element `Eq`/`Ord`/`Hash` bounds propagate via the existing key-demand machinery
+    (`@used_as_key` flavor system), not a new bounds system.
+  - Fold in the alias doc-comment polish (generated set aliases self-describing: tag-N set
+    idiom, tag presence is an encoding detail, duplicates/order preserved or rejected per the
+    policy) so both land in ONE snapshot-bless cycle.
+  - Reopening signal: CML names the Conway sites the ledger validates as strict sets (asked in
+    `draft/feature-requests/RESPONSE-2026-07-20-request-08.md` § the trade-offs section).
 - **Extern-interface export dialect v2 candidates.** Each bumps the seam header
   (`_CDDL_CODEGEN_EXTERN_INTERFACE_ v1` — unknown versions hard-error, pinned by
   `extern_import_unknown_version_hard_errors`), so batch them when one gets a real consumer:
