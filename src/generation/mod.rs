@@ -434,7 +434,11 @@ impl GenerationScope {
                         range,
                         bounds,
                     } => {
-                        if cli.wasm && *bounds == Some((Some(1), None)) {
+                        // A SYNTHESIZED anonymous map instance converges onto the STRUCTURAL map
+                        // wrapper (`MapKToV` / `NonEmptyMapKToV`) via its `gen_wasm_alias` passthrough,
+                        // exactly as the array arm above does for lists — mint no rule-named class.
+                        let anon = types.is_anonymous_collection_instance(rust_ident);
+                        if cli.wasm && !anon && *bounds == Some((Some(1), None)) {
                             // named `{+ k => v}` rule: its JS class is the RESTRICTED wrapper
                             // (wrapping core::NonEmptyMap) under the rule ident, not the loose table
                             // wrapper — the map-side twin of the named `[+ T]` array arm.
@@ -446,7 +450,7 @@ impl GenerationScope {
                                 true,
                                 cli,
                             );
-                        } else if cli.wasm {
+                        } else if cli.wasm && !anon {
                             let map_ident = ConceptualRustType::name_for_wasm_map(domain, range);
                             if table_shape_sole_owner.get(&map_ident.to_string())
                                 == Some(rust_ident)
@@ -488,7 +492,14 @@ impl GenerationScope {
                         element_type,
                         bounds,
                     } => {
-                        if cli.wasm {
+                        // A SYNTHESIZED anonymous collection instance (`[a: set<key_hash>]` →
+                        // `SetKeyHash`) mints NO rule-named class here: its wasm wrapper is the
+                        // STRUCTURAL one (`KeyHashList`), emitted through the flipped-on
+                        // `gen_wasm_alias` passthrough + base-type walk exactly like an inline
+                        // `[* key_hash]`. Skipping the mint (and its `record_collection_wrapper`) is
+                        // what keeps the synthesized name out of `own_wrapper_shapes`, so a
+                        // `--wrapper-requests` consumer's structural import resolves via own-spec.
+                        if cli.wasm && !types.is_anonymous_collection_instance(rust_ident) {
                             if *bounds == Some((Some(1), None)) {
                                 // named `[+ T]` rule: its JS class is the RESTRICTED wrapper (wrapping
                                 // core::NonEmptyVec) under the rule ident, not the loose list wrapper.

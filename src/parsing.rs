@@ -1338,6 +1338,9 @@ fn parse_type(
                                             type_name.clone(),
                                             RustIdent::new(cddl_ident.clone()),
                                             generic_args,
+                                            // author-declared rule name (`foo = bar<text>`), not
+                                            // synthesized — keeps its own wasm class / criterion-8 name.
+                                            false,
                                         ))
                                     }
                                     None => {
@@ -2390,6 +2393,10 @@ fn generic_instance_or_new_type(
                 instance_ident,
                 generic_ident,
                 generic_args,
+                // synthesized name for an anonymous use site (`[a: bar<text>]` → `BarText`): when
+                // this resolves to a transparent collection, its wasm wrapper lowers to the
+                // STRUCTURAL name, not this synthesized ident (see the anonymous-collapse convergence).
+                true,
             ));
             types.new_type(&instance_cddl_ident, cli)
         }

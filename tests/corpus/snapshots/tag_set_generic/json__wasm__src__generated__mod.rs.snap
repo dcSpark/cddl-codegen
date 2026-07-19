@@ -90,10 +90,10 @@ impl AsRef<cddl_lib::Holder> for Holder {
 /// `add` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NonemptyOsetPoint(pub(crate) NonEmptyVec<cddl_lib::Point>);
+pub struct NonEmptyPointList(pub(crate) NonEmptyVec<cddl_lib::Point>);
 
 #[wasm_bindgen]
-impl NonemptyOsetPoint {
+impl NonEmptyPointList {
     pub fn new(first: &Point) -> Self {
         Self(NonEmptyVec::new(first.clone().into()))
     }
@@ -110,7 +110,7 @@ impl NonemptyOsetPoint {
         self.0.push(elem.clone().into());
     }
 
-    pub fn try_from(list: &PointList) -> Result<NonemptyOsetPoint, JsError> {
+    pub fn try_from(list: &PointList) -> Result<NonEmptyPointList, JsError> {
         let inner: Vec<cddl_lib::Point> = list.clone().into();
         NonEmptyVec::try_from(inner)
             .map(Self)
@@ -118,19 +118,19 @@ impl NonemptyOsetPoint {
     }
 }
 
-impl From<NonEmptyVec<cddl_lib::Point>> for NonemptyOsetPoint {
+impl From<NonEmptyVec<cddl_lib::Point>> for NonEmptyPointList {
     fn from(native: NonEmptyVec<cddl_lib::Point>) -> Self {
         Self(native)
     }
 }
 
-impl From<NonemptyOsetPoint> for NonEmptyVec<cddl_lib::Point> {
-    fn from(wasm: NonemptyOsetPoint) -> Self {
+impl From<NonEmptyPointList> for NonEmptyVec<cddl_lib::Point> {
+    fn from(wasm: NonEmptyPointList) -> Self {
         wasm.0
     }
 }
 
-impl AsRef<NonEmptyVec<cddl_lib::Point>> for NonemptyOsetPoint {
+impl AsRef<NonEmptyVec<cddl_lib::Point>> for NonEmptyPointList {
     fn as_ref(&self) -> &NonEmptyVec<cddl_lib::Point> {
         &self.0
     }
@@ -141,10 +141,10 @@ impl AsRef<NonEmptyVec<cddl_lib::Point>> for NonemptyOsetPoint {
 /// `add` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct NonemptySetText(pub(crate) NonEmptyVec<String>);
+pub struct NonEmptyTextList(pub(crate) NonEmptyVec<String>);
 
 #[wasm_bindgen]
-impl NonemptySetText {
+impl NonEmptyTextList {
     pub fn new(first: String) -> Self {
         Self(NonEmptyVec::new(first))
     }
@@ -161,30 +161,34 @@ impl NonemptySetText {
         self.0.push(elem);
     }
 
-    pub fn try_from(elements: Vec<String>) -> Result<NonemptySetText, JsError> {
+    pub fn try_from(elements: Vec<String>) -> Result<NonEmptyTextList, JsError> {
         NonEmptyVec::try_from(elements)
             .map(Self)
             .map_err(|e| JsError::new(&e.to_string()))
     }
 }
 
-impl From<NonEmptyVec<String>> for NonemptySetText {
+impl From<NonEmptyVec<String>> for NonEmptyTextList {
     fn from(native: NonEmptyVec<String>) -> Self {
         Self(native)
     }
 }
 
-impl From<NonemptySetText> for NonEmptyVec<String> {
-    fn from(wasm: NonemptySetText) -> Self {
+impl From<NonEmptyTextList> for NonEmptyVec<String> {
+    fn from(wasm: NonEmptyTextList) -> Self {
         wasm.0
     }
 }
 
-impl AsRef<NonEmptyVec<String>> for NonemptySetText {
+impl AsRef<NonEmptyVec<String>> for NonEmptyTextList {
     fn as_ref(&self) -> &NonEmptyVec<String> {
         &self.0
     }
 }
+
+pub type NonemptyOsetPoint = NonEmptyPointList;
+
+pub type NonemptySetText = NonEmptyTextList;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]

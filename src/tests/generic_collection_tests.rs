@@ -280,3 +280,141 @@ fn record_bodied_generic_def_still_generates() {
         result.err()
     );
 }
+
+/// REQUEST-09: an ANONYMOUS collapsed-set instance at a field site (`[pool_owners: set<key_hash>]`,
+/// element a non-exposable `@newtype`) must lower its wasm wrapper onto the STRUCTURAL name
+/// (`KeyHashList`), exactly like the inline `[* key_hash]` — NOT mint a rule-named `SetKeyHash`
+/// class. The synthesized instance name survives as a wasm passthrough alias so the field's
+/// reference stays valid; the rust side is untouched. This is what keeps the anonymous instance and
+/// its inline twin ONE wasm concept (so a `--wrapper-requests` structural import resolves via
+/// own-spec), and it holds for the `[+]` flavor onto `NonEmptyKeyHashList`.
+#[test]
+fn anonymous_collapsed_set_instance_lowers_wasm_to_structural_wrapper() {
+    let spec = "key_hash = bytes ; @newtype\n\
+                set<a0> = #6.258([* a0]) / [* a0]\n\
+                cert = [pool_owners: set<key_hash>]\n";
+    let files = generate(
+        spec,
+        "anon_set",
+        &["--wasm", "true", "--preserve-encodings=true"],
+    )
+    .expect("anonymous collapsed-set instance must generate");
+    let wasm = file_ending(&files, "wasm/src/generated/mod.rs");
+    assert!(
+        wasm.contains("pub struct KeyHashList("),
+        "the anonymous instance must mint the STRUCTURAL KeyHashList wasm class:\n{wasm}"
+    );
+    assert!(
+        !wasm.contains("pub struct SetKeyHash("),
+        "the synthesized instance name must NOT mint its own wasm class:\n{wasm}"
+    );
+    assert!(
+        wasm.contains("pub type SetKeyHash = KeyHashList;"),
+        "the synthesized name must survive as a wasm passthrough alias to the structural class:\n{wasm}"
+    );
+    // rust side is untouched: the transparent alias stays.
+    let rust = file_ending(&files, "rust/src/generated/mod.rs");
+    assert!(
+        rust.contains("pub type SetKeyHash = Vec<KeyHash>;"),
+        "the rust-side transparent alias must remain byte-for-byte:\n{rust}"
+    );
+}
+
+/// The `[+]` flavor of the anonymous collapse: `nonempty_set<key_hash>` lowers to the restricted
+/// STRUCTURAL wrapper `NonEmptyKeyHashList`, never a rule-named `NonemptySetKeyHash` class.
+#[test]
+fn anonymous_collapsed_nonempty_set_lowers_to_nonempty_structural_wrapper() {
+    let spec = "key_hash = bytes ; @newtype\n\
+                nonempty_set<a0> = #6.258([+ a0]) / [+ a0]\n\
+                signers = [required: nonempty_set<key_hash>]\n";
+    let files = generate(
+        spec,
+        "anon_neset",
+        &["--wasm", "true", "--preserve-encodings=true"],
+    )
+    .expect("anonymous nonempty collapsed-set instance must generate");
+    let wasm = file_ending(&files, "wasm/src/generated/mod.rs");
+    assert!(
+        wasm.contains("pub struct NonEmptyKeyHashList(")
+            && !wasm.contains("pub struct NonemptySetKeyHash("),
+        "the nonempty anonymous instance must mint the structural NonEmptyKeyHashList, not a \
+         rule-named class:\n{wasm}"
+    );
+    assert!(
+        wasm.contains("pub type NonemptySetKeyHash = NonEmptyKeyHashList;"),
+        "the synthesized nonempty name must survive as a passthrough alias:\n{wasm}"
+    );
+}
+
+/// Two spellings of one anonymous collapsed-set shape — the generic instance `set<key_hash>` AND the
+/// inline `[* key_hash]` — must define exactly ONE `KeyHashList` wasm class, not two.
+#[test]
+fn anonymous_instance_and_inline_collapsed_set_are_one_wasm_class() {
+    let spec = "key_hash = bytes ; @newtype\n\
+                set<a0> = #6.258([* a0]) / [* a0]\n\
+                cert = [pool_owners: set<key_hash>, extra: [* key_hash]]\n";
+    let files = generate(
+        spec,
+        "anon_both",
+        &["--wasm", "true", "--preserve-encodings=true"],
+    )
+    .expect("both spellings must generate");
+    let wasm = file_ending(&files, "wasm/src/generated/mod.rs");
+    assert_eq!(
+        wasm.matches("pub struct KeyHashList(").count(),
+        1,
+        "the anonymous instance and the inline `[* key_hash]` must be ONE KeyHashList class:\n{wasm}"
+    );
+}
+
+/// The exposability BOUNDARY: a directly-wasm-exposable collapsed-set instance (`set<uint>` →
+/// `Vec<u64>`) has no wrapper class to lower onto — a `&Vec<u64>` ctor param has no `RefFromWasmAbi`
+/// — so it KEEPS its own `SetU64` wrapper class (its pre-existing behavior). Convergence is scoped
+/// to instances that actually get a wasm wrapper (non-exposable elements, or the always-wrapped
+/// `[+ …]` flavor).
+#[test]
+fn directly_exposable_anonymous_set_keeps_its_wrapper_class() {
+    let spec = "set<a0> = #6.258([* a0]) / [* a0]\n\
+                cert = [nums: set<uint>]\n";
+    let files = generate(
+        spec,
+        "anon_exposable",
+        &["--wasm", "true", "--preserve-encodings=true"],
+    )
+    .expect("exposable anonymous set must generate");
+    let wasm = file_ending(&files, "wasm/src/generated/mod.rs");
+    assert!(
+        wasm.contains("pub struct SetU64("),
+        "a directly-exposable collapsed-set instance keeps its own wrapper class:\n{wasm}"
+    );
+    assert!(
+        !wasm.contains("pub type SetU64 = Vec<u64>;"),
+        "the exposable instance must NOT converge to a bare-Vec alias (breaks the wasm boundary):\n{wasm}"
+    );
+}
+
+/// The named-rule BOUNDARY: the same collapsed-set shape bound to a NAMED rule
+/// (`named_set = set<key_hash>`, ident `NamedSet`) is NOT anonymous — it keeps its own rule-named
+/// wasm class, so the criterion-8 `--wrapper-requests` contract still applies to it.
+#[test]
+fn named_collapsed_set_instance_rule_keeps_its_own_wasm_class() {
+    let spec = "key_hash = bytes ; @newtype\n\
+                set<a0> = #6.258([* a0]) / [* a0]\n\
+                named_set = set<key_hash>\n\
+                cert = [pool_owners: named_set]\n";
+    let files = generate(
+        spec,
+        "named_set",
+        &["--wasm", "true", "--preserve-encodings=true"],
+    )
+    .expect("named collapsed-set instance rule must generate");
+    let wasm = file_ending(&files, "wasm/src/generated/mod.rs");
+    assert!(
+        wasm.contains("pub struct NamedSet("),
+        "a NAMED collapsed-set instance rule keeps its own rule-named wasm class:\n{wasm}"
+    );
+    assert!(
+        !wasm.contains("pub type NamedSet = KeyHashList;"),
+        "a named rule must NOT be converged to a passthrough alias (the boundary):\n{wasm}"
+    );
+}

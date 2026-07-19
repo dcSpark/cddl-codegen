@@ -1,0 +1,11 @@
+; REQUEST-09: a dep whose own spec produces a collapsed-set shape through ANONYMOUS generic
+; instances at field sites (`set<key_hash>` / `nonempty_set<key_hash>`), NOT a named rule. The
+; synthesized instance wasm wrapper lowers to the STRUCTURAL name (`KeyHashList` /
+; `NonEmptyKeyHashList`), exactly like the inline `[* key_hash]` / `[+ key_hash]` equivalent — so a
+; consumer's `--wrapper-requests` for that structural shape is satisfied by own-spec (no criterion-8
+; #3 hard error on the synthesized name), and the two spellings are ONE wasm class.
+key_hash = bytes ; @newtype
+set<a0> = #6.258([* a0]) / [* a0]
+nonempty_set<a0> = #6.258([+ a0]) / [+ a0]
+cert = [pool_owners: set<key_hash>, extra: [* key_hash]]
+signers = [required: nonempty_set<key_hash>]

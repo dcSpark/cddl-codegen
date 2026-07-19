@@ -961,6 +961,13 @@ pub struct GenericInstance {
     pub(super) instance_ident: RustIdent,
     pub(super) generic_ident: RustIdent,
     generic_args: Vec<RustType>,
+    // `true` when the instance ident was SYNTHESIZED for an anonymous use site (`[a: bar<text>]` →
+    // `BarText`), rather than declared by a rule the author wrote (`foo = bar<text>`, ident `Foo`).
+    // A synthesized name carries no user intent worth surfacing as its own wasm class: an anonymous
+    // instance resolving to a TRANSPARENT COLLECTION lowers wasm-side to the STRUCTURAL wrapper
+    // (`BarTextList`), exactly like the equivalent inline `[* text]`, rather than minting a
+    // rule-named `#[wasm_bindgen]` class. See `converge_anonymous_collection_instance_wasm`.
+    pub(super) anonymous: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -988,11 +995,13 @@ impl GenericInstance {
         instance_ident: RustIdent,
         generic_ident: RustIdent,
         generic_args: Vec<RustType>,
+        anonymous: bool,
     ) -> Self {
         Self {
             instance_ident,
             generic_ident,
             generic_args,
+            anonymous,
         }
     }
 

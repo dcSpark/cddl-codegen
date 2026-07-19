@@ -154,6 +154,17 @@ pub struct IntermediateTypes<'a> {
     prelude_to_emit: BTreeSet<String>,
     generic_defs: BTreeMap<RustIdent, GenericDef>,
     generic_instances: BTreeMap<RustIdent, GenericInstance>,
+    // Idents of SYNTHESIZED anonymous generic instances (`[a: set<key_hash>]` → `SetKeyHash`) that
+    // resolve to a TRANSPARENT COLLECTION. `finalize` populates this (wasm mode only). Such an
+    // instance must NOT mint a rule-named `#[wasm_bindgen]` collection class: its wasm wrapper lowers
+    // to the STRUCTURAL name (`KeyHashList`, minted by the loose/NonEmpty wrapper machinery), and a
+    // wasm `pub type SetKeyHash = KeyHashList;` passthrough alias (its `gen_wasm_alias` is flipped on)
+    // points the field's reference at it — exactly the inline `[* key_hash]` shape. The rust side is
+    // untouched (the transparent `pub type SetKeyHash = Vec<KeyHash>` alias stays). This is what makes
+    // an anonymous collapsed-set instance and its inline equivalent ONE wasm concept, so a
+    // `--wrapper-requests` consumer's request for the structural shape resolves via own-spec (the
+    // synthesized name never reaches `own_wrapper_shapes`). Determinism: `BTreeSet`.
+    anonymous_collection_instances: BTreeSet<RustIdent>,
     // Every base ident of a GENERIC extern rule (`foo<T> = _CDDL_CODEGEN_EXTERN_TYPE_`), recorded at
     // parse time from `generic_params.is_some()`. A generic extern is registered as a plain `Extern`
     // rust struct that drops its generic params on the floor, so the ONLY record of its
@@ -237,6 +248,7 @@ impl<'a> IntermediateTypes<'a> {
             prelude_to_emit: BTreeSet::new(),
             generic_defs: BTreeMap::new(),
             generic_instances: BTreeMap::new(),
+            anonymous_collection_instances: BTreeSet::new(),
             generic_extern_bases: BTreeSet::new(),
             news_can_fail: BTreeSet::new(),
             key_demand: BTreeMap::new(),
@@ -352,11 +364,15 @@ impl<'a> IntermediateTypes<'a> {
         self.rust_structs
             .iter()
             .find_map(|(ident, rs)| match rs.variant() {
+                // A SYNTHESIZED anonymous instance carries no author name worth surfacing — it lowers
+                // to the structural `NonEmpty<MapKToV>` wrapper (see the anonymous-collapse
+                // convergence), so it must NOT win the owner slot the way an authored `{+ …}` rule does.
                 RustStructType::Table {
                     domain,
                     range,
                     bounds,
                 } if *bounds == Some((Some(1), None))
+                    && !self.is_anonymous_collection_instance(ident)
                     && domain.clone().resolve_aliases() == key_resolved
                     && range.clone().resolve_aliases() == value_resolved =>
                 {
@@ -376,10 +392,14 @@ impl<'a> IntermediateTypes<'a> {
         self.rust_structs
             .iter()
             .find_map(|(ident, rs)| match rs.variant() {
+                // A SYNTHESIZED anonymous instance is excluded (see the map twin above): it lowers to
+                // the structural `NonEmpty<Elem>List`, so a `nonempty_set<key_hash>` instance never
+                // shadows the inline `[+ key_hash]`'s synthesized wrapper name with its own ident.
                 RustStructType::Array {
                     element_type,
                     bounds,
                 } if *bounds == Some((Some(1), None))
+                    && !self.is_anonymous_collection_instance(ident)
                     && element_type.clone().resolve_aliases() == resolved =>
                 {
                     Some(ident)
@@ -1543,6 +1563,74 @@ impl<'a> IntermediateTypes<'a> {
     /// a parallel one. Scoped to instances whose alias base is a structural `Array`/`Map`: generic
     /// EXTERN instances (alias base `Rust(real_ident)`, registered above with the same
     /// `gen_rust_alias=true`) resolve to a `Rust` type, are excluded here, and stay byte-identical.
+    /// Converge each SYNTHESIZED anonymous generic-collection instance onto the anonymous INLINE
+    /// collection path for the wasm boundary. Wasm only.
+    ///
+    /// An anonymous instance (`[a: set<key_hash>]` → `SetKeyHash`) that resolves to a transparent
+    /// collection is registered — exactly like a bare `foo = #6.258([* key_hash])` rule — as an
+    /// `Array`/`Table`-variant `RustStruct` PLUS a transparent alias whose `gen_wasm_alias` is `false`,
+    /// so the wasm struct walk mints a `#[wasm_bindgen]` class under the RULE ident (`SetKeyHash`).
+    /// That is wrong for a synthesized name: the equivalent inline `[* key_hash]` field mints its
+    /// wrapper under the STRUCTURAL name (`KeyHashList`). Two spellings of one anonymous shape then
+    /// define two wasm classes for one concept — and a `--wrapper-requests` consumer importing the
+    /// structural name hard-errors (the synthesized name sits in `own_wrapper_shapes`).
+    ///
+    /// Fix: flip the instance alias's `gen_wasm_alias` to `true` and record the ident here. The alias
+    /// loop then emits `pub type SetKeyHash = KeyHashList;` (`for_wasm_member` on the alias base is
+    /// bounds-aware, so `[+ …]` yields the `NonEmpty…List` name and a directly-exposable element
+    /// yields the bare `Vec<…>`), the base-type walk mints the STRUCTURAL wrapper (recording it in
+    /// `own_wrapper_shapes` under the structural name), and the struct walk is told to SKIP the
+    /// rule-named class mint (via `is_anonymous_collection_instance`). The rust side is untouched — the
+    /// transparent `pub type SetKeyHash = Vec<KeyHash>;` alias and every rust reference to it stay
+    /// byte-identical. NAMED instance rules (`named_set = set<key_hash>`, ident from the author's rule)
+    /// are NOT anonymous, keep their own wasm class, and keep the criterion-8 `--wrapper-requests`
+    /// contract. Runs alongside `resolve_generic_collection_instance_fields` (both after the late
+    /// instance aliases exist); order between them does not matter — this only edits alias flags.
+    fn converge_anonymous_collection_instance_wasm(&mut self, cli: &Cli) {
+        if !cli.wasm {
+            return;
+        }
+        let anon_collection: Vec<RustIdent> = self
+            .generic_instances
+            .values()
+            .filter(|i| i.anonymous)
+            .filter_map(|i| {
+                let rt = self.resolve_alias(&AliasIdent::Rust(i.instance_ident.clone()))?;
+                let shallow = rt.conceptual_type.resolve_alias_shallow();
+                // Non-collection anonymous instances (a generic EXTERN, `extern_generic<foo>`, whose
+                // alias base is a bare `Rust(...)`) are out of scope AND must not reach the
+                // exposability probe below: `directly_wasm_exposable_ct` calls `is_enum`, whose
+                // rust-struct/generic-instance assertion an extern's synthesized element ident would
+                // trip. Screen them out first.
+                if !matches!(
+                    shallow,
+                    ConceptualRustType::Array(_) | ConceptualRustType::Map(_, _)
+                ) {
+                    return None;
+                }
+                // Only a collection that gets a wasm WRAPPER converges. A DIRECTLY-exposable one
+                // (`set<uint>` → `Vec<u64>`) has no wrapper to alias to, and pointing its transparent
+                // `pub type SetU64 = Vec<u64>` alias at a bare `Vec` would break the wasm boundary — a
+                // `&Vec<u64>` ctor/setter param has no `RefFromWasmAbi`. Such an instance keeps its own
+                // wrapper class (its pre-existing behavior), and REQUEST-09 does not need it: an
+                // exposable requested shape is already screened by the exposable-member guard in
+                // `emit_requested_collections`, not the criterion-8 #3 own-spec collision. Exposability
+                // is tested on the RESOLVED collection (a `[+ …]` is never exposable; otherwise ask the
+                // shallow-resolved shape) — NOT on the `Alias` wrapper, whose own rust-struct entry
+                // would wrongly report "wrapped" for the very type we are converging.
+                let gets_wrapper =
+                    rt.is_type_enforced_non_empty() || !shallow.directly_wasm_exposable_ct(self);
+                gets_wrapper.then(|| i.instance_ident.clone())
+            })
+            .collect();
+        for ident in anon_collection {
+            if let Some(alias) = self.type_aliases.get_mut(&AliasIdent::Rust(ident.clone())) {
+                alias.gen_wasm_alias = true;
+            }
+            self.anonymous_collection_instances.insert(ident);
+        }
+    }
+
     fn resolve_generic_collection_instance_fields(&mut self) {
         // Snapshot the resolved alias `RustType` for each generic-collection instance (base resolves
         // to Array/Map), cloned out first so the field walk can borrow `rust_structs` mutably. The
@@ -1741,6 +1829,11 @@ impl<'a> IntermediateTypes<'a> {
         // the SAME structural collection field type the non-generic path already has (see the method
         // doc); must run BEFORE the key-demand / encoding analysis below so they see the collection.
         self.resolve_generic_collection_instance_fields();
+        // Lower each SYNTHESIZED anonymous collection instance's wasm wrapper onto the STRUCTURAL name
+        // (the inline-collection path), so a synthesized instance name and its inline equivalent are
+        // ONE wasm class — never a rule-named duplicate that collides with a `--wrapper-requests`
+        // consumer's structural import. Wasm-only; edits alias flags only, so non-wasm is untouched.
+        self.converge_anonymous_collection_instance_wasm(cli);
         // recursively check all types used as keys or contained within a type used as a key
         // this is so we only derive comparison or hash traits for those types. Demand is propagated as
         // SETS (`DemandSet`), union-merged: a tagged root spreads ITS flavor to every contained type;
@@ -2439,6 +2532,14 @@ impl<'a> IntermediateTypes<'a> {
     /// this to mint one loose-list wasm wrapper per marked element (see `mark_used_as_elem`).
     pub fn used_as_elem(&self) -> &BTreeSet<RustIdent> {
         &self.used_as_elem
+    }
+
+    /// Whether `ident` is a SYNTHESIZED anonymous generic instance resolving to a transparent
+    /// collection (populated by `converge_anonymous_collection_instance_wasm`). When true, the wasm
+    /// struct walk must NOT mint a rule-named collection class for it — its wrapper is the STRUCTURAL
+    /// name, reached through the flipped-on `gen_wasm_alias` passthrough. See the field's doc.
+    pub fn is_anonymous_collection_instance(&self, ident: &RustIdent) -> bool {
+        self.anonymous_collection_instances.contains(ident)
     }
 
     pub fn mark_used_as_elem(&mut self, name: RustIdent) {

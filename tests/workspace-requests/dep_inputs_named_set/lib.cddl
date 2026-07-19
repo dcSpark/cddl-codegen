@@ -1,0 +1,9 @@
+; REQUEST-09 boundary: the collapsed-set instance is bound to a NAMED rule the author wrote
+; (`named_set = set<key_hash>`, ident `NamedSet`), not an anonymous field-site instance. A named
+; rule keeps its own wasm class and the criterion-8 #3 contract: a consumer requesting the
+; structural `[* key_hash]` (KeyHashList) collides with the dep's own `NamedSet` producer and must
+; hard-error with a remedy the author can act on (rename / @name / drop the rule).
+key_hash = bytes ; @newtype
+set<a0> = #6.258([* a0]) / [* a0]
+named_set = set<key_hash>
+cert = [pool_owners: named_set]

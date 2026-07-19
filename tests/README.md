@@ -738,6 +738,15 @@ idiom") is verified across the layers:
   byte-identically), and a collapsed set used as a type-choice variant discriminating coherently on
   the two-entry `cbor_types()` (`Type::Tag | Type::Array`). Generic-instance field convergence
   (Phase 2.5) is pinned in `src/tests/generic_collection_tests.rs`.
+- **Anonymous-instance wasm convergence** (REQUEST-09) — `src/tests/generic_collection_tests.rs`
+  (in-process source assertions): a SYNTHESIZED anonymous instance at a field site
+  (`[pool_owners: set<key_hash>]`) lowers its wasm wrapper to the STRUCTURAL name
+  (`KeyHashList`/`NonEmptyKeyHashList`, not the rule-named `SetKeyHash`) with a passthrough alias,
+  so the instance and its inline `[* key_hash]` twin are ONE wasm class; the directly-exposable
+  (`set<uint>`) and named-rule (`named_set = set<key_hash>`) boundaries KEEP their own class.
+  End-to-end against `--wrapper-requests` in `integration_tests::workspace_requests_anonymous_collapsed_set_satisfies_from_own_spec`:
+  the structural request is satisfied by own-spec (no criterion-8 #3 collision on the synthesized
+  name), and the named-rule boundary still hard-errors naming `NamedSet`.
 - **Compile + round-trip** — the `tag_set_idiom` / `tag_set_generic` / `tag_set_near_miss` corpus
   fixtures (`feature_corpus` snapshots + `feature_corpus_compiles`' three-profile compile and the
   default-profile `--emit-tests` byte-exact round-trip of the tagged arm).
