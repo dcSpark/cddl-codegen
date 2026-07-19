@@ -614,6 +614,17 @@ annotations (`verify.ts`'s default-on `--wasm` probe); the recombination fuzzer'
 (`recombination_wasm_crates_check`, `tests/README.md` § "Shape-recombination fuzzer") is the
 composition-space cross-check that complements this matrix's curated per-shape grid. What remains:
 
+- **OWED by the shape-addition rule below: anonymous generic-collection-instance lowerings.** The
+  tag-set series gave types a NEW way to cross the wasm boundary — an anonymous collection
+  instance (`x: set<elem>`) now lowers to the STRUCTURAL wrapper class for wrapper-needing
+  elements and to the DIRECT bare-`Vec` exposure for exposable ones (converged with the inline
+  spelling; a NAMED collection rule keeps its own-name class) — and no `SHAPES` entry was added
+  in the same change, so per this section's own warning the hole is silent-green, not red.
+  Candidate entries: the anonymous-instance wrapper-lowered and exposable-lowered collection
+  shapes (and the named-instance-rule twin as the boundary control), swept across the existing
+  `ROLES`. Interim pins until enumerated: `optional_tag_set_tests` +
+  `generic_collection_tests` source-equality tests and the `tag_set_generic` corpus wasm
+  snapshots — in-process/per-fixture, not the matrix's per-role grid, which is the gap.
 - **Keep BOTH matrix axes honest (periodic).** Grid coverage equals the hand-curated `SHAPES` ×
   `ROLES` lists in `project_wasm_matrix.ts` — and a hole in *either* axis is silent, not a red cell. A
   wasm representation not in `SHAPES` is an un-gated shape; equally, an emitter path that places types

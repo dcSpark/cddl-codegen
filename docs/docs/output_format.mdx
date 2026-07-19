@@ -83,6 +83,20 @@ or mandatory) aborts generation at the float deserialize stub, the general
 `preserve_encodings_supports_floats` limitation — tracked by that stub gate and the preserve-side
 float rows in `cddl-matrix/ROADMAP.md`'s findings ledger.
 
+## Transparent tag-set collections
+
+The recognized tagged-or-untagged set idiom (`my_set = #6.258([* a]) / [* a]` — see
+[Current capacities](current_capacities) § "Transparent tag-set idiom") emits the SAME output a
+bare `#6.N([* a])` array rule gets: a transparent alias (`pub type MySet = Vec<a>;`, or
+`NonEmptyVec<a>` for the `[+]` flavor with the full non-empty contract below), never an enum or a
+dedicated set struct. Under `--preserve-encodings` the tag's wire presence rides a
+`*_tag_encoding: TagPresenceEncoding` field in the **holder's** encoding struct — a tri-state
+(`Tagged(Option<Sz>)` / `Untagged`, default `Tagged(None)` = tagged at fit-minimal size) that is
+deliberately NOT `Option<Sz>`, which would conflate "untagged" with "tagged, default size". Like
+every collection encoding detail, it is positional (holder-side) rather than value-carried: a
+value moved to a different holder re-serializes with the defaults. `--canonical-form` normalizes
+the tag's size, never its presence.
+
 ## Non-empty containers
 
 An occurrence lower bound of exactly one — `[+ T]` and the equivalent `[1* T]` on arrays, `{+ k => v}`
