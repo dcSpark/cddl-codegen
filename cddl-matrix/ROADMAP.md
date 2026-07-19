@@ -222,7 +222,10 @@ are ledgered here (that's what the probe/gate error messages point at).
   arm registers the ELEMENT type from the wrapper's root emission scope (the "import the element
   type where the wrapper is minted" answer, mirroring how the map side answered the analogous
   placement question with `table_shape_sole_owners`), so `collrec__anon` compiles and round-trips
-  green. What remains is the NAMED mode, pinned by `collrec__named` in `tests/matrix_multifile/`
+  green — and so does `collrec__aliased` (the alias-base mint walk mints the loose `FooList` at
+  root, and `scope_references`' type-alias walk covers the base symmetrically, so the element
+  import lands at the wrapper's root emission scope). What remains is the NAMED mode, pinned by
+  `collrec__named` in `tests/matrix_multifile/`
   (`MULTIFILE_MATRIX_SKIP` with the exact E-code; carried into the round-trip gate's
   `MULTIFILE_ROUNDTRIP_SKIP` — the wasm crate never compiles, so `cargo test` can never pass):
   - `collrec__named` (E0432): the `mark_refs` alias-target recursion (the E0433 inner-type-import
@@ -241,12 +244,15 @@ are ledgered here (that's what the probe/gate error messages point at).
   module. (The element-TYPE import — `Foo` — is emitted by the Array arm's emission-scope element
   registration, so only the wrapper NAMES dangle.) E0425 in every case, pinned by
   `MULTIFILE_MATRIX_SKIP`/`MULTIFILE_ROUNDTRIP_SKIP`:
-  - `necollrec__{anon,named,unref}` — the `+` analogue of `collrec` (`recs = [+ foo]`, non-exposable
-    record element): the restricted wrapper still dangles on `collrec`'s root-minted `FooList` (loose
-    builder) and `Recs` (restricted) wrapper NAMES.
-  - `nemap__{anon,anonb,named,unref}` — the MAP-side manifestation the loose-only `collmap` never
-    exposed (it is green cross-module): the restricted `Mp::try_from(&MapU64ToText)` reintroduces a
-    bare reference to the root-minted loose builder.
+  - `necollrec__{aliased,anon,named,unref}` — the `+` analogue of `collrec` (`recs = [+ foo]`,
+    non-exposable record element): the restricted wrapper still dangles on `collrec`'s root-minted
+    `FooList` (loose builder) and `Recs` (restricted) wrapper NAMES. The `aliased` cell is red
+    purely on module `a`'s self-contained reference (the aliasing module `b`'s own import is
+    emitted correctly by the `scope_references` type-alias walk).
+  - `nemap__{aliased,anon,anonb,named,unref}` — the MAP-side manifestation the loose-only `collmap`
+    never exposed (it is green cross-module): the restricted `Mp::try_from(&MapU64ToText)`
+    reintroduces a bare reference to the root-minted loose builder. `aliased` red purely on module
+    `a`, as with `necollrec`.
   - `necoll__{anon,anonb}` — even the exposable-element list (`[+ uint]`, whose restricted wrapper's
     `try_from(Vec)` needs no loose twin) dangles on the ANON path: the anonymous `[+ uint]` dedups to
     the named rule in the shape's module but the cross-module import is not emitted (`named`/`unref`

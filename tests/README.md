@@ -1699,13 +1699,19 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   included; `prim` (no defs — nothing to place in a module) and `extern`/`rawbytes` (user-supplied
   types, can't compile standalone) are excluded with header comments.
 - **Axis 2 — cross-module reference mode.** `named` — `b` references the shape's named rule
-  (`bholder = [field0: <ty>]`); `anon` — `b` embeds the shape's inline anonymous same-shape spelling
+  (`bholder = [field0: <ty>]`); `aliased` — `b` ALIASES it (`bal = <ty>`, a plain rule alias whose
+  emitted `pub type Bal = …;` names the cross-module target with no field reference in sight — the
+  `scope_references` type-alias walk, the reference position a consumer's
+  `policy_id = script_hash`-style domain aliasing hits, proven E0412 in production before the walk
+  landed; module `b` is alias-only on purpose, that being the production shape, with the
+  alias-only-module E0583 class independently pinned by the alias shapes' `unref` cells); `anon` —
+  `b` embeds the shape's inline anonymous same-shape spelling
   (the `mark_refs` structural class); `anonb` — `anon` plus a ballast record rule in `a`
   (`ballast = [bal0: uint]`), so `a` emits `serialization.rs` and an alias-only-module abort can't
   mask the b-side import verdict (the discrimination that isolates structural-import placement
   regressions); `unref` — `b`
   references nothing (`[field0: uint]`), so an alias/table-only module `a` still gets emitted.
-  `named`/`unref` apply to every shape; `anon` exists ONLY for a shape whose anon holder
+  `named`/`aliased`/`unref` apply to every shape; `anon` exists ONLY for a shape whose anon holder
   `holder = [field0: <anonForm>]` compiles GREEN as a **single-file control** — otherwise the red
   would be a single-file limitation, not a placement finding, and the shape carries no `anonForm`
   (the controls are throwaway, not committed). All 11 candidates
@@ -1716,7 +1722,9 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   module `a` already emits serialization, so nothing masks their b-side verdict and a ballast
   variant adds no discrimination (their `anon` cells are green except the pinned `necollrec__anon`
   and the other structural-wrapper-class pins below).
-  All four modes reference the shape from a record-FIELD position; other reference POSITIONS are
+  The field-embedding modes reference the shape from a record-FIELD position; `aliased` is the
+  type-alias-TARGET position (added when its import class escaped to production — the second
+  position-keyed escape after the group-ctor one below); other reference POSITIONS are
   not enumerated. The one known position-keyed import class — a group-choice VARIANT over a
   foreign-scope Record, whose expanded `new_<variant>` ctor names the record's field types in the
   choice's module (marked by `scope_references` via the shared
@@ -1730,7 +1738,7 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   path-depends on the rust crate, so rust-side breakage surfaces transitively). Own scratch +
   `CARGO_TARGET_DIR` (`cddl_codegen_multifile_matrix`). Always-on (no `#[ignore]`): it joins the
   default `cargo test` / check.ts local tier. Wall-clock ~35 s (first cold run, shared target warms
-  once) / ~30 s warm measured at 43 cells (62 at HEAD).
+  once) / ~30 s warm measured at 43 cells (85 at HEAD).
 - **The round-trip gate** (`integration_tests::multifile_matrix_roundtrips`, `#[ignore]`d, check.ts
   **full** tier — the behavioural upgrade, mirroring `wasm_matrix_roundtrips`): same cell
   enumeration, but each cell is generated `--wasm=true --emit-tests=true` across `ALL_PROFILES`
@@ -1750,7 +1758,7 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   globs, without which every multifile cell is E0433-uncompilable) is pinned always-on by the
   in-process `emit_tests_multifile_scope_imports`, so a regression there doesn't wait for full
   tier. Run with `cargo test --bin cddl-codegen multifile_matrix_roundtrips -- --ignored`
-  (~4.6 min measured at 48 cells, scaling with the cell count — 62 at HEAD; every run is effectively cold — the scratch root, shared target
+  (~4.6 min measured at 48 cells, scaling with the cell count — 85 at HEAD; every run is effectively cold — the scratch root, shared target
   included, is cleared at start and end — with the deps built once up front and the remainder
   dominated by the per-cell-per-profile generate + two nested `cargo test` invocations (3 profiles x the cell count each).
 - **Skip ledgers (round-trip gate).** `MULTIFILE_ROUNDTRIP_SKIP: &[(&str, &str)]` (cell stem,
@@ -1783,17 +1791,21 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   change a real pin's error code to a bogus one, e.g. `E9999` → the class-changed message fires),
   watch it fail, revert.
 
-**What it pins today.** Ten cells, all the same `mark_refs` structural-wrapper ROOT_SCOPE
+**What it pins today.** Twelve cells, all the same `mark_refs` structural-wrapper ROOT_SCOPE
 placement class (fix queue in `cddl-matrix/ROADMAP.md` § findings): `collrec__named` (E0432 — the
 ARRAY structural-NAME class, `[* <record>]`, the only loose array whose wasm representation needs a
 generated `FooList`-style wrapper; a NAMED collection alias mints only its own wrapper, so the
 structural name imported from root scope exists nowhere; enumerated from a review-found `SHAPES`
 hole — its `collrec__anon` sibling round-trips green, element refs being registered from the
-wrapper's emission scope), plus the nine restricted
-non-empty cells (`necollrec__{anon,named,unref}`, `nemap__{anon,anonb,named,unref}`,
+wrapper's emission scope, and its `collrec__aliased` sibling likewise: the alias-base mint walk
+mints the loose wrapper at root and the type-alias import walk covers the base symmetrically),
+plus the eleven restricted
+non-empty cells (`necollrec__{aliased,anon,named,unref}`, `nemap__{aliased,anon,anonb,named,unref}`,
 `necoll__{anon,anonb}` — all E0425: the restricted wrapper's `try_from(&Loose)` or anon
 dedup-to-named reference names the root-minted loose builder/element/rule bare from a non-root
-module; the per-shape breakdown is on the same findings entry). Every
+module; the `aliased` pair is red purely on module `a`'s self-contained reference, the aliasing
+module `b`'s own import being emitted correctly; the per-shape breakdown is on the same findings
+entry). Every
 other cell is green, and greenness rests on four emitter invariants this matrix guards: a module
 declares `pub mod serialization;` only when that file is written (the module-declaration loop in
 `generation/export.rs` shares the `serialize_scopes` predicate with the file-write, so an alias/enum-only

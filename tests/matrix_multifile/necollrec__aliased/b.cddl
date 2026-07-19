@@ -1,0 +1,2 @@
+; cell: necollrec x aliased (reference from module b)
+bal = recs

@@ -324,11 +324,14 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   E0412 had masked the wasm failure, since the regen never got past the rust crate). Both halves
   are now standing coverage: glue covers `Extern | RawBytesType` in BOTH crates, both def
   routings model the real crate-root contract (thin `lib.rs`), and regression to the masked
-  residence collides E0255 with the glue's own re-export in either crate. Known-latent sibling,
-  deliberately NOT built (no failing case): `IntermediateTypes::scope_references` walks
-  `rust_structs` only, never `type_aliases`, so a CROSS-scope alias to a non-extern type may
-  also under-import — if a consumer hits E0412 on an alias whose target lives in another module,
-  that's this. Working rule meanwhile: a fixture that injects hand-written code into
+  residence collides E0255 with the glue's own re-export in either crate. The formerly-latent alias-walk sibling
+  (`scope_references` walked `rust_structs` only, never `type_aliases`, so a CROSS-scope alias to
+  a non-extern type under-imported its target — E0412) got its failing case on a production
+  project and is fixed: the type-alias walk marks each emitted alias's `base_type` (and, wasm-side,
+  the `resolved_wasm_alias_target` wrapper — a helper shared with the wasm alias emitter so the
+  emitted target and its import cannot drift), with standing coverage from the placement matrix's
+  `aliased` reference mode (every shape × `bal = <ty>` in module `b`). Working rule meanwhile: a
+  fixture that injects hand-written code into
   `generated/**` carries a comment justifying the residence — and the justification must name a
   contract a real user can follow, or explicitly flag itself as a modeled-obsolete shape citing
   this entry (the `use super::*;` serializer-helper appends qualify). Mechanical layer on the
@@ -396,20 +399,22 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   duplicate-ident backstop. (A fourth, CROSS-CRATE flavor — duplicate symbols at link under
   `--extern-wrapper-index`, invisible to any in-crate layer — is owned by that flag's
   deferral-boundaries entry below.)
-- **Multifile reference-POSITION coverage: the placement matrix only ever references a cross-module
-  shape as a record field.** The group-ctor import bug (a GROUP choice over a Record living in
-  another module expands that record's field types into `new_<variant>` ctor params in both passes,
-  but `scope_references` never marked them — E0412/E0425 in the generated crate; fixed by routing
-  both emitters and the collector through `EnumVariant::group_ctor_record_fields`) was invisible to
-  `tests/matrix_multifile` because every mode (`named`/`anon`/`anonb`/`unref`) embeds the shape as a
-  `bholder` record FIELD — a group-choice variant is a different reference *position* with its own
-  import-collection path. The vector now lives in the hand fixture (`tests/multifile`:
-  `relay`/`relay_host`, test `cross_module_group_choice_ctor`) plus the `multifile` snapshots. The
-  mechanical layer, if a second position-keyed cross-module import bug appears: add a
-  reference-position axis to `project_multifile_matrix.ts` — at minimum a `gcvariant` mode
+- **Multifile reference-POSITION coverage: two position-keyed escapes down, one enumerated position
+  still missing.** Two cross-module import bugs were invisible to `tests/matrix_multifile` because
+  its field-embedding modes (`named`/`anon`/`anonb`/`unref`) all reference the shape as a `bholder`
+  record FIELD, while each bug lived in a different reference *position* with its own
+  import-collection path: the group-ctor class (a GROUP choice over a foreign-scope Record expands
+  that record's field types into `new_<variant>` ctor params, unmarked by `scope_references`;
+  fixed via `EnumVariant::group_ctor_record_fields`, vector held by the hand fixture
+  `tests/multifile` `relay`/`relay_host`, test `cross_module_group_choice_ctor`), and the
+  type-alias-target class (a plain alias rule's `pub type` line names its cross-scope target,
+  unwalked — E0412, hit in production; fixed by the `scope_references` type-alias walk). The second
+  escape triggered this entry's mechanical layer: the position axis now exists as the `aliased`
+  mode (`bal = <ty>`, every shape). What remains future-facing is the `gcvariant` mode
   (`bholder = [<ty> // 1, uint]`) over a curated shape subset (the Record-resolving shapes
   `struct`/`mstruct`/`ralias` are the discriminating cells), same participation-pin idiom as
-  `anonForm`/`EXPECTED_ANON_SHAPES`.
+  `anonForm`/`EXPECTED_ANON_SHAPES` — the group-ctor class still rests on the single hand vector
+  rather than a matrix row.
 - **Reason-keyed rejection evidence for the reject catalogs — one proven near-miss recorded, no
   machinery yet.** The robustness/matrix reject catalogs snapshot the OUTCOME label only
   (`error (graceful)`), so a fixture stays green when a NEW, earlier rejection absorbs the one it

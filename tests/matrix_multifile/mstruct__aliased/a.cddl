@@ -1,0 +1,2 @@
+; cell: mstruct x aliased (shape defs, module a)
+mst = { a: uint, b: text }

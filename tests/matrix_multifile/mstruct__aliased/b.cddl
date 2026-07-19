@@ -1,0 +1,2 @@
+; cell: mstruct x aliased (reference from module b)
+bal = mst

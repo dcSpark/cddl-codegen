@@ -1,0 +1,2 @@
+; cell: ralias x aliased (reference from module b)
+bal = ral

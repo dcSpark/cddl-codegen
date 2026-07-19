@@ -1,0 +1,2 @@
+; cell: bwrap x aliased (shape defs, module a)
+bw = bytes .size (0..32)

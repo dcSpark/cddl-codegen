@@ -1,0 +1,4 @@
+; cell: chain x aliased (shape defs, module a)
+ca = [* uint]
+cb = ca
+cc = cb

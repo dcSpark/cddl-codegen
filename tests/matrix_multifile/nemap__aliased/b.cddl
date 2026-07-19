@@ -1,0 +1,2 @@
+; cell: nemap x aliased (reference from module b)
+bal = mp

@@ -1,0 +1,3 @@
+; cell: passthrumap x aliased (shape defs, module a)
+mp = { * uint => text }
+ptm = mp

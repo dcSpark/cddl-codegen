@@ -275,6 +275,14 @@ const MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)] = &[
          `Nums` named bare in module `b` (cddl-matrix/ROADMAP.md § findings)",
     ),
     (
+        "necollrec__aliased",
+        &["E0425"],
+        "E0425: as necollrec__named — module `a`'s restricted wrapper names the root-minted loose \
+         `FooList` bare (`Recs::try_from`), red regardless of the aliasing module `b` (whose own \
+         `pub type Bal = Recs;` import the type-alias walk emits correctly) — the Array-arm \
+         structural-wrapper ROOT_SCOPE class (cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
         "necollrec__anon",
         &["E0425"],
         "E0425: the root-minted loose `FooList`, element `Foo`, and restricted `Recs` wrappers are \
@@ -293,6 +301,14 @@ const MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)] = &[
         &["E0425"],
         "E0425: as necollrec__named — the restricted+loose array wrappers' root-minted `FooList`/`Foo` \
          named bare from module `a` (cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
+        "nemap__aliased",
+        &["E0425"],
+        "E0425: as nemap__named — module `a`'s `Mp::try_from` names the root-minted loose \
+         `MapU64ToText` bare, red regardless of the aliasing module `b` (whose own \
+         `pub type Bal = Mp;` import the type-alias walk emits correctly) — the structural-wrapper \
+         ROOT_SCOPE class (cddl-matrix/ROADMAP.md § findings)",
     ),
     (
         "nemap__anon",
@@ -365,6 +381,12 @@ const MULTIFILE_ROUNDTRIP_SKIP: &[(&str, &str)] = &[
          MULTIFILE_MATRIX_SKIP; cddl-matrix/ROADMAP.md § findings)",
     ),
     (
+        "necollrec__aliased",
+        "wasm crate never compiles: module `a`'s restricted wrapper names the root-minted loose \
+         `FooList` bare, red regardless of the aliasing module `b` (E0425 class pinned by \
+         MULTIFILE_MATRIX_SKIP; cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
         "necollrec__anon",
         "wasm crate never compiles: root-minted `FooList`/`Foo`/`Recs` named bare cross-module — the \
          `+` analogue of collrec's Array-arm class (E0425 class pinned by MULTIFILE_MATRIX_SKIP; \
@@ -380,6 +402,12 @@ const MULTIFILE_ROUNDTRIP_SKIP: &[(&str, &str)] = &[
         "necollrec__unref",
         "wasm crate never compiles: as necollrec__named (E0425 class pinned by MULTIFILE_MATRIX_SKIP; \
          cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
+        "nemap__aliased",
+        "wasm crate never compiles: module `a`'s `Mp::try_from` names the root-minted loose \
+         `MapU64ToText` bare, red regardless of the aliasing module `b` (E0425 class pinned by \
+         MULTIFILE_MATRIX_SKIP; cddl-matrix/ROADMAP.md § findings)",
     ),
     (
         "nemap__anon",

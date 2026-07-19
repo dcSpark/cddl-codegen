@@ -1,0 +1,2 @@
+; cell: cborwrap2 x aliased (reference from module b)
+bal = fb2

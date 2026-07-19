@@ -1,0 +1,2 @@
+; cell: cenum x aliased (reference from module b)
+bal = fe
