@@ -154,6 +154,16 @@ pub struct IntermediateTypes<'a> {
     prelude_to_emit: BTreeSet<String>,
     generic_defs: BTreeMap<RustIdent, GenericDef>,
     generic_instances: BTreeMap<RustIdent, GenericInstance>,
+    // Every base ident of a GENERIC extern rule (`foo<T> = _CDDL_CODEGEN_EXTERN_TYPE_`), recorded at
+    // parse time from `generic_params.is_some()`. A generic extern is registered as a plain `Extern`
+    // rust struct that drops its generic params on the floor, so the ONLY record of its
+    // generic-ness is here. Unlike `generic_instance_bases()` (which derives bases FROM instances and
+    // is therefore blind to a never-instantiated base), this sees every generic extern base whether
+    // or not any `foo<uint>` instance exists — the two agree on any base that has at least one
+    // instance, and this is a superset. Consumers that must reject the bare base as "names no
+    // concrete type" (the json-gen schema-row emitter, the extern-interface self-check's
+    // `ExternCheckKind::None`) key off THIS. Determinism: `BTreeSet`.
+    generic_extern_bases: BTreeSet<RustIdent>,
     news_can_fail: BTreeSet<RustIdent>,
     // Every ident finalize resolves as used-as-key, mapped to the UNION of comparison/hash trait
     // demand on it (`@used_as_key` flavors + auto-detected internal map-key bundle). Presence in the
@@ -227,6 +237,7 @@ impl<'a> IntermediateTypes<'a> {
             prelude_to_emit: BTreeSet::new(),
             generic_defs: BTreeMap::new(),
             generic_instances: BTreeMap::new(),
+            generic_extern_bases: BTreeSet::new(),
             news_can_fail: BTreeSet::new(),
             key_demand: BTreeMap::new(),
             key_demand_roots: BTreeMap::new(),
@@ -486,6 +497,28 @@ impl<'a> IntermediateTypes<'a> {
             .values()
             .map(|inst| inst.generic_ident.clone())
             .collect()
+    }
+
+    /// Record a generic extern rule's base ident (`foo<T> = _CDDL_CODEGEN_EXTERN_TYPE_`), from the
+    /// parse-time `generic_params.is_some()` signal. See the `generic_extern_bases` field comment.
+    pub fn mark_generic_extern_base(&mut self, ident: RustIdent) {
+        self.generic_extern_bases.insert(ident);
+    }
+
+    /// Every ident that is the base of a generic extern, from EITHER signal: recorded at parse time
+    /// when the rule DECLARES params (`foo<T> = _CDDL_CODEGEN_EXTERN_TYPE_`), OR derived from a
+    /// usage-site instance (`extern_generic = _CDDL_CODEGEN_EXTERN_TYPE_` declared plain but used as
+    /// `extern_generic<external_foo>` — the `tests/core` style). Neither signal subsumes the other: a
+    /// never-instantiated base shows only in the parse record, a plain-declared-but-used base only in
+    /// the instances, so the union is required. Use this — not `generic_instance_bases` alone —
+    /// anywhere a bare generic extern base must be skipped because it names no concrete type (the
+    /// json-gen schema-row emitter, the extern-interface `ExternCheckKind::None` decision). Including
+    /// the non-extern members of `generic_instance_bases` is harmless: a non-extern generic base
+    /// never materializes as a `rust_structs` entry, so neither call site ever tests one.
+    pub fn generic_extern_base_idents(&self) -> BTreeSet<RustIdent> {
+        let mut set = self.generic_extern_bases.clone();
+        set.extend(self.generic_instance_bases());
+        set
     }
 
     /// Which named `Table` rule solely owns each structural wasm-map shape, keyed by the structural

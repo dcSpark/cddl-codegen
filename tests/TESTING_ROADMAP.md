@@ -627,10 +627,26 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   stay unprobed: (a) `wasm-pack`/bindgen-CLI packaging — `cargo build`/`cargo test` cannot see
   duplicate exported JS class names when the dep wasm crate and the consumer both export a
   like-named wrapper (the generate-locally policy makes this reachable); no gate runs bindgen-CLI
-  over the extern fixture. (b) json-gen against extern-dep types — `gen_json_schema!` now emits the
-  dep's rust path, but no gate generates or executes `--json-schema-export` with extern deps (needs
-  the dep in the json-gen manifest and a `schemars::JsonSchema` impl on the dep type, both user
-  responsibilities by design).
+  over the extern fixture. (b) json-gen against extern-dep types — `gen_json_schema!` SKIPS
+  dep-owned rows (a dep type's schema is owned by the dep's own json-gen run, and this crate's
+  json-gen manifest depends only on the own rust crate), pinned in-memory by
+  `snapshot_tests::json_gen_extern_schema_rows`; the residual is that no gate COMPILES/EXECUTES a
+  json-gen crate built from a spec carrying extern deps (such a crate now compiles precisely because
+  the dep rows are skipped — the unprobed layer is the runtime `export_schemas()` over the surviving
+  in-crate rows in that configuration).
+- **Generic RAW-BYTES base (`foo<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_`) emits the same uncompilable
+  self-check / schema row an extern generic base did before its parse-time fix.** The
+  `generic_extern_bases` record populated at parse time (which flips both the extern-interface
+  `ExternCheckKind::None` decision and the json-gen schema-row skip) covers ONLY the EXTERN marker;
+  the `RAW_BYTES_MARKER` parse branch drops its generic params the same way but is not recorded, so a
+  generic raw-bytes base still emits `_assert_raw_bytes::<crate::generated::Foo>()` and
+  `gen_json_schema!(cddl_lib::Foo)` naming the bare `Foo` (E0107 if the user's hand type is
+  `Foo<T>`). Repro: `foo<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_` + any second rule, generate with
+  `--json-schema-export=true --wasm=false`. Whether a generic raw-bytes type is meaningful at all
+  (raw bytes carry no element type) is the open question — the honest fix is likely to REJECT the
+  construct at parse time rather than record-and-skip it; deferred until a real spec needs it. When
+  built, extend the parse-time record (or the rejection) to the raw-bytes marker and pin both call
+  sites, mirroring `extern_interface_check_skips_generic_base_without_instances`.
 - **Twin in-repo implementations of one semantic decision drifting apart (emission spellings,
   detection walkers, cross-language scanner mirrors) — single-owner extraction is the fix
   pattern; only the directive-SET flavor has a firing detector so far.** The in-repo sibling of

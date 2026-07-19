@@ -161,7 +161,9 @@ cddl-codegen --input=example --output=export --json-serde-derives true
 <br/><br/>
 
 :::info `--json-schema-export`
-Tags types with sonSchema derives and generates a crate (in wasm/json-gen) to export them. This requires `--json-serde-derives`.
+Tags types with JsonSchema derives and generates a crate (in wasm/json-gen) to export them. This requires `--json-serde-derives`.
+
+The generated `export_schemas()` emits one `gen_json_schema!` row per exported type. Each `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_` extern therefore must implement `schemars::JsonSchema` (part of the extern contract under these flags — see [Comment DSL § `_CDDL_CODEGEN_EXTERN_TYPE_`](./comment_dsl#_cddl_codegen_extern_type_)). Two row classes are deliberately **not** emitted, as neither could compile here: the bare BASE of an extern generic (`Foo` in `foo<T>` — it names no concrete type; the concrete instances still get rows), and any type owned by a workspace dependency (an extern-deps-dir / `--extern-import` type) — in workspace mode each crate's own json-gen run exports its own schemas, and this crate's json-gen manifest depends only on the own rust crate.
 
 **Possible values:**  true, false<br></br>
 **Default:** true

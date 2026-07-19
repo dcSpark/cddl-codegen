@@ -721,10 +721,14 @@ fn project_extern_interface(
     let dep_key = cli.lib_name_code();
     let mut included: BTreeMap<RustIdent, IncludedRule> = BTreeMap::new();
     let mut excluded: BTreeMap<RustIdent, ExcludedRule> = BTreeMap::new();
-    // The base idents of every registered generic instance (`ExtSet` of `ExtSet<Plain>`). An exported
+    // The base idents of every generic EXTERN rule (`ExtSet` of `ExtSet<T>`). An exported
     // generic-extern base spells `ExtSet<T>` in rust; bare `ExtSet` names no concrete type, so the
-    // self-check can assert no bound on it (its instances are asserted individually).
-    let generic_bases = types.generic_instance_bases();
+    // self-check can assert no bound on it (its instances are asserted individually). Keyed on
+    // `generic_extern_base_idents()` (the union of the parse-time record and the usage-site
+    // instances) so a base with ZERO instances (`ext_unused<T>`) AND a base declared plain-but-used-
+    // generic (`extern_generic<..>`, tests/core) both flip to `ExternCheckKind::None` instead of
+    // emitting an E0107 `_assert_serialize::<ExtSet>()`.
+    let generic_bases = types.generic_extern_base_idents();
     // Dedup across the two passes: a named collection / named generic-extern instance registers BOTH
     // a `rust_structs` entry AND a `type_aliases` entry; project each ident exactly once (pass 1
     // wins), so pass 2 skips anything pass 1 already staged.

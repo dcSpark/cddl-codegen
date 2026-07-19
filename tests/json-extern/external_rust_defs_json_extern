@@ -1,0 +1,80 @@
+// User-supplied definitions for the `json-extern` fixture's extern types, exercising the
+// `--json-schema-export` extern contract: whenever the json flags are on, a hand-written extern must
+// additionally implement `serde::Serialize`/`serde::Deserialize` (under `--json-serde-derives`) and
+// `schemars::JsonSchema`. `MyExtern` is a plain extern; `ExtSet<T>` a generic extern instantiated as
+// `MySet = ExtSet<u64>`. The generic BASE gets no schema row (uncompilable bare name); the concrete
+// instance and the plain extern do, and they compile because of the JsonSchema impls below.
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+pub struct MyExtern {
+    pub value: u64,
+}
+
+impl MyExtern {
+    pub fn new(value: u64) -> Self {
+        Self { value }
+    }
+}
+
+impl cbor_event::se::Serialize for MyExtern {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut cbor_event::se::Serializer,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+        serializer.write_unsigned_integer(self.value)
+    }
+}
+
+impl serialization::Deserialize for MyExtern {
+    fn deserialize(
+        raw: &mut cbor_event::de::Deserializer,
+    ) -> Result<Self, error::DeserializeError> {
+        Ok(Self {
+            value: raw.unsigned_integer()?,
+        })
+    }
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+pub struct ExtSet<T>(pub Vec<T>);
+
+impl<T> ExtSet<T> {
+    pub fn new(elems: Vec<T>) -> Self {
+        Self(elems)
+    }
+}
+
+impl<T: cbor_event::se::Serialize> cbor_event::se::Serialize for ExtSet<T> {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut cbor_event::se::Serializer,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+        serializer.write_array(cbor_event::Len::Len(self.0.len() as u64))?;
+        for elem in &self.0 {
+            elem.serialize(serializer)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl<T: serialization::Deserialize> serialization::Deserialize for ExtSet<T> {
+    fn deserialize(
+        raw: &mut cbor_event::de::Deserializer,
+    ) -> Result<Self, error::DeserializeError> {
+        let mut elems = Vec::new();
+        let len = raw.array()?;
+        while match len {
+            cbor_event::Len::Len(n) => (elems.len() as u64) < n,
+            cbor_event::Len::Indefinite => true,
+        } {
+            if let cbor_event::Len::Indefinite = len {
+                if raw.cbor_type()? == cbor_event::Type::Special {
+                    assert_eq!(raw.special()?, cbor_event::Special::Break);
+                    break;
+                }
+            }
+            elems.push(T::deserialize(raw)?);
+        }
+        Ok(Self(elems))
+    }
+}

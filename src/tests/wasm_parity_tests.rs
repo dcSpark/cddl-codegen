@@ -246,6 +246,12 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
          element): its integration gate generates with --wasm=false and injects hand-written extern \
          wrappers + a raw-bytes impl, so there is no generated wasm surface to differential",
     ),
+    (
+        "json-extern",
+        "rust-only json-gen extern-row regression fixture (a plain extern + a generic extern \
+         instance under the json flags): its integration gate generates with --wasm=false and \
+         injects hand-written extern defs, so there is no generated wasm surface to differential",
+    ),
 ];
 
 /// Only these `.rs` basenames may appear under `rust/src/generated/` (default/json profiles); only

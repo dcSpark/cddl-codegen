@@ -285,6 +285,63 @@ fn whole_program() {
     }
 }
 
+/// Content pin for the json-gen extern schema-row fix (feature request 05). Drives the generator
+/// in-process (no compile) over `tests/json-extern-rows/inputs` — a directory fixture combining a
+/// plain extern, a generic extern + concrete instance, a dep-owned (extern-deps-dir) extern, and an
+/// in-crate SCOPED type — and pins exactly which `gen_json_schema!` rows the json-gen crate emits.
+/// The full compile proof (that the KEPT rows build against hand-written `schemars::JsonSchema`
+/// impls, and the generic-base row's removal fixes an E0107) lives in
+/// `integration_tests::json_extern` and `integration_tests::multifile_json_preserve`; this is the
+/// cheap fast-tier net for the emitter's row selection.
+#[test]
+fn json_gen_extern_schema_rows() {
+    let cli = cli_for(
+        std::path::Path::new("tests/json-extern-rows/inputs"),
+        &["--json-serde-derives=true", "--json-schema-export=true"],
+    );
+    let files = crate::api::generated_strings(&cli).expect("generation must succeed");
+    let mod_rs = files
+        .get("wasm/json-gen/src/generated/mod.rs")
+        .expect("json-gen generated/mod.rs must be emitted under --json-schema-export");
+
+    // KEPT rows: plain extern, concrete generic instance, in-crate root type, and the scoped
+    // in-crate type at its REAL module path (the thin root's `pub use generated::*` makes it valid).
+    for kept in [
+        "gen_json_schema!(cddl_lib::MyExtern);",
+        "gen_json_schema!(cddl_lib::MySet);",
+        "gen_json_schema!(cddl_lib::BigThing);",
+        "gen_json_schema!(cddl_lib::sub::module::ScopedThing);",
+    ] {
+        assert!(
+            mod_rs.contains(kept),
+            "expected json-gen row `{kept}` missing:\n{mod_rs}"
+        );
+    }
+
+    // SKIPPED: the generic-extern BASE (`ExtSet` names no concrete type — E0107 no matter what the
+    // user writes).
+    assert!(
+        !mod_rs.contains("gen_json_schema!(cddl_lib::ExtSet)"),
+        "generic-extern base row must be skipped:\n{mod_rs}"
+    );
+
+    // SKIPPED: a generic-extern base with ZERO instances (`ext_unused<T>`). `generic_instance_bases`
+    // derives bases from instances and is blind to this one, so the skip must key on the parse-time
+    // `generic_extern_bases` record.
+    assert!(
+        !mod_rs.contains("ExtUnused"),
+        "a never-instantiated generic-extern base must still be skipped:\n{mod_rs}"
+    );
+
+    // SKIPPED: dep-owned types (non-export scope). Their emitted path would be `dep_crate::…`, which
+    // this json-gen crate's manifest does not (and must not) depend on — the dep's own json-gen run
+    // owns those schemas.
+    assert!(
+        !mod_rs.contains("dep_crate"),
+        "dep-owned (non-export scope) rows must be skipped:\n{mod_rs}"
+    );
+}
+
 /// The static serialization runtime prelude ships verbatim into every generated crate but is
 /// assembled differently per flag combination. It's excluded from the per-feature snapshots (it's
 /// feature-independent and would be pure repeated noise), so snapshot it once per combination here
@@ -1070,6 +1127,38 @@ fn extern_interface_check_skips_generic_base() {
     assert!(
         c.contains("_assert_serialize::<crate::generated::Plain>()")
             && c.contains("_assert_serialize::<crate::generated::UsingFlavored>()"),
+        "the concrete opaque rows must still assert Serialize:\n{c}"
+    );
+}
+
+/// The extern-interface self-check counterpart to `extern_interface_check_skips_generic_base` for a
+/// generic-extern base with ZERO instances (`ext_unused<T>` in `json-extern-rows`). `ExtSet` there
+/// has an instance, so `generic_instance_bases` catches it; `ext_unused` has none, so the `None`
+/// check-kind decision must key on the parse-time `generic_extern_bases` record — otherwise the base
+/// leaks an `_assert_serialize::<crate::generated::ExtUnused>()` that is E0107 in the dep's build.
+#[test]
+fn extern_interface_check_skips_generic_base_without_instances() {
+    let cli = cli_for(
+        std::path::Path::new("tests/json-extern-rows/inputs"),
+        &["--wasm", "false"],
+    );
+    let files = crate::api::generated_strings(&cli).unwrap();
+    let c = files
+        .get("rust/src/generated/extern_interface_check.rs")
+        .expect("self-check emitted");
+    assert!(
+        !c.contains("ExtUnused"),
+        "a never-instantiated generic-extern base names no concrete type — it must be skipped:\n{c}"
+    );
+    // The instantiated generic base is likewise skipped, while the concrete rows still assert.
+    assert!(
+        !c.contains("ExtSet"),
+        "the instantiated generic-extern base is also skipped:\n{c}"
+    );
+    assert!(
+        c.contains("_assert_serialize::<crate::generated::MyExtern>()")
+            && c.contains("_assert_serialize::<crate::generated::MySet>()")
+            && c.contains("_assert_serialize::<crate::generated::BigThing>()"),
         "the concrete opaque rows must still assert Serialize:\n{c}"
     );
 }

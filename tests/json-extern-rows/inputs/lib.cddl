@@ -1,0 +1,19 @@
+; Content-pin fixture for the json-gen extern schema-row fix (feature request 05). Read in-process
+; by `snapshot_tests::json_gen_extern_schema_rows` (no compile) to pin exactly which
+; `gen_json_schema!` rows the json-gen crate emits. It combines every class the fix distinguishes:
+;   - `ext_set<T>` : generic-extern BASE  -> row SKIPPED (bare `ExtSet` names no concrete type)
+;   - `ext_unused<T>`: generic-extern BASE with ZERO instances -> row SKIPPED (the skip must key on
+;                      the parse-time generic-extern record, not on instance-derived bases, or a
+;                      never-instantiated base leaks an E0107 row)
+;   - `my_set`     : concrete instance    -> row KEPT (`cddl_lib::MySet`)
+;   - `my_extern`  : plain extern         -> row KEPT (`cddl_lib::MyExtern`)
+;   - `dep_thing`  : dep-owned extern     -> row SKIPPED (non-export scope; the dep's own json-gen
+;                                            owns it, and this crate's json-gen manifest never
+;                                            depends on the dep)
+;   - `scoped_thing`: in-crate scoped type -> row KEPT with its real module path
+;                                            (`cddl_lib::sub::module::ScopedThing`)
+my_extern = _CDDL_CODEGEN_EXTERN_TYPE_
+ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_
+ext_unused<T> = _CDDL_CODEGEN_EXTERN_TYPE_
+my_set = ext_set<uint>
+big_thing = [e: my_extern, s: my_set, d: dep_thing, sc: scoped_thing]
