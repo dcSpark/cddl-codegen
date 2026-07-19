@@ -21,14 +21,14 @@ use cbor_encodings::{HolderEncoding, PointEncoding};
 
 #[derive(Clone, Debug)]
 pub struct Holder {
-    pub a: SetU64,
+    pub a: Vec<u64>,
     pub b: NonemptySetText,
     pub c: NonemptyOsetPoint,
     pub encodings: Option<HolderEncoding>,
 }
 
 impl Holder {
-    pub fn new(a: SetU64, b: NonemptySetText, c: NonemptyOsetPoint) -> Self {
+    pub fn new(a: Vec<u64>, b: NonemptySetText, c: NonemptyOsetPoint) -> Self {
         Self {
             a,
             b,

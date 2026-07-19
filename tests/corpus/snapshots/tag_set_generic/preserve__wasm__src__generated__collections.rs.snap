@@ -14,4 +14,3 @@ expression: content
 pub use crate::generated::NonEmptyPointList;
 pub use crate::generated::NonEmptyTextList;
 pub use crate::generated::PointList;
-pub use crate::generated::SetU64;

@@ -367,29 +367,54 @@ fn anonymous_instance_and_inline_collapsed_set_are_one_wasm_class() {
     );
 }
 
-/// The exposability BOUNDARY: a directly-wasm-exposable collapsed-set instance (`set<uint>` →
-/// `Vec<u64>`) has no wrapper class to lower onto — a `&Vec<u64>` ctor param has no `RefFromWasmAbi`
-/// — so it KEEPS its own `SetU64` wrapper class (its pre-existing behavior). Convergence is scoped
-/// to instances that actually get a wasm wrapper (non-exposable elements, or the always-wrapped
-/// `[+ …]` flavor).
+/// The directly-EXPOSABLE anonymous cell also converges: a `set<uint>` instance at a field site
+/// lowers to the bare inline collection (`Vec<u64>`, by value, no wrapper class) — its wasm output is
+/// BYTE-IDENTICAL to the inline `[* uint]` equivalent. The convergence is at field CLASSIFICATION:
+/// the field is lowered to the bare `Array` shape, so the wasm boundary crosses by value exactly like
+/// inline (not through a `&SetU64` ref that has no `RefFromWasmAbi`). The rust field-type SPELLING
+/// becomes `Vec<u64>` (same transparent type the `pub type SetU64 = Vec<u64>` alias still names).
 #[test]
-fn directly_exposable_anonymous_set_keeps_its_wrapper_class() {
-    let spec = "set<a0> = #6.258([* a0]) / [* a0]\n\
-                cert = [nums: set<uint>]\n";
-    let files = generate(
-        spec,
-        "anon_exposable",
+fn anonymous_exposable_instance_wasm_matches_inline() {
+    let instance = generate(
+        "set<a0> = #6.258([* a0]) / [* a0]\ncert = [nums: set<uint>]\n",
+        "anon_expo_inst",
         &["--wasm", "true", "--preserve-encodings=true"],
     )
-    .expect("exposable anonymous set must generate");
-    let wasm = file_ending(&files, "wasm/src/generated/mod.rs");
+    .expect("exposable anonymous set instance must generate");
+    let inline = generate(
+        "cert = [nums: [* uint]]\n",
+        "anon_expo_inline",
+        &["--wasm", "true", "--preserve-encodings=true"],
+    )
+    .expect("inline equivalent must generate");
+    // The whole wasm crate output must match the inline equivalent byte-for-byte: no `SetU64` class,
+    // by-value `Vec<u64>` getter/ctor. (The tag-presence encoding var is rust-side, so it does not
+    // affect the wasm surface.)
+    for suffix in [
+        "wasm/src/generated/mod.rs",
+        "wasm/src/generated/collections.rs",
+    ] {
+        assert_eq!(
+            file_ending(&instance, suffix),
+            file_ending(&inline, suffix),
+            "anonymous exposable instance {suffix} must equal the inline equivalent byte-for-byte"
+        );
+    }
+    let wasm = file_ending(&instance, "wasm/src/generated/mod.rs");
     assert!(
-        wasm.contains("pub struct SetU64("),
-        "a directly-exposable collapsed-set instance keeps its own wrapper class:\n{wasm}"
+        !wasm.contains("pub struct SetU64(") && !wasm.contains("pub type SetU64"),
+        "the exposable instance must NOT mint or alias a SetU64 wasm class:\n{wasm}"
     );
     assert!(
-        !wasm.contains("pub type SetU64 = Vec<u64>;"),
-        "the exposable instance must NOT converge to a bare-Vec alias (breaks the wasm boundary):\n{wasm}"
+        wasm.contains("pub fn nums(&self) -> Vec<u64>"),
+        "the getter must return a by-value bare Vec<u64>, exactly like inline:\n{wasm}"
+    );
+    // rust-side: the transparent alias still exists (its target unchanged); the field spells the bare
+    // Vec (same type). rust CBOR bytes are unaffected (the collapse's encoding vars are intact).
+    let rust = file_ending(&instance, "rust/src/generated/mod.rs");
+    assert!(
+        rust.contains("pub type SetU64 = Vec<u64>;") && rust.contains("pub nums: Vec<u64>"),
+        "rust keeps the transparent SetU64 alias; the field spells the bare Vec:\n{rust}"
     );
 }
 

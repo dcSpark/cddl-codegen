@@ -31,8 +31,8 @@ impl Holder {
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
     }
 
-    pub fn a(&self) -> SetU64 {
-        self.0.a.clone().into()
+    pub fn a(&self) -> Vec<u64> {
+        self.0.a.clone()
     }
 
     pub fn b(&self) -> NonemptySetText {
@@ -43,12 +43,8 @@ impl Holder {
         self.0.c.clone().into()
     }
 
-    pub fn new(a: &SetU64, b: &NonemptySetText, c: &NonemptyOsetPoint) -> Self {
-        Self(cddl_lib::Holder::new(
-            a.clone().into(),
-            b.clone().into(),
-            c.clone().into(),
-        ))
+    pub fn new(a: Vec<u64>, b: &NonemptySetText, c: &NonemptyOsetPoint) -> Self {
+        Self(cddl_lib::Holder::new(a, b.clone().into(), c.clone().into()))
     }
 }
 
@@ -259,47 +255,6 @@ impl From<PointList> for Vec<cddl_lib::Point> {
 
 impl AsRef<Vec<cddl_lib::Point>> for PointList {
     fn as_ref(&self) -> &Vec<cddl_lib::Point> {
-        &self.0
-    }
-}
-
-#[derive(Clone, Debug)]
-#[wasm_bindgen]
-pub struct SetU64(pub(crate) Vec<u64>);
-
-#[wasm_bindgen]
-impl SetU64 {
-    pub fn new() -> Self {
-        Self(Vec::new())
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn get(&self, index: usize) -> u64 {
-        self.0[index]
-    }
-
-    pub fn add(&mut self, elem: u64) {
-        self.0.push(elem);
-    }
-}
-
-impl From<Vec<u64>> for SetU64 {
-    fn from(native: Vec<u64>) -> Self {
-        Self(native)
-    }
-}
-
-impl From<SetU64> for Vec<u64> {
-    fn from(wasm: SetU64) -> Self {
-        wasm.0
-    }
-}
-
-impl AsRef<Vec<u64>> for SetU64 {
-    fn as_ref(&self) -> &Vec<u64> {
         &self.0
     }
 }

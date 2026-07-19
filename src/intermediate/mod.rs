@@ -1590,7 +1590,10 @@ impl<'a> IntermediateTypes<'a> {
         if !cli.wasm {
             return;
         }
-        let anon_collection: Vec<RustIdent> = self
+        // (ident, gets_wrapper) for every anonymous instance resolving to a collection. `gets_wrapper`
+        // is true for a `[+ …]` (always wrapped) or a non-exposable element (`set<key_hash>`), false
+        // for a directly-exposable loose collection (`set<uint>` → bare `Vec<u64>`).
+        let anon_collection: Vec<(RustIdent, bool)> = self
             .generic_instances
             .values()
             .filter(|i| i.anonymous)
@@ -1608,23 +1611,24 @@ impl<'a> IntermediateTypes<'a> {
                 ) {
                     return None;
                 }
-                // Only a collection that gets a wasm WRAPPER converges. A DIRECTLY-exposable one
-                // (`set<uint>` → `Vec<u64>`) has no wrapper to alias to, and pointing its transparent
-                // `pub type SetU64 = Vec<u64>` alias at a bare `Vec` would break the wasm boundary — a
-                // `&Vec<u64>` ctor/setter param has no `RefFromWasmAbi`. Such an instance keeps its own
-                // wrapper class (its pre-existing behavior), and REQUEST-09 does not need it: an
-                // exposable requested shape is already screened by the exposable-member guard in
-                // `emit_requested_collections`, not the criterion-8 #3 own-spec collision. Exposability
-                // is tested on the RESOLVED collection (a `[+ …]` is never exposable; otherwise ask the
-                // shallow-resolved shape) — NOT on the `Alias` wrapper, whose own rust-struct entry
-                // would wrongly report "wrapped" for the very type we are converging.
+                // Exposability is tested on the RESOLVED collection (a `[+ …]` is never exposable;
+                // otherwise ask the shallow-resolved shape) — NOT on the `Alias` wrapper, whose own
+                // rust-struct entry would wrongly report "wrapped" for the very type we are converging.
                 let gets_wrapper =
                     rt.is_type_enforced_non_empty() || !shallow.directly_wasm_exposable_ct(self);
-                gets_wrapper.then(|| i.instance_ident.clone())
+                Some((i.instance_ident.clone(), gets_wrapper))
             })
             .collect();
-        for ident in anon_collection {
-            if let Some(alias) = self.type_aliases.get_mut(&AliasIdent::Rust(ident.clone())) {
+        for (ident, gets_wrapper) in anon_collection {
+            // Every anonymous collection instance skips the rule-named class mint (recorded here). The
+            // WRAPPER subset additionally routes through a `gen_wasm_alias` passthrough to the
+            // STRUCTURAL wrapper (`pub type SetKeyHash = KeyHashList;`, bounds-aware). The exposable
+            // subset needs no alias: `resolve_generic_collection_instance_fields` lowers its field to
+            // the bare inline collection (`Vec<u64>`), so the wasm boundary crosses by value exactly
+            // like an inline `[* uint]` — no wrapper class, no `&Vec` ctor param (no `RefFromWasmAbi`).
+            if gets_wrapper
+                && let Some(alias) = self.type_aliases.get_mut(&AliasIdent::Rust(ident.clone()))
+            {
                 alias.gen_wasm_alias = true;
             }
             self.anonymous_collection_instances.insert(ident);
@@ -1638,14 +1642,40 @@ impl<'a> IntermediateTypes<'a> {
         // `Alias(ident, Array/Map)` conceptual type carrying the optional-tag encoding op and the
         // occurrence bounds.
         let mut resolved: BTreeMap<RustIdent, RustType> = BTreeMap::new();
-        for ident in self.generic_instances.keys() {
-            if let Some(rt) = self.resolve_alias(&AliasIdent::Rust(ident.clone()))
-                && matches!(
-                    rt.conceptual_type.resolve_alias_shallow(),
-                    ConceptualRustType::Array(_) | ConceptualRustType::Map(_, _)
-                )
-            {
-                resolved.insert(ident.clone(), rt);
+        let idents: Vec<RustIdent> = self.generic_instances.keys().cloned().collect();
+        for ident in idents {
+            let Some(rt) = self.resolve_alias(&AliasIdent::Rust(ident.clone())) else {
+                continue;
+            };
+            let shallow = rt.conceptual_type.resolve_alias_shallow();
+            if !matches!(
+                shallow,
+                ConceptualRustType::Array(_) | ConceptualRustType::Map(_, _)
+            ) {
+                continue;
+            }
+            // A SYNTHESIZED anonymous instance that resolves to a DIRECTLY-exposable collection
+            // (`set<uint>` → `Vec<u64>`, populated by `converge_anonymous_collection_instance_wasm`)
+            // lowers its field to the BARE collection — the alias wrapper is dropped, so the field's
+            // type is exactly the inline `[* uint]` shape (`Vec<u64>`, not `Alias(SetU64, …)`). That
+            // makes it cross the wasm boundary by value with no wrapper class, byte-identical to the
+            // inline equivalent, instead of a `&SetU64` ref param with no `RefFromWasmAbi`. The bare
+            // base keeps the collapsed-set encoding op (the optional tag rides on `base_type`), so the
+            // rust CBOR bytes are unchanged; only the rust field-type SPELLING becomes `Vec<u64>`
+            // (the same type the `pub type SetU64 = Vec<u64>` alias still names). Wrapper-getting
+            // anonymous instances (non-exposable / `[+ …]`) and NAMED instances keep the `Alias`.
+            let exposable_anon = self.is_anonymous_collection_instance(&ident)
+                && !rt.is_type_enforced_non_empty()
+                && shallow.directly_wasm_exposable_ct(self);
+            let replacement = if exposable_anon {
+                self.type_aliases
+                    .get(&AliasIdent::Rust(ident.clone()))
+                    .map(|info| info.base_type.clone())
+            } else {
+                Some(rt)
+            };
+            if let Some(replacement) = replacement {
+                resolved.insert(ident, replacement);
             }
         }
         if resolved.is_empty() {
@@ -1828,12 +1858,12 @@ impl<'a> IntermediateTypes<'a> {
         // field was built at parse time. Re-resolve those fields so the generic path converges on
         // the SAME structural collection field type the non-generic path already has (see the method
         // doc); must run BEFORE the key-demand / encoding analysis below so they see the collection.
-        self.resolve_generic_collection_instance_fields();
-        // Lower each SYNTHESIZED anonymous collection instance's wasm wrapper onto the STRUCTURAL name
-        // (the inline-collection path), so a synthesized instance name and its inline equivalent are
-        // ONE wasm class — never a rule-named duplicate that collides with a `--wrapper-requests`
-        // consumer's structural import. Wasm-only; edits alias flags only, so non-wasm is untouched.
+        // Classify each SYNTHESIZED anonymous collection instance for the wasm boundary FIRST (this
+        // populates `anonymous_collection_instances` and flips `gen_wasm_alias` for the wrapper
+        // subset), so the field re-resolution below can see the classification and lower the
+        // directly-exposable subset onto the bare inline collection. Wasm-only; non-wasm untouched.
         self.converge_anonymous_collection_instance_wasm(cli);
+        self.resolve_generic_collection_instance_fields();
         // recursively check all types used as keys or contained within a type used as a key
         // this is so we only derive comparison or hash traits for those types. Demand is propagated as
         // SETS (`DemandSet`), union-merged: a tagged root spreads ITS flavor to every contained type;
