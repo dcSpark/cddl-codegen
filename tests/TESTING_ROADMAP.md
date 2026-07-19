@@ -174,6 +174,27 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    non-0/3-rustfmt-exit-is-fatal contract already turns any formatter internal error into a
    generation failure, so no new assertion machinery is needed.
 
+3. **Rust-crate wasm-attribute placement sweep (cheap, build opportunistically or on the next
+   placement instance).** The generated rust crate must never carry an ungated `#[wasm_bindgen…]`
+   attribute: under `--wasm` the one sanctioned site (c-style enums, `generate_c_style_enum`)
+   emits the `cfg_attr(feature = …)` form so the crate compiles standalone without the optional
+   `wasm-bindgen` dep. Today the invariant is pinned only at single-fixture scale —
+   `rust_wasm_bindgen_feature_gated_crate_compiles_standalone` (integration) asserts the
+   `cfg_attr` form, scans that fixture's rust tree for bare attributes, and `cargo check`s the
+   crate feature-off. What that cannot see is a NEW emission site placing a bare attribute into
+   the rust tree for some other construct or profile — exactly the fixture-blind-spot class that
+   originally graded the crate as bindgen-free: an investigating cycle verified "no
+   `wasm_bindgen` in the rust crate" against a fixture (externs + generic externs) that happened
+   to lack the single construct emitting it
+   (`draft/feature-requests/RESPONSE-2026-07-19-request-01-wasm-bindgen-feature-gate.md` records
+   the incident). The systematic layer is a fifth `snapshot_tests.rs` invariant gate (the sweep
+   pattern of `generated_files_start_with_header`, fast tier, string-scan cost, no compilation):
+   over every `whole_program` input's `rust/src/generated/**`, a `wasm_bindgen` attribute token
+   may appear only inside a `cfg_attr(feature = …)` gate. The COMPILE half stays with the
+   integration vector by necessity — workspace/feature-unified builds silently enable the feature
+   via the wasm crate's path dep, so only its standalone feature-off `cargo check` witnesses that
+   direction — the sweep adds the corpus-wide placement half a source scan can own.
+
 ## Standing-system residuals (recur-first)
 
 Each entry here is a ledger record for a proven-once failure class: what happened, which standing
