@@ -343,6 +343,12 @@ impl From<Option<&RuleMetadata>> for RustStructConfig {
 pub struct RustStruct {
     pub(super) ident: RustIdent,
     pub(super) tag: Option<usize>,
+    /// When `tag` is set, whether that tag is OPTIONALLY present on the wire (the transparent
+    /// tag-set idiom, `x = #6.N([* a]) / [* a]`) rather than mandatory. Only ever true on an
+    /// `Array`/`Table` variant produced by the `parse_type_choices` collapse; drives
+    /// `register_rust_struct` to attach `OptionallyTagged` instead of `Tagged` to the registered
+    /// alias. `false` everywhere else, so every pre-existing tagged rule stays byte-identical.
+    pub(super) tag_optional: bool,
     config: RustStructConfig,
     pub(crate) variant: RustStructType,
 }
@@ -402,6 +408,7 @@ impl RustStruct {
         Self {
             ident,
             tag,
+            tag_optional: false,
             config: RustStructConfig::from(rule_metadata),
             variant: RustStructType::Record(record),
         }
@@ -418,6 +425,7 @@ impl RustStruct {
         Self {
             ident,
             tag,
+            tag_optional: false,
             config: RustStructConfig::from(rule_metadata),
             variant: RustStructType::Table {
                 domain,
@@ -437,6 +445,7 @@ impl RustStruct {
         Self {
             ident,
             tag,
+            tag_optional: false,
             config: RustStructConfig::from(rule_metadata),
             variant: RustStructType::Array {
                 element_type,
@@ -472,6 +481,7 @@ impl RustStruct {
             Self {
                 ident,
                 tag,
+                tag_optional: false,
                 config: RustStructConfig::from(rule_metadata),
                 variant: RustStructType::TypeChoice { variants },
             }
@@ -479,6 +489,7 @@ impl RustStruct {
             Self {
                 ident,
                 tag,
+                tag_optional: false,
                 config: RustStructConfig::from(rule_metadata),
                 variant: RustStructType::CStyleEnum { variants },
             }
@@ -495,6 +506,7 @@ impl RustStruct {
         Self {
             ident,
             tag,
+            tag_optional: false,
             config: RustStructConfig::from(rule_metadata),
             variant: RustStructType::GroupChoice { variants, rep },
         }
@@ -510,6 +522,7 @@ impl RustStruct {
         Self {
             ident,
             tag,
+            tag_optional: false,
             config: RustStructConfig::from(rule_metadata),
             variant: RustStructType::Wrapper {
                 wrapped: wrapped_type,
@@ -531,6 +544,7 @@ impl RustStruct {
         Self {
             ident,
             tag,
+            tag_optional: false,
             config: RustStructConfig::from(rule_metadata),
             variant: RustStructType::Wrapper {
                 wrapped: wrapped_type,
@@ -544,6 +558,7 @@ impl RustStruct {
         Self {
             ident,
             tag: None,
+            tag_optional: false,
             config: RustStructConfig::default(),
             variant: RustStructType::Extern,
         }
@@ -553,6 +568,7 @@ impl RustStruct {
         Self {
             ident,
             tag: None,
+            tag_optional: false,
             config: RustStructConfig::default(),
             variant: RustStructType::RawBytesType,
         }
@@ -564,6 +580,18 @@ impl RustStruct {
 
     pub fn tag(&self) -> Option<usize> {
         self.tag
+    }
+
+    /// Mark this struct's tag as OPTIONALLY present on the wire (the transparent tag-set collapse).
+    /// See the `tag_optional` field. Consuming builder, like `RustType::as_alias`/`as_bytes`.
+    #[allow(clippy::wrong_self_convention)]
+    pub fn as_optionally_tagged(mut self) -> Self {
+        self.tag_optional = true;
+        self
+    }
+
+    pub fn tag_optional(&self) -> bool {
+        self.tag_optional
     }
 
     pub fn config(&self) -> &RustStructConfig {

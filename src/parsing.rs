@@ -280,6 +280,54 @@ fn tag_literal(tag: &Option<token::TagConstraint<'_>>) -> Option<usize> {
     })
 }
 
+/// The transparent tag-set idiom: two type-choice arms whose built `RustType`s are equal but for
+/// exactly one extra `Tagged(N)` encoding operation on one arm — the conceptual type (element type
+/// included) AND the occurrence bounds match, arm order is irrelevant, and the tag number is taken
+/// from the arm (never hardcoded). This is the degenerate type choice whose arms denote the same
+/// logical value and differ only in whether the CBOR tag is present, e.g. the Cardano ledger set
+/// idiom `set<a> = #6.258([* a]) / [* a]`. Returns `(tag, base)` where `base` is the untagged arm's
+/// `RustType` (an `Array`/`Map`), which `parse_type_choices` collapses into one transparent
+/// collection carrying an OPTIONALLY-present tag, instead of a two-variant enum whose variants leak
+/// the encoding into the type. Near misses — mismatched bounds (`#6.258([+ a]) / [* a]`), different
+/// element types, both arms tagged, a non-collection inner, or 3+ arms — return `None` and keep
+/// today's enum behavior.
+fn recognize_optional_tag_set(variants: &[EnumVariant]) -> Option<(usize, RustType)> {
+    if variants.len() != 2 {
+        return None;
+    }
+    let a = variants[0].rust_type();
+    let b = variants[1].rust_type();
+    for (tagged, untagged) in [(a, b), (b, a)] {
+        // the collapse target must be a collection (the idiom is a set/array or a map)
+        if !matches!(
+            untagged.conceptual_type,
+            ConceptualRustType::Array(_) | ConceptualRustType::Map(_, _)
+        ) {
+            continue;
+        }
+        // equality of everything BUT the tag: conceptual type (element type included) and the value
+        // config (occurrence bounds, defaults, …) must match exactly.
+        if tagged.conceptual_type != untagged.conceptual_type || tagged.config != untagged.config {
+            continue;
+        }
+        if tagged.encodings.len() != untagged.encodings.len() + 1 {
+            continue;
+        }
+        // removing exactly one `Tagged(N)` op from the tagged arm must reconstruct the untagged
+        // arm's encoding stack verbatim (order-preserving), and that removed op must be the tag.
+        for i in 0..tagged.encodings.len() {
+            if let CBOREncodingOperation::Tagged(n) = tagged.encodings[i] {
+                let mut reduced = tagged.encodings.clone();
+                reduced.remove(i);
+                if reduced == untagged.encodings {
+                    return Some((n, untagged.clone()));
+                }
+            }
+        }
+    }
+    None
+}
+
 fn parse_type_choices(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
@@ -350,6 +398,50 @@ fn parse_type_choices(
         }
         handle_rust_name_pin(types, name, &rule_metadata);
         let variants = create_variants_from_type_choices(types, parent_visitor, type_choices, cli);
+        // Transparent tag-set collapse: a bare (no OUTER tag) two-arm choice differing only in tag
+        // presence is not two types — it is one collection whose tag is an encoding detail. Collapse
+        // it into the SAME registration a bare `#6.N([* a])` array rule gets (transparent alias +
+        // Array/Table-variant RustStruct), with the tag flagged OPTIONAL so it rides an encoding var
+        // rather than being mandatory. Recognition is structural + unconditional (no directive):
+        // the arm distinction carries no type-level information, so the collapse is the correct
+        // default and the enum was the accident. See `recognize_optional_tag_set` and
+        // docs/docs/current_capacities.mdx. Happens at parse time, BEFORE the generic machinery, so
+        // the generic def stores the already-collapsed collection body (a type-choice-bodied generic
+        // def would otherwise panic at `is_enum` during finalize).
+        if tag.is_none()
+            && let Some((set_tag, base)) = recognize_optional_tag_set(&variants)
+        {
+            println!(
+                "Collapsing rule `{name}` (tag {set_tag} set idiom) into a transparent optionally-tagged collection"
+            );
+            let bounds = base.config.bounds;
+            let rust_struct = match base.conceptual_type {
+                ConceptualRustType::Array(element_type) => RustStruct::new_array(
+                    name.clone(),
+                    Some(set_tag),
+                    Some(&rule_metadata),
+                    *element_type,
+                    bounds,
+                )
+                .as_optionally_tagged(),
+                ConceptualRustType::Map(key_type, value_type) => RustStruct::new_table(
+                    name.clone(),
+                    Some(set_tag),
+                    Some(&rule_metadata),
+                    *key_type,
+                    *value_type,
+                    bounds,
+                )
+                .as_optionally_tagged(),
+                // `recognize_optional_tag_set` only ever returns an Array/Map base
+                _ => unreachable!(),
+            };
+            match generic_params {
+                Some(params) => types.register_generic_def(GenericDef::new(params, rust_struct)),
+                None => types.register_rust_struct(parent_visitor, rust_struct, cli),
+            };
+            return;
+        }
         let rust_struct =
             RustStruct::new_type_choice(name.clone(), tag, Some(&rule_metadata), variants, cli);
         match generic_params {
@@ -3113,6 +3205,7 @@ pub fn parse_group(
                             types.is_plain_group(ident)
                                 && !ty.encodings.iter().any(|enc| match enc {
                                     CBOREncodingOperation::Tagged(_) => true,
+                                    CBOREncodingOperation::OptionallyTagged(_) => true,
                                     CBOREncodingOperation::CBORBytes => true,
                                 })
                         } else {

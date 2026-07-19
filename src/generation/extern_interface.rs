@@ -286,6 +286,11 @@ fn render_rust_type(rule: &str, ty: &RustType, types: &IntermediateTypes) -> Ren
         let inner_s = render_rust_type(rule, &inner, types)?;
         return Ok(match last {
             CBOREncodingOperation::Tagged(tag) => format!("#6.{tag}({inner_s})"),
+            // reverse-projection of the transparent tag-set collapse: the CDDL was a
+            // tagged-or-untagged choice of the same collection.
+            CBOREncodingOperation::OptionallyTagged(tag) => {
+                format!("#6.{tag}({inner_s}) / {inner_s}")
+            }
             CBOREncodingOperation::CBORBytes => format!("bytes .cbor {inner_s}"),
         });
     }

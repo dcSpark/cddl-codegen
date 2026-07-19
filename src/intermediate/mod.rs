@@ -1477,7 +1477,11 @@ impl<'a> IntermediateTypes<'a> {
                     map_type = map_type.with_bounds(*bounds);
                 }
                 if let Some(tag) = rust_struct.tag {
-                    map_type = map_type.tag(tag);
+                    map_type = if rust_struct.tag_optional {
+                        map_type.optionally_tag(tag)
+                    } else {
+                        map_type.tag(tag)
+                    };
                 }
                 self.register_type_alias(
                     rust_struct.ident.clone(),
@@ -1496,7 +1500,11 @@ impl<'a> IntermediateTypes<'a> {
                     array_type = array_type.with_bounds(*bounds);
                 }
                 if let Some(tag) = rust_struct.tag {
-                    array_type = array_type.tag(tag);
+                    array_type = if rust_struct.tag_optional {
+                        array_type.optionally_tag(tag)
+                    } else {
+                        array_type.tag(tag)
+                    };
                 }
                 self.register_type_alias(
                     rust_struct.ident.clone(),

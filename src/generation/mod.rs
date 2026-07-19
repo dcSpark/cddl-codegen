@@ -899,6 +899,11 @@ impl GenerationScope {
                         format!("{}::serialization", cli.common_import_rust()),
                         "StringEncoding",
                         None,
+                    )
+                    .push_import(
+                        format!("{}::serialization", cli.common_import_rust()),
+                        "TagPresenceEncoding",
+                        None,
                     );
             }
         }
@@ -926,6 +931,11 @@ impl GenerationScope {
                     .push_import(
                         format!("{}::serialization", cli.common_import_rust()),
                         "StringEncoding",
+                        None,
+                    )
+                    .push_import(
+                        format!("{}::serialization", cli.common_import_rust()),
+                        "TagPresenceEncoding",
                         None,
                     );
             }
@@ -2124,6 +2134,23 @@ fn encoding_fields_impl(
                 (&ConceptualRustType::Fixed(FixedValue::Uint(*tag as u64))).into(),
                 cli,
             );
+            encs.append(&mut encoding_fields_impl(types, name, *child, cli));
+            encs
+        }
+        SerializingRustType::EncodingOperation(
+            CBOREncodingOperation::OptionallyTagged(_tag),
+            child,
+        ) => {
+            // the tri-state tag-presence var (absent | present(sz)); the deserialize preamble
+            // produces a fully-formed `TagPresenceEncoding`, so no enc conversion is applied.
+            let mut encs = vec![EncodingField {
+                field_name: format!("{name}_tag_encoding"),
+                type_name: "TagPresenceEncoding".to_owned(),
+                default_expr: "TagPresenceEncoding::default()",
+                enc_conversion_before: "",
+                enc_conversion_after: "",
+                is_copy: true,
+            }];
             encs.append(&mut encoding_fields_impl(types, name, *child, cli));
             encs
         }

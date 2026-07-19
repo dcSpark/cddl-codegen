@@ -182,6 +182,8 @@ impl<'a> EncodingVarIsCopy for SerializingRustType<'a> {
         match self {
             Self::EncodingOperation(CBOREncodingOperation::CBORBytes, _) => false,
             Self::EncodingOperation(CBOREncodingOperation::Tagged(_), _) => true,
+            // TagPresenceEncoding is Copy
+            Self::EncodingOperation(CBOREncodingOperation::OptionallyTagged(_), _) => true,
             Self::Root(ty, _cfg) => ty.encoding_var_is_copy(types),
         }
     }
@@ -592,6 +594,52 @@ impl GenerationScope {
                         ),
                         cli,
                     );
+                    self.generate_serialize(types, *child, body, config, cli);
+                }
+                SerializingRustType::EncodingOperation(
+                    CBOREncodingOperation::OptionallyTagged(tag),
+                    child,
+                ) => {
+                    let expr = format!("{tag}u64");
+                    if cli.preserve_encodings {
+                        // CANONICAL POLICY (decided): force_canonical normalizes the tag's SIZE
+                        // (via `fit_sz` below) but NEVER its PRESENCE. Which arm was written is part
+                        // of what the spec author encoded and other implementations validate
+                        // structurally; canonicality governs encoding minimality only. So a value
+                        // read untagged re-serializes untagged even under --canonical-form.
+                        let enc_expr = format!(
+                            "{}{}",
+                            encoding_deref,
+                            config.encoding_var(Some("tag"), encoding_var_is_copy)
+                        );
+                        let mut tag_block = Block::new(format!(
+                            "if let TagPresenceEncoding::Tagged(tag_sz) = {enc_expr}"
+                        ));
+                        write_using_sz(
+                            &mut tag_block,
+                            "write_tag",
+                            serializer_use,
+                            &expr,
+                            &expr,
+                            "?;",
+                            "tag_sz",
+                            cli,
+                        );
+                        body.push_block(tag_block);
+                    } else {
+                        // No encoding var to consult: default new values to tagged (matches the
+                        // first/tagged arm and current-era ledger emission).
+                        write_using_sz(
+                            body,
+                            "write_tag",
+                            serializer_use,
+                            &expr,
+                            &expr,
+                            "?;",
+                            "",
+                            cli,
+                        );
+                    }
                     self.generate_serialize(types, *child, body, config, cli);
                 }
                 SerializingRustType::EncodingOperation(CBOREncodingOperation::CBORBytes, child) => {
