@@ -18,7 +18,7 @@ use crate::generated::error::*;
 use cbor_encodings::WrappedEnumEncoding;
 
 #[derive(Copy, Eq, PartialEq, Ord, PartialOrd, Clone, Debug)]
-#[wasm_bindgen::prelude::wasm_bindgen]
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
 pub enum FixedEnum {
     I0,
     I1,

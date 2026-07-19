@@ -25,7 +25,7 @@ use crate::generated::error::*;
     serde::Serialize,
     schemars::JsonSchema,
 )]
-#[wasm_bindgen::prelude::wasm_bindgen]
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
 pub enum FixedEnum {
     I0,
     I1,

@@ -15,7 +15,7 @@ pub mod serialization;
 use crate::generated::error::*;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-#[wasm_bindgen::prelude::wasm_bindgen]
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
 pub enum FixedEnum {
     I0,
     I1,

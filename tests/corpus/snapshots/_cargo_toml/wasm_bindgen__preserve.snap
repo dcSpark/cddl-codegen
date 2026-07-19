@@ -17,4 +17,7 @@ crate-type = ["cdylib", "rlib"]
 cbor_event = "3.2.0"
 linked-hash-map = "0.5.3"
 derivative = "2.2.0"
-wasm-bindgen = "0.2"
+wasm-bindgen = { version = "0.2", optional = true }
+
+[features]
+wasm = ["dep:wasm-bindgen"]

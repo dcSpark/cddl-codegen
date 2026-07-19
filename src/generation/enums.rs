@@ -601,7 +601,13 @@ pub(super) fn generate_c_style_enum(
             .derive("PartialOrd");
     }
     if cli.wasm {
-        e.attr("wasm_bindgen::prelude::wasm_bindgen");
+        // Gate the attribute behind a cargo feature (default `wasm`) so the rust crate compiles
+        // standalone without the optional wasm-bindgen dep; the wasm crate enables the feature via
+        // its path dep. This is the only rust-crate-side `#[wasm_bindgen]` emission.
+        e.attr(format!(
+            "cfg_attr(feature = \"{}\", wasm_bindgen::prelude::wasm_bindgen)",
+            cli.rust_wasm_feature
+        ));
         gen_scope
             .wasm(types, name)
             .new_import(

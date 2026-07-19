@@ -15,3 +15,6 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 cbor_event = "3.2.0"
+
+[features]
+wasm = []

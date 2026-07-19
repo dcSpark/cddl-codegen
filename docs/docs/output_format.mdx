@@ -26,6 +26,24 @@ So the tag / fixed-value encoding for these is emitted at each use site. A conse
 
 **Item ordering within a file is alphabetical by name, not by kind.** Top-level items are emitted sorted **name-primary, kind-secondary**: alphabetically by the type's bare name (module path and generics ignored), interleaving structs, enums, impls, type aliases, and modules — so a type's `struct`/`enum` and its `impl`s sit together, and `type Foo` is placed alphabetically among everything rather than grouped with the other aliases. Within a single name the struct/enum definition comes first, then its impls. This canonical ordering is stable across unrelated changes to the input, which keeps diffs of generated code small. (It is independent of run-to-run determinism, which holds regardless.)
 
+## Wasm feature gate for c-style enums
+
+Under `--wasm`, a c-style enum is the one type kind the tool exposes to wasm *directly* — the wasm crate `pub use`-re-exports the rust enum rather than wrapping it — so it is also the only place the **rust** crate itself carries a `#[wasm_bindgen]` attribute. To keep the rust crate compilable standalone (without pulling in `wasm-bindgen` for non-wasm consumers), that attribute is gated behind a cargo feature:
+
+```rust
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
+pub enum Language { PlutusV1, PlutusV2, PlutusV3 }
+```
+
+The feature name (`wasm` above) is set by [`--rust-wasm-feature`](./command_line_flags). Correspondingly, in `rust/Cargo.toml`:
+
+- `wasm-bindgen` is an **optional** dependency (`{ version = "0.2", optional = true }`), present only when the spec has at least one c-style enum.
+- the `[features]` table **always** carries the feature under `--wasm` — `wasm = ["dep:wasm-bindgen"]` when a c-style enum exists, otherwise `wasm = []`. It exists even in the empty case so the wasm crate can reference it unconditionally without knowing whether the spec has a c-style enum. The `dep:` form means the optional dependency introduces no implicit same-named feature.
+
+The generated `wasm/Cargo.toml`'s path dependency on the rust crate enables the feature — `cddl-lib = { path = "../rust", features = ["wasm"] }` — so building the wasm crate compiles the `#[wasm_bindgen]` attribute in exactly as before; nothing about wasm builds changes.
+
+**Migration.** The feature is transparent to the normal two-crate (rust + wasm) workflow. It only matters for a consumer that compiles the generated **rust** crate directly into its own wasm-bindgen build *without* going through the generated wasm crate: that build must enable the feature. A manifest that already hand-maintains `wasm-bindgen = { optional = true }` behind its own feature name (e.g. `used_from_wasm`) should pass `--rust-wasm-feature=used_from_wasm` so the tool gates on that same name; on regeneration a stale legacy `used_from_wasm = ["wasm-bindgen"]` list is rewritten to the `["dep:wasm-bindgen"]` form (the `dep:`-less form would otherwise re-introduce the implicit feature the optional dep no longer creates).
+
 ## Optional fixed-value members
 
 A **mandatory** fixed-value member (`[v: true, x: uint]`, `{k: 5, x: uint}`) carries zero
@@ -622,7 +640,11 @@ Every key falls into one of three categories:
   than stranding them — note the removal deletes the whole entry, including any fields you added to it.
   For the same reason, **regenerate with the same flags every time**: a regen that accidentally omits
   a flag (e.g. forgetting `--wasm`) reads as "condition off" and removes that flag's conditional deps
-  from your manifest. Pin the full command in a script or Makefile. Note that `package.edition` is
+  from your manifest. Pin the full command in a script or Makefile. One `[features]` entry is also
+  tool-owned: under `--wasm` the [`--rust-wasm-feature`](./command_line_flags) key (default `wasm`) is
+  set at the leaf level to `["dep:wasm-bindgen"]` or `[]` (see [the feature gate above](#wasm-feature-gate-for-c-style-enums)),
+  and dropping `--wasm` removes exactly that key. Because the op addresses the single
+  `features.<name>` leaf, your **other** `[features]` entries are untouched. Note that `package.edition` is
   pinned to `2024` on purpose — the generated code relies on `TryFrom`/`TryInto` being in the
   edition-2021+ prelude rather than importing them, so a consumer that reverts the manifest to an
   edition **older than 2021** (e.g. `git checkout -- Cargo.toml` back to a hand-edited `edition =
@@ -631,7 +653,8 @@ Every key falls into one of three categories:
   (`0.0.1` for the json-gen crate) the tool has no opinion — bump it and it stays bumped across
   regenerations.
 - **Preserved (never touched).** Any key no changeset op mentions: your own dependencies,
-  `[profile]`/`[features]` tables, workspace inheritance lines, etc.
+  `[profile]` tables, the rest of the `[features]` table (every entry but the tool-owned
+  `--rust-wasm-feature` key above), workspace inheritance lines, etc.
 
 The tool also writes a `package.metadata.cddl-codegen.generated-with` stamp recording the
 cddl-codegen version. It is write-only — the tool never reads it back (reading prior output would

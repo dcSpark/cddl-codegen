@@ -589,7 +589,33 @@ pub fn ops_for_rust(
             .rust_structs()
             .values()
             .any(|rust_struct| matches!(rust_struct.variant(), RustStructType::CStyleEnum { .. }));
-    ops.push(dep("wasm-bindgen", "\"0.2\"", needs_wasm_bindgen));
+    // Optional dep: the rust crate's only `#[wasm_bindgen]` use (c-style enums) is gated behind the
+    // `--rust-wasm-feature` feature, so wasm-bindgen is pulled in only when that feature is enabled.
+    ops.push(dep(
+        "wasm-bindgen",
+        "{ version = \"0.2\", optional = true }",
+        needs_wasm_bindgen,
+    ));
+
+    // The feature gating the c-style-enum `#[wasm_bindgen]` (see `generate_c_style_enum`). Under `--wasm` it
+    // ALWAYS exists — enabling `dep:wasm-bindgen` when a c-style enum is present, otherwise empty —
+    // so the wasm crate can reference it unconditionally via its path dep without knowing whether the
+    // spec has a c-style enum. `dep:` syntax so the optional dep introduces no implicit same-named
+    // feature. Set-or-remove like the conditional deps: dropping `--wasm` tombstones it.
+    let feature_op = if cli.wasm {
+        let list = if needs_wasm_bindgen {
+            "[\"dep:wasm-bindgen\"]"
+        } else {
+            "[]"
+        };
+        ManifestOp::Set(val(list))
+    } else {
+        ManifestOp::Remove
+    };
+    ops.push((
+        key_path(&["features", cli.rust_wasm_feature.as_str()]),
+        feature_op,
+    ));
 
     ops.push(version_stamp());
     Ok(ops)
@@ -612,6 +638,22 @@ pub fn ops_for_wasm(cli: &Cli) -> std::io::Result<Vec<(KeyPath, ManifestOp)>> {
         "\"0.6.5\"",
         cli.json_serde_derives,
     ));
+
+    // The rust path dep gains the rust crate's wasm feature so building the wasm crate compiles the
+    // rust crate's c-style-enum `#[wasm_bindgen]` in. Flag-dependent (the feature name), so it can't
+    // be a static wasm.toml log entry — pushed in-code. The dep KEY is `--lib-name` verbatim —
+    // exactly what `ops_from_log`'s `cddl-lib` → lib_name substitution turns the log's
+    // `dependencies.cddl-lib` key into, so the two ops address the same path. The 2-segment
+    // dependency path gets `merge_dep_spec` union semantics, so a user's dep-spec shape survives and
+    // our feature is appended to whatever `../rust` path dep the wasm.toml log already declared.
+    ops.push((
+        key_path(&["dependencies", cli.lib_name.as_str()]),
+        ManifestOp::Set(val(&format!(
+            "{{ path = \"../rust\", features = [\"{}\"] }}",
+            cli.rust_wasm_feature
+        ))),
+    ));
+
     ops.push(version_stamp());
     Ok(ops)
 }
@@ -1209,6 +1251,198 @@ set = 'not = valid = toml'
             !out.contains("gone"),
             "tombstoned key must be absent:\n{out}"
         );
+    }
+
+    // ---- rust-crate wasm-bindgen feature gate -----------------------------------------------
+
+    /// A spec whose only rule is a c-style enum (`CStyleEnum` IR under default flags), so
+    /// `needs_wasm_bindgen` is true. `foo = [x: uint]` (below) is the no-c-style-enum counterpart.
+    const CSTYLE_SPEC: &str = "fixed_enum = 0 / 1 / 2\n";
+
+    /// Build the real `(rust ops, wasm ops)` for `spec` under `extra` flags, via the actual IR
+    /// pipeline (`with_types` supplies both `types` and the `export_raw_bytes_encoding_trait` bool
+    /// `ops_for_rust` takes), then run `f` on them. `--static-dir` points at the repo's `static/` so
+    /// the change logs are read; input/output live in a throwaway temp dir cleaned up after.
+    fn with_manifest_ops<R>(
+        spec: &str,
+        extra: &[&str],
+        f: impl FnOnce(&[(KeyPath, ManifestOp)], &[(KeyPath, ManifestOp)]) -> R,
+    ) -> R {
+        use clap::Parser;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static N: AtomicUsize = AtomicUsize::new(0);
+        let n = N.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("cddl_cm_feat_{}_{n}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let input = dir.join("input.cddl");
+        std::fs::write(&input, spec).unwrap();
+        let out = dir.join("out");
+        let mut args: Vec<String> = vec![
+            "cddl-codegen".to_owned(),
+            "--input".to_owned(),
+            input.to_str().unwrap().to_owned(),
+            "--output".to_owned(),
+            out.to_str().unwrap().to_owned(),
+            "--static-dir".to_owned(),
+            concat!(env!("CARGO_MANIFEST_DIR"), "/static").to_owned(),
+        ];
+        args.extend(extra.iter().map(|s| (*s).to_owned()));
+        let cli = Cli::parse_from(args);
+        let (rust_ops, wasm_ops) = crate::api::with_types(&cli, |types, export_raw| {
+            (
+                ops_for_rust(types, export_raw, &cli).unwrap(),
+                ops_for_wasm(&cli).unwrap(),
+            )
+        })
+        .unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        f(&rust_ops, &wasm_ops)
+    }
+
+    #[test]
+    fn feature_gate_fresh_rust_manifest_has_optional_dep_and_feature() {
+        with_manifest_ops(CSTYLE_SPEC, &[], |rust, _| {
+            let out = apply(rust, None, "rust/Cargo.toml").unwrap();
+            out.parse::<DocumentMut>().unwrap();
+            assert!(
+                out.contains("wasm-bindgen = { version = \"0.2\", optional = true }"),
+                "optional dep not emitted:\n{out}"
+            );
+            assert!(
+                out.contains("wasm = [\"dep:wasm-bindgen\"]"),
+                "feature entry not emitted:\n{out}"
+            );
+        });
+    }
+
+    #[test]
+    fn feature_gate_no_cstyle_enum_has_empty_feature_no_dep() {
+        with_manifest_ops("foo = [x: uint]\n", &[], |rust, _| {
+            let out = apply(rust, None, "rust/Cargo.toml").unwrap();
+            out.parse::<DocumentMut>().unwrap();
+            // the feature ALWAYS exists under --wasm so the wasm crate can reference it, but empty
+            assert!(
+                out.contains("wasm = []"),
+                "empty feature not emitted:\n{out}"
+            );
+            assert!(
+                !out.contains("wasm-bindgen"),
+                "no wasm-bindgen dep should be emitted without a c-style enum:\n{out}"
+            );
+        });
+    }
+
+    #[test]
+    fn feature_gate_wasm_false_removes_dep_and_feature() {
+        // a manifest previously generated under --wasm=true, now regenerated with --wasm=false
+        let existing = "\
+[dependencies]
+anyhow = \"1\"
+wasm-bindgen = { version = \"0.2\", optional = true }
+
+[features]
+wasm = [\"dep:wasm-bindgen\"]
+";
+        with_manifest_ops(CSTYLE_SPEC, &["--wasm", "false"], |rust, _| {
+            let out = apply(rust, Some(existing), "rust/Cargo.toml").unwrap();
+            out.parse::<DocumentMut>().unwrap();
+            assert!(
+                !out.contains("wasm-bindgen"),
+                "wasm-bindgen dep not tombstoned under --wasm=false:\n{out}"
+            );
+            assert!(
+                !out.contains("[features]") && !out.contains("wasm ="),
+                "feature entry not tombstoned under --wasm=false:\n{out}"
+            );
+            // an unrelated user dep the tool has no opinion on survives
+            assert!(out.contains("anyhow = \"1\""), "{out}");
+        });
+    }
+
+    #[test]
+    fn feature_gate_cml_shaped_regen_merges_clean() {
+        // CML hand-maintains an optional wasm-bindgen with a concrete pin; regen must keep the pin
+        // and the `optional = true`, and add the feature entry.
+        let existing = "\
+[dependencies]
+wasm-bindgen = { version = \"0.2.126\", optional = true }
+";
+        with_manifest_ops(CSTYLE_SPEC, &[], |rust, _| {
+            let out = apply(rust, Some(existing), "rust/Cargo.toml").unwrap();
+            out.parse::<DocumentMut>().unwrap();
+            assert!(out.contains("optional = true"), "optional dropped:\n{out}");
+            assert!(out.contains("0.2.126"), "user pin lost:\n{out}");
+            assert!(
+                out.contains("wasm = [\"dep:wasm-bindgen\"]"),
+                "feature entry not added:\n{out}"
+            );
+        });
+    }
+
+    #[test]
+    fn feature_gate_custom_name_repairs_legacy_feature_list() {
+        // A user's stale legacy-syntax feature (implicit-feature `"wasm-bindgen"`) under the custom
+        // name must be hard-replaced with the `dep:`-prefixed list — otherwise `dep:` disabling the
+        // implicit feature would leave `["wasm-bindgen"]` referencing a now-nonexistent feature.
+        let existing = "\
+[dependencies]
+wasm-bindgen = { version = \"0.2.126\", optional = true }
+
+[features]
+used_from_wasm = [\"wasm-bindgen\"]
+";
+        with_manifest_ops(
+            CSTYLE_SPEC,
+            &["--rust-wasm-feature", "used_from_wasm"],
+            |rust, _| {
+                let out = apply(rust, Some(existing), "rust/Cargo.toml").unwrap();
+                out.parse::<DocumentMut>().unwrap();
+                assert!(
+                    out.contains("used_from_wasm = [\"dep:wasm-bindgen\"]"),
+                    "legacy feature list not repaired:\n{out}"
+                );
+                assert!(
+                    !out.contains("used_from_wasm = [\"wasm-bindgen\"]"),
+                    "stale implicit-feature list survived:\n{out}"
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn feature_gate_wasm_manifest_cddl_lib_gains_feature() {
+        // default feature name + default lib name
+        with_manifest_ops(CSTYLE_SPEC, &[], |_, wasm| {
+            let out = apply(wasm, None, "wasm/Cargo.toml").unwrap();
+            out.parse::<DocumentMut>().unwrap();
+            assert!(
+                out.contains("cddl-lib = { path = \"../rust\", features = [\"wasm\"] }"),
+                "path dep did not gain the feature:\n{out}"
+            );
+        });
+        // custom feature name
+        with_manifest_ops(
+            CSTYLE_SPEC,
+            &["--rust-wasm-feature", "used_from_wasm"],
+            |_, wasm| {
+                let out = apply(wasm, None, "wasm/Cargo.toml").unwrap();
+                assert!(
+                    out.contains(
+                        "cddl-lib = { path = \"../rust\", features = [\"used_from_wasm\"] }"
+                    ),
+                    "path dep did not gain the custom feature name:\n{out}"
+                );
+            },
+        );
+        // custom --lib-name: the dep KEY tracks the substitution, feature still attached
+        with_manifest_ops(CSTYLE_SPEC, &["--lib-name", "my-thing"], |_, wasm| {
+            let out = apply(wasm, None, "wasm/Cargo.toml").unwrap();
+            assert!(
+                out.contains("my-thing = { path = \"../rust\", features = [\"wasm\"] }"),
+                "substituted lib-name dep key did not gain the feature:\n{out}"
+            );
+        });
     }
 
     /// `tests/warmup/Cargo.toml` must cover every crates-io dep the manifest ops can emit:

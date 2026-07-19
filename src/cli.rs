@@ -2,6 +2,24 @@ use clap::Parser;
 // TODO: make non-annotation generate different DeserializeError that is simpler
 //       and works with From<cbor_event:Error> only
 
+/// clap value parser for `--rust-wasm-feature`: a cargo feature name is non-empty and restricted to
+/// cargo's feature-name charset (`[A-Za-z0-9_+.-]`), so the name can be written into `[features]` and
+/// a `cfg(feature = "…")` gate verbatim. Rejects anything else with a message naming the bad char.
+fn parse_rust_wasm_feature(s: &str) -> Result<String, String> {
+    if s.is_empty() {
+        return Err("must be a non-empty cargo feature name".to_owned());
+    }
+    if let Some(c) = s
+        .chars()
+        .find(|c| !matches!(c, 'A'..='Z' | 'a'..='z' | '0'..='9' | '_' | '+' | '.' | '-'))
+    {
+        return Err(format!(
+            "invalid character {c:?}; cargo feature names use only [A-Za-z0-9_+.-]"
+        ));
+    }
+    Ok(s.to_owned())
+}
+
 #[derive(Debug, Default, Parser)]
 #[clap()]
 pub struct Cli {
@@ -51,6 +69,14 @@ pub struct Cli {
     /// Generates a wasm_bindgen crate for wasm bindings
     #[clap(long, value_parser, action = clap::ArgAction::Set, default_value_t = true)]
     pub wasm: bool,
+
+    /// Name of the cargo feature the generated RUST crate's `#[wasm_bindgen]` attribute (emitted
+    /// only on c-style enums under `--wasm`) is gated behind, so the rust crate compiles standalone
+    /// without the optional `wasm-bindgen` dependency. The generated wasm crate enables this feature
+    /// via its path dependency on the rust crate. Must be a valid cargo feature name (non-empty,
+    /// chars in `[A-Za-z0-9_+.-]`). Defaults to `wasm`.
+    #[clap(long, value_parser = parse_rust_wasm_feature, default_value = "wasm")]
+    pub rust_wasm_feature: String,
 
     /// Derives serde::Serialize/serde::Deserialize for types to allow to/from JSON
     #[clap(long, value_parser, action = clap::ArgAction::Set, default_value_t = false)]
