@@ -10,6 +10,7 @@ expression: ir
             "Int",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -26,6 +27,7 @@ expression: ir
             "Prelude",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -556,6 +558,7 @@ expression: ir
             "PreludeB64legacy",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -591,6 +594,7 @@ expression: ir
             "PreludeB64url",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -628,6 +632,7 @@ expression: ir
         tag: Some(
             5,
         ),
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -714,6 +719,7 @@ expression: ir
             "PreludeBigint",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -781,6 +787,7 @@ expression: ir
             "PreludeBignint",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -816,6 +823,7 @@ expression: ir
             "PreludeBiguint",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -853,6 +861,7 @@ expression: ir
         tag: Some(
             4,
         ),
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -939,6 +948,7 @@ expression: ir
             "PreludeEncodedCbor",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -974,6 +984,7 @@ expression: ir
             "PreludeInteger",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -1041,6 +1052,7 @@ expression: ir
             "PreludeMimeMessage",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -1076,6 +1088,7 @@ expression: ir
             "PreludeRegexp",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -1111,6 +1124,7 @@ expression: ir
             "PreludeTdate",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -1146,6 +1160,7 @@ expression: ir
             "PreludeUnsigned",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -1211,6 +1226,7 @@ expression: ir
             "PreludeUri",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,

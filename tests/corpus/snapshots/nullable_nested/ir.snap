@@ -10,6 +10,7 @@ expression: ir
             "DataEnum",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -73,6 +74,7 @@ expression: ir
             "Int",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -89,6 +91,7 @@ expression: ir
             "NullableCollField",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -177,6 +180,7 @@ expression: ir
             "NullableCollMap",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -255,6 +259,7 @@ expression: ir
             "NullableDenumField",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -327,6 +332,7 @@ expression: ir
             "NullableMapValue",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -387,6 +393,7 @@ expression: ir
             "NullableOptionalField",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -487,6 +494,7 @@ expression: ir
             "NumsArr",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,

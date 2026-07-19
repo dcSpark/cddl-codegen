@@ -10,6 +10,7 @@ expression: ir
             "EnumKeyHolder",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -156,6 +157,7 @@ expression: ir
             "EnumKeyed",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -200,6 +202,7 @@ expression: ir
             "Ikey",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -263,6 +266,7 @@ expression: ir
             "IkeyList",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -295,6 +299,7 @@ expression: ir
             "Int",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -311,6 +316,7 @@ expression: ir
             "IntKeyed",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -355,6 +361,7 @@ expression: ir
             "IntList",
         ),
         tag: None,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,

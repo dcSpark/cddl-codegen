@@ -1,0 +1,69 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod non_empty;
+pub mod ordered_hash_map;
+extern crate derivative;
+pub mod cbor_encodings;
+mod extern_interface_check;
+pub mod serialization;
+
+use crate::generated::error::*;
+use crate::generated::non_empty::NonEmptyVec;
+use cbor_encodings::{HolderEncoding, PointEncoding};
+
+#[derive(Clone, Debug)]
+pub struct Holder {
+    pub a: SetU64,
+    pub b: NonemptySetText,
+    pub c: NonemptySetBytes,
+    pub d: NonemptyOsetPoint,
+    pub encodings: Option<HolderEncoding>,
+}
+
+impl Holder {
+    pub fn new(a: SetU64, b: NonemptySetText, c: NonemptySetBytes, d: NonemptyOsetPoint) -> Self {
+        Self {
+            a,
+            b,
+            c,
+            d,
+            encodings: None,
+        }
+    }
+}
+
+/// `[+ Point]`: at least one element, enforced at the `NonEmptyVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
+pub type NonemptyOsetPoint = NonEmptyVec<Point>;
+
+/// `[+ Vec<u8>]`: at least one element, enforced at the `NonEmptyVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
+pub type NonemptySetBytes = NonEmptyVec<Vec<u8>>;
+
+/// `[+ String]`: at least one element, enforced at the `NonEmptyVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
+pub type NonemptySetText = NonEmptyVec<String>;
+
+#[derive(Clone, Debug)]
+pub struct Point {
+    pub x: u64,
+    pub y: u64,
+    pub encodings: Option<PointEncoding>,
+}
+
+impl Point {
+    pub fn new(x: u64, y: u64) -> Self {
+        Self {
+            x,
+            y,
+            encodings: None,
+        }
+    }
+}
+
+pub type SetU64 = Vec<u64>;

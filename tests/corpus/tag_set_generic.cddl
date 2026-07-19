@@ -1,0 +1,19 @@
+; The tag-set idiom as CDDL generics — the Cardano ledger's `set<T>` / `nonempty_set<T>` /
+; `nonempty_oset<T>` bases, which move from hand-written externs to generated types once the idiom is
+; recognized.
+;
+; The collapse happens at parse time, BEFORE the generic machinery, so a
+; `set<a0> = #6.258([* a0]) / [* a0]` choice-bodied generic def stores the already-collapsed Array
+; body (a non-collapsed choice-bodied generic def would otherwise hit the finalize-time is_enum
+; panic). Each instance resolves to a transparent alias (`pub type SetU64 = Vec<u64>;`), and a field
+; typed as an instance serializes through that alias identically to the non-generic equivalent — the
+; generic and non-generic paths converge on one resolution.
+;
+; Instances span uint / text / bytes / a struct-typed element so transparent-alias resolution is
+; exercised across element kinds; `nonempty_oset` is the third in-the-wild base (conway + dijkstra
+; ledger CDDL) proving the mechanism covers N rules, not a hardcoded two.
+set<a0> = #6.258([* a0]) / [* a0]
+nonempty_set<a0> = #6.258([+ a0]) / [+ a0]
+nonempty_oset<a0> = #6.258([+ a0]) / [+ a0]
+point = [x: uint, y: uint]
+holder = [a: set<uint>, b: nonempty_set<text>, c: nonempty_set<bytes>, d: nonempty_oset<point>]

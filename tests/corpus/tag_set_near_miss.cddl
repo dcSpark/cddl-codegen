@@ -1,0 +1,12 @@
+; A near miss that must NOT collapse — the two arms are genuinely different logical values, so
+; today's two-variant type-choice enum is retained.
+;
+; Mismatched occurrence bounds (`#6.258([+ uint]) / [* uint]`): the tagged arm requires >=1 element,
+; the untagged arm allows empty, so the arms are not the same value and the collapse condition (arms
+; equal but for one `Tagged` op, occurrence bounds INCLUDED) does not hold. The IR keeps a
+; `TypeChoice` with a tagged `NonEmptyVec<u64>` variant and an untagged `Vec<u64>` variant. The other
+; near misses (different element types, both arms tagged, 3+ arms) are pinned in-process in
+; `optional_tag_set_tests.rs`; this fixture locks that the retained enum still compiles and
+; round-trips under every profile.
+near_miss = #6.258([+ uint]) / [* uint]
+holder = [x: near_miss]

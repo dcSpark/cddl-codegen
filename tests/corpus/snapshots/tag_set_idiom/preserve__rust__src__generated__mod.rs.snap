@@ -1,0 +1,46 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod non_empty;
+pub mod ordered_hash_map;
+extern crate derivative;
+pub mod cbor_encodings;
+mod extern_interface_check;
+pub mod serialization;
+
+use crate::generated::error::*;
+use crate::generated::non_empty::NonEmptyVec;
+use cbor_encodings::HolderEncoding;
+
+#[derive(Clone, Debug)]
+pub struct Holder {
+    pub s: IntSet,
+    pub ns: IntNeset,
+    pub t: Option<TextSet>,
+    pub encodings: Option<HolderEncoding>,
+}
+
+impl Holder {
+    pub fn new(s: IntSet, ns: IntNeset) -> Self {
+        Self {
+            s,
+            ns,
+            t: None,
+            encodings: None,
+        }
+    }
+}
+
+/// `[+ u64]`: at least one element, enforced at the `NonEmptyVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
+pub type IntNeset = NonEmptyVec<u64>;
+
+pub type IntSet = Vec<u64>;
+
+pub type TextSet = Vec<String>;

@@ -1,0 +1,361 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use cddl_lib::non_empty::NonEmptyVec;
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Holder(pub(crate) cddl_lib::Holder);
+
+#[wasm_bindgen]
+impl Holder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Holder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn a(&self) -> SetU64 {
+        self.0.a.clone().into()
+    }
+
+    pub fn b(&self) -> NonemptySetText {
+        self.0.b.clone().into()
+    }
+
+    pub fn c(&self) -> NonemptySetBytes {
+        self.0.c.clone().into()
+    }
+
+    pub fn d(&self) -> NonemptyOsetPoint {
+        self.0.d.clone().into()
+    }
+
+    pub fn new(
+        a: &SetU64,
+        b: &NonemptySetText,
+        c: &NonemptySetBytes,
+        d: &NonemptyOsetPoint,
+    ) -> Self {
+        Self(cddl_lib::Holder::new(
+            a.clone().into(),
+            b.clone().into(),
+            c.clone().into(),
+            d.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::Holder> for Holder {
+    fn from(native: cddl_lib::Holder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Holder> for cddl_lib::Holder {
+    fn from(wasm: Holder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Holder> for Holder {
+    fn as_ref(&self) -> &cddl_lib::Holder {
+        &self.0
+    }
+}
+
+/// `[+ Point]`: at least one element, enforced by the `NonEmptyVec` representation.
+/// Enter via `try_from` or `new(first)`.
+/// `add` can never violate the bound; removal is checked in the core type.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonemptyOsetPoint(pub(crate) NonEmptyVec<cddl_lib::Point>);
+
+#[wasm_bindgen]
+impl NonemptyOsetPoint {
+    pub fn new(first: &Point) -> Self {
+        Self(NonEmptyVec::new(first.clone().into()))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> Point {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &Point) {
+        self.0.push(elem.clone().into());
+    }
+
+    pub fn try_from(list: &PointList) -> Result<NonemptyOsetPoint, JsError> {
+        let inner: Vec<cddl_lib::Point> = list.clone().into();
+        NonEmptyVec::try_from(inner)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<NonEmptyVec<cddl_lib::Point>> for NonemptyOsetPoint {
+    fn from(native: NonEmptyVec<cddl_lib::Point>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonemptyOsetPoint> for NonEmptyVec<cddl_lib::Point> {
+    fn from(wasm: NonemptyOsetPoint) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyVec<cddl_lib::Point>> for NonemptyOsetPoint {
+    fn as_ref(&self) -> &NonEmptyVec<cddl_lib::Point> {
+        &self.0
+    }
+}
+
+/// `[+ Vec<u8>]`: at least one element, enforced by the `NonEmptyVec` representation.
+/// Enter via `try_from` or `new(first)`.
+/// `add` can never violate the bound; removal is checked in the core type.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonemptySetBytes(pub(crate) NonEmptyVec<Vec<u8>>);
+
+#[wasm_bindgen]
+impl NonemptySetBytes {
+    pub fn new(first: Vec<u8>) -> Self {
+        Self(NonEmptyVec::new(first))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> Vec<u8> {
+        self.0[index].clone()
+    }
+
+    pub fn add(&mut self, elem: Vec<u8>) {
+        self.0.push(elem);
+    }
+
+    pub fn try_from(elements: Vec<Vec<u8>>) -> Result<NonemptySetBytes, JsError> {
+        NonEmptyVec::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<NonEmptyVec<Vec<u8>>> for NonemptySetBytes {
+    fn from(native: NonEmptyVec<Vec<u8>>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonemptySetBytes> for NonEmptyVec<Vec<u8>> {
+    fn from(wasm: NonemptySetBytes) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyVec<Vec<u8>>> for NonemptySetBytes {
+    fn as_ref(&self) -> &NonEmptyVec<Vec<u8>> {
+        &self.0
+    }
+}
+
+/// `[+ String]`: at least one element, enforced by the `NonEmptyVec` representation.
+/// Enter via `try_from` or `new(first)`.
+/// `add` can never violate the bound; removal is checked in the core type.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonemptySetText(pub(crate) NonEmptyVec<String>);
+
+#[wasm_bindgen]
+impl NonemptySetText {
+    pub fn new(first: String) -> Self {
+        Self(NonEmptyVec::new(first))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> String {
+        self.0[index].clone()
+    }
+
+    pub fn add(&mut self, elem: String) {
+        self.0.push(elem);
+    }
+
+    pub fn try_from(elements: Vec<String>) -> Result<NonemptySetText, JsError> {
+        NonEmptyVec::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<NonEmptyVec<String>> for NonemptySetText {
+    fn from(native: NonEmptyVec<String>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonemptySetText> for NonEmptyVec<String> {
+    fn from(wasm: NonemptySetText) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyVec<String>> for NonemptySetText {
+    fn as_ref(&self) -> &NonEmptyVec<String> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Point(pub(crate) cddl_lib::Point);
+
+#[wasm_bindgen]
+impl Point {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Point, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn x(&self) -> u64 {
+        self.0.x
+    }
+
+    pub fn y(&self) -> u64 {
+        self.0.y
+    }
+
+    pub fn new(x: u64, y: u64) -> Self {
+        Self(cddl_lib::Point::new(x, y))
+    }
+}
+
+impl From<cddl_lib::Point> for Point {
+    fn from(native: cddl_lib::Point) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Point> for cddl_lib::Point {
+    fn from(wasm: Point) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Point> for Point {
+    fn as_ref(&self) -> &cddl_lib::Point {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PointList(pub(crate) Vec<cddl_lib::Point>);
+
+#[wasm_bindgen]
+impl PointList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> Point {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &Point) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<cddl_lib::Point>> for PointList {
+    fn from(native: Vec<cddl_lib::Point>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PointList> for Vec<cddl_lib::Point> {
+    fn from(wasm: PointList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<cddl_lib::Point>> for PointList {
+    fn as_ref(&self) -> &Vec<cddl_lib::Point> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct SetU64(pub(crate) Vec<u64>);
+
+#[wasm_bindgen]
+impl SetU64 {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) {
+        self.0.push(elem);
+    }
+}
+
+impl From<Vec<u64>> for SetU64 {
+    fn from(native: Vec<u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<SetU64> for Vec<u64> {
+    fn from(wasm: SetU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<u64>> for SetU64 {
+    fn as_ref(&self) -> &Vec<u64> {
+        &self.0
+    }
+}

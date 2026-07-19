@@ -317,4 +317,36 @@ mod golden_hex_preserve {
             assert_eq!(d.bt.get(&true).map(|s| s.as_str()), Some("b"));
         }
     );
+
+    // ---- tag-258 set idiom: tag PRESENCE + non-minimal tag SIZE are both encoding data ----
+    // Both arms denote the same set of one text element "a"; which arm (and at what header size) is
+    // preserved byte-exact. Outer holder is a 1-element array (0x81) wrapping the set 0x81 0x61 0x61.
+    // untagged arm.
+    kat_preserve!(
+        opt_set_untagged,
+        OptSetHolder,
+        &[0x81, 0x81, 0x61, 0x61],
+        |d: &OptSetHolder| {
+            assert_eq!(d.s, vec!["a".to_string()]);
+        }
+    );
+    // tagged arm, minimal tag head (258 = 0xd9 0x01 0x02, the smallest form for a 2-byte argument).
+    kat_preserve!(
+        opt_set_tagged_minimal,
+        OptSetHolder,
+        &[0x81, 0xd9, 0x01, 0x02, 0x81, 0x61, 0x61],
+        |d: &OptSetHolder| {
+            assert_eq!(d.s, vec!["a".to_string()]);
+        }
+    );
+    // tagged arm, NON-minimal 8-byte tag head (0xdb + 0x0000000000000102): the wide header is
+    // preserved verbatim under --preserve-encodings, not silently minimized.
+    kat_preserve!(
+        opt_set_tagged_wide,
+        OptSetHolder,
+        &[0x81, 0xdb, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x81, 0x61, 0x61],
+        |d: &OptSetHolder| {
+            assert_eq!(d.s, vec!["a".to_string()]);
+        }
+    );
 }

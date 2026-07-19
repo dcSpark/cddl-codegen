@@ -877,6 +877,42 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   asymmetry is on the WRITE side: wasm setters/constructors always wrap the argument in an outer
   `Some`, so a JS caller can produce absent and present-value but not present-null. Revisit only
   when a consumer asks.
+- **Transparent tag-set idiom — recognized-shape boundary (REQUEST-08).** The collapse of a two-arm
+  tagged-or-untagged collection choice into one transparent optionally-tagged alias
+  (user doc: `docs/docs/current_capacities.mdx` § "Transparent tag-set idiom") is narrow by design;
+  recognition is pinned by `optional_tag_set_tests`. Its full test map — the tag-set corpus
+  fixtures, the `opt_set` golden wire vectors, and the in-process recognition/parity tests — lives
+  in `tests/README.md` § "Transparent tag-set idiom". Four boundary shapes stay unsupported, each
+  with its reopening signal (a real consumer spec hitting it):
+  - *Non-idiom choice-BODIED generic defs still crash generation.* A collection-bodied generic def
+    whose two arms do NOT satisfy the collapse condition (e.g. mismatched bounds
+    `xs<a0> = #6.258([+ a0]) / [* a0]`, instanced + used) panics during generation
+    (`Option::unwrap()` on `None` at the `Rust(rust_ident)` arm of `encoding_fields` in
+    `generation/mod.rs`) rather than rejecting gracefully. Pre-existing and out of REQUEST-08's
+    scope: the collapse fires at parse time BEFORE the generic machinery, so the RECOGNIZED idiom
+    never reaches this; only a non-collapsing choice-bodied generic def does. Remedy when it bites:
+    parse-time graceful rejection of a choice-bodied generic def that is not the idiom.
+  - *Alias-of-instance chains don't compile.* `bar = xs_int` where `xs_int = xs<uint>` is itself a
+    generic collection instance emits `pub type Bar = XsInt;` plus use-site `self.x.serialize()` /
+    `Bar::deserialize()` — methods a transparent `Vec` alias lacks (verified: generates, does not
+    compile). Phase 2.5's field-convergence walk resolves a DIRECT instance field and a nested
+    collection-of-instance ELEMENT (`[* xs_int]` is inlined correctly, both directions), but an
+    alias-of-an-instance is a second hop it does not follow. Remedy when it bites: extend the walk
+    (or `resolve_alias`) to chase an alias whose target is itself a structural collection instance.
+  - *Inline/anonymous two-arm choices are not recognized.* Recognition lives at the
+    `parse_type_choices` named-rule seam, so an inline `[x: #6.258([* uint]) / [* uint]]` stays a
+    two-variant enum. Remedy when it bites: run the recognition on anonymous choices too.
+- **Multiple tags on one field collide their encoding vars (pre-existing, not REQUEST-08-specific).**
+  A reference site that adds an OUTER tag over an already-inner-tagged field emits two struct fields
+  both named `<field>_tag_encoding` — `#6.24(#6.258(text))` collides two `Option<cbor_event::Sz>`
+  fields, and `#6.24(<collapsed-set>)` collides an `Option<Sz>` with a `TagPresenceEncoding` — so the
+  encoding struct does not compile under `--preserve-encodings`. Independent of the tag-set feature
+  (the double-tag-on-a-primitive form predates it); surfaced while pinning REQUEST-08's outer-tag
+  PARITY invariant, which holds regardless (generic-instance and non-generic references generate
+  byte-identically — `optional_tag_set_tests::outer_tag_over_instance_matches_non_generic_byte_for_byte`
+  compares the whole `Holder` impl, a source-shape test that does not depend on the collision being
+  fixed). Remedy when a consumer stacks tags on one field: disambiguate the per-tag encoding-var
+  names by depth at the reference site.
 
 ## Operational watches
 
