@@ -245,7 +245,17 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   comment on a row a spec change can delete (comments live in fixed banners). Mechanical layer on a
   second instance: a corpus-wide regen-with-deletion leg (generate each corpus fixture, regenerate a
   rule-deleted variant IN PLACE, fail on any `cddl-codegen:unpreserved-comment` in the tool-owned
-  trees) — the only layer that catches the class without knowing each file by name.
+  trees) — the only layer that catches the class without knowing each file by name. Two shaping
+  notes for that leg. First, a CHEAPER static floor can land ahead of it (or alongside): a
+  corpus-wide scan of freshly generated tool-owned trees for a trailing `//` on any code row —
+  single generation, pure text scan, no regen — which catches the trap SOURCE before any deletion
+  exists, and is also the layer that falsifies a stale code-behavior premise loudly (the overlay's
+  "generator emits no trailing comments" comment stayed load-bearing-but-false for as long as the
+  markers shipped, because the two comment-preservation integration tests structurally cannot see
+  that violation — `tests/README.md` § the preserve-fixtures section records which assumption is
+  therefore enforced as an emitter invariant instead). Second, the leg only exercises
+  `key_demand_assertions.rs` where a fixture carries a `@used_as_key` tag — the deletion-variant
+  fixture set must include at least one, or that file's rows are vacuously green.
 - **Stale "known limitation" prose surviving its fix — a finding ledgered in TWO homes where the
   fixing commit prunes only one.** First instance (read-caught during the facade-pin delivery, not
   by any gate): the extern-only-scope undeclared-module finding was ledgered both in

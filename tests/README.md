@@ -331,12 +331,23 @@ review the diff like a snapshot. Blessing never creates `error.txt` cases. The d
 intents live in `tests/preserve-fixtures/README.md`.
 
 What the pure fixtures CANNOT see — assumptions about real generator output (the header banner,
-"the generator emits no trailing comments", doc ownership) and the disk-level write seam — is
+doc ownership) and the disk-level write seam — is
 pinned by exactly two integration tests: `comment_preservation_disk_round_trip` (real pipeline;
 injects comments + an insert block + a replace block, regenerates twice, asserts the post-rustfmt
 fixed point) and `comment_preserve_lexer_round_trip_over_corpus` (lexer assumptions vs everything
 the generator emits across flag profiles). Keep that pair thin; new merge behavior belongs in
 fixtures.
+
+One generator-output assumption is deliberately NOT pinned by that pair, because neither test can
+see its violation: "the generator emits no comment on a row a spec change can delete" (which
+subsumes "no trailing comments"). The disk round-trip regenerates the SAME spec — no row is ever
+deleted — and the corpus round-trip self-preserves (`preserve(content, content)`), a no-op for any
+comment whether or not a real regen would strand it. That blindness shipped a real trap once (the
+`extern_interface_check.rs` / `key_demand_assertions.rs` per-row markers — see the corresponding
+`TESTING_ROADMAP.md` entry), so the assumption is enforced as an emitter invariant instead —
+banner-only sidecar files, pinned by `extern_interface_check_regen_over_deletion_no_trap`
+(a real regen-over-prior-output with a rule deletion) and
+`extern_interface_check_has_no_trailing_row_comments` (a source-shape floor).
 
 Lexer-level tests (char-vs-lifetime, raw identifiers, in-string `//`) stay inline in
 `comment_preserve.rs` — they test `lex`, not the merge.
