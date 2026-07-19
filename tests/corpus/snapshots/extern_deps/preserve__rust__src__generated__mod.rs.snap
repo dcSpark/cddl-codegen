@@ -10,21 +10,24 @@ expression: content
 extern crate derivative;
 pub mod a;
 pub mod b;
-pub mod cbor_encodings;
 mod extern_interface_check;
 pub mod qux;
+pub use extern_dep_crate::{Int, IntError};
+pub mod cbor_encodings;
 pub mod serialization;
 
 use a::Baz;
 use a::c::foo::Foo;
 use b::bar::{Bar, BarTypedef};
-use cbor_encodings::EverythingEncoding;
+use cbor_encodings::{EverythingEncoding, IntHolderEncoding};
 use extern_dep_crate::ExternCrateFoo;
 use extern_dep_crate::error::*;
 use extern_dep_crate::ordered_hash_map::OrderedHashMap;
 use extern_dep_crate::serialization::{LenEncoding, StringEncoding};
 use qux::Qux;
 use std::collections::BTreeMap;
+
+pub type DeltaCoin = Int;
 
 #[derive(Clone, Debug)]
 pub struct Everything {
@@ -56,6 +59,21 @@ impl Everything {
             table,
             baz,
             qux,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct IntHolder {
+    pub delta: Int,
+    pub encodings: Option<IntHolderEncoding>,
+}
+
+impl IntHolder {
+    pub fn new(delta: Int) -> Self {
+        Self {
+            delta,
             encodings: None,
         }
     }

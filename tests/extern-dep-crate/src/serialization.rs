@@ -343,3 +343,50 @@ impl Deserialize for ExternCrateFoo {
         .map_err(|e| e.annotate("ExternCrateFoo"))
     }
 }
+
+// `Int` ser/deser: a `--common-import-override` consumer re-exports this crate's `Int` and threads its
+// fields through this crate's own `Serialize`/`Deserialize` traits (see `Int` in lib.rs). Mirrors
+// cddl-codegen's preserve-encodings `Int` impls.
+impl cbor_event::se::Serialize for Int {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match &self.0 {
+            IntEnum::Uint { value, encoding } => {
+                serializer.write_unsigned_integer_sz(*value, fit_sz(*value, *encoding))
+            }
+            IntEnum::Nint { value, encoding } => serializer
+                .write_negative_integer_sz(-((*value as i128) + 1), fit_sz(*value, *encoding)),
+        }
+    }
+}
+
+impl Deserialize for Int {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => raw
+                    .unsigned_integer_sz()
+                    .map(|(x, enc)| {
+                        Int(IntEnum::Uint {
+                            value: x,
+                            encoding: Some(enc),
+                        })
+                    })
+                    .map_err(std::convert::Into::into),
+                cbor_event::Type::NegativeInteger => raw
+                    .negative_integer_sz()
+                    .map(|(x, enc)| {
+                        Int(IntEnum::Nint {
+                            value: (-1 - x) as u64,
+                            encoding: Some(enc),
+                        })
+                    })
+                    .map_err(std::convert::Into::into),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("Int"))
+    }
+}

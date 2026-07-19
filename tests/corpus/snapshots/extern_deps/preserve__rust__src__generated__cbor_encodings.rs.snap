@@ -17,3 +17,8 @@ pub struct EverythingEncoding {
     pub table_encoding: LenEncoding,
     pub table_key_encodings: BTreeMap<u64, Option<cbor_event::Sz>>,
 }
+
+#[derive(Clone, Debug, Default)]
+pub struct IntHolderEncoding {
+    pub len_encoding: LenEncoding,
+}
