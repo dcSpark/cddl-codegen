@@ -1577,7 +1577,7 @@ pub(crate) fn mint_struct(
         }
         // transparent aliases: an empty map/vec is valid for `*`-occurrence tables/arrays, and the
         // alias's associated `new()` resolves to the underlying map type's constructor
-        // ponytail: named tables mint empty (one-entry minting needs the struct's insert API);
+        // named tables mint empty (one-entry minting needs the struct's insert API);
         // inline `{ * k => v }` map *fields* already mint one entry via materialize_at, so the map
         // element wire path is still exercised there. Named-table standalone element coverage is
         // owned at the embed site by verify.ts's synthetic-holder probe (cddl-matrix/README.md).

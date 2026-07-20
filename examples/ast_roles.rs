@@ -16,7 +16,7 @@
 //!
 //! Run: `cargo run -q --example ast_roles -- <file.cddl>...`
 //!
-//! ponytail: reuses the crate's `Visitor` trait (its `walk_*` defaults do the recursion); we override
+//! reuses the crate's `Visitor` trait (its `walk_*` defaults do the recursion); we override
 //! only the visits that open a role boundary and carry a tiny role stack. Roles reset on each descent,
 //! so they do not accumulate down the tree.
 

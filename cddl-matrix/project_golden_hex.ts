@@ -19,7 +19,7 @@
  * Run:  bun run project_golden_hex.ts        -> writes ../tests/golden_hex/COVERAGE.md
  * Exit non-zero if any drift (stale/contradicted note) or any UNEXPLAINED uncovered vector is found.
  *
- * ponytail: "covered" = the vector's hex equals a complete CBOR item span asserted by some test (the
+ * "covered" = the vector's hex equals a complete CBOR item span asserted by some test (the
  * CBOR walk avoids payload-byte false positives). Decoded values are rendered from their RAW JSON source
  * token (via JSON.parse source access) so floats/-0.0/>2^53 ints stay exact — no re-serialization drift.
  */
