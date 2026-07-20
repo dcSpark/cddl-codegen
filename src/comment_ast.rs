@@ -41,6 +41,23 @@ fn merge_key_demand(a: Option<DemandSet>, b: Option<DemandSet>) -> Option<Demand
     }
 }
 
+/// The per-rule duplicate-handling policy a `@duplicates` directive selects for a set/array/table
+/// collection rule.
+///
+/// - `Preserve`: accept duplicate entries on the wire and re-emit them byte-exactly (the contract is
+///   preservation, not merely "allow"). This is today's default for the tag-258 set idiom.
+/// - `Reject`: duplicates are a `DeserializeFailure::DuplicateKey` on decode AND unconstructable
+///   through the API. This is today's default for tables.
+///
+/// Unlike the boolean flags, the two values are mutually exclusive — a rule has at most one policy —
+/// so a SECOND `@duplicates` on the same rule is the duplicate-key panic (like `@name`/`@rust_name`),
+/// not a union.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum DuplicatesPolicy {
+    Preserve,
+    Reject,
+}
+
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct RuleMetadata {
     pub name: Option<String>,
@@ -71,6 +88,11 @@ pub struct RuleMetadata {
     /// bound solely on `RawBytesEncoding` compiles today under the plain name, so auto-flavoring
     /// would silently break working output. See `IntermediateTypes::mark_raw_bytes_flavor`.
     pub raw_bytes_flavor: bool,
+    /// `@duplicates preserve|reject`: the per-rule duplicate-handling policy for a set/array/table
+    /// collection rule. `None` = no directive (today's per-container defaults apply, unchanged). Only
+    /// valid on collection rules; on any other placement it is a graceful parse-time rejection (never
+    /// silently ignored). See [`DuplicatesPolicy`].
+    pub duplicates: Option<DuplicatesPolicy>,
     pub custom_json: bool,
     pub custom_serialize: Option<String>,
     pub custom_deserialize: Option<String>,
@@ -101,6 +123,7 @@ pub fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
         key_demand: merge_key_demand(r1.key_demand, r2.key_demand),
         used_as_elem: r1.used_as_elem || r2.used_as_elem,
         raw_bytes_flavor: r1.raw_bytes_flavor || r2.raw_bytes_flavor,
+        duplicates: merge_metadata_fields!(r1.duplicates, r2.duplicates, "duplicates"),
         custom_json: r1.custom_json || r2.custom_json,
         custom_serialize: merge_metadata_fields!(
             r1.custom_serialize,
@@ -126,6 +149,7 @@ enum ParseResult {
     UsedAsKey(DemandSet),
     UsedAsElem,
     RawBytesFlavor,
+    Duplicates(DuplicatesPolicy),
     CustomJson,
     CustomSerialize(String),
     CustomDeserialize(String),
@@ -172,6 +196,9 @@ impl RuleMetadata {
                 }
                 ParseResult::RawBytesFlavor => {
                     base.raw_bytes_flavor = true;
+                }
+                ParseResult::Duplicates(policy) => {
+                    merge_parse_fields!(base.duplicates, policy, "duplicates")
                 }
                 ParseResult::CustomJson => {
                     base.custom_json = true;
@@ -285,6 +312,31 @@ fn tag_raw_bytes_flavor(input: &str) -> IResult<&str, ParseResult> {
     Ok((input, ParseResult::RawBytesFlavor))
 }
 
+fn tag_duplicates(input: &str) -> IResult<&str, ParseResult> {
+    let (input, _) = tag("@duplicates")(input)?;
+    let (input, _) = take_while(char::is_whitespace)(input)?;
+    // `@duplicates` requires exactly one argument from a strict vocabulary. A missing or unknown
+    // argument is a PANIC (matching `@used_as_key`'s unknown-flavor handling): the comment parser
+    // otherwise swallows nom errors (`metadata_from_comments`), so a soft failure here would silently
+    // drop the whole line's metadata — the exact distant-failure class this DSL exists to kill.
+    if input.is_empty() || input.starts_with('@') {
+        panic!(
+            "@duplicates: missing required argument; expected `preserve` or `reject` \
+             (e.g. `@duplicates reject`)."
+        );
+    }
+    let (rest, word) = take_while1(|ch| !char::is_whitespace(ch) && ch != '@')(input)?;
+    let policy = match word {
+        "preserve" => DuplicatesPolicy::Preserve,
+        "reject" => DuplicatesPolicy::Reject,
+        other => panic!(
+            "@duplicates: unknown argument {other:?}; expected `preserve` or `reject`. \
+             (Trailing prose is not allowed after `@duplicates` — put it in `@doc`.)"
+        ),
+    };
+    Ok((rest, ParseResult::Duplicates(policy)))
+}
+
 fn tag_custom_json(input: &str) -> IResult<&str, ParseResult> {
     let (input, _) = tag("@custom_json")(input)?;
 
@@ -330,6 +382,7 @@ fn whitespace_then_tag(input: &str) -> IResult<&str, ParseResult> {
         tag_used_as_key,
         tag_used_as_elem,
         tag_raw_bytes_flavor,
+        tag_duplicates,
         tag_custom_json,
         tag_custom_serialize,
         tag_custom_deserialize,
@@ -361,6 +414,7 @@ pub const KNOWN_RULE_METADATA_TAGS: &[&str] = &[
     "@used_as_key",
     "@used_as_elem",
     "@raw_bytes_flavor",
+    "@duplicates",
     "@custom_json",
     "@custom_serialize",
     "@custom_deserialize",
@@ -400,6 +454,7 @@ fn parse_comment_name() {
                 key_demand: None,
                 used_as_elem: false,
                 raw_bytes_flavor: false,
+                duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -423,6 +478,7 @@ fn parse_comment_newtype() {
                 key_demand: None,
                 used_as_elem: false,
                 raw_bytes_flavor: false,
+                duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -450,6 +506,7 @@ fn parse_comment_newtype_getter_before() {
                 }),
                 used_as_elem: false,
                 raw_bytes_flavor: false,
+                duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -477,6 +534,7 @@ fn parse_comment_newtype_getter_after() {
                 }),
                 used_as_elem: false,
                 raw_bytes_flavor: false,
+                duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -500,6 +558,7 @@ fn parse_comment_newtype_and_name() {
                 key_demand: None,
                 used_as_elem: false,
                 raw_bytes_flavor: false,
+                duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -527,6 +586,7 @@ fn parse_comment_newtype_and_name_and_used_as_key() {
                 }),
                 used_as_elem: false,
                 raw_bytes_flavor: false,
+                duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -554,6 +614,7 @@ fn parse_comment_used_as_key() {
                 }),
                 used_as_elem: false,
                 raw_bytes_flavor: false,
+                duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -679,6 +740,7 @@ fn parse_comment_used_as_elem() {
                 key_demand: None,
                 used_as_elem: true,
                 raw_bytes_flavor: false,
+                duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -707,6 +769,7 @@ fn parse_comment_used_as_elem_and_key() {
                 }),
                 used_as_elem: true,
                 raw_bytes_flavor: false,
+                duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -734,6 +797,7 @@ fn parse_comment_used_as_key_and_elem_inverse() {
                 }),
                 used_as_elem: true,
                 raw_bytes_flavor: false,
+                duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -758,6 +822,7 @@ fn parse_comment_newtype_getter_before_used_as_elem() {
                 key_demand: None,
                 used_as_elem: true,
                 raw_bytes_flavor: false,
+                duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -781,6 +846,7 @@ fn parse_comment_used_as_elem_before_newtype_getter() {
                 key_demand: None,
                 used_as_elem: true,
                 raw_bytes_flavor: false,
+                duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -838,6 +904,81 @@ fn merge_metadata_ors_raw_bytes_flavor() {
     assert!(!merge_metadata(&rhs, &rhs).raw_bytes_flavor);
 }
 
+// `@duplicates` parses both values into the strict `DuplicatesPolicy` enum.
+#[test]
+fn parse_comment_duplicates_preserve() {
+    assert_eq!(
+        rule_metadata("@duplicates preserve").unwrap().1.duplicates,
+        Some(DuplicatesPolicy::Preserve)
+    );
+}
+
+#[test]
+fn parse_comment_duplicates_reject() {
+    assert_eq!(
+        rule_metadata("@duplicates reject").unwrap().1.duplicates,
+        Some(DuplicatesPolicy::Reject)
+    );
+}
+
+// `@duplicates` consumes exactly its one argument, so a directive AFTER it is still parsed and the
+// longer/other tags are not swallowed (mirrors the ordering coverage of the other arg-taking tags).
+#[test]
+fn parse_comment_duplicates_and_name() {
+    let md = rule_metadata("@duplicates reject @name foo").unwrap().1;
+    assert_eq!(md.duplicates, Some(DuplicatesPolicy::Reject));
+    assert_eq!(md.name, Some("foo".to_string()));
+    let inverse = rule_metadata("@name foo @duplicates preserve").unwrap().1;
+    assert_eq!(inverse.duplicates, Some(DuplicatesPolicy::Preserve));
+    assert_eq!(inverse.name, Some("foo".to_string()));
+}
+
+// A second `@duplicates` on the same rule is a hard error (the duplicate-key panic, like `@name`) —
+// the two values are mutually exclusive, so unioning them makes no sense.
+#[test]
+#[should_panic(expected = "\"duplicates\" specified twice")]
+fn parse_comment_duplicates_duplicate_panics() {
+    let _ = rule_metadata("@duplicates reject @duplicates preserve");
+}
+
+// Two comment lines carrying `@duplicates` also collide through the merge path (field-wise), not
+// only within a single line.
+#[test]
+#[should_panic(expected = "\"duplicates\" specified twice")]
+fn merge_metadata_duplicates_twice_panics() {
+    let a = RuleMetadata {
+        duplicates: Some(DuplicatesPolicy::Reject),
+        ..Default::default()
+    };
+    let b = RuleMetadata {
+        duplicates: Some(DuplicatesPolicy::Preserve),
+        ..Default::default()
+    };
+    let _ = merge_metadata(&a, &b);
+}
+
+// An unknown argument is a hard error (matching `@used_as_key`'s unknown-flavor loudness), never a
+// silent metadata drop.
+#[test]
+#[should_panic(expected = "unknown argument")]
+fn parse_comment_duplicates_unknown_arg_panics() {
+    let _ = rule_metadata("@duplicates allow");
+}
+
+// A missing argument is also a hard error — `@duplicates` has no meaningful bare form.
+#[test]
+#[should_panic(expected = "missing required argument")]
+fn parse_comment_duplicates_missing_arg_panics() {
+    let _ = rule_metadata("@duplicates");
+}
+
+// A following directive counts as "missing argument" (the arg vocabulary never matches a `@tag`).
+#[test]
+#[should_panic(expected = "missing required argument")]
+fn parse_comment_duplicates_missing_arg_before_tag_panics() {
+    let _ = rule_metadata("@duplicates @newtype");
+}
+
 #[test]
 fn parse_comment_newtype_and_name_inverse() {
     assert_eq!(
@@ -852,6 +993,7 @@ fn parse_comment_newtype_and_name_inverse() {
                 key_demand: None,
                 used_as_elem: false,
                 raw_bytes_flavor: false,
+                duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -875,6 +1017,7 @@ fn parse_comment_name_noalias() {
                 key_demand: None,
                 used_as_elem: false,
                 raw_bytes_flavor: false,
+                duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -898,6 +1041,7 @@ fn parse_comment_newtype_and_custom_json() {
                 key_demand: None,
                 used_as_elem: false,
                 raw_bytes_flavor: false,
+                duplicates: None,
                 custom_json: true,
                 custom_serialize: None,
                 custom_deserialize: None,
@@ -927,6 +1071,7 @@ fn parse_comment_custom_serialize_deserialize() {
                 key_demand: None,
                 used_as_elem: false,
                 raw_bytes_flavor: false,
+                duplicates: None,
                 custom_json: false,
                 custom_serialize: Some("foo".to_string()),
                 custom_deserialize: Some("bar".to_string()),
@@ -957,6 +1102,7 @@ fn parse_comment_all_except_no_alias() {
                 }),
                 used_as_elem: true,
                 raw_bytes_flavor: false,
+                duplicates: None,
                 custom_json: true,
                 custom_serialize: Some("foo".to_string()),
                 custom_deserialize: Some("bar".to_string()),

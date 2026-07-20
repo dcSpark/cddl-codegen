@@ -508,6 +508,112 @@ fn raw_bytes_flavor_misuse_rejects_gracefully() {
     }
 }
 
+/// `@duplicates` is recognized end-to-end but every placement currently aborts generation via a
+/// GRACEFUL `Err` (deferred through `record_rejection` → drained by `finalize`), never a `panic!`
+/// and never a silent no-op — so no placement can silently ship while the feature is in flight. Two
+/// rejection classes, distinguished by whether the policy could EVER apply to the rule shape:
+/// collection rules (array/table, incl. the tag-258 set collapse) get "not yet built" (the policy
+/// WILL apply once a later work packet builds it); everything else (aliases, structs, unions,
+/// fields) gets a PERMANENT "only applies to …" placement rejection.
+///
+/// This pins that each seam fires with its correct class. When WP2 lands live behavior for the
+/// collection cases, the "not yet built" vectors here flip to generating fixtures.
+#[test]
+fn duplicates_directive_rejects_gracefully() {
+    // (seam, cddl, must-contain fragments) — the fragments prove the vector reached ITS seam and
+    // carries the class-correct wording.
+    let not_yet_built = "not yet built";
+    let permanent = "only applies to";
+    let vectors = [
+        // --- collection rules: recognized, not yet built ---
+        (
+            "tag-258 set-idiom collapse",
+            "foo = #6.258([* uint]) / [* uint] ; @duplicates reject\n",
+            not_yet_built,
+        ),
+        (
+            "plain array collection",
+            "foo = [* uint] ; @duplicates reject\n",
+            not_yet_built,
+        ),
+        (
+            "table rule",
+            "foo = { * uint => text } ; @duplicates preserve\n",
+            not_yet_built,
+        ),
+        // --- non-collection rules: permanent placement rejection ---
+        ("text alias", "foo = text ; @duplicates reject\n", permanent),
+        (
+            "struct rule",
+            "foo = { a: uint, b: text } ; @duplicates reject\n",
+            permanent,
+        ),
+        (
+            "union rule",
+            "foo = uint / text ; @duplicates reject\n",
+            permanent,
+        ),
+    ];
+    for (seam, cddl, fragment) in vectors {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_dup_misuse_{}_{}.cddl",
+            std::process::id(),
+            seam.len()
+        ));
+        std::fs::write(&path, cddl).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "dup_misuse_unused",
+        ]);
+        let result = crate::api::generated_strings(&cli);
+        std::fs::remove_file(&path).ok();
+
+        let err = result.expect_err(&format!(
+            "@duplicates on a {seam} must be a graceful Err, not Ok (and not a panic)"
+        ));
+        let msg = err.to_string();
+        assert!(
+            msg.contains("@duplicates"),
+            "rejection for {seam} should name the directive, got: {msg}"
+        );
+        assert!(
+            msg.contains(fragment),
+            "rejection for {seam} should carry its class-specific wording ({fragment:?}), got: {msg}"
+        );
+    }
+}
+
+/// `@duplicates` at a field/member position is per-rule-only, so it is a graceful placement
+/// rejection with its own field-specific wording (not the rule-level "only applies to …").
+#[test]
+fn duplicates_directive_on_field_rejects_gracefully() {
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_dup_field_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, "s = [\n  x: uint, ; @duplicates reject\n]\n").unwrap();
+    let cli = Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "dup_field_unused",
+    ]);
+    let result = crate::api::generated_strings(&cli);
+    std::fs::remove_file(&path).ok();
+
+    let err = result
+        .expect_err("@duplicates on a field must be a graceful Err, not Ok (and not a panic)");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("@duplicates") && msg.contains("per-rule"),
+        "field rejection should name the directive and its per-rule nature, got: {msg}"
+    );
+}
+
 /// Helper for the CDDL-module-directive and dotted-ident vectors: write `spec` to a temp file, run
 /// the pipeline, and return the `Result` so the caller can assert success or inspect the `Err`.
 fn run_spec(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, String>, String> {
