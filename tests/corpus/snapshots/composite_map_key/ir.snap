@@ -143,6 +143,7 @@ expression: ir
                             key_demand: None,
                             used_as_elem: false,
                             raw_bytes_flavor: false,
+                            duplicates: None,
                             custom_json: false,
                             custom_serialize: None,
                             custom_deserialize: None,

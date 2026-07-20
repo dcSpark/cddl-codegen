@@ -171,6 +171,8 @@ export const NO_DETECTOR = new Set(["grpchoice.sequence", "grpent.groupname", "g
 //   @used_as_key                                     : optional flavor words `hash`/`ord` up to the next `@`/EOL
 //                                                      (comment_ast PANICS on any other word, so a fixture with
 //                                                      prose there cannot generate — the mirror credits nothing)
+//   @duplicates                                      : ws* then ONE required arg from {preserve, reject}
+//                                                      (comment_ast PANICS on a missing/unknown arg — mirror credits nothing)
 //   @doc                                             : take_while1(c != '@') — prose runs to the next `@` (arg REQUIRED)
 type TagParse = (s: string) => { id: string; rest: string } | null;
 // The directive VOCABULARY DSL_TAGS models, kept beside it so the selfCheck lockstep tripwire can
@@ -178,7 +180,7 @@ type TagParse = (s: string) => { id: string; rest: string } | null;
 // side without the other fails every importer's selfCheck (project_corpus runs in the fast tier).
 const MIRRORED_DIRECTIVES = new Set([
   "@name", "@rust_name", "@newtype", "@no_alias", "@used_as_key", "@used_as_elem",
-  "@raw_bytes_flavor", "@custom_json", "@custom_serialize", "@custom_deserialize", "@doc",
+  "@raw_bytes_flavor", "@duplicates", "@custom_json", "@custom_serialize", "@custom_deserialize", "@doc",
 ]);
 const ws = (s: string) => s.replace(/^\s+/, ""); // take_while(char::is_whitespace)
 const argRequired = (id: string, tag: string): TagParse => s => {
@@ -232,6 +234,17 @@ const DSL_TAGS: TagParse[] = [
   noArg("dsl.used_as_elem", "@used_as_elem"),
   // @raw_bytes_flavor: bare no-arg tag (valid only on a `_CDDL_CODEGEN_EXTERN_TYPE_` generic).
   noArg("dsl.raw_bytes_flavor", "@raw_bytes_flavor"),
+  // @duplicates: one REQUIRED argument from a strict vocabulary (`preserve`/`reject`), consumed as
+  // the arg so a directive after it is still reachable. On a missing/unknown argument comment_ast
+  // PANICS (the fixture couldn't have generated), so — like @used_as_key's non-flavor word — the
+  // mirror refuses the credit rather than false-crediting.
+  s => {
+    if (!s.startsWith("@duplicates")) return null;
+    const after = ws(s.slice("@duplicates".length));
+    const m = after.match(/^[^\s@]+/);
+    if (!m || (m[0] !== "preserve" && m[0] !== "reject")) return null; // comment_ast panics — no credit
+    return { id: "dsl.duplicates", rest: after.slice(m[0].length) };
+  },
   noArg("dsl.custom_json", "@custom_json"),
   argRequired("dsl.custom_serialize", "@custom_serialize"),
   argRequired("dsl.custom_deserialize", "@custom_deserialize"),
@@ -480,6 +493,16 @@ function selfCheck() {
   {
     const r = featuresIn("x = uint ; @rust_name Foo @no_alias").dsl;
     if (!r.has("dsl.rust_name") || !r.has("dsl.no_alias")) throw new Error("selfCheck: @rust_name <ident> @no_alias must credit BOTH");
+  }
+  // @duplicates consumes its one required arg (preserve/reject), so a following directive is still
+  // parsed; a missing/unknown arg makes comment_ast panic, so the mirror credits nothing (no
+  // over-credit of the trailing prose either).
+  {
+    const r = featuresIn("x = [* uint] ; @duplicates reject @no_alias").dsl;
+    if (!r.has("dsl.duplicates") || !r.has("dsl.no_alias")) throw new Error("selfCheck: @duplicates <arg> @no_alias must credit BOTH");
+    if (featuresIn("x = uint ; @duplicates").dsl.has("dsl.duplicates")) throw new Error("selfCheck: bare @duplicates (missing required arg) must NOT be credited (comment_ast panics)");
+    if (featuresIn("x = uint ; @duplicates allow").dsl.has("dsl.duplicates")) throw new Error("selfCheck: @duplicates with an unknown arg must NOT be credited (comment_ast panics)");
+    if (featuresIn("x = uint ; @duplicates @newtype").dsl.has("dsl.duplicates")) throw new Error("selfCheck: @duplicates immediately followed by a directive (no arg) must NOT be credited");
   }
   // keyless inline group directly inside a container is grpent.inline_group, NOT type2.parenthesized
   // (the comma form is covered above at line ~265; this is the keyless single-type form).

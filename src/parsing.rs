@@ -328,6 +328,39 @@ fn recognize_optional_tag_set(variants: &[EnumVariant]) -> Option<(usize, RustTy
     None
 }
 
+/// `@duplicates` on a rule where the policy can NEVER apply — a non-collection rule (a text/int
+/// alias, a struct/group/record, a union, an extern marker, …). Permanent graceful rejection in the
+/// house style of the other comment-DSL misuse rejections (`@raw_bytes_flavor`), never a panic and
+/// never a silent no-op.
+fn reject_duplicates_not_applicable(types: &mut IntermediateTypes, name: &RustIdent) {
+    let source_name = types
+        .source_rule_name(name)
+        .map(str::to_owned)
+        .unwrap_or_else(|| name.to_string());
+    types.record_rejection(format!(
+        "@duplicates on rule `{source_name}`: this directive only applies to set/array collection \
+         rules (`[* a]` / `[+ a]`, including the tag-258 set idiom) and table rules \
+         (`{{ * k => v }}`); a union's map arm must be a named rule to carry it. Remove it from \
+         this rule."
+    ));
+}
+
+/// `@duplicates` on a rule where the policy WILL apply (an array-shaped collection or a table,
+/// including the tag-set collapse arms), but the behavior is not yet built. Graceful rejection so no
+/// placement is ever silently ignored while the feature is in flight. The literal `@duplicates`
+/// token is kept in the message for greppability when the final work packet prunes the plan-file
+/// citation.
+fn reject_duplicates_not_yet_built(types: &mut IntermediateTypes, name: &RustIdent) {
+    let source_name = types
+        .source_rule_name(name)
+        .map(str::to_owned)
+        .unwrap_or_else(|| name.to_string());
+    types.record_rejection(format!(
+        "@duplicates on rule `{source_name}`: recognized, deliberately not yet built — \
+         @duplicates lands in a later work packet of draft/plan-2026-07-20-duplicates-policy.md."
+    ));
+}
+
 fn parse_type_choices(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
@@ -364,6 +397,11 @@ fn parse_type_choices(
             None => RustType::new(ConceptualRustType::Optional(Box::new(inner_rust_type))),
         };
         let rule_metadata = RuleMetadata::from(inner_type2.comments_after_type.as_ref());
+        // A `T / null` rule collapses to an `Option<T>` alias — a non-collection, so `@duplicates`
+        // can never apply here.
+        if rule_metadata.duplicates.is_some() {
+            reject_duplicates_not_applicable(types, name);
+        }
         types.register_type_alias(
             name.clone(),
             AliasInfo::new_from_metadata(final_type, rule_metadata),
@@ -414,6 +452,11 @@ fn parse_type_choices(
             println!(
                 "Collapsing rule `{name}` (tag {set_tag} set idiom) into a transparent optionally-tagged collection"
             );
+            // The collapse target is an array-shaped collection (or a table) — exactly where
+            // `@duplicates` WILL apply, but the behavior is not yet built.
+            if rule_metadata.duplicates.is_some() {
+                reject_duplicates_not_yet_built(types, name);
+            }
             let bounds = base.config.bounds;
             let rust_struct = match base.conceptual_type {
                 ConceptualRustType::Array(element_type) => RustStruct::new_array(
@@ -441,6 +484,11 @@ fn parse_type_choices(
                 None => types.register_rust_struct(parent_visitor, rust_struct, cli),
             };
             return;
+        }
+        // A real multi-arm type choice is a union enum — a non-collection, so `@duplicates` can
+        // never apply (its map arm, if any, must be a named rule).
+        if rule_metadata.duplicates.is_some() {
+            reject_duplicates_not_applicable(types, name);
         }
         let rust_struct =
             RustStruct::new_type_choice(name.clone(), tag, Some(&rule_metadata), variants, cli);
@@ -1102,6 +1150,22 @@ fn parse_type(
              rule — it selects the `<ExternName>RawBytes` wrapper flavor for generic instances \
              whose argument is a {RAW_BYTES_MARKER} type. Remove it from this rule."
         ));
+    }
+    // `@duplicates` is a collection concept. A `Map`/`Array` body (and a tag-head / parenthesized
+    // wrapper of one) delegates to `parse_group` / a recursion that performs the shape-aware routing
+    // (a `[a, b]` record vs a `[* a]` collection is only distinguishable there, and the tag-set
+    // collapse only in `parse_type_choices`), so skip those here and reject only the leaf
+    // non-collection rule bodies (aliases, extern/raw-bytes markers, literals, …) permanently.
+    if rule_metadata.duplicates.is_some()
+        && !matches!(
+            &type1.type2,
+            Type2::Map { .. }
+                | Type2::Array { .. }
+                | Type2::TaggedData { .. }
+                | Type2::ParenthesizedType { .. }
+        )
+    {
+        reject_duplicates_not_applicable(types, type_name);
     }
     handle_rust_name_pin(types, type_name, &rule_metadata);
     match &type1.type2 {
@@ -2912,6 +2976,19 @@ fn parse_record_from_group_choice(
                      from this entry."
                 ));
             }
+            // `@duplicates` is per-rule and never applies at a field/member position — reject loudly
+            // instead of silently ignoring it. The remedy names the collection as its own rule.
+            if rule_metadata.duplicates.is_some() {
+                let source_name = types
+                    .source_rule_name(name)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| name.to_string());
+                types.record_rejection(format!(
+                    "@duplicates on field `{field_name}` of rule `{source_name}`: this directive \
+                     is per-rule and does not apply to a field/member position. Name the collection \
+                     as its own rule and put `; @duplicates <preserve|reject>` on that rule."
+                ));
+            }
             // does not exist for fixed values importantly
             let field_type = group_entry_to_type(types, parent_visitor, group_entry, cli);
             if let ConceptualRustType::Rust(ident) = &field_type.conceptual_type {
@@ -3051,6 +3128,10 @@ fn parse_group_choice(
     let rust_struct =
         match parse_group_type(types, parent_visitor, group_choice, rep, Some(name), cli) {
             GroupParsingType::HomogenousArray(element_type, bounds) => {
+                // Array-shaped collection — exactly where `@duplicates` WILL apply, not yet built.
+                if rule_metadata.duplicates.is_some() {
+                    reject_duplicates_not_yet_built(types, name);
+                }
                 // A plain group used as the array element (`pair = (int, tstr)`, `a = [* pair]`) must be
                 // registered as a concrete Array-rep rust struct, exactly like the anonymous member-array
                 // path (`rust_type_from_type2`'s `Type2::Array` arm) and the record path both do. Without
@@ -3090,6 +3171,10 @@ fn parse_group_choice(
                 }
             }
             GroupParsingType::HomogenousMap(key_type, value_type, bounds) => {
+                // Table collection — where `@duplicates` WILL apply (phase 2), not yet built.
+                if rule_metadata.duplicates.is_some() {
+                    reject_duplicates_not_yet_built(types, name);
+                }
                 // Same registration gap as the array arm above: a plain group used as a table key or
                 // value (`pair = (int, tstr)`, `a = { * int => pair }`) must be registered as a concrete
                 // Array-rep rust struct — a CBOR map value can only be one item, so the group is encoded
@@ -3127,6 +3212,11 @@ fn parse_group_choice(
                 }
             }
             GroupParsingType::Heterogenous | GroupParsingType::WrappedBasicGroup(_) => {
+                // A heterogenous struct/record (or a single wrapped basic group) is not a collection,
+                // so `@duplicates` can never apply here.
+                if rule_metadata.duplicates.is_some() {
+                    reject_duplicates_not_applicable(types, name);
+                }
                 assert!(
                     rule_metadata.newtype.is_none(),
                     "Can only use @newtype on primtives + heterogenious arrays/maps"
@@ -3350,6 +3440,10 @@ pub fn parse_group(
             ),
             parent_rule_metadata,
         );
+        // A group-choice rule generates an enum — a non-collection, so `@duplicates` can never apply.
+        if rule_metadata.duplicates.is_some() {
+            reject_duplicates_not_applicable(types, name);
+        }
         types.register_rust_struct(
             parent_visitor,
             RustStruct::new_group_choice(name.clone(), tag, Some(&rule_metadata), variants, rep),

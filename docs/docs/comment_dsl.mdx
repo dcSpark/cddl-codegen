@@ -230,6 +230,46 @@ Notes:
 - It only mints the loose `[* x]` list wrapper. `[+ x]` (NonEmpty) and map wrappers are out of scope
   (a map wrapper cannot be named by a tag on a single element rule).
 
+## @duplicates
+
+:::warning Status
+`@duplicates` is currently **recognized but not yet active**: the parser understands it and
+validates its placement, but no generation behavior is wired up yet, so **using it aborts
+generation** with a clear message. This status line is removed when the feature activates.
+:::
+
+Selects the per-rule policy for how a collection handles duplicate entries on the CBOR wire. CBOR
+permits duplicate map keys and duplicate set entries; which stance a rule wants depends on the data
+(a validating writer rejects them; a multi-era reader must accept and re-emit historical duplicates
+byte-exactly).
+
+```cddl
+strict_set = #6.258([* pool_id]) / [* pool_id] ; @duplicates reject
+historical = { * metadatum => metadatum }      ; @duplicates preserve
+```
+
+The directive takes **one required argument**:
+
+| value | meaning |
+|---|---|
+| `preserve` | accept duplicates on the wire and re-emit them byte-exactly (the contract is *preservation*, not merely "allow") |
+| `reject` | duplicates are a decode error (`DeserializeFailure::DuplicateKey`) **and** unconstructable through the generated API |
+
+A missing or unknown argument is a hard error.
+
+**Defaults are today's behavior, unchanged** — sets (the tag-258 idiom) default to `preserve`,
+tables default to `reject`. Writing the default explicitly is accepted as self-documentation (a
+no-op, no warning).
+
+The policy is a **per-rule** knob (not a CLI flag) because mixed-era specs need both stances in one
+document — a Conway-strict set next to a historical preserve-mode set. Because it is per-rule, an
+**inline map arm of a union must be given its own named rule** to carry the directive, e.g.
+`metadata_map = { * metadatum => metadatum } ; @duplicates preserve`, referenced from the union.
+
+It applies **only to set/array collection rules and table rules**. On any other placement — a
+text/int alias, a struct/group/record rule, a union rule, an extern marker, or a field/member
+position — it is a graceful placement rejection (never silently ignored).
+
 ## @custom_json
 
 ```cddl
