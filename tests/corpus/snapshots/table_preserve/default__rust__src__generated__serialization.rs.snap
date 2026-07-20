@@ -1,0 +1,274 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for Holder {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(
+            4 + match &self.o {
+                Some(x) => 1,
+                None => 0,
+            },
+        ))?;
+        serializer.write_map(cbor_event::Len::Len(self.p.len() as u64))?;
+        for (key, value) in self.p.iter() {
+            serializer.write_unsigned_integer(*key)?;
+            serializer.write_text(value)?;
+        }
+        serializer.write_map(cbor_event::Len::Len(self.np.len() as u64))?;
+        for (key, value) in self.np.iter() {
+            serializer.write_unsigned_integer(*key)?;
+            serializer.write_text(value)?;
+        }
+        serializer.write_map(cbor_event::Len::Len(self.g.len() as u64))?;
+        for (key, value) in self.g.iter() {
+            serializer.write_text(key)?;
+            serializer.write_unsigned_integer(*value)?;
+        }
+        self.m.serialize(serializer)?;
+        if let Some(field) = &self.o {
+            serializer.write_map(cbor_event::Len::Len(field.len() as u64))?;
+            for (key, value) in field.iter() {
+                serializer.write_unsigned_integer(*key)?;
+                serializer.write_text(value)?;
+            }
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Holder {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(4)?;
+            let p = (|| -> Result<_, DeserializeError> {
+                let mut p_table = Vec::new();
+                let p_len = raw.map()?;
+                while match p_len {
+                    cbor_event::Len::Len(n) => (p_table.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(p_len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    let p_key = raw.unsigned_integer()?;
+                    let p_value = raw.text()?;
+                    p_table.push((p_key, p_value));
+                }
+                let p_table = PairMap::from(p_table);
+                Ok(p_table)
+            })()
+            .map_err(|e| e.annotate("p"))?;
+            let np = (|| -> Result<_, DeserializeError> {
+                let mut np_table = Vec::new();
+                let np_len = raw.map()?;
+                while match np_len {
+                    cbor_event::Len::Len(n) => (np_table.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(np_len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    let np_key = raw.unsigned_integer()?;
+                    let np_value = raw.text()?;
+                    np_table.push((np_key, np_value));
+                }
+                let np_table = NonEmptyPairMap::try_from(np_table)?;
+                Ok(np_table)
+            })()
+            .map_err(|e| e.annotate("np"))?;
+            let g = (|| -> Result<_, DeserializeError> {
+                let mut g_table = Vec::new();
+                let g_len = raw.map()?;
+                while match g_len {
+                    cbor_event::Len::Len(n) => (g_table.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(g_len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    let g_key = raw.text()?;
+                    let g_value = raw.unsigned_integer()?;
+                    g_table.push((g_key, g_value));
+                }
+                let g_table = PairMap::from(g_table);
+                Ok(g_table)
+            })()
+            .map_err(|e| e.annotate("g"))?;
+            let m = Md::deserialize(raw).map_err(|e: DeserializeError| e.annotate("m"))?;
+            let o = if raw
+                .cbor_type()
+                .map(|ty| ty == cbor_event::Type::Map)
+                .unwrap_or(false)
+            {
+                (|| -> Result<_, DeserializeError> {
+                    read_len.read_elems(1)?;
+                    let mut o_table = Vec::new();
+                    let o_len = raw.map()?;
+                    while match o_len {
+                        cbor_event::Len::Len(n) => (o_table.len() as u64) < n,
+                        cbor_event::Len::Indefinite => true,
+                    } {
+                        if matches!(o_len, cbor_event::Len::Indefinite)
+                            && raw.cbor_type()? == cbor_event::Type::Special
+                            && raw.special_break()?
+                        {
+                            break;
+                        }
+                        let o_key = raw.unsigned_integer()?;
+                        let o_value = raw.text()?;
+                        o_table.push((o_key, o_value));
+                    }
+                    let o_table = PairMap::from(o_table);
+                    Ok(o_table)
+                })()
+                .map_err(|e| e.annotate("o"))
+                .map(Some)
+            } else {
+                Ok(None)
+            }?;
+            match len {
+                cbor_event::Len::Len(_) => read_len.finish()?,
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(Holder { p, np, g, m, o })
+        })()
+        .map_err(|e| e.annotate("Holder"))
+    }
+}
+
+impl cbor_event::se::Serialize for Int {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            Self::Uint(x) => serializer.write_unsigned_integer(*x),
+            Self::Nint(x) => serializer
+                .write_negative_integer_sz(-((*x as i128) + 1), cbor_event::Sz::canonical(*x)),
+        }
+    }
+}
+
+impl Deserialize for Int {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => Ok(Self::Uint(raw.unsigned_integer()?)),
+                cbor_event::Type::NegativeInteger => Ok(Self::Nint(
+                    (-1 - raw.negative_integer_sz().map(|(x, _enc)| x)?) as u64,
+                )),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("Int"))
+    }
+}
+
+impl cbor_event::se::Serialize for Md {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            Md::Mdmap(mdmap) => {
+                serializer.write_map(cbor_event::Len::Len(mdmap.len() as u64))?;
+                for (key, value) in mdmap.iter() {
+                    serializer.write_text(key)?;
+                    value.serialize(serializer)?;
+                }
+                Ok(serializer)
+            }
+            Md::ArrMd(arr_md) => {
+                serializer.write_array(cbor_event::Len::Len(arr_md.len() as u64))?;
+                for element in arr_md.iter() {
+                    element.serialize(serializer)?;
+                }
+                Ok(serializer)
+            }
+            Md::Int(int) => int.serialize(serializer),
+            Md::Bytes(bytes) => serializer.write_bytes(bytes),
+            Md::Text(text) => serializer.write_text(text),
+        }
+    }
+}
+
+impl Deserialize for Md {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::Map => {
+                    let mut mdmap_table = Vec::new();
+                    let mdmap_len = raw.map()?;
+                    while match mdmap_len {
+                        cbor_event::Len::Len(n) => (mdmap_table.len() as u64) < n,
+                        cbor_event::Len::Indefinite => true,
+                    } {
+                        if matches!(mdmap_len, cbor_event::Len::Indefinite)
+                            && raw.cbor_type()? == cbor_event::Type::Special
+                            && raw.special_break()?
+                        {
+                            break;
+                        }
+                        let mdmap_key = raw.text()?;
+                        let mdmap_value = Md::deserialize(raw)?;
+                        mdmap_table.push((mdmap_key, mdmap_value));
+                    }
+                    let mdmap_table = PairMap::from(mdmap_table);
+                    let mdmap = mdmap_table;
+                    Ok(Self::Mdmap(mdmap))
+                }
+                cbor_event::Type::Array => {
+                    let mut arr_md_arr = Vec::new();
+                    let len = raw.array()?;
+                    while match len {
+                        cbor_event::Len::Len(n) => (arr_md_arr.len() as u64) < n,
+                        cbor_event::Len::Indefinite => true,
+                    } {
+                        if matches!(len, cbor_event::Len::Indefinite)
+                            && raw.cbor_type()? == cbor_event::Type::Special
+                            && raw.special_break()?
+                        {
+                            break;
+                        }
+                        arr_md_arr.push(Md::deserialize(raw)?);
+                    }
+                    let arr_md = arr_md_arr;
+                    Ok(Self::ArrMd(arr_md))
+                }
+                cbor_event::Type::UnsignedInteger | cbor_event::Type::NegativeInteger => {
+                    Ok(Md::Int(Int::deserialize(raw)?))
+                }
+                cbor_event::Type::Bytes => Ok(Md::Bytes(raw.bytes()?)),
+                cbor_event::Type::Text => Ok(Md::Text(raw.text()?)),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("Md"))
+    }
+}

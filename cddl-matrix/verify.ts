@@ -307,11 +307,18 @@ const dslSource = readFileSync(`${CODEGEN_DIR}/src/comment_ast.rs`, "utf8") + "\
 // directive that survives only in a comment or unrelated string no longer passes the backward lint.
 const dslDirectives = [...dslSource.matchAll(/tag\("(@[a-z_]+)"\)/g)].map(m => m[1]);
 const dslMarkers = [...dslSource.matchAll(/MARKER[^"]*"(_CDDL_CODEGEN_[^"]+)"/g)].map(m => m[1]);
-// Flavor words: arguments some directives accept AFTER the tag (e.g. `@used_as_key hash`/`ord`),
-// parsed as literal match arms in comment_ast.rs (`"hash" => demand.hash = true`). These aren't
-// `tag("@…")` directives, so a sibling FEATURE row whose alt is `<directive> <flavor…>` (mode-narrowed
-// derive families) resolves to the vendor source only once these words are recognized too.
-const dslFlavors = new Set([...dslSource.matchAll(/"([a-z]+)"\s*=>\s*demand\.\w+\s*=\s*true/g)].map(m => m[1]));
+// Flavor words: arguments some directives accept AFTER the tag (e.g. `@used_as_key hash`/`ord`,
+// `@duplicates preserve`/`reject`), parsed as literal match arms in comment_ast.rs. Two arm shapes
+// exist: the DemandSet flag form (`"hash" => demand.hash = true`) and the enum-value form
+// (`"preserve" => DuplicatesPolicy::Preserve`). These aren't `tag("@…")` directives, so a sibling
+// FEATURE row whose alt is `<directive> <flavor…>` (mode-narrowed derive families, argument-required
+// policies) resolves to the vendor source only once these words are recognized too. The vocabulary is
+// deliberately ONE set across directives (the lint's job is anti-fabrication, not per-directive
+// argument grammar — that exactness lives in comment_ast.rs itself and corpus_detect.ts's mirror).
+const dslFlavors = new Set([
+  ...[...dslSource.matchAll(/"([a-z]+)"\s*=>\s*demand\.\w+\s*=\s*true/g)].map(m => m[1]),
+  ...[...dslSource.matchAll(/"([a-z]+)"\s*=>\s*DuplicatesPolicy::/g)].map(m => m[1]),
+]);
 // Floor assertion: if a refactor of comment_ast.rs/parsing.rs changes the extractable shape, both lints
 // built on these sets would go vacuous (forward) or flag everything (backward) — fail loud instead.
 if (dslDirectives.length === 0 || dslMarkers.length === 0) {
@@ -354,8 +361,13 @@ for (const f of features) {
 const docsText = readFileSync(`${CODEGEN_DIR}/docs/docs/comment_dsl.mdx`, "utf8");
 const cddlCodegenAlts = new Set(features.filter(f => f.profile === "CDDL_CODEGEN").map(f => f.alt));
 const cddl_codegen_gaps: { kind: string; name: string }[] = [];
+// A directive is modelled by a row whose alt IS the directive (bare form) OR by flavored sibling
+// rows whose alt is `<directive> <arg>` — the only possible modelling for an ARGUMENT-REQUIRED
+// directive like `@duplicates`, whose bare form is a parse-time panic and so can have no bare row.
+const modelled = (d: string) =>
+  cddlCodegenAlts.has(d) || [...cddlCodegenAlts].some(a => a !== undefined && a.startsWith(`${d} `));
 for (const d of [...new Set([...dslDirectives, ...dslMarkers])].sort())
-  if (docsText.includes(d) && !cddlCodegenAlts.has(d)) cddl_codegen_gaps.push({ kind: "missing_cddl_codegen_feature", name: d });
+  if (docsText.includes(d) && !modelled(d)) cddl_codegen_gaps.push({ kind: "missing_cddl_codegen_feature", name: d });
 
 // 2b. Prelude type names.
 const preludeText = readFileSync(`${ROOT}/sources/cddl.prelude`, "utf8");

@@ -17,8 +17,8 @@ bidirectional lint as spec features — so "not pure RFC" does not mean "unancho
 > **Entry points (in order):** *this README* (the model + current state, incl. the gotchas and
 > upstream-oracle-gap state) → [`ROADMAP.md`](ROADMAP.md)
 > (what's left: remaining work + the open-findings ledger) → [`QUERIES.md`](QUERIES.md) (the
-> consumer-query contract). The matrix is **fully scaled and gate-green**: <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:readme-counts -->112 features and 94 containment cells<!-- /gen:sh:readme-counts -->
-> across all axes (incl. the `CDDL_CODEGEN` vendor profile), with <!-- gen:sh:readme-annotations -->240 cddl-codegen support annotations<!-- /gen:sh:readme-annotations -->,
+> consumer-query contract). The matrix is **fully scaled and gate-green**: <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:readme-counts -->114 features and 94 containment cells<!-- /gen:sh:readme-counts -->
+> across all axes (incl. the `CDDL_CODEGEN` vendor profile), with <!-- gen:sh:readme-annotations -->242 cddl-codegen support annotations<!-- /gen:sh:readme-annotations -->,
 > **execution-gated** support **per-feature, per-cell (role × feature), AND per-control-op**
 > (<!-- gen:sh:readme-ops -->all 37 IANA ops probed<!-- /gen:sh:readme-ops -->) — "supported" means the
 > generated crate's emitted round-trip tests *pass* (`--emit-tests` + `cargo test`), not merely that
@@ -533,10 +533,18 @@ A FLAVORED sibling row — a multi-token `alt` (`@used_as_key hash`: an existing
 argument words) — engages two more recognition surfaces without tripping `MIRRORED_DIRECTIVES`
 (the directive set is unchanged), walked empirically for the `dsl.used_as_key.{hash,ord,hash_ord}`
 registration: `verify.ts`'s backward (FABRICATED) lint resolves the alt only when every trailing
-word is in the flavor vocabulary extracted from `comment_ast.rs`'s match arms (a fabricated
-flavor word still flags, and a vacuity guard fails loud if the extraction pattern rots), and
-`corpus_detect.ts`'s directive mirror must credit the narrowed sibling id per flavor set (with
-matching selfCheck vectors) or `project_corpus`'s coverage floors drift.
+word is in the flavor vocabulary extracted from `comment_ast.rs`'s match arms (two arm shapes:
+the DemandSet flag form `"hash" => demand.hash = true` and the enum-value form
+`"preserve" => DuplicatesPolicy::Preserve`; a fabricated flavor word still flags, and a vacuity
+guard fails loud if the extraction pattern rots), and `corpus_detect.ts`'s directive mirror must
+credit the narrowed sibling id per flavor set (with matching selfCheck vectors) or
+`project_corpus`'s coverage floors drift.
+
+An ARGUMENT-REQUIRED directive (`@duplicates`: the bare spelling is a parse-time panic) registers
+as flavored sibling rows ONLY — no bare base row, and the vendor-count pin moves by the number of
+flavors. The forward (completeness) lint accepts this: a documented directive is modelled either
+by a row whose `alt` IS the directive or by rows whose `alt` starts with `<directive> ` — walked
+empirically for the `dsl.duplicates.{reject,preserve}` registration.
 
 ## Evidence/id convention
 

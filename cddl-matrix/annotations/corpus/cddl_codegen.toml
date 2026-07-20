@@ -318,6 +318,14 @@ id = "dsl.used_as_elem"
 fixture = "dsl_used_as_elem.cddl"
 
 [[cover]]
+id = "dsl.duplicates.reject"
+fixture = "tag_set_reject.cddl"
+
+[[cover]]
+id = "dsl.duplicates.preserve"
+fixture = "table_preserve.cddl"
+
+[[cover]]
 id = "dsl.custom_json"
 fixture = "dsl_custom.cddl"
 

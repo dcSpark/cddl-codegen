@@ -240,17 +240,16 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      carries no directive, so a preserve table hosted purely via `--wrapper-requests` from a consumer
      is untested (the named-rule and generic-instance paths ARE covered). A cross-crate preserve
      wrapper-request fixture would close it.
-   - **Matrix registration (WP6).** `cddl-matrix/features/` wants `dsl.duplicates.preserve` flavored
-     rows, and the wasm-ABI matrix wants a per-role grid row for the appending-`insert` pair-map ABI
-     class — both need the full `verify.ts` annotation chain (the matrix-registration packet). The gap
-     is recorded honestly in `cddl-matrix/ROADMAP.md` § "wasm-ABI & multifile placement matrices —
-     remaining work" as the third OWED shape-addition entry (alongside the tag-set and reject
-     siblings), with the interim per-fixture pins named. The decode-conformance CORPUS fixture + mint
-     for preserve tables ride that same packet (its `verify.ts` chain runs the mint machinery anyway;
-     both oracles verified working on the preserve-table and recursive-union shapes — the
-     properly-resolved ruby gem at `Gem.user_dir/bin/cddl`, NOT the PATH `cddl`, which is the stock
-     rust CLI), so preserve-table decode coverage lives in `golden_hex_preserve` (not the corpus
-     catalog) until then.
+   - **wasm-ABI per-role grid row.** The matrix FEATURE rows (`dsl.duplicates.{reject,preserve}`),
+     their decode-foreign catalog rows, and the `table_preserve.cddl` corpus fixture + corpus decode
+     rows are registered and minted; what remains is the per-role wasm-ABI grid row for the
+     appending-`insert` pair-map ABI class, recorded in `cddl-matrix/ROADMAP.md` § "wasm-ABI &
+     multifile placement matrices — remaining work" as the third OWED shape-addition entry
+     (alongside the tag-set and reject siblings), with the interim per-fixture pins named. Note from
+     the corpus mint: `table_preserve.mdmap` is a `pinned_reason` row — its standalone holder
+     synthesis trips the pre-existing recursive-union-valued-table `cbor_types` panic (the
+     cddl-matrix findings entry) — while the fixture's `holder`/`pmap`/`nepmap`/`pmap_txt`/`md` rows
+     minted with vectors.
 
 ## Standing-system residuals (recur-first)
 
@@ -272,6 +271,22 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
 `tests/corpus/optional_fixed_float.cddl` + the float presence-field arms, residue owned by
 `preserve_encodings_supports_floats`).
 
+- **A REPRESENTATION-CHANGING directive that goes live on a new container can ship without its
+  extern-interface projection — the cross-crate skew class, invisible to every single-crate
+  gate.** Proven instance (orchestrator code-read, not any gate): `@duplicates preserve` on
+  tables was live for two commits while the projection helper only travelled `reject`, and the
+  helper's own doc-comment actively misled ("table preserve never reaches here" — stale from the
+  phase-1 refusal era); a dep exporting a preserve table would have had its consumer silently
+  rebuild a reject-default `BTreeMap`. Fixed by the shape-aware `duplicates_annotation`, which
+  now derives the projection from the SAME `is_reject_ordered_set`/`is_preserve_pair_map`
+  predicates that drive representation — the coupling that makes the drift structural rather
+  than remembered — plus the `dep-preserve`/`consumer-preserve` two-crate fixture with its
+  negative-control skew leg. Standing rule meanwhile: a delivery that makes a directive change a
+  rule's REPRESENTATION must land the extern-interface projection AND its two-crate fixture in
+  the same change (reviewers: diff `extern_interface.rs`'s annotation helpers against the new
+  predicate). The trigger for a mechanical layer — an extern-projection sweep that enumerates
+  every representation-changing config predicate and auto-checks a dep/consumer pair per
+  directive — is a SECOND representation-changing surface shipping without its projection.
 - **An emission branch whose generated OUTPUT no fixture exercises is invisible to every gate —
   it can rot to uncompilable and hide behavioral bugs in both directions.** Proven instance
   (plan-review-caught during the cbor_event 3.2.0 upgrade, not by any gate): the

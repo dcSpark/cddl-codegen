@@ -8,7 +8,7 @@ Running the gates is not a roadmap concern either: `check.ts` at the repo root i
 gate registry + entry point, `tests/README.md` § "Running everything" is the prose overview, each
 script's header docstring is the per-gate detail, and `QUERIES.md` documents the Q1–Q6 query scripts.
 
-**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->112 features (95 RFC8610 + 1 RFC9682 + 16 `CDDL_CODEGEN` vendor profile), 94 containment cells, and 240 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
+**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->114 features (95 RFC8610 + 1 RFC9682 + 18 `CDDL_CODEGEN` vendor profile), 94 containment cells, and 242 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
 execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (<!-- gen:sh:roadmap-ops -->all 37 IANA ops probed<!-- /gen:sh:roadmap-ops -->):
 "supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
@@ -334,6 +334,17 @@ are ledgered here (that's what the probe/gate error messages point at).
   `a = [* pair]`). Real `Vec<Synthesized>` / `Option`-style support for zero-permitting markers is a
   candidate feature; flipping a row to `ok` must not decay back to silent narrowing (unsupported
   rows carry no decode-conformance row; `project_decode_conformance.ts` enforces that boundary).
+- **A RECURSIVE-union-valued table referenced from a record field panics generation** — a bare
+  `panic!()` in `cbor_types`' RustStructType classification (src/intermediate/rust_type.rs, the
+  `_ => panic!()` arm): `h = [mdmap]` with `md = mdmap / int` and `mdmap = { * text => md }` dies
+  at exit 101; the recursion is the required ingredient (a NON-recursive union value generates
+  fine), the fixed-value head is not, and the `@duplicates` policy is irrelevant (repro'd
+  directive-free). Surfaced by the corpus decode mint's holder synthesis for
+  `table_preserve.mdmap` — its `pinned_reason` row in `tests/decode_conformance/corpus_catalog.toml`
+  is the committed, stale-guarded tell (a fix flips it at the next `--mint-decode-corpus`). Note
+  the fixture's own `holder` DOES generate (the same table reached through more context), so the
+  panic is order/paths-sensitive; pickup: classify the unhandled variant at the panic arm, add a
+  `tests/robustness/` PANIC pin for the minimized shape, then re-mint the corpus row.
 - Map-representation group-choice arm with a fixed-value entry panics:
   `contain.group-choice-arm.type2.value.map` (`t = { a: 0 // b: tstr }`) reaches generation and aborts at
   the `assert_eq!(";" vs "")` site in `generate_deserialize` (generation/deserialize.rs). This is a new valid-CDDL surface for fixed values in a
@@ -625,6 +636,13 @@ composition-space cross-check that complements this matrix's curated per-shape g
   `ROLES`. Interim pins until enumerated: `optional_tag_set_tests` +
   `generic_collection_tests` source-equality tests and the `tag_set_generic` corpus wasm
   snapshots — in-process/per-fixture, not the matrix's per-role grid, which is the gap.
+  When minting these, include the MAP-container sibling (a generic TABLE instance,
+  `x: tbl<k, v>`) — an array-only reading of this entry would have missed a proven crash class:
+  a generic table instance under `--wasm` aborted generation on a duplicate-synthesized-ident
+  collision (the anonymous instance recorded as its own shape's sole owner), found by an
+  orchestrator review-probe rather than any gate, fixed and pinned by
+  `generic_table_instance_lowers_to_structural_wrapper_under_wasm` — exactly the cell this
+  entry's grid row would have made red.
 - **OWED by the same shape-addition rule: the `@duplicates reject` restricted-wrapper ABI class.**
   The uniqueness twins (`OrderedSet`/`NonEmptyOrderedSet`) cross the wasm boundary as a restricted
   wrapper whose `add` returns `Result<(), JsError>` — FALLIBLE, refusing a duplicate — unlike the

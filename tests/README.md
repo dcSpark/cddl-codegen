@@ -840,10 +840,14 @@ across the same layers:
   travels on the export so the consumer rebuilds the pair-map twins (not a reject-default `BTreeMap`
   that would REJECT the duplicate keys the dep preserves — the mirror skew), with a negative-control
   skew check.
-- **wasm-ABI matrix registration** — the per-role grid row for the appending-`insert` pair-map ABI
-  class is OWED (rides WP6), recorded in `cddl-matrix/ROADMAP.md` § "wasm-ABI & multifile placement
-  matrices — remaining work" alongside its reject sibling; the robustness/core pins above are the
-  interim per-fixture coverage.
+- **Matrix feature rows + decode conformance** — `dsl.duplicates.{reject,preserve}` are registered
+  vendor feature rows (flavored siblings, no bare row — the bare directive panics on its missing
+  argument; recipe notes: `cddl-matrix/README.md` § "Registering a new vendor (CDDL_CODEGEN)
+  feature row"), with minted decode-foreign catalog rows and the `table_preserve.cddl` corpus
+  fixture's minted corpus decode rows. The per-role wasm-ABI grid row for the appending-`insert`
+  pair-map ABI class remains OWED, recorded in `cddl-matrix/ROADMAP.md` § "wasm-ABI & multifile
+  placement matrices — remaining work" alongside its reject sibling; the robustness/core pins
+  above are the interim per-fixture coverage.
 
 ### Decode-direction conformance (`tests/decode_conformance/` — accept what the spec accepts)
 

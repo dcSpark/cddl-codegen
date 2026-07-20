@@ -368,6 +368,11 @@ for (const r of rows) {
 const EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
   "contain.choice-member.prelude.null": ["3", "7"],
   "contain.choice-member.type2.tag": ["6"],
+  // `@duplicates reject`'s example spells the tag-set idiom's two WIRE arms (`#6.258([..]) / [..]`
+  // — tag → major 6, array → major 4) even though codegen collapses it to one transparent type, so
+  // the floor demands an accept vector per wire arm — the same per-arm evidence the corpus
+  // tag_set_* rows pin. (The preserve sibling's example is a single-arm table; no floor entry.)
+  "dsl.duplicates.reject": ["4", "6"],
   "prelude.bigint": ["6"],
   "prelude.bool": ["7"],
   "prelude.float": ["7"],
@@ -647,6 +652,11 @@ const CORPUS_EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
   "nullable_nested.maybe_denum": ["7"],  // `data_enum / null` — the enum arm is exempt (a named choice), null → 7
   "nullable_nested.maybe_uint": ["7", "int"],
   "table_enum_key.ikey": ["int"],
+  // `@duplicates preserve` corpus fixture (matrix-registration packet): the recursive metadatum
+  // union `md = mdmap / [* md] / int / bytes / text`. The mdmap arm is exempt (a named table);
+  // the remaining arms pin per wire class: bytes → 2, text → 3, the anonymous `[* md]` array → 4,
+  // and int → "int" (majors 0/1 merged). Pinned from the mint's actuals.
+  "table_preserve.md": ["2", "3", "4", "int"],
   // REQUEST-08 tag-set rows: the CDDL still SPELLS two arms (`#6.258([..]) / [..]` — tag → major 6,
   // array → major 4) even though codegen collapses the idiom to one transparent type, so the floor
   // demands an accept vector per WIRE arm — exactly the both-arms decode evidence the collapse needs.
