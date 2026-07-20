@@ -6541,6 +6541,11 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
+hex = "8200820a0a"
+source = "hand"
+expect = "accept"
+
+[[row.vector]]
 hex = "820082190e7a1902cd"
 source = "ruby-generate"
 expect = "accept"
@@ -6571,6 +6576,11 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
+hex = "8200d90102820a0a"
+source = "hand"
+expect = "accept"
+
+[[row.vector]]
 hex = "8200d90102841905d219025d190d68190953"
 source = "ruby-generate"
 expect = "accept"
@@ -6596,6 +6606,11 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
+hex = "8200820a0a"
+source = "hand"
+expect = "accept"
+
+[[row.vector]]
 hex = "820084190869190f041912181908dc"
 source = "ruby-generate"
 expect = "accept"
@@ -6618,6 +6633,11 @@ expect = "accept"
 [[row.vector]]
 hex = "8200d9010281190a05"
 source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d90102820a0a"
+source = "hand"
 expect = "accept"
 
 [[row.vector]]

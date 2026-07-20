@@ -52,3 +52,12 @@ bool_table_holder = [bt: bool_table]
 ; (Vec<String>), wrap in a record.
 opt_set        = #6.258([* tstr]) / [* tstr]
 opt_set_holder = [s: opt_set]
+
+; DUPLICATE-carrying set instances are spec-VALID (cddl `[* a]` / `[+ a]` are plain arrays; tag 258's
+; "mathematical set" semantics is not a cddl uniqueness constraint) and, in the default preserve-mode
+; policy, must round-trip BYTE-EXACT with the duplicates and their order intact — the multi-era
+; byte-exact-reader guarantee that made preserve the correct set default. This is the regression floor
+; for that guarantee: the `[+]` twin (collapses to NonEmptyVec) alongside the `[*]` twin above, so both
+; occurrence flavors are pinned. Vectors live in tests.rs.
+opt_neset        = #6.258([+ tstr]) / [+ tstr]
+opt_neset_holder = [s: opt_neset]
