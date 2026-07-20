@@ -433,3 +433,9 @@ opt_fixed_map = {a: uint, ? m_uint: 5, ? m_text: "tag", ? m_nint: -7, ? m_bool: 
 ; tests/corpus/optional_fixed_float.cddl.
 opt_fixed_arr_float = [a: uint, ? ffix: 2.5, b: text]
 opt_fixed_map_float = {a: uint, ? m_float: 2.5}
+
+; `@duplicates reject` set idiom: the wasm wrapper wraps the OrderedSet uniqueness twin and exposes a
+; CHECKED `add` (Result-returning; refuses an already-present element). Exercised at the wasm boundary
+; by tests_wasm.rs (checked-add refusal + try_from door + embedded round-trip through reject_set_holder).
+reject_uint_set    = #6.258([* uint]) / [* uint] ; @duplicates reject
+reject_set_holder  = [s: reject_uint_set]

@@ -100,9 +100,11 @@ changing the *runtime behaviour* of generated code usually means editing `static
   workarounds (newline-smuggled attrs, the `derivative)]` hack) stay isolated — the real fix is
   upstream; no `Ctx { types, cli }` param-pair struct (borrow-splitting `&mut GenerationScope` +
   `&IntermediateTypes` gets harder behind one struct); `api::with_types` stays one linear
-  narrative; `print!` progress logging stays (humans and tests consume it as-is); the twin
-  non-empty collision detectors stay twins unless a third container kind appears (their message
-  texts differ meaningfully and are pinned).
+  narrative; `print!` progress logging stays (humans and tests consume it as-is); the wasm
+  wrapper-name collision detectors stay parallel per-kind siblings rather than one generic
+  detector (their message texts differ meaningfully and are pinned) — the anticipated third
+  container kind (`@duplicates reject` sets) appeared 2026-07-20 and was added as exactly such a
+  sibling; a fourth kind gets the same treatment.
 
 ## Git workflow
 

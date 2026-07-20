@@ -4,7 +4,10 @@ impl<T: schemars::JsonSchema> schemars::JsonSchema for OrderedSet<T> {
     }
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         // shape matches the loose Vec (a JSON array); the uniqueness invariant is enforced at TryFrom.
-        // A `uniqueItems: true` refinement rides the JSON-parity work packet.
+        // Deliberately NOT refined with `uniqueItems: true`: the sibling NonEmptyVec schemars impl sets
+        // the convention of delegating to the Vec schema without invariant refinements (its `>= 1`
+        // bound is likewise not surfaced as `minItems`) — the door is the single source of the
+        // invariant, and json2ts emits the same array type either way.
         Vec::<T>::json_schema(generator)
     }
     fn inline_schema() -> bool {

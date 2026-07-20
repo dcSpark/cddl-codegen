@@ -22,6 +22,8 @@ fn _assert_serialize<T: cbor_event::se::Serialize>() {}
 #[allow(dead_code)]
 fn _assert_deserialize<T: crate::generated::serialization::Deserialize>() {}
 #[allow(unused_imports)]
+use crate::generated::RejectUints as _;
+#[allow(unused_imports)]
 use crate::generated::Table as _;
 #[allow(dead_code)]
 fn _extern_interface_self_check() {
@@ -41,6 +43,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::NevJson>();
     _assert_serialize::<crate::generated::NintWrapper>();
     _assert_deserialize::<crate::generated::NintWrapper>();
+    _assert_serialize::<crate::generated::RejectSetJson>();
+    _assert_deserialize::<crate::generated::RejectSetJson>();
     _assert_serialize::<crate::generated::StrWrapper>();
     _assert_deserialize::<crate::generated::StrWrapper>();
     _assert_serialize::<crate::generated::StructWrapper>();
