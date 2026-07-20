@@ -1,0 +1,30 @@
+; The `@duplicates preserve` policy on table rules (phase 2 of the per-rule duplicates policy).
+; `preserve` swaps the transparent alias target from the loose keyed table (`BTreeMap`/
+; `OrderedHashMap`) to the vec-of-pairs twin `PairMap`/`NonEmptyPairMap` — the only shape faithful
+; to both entry order and duplicate keys — so a duplicate-keyed map (spec-VALID CBOR: cddl imposes
+; no map-key-uniqueness constraint) decodes AND re-emits byte-exactly. The driver is pre-Conway
+; Cardano `transaction_metadata`, whose auxiliary-data hash is computed over the ORIGINAL bytes: a
+; reader that collapses or reorders duplicate keys fails hash verification.
+;
+; - `pmap`      — `{* k => v}` preserve -> `PairMap<u64, String>` (no invariant, appending insert).
+; - `nepmap`    — `{+ k => v}` preserve -> `NonEmptyPairMap<u64, String>` (its single `TryFrom`
+;                 door composes the min-1 `RangeCheck` with the pair-vec; wire and API errors are
+;                 identical).
+; - `ptbl`/`pmap_txt` — a NAMED generic instance of a preserve-flavored generic def, proving the
+;                 policy survives generic use-site re-resolution (the instance resolves to a
+;                 transparent `PairMap<String, u64>` alias and lowers through the structural wasm
+;                 wrapper, recovering the pair-map flavor from the shape).
+; - `md`/`mdmap` — the `transaction_metadata` shape: a RECURSIVE metadatum union whose map arm is a
+;                 named preserve table (the directive is per-rule, so the inline arm is named).
+;                 Recursion lives in the map VALUE; a union-keyed table (`{* md => md}`) trips a
+;                 pre-existing, policy-independent keys-list synthesis panic (see the
+;                 TESTING_ROADMAP phase-2 residual), and real metadata keys are int/text/bytes.
+; - `holder`    — embeds the preserve rules in record-field position (incl. an OPTIONAL field) so
+;                 the member-side (de)serialize and optional-field wrapping compile and round-trip.
+pmap = { * uint => text } ; @duplicates preserve
+nepmap = { + uint => text } ; @duplicates preserve
+ptbl<k0, v0> = { * k0 => v0 } ; @duplicates preserve
+pmap_txt = ptbl<text, uint>
+md = mdmap / [* md] / int / bytes / text
+mdmap = { * text => md } ; @duplicates preserve
+holder = [p: pmap, np: nepmap, g: pmap_txt, m: md, ? o: pmap]

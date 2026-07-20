@@ -722,6 +722,14 @@
       "reason": "expected exactly one root rule, found 2"
     },
     {
+      "feature": "dsl.duplicates.preserve",
+      "reason": "DSL comment in root RHS; not a clean reusable expression"
+    },
+    {
+      "feature": "dsl.duplicates.reject",
+      "reason": "DSL comment in root RHS; not a clean reusable expression"
+    },
+    {
       "feature": "dsl.name",
       "reason": "DSL comment in root RHS; not a clean reusable expression"
     },

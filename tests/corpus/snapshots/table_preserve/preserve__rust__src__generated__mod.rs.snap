@@ -1,0 +1,182 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(clippy::too_many_arguments)]
+
+pub mod error;
+pub mod non_empty_map;
+pub mod ordered_hash_map;
+pub mod pair_map;
+extern crate derivative;
+pub mod cbor_encodings;
+mod extern_interface_check;
+pub mod serialization;
+
+use crate::generated::error::*;
+use crate::generated::pair_map::{NonEmptyPairMap, PairMap};
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+use cbor_encodings::HolderEncoding;
+
+#[derive(Clone, Debug)]
+pub struct Holder {
+    pub p: Pmap,
+    pub np: Nepmap,
+    pub g: PmapTxt,
+    pub m: Md,
+    pub o: Option<Pmap>,
+    pub encodings: Option<HolderEncoding>,
+}
+
+impl Holder {
+    pub fn new(p: Pmap, np: Nepmap, g: PmapTxt, m: Md) -> Self {
+        Self {
+            p,
+            np,
+            g,
+            m,
+            o: None,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum Int {
+    Uint {
+        value: u64,
+        encoding: Option<cbor_event::Sz>,
+    },
+    Nint {
+        value: u64,
+        encoding: Option<cbor_event::Sz>,
+    },
+}
+
+impl Int {
+    pub fn new_uint(value: u64) -> Self {
+        Self::Uint {
+            value,
+            encoding: None,
+        }
+    }
+
+    /// * `value` - Value as encoded in CBOR - note: a negative `x` here would be `|x + 1|` due to CBOR's `nint` encoding e.g. to represent -5, pass in 4.
+    pub fn new_nint(value: u64) -> Self {
+        Self::Nint {
+            value,
+            encoding: None,
+        }
+    }
+}
+
+impl std::fmt::Display for Int {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Uint { value, .. } => write!(f, "{}", value),
+            Self::Nint { value, .. } => write!(f, "{}", -((*value as i128) + 1)),
+        }
+    }
+}
+
+impl std::str::FromStr for Int {
+    type Err = IntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let x = i128::from_str(s).map_err(IntError::Parsing)?;
+        Self::try_from(x).map_err(IntError::Bounds)
+    }
+}
+
+impl TryFrom<i128> for Int {
+    type Error = std::num::TryFromIntError;
+
+    fn try_from(x: i128) -> Result<Self, Self::Error> {
+        if x >= 0 {
+            u64::try_from(x).map(|x| Self::Uint {
+                value: x,
+                encoding: None,
+            })
+        } else {
+            u64::try_from((x + 1).unsigned_abs()).map(|x| Self::Nint {
+                value: x,
+                encoding: None,
+            })
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum IntError {
+    Bounds(std::num::TryFromIntError),
+    Parsing(std::num::ParseIntError),
+}
+
+#[derive(Clone, Debug)]
+pub enum Md {
+    Mdmap {
+        mdmap: Mdmap,
+        mdmap_encoding: LenEncoding,
+        mdmap_key_encodings: Vec<StringEncoding>,
+    },
+    ArrMd {
+        arr_md: Vec<Md>,
+        arr_md_encoding: LenEncoding,
+    },
+    Int(Int),
+    Bytes {
+        bytes: Vec<u8>,
+        bytes_encoding: StringEncoding,
+    },
+    Text {
+        text: String,
+        text_encoding: StringEncoding,
+    },
+}
+
+impl Md {
+    pub fn new_mdmap(mdmap: Mdmap) -> Self {
+        Self::Mdmap {
+            mdmap,
+            mdmap_encoding: LenEncoding::default(),
+            mdmap_key_encodings: Vec::new(),
+        }
+    }
+
+    pub fn new_arr_md(arr_md: Vec<Md>) -> Self {
+        Self::ArrMd {
+            arr_md,
+            arr_md_encoding: LenEncoding::default(),
+        }
+    }
+
+    pub fn new_int(int: Int) -> Self {
+        Self::Int(int)
+    }
+
+    pub fn new_bytes(bytes: Vec<u8>) -> Self {
+        Self::Bytes {
+            bytes,
+            bytes_encoding: StringEncoding::default(),
+        }
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text {
+            text,
+            text_encoding: StringEncoding::default(),
+        }
+    }
+}
+
+pub type Mdmap = PairMap<String, Md>;
+
+/// `{+ u64 => String}`: at least one entry, enforced at the `NonEmptyMap` `TryFrom` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
+pub type Nepmap = NonEmptyPairMap<u64, String>;
+
+pub type Pmap = PairMap<u64, String>;
+
+pub type PmapTxt = PairMap<String, u64>;

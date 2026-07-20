@@ -149,6 +149,26 @@ desc = "On a _CDDL_CODEGEN_EXTERN_TYPE_ generic, makes instances whose argument 
 example = "ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_ ; @raw_bytes_flavor"
 
 [[feature]]
+id = "dsl.duplicates.reject"
+production = "comment_dsl"
+alt = "@duplicates reject"
+rfc = "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@duplicates; src/comment_ast.rs"
+profile = "CDDL_CODEGEN"
+title = "@duplicates reject — duplicate-free set/array collections"
+desc = "Per-rule duplicates policy, reject flavor: on a set/array collection rule ([* a] / [+ a], including the tag-258 set idiom) the transparent alias swaps to the order-preserving uniqueness twin OrderedSet/NonEmptyOrderedSet, whose single TryFrom door refuses a duplicate (DeserializeFailure::DuplicateKey) identically on the wire and through the API. Accepted (duplicate-free) input still re-emits byte-exactly — rejection narrows the accepted set, never the accepted bytes. On a table, reject is the default (writing it is an accepted self-documenting no-op). The directive takes exactly one required argument; there is no bare form (a missing/unknown argument is a parse-time panic)."
+example = "iset = #6.258([* uint]) / [* uint] ; @duplicates reject"
+
+[[feature]]
+id = "dsl.duplicates.preserve"
+production = "comment_dsl"
+alt = "@duplicates preserve"
+rfc = "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@duplicates; src/comment_ast.rs"
+profile = "CDDL_CODEGEN"
+title = "@duplicates preserve — duplicate-preserving pair-map tables"
+desc = "Per-rule duplicates policy, preserve flavor: on a table rule ({* k => v} / {+ k => v}) the transparent alias swaps to the Vec<(K, V)>-backed PairMap/NonEmptyPairMap twin — the only shape faithful to both entry order and duplicate keys — so a duplicate-keyed map decodes AND re-emits byte-exactly (driver: pre-Conway Cardano transaction_metadata, whose auxiliary-data hash is computed over the original bytes). JSON diverges to an array of [k, v] pairs (an object would collapse duplicates); under --canonical-form entries stable-sort by encoded key bytes with duplicates adjacent. On a set/array, preserve is the default (writing it is an accepted self-documenting no-op)."
+example = "meta = { * uint => text } ; @duplicates preserve"
+
+[[feature]]
 id = "dsl.custom_json"
 production = "comment_dsl"
 alt = "@custom_json"

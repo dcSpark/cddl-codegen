@@ -237,13 +237,16 @@ const DSL_TAGS: TagParse[] = [
   // @duplicates: one REQUIRED argument from a strict vocabulary (`preserve`/`reject`), consumed as
   // the arg so a directive after it is still reachable. On a missing/unknown argument comment_ast
   // PANICS (the fixture couldn't have generated), so — like @used_as_key's non-flavor word — the
-  // mirror refuses the credit rather than false-crediting.
+  // mirror refuses the credit rather than false-crediting. The credited id is the per-flavor
+  // FEATURE row id (`dsl.duplicates.reject` / `dsl.duplicates.preserve` — the registered flavored
+  // siblings); there is no bare `dsl.duplicates` feature because the bare directive has no valid
+  // spelling (comment_ast panics on the missing arg), unlike `@used_as_key`'s bare form.
   s => {
     if (!s.startsWith("@duplicates")) return null;
     const after = ws(s.slice("@duplicates".length));
     const m = after.match(/^[^\s@]+/);
     if (!m || (m[0] !== "preserve" && m[0] !== "reject")) return null; // comment_ast panics — no credit
-    return { id: "dsl.duplicates", rest: after.slice(m[0].length) };
+    return { id: `dsl.duplicates.${m[0]}`, rest: after.slice(m[0].length) };
   },
   noArg("dsl.custom_json", "@custom_json"),
   argRequired("dsl.custom_serialize", "@custom_serialize"),
@@ -496,13 +499,23 @@ function selfCheck() {
   }
   // @duplicates consumes its one required arg (preserve/reject), so a following directive is still
   // parsed; a missing/unknown arg makes comment_ast panic, so the mirror credits nothing (no
-  // over-credit of the trailing prose either).
+  // over-credit of the trailing prose either). The credit is the PER-FLAVOR feature id
+  // (`dsl.duplicates.reject` / `dsl.duplicates.preserve`); no bare `dsl.duplicates` id exists (the
+  // bare directive has no valid spelling), and each flavor must credit exactly its own id.
   {
     const r = featuresIn("x = [* uint] ; @duplicates reject @no_alias").dsl;
-    if (!r.has("dsl.duplicates") || !r.has("dsl.no_alias")) throw new Error("selfCheck: @duplicates <arg> @no_alias must credit BOTH");
-    if (featuresIn("x = uint ; @duplicates").dsl.has("dsl.duplicates")) throw new Error("selfCheck: bare @duplicates (missing required arg) must NOT be credited (comment_ast panics)");
-    if (featuresIn("x = uint ; @duplicates allow").dsl.has("dsl.duplicates")) throw new Error("selfCheck: @duplicates with an unknown arg must NOT be credited (comment_ast panics)");
-    if (featuresIn("x = uint ; @duplicates @newtype").dsl.has("dsl.duplicates")) throw new Error("selfCheck: @duplicates immediately followed by a directive (no arg) must NOT be credited");
+    if (!r.has("dsl.duplicates.reject") || !r.has("dsl.no_alias")) throw new Error("selfCheck: @duplicates reject @no_alias must credit BOTH (per-flavor id)");
+    if (r.has("dsl.duplicates.preserve")) throw new Error("selfCheck: @duplicates reject must NOT credit the preserve flavor");
+    const p = featuresIn("x = { * uint => text } ; @duplicates preserve").dsl;
+    if (!p.has("dsl.duplicates.preserve")) throw new Error("selfCheck: @duplicates preserve must credit dsl.duplicates.preserve");
+    if (p.has("dsl.duplicates.reject")) throw new Error("selfCheck: @duplicates preserve must NOT credit the reject flavor");
+    const noCredit = (spec: string) => {
+      const d = featuresIn(spec).dsl;
+      return !d.has("dsl.duplicates.reject") && !d.has("dsl.duplicates.preserve");
+    };
+    if (!noCredit("x = uint ; @duplicates")) throw new Error("selfCheck: bare @duplicates (missing required arg) must NOT be credited (comment_ast panics)");
+    if (!noCredit("x = uint ; @duplicates allow")) throw new Error("selfCheck: @duplicates with an unknown arg must NOT be credited (comment_ast panics)");
+    if (!noCredit("x = uint ; @duplicates @newtype")) throw new Error("selfCheck: @duplicates immediately followed by a directive (no arg) must NOT be credited");
   }
   // keyless inline group directly inside a container is grpent.inline_group, NOT type2.parenthesized
   // (the comma form is covered above at line ~265; this is the keyless single-type form).

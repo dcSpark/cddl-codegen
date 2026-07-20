@@ -6317,6 +6317,317 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "table_preserve.holder"
+axis = "corpus"
+example = "pmap = { * uint => text } ; @duplicates preserve\nnepmap = { + uint => text } ; @duplicates preserve\nptbl<k0, v0> = { * k0 => v0 } ; @duplicates preserve\npmap_txt = ptbl<text, uint>\nmd = mdmap / [* md] / int / bytes / text\nmdmap = { * text => md } ; @duplicates preserve\nholder = [p: pmap, np: nepmap, g: pmap_txt, m: md, ? o: pmap]"
+fixture = "table_preserve"
+rule = "holder"
+spec = "__probe_holder = [0, holder]\npmap = { * uint => text } ; @duplicates preserve\nnepmap = { + uint => text } ; @duplicates preserve\nptbl<k0, v0> = { * k0 => v0 } ; @duplicates preserve\npmap_txt = ptbl<text, uint>\nmd = mdmap / [* md] / int / bytes / text\nmdmap = { * text => md } ; @duplicates preserve\nholder = [p: pmap, np: nepmap, g: pmap_txt, m: md, ? o: pmap]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820084a1190a5569456e72697175652773a3188467646f65736e2774190b14666469616c27731903fb69626567676172696e67a46b696e6372656d656e7427731910626a7065726f786964652773190e3a65616c61726d19076f674b6c65696e277319059c844a7265636970726f63616c69696e7465726c616365a081a26a7461776472696e65737319095a6a756e73746f7070696e67a36873706c6174746572a269526f6c766161672773a167486974746974654b626f6f6b6d61726b696e676770697479696e674b42617274686f6c6f6d657765476f61277381834b73637265656e696e67277348636572756c65616ea26450696166a06867616d657465277383696772756e6769657374190a71381b687065726a7572657348506167616e696e69"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820084a219109467756e63617365641907f666636f636b6564a2190c8f67616e7468656d731908cf686469736c696b6564a3666361646765721908fc68746f726d656e74731902796666616c636f6e1910f46b6a656c6c79666973686573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820084a3190c0f69736372616d626c65731909bd68706c656174696e671906ae687765656465722773a4190e4269646576696c6d656e74190bcf69706174686f6c6f6779190d76647075747419043e664d7572696e65a1625a6e191031a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820084a4190b01674d6172746127731907ed66616273656e74190f35686173746f756e647319078069666c79776569676874a119014a6a64697366696775726564a16853656e696f72277319071719039d"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820085a0a4190e966773686f636b27731906c46d746865726d6f706c6173746963191086656e6f766173190818656b6e6f7473a0a1676d616c746564734b726f756e64686f75736573a41909836770686f65626573190e8a6873686562616e677319054d6965646962696c69747918b968736e756666657273"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820085a1190f646c72656369746174696f6e2773a4182e68617373657373656419060b6c72656170706f7274696f6e73190abe6b4d7573736f6c696e69277319041f6761766174617273a366627573746564190a2668616e676572696e6719073769686974636868696b651908ff83696368656d6973742773390293474476696e612773a219027a6a616e676c65776f726d731907b66968796472616e676561"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820085a21908e46e636f6e736563726174696f6e2773190ed86b707269766174696f6e2773a21909fe6b77696c6c696e676e6573731906c66a6c617069646172792773a4677461636b6c65731901da6a53656c61737369652773190b6b67636974726f6e7319069e6e696d706f6c6974656e657373657319010a8143436f6da41904ff686361657375726173190b7a69436f6d696e7465726e1901c4687365727669636573190164674c6f7569652773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820085a4190187667075736827731910b968626f6e69746f2773190f8a6c73636174746572627261696e19100b6b6f62667573636174696f6ea41903ab6a7363617468696e676c7919025e6a6c6173636976696f757319055369696e63657373616e74190b7a654d757a616ba06a74686f7567687466756ca119028f696169726c6966742773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820085a4190ef56b616368696576656d656e7418f365656c6b2773190c846a6672616e6368697365641904216c726570726573656e74696e67a1190dfe6b6275636b746f6f74686564a06972656c6f6361746564a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820085a419117e67736e65657265641911556a6469617472696265277319043068636f617574686f721906d769776174746167652773a31910ee675567616e64616e190f6e68656e736c617665641908e36b666c61766f72696e672773a46d6d6973726570726573656e74731909ee6b636f6d6d656e746174656418646e636f6e66696775726174696f6e73190786656e61766573190c17190f7da11902db6c6d696e6961747572697a6573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "table_preserve.md"
+axis = "corpus"
+example = "md = mdmap / [* md] / int / bytes / text\nmdmap = { * text => md } ; @duplicates preserve"
+fixture = "table_preserve"
+rule = "md"
+spec = "__probe_holder = [0, md]\nmd = mdmap / [* md] / int / bytes / text\nmdmap = { * text => md } ; @duplicates preserve"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820019094c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820038e6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82003902ad"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820046746872757374"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200496d696c6c696e657273"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82006773686164696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820080"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008281826962696f737068657265838367696e66616e637980804974656e646572696e67a2676865726f6e2773456f7264657268636f776c696e6773476f766572617465a16c7265616c6c6f636174696f6e390259"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a26b6166666c75656e6365277382190ba719048668726f627573746c79a2696c65667477617264738168616e73776572277368686179737461636b496e6172636f74696373"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a36873776f7070696e67a1656c69622773806a6a656f70617264697a656447696e6f6b6d61726d616c6164652773a36b636f6e7374697475746573486c65617468657279695072697363696c6c61a0656469636b73831901a6824670617374656c6d73656d696175746f6d61746963466f626f652773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a369627265616b646f776e46736d75646779686c6f616461626c6582696772656564696573744b6d7574696c6174696f6e7368636c616d6d696e67823901826a68616d737472696e6773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "table_preserve.mdmap"
+axis = "corpus"
+example = "md = mdmap / [* md] / int / bytes / text\nmdmap = { * text => md } ; @duplicates preserve"
+fixture = "table_preserve"
+rule = "mdmap"
+pinned_reason = "cddl-codegen cannot generate this construct standalone (holder+closure; cargo run exit 101)"
+
+[[row]]
+id = "table_preserve.nepmap"
+axis = "corpus"
+example = "nepmap = { + uint => text } ; @duplicates preserve"
+fixture = "table_preserve"
+rule = "nepmap"
+spec = "__probe_holder = [0, nepmap]\nnepmap = { + uint => text } ; @duplicates preserve"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a11905d36b65796573747261696e2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a2187a6b48696e64656d69746827731908e3674c6f7572646573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a2190ea5684d6172696f6e277319098a6467696674"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a219101e6a696e766569676c696e671911d868636f6e76656e7473"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a219120c6b766f636966657261746573190f9566436c61726b65"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a41901b16a77686f6c6573616c6564190f1265626f6e65721909df70706f70756c6172697a6174696f6e27731905e46c4d696e6e65736f74616e2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a419022b676861636b65727319066867686f706566756c19118f6966696c74726174657319010767676c6f73736564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a41904546a616476656e7475726573190e6568617661696c696e67190a9168616c69676e696e67190ebd66666964676574"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a41904596546534627731907566b65636f6e6f6d697a696e671910a56767756973652773190a406a6f757473747265746368"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a41910a664626c6f74190b49666861696c2773190a9f65536167616e190a846e72656170706f7274696f6e696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "table_preserve.pmap"
+axis = "corpus"
+example = "pmap = { * uint => text } ; @duplicates preserve"
+fixture = "table_preserve"
+rule = "pmap"
+spec = "__probe_holder = [0, pmap]\npmap = { * uint => text } ; @duplicates preserve"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1190a21677069636b617865"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1190bfe67736f6265726c79"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1190e4b696465707574697a6564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a218ee686d656574696e6773190b5e66706f65746963"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a21907c96577696e2773190a736c456e676c6973686d656e2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a419047364696f74611902976964616e6765726f757319115f6672616e636964191068614e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a419064c6762756c6c70656e190f1f685665726e6f6e2773190686694b7574757a6f762773190d60697661726d696e742773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a4191228646e6573741905496d4368616d6265726c61696e277319084767636f62626c65731909ae6b656d62656c6c6973686564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "table_preserve.pmap_txt"
+axis = "corpus"
+example = "ptbl<k0, v0> = { * k0 => v0 } ; @duplicates preserve\npmap_txt = ptbl<text, uint>"
+fixture = "table_preserve"
+rule = "pmap_txt"
+spec = "__probe_holder = [0, pmap_txt]\nptbl<k0, v0> = { * k0 => v0 } ; @duplicates preserve\npmap_txt = ptbl<text, uint>"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16766726f776e6564190ae1"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a168626f74746c696e671902de"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1696f6666656e646572731907f1"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1697079726f6d616e69611909e7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a16b6465657363616c6174656419096c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a36773776f6f6e2773190bb26867756c6c69626c65190123686c61766973686572190cb2"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a4696e65776e657373277319011468486563746f722773190b9e6c6361706974616c69736d2773190d8769636c65616e696e6773190190"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a46a42617074697374652773186b68427279616e7427731907756573776f72641908b169646973656e67616765190c41"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "table_preserve.ptbl"
+axis = "corpus"
+example = "ptbl<k0, v0> = { * k0 => v0 } ; @duplicates preserve"
+fixture = "table_preserve"
+rule = "ptbl"
+pinned_reason = "generic rule (head carries `<...>`); cannot be holder-wrapped bare — instantiations are covered via referencing rules"
+
+[[row]]
 id = "tag_set_generic.holder"
 axis = "corpus"
 example = "set<a0> = #6.258([* a0]) / [* a0]\nnonempty_set<a0> = #6.258([+ a0]) / [+ a0]\nnonempty_oset<a0> = #6.258([+ a0]) / [+ a0]\npoint = [x: uint, y: uint]\nholder = [a: set<uint>, b: nonempty_set<text>, c: nonempty_oset<point>]"
