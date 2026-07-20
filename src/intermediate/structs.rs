@@ -317,6 +317,10 @@ pub struct RustStructConfig {
     pub custom_deserialize: Option<String>,
     pub doc: Option<String>,
     pub newtype_getter: Option<Option<String>>,
+    /// `@duplicates` policy for a collection rule (`[* a]` / `[+ a]` / the tag-258 set idiom / a
+    /// table). Carried onto the registered transparent alias's `RustType` at `register_rust_struct`
+    /// so every embed site (and generic use-site re-resolution) sees the policy.
+    pub duplicates: Option<crate::comment_ast::DuplicatesPolicy>,
 }
 
 impl From<Option<&RuleMetadata>> for RustStructConfig {
@@ -328,6 +332,7 @@ impl From<Option<&RuleMetadata>> for RustStructConfig {
                 custom_deserialize: rule_metadata.custom_deserialize.clone(),
                 doc: rule_metadata.comment.clone(),
                 newtype_getter: rule_metadata.newtype.clone(),
+                duplicates: rule_metadata.duplicates,
             },
             None => Self::default(),
         }

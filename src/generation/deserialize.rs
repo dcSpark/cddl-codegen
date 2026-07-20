@@ -1698,7 +1698,36 @@ impl GenerationScope {
                         .add_to(&mut deser_loop);
                     }
                     deser_code.content.push_block(deser_loop);
-                    if type_cfg.bounds == Some((Some(1), None)) {
+                    let reject_dups =
+                        type_cfg.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Reject);
+                    if reject_dups {
+                        // `@duplicates reject`: route the collected Vec through the SAME uniqueness
+                        // twin `TryFrom` door the API uses, so a duplicate on the wire and a duplicate
+                        // built through the API report the identical `DuplicateKey(index)` error and
+                        // can never drift. The non-empty flavor's door additionally enforces the `[+]`
+                        // min-1 bound (same composed door). Encoding vars stay keyed off the field.
+                        let twin = if type_cfg.bounds == Some((Some(1), None)) {
+                            "NonEmptyOrderedSet"
+                        } else {
+                            "OrderedSet"
+                        };
+                        deser_code.content.line(&format!(
+                            "let {arr_var_name} = {twin}::try_from({arr_var_name})?;"
+                        ));
+                        // A non-`+` reject set may still carry OTHER occurrence bounds (`2*5` etc);
+                        // those stay a runtime length check on the accepted (unique) collection.
+                        if type_cfg.bounds != Some((Some(1), None))
+                            && let Some(bounds) = &type_cfg.bounds
+                        {
+                            deser_code.content.line(&bounds_check_if_block(
+                                bounds,
+                                &format!("{arr_var_name}.len()"),
+                                true,
+                                true,
+                                None,
+                            ));
+                        }
+                    } else if type_cfg.bounds == Some((Some(1), None)) {
                         // `[+ T]`: route the collected Vec through the SAME `TryFrom` door the API
                         // uses, so the wire side and API side report the identical RangeCheck error
                         // ("0 not at least 1") and can never drift. The encoding vars stay keyed off

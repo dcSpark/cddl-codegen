@@ -113,11 +113,15 @@ pub(crate) enum MintValue {
     Bytes { len: i128 },
     /// a vec of `count` copies of `elem`, or the empty vec when `elem` is `None`. When `non_empty`
     /// the target type is `NonEmptyVec<T>` (`[+ T]`), so it is built through the single TryFrom door
-    /// (`NonEmptyVec::try_from(vec![..]).unwrap()`).
+    /// (`NonEmptyVec::try_from(vec![..]).unwrap()`). When `reject` the target is the `@duplicates
+    /// reject` uniqueness twin (`OrderedSet<T>` / `NonEmptyOrderedSet<T>`): N identical copies would
+    /// panic at the uniqueness door, so a reject set is synthesized as a SINGLE element (trivially
+    /// unique, and still exercises the element wire path) routed through its twin door.
     Array {
         elem: Option<Box<MintValue>>,
         count: i128,
         non_empty: bool,
+        reject: bool,
     },
     /// a map of `count` entries with synthesized keys. When `non_empty` the target type is
     /// `NonEmptyMap<K, V>` (`{+ k => v}`), so it is built through the single TryFrom door
@@ -176,15 +180,32 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
             elem: Some(e),
             count,
             non_empty,
+            reject,
         } => {
-            let vec = format!("vec![{}; {count}]", render_rust(e));
-            if *non_empty {
-                // route through the single TryFrom door (same as every other construction path)
-                format!("NonEmptyVec::try_from({vec}).unwrap()")
+            if *reject {
+                // `@duplicates reject`: a single unique element through the twin door (see the variant
+                // doc — N identical copies would panic at the uniqueness scan).
+                let twin = if *non_empty {
+                    "NonEmptyOrderedSet"
+                } else {
+                    "OrderedSet"
+                };
+                format!("{twin}::try_from(vec![{}]).unwrap()", render_rust(e))
             } else {
-                vec
+                let vec = format!("vec![{}; {count}]", render_rust(e));
+                if *non_empty {
+                    // route through the single TryFrom door (same as every other construction path)
+                    format!("NonEmptyVec::try_from({vec}).unwrap()")
+                } else {
+                    vec
+                }
             }
         }
+        MintValue::Array {
+            elem: None,
+            reject: true,
+            ..
+        } => "OrderedSet::try_from(vec![]).unwrap()".to_owned(),
         MintValue::Array { elem: None, .. } => "vec![]".to_owned(),
         MintValue::Map {
             key,
@@ -1588,6 +1609,8 @@ pub(crate) fn mint_struct(
                 elem: valid_value_at(types, element_type, depth + 1).map(Box::new),
                 count: 1,
                 non_empty: *bounds == Some((Some(1), None)),
+                reject: rust_struct.config().duplicates
+                    == Some(crate::comment_ast::DuplicatesPolicy::Reject),
             })
         }
         // the reserved `int` prelude resolves to the hand-written `Int` extern (static prelude):
@@ -1639,6 +1662,7 @@ fn empty_collection(ty: &RustType) -> Option<MintValue> {
             elem: None,
             count: 0,
             non_empty: false,
+            reject: ty.config.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Reject),
         }),
         ConceptualRustType::Map(_, _) => Some(MintValue::DefaultMap),
         _ => None,
@@ -1704,6 +1728,7 @@ fn materialize_at(
                 elem: Some(Box::new(e)),
                 count: measure,
                 non_empty: ty.is_type_enforced_non_empty(),
+                reject: ty.config.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Reject),
             })
         }
         ConceptualRustType::Map(k, v) => {

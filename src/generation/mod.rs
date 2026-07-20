@@ -148,6 +148,10 @@ pub struct GenerationScope {
     /// hosts a requested NonEmpty wrapper's `NonEmptyVec`/`NonEmptyMap` type. Never set off the flag.
     requested_non_empty_vec: bool,
     requested_non_empty_map: bool,
+    /// W2 dep side, `@duplicates reject` twin: `true` when requested-wrapper emission produced a
+    /// reject-mode set wrapper whose `ordered_set` runtime the dep's OWN spec does not otherwise pull
+    /// in. ORed into the same runtime-provisioning gates as the NonEmpty flags. Never set off the flag.
+    requested_ordered_set: bool,
     no_deser_reasons: BTreeMap<RustIdent, Vec<String>>,
 }
 
@@ -180,6 +184,7 @@ impl GenerationScope {
             requested_attribution: BTreeMap::new(),
             requested_non_empty_vec: false,
             requested_non_empty_map: false,
+            requested_ordered_set: false,
             no_deser_reasons: BTreeMap::new(),
         }
     }
@@ -248,8 +253,15 @@ impl GenerationScope {
                         && let ConceptualRustType::Array(elem) =
                             &alias_info.base_type.conceptual_type
                     {
+                        // The min-1 door is `NonEmptyOrderedSet` under `@duplicates reject` (it
+                        // composes uniqueness with the bound), else `NonEmptyVec`.
+                        let door = if alias_info.base_type.is_reject_ordered_set() {
+                            "NonEmptyOrderedSet"
+                        } else {
+                            "NonEmptyVec"
+                        };
                         doc_lines.push(format!(
-                            "`[+ {}]`: at least one element, enforced at the `NonEmptyVec` \
+                            "`[+ {}]`: at least one element, enforced at the `{door}` \
                              `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same \
                              door, so wire-side and API-side rejection are identical).",
                             elem.for_rust_member(types, false, cli)
@@ -266,6 +278,39 @@ impl GenerationScope {
                             k.for_rust_member(types, false, cli),
                             v.for_rust_member(types, false, cli)
                         ));
+                    }
+                    // Self-describing doc for the transparent tag-N set idiom (`x = #6.N([* a]) / [* a]`):
+                    // the tag is an encoding detail, and the per-rule duplicates policy is spelled out
+                    // for BOTH stances so a reader never has to know the default.
+                    let set_tag = alias_info.base_type.encodings.iter().find_map(|e| match e {
+                        CBOREncodingOperation::OptionallyTagged(n) => Some(*n),
+                        _ => None,
+                    });
+                    if let Some(n) = set_tag {
+                        doc_lines.push(format!(
+                            "The tag-{n} set idiom: the tag is an encoding detail — both the \
+                             `#6.{n}(...)` and the bare-array wire forms are accepted (serialization \
+                             defaults to tagged), so either round-trips byte-exactly."
+                        ));
+                    }
+                    // The reject doc is scoped to ARRAY (set) aliases via `is_reject_ordered_set`
+                    // (conceptual `Array`): a table carrying `@duplicates reject` is a pure no-op
+                    // (today's default), so it must stay byte-identical to the no-directive table.
+                    if alias_info.base_type.is_reject_ordered_set() {
+                        doc_lines.push(
+                            "`@duplicates reject`: a repeated element is refused (a \
+                             `DuplicateKey` error) on both the wire and the API; accepted \
+                             (duplicate-free) input re-emits byte-exactly in wire order (the set is \
+                             order-preserving, never sorted)."
+                                .to_owned(),
+                        );
+                    } else if set_tag.is_some() {
+                        doc_lines.push(
+                            "Duplicate elements are preserved and re-emitted byte-exactly in wire \
+                             order (the default for a set idiom; opt into rejection with \
+                             `@duplicates reject`)."
+                                .to_owned(),
+                        );
                     }
                     if !doc_lines.is_empty() {
                         type_alias.doc(doc_lines.join("\n"));
@@ -500,7 +545,21 @@ impl GenerationScope {
                         // what keeps the synthesized name out of `own_wrapper_shapes`, so a
                         // `--wrapper-requests` consumer's structural import resolves via own-spec.
                         if cli.wasm && !types.is_anonymous_collection_instance(rust_ident) {
-                            if *bounds == Some((Some(1), None)) {
+                            let reject = rust_struct.config().duplicates
+                                == Some(crate::comment_ast::DuplicatesPolicy::Reject);
+                            let non_empty = *bounds == Some((Some(1), None));
+                            if reject {
+                                // `@duplicates reject` rule: its JS class is the uniqueness-twin
+                                // wrapper (wrapping core::OrderedSet / NonEmptyOrderedSet) so the
+                                // boundary conversion to the rust core stays an infallible `From`.
+                                self.generate_reject_ordered_set_type(
+                                    types,
+                                    element_type.clone(),
+                                    rust_ident,
+                                    non_empty,
+                                    cli,
+                                );
+                            } else if non_empty {
                                 // named `[+ T]` rule: its JS class is the RESTRICTED wrapper (wrapping
                                 // core::NonEmptyVec) under the rule ident, not the loose list wrapper.
                                 self.generate_non_empty_array_type(
@@ -744,6 +803,10 @@ impl GenerationScope {
             // only crates that actually use `{+ k => v}` pull in the NonEmptyMap runtime
             if types.uses_non_empty_map() || self.requested_non_empty_map {
                 self.rust_lib().raw("pub mod non_empty_map;");
+            }
+            // only crates that actually use `@duplicates reject` sets pull in the OrderedSet runtime
+            if types.uses_ordered_set() || self.requested_ordered_set {
+                self.rust_lib().raw("pub mod ordered_set;");
             }
         }
         if cli.preserve_encodings {
@@ -1106,6 +1169,18 @@ impl GenerationScope {
                     None,
                 );
             }
+            if types.uses_ordered_set() {
+                content.push_import(
+                    format!("{}::ordered_set", cli.common_import_rust()),
+                    "OrderedSet",
+                    None,
+                );
+                content.push_import(
+                    format!("{}::ordered_set", cli.common_import_rust()),
+                    "NonEmptyOrderedSet",
+                    None,
+                );
+            }
         }
 
         // serialization
@@ -1228,6 +1303,18 @@ impl GenerationScope {
                     content.push_import(
                         format!("{}::non_empty_map", cli.common_import_wasm()),
                         "NonEmptyMap",
+                        None,
+                    );
+                }
+                if types.uses_ordered_set() {
+                    content.push_import(
+                        format!("{}::ordered_set", cli.common_import_wasm()),
+                        "OrderedSet",
+                        None,
+                    );
+                    content.push_import(
+                        format!("{}::ordered_set", cli.common_import_wasm()),
+                        "NonEmptyOrderedSet",
                         None,
                     );
                 }

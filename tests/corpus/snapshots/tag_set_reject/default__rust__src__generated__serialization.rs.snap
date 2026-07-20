@@ -1,0 +1,216 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for Holder {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(
+            4 + match &self.t {
+                Some(x) => 1,
+                None => 0,
+            },
+        ))?;
+        serializer.write_tag(258u64)?;
+        serializer.write_array(cbor_event::Len::Len(self.s.len() as u64))?;
+        for element in self.s.iter() {
+            serializer.write_unsigned_integer(*element)?;
+        }
+        serializer.write_tag(258u64)?;
+        serializer.write_array(cbor_event::Len::Len(self.ns.len() as u64))?;
+        for element in self.ns.iter() {
+            serializer.write_unsigned_integer(*element)?;
+        }
+        serializer.write_tag(258u64)?;
+        serializer.write_array(cbor_event::Len::Len(self.g.len() as u64))?;
+        for element in self.g.iter() {
+            serializer.write_unsigned_integer(*element)?;
+        }
+        serializer.write_array(cbor_event::Len::Len(self.p.len() as u64))?;
+        for element in self.p.iter() {
+            serializer.write_unsigned_integer(*element)?;
+        }
+        if let Some(field) = &self.t {
+            serializer.write_tag(258u64)?;
+            serializer.write_array(cbor_event::Len::Len(field.len() as u64))?;
+            for element in field.iter() {
+                serializer.write_text(element)?;
+            }
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Holder {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(4)?;
+            let s = (|| -> Result<_, DeserializeError> {
+                if raw.cbor_type()? == cbor_event::Type::Tag {
+                    let tag = raw.tag()?;
+                    if tag != 258 {
+                        return Err(DeserializeFailure::TagMismatch {
+                            found: tag,
+                            expected: 258,
+                        }
+                        .into());
+                    }
+                }
+                let mut s_arr = Vec::new();
+                let len = raw.array()?;
+                while match len {
+                    cbor_event::Len::Len(n) => (s_arr.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    s_arr.push(raw.unsigned_integer()?);
+                }
+                let s_arr = OrderedSet::try_from(s_arr)?;
+                Ok(s_arr)
+            })()
+            .map_err(|e| e.annotate("s"))?;
+            let ns = (|| -> Result<_, DeserializeError> {
+                if raw.cbor_type()? == cbor_event::Type::Tag {
+                    let tag = raw.tag()?;
+                    if tag != 258 {
+                        return Err(DeserializeFailure::TagMismatch {
+                            found: tag,
+                            expected: 258,
+                        }
+                        .into());
+                    }
+                }
+                let mut ns_arr = Vec::new();
+                let len = raw.array()?;
+                while match len {
+                    cbor_event::Len::Len(n) => (ns_arr.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    ns_arr.push(raw.unsigned_integer()?);
+                }
+                let ns_arr = NonEmptyOrderedSet::try_from(ns_arr)?;
+                Ok(ns_arr)
+            })()
+            .map_err(|e| e.annotate("ns"))?;
+            let g = (|| -> Result<_, DeserializeError> {
+                if raw.cbor_type()? == cbor_event::Type::Tag {
+                    let tag = raw.tag()?;
+                    if tag != 258 {
+                        return Err(DeserializeFailure::TagMismatch {
+                            found: tag,
+                            expected: 258,
+                        }
+                        .into());
+                    }
+                }
+                let mut g_arr = Vec::new();
+                let len = raw.array()?;
+                while match len {
+                    cbor_event::Len::Len(n) => (g_arr.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    g_arr.push(raw.unsigned_integer()?);
+                }
+                let g_arr = OrderedSet::try_from(g_arr)?;
+                Ok(g_arr)
+            })()
+            .map_err(|e| e.annotate("g"))?;
+            let p = (|| -> Result<_, DeserializeError> {
+                let mut p_arr = Vec::new();
+                let len = raw.array()?;
+                while match len {
+                    cbor_event::Len::Len(n) => (p_arr.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    p_arr.push(raw.unsigned_integer()?);
+                }
+                let p_arr = OrderedSet::try_from(p_arr)?;
+                Ok(p_arr)
+            })()
+            .map_err(|e| e.annotate("p"))?;
+            let t = if raw
+                .cbor_type()
+                .map(|ty| vec![cbor_event::Type::Tag, cbor_event::Type::Array].contains(&ty))
+                .unwrap_or(false)
+            {
+                (|| -> Result<_, DeserializeError> {
+                    read_len.read_elems(1)?;
+                    if raw.cbor_type()? == cbor_event::Type::Tag {
+                        let tag = raw.tag()?;
+                        if tag != 258 {
+                            return Err(DeserializeFailure::TagMismatch {
+                                found: tag,
+                                expected: 258,
+                            }
+                            .into());
+                        }
+                    }
+                    let mut t_arr = Vec::new();
+                    let len = raw.array()?;
+                    while match len {
+                        cbor_event::Len::Len(n) => (t_arr.len() as u64) < n,
+                        cbor_event::Len::Indefinite => true,
+                    } {
+                        if matches!(len, cbor_event::Len::Indefinite)
+                            && raw.cbor_type()? == cbor_event::Type::Special
+                            && raw.special_break()?
+                        {
+                            break;
+                        }
+                        t_arr.push(raw.text()?);
+                    }
+                    let t_arr = OrderedSet::try_from(t_arr)?;
+                    Ok(t_arr)
+                })()
+                .map_err(|e| e.annotate("t"))
+                .map(Some)
+            } else {
+                Ok(None)
+            }?;
+            match len {
+                cbor_event::Len::Len(_) => read_len.finish()?,
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(Holder { s, ns, g, p, t })
+        })()
+        .map_err(|e| e.annotate("Holder"))
+    }
+}

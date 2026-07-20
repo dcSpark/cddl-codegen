@@ -61,3 +61,12 @@ opt_set_holder = [s: opt_set]
 ; occurrence flavors are pinned. Vectors live in tests.rs.
 opt_neset        = #6.258([+ tstr]) / [+ tstr]
 opt_neset_holder = [s: opt_neset]
+
+; `@duplicates reject` set idiom under preserve: `reject` narrows WHICH inputs are accepted (a
+; duplicate is refused) but must not touch the bytes of what IS accepted — a duplicate-free instance
+; re-emits byte-exact in wire order, exactly like the preserve default (the twin is order-preserving,
+; never sorted). This pins that accept-path byte identity for both wire arms; the reject path (a
+; duplicate on the wire → DuplicateKey) is spec-VALID CBOR the oracle can't model, so it lives in an
+; in-process integration test rather than here or the decode catalog.
+reject_set        = #6.258([* tstr]) / [* tstr] ; @duplicates reject
+reject_set_holder = [s: reject_set]

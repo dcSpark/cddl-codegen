@@ -3,7 +3,7 @@ use cddl::ast::parent::ParentVisitor;
 use cddl::{ast::*, token};
 use std::collections::BTreeMap;
 
-use crate::comment_ast::{RuleMetadata, merge_metadata, metadata_from_comments};
+use crate::comment_ast::{DuplicatesPolicy, RuleMetadata, merge_metadata, metadata_from_comments};
 use crate::intermediate::{
     AliasIdent, AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant,
     FixedValue, FloatWindow, GenericDef, GenericInstance, IntermediateTypes, ModuleScope,
@@ -452,9 +452,13 @@ fn parse_type_choices(
             println!(
                 "Collapsing rule `{name}` (tag {set_tag} set idiom) into a transparent optionally-tagged collection"
             );
-            // The collapse target is an array-shaped collection (or a table) — exactly where
-            // `@duplicates` WILL apply, but the behavior is not yet built.
-            if rule_metadata.duplicates.is_some() {
+            // The collapse target is an array-shaped collection (or a table). `@duplicates` applies:
+            // an array `reject` is LIVE (the policy rides the alias built below); an array `preserve`
+            // and a table `reject` are today's defaults (accepted no-op, self-documentation); only a
+            // table `preserve` is the phase-2 pair-vec representation, still refused loudly.
+            if rule_metadata.duplicates == Some(DuplicatesPolicy::Preserve)
+                && matches!(base.conceptual_type, ConceptualRustType::Map(_, _))
+            {
                 reject_duplicates_not_yet_built(types, name);
             }
             let bounds = base.config.bounds;
@@ -3128,10 +3132,9 @@ fn parse_group_choice(
     let rust_struct =
         match parse_group_type(types, parent_visitor, group_choice, rep, Some(name), cli) {
             GroupParsingType::HomogenousArray(element_type, bounds) => {
-                // Array-shaped collection — exactly where `@duplicates` WILL apply, not yet built.
-                if rule_metadata.duplicates.is_some() {
-                    reject_duplicates_not_yet_built(types, name);
-                }
+                // Array-shaped collection: `@duplicates reject` is LIVE (rides the alias built in
+                // `register_rust_struct`), `preserve` is the default (accepted no-op). Nothing to
+                // reject here.
                 // A plain group used as the array element (`pair = (int, tstr)`, `a = [* pair]`) must be
                 // registered as a concrete Array-rep rust struct, exactly like the anonymous member-array
                 // path (`rust_type_from_type2`'s `Type2::Array` arm) and the record path both do. Without
@@ -3171,8 +3174,9 @@ fn parse_group_choice(
                 }
             }
             GroupParsingType::HomogenousMap(key_type, value_type, bounds) => {
-                // Table collection — where `@duplicates` WILL apply (phase 2), not yet built.
-                if rule_metadata.duplicates.is_some() {
+                // Table collection: `reject` is today's default (accepted no-op); only `preserve`
+                // (the phase-2 pair-vec representation) is refused loudly.
+                if rule_metadata.duplicates == Some(DuplicatesPolicy::Preserve) {
                     reject_duplicates_not_yet_built(types, name);
                 }
                 // Same registration gap as the array arm above: a plain group used as a table key or

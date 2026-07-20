@@ -29,9 +29,13 @@ impl Holder {
 }
 
 /// `[+ Point]`: at least one element, enforced at the `NonEmptyVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
+/// The tag-258 set idiom: the tag is an encoding detail — both the `#6.258(...)` and the bare-array wire forms are accepted (serialization defaults to tagged), so either round-trips byte-exactly.
+/// Duplicate elements are preserved and re-emitted byte-exactly in wire order (the default for a set idiom; opt into rejection with `@duplicates reject`).
 pub type NonemptyOsetPoint = NonEmptyVec<Point>;
 
 /// `[+ String]`: at least one element, enforced at the `NonEmptyVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
+/// The tag-258 set idiom: the tag is an encoding detail — both the `#6.258(...)` and the bare-array wire forms are accepted (serialization defaults to tagged), so either round-trips byte-exactly.
+/// Duplicate elements are preserved and re-emitted byte-exactly in wire order (the default for a set idiom; opt into rejection with `@duplicates reject`).
 pub type NonemptySetText = NonEmptyVec<String>;
 
 #[derive(Clone, Debug)]
@@ -46,4 +50,6 @@ impl Point {
     }
 }
 
+/// The tag-258 set idiom: the tag is an encoding detail — both the `#6.258(...)` and the bare-array wire forms are accepted (serialization defaults to tagged), so either round-trips byte-exactly.
+/// Duplicate elements are preserved and re-emitted byte-exactly in wire order (the default for a set idiom; opt into rejection with `@duplicates reject`).
 pub type SetU64 = Vec<u64>;
