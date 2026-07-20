@@ -1,5 +1,6 @@
 ---
 source: src/tests/snapshot_tests.rs
+assertion_line: 101
 expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
@@ -17,7 +18,7 @@ pub mod serialization;
 use crate::generated::error::*;
 use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::non_empty_map::NonEmptyMap;
-use crate::generated::ordered_set::{NonEmptyOrderedSet, OrderedSet};
+use crate::generated::ordered_set::OrderedSet;
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]

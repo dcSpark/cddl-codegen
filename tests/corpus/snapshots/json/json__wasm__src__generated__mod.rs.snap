@@ -1,5 +1,6 @@
 ---
 source: src/tests/snapshot_tests.rs
+assertion_line: 101
 expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
@@ -14,7 +15,7 @@ pub mod collections;
 
 use cddl_lib::non_empty::NonEmptyVec;
 use cddl_lib::non_empty_map::NonEmptyMap;
-use cddl_lib::ordered_set::{NonEmptyOrderedSet, OrderedSet};
+use cddl_lib::ordered_set::OrderedSet;
 use std::collections::BTreeMap;
 use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 

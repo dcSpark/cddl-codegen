@@ -407,7 +407,7 @@ mod golden_hex_preserve {
     // re-emit byte-exact under --preserve-encodings, including a non-minimal tag header — `reject`
     // narrows the accepted set, it never sorts or reshapes the accepted bytes. Two distinct elements
     // "a","b" so the vector is genuinely unique (not vacuously single). Untagged and tagged arms.
-    // (The wire-DUPLICATE reject case is pinned in-process by duplicates_reject_set_wire_and_api.)
+    // (The wire-DUPLICATE reject case is pinned in-process by reject_set_duplicate_wire_and_api_identical.)
     kat_preserve!(
         reject_set_untagged,
         RejectSetHolder,

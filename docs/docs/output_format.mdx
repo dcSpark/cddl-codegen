@@ -11,7 +11,7 @@ sidebar_position: 4
 
 **Toolchain floor.** Generated crates depend on `cbor_event` 3.x, whose manifest declares `rust-version = "1.81"` — building a generated crate needs at least that toolchain.
 
-**Unused collection-type imports are pruned.** A generated file imports the collection helper types (`BTreeMap`, `OrderedHashMap`, `NonEmptyVec`, `NonEmptyMap`) and, under `--preserve-encodings`, the encoding enums (`LenEncoding`, `StringEncoding`, `TagPresenceEncoding`) only when the file — or one of its descendant modules — actually names them: a usage-derived post-pass reads the rendered source and drops any of those seven imports the file's module family references nowhere, so a module that uses no maps/non-empty collections/encodings carries no unused-import warning for them, independent of what sibling modules use. Descendants count because a child module's `use super::*;` re-exports the parent module's private imports — the `BTreeMap` in a scope's `mod.rs` can be the one its `serialization.rs` relies on. A descendant keeps a parent's copy only when it would genuinely resolve the name through the parent, though: one that carries its own direct import of the same name, or that sits at/under the very module the parent imports it from, resolves the name locally and does not hold the parent's import alive — which is what keeps a `--preserve-encodings` `mod.rs` free of dead `LenEncoding`/`StringEncoding` imports whose only consumers are `cbor_encodings.rs` (own import) and `serialization.rs` (the defining module). Only private `use` items are candidates (`pub use` re-exports are API surface and never touched). This is scoped to those concrete types by design — trait imports (e.g. `cbor_event::se::Serialize`, exercised via a method call whose name never mentions `Serialize`), macro imports, and glob imports (`use ...::*;`) cannot be proven unused by name and are left as-is, so a few of those may still be broader than strictly needed.
+**Unused collection-type imports are pruned.** A generated file imports the collection helper types (`BTreeMap`, `OrderedHashMap`, `NonEmptyVec`, `NonEmptyMap`, `OrderedSet`, `NonEmptyOrderedSet`) and, under `--preserve-encodings`, the encoding enums (`LenEncoding`, `StringEncoding`, `TagPresenceEncoding`) only when the file — or one of its descendant modules — actually names them: a usage-derived post-pass reads the rendered source and drops any of those nine imports the file's module family references nowhere, so a module that uses no maps/non-empty collections/reject-duplicates sets/encodings carries no unused-import warning for them, independent of what sibling modules use. (The two `OrderedSet` twins ride the spec-global `@duplicates reject` gate — see [Reject-duplicates containers](#reject-duplicates-containers-uniqueness-twins) — so a scope with a reject-set rule pushes them into *every* scope's `mod.rs`, and this pass is what keeps the scopes that never name them warning-free.) Descendants count because a child module's `use super::*;` re-exports the parent module's private imports — the `BTreeMap` in a scope's `mod.rs` can be the one its `serialization.rs` relies on. A descendant keeps a parent's copy only when it would genuinely resolve the name through the parent, though: one that carries its own direct import of the same name, or that sits at/under the very module the parent imports it from, resolves the name locally and does not hold the parent's import alive — which is what keeps a `--preserve-encodings` `mod.rs` free of dead `LenEncoding`/`StringEncoding` imports whose only consumers are `cbor_encodings.rs` (own import) and `serialization.rs` (the defining module). Only private `use` items are candidates (`pub use` re-exports are API surface and never touched). This is scoped to those concrete types by design — trait imports (e.g. `cbor_event::se::Serialize`, exercised via a method call whose name never mentions `Serialize`), macro imports, and glob imports (`use ...::*;`) cannot be proven unused by name and are left as-is, so a few of those may still be broader than strictly needed.
 
 **Re-export-only files carry no import walls at all.** A generated file whose entire body is extern re-export glue — every top-level item a `use`, with only `crate::`-anchored `pub use` re-exports (the `mod.rs` an extern-only CDDL scope produces) — has *all* of its private `use` items dropped, not just the seven concrete types above. Such a file's shape proves nothing can consume a private import (no local code, and no descendant module whose `use super::*;` could re-export one), so the wider rule is sound even for globs and trait imports the name-based prune must otherwise keep. The result is a re-export-only `mod.rs` reduced to its header comment and its `pub use crate::…;` lines, with zero `unused_import` warnings.
 
@@ -143,6 +143,67 @@ the length check moves to a single `try_into` at the point the loose collection 
 The type name, the generated doc comment (which quotes the originating CDDL), and the `TryFrom`
 signature are three redundant signals that a constraint exists. The wasm boundary mirrors this with a
 two-wrapper pattern — see [Wasm Differences](./wasm_differences.mdx).
+
+## Reject-duplicates containers (uniqueness twins)
+
+A [`@duplicates reject`](./comment_dsl) directive on an array-shaped collection rule — a plain `[* T]`
+/ `[+ T]`, or either arm of the transparent tag-set idiom (`#6.258([* a]) / [* a]`) — swaps the
+transparent-alias target from the bare `Vec`/`NonEmptyVec` to a **uniqueness twin** that makes a
+duplicate element unrepresentable, the same enforcement-by-type move the non-empty containers make for
+the length bound:
+
+- `[* T]` → **`OrderedSet<T>`** (`signers = [* key] ; @duplicates reject` emits
+  `pub type Signers = OrderedSet<Key>`).
+- `[+ T]` → **`NonEmptyOrderedSet<T>`**, whose door composes BOTH invariants (min-1 *and* uniqueness).
+
+The default is `preserve` — today's bare `Vec`/`NonEmptyVec`, which accept and re-emit duplicates
+byte-exactly for multi-era readers; writing `@duplicates preserve` explicitly is an accepted,
+self-documenting no-op. Both twins are **order-preserving and NEVER sorted**: `reject` only narrows
+which inputs are *accepted*, it never touches the bytes of what is accepted, so a decoded set
+re-emits byte-exactly in its original wire order.
+
+Each twin provides one conversion contract, parallel to the non-empty one:
+
+- **`TryFrom<Vec<T>>` — the single checked door.** The *only* way to build the value from a loose
+  `Vec`; it scans for the first duplicate and, on finding one, returns a `DeserializeError` whose
+  `DuplicateKey(Key::Uint(i))` names the **zero-based index `i`** of the offending element —
+  deterministic and actionable regardless of the element type (this is the set analogue of the
+  table path's `DuplicateKey`, which uses the key value). `NonEmptyOrderedSet`'s door composes both
+  checks: the same `RangeCheck { found: 0, min: Some(1), .. }` (`0 not at least 1`) as `NonEmptyVec`
+  for an empty input, plus the duplicate index for a repeat.
+- **`From<OrderedSet<T>> for Vec<T>` / `into_inner()` — the infallible escape hatch.** Unwrap to the
+  loose `Vec`, mutate freely, and `try_into()` back through the door at the edge. Plus
+  `as_slice()` / `AsRef<[T]>` / `Index` / `iter()` / `IntoIterator` for read access without a
+  round-trip.
+- **Checked `push` returns `Result`.** Appending an element already present is refused with
+  `DuplicateKey(Key::Uint(index))` — in contrast to `NonEmptyVec::push`, which is **infallible**
+  (growing can never break a *minimum* bound, but it *can* mint a duplicate, so the set twin's `push`
+  must be fallible). `NonEmptyOrderedSet` additionally gives checked `pop`/`remove` (refused at
+  length 1) exactly like `NonEmptyVec`.
+- **A stricter blocked-mutator set than the non-empty twins.** `NonEmptyVec` permits value-level
+  `&mut` access (`iter_mut` / `as_mut_slice` / `IndexMut`) because its invariant is only about
+  *length*, which a `&mut` to an element cannot reach. The ordered-set twins expose **none of those**
+  — no `IndexMut`, no `iter_mut`, no `as_mut_slice`, no `get_mut` — because the uniqueness invariant
+  is about element *values*: an in-place element edit could turn a unique set into a duplicate-bearing
+  one past the door. Element mutation therefore always routes through `into_inner()` → mutate →
+  `try_into()`.
+- **Deserialize routes through the same `TryFrom`.** Wire-side and API-side enforcement cannot drift:
+  a duplicate in the CBOR array is rejected during decode with the *same* `DuplicateKey(index)` error
+  the API door raises.
+
+**Migrating a consumer** (`Vec<T>` field → `OrderedSet<T>` field). Same mechanical shape as the
+non-empty migration — the fallible `new` becomes infallible and the check moves to a single
+`try_into` where the loose collection is built — but the rejectable constraint is uniqueness, not
+length:
+
+| Before (bypassable / no check) | After (uniqueness twin) |
+|---|---|
+| `Foo::new(signers: Vec<Key>) -> Foo` (duplicates silently accepted) | `Foo::new(signers: OrderedSet<Key>) -> Foo` |
+| `let foo = Foo::new(signers);` (a later `foo.signers.push(dup)` cannot even be expressed) | `let signers: OrderedSet<Key> = signers.try_into()?; let foo = Foo::new(signers);` |
+| in-place element edit via `foo.signers[i] = …` | `let mut v = foo.signers.into_inner(); v[i] = …; foo.signers = v.try_into()?;` |
+
+The wasm boundary mirrors this with the same two-wrapper pattern as the non-empty case, except the
+restricted wrapper's `add` is **fallible** — see [Wasm Differences](./wasm_differences.mdx#reject-duplicates-containers).
 
 ## Generated crate roots (thin root, seed-once)
 
