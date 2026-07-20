@@ -12392,13 +12392,35 @@ fn decode_conformance_replay() {
     // needs a reason, and a listed row that starts round-tripping byte-identically fails the gate.
     const EXPECTED_MISMATCH: &[(&str, &str)] = &[];
 
-    // (row id, encoding-variant label, reason) pairs whose DEFAULT-leg variant test legitimately fails
-    // — a spec-equal re-encoding (indefinite framing, non-minimal width, chunked string, reversed map)
-    // the generated decoder is over-strict about, or mis-decodes. Each entry is an HONEST finding
-    // ledgered in `cddl-matrix/ROADMAP.md` § findings (a real decoder gap, NOT fixed here). Stale-
-    // guarded: a listed (row, label) whose variant now decodes+re-encodes cleanly fails the gate, so a
-    // closed gap can't rot into a silent skip.
-    const ENCODING_VARIANT_SKIP: &[(&str, &str, &str)] = &[];
+    // (row id, encoding-variant label, reason) pairs whose DEFAULT-leg variant test legitimately fails.
+    // TWO legitimate classes: (a) a spec-equal re-encoding (indefinite framing, non-minimal width,
+    // chunked string, reversed map) the generated decoder is over-strict about, or mis-decodes — an
+    // HONEST finding ledgered in `cddl-matrix/ROADMAP.md` § findings (a real decoder gap, NOT fixed
+    // here); or (b) a variant whose "spec-equal" PREMISE is false for the row's type BY DESIGN — the
+    // `reverse_maps`/`everything` map-reordering transforms assume entry order is an encoding detail,
+    // but an `@duplicates preserve` pair-map's contract makes entry order VALUE-BEARING in every
+    // profile (docs/docs/output_format.mdx § "Preserve-duplicates tables (pair-map twins)"), so the
+    // reordered variant genuinely decodes to a DIFFERENT value. Stale-guarded either way: a listed
+    // (row, label) whose variant now decodes+re-encodes cleanly fails the gate, so a closed gap (or a
+    // silently order-collapsing representation regression) can't rot into a silent skip.
+    const ENCODING_VARIANT_SKIP: &[(&str, &str, &str)] = &[
+        (
+            "dsl.duplicates.preserve",
+            "reverse_maps",
+            "entry order is value-bearing for the @duplicates preserve pair-map (PairMap<K, V> — \
+             order + duplicates are the row's whole contract), so a reversed-entry re-encoding is a \
+             DIFFERENT value by design, not a spec-equal encoding variant; the mutator cannot know \
+             which nested maps carry the policy, so the exemption lives here",
+        ),
+        (
+            "dsl.duplicates.preserve",
+            "everything",
+            "the `everything` composite applies the map-reordering transform, so it inherits \
+             `reverse_maps`' inapplicability to the order-faithful pair-map; its other transforms \
+             (non-minimal widths) are covered for pair-maps by the golden_hex_preserve \
+             `pmap_duplicate_key_nonminimal_head` KAT",
+        ),
+    ];
 
     // (row id, replay test-name, reason) pairs whose DEFAULT-leg replay test legitimately rejects
     // with an adjacent-duplicate error location segment (`Foo.Foo`). EMPTY at HEAD: a newly-appearing
@@ -13371,10 +13393,68 @@ fn corpus_decode_replay() {
     // Rows that GENERATE + compile under preserve but re-encode a decoded accept vector to different
     // bytes. Empty at HEAD — a newly-appearing byte-identity mismatch is a FINDING to triage.
     const EXPECTED_MISMATCH: &[(&str, &str)] = &[];
-    // (row id, encoding-variant label, reason) pairs whose DEFAULT-leg variant test legitimately fails —
-    // a spec-equal re-encoding the generated decoder is over-strict about, or mis-decodes. Each entry is
-    // an HONEST finding ledgered in `cddl-matrix/ROADMAP.md` § findings. Empty at HEAD; stale-guarded.
-    const ENCODING_VARIANT_SKIP: &[(&str, &str, &str)] = &[];
+    // (row id, encoding-variant label, reason) pairs whose DEFAULT-leg variant test legitimately fails.
+    // Same two-class contract as the matrix gate's ledger (see its comment): (a) a decoder gap over a
+    // genuinely spec-equal re-encoding — an HONEST `cddl-matrix/ROADMAP.md` § findings entry; or (b) a
+    // variant whose spec-equal PREMISE is false for the row's type by design. Every entry below is
+    // class (b): the `table_preserve` fixture's rows are (or embed) `@duplicates preserve` pair-maps,
+    // whose entry order is VALUE-BEARING in every profile — the map-reordering `reverse_maps` /
+    // `everything` transforms produce a genuinely different value, which is the feature's contract
+    // (docs/docs/output_format.mdx § "Preserve-duplicates tables (pair-map twins)"), not a mis-decode.
+    // Stale-guarded: an entry whose variant starts round-tripping cleanly fails the gate — the loud
+    // signal for an order-collapsing representation regression.
+    const ENCODING_VARIANT_SKIP: &[(&str, &str, &str)] = &[
+        (
+            "table_preserve.pmap",
+            "reverse_maps",
+            "entry order is value-bearing for the preserve pair-map",
+        ),
+        (
+            "table_preserve.pmap",
+            "everything",
+            "composite includes the map-reordering transform",
+        ),
+        (
+            "table_preserve.nepmap",
+            "reverse_maps",
+            "entry order is value-bearing for the preserve pair-map",
+        ),
+        (
+            "table_preserve.nepmap",
+            "everything",
+            "composite includes the map-reordering transform",
+        ),
+        (
+            "table_preserve.pmap_txt",
+            "reverse_maps",
+            "entry order is value-bearing for the preserve pair-map (generic instance)",
+        ),
+        (
+            "table_preserve.pmap_txt",
+            "everything",
+            "composite includes the map-reordering transform",
+        ),
+        (
+            "table_preserve.md",
+            "reverse_maps",
+            "the metadatum union's map arm is a preserve pair-map — entry order is value-bearing",
+        ),
+        (
+            "table_preserve.md",
+            "everything",
+            "composite includes the map-reordering transform",
+        ),
+        (
+            "table_preserve.holder",
+            "reverse_maps",
+            "the holder embeds preserve pair-map fields — entry order is value-bearing",
+        ),
+        (
+            "table_preserve.holder",
+            "everything",
+            "composite includes the map-reordering transform",
+        ),
+    ];
     // (row id, replay test-name, reason) pairs whose DEFAULT-leg replay test legitimately rejects with
     // an adjacent-duplicate error location segment (`Foo.Foo`). Empty at HEAD; stale-guarded.
     const DOUBLED_LOCATION_SKIP: &[(&str, &str, &str)] = &[];
