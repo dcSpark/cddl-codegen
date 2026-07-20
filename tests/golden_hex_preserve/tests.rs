@@ -349,4 +349,56 @@ mod golden_hex_preserve {
             assert_eq!(d.s, vec!["a".to_string()]);
         }
     );
+
+    // ---- DUPLICATE-carrying set instances: the preserve-mode default's load-bearing guarantee ----
+    // A tag-258 set idiom accepts duplicate wire entries and, under --preserve-encodings, MUST
+    // re-emit them byte-exact including their order — the multi-era byte-exact-reader contract that
+    // makes `preserve` the correct set default (see input.cddl). The value anchor asserts the
+    // duplicate is actually PRESENT (len == 2, both elements "a"), so the KAT can't pass by a silent
+    // dedup that happened to re-encode to the same bytes; the macro's byte-identity assert then pins
+    // the round-trip. Both wire arms (untagged / tagged) of both occurrence flavors (`[*]` / `[+]`).
+    //
+    // `[*]` flavor (OptSetHolder, s: Vec<String>): untagged `[["a","a"]]`.
+    kat_preserve!(
+        opt_set_untagged_duplicate,
+        OptSetHolder,
+        &[0x81, 0x82, 0x61, 0x61, 0x61, 0x61],
+        |d: &OptSetHolder| {
+            assert_eq!(d.s.len(), 2);
+            assert_eq!(d.s, vec!["a".to_string(), "a".to_string()]);
+        }
+    );
+    // `[*]` flavor, tagged arm `[258(["a","a"])]` (258 = 0xd9 0x01 0x02).
+    kat_preserve!(
+        opt_set_tagged_duplicate,
+        OptSetHolder,
+        &[0x81, 0xd9, 0x01, 0x02, 0x82, 0x61, 0x61, 0x61, 0x61],
+        |d: &OptSetHolder| {
+            assert_eq!(d.s.len(), 2);
+            assert_eq!(d.s, vec!["a".to_string(), "a".to_string()]);
+        }
+    );
+    // `[+]` flavor (OptNesetHolder, s: NonEmptyVec<String>): untagged `[["a","a"]]`. The
+    // NonEmptyVec door admits duplicates today (Vec-backed, no uniqueness check) — this pins that.
+    kat_preserve!(
+        opt_neset_untagged_duplicate,
+        OptNesetHolder,
+        &[0x81, 0x82, 0x61, 0x61, 0x61, 0x61],
+        |d: &OptNesetHolder| {
+            assert_eq!(d.s.len(), 2);
+            assert_eq!(d.s.get(0).map(|x| x.as_str()), Some("a"));
+            assert_eq!(d.s.get(1).map(|x| x.as_str()), Some("a"));
+        }
+    );
+    // `[+]` flavor, tagged arm `[258(["a","a"])]`.
+    kat_preserve!(
+        opt_neset_tagged_duplicate,
+        OptNesetHolder,
+        &[0x81, 0xd9, 0x01, 0x02, 0x82, 0x61, 0x61, 0x61, 0x61],
+        |d: &OptNesetHolder| {
+            assert_eq!(d.s.len(), 2);
+            assert_eq!(d.s.get(0).map(|x| x.as_str()), Some("a"));
+            assert_eq!(d.s.get(1).map(|x| x.as_str()), Some("a"));
+        }
+    );
 }
