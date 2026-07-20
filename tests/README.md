@@ -758,10 +758,12 @@ idiom") is verified across the layers:
   choice-bodied generic-def crash, alias-of-instance chains, inline choices, and the pre-existing
   multi-tag-per-field encoding-var collision).
 
-The **`@duplicates reject` flavor** (phase 1 of the per-rule duplicates policy — user doc:
+### Per-rule duplicates policy (`@duplicates`) — test map
+
+The **`@duplicates reject` flavor** (set/array collections — user doc:
 `docs/docs/output_format.mdx` § "Reject-duplicates containers", `docs/docs/comment_dsl.mdx`
-§ `@duplicates`) layers a uniqueness twin (`OrderedSet`/`NonEmptyOrderedSet`) onto the idiom, verified
-across the same layers plus the cross-crate ones:
+§ `@duplicates`) layers a uniqueness twin (`OrderedSet`/`NonEmptyOrderedSet`) onto the tag-set
+idiom above, verified across the same layers as the idiom plus the cross-crate ones:
 
 - **Corpus fixture + compile** — `tests/corpus/tag_set_reject.cddl` (five reject shapes + a `holder`
   embedding them incl. an optional field: `int_set` `[*]` idiom, `int_neset` `[+]` idiom, `text_set`,
@@ -795,7 +797,7 @@ across the same layers plus the cross-crate ones:
   `duplicates_directive_accepts_live_and_default_noops` (live set/array `reject` plus the accepted
   default no-ops).
 
-The **`@duplicates preserve` flavor** (phase 2 of the per-rule duplicates policy — user doc:
+The **`@duplicates preserve` flavor** (tables — user doc:
 `docs/docs/output_format.mdx` § "Preserve-duplicates tables", `docs/docs/current_capacities.mdx`
 § "Preserve-mode tables", `docs/docs/wasm_differences.mdx` § "Preserve-duplicates tables",
 `docs/docs/comment_dsl.mdx` § `@duplicates`) is the TABLE mirror of the reject flavor: a table rule

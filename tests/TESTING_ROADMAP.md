@@ -190,36 +190,13 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    non-0/3-rustfmt-exit-is-fatal contract already turns any formatter internal error into a
    generation failure, so no new assertion machinery is needed.
 
-4. **Duplicates policy phase 2: preserve-mode tables (pair-map).** Preserve-mode tables are live on
-   ALL boundaries: `@duplicates preserve` on a `{ * k => v }` / `{ + k => v }` rule swaps the
-   transparent alias to the `Vec<(K, V)>`-backed `PairMap<K, V>` / `NonEmptyPairMap<K, V>` twin
-   (`static/pair_map.rs`), with a POSITIONAL preserve-encodings sidecar (parallel `Vec`s replacing
-   the two key-value-keyed `BTreeMap`s), the `key_order` build reading positionally under
-   `--canonical-form` (stable-sort by encoded key bytes, duplicates adjacent), the `ord` key-demand
-   relaxation for preserve tables, JSON as an array of `[k, v]` pairs, and **wasm parity for both the
-   `{ * … }` and `{ + … }` flavors** (the `NonEmptyPairMap` wrapper enters through a `try_from` door
-   over the loose `PairMap` wrapper; a generic table instance — preserve or not — lowers across the
-   wasm boundary through its structural wrapper). The consensus-critical property — a duplicate-keyed
-   Cardano `transaction_metadata` map decoding and re-emitting byte-exactly (its auxiliary-data hash
-   is over the original bytes) — is pinned by `tests/golden_hex_preserve` (`pmap_duplicate_key`,
-   `pmap_duplicate_key_nonminimal_head`, `metadatum_duplicate_key_recursive`,
-   `pair_map_surface_and_nonempty_door`); the runtime canonical stable-sort by
-   `tests/golden_hex_canonical` (`canon_dup_pmap_key_sort`, `canon_dup_pmap_nonminimal_head`); the
-   JSON array-of-pairs + schemars shape by `tests/json` (`preserve_pair_map_json`,
-   `ne_preserve_pair_map_json_door`, `schemas_validate_serialization`); and the wasm appending-insert
-   + emit-tests synthesis by `tests/core` (`wasm_preserve_pair_map_insert_appends`,
-   `roundtrip_preserve_pmap_holder`). A preserve table sharing a structural map-shape name with a
-   non-preserve occurrence is a graceful rejection (`preserve_pair_map_wrapper_name_collisions`). The
-   directive travels the extern-interface seam (the MIRROR of the reject projection): a dep exporting a
-   `@duplicates preserve` table projects the directive so a consumer regenerating from the export
-   rebuilds the pair-map twin, never a reject-default `BTreeMap` that would silently REJECT the
-   duplicate keys the dep preserves — pinned by
-   `extern_import_projects_duplicates_preserve_no_cross_crate_skew` (`dep-preserve` → `consumer-preserve`
-   two-crate fixture with a negative-control skew check). User docs landed: the pair-map representation,
-   byte-exact dup round-trip, JSON array-of-pairs divergence, and canonical best-effort are documented
-   in `docs/docs/current_capacities.mdx` § "Preserve-mode tables", `docs/docs/output_format.mdx`
-   § "Preserve-duplicates tables", and `docs/docs/wasm_differences.mdx` § "Preserve-duplicates tables".
-   Residual work:
+4. **Duplicates-policy residuals.** Both `@duplicates` flavors are shipped on every boundary —
+   `reject` (set/array uniqueness twins) and `preserve` (table pair-map twins), covering rust,
+   preserve-encodings, canonical, JSON/schemars, wasm, extern-interface projection, and the
+   `dsl.duplicates.{reject,preserve}` matrix feature rows. Current state lives in
+   `tests/README.md` § "Per-rule duplicates policy (`@duplicates`) — test map" (the per-layer
+   pin inventory) and the user docs (`docs/docs/output_format.mdx`, `current_capacities.mdx`,
+   `wasm_differences.mdx`, `comment_dsl.mdx`). What remains:
    - **Recursive-map-KEY limitation (pre-existing, orthogonal).** A table whose DOMAIN is a
      not-yet-registered recursive UNION (`{ * transaction_metadata => transaction_metadata }`, the
      exact Cardano shape) panics in `register_rust_struct`'s keys-list synthesis
