@@ -499,7 +499,24 @@ fn wasm_collection_build(
     // Bounds-aware wrapper name: `NonEmptyBarList` for `[+ bar]`, the alias/loose name otherwise.
     let wrapper = field_ty.for_wasm_member(types);
     match (resolved, mv) {
-        (ConceptualRustType::Array(elem_ty), MintValue::Array { elem, count, .. }) => {
+        (
+            ConceptualRustType::Array(elem_ty),
+            MintValue::Array {
+                elem,
+                count,
+                reject,
+                ..
+            },
+        ) => {
+            // `@duplicates reject`: the wrapper's `add` is CHECKED (returns `Result`) and N identical
+            // copies would be refused as duplicates, so the loose `new()` + `add()` build below is
+            // wrong for it. Build through the `From<core>` impl every wasm wrapper carries, over the
+            // reject-aware `rust_scoped` core value (a single unique element / empty set — mirroring
+            // the named-Array ctor-arg path in `wasm_named`). Element exposability is irrelevant: the
+            // core value already carries the right twin, and `From` is infallible.
+            if *reject {
+                return Some(format!("{wrapper}::from({})", rust_scoped(mv, scoped)));
+            }
             // `add(elem)` takes the element via `for_wasm_param`, so reuse `wasm_arg` for the same
             // by-ref/by-value boundary the wrapper's ctor param uses.
             if field_ty.is_type_enforced_non_empty() {

@@ -450,3 +450,40 @@ fn wasm_non_empty_map_holder_parent_new_takes_wrappers_and_roundtrips() {
     let n2 = NemNamed::new("z".to_string(), &NemVal::new(5));
     assert_eq!(n2.get("z".to_string()).unwrap().v(), 5);
 }
+
+// `@duplicates reject` set (`RejectUintSet`, wrapping the `OrderedSet` twin): the wasm wrapper's
+// `add` is CHECKED (returns `Result`) and `try_from` is the uniqueness door. This exercises the wasm
+// boundary's ACCEPT paths at runtime — the checked `add` accepts distinct elements, `try_from` accepts
+// a duplicate-free Vec, and the set round-trips embedded in `RejectSetHolder` (a bare collection
+// wrapper has no CBOR entry point of its own). The REFUSAL (Err) path is NOT asserted here: on the
+// native host target constructing the returned `JsError` traps in a wasm-bindgen JS intrinsic, so the
+// error branch is unrunnable off-wasm. The refusal SEMANTICS are pinned rust-side against the same
+// door this wrapper delegates to (`OrderedSet::try_from`/`push` refusal — golden_hex_preserve's
+// `reject_set_duplicate_wire_and_api_identical`); the wasm `add`/`try_from` only map that door's error
+// into `JsError`, which is compile-checked here.
+#[test]
+fn wasm_reject_set_checked_add_and_door() {
+    let mut set = RejectUintSet::new();
+    set.add(1).expect("a new element is accepted");
+    set.add(2).expect("a second new element is accepted");
+    assert_eq!(set.len(), 2);
+    assert_eq!(set.get(0), 1);
+    assert_eq!(set.get(1), 2);
+    // the try_from uniqueness door accepts a duplicate-free Vec
+    let ok = RejectUintSet::try_from(vec![3, 4, 5]).expect("a duplicate-free try_from is accepted");
+    assert_eq!(ok.len(), 3);
+    // the refusal is the core door's — assert it through the re-exported core type (whose error is the
+    // plain runtime error, not the host-trapping JsError the wasm wrapper maps it into).
+    assert!(
+        cddl_lib::ordered_set::OrderedSet::<u64>::try_from(vec![7, 7]).is_err(),
+        "the core uniqueness door the wasm wrapper delegates to must refuse a duplicate"
+    );
+    // embedded round-trip through the holder (the wrapper itself has no CBOR entry point)
+    let holder = RejectSetHolder::new(&ok);
+    let bytes = holder.to_cbor_bytes();
+    let back = RejectSetHolder::from_cbor_bytes(&bytes)
+        .ok()
+        .expect("RejectSetHolder round-trip");
+    assert_eq!(back.to_cbor_bytes(), bytes);
+    assert_eq!(back.s().len(), 3);
+}

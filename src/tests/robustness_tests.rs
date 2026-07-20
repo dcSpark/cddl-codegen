@@ -635,13 +635,14 @@ fn duplicates_directive_accepts_live_and_default_noops() {
     );
 }
 
-/// `@duplicates reject` on an INLINE (anonymous) generic-set instance (`[g: oset<uint>]`) has no
-/// wasm wrapper wired up yet, so under `--wasm` it must fail LOUDLY at generation (a graceful `Err`,
-/// never a silent-broken wasm crate that won't compile). The SAME shape generates cleanly with
-/// `--wasm=false` (rust-only). The remedy — binding the instance as its own named rule — is exercised
-/// live by the `tag_set_reject` corpus fixture; here we pin both the rejection and the rust-only path.
+/// `@duplicates reject` on an INLINE (anonymous) generic-set instance (`[g: oset<uint>]`) lowers to
+/// the uniqueness twin on BOTH sides: rust core `OrderedSet<u64>` and — the point of this test — a
+/// wasm class that WRAPS the twin (`pub struct U64OrderedSet(pub(crate) OrderedSet<u64>)`, reached
+/// via `pub type OsetU64 = U64OrderedSet;`), NOT a loose `Vec<u64>` wrapper. The `tag_set_reject`
+/// corpus fixture exercises the NAMED-instance path plus a full `cargo check`; this pins the inline
+/// (anonymous) path — the shape WP3 taught `for_wasm_member` + the mint path to lower structurally.
 #[test]
-fn duplicates_reject_inline_generic_instance_rejects_under_wasm() {
+fn duplicates_reject_inline_generic_instance_lowers_to_twin_under_wasm() {
     const CDDL: &str = "oset<a0> = #6.258([* a0]) / [* a0] ; @duplicates reject\n\
                         holder = [g: oset<uint>]\n";
     let path = std::env::temp_dir().join(format!(
@@ -660,16 +661,24 @@ fn duplicates_reject_inline_generic_instance_rejects_under_wasm() {
         ]))
     };
 
-    // --wasm=true: graceful rejection (never a panic, never silent-broken output)
-    let err = run("--wasm=true")
-        .expect_err("@duplicates reject on an inline generic instance must reject under --wasm");
-    let msg = err.to_string();
+    // --wasm=true: generates cleanly (no rejection), and the wasm wrapper wraps the uniqueness twin.
+    let out = run("--wasm=true")
+        .expect("@duplicates reject on an inline generic instance must generate under --wasm");
+    let src = out.values().cloned().collect::<Vec<_>>().join("\n");
     assert!(
-        msg.contains("@duplicates") && msg.contains("named rule"),
-        "rejection must name the directive and the name-the-rule remedy, got: {msg}"
+        src.contains("pub struct U64OrderedSet(pub(crate) OrderedSet<u64>)"),
+        "inline reject must mint a wasm class WRAPPING the OrderedSet twin, not a loose Vec, got:\n{src}"
+    );
+    assert!(
+        src.contains("pub type OsetU64 = U64OrderedSet;"),
+        "the anonymous instance alias must point at the structural reject wrapper, got:\n{src}"
+    );
+    assert!(
+        !src.contains("pub struct U64List") && !src.contains("pub type OsetU64 = U64List;"),
+        "inline reject must NOT lower to the loose Vec (`U64List`) wrapper, got:\n{src}"
     );
 
-    // --wasm=false: the same shape generates cleanly (rust-only inline reject is supported today)
+    // --wasm=false: the same shape generates cleanly (rust-only inline reject is supported too)
     let out = run("--wasm=false")
         .expect("the same inline reject shape must generate cleanly with --wasm=false");
     let src = out.values().cloned().collect::<Vec<_>>().join("\n");
@@ -678,6 +687,84 @@ fn duplicates_reject_inline_generic_instance_rejects_under_wasm() {
         "rust-only inline reject must still lower to OrderedSet, got:\n{src}"
     );
     std::fs::remove_file(&path).ok();
+}
+
+/// A `@duplicates reject` named `[+ elem]` rule must NOT capture an inline `[+ elem]` of the same
+/// element for the wasm inline-dedup: inline occurrences are directive-less (always preserve), so
+/// their rust member is `NonEmptyVec` while the reject rule's wrapper wraps `NonEmptyOrderedSet` —
+/// capturing would name the inline surface after a wrapper of the wrong core type (a loud-but-broken
+/// wasm crate, `From<NonEmptyVec>` missing on the reject wrapper). The inline surface must keep the
+/// synthesized `NonEmpty<Elem>List` (preserve) wrapper, distinct from the reject rule's class.
+#[test]
+fn duplicates_reject_named_rule_does_not_capture_preserve_inline_nonempty() {
+    const CDDL: &str = "nes = [+ uint] ; @duplicates reject\n\
+                        holder = [a: nes, b: [+ uint]]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_dup_capture_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let out = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "dup_capture_unused",
+        "--wasm=true",
+    ]))
+    .expect(
+        "reject-named + inline-preserve nonempty of the same element must generate under --wasm",
+    );
+    std::fs::remove_file(&path).ok();
+    let src = out.values().cloned().collect::<Vec<_>>().join("\n");
+    // the inline `[+ uint]` keeps the preserve NonEmptyVec wrapper, NOT the reject class `Nes`
+    assert!(
+        src.contains("pub struct NonEmptyU64List(pub(crate) NonEmptyVec<u64>)"),
+        "inline preserve `[+ uint]` must keep its own NonEmptyVec wrapper, got:\n{src}"
+    );
+    assert!(
+        src.contains("pub struct Nes(pub(crate) NonEmptyOrderedSet<u64>)"),
+        "the named reject rule must wrap NonEmptyOrderedSet, got:\n{src}"
+    );
+    // holder.b (inline) must be typed as the preserve wrapper, never captured onto the reject class
+    assert!(
+        src.contains("pub fn b(&self) -> NonEmptyU64List"),
+        "the inline field getter must return the preserve wrapper, not the reject class, got:\n{src}"
+    );
+}
+
+/// The `@duplicates reject` uniqueness-twin wasm wrapper is the THIRD container kind's collision
+/// detector (sibling of the two NonEmptyVec/NonEmptyMap detectors). An inline (anonymous instance)
+/// reject set synthesizes a `<Elem>OrderedSet` wasm class; a user rule claiming that ident must be
+/// caught as a GRACEFUL rejection (not a panic, not a silent-broken crate), with a message naming
+/// the reject twin (distinct from the NonEmpty siblings' wording).
+#[test]
+fn duplicates_reject_structural_wrapper_name_collision_rejects_gracefully() {
+    const CDDL: &str = "oset<a0> = #6.258([* a0]) / [* a0] ; @duplicates reject\n\
+                        u64_ordered_set = uint\n\
+                        holder = [g: oset<uint>, h: u64_ordered_set]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_dup_reject_collide_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let result = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "dup_reject_collide_unused",
+        "--wasm=true",
+    ]));
+    std::fs::remove_file(&path).ok();
+    let err = result.expect_err(
+        "a user rule colliding with the synthesized reject wrapper name must be a graceful Err",
+    );
+    let msg = err.to_string();
+    assert!(
+        msg.contains("U64OrderedSet") && msg.contains("OrderedSet wrapper"),
+        "the collision message must name the reject twin (distinct from NonEmptyVec/Map), got: {msg}"
+    );
 }
 
 /// `@duplicates` at a field/member position is per-rule-only, so it is a graceful placement

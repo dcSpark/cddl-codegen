@@ -417,6 +417,13 @@ impl<'a> IntermediateTypes<'a> {
                     element_type,
                     bounds,
                 } if *bounds == Some((Some(1), None))
+                    // A `@duplicates reject` named rule's wasm class wraps `NonEmptyOrderedSet`, but
+                    // an inline `[+ elem]` occurrence carries no directive (inline occurrences are
+                    // always preserve-policy) so its rust member is `NonEmptyVec`. Capturing the
+                    // preserve inline surface onto the reject rule would name it after a wrapper of
+                    // the wrong core type — a loud-but-broken wasm crate (`From<NonEmptyVec>` for the
+                    // reject wrapper does not exist). Only a preserve-policy named rule may own it.
+                    && rs.config().duplicates != Some(crate::comment_ast::DuplicatesPolicy::Reject)
                     && !self.is_anonymous_collection_instance(ident)
                     && element_type.clone().resolve_aliases() == resolved =>
                 {
@@ -1617,12 +1624,13 @@ impl<'a> IntermediateTypes<'a> {
         if !cli.wasm {
             return;
         }
-        // (ident, gets_wrapper, reject) for every anonymous instance resolving to a collection.
-        // `gets_wrapper` is true for a `[+ …]` (always wrapped) or a non-exposable element
-        // (`set<key_hash>`), false for a directly-exposable loose collection (`set<uint>` → bare
-        // `Vec<u64>`). `reject` flags a `@duplicates reject` instance, whose wasm lowering is not yet
-        // built for the ANONYMOUS (inline) shape (rejected loudly below).
-        let anon_collection: Vec<(RustIdent, bool, bool)> = self
+        // (ident, gets_wrapper) for every anonymous instance resolving to a collection.
+        // `gets_wrapper` is true for a `[+ …]` (always wrapped), a `@duplicates reject` set (always
+        // crosses through its `OrderedSet`/`NonEmptyOrderedSet` wrapper), or a non-exposable element
+        // (`set<key_hash>`), and false for a directly-exposable loose collection (`set<uint>` → bare
+        // `Vec<u64>`). Every wrapper-getting instance routes through the structural-wrapper alias
+        // passthrough below — for a reject set that structural wrapper is the uniqueness twin.
+        let anon_collection: Vec<(RustIdent, bool)> = self
             .generic_instances
             .values()
             .filter(|i| i.anonymous)
@@ -1649,40 +1657,15 @@ impl<'a> IntermediateTypes<'a> {
                 let gets_wrapper = rt.is_type_enforced_non_empty()
                     || rt.duplicates_reject()
                     || !shallow.directly_wasm_exposable_ct(self);
-                Some((
-                    i.instance_ident.clone(),
-                    gets_wrapper,
-                    rt.duplicates_reject(),
-                ))
+                Some((i.instance_ident.clone(), gets_wrapper))
             })
             .collect();
-        for (ident, gets_wrapper, reject) in anon_collection {
-            // `@duplicates reject` on an ANONYMOUS (inline) generic-collection instance
-            // (`[g: oset<uint>]`) has no wasm wrapper wired up yet: the anonymous path lowers to the
-            // structural loose/`NonEmpty` wrapper (over `Vec`/`NonEmptyVec`), which mismatches the
-            // `OrderedSet`/`NonEmptyOrderedSet` rust core and would emit a wasm crate that does not
-            // compile. Reject loudly (never silent-broken output) — this seam is only reached under
-            // `--wasm`, so rust-only generation of the same shape keeps working. The remedy binds the
-            // instance as its own NAMED rule, which mints a proper reject wasm wrapper.
-            if reject {
-                let source_name = self
-                    .source_rule_name(&ident)
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| ident.to_string());
-                self.record_rejection(format!(
-                    "@duplicates reject on the inline generic-set instance `{source_name}`: the \
-                     wasm wrapper for an inline (anonymous) reject-set instance is not yet built \
-                     (its OrderedSet core would mismatch the loose `Vec` wasm lowering). Bind the \
-                     instance as its own named rule instead — e.g. `oset_u64 = oset<uint>` and \
-                     reference `oset_u64` — which mints a proper reject wasm wrapper. (Rust-only \
-                     generation, `--wasm=false`, supports the inline shape today.)"
-                ));
-                self.anonymous_collection_instances.insert(ident);
-                continue;
-            }
+        for (ident, gets_wrapper) in anon_collection {
             // Every anonymous collection instance skips the rule-named class mint (recorded here). The
             // WRAPPER subset additionally routes through a `gen_wasm_alias` passthrough to the
-            // STRUCTURAL wrapper (`pub type SetKeyHash = KeyHashList;`, bounds-aware). The exposable
+            // STRUCTURAL wrapper (`pub type SetKeyHash = KeyHashList;` for the loose case, or
+            // `pub type OsetU64 = U64OrderedSet;` for a `@duplicates reject` set — `for_wasm_member`
+            // on the alias base picks the twin name). The exposable
             // subset needs no alias: `resolve_generic_collection_instance_fields` lowers its field to
             // the bare inline collection (`Vec<u64>`), so the wasm boundary crosses by value exactly
             // like an inline `[* uint]` — no wrapper class, no `&Vec` ctor param (no `RefFromWasmAbi`).
@@ -2056,6 +2039,12 @@ impl<'a> IntermediateTypes<'a> {
             for msg in self.non_empty_map_wrapper_name_collisions() {
                 self.record_rejection(msg);
             }
+            // `@duplicates reject` uniqueness-twin wasm-wrapper name collisions — the third container
+            // kind's sibling of the two detectors above (the reject twin is the new container kind
+            // AGENTS.md's twin-detector note reserved as the trigger for this expansion).
+            for msg in self.reject_ordered_set_wrapper_name_collisions() {
+                self.record_rejection(msg);
+            }
             // `@used_as_elem` mints the loose-list wasm wrapper `<Elem>List` for each tagged
             // element. A directly-wasm-exposable element (e.g. a transparent `coin = uint` alias)
             // has NO such wrapper — the list lowers to a bare `Vec<..>` at the wasm boundary — so
@@ -2357,6 +2346,51 @@ impl<'a> IntermediateTypes<'a> {
             }
         }
 
+        msgs.into_iter().collect()
+    }
+
+    /// Detect wasm-class name conflicts the `@duplicates reject` uniqueness-twin emission would turn
+    /// into a non-compiling wasm crate — the third container kind's sibling of
+    /// `non_empty_wrapper_name_collisions` / `non_empty_map_wrapper_name_collisions`. An INLINE
+    /// (anonymous generic-instance) reject set mints a synthesized `<Elem>OrderedSet` /
+    /// `NonEmpty<Elem>OrderedSet` wasm class (`reject_ordered_set_wasm_wrapper_name`); a user rule
+    /// claiming that ident would silently collide (a plain `pub struct`/`pub type` of the wrong shape).
+    /// NAMED reject rules mint under their own rule ident (never a synthesized structural name), so
+    /// they are not a source here — only anonymous instances are. The message text is deliberately
+    /// distinct from the two NonEmpty siblings' (it names the reject twin, not the NonEmptyVec/Map
+    /// wrapper) so a failing spec points at the right container kind.
+    fn reject_ordered_set_wrapper_name_collisions(&self) -> Vec<String> {
+        // BTreeSet: deterministic message order (repo determinism invariant)
+        let mut msgs = BTreeSet::new();
+        for (ident, rs) in self.rust_structs.iter() {
+            let RustStructType::Array {
+                element_type,
+                bounds,
+            } = rs.variant()
+            else {
+                continue;
+            };
+            // Only INLINE (anonymous instance) reject sets synthesize a structural class; a named
+            // reject rule owns its rule ident and mints there.
+            if rs.config().duplicates != Some(crate::comment_ast::DuplicatesPolicy::Reject)
+                || !self.is_anonymous_collection_instance(ident)
+            {
+                continue;
+            }
+            let variant = element_type.conceptual_type.for_variant();
+            let structural = if *bounds == Some((Some(1), None)) {
+                format!("NonEmpty{variant}OrderedSet")
+            } else {
+                format!("{variant}OrderedSet")
+            };
+            if self.wasm_ident_claimed_by_user_rule(&structural) {
+                msgs.insert(format!(
+                    "name collision: rule '{structural}' collides with the '{structural}' wasm \
+                     wrapper generated for an inline `@duplicates reject` set occurrence — rename \
+                     the rule to avoid shadowing the restricted OrderedSet wrapper"
+                ));
+            }
+        }
         msgs.into_iter().collect()
     }
 

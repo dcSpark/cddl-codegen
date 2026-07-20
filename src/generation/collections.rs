@@ -766,7 +766,25 @@ impl GenerationScope {
     ) {
         match &rt.conceptual_type {
             ConceptualRustType::Array(inner) => {
-                if rt.is_non_empty_array() {
+                if rt.is_reject_ordered_set() {
+                    // `@duplicates reject` inline (anonymous generic-instance) set: mint the
+                    // uniqueness-twin wrapper under its structural name (`U64OrderedSet` /
+                    // `NonEmptyU64OrderedSet`). Named reject rules mint under their rule ident via the
+                    // rust-struct walk and are never `is_reject_ordered_set` at a REFERENCE (they are
+                    // an `Alias`), so they don't route here. The `[+]` reject flavor is covered by
+                    // `generate_reject_ordered_set_type`'s `non_empty` arg (its door composes the
+                    // min-1 bound), so no separate NonEmptyVec wrapper is minted for it.
+                    let ident = RustIdent::new(CDDLIdent::new(
+                        rt.reject_ordered_set_wasm_wrapper_name(types),
+                    ));
+                    self.generate_reject_ordered_set_type(
+                        types,
+                        (**inner).clone(),
+                        &ident,
+                        rt.is_non_empty_array(),
+                        cli,
+                    );
+                } else if rt.is_non_empty_array() {
                     // dedup-to-named: an inline `[+ elem]` whose element has a NAMED `[+ …]` rule
                     // uses that rule's class (minted by the rule's own variant-match) — nothing
                     // synthesized here

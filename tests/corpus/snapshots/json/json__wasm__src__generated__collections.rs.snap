@@ -13,4 +13,5 @@ expression: content
 // avoid re-minting these wrappers (a wasm duplicate-symbol link error otherwise).
 pub use crate::generated::NonEmptyMapTextToU64;
 pub use crate::generated::NonEmptyU64List;
+pub use crate::generated::RejectUints;
 pub use crate::generated::Table;

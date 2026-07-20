@@ -27,3 +27,9 @@ nev_json = { xs: [+ uint] }
 ; WI-2: a `{+ tstr => uint}` field exercises the serde/schemars leg — NonEmptyMap serializes as a
 ; plain JSON object, and JSON deserialize routes through the same TryFrom door (empty object rejected).
 nem_json = { xs: {+ tstr => uint} }
+
+; WI-3: an `@duplicates reject` set field exercises the serde/schemars leg — OrderedSet serializes
+; as a plain JSON array, and JSON deserialize routes through the same TryFrom uniqueness door, so a
+; duplicate-carrying array is rejected there (never silently deduped). Accept round-trips byte-exactly.
+reject_uints    = [* uint] ; @duplicates reject
+reject_set_json = { xs: reject_uints }

@@ -286,4 +286,26 @@ mod tests {
         // an empty object for a `{+ tstr => uint}` field is rejected AT the TryFrom door on deserialize
         assert!(serde_json::from_str::<NemJson>(r#"{"xs":{}}"#).is_err());
     }
+
+    // WI-3: an `@duplicates reject` set (`OrderedSet<u64>`) serializes as a plain JSON array, and
+    // JSON deserialize routes through the SAME `TryFrom` uniqueness door the CBOR/API paths use — a
+    // duplicate-carrying array is refused there (never silently deduped), while a duplicate-free
+    // array round-trips byte-exactly.
+    #[test]
+    fn reject_set_json() {
+        let rs = RejectSetJson::new(OrderedSet::try_from(vec![1u64, 2, 3]).unwrap());
+        let json = serde_json::to_string(&rs).unwrap();
+        assert!(
+            json.contains("[1,2,3]"),
+            "OrderedSet must serialize as a plain JSON array, got: {json}"
+        );
+        // accept round-trip: a duplicate-free array round-trips back to the same JSON
+        let back: RejectSetJson = serde_json::from_str(&json).unwrap();
+        assert_eq!(serde_json::to_string(&back).unwrap(), json);
+        // a duplicate-carrying array is rejected AT the TryFrom door on JSON deserialize
+        assert!(
+            serde_json::from_str::<RejectSetJson>(r#"{"xs":[1,1]}"#).is_err(),
+            "a duplicate-carrying JSON array must be refused at the OrderedSet TryFrom door"
+        );
+    }
 }

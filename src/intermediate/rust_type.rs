@@ -745,6 +745,32 @@ impl RustType {
         }
     }
 
+    /// The wasm-boundary name of the restricted uniqueness-twin wrapper for a `@duplicates reject`
+    /// set. The reject analog of `non_empty_wasm_wrapper_name`: an inline (anonymous generic-instance)
+    /// reject set has no author rule name, so it synthesizes a structural `<Elem>OrderedSet` class
+    /// (`U64OrderedSet` for `[* uint]`), or `NonEmpty<Elem>OrderedSet` when the rule is also `[+]` (its
+    /// door composes uniqueness with the min-1 bound). Used both to REFERENCE the wrapper (parent
+    /// getter/param) and to decide MINTING (`ensure_non_empty_wrappers`'s reject arm), so the two sites
+    /// can never disagree. NAMED reject rules keep their rule ident as the wrapper name and never route
+    /// through here (like the NonEmpty twin, the raw-`Array` `is_reject_ordered_set` gate leaves an
+    /// aliased field on its rule-derived name).
+    pub fn reject_ordered_set_wasm_wrapper_name(&self, _types: &IntermediateTypes) -> String {
+        match &self.conceptual_type {
+            ConceptualRustType::Array(inner) => {
+                let variant = inner.conceptual_type.for_variant();
+                if self.is_non_empty_array() {
+                    format!("NonEmpty{variant}OrderedSet")
+                } else {
+                    format!("{variant}OrderedSet")
+                }
+            }
+            _ => unreachable!(
+                "reject_ordered_set_wasm_wrapper_name on a non-array: {:?}",
+                self
+            ),
+        }
+    }
+
     /// The wasm-boundary name of the restricted map wrapper for a `{+ k => v}` table. When a NAMED
     /// `{+ k => v}` rule of the same domain/range exists, the inline use DEDUPS to that rule's class
     /// (the spec author's name wins — see `IntermediateTypes::non_empty_map_named_owner`); otherwise a
@@ -806,6 +832,9 @@ impl RustType {
 
     /// If we were to store a value directly in a wasm-wrapper, this would be used. Bounds-aware.
     pub fn for_wasm_member(&self, types: &IntermediateTypes) -> String {
+        if self.is_reject_ordered_set() {
+            return self.reject_ordered_set_wasm_wrapper_name(types);
+        }
         if self.is_non_empty_array() {
             return self.non_empty_wasm_wrapper_name(types);
         }
@@ -827,6 +856,9 @@ impl RustType {
 
     /// Function parameter TYPE from wasm (ref for non-primitives). Bounds-aware over `for_wasm_param_ct`.
     pub fn for_wasm_param(&self, types: &IntermediateTypes) -> String {
+        if self.is_reject_ordered_set() {
+            return format!("&{}", self.reject_ordered_set_wasm_wrapper_name(types));
+        }
         if self.is_non_empty_array() {
             return format!("&{}", self.non_empty_wasm_wrapper_name(types));
         }
@@ -843,6 +875,9 @@ impl RustType {
 
     /// Optional-inner variant of `for_wasm_param` (no leading `&`), bounds-aware.
     fn for_wasm_param_impl_rt(&self, types: &IntermediateTypes) -> String {
+        if self.is_reject_ordered_set() {
+            return self.reject_ordered_set_wasm_wrapper_name(types);
+        }
         if self.is_non_empty_array() {
             return self.non_empty_wasm_wrapper_name(types);
         }

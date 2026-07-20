@@ -17,6 +17,7 @@ pub use crate::ExternalFoo;
 pub use cddl_lib::CEnum;
 use cddl_lib::non_empty::NonEmptyVec;
 use cddl_lib::non_empty_map::NonEmptyMap;
+use cddl_lib::ordered_set::{NonEmptyOrderedSet, OrderedSet};
 use std::collections::BTreeMap;
 use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
@@ -4942,6 +4943,97 @@ impl From<PlainList> for Vec<cddl_lib::Plain> {
 
 impl AsRef<Vec<cddl_lib::Plain>> for PlainList {
     fn as_ref(&self) -> &Vec<cddl_lib::Plain> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct RejectSetHolder(pub(crate) cddl_lib::RejectSetHolder);
+
+#[wasm_bindgen]
+impl RejectSetHolder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<RejectSetHolder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn s(&self) -> RejectUintSet {
+        self.0.s.clone().into()
+    }
+
+    pub fn new(s: &RejectUintSet) -> Self {
+        Self(cddl_lib::RejectSetHolder::new(s.clone().into()))
+    }
+}
+
+impl From<cddl_lib::RejectSetHolder> for RejectSetHolder {
+    fn from(native: cddl_lib::RejectSetHolder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<RejectSetHolder> for cddl_lib::RejectSetHolder {
+    fn from(wasm: RejectSetHolder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::RejectSetHolder> for RejectSetHolder {
+    fn as_ref(&self) -> &cddl_lib::RejectSetHolder {
+        &self.0
+    }
+}
+
+/// `[* uint] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door).
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct RejectUintSet(pub(crate) OrderedSet<u64>);
+
+#[wasm_bindgen]
+impl RejectUintSet {
+    pub fn new() -> Self {
+        Self(OrderedSet::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
+        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<RejectUintSet, JsError> {
+        OrderedSet::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<OrderedSet<u64>> for RejectUintSet {
+    fn from(native: OrderedSet<u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<RejectUintSet> for OrderedSet<u64> {
+    fn from(wasm: RejectUintSet) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<OrderedSet<u64>> for RejectUintSet {
+    fn as_ref(&self) -> &OrderedSet<u64> {
         &self.0
     }
 }

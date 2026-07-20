@@ -12,6 +12,7 @@ mod extern_interface_check;
 mod key_demand_assertions;
 pub mod non_empty;
 pub mod non_empty_map;
+pub mod ordered_set;
 pub mod serialization;
 pub use crate::ExternGeneric;
 pub use crate::ExternalFoo;
@@ -19,6 +20,7 @@ pub use crate::ExternalFoo;
 use crate::generated::error::*;
 use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::non_empty_map::NonEmptyMap;
+use crate::generated::ordered_set::{NonEmptyOrderedSet, OrderedSet};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
@@ -1412,6 +1414,21 @@ impl PlainArrays {
         }
     }
 }
+
+#[derive(Clone, Debug)]
+pub struct RejectSetHolder {
+    pub s: RejectUintSet,
+}
+
+impl RejectSetHolder {
+    pub fn new(s: RejectUintSet) -> Self {
+        Self { s }
+    }
+}
+
+/// The tag-258 set idiom: the tag is an encoding detail — both the `#6.258(...)` and the bare-array wire forms are accepted (serialization defaults to tagged), so either round-trips byte-exactly.
+/// `@duplicates reject`: a repeated element is refused (a `DuplicateKey` error) on both the wire and the API; accepted (duplicate-free) input re-emits byte-exactly in wire order (the set is order-preserving, never sorted).
+pub type RejectUintSet = OrderedSet<u64>;
 
 #[derive(Clone, Debug)]
 pub struct Second {

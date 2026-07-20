@@ -28,6 +28,7 @@ pub fn export_schemas() {
     gen_json_schema!(cddl_lib::NemJson);
     gen_json_schema!(cddl_lib::NevJson);
     gen_json_schema!(cddl_lib::NintWrapper);
+    gen_json_schema!(cddl_lib::RejectSetJson);
     gen_json_schema!(cddl_lib::StrWrapper);
     gen_json_schema!(cddl_lib::StructWrapper);
     gen_json_schema!(cddl_lib::TableHolder);

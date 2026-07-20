@@ -11,11 +11,13 @@ pub mod error;
 mod extern_interface_check;
 pub mod non_empty;
 pub mod non_empty_map;
+pub mod ordered_set;
 pub mod serialization;
 
 use crate::generated::error::*;
 use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::non_empty_map::NonEmptyMap;
+use crate::generated::ordered_set::{NonEmptyOrderedSet, OrderedSet};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
@@ -454,6 +456,20 @@ impl schemars::JsonSchema for NintWrapper {
         <u64 as schemars::JsonSchema>::inline_schema()
     }
 }
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct RejectSetJson {
+    pub xs: RejectUints,
+}
+
+impl RejectSetJson {
+    pub fn new(xs: RejectUints) -> Self {
+        Self { xs }
+    }
+}
+
+/// `@duplicates reject`: a repeated element is refused (a `DuplicateKey` error) on both the wire and the API; accepted (duplicate-free) input re-emits byte-exactly in wire order (the set is order-preserving, never sorted).
+pub type RejectUints = OrderedSet<u64>;
 
 #[derive(Clone, Debug)]
 pub struct StrWrapper(pub(crate) String);
