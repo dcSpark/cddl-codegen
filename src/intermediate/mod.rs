@@ -346,6 +346,24 @@ impl<'a> IntermediateTypes<'a> {
             })
     }
 
+    /// Whether ANY generated type uses the `@duplicates reject` `OrderedSet`/`NonEmptyOrderedSet`
+    /// shape, so `export`/import wiring pulls in the `ordered_set` runtime module + imports only for
+    /// crates that need it (keeping every non-reject crate's output byte-identical). Detection folds
+    /// `contains_ordered_set` over `visit_all_rust_types` (the same superset walk as
+    /// `uses_non_empty_vec`), plus the deliberate belt-and-suspenders on the struct config: a
+    /// reject-mode `Array` rule's policy lives on the STRUCT config (and its registered alias), so the
+    /// alias-base walk covers it today, but the cheap guard stays for the same unproven-across-shapes
+    /// reason as the non-empty twins.
+    pub fn uses_ordered_set(&self) -> bool {
+        let mut found = false;
+        self.visit_all_rust_types(&mut |rt| found |= rt.contains_ordered_set());
+        found
+            || self.rust_structs.values().any(|rs| {
+                matches!(rs.variant(), RustStructType::Array { .. })
+                    && rs.config().duplicates == Some(crate::comment_ast::DuplicatesPolicy::Reject)
+            })
+    }
+
     pub fn rust_structs(&self) -> &BTreeMap<RustIdent, RustStruct> {
         &self.rust_structs
     }
@@ -1496,6 +1514,11 @@ impl<'a> IntermediateTypes<'a> {
                     // exactly like the `Array` arm below
                     map_type = map_type.with_bounds(*bounds);
                 }
+                // `@duplicates` rides the alias too. For tables `reject` is today's default (a no-op
+                // recorded for self-documentation) and `preserve` is refused at parse time (phase 2),
+                // so this never changes the table representation here — it is carried for symmetry and
+                // so a future table-preserve twin has a single seam to read.
+                map_type = map_type.with_duplicates_policy(rust_struct.config().duplicates);
                 if let Some(tag) = rust_struct.tag {
                     map_type = if rust_struct.tag_optional {
                         map_type.optionally_tag(tag)
@@ -1519,6 +1542,10 @@ impl<'a> IntermediateTypes<'a> {
                     // the named array enforces them (deserialize + fallible constructor)
                     array_type = array_type.with_bounds(*bounds);
                 }
+                // `@duplicates reject` rides the alias so every embed site (and generic use-site
+                // re-resolution) sees the uniqueness twin. Applied POST-arm so the raw arm types the
+                // tag-set collapse recognizer compared for equality stayed policy-free.
+                array_type = array_type.with_duplicates_policy(rust_struct.config().duplicates);
                 if let Some(tag) = rust_struct.tag {
                     array_type = if rust_struct.tag_optional {
                         array_type.optionally_tag(tag)
@@ -1590,10 +1617,12 @@ impl<'a> IntermediateTypes<'a> {
         if !cli.wasm {
             return;
         }
-        // (ident, gets_wrapper) for every anonymous instance resolving to a collection. `gets_wrapper`
-        // is true for a `[+ …]` (always wrapped) or a non-exposable element (`set<key_hash>`), false
-        // for a directly-exposable loose collection (`set<uint>` → bare `Vec<u64>`).
-        let anon_collection: Vec<(RustIdent, bool)> = self
+        // (ident, gets_wrapper, reject) for every anonymous instance resolving to a collection.
+        // `gets_wrapper` is true for a `[+ …]` (always wrapped) or a non-exposable element
+        // (`set<key_hash>`), false for a directly-exposable loose collection (`set<uint>` → bare
+        // `Vec<u64>`). `reject` flags a `@duplicates reject` instance, whose wasm lowering is not yet
+        // built for the ANONYMOUS (inline) shape (rejected loudly below).
+        let anon_collection: Vec<(RustIdent, bool, bool)> = self
             .generic_instances
             .values()
             .filter(|i| i.anonymous)
@@ -1614,12 +1643,43 @@ impl<'a> IntermediateTypes<'a> {
                 // Exposability is tested on the RESOLVED collection (a `[+ …]` is never exposable;
                 // otherwise ask the shallow-resolved shape) — NOT on the `Alias` wrapper, whose own
                 // rust-struct entry would wrongly report "wrapped" for the very type we are converging.
-                let gets_wrapper =
-                    rt.is_type_enforced_non_empty() || !shallow.directly_wasm_exposable_ct(self);
-                Some((i.instance_ident.clone(), gets_wrapper))
+                // A reject-mode set is never directly exposable (it crosses through its OrderedSet
+                // wrapper, like `[+ …]`), so it always gets a wrapper — the conceptual exposability
+                // probe below can't see the policy (it lives on the RustType config), so add it here.
+                let gets_wrapper = rt.is_type_enforced_non_empty()
+                    || rt.duplicates_reject()
+                    || !shallow.directly_wasm_exposable_ct(self);
+                Some((
+                    i.instance_ident.clone(),
+                    gets_wrapper,
+                    rt.duplicates_reject(),
+                ))
             })
             .collect();
-        for (ident, gets_wrapper) in anon_collection {
+        for (ident, gets_wrapper, reject) in anon_collection {
+            // `@duplicates reject` on an ANONYMOUS (inline) generic-collection instance
+            // (`[g: oset<uint>]`) has no wasm wrapper wired up yet: the anonymous path lowers to the
+            // structural loose/`NonEmpty` wrapper (over `Vec`/`NonEmptyVec`), which mismatches the
+            // `OrderedSet`/`NonEmptyOrderedSet` rust core and would emit a wasm crate that does not
+            // compile. Reject loudly (never silent-broken output) — this seam is only reached under
+            // `--wasm`, so rust-only generation of the same shape keeps working. The remedy binds the
+            // instance as its own NAMED rule, which mints a proper reject wasm wrapper.
+            if reject {
+                let source_name = self
+                    .source_rule_name(&ident)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| ident.to_string());
+                self.record_rejection(format!(
+                    "@duplicates reject on the inline generic-set instance `{source_name}`: the \
+                     wasm wrapper for an inline (anonymous) reject-set instance is not yet built \
+                     (its OrderedSet core would mismatch the loose `Vec` wasm lowering). Bind the \
+                     instance as its own named rule instead — e.g. `oset_u64 = oset<uint>` and \
+                     reference `oset_u64` — which mints a proper reject wasm wrapper. (Rust-only \
+                     generation, `--wasm=false`, supports the inline shape today.)"
+                ));
+                self.anonymous_collection_instances.insert(ident);
+                continue;
+            }
             // Every anonymous collection instance skips the rule-named class mint (recorded here). The
             // WRAPPER subset additionally routes through a `gen_wasm_alias` passthrough to the
             // STRUCTURAL wrapper (`pub type SetKeyHash = KeyHashList;`, bounds-aware). The exposable
@@ -1666,6 +1726,7 @@ impl<'a> IntermediateTypes<'a> {
             // anonymous instances (non-exposable / `[+ …]`) and NAMED instances keep the `Alias`.
             let exposable_anon = self.is_anonymous_collection_instance(&ident)
                 && !rt.is_type_enforced_non_empty()
+                && !rt.duplicates_reject()
                 && shallow.directly_wasm_exposable_ct(self);
             let replacement = if exposable_anon {
                 self.type_aliases
@@ -1886,6 +1947,16 @@ impl<'a> IntermediateTypes<'a> {
             hash: false,
             ord: false,
         };
+        // A `@duplicates reject` set's element type is compared with the uniqueness twin's linear
+        // `contains` scan, so it needs `Eq`. Demand the `ord` flavor (`Eq/PartialEq/Ord/PartialOrd`)
+        // — the minimal flavor CONTAINING `Eq` — rather than `bare`, leaving room for a sorted-shadow
+        // implementation later. (`mark_key_demand` marks `Rust(ident)` nodes only; primitive/std
+        // elements carry `Eq` intrinsically, so they need no marking.)
+        let ord = DemandSet {
+            bare: false,
+            hash: false,
+            ord: true,
+        };
         fn check_used_as_key(
             ty: &ConceptualRustType,
             types: &IntermediateTypes<'_>,
@@ -1946,6 +2017,14 @@ impl<'a> IntermediateTypes<'a> {
                     float_key_rejections.insert(float_key_msg(&rule_ident));
                 }
             });
+            // A reject-mode set's element type gets the `ord` (Eq-containing) demand so the twin's
+            // uniqueness scan compiles. The policy lives on the struct config (and its alias).
+            if let RustStructType::Array { element_type, .. } = rust_struct.variant()
+                && rust_struct.config().duplicates
+                    == Some(crate::comment_ast::DuplicatesPolicy::Reject)
+            {
+                element_type.visit_types(self, &mut |ty| mark_key_demand(ty, &mut key_demand, ord));
+            }
             if let RustStructType::Table { domain, .. } = rust_struct.variant() {
                 domain.visit_types(self, &mut |ty| mark_key_demand(ty, &mut key_demand, bare));
                 // A top-level table rule's key is its `domain`, walked directly (not as a Map node),

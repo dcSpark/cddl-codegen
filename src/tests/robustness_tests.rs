@@ -508,16 +508,12 @@ fn raw_bytes_flavor_misuse_rejects_gracefully() {
     }
 }
 
-/// `@duplicates` is recognized end-to-end but every placement currently aborts generation via a
-/// GRACEFUL `Err` (deferred through `record_rejection` → drained by `finalize`), never a `panic!`
-/// and never a silent no-op — so no placement can silently ship while the feature is in flight. Two
-/// rejection classes, distinguished by whether the policy could EVER apply to the rule shape:
-/// collection rules (array/table, incl. the tag-258 set collapse) get "not yet built" (the policy
-/// WILL apply once a later work packet builds it); everything else (aliases, structs, unions,
-/// fields) gets a PERMANENT "only applies to …" placement rejection.
-///
-/// This pins that each seam fires with its correct class. When WP2 lands live behavior for the
-/// collection cases, the "not yet built" vectors here flip to generating fixtures.
+/// `@duplicates` rejection classes that remain after WP2 made array/set `reject` live. Two survive:
+/// a table `preserve` (the phase-2 pair-vec representation) is "not yet built", and every
+/// non-collection placement (aliases, structs, unions, fields) is a PERMANENT "only applies to …"
+/// placement rejection. The now-LIVE cases (array/set `reject`, array `preserve` no-op, table
+/// `reject` no-op) are covered by `duplicates_directive_accepts_live_and_default_noops` and the
+/// corpus fixtures.
 #[test]
 fn duplicates_directive_rejects_gracefully() {
     // (seam, cddl, must-contain fragments) — the fragments prove the vector reached ITS seam and
@@ -525,19 +521,9 @@ fn duplicates_directive_rejects_gracefully() {
     let not_yet_built = "not yet built";
     let permanent = "only applies to";
     let vectors = [
-        // --- collection rules: recognized, not yet built ---
+        // --- table preserve: recognized, not yet built (phase 2) ---
         (
-            "tag-258 set-idiom collapse",
-            "foo = #6.258([* uint]) / [* uint] ; @duplicates reject\n",
-            not_yet_built,
-        ),
-        (
-            "plain array collection",
-            "foo = [* uint] ; @duplicates reject\n",
-            not_yet_built,
-        ),
-        (
-            "table rule",
+            "table rule preserve",
             "foo = { * uint => text } ; @duplicates preserve\n",
             not_yet_built,
         ),
@@ -584,6 +570,114 @@ fn duplicates_directive_rejects_gracefully() {
             "rejection for {seam} should carry its class-specific wording ({fragment:?}), got: {msg}"
         );
     }
+}
+
+/// The now-live `@duplicates` placements generate cleanly (no rejection): array/set `reject`
+/// (live uniqueness twin), array `preserve` (default no-op) and table `reject` (default no-op). The
+/// no-op cases must produce output byte-identical to the same rule with NO directive (self-
+/// documentation, never a representation change). Rust-only generation keeps this a fast unit check;
+/// the twin runtime + round-trip land in the corpus/integration gates.
+#[test]
+fn duplicates_directive_accepts_live_and_default_noops() {
+    let gen_src = |cddl: &str| -> std::collections::BTreeMap<String, String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_dup_accept_{}_{}.cddl",
+            std::process::id(),
+            cddl.len()
+        ));
+        std::fs::write(&path, cddl).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "dup_accept_unused",
+            "--wasm=false",
+        ]);
+        let out = crate::api::generated_strings(&cli).unwrap_or_else(|e| {
+            panic!("@duplicates should generate cleanly for {cddl:?}, got: {e}")
+        });
+        std::fs::remove_file(&path).ok();
+        out
+    };
+
+    // array/set reject is LIVE: the transparent alias must name the uniqueness twin.
+    let reject_set = gen_src("foo = #6.258([* uint]) / [* uint] ; @duplicates reject\n");
+    let reject_src = reject_set.values().cloned().collect::<Vec<_>>().join("\n");
+    assert!(
+        reject_src.contains("OrderedSet<u64>"),
+        "array/set reject must lower to OrderedSet, got:\n{reject_src}"
+    );
+
+    let reject_neset = gen_src("foo = #6.258([+ uint]) / [+ uint] ; @duplicates reject\n");
+    let reject_neset_src = reject_neset
+        .values()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        reject_neset_src.contains("NonEmptyOrderedSet<u64>"),
+        "non-empty set reject must lower to NonEmptyOrderedSet, got:\n{reject_neset_src}"
+    );
+
+    // preserve on an array/set is the default (no-op): byte-identical to no directive.
+    assert_eq!(
+        gen_src("foo = #6.258([* uint]) / [* uint] ; @duplicates preserve\n"),
+        gen_src("foo = #6.258([* uint]) / [* uint]\n"),
+        "@duplicates preserve on a set must be a no-op vs no directive"
+    );
+
+    // reject on a table is the default (no-op): byte-identical to no directive.
+    assert_eq!(
+        gen_src("foo = { * uint => text } ; @duplicates reject\n"),
+        gen_src("foo = { * uint => text }\n"),
+        "@duplicates reject on a table must be a no-op vs no directive"
+    );
+}
+
+/// `@duplicates reject` on an INLINE (anonymous) generic-set instance (`[g: oset<uint>]`) has no
+/// wasm wrapper wired up yet, so under `--wasm` it must fail LOUDLY at generation (a graceful `Err`,
+/// never a silent-broken wasm crate that won't compile). The SAME shape generates cleanly with
+/// `--wasm=false` (rust-only). The remedy — binding the instance as its own named rule — is exercised
+/// live by the `tag_set_reject` corpus fixture; here we pin both the rejection and the rust-only path.
+#[test]
+fn duplicates_reject_inline_generic_instance_rejects_under_wasm() {
+    const CDDL: &str = "oset<a0> = #6.258([* a0]) / [* a0] ; @duplicates reject\n\
+                        holder = [g: oset<uint>]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_dup_inline_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let run = |wasm: &str| {
+        crate::api::generated_strings(&Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "dup_inline_unused",
+            wasm,
+        ]))
+    };
+
+    // --wasm=true: graceful rejection (never a panic, never silent-broken output)
+    let err = run("--wasm=true")
+        .expect_err("@duplicates reject on an inline generic instance must reject under --wasm");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("@duplicates") && msg.contains("named rule"),
+        "rejection must name the directive and the name-the-rule remedy, got: {msg}"
+    );
+
+    // --wasm=false: the same shape generates cleanly (rust-only inline reject is supported today)
+    let out = run("--wasm=false")
+        .expect("the same inline reject shape must generate cleanly with --wasm=false");
+    let src = out.values().cloned().collect::<Vec<_>>().join("\n");
+    assert!(
+        src.contains("OrderedSet<u64>"),
+        "rust-only inline reject must still lower to OrderedSet, got:\n{src}"
+    );
+    std::fs::remove_file(&path).ok();
 }
 
 /// `@duplicates` at a field/member position is per-rule-only, so it is a graceful placement

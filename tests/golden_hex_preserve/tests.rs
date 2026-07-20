@@ -401,4 +401,74 @@ mod golden_hex_preserve {
             assert_eq!(d.s.get(1).map(|x| x.as_str()), Some("a"));
         }
     );
+
+    // ---- `@duplicates reject` set: accept-path byte identity (the twin is order-preserving) ----
+    // A duplicate-FREE instance of a reject-mode set (`reject_set`, s: OrderedSet<String>) must
+    // re-emit byte-exact under --preserve-encodings, including a non-minimal tag header — `reject`
+    // narrows the accepted set, it never sorts or reshapes the accepted bytes. Two distinct elements
+    // "a","b" so the vector is genuinely unique (not vacuously single). Untagged and tagged arms.
+    // (The wire-DUPLICATE reject case is pinned in-process by duplicates_reject_set_wire_and_api.)
+    kat_preserve!(
+        reject_set_untagged,
+        RejectSetHolder,
+        &[0x81, 0x82, 0x61, 0x61, 0x61, 0x62],
+        |d: &RejectSetHolder| {
+            assert_eq!(d.s.len(), 2);
+            assert_eq!(d.s.get(0).map(|x| x.as_str()), Some("a"));
+            assert_eq!(d.s.get(1).map(|x| x.as_str()), Some("b"));
+        }
+    );
+    // tagged arm, NON-minimal 8-byte tag head — preserved verbatim (like opt_set_tagged_wide).
+    kat_preserve!(
+        reject_set_tagged_wide,
+        RejectSetHolder,
+        &[0x81, 0xdb, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x82, 0x61, 0x61, 0x61, 0x62],
+        |d: &RejectSetHolder| {
+            assert_eq!(d.s.len(), 2);
+            assert_eq!(d.s.get(0).map(|x| x.as_str()), Some("a"));
+            assert_eq!(d.s.get(1).map(|x| x.as_str()), Some("b"));
+        }
+    );
+
+    // The `@duplicates reject` reject PATH: a duplicate on the WIRE and a duplicate built through
+    // the public API report the IDENTICAL error, because the generated deserialize routes the
+    // collected Vec through the SAME `OrderedSet::try_from` door the API uses — they can never drift.
+    // A duplicate is REFUSED (not silently deduped), and the error names the duplicate's INDEX.
+    #[test]
+    fn reject_set_duplicate_wire_and_api_identical() {
+        // wire: untagged holder [["a","a"]] — a duplicate element in the reject set
+        let dup_wire: &[u8] = &[0x81, 0x82, 0x61, 0x61, 0x61, 0x61];
+        let wire_err = RejectSetHolder::from_cbor_bytes(dup_wire)
+            .expect_err("a duplicate set element on the wire must be rejected");
+        // API: the same duplicate built through the public uniqueness door
+        let api_err = crate::generated::ordered_set::OrderedSet::<String>::try_from(vec![
+            "a".to_string(),
+            "a".to_string(),
+        ])
+        .expect_err("a duplicate built through the API must be rejected");
+        // Both route through the SAME OrderedSet door, so both name the identical `DuplicateKey`
+        // with the identical INDEX (1 — the second "a"). The wire path additionally wraps the failure
+        // in a field-context prefix (`… in RejectSetHolder.s because:`), which is the only difference —
+        // the door-level payload is byte-identical.
+        assert!(
+            wire_err.to_string().contains("Duplicate key: 1"),
+            "wire error should name the duplicate key and its index: {wire_err}"
+        );
+        assert!(
+            api_err.to_string().contains("Duplicate key: 1"),
+            "API error should name the duplicate key and its index: {api_err}"
+        );
+
+        // checked push: adding an already-present element is refused, the set is unchanged.
+        let mut set =
+            crate::generated::ordered_set::OrderedSet::<String>::try_from(vec!["a".to_string()])
+                .unwrap();
+        set.push("b".to_string())
+            .expect("a new element is accepted");
+        assert!(
+            set.push("a".to_string()).is_err(),
+            "an already-present element is refused"
+        );
+        assert_eq!(set.len(), 2, "the refused push left the set unchanged");
+    }
 }

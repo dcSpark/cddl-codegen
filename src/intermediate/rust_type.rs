@@ -229,6 +229,14 @@ pub struct RustTypeSerializeConfig {
     pub default: Option<FixedValue>,
     /// Bounds to check. Relevant to primitives + arrays + maps
     pub bounds: Option<(Option<i128>, Option<i128>)>,
+    /// Per-rule `@duplicates` policy for an array-shaped collection member (`[* a]` / `[+ a]`,
+    /// including the tag-258 set idiom). `None` (or `Some(Preserve)`) keeps the historical
+    /// `Vec`/`NonEmptyVec` representation; `Some(Reject)` swaps the member to the uniqueness twin
+    /// (`OrderedSet`/`NonEmptyOrderedSet`) whose single `TryFrom` door refuses duplicates. This
+    /// rides the transparent alias `RustType` the same way `bounds` does — attached POST-arm at the
+    /// `register_rust_struct` collection arms, never on the raw arm types the tag-set collapse
+    /// recognizer compares for structural equality (see `parsing::recognize_optional_tag_set`).
+    pub duplicates: Option<crate::comment_ast::DuplicatesPolicy>,
     /// Float value window to check (NaN-safe). Mutually exclusive with `bounds`; only ever set on
     /// a float primitive member (`float64 .le 10.5`, `[f: 0.5..10.5]`).
     pub float_bounds: Option<FloatWindow>,
@@ -357,8 +365,21 @@ impl RustType {
                 },
                 float_bounds: self.config.float_bounds,
                 basic_override: self.config.basic_override,
+                duplicates: self.config.duplicates,
             },
         }
+    }
+
+    /// Attach a per-rule `@duplicates` policy to a collection member `RustType`. Applied at the
+    /// `register_rust_struct` collection arms so it rides the transparent alias to every embed site,
+    /// exactly like `with_bounds`. `None`/`Preserve` are no-ops on representation (`Vec` stays
+    /// `Vec`); only `Reject` swaps in the uniqueness twin at `for_rust_member`.
+    pub fn with_duplicates_policy(
+        mut self,
+        policy: Option<crate::comment_ast::DuplicatesPolicy>,
+    ) -> Self {
+        self.config.duplicates = policy;
+        self
     }
 
     /// Attach a NaN-safe float value window (`float64 .le 10.5`, `[f: 0.5..10.5]`). Parallel to
@@ -382,6 +403,7 @@ impl RustType {
                 bounds: self.config.bounds,
                 float_bounds: self.config.float_bounds,
                 basic_override: true,
+                duplicates: self.config.duplicates,
             },
         }
     }
@@ -588,6 +610,42 @@ impl RustType {
             && self.config.bounds == Some((Some(1), None))
     }
 
+    /// True when this array-shaped member carries `@duplicates reject` — its representation swaps to
+    /// the uniqueness twin (`OrderedSet<T>`, or `NonEmptyOrderedSet<T>` when also `[+]`). Matches the
+    /// RAW conceptual type (not alias-resolved), the same convention as `is_non_empty_array`: a field
+    /// REFERENCING a named reject rule is an `Alias` whose target already resolves to the twin, so its
+    /// member type must stay the alias name rather than re-inline the container.
+    pub fn is_reject_ordered_set(&self) -> bool {
+        matches!(self.conceptual_type, ConceptualRustType::Array(_))
+            && self.config.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Reject)
+    }
+
+    /// Whether this member carries the `@duplicates reject` policy, INDEPENDENT of whether the
+    /// conceptual type is a raw `Array` or an alias wrapping one. Unlike `is_reject_ordered_set`
+    /// (which requires a raw `Array` — the naming/representation decision), this reads only the config
+    /// flag, so it stays true after `resolve_alias` re-wraps the resolved base in an `Alias(...)`
+    /// (the config survives that wrap). Used at the generic-instance convergence seams, which work on
+    /// alias-resolved `RustType`s.
+    pub fn duplicates_reject(&self) -> bool {
+        self.config.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Reject)
+    }
+
+    /// Whether this type, at ANY nesting level, contains the `@duplicates reject` `OrderedSet` shape
+    /// (so the crate needs the `ordered_set` runtime module + imports). Recurses into container inners
+    /// like `contains_non_empty_array`.
+    pub fn contains_ordered_set(&self) -> bool {
+        if self.is_reject_ordered_set() {
+            return true;
+        }
+        match &self.conceptual_type {
+            ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
+                inner.contains_ordered_set()
+            }
+            ConceptualRustType::Map(k, v) => k.contains_ordered_set() || v.contains_ordered_set(),
+            _ => false,
+        }
+    }
+
     /// The `{+ k => v}` occurrence shape — lower bound exactly 1, no upper bound — on a homogeneous
     /// MAP (table). The map-side twin of `is_non_empty_array`: this becomes `NonEmptyMap<K, V>`, whose
     /// single `TryFrom<{table_type}>` door enforces non-emptiness at the type level. Matches the RAW
@@ -717,10 +775,13 @@ impl RustType {
         match &self.conceptual_type {
             ConceptualRustType::Array(inner) => format!(
                 "{}<{}>",
-                if self.is_non_empty_array() {
-                    "NonEmptyVec"
-                } else {
-                    "Vec"
+                match (self.is_reject_ordered_set(), self.is_non_empty_array()) {
+                    // `@duplicates reject`: the uniqueness twin (order-preserving), non-empty flavor
+                    // when the rule is also `[+]` (its door composes uniqueness + the min-1 check).
+                    (true, true) => "NonEmptyOrderedSet",
+                    (true, false) => "OrderedSet",
+                    (false, true) => "NonEmptyVec",
+                    (false, false) => "Vec",
                 },
                 inner.for_rust_member(types, from_wasm, cli)
             ),
@@ -794,7 +855,10 @@ impl RustType {
     /// Whether the type crosses the wasm boundary as a bare value (not via a wrapper). A NonEmpty
     /// array is ALWAYS wrapped (restricted `NonEmpty*List`), so it is never directly exposable.
     pub fn directly_wasm_exposable(&self, types: &IntermediateTypes) -> bool {
-        if self.is_non_empty_array() {
+        // A `[+ T]` (NonEmptyVec) or a `@duplicates reject` set (OrderedSet/NonEmptyOrderedSet) always
+        // crosses the wasm boundary through its restricted wrapper class, never as a bare `Vec`: the
+        // bare form would drop the invariant AND mismatch the rust core type. Same reason as `[+ T]`.
+        if self.is_non_empty_array() || self.is_reject_ordered_set() {
             return false;
         }
         self.conceptual_type.directly_wasm_exposable_ct(types)

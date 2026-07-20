@@ -91,6 +91,7 @@ fn composed_runtime_static_files(
     cli: &Cli,
     include_non_empty_vec: bool,
     include_non_empty_map: bool,
+    include_ordered_set: bool,
 ) -> std::io::Result<Vec<(String, String)>> {
     let mut out = Vec::new();
 
@@ -171,6 +172,26 @@ fn composed_runtime_static_files(
         out.push((
             "non_empty_map.rs".to_owned(),
             rustfmt_generated_string(&non_empty_map_rs)?.into_owned(),
+        ));
+    }
+
+    // ordered_set.rs (the OrderedSet / NonEmptyOrderedSet `@duplicates reject` runtime). Its
+    // json/schemars companions append under the same flags as the other runtimes.
+    if include_ordered_set {
+        let mut ordered_set_rs = std::fs::read_to_string(cli.static_dir.join("ordered_set.rs"))?;
+        if cli.json_serde_derives {
+            ordered_set_rs.push_str(&std::fs::read_to_string(
+                cli.static_dir.join("ordered_set_json.rs"),
+            )?);
+        }
+        if cli.json_schema_export {
+            ordered_set_rs.push_str(&std::fs::read_to_string(
+                cli.static_dir.join("ordered_set_schemars.rs"),
+            )?);
+        }
+        out.push((
+            "ordered_set.rs".to_owned(),
+            rustfmt_generated_string(&ordered_set_rs)?.into_owned(),
         ));
     }
 
@@ -502,6 +523,7 @@ impl GenerationScope {
                 cli,
                 types.uses_non_empty_vec() || self.requested_non_empty_vec,
                 types.uses_non_empty_map() || self.requested_non_empty_map,
+                types.uses_ordered_set() || self.requested_ordered_set,
             )?;
             for (filename, content) in &runtime_files {
                 let rel_path = format!("rust/src/generated/{filename}");
@@ -525,7 +547,7 @@ impl GenerationScope {
         if let Some(export_crate) = &cli.export_static_crate {
             let export_dir = export_crate.join("src");
             std::fs::create_dir_all(&export_dir)?;
-            let runtime_files = composed_runtime_static_files(cli, true, true)?;
+            let runtime_files = composed_runtime_static_files(cli, true, true, true)?;
             for (filename, content) in &runtime_files {
                 let path = export_dir.join(filename);
                 write_rs_with_preserve(&path, filename, content, cli.preserve_comments)?;

@@ -448,6 +448,145 @@ impl GenerationScope {
         wrapper.push(self, types);
     }
 
+    /// Emit the RESTRICTED set wrapper for a `@duplicates reject` collection — the wasm twin of the
+    /// loose list wrapper, but wrapping `core::OrderedSet<T>` (`non_empty == false`) or
+    /// `core::NonEmptyOrderedSet<T>` (`non_empty == true`) so the boundary conversion to the rust core
+    /// stays an infallible `From` (exactly why `NonEmptyVec` wraps the restricted type, not `Vec`). The
+    /// only surface difference from the NonEmpty twin is `add`: pushing an already-present element would
+    /// break uniqueness, so `add` is CHECKED here (returns `Result<_, JsError>` through the same door
+    /// the core `push` uses). Construction is via `try_from` (the uniqueness/min-1 door) or, for the
+    /// non-empty flavor, `new(first)`.
+    pub(super) fn generate_reject_ordered_set_type(
+        &mut self,
+        types: &IntermediateTypes,
+        element_type: RustType,
+        wrapper_ident: &RustIdent,
+        non_empty: bool,
+        cli: &Cli,
+    ) {
+        if !self.already_generated.insert(wrapper_ident.clone()) {
+            return;
+        }
+        let twin = if non_empty {
+            "NonEmptyOrderedSet"
+        } else {
+            "OrderedSet"
+        };
+        let shape = format!(
+            "[{} {}] @duplicates reject",
+            if non_empty { "+" } else { "*" },
+            render_wrapper_shape(&element_type)
+        );
+        self.record_collection_wrapper(types, wrapper_ident, &shape);
+        // mint any NonEmpty wrappers the element itself needs first (parity with the twins)
+        self.ensure_non_empty_wrappers(types, &element_type, cli);
+        let elem_rust = element_type.for_rust_member(types, true, cli);
+        let inner_type = format!("{twin}<{elem_rust}>");
+        let elem_wasm = element_type.for_wasm_member(types);
+        let loose_list = (!element_type.directly_wasm_exposable(types)
+            && !element_type.is_non_empty_array())
+        .then(|| element_type.name_as_wasm_array(types));
+        let self_named = loose_list.as_deref() == Some(wrapper_ident.as_ref());
+        let mut wrapper = create_base_wasm_struct(self, wrapper_ident, false, cli);
+        let attr_prefix = self.requested_attribution_prefix(wrapper_ident);
+        wrapper.s.doc(format!(
+            "{attr_prefix}`{shape}`: an insertion-ordered, duplicate-free set (order preserved for \
+             byte-exact round-trip). `add` is checked — an already-present element is refused; \
+             construct via `try_from` (the uniqueness door)."
+        ));
+        wrapper.push_inner_field(&inner_type);
+        if non_empty {
+            // new(first) — always valid (length 1, trivially unique)
+            let mut new_func = codegen::Function::new("new");
+            new_func
+                .vis("pub")
+                .ret("Self")
+                .arg("first", element_type.for_wasm_param(types))
+                .line(format!(
+                    "Self({twin}::new({}))",
+                    ToWasmBoundaryOperations::format(
+                        element_type
+                            .from_wasm_boundary_clone(types, "first", false)
+                            .into_iter()
+                    )
+                ));
+            wrapper.s_impl.push_fn(new_func);
+        } else {
+            let mut new_func = codegen::Function::new("new");
+            new_func
+                .vis("pub")
+                .ret("Self")
+                .line(format!("Self({twin}::new())"));
+            wrapper.s_impl.push_fn(new_func);
+        }
+        // len + get (shared conventions), then a CHECKED add (the uniqueness difference)
+        wrapper
+            .s_impl
+            .new_fn("len")
+            .vis("pub")
+            .ret("usize")
+            .arg_ref_self()
+            .line("self.0.len()");
+        wrapper
+            .s_impl
+            .new_fn("get")
+            .vis("pub")
+            .ret(element_type.for_wasm_return(types))
+            .arg_ref_self()
+            .arg("index", "usize")
+            .line(element_type.to_wasm_boundary(types, "self.0[index]", false));
+        wrapper
+            .s_impl
+            .new_fn("add")
+            .vis("pub")
+            .ret("Result<(), JsError>")
+            .arg_mut_self()
+            .arg("elem", element_type.for_wasm_param(types))
+            .line(format!(
+                "self.0.push({}).map_err(|e| JsError::new(&e.to_string()))",
+                ToWasmBoundaryOperations::format(
+                    element_type
+                        .from_wasm_boundary_clone(types, "elem", false)
+                        .into_iter()
+                )
+            ));
+        // try_from: the single checked door from the loose form to the restricted wrapper.
+        if element_type.directly_wasm_exposable(types) {
+            wrapper
+                .s_impl
+                .new_fn("try_from")
+                .vis("pub")
+                .ret(format!("Result<{wrapper_ident}, JsError>"))
+                .arg("elements", format!("Vec<{elem_wasm}>"))
+                .line(format!(
+                    "{twin}::try_from(elements).map(Self).map_err(|e| JsError::new(&e.to_string()))"
+                ));
+        } else if let Some(loose_list) = loose_list.filter(|_| !self_named) {
+            self.generate_array_type(
+                types,
+                element_type.clone(),
+                &RustIdent::new(CDDLIdent::new(loose_list.clone())),
+                false,
+                cli,
+            );
+            wrapper
+                .s_impl
+                .new_fn("try_from")
+                .vis("pub")
+                .ret(format!("Result<{wrapper_ident}, JsError>"))
+                .arg("list", format!("&{loose_list}"))
+                .line(format!(
+                    "let inner: {} = list.clone().into();",
+                    element_type.name_as_rust_array(types, true, cli)
+                ))
+                .line(format!(
+                    "{twin}::try_from(inner).map(Self).map_err(|e| JsError::new(&e.to_string()))"
+                ));
+        }
+        wrapper.add_conversion_methods(&inner_type, cli);
+        wrapper.push(self, types);
+    }
+
     /// Emit the RESTRICTED table wrapper for a `{+ k => v}` map — the wasm twin of the loose table
     /// wrapper (`codegen_table_type`), but wrapping `core::NonEmptyMap<K, V>` instead of the raw map.
     /// Created via `try_from(&MapKToV)` (borrow + clone, so the source loose wrapper stays valid) or

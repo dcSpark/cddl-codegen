@@ -209,14 +209,34 @@ fn rust_scoped(mv: &MintValue, scoped: &ScopeMap) -> String {
             elem: Some(e),
             count,
             non_empty,
+            reject,
         } => {
-            let vec = format!("vec![{}; {count}]", rust_scoped(e, scoped));
-            if *non_empty {
-                format!("NonEmptyVec::try_from({vec}).unwrap()")
+            if *reject {
+                // `@duplicates reject`: a single unique element through the twin door (N identical
+                // copies would panic at the uniqueness scan — see emit_tests.rs).
+                let twin = if *non_empty {
+                    "NonEmptyOrderedSet"
+                } else {
+                    "OrderedSet"
+                };
+                format!(
+                    "{twin}::try_from(vec![{}]).unwrap()",
+                    rust_scoped(e, scoped)
+                )
             } else {
-                vec
+                let vec = format!("vec![{}; {count}]", rust_scoped(e, scoped));
+                if *non_empty {
+                    format!("NonEmptyVec::try_from({vec}).unwrap()")
+                } else {
+                    vec
+                }
             }
         }
+        MintValue::Array {
+            elem: None,
+            reject: true,
+            ..
+        } => "OrderedSet::try_from(vec![]).unwrap()".to_owned(),
         MintValue::Array { elem: None, .. } => "vec![]".to_owned(),
         MintValue::Map {
             key,

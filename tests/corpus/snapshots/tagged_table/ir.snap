@@ -17,6 +17,7 @@ expression: ir
             custom_deserialize: None,
             doc: None,
             newtype_getter: None,
+            duplicates: None,
         },
         variant: Record(
             RustRecord {
@@ -40,6 +41,7 @@ expression: ir
                                         config: RustTypeSerializeConfig {
                                             default: None,
                                             bounds: None,
+                                            duplicates: None,
                                             float_bounds: None,
                                             basic_override: false,
                                         },
@@ -52,6 +54,7 @@ expression: ir
                                         config: RustTypeSerializeConfig {
                                             default: None,
                                             bounds: None,
+                                            duplicates: None,
                                             float_bounds: None,
                                             basic_override: false,
                                         },
@@ -66,6 +69,7 @@ expression: ir
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
+                                duplicates: None,
                                 float_bounds: None,
                                 basic_override: false,
                             },
@@ -105,6 +109,7 @@ expression: ir
             custom_deserialize: None,
             doc: None,
             newtype_getter: None,
+            duplicates: None,
         },
         variant: Extern,
     },
@@ -124,6 +129,7 @@ expression: ir
             custom_deserialize: None,
             doc: None,
             newtype_getter: None,
+            duplicates: None,
         },
         variant: Table {
             domain: RustType {
@@ -134,6 +140,7 @@ expression: ir
                 config: RustTypeSerializeConfig {
                     default: None,
                     bounds: None,
+                    duplicates: None,
                     float_bounds: None,
                     basic_override: false,
                 },
@@ -146,6 +153,7 @@ expression: ir
                 config: RustTypeSerializeConfig {
                     default: None,
                     bounds: None,
+                    duplicates: None,
                     float_bounds: None,
                     basic_override: false,
                 },

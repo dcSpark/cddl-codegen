@@ -233,9 +233,11 @@ Notes:
 ## @duplicates
 
 :::warning Status
-`@duplicates` is currently **recognized but not yet active**: the parser understands it and
-validates its placement, but no generation behavior is wired up yet, so **using it aborts
-generation** with a clear message. This status line is removed when the feature activates.
+`@duplicates reject` is **active for set/array collection rules** (`[* a]` / `[+ a]`, including the
+tag-258 set idiom): the rule's transparent alias becomes an order-preserving, duplicate-free set. The
+no-op defaults (`preserve` on a set, `reject` on a table) are accepted for self-documentation. The
+one stance still in flight is **`preserve` on a table** (the byte-exact duplicate-keyed pair-map
+representation); using it aborts generation with a clear message until that lands.
 :::
 
 Selects the per-rule policy for how a collection handles duplicate entries on the CBOR wire. CBOR
@@ -260,6 +262,14 @@ A missing or unknown argument is a hard error.
 **Defaults are today's behavior, unchanged** — sets (the tag-258 idiom) default to `preserve`,
 tables default to `reject`. Writing the default explicitly is accepted as self-documentation (a
 no-op, no warning).
+
+Under `@duplicates reject` a set rule's transparent alias targets an order-preserving,
+duplicate-free set type (`OrderedSet<T>`, or `NonEmptyOrderedSet<T>` for the `[+]` flavor) instead of
+`Vec<T>`/`NonEmptyVec<T>`. Its single `TryFrom` door is the only way to build one, so a duplicate is
+refused identically whether it arrives on the wire or through the generated API — the decode error is
+`DeserializeFailure::DuplicateKey(Key::Uint(i))`, where `i` is the zero-based index of the offending
+element. Rejection only narrows *which* inputs are accepted; an accepted (duplicate-free) value
+re-emits byte-exactly in its original wire order (the set is never sorted).
 
 The policy is a **per-rule** knob (not a CLI flag) because mixed-era specs need both stances in one
 document — a Conway-strict set next to a historical preserve-mode set. Because it is per-rule, an
