@@ -152,6 +152,10 @@ pub struct GenerationScope {
     /// reject-mode set wrapper whose `ordered_set` runtime the dep's OWN spec does not otherwise pull
     /// in. ORed into the same runtime-provisioning gates as the NonEmpty flags. Never set off the flag.
     requested_ordered_set: bool,
+    /// W2 dep side, `@duplicates preserve` pair-map twin: the map-side analog of
+    /// `requested_ordered_set`. `true` when requested-wrapper emission produced a preserve-mode table
+    /// wrapper whose `pair_map` runtime the dep's OWN spec does not otherwise pull in.
+    requested_pair_map: bool,
     no_deser_reasons: BTreeMap<RustIdent, Vec<String>>,
 }
 
@@ -185,6 +189,7 @@ impl GenerationScope {
             requested_non_empty_vec: false,
             requested_non_empty_map: false,
             requested_ordered_set: false,
+            requested_pair_map: false,
             no_deser_reasons: BTreeMap::new(),
         }
     }
@@ -525,6 +530,8 @@ impl GenerationScope {
                                     domain.clone(),
                                     range.clone(),
                                     true,
+                                    rust_struct.config().duplicates
+                                        == Some(crate::comment_ast::DuplicatesPolicy::Preserve),
                                     cli,
                                 );
                             }
@@ -807,6 +814,10 @@ impl GenerationScope {
             // only crates that actually use `@duplicates reject` sets pull in the OrderedSet runtime
             if types.uses_ordered_set() || self.requested_ordered_set {
                 self.rust_lib().raw("pub mod ordered_set;");
+            }
+            // only crates that actually use `@duplicates preserve` tables pull in the PairMap runtime
+            if types.uses_pair_map() || self.requested_pair_map {
+                self.rust_lib().raw("pub mod pair_map;");
             }
         }
         if cli.preserve_encodings {
@@ -1181,6 +1192,18 @@ impl GenerationScope {
                     None,
                 );
             }
+            if types.uses_pair_map() {
+                content.push_import(
+                    format!("{}::pair_map", cli.common_import_rust()),
+                    "PairMap",
+                    None,
+                );
+                content.push_import(
+                    format!("{}::pair_map", cli.common_import_rust()),
+                    "NonEmptyPairMap",
+                    None,
+                );
+            }
         }
 
         // serialization
@@ -1315,6 +1338,18 @@ impl GenerationScope {
                     content.push_import(
                         format!("{}::ordered_set", cli.common_import_wasm()),
                         "NonEmptyOrderedSet",
+                        None,
+                    );
+                }
+                if types.uses_pair_map() {
+                    content.push_import(
+                        format!("{}::pair_map", cli.common_import_wasm()),
+                        "PairMap",
+                        None,
+                    );
+                    content.push_import(
+                        format!("{}::pair_map", cli.common_import_wasm()),
+                        "NonEmptyPairMap",
                         None,
                     );
                 }
@@ -2094,7 +2129,7 @@ fn encoding_fields_impl(
                 ]
             }
         }
-        SerializingRustType::Root(ConceptualRustType::Map(k, v), _cfg) => {
+        SerializingRustType::Root(ConceptualRustType::Map(k, v), cfg) => {
             let mut encs = vec![EncodingField {
                 field_name: format!("{name}_encoding"),
                 type_name: "LenEncoding".to_owned(),
@@ -2107,16 +2142,33 @@ fn encoding_fields_impl(
             let val_encs =
                 encoding_fields_impl(types, &format!("{name}_value"), (&**v).into(), cli);
 
+            // `@duplicates preserve` (the pair-map twin): a `BTreeMap` keyed by key VALUE is
+            // structurally incapable of holding two entries with the same key, so the encoding
+            // sidecar must be POSITIONAL — a `Vec<tuple>` parallel to the entries, indexed by
+            // position exactly like the array `_elem_encodings` sidecar (serialize reads `.get(i)`,
+            // deserialize `.push(..)`s per entry). The loose (reject/default) table stays keyed by
+            // key value.
+            let preserve_pair_map =
+                cfg.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve);
+
             if !key_encs.is_empty() {
                 let type_name_value = tuple_type_name(&key_encs);
+                let (type_name, default_expr) = if preserve_pair_map {
+                    (format!("Vec<{type_name_value}>"), "Vec::new()")
+                } else {
+                    (
+                        format!(
+                            "BTreeMap<{}, {}>",
+                            k.for_rust_member(types, false, cli),
+                            type_name_value
+                        ),
+                        "BTreeMap::new()",
+                    )
+                };
                 encs.push(EncodingField {
                     field_name: format!("{name}_key_encodings"),
-                    type_name: format!(
-                        "BTreeMap<{}, {}>",
-                        k.for_rust_member(types, false, cli),
-                        type_name_value
-                    ),
-                    default_expr: "BTreeMap::new()",
+                    type_name,
+                    default_expr,
                     enc_conversion_before: "",
                     enc_conversion_after: "",
                     is_copy: false,
@@ -2125,14 +2177,22 @@ fn encoding_fields_impl(
 
             if !val_encs.is_empty() {
                 let type_name_value = tuple_type_name(&val_encs);
+                let (type_name, default_expr) = if preserve_pair_map {
+                    (format!("Vec<{type_name_value}>"), "Vec::new()")
+                } else {
+                    (
+                        format!(
+                            "BTreeMap<{}, {}>",
+                            k.for_rust_member(types, false, cli),
+                            type_name_value
+                        ),
+                        "BTreeMap::new()",
+                    )
+                };
                 encs.push(EncodingField {
                     field_name: format!("{name}_value_encodings"),
-                    type_name: format!(
-                        "BTreeMap<{}, {}>",
-                        k.for_rust_member(types, false, cli),
-                        type_name_value
-                    ),
-                    default_expr: "BTreeMap::new()",
+                    type_name,
+                    default_expr,
                     enc_conversion_before: "",
                     enc_conversion_after: "",
                     is_copy: false,

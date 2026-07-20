@@ -471,4 +471,95 @@ mod golden_hex_preserve {
         );
         assert_eq!(set.len(), 2, "the refused push left the set unchanged");
     }
+
+    // ---- `@duplicates preserve` table (PairMap): duplicate-key byte-exact round-trip ----
+    // The consensus-critical property for Cardano `transaction_metadata`: a duplicate-keyed map is
+    // spec-valid CBOR and MUST re-emit byte-exact (the aux-data hash is over the original bytes). The
+    // value anchor asserts the duplicate is genuinely PRESENT (two entries under key 1, values "a"
+    // then "b", in wire order) so the KAT can't pass by a silent collapse that happened to re-encode
+    // the same; the macro's byte-identity assert then pins the round-trip. Holder is `[m: pmap]`, a
+    // 1-element array (0x81) wrapping the 2-entry map (0xa2).
+    kat_preserve!(
+        pmap_duplicate_key,
+        PmapHolder,
+        &[0x81, 0xa2, 0x01, 0x61, 0x61, 0x01, 0x61, 0x62],
+        |d: &PmapHolder| {
+            assert_eq!(d.m.len(), 2);
+            // get() is the FIRST match; get_all() every match in entry order.
+            assert_eq!(d.m.get(&1).map(String::as_str), Some("a"));
+            assert_eq!(
+                d.m.get_all(&1).into_iter().map(String::as_str).collect::<Vec<_>>(),
+                vec!["a", "b"]
+            );
+        }
+    );
+    // Same duplicate-keyed map, but the FIRST entry's key uses a NON-MINIMAL 1-byte argument head
+    // (0x18 0x01 for 1, minimal would be 0x01) while the second uses the minimal 0x01. The POSITIONAL
+    // encoding sidecar preserves each entry's header independently — a keyed encoding map could not,
+    // since the two same-key entries would share (and clobber) one slot.
+    kat_preserve!(
+        pmap_duplicate_key_nonminimal_head,
+        PmapHolder,
+        &[0x81, 0xa2, 0x18, 0x01, 0x61, 0x61, 0x01, 0x61, 0x62],
+        |d: &PmapHolder| {
+            assert_eq!(d.m.len(), 2);
+            assert_eq!(
+                d.m.get_all(&1).into_iter().map(String::as_str).collect::<Vec<_>>(),
+                vec!["a", "b"]
+            );
+        }
+    );
+
+    // The `transaction_metadata` headline: a duplicate-keyed metadata map inside the RECURSIVE
+    // metadatum union must decode AND re-emit byte-exact through the recursive-descent (de)serializer.
+    // Wire: `[ { "a": 1, "a": 2 } ]` — the holder array (0x81) wraps the union's map arm (0xa2) with a
+    // duplicate text key "a" whose values are the union's int arm. This is the consensus-critical
+    // property: Cardano's auxiliary-data hash is over these original bytes.
+    kat_preserve!(
+        metadatum_duplicate_key_recursive,
+        MdHolder,
+        &[0x81, 0xa2, 0x61, 0x61, 0x01, 0x61, 0x61, 0x02],
+        |d: &MdHolder| {
+            match &d.meta {
+                Md::Mdmap { mdmap, .. } => {
+                    assert_eq!(mdmap.len(), 2, "both duplicate-keyed entries survive");
+                    assert_eq!(
+                        mdmap.get_all(&"a".to_string()).len(),
+                        2,
+                        "key \"a\" maps to two entries in wire order"
+                    );
+                }
+                other => panic!("expected the map arm, got {other:?}"),
+            }
+        }
+    );
+
+    // The pair-map's public read surface and the `{+ …}` (NonEmptyPairMap) min-1 door, tested
+    // in-process against the static runtime (available because `pmap` pulls in the `pair_map` module).
+    // `insert` APPENDS (never replaces — that would drop a duplicate); `get` is the first match;
+    // `get_all` every match. The non-empty door refuses an empty vec with the same RangeCheck the CBOR
+    // decoder raises for `{+ …}`, so wire-side and API-side rejection are identical.
+    #[test]
+    fn pair_map_surface_and_nonempty_door() {
+        use crate::generated::pair_map::{NonEmptyPairMap, PairMap};
+        let mut m: PairMap<u64, String> = PairMap::new();
+        assert!(m.insert(1, "a".to_string()).is_none(), "insert appends, displaces nothing");
+        assert!(m.insert(1, "b".to_string()).is_none(), "a repeated key is appended, not replaced");
+        assert_eq!(m.len(), 2, "both duplicate-keyed entries are kept");
+        assert_eq!(m.get(&1).map(String::as_str), Some("a"), "get is the FIRST match");
+        assert_eq!(
+            m.get_all(&1).into_iter().map(String::as_str).collect::<Vec<_>>(),
+            vec!["a", "b"],
+            "get_all returns every match in entry order"
+        );
+
+        // the non-empty door
+        assert!(
+            NonEmptyPairMap::try_from(Vec::<(u64, String)>::new()).is_err(),
+            "an empty map is refused by the min-1 door"
+        );
+        let ne = NonEmptyPairMap::try_from(vec![(1u64, "a".to_string()), (1u64, "b".to_string())])
+            .expect("a non-empty duplicate-keyed vec is accepted");
+        assert_eq!(ne.len(), 2, "the door keeps duplicate keys");
+    }
 }

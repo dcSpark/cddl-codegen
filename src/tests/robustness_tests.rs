@@ -508,23 +508,25 @@ fn raw_bytes_flavor_misuse_rejects_gracefully() {
     }
 }
 
-/// `@duplicates` rejection classes that remain after WP2 made array/set `reject` live. Two survive:
-/// a table `preserve` (the phase-2 pair-vec representation) is "not yet built", and every
-/// non-collection placement (aliases, structs, unions, fields) is a PERMANENT "only applies to …"
-/// placement rejection. The now-LIVE cases (array/set `reject`, array `preserve` no-op, table
-/// `reject` no-op) are covered by `duplicates_directive_accepts_live_and_default_noops` and the
-/// corpus fixtures.
+/// `@duplicates` rejection classes that remain after phase 2 made table `preserve` live. Two
+/// survive: a `{+ …}` table `preserve` under `--wasm` (the NonEmptyPairMap wasm wrapper is "not yet
+/// built" — its rust surface generates, only the wasm leg is deferred), and every non-collection
+/// placement (aliases, structs, unions, fields) is a PERMANENT "only applies to …" placement
+/// rejection. The now-LIVE cases (array/set `reject`, table `preserve` -> PairMap, array `preserve`
+/// / table `reject` no-ops) are covered by `duplicates_directive_accepts_live_and_default_noops` and
+/// the corpus fixtures.
 #[test]
 fn duplicates_directive_rejects_gracefully() {
     // (seam, cddl, must-contain fragments) — the fragments prove the vector reached ITS seam and
-    // carries the class-correct wording.
+    // carries the class-correct wording. The default CLI leaves `--wasm` ON, so the `{+ …}` preserve
+    // vector reaches its wasm-leg stopgap.
     let not_yet_built = "not yet built";
     let permanent = "only applies to";
     let vectors = [
-        // --- table preserve: recognized, not yet built (phase 2) ---
+        // --- {+ …} table preserve under --wasm: NonEmptyPairMap wasm wrapper not yet built ---
         (
-            "table rule preserve",
-            "foo = { * uint => text } ; @duplicates preserve\n",
+            "nonempty table preserve under wasm",
+            "foo = { + uint => text } ; @duplicates preserve\n",
             not_yet_built,
         ),
         // --- non-collection rules: permanent placement rejection ---
@@ -632,6 +634,31 @@ fn duplicates_directive_accepts_live_and_default_noops() {
         gen_src("foo = { * uint => text } ; @duplicates reject\n"),
         gen_src("foo = { * uint => text }\n"),
         "@duplicates reject on a table must be a no-op vs no directive"
+    );
+
+    // preserve on a table is LIVE: the transparent alias must name the vec-of-pairs twin.
+    let preserve_table = gen_src("foo = { * uint => text } ; @duplicates preserve\n");
+    let preserve_table_src = preserve_table
+        .values()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        preserve_table_src.contains("PairMap<u64, String>"),
+        "table preserve must lower to PairMap, got:\n{preserve_table_src}"
+    );
+
+    // preserve on a `{+ …}` table composes non-emptiness with the pair-map (rust surface; the wasm
+    // leg is deferred, which is why this is a `--wasm=false` check).
+    let preserve_ne_table = gen_src("foo = { + uint => text } ; @duplicates preserve\n");
+    let preserve_ne_table_src = preserve_ne_table
+        .values()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        preserve_ne_table_src.contains("NonEmptyPairMap<u64, String>"),
+        "non-empty table preserve must lower to NonEmptyPairMap, got:\n{preserve_ne_table_src}"
     );
 }
 

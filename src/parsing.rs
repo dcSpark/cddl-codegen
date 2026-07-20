@@ -3,7 +3,7 @@ use cddl::ast::parent::ParentVisitor;
 use cddl::{ast::*, token};
 use std::collections::BTreeMap;
 
-use crate::comment_ast::{DuplicatesPolicy, RuleMetadata, merge_metadata, metadata_from_comments};
+use crate::comment_ast::{RuleMetadata, merge_metadata, metadata_from_comments};
 use crate::intermediate::{
     AliasIdent, AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant,
     FixedValue, FloatWindow, GenericDef, GenericInstance, IntermediateTypes, ModuleScope,
@@ -345,24 +345,6 @@ fn reject_duplicates_not_applicable(types: &mut IntermediateTypes, name: &RustId
     ));
 }
 
-/// `@duplicates preserve` on a table rule (`{ * k => v }` / `{ + k => v }`, including a tag-set
-/// collapse arm that resolved to a map): recognized, but the preserve-mode table representation is
-/// not yet built. (Array/set `reject` is live; array `preserve` and table `reject` are today's
-/// accepted defaults — only table `preserve` reaches here.) Graceful rejection so the placement is
-/// never silently ignored. The stable citation for the deferred work is the TESTING_ROADMAP entry
-/// title, which the `lint_doc_citations` gate keeps resolvable.
-fn reject_duplicates_not_yet_built(types: &mut IntermediateTypes, name: &RustIdent) {
-    let source_name = types
-        .source_rule_name(name)
-        .map(str::to_owned)
-        .unwrap_or_else(|| name.to_string());
-    types.record_rejection(format!(
-        "@duplicates preserve on table rule `{source_name}`: recognized, deliberately not yet \
-         built — preserve-mode tables (the pair-map representation) are tracked in \
-         tests/TESTING_ROADMAP.md § \"Duplicates policy phase 2: preserve-mode tables (pair-map)\"."
-    ));
-}
-
 fn parse_type_choices(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
@@ -454,15 +436,10 @@ fn parse_type_choices(
             println!(
                 "Collapsing rule `{name}` (tag {set_tag} set idiom) into a transparent optionally-tagged collection"
             );
-            // The collapse target is an array-shaped collection (or a table). `@duplicates` applies:
-            // an array `reject` is LIVE (the policy rides the alias built below); an array `preserve`
-            // and a table `reject` are today's defaults (accepted no-op, self-documentation); only a
-            // table `preserve` is the phase-2 pair-vec representation, still refused loudly.
-            if rule_metadata.duplicates == Some(DuplicatesPolicy::Preserve)
-                && matches!(base.conceptual_type, ConceptualRustType::Map(_, _))
-            {
-                reject_duplicates_not_yet_built(types, name);
-            }
+            // The collapse target is an array-shaped collection (or a table). `@duplicates` is LIVE
+            // for both: an array `reject` swaps to the `OrderedSet` twin, a table `preserve` swaps to
+            // the `PairMap` twin — each rides the alias built below. An array `preserve` and a table
+            // `reject` are today's defaults (accepted no-op, self-documentation). Nothing is refused.
             let bounds = base.config.bounds;
             let rust_struct = match base.conceptual_type {
                 ConceptualRustType::Array(element_type) => RustStruct::new_array(
@@ -3176,11 +3153,10 @@ fn parse_group_choice(
                 }
             }
             GroupParsingType::HomogenousMap(key_type, value_type, bounds) => {
-                // Table collection: `reject` is today's default (accepted no-op); only `preserve`
-                // (the phase-2 pair-vec representation) is refused loudly.
-                if rule_metadata.duplicates == Some(DuplicatesPolicy::Preserve) {
-                    reject_duplicates_not_yet_built(types, name);
-                }
+                // Table collection: `reject` is today's default (accepted no-op) and `preserve` is
+                // LIVE — the policy rides the transparent alias built in `register_rust_struct`,
+                // swapping the member to the `PairMap`/`NonEmptyPairMap` vec-of-pairs twin. Nothing
+                // to reject here.
                 // Same registration gap as the array arm above: a plain group used as a table key or
                 // value (`pair = (int, tstr)`, `a = { * int => pair }`) must be registered as a concrete
                 // Array-rep rust struct — a CBOR map value can only be one item, so the group is encoded

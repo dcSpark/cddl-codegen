@@ -70,3 +70,23 @@ opt_neset_holder = [s: opt_neset]
 ; in-process integration test rather than here or the decode catalog.
 reject_set        = #6.258([* tstr]) / [* tstr] ; @duplicates reject
 reject_set_holder = [s: reject_set]
+
+; `@duplicates preserve` table (the PairMap twin): DUPLICATE keys are spec-VALID CBOR (a cddl
+; `{* k => v}` is a map, and cddl imposes no key-uniqueness constraint) and, under
+; --preserve-encodings, MUST round-trip BYTE-EXACT with the duplicates and their entry order intact.
+; This is the consensus-critical property for Cardano `transaction_metadata`: its auxiliary-data hash
+; is computed over the ORIGINAL bytes, so a reader that collapses or reorders duplicate keys fails
+; hash verification. The pair-map's positional encoding sidecar preserves per-entry header arguments
+; (a non-minimal key head re-emits verbatim) independently for each entry — a keyed encoding map
+; could not, since two same-key entries would collide. Vectors live in tests.rs.
+pmap        = { * uint => tstr } ; @duplicates preserve
+pmap_holder = [m: pmap]
+
+; The Cardano `transaction_metadata` headline: a RECURSIVE metadatum union whose map arm is the
+; preserve-mode pair-map, so a duplicate-keyed metadata map must decode AND re-emit byte-exact through
+; the recursive-descent (de)serializer (the recursion lives in the map VALUE here; a union used as the
+; map KEY trips a pre-existing generation limitation orthogonal to this policy — see the
+; TESTING_ROADMAP phase-2 entry). `md_holder` wraps the union so it has a standalone (de)serializer.
+md         = mdmap / [* md] / int / bytes / tstr
+mdmap      = { * tstr => md } ; @duplicates preserve
+md_holder  = [meta: md]

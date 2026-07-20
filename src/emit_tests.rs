@@ -131,6 +131,10 @@ pub(crate) enum MintValue {
         val: Box<MintValue>,
         count: i128,
         non_empty: bool,
+        /// `@duplicates preserve`: the target is `PairMap<K, V>` (or `NonEmptyPairMap` when also
+        /// non-empty). Duplicates are permitted, so N distinct-key entries synthesize fine; the
+        /// non-empty flavor still routes through its `new`/`insert` door.
+        preserve: bool,
     },
     /// `Default::default()` — an empty inline-map field minted for an unmintable element (loud skip)
     DefaultMap,
@@ -212,6 +216,7 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
             val,
             count,
             non_empty,
+            preserve,
         } => {
             let k = match key {
                 MapKey::Int(p) => format!("__i as {p}"),
@@ -225,11 +230,18 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
                 // unambiguous). A bare `try_from((..).collect())` can't infer the collect target here:
                 // the reflexive `TryFrom<Self>` blanket competes with `TryFrom<{table_type}>`, so the
                 // `{table_type}` (BTreeMap / OrderedHashMap) is not uniquely determined. `new` never
-                // names the inner map type, so it compiles under every profile.
+                // names the inner map type, so it compiles under every profile. The preserve flavor
+                // routes through `NonEmptyPairMap` (whose `new`/`insert` mirror `NonEmptyMap`'s).
+                let ctor = if *preserve {
+                    "NonEmptyPairMap"
+                } else {
+                    "NonEmptyMap"
+                };
                 format!(
-                    "{{ let mut __m = {{ let __i = 0u64; NonEmptyMap::new({k}, {v}) }}; for __i in 1u64..{count} {{ __m.insert({k}, {v}); }} __m }}"
+                    "{{ let mut __m = {{ let __i = 0u64; {ctor}::new({k}, {v}) }}; for __i in 1u64..{count} {{ __m.insert({k}, {v}); }} __m }}"
                 )
             } else {
+                // `.collect()` infers the target from the field type (PairMap has FromIterator too).
                 format!("(0u64..{count}).map(|__i| ({k}, {v})).collect()")
             }
         }
@@ -1771,6 +1783,8 @@ fn materialize_at(
                 val: Box::new(val),
                 count: measure,
                 non_empty: ty.is_type_enforced_non_empty(),
+                preserve: ty.config.duplicates
+                    == Some(crate::comment_ast::DuplicatesPolicy::Preserve),
             })
         }
         _ => None,
