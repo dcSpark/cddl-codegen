@@ -24,7 +24,7 @@
  *
  * Run:  bun run project_corpus.ts        -> validates, then writes ../tests/corpus/COVERAGE.md
  *
- * ponytail: COVERAGE.md IS this generated artifact — the hand doc was subsumed once two independent
+ * COVERAGE.md IS this generated artifact — the hand doc was subsumed once two independent
  * reviews judged the projection a clear win (compile-gated support, per-control-op support, the c-style
  * enum feature, full ➖ rationale + findings). Regenerate after changing the matrix or overlay.
  * PER-CELL (role × feature) coverage is wired: a [[cover]] with a `role` is verified against a

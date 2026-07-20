@@ -496,7 +496,7 @@ function main() {
   let aborted = false;
   const wall0 = performance.now();
 
-  // ponytail: sequential v1 — one gate at a time so per-gate durations are honest and a failure's
+  // sequential v1 — one gate at a time so per-gate durations are honest and a failure's
   // output isn't interleaved. If wall-time ever bites, the independent read-only drift checks
   // (build_matrix / project_* --check, coverage_md_diff) can run in parallel beside the `test` gate;
   // keep the fmt→clippy→build→test cargo chain sequential (later gates depend on the build).

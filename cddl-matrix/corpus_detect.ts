@@ -11,7 +11,7 @@
  *
  *   bun run corpus_detect.ts
  *
- * ponytail: text-scan detection (comment-stripped for RFC constructs, comment-only for the @-DSL), not a
+ * text-scan detection (comment-stripped for RFC constructs, comment-only for the @-DSL), not a
  * real parse. Consistent with verify.ts, which also hand-scans CDDL text. The upgrade path EXISTS in this
  * file (`rolesIn` shells `examples/ast_roles.rs`, the real cddl-crate parse, and project_corpus already
  * uses it for role-keyed covers); if text-scan precision bites again, move the feature-axis evidence onto
@@ -371,7 +371,7 @@ export function rolesInStr(cddl: string): Set<string> {
   return cells;
 }
 
-// --- self-check (ponytail: one runnable check on the non-trivial logic) ---
+// --- self-check (one runnable check on the non-trivial logic) ---
 function selfCheck() {
   const a = featuresIn("arr = [uint, text, bytes]");
   for (const id of ["type2.array", "prelude.uint", "prelude.text", "prelude.bytes"])
