@@ -1,6 +1,5 @@
 ---
 source: src/tests/snapshot_tests.rs
-assertion_line: 101
 expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
@@ -13,12 +12,14 @@ mod extern_interface_check;
 pub mod non_empty;
 pub mod non_empty_map;
 pub mod ordered_set;
+pub mod pair_map;
 pub mod serialization;
 
 use crate::generated::error::*;
 use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::non_empty_map::NonEmptyMap;
 use crate::generated::ordered_set::OrderedSet;
+use crate::generated::pair_map::{NonEmptyPairMap, PairMap};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
@@ -384,6 +385,20 @@ impl schemars::JsonSchema for IntWrapper {
     }
 }
 
+/// `{+ u64 => String}`: at least one entry, enforced at the `NonEmptyMap` `TryFrom` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
+pub type NePreservePmap = NonEmptyPairMap<u64, String>;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct NePreservePmapJson {
+    pub ys: NePreservePmap,
+}
+
+impl NePreservePmapJson {
+    pub fn new(ys: NePreservePmap) -> Self {
+        Self { ys }
+    }
+}
+
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct NemJson {
     pub xs: NonEmptyMap<String, u64>,
@@ -455,6 +470,19 @@ impl schemars::JsonSchema for NintWrapper {
 
     fn inline_schema() -> bool {
         <u64 as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+pub type PreservePmap = PairMap<u64, String>;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct PreservePmapJson {
+    pub xs: PreservePmap,
+}
+
+impl PreservePmapJson {
+    pub fn new(xs: PreservePmap) -> Self {
+        Self { xs }
     }
 }
 

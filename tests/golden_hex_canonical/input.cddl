@@ -41,3 +41,12 @@ int_holder = [it: int_table]
 ; value stays untagged. Transparent alias (Vec<String>), wrap in a record.
 opt_set        = #6.258([* tstr]) / [* tstr]
 opt_set_holder = [s: opt_set]
+
+; `@duplicates preserve` table (PairMap): under --canonical-form a preserve-mode table STABLE-sorts
+; its entries by encoded key bytes, keeping DUPLICATE keys adjacent in first-appearance order —
+; distinct from `uint_table` above, whose keyed table can hold no duplicates. Duplicate-carrying data
+; has no RFC 8949 canonical form, so this is the documented deterministic best-effort (never a
+; refusal); the vectors in tests.rs pin all three properties: sort-by-key-bytes, dup-adjacency in
+; first-appearance order, and per-entry header minimization.
+dup_pmap        = { * uint => text } ; @duplicates preserve
+dup_pmap_holder = [p: dup_pmap]

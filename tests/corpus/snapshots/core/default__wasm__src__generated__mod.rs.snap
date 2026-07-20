@@ -1,6 +1,5 @@
 ---
 source: src/tests/snapshot_tests.rs
-assertion_line: 101
 expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
@@ -19,6 +18,7 @@ pub use cddl_lib::CEnum;
 use cddl_lib::non_empty::NonEmptyVec;
 use cddl_lib::non_empty_map::NonEmptyMap;
 use cddl_lib::ordered_set::OrderedSet;
+use cddl_lib::pair_map::PairMap;
 use std::collections::BTreeMap;
 use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
@@ -2074,6 +2074,8 @@ impl AsRef<BTreeMap<String, u64>> for MapTextToU64 {
         &self.0
     }
 }
+
+pub type MapU64ToBytes = PreserveUintMap;
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
@@ -4944,6 +4946,94 @@ impl From<PlainList> for Vec<cddl_lib::Plain> {
 
 impl AsRef<Vec<cddl_lib::Plain>> for PlainList {
     fn as_ref(&self) -> &Vec<cddl_lib::Plain> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PreservePmapHolder(pub(crate) cddl_lib::PreservePmapHolder);
+
+#[wasm_bindgen]
+impl PreservePmapHolder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<PreservePmapHolder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn m(&self) -> PreserveUintMap {
+        self.0.m.clone().into()
+    }
+
+    pub fn new(m: &PreserveUintMap) -> Self {
+        Self(cddl_lib::PreservePmapHolder::new(m.clone().into()))
+    }
+}
+
+impl From<cddl_lib::PreservePmapHolder> for PreservePmapHolder {
+    fn from(native: cddl_lib::PreservePmapHolder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PreservePmapHolder> for cddl_lib::PreservePmapHolder {
+    fn from(wasm: PreservePmapHolder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::PreservePmapHolder> for PreservePmapHolder {
+    fn as_ref(&self) -> &cddl_lib::PreservePmapHolder {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PreserveUintMap(pub(crate) cddl_lib::PreserveUintMap);
+
+#[wasm_bindgen]
+impl PreserveUintMap {
+    pub fn new() -> Self {
+        Self(PairMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: u64, value: Vec<u8>) -> Option<Vec<u8>> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: u64) -> Option<Vec<u8>> {
+        self.0.get(&key).cloned()
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<cddl_lib::PreserveUintMap> for PreserveUintMap {
+    fn from(native: cddl_lib::PreserveUintMap) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PreserveUintMap> for cddl_lib::PreserveUintMap {
+    fn from(wasm: PreserveUintMap) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::PreserveUintMap> for PreserveUintMap {
+    fn as_ref(&self) -> &cddl_lib::PreserveUintMap {
         &self.0
     }
 }

@@ -283,4 +283,50 @@ mod golden_hex_canonical {
             assert_eq!(d.s, vec!["a".to_string()]);
         }
     );
+
+    // ---- `@duplicates preserve` table (PairMap) under --canonical-form ----
+    // A duplicate-keyed pair-map has NO RFC 8949 canonical form (deterministic encoding requires
+    // unique keys), so the canonical path does the documented deterministic best-effort: a STABLE
+    // sort by encoded key bytes with DUPLICATES kept adjacent in first-appearance order. This vector
+    // pins all three halves the sort must get right at once:
+    //   * sort-by-key-bytes: irregular key order 2,1,1 canonicalizes to 1,1,2 (0x01 < 0x02),
+    //   * dup-adjacency + first-appearance order: the two key-1 entries stay "a" (2nd overall) then
+    //     "b" (3rd overall) — the stable sort must not swap them, and the `i`-carrying key_order
+    //     tuple is what keeps the positional value encoding aligned after the sort,
+    //   * determinism: re-decoding the canonical bytes and re-canonicalizing is a fixed point.
+    // Holder `[p: dup_pmap]` is a 1-element array (0x81) wrapping the 3-entry map (0xa3).
+    kat_canonical!(
+        canon_dup_pmap_key_sort,
+        DupPmapHolder,
+        &[0x81, 0xa3, 0x02, 0x61, 0x63, 0x01, 0x61, 0x61, 0x01, 0x61, 0x62],
+        &[0x81, 0xa3, 0x01, 0x61, 0x61, 0x01, 0x61, 0x62, 0x02, 0x61, 0x63],
+        |d: &DupPmapHolder| {
+            assert_eq!(d.p.len(), 3);
+            // get() is the FIRST match; get_all() every match in entry order
+            assert_eq!(d.p.get(&1).map(String::as_str), Some("a"));
+            assert_eq!(
+                d.p.get_all(&1).into_iter().map(String::as_str).collect::<Vec<_>>(),
+                vec!["a", "b"]
+            );
+            assert_eq!(d.p.get(&2).map(String::as_str), Some("c"));
+        }
+    );
+    // Per-entry header minimization on a duplicate-keyed pair-map: the FIRST key-1 entry uses a
+    // NON-MINIMAL 1-byte-argument head (0x18 0x01) while the second uses the minimal 0x01. Canonical
+    // minimizes BOTH heads to 0x01 while the duplicate keys stay adjacent in first-appearance order
+    // ("a" then "b"). The positional encoding sidecar means each entry's head canonicalizes
+    // independently — a keyed encoding map could not, since the two same-key entries would collide.
+    kat_canonical!(
+        canon_dup_pmap_nonminimal_head,
+        DupPmapHolder,
+        &[0x81, 0xa2, 0x18, 0x01, 0x61, 0x61, 0x01, 0x61, 0x62],
+        &[0x81, 0xa2, 0x01, 0x61, 0x61, 0x01, 0x61, 0x62],
+        |d: &DupPmapHolder| {
+            assert_eq!(d.p.len(), 2);
+            assert_eq!(
+                d.p.get_all(&1).into_iter().map(String::as_str).collect::<Vec<_>>(),
+                vec!["a", "b"]
+            );
+        }
+    );
 }

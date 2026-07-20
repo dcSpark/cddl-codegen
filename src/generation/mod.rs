@@ -498,6 +498,8 @@ impl GenerationScope {
                                 range.clone(),
                                 rust_ident,
                                 true,
+                                rust_struct.config().duplicates
+                                    == Some(crate::comment_ast::DuplicatesPolicy::Preserve),
                                 cli,
                             );
                         } else if cli.wasm && !anon {

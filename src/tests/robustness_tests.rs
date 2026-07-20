@@ -508,27 +508,19 @@ fn raw_bytes_flavor_misuse_rejects_gracefully() {
     }
 }
 
-/// `@duplicates` rejection classes that remain after phase 2 made table `preserve` live. Two
-/// survive: a `{+ …}` table `preserve` under `--wasm` (the NonEmptyPairMap wasm wrapper is "not yet
-/// built" — its rust surface generates, only the wasm leg is deferred), and every non-collection
-/// placement (aliases, structs, unions, fields) is a PERMANENT "only applies to …" placement
-/// rejection. The now-LIVE cases (array/set `reject`, table `preserve` -> PairMap, array `preserve`
-/// / table `reject` no-ops) are covered by `duplicates_directive_accepts_live_and_default_noops` and
-/// the corpus fixtures.
+/// `@duplicates` rejection classes that remain after phase 2 made table `preserve` fully live on
+/// BOTH boundaries (`{* …}` -> `PairMap`, `{+ …}` -> `NonEmptyPairMap`, wasm included). What survives
+/// is only the PERMANENT placement rejection: `@duplicates` on a non-collection rule (aliases,
+/// structs, unions, fields) is an "only applies to …" error regardless of policy. The now-LIVE cases
+/// (array/set `reject`, table `preserve` on both flavors, array `preserve` / table `reject` no-ops)
+/// are covered by `duplicates_directive_accepts_live_and_default_noops`,
+/// `duplicates_preserve_nonempty_table_lowers_to_twin_under_wasm`, and the corpus fixtures.
 #[test]
 fn duplicates_directive_rejects_gracefully() {
     // (seam, cddl, must-contain fragments) — the fragments prove the vector reached ITS seam and
-    // carries the class-correct wording. The default CLI leaves `--wasm` ON, so the `{+ …}` preserve
-    // vector reaches its wasm-leg stopgap.
-    let not_yet_built = "not yet built";
+    // carries the class-correct wording. The default CLI leaves `--wasm` ON.
     let permanent = "only applies to";
     let vectors = [
-        // --- {+ …} table preserve under --wasm: NonEmptyPairMap wasm wrapper not yet built ---
-        (
-            "nonempty table preserve under wasm",
-            "foo = { + uint => text } ; @duplicates preserve\n",
-            not_yet_built,
-        ),
         // --- non-collection rules: permanent placement rejection ---
         ("text alias", "foo = text ; @duplicates reject\n", permanent),
         (
@@ -648,8 +640,9 @@ fn duplicates_directive_accepts_live_and_default_noops() {
         "table preserve must lower to PairMap, got:\n{preserve_table_src}"
     );
 
-    // preserve on a `{+ …}` table composes non-emptiness with the pair-map (rust surface; the wasm
-    // leg is deferred, which is why this is a `--wasm=false` check).
+    // preserve on a `{+ …}` table composes non-emptiness with the pair-map. This checks the RUST
+    // surface (`--wasm=false`); the wasm leg (the `NonEmptyPairMap` wrapper) is pinned separately by
+    // `duplicates_preserve_nonempty_table_lowers_to_twin_under_wasm`.
     let preserve_ne_table = gen_src("foo = { + uint => text } ; @duplicates preserve\n");
     let preserve_ne_table_src = preserve_ne_table
         .values()
@@ -659,6 +652,166 @@ fn duplicates_directive_accepts_live_and_default_noops() {
     assert!(
         preserve_ne_table_src.contains("NonEmptyPairMap<u64, String>"),
         "non-empty table preserve must lower to NonEmptyPairMap, got:\n{preserve_ne_table_src}"
+    );
+}
+
+/// A `{+ …}` `@duplicates preserve` table generates a full wasm wrapper (the WP-P2A stopgap that
+/// rejected it under `--wasm` is gone). The rule's JS class wraps `NonEmptyPairMap<K, V>` (not the
+/// loose `NonEmptyMap`), enters through a `try_from(&loose_pair_map_wrapper)` door, and its `new`
+/// builds the pair-map twin — so every shape that generates for rust generates for wasm. The loose
+/// `try_from` source wrapper is the `PairMap` twin (`MapU64ToText(pub(crate) PairMap<u64, String>)`),
+/// NOT the keyed `OrderedHashMap`/`BTreeMap` table. A scratch e2e (rust+wasm+json-gen cargo-check)
+/// backs this; the string pins catch a regression without the crate-build cost.
+#[test]
+fn duplicates_preserve_nonempty_table_lowers_to_twin_under_wasm() {
+    const CDDL: &str = "foo = { + uint => text } ; @duplicates preserve\n\
+                        holder = [m: foo]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_dup_ne_preserve_wasm_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let out = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "dup_ne_preserve_wasm_unused",
+        "--wasm=true",
+    ]))
+    .expect("a `{+ …}` preserve table must GENERATE under --wasm (no rejection)");
+    std::fs::remove_file(&path).ok();
+    let src = out.values().cloned().collect::<Vec<_>>().join("\n");
+    // the rule's wasm class wraps the NonEmptyPairMap twin
+    assert!(
+        src.contains("pub struct Foo(pub(crate) NonEmptyPairMap<u64, String>)"),
+        "the `{{+ …}}` preserve rule's wasm class must wrap NonEmptyPairMap, got:\n{src}"
+    );
+    // it enters through the loose PairMap-wrapper `try_from` door, building the pair-map twin
+    assert!(
+        src.contains("NonEmptyPairMap::try_from(inner)"),
+        "the wasm wrapper must enter through the NonEmptyPairMap try_from door, got:\n{src}"
+    );
+    // the loose `try_from` source wrapper wraps the PairMap twin, not the keyed table
+    assert!(
+        src.contains("pub struct MapU64ToText(pub(crate) PairMap<u64, String>)"),
+        "the loose try_from source must wrap PairMap (not OrderedHashMap/BTreeMap), got:\n{src}"
+    );
+}
+
+/// A `@duplicates preserve` table and a non-preserve occurrence of the IDENTICAL key/value both need
+/// the single loose structural map wrapper (`MapU64ToText`), but of incompatible inner types (a
+/// `PairMap` vs a keyed `BTreeMap`/`OrderedHashMap`). Under `--wasm` this would emit a silently-broken
+/// crate (one flavor minted, the other's `try_from` referencing the wrong shape), so it must be a
+/// GRACEFUL rejection (the pair-map sibling of the collision-detector family), distinctly worded from
+/// the NonEmpty/reject siblings. A pure-preserve spec of the same shape never collides — that positive
+/// path is covered by the scratch e2e in `duplicates_preserve_nonempty_table_lowers_to_twin_under_wasm`.
+#[test]
+fn duplicates_preserve_pair_map_shape_collision_rejects_gracefully() {
+    const CDDL: &str = "nem = { + uint => text } ; @duplicates preserve\n\
+                        holder = [a: nem, b: { + uint => text }]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_dup_pmap_collide_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let result = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "dup_pmap_collide_unused",
+        "--wasm=true",
+    ]));
+    std::fs::remove_file(&path).ok();
+    let err = result.expect_err(
+        "a preserve table sharing a structural map-shape name with a non-preserve occurrence must be a graceful Err",
+    );
+    let msg = err.to_string();
+    assert!(
+        msg.contains("@duplicates preserve")
+            && msg.contains("MapU64ToText")
+            && msg.contains("PairMap"),
+        "the collision message must name the preserve twin and the shared shape (distinct from the NonEmpty/reject siblings), got: {msg}"
+    );
+}
+
+/// A GENERIC table instance (`tbl<uint, tstr>` -> the anonymous `TblU64Text`) generates cleanly under
+/// `--wasm`. This was a PRE-EXISTING, policy-independent bug: `table_shape_sole_owners` recorded the
+/// anonymous instance as the shape's sole owner, so `mint_sole_owner_table` minted `pub struct
+/// TblU64Text` + `pub type MapU64ToText = TblU64Text;` WHILE the anonymous-instance passthrough minted
+/// `pub type TblU64Text = MapU64ToText;` — a duplicate-ident collision on both names (the export.rs
+/// backstop's "no user rule involved = cddl-codegen bug" arm). The fix excludes anonymous instances
+/// from sole-ownership (mirroring the non-empty/reject owner lookups), so the instance routes PURELY
+/// through the structural wrapper: one `pub struct MapU64ToText`, one `pub type TblU64Text = …` alias,
+/// and NO `pub struct TblU64Text`.
+#[test]
+fn generic_table_instance_lowers_to_structural_wrapper_under_wasm() {
+    const CDDL: &str = "tbl<k, v> = { * k => v }\n\
+                        holder = [t: tbl<uint, tstr>]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_generic_tbl_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let out = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "generic_tbl_unused",
+        "--wasm=true",
+        "--preserve-encodings=true",
+    ]))
+    .expect("a generic table instance must GENERATE under --wasm (no duplicate-ident collision)");
+    std::fs::remove_file(&path).ok();
+    let src = out.values().cloned().collect::<Vec<_>>().join("\n");
+    assert!(
+        src.contains("pub type TblU64Text = MapU64ToText;"),
+        "the instance must route through the structural wrapper via a passthrough alias, got:\n{src}"
+    );
+    assert!(
+        !src.contains("pub struct TblU64Text"),
+        "the instance must NOT ALSO mint a rule-named struct (the double-mint collision), got:\n{src}"
+    );
+}
+
+/// The generic-table wasm fix ALSO unblocks a generic `@duplicates preserve` table instance across the
+/// wasm boundary: `ptbl<uint, tstr>` (with the directive on the generic base) lowers to the `PairMap`
+/// twin on BOTH sides. Its anonymous structural wrapper (`mint_wasm_wrapper_for_visited_type`) recovers
+/// the preserve policy from the SHAPE (`map_shape_is_preserve_owned`), so the wasm `MapU64ToText` wraps
+/// `PairMap` — matching the rust `pub type PtblU64Text = PairMap<u64, String>` (a keyed wrapper here
+/// would be a silently-broken wasm crate). A scratch e2e (rust+wasm+json-gen cargo-check) backs this.
+#[test]
+fn generic_preserve_table_instance_lowers_to_pair_map_under_wasm() {
+    const CDDL: &str = "ptbl<k, v> = { * k => v } ; @duplicates preserve\n\
+                        holder = [t: ptbl<uint, tstr>]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_generic_ptbl_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let out = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "generic_ptbl_unused",
+        "--wasm=true",
+        "--preserve-encodings=true",
+    ]))
+    .expect("a generic preserve table instance must GENERATE under --wasm");
+    std::fs::remove_file(&path).ok();
+    let src = out.values().cloned().collect::<Vec<_>>().join("\n");
+    // rust type is the PairMap twin
+    assert!(
+        src.contains("pub type PtblU64Text = PairMap<u64, String>;"),
+        "the generic preserve instance's rust type must be the PairMap twin, got:\n{src}"
+    );
+    // the anonymous wasm structural wrapper must ALSO wrap PairMap (not the keyed OrderedHashMap)
+    assert!(
+        src.contains("pub struct MapU64ToText(pub(crate) PairMap<u64, String>)"),
+        "the anonymous structural wasm wrapper must wrap PairMap to match the rust type, got:\n{src}"
     );
 }
 

@@ -233,6 +233,10 @@ impl GenerationScope {
                             (**v).clone(),
                             &ident,
                             false,
+                            // cross-crate wrapper-request hosting resolves the flavor from the
+                            // requested `RustType`; an inline request carries no directive so this is
+                            // `false` today (the same anonymous-seam reachability as the inline mint).
+                            rt.is_preserve_pair_map(),
                             cli,
                         );
                     } else {
@@ -243,8 +247,10 @@ impl GenerationScope {
                             (**k).clone(),
                             (**v).clone(),
                             false,
-                            // cross-crate preserve-table wrapper requests are WP-P2B.
-                            false,
+                            // recover the flavor from the requested `RustType`; an inline cross-crate
+                            // request carries no directive, so this is `false` today (same
+                            // anonymous-seam reachability as the `{+ …}` request above).
+                            rt.is_preserve_pair_map(),
                             cli,
                         );
                     }

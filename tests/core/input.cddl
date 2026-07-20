@@ -439,3 +439,12 @@ opt_fixed_map_float = {a: uint, ? m_float: 2.5}
 ; by tests_wasm.rs (checked-add refusal + try_from door + embedded round-trip through reject_set_holder).
 reject_uint_set    = #6.258([* uint]) / [* uint] ; @duplicates reject
 reject_set_holder  = [s: reject_uint_set]
+
+; `@duplicates preserve` table (PairMap): the wasm wrapper wraps the vec-of-pairs twin and exposes an
+; APPENDING `insert` (never replaces a key — a repeated key grows `len`), `get` returns the first
+; match. A `uint => bytes` shape (no other `uint => bytes` map here) so no structural-name collision.
+; Exercised at the wasm boundary by tests_wasm.rs (insert-appends + get-first-match + embedded
+; round-trip through preserve_pmap_holder), and by --emit-tests (the default profile builds a
+; distinct-key PairMap through `.collect()` and round-trips it).
+preserve_uint_map    = { * uint => bytes } ; @duplicates preserve
+preserve_pmap_holder = [m: preserve_uint_map]

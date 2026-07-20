@@ -596,6 +596,7 @@ impl GenerationScope {
     /// `insert`/`get`/`has`/`keys` accessors are minted by the shared `push_table_accessors` (also
     /// used by `codegen_table_type`), delegating to `self.0`, whose `NonEmptyMap` method surface
     /// matches the raw map's `len`/`insert`/`get`/`keys`.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn generate_non_empty_map_type(
         &mut self,
         types: &IntermediateTypes,
@@ -605,6 +606,12 @@ impl GenerationScope {
         // `true` when `wrapper_ident` is an explicit RULE ident (`m = {+ k => v}`), so a
         // structural-name coincidence never workspace-defers the consumer's own class (criterion 9).
         rule_declared: bool,
+        // `@duplicates preserve`: the wrapped rust core is `NonEmptyPairMap<K, V>` (a non-empty vec of
+        // pairs, duplicate-permitting), not the loose `NonEmptyMap` — so `new`/`try_from` construct the
+        // pair-map twin and the `try_from` source is the loose `PairMap` wrapper. The accessor surface
+        // (`insert`/`get`/`keys`/`len`) is shared: `PairMap` exposes the same methods, and `insert`
+        // APPENDS (returning `Option`, always `None`) exactly like the loose table wasm insert.
+        preserve_pair_map: bool,
         cli: &Cli,
     ) {
         // `--extern-wrapper-index`: a synthesized `NonEmptyMap*` over a mapped dependency's extern
@@ -644,13 +651,30 @@ impl GenerationScope {
         self.record_collection_wrapper(types, wrapper_ident, &shape);
         let inner_map =
             ConceptualRustType::name_for_rust_map(types, &key_type, &value_type, true, cli);
-        let inner_type = format!("NonEmptyMap<{}>", {
-            // strip the leading table-type token (`BTreeMap<K, V>` / `OrderedHashMap<K, V>`) to reuse
-            // the same `K, V` spelling, keeping the wrapper's inner in lockstep with the rust field.
+        // the shared `K, V` spelling — strip the leading table-type token
+        // (`BTreeMap<K, V>` / `OrderedHashMap<K, V>`) so the wrapper's inner stays in lockstep with the
+        // rust field regardless of table flavor.
+        let kv_spelling = {
             let open = inner_map.find('<').expect("map type has generics");
             let close = inner_map.rfind('>').expect("map type has generics");
             inner_map[open + 1..close].to_owned()
-        });
+        };
+        // `@duplicates preserve` wraps the vec-of-pairs twin `NonEmptyPairMap`; the loose flavor wraps
+        // `NonEmptyMap`. The core-type token (`NonEmptyPairMap`/`NonEmptyMap`) is what `try_from`/`new`
+        // construct and what the parent's `.into()` converts to.
+        let core_ctor = if preserve_pair_map {
+            "NonEmptyPairMap"
+        } else {
+            "NonEmptyMap"
+        };
+        let inner_type = format!("{core_ctor}<{kv_spelling}>");
+        // the `try_from` source type the loose wrapper's `.into()` yields: `PairMap<K, V>` for preserve
+        // (a duplicate-permitting vec of pairs), the loose keyed table otherwise.
+        let source_inner_type = if preserve_pair_map {
+            format!("PairMap<{kv_spelling}>")
+        } else {
+            inner_map.clone()
+        };
         // the loose structural table wrapper (`MapKToV`) is the `try_from` source; when its ident
         // coincides with THIS wrapper's ident (a self-named rule like `map_text_to_uint = {+ …}`),
         // the loose builder cannot exist — the rule legitimately owns the ident for its restricted
@@ -669,10 +693,17 @@ impl GenerationScope {
             "Enter via `try_from` or `new(first_key, first_value)`."
         };
         let attr_prefix = self.requested_attribution_prefix(wrapper_ident);
+        // The non-preserve branch is byte-identical to the pre-pair-map doc; only preserve diverges,
+        // naming the vec-of-pairs twin and its appending `insert` (never a replace-on-duplicate).
+        let repr_doc = if preserve_pair_map {
+            "enforced by the `NonEmptyPairMap` representation (an entry-ordered, DUPLICATE-permitting \
+             vec of pairs — `insert` APPENDS and never replaces a key, `get` returns the first match)"
+        } else {
+            "enforced by the `NonEmptyMap` representation"
+        };
         wrapper.s.doc(format!(
-            "{attr_prefix}`{{+ k => v}}` (`{map_wasm}`): at least one entry, enforced by the \
-             `NonEmptyMap` representation.\n{entry_doc}\n`insert` can never violate the bound; \
-             removal is checked in the core type."
+            "{attr_prefix}`{{+ k => v}}` (`{map_wasm}`): at least one entry, {repr_doc}.\n{entry_doc}\n\
+             `insert` can never violate the bound; removal is checked in the core type."
         ));
         wrapper.push_inner_field(&inner_type);
         // new(first_key, first_value) — always valid (length 1)
@@ -683,7 +714,7 @@ impl GenerationScope {
             .arg("first_key", key_type.for_wasm_param(types))
             .arg("first_value", value_type.for_wasm_param(types))
             .line(format!(
-                "Self(NonEmptyMap::new({}, {}))",
+                "Self({core_ctor}::new({}, {}))",
                 ToWasmBoundaryOperations::format(
                     key_type
                         .from_wasm_boundary_clone(types, "first_key", false)
@@ -736,9 +767,10 @@ impl GenerationScope {
                     key_type.clone(),
                     value_type.clone(),
                     false,
-                    // `{+ …}` preserve (NonEmptyPairMap) wasm is WP-P2B; this loose source stays the
-                    // non-preserve table for now.
-                    false,
+                    // The loose `try_from` source mirrors THIS wrapper's flavor: a `{+ …}` preserve
+                    // rule's source is the loose `PairMap` wrapper (so `map.clone().into()` yields a
+                    // `PairMap`, which the `NonEmptyPairMap` door below accepts).
+                    preserve_pair_map,
                     cli,
                 );
             }
@@ -748,10 +780,10 @@ impl GenerationScope {
                 .vis("pub")
                 .ret(format!("Result<{wrapper_ident}, JsError>"))
                 .arg("map", format!("&{loose_ident}"))
-                .line(format!("let inner: {inner_map} = map.clone().into();"))
-                .line(
-                    "NonEmptyMap::try_from(inner).map(Self).map_err(|e| JsError::new(&e.to_string()))",
-                );
+                .line(format!("let inner: {source_inner_type} = map.clone().into();"))
+                .line(format!(
+                    "{core_ctor}::try_from(inner).map(Self).map_err(|e| JsError::new(&e.to_string()))"
+                ));
         }
         wrapper.add_conversion_methods(&inner_type, cli);
         wrapper.push(self, types);
@@ -826,6 +858,12 @@ impl GenerationScope {
                             (**v).clone(),
                             &ident,
                             false,
+                            // Correct-by-construction, but UNREACHABLE as `true`: an inline
+                            // (anonymous) `{+ …}` occurrence carries no directive (the policy is
+                            // per-rule — a preserve map arm must be given its own NAMED rule), so
+                            // `is_preserve_pair_map()` is always `false` here. Threading it keeps this
+                            // seam honest if that ever changes.
+                            rt.is_preserve_pair_map(),
                             cli,
                         );
                     }
@@ -1231,10 +1269,13 @@ pub(super) fn mint_wasm_wrapper_for_visited_type(
                             *k.clone(),
                             *v.clone(),
                             false,
-                            // The visited conceptual `Map` carries no policy; an inline (anonymous)
-                            // preserve-table structural mint is a WP-P2B edge (the named-rule path,
-                            // which the driver uses, threads preserve at its own call sites).
-                            false,
+                            // The visited conceptual `Map` carries no policy of its own, so recover it
+                            // from the SHAPE: a generic `@duplicates preserve` table instance (e.g.
+                            // `ptbl<uint, tstr>` -> the anonymous `PtblU64Text`, excluded from
+                            // sole-ownership) reaches this arm and must mint the `PairMap` structural
+                            // wrapper to match its rust `pub type`. A mixed-policy shape is already
+                            // rejected upstream, so this lookup is unambiguous.
+                            types.map_shape_is_preserve_owned(map_ident.as_ref()),
                             cli,
                         );
                     }
@@ -1373,18 +1414,28 @@ pub(super) fn codegen_table_type(
     // depends on the key's CBOR class.
     let mut wrapper = create_base_wasm_struct(gen_scope, name, false, cli);
 
-    let inner_type = if exists_in_rust {
-        rust_crate_struct_from_wasm(types, name, cli)
-    } else {
-        ConceptualRustType::name_for_rust_map(types, &key_type, &value_type, true, cli)
-    };
-    wrapper.push_inner_field(&inner_type);
-    // new
+    // new / inner core token: `@duplicates preserve` wraps the vec-of-pairs `PairMap` (not the loose
+    // `OrderedHashMap`/`BTreeMap`), so both the inner field TYPE and `new()`'s constructor must name it.
     let table_ctor = if preserve_pair_map {
         "PairMap"
     } else {
         table_type(cli)
     };
+    let inner_type = if exists_in_rust {
+        rust_crate_struct_from_wasm(types, name, cli)
+    } else {
+        let loose = ConceptualRustType::name_for_rust_map(types, &key_type, &value_type, true, cli);
+        if preserve_pair_map {
+            // reuse the `K, V` spelling from the loose table type but wrap the pair-map core — this is
+            // the loose `try_from` source for a `{+ …}` preserve wrapper (`NePmap::try_from(&MapKToV)`).
+            let open = loose.find('<').expect("map type has generics");
+            let close = loose.rfind('>').expect("map type has generics");
+            format!("PairMap<{}>", &loose[open + 1..close])
+        } else {
+            loose
+        }
+    };
+    wrapper.push_inner_field(&inner_type);
     let mut new_func = codegen::Function::new("new");
     new_func
         .vis("pub")

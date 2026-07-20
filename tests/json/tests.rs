@@ -209,6 +209,15 @@ mod tests {
         let mut table = Table::new();
         table.insert("a".to_owned(), 1);
         check!(TableHolder, TableHolder::new(table));
+        // WI-4: the PairMap field's emitted schema is an array-of-`[k, v]`-pairs (mirroring the
+        // OrderedSet/NonEmptyVec array delegation) — a duplicate-keyed value validates against it.
+        check!(
+            PreservePmapJson,
+            PreservePmapJson::new(PairMap::<u64, String>::from(vec![
+                (1u64, "a".to_string()),
+                (1u64, "b".to_string()),
+            ]))
+        );
     }
 
     // The negative counterpart of schemas_validate_serialization, which is positive-only: a schema
@@ -248,6 +257,9 @@ mod tests {
         check_rejects!(StructWrapper, serde_json::json!("nope"));
         // ...and object-shaped forms reject a wrong-typed field
         check_rejects!(TableHolder, serde_json::json!({"t": {"a": "nope"}}));
+        // WI-4: a PairMap's array-of-pairs schema rejects an OBJECT for the field (the object form a
+        // naive map JSON would use) — proving the schema is the honest array shape, not object-shaped.
+        check_rejects!(PreservePmapJson, serde_json::json!({"xs": {"1": "a"}}));
     }
 
     // WI-1: NonEmptyVec (`[+ uint]`) serializes as a plain JSON array, and JSON deserialize routes
@@ -307,5 +319,46 @@ mod tests {
             serde_json::from_str::<RejectSetJson>(r#"{"xs":[1,1]}"#).is_err(),
             "a duplicate-carrying JSON array must be refused at the OrderedSet TryFrom door"
         );
+    }
+
+    // WI-4: a `@duplicates preserve` table (`PairMap<u64, String>`) serializes as a JSON ARRAY of
+    // `[k, v]` pairs — NOT an object, which would silently collapse the duplicate key — preserving both
+    // order and duplicates. JSON deserialize reads that array-of-pairs back with the duplicate intact.
+    #[test]
+    fn preserve_pair_map_json() {
+        let pm = PairMap::<u64, String>::from(vec![
+            (1u64, "a".to_string()),
+            (1u64, "b".to_string()),
+            (2u64, "c".to_string()),
+        ]);
+        let holder = PreservePmapJson::new(pm);
+        let json = serde_json::to_string(&holder).unwrap();
+        assert!(
+            json.contains(r#""xs":[[1,"a"],[1,"b"],[2,"c"]]"#),
+            "PairMap must serialize as a JSON array of [k, v] pairs (order + duplicates intact), got: {json}"
+        );
+        // round-trip preserves order AND the duplicate key
+        let back: PreservePmapJson = serde_json::from_str(&json).unwrap();
+        assert_eq!(serde_json::to_string(&back).unwrap(), json);
+        assert_eq!(back.xs.len(), 3, "the duplicate-keyed entry survives the JSON round-trip");
+        assert_eq!(
+            back.xs.get_all(&1).into_iter().map(String::as_str).collect::<Vec<_>>(),
+            vec!["a", "b"],
+            "both key-1 entries survive in first-appearance order"
+        );
+    }
+
+    // WI-4: the `{+ …}` NonEmptyPairMap door refuses an empty `[]` on the JSON path (the same min-1
+    // error the CBOR decoder raises for `{+ …}`), while a non-empty array-of-pairs — duplicates
+    // included — is accepted.
+    #[test]
+    fn ne_preserve_pair_map_json_door() {
+        assert!(
+            serde_json::from_str::<NePreservePmapJson>(r#"{"ys":[]}"#).is_err(),
+            "an empty array for a non-empty (`+`) preserve field must be refused at the NonEmptyPairMap door"
+        );
+        let ok: NePreservePmapJson =
+            serde_json::from_str(r#"{"ys":[[1,"a"],[1,"b"]]}"#).expect("a non-empty array-of-pairs is accepted");
+        assert_eq!(ok.ys.len(), 2, "the door keeps duplicate keys");
     }
 }

@@ -190,44 +190,54 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    non-0/3-rustfmt-exit-is-fatal contract already turns any formatter internal error into a
    generation failure, so no new assertion machinery is needed.
 
-4. **Duplicates policy phase 2: preserve-mode tables (pair-map).** The core of preserve-mode tables
-   is live: `@duplicates preserve` on a `{ * k => v }` / `{ + k => v }` rule swaps the transparent
-   alias to the `Vec<(K, V)>`-backed `PairMap<K, V>` / `NonEmptyPairMap<K, V>` twin
+4. **Duplicates policy phase 2: preserve-mode tables (pair-map).** Preserve-mode tables are live on
+   ALL boundaries: `@duplicates preserve` on a `{ * k => v }` / `{ + k => v }` rule swaps the
+   transparent alias to the `Vec<(K, V)>`-backed `PairMap<K, V>` / `NonEmptyPairMap<K, V>` twin
    (`static/pair_map.rs`), with a POSITIONAL preserve-encodings sidecar (parallel `Vec`s replacing
    the two key-value-keyed `BTreeMap`s), the `key_order` build reading positionally under
    `--canonical-form` (stable-sort by encoded key bytes, duplicates adjacent), the `ord` key-demand
-   relaxation for preserve tables, JSON as an array of `[k, v]` pairs, and wasm parity for the
-   `{ * … }` flavor. The consensus-critical property — a duplicate-keyed Cardano
-   `transaction_metadata` map decoding and re-emitting byte-exactly (its auxiliary-data hash is over
-   the original bytes) — is pinned by `tests/golden_hex_preserve` (`pmap_duplicate_key`,
+   relaxation for preserve tables, JSON as an array of `[k, v]` pairs, and **wasm parity for both the
+   `{ * … }` and `{ + … }` flavors** (the `NonEmptyPairMap` wrapper enters through a `try_from` door
+   over the loose `PairMap` wrapper; a generic table instance — preserve or not — lowers across the
+   wasm boundary through its structural wrapper). The consensus-critical property — a duplicate-keyed
+   Cardano `transaction_metadata` map decoding and re-emitting byte-exactly (its auxiliary-data hash
+   is over the original bytes) — is pinned by `tests/golden_hex_preserve` (`pmap_duplicate_key`,
    `pmap_duplicate_key_nonminimal_head`, `metadatum_duplicate_key_recursive`,
-   `pair_map_surface_and_nonempty_door`). Residual work:
-   - **`{ + … }` (NonEmptyPairMap) wasm wrapper.** The `{ + … }` preserve rust surface generates
-     fully, but its wasm wrapper is not built: `generate_non_empty_map_type` is shaped around the
-     loose `NonEmptyMap` boundary `From`s, which do not exist for `NonEmptyPairMap`. Under `--wasm`
-     a `{ + … }` preserve table is a graceful `record_rejection` (rust-only generation works, and
-     the `{ * … }` flavor mints a full wasm wrapper). Building it means teaching
-     `generate_non_empty_map_type` (and its loose `codegen_table_type` source) the pair-map flavor.
-   - **Full wasm parity + the anonymous/structural map-mint seam.** Wasm preserve tables are wired
-     for the NAMED-rule path (`codegen_table_type` + `mint_sole_owner_table` thread the
-     `preserve_pair_map` flag). An INLINE (anonymous) preserve-table structural mint
-     (`mint_wasm_wrapper_for_visited_type`) and cross-crate wrapper-request hosting
-     (`requests.rs`) still pass `false` (the visited conceptual `Map` carries no policy) — extend
-     these the way phase-1 taught `for_wasm_member` the reject twins.
+   `pair_map_surface_and_nonempty_door`); the runtime canonical stable-sort by
+   `tests/golden_hex_canonical` (`canon_dup_pmap_key_sort`, `canon_dup_pmap_nonminimal_head`); the
+   JSON array-of-pairs + schemars shape by `tests/json` (`preserve_pair_map_json`,
+   `ne_preserve_pair_map_json_door`, `schemas_validate_serialization`); and the wasm appending-insert
+   + emit-tests synthesis by `tests/core` (`wasm_preserve_pair_map_insert_appends`,
+   `roundtrip_preserve_pmap_holder`). A preserve table sharing a structural map-shape name with a
+   non-preserve occurrence is a graceful rejection (`preserve_pair_map_wrapper_name_collisions`).
+   Residual work:
    - **Recursive-map-KEY limitation (pre-existing, orthogonal).** A table whose DOMAIN is a
      not-yet-registered recursive UNION (`{ * transaction_metadata => transaction_metadata }`, the
      exact Cardano shape) panics in `register_rust_struct`'s keys-list synthesis
      (`name_as_wasm_array_ct` → `is_enum` asserts on the un-registered union) — WITHOUT any
      directive, so it is a general recursive-table-key gap, not a duplicates-policy one. The
      golden_hex headline keys the recursive metadatum map by `tstr` (recursion in the map VALUE) to
-     sidestep it. Closing it (relax `is_enum`'s assert to a graceful `false`, or defer the keys-list
-     synthesis past the cycle) unblocks the fully-faithful union-keyed shape.
-   - **Docs/matrix breadth.** The JSON array-of-pairs divergence and its schemars story want a
-     `current_capacities.mdx` / `wasm_differences.mdx` callout; `cddl-matrix/features/` wants
-     `dsl.duplicates.preserve` flavored rows (the matrix-registration packet, needing the full
-     `verify.ts` chain). The decode-conformance CORPUS fixture + mint for preserve tables ride
-     that same packet (its `verify.ts` chain runs the mint machinery anyway; both oracles verified
-     working on the preserve-table and recursive-union shapes — the properly-resolved ruby gem at
+     sidestep it. The tempting one-line route — relax `is_enum`'s assert to a graceful `false` — is
+     BLOCKED: that exact assert (`self.generic_instances.contains_key(ident)`) is a live panic-class
+     key in `src/tests/recombination_tests.rs` for "`any` in member/element position" (pinned by
+     `tests/robustness/any_member.cddl`), so relaxing it globally would break that class. Closing the
+     recursive-key gap therefore needs the deeper route — defer the keys-list synthesis past the
+     recursive registration cycle (so the domain is classifiable when `name_as_wasm_array_ct` runs)
+     — which is out of scope for a duplicates-policy packet. The union-KEYED shape is not the real
+     Cardano driver anyway (metadata keys are int/text/bytes; the recursion is in the VALUE, covered
+     by the tstr-keyed headline).
+   - **Cross-crate wrapper-request hosting of a preserve table.** `requests.rs` threads
+     `rt.is_preserve_pair_map()` (correct-by-construction), but an inline cross-crate wrapper request
+     carries no directive, so a preserve table hosted purely via `--wrapper-requests` from a consumer
+     is untested (the named-rule and generic-instance paths ARE covered). A cross-crate preserve
+     wrapper-request fixture would close it.
+   - **Docs/matrix breadth.** The JSON array-of-pairs divergence and its schemars story are covered
+     by `docs/docs/comment_dsl.mdx`'s status note but still want a `current_capacities.mdx` /
+     `wasm_differences.mdx` callout; `cddl-matrix/features/` wants `dsl.duplicates.preserve` flavored
+     rows (the matrix-registration packet, needing the full `verify.ts` chain). The
+     decode-conformance CORPUS fixture + mint for preserve tables ride that same packet (its
+     `verify.ts` chain runs the mint machinery anyway; both oracles verified working on the
+     preserve-table and recursive-union shapes — the properly-resolved ruby gem at
      `Gem.user_dir/bin/cddl`, NOT the PATH `cddl`, which is the stock rust CLI), so preserve-table
      decode coverage lives in `golden_hex_preserve` (not the corpus catalog) until then.
 
