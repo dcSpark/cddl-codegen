@@ -202,7 +202,18 @@ impl GenerationScope {
             let ident = RustIdent::new(CDDLIdent::new(structural.clone()));
             match &rt.conceptual_type {
                 ConceptualRustType::Array(inner) => {
-                    if rt.is_non_empty_array() {
+                    if rt.is_reject_ordered_set() {
+                        // The `@duplicates reject` uniqueness twin — the wasm class wrapping
+                        // `OrderedSet`/`NonEmptyOrderedSet` with the checked `add` door. The
+                        // non-empty flavor is chosen exactly as the loose/NonEmpty split below.
+                        self.generate_reject_ordered_set_type(
+                            types,
+                            (**inner).clone(),
+                            &ident,
+                            rt.is_non_empty_array(),
+                            cli,
+                        );
+                    } else if rt.is_non_empty_array() {
                         self.generate_non_empty_array_type(
                             types,
                             (**inner).clone(),
@@ -251,12 +262,20 @@ impl GenerationScope {
         self.requested_non_empty_map = to_emit
             .iter()
             .any(|(_, rt, _, _)| rt.contains_non_empty_map());
+        // A requested reject wrapper pulls in the `ordered_set` runtime the dep's OWN spec may not
+        // use; record it so the runtime-provisioning gates (mod decl + static file copy) fire.
+        self.requested_ordered_set = to_emit
+            .iter()
+            .any(|(_, rt, _, _)| rt.contains_ordered_set());
         let non_empty_import = self
             .requested_non_empty_vec
             .then(|| format!("{}::non_empty", cli.common_import_wasm()));
         let non_empty_map_import = self
             .requested_non_empty_map
             .then(|| format!("{}::non_empty_map", cli.common_import_wasm()));
+        let ordered_set_import = self
+            .requested_ordered_set
+            .then(|| format!("{}::ordered_set", cli.common_import_wasm()));
 
         // Ensure the module exists even when nothing is emitted (all requests satisfied by own spec /
         // addressed elsewhere) — stable presence, stable diffs (plan decision 1). When non-empty, the
@@ -276,6 +295,13 @@ impl GenerationScope {
         }
         if let Some(path) = non_empty_map_import {
             scope_content.push_import(path, "NonEmptyMap", None);
+        }
+        // The reject twin wraps `core::OrderedSet` / `NonEmptyOrderedSet`; the per-scope import loop
+        // gates these on the dep's OWN `uses_ordered_set()`, so a dep hosting ONLY a requested reject
+        // wrapper needs them pushed here (same dumb-push + central-prune contract as the twins above).
+        if let Some(path) = ordered_set_import {
+            scope_content.push_import(path.clone(), "OrderedSet", None);
+            scope_content.push_import(path, "NonEmptyOrderedSet", None);
         }
     }
 }
@@ -315,7 +341,16 @@ pub(crate) fn render_wrapper_shape(rt: &RustType) -> String {
     match &rt.conceptual_type {
         ConceptualRustType::Array(inner) => {
             let occ = if rt.is_non_empty_array() { "+" } else { "*" };
-            format!("[{occ} {}]", render_wrapper_shape(inner))
+            // A `@duplicates reject` collection appends its policy marker so the shape column
+            // round-trips the uniqueness twin (parsed back by `parse_requested_shape`, and matched as
+            // a distinct canonical shape from the same loose/non-empty list). Kept byte-identical to
+            // the marker `generate_reject_ordered_set_type` records for the dep's own reject wrappers.
+            let reject = if rt.duplicates_reject() {
+                " @duplicates reject"
+            } else {
+                ""
+            };
+            format!("[{occ} {}]{reject}", render_wrapper_shape(inner))
         }
         ConceptualRustType::Map(key, value) => {
             let occ = if rt.is_non_empty_map() { "+" } else { "*" };
@@ -409,7 +444,7 @@ fn parse_requested_shape(
 ) -> RustType {
     let chars: Vec<char> = shape.chars().collect();
     let mut pos = 0;
-    let rt = parse_shape_fragment(
+    let mut rt = parse_shape_fragment(
         types,
         &chars,
         &mut pos,
@@ -421,6 +456,24 @@ fn parse_requested_shape(
     );
     while pos < chars.len() && chars[pos].is_whitespace() {
         pos += 1;
+    }
+    // A `@duplicates reject` collection carries its policy in the shape column as a trailing marker
+    // (the exact spelling `render_wrapper_shape` emits — the sidecar round-trips it), so the dep
+    // rebuilds the SAME uniqueness twin the consumer borrowed. Consume it before the trailing-content
+    // guard and stamp the policy onto the reconstructed `RustType` (only an array-shaped collection
+    // ever carries it; the emit dispatch + structural naming key off `is_reject_ordered_set`).
+    const REJECT_MARKER: &str = "@duplicates reject";
+    let rest: String = chars[pos..].iter().collect();
+    if rest == REJECT_MARKER {
+        if !matches!(rt.conceptual_type, ConceptualRustType::Array(_)) {
+            panic!(
+                "--wrapper-requests {consumer} ({path}): `@duplicates reject` on the non-array shape \
+                 {shape:?} (wrapper {listed_name:?}) — the reject policy only applies to set/array \
+                 collections."
+            );
+        }
+        rt.config.duplicates = Some(crate::comment_ast::DuplicatesPolicy::Reject);
+        pos = chars.len();
     }
     if pos != chars.len() {
         panic!(
@@ -625,7 +678,12 @@ fn requested_structural_name(
 ) -> String {
     match &rt.conceptual_type {
         ConceptualRustType::Array(inner) => {
-            if rt.is_non_empty_array() {
+            if rt.is_reject_ordered_set() {
+                // The uniqueness twin's wasm class name (`<Elem>OrderedSet` /
+                // `NonEmpty<Elem>OrderedSet`) — the same spelling the dep mints locally, so a request
+                // for it resolves to (or subtracts against) the identical structural name.
+                rt.reject_ordered_set_wasm_wrapper_name(types)
+            } else if rt.is_non_empty_array() {
                 format!("NonEmpty{}List", inner.conceptual_type.for_variant())
             } else {
                 inner.conceptual_type.name_as_wasm_array_ct(types)

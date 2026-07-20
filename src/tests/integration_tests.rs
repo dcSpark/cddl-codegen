@@ -7842,6 +7842,85 @@ fn workspace_borrowed_wrapper_collision_is_a_hard_error() {
     gen_scope.record_borrowed_wrapper(&ident, "dep", "{* a_to_b => c}");
 }
 
+/// WP4 (duplicates policy) — the `--wrapper-requests` DEP-hosting path for the `@duplicates reject`
+/// uniqueness twins. A consumer that borrows a reject set from a workspace dep records it in
+/// `borrowed_collections.rs` with the `@duplicates reject` shape marker; the dep must rebuild the
+/// SAME twin (an `OrderedSet` / `NonEmptyOrderedSet` wrapper with the checked `add` + `try_from`
+/// door), never a preserve-mode list. Drives the dep in-process against the committed hand-authored
+/// reject sidecar (the `zeta_borrowed_collections.rs` second-consumer idiom): the dep owns `idx_foo`
+/// but its own spec produces no reject set, so both twins land in `requested_collections.rs` and the
+/// requested-flag provisions the `ordered_set` runtime the dep would otherwise never pull in.
+#[test]
+fn workspace_requests_hosts_reject_ordered_set_twins() {
+    use clap::Parser;
+    let dir = std::env::temp_dir().join(format!("cddl_wr_reject_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("lib.cddl"), "idx_foo = [x: uint]\n").unwrap();
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        dir.join("lib.cddl").to_str().unwrap(),
+        "--output",
+        "wr_reject_unused",
+        "--lib-name",
+        "wr-dep",
+        "--wasm=true",
+        "--preserve-encodings=true",
+        "--wrapper-requests=rejc=tests/workspace-requests/sidecars/reject_borrowed_collections.rs",
+    ]);
+    let files = crate::api::generated_strings(&cli)
+        .unwrap_or_else(|e| panic!("dep generation must host the reject twins: {e}"));
+    let _ = std::fs::remove_dir_all(&dir);
+
+    let requested = files
+        .get("wasm/src/generated/requested_collections.rs")
+        .expect("the dep must emit requested_collections.rs hosting the reject twins");
+    // Both twins wrap the uniqueness cores — a preserve-mode rebuild (the skew) would wrap Vec /
+    // NonEmptyVec here instead.
+    assert!(
+        requested.contains("pub struct IdxFooOrderedSet(pub(crate) OrderedSet<wr_dep::IdxFoo>)"),
+        "the [*] reject request must host an OrderedSet twin:\n{requested}"
+    );
+    assert!(
+        requested.contains(
+            "pub struct NonEmptyIdxFooOrderedSet(pub(crate) NonEmptyOrderedSet<wr_dep::IdxFoo>)"
+        ),
+        "the [+] reject request must host a NonEmptyOrderedSet twin:\n{requested}"
+    );
+    // The checked `add` door — the uniqueness enforcement the twin exists for (the loose list's `add`
+    // is infallible; the reject twin's returns a Result).
+    assert!(
+        requested.contains("pub fn add(&mut self, elem: &IdxFoo) -> Result<(), JsError>"),
+        "the reject twin's add must be the checked (Result-returning) door:\n{requested}"
+    );
+    // The `ordered_set` runtime import the dep pulls in ONLY because of the request.
+    assert!(
+        requested.contains("::ordered_set::{NonEmptyOrderedSet, OrderedSet}"),
+        "the requested scope must import the OrderedSet runtime core types:\n{requested}"
+    );
+    // The requested-ordered-set flag provisions the `ordered_set` runtime MODULE even though the
+    // dep's own spec uses none (the runtime-provisioning gate ORs own-use with requested-use).
+    let rust_mod = files
+        .get("rust/src/generated/mod.rs")
+        .expect("rust generated mod.rs");
+    assert!(
+        rust_mod.contains("pub mod ordered_set;"),
+        "requested_ordered_set must provision the ordered_set runtime module:\n{rust_mod}"
+    );
+    // The wasm collections index re-exports both hosted twins, so a borrowing consumer resolves them.
+    let collections = files
+        .get("wasm/src/generated/collections.rs")
+        .expect("wasm collections.rs");
+    assert!(
+        collections.contains("pub use crate::generated::requested_collections::IdxFooOrderedSet;")
+            && collections.contains(
+                "pub use crate::generated::requested_collections::NonEmptyIdxFooOrderedSet;"
+            ),
+        "the wasm collections index must re-export both hosted twins:\n{collections}"
+    );
+}
+
 /// W2 of the workspace wrapper-placement feature (`--wrapper-requests`): the dep side that HOSTS the
 /// wrappers a consumer's `borrowed_collections.rs` records. A GENERATED dep (`dep_inputs`: owns
 /// `idx_foo`/`idx_bar`, produces `IdxFooList` STRUCTURALLY via an inline `[* idx_foo]`) reads a

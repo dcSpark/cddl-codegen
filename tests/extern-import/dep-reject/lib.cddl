@@ -1,0 +1,8 @@
+; Dependency spec for the @duplicates-reject --extern-import fixture (WP4). Its minted
+; extern-interface export MUST carry the `@duplicates reject` directive on each collection rule so a
+; consumer regenerating from the export rebuilds the SAME uniqueness twins (OrderedSet /
+; NonEmptyOrderedSet) — without the projected directive the consumer would embed a preserve-mode
+; Vec/NonEmptyVec that silently ACCEPTS duplicates the dep rejects (the cross-crate skew the seam
+; kills). Exercises both the `[*]` (OrderedSet) and `[+]` (NonEmptyOrderedSet) flavors.
+reject_uints  = [* uint] ; @duplicates reject
+reject_nuints = [+ uint] ; @duplicates reject

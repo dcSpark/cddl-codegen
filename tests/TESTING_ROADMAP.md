@@ -156,17 +156,21 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    - **Real-world corpus differential** (see `draft/testing-recommendations/RECOMMENDATIONS.md`):
      synthetic breadth vs real-world depth — recombination does not replace it.
 
-2. **Byte-fuzzer surface rot: the tag-set idiom's deserialize peek path is unfuzzed.** The
-   `from_cbor_bytes` fuzz crate generates from `tests/preserve-encodings/input.cddl`, which
-   predates the transparent tag-set collapse — so the optionally-tagged deserialize arm (peek the
-   major type, conditionally consume + validate the tag, then the collection body; the one
-   hand-rolled branch the tag-set feature added to deserialization) is structurally unreachable
-   by the fuzzer. Hostile inputs the current tests never compose (a tag head with a truncated
-   body, a tag-of-a-tag, a non-array after the tag under indefinite lengths) are exactly what the
-   fuzz boundary exists to find. Remedy: add a collapsed `set`/`nonempty_set` field (as a generic
-   instance, to also cover the convergence path) to the preserve-encodings fixture spec and
-   re-run `fuzz/generate.sh` — costs one snapshot re-bless of that suite; do it in a session that
-   can run the fuzz smoke (`fuzz_compile_rot` is full-tier).
+2. **Byte-fuzzer depth: the tag-set peek path + reject door are wired, but only compile-checked.**
+   The `from_cbor_bytes` fuzz crate generates from `tests/preserve-encodings/input.cddl`, which now
+   carries a `@duplicates reject` collapsed tag-set field minted as a GENERIC instance
+   (`oset_p<a> = #6.258([* a]) / [* a] ; @duplicates reject`, used by `reject_set_preserve`) — so
+   both the optionally-tagged deserialize peek path (peek the major type, conditionally consume +
+   validate the tag, then the collection body — the one hand-rolled branch the tag-set collapse
+   added) AND the reject uniqueness door (the collected Vec routed through `OrderedSet::try_from`,
+   raising `DuplicateKey`) are in the fuzzed probe set, along with the generic/non-generic
+   convergence. `fuzz_compile_rot` (full tier) proves the surface stays REACHABLE (the crate
+   compiles with the field), but the actual hostile-input exploration — a tag head with a truncated
+   body, a tag-of-a-tag, a non-array after the tag under indefinite lengths, a duplicate on either
+   wire arm — only happens on a manual `cargo +nightly fuzz run from_cbor_bytes`. The residual is a
+   scheduling one: wire a periodic / pre-ship fuzz RUN (bounded corpus, time-boxed) so the reachable
+   surface is actually walked, not merely compiled — the compile-rot gate cannot see a panic that
+   only a live libFuzzer input triggers.
 
 3. **Identifier-length realism (a fixture-corpus dimension, recur-first).** Every fixture corpus
    uses short synthetic names, so any emission-width-driven failure class is structurally
@@ -185,6 +189,60 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    across the emission profiles, whose whole gate is "generation succeeds" — `export.rs`'s
    non-0/3-rustfmt-exit-is-fatal contract already turns any formatter internal error into a
    generation failure, so no new assertion machinery is needed.
+
+4. **Duplicates policy phase 2: preserve-mode tables (pair-map).** Phase 1 shipped `@duplicates
+   reject` for set/array collections (the `OrderedSet`/`NonEmptyOrderedSet` twins) and refuses
+   `@duplicates preserve` on a table rule loudly at parse time. Phase 2 builds that preserve
+   direction. This is COMMITTED, not consumer-gated: the driver is Cardano `transaction_metadata`,
+   a recursive union whose map arm is keyed by the union itself —
+   `{ * transaction_metadata => transaction_metadata } / [ * … ] / int / bytes / text`. Pre-Conway
+   eras allowed duplicate keys, and duplicate-keyed instances exist on mainnet; a full node must
+   accept them AND re-emit them byte-exactly, because the auxiliary-data hash is computed over the
+   ORIGINAL bytes — a reader that collapses or reorders duplicate keys fails hash verification. So
+   the headline vector is a duplicate-keyed round-trip that must re-emit byte-exactly, minted
+   failing under `--preserve-encodings` before any representation work.
+   Design, settled so the building session starts from it (justified directly rather than as a
+   sequence of attempts):
+   - **Member type: a `Vec<(K, V)>`-backed pair-map twin** (working name follows the
+     contract-naming principle settled for `OrderedSet`) — the only shape faithful to both entry
+     order and duplicates. Map-flavored read surface (`get` → first match, `get_all`, entry-order
+     iteration); no uniqueness door. Table `reject` stays the default (most map rules are
+     ledger-validated unique-keyed); the twin is opt-in via `@duplicates preserve`.
+   - **Positional preserve-encodings sidecar**: `Vec<(key_encs, value_encs)>` parallel to the
+     entries, replacing the two key-value-keyed `BTreeMap`s (`deserialize.rs`) — a `BTreeMap` keyed
+     by key value is structurally incapable of holding two entries with the same key, so a
+     preserve-mode table forces the positional sidecar AND the pair-vec member, not a parameter
+     tweak. The serialize-side `key_order` build (`serialize.rs`) reads positionally.
+   - **Directive placement stays per-rule**: the real map arm is INLINE in a union, so the spec
+     author names it (`metadata_map = {* … => …} ; @duplicates preserve`) rather than the DSL
+     growing arm-level addressing. `@duplicates` on the union rule itself is a `record_rejection`
+     like any other no-policy-applies placement.
+   - **`--canonical-form` is runtime-scoped, not a generation-time refusal**: RFC 8949
+     deterministic encoding requires unique keys, so duplicate-carrying data has no canonical form
+     — but the flag is crate-wide (CML generates with it), so refusing at generation time would
+     block the whole consumer, and erroring at runtime would make `to_canonical_cbor_bytes` partial
+     over every enclosing type. Under `force_canonical`, a preserve-mode table stable-sorts entries
+     by encoded key bytes (duplicates kept adjacent in first-appearance order) — deterministic
+     best-effort, documented as non-canonical-by-necessity; canonicalizing metadata is moot anyway,
+     since its consensus hash is over the original bytes, which non-canonical round-trip preserves.
+   - **`{+ k => v}` × preserve needs its own min-1 door**: the existing `NonEmptyMap` door assumes
+     the keyed-table shape; a preserve-mode `{+ …}` composes non-emptiness with the pair-map (a
+     bounds check on the pair-vec through the same single-door pattern) — flagged so the scope
+     matrix cell is not assumed free.
+   - **Key-demand bounds**: the auto key-demand pass stamps every map-key type with the full `bare`
+     bundle (`Hash + Eq + Ord`) regardless of representation (`check_used_as_key`), even though a
+     linear-scan pair-map needs only `Eq`. Realizing the relaxation means teaching that pass to skip
+     preserve-mode maps; accepting the full bundle on the recursive metadatum enum is also viable
+     (derives recurse fine through the indirection — `dep_graph.rs` tolerates cycles and
+     `tests/corpus/recursive.cddl` generates today). The phase-2 fixture MUST generate under
+     `--preserve-encodings` to expose the derive cascade either way.
+   - **JSON cannot be an object** (unique keys; the current `OrderedHashMap` JSON impl even
+     round-trips through a `BTreeMap`, silently collapsing dups). Representation: an array of
+     `[k, v]` pairs, diverging from the object shape tables use today — a per-type JSON-shape
+     divergence needing its own doc callout and schemars story.
+   - **Wasm parity is the definition of done** (WP3's governing constraint — consumers are
+     predominantly wasm users): a wrapper over the pair-map with the map-flavored surface, so every
+     shape that generates for Rust generates for wasm.
 
 ## Standing-system residuals (recur-first)
 
@@ -798,29 +856,20 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
 
 ## Deferred features (build when a real consumer needs them)
 
-- **Duplicates policy for tag-set collections — CML is the waiting consumer (their next
-  hand-code deletion tranche).** The transparent tag-set collapse deliberately ships
-  allow+preserve semantics (`Vec`/`NonEmptyVec` alias targets): historical on-chain data can
-  carry duplicates a multi-era reader must accept and re-emit byte-exactly, so that is the only
-  correct DEFAULT — but it hands the API user a duplicate-shaped footgun where the spec means a
-  mathematical set, and validating writers (Conway-era ledger rules) want rejection. Design,
-  settled at parking time so the building session starts from it:
-  - A per-rule comment-DSL policy (spelling TBD when built) choosing allow+preserve (default,
-    today's behavior) vs reject.
-  - Reject-mode swaps the ALIAS TARGET — the seam the collapse feature created — to a
-    uniqueness-enforcing twin of `NonEmptyVec` (same generated-runtime pattern: single
-    `TryFrom<Vec<T>>` door rejecting duplicates, checked `push`, `Deref`/iter surface,
-    order-preserving because byte-exact roundtrip requires it even for valid sets), with the
-    wire-side check emitting the existing `DeserializeFailure::DuplicateKey` class map keys
-    already use (`generation/deserialize.rs` — the reject stance exists, hard-coded and
-    map-only). Use sites are untouched: the swap is a value-type substitution in the alias slot.
-  - Element `Eq`/`Ord`/`Hash` bounds propagate via the existing key-demand machinery
-    (`@used_as_key` flavor system), not a new bounds system.
-  - Fold in the alias doc-comment polish (generated set aliases self-describing: tag-N set
-    idiom, tag presence is an encoding detail, duplicates/order preserved or rejected per the
-    policy) so both land in ONE snapshot-bless cycle.
-  - Reopening signal: CML names the Conway sites the ledger validates as strict sets (asked in
-    `draft/feature-requests/RESPONSE-2026-07-20-request-08.md` § the trade-offs section).
+- **Consumer-side auto-deferral of reject-set wrappers (`--wrapper-requests`).** The dep-side
+  hosting leg is complete: a `@duplicates reject` array shape in a committed
+  `borrowed_collections.rs` sidecar round-trips the request grammar and emits the
+  `OrderedSet`/`NonEmptyOrderedSet` twin wrapper in the dep
+  (`workspace_requests_hosts_reject_ordered_set_twins`). What is NOT built: a CONSUMER's own
+  generation writing a reject shape into its request sidecar automatically
+  (`generate_reject_ordered_set_type` does not call `try_defer_wrapper` — threading it needs a
+  signature change across three call sites inside the deferral-placement logic, which is delicate
+  enough that it warrants its own reviewed change rather than riding a doc-and-closure commit).
+  Consequence and why it is safe to defer: a consumer that hits the shape emits the wrapper
+  locally, which is at worst the documented cross-crate duplicate-symbol link class — loud at
+  link time, never a silent data-behavior skew. Reopening signal: a real multi-crate consumer
+  puts a reject set behind a wrapper-request boundary (hand-authoring the sidecar row is the
+  interim workaround).
 - **Extern-interface export dialect v2 candidates.** Each bumps the seam header
   (`_CDDL_CODEGEN_EXTERN_INTERFACE_ v1` — unknown versions hard-error, pinned by
   `extern_import_unknown_version_hard_errors`), so batch them when one gets a real consumer:
