@@ -53,7 +53,7 @@ quote = "1"
 # `features=["full"]` gets the item/use AST it walks) and drives the harness-side `syn`-based
 # differentials in the test suite (`wasm_api_parity` / `recombination_tests`). NEVER a
 # generated-crate dep — it runs inside this tool only.
-syn = { version = "2", features = ["full"] }
+syn = { version = "3", features = ["full"] }
 # Cargo's own SemVer parser/evaluator (cargo-team maintained). Powers the dependency-spec merge in
 # `cargo_manifest.rs`: a user's concrete version pin is kept verbatim when it satisfies the tool's
 # version requirement (caret semantics), otherwise the tool's floor wins.
