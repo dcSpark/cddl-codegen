@@ -791,9 +791,59 @@ across the same layers plus the cross-crate ones:
   `tests/TESTING_ROADMAP.md` § "Byte-fuzzer depth: the tag-set peek path + reject door are wired, but
   only compile-checked".
 - **Graceful-rejection matrix** — `src/tests/robustness_tests.rs`:
-  `duplicates_directive_rejects_gracefully` (permanent no-policy placements + the loud phase-2
-  table-`preserve` refusal) and `duplicates_directive_accepts_live_and_default_noops` (live set/array
-  `reject` plus the accepted default no-ops).
+  `duplicates_directive_rejects_gracefully` (permanent no-policy placements) and
+  `duplicates_directive_accepts_live_and_default_noops` (live set/array `reject` plus the accepted
+  default no-ops).
+
+The **`@duplicates preserve` flavor** (phase 2 of the per-rule duplicates policy — user doc:
+`docs/docs/output_format.mdx` § "Preserve-duplicates tables", `docs/docs/current_capacities.mdx`
+§ "Preserve-mode tables", `docs/docs/wasm_differences.mdx` § "Preserve-duplicates tables",
+`docs/docs/comment_dsl.mdx` § `@duplicates`) is the TABLE mirror of the reject flavor: a table rule
+carrying `@duplicates preserve` swaps its transparent alias to the `Vec<(K, V)>`-backed pair-map twin
+(`{*}` → `PairMap`, `{+}` → `NonEmptyPairMap`), the only shape faithful to both entry order and
+duplicate keys (driver: byte-exact round-trip of pre-Conway Cardano `transaction_metadata`). Verified
+across the same layers:
+
+- **Wire bytes (byte-exact dup round-trip)** — `tests/golden_hex_preserve/tests.rs`:
+  `pmap_duplicate_key` and `pmap_duplicate_key_nonminimal_head` (a duplicate-keyed map decodes AND
+  re-emits byte-exactly, the second proving per-entry POSITIONAL encoding — a non-minimal head on one
+  entry re-emits faithfully), plus the in-process `pair_map_surface_and_nonempty_door` (the pair-map
+  read surface — `get` first-match / `get_all` — and the `{+}` NonEmptyPairMap min-1 door). The
+  recursive union-keyed table (`{* md => md}`) headline trips a pre-existing, policy-independent
+  keys-list synthesis panic, recorded as a residual in `tests/TESTING_ROADMAP.md`.
+- **Canonical stable-sort** — `tests/golden_hex_canonical/tests.rs`: `canon_dup_pmap_key_sort` and
+  `canon_dup_pmap_nonminimal_head` pin that `--canonical-form` stable-sorts entries by encoded key
+  bytes with duplicates adjacent in first-appearance order and minimizes per-entry heads independently
+  (the positional sidecar is what lets same-key entries canonicalize separately) — the deterministic
+  best-effort for data with no RFC 8949 canonical form.
+- **JSON (array-of-pairs)** — `tests/json/tests.rs`: `preserve_pair_map_json` (a preserve table
+  serializes as a JSON ARRAY of `[k, v]` pairs — order and duplicates intact — not an object),
+  `ne_preserve_pair_map_json_door` (the `{+}` door refuses an empty `[]` with the same min-1 error),
+  and `schemas_reject_wrong_shapes` (the emitted `schemars` schema is an array-of-pairs that REJECTS
+  an object shape for the field).
+- **Core wasm (appending insert)** — `tests/core/tests_wasm.rs::wasm_preserve_pair_map_insert_appends`:
+  the pair-map wasm wrapper's `insert` APPENDS (a repeated key grows `len`, never replaces) and returns
+  `Option`, the opposite of the reject set's fallible `add`. The emit-tests PairMap synthesis leg
+  round-trips it.
+- **Robustness pins** — `src/tests/robustness_tests.rs`:
+  `duplicates_directive_accepts_live_and_default_noops` (the core lowering: `{*}` → `PairMap`, `{+}` →
+  `NonEmptyPairMap`, alongside the live set/array `reject` and the accepted default no-ops),
+  `duplicates_preserve_nonempty_table_lowers_to_twin_under_wasm` (the `{+}` NonEmptyPairMap wrapper
+  crosses the wasm boundary), `generic_preserve_table_instance_lowers_to_pair_map_under_wasm` (an
+  anonymous generic table instance recovers the pair-map flavor from its shape), and
+  `duplicates_preserve_pair_map_shape_collision_rejects_gracefully` (the fourth-kind collision detector
+  — a preserve table sharing a structural map shape with a genuine inline map or a non-preserve `{+}`
+  table is a distinctly-worded graceful rejection).
+- **Extern-interface projection** —
+  `src/tests/extern_import_tests.rs::extern_import_projects_duplicates_preserve_no_cross_crate_skew`:
+  the `dep-preserve/lib.cddl` → `consumer-preserve/lib.cddl` two-crate fixture proves the directive
+  travels on the export so the consumer rebuilds the pair-map twins (not a reject-default `BTreeMap`
+  that would REJECT the duplicate keys the dep preserves — the mirror skew), with a negative-control
+  skew check.
+- **wasm-ABI matrix registration** — the per-role grid row for the appending-`insert` pair-map ABI
+  class is OWED (rides WP6), recorded in `cddl-matrix/ROADMAP.md` § "wasm-ABI & multifile placement
+  matrices — remaining work" alongside its reject sibling; the robustness/core pins above are the
+  interim per-fixture coverage.
 
 ### Decode-direction conformance (`tests/decode_conformance/` — accept what the spec accepts)
 

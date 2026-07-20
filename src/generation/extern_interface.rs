@@ -822,16 +822,19 @@ fn project_extern_interface(
             // collect the rule idents it references for the closure. The self-check is a `use`
             // existence check on the `pub type`.
             RustStructType::Array { .. } | RustStructType::Table { .. } => {
-                // `@duplicates reject` travels verbatim: the reject policy swaps the collection's
-                // rust surface to a uniqueness twin (`OrderedSet`/`NonEmptyOrderedSet`), so a
-                // consumer that rebuilds this rule from the export without the directive would embed
-                // a preserve-mode `Vec` that ACCEPTS what the dep rejects — the exact cross-crate
-                // skew this seam kills. (Set `preserve` and table `reject`/`preserve` never reach
-                // here as anything but a self-documenting no-op / a parse-time refusal, so only
-                // `reject` — the representation-changing policy — is worth projecting.)
-                let dup_annotations = duplicates_reject_annotation(rust_struct.config().duplicates);
+                // Both representation-changing `@duplicates` placements travel verbatim: `reject` on a
+                // set swaps the rust surface to a uniqueness twin (`OrderedSet`/`NonEmptyOrderedSet`),
+                // and `preserve` on a table swaps it to a vec-of-pairs twin
+                // (`PairMap`/`NonEmptyPairMap`). A consumer that rebuilds this rule without the
+                // directive would embed the DEFAULT representation and skew across the seam: a
+                // preserve-mode `Vec` that ACCEPTS what a reject dep rejects, or a reject-default
+                // `BTreeMap` that REJECTS what a preserve dep preserves. The transparent alias's
+                // `base_type` carries the policy (`with_duplicates_policy` at registration), and the
+                // shape-aware predicates filter the two no-op defaults (set `preserve`, table
+                // `reject`) so only the representation-changing halves project.
                 let projected = match types.type_aliases().get(&AliasIdent::Rust(ident.clone())) {
                     Some(alias) => {
+                        let dup_annotations = duplicates_annotation(&alias.base_type);
                         render_transparent_rule_body(source, &alias.base_type, Some(&md), types)
                             .map(|body| {
                                 (
@@ -898,10 +901,9 @@ fn project_extern_interface(
             extra_annotations.push("@no_alias".to_string());
         }
         // A collection reaching pass 2 (rather than the pass-1 Array/Table arm) still carries its
-        // reject policy on the alias base type; project it for the same anti-skew reason.
-        extra_annotations.extend(duplicates_reject_annotation(
-            alias_info.base_type.config.duplicates,
-        ));
+        // policy on the alias base type; project the representation-changing halves (set `reject`,
+        // table `preserve`) for the same anti-skew reason.
+        extra_annotations.extend(duplicates_annotation(&alias_info.base_type));
         let projected: RuleProjection = if let Some(target) = &alias_info.wasm_alias_target {
             // A `ptm = mp` rule whose `Alias(mp, …)` wrapper was stripped to inline the type keeps a
             // `wasm_alias_target`; spell it truthfully as a reference to that target's original ident
@@ -1232,16 +1234,22 @@ fn rule_metadata_from_config(config: &RustStructConfig) -> RuleMetadata {
     }
 }
 
-/// The `@duplicates reject` annotation to project for a collection rule, or empty. Only `reject`
-/// travels: it is the representation-changing policy (the uniqueness twin), so omitting it from the
-/// export would make the consumer rebuild a preserve-mode collection that silently accepts what the
-/// dep rejects. `preserve` (the set default) and table `reject` are no-ops on both sides, so
-/// projecting them would only add export noise.
-fn duplicates_reject_annotation(
-    policy: Option<crate::comment_ast::DuplicatesPolicy>,
-) -> Vec<String> {
-    if policy == Some(crate::comment_ast::DuplicatesPolicy::Reject) {
+/// The `@duplicates` annotation to project for a collection rule, or empty. Only the two
+/// REPRESENTATION-CHANGING placements travel: `@duplicates reject` on an array/set (swaps the surface
+/// to the `OrderedSet`/`NonEmptyOrderedSet` uniqueness twin) and `@duplicates preserve` on a table
+/// (swaps it to the `PairMap`/`NonEmptyPairMap` vec-of-pairs twin). Omitting either would make a
+/// consumer rebuild the DEFAULT representation and skew across the crate seam in one of two mirrored
+/// directions: a dropped `reject` rebuilds a preserve-mode `Vec` that ACCEPTS the duplicates the dep
+/// rejects; a dropped table `preserve` rebuilds a reject-default `BTreeMap` that REJECTS the
+/// duplicates the dep preserves. Array `preserve` (the set default) and table `reject` (the map
+/// default) are genuine no-ops on both sides — projecting them would only add export noise — so they
+/// are shape-filtered out by the `is_reject_ordered_set`/`is_preserve_pair_map` predicates rather
+/// than read off the bare policy flag.
+fn duplicates_annotation(base_type: &RustType) -> Vec<String> {
+    if base_type.is_reject_ordered_set() {
         vec!["@duplicates reject".to_string()]
+    } else if base_type.is_preserve_pair_map() {
+        vec!["@duplicates preserve".to_string()]
     } else {
         Vec::new()
     }

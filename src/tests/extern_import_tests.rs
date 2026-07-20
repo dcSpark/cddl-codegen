@@ -317,6 +317,118 @@ fn extern_import_projects_duplicates_reject_no_cross_crate_skew() {
     let _ = std::fs::remove_dir_all(&skew_root);
 }
 
+/// Phase 2 (duplicates policy): `@duplicates preserve` on a TABLE MUST project into the dep's
+/// extern-interface export — the MIRROR of the reject direction. Table `reject` is the map default
+/// (a `BTreeMap` cannot hold duplicate keys), so a consumer that regenerates from an export MISSING
+/// the directive rebuilds a reject-default map that silently REJECTS the duplicate keys the dep's
+/// `PairMap`/`NonEmptyPairMap` preserves — the same cross-crate skew this seam kills, opposite
+/// direction. Four legs, symmetric to `extern_import_projects_duplicates_reject_no_cross_crate_skew`:
+/// (1) the export carries the directive on both the `{*}` and `{+}` preserve rules; (2) the
+/// consumer's OWN deserialize rebuilds the pair-map twins (`PairMap::from` / `NonEmptyPairMap::try_from`)
+/// — preserve on both sides; (3) byte-identity vs a physical stub carrying the directive; (4) a
+/// NEGATIVE control proving the directive is load-bearing — a stub with it stripped rebuilds a
+/// reject-default map with NO pair-map twin (the skew, made visible).
+#[test]
+fn extern_import_projects_duplicates_preserve_no_cross_crate_skew() {
+    let export = mint_export(&fixture("dep-preserve/lib.cddl"), "dep", "duppreserve");
+    let consumer = fixture("consumer-preserve/lib.cddl");
+
+    // (1) the export carries `@duplicates preserve` on each table rule (the pin is appended after).
+    let export_body = export
+        .values()
+        .find(|c| c.contains("preserve_map"))
+        .expect("the export must contain the preserve rules");
+    assert!(
+        export_body.contains("preserve_map = {* uint => tstr} ; @duplicates preserve"),
+        "the {{*}} preserve table must project its directive; got:\n{export_body}"
+    );
+    assert!(
+        export_body.contains("preserve_nmap = {+ uint => tstr} ; @duplicates preserve"),
+        "the {{+}} preserve table must project its directive; got:\n{export_body}"
+    );
+
+    // Consume the export via --extern-import.
+    let flag_root = scratch("duppreserve_flag");
+    write(&flag_root, "lib.cddl", &consumer);
+    let export_dir = scratch("duppreserve_export");
+    for (path, content) in &export {
+        write(&export_dir, path, content);
+    }
+    let import_arg = format!(
+        "dep={}",
+        export_dir.join("extern-interface/dep").to_str().unwrap()
+    );
+    let via_flag = generate(
+        &flag_root.join("lib.cddl"),
+        &["--extern-import", &import_arg],
+    )
+    .expect("--extern-import generation must succeed");
+
+    // (2) the consumer's OWN deserialize rebuilds the pair-map twins — duplicate-keyed wire is
+    // preserved IN the consumer, preserve on both sides of the crate boundary.
+    let ser = via_flag
+        .get("rust/src/generated/serialization.rs")
+        .expect("the consumer must emit serialization.rs");
+    assert!(
+        ser.contains("PairMap::from"),
+        "the consumer must deserialize the {{*}} preserve table into the PairMap vec-of-pairs twin"
+    );
+    assert!(
+        ser.contains("NonEmptyPairMap::try_from"),
+        "the consumer must deserialize the {{+}} preserve table through the NonEmptyPairMap door"
+    );
+
+    // (3) byte-identity vs a physical stub carrying the directive (the seam roundtrips it verbatim).
+    let stub_root = scratch("duppreserve_stub");
+    write(&stub_root, "lib.cddl", &consumer);
+    for (path, content) in &export {
+        let sub = path
+            .strip_prefix("extern-interface/dep/")
+            .expect("export path shape");
+        write(
+            &stub_root,
+            &format!("_CDDL_CODEGEN_EXTERN_DEPS_DIR_/dep/{sub}"),
+            &strip_header(content),
+        );
+    }
+    let via_stub = generate(&stub_root, &[]).expect("physical-stub generation must succeed");
+    assert_eq!(
+        via_flag, via_stub,
+        "--extern-import must produce byte-identical output to a physical stub carrying @duplicates preserve"
+    );
+
+    // (4) NEGATIVE control: a stub with the directive STRIPPED rebuilds a reject-default map with no
+    // pair-map twin — the silent-reject skew, made visible. This proves the projected directive is
+    // load-bearing rather than decorative. ("PairMap" as a substring covers NonEmptyPairMap too.)
+    let skew_root = scratch("duppreserve_skew");
+    write(&skew_root, "lib.cddl", &consumer);
+    for (path, content) in &export {
+        let sub = path
+            .strip_prefix("extern-interface/dep/")
+            .expect("export path shape");
+        let stripped = strip_header(content).replace("@duplicates preserve ", "");
+        write(
+            &skew_root,
+            &format!("_CDDL_CODEGEN_EXTERN_DEPS_DIR_/dep/{sub}"),
+            &stripped,
+        );
+    }
+    let via_skew = generate(&skew_root, &[]).expect("skew-stub generation must succeed");
+    let skew_ser = via_skew
+        .get("rust/src/generated/serialization.rs")
+        .expect("skew serialization.rs");
+    assert!(
+        !skew_ser.contains("PairMap"),
+        "with @duplicates preserve dropped the consumer must NOT rebuild the pair-map twin — this is \
+         the cross-crate skew the projection prevents"
+    );
+
+    let _ = std::fs::remove_dir_all(&flag_root);
+    let _ = std::fs::remove_dir_all(&export_dir);
+    let _ = std::fs::remove_dir_all(&stub_root);
+    let _ = std::fs::remove_dir_all(&skew_root);
+}
+
 /// Strip every `@rust_name <ident>` pin from a stub body, keeping any other annotations on the
 /// line (`; @no_alias @rust_name Na` -> `; @no_alias`) and dropping a comment tail left empty by
 /// the strip (`coin = uint ; @rust_name Coin` -> `coin = uint`).

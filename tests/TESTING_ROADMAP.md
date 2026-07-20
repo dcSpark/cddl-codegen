@@ -209,7 +209,16 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    `ne_preserve_pair_map_json_door`, `schemas_validate_serialization`); and the wasm appending-insert
    + emit-tests synthesis by `tests/core` (`wasm_preserve_pair_map_insert_appends`,
    `roundtrip_preserve_pmap_holder`). A preserve table sharing a structural map-shape name with a
-   non-preserve occurrence is a graceful rejection (`preserve_pair_map_wrapper_name_collisions`).
+   non-preserve occurrence is a graceful rejection (`preserve_pair_map_wrapper_name_collisions`). The
+   directive travels the extern-interface seam (the MIRROR of the reject projection): a dep exporting a
+   `@duplicates preserve` table projects the directive so a consumer regenerating from the export
+   rebuilds the pair-map twin, never a reject-default `BTreeMap` that would silently REJECT the
+   duplicate keys the dep preserves — pinned by
+   `extern_import_projects_duplicates_preserve_no_cross_crate_skew` (`dep-preserve` → `consumer-preserve`
+   two-crate fixture with a negative-control skew check). User docs landed: the pair-map representation,
+   byte-exact dup round-trip, JSON array-of-pairs divergence, and canonical best-effort are documented
+   in `docs/docs/current_capacities.mdx` § "Preserve-mode tables", `docs/docs/output_format.mdx`
+   § "Preserve-duplicates tables", and `docs/docs/wasm_differences.mdx` § "Preserve-duplicates tables".
    Residual work:
    - **Recursive-map-KEY limitation (pre-existing, orthogonal).** A table whose DOMAIN is a
      not-yet-registered recursive UNION (`{ * transaction_metadata => transaction_metadata }`, the
@@ -231,15 +240,17 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      carries no directive, so a preserve table hosted purely via `--wrapper-requests` from a consumer
      is untested (the named-rule and generic-instance paths ARE covered). A cross-crate preserve
      wrapper-request fixture would close it.
-   - **Docs/matrix breadth.** The JSON array-of-pairs divergence and its schemars story are covered
-     by `docs/docs/comment_dsl.mdx`'s status note but still want a `current_capacities.mdx` /
-     `wasm_differences.mdx` callout; `cddl-matrix/features/` wants `dsl.duplicates.preserve` flavored
-     rows (the matrix-registration packet, needing the full `verify.ts` chain). The
-     decode-conformance CORPUS fixture + mint for preserve tables ride that same packet (its
-     `verify.ts` chain runs the mint machinery anyway; both oracles verified working on the
-     preserve-table and recursive-union shapes — the properly-resolved ruby gem at
-     `Gem.user_dir/bin/cddl`, NOT the PATH `cddl`, which is the stock rust CLI), so preserve-table
-     decode coverage lives in `golden_hex_preserve` (not the corpus catalog) until then.
+   - **Matrix registration (WP6).** `cddl-matrix/features/` wants `dsl.duplicates.preserve` flavored
+     rows, and the wasm-ABI matrix wants a per-role grid row for the appending-`insert` pair-map ABI
+     class — both need the full `verify.ts` annotation chain (the matrix-registration packet). The gap
+     is recorded honestly in `cddl-matrix/ROADMAP.md` § "wasm-ABI & multifile placement matrices —
+     remaining work" as the third OWED shape-addition entry (alongside the tag-set and reject
+     siblings), with the interim per-fixture pins named. The decode-conformance CORPUS fixture + mint
+     for preserve tables ride that same packet (its `verify.ts` chain runs the mint machinery anyway;
+     both oracles verified working on the preserve-table and recursive-union shapes — the
+     properly-resolved ruby gem at `Gem.user_dir/bin/cddl`, NOT the PATH `cddl`, which is the stock
+     rust CLI), so preserve-table decode coverage lives in `golden_hex_preserve` (not the corpus
+     catalog) until then.
 
 ## Standing-system residuals (recur-first)
 

@@ -1571,10 +1571,10 @@ impl<'a> IntermediateTypes<'a> {
                     // exactly like the `Array` arm below
                     map_type = map_type.with_bounds(*bounds);
                 }
-                // `@duplicates` rides the alias too. For tables `reject` is today's default (a no-op
-                // recorded for self-documentation) and `preserve` is refused at parse time (phase 2),
-                // so this never changes the table representation here — it is carried for symmetry and
-                // so a future table-preserve twin has a single seam to read.
+                // `@duplicates` rides the alias too. For tables `reject` is the default (a no-op
+                // recorded for self-documentation) while `preserve` swaps the member to the
+                // `PairMap`/`NonEmptyPairMap` vec-of-pairs twin, so this seam is the single place a
+                // table-preserve embed site (and the extern-interface projection) reads the policy.
                 map_type = map_type.with_duplicates_policy(rust_struct.config().duplicates);
                 if let Some(tag) = rust_struct.tag {
                     map_type = if rust_struct.tag_optional {
