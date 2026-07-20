@@ -84,6 +84,30 @@ borrow from, and construction is `new(first)` + `add` (the reason is in the wrap
 comment). See [`--wasm-list-macro`](./command_line_flags.mdx) for the macro-mode posture of these
 restricted wrappers.
 
+## Reject-duplicates containers
+
+A collection rule carrying [`@duplicates reject`](./comment_dsl) — `[* T]` → `OrderedSet<T>`,
+`[+ T]` → `NonEmptyOrderedSet<T>` (see
+[Output format](./output_format.mdx#reject-duplicates-containers-uniqueness-twins)) — crosses the
+wasm boundary with the **same two-wrapper pattern** as the non-empty case, the restricted wrapper
+wrapping the uniqueness twin core:
+
+- A **named** rule surfaces as a class under its own identifier (`signers = [* key] ; @duplicates
+  reject` → a `Signers` class); an **anonymous** generic-collection instance uses the structural
+  names **`<Elem>OrderedSet`** / **`NonEmpty<Elem>OrderedSet`** (e.g. `U64OrderedSet` for an inline
+  reject `[* uint]`, `NonEmptyFooOrderedSet` for `[+ foo]`) — the uniqueness analogue of the
+  `<Elem>List` list wrapper.
+- Construction is via **`try_from`**, exactly like the non-empty restricted wrapper:
+  `try_from(list: &FooList) -> Result<Self, JsError>` for a wrapper-needing element (borrows and
+  clones, so the loose `FooList` stays valid), or `try_from(elements: Vec<T>)` by value when the
+  element's loose form is directly exposable (`[* uint]` → `Vec<u64>`).
+- **The one JS-visible difference from the non-empty wrappers: `add` is fallible.** A non-empty
+  wrapper's `add` is infallible (a push can never violate a *minimum* bound), but a reject wrapper's
+  `add` returns **`Result<(), JsError>`** and **throws when the element is already present** — the
+  same duplicate refusal `try_from` performs, raised at the exact call site of the mistake. Getters
+  return a clone of the restricted wrapper, and parent constructors/setters take it by reference, so
+  `Foo.new` is not itself a duplicate-throw site.
+
 ## Enums
 
 Both type/group choices generate rust-style enums. On the wasm side we can't do that so we directly wrap the rust type, and then provide a `FooKind` c-style enum for each rust enum `Foo` just for checking which variant it is.

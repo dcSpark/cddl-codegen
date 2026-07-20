@@ -1,5 +1,6 @@
 ---
 source: src/tests/snapshot_tests.rs
+assertion_line: 101
 expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
@@ -22,7 +23,7 @@ use crate::generated::error::*;
 use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::non_empty_map::NonEmptyMap;
 use crate::generated::ordered_hash_map::OrderedHashMap;
-use crate::generated::ordered_set::{NonEmptyOrderedSet, OrderedSet};
+use crate::generated::ordered_set::OrderedSet;
 use crate::generated::serialization::{LenEncoding, StringEncoding};
 use cbor_encodings::{
     AEncoding, ArrayOptFieldsEncoding, BarEncoding, BasicArrEncoding, BasicEncoding,

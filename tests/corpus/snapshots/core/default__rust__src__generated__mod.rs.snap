@@ -20,7 +20,7 @@ pub use crate::ExternalFoo;
 use crate::generated::error::*;
 use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::non_empty_map::NonEmptyMap;
-use crate::generated::ordered_set::{NonEmptyOrderedSet, OrderedSet};
+use crate::generated::ordered_set::OrderedSet;
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]

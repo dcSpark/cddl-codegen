@@ -625,6 +625,15 @@ composition-space cross-check that complements this matrix's curated per-shape g
   `ROLES`. Interim pins until enumerated: `optional_tag_set_tests` +
   `generic_collection_tests` source-equality tests and the `tag_set_generic` corpus wasm
   snapshots — in-process/per-fixture, not the matrix's per-role grid, which is the gap.
+- **OWED by the same shape-addition rule: the `@duplicates reject` restricted-wrapper ABI class.**
+  The uniqueness twins (`OrderedSet`/`NonEmptyOrderedSet`) cross the wasm boundary as a restricted
+  wrapper whose `add` returns `Result<(), JsError>` — FALLIBLE, refusing a duplicate — unlike the
+  non-empty restricted wrapper's infallible `add`, and anonymous instances lower to the structural
+  `<Elem>OrderedSet` / `NonEmpty<Elem>OrderedSet` names; no `SHAPES` entry was added, so this new
+  fallible-`add` ABI class is silent-green rather than gated. Candidate entries: the reject restricted
+  wrapper in both its named-rule and anonymous-instance flavors (`[*]` and `[+]`), swept across the
+  existing `ROLES`. Interim pin until enumerated: the `tag_set_reject` corpus fixture's wasm compile
+  (via `feature_corpus_compiles`) — per-fixture, not the per-role grid.
 - **Keep BOTH matrix axes honest (periodic).** Grid coverage equals the hand-curated `SHAPES` ×
   `ROLES` lists in `project_wasm_matrix.ts` — and a hole in *either* axis is silent, not a red cell. A
   wasm representation not in `SHAPES` is an un-gated shape; equally, an emitter path that places types

@@ -57,7 +57,7 @@
 //! implication does NOT hold for traits (`use std::io::Write;` is exercised by `w.write_all(..)` —
 //! the ident `Write` never appears), macros, or globs (no ident to check). So this pass prunes
 //! ONLY the explicit [`ALLOWLIST`] of concrete-type imports — exactly the blindly-pushed types
-//! (the four collection helpers plus the two `--preserve-encodings` encoding enums). Everything
+//! (the six collection helpers plus the three `--preserve-encodings` encoding enums). Everything
 //! else is kept untouched.
 //!
 //! **Second rule — re-export-only files (file-shape scoped).** An extern-only CDDL scope generates
@@ -111,7 +111,7 @@ use syn::{Item, ItemUse, UseTree};
 
 /// The concrete-type import names this pass is allowed to remove. These are exactly the
 /// blindly-pushed types that the emission sites in `generation/` add unconditionally (or gated only
-/// on spec-global facts): the four collection helpers plus the three `--preserve-encodings` encoding
+/// on spec-global facts): the six collection helpers plus the three `--preserve-encodings` encoding
 /// enums. Extending this list later (e.g. `JsValue`) is a one-line change plus a snapshot re-bless —
 /// but every addition must be a concrete type (never a trait/macro/glob), or the soundness argument
 /// above breaks. All three encoding enums are concrete enums (`static/serialization_preserve.rs`)
@@ -126,6 +126,8 @@ pub(crate) const ALLOWLIST: &[&str] = &[
     "OrderedHashMap",
     "NonEmptyVec",
     "NonEmptyMap",
+    "OrderedSet",
+    "NonEmptyOrderedSet",
     "LenEncoding",
     "StringEncoding",
     "TagPresenceEncoding",
@@ -914,6 +916,44 @@ mod tests {
         assert!(
             !out.contains("NonEmptyVec"),
             "unused NonEmptyVec removed: {out}"
+        );
+    }
+
+    /// The `@duplicates reject` uniqueness twins (`OrderedSet`/`NonEmptyOrderedSet`) are blindly
+    /// pushed on the spec-global `uses_ordered_set()` gate into every scope's `mod.rs`, exactly like
+    /// `NonEmptyVec`, so a scope that references neither must have both dropped. This is the live
+    /// multi-scope gap the ALLOWLIST addition closes: one scope carries a `@duplicates reject` set,
+    /// another does not, yet the spec-global gate pushes the twin import into the latter too.
+    #[test]
+    fn prunes_unused_ordered_set_twins() {
+        let src =
+            "use crate::generated::ordered_set::{NonEmptyOrderedSet, OrderedSet};\nstruct Foo;\n";
+        let out = prune(src);
+        assert!(
+            !out.contains("OrderedSet"),
+            "both unused ordered-set twins removed: {out}"
+        );
+        assert!(
+            !out.contains("use crate::generated::ordered_set"),
+            "emptied use item dropped entirely: {out}"
+        );
+        assert!(out.contains("struct Foo"));
+    }
+
+    /// The used twin is kept while its unused sibling is pruned from the same group — the shape a
+    /// reject-set scope's `mod.rs` grows (`pub type FooSet = OrderedSet<u64>;` names `OrderedSet`
+    /// but nothing names `NonEmptyOrderedSet`).
+    #[test]
+    fn keeps_used_ordered_set_twin_dropping_unused_sibling() {
+        let src = "use crate::generated::ordered_set::{NonEmptyOrderedSet, OrderedSet};\npub type FooSet = OrderedSet<u64>;\n";
+        let out = prune(src);
+        assert!(
+            out.contains("OrderedSet<u64>"),
+            "used OrderedSet kept: {out}"
+        );
+        assert!(
+            !out.contains("NonEmptyOrderedSet"),
+            "unused NonEmptyOrderedSet sibling dropped: {out}"
         );
     }
 
