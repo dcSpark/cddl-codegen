@@ -108,6 +108,33 @@ wrapping the uniqueness twin core:
   return a clone of the restricted wrapper, and parent constructors/setters take it by reference, so
   `Foo.new` is not itself a duplicate-throw site.
 
+## Preserve-duplicates tables
+
+A table rule carrying [`@duplicates preserve`](./comment_dsl) — `{* k => v}` → `PairMap<K, V>`,
+`{+ k => v}` → `NonEmptyPairMap<K, V>` (see
+[Output format](./output_format.mdx#preserve-duplicates-tables-pair-map-twins)) — crosses the wasm
+boundary as a JS class, and the `{+}` flavor uses the **same two-wrapper pattern** as the non-empty
+and reject cases (a loose builder plus a restricted `try_from`-door wrapper):
+
+- The **loose `{* k => v}` wrapper** exposes exactly the ordinary map-wrapper surface —
+  `new()`, `len()`, `insert(key, value) -> Option<V>`, `get(key) -> Option<V>`, `keys() -> Vec<K>`.
+  A **named** rule surfaces under its own identifier (`meta = {* uint => bytes} ; @duplicates
+  preserve` → a `Meta` class); a sole-owner rule's structural `Map<K>To<V>` name becomes a `pub type`
+  alias to it, so anonymous uses of the shape resolve to the same JS class.
+- The **`{+ k => v}` restricted wrapper** wraps the `NonEmptyPairMap` core and is entered via
+  **`try_from(map: &Map<K>To<V>) -> Result<Self, JsError>`** (the min-1 door, borrowing and cloning so
+  the loose map stays valid) or `new(first_key, first_value)`. Parent constructors/setters take it by
+  reference.
+- **The JS-visible difference from the reject-set wrappers: `insert` is `add`'s opposite.** A reject
+  set's `add` returns `Result<(), JsError>` and **throws** on a duplicate; a pair-map's
+  `insert(key, value)` returns **`Option<V>`** and **APPENDS** — it never throws and never rejects,
+  because preserving duplicates is the whole point. It always returns `None` (nothing is displaced,
+  since nothing is overwritten); the `Option<V>` return exists only so the surface matches the loose
+  table's `insert`. `get` returns the FIRST entry for the key.
+
+Every shape that generates for rust generates for wasm here — the loose `{*}` PairMap wrapper and the
+`{+}` NonEmptyPairMap wrapper both cross the boundary.
+
 ## Enums
 
 Both type/group choices generate rust-style enums. On the wasm side we can't do that so we directly wrap the rust type, and then provide a `FooKind` c-style enum for each rust enum `Foo` just for checking which variant it is.

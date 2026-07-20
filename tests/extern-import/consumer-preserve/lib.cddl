@@ -1,0 +1,4 @@
+; Consumer spec referencing the dependency's @duplicates-preserve table rules (`preserve_map`,
+; `preserve_nmap`). Generated via --extern-import at the dep's minted export; the rebuilt types must
+; be the pair-map twins (preserve on both sides of the crate boundary), not reject-default BTreeMaps.
+holder = [pm: preserve_map, pnm: preserve_nmap]

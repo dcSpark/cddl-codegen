@@ -634,6 +634,23 @@ composition-space cross-check that complements this matrix's curated per-shape g
   wrapper in both its named-rule and anonymous-instance flavors (`[*]` and `[+]`), swept across the
   existing `ROLES`. Interim pin until enumerated: the `tag_set_reject` corpus fixture's wasm compile
   (via `feature_corpus_compiles`) — per-fixture, not the per-role grid.
+- **OWED by the same shape-addition rule: the `@duplicates preserve` pair-map wrapper ABI class.**
+  The mirror of the reject class, one boundary over. A preserve table's pair-map twins
+  (`PairMap`/`NonEmptyPairMap`) cross the wasm boundary as a two-wrapper pair: the loose `{*}`
+  `PairMap` wrapper is the builder, exposing the ordinary map surface (`new`/`insert`/`get`/`keys`/
+  `len`) except `insert(key, value)` **APPENDS** and returns `Option<V>` (never throws, never rejects
+  — the opposite of the reject set's fallible `add`); the `{+}` `NonEmptyPairMap` wrapper is the
+  restricted door (`try_from(&Map<K>To<V>) -> Result<_, JsError>` for the min-1 check). Anonymous
+  generic table instances lower to the structural keyed wrapper recovering the pair-map flavor from
+  the shape; no `SHAPES` entry was added, so this appending-`insert` ABI class is silent-green rather
+  than gated. Candidate entries: the preserve pair-map wrapper in both its loose (`{*}`) and
+  non-empty-restricted (`{+}`) flavors, named-rule and anonymous-instance, swept across the existing
+  `ROLES`. Interim pins until enumerated (per-fixture/in-process, not the per-role grid):
+  `tests/core`'s `wasm_preserve_pair_map_insert_appends` (the appending-insert wasm surface),
+  `duplicates_preserve_nonempty_table_lowers_to_twin_under_wasm` (the `{+}` NonEmptyPairMap wrapper),
+  `generic_preserve_table_instance_lowers_to_pair_map_under_wasm` (the anonymous-instance flavor), and
+  `duplicates_preserve_pair_map_shape_collision_rejects_gracefully` (the structural-collision detector)
+  in `src/tests/robustness_tests.rs`.
 - **Keep BOTH matrix axes honest (periodic).** Grid coverage equals the hand-curated `SHAPES` ×
   `ROLES` lists in `project_wasm_matrix.ts` — and a hole in *either* axis is silent, not a red cell. A
   wasm representation not in `SHAPES` is an un-gated shape; equally, an emitter path that places types

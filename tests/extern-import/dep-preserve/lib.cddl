@@ -1,0 +1,9 @@
+; Dependency spec for the @duplicates-preserve --extern-import fixture (phase 2). Its minted
+; extern-interface export MUST carry the `@duplicates preserve` directive on each table rule so a
+; consumer regenerating from the export rebuilds the SAME pair-map twins (PairMap /
+; NonEmptyPairMap) — without the projected directive the consumer would rebuild a reject-default
+; BTreeMap that silently REJECTS the duplicate keys the dep preserves (the cross-crate skew the seam
+; kills, the mirror of the reject direction). Exercises both the `{*}` (PairMap) and `{+}`
+; (NonEmptyPairMap) flavors.
+preserve_map  = {* uint => text} ; @duplicates preserve
+preserve_nmap = {+ uint => text} ; @duplicates preserve

@@ -205,6 +205,60 @@ length:
 The wasm boundary mirrors this with the same two-wrapper pattern as the non-empty case, except the
 restricted wrapper's `add` is **fallible** — see [Wasm Differences](./wasm_differences.mdx#reject-duplicates-containers).
 
+## Preserve-duplicates tables (pair-map twins)
+
+A [`@duplicates preserve`](./comment_dsl) directive on a **table** rule (`{ * k => v }` / `{ + k => v }`)
+is the mirror of `reject` on a set. A table's default representation — a `BTreeMap` / `OrderedHashMap`
+keyed by key value — is structurally incapable of holding two entries with the same key, so `reject`
+(collapse duplicates) is a table's default and `@duplicates reject` on a table is an accepted,
+self-documenting no-op. `preserve` swaps the transparent-alias target to a **pair-map twin** — a
+`Vec<(K, V)>`-backed map that keeps every entry in wire order, so duplicate keys survive:
+
+- `{ * k => v }` → **`PairMap<K, V>`** (`meta = { * uint => bytes } ; @duplicates preserve` emits
+  `pub type Meta = PairMap<u64, Vec<u8>>`).
+- `{ + k => v }` → **`NonEmptyPairMap<K, V>`**, whose single `TryFrom` door composes the min-1 check
+  on top of the same vec-of-pairs shape.
+
+The driver is a duplicate-keyed map that must **round-trip byte-exactly** — pre-Conway Cardano
+`transaction_metadata`, whose auxiliary-data hash is computed over the ORIGINAL bytes, so a reader that
+collapses or reorders duplicate keys fails hash verification. A `BTreeMap` cannot do this; the
+vec-of-pairs is the only faithful shape.
+
+Unlike the ordered-set twins, a `PairMap` has **no invariant** — any vec of pairs is valid — so its
+conversion contract is unguarded:
+
+- **`From<Vec<(K, V)>>` / `into_inner() -> Vec<(K, V)>` — free both ways.** No checked door on the
+  loose flavor (there is nothing to reject). `NonEmptyPairMap` instead has the single fallible
+  **`TryFrom<Vec<(K, V)>>`** door (and a `TryFrom<PairMap<K, V>>` that re-uses it), returning the same
+  `0 not at least 1` `RangeCheck` as the other non-empty twins for an empty input.
+- **`insert(key, value)` APPENDS and never replaces.** It always returns `None` (nothing is displaced,
+  because nothing is overwritten) — a replacing insert would silently drop a duplicate, defeating the
+  point. The `Option<V>` return exists only so the read surface matches the loose table's.
+- **A duplicate-honest read surface.** `get` returns the FIRST match (linear scan), `get_all` returns
+  every match in entry order, and `iter`/`keys`/`values`/`as_slice` walk in entry order. The key
+  domain relaxes from the loose table's full key-demand bundle to `Ord` (a linear-scan lookup needs
+  only `Eq`; `Ord` is retained for the canonical sort below).
+- **Deserialize collects positionally.** The `--preserve-encodings` sidecar for a preserve table is
+  **positional** (parallel `Vec`s indexed per entry, like the array `_elem_encodings` path), replacing
+  the key-value-keyed `BTreeMap`s that structurally cannot hold two same-key entries. Each entry's key
+  and value encodings are replayed per-position, so a non-minimal encoding on any entry re-emits
+  faithfully.
+
+**Canonical form** (`--canonical-form=true`): entries stable-sort by encoded key bytes with duplicates
+left **adjacent in first-appearance order**. Duplicate-carrying data has no RFC 8949 canonical form, so
+this is a deterministic best-effort — never a refusal. The sort compares CANONICAL key bytes, not the
+preserved input encodings.
+
+**JSON** (`--json-serde-derives` / `--json-schema-export`): a preserve table serializes as an **array
+of `[key, value]` pairs**, not a JSON object — a JSON object cannot carry duplicate keys any more than
+a `BTreeMap` can, so the array-of-pairs shape is the faithful one. The generated `schemars` schema is
+therefore an **array** schema, not an object/`additionalProperties` one, and the `{+}` flavor's door
+refuses an empty `[]` on the JSON path with the same min-1 error as the wire path.
+
+The wasm boundary mirrors the set twins' two-wrapper pattern, except the loose `PairMap`'s `insert`
+**appends** (returning `Option`) rather than rejecting — see
+[Wasm Differences](./wasm_differences.mdx#preserve-duplicates-tables).
+
 ## Generated crate roots (thin root, seed-once)
 
 Every generated crate — `rust/`, and (when enabled) `wasm/` and `wasm/json-gen/` — splits into two
