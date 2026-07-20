@@ -364,6 +364,22 @@ impl<'a> IntermediateTypes<'a> {
             })
     }
 
+    /// Whether ANY generated type uses the `@duplicates preserve` `PairMap`/`NonEmptyPairMap` shape,
+    /// so `export`/import wiring pulls in the `pair_map` runtime module + imports only for crates that
+    /// need it. The pair-map analog of `uses_ordered_set`: folds `contains_pair_map` over
+    /// `visit_all_rust_types` plus the belt-and-suspenders on the struct config (a preserve-mode
+    /// `Table` rule's policy lives on the STRUCT config and its registered alias).
+    pub fn uses_pair_map(&self) -> bool {
+        let mut found = false;
+        self.visit_all_rust_types(&mut |rt| found |= rt.contains_pair_map());
+        found
+            || self.rust_structs.values().any(|rs| {
+                matches!(rs.variant(), RustStructType::Table { .. })
+                    && rs.config().duplicates
+                        == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+            })
+    }
+
     pub fn rust_structs(&self) -> &BTreeMap<RustIdent, RustStruct> {
         &self.rust_structs
     }
@@ -2009,7 +2025,21 @@ impl<'a> IntermediateTypes<'a> {
                 element_type.visit_types(self, &mut |ty| mark_key_demand(ty, &mut key_demand, ord));
             }
             if let RustStructType::Table { domain, .. } = rust_struct.variant() {
-                domain.visit_types(self, &mut |ty| mark_key_demand(ty, &mut key_demand, bare));
+                // A `@duplicates preserve` table's key is compared with the pair-map's linear
+                // `contains`/`find` scan (`K: PartialEq`), NOT hashed or ordered like a `BTreeMap`/
+                // `OrderedHashMap` key — so it needs only the `ord` (Eq-containing) flavor, not the
+                // full `bare` (`Hash + Eq + Ord`) bundle the loose table forces on its key. This is
+                // the map-side of the reject-set `ord` relaxation above.
+                let key_flavor = if rust_struct.config().duplicates
+                    == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+                {
+                    ord
+                } else {
+                    bare
+                };
+                domain.visit_types(self, &mut |ty| {
+                    mark_key_demand(ty, &mut key_demand, key_flavor)
+                });
                 // A top-level table rule's key is its `domain`, walked directly (not as a Map node),
                 // so it needs its own check. This runs AFTER generic resolution, so it also catches
                 // float keys hidden behind a resolved generic instance (`{ gen<float64> => uint }`),
@@ -2043,6 +2073,40 @@ impl<'a> IntermediateTypes<'a> {
             // kind's sibling of the two detectors above (the reject twin is the new container kind
             // AGENTS.md's twin-detector note reserved as the trigger for this expansion).
             for msg in self.reject_ordered_set_wrapper_name_collisions() {
+                self.record_rejection(msg);
+            }
+            // `@duplicates preserve` on a `{+ k => v}` table (the NonEmptyPairMap twin) has no wasm
+            // wrapper wired up yet: the restricted map wrapper (`generate_non_empty_map_type`) is
+            // built around the loose `NonEmptyMap`/`OrderedHashMap` surface, whose boundary `From`
+            // conversions do not exist for `NonEmptyPairMap` — emitting it would produce a wasm crate
+            // that does not compile. The `{* …}` preserve flavor (PairMap) generates full wasm today;
+            // only the min-1 flavor is deferred. Reject loudly under `--wasm` (never silent-broken
+            // output); rust-only generation (`--wasm=false`) of the same rule works. Building the
+            // NonEmptyPairMap wasm wrapper is tracked in tests/TESTING_ROADMAP.md § "Duplicates policy
+            // phase 2: preserve-mode tables (pair-map)".
+            let mut nonempty_preserve_rejections = BTreeSet::new();
+            for (ident, rs) in &self.rust_structs {
+                if let RustStructType::Table { bounds, .. } = rs.variant()
+                    && *bounds == Some((Some(1), None))
+                    && rs.config().duplicates
+                        == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+                {
+                    let source_name = self
+                        .source_rule_name(ident)
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| ident.to_string());
+                    nonempty_preserve_rejections.insert(format!(
+                        "@duplicates preserve on the non-empty table `{source_name}` (`{{+ … }}`): the \
+                         wasm wrapper for a NonEmptyPairMap is not yet built (its vec-of-pairs core \
+                         mismatches the loose `NonEmptyMap` wasm lowering). Use the `{{* … }}` \
+                         (possibly-empty) preserve flavor, which mints a full wasm PairMap wrapper \
+                         today, or generate rust-only (`--wasm=false`). Tracked in \
+                         tests/TESTING_ROADMAP.md § \"Duplicates policy phase 2: preserve-mode tables \
+                         (pair-map)\"."
+                    ));
+                }
+            }
+            for msg in nonempty_preserve_rejections {
                 self.record_rejection(msg);
             }
             // `@used_as_elem` mints the loose-list wasm wrapper `<Elem>List` for each tagged

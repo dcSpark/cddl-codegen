@@ -1788,12 +1788,25 @@ impl GenerationScope {
                         todo!();
                         //self.dont_generate_deserialize(name, format!("value type {} doesn't support deserialize", value_type.for_rust_member()));
                     } else {
+                        // `@duplicates preserve` (the pair-map twin): collect into a `Vec<(K, V)>`
+                        // (the only shape that can hold duplicate keys) rather than the loose keyed
+                        // table, skip the wire-side dup-check, and carry a POSITIONAL encoding sidecar
+                        // parallel to the entries (a `BTreeMap` keyed by key value cannot hold two
+                        // same-key entries). Everything else in the loop is shared.
+                        let preserve_pair_map = type_cfg.duplicates
+                            == Some(crate::comment_ast::DuplicatesPolicy::Preserve);
                         let table_var = format!("{}_table", config.var_name);
-                        deser_code.content.line(&format!(
-                            "let mut {} = {}::new();",
-                            table_var,
-                            table_type(cli)
-                        ));
+                        if preserve_pair_map {
+                            deser_code
+                                .content
+                                .line(&format!("let mut {table_var} = Vec::new();"));
+                        } else {
+                            deser_code.content.line(&format!(
+                                "let mut {} = {}::new();",
+                                table_var,
+                                table_type(cli)
+                            ));
+                        }
                         let key_var_name = format!("{}_key", config.var_name);
                         let value_var_name = format!("{}_value", config.var_name);
                         let key_encs = if cli.preserve_encodings {
@@ -1827,15 +1840,20 @@ impl GenerationScope {
                                     "let {}_encoding = {}.into();",
                                     config.var_name, len_var
                                 ));
+                            let encodings_ctor = if preserve_pair_map {
+                                "Vec::new()"
+                            } else {
+                                "BTreeMap::new()"
+                            };
                             if !key_encs.is_empty() {
                                 deser_code.content.line(&format!(
-                                    "let mut {}_key_encodings = BTreeMap::new();",
+                                    "let mut {}_key_encodings = {encodings_ctor};",
                                     config.var_name
                                 ));
                             }
                             if !value_encs.is_empty() {
                                 deser_code.content.line(&format!(
-                                    "let mut {}_value_encodings = BTreeMap::new();",
+                                    "let mut {}_value_encodings = {encodings_ctor};",
                                     config.var_name
                                 ));
                             }
@@ -1883,6 +1901,91 @@ impl GenerationScope {
                             cli,
                         )
                         .add_to(&mut deser_loop);
+                        if preserve_pair_map {
+                            // `@duplicates preserve`: append EVERY entry (duplicate keys included) —
+                            // no dup-check, no `DuplicateKey` (that is the reject-mode path only). The
+                            // key value is moved into the pair here; the positional encoding pushes
+                            // below re-derive their tuples from the already-bound encoding vars, so
+                            // they never touch the moved key value (unlike the loose table, which keys
+                            // its encoding maps by the key VALUE and so must clone it).
+                            deser_loop.line(format!(
+                                "{table_var}.push(({key_var_name}, {value_var_name}));"
+                            ));
+                            if cli.preserve_encodings {
+                                if !key_encs.is_empty() {
+                                    deser_loop.line(format!(
+                                        "{}_key_encodings.push({});",
+                                        config.var_name,
+                                        tuple_str(
+                                            key_encs
+                                                .iter()
+                                                .map(|enc| enc.field_name.clone())
+                                                .collect()
+                                        )
+                                    ));
+                                }
+                                if !value_encs.is_empty() {
+                                    deser_loop.line(format!(
+                                        "{}_value_encodings.push({});",
+                                        config.var_name,
+                                        tuple_str(
+                                            value_encs
+                                                .iter()
+                                                .map(|enc| enc.field_name.clone())
+                                                .collect()
+                                        )
+                                    ));
+                                }
+                            }
+                            deser_code.content.push_block(deser_loop);
+                            if type_cfg.bounds == Some((Some(1), None)) {
+                                // `{+ k => v}` preserve: the min-1 door composes non-emptiness with the
+                                // vec-of-pairs, routed through the SAME `TryFrom` the API uses so the
+                                // wire/API RangeCheck errors are identical.
+                                deser_code.content.line(&format!(
+                                    "let {table_var} = NonEmptyPairMap::try_from({table_var})?;"
+                                ));
+                            } else {
+                                // `{* k => v}` preserve: any vec of pairs is valid (infallible `From`).
+                                deser_code.content.line(&format!(
+                                    "let {table_var} = PairMap::from({table_var});"
+                                ));
+                                // A non-`+` preserve table may still carry OTHER occurrence bounds
+                                // (`2*5` etc); those stay a runtime length check on the pair-map.
+                                if let Some(bounds) = &type_cfg.bounds {
+                                    deser_code.content.line(&bounds_check_if_block(
+                                        bounds,
+                                        &format!("{table_var}.len()"),
+                                        true,
+                                        true,
+                                        None,
+                                    ));
+                                }
+                            }
+                            if cli.preserve_encodings {
+                                config
+                                    .final_exprs
+                                    .push(format!("{}_encoding", config.var_name));
+                                if !key_encs.is_empty() {
+                                    config
+                                        .final_exprs
+                                        .push(format!("{}_key_encodings", config.var_name));
+                                }
+                                if !value_encs.is_empty() {
+                                    config
+                                        .final_exprs
+                                        .push(format!("{}_value_encodings", config.var_name));
+                                }
+                            }
+                            deser_code.content.line(&format!(
+                                "{}{}{}",
+                                before_after.before_str(false),
+                                final_expr(config.final_exprs, Some(table_var)),
+                                before_after.after_str(false)
+                            ));
+                            deser_code.throws = true;
+                            return deser_code;
+                        }
                         let mut dup_check = Block::new(format!(
                             "if {}.insert({}{}, {}).is_some()",
                             table_var,

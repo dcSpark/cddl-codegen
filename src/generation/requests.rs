@@ -243,6 +243,8 @@ impl GenerationScope {
                             (**k).clone(),
                             (**v).clone(),
                             false,
+                            // cross-crate preserve-table wrapper requests are WP-P2B.
+                            false,
                             cli,
                         );
                     }

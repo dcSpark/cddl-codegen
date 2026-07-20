@@ -128,6 +128,8 @@ pub(crate) const ALLOWLIST: &[&str] = &[
     "NonEmptyMap",
     "OrderedSet",
     "NonEmptyOrderedSet",
+    "PairMap",
+    "NonEmptyPairMap",
     "LenEncoding",
     "StringEncoding",
     "TagPresenceEncoding",

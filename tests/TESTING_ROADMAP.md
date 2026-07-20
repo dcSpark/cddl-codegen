@@ -190,59 +190,46 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    non-0/3-rustfmt-exit-is-fatal contract already turns any formatter internal error into a
    generation failure, so no new assertion machinery is needed.
 
-4. **Duplicates policy phase 2: preserve-mode tables (pair-map).** Phase 1 shipped `@duplicates
-   reject` for set/array collections (the `OrderedSet`/`NonEmptyOrderedSet` twins) and refuses
-   `@duplicates preserve` on a table rule loudly at parse time. Phase 2 builds that preserve
-   direction. This is COMMITTED, not consumer-gated: the driver is Cardano `transaction_metadata`,
-   a recursive union whose map arm is keyed by the union itself —
-   `{ * transaction_metadata => transaction_metadata } / [ * … ] / int / bytes / text`. Pre-Conway
-   eras allowed duplicate keys, and duplicate-keyed instances exist on mainnet; a full node must
-   accept them AND re-emit them byte-exactly, because the auxiliary-data hash is computed over the
-   ORIGINAL bytes — a reader that collapses or reorders duplicate keys fails hash verification. So
-   the headline vector is a duplicate-keyed round-trip that must re-emit byte-exactly, minted
-   failing under `--preserve-encodings` before any representation work.
-   Design, settled so the building session starts from it (justified directly rather than as a
-   sequence of attempts):
-   - **Member type: a `Vec<(K, V)>`-backed pair-map twin** (working name follows the
-     contract-naming principle settled for `OrderedSet`) — the only shape faithful to both entry
-     order and duplicates. Map-flavored read surface (`get` → first match, `get_all`, entry-order
-     iteration); no uniqueness door. Table `reject` stays the default (most map rules are
-     ledger-validated unique-keyed); the twin is opt-in via `@duplicates preserve`.
-   - **Positional preserve-encodings sidecar**: `Vec<(key_encs, value_encs)>` parallel to the
-     entries, replacing the two key-value-keyed `BTreeMap`s (`deserialize.rs`) — a `BTreeMap` keyed
-     by key value is structurally incapable of holding two entries with the same key, so a
-     preserve-mode table forces the positional sidecar AND the pair-vec member, not a parameter
-     tweak. The serialize-side `key_order` build (`serialize.rs`) reads positionally.
-   - **Directive placement stays per-rule**: the real map arm is INLINE in a union, so the spec
-     author names it (`metadata_map = {* … => …} ; @duplicates preserve`) rather than the DSL
-     growing arm-level addressing. `@duplicates` on the union rule itself is a `record_rejection`
-     like any other no-policy-applies placement.
-   - **`--canonical-form` is runtime-scoped, not a generation-time refusal**: RFC 8949
-     deterministic encoding requires unique keys, so duplicate-carrying data has no canonical form
-     — but the flag is crate-wide (CML generates with it), so refusing at generation time would
-     block the whole consumer, and erroring at runtime would make `to_canonical_cbor_bytes` partial
-     over every enclosing type. Under `force_canonical`, a preserve-mode table stable-sorts entries
-     by encoded key bytes (duplicates kept adjacent in first-appearance order) — deterministic
-     best-effort, documented as non-canonical-by-necessity; canonicalizing metadata is moot anyway,
-     since its consensus hash is over the original bytes, which non-canonical round-trip preserves.
-   - **`{+ k => v}` × preserve needs its own min-1 door**: the existing `NonEmptyMap` door assumes
-     the keyed-table shape; a preserve-mode `{+ …}` composes non-emptiness with the pair-map (a
-     bounds check on the pair-vec through the same single-door pattern) — flagged so the scope
-     matrix cell is not assumed free.
-   - **Key-demand bounds**: the auto key-demand pass stamps every map-key type with the full `bare`
-     bundle (`Hash + Eq + Ord`) regardless of representation (`check_used_as_key`), even though a
-     linear-scan pair-map needs only `Eq`. Realizing the relaxation means teaching that pass to skip
-     preserve-mode maps; accepting the full bundle on the recursive metadatum enum is also viable
-     (derives recurse fine through the indirection — `dep_graph.rs` tolerates cycles and
-     `tests/corpus/recursive.cddl` generates today). The phase-2 fixture MUST generate under
-     `--preserve-encodings` to expose the derive cascade either way.
-   - **JSON cannot be an object** (unique keys; the current `OrderedHashMap` JSON impl even
-     round-trips through a `BTreeMap`, silently collapsing dups). Representation: an array of
-     `[k, v]` pairs, diverging from the object shape tables use today — a per-type JSON-shape
-     divergence needing its own doc callout and schemars story.
-   - **Wasm parity is the definition of done** (WP3's governing constraint — consumers are
-     predominantly wasm users): a wrapper over the pair-map with the map-flavored surface, so every
-     shape that generates for Rust generates for wasm.
+4. **Duplicates policy phase 2: preserve-mode tables (pair-map).** The core of preserve-mode tables
+   is live: `@duplicates preserve` on a `{ * k => v }` / `{ + k => v }` rule swaps the transparent
+   alias to the `Vec<(K, V)>`-backed `PairMap<K, V>` / `NonEmptyPairMap<K, V>` twin
+   (`static/pair_map.rs`), with a POSITIONAL preserve-encodings sidecar (parallel `Vec`s replacing
+   the two key-value-keyed `BTreeMap`s), the `key_order` build reading positionally under
+   `--canonical-form` (stable-sort by encoded key bytes, duplicates adjacent), the `ord` key-demand
+   relaxation for preserve tables, JSON as an array of `[k, v]` pairs, and wasm parity for the
+   `{ * … }` flavor. The consensus-critical property — a duplicate-keyed Cardano
+   `transaction_metadata` map decoding and re-emitting byte-exactly (its auxiliary-data hash is over
+   the original bytes) — is pinned by `tests/golden_hex_preserve` (`pmap_duplicate_key`,
+   `pmap_duplicate_key_nonminimal_head`, `metadatum_duplicate_key_recursive`,
+   `pair_map_surface_and_nonempty_door`). Residual work:
+   - **`{ + … }` (NonEmptyPairMap) wasm wrapper.** The `{ + … }` preserve rust surface generates
+     fully, but its wasm wrapper is not built: `generate_non_empty_map_type` is shaped around the
+     loose `NonEmptyMap` boundary `From`s, which do not exist for `NonEmptyPairMap`. Under `--wasm`
+     a `{ + … }` preserve table is a graceful `record_rejection` (rust-only generation works, and
+     the `{ * … }` flavor mints a full wasm wrapper). Building it means teaching
+     `generate_non_empty_map_type` (and its loose `codegen_table_type` source) the pair-map flavor.
+   - **Full wasm parity + the anonymous/structural map-mint seam.** Wasm preserve tables are wired
+     for the NAMED-rule path (`codegen_table_type` + `mint_sole_owner_table` thread the
+     `preserve_pair_map` flag). An INLINE (anonymous) preserve-table structural mint
+     (`mint_wasm_wrapper_for_visited_type`) and cross-crate wrapper-request hosting
+     (`requests.rs`) still pass `false` (the visited conceptual `Map` carries no policy) — extend
+     these the way phase-1 taught `for_wasm_member` the reject twins.
+   - **Recursive-map-KEY limitation (pre-existing, orthogonal).** A table whose DOMAIN is a
+     not-yet-registered recursive UNION (`{ * transaction_metadata => transaction_metadata }`, the
+     exact Cardano shape) panics in `register_rust_struct`'s keys-list synthesis
+     (`name_as_wasm_array_ct` → `is_enum` asserts on the un-registered union) — WITHOUT any
+     directive, so it is a general recursive-table-key gap, not a duplicates-policy one. The
+     golden_hex headline keys the recursive metadatum map by `tstr` (recursion in the map VALUE) to
+     sidestep it. Closing it (relax `is_enum`'s assert to a graceful `false`, or defer the keys-list
+     synthesis past the cycle) unblocks the fully-faithful union-keyed shape.
+   - **Docs/matrix breadth.** The JSON array-of-pairs divergence and its schemars story want a
+     `current_capacities.mdx` / `wasm_differences.mdx` callout; `cddl-matrix/features/` wants
+     `dsl.duplicates.preserve` flavored rows (the matrix-registration packet, needing the full
+     `verify.ts` chain). The decode-conformance CORPUS fixture + mint for preserve tables ride
+     that same packet (its `verify.ts` chain runs the mint machinery anyway; both oracles verified
+     working on the preserve-table and recursive-union shapes — the properly-resolved ruby gem at
+     `Gem.user_dir/bin/cddl`, NOT the PATH `cddl`, which is the stock rust CLI), so preserve-table
+     decode coverage lives in `golden_hex_preserve` (not the corpus catalog) until then.
 
 ## Standing-system residuals (recur-first)
 

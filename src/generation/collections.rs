@@ -736,6 +736,9 @@ impl GenerationScope {
                     key_type.clone(),
                     value_type.clone(),
                     false,
+                    // `{+ …}` preserve (NonEmptyPairMap) wasm is WP-P2B; this loose source stays the
+                    // non-preserve table for now.
+                    false,
                     cli,
                 );
             }
@@ -1228,6 +1231,10 @@ pub(super) fn mint_wasm_wrapper_for_visited_type(
                             *k.clone(),
                             *v.clone(),
                             false,
+                            // The visited conceptual `Map` carries no policy; an inline (anonymous)
+                            // preserve-table structural mint is a WP-P2B edge (the named-rule path,
+                            // which the driver uses, threads preserve at its own call sites).
+                            false,
                             cli,
                         );
                     }
@@ -1267,20 +1274,33 @@ pub(super) fn mint_sole_owner_table(
     cli: &Cli,
 ) {
     if generated.insert(owner.to_string()) {
-        let (domain, range) = {
+        let (domain, range, preserve_pair_map) = {
             let owner_struct = types
                 .rust_structs()
                 .get(owner)
                 .expect("sole owner of a table shape must be a rust struct");
+            let preserve = owner_struct.config().duplicates
+                == Some(crate::comment_ast::DuplicatesPolicy::Preserve);
             match owner_struct.variant() {
-                RustStructType::Table { domain, range, .. } => (domain.clone(), range.clone()),
+                RustStructType::Table { domain, range, .. } => {
+                    (domain.clone(), range.clone(), preserve)
+                }
                 _ => unreachable!("sole owner of a table shape must be a Table rust struct"),
             }
         };
         // `exists_in_rust = true`: the inner is the rust crate's `pub type <owner>` alias (exactly the
         // struct-field role's inner), not the raw inline map. Any CBOR tag on the owner is honored by
         // that rust type's serialization, so it is not threaded into this wasm wrapper.
-        codegen_table_type(gen_scope, types, owner, domain, range, true, cli);
+        codegen_table_type(
+            gen_scope,
+            types,
+            owner,
+            domain,
+            range,
+            true,
+            preserve_pair_map,
+            cli,
+        );
     }
     // Structural alias in the SAME module as the class (`owner`'s scope). Skip a self-alias when the
     // rule ident already equals the structural name.
@@ -1299,6 +1319,10 @@ pub(super) fn codegen_table_type(
     key_type: RustType,
     value_type: RustType,
     exists_in_rust: bool,
+    // `@duplicates preserve`: the wrapped rust core is `PairMap<K, V>` (a vec of pairs), not the
+    // loose `OrderedHashMap`/`BTreeMap`, so `new()` must construct the pair-map. The accessor surface
+    // is shared — `PairMap` exposes the same `insert`/`get`/`keys`/`len` methods the loose table does.
+    preserve_pair_map: bool,
     cli: &Cli,
 ) {
     assert!(cli.wasm);
@@ -1356,11 +1380,16 @@ pub(super) fn codegen_table_type(
     };
     wrapper.push_inner_field(&inner_type);
     // new
+    let table_ctor = if preserve_pair_map {
+        "PairMap"
+    } else {
+        table_type(cli)
+    };
     let mut new_func = codegen::Function::new("new");
     new_func
         .vis("pub")
         .ret("Self")
-        .line(format!("Self({}::new())", table_type(cli)));
+        .line(format!("Self({table_ctor}::new())"));
     wrapper.s_impl.push_fn(new_func);
     // len
     wrapper

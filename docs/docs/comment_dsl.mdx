@@ -235,10 +235,13 @@ Notes:
 :::note Status
 `@duplicates reject` is **live for set/array collection rules** (`[* a]` / `[+ a]`, including the
 tag-258 set idiom), across the Rust, JSON, and **wasm** boundaries: the rule's transparent alias
-becomes an order-preserving, duplicate-free set on every target. The no-op defaults (`preserve` on a
-set, `reject` on a table) are accepted for self-documentation. The one stance not yet built is
-**`preserve` on a table** (the byte-exact duplicate-keyed pair-map representation); using it aborts
-generation with a clear message pointing at the tracked phase-2 work.
+becomes an order-preserving, duplicate-free set on every target. `@duplicates preserve` is **live for
+table rules** (`{ * k => v }`): the alias becomes a byte-exact, duplicate-keyed pair-map
+(`PairMap<K, V>`) across the Rust and JSON boundaries and — for the `{* …}` flavor — wasm. The no-op
+defaults (`preserve` on a set, `reject` on a table) are accepted for self-documentation. The one
+combination not yet built is the **wasm wrapper for a `{+ …}` (non-empty) preserve table**
+(`NonEmptyPairMap`): its Rust surface generates fully, but under `--wasm` it is a graceful rejection
+pointing at the tracked phase-2 work (use the `{* …}` flavor, or generate rust-only).
 :::
 
 Selects the per-rule policy for how a collection handles duplicate entries on the CBOR wire. CBOR
@@ -271,6 +274,19 @@ refused identically whether it arrives on the wire or through the generated API 
 `DeserializeFailure::DuplicateKey(Key::Uint(i))`, where `i` is the zero-based index of the offending
 element. Rejection only narrows *which* inputs are accepted; an accepted (duplicate-free) value
 re-emits byte-exactly in its original wire order (the set is never sorted).
+
+Under `@duplicates preserve` a **table** rule's transparent alias targets an entry-ordered,
+duplicate-permitting pair-map (`PairMap<K, V>`, or `NonEmptyPairMap<K, V>` for the `{+}` flavor)
+instead of the loose `BTreeMap`/`OrderedHashMap`. A loose map keyed by key value is structurally
+incapable of holding two entries with the same key, so preserve is the only way to accept AND re-emit
+duplicate-keyed maps byte-exactly — the load-bearing property for Cardano `transaction_metadata`,
+whose auxiliary-data hash is computed over the original bytes. The pair-map's read surface is
+map-flavored but honest about duplicates: `get` returns the *first* match, `get_all` every match in
+entry order, and `insert` **appends** (it never replaces an existing key). Under `--canonical-form`
+the entries are stable-sorted by encoded key bytes (duplicates kept adjacent in first-appearance
+order) — a deterministic best-effort, since duplicate-carrying data has no RFC 8949 canonical form.
+In the JSON representation a `PairMap` is an **array of `[k, v]` pairs**, not an object (a JSON object
+would silently collapse duplicate keys).
 
 The policy is a **per-rule** knob (not a CLI flag) because mixed-era specs need both stances in one
 document — a Conway-strict set next to a historical preserve-mode set. Because it is per-rule, an

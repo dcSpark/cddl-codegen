@@ -646,6 +646,34 @@ impl RustType {
         }
     }
 
+    /// True when this table-shaped member carries `@duplicates preserve` — its representation swaps
+    /// from the loose table (`BTreeMap`/`OrderedHashMap`) to the vec-of-pairs twin (`PairMap<K, V>`,
+    /// or `NonEmptyPairMap<K, V>` when also `{+}`), the only shape that can hold duplicate keys. A
+    /// loose table keyed by key VALUE is structurally incapable of that, so preserve on a table
+    /// forces the pair-map member AND the positional preserve-encodings sidecar. Matches the RAW
+    /// conceptual type (not alias-resolved), the same convention as `is_reject_ordered_set`: a field
+    /// REFERENCING a named preserve table is an `Alias` whose target already resolves to the twin.
+    pub fn is_preserve_pair_map(&self) -> bool {
+        matches!(self.conceptual_type, ConceptualRustType::Map(_, _))
+            && self.config.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+    }
+
+    /// Whether this type, at ANY nesting level, contains the `@duplicates preserve` `PairMap` shape
+    /// (so the crate needs the `pair_map` runtime module + imports). Recurses into container inners
+    /// like `contains_ordered_set`.
+    pub fn contains_pair_map(&self) -> bool {
+        if self.is_preserve_pair_map() {
+            return true;
+        }
+        match &self.conceptual_type {
+            ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
+                inner.contains_pair_map()
+            }
+            ConceptualRustType::Map(k, v) => k.contains_pair_map() || v.contains_pair_map(),
+            _ => false,
+        }
+    }
+
     /// The `{+ k => v}` occurrence shape — lower bound exactly 1, no upper bound — on a homogeneous
     /// MAP (table). The map-side twin of `is_non_empty_array`: this becomes `NonEmptyMap<K, V>`, whose
     /// single `TryFrom<{table_type}>` door enforces non-emptiness at the type level. Matches the RAW
@@ -814,11 +842,24 @@ impl RustType {
             ConceptualRustType::Optional(inner) => {
                 format!("Option<{}>", inner.for_rust_member(types, from_wasm, cli))
             }
-            ConceptualRustType::Map(k, v) if self.is_non_empty_map() => format!(
-                "NonEmptyMap<{}, {}>",
-                k.for_rust_member(types, from_wasm, cli),
-                v.for_rust_member(types, from_wasm, cli)
-            ),
+            ConceptualRustType::Map(k, v)
+                if self.is_preserve_pair_map() || self.is_non_empty_map() =>
+            {
+                let table = match (self.is_preserve_pair_map(), self.is_non_empty_map()) {
+                    // `@duplicates preserve`: the vec-of-pairs twin (duplicate-permitting), non-empty
+                    // flavor when the rule is also `{+}` (its door composes the min-1 check).
+                    (true, true) => "NonEmptyPairMap",
+                    (true, false) => "PairMap",
+                    (false, true) => "NonEmptyMap",
+                    // unreachable given the arm guard, but keeps the match total.
+                    (false, false) => unreachable!(),
+                };
+                format!(
+                    "{table}<{}, {}>",
+                    k.for_rust_member(types, from_wasm, cli),
+                    v.for_rust_member(types, from_wasm, cli)
+                )
+            }
             _ => self
                 .conceptual_type
                 .for_rust_member_ct(types, from_wasm, cli),

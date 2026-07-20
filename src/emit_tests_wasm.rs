@@ -243,14 +243,21 @@ fn rust_scoped(mv: &MintValue, scoped: &ScopeMap) -> String {
             val,
             count,
             non_empty,
+            preserve,
         } => {
             let k = map_key_expr(key);
             let v = rust_scoped(val, scoped);
             if *non_empty {
                 // build via new(first_key, first_value) + insert (flavor-agnostic; a bare
-                // `try_from(collect())` can't infer the inner map type — see emit_tests.rs).
+                // `try_from(collect())` can't infer the inner map type — see emit_tests.rs). The
+                // preserve flavor routes through `NonEmptyPairMap`.
+                let ctor = if *preserve {
+                    "NonEmptyPairMap"
+                } else {
+                    "NonEmptyMap"
+                };
                 format!(
-                    "{{ let mut __m = {{ let __i = 0u64; NonEmptyMap::new({k}, {v}) }}; for __i in 1u64..{count} {{ __m.insert({k}, {v}); }} __m }}"
+                    "{{ let mut __m = {{ let __i = 0u64; {ctor}::new({k}, {v}) }}; for __i in 1u64..{count} {{ __m.insert({k}, {v}); }} __m }}"
                 )
             } else {
                 format!("(0u64..{count}).map(|__i| ({k}, {v})).collect()")
