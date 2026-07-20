@@ -104,7 +104,8 @@ changing the *runtime behaviour* of generated code usually means editing `static
   wrapper-name collision detectors stay parallel per-kind siblings rather than one generic
   detector (their message texts differ meaningfully and are pinned) — the anticipated third
   container kind (`@duplicates reject` sets) appeared 2026-07-20 and was added as exactly such a
-  sibling; a fourth kind gets the same treatment.
+  sibling, and the fourth (`@duplicates preserve` pair-map tables) followed the same day as
+  `preserve_pair_map_wrapper_name_collisions`; a fifth kind gets the same treatment.
 
 ## Git workflow
 

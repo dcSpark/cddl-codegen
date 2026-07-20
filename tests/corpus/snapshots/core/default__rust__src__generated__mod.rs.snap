@@ -13,6 +13,7 @@ mod key_demand_assertions;
 pub mod non_empty;
 pub mod non_empty_map;
 pub mod ordered_set;
+pub mod pair_map;
 pub mod serialization;
 pub use crate::ExternGeneric;
 pub use crate::ExternalFoo;
@@ -21,6 +22,7 @@ use crate::generated::error::*;
 use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::non_empty_map::NonEmptyMap;
 use crate::generated::ordered_set::OrderedSet;
+use crate::generated::pair_map::PairMap;
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
@@ -1414,6 +1416,19 @@ impl PlainArrays {
         }
     }
 }
+
+#[derive(Clone, Debug)]
+pub struct PreservePmapHolder {
+    pub m: PreserveUintMap,
+}
+
+impl PreservePmapHolder {
+    pub fn new(m: PreserveUintMap) -> Self {
+        Self { m }
+    }
+}
+
+pub type PreserveUintMap = PairMap<u64, Vec<u8>>;
 
 #[derive(Clone, Debug)]
 pub struct RejectSetHolder {

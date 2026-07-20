@@ -487,3 +487,28 @@ fn wasm_reject_set_checked_add_and_door() {
     assert_eq!(back.to_cbor_bytes(), bytes);
     assert_eq!(back.s().len(), 3);
 }
+
+// `@duplicates preserve` table (`PreserveUintMap`, wrapping the `PairMap` twin): the wasm wrapper's
+// `insert` APPENDS — a repeated key grows `len` and never replaces (the whole point of preserve), and
+// `get` returns the FIRST match. This is the boundary verdict a compile gate can't reach: a wrapper
+// delegating to a keyed table (which would collapse the duplicate) type-checks identically. The
+// duplicate-keyed map then round-trips embedded in `PreservePmapHolder` (a bare collection wrapper has
+// no CBOR entry point of its own), re-emitting byte-exact — the consensus-critical property.
+#[test]
+fn wasm_preserve_pair_map_insert_appends() {
+    let mut m = PreserveUintMap::new();
+    // insert APPENDS and returns None (nothing displaced — duplicates are kept, never overwritten)
+    assert!(m.insert(1, vec![0xaa]).is_none(), "insert appends, displaces nothing");
+    assert!(m.insert(1, vec![0xbb]).is_none(), "a repeated key is appended, not replaced");
+    assert_eq!(m.len(), 2, "insert APPENDS — len grows on a repeated key (no collapse)");
+    // get is the FIRST match under the repeated key
+    assert_eq!(m.get(1), Some(vec![0xaa]), "get returns the FIRST match for a duplicate key");
+    // embedded round-trip through the holder: the duplicate-keyed map re-emits byte-exact
+    let holder = PreservePmapHolder::new(&m);
+    let bytes = holder.to_cbor_bytes();
+    let back = PreservePmapHolder::from_cbor_bytes(&bytes)
+        .ok()
+        .expect("PreservePmapHolder round-trip");
+    assert_eq!(back.to_cbor_bytes(), bytes, "duplicate-keyed map re-emits byte-exact");
+    assert_eq!(back.m().len(), 2, "both duplicate-keyed entries survive the round-trip");
+}

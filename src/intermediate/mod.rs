@@ -406,6 +406,14 @@ impl<'a> IntermediateTypes<'a> {
                     range,
                     bounds,
                 } if *bounds == Some((Some(1), None))
+                    // A `@duplicates preserve` named `{+ …}` rule's wasm class wraps `NonEmptyPairMap`,
+                    // but an inline `{+ …}` occurrence carries no directive (inline occurrences are
+                    // directive-less), so its rust member is the loose `NonEmptyMap`. Capturing the
+                    // inline surface onto the preserve rule would name it after a wrapper of the wrong
+                    // core type — a loud-but-broken wasm crate (`From<NonEmptyMap>` for the preserve
+                    // wrapper does not exist). The map-side of the reject-set guard in
+                    // `non_empty_named_owner`: only a non-preserve named rule may own the loose inline.
+                    && rs.config().duplicates != Some(crate::comment_ast::DuplicatesPolicy::Preserve)
                     && !self.is_anonymous_collection_instance(ident)
                     && domain.clone().resolve_aliases() == key_resolved
                     && range.clone().resolve_aliases() == value_resolved =>
@@ -601,6 +609,17 @@ impl<'a> IntermediateTypes<'a> {
             if !self.scope(ident).export() {
                 continue;
             }
+            // A SYNTHESIZED anonymous collection instance (a generic table instance like
+            // `tbl<uint, tstr>` -> `TblU64Text`) must NOT own a structural map shape: it lowers to the
+            // structural `MapKToV` wrapper through its `gen_wasm_alias` passthrough
+            // (`pub type TblU64Text = MapU64ToText;`), exactly as an inline `{* k => v}` does. Recording
+            // it as the sole owner would ALSO mint `mint_sole_owner_table`'s `pub struct TblU64Text` +
+            // `pub type MapU64ToText = TblU64Text;`, colliding with the passthrough alias on BOTH idents
+            // (the export.rs duplicate-ident backstop). This mirrors the anonymous-instance exclusion in
+            // `non_empty_map_named_owner` / `non_empty_named_owner`.
+            if self.is_anonymous_collection_instance(ident) {
+                continue;
+            }
             if let RustStructType::Table {
                 domain,
                 range,
@@ -624,6 +643,21 @@ impl<'a> IntermediateTypes<'a> {
                 (owners.len() == 1).then(|| (structural, owners.pop().unwrap()))
             })
             .collect()
+    }
+
+    /// Whether the structural map shape `map_ident` (`name_for_wasm_map`) is owned by a
+    /// `@duplicates preserve` table — so an ANONYMOUS structural mint of that shape
+    /// (`mint_wasm_wrapper_for_visited_type`'s no-sole-owner arm, reached by a generic preserve
+    /// instance like `ptbl<uint, tstr>` whose `PtblU64Text` struct is excluded from sole-ownership)
+    /// wraps the `PairMap` twin, matching the rust `pub type`. A shape carrying BOTH policies is a
+    /// silent-broken collision already rejected by `preserve_pair_map_wrapper_name_collisions`, so
+    /// "any preserve table of this shape" is an unambiguous signal here.
+    pub fn map_shape_is_preserve_owned(&self, map_ident: &str) -> bool {
+        self.rust_structs.values().any(|rs| {
+            matches!(rs.variant(), RustStructType::Table { domain, range, .. }
+                if ConceptualRustType::name_for_wasm_map(domain, range).to_string() == map_ident)
+                && rs.config().duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+        })
     }
 
     /// For each scope, which other scopes are referenced, and which structs are referenced
@@ -2075,38 +2109,9 @@ impl<'a> IntermediateTypes<'a> {
             for msg in self.reject_ordered_set_wrapper_name_collisions() {
                 self.record_rejection(msg);
             }
-            // `@duplicates preserve` on a `{+ k => v}` table (the NonEmptyPairMap twin) has no wasm
-            // wrapper wired up yet: the restricted map wrapper (`generate_non_empty_map_type`) is
-            // built around the loose `NonEmptyMap`/`OrderedHashMap` surface, whose boundary `From`
-            // conversions do not exist for `NonEmptyPairMap` — emitting it would produce a wasm crate
-            // that does not compile. The `{* …}` preserve flavor (PairMap) generates full wasm today;
-            // only the min-1 flavor is deferred. Reject loudly under `--wasm` (never silent-broken
-            // output); rust-only generation (`--wasm=false`) of the same rule works. Building the
-            // NonEmptyPairMap wasm wrapper is tracked in tests/TESTING_ROADMAP.md § "Duplicates policy
-            // phase 2: preserve-mode tables (pair-map)".
-            let mut nonempty_preserve_rejections = BTreeSet::new();
-            for (ident, rs) in &self.rust_structs {
-                if let RustStructType::Table { bounds, .. } = rs.variant()
-                    && *bounds == Some((Some(1), None))
-                    && rs.config().duplicates
-                        == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
-                {
-                    let source_name = self
-                        .source_rule_name(ident)
-                        .map(str::to_owned)
-                        .unwrap_or_else(|| ident.to_string());
-                    nonempty_preserve_rejections.insert(format!(
-                        "@duplicates preserve on the non-empty table `{source_name}` (`{{+ … }}`): the \
-                         wasm wrapper for a NonEmptyPairMap is not yet built (its vec-of-pairs core \
-                         mismatches the loose `NonEmptyMap` wasm lowering). Use the `{{* … }}` \
-                         (possibly-empty) preserve flavor, which mints a full wasm PairMap wrapper \
-                         today, or generate rust-only (`--wasm=false`). Tracked in \
-                         tests/TESTING_ROADMAP.md § \"Duplicates policy phase 2: preserve-mode tables \
-                         (pair-map)\"."
-                    ));
-                }
-            }
-            for msg in nonempty_preserve_rejections {
+            // `@duplicates preserve` pair-map twin sharing a structural map-shape name with a
+            // non-preserve occurrence of the same key/value (the fourth container kind's sibling).
+            for msg in self.preserve_pair_map_wrapper_name_collisions() {
                 self.record_rejection(msg);
             }
             // `@used_as_elem` mints the loose-list wasm wrapper `<Elem>List` for each tagged
@@ -2452,6 +2457,124 @@ impl<'a> IntermediateTypes<'a> {
                     "name collision: rule '{structural}' collides with the '{structural}' wasm \
                      wrapper generated for an inline `@duplicates reject` set occurrence — rename \
                      the rule to avoid shadowing the restricted OrderedSet wrapper"
+                ));
+            }
+        }
+        msgs.into_iter().collect()
+    }
+
+    /// Detect the one silent-broken-wasm class the `@duplicates preserve` pair-map twin adds: a table
+    /// SHAPE (`name_for_wasm_map` — e.g. `MapU64ToText`) whose single loose structural wrapper
+    /// (`MapKToV`) would be minted in BOTH flavors — a `PairMap` (for the preserve owner: its
+    /// preserve-owned structural mint, or a preserve `{+ …}` `try_from` source) AND a keyed
+    /// `BTreeMap`/`OrderedHashMap` (for a non-preserve occurrence). One `already_generated`-guarded
+    /// class can only be one inner type, so the other's `try_from`/conversion references a class of the
+    /// wrong shape (a wasm crate that does not compile). This is the pair-map sibling of the
+    /// collision-detector family.
+    ///
+    /// Precision matters: a NAMED `{* k => v}` table rule referenced via its alias (`[t: uint_table]`)
+    /// does NOT mint the loose structural `MapKToV` — it mints its own rule-named class — so a
+    /// non-preserve NAMED `{* …}` rule alongside a same-shape preserve rule is NOT a collision (both
+    /// mint distinct rule-named classes; the shared structural name is never minted). Only two kinds of
+    /// non-preserve construct actually mint/claim the loose keyed structural: a genuine INLINE map
+    /// occurrence (a record field / enum-variant `{ … }`, which lowers through the structural wrapper),
+    /// and a non-preserve `{+ …}` table (whose wasm wrapper's `try_from` source IS the loose keyed
+    /// `MapKToV`). Counting named `{* …}` rules or alias base-types here false-positives on
+    /// legitimate multi-shape fixtures (e.g. `tests/golden_hex_preserve`, which pairs a non-preserve
+    /// `uint_table` with a preserve `pmap` of the same key/value — both aliased, neither minting the
+    /// structural class).
+    ///
+    /// Reachability: mixing a preserve table with a same-shape INLINE non-preserve map (or a
+    /// non-preserve `{+ …}` table) is pathological (they are genuinely different rust types), but it IS
+    /// reachable and would otherwise emit silently-broken wasm — so a graceful, distinctly-worded
+    /// rejection (rename one, or align their policy) closes the hole. A pure-preserve spec of a shape
+    /// never collides — its wrappers all share the `PairMap` flavor.
+    fn preserve_pair_map_wrapper_name_collisions(&self) -> Vec<String> {
+        // shapes OWNED by a preserve table (their loose structural wrapper wraps `PairMap`)
+        let mut preserve_owned: BTreeMap<String, String> = BTreeMap::new();
+        // shapes whose loose KEYED structural wrapper is actually minted/claimed by a non-preserve
+        // construct: a non-preserve `{+ …}` table (try_from source) or a genuine inline map occurrence.
+        let mut nonpreserve_structural: BTreeSet<String> = BTreeSet::new();
+        for (ident, rs) in self.rust_structs.iter() {
+            if let RustStructType::Table {
+                domain,
+                range,
+                bounds,
+            } = rs.variant()
+            {
+                let shape = ConceptualRustType::name_for_wasm_map(domain, range).to_string();
+                if rs.config().duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve) {
+                    let source_name = self
+                        .source_rule_name(ident)
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| ident.to_string());
+                    preserve_owned.entry(shape).or_insert(source_name);
+                } else if *bounds == Some((Some(1), None)) {
+                    // a non-preserve `{+ …}` table's wasm wrapper enters through a `try_from` over the
+                    // loose KEYED `MapKToV` — that structural source is what collides.
+                    nonpreserve_structural.insert(shape);
+                }
+                // a non-preserve `{* …}` NAMED rule mints only its own rule-named class (aliased), not
+                // the structural `MapKToV`, so it is deliberately NOT recorded here.
+            }
+        }
+        // genuine INLINE map occurrences (record fields / enum variants), which lower through the loose
+        // structural wrapper. Walk fields/variants directly and STOP at `Alias`/`Rust` boundaries — an
+        // alias reference resolves to the referenced rule's own class, and type-alias base-types are
+        // definitions, not occurrences (both would false-positive if swept in).
+        fn collect_inline_map_shapes(rt: &RustType, out: &mut BTreeSet<String>) {
+            match &rt.conceptual_type {
+                ConceptualRustType::Map(k, v) => {
+                    out.insert(ConceptualRustType::name_for_wasm_map(k, v).to_string());
+                    collect_inline_map_shapes(k, out);
+                    collect_inline_map_shapes(v, out);
+                }
+                ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
+                    collect_inline_map_shapes(inner, out)
+                }
+                // Alias / Rust references route to the referenced rule's class; primitives/fixed have
+                // no map — none of these mint a structural map wrapper of their own here.
+                _ => {}
+            }
+        }
+        for rs in self.rust_structs.values() {
+            match rs.variant() {
+                RustStructType::Record(record) => {
+                    for f in &record.fields {
+                        collect_inline_map_shapes(&f.rust_type, &mut nonpreserve_structural);
+                    }
+                }
+                RustStructType::GroupChoice { variants, .. }
+                | RustStructType::TypeChoice { variants } => {
+                    for v in variants {
+                        match &v.data {
+                            EnumVariantData::RustType(t) => {
+                                collect_inline_map_shapes(t, &mut nonpreserve_structural)
+                            }
+                            EnumVariantData::Inlined(rec) => {
+                                for f in &rec.fields {
+                                    collect_inline_map_shapes(
+                                        &f.rust_type,
+                                        &mut nonpreserve_structural,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        // BTreeSet: deterministic message order (repo determinism invariant)
+        let mut msgs = BTreeSet::new();
+        for (shape, preserve_rule) in &preserve_owned {
+            if nonpreserve_structural.contains(shape) {
+                msgs.insert(format!(
+                    "name collision: the `@duplicates preserve` table `{preserve_rule}` and a \
+                     non-preserve inline map / `{{+ …}}` table of the identical key/value both need the \
+                     loose '{shape}' wasm wrapper, but of incompatible inner types (a `PairMap` vs a \
+                     keyed table) — give one a distinct key/value shape, or align their `@duplicates` \
+                     policy, so a single '{shape}' class is not asked to be two shapes"
                 ));
             }
         }

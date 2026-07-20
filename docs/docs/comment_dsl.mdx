@@ -236,12 +236,13 @@ Notes:
 `@duplicates reject` is **live for set/array collection rules** (`[* a]` / `[+ a]`, including the
 tag-258 set idiom), across the Rust, JSON, and **wasm** boundaries: the rule's transparent alias
 becomes an order-preserving, duplicate-free set on every target. `@duplicates preserve` is **live for
-table rules** (`{ * k => v }`): the alias becomes a byte-exact, duplicate-keyed pair-map
-(`PairMap<K, V>`) across the Rust and JSON boundaries and — for the `{* …}` flavor — wasm. The no-op
-defaults (`preserve` on a set, `reject` on a table) are accepted for self-documentation. The one
-combination not yet built is the **wasm wrapper for a `{+ …}` (non-empty) preserve table**
-(`NonEmptyPairMap`): its Rust surface generates fully, but under `--wasm` it is a graceful rejection
-pointing at the tracked phase-2 work (use the `{* …}` flavor, or generate rust-only).
+table rules** (`{ * k => v }` and `{ + k => v }`) across the Rust, JSON, and **wasm** boundaries: the
+alias becomes a byte-exact, duplicate-keyed pair-map — `PairMap<K, V>`, or `NonEmptyPairMap<K, V>` for
+the non-empty `{+ …}` flavor (its single `try_from` door composes the min-1 check). The no-op defaults
+(`preserve` on a set, `reject` on a table) are accepted for self-documentation. A preserve table and a
+non-preserve map/table of the *identical* key/value shape cannot coexist under `--wasm` (they would
+need one structural wrapper class to be two incompatible inner types); that is a graceful,
+distinctly-worded rejection — give one a distinct shape, or align their policy.
 :::
 
 Selects the per-rule policy for how a collection handles duplicate entries on the CBOR wire. CBOR

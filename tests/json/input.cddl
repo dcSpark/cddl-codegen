@@ -33,3 +33,13 @@ nem_json = { xs: {+ tstr => uint} }
 ; duplicate-carrying array is rejected there (never silently deduped). Accept round-trips byte-exactly.
 reject_uints    = [* uint] ; @duplicates reject
 reject_set_json = { xs: reject_uints }
+
+; WI-4: an `@duplicates preserve` table field exercises the serde/schemars leg — a PairMap serializes
+; as a JSON ARRAY of `[k, v]` pairs (NOT an object, which would collapse duplicate keys), preserving
+; both order AND duplicates; JSON deserialize reads that array-of-pairs. Both flavors are the same K/V
+; shape (both preserve, so no structural-name collision). The `{+ …}` NonEmptyPairMap door refuses an
+; empty array on the JSON path (the same min-1 error the CBOR decoder raises for `{+ …}`).
+preserve_pmap         = { * uint => tstr } ; @duplicates preserve
+preserve_pmap_json    = { xs: preserve_pmap }
+ne_preserve_pmap      = { + uint => tstr } ; @duplicates preserve
+ne_preserve_pmap_json = { ys: ne_preserve_pmap }

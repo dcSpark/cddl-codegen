@@ -22,6 +22,10 @@ fn _assert_serialize<T: cbor_event::se::Serialize>() {}
 #[allow(dead_code)]
 fn _assert_deserialize<T: crate::generated::serialization::Deserialize>() {}
 #[allow(unused_imports)]
+use crate::generated::NePreservePmap as _;
+#[allow(unused_imports)]
+use crate::generated::PreservePmap as _;
+#[allow(unused_imports)]
 use crate::generated::RejectUints as _;
 #[allow(unused_imports)]
 use crate::generated::Table as _;
@@ -37,12 +41,16 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::I64Wrapper>();
     _assert_serialize::<crate::generated::IntWrapper>();
     _assert_deserialize::<crate::generated::IntWrapper>();
+    _assert_serialize::<crate::generated::NePreservePmapJson>();
+    _assert_deserialize::<crate::generated::NePreservePmapJson>();
     _assert_serialize::<crate::generated::NemJson>();
     _assert_deserialize::<crate::generated::NemJson>();
     _assert_serialize::<crate::generated::NevJson>();
     _assert_deserialize::<crate::generated::NevJson>();
     _assert_serialize::<crate::generated::NintWrapper>();
     _assert_deserialize::<crate::generated::NintWrapper>();
+    _assert_serialize::<crate::generated::PreservePmapJson>();
+    _assert_deserialize::<crate::generated::PreservePmapJson>();
     _assert_serialize::<crate::generated::RejectSetJson>();
     _assert_deserialize::<crate::generated::RejectSetJson>();
     _assert_serialize::<crate::generated::StrWrapper>();

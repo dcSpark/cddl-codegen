@@ -32,6 +32,7 @@ pub use crate::generated::NonEmptyMapU64ToText;
 pub use crate::generated::NonEmptyMapU64ToU64;
 pub use crate::generated::NonEmptyNevBarList;
 pub use crate::generated::PlainList;
+pub use crate::generated::PreserveUintMap;
 pub use crate::generated::RejectUintSet;
 pub use crate::generated::StandaloneTable;
 pub use crate::generated::StandaloneText;

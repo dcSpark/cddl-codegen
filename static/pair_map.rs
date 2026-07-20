@@ -217,6 +217,17 @@ impl<K, V> TryFrom<Vec<(K, V)>> for NonEmptyPairMap<K, V> {
     }
 }
 
+impl<K, V> TryFrom<PairMap<K, V>> for NonEmptyPairMap<K, V> {
+    type Error = DeserializeError;
+
+    /// The loose-to-restricted door the wasm `NonEmpty…PairMap` wrapper's `try_from` delegates to (the
+    /// pair-map twin of `NonEmptyMap`'s `TryFrom<{table}>`): re-uses the single `Vec` door so the
+    /// empty-map refusal error is identical to every other path.
+    fn try_from(m: PairMap<K, V>) -> Result<Self, Self::Error> {
+        Self::try_from(Vec::from(m))
+    }
+}
+
 impl<K, V> From<NonEmptyPairMap<K, V>> for Vec<(K, V)> {
     fn from(m: NonEmptyPairMap<K, V>) -> Self {
         m.0
