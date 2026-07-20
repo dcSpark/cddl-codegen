@@ -1,0 +1,5 @@
+; cell: gcolln x struct-field-opt
+foo = [a0: uint]
+gcoll<e0> = [* e0]
+gcn = gcoll<foo>
+holder = [pre: uint, ? field0: gcn]

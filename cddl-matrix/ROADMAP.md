@@ -251,6 +251,12 @@ are ledgered here (that's what the probe/gate error messages point at).
     this one, never a green-to-red. Candidate fix: don't mint structural-wrapper imports when
     recursing through an alias target (the alias's own wrapper subsumes them — e.g. recurse the
     target with the wasm special-casing off).
+  - `gcolln__named` (E0432): the generic-instance TWIN of `collrec__named` — `gcn = gcoll<foo>`
+    (with `gcoll<e0> = [* e0]`) is a NAMED collection alias to `[* foo]`, so its NAMED cross-module
+    reference dangles on the same root-minted structural `FooList` wrapper name (the named alias
+    mints only its own `Gcn`). The ANONYMOUS instance flavors (`gcolla` = `gcoll<foo>`, `gcollexp`
+    = `gcoll<uint>`, `gtbla` = `gtbl<uint, text>`) are green in every multifile mode, exactly like
+    `collrec__anon`. Same candidate fix as `collrec__named`.
 
   The **two-type-constraint restricted wasm wrappers** (`[+ T]` → `NonEmptyVec`, `{+ k => v}` →
   `NonEmptyMap`) reach this SAME structural-WRAPPER-NAME ROOT_SCOPE class cross-module — the loose
@@ -625,24 +631,6 @@ annotations (`verify.ts`'s default-on `--wasm` probe); the recombination fuzzer'
 (`recombination_wasm_crates_check`, `tests/README.md` § "Shape-recombination fuzzer") is the
 composition-space cross-check that complements this matrix's curated per-shape grid. What remains:
 
-- **OWED by the shape-addition rule below: anonymous generic-collection-instance lowerings.** The
-  tag-set series gave types a NEW way to cross the wasm boundary — an anonymous collection
-  instance (`x: set<elem>`) now lowers to the STRUCTURAL wrapper class for wrapper-needing
-  elements and to the DIRECT bare-`Vec` exposure for exposable ones (converged with the inline
-  spelling; a NAMED collection rule keeps its own-name class) — and no `SHAPES` entry was added
-  in the same change, so per this section's own warning the hole is silent-green, not red.
-  Candidate entries: the anonymous-instance wrapper-lowered and exposable-lowered collection
-  shapes (and the named-instance-rule twin as the boundary control), swept across the existing
-  `ROLES`. Interim pins until enumerated: `optional_tag_set_tests` +
-  `generic_collection_tests` source-equality tests and the `tag_set_generic` corpus wasm
-  snapshots — in-process/per-fixture, not the matrix's per-role grid, which is the gap.
-  When minting these, include the MAP-container sibling (a generic TABLE instance,
-  `x: tbl<k, v>`) — an array-only reading of this entry would have missed a proven crash class:
-  a generic table instance under `--wasm` aborted generation on a duplicate-synthesized-ident
-  collision (the anonymous instance recorded as its own shape's sole owner), found by an
-  orchestrator review-probe rather than any gate, fixed and pinned by
-  `generic_table_instance_lowers_to_structural_wrapper_under_wasm` — exactly the cell this
-  entry's grid row would have made red.
 - **OWED by the same shape-addition rule: the `@duplicates reject` restricted-wrapper ABI class.**
   The uniqueness twins (`OrderedSet`/`NonEmptyOrderedSet`) cross the wasm boundary as a restricted
   wrapper whose `add` returns `Result<(), JsError>` — FALLIBLE, refusing a duplicate — unlike the

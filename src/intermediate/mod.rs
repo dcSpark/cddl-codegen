@@ -1553,7 +1553,19 @@ impl<'a> IntermediateTypes<'a> {
                 // owns nor references from its own spec, duplicating a wrapper the dep exports. The
                 // `register_type_alias` below still runs unconditionally so the ident resolves as a
                 // type for cross-crate references.
-                if self.scope(&rust_struct.ident).export() {
+                // A domain typed as a not-yet-resolved GENERIC-COLLECTION instance is still a bare
+                // `Rust(<instance>)` here (its transparent alias is registered only in `finalize`),
+                // so naming the keys-list wrapper from it now bakes the INSTANCE-ident name
+                // (`GcollU64List` for `gcoll<uint>`). But `finalize`'s
+                // `resolve_generic_collection_instance_fields` then rewrites the domain to its resolved
+                // collection (`Array(u64)` for an exposable element), and the wasm `keys()` accessor
+                // names the wrapper from THAT — the structural `ArrU64List`, an E0425 against the
+                // instance-named mint. Defer the mint to `finalize_generic_table_keys_lists` (run
+                // right after the domain resolution) so the keys-list is named from the FINAL domain,
+                // matching `keys()`. Non-generic table domains are already final here and mint as before.
+                if self.scope(&rust_struct.ident).export()
+                    && !matches!(&domain.conceptual_type, ConceptualRustType::Rust(id) if self.generic_instances.contains_key(id))
+                {
                     // we must provide the keys type to return
                     self.create_and_register_array_type(
                         parent_visitor,
@@ -1835,6 +1847,47 @@ impl<'a> IntermediateTypes<'a> {
         }
     }
 
+    /// Mint the keys-list array wrapper for each exported table whose domain was a generic-collection
+    /// instance (deferred from `register_rust_struct`; see the deferral comment there). Runs in
+    /// `finalize` AFTER `resolve_generic_collection_instance_fields` has rewritten each such domain to
+    /// its resolved collection, so the wrapper name derives from the FINAL domain and matches the wasm
+    /// `keys()` accessor. Wasm-only (rust maps use native `.keys()`; the wrapper exists only to cross
+    /// the wasm boundary). Guarded by "not already registered": a non-generic table minted its keys-list
+    /// at parse (its domain was final there) and is a no-op here — so the byte output for any spec
+    /// WITHOUT a generic-collection-instance-keyed table is unchanged. Deterministic (`BTreeMap` order).
+    /// If two deferred tables resolve to the SAME domain, both pass the not-registered filter before
+    /// either mints; the second `create_and_register_array_type` re-mints the identical keys-list
+    /// struct, which `register_rust_struct` overwrites with a byte-identical entry — the same
+    /// last-wins-on-shared-shape idiom the parse-time keys-list mint already relies on, so it is benign.
+    fn finalize_generic_table_keys_lists(&mut self, parent_visitor: &ParentVisitor, cli: &Cli) {
+        if !cli.wasm {
+            return;
+        }
+        let deferred: Vec<RustType> = self
+            .rust_structs
+            .iter()
+            .filter_map(|(ident, rs)| match rs.variant() {
+                RustStructType::Table { domain, .. } if self.scope(ident).export() => {
+                    let name = domain.conceptual_type.name_as_wasm_array_ct(self);
+                    // A directly-exposable KEYS-LIST (`{ * uint => v }` -> bare `Vec<u64>` keys) mints
+                    // no wrapper; `create_and_register_array_type` returns early on it, so only a real
+                    // wrapper name that is not already registered identifies a deferred mint.
+                    (!ConceptualRustType::Array(Box::new(domain.clone()))
+                        .directly_wasm_exposable_ct(self)
+                        && !self
+                            .rust_structs
+                            .contains_key(&RustIdent::new(CDDLIdent::new(name.clone()))))
+                    .then(|| domain.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        for domain in deferred {
+            let name = domain.conceptual_type.name_as_wasm_array_ct(self);
+            self.create_and_register_array_type(parent_visitor, domain, &name, cli);
+        }
+    }
+
     // creates a RustType for the array type - and if needed, registers a type to generate
     // TODO: After the split we should be able to only register it directly
     // and then examine those at generation-time and handle things ALWAYS as RustType::Array
@@ -1958,6 +2011,11 @@ impl<'a> IntermediateTypes<'a> {
         // directly-exposable subset onto the bare inline collection. Wasm-only; non-wasm untouched.
         self.converge_anonymous_collection_instance_wasm(cli);
         self.resolve_generic_collection_instance_fields();
+        // Mint the wasm keys-list wrappers whose owning table had a GENERIC-COLLECTION-instance
+        // domain — deferred from `register_rust_struct` until now, so they name from the resolved
+        // domain (see the deferral comment there). Idempotent by the not-yet-registered guard: a
+        // non-generic table already minted its keys-list at parse and is skipped here.
+        self.finalize_generic_table_keys_lists(parent_visitor, cli);
         // recursively check all types used as keys or contained within a type used as a key
         // this is so we only derive comparison or hash traits for those types. Demand is propagated as
         // SETS (`DemandSet`), union-merged: a tagged root spreads ITS flavor to every contained type;

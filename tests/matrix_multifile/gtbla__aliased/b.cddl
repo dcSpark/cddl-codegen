@@ -1,0 +1,2 @@
+; cell: gtbla x aliased (reference from module b)
+bal = gtbl<uint, text>

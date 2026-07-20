@@ -1,0 +1,2 @@
+; cell: gtbla x aliased (shape defs, module a)
+gtbl<k0, v0> = { * k0 => v0 }

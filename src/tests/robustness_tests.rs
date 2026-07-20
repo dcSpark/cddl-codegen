@@ -815,6 +815,49 @@ fn generic_preserve_table_instance_lowers_to_pair_map_under_wasm() {
     );
 }
 
+/// A map keyed by an EXPOSABLE-element generic-collection instance (`{ * gcoll<uint> => uint }` with
+/// `gcoll<e0> = [* e0]`) lowers its wasm `keys()` list wrapper to the STRUCTURAL name (`ArrU64List`),
+/// NOT the instance ident (`GcollU64List`). This was an E0425: the keys-list wrapper is minted from
+/// the table's domain, which at `register_rust_struct` is still the unresolved `Rust(GcollU64)`
+/// instance (naming it `GcollU64List`), but `finalize` then rewrites the exposable domain to bare
+/// `Array(u64)` and the `keys()` accessor names the wrapper from THAT resolved form (`ArrU64List`) —
+/// so the minted and referenced names diverged. The mint is now DEFERRED to
+/// `finalize_generic_table_keys_lists` (after the domain resolution), so both derive from the final
+/// `Array(u64)` domain. A NON-exposable-element instance (`gcoll<foo>`) crosses by its `GcollFoo`
+/// wrapper name at both sites and is unaffected — its keys-list stays `GcollFooList`.
+#[test]
+fn exposable_generic_collection_instance_keyed_map_lowers_keys_list_structurally_under_wasm() {
+    const CDDL: &str = "gcoll<e0> = [* e0]\n\
+                        holder = { * gcoll<uint> => uint }\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_gcoll_keys_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let out = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "gcoll_keys_unused",
+        "--wasm=true",
+    ]))
+    .expect("a map keyed by an exposable generic-collection instance must generate under --wasm");
+    std::fs::remove_file(&path).ok();
+    let src = out.values().cloned().collect::<Vec<_>>().join("\n");
+    // the keys-list wrapper AND the keys() accessor both name the structural `ArrU64List`
+    assert!(
+        src.contains("pub struct ArrU64List(pub(crate) Vec<Vec<u64>>)")
+            && src.contains("pub fn keys(&self) -> ArrU64List"),
+        "the keys-list wrapper and keys() accessor must both use the structural `ArrU64List`, got:\n{src}"
+    );
+    // the instance-ident name must appear NOWHERE (neither a stale mint nor a dangling reference)
+    assert!(
+        !src.contains("GcollU64List"),
+        "the instance-ident keys-list name `GcollU64List` must not be minted or referenced (E0425), got:\n{src}"
+    );
+}
+
 /// `@duplicates reject` on an INLINE (anonymous) generic-set instance (`[g: oset<uint>]`) lowers to
 /// the uniqueness twin on BOTH sides: rust core `OrderedSet<u64>` and — the point of this test — a
 /// wasm class that WRAPS the twin (`pub struct U64OrderedSet(pub(crate) OrderedSet<u64>)`, reached

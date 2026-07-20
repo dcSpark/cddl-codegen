@@ -1,0 +1,3 @@
+; cell: gtbla x struct-field
+gtbl<k0, v0> = { * k0 => v0 }
+holder = [field0: gtbl<uint, text>]

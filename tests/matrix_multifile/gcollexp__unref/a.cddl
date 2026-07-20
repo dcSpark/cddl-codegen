@@ -1,0 +1,2 @@
+; cell: gcollexp x unref (shape defs, module a)
+gcoll<e0> = [* e0]

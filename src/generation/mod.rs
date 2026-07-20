@@ -15,6 +15,20 @@ use crate::intermediate::{
 };
 use crate::utils::{cbor_type_code_str, convert_to_camel_case, convert_to_snake_case};
 
+/// Doc-comment marker emitted on the rust `pub type` alias of a generator-SYNTHESIZED anonymous
+/// generic-collection/table instance (`gcoll<foo>` → `GcollFoo`, `gcoll<uint>` → `GcollU64`,
+/// `gtbl<uint, text>` → `GtblU64Text`) — NOT on any user-authored rule alias (`pt = nums`,
+/// `gcn = gcoll<foo>`). Such an instance carries no CDDL rule name: the user wrote an anonymous
+/// instance, which crosses the wasm boundary as its inline equivalent's STRUCTURAL class
+/// (`FooList` / bare `Vec<u64>` / `MapU64ToText`), documented in `docs/docs/wasm_differences.mdx`.
+/// This is a provenance channel: `wasm_api_parity` reads THIS exact string from the rust item's
+/// rustdoc to recognise the alias as synthesized-not-a-rule-name and skip its (legitimate,
+/// documented) rust→wasm asymmetry — a source-shape heuristic (e.g. "aliases a bare collection")
+/// was rejected because a sole-owner named-table alias (`pub type Mp = MapU64ToText;`, rust-side a
+/// bare `BTreeMap` alias too) is indistinguishable by shape and must STAY gated. `pub(crate)` and
+/// read by the `#[cfg(test)]` parity gate directly (no LOCKSTEP duplicate of the string).
+pub(crate) const SYNTHESIZED_INSTANCE_ALIAS_DOC: &str = "Synthesized convenience alias for an anonymous generic-collection instance (not a CDDL rule name).";
+
 mod export;
 use export::declare_modules;
 
@@ -239,6 +253,14 @@ impl GenerationScope {
                     // register their alias via `new_manual` (metadata `None`) but carry the rule's
                     // `@doc` on their RustStruct config.
                     let mut doc_lines: Vec<String> = Vec::new();
+                    // Provenance marker for a SYNTHESIZED anonymous generic-collection/table instance
+                    // alias (`GcollFoo`/`GcollU64`/`GtblU64Text`, never a user rule like `gcn`): read
+                    // by `wasm_api_parity` to skip its legitimate, documented rust→wasm asymmetry (the
+                    // instance has no CDDL rule name; it crosses as its inline equivalent's structural
+                    // class). Leads the doc so the provenance is the first thing a reader sees.
+                    if types.is_anonymous_collection_instance(ident) {
+                        doc_lines.push(SYNTHESIZED_INSTANCE_ALIAS_DOC.to_owned());
+                    }
                     if let Some(comment) = alias_info
                         .rule_metadata
                         .as_ref()

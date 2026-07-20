@@ -1,0 +1,2 @@
+; cell: gtbla x unref (shape defs, module a)
+gtbl<k0, v0> = { * k0 => v0 }

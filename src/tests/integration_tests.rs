@@ -254,6 +254,19 @@ const MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)] = &[
          NAMED collection alias mints only its own wrapper (`Recs`) — the structural name exists \
          nowhere",
     ),
+    // The generic-instance twin of `collrec__named`: `gcn = gcoll<foo>` is a NAMED collection alias
+    // to `[* foo]` (record element), so its NAMED cross-module reference hits the identical Array-arm
+    // structural-WRAPPER-NAME ROOT_SCOPE class — E0432 on the root-minted `FooList`. The ANONYMOUS
+    // instance flavors (`gcolla`/`gcollexp`/`gtbla`) are green in every mode (anon-instance placement,
+    // like `collrec__anon`), so only the named-rule flavor's `named` cell is red.
+    (
+        "gcolln__named",
+        &["E0432"],
+        "E0432: `gcn = gcoll<foo>` — a NAMED generic-collection-instance alias — imports the \
+         structural `FooList` from root scope, but the named alias mints only its own wrapper \
+         (`Gcn`), so the structural name exists nowhere (the collrec__named Array-arm \
+         structural-wrapper ROOT_SCOPE class; cddl-matrix/ROADMAP.md § findings)",
+    ),
     // --- The two-type-constraint restricted wasm wrappers (`[+ T]` -> NonEmptyVec, `{+ k=>v}` ->
     // NonEmptyMap; draft/two-type-constraint-enforcement.md) reach the SAME mark_refs
     // structural-wrapper ROOT_SCOPE placement class cross-module: the loose builder (`FooList`/
@@ -366,6 +379,13 @@ const MULTIFILE_ROUNDTRIP_SKIP: &[(&str, &str)] = &[
          root scope where a NAMED collection alias mints only its own wrapper (the Array-arm \
          structural-wrapper findings entry in cddl-matrix/ROADMAP.md; E0432 class pinned by \
          MULTIFILE_MATRIX_SKIP)",
+    ),
+    (
+        "gcolln__named",
+        "wasm crate never compiles: `gcn = gcoll<foo>` (the generic-instance twin of collrec) — a \
+         NAMED collection alias imports the structural `FooList` from root scope where it mints only \
+         its own wrapper (`Gcn`) (E0432 class pinned by MULTIFILE_MATRIX_SKIP; cddl-matrix/ROADMAP.md \
+         § findings)",
     ),
     // The two-type restricted wasm wrappers hit the same structural-wrapper ROOT_SCOPE placement
     // class cross-module (E0425 in every case, pinned by MULTIFILE_MATRIX_SKIP), so their wasm crate

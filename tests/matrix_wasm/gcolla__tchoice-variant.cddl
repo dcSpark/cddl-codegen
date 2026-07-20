@@ -1,0 +1,4 @@
+; cell: gcolla x tchoice-variant
+foo = [a0: uint]
+gcoll<e0> = [* e0]
+holder = gcoll<foo> / nint
