@@ -232,12 +232,13 @@ Notes:
 
 ## @duplicates
 
-:::warning Status
-`@duplicates reject` is **active for set/array collection rules** (`[* a]` / `[+ a]`, including the
-tag-258 set idiom): the rule's transparent alias becomes an order-preserving, duplicate-free set. The
-no-op defaults (`preserve` on a set, `reject` on a table) are accepted for self-documentation. The
-one stance still in flight is **`preserve` on a table** (the byte-exact duplicate-keyed pair-map
-representation); using it aborts generation with a clear message until that lands.
+:::note Status
+`@duplicates reject` is **live for set/array collection rules** (`[* a]` / `[+ a]`, including the
+tag-258 set idiom), across the Rust, JSON, and **wasm** boundaries: the rule's transparent alias
+becomes an order-preserving, duplicate-free set on every target. The no-op defaults (`preserve` on a
+set, `reject` on a table) are accepted for self-documentation. The one stance not yet built is
+**`preserve` on a table** (the byte-exact duplicate-keyed pair-map representation); using it aborts
+generation with a clear message pointing at the tracked phase-2 work.
 :::
 
 Selects the per-rule policy for how a collection handles duplicate entries on the CBOR wire. CBOR

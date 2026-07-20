@@ -11,6 +11,7 @@ pub mod error;
 pub mod non_empty;
 pub mod non_empty_map;
 pub mod ordered_hash_map;
+pub mod ordered_set;
 extern crate derivative;
 pub mod cbor_encodings;
 mod extern_interface_check;
@@ -21,6 +22,7 @@ use crate::generated::error::*;
 use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::non_empty_map::NonEmptyMap;
 use crate::generated::ordered_hash_map::OrderedHashMap;
+use crate::generated::ordered_set::{NonEmptyOrderedSet, OrderedSet};
 use crate::generated::serialization::{LenEncoding, StringEncoding};
 use cbor_encodings::{
     AEncoding, ArrayOptFieldsEncoding, BarEncoding, BasicArrEncoding, BasicEncoding,
@@ -28,11 +30,11 @@ use cbor_encodings::{
     DeeplyNestedEncoding, EdEncoding, EeEncoding, EnumsEncoding, FirstEncoding, FooEncoding,
     HashEncoding, MapWithDefaultsEncoding, NemPreserveEncoding, NevPreserveEncoding,
     NullableSpecialsEncoding, OptFixedArrEncoding, OptFixedMapEncoding, PlainArraysEncoding,
-    PlainEncoding, SecondEncoding, SignBoundsEncoding, SignedIntsEncoding, String64Encoding,
-    String1632Encoding, StructWithCustomSerializationEncoding, TableArrMembersEncoding,
-    TaggedFooBytesEncoding, TaggedTextEncoding, ThreeEncoding, TopLevelNegRangeEncoding,
-    TopLevelPosRangeEncoding, TopLevelTaggedRangeEncoding, WidthCollapseEncoding,
-    WrapperListEncoding, WrapperTableEncoding,
+    PlainEncoding, RejectSetPreserveEncoding, SecondEncoding, SignBoundsEncoding,
+    SignedIntsEncoding, String64Encoding, String1632Encoding,
+    StructWithCustomSerializationEncoding, TableArrMembersEncoding, TaggedFooBytesEncoding,
+    TaggedTextEncoding, ThreeEncoding, TopLevelNegRangeEncoding, TopLevelPosRangeEncoding,
+    TopLevelTaggedRangeEncoding, WidthCollapseEncoding, WrapperListEncoding, WrapperTableEncoding,
 };
 use std::collections::BTreeMap;
 
@@ -1111,6 +1113,10 @@ impl OptFixedMap {
     }
 }
 
+/// The tag-258 set idiom: the tag is an encoding detail — both the `#6.258(...)` and the bare-array wire forms are accepted (serialization defaults to tagged), so either round-trips byte-exactly.
+/// `@duplicates reject`: a repeated element is refused (a `DuplicateKey` error) on both the wire and the API; accepted (duplicate-free) input re-emits byte-exactly in wire order (the set is order-preserving, never sorted).
+pub type OsetPU64 = OrderedSet<u64>;
+
 #[derive(Clone, Debug)]
 pub enum OverlapBasicEmbed {
     Identity {
@@ -1221,6 +1227,18 @@ impl PlainArrays {
             multi,
             encodings: None,
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct RejectSetPreserve {
+    pub s: OsetPU64,
+    pub encodings: Option<RejectSetPreserveEncoding>,
+}
+
+impl RejectSetPreserve {
+    pub fn new(s: OsetPU64) -> Self {
+        Self { s, encodings: None }
     }
 }
 

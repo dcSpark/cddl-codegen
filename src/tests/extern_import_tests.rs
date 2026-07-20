@@ -206,6 +206,117 @@ fn extern_import_matches_pinless_hand_stub_byte_for_byte() {
     }
 }
 
+/// WP4 (duplicates policy): `@duplicates reject` MUST project into the dep's extern-interface export,
+/// so a consumer regenerating from the export rebuilds the SAME uniqueness twins. Without the
+/// projected directive the consumer would embed a preserve-mode `Vec`/`NonEmptyVec` that silently
+/// ACCEPTS the duplicates the dep rejects — the exact cross-crate skew this seam exists to kill.
+/// Four legs: (1) the export carries the directive on both the `[*]` and `[+]` reject rules; (2) the
+/// consumer's OWN deserialize routes the collected elements through the reject door (`OrderedSet` /
+/// `NonEmptyOrderedSet::try_from`), so duplicate bytes fail IN the consumer — reject on both sides;
+/// (3) byte-identity vs a physical stub carrying the directive (the marker-assembly seam roundtrips
+/// it); (4) a NEGATIVE control proving the directive is load-bearing — a stub with it stripped
+/// rebuilds a preserve-mode `Vec` with no reject door (the skew, made visible).
+#[test]
+fn extern_import_projects_duplicates_reject_no_cross_crate_skew() {
+    let export = mint_export(&fixture("dep-reject/lib.cddl"), "dep", "dupreject");
+    let consumer = fixture("consumer-reject/lib.cddl");
+
+    // (1) the export carries `@duplicates reject` on each collection rule (the pin is appended after).
+    let export_body = export
+        .values()
+        .find(|c| c.contains("reject_uints"))
+        .expect("the export must contain the reject rules");
+    assert!(
+        export_body.contains("reject_uints = [* uint] ; @duplicates reject"),
+        "the [*] reject rule must project its directive; got:\n{export_body}"
+    );
+    assert!(
+        export_body.contains("reject_nuints = [+ uint] ; @duplicates reject"),
+        "the [+] reject rule must project its directive; got:\n{export_body}"
+    );
+
+    // Consume the export via --extern-import.
+    let flag_root = scratch("dupreject_flag");
+    write(&flag_root, "lib.cddl", &consumer);
+    let export_dir = scratch("dupreject_export");
+    for (path, content) in &export {
+        write(&export_dir, path, content);
+    }
+    let import_arg = format!(
+        "dep={}",
+        export_dir.join("extern-interface/dep").to_str().unwrap()
+    );
+    let via_flag = generate(
+        &flag_root.join("lib.cddl"),
+        &["--extern-import", &import_arg],
+    )
+    .expect("--extern-import generation must succeed");
+
+    // (2) the consumer's OWN deserialize routes duplicate-carrying wire through the reject door —
+    // duplicate bytes fail IN the consumer, reject on both sides of the crate boundary.
+    let ser = via_flag
+        .get("rust/src/generated/serialization.rs")
+        .expect("the consumer must emit serialization.rs");
+    assert!(
+        ser.contains("OrderedSet::try_from"),
+        "the consumer must deserialize the [*] reject set through the OrderedSet uniqueness door"
+    );
+    assert!(
+        ser.contains("NonEmptyOrderedSet::try_from"),
+        "the consumer must deserialize the [+] reject set through the NonEmptyOrderedSet door"
+    );
+
+    // (3) byte-identity vs a physical stub carrying the directive (the seam roundtrips it verbatim).
+    let stub_root = scratch("dupreject_stub");
+    write(&stub_root, "lib.cddl", &consumer);
+    for (path, content) in &export {
+        let sub = path
+            .strip_prefix("extern-interface/dep/")
+            .expect("export path shape");
+        write(
+            &stub_root,
+            &format!("_CDDL_CODEGEN_EXTERN_DEPS_DIR_/dep/{sub}"),
+            &strip_header(content),
+        );
+    }
+    let via_stub = generate(&stub_root, &[]).expect("physical-stub generation must succeed");
+    assert_eq!(
+        via_flag, via_stub,
+        "--extern-import must produce byte-identical output to a physical stub carrying @duplicates reject"
+    );
+
+    // (4) NEGATIVE control: a stub with the directive STRIPPED rebuilds a preserve-mode `Vec` with no
+    // reject door — the silent-accept skew, made visible. This proves the projected directive is
+    // load-bearing rather than decorative.
+    let skew_root = scratch("dupreject_skew");
+    write(&skew_root, "lib.cddl", &consumer);
+    for (path, content) in &export {
+        let sub = path
+            .strip_prefix("extern-interface/dep/")
+            .expect("export path shape");
+        let stripped = strip_header(content).replace("@duplicates reject ", "");
+        write(
+            &skew_root,
+            &format!("_CDDL_CODEGEN_EXTERN_DEPS_DIR_/dep/{sub}"),
+            &stripped,
+        );
+    }
+    let via_skew = generate(&skew_root, &[]).expect("skew-stub generation must succeed");
+    let skew_ser = via_skew
+        .get("rust/src/generated/serialization.rs")
+        .expect("skew serialization.rs");
+    assert!(
+        !skew_ser.contains("OrderedSet::try_from"),
+        "with @duplicates reject dropped the consumer must NOT rebuild the reject twin — this is the \
+         cross-crate skew the projection prevents"
+    );
+
+    let _ = std::fs::remove_dir_all(&flag_root);
+    let _ = std::fs::remove_dir_all(&export_dir);
+    let _ = std::fs::remove_dir_all(&stub_root);
+    let _ = std::fs::remove_dir_all(&skew_root);
+}
+
 /// Strip every `@rust_name <ident>` pin from a stub body, keeping any other annotations on the
 /// line (`; @no_alias @rust_name Na` -> `; @no_alias`) and dropping a comment tail left empty by
 /// the strip (`coin = uint ; @rust_name Coin` -> `coin = uint`).

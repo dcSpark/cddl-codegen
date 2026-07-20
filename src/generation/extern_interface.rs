@@ -822,11 +822,23 @@ fn project_extern_interface(
             // collect the rule idents it references for the closure. The self-check is a `use`
             // existence check on the `pub type`.
             RustStructType::Array { .. } | RustStructType::Table { .. } => {
+                // `@duplicates reject` travels verbatim: the reject policy swaps the collection's
+                // rust surface to a uniqueness twin (`OrderedSet`/`NonEmptyOrderedSet`), so a
+                // consumer that rebuilds this rule from the export without the directive would embed
+                // a preserve-mode `Vec` that ACCEPTS what the dep rejects — the exact cross-crate
+                // skew this seam kills. (Set `preserve` and table `reject`/`preserve` never reach
+                // here as anything but a self-documenting no-op / a parse-time refusal, so only
+                // `reject` — the representation-changing policy — is worth projecting.)
+                let dup_annotations = duplicates_reject_annotation(rust_struct.config().duplicates);
                 let projected = match types.type_aliases().get(&AliasIdent::Rust(ident.clone())) {
                     Some(alias) => {
                         render_transparent_rule_body(source, &alias.base_type, Some(&md), types)
                             .map(|body| {
-                                (body, Vec::new(), collect_rule_refs(&alias.base_type, types))
+                                (
+                                    body,
+                                    dup_annotations,
+                                    collect_rule_refs(&alias.base_type, types),
+                                )
                             })
                     }
                     None => Err(unrenderable(
@@ -885,6 +897,11 @@ fn project_extern_interface(
         {
             extra_annotations.push("@no_alias".to_string());
         }
+        // A collection reaching pass 2 (rather than the pass-1 Array/Table arm) still carries its
+        // reject policy on the alias base type; project it for the same anti-skew reason.
+        extra_annotations.extend(duplicates_reject_annotation(
+            alias_info.base_type.config.duplicates,
+        ));
         let projected: RuleProjection = if let Some(target) = &alias_info.wasm_alias_target {
             // A `ptm = mp` rule whose `Alias(mp, …)` wrapper was stripped to inline the type keeps a
             // `wasm_alias_target`; spell it truthfully as a reference to that target's original ident
@@ -1212,6 +1229,21 @@ fn rule_metadata_from_config(config: &RustStructConfig) -> RuleMetadata {
         custom_serialize: config.custom_serialize.clone(),
         custom_deserialize: config.custom_deserialize.clone(),
         ..Default::default()
+    }
+}
+
+/// The `@duplicates reject` annotation to project for a collection rule, or empty. Only `reject`
+/// travels: it is the representation-changing policy (the uniqueness twin), so omitting it from the
+/// export would make the consumer rebuild a preserve-mode collection that silently accepts what the
+/// dep rejects. `preserve` (the set default) and table `reject` are no-ops on both sides, so
+/// projecting them would only add export noise.
+fn duplicates_reject_annotation(
+    policy: Option<crate::comment_ast::DuplicatesPolicy>,
+) -> Vec<String> {
+    if policy == Some(crate::comment_ast::DuplicatesPolicy::Reject) {
+        vec!["@duplicates reject".to_string()]
+    } else {
+        Vec::new()
     }
 }
 

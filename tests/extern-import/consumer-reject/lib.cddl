@@ -1,0 +1,4 @@
+; Consumer spec referencing the dependency's @duplicates-reject collection rules (`reject_uints`,
+; `reject_nuints`). Generated via --extern-import at the dep's minted export; the rebuilt types must
+; be the reject twins (reject on both sides of the crate boundary), not preserve-mode Vecs.
+holder = [rs: reject_uints, rns: reject_nuints]

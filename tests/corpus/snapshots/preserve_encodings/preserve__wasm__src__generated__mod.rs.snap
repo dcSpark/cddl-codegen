@@ -16,6 +16,7 @@ pub use cddl_lib::CEnum;
 use cddl_lib::non_empty::NonEmptyVec;
 use cddl_lib::non_empty_map::NonEmptyMap;
 use cddl_lib::ordered_hash_map::OrderedHashMap;
+use cddl_lib::ordered_set::{NonEmptyOrderedSet, OrderedSet};
 use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 #[derive(Clone, Debug)]
@@ -2769,6 +2770,54 @@ impl AsRef<cddl_lib::OptFixedMap> for OptFixedMap {
     }
 }
 
+/// `[* uint] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door).
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OsetPU64(pub(crate) OrderedSet<u64>);
+
+#[wasm_bindgen]
+impl OsetPU64 {
+    pub fn new() -> Self {
+        Self(OrderedSet::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
+        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<OsetPU64, JsError> {
+        OrderedSet::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<OrderedSet<u64>> for OsetPU64 {
+    fn from(native: OrderedSet<u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OsetPU64> for OrderedSet<u64> {
+    fn from(wasm: OsetPU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<OrderedSet<u64>> for OsetPU64 {
+    fn as_ref(&self) -> &OrderedSet<u64> {
+        &self.0
+    }
+}
+
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct OverlapBasicEmbed(pub(crate) cddl_lib::OverlapBasicEmbed);
@@ -3049,6 +3098,49 @@ impl From<PlainList> for Vec<cddl_lib::Plain> {
 
 impl AsRef<Vec<cddl_lib::Plain>> for PlainList {
     fn as_ref(&self) -> &Vec<cddl_lib::Plain> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct RejectSetPreserve(pub(crate) cddl_lib::RejectSetPreserve);
+
+#[wasm_bindgen]
+impl RejectSetPreserve {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<RejectSetPreserve, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn s(&self) -> OsetPU64 {
+        self.0.s.clone().into()
+    }
+
+    pub fn new(s: &OsetPU64) -> Self {
+        Self(cddl_lib::RejectSetPreserve::new(s.clone().into()))
+    }
+}
+
+impl From<cddl_lib::RejectSetPreserve> for RejectSetPreserve {
+    fn from(native: cddl_lib::RejectSetPreserve) -> Self {
+        Self(native)
+    }
+}
+
+impl From<RejectSetPreserve> for cddl_lib::RejectSetPreserve {
+    fn from(wasm: RejectSetPreserve) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::RejectSetPreserve> for RejectSetPreserve {
+    fn as_ref(&self) -> &cddl_lib::RejectSetPreserve {
         &self.0
     }
 }

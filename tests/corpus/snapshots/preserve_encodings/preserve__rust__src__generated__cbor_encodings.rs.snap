@@ -6,7 +6,7 @@ expression: content
 // https://github.com/dcSpark/cddl-codegen
 
 use super::*;
-use crate::generated::serialization::{LenEncoding, StringEncoding};
+use crate::generated::serialization::{LenEncoding, StringEncoding, TagPresenceEncoding};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Default)]
@@ -236,6 +236,14 @@ pub struct PlainEncoding {
     pub len_encoding: LenEncoding,
     pub d_tag_encoding: Option<cbor_event::Sz>,
     pub d_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct RejectSetPreserveEncoding {
+    pub len_encoding: LenEncoding,
+    pub s_tag_encoding: TagPresenceEncoding,
+    pub s_encoding: LenEncoding,
+    pub s_elem_encodings: Vec<Option<cbor_event::Sz>>,
 }
 
 #[derive(Clone, Debug, Default)]

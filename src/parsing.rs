@@ -345,19 +345,21 @@ fn reject_duplicates_not_applicable(types: &mut IntermediateTypes, name: &RustId
     ));
 }
 
-/// `@duplicates` on a rule where the policy WILL apply (an array-shaped collection or a table,
-/// including the tag-set collapse arms), but the behavior is not yet built. Graceful rejection so no
-/// placement is ever silently ignored while the feature is in flight. The literal `@duplicates`
-/// token is kept in the message for greppability when the final work packet prunes the plan-file
-/// citation.
+/// `@duplicates preserve` on a table rule (`{ * k => v }` / `{ + k => v }`, including a tag-set
+/// collapse arm that resolved to a map): recognized, but the preserve-mode table representation is
+/// not yet built. (Array/set `reject` is live; array `preserve` and table `reject` are today's
+/// accepted defaults — only table `preserve` reaches here.) Graceful rejection so the placement is
+/// never silently ignored. The stable citation for the deferred work is the TESTING_ROADMAP entry
+/// title, which the `lint_doc_citations` gate keeps resolvable.
 fn reject_duplicates_not_yet_built(types: &mut IntermediateTypes, name: &RustIdent) {
     let source_name = types
         .source_rule_name(name)
         .map(str::to_owned)
         .unwrap_or_else(|| name.to_string());
     types.record_rejection(format!(
-        "@duplicates on rule `{source_name}`: recognized, deliberately not yet built — \
-         @duplicates lands in a later work packet of draft/plan-2026-07-20-duplicates-policy.md."
+        "@duplicates preserve on table rule `{source_name}`: recognized, deliberately not yet \
+         built — preserve-mode tables (the pair-map representation) are tracked in \
+         tests/TESTING_ROADMAP.md § \"Duplicates policy phase 2: preserve-mode tables (pair-map)\"."
     ));
 }
 

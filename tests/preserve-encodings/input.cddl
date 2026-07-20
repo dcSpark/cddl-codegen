@@ -279,3 +279,17 @@ nullable_specials = [b: nullable_bool]
 ; unimplemented for floats.)
 opt_fixed_arr = [a: uint, ? ufix: 5, b: text]
 opt_fixed_map = {a: uint, ? m_uint: 5, ? m_text: "tag", ? m_nint: -7, ? m_bool: true, ? m_null: null}
+
+; WI-3: a `@duplicates reject` collapsed tag-set field, minted as a NAMED GENERIC instance under
+; --preserve-encodings — the byte-fuzzer surface for BOTH the optionally-tagged deserialize peek path
+; (peek the major type, conditionally consume + validate the tag, then the collection body — the one
+; hand-rolled branch the tag-set collapse added) AND the reject uniqueness door (the collected Vec
+; routed through OrderedSet::try_from, raising DuplicateKey on a duplicate). The named instance also
+; exercises the generic use-site re-resolution of the reject twin (its policy survives, mirroring
+; tests/corpus/tag_set_reject.cddl's `oset_u64 = oset<uint>`) while keeping a real wasm class under the
+; rule name — an INLINE `oset_p<uint>` would instead synthesize a JS-invisible `pub type` alias to the
+; structural wrapper, tripping the wasm-parity gate. The tag presence stays a tri-state encoding var,
+; so either wire arm round-trips byte-exact; a duplicate on either arm is refused.
+oset_p<a> = #6.258([* a]) / [* a] ; @duplicates reject
+oset_p_u64 = oset_p<uint>
+reject_set_preserve = [ s: oset_p_u64 ]
