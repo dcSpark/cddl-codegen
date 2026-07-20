@@ -128,6 +128,29 @@ const SHAPES: Record<string, Shape> = {
   denum: { defs: ["denum = uint / text"], ty: "denum" },
   nullable: { defs: ["opt = uint / null"], ty: "opt", anonForm: "uint / null", anonBallast: true },
   generic: { defs: ["cont<T0> = [value: T0]", "uc = cont<uint>"], ty: "uc" },
+  // Anonymous generic-COLLECTION-instance lowerings (copied verbatim-with-provenance from the wasm
+  // projection's `SHAPES`). No `anonForm`: a generic-instance shape's `ty` IS already an anonymous
+  // same-shape spelling (`gcoll<foo>` / `gcoll<uint>` / `gtbl<uint, text>`), so the `anon`/`anonb`
+  // modes would only duplicate what `named`/`aliased` already place — there is no separate inline
+  // spelling to distinguish. `gcolln`'s `ty` is a NAMED rule (`gcn`), which likewise has no distinct
+  // anonymous spelling here beyond the instance itself.
+  // anonymous instance over a NON-exposable (record) element -> the structural `FooList` wrapper; the
+  // anon-instance cross-module placement is green (the Array arm registers the element ref from the
+  // wrapper's root emission scope, like `collrec__anon`).
+  gcolla: { defs: ["foo = [a0: uint]", "gcoll<e0> = [* e0]"], ty: "gcoll<foo>" },
+  // anonymous instance over an EXPOSABLE (uint) element -> transparent `Vec<u64>`; no structural
+  // wrapper crosses, so every reference mode is green (like `coll`, whose element is also transparent).
+  gcollexp: { defs: ["gcoll<e0> = [* e0]"], ty: "gcoll<uint>" },
+  // NAMED generic-collection-instance rule over a record element (`gcn = gcoll<foo>`) — the
+  // generic-instance twin of `collrec` (`recs = [* foo]`): its NAMED cross-module reference dangles on
+  // the root-minted structural `FooList` wrapper name (E0432), the residual mark_refs Array-arm
+  // structural-WRAPPER-NAME ROOT_SCOPE class (cddl-matrix/ROADMAP.md § findings). `gcolln__named` is
+  // known-red (MULTIFILE_MATRIX_SKIP + MULTIFILE_ROUNDTRIP_SKIP); `aliased`/`unref` are green (the
+  // alias-base mint + `scope_references` type-alias walk cover the base, like `collrec__aliased`).
+  gcolln: { defs: ["foo = [a0: uint]", "gcoll<e0> = [* e0]", "gcn = gcoll<foo>"], ty: "gcn" },
+  // anonymous generic TABLE instance -> the structural keyed wrapper (`MapU64ToText`); the sole-owner
+  // table machinery is scope-aware, so every reference mode is green (like `collmap`).
+  gtbla: { defs: ["gtbl<k0, v0> = { * k0 => v0 }"], ty: "gtbl<uint, text>" },
   chain: { defs: ["ca = [* uint]", "cb = ca", "cc = cb"], ty: "cc" },
   cborwrap2: { defs: ["foo = [a: uint]", "fb = bytes .cbor foo", "fb2 = fb"], ty: "fb2" },
 };
@@ -222,7 +245,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 85; // 23 shapes × {aliased, named, unref} = 69 + 11 anon-form shapes × {anon} + 5 anonb shapes × {anonb} -> 85
+const EXPECTED_CELLS = 97; // 27 shapes × {aliased, named, unref} = 81 + 11 anon-form shapes × {anon} + 5 anonb shapes × {anonb} -> 97
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `multifile grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,

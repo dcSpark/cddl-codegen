@@ -1,0 +1,3 @@
+; cell: gtbla x newtype-inner
+gtbl<k0, v0> = { * k0 => v0 }
+holder = gtbl<uint, text> ; @newtype

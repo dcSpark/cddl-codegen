@@ -1,0 +1,4 @@
+; cell: gcolla x struct-field
+foo = [a0: uint]
+gcoll<e0> = [* e0]
+holder = [field0: gcoll<foo>]

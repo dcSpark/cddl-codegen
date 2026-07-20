@@ -54,14 +54,26 @@
 //! - *Alias to a wasm-defined target that IS on the rust surface* (`pub type FooBytes = Foo;`, `Foo` a
 //!   rust pub struct): a pure CDDL-level alias present identically on both sides — the JS class carries
 //!   a genuine CDDL rule name. Not a finding.
+//! - *SYNTHESIZED anonymous generic-collection/table INSTANCE alias* (doc-marked with
+//!   `generation::SYNTHESIZED_INSTANCE_ALIAS_DOC`): `gcoll<foo>` → `pub type GcollFoo = Vec<Foo>`
+//!   (wasm alias to the structural `FooList`), `gtbl<uint, text>` → `GtblU64Text` (→ `MapU64ToText`),
+//!   `gcoll<uint>` → `GcollU64` (exposable, inlined to a bare `Vec` on the wasm side — the rule-2
+//!   twin of this carve-out). There is NO CDDL rule name at stake: the user wrote an anonymous
+//!   instance, which crosses the boundary exactly as its inline equivalent's STRUCTURAL class, the
+//!   documented lowering (`docs/docs/wasm_differences.mdx`). Rules 2 AND 5 skip these. The
+//!   discriminator is PROVENANCE (the doc marker the generator emits on synthesized instance idents
+//!   only, never on a user rule like `gcn = gcoll<foo>`), NOT a source-shape heuristic: a sole-owner
+//!   named-table alias (`pub type Mp = MapU64ToText;`) is rust-side a bare-collection alias too, so a
+//!   "aliases a std collection" test would blind rule 5 to a recurrence of the (fixed) named-table
+//!   degradation bug it exists to catch. Pinned by `synthesized_instance_alias_marker_provenance`.
 //!
 //! What remains — alias to a wasm-defined target whose name is generator-invented (`MapU64ToText`, not
-//! on the rust surface) — is exactly the usage-dependent-JS-class-name bug: the CDDL rule name is
-//! JS-invisible and the shape's JS class name flips with unrelated spec content
-//! (`cddl-matrix/ROADMAP.md` § findings). `pub use` counterparts stay JS-visible by design (Copy
-//! c-enums carry `#[wasm_bindgen]` at their rust-crate definition and are re-exported — extern
-//! re-exports are the user's contract); defined wasm structs/enums are themselves `#[wasm_bindgen]`
-//! classes. So rule 5 only ever fires on the alias-to-invented-name class.
+//! on the rust surface) AND NOT provenance-marked as a synthesized instance — is exactly the
+//! usage-dependent-JS-class-name bug: a genuine CDDL RULE name that reaches JS only as an invented
+//! class, so its JS name flips with unrelated spec content (`cddl-matrix/ROADMAP.md` § findings).
+//! `pub use` counterparts stay JS-visible by design (Copy c-enums carry `#[wasm_bindgen]` at their
+//! rust-crate definition and are re-exported — extern re-exports are the user's contract); defined
+//! wasm structs/enums are themselves `#[wasm_bindgen]` classes.
 //!
 //! **What it does NOT check.** Semantic wrongness — an identity `.into()` where a transform was
 //! needed — stays `wasm_matrix_roundtrips`' job (this gate is a *presence* differential, parse-only).
@@ -286,6 +298,13 @@ struct RustSurface {
     inherent_fns: BTreeMap<String, BTreeSet<(String, usize)>>,
     /// `pub type` alias names.
     type_aliases: BTreeSet<String>,
+    /// The subset of `type_aliases` whose rustdoc carries `SYNTHESIZED_INSTANCE_ALIAS_DOC` — a
+    /// generator-synthesized anonymous generic-collection/table INSTANCE alias (no CDDL rule name).
+    /// Rules 2 and 5 skip these: their rust→wasm asymmetry (the synthesized name is JS-invisible,
+    /// the shape crosses as its inline equivalent's structural class) is legitimate and documented
+    /// (`docs/docs/wasm_differences.mdx`), and provenance — not a source-shape heuristic — is what
+    /// tells them apart from a real rule alias (see the const's doc in `generation/mod.rs`).
+    synthesized_instance_aliases: BTreeSet<String>,
 }
 
 /// The wasm crate's public API surface, parsed from `wasm/src/generated/mod.rs`.
@@ -306,6 +325,24 @@ struct WasmSurface {
 
 fn is_pub(vis: &syn::Visibility) -> bool {
     matches!(vis, syn::Visibility::Public(_))
+}
+
+/// Whether any `#[doc = "…"]` attribute's string CONTAINS `needle` — the provenance-marker read for
+/// synthesized-instance aliases. Substring (not equality): the generator may prepend the marker line
+/// to further mechanical doc lines joined with `\n` into one `#[doc]` value.
+fn doc_contains(attrs: &[syn::Attribute], needle: &str) -> bool {
+    attrs.iter().any(|attr| {
+        attr.path().is_ident("doc")
+            && matches!(
+                &attr.meta,
+                syn::Meta::NameValue(nv)
+                    if matches!(
+                        &nv.value,
+                        syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(s), .. })
+                            if s.value().contains(needle)
+                    )
+            )
+    })
 }
 
 /// Last path segment ident of a `Type::Path`, if any (`None` for tuples, references, …). Used both
@@ -388,7 +425,11 @@ fn parse_rust_surface(src: &str) -> RustSurface {
                 s.types.insert(en.ident.to_string());
             }
             syn::Item::Type(ty) if is_pub(&ty.vis) => {
-                s.type_aliases.insert(ty.ident.to_string());
+                let name = ty.ident.to_string();
+                if doc_contains(&ty.attrs, crate::generation::SYNTHESIZED_INSTANCE_ALIAS_DOC) {
+                    s.synthesized_instance_aliases.insert(name.clone());
+                }
+                s.type_aliases.insert(name);
             }
             syn::Item::Impl(im) if im.trait_.is_none() => {
                 if let Some(ty) = type_leaf_ident(&im.self_ty) {
@@ -504,7 +545,13 @@ fn diff_surfaces(
 
     // Rule 2: every rust `pub type` alias has a same-named wasm PUBLIC alias or wasm type. A PRIVATE
     // wasm alias does not satisfy this — that's exactly the named-table-alias finding class.
+    // EXCEPT a SYNTHESIZED anonymous generic-collection instance alias (doc-marked): an exposable
+    // instance (`gcoll<uint>` → `pub type GcollU64 = Vec<u64>`) is inlined to a bare `Vec` on the
+    // wasm side (no counterpart alias), which is the documented lowering, not a missing type.
     for a in &rust.type_aliases {
+        if rust.synthesized_instance_aliases.contains(a) {
+            continue;
+        }
         if !wasm_has_type(a) {
             out.push(Finding {
                 profile: profile.to_string(),
@@ -599,6 +646,15 @@ fn diff_surfaces(
         .map(String::as_str)
         .collect();
     for name in rust_surface.iter().copied() {
+        // A SYNTHESIZED anonymous generic-collection/table instance alias (doc-marked): its
+        // JS-invisibility is BY DESIGN — the user wrote an anonymous instance, which crosses as its
+        // inline equivalent's structural class (`FooList` / `MapU64ToText`), never a rule name at
+        // stake, so rule 5's "the CDDL rule name is JS-invisible" premise is vacuous for it. The
+        // discriminator is provenance (the marker), not shape: a sole-owner named-table alias
+        // (`pub type Mp = MapU64ToText;`) is a bare-collection alias too and must STAY gated.
+        if rust.synthesized_instance_aliases.contains(name) {
+            continue;
+        }
         // Alias-only counterpart: satisfied by a wasm `pub type` alias, and NOT by a defined
         // struct/enum or a `pub use` re-export (those are JS-visible classes / the user's contract).
         if wasm.defined_types.contains(name) || wasm.reexports.contains(name) {
@@ -942,5 +998,52 @@ fn wasm_api_parity() {
             .map(|f| format!("  [{}/{}] {}: {}", f.profile, f.label, f.item, f.msg))
             .collect::<Vec<_>>()
             .join("\n")
+    );
+}
+
+/// The synthesized-instance-alias provenance MARKER (the discriminator rules 2 & 5 read to skip a
+/// legitimate anonymous-collection-instance asymmetry) must land on generator-synthesized instance
+/// aliases ONLY, never on a user rule alias. If the marker silently stopped being emitted, the whole
+/// anonymous-instance class would re-red the parity gate confusingly (63 findings) with no code
+/// change to point at; this pins the emission so that regression is loud and local. `GcollU64` is an
+/// anonymous inline `gcoll<uint>` instance (marked); `Gcn` is the user rule `gcn = gcoll<foo>`
+/// (unmarked — a named instance becomes its rule alias directly, minting no separate marked ident).
+#[test]
+fn synthesized_instance_alias_marker_provenance() {
+    const CDDL: &str = "foo = [a0: uint]\n\
+                        gcoll<e0> = [* e0]\n\
+                        gcn = gcoll<foo>\n\
+                        holder = [a: gcoll<uint>, b: gcn]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_synth_marker_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let out = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "synth_marker_unused",
+        "--wasm=true",
+    ]))
+    .expect("fixture must generate under --wasm");
+    std::fs::remove_file(&path).ok();
+    let src = out.values().cloned().collect::<Vec<_>>().join("\n");
+    let marker = crate::generation::SYNTHESIZED_INSTANCE_ALIAS_DOC;
+    // marked: the anonymous `gcoll<uint>` instance alias
+    assert!(
+        src.contains(&format!("/// {marker}\npub type GcollU64")),
+        "the synthesized anonymous-instance alias `GcollU64` must carry the provenance marker, got:\n{src}"
+    );
+    // NOT marked: the user rule alias `gcn` (and it must NOT mint a separate marked `GcollFoo`)
+    assert!(
+        !src.contains(&format!("/// {marker}\npub type Gcn")),
+        "the user rule alias `Gcn` must NOT carry the synthesized-instance marker, got:\n{src}"
+    );
+    assert!(
+        !src.contains("pub type GcollFoo"),
+        "a NAMED instance rule (`gcn = gcoll<foo>`) becomes its rule alias directly — no separate \
+         `GcollFoo` alias should be minted, got:\n{src}"
     );
 }

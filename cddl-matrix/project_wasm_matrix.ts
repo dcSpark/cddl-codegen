@@ -115,6 +115,34 @@ const SHAPES: Record<string, Shape> = {
   nullable: { defs: ["opt = uint / null"], ty: "opt", skipRoles: ["map-key"] },
   // generic instance -> monomorphized wrapper struct
   generic: { defs: ["cont<T0> = [value: T0]", "uc = cont<uint>"], ty: "uc" },
+  // --- Anonymous generic-COLLECTION-instance lowerings. The tag-set series gave types a new way to
+  // cross the wasm boundary: an anonymous collection instance (`x: gcoll<elem>`) lowers to the
+  // STRUCTURAL wrapper class for wrapper-needing elements and to the DIRECT bare-`Vec` exposure for
+  // exposable ones (converged with the inline `[* elem]` spelling), while a NAMED instance rule keeps
+  // its own-name class. `generic` above is the RECORD-instance sibling (a monomorphized wrapper
+  // struct); these are the COLLECTION-instance shapes it doesn't cover.
+  // anonymous instance over a NON-exposable (record) element -> lowers to the STRUCTURAL wrapper class
+  // (`FooList`); the anonymous `gcoll<foo>` dedups to it, so the wasm surface names `FooList`, not a
+  // rule-named `Gcoll…` class.
+  gcolla: { defs: ["foo = [a0: uint]", "gcoll<e0> = [* e0]"], ty: "gcoll<foo>" },
+  // anonymous instance over an EXPOSABLE (uint) element -> bare `Vec<u64>` exposure (no wrapper class):
+  // `insert`/`get`/array accessors cross the bare `Vec`. Its map-key cell (`{ * gcoll<uint> => uint }`)
+  // was a keys-list naming divergence (E0425: the keys-list wrapper was MINTED from the still-named
+  // `Rust(GcollU64)` table domain as `GcollU64List` while `keys()` REFERENCED the resolved-domain
+  // structural `ArrU64List`), fixed by deferring the keys-list mint to after the domain resolution
+  // (`finalize_generic_table_keys_lists`) so both name the structural `ArrU64List`; pinned by
+  // `exposable_generic_collection_instance_keyed_map_lowers_keys_list_structurally_under_wasm`.
+  gcollexp: { defs: ["gcoll<e0> = [* e0]"], ty: "gcoll<uint>" },
+  // NAMED-instance-rule boundary control: a `gcn = gcoll<foo>` rule keeps its OWN-name wasm class
+  // (`Gcn`), distinct from the anonymous `gcolla` shape's structural-name lowering — the named-vs-anon
+  // discriminant the collection-instance convergence turns on.
+  gcolln: { defs: ["foo = [a0: uint]", "gcoll<e0> = [* e0]", "gcn = gcoll<foo>"], ty: "gcn" },
+  // anonymous generic TABLE instance (the MAP-container sibling of `gcolla`): lowers to the structural
+  // keyed wrapper (`MapU64ToText` via a `pub type GtblU64Text = MapU64ToText;` passthrough). A generic
+  // table instance under `--wasm` once aborted generation on a duplicate-synthesized-ident collision
+  // (the anonymous instance recorded as its own shape's sole owner) — the class its grid row makes red;
+  // fixed + pinned by `generic_table_instance_lowers_to_structural_wrapper_under_wasm`.
+  gtbla: { defs: ["gtbl<k0, v0> = { * k0 => v0 }"], ty: "gtbl<uint, text>" },
   // --- Depth / representative smoke cells: same boundary logic as a 1-hop shape above, kept only to
   // guard alias-chain *resolution depth* (>1 hop). One role each — full role coverage would only
   // duplicate `passthru`/`cborwrap` accessors (verified: differs from them only by type name).
@@ -207,7 +235,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 162; // 20 full shapes × 8 roles − 2 map-key skips (nullable, rawbytes) + 4 single-role shapes (chain, cborwrap2, extern, mstruct)
+const EXPECTED_CELLS = 194; // 24 full shapes × 8 roles − 2 map-key skips (nullable, rawbytes) + 4 single-role shapes (chain, cborwrap2, extern, mstruct)
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `wasm-ABI grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,

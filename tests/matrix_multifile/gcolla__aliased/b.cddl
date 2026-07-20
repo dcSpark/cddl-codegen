@@ -1,0 +1,2 @@
+; cell: gcolla x aliased (reference from module b)
+bal = gcoll<foo>

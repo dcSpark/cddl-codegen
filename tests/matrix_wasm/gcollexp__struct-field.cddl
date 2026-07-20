@@ -1,0 +1,3 @@
+; cell: gcollexp x struct-field
+gcoll<e0> = [* e0]
+holder = [field0: gcoll<uint>]

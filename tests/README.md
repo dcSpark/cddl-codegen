@@ -1378,7 +1378,7 @@ Two consumers run it:
 Run the manual gate with:
 
 ```sh
-cargo test --bin cddl-codegen wasm_matrix_roundtrips -- --ignored   # ~8-10 min (162 cells x 3 profiles)
+cargo test --bin cddl-codegen wasm_matrix_roundtrips -- --ignored   # ~8-10 min (194 cells x 3 profiles)
 ```
 
 ### IR-bug conformance oracle at breadth (`--emit-tests-conformance` + `integration_tests::ir_conformance_corpus`)
@@ -1791,8 +1791,18 @@ impose obligations, so wasm-side extras (`kind`/`as_*`/`has_*`/`set_*`/`len`/`in
    usage-dependent JS-class-name class, where a named table rule's wrapper degraded to
    `pub type Mp = MapU64ToText;` pointing at the generator-invented structural class (rule 5 stays
    the live catcher for any recurrence). Carved out (not findings): a target that is
-   not wasm-defined (transparent alias to a primitive/std/`Option` type — native in JS) and a
-   wasm-defined target that IS a rust-surface rule name (a genuine CDDL-level alias on both sides).
+   not wasm-defined (transparent alias to a primitive/std/`Option` type — native in JS); a
+   wasm-defined target that IS a rust-surface rule name (a genuine CDDL-level alias on both sides);
+   and a **synthesized anonymous generic-collection/table instance alias** (`gcoll<foo>` →
+   `GcollFoo`, `gcoll<uint>` → `GcollU64`, `gtbl<uint, text>` → `GtblU64Text`) — the user wrote an
+   anonymous instance, not a rule, so it correctly crosses as its inline equivalent's STRUCTURAL
+   class (`FooList` / bare `Vec` / `MapU64ToText`, the documented lowering) with no rule name at
+   stake. Rules 2 and 5 both skip these. The discriminator is **provenance, not shape**: the
+   generator emits a doc marker (`generation::SYNTHESIZED_INSTANCE_ALIAS_DOC`) on synthesized instance
+   idents only, and the gate reads it from the rust item's rustdoc — a shape heuristic ("aliases a
+   std collection") was rejected because a sole-owner named-table alias (`pub type Mp = MapU64ToText;`)
+   is a bare-collection alias too and must STAY gated (else rule 5 goes blind to the degradation bug
+   it exists to catch). The marker emission is pinned by `synthesized_instance_alias_marker_provenance`.
    `pub use` counterparts stay JS-visible by design (`#[wasm_bindgen]` c-enums re-exported).
 
 Legitimate rust→wasm asymmetries are baked into those rules, not ledgered: the "`pub use`d Copy
@@ -1945,7 +1955,7 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   path-depends on the rust crate, so rust-side breakage surfaces transitively). Own scratch +
   `CARGO_TARGET_DIR` (`cddl_codegen_multifile_matrix`). Always-on (no `#[ignore]`): it joins the
   default `cargo test` / check.ts local tier. Wall-clock ~35 s (first cold run, shared target warms
-  once) / ~30 s warm measured at 43 cells (85 at HEAD).
+  once) / ~30 s warm measured at 43 cells (97 at HEAD).
 - **The round-trip gate** (`integration_tests::multifile_matrix_roundtrips`, `#[ignore]`d, check.ts
   **full** tier — the behavioural upgrade, mirroring `wasm_matrix_roundtrips`): same cell
   enumeration, but each cell is generated `--wasm=true --emit-tests=true` across `ALL_PROFILES`
@@ -1970,7 +1980,7 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   globs, without which every multifile cell is E0433-uncompilable) is pinned always-on by the
   in-process `emit_tests_multifile_scope_imports`, so a regression there doesn't wait for full
   tier. Run with `cargo test --bin cddl-codegen multifile_matrix_roundtrips -- --ignored`
-  (~4.6 min measured at 48 cells, scaling with the cell count — 85 at HEAD; every run is effectively cold — the scratch root, shared target
+  (~4.6 min measured at 48 cells, scaling with the cell count — 97 at HEAD; every run is effectively cold — the scratch root, shared target
   included, is cleared at start and end — with the deps built once up front and the remainder
   dominated by the per-cell-per-profile generate + two nested `cargo test` invocations (3 profiles x the cell count each).
 - **Skip ledgers (round-trip gate).** `MULTIFILE_ROUNDTRIP_SKIP: &[(&str, &str)]` (cell stem,
