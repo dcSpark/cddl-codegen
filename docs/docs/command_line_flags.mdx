@@ -249,7 +249,9 @@ cddl-codegen --input=example --output=export --common-import-override=cml_core \
 <br/><br/>
 
 :::info `--extern-wasm-crate`
-Maps a cross-crate extern dependency (declared under `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/…`) to the crate that holds its **wasm-bindgen** wrappers. Repeatable; each value is `<dep>=<wasm_crate>` (a malformed value, or a `<dep>` that names no extern dependency in the spec, aborts generation).
+Maps a cross-crate extern dependency (declared under `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/…`) to the crate that holds its **wasm-bindgen** wrappers. Repeatable; each value is `<dep>=<wasm_crate>` (a malformed value, or a key that is neither a declared extern dependency nor the `--common-import-override` crate, aborts generation).
+
+An accepted key is **either** a declared extern dependency **or** the `--common-import-override` crate — the latter routes the built-in `Int`'s wasm face (below), and a pure `--common-import-override` consumer that declares no extern dependency of its own may name only that crate.
 
 Use it when a dependency's wasm bindings live in a **separate** crate — the split `<dep>` / `<dep>-wasm` layout cddl-codegen itself generates (e.g. `cml-core` / `cml-core-wasm`). In the wasm pass, the `use` import and the wasm-boundary type path for that dep's types (as a direct member, and as elements of generated list/map wrappers) are qualified through the wasm crate, while the wrapper's inner storage stays the dep's **rust** type. Without a mapping the dep keeps its rust crate name for both passes — the single-crate convention, where the dependency's rust types are themselves `#[wasm_bindgen]`-annotated, which continues to work with no configuration.
 

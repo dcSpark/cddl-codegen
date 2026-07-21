@@ -35,6 +35,58 @@ impl AsRef<extern_dep_crate::ExternCrateFoo> for ExternCrateFoo {
     }
 }
 
+// Wasm FACES of the dep-owned NAMED collection rules (`DepWithdrawals`/`DepCerts`). A consumer
+// referencing them by name (from a non-root module) emits a wasm wrapper whose getters/constructor
+// cross the boundary with `.clone().into()` — `self.0.wd.clone().into()` (rust
+// `extern_dep_crate::DepWithdrawals` -> this wasm class) and `wd.clone().into()` (this wasm class ->
+// rust). Same wrap + `From` contract as `ExternCrateFoo`; the `From<Self> for <rust alias>` direction
+// is orphan-rule-legal because the local wasm type appears as the `From` type parameter (identical to
+// the `From<ExternCrateFoo> for extern_dep_crate::ExternCrateFoo` impl above). The rust aliases are
+// `BTreeMap`/`Vec`, so these wrap those directly.
+#[wasm_bindgen]
+#[derive(Clone, Debug)]
+pub struct DepWithdrawals(extern_dep_crate::DepWithdrawals);
+
+impl From<extern_dep_crate::DepWithdrawals> for DepWithdrawals {
+    fn from(native: extern_dep_crate::DepWithdrawals) -> Self {
+        Self(native)
+    }
+}
+
+impl From<DepWithdrawals> for extern_dep_crate::DepWithdrawals {
+    fn from(wasm: DepWithdrawals) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<extern_dep_crate::DepWithdrawals> for DepWithdrawals {
+    fn as_ref(&self) -> &extern_dep_crate::DepWithdrawals {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+#[derive(Clone, Debug)]
+pub struct DepCerts(extern_dep_crate::DepCerts);
+
+impl From<extern_dep_crate::DepCerts> for DepCerts {
+    fn from(native: extern_dep_crate::DepCerts) -> Self {
+        Self(native)
+    }
+}
+
+impl From<DepCerts> for extern_dep_crate::DepCerts {
+    fn from(wasm: DepCerts) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<extern_dep_crate::DepCerts> for DepCerts {
+    fn as_ref(&self) -> &extern_dep_crate::DepCerts {
+        &self.0
+    }
+}
+
 // Wasm FACE of the common `Int`. A `--common-import-override` consumer re-exports the RUST `Int`
 // from `extern_dep_crate` but its WASM crate re-exports THIS wrapper via `pub use
 // extern_dep_crate_wasm::Int;` (routed through the `--extern-wasm-crate` mapping), so a generated

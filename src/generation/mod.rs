@@ -1294,17 +1294,37 @@ impl GenerationScope {
         // wasm
         if cli.wasm {
             let extern_wasm_crate_map = cli.extern_wasm_crate_map();
-            // Validate mapping keys BEFORE emitting: a key that names no extern dependency is almost
+            // Validate mapping keys BEFORE emitting: a key that names no accepted crate is almost
             // certainly a typo, and a silent no-op would leave the generated wasm crate pointing at
             // the (non-wasm) rust crate and failing to compile with no hint why.
+            //
+            // Two key kinds are legitimate:
+            //   1. a declared extern dependency (`extern_dep_names()`) — the deferred collection
+            //      wrappers route the dep's element/key/value types through the mapped wasm crate;
+            //   2. the `--common-import-override` crate — the documented pairing
+            //      (`--common-import-override=cml_core --extern-wasm-crate=cml_core=cml_core_wasm`)
+            //      routes the built-in `Int`'s WASM face through the mapped wasm crate. That override
+            //      crate is common scaffolding, NOT a declared extern dep, so a pure consumer (no
+            //      `_CDDL_CODEGEN_EXTERN_DEPS_DIR_`) has an EMPTY `extern_dep_names()` and this is the
+            //      only key. `generate_int` is the sole consumer of the override-keyed mapping
+            //      (`extern_wasm_crate_map().get(cli.common_import_rust())`); the rust-side
+            //      `common_import_wasm()` call sites (serialization / ordered_hash_map / non_empty in
+            //      this module and requests.rs) never consult the map, so accepting this key here does
+            //      not change any of them.
             if !extern_wasm_crate_map.is_empty() {
                 let extern_dep_names = types.extern_dep_names();
+                let common_override = cli.common_import_override.as_deref();
                 for dep in extern_wasm_crate_map.keys() {
-                    if !extern_dep_names.contains(dep) {
+                    let names_extern_dep = extern_dep_names.contains(dep);
+                    let names_common_override = common_override == Some(dep.as_str());
+                    if !names_extern_dep && !names_common_override {
                         panic!(
-                            "--extern-wasm-crate names dependency {dep:?}, which is not an \
-                             extern dependency in this spec. Known extern dependencies: {:?}",
-                            extern_dep_names
+                            "--extern-wasm-crate names crate {dep:?}, which is not an extern \
+                             dependency in this spec and is not the --common-import-override crate \
+                             ({:?}). Accepted keys are the declared extern dependencies {:?} plus \
+                             the --common-import-override crate (which routes the built-in Int's \
+                             wasm face).",
+                            common_override, extern_dep_names
                         );
                     }
                 }

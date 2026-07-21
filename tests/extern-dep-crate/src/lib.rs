@@ -18,6 +18,18 @@ pub struct ExternCrateFoo {
     encodings: Option<ExternCrateFooEncoding>,
 }
 
+// Dep-OWNED named collection rules (`dep_withdrawals = { * uint => extern_crate_foo } ; @rust_name
+// DepWithdrawals`, `dep_certs = [* extern_crate_foo] ; @rust_name DepCerts`), declared under the
+// consumer's `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/`. A consumer referencing them BY NAME emits code that
+// treats each as its structural shape — its `serialize`/`deserialize` build a `BTreeMap`/`Vec` and
+// assign directly into the field typed `DepWithdrawals`/`DepCerts`, and `.len()`/`.iter()` are called
+// on the field. So the dep-owned face of these rules is exactly a transparent alias to the collection
+// (the `dep_owned_named_collection_no_local_structural_import` cross-crate compile pins that the
+// consumer must NOT ALSO mint a local `MapU64ToExternCrateFoo`/`ExternCrateFooList` structural
+// wrapper — those are dep-owned and defined only here).
+pub type DepWithdrawals = BTreeMap<u64, ExternCrateFoo>;
+pub type DepCerts = Vec<ExternCrateFoo>;
+
 #[wasm_bindgen]
 impl ExternCrateFoo {
     pub fn new(index_0: u64, index_1: String, index_2: Vec<u8>) -> Self {

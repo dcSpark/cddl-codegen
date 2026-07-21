@@ -6973,6 +6973,37 @@ fn extern_deps_wasm() {
     );
 }
 
+/// The PURE `--common-import-override` consumer shape: the spec declares NO extern dependency (no
+/// `_CDDL_CODEGEN_EXTERN_DEPS_DIR_`), yet `--extern-wasm-crate` maps the override crate so the
+/// built-in `Int`'s wasm face routes through the split wasm crate. This is the documented CML pairing
+/// (`--common-import-override=cml_core --extern-wasm-crate=cml_core=cml_core_wasm`): the mapping key
+/// names the override crate, NOT a declared extern dep. `generate_int` already consumes that key; the
+/// validation used to panic on it (`not an extern dependency`) before the remap could act. `delta_coin
+/// = int` is the alias-leak shape (`pub type DeltaCoin = Int;` in `#[wasm_bindgen]` signatures) that
+/// forces the wasm crate to name `Int` at its boundary. The harness `cargo build`s the generated wasm
+/// crate (acceptance for the routed wasm face) and `cargo test`s the rust crate (the round-trip floor).
+#[test]
+fn common_override_wasm_int() {
+    run_test(
+        "common-override-wasm-int",
+        &[
+            "--preserve-encodings=true",
+            "--common-import-override=extern_dep_crate",
+            "--extern-wasm-crate=extern_dep_crate=extern_dep_crate_wasm",
+        ],
+        None,
+        &[],
+        &[],
+        true,
+        // rust crate re-exports the dep's rust `Int`; wasm crate re-exports the dep's wasm `Int`. The
+        // harness copies both `test_deps` into both manifests — an unused dep in either is tolerated.
+        &[
+            "\nextern-dep-crate = { path = \"../../../extern-dep-crate\" }",
+            "\nextern-dep-crate-wasm = { path = \"../../../extern-dep-crate-wasm\" }",
+        ],
+    );
+}
+
 /// A `--extern-wasm-crate` key that names no extern dependency in the spec must abort generation
 /// loudly (a silent no-op would leave the wasm crate pointing at the non-wasm rust crate and failing
 /// to compile with no hint why).
@@ -7009,9 +7040,11 @@ fn extern_deps_wasm_unknown_dep_errors() {
 /// `ExternCrateFooList`) as a local import — nothing local defines it (dep-owned;
 /// `table_shape_sole_owners` excludes non-exported scopes), so it is an import-only E0432 (the CML
 /// `withdrawals`/`mint` regression). The `Alias` arm now suppresses the structural-wrapper import
-/// when the alias names a collection rule whose own class subsumes the surface. A generation-output
-/// assertion (not a full compile) because the fixture's dep is a bare stub with no hand-written
-/// runtime — the pinned invariant is exactly "no dangling local structural import in the consumer".
+/// when the alias names a collection rule whose own class subsumes the surface. This is the
+/// generation-output-assertion half — the pinned invariant is exactly "no dangling local structural
+/// import in the consumer"; its cross-crate COMPILE companion (`dep_owned_named_collection_compiles`)
+/// builds both generated crates against the stand-in dep pair, so the E0432 the dangling import would
+/// trip is also caught end-to-end.
 #[test]
 fn dep_owned_named_collection_no_local_structural_import() {
     let out = std::env::temp_dir().join(format!(
@@ -7063,6 +7096,34 @@ fn dep_owned_named_collection_no_local_structural_import() {
              extern_dep_crate_wasm::…;`; consumer wasm module:\n{src}"
         );
     }
+}
+
+/// Cross-crate COMPILE companion to `dep_owned_named_collection_no_local_structural_import`: builds
+/// BOTH generated crates against the stand-in dep pair (`extern-dep-crate` supplies the dep-owned
+/// `DepWithdrawals`/`DepCerts` as transparent `BTreeMap`/`Vec` aliases, `extern-dep-crate-wasm` their
+/// wasm faces). The dangling local structural import the sibling test pins as absent would be an E0432
+/// here, so the rust `cargo test` + wasm `cargo build` is the end-to-end proof that the dep-owned
+/// named collections resolve to the dep's classes and nothing local is expected to define them. The
+/// round-trip in `tests.rs` additionally exercises the dep-owned collection fields on the wire.
+#[test]
+fn dep_owned_named_collection_compiles() {
+    run_test(
+        "dep-owned-named-collections",
+        &[
+            "--common-import-override=extern_dep_crate",
+            "--extern-wasm-crate=extern_dep_crate=extern_dep_crate_wasm",
+        ],
+        None,
+        &[],
+        &[],
+        true,
+        // rust crate re-exports the dep's rust classes; wasm crate re-exports their wasm faces. The
+        // harness copies both `test_deps` into both manifests — an unused dep in either is tolerated.
+        &[
+            "\nextern-dep-crate = { path = \"../../../extern-dep-crate\" }",
+            "\nextern-dep-crate-wasm = { path = \"../../../extern-dep-crate-wasm\" }",
+        ],
+    );
 }
 
 /// Whether the `wasm32-unknown-unknown` target is installed (the honest link gate in

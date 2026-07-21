@@ -1,0 +1,17 @@
+; The PURE `--common-import-override` consumer shape (the real CML case): there is NO
+; `_CDDL_CODEGEN_EXTERN_DEPS_DIR_` at all, so the override crate (`extern_dep_crate`) is NOT a
+; declared extern dependency of this spec. The only thing crossing the wasm boundary is the built-in
+; `int`, whose wasm FACE must route through `--extern-wasm-crate=extern_dep_crate=extern_dep_crate_wasm`
+; even though `extern_dep_crate` names no extern dep — that is exactly the mapping key the validation
+; used to reject, panicking before `generate_int`'s override remap could act.
+;
+; `delta_coin = int` is the request's exact alias-leak shape: a named `int` alias used in an exported
+; struct field surfaces as `pub type DeltaCoin = Int;` inside `#[wasm_bindgen]` signatures, forcing the
+; wasm crate to name `Int` at its boundary (routed to `extern_dep_crate_wasm::Int`). `plain: int`
+; exercises the bare-`int` boundary alongside the aliased one.
+delta_coin = int
+
+int_holder = [
+    delta: delta_coin,
+    plain: int,
+]
