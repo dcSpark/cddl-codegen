@@ -15313,6 +15313,191 @@ fn comment_preservation_disk_round_trip() {
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
+/// Delivery-B regression (same-file flavor): a `cddl-codegen:replace` block that removes the SOLE
+/// user of a blindly-pushed candidate import must leave the regenerated crate with that import GONE.
+/// The usage-derived import prune's premise is "an import is justified iff the FINAL code references
+/// the name", so the prune has to rerun over the POST-overlay content — `generated_files` pruned the
+/// fresh content, which still used the name. Here the orphaned `use std::collections::BTreeMap;` and
+/// the replaced `pub type Bar = BTreeMap<…>;` both live in mod.rs. Asserts: import removed, the
+/// replace block itself survives, and the third regen is a byte-identical fixed point (idempotence).
+#[test]
+fn comment_preservation_replace_orphans_import_same_file() {
+    use clap::Parser;
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_orphan_import_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    // A root map rule generates `pub type Bar = BTreeMap<u64, String>;`, importing BTreeMap and using
+    // it in exactly one place — the CML `pub type Mint = OrderedHashMap<…>` shape.
+    std::fs::write(&input, "bar = {* uint => text}\n").unwrap();
+    let out = scratch.join("crate");
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+        "--wasm=false",
+    ]);
+    let mod_rs = out.join("rust/src/generated/mod.rs");
+
+    // Run 1: fresh. mod.rs imports BTreeMap and uses it once, in the `pub type Bar` alias.
+    crate::api::generate_to_disk(&cli).unwrap();
+    let first = std::fs::read_to_string(&mod_rs).unwrap();
+    assert!(
+        import_line_present(&first, "BTreeMap"),
+        "fresh mod.rs must import BTreeMap:\n{first}"
+    );
+    let alias = "pub type Bar = BTreeMap<u64, String>;";
+    assert!(first.contains(alias), "expected type alias missing:\n{first}");
+
+    // Inject a `cddl-codegen:replace` block swapping the alias for a Vec that never names BTreeMap;
+    // the `//`-commented recorded original is the placement anchor + drift detector.
+    let replaced = format!(
+        "// cddl-codegen:replace-start\n\
+         pub type Bar = Vec<(u64, String)>;\n\
+         // cddl-codegen:replaces\n\
+         // {alias}\n\
+         // cddl-codegen:replace-end"
+    );
+    std::fs::write(&mod_rs, first.replacen(alias, &replaced, 1)).unwrap();
+
+    // Run 2: the replace removed BTreeMap's sole user, so the post-overlay re-prune drops the now
+    // orphaned `use std::collections::BTreeMap;`; the recorded original (a `//` comment) is trivia and
+    // does not re-protect it. The replace block itself survives.
+    crate::api::generate_to_disk(&cli).unwrap();
+    let second = std::fs::read_to_string(&mod_rs).unwrap();
+    assert!(
+        !import_line_present(&second, "BTreeMap"),
+        "the orphaned BTreeMap import must be pruned post-overlay:\n{second}"
+    );
+    assert!(
+        second.contains("// cddl-codegen:replace-start") && second.contains("Vec<(u64, String)>"),
+        "the replace block must survive:\n{second}"
+    );
+    assert!(
+        !second.contains("compile_error!"),
+        "a clean regen must not fail loudly:\n{second}"
+    );
+
+    // Run 3: byte-identical fixed point (overlay re-applies the same block; re-prune re-removes the
+    // same import).
+    crate::api::generate_to_disk(&cli).unwrap();
+    let third = std::fs::read_to_string(&mod_rs).unwrap();
+    assert_eq!(
+        second, third,
+        "overlay + re-prune must reach a byte-identical fixed point"
+    );
+
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// Delivery-B regression (family flavor — why the re-prune is map-level, not per-file): the replace
+/// block lives in a DESCENDANT (serialization.rs) and orphans an import in the PARENT (mod.rs). Under
+/// --preserve-encodings, mod.rs's blindly-pushed `use std::collections::BTreeMap;` is named by
+/// NOTHING in mod.rs's own body (the map field is `OrderedHashMap`); its sole consumer is
+/// serialization.rs's two `BTreeMap::new()` encoding maps, reached through `use super::*;` (the
+/// sibling cbor_encodings.rs carries its OWN `use BTreeMap`, so it does not protect the parent). A
+/// replace block removing serialization.rs's uses must orphan — and re-prune — the parent import,
+/// which only a whole-map re-prune can see.
+#[test]
+fn comment_preservation_replace_in_descendant_orphans_parent_import() {
+    use clap::Parser;
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_orphan_parent_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    std::fs::write(&input, "baz = [m: {* uint => text}]\n").unwrap();
+    let out = scratch.join("crate");
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+        "--wasm=false",
+        "--preserve-encodings=true",
+    ]);
+    let mod_rs = out.join("rust/src/generated/mod.rs");
+    let ser_rs = out.join("rust/src/generated/serialization.rs");
+
+    // Run 1: fresh. mod.rs imports BTreeMap but never names it (the field is OrderedHashMap); the sole
+    // consumer is serialization.rs, via super.
+    crate::api::generate_to_disk(&cli).unwrap();
+    let mod_first = std::fs::read_to_string(&mod_rs).unwrap();
+    assert!(
+        import_line_present(&mod_first, "BTreeMap"),
+        "fresh mod.rs must import BTreeMap:\n{mod_first}"
+    );
+    assert_eq!(
+        mod_first.matches("BTreeMap").count(),
+        1,
+        "mod.rs's body must not itself name BTreeMap — its import is protected only by the \
+         serialization.rs descendant:\n{mod_first}"
+    );
+    let ser_first = std::fs::read_to_string(&ser_rs).unwrap();
+    let l1 = "let mut m_key_encodings = BTreeMap::new();";
+    let l2 = "let mut m_value_encodings = BTreeMap::new();";
+    let start = ser_first
+        .find(l1)
+        .expect("m_key_encodings BTreeMap init missing from serialization.rs");
+    let line_start = ser_first[..start].rfind('\n').unwrap() + 1;
+    let indent = ser_first[line_start..start].to_owned();
+    let end = ser_first.find(l2).expect("m_value_encodings init missing") + l2.len();
+    let span = ser_first[line_start..end].to_owned();
+
+    // Inject a replace block over the two consecutive `BTreeMap::new()` lines, swapping them for a Vec
+    // that never names BTreeMap. Indentation is preserved so the tag lines stay own-line comments.
+    let block = format!(
+        "{indent}// cddl-codegen:replace-start\n\
+         {indent}let mut m_key_encodings = Vec::new();\n\
+         {indent}let mut m_value_encodings = Vec::new();\n\
+         {indent}// cddl-codegen:replaces\n\
+         {indent}// {l1}\n\
+         {indent}// {l2}\n\
+         {indent}// cddl-codegen:replace-end"
+    );
+    std::fs::write(&ser_rs, ser_first.replacen(&span, &block, 1)).unwrap();
+
+    // Run 2: the descendant no longer names BTreeMap, so the whole-map re-prune drops the parent's
+    // now-orphaned import; the replace block in serialization.rs survives.
+    crate::api::generate_to_disk(&cli).unwrap();
+    let mod_second = std::fs::read_to_string(&mod_rs).unwrap();
+    assert!(
+        !import_line_present(&mod_second, "BTreeMap"),
+        "the parent mod.rs BTreeMap import must be pruned once its sole descendant consumer is \
+         replaced away:\n{mod_second}"
+    );
+    let ser_second = std::fs::read_to_string(&ser_rs).unwrap();
+    assert!(
+        ser_second.contains("// cddl-codegen:replace-start")
+            && ser_second.contains("let mut m_key_encodings = Vec::new();"),
+        "the replace block must survive in serialization.rs:\n{ser_second}"
+    );
+    assert!(
+        !ser_second.contains("compile_error!") && !mod_second.contains("compile_error!"),
+        "a clean regen must not fail loudly"
+    );
+
+    // Run 3: byte-identical fixed point across both files.
+    crate::api::generate_to_disk(&cli).unwrap();
+    let mod_third = std::fs::read_to_string(&mod_rs).unwrap();
+    let ser_third = std::fs::read_to_string(&ser_rs).unwrap();
+    assert_eq!(mod_second, mod_third, "mod.rs must reach a fixed point");
+    assert_eq!(
+        ser_second, ser_third,
+        "serialization.rs must reach a fixed point"
+    );
+
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
 /// `--export-static-crate=<dir>` writes the composed rust static runtime into `<dir>/src/` AND
 /// merges the static-runtime manifest changeset into `<dir>/Cargo.toml`, independent of in-crate
 /// static export, as a PURE FUNCTION OF THE FLAG SET (not of the spec). Covers, in the

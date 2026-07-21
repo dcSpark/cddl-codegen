@@ -124,6 +124,14 @@ code is not scanned for these — an import is kept iff the *generated* code nam
 block references e.g. `BTreeMap` in a file whose generated code doesn't, name it by a fully
 qualified path (`std::collections::BTreeMap`) rather than relying on a `use` that won't be there.
 
+Conversely, if your replace block removes the *last* generated reference to an import — say you
+replace `pub type Mint = OrderedHashMap<PolicyId, …>` with a hand type that names neither — the now
+unused `use` is pruned for you on the next export. You do **not** need a second replace block to
+delete the orphaned import. The import set is re-derived from the *final* code after your edits are
+applied, so it always tracks what those edits leave behind, and this holds even when the reference
+you removed lived in a different file of the module (e.g. a `serialization.rs` edit orphaning a
+`mod.rs` import).
+
 ## When preservation fails: the two failure channels
 
 **Malformed tags abort the export** (a hard error naming the file, before anything is written).
@@ -169,7 +177,10 @@ lost. The reasons you'll see, and what they mean:
 Running the tool twice equals running it once: re-exporting an unchanged spec reproduces the same
 file byte-for-byte, blocks included. The overlay never touches code tokens outside your tagged
 regions — its only effects are inserting your comments/blocks and removing exactly the span a
-recorded original identifies.
+recorded original identifies. The one downstream consequence is import pruning: a `use` the
+generated code no longer references — because your replace block removed its last user — is dropped,
+since the import set is always re-derived from the final code (never from prior output), which keeps
+the byte-for-byte reproducibility intact.
 
 Known residual limits, by design:
 

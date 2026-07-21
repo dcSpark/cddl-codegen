@@ -8,6 +8,18 @@
 //! turned into a tagged `compile_error!` block so the generated crate fails to build and the user
 //! reviews it.
 //!
+//! **Driver ordering.** `export` applies this overlay to the in-memory file map (the mapped
+//! `.rs` files) BEFORE the common write loop, then runs the usage-derived import prune
+//! (`import_prune::prune_generated_files`) once more over the post-overlay map, then writes each entry
+//! plainly. The order matters: a `cddl-codegen:replace` block can delete the last user of an import
+//! the freshly-generated content still justified, and the prune's "an import is justified iff the
+//! FINAL code references the name" premise must hold for what ships — so the overlay runs first and
+//! the prune re-derives the import set against post-overlay content (map-level, because a replace
+//! block in a descendant such as `serialization.rs` can orphan an import in the parent `mod.rs`).
+//! The composed runtime static files (`error.rs`, the collection runtimes) and the
+//! `--export-static-crate` target are NOT in that map, carry no prunable imports, and get their
+//! preservation per file via `export`'s `write_rs_with_preserve` instead.
+//!
 //! Anchoring escalates through tiers, each stricter about what "safe" means:
 //! * identity — the file's code tokens are unchanged, so every user comment transfers at the same
 //!   token index (the dominant case);

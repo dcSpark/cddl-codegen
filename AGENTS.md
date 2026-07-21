@@ -61,8 +61,13 @@ changing the *runtime behaviour* of generated code usually means editing `static
     effects on fresh content are (a) inserting comment bytes and tagged regions
     (`cddl-codegen:unpreserved-comment` compile_error blocks and `cddl-codegen:replace`/`insert` user
     blocks), and (b) removing exactly the token span that a replace block's recorded original
-    identifies — never any other code token, in either direction (default on, `--no-preserve-comments`
-    disables it). Three diagnostic-only stderr warnings read prior output but change no output bytes: the
+    identifies — never any other code token, in either direction. The overlay is applied to the
+    in-memory file map before the write loop, then the usage-derived import prune (`import_prune.rs`)
+    reruns once over the post-overlay map: a `use` import whose last user a replace block removed is
+    dropped too. That drop is a pure function of the FINAL (post-overlay) content — not an extra
+    prior-output read — so the bound on what prior output ITSELF contributes (comment bytes, tagged
+    regions, the recorded replace-span removal) is unchanged, and "same inputs → same bytes" still
+    holds (default on, `--no-preserve-comments` disables it). Three diagnostic-only stderr warnings read prior output but change no output bytes: the
     legacy-root
     check (missing `mod generated;`), the stale-file scan (orphaned `.rs` under the generated
     trees), and the missing-crate-root-re-export warning (a seed-skipped `lib.rs` lacking a name the
