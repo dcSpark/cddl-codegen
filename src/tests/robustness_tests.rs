@@ -508,6 +508,63 @@ fn raw_bytes_flavor_misuse_rejects_gracefully() {
     }
 }
 
+/// `@copy` (Copy-ness channel for extern / raw-bytes types) is valid ONLY on a
+/// `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule; every other placement is
+/// rejected BY DESIGN — a GRACEFUL `Err` (deferred through `record_rejection` → drained by
+/// `finalize`), never a `panic!` and never a silent no-op. One vector per rejecting seam
+/// (single-choice non-marker type rule, multi-choice type rule, field/member position), mirroring
+/// `raw_bytes_flavor_misuse_rejects_gracefully`.
+#[test]
+fn copy_misuse_rejects_gracefully() {
+    let vectors = [
+        (
+            "single-choice non-marker type rule",
+            "foo = uint ; @copy\n",
+            "Remove it from this rule",
+        ),
+        (
+            "multi-choice type rule",
+            "foo = uint / text ; @copy\n",
+            "Remove it from this rule",
+        ),
+        (
+            "field position",
+            "s = [\n  x: uint, ; @copy\n]\n",
+            "not a field",
+        ),
+    ];
+    for (seam, cddl, seam_fragment) in vectors {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_copy_misuse_{}_{}.cddl",
+            std::process::id(),
+            seam.len()
+        ));
+        std::fs::write(&path, cddl).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "copy_misuse_unused",
+        ]);
+        let result = crate::api::generated_strings(&cli);
+        std::fs::remove_file(&path).ok();
+
+        let err = result.expect_err(&format!(
+            "@copy on a {seam} must be a graceful Err, not Ok (and not a panic)"
+        ));
+        let msg = err.to_string();
+        assert!(
+            msg.contains("@copy") && msg.contains("only valid on"),
+            "rejection for {seam} should name the tag and the extern/raw-bytes-only rule, got: {msg}"
+        );
+        assert!(
+            msg.contains(seam_fragment),
+            "rejection for {seam} should carry its seam-specific wording ({seam_fragment:?}), got: {msg}"
+        );
+    }
+}
+
 /// `@duplicates` rejection classes that remain after phase 2 made table `preserve` fully live on
 /// BOTH boundaries (`{* …}` -> `PairMap`, `{+ …}` -> `NonEmptyPairMap`, wasm included). What survives
 /// is only the PERMANENT placement rejection: `@duplicates` on a non-collection rule (aliases,

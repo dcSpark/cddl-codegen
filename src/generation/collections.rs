@@ -1037,8 +1037,14 @@ fn push_table_accessors(
     // branch, generate_non_empty_map_type used this closure — but produced the same bytes; the closure
     // is the single spelling here.
     let copied_or = |modifier: &str| {
-        if value_type.is_copy(types) {
+        if value_type.is_wasm_copy(types) {
+            // wasm face IS the rust type (primitive / c-style enum): copy out of the `&V` with no
+            // `.into()`.
             ".copied()".to_owned()
+        } else if value_type.is_copy(types) {
+            // A `@copy` extern value: rust-Copy but wasm-wrapped — deref-copy the `&V` (no clone,
+            // clippy::clone_on_copy) then `.into()` to the wasm wrapper.
+            ".map(|v| (*v).into())".to_owned()
         } else {
             modifier.to_owned()
         }

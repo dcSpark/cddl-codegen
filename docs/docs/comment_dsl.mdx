@@ -475,6 +475,24 @@ This exists because a raw-bytes type implements `RawBytesEncoding` (the caller f
 
 The tag is **opt-in and never automatic**: a consumer whose single wrapper is bound solely on `RawBytesEncoding` already compiles today under the plain name, so flavoring the plain name whenever the two markers compose would silently break that working output. The tag takes no name argument — the wrapper is user-owned, so any preferred name is one `pub type <ExternName>RawBytes<T> = Whatever<T>;` alias away. Using it on any rule other than a `_CDDL_CODEGEN_EXTERN_TYPE_` definition is a hard error.
 
+## @copy
+
+A bare tag valid **only** on a `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule. It declares that the externally-defined rust type derives `Copy`:
+
+```cddl
+hash = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @copy
+```
+
+Without it, the generator emits a defensive `.clone()` at every boundary that moves the value — map-key deserialize loops (`table.insert(key.clone(), …)`), wasm getters (`self.0.field.clone().into()`), optional getters (`self.0.field.clone().map(Into::into)`), list indexed getters (`self.0[index].clone().into()`), and enum-variant accessors (`(hash).clone().into()`). Downstream `clippy::clone_on_copy` then flags each. With `@copy`, those clones are dropped: the value copies instead (`table.insert(key, …)`, `self.0.field.into()`, `self.0.field.map(Into::into)`, `self.0[index].into()`, `(*hash).into()`).
+
+Only the **rust** face changes. The type's **wasm** face is a distinct `#[wasm_bindgen]` wrapper that is not `Copy`, so the wasm→rust boundary keeps its clone (constructor/setter params) — `@copy` never drops a clone that would move out of a borrowed wasm value.
+
+**Honesty assertion.** The declaring crate emits a compile-time `Copy` assertion for each `@copy` type (a `_assert_copy::<T>()` bound-carrier in `generated/extern_interface_check.rs`), so a **false** `@copy` — a type that does not actually derive `Copy` — fails **that** crate's own build with a named error, never a distant consumer's.
+
+**Seam projection.** Like `@raw_bytes_flavor`, `@copy` travels the extern-interface export (`extern-interface/<dep>/**`), so a `--extern-import` consumer that imports the type inherits its Copy-ness and drops the same boundary clones.
+
+Using it on any rule other than a `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_` definition (or at a field position) is a hard error.
+
 ## _CDDL_CODEGEN_RAW_BYTES_TYPE_
 
 Allows encoding as `bytes` but imposing hand-written constraints defined elsewhere.

@@ -3406,6 +3406,12 @@ reason = "the value 65536 is above the `.size 2` window (0..65535 — the exact 
 expect_err = "65536 not in range 0 - 65535"
 
 [[row]]
+id = "dsl.copy"
+axis = "feature"
+example = "hash = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @copy"
+pinned_reason = "references user-supplied code; crate cannot compile standalone (references a user-provided Copy extern/raw-bytes type; integration-tested in tests/corpus/dsl_copy.cddl + the clippy-consumer-report scratch e2e)"
+
+[[row]]
 id = "dsl.custom_deserialize"
 axis = "feature"
 example = "\ncb = bytes ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: cb]"

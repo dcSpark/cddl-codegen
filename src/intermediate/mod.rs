@@ -191,6 +191,12 @@ pub struct IntermediateTypes<'a> {
     // `used_as_key`, there is NO transitive expansion — the tag names the element directly, and the
     // wrapper's identity is fully determined by that one element type.
     used_as_elem: BTreeSet<RustIdent>,
+    // Idents of extern / raw-bytes rules tagged `@copy`: the externally-defined rust type derives
+    // `Copy`, so `ConceptualRustType::is_copy` treats a `Rust(ident)` reference to one as Copy and
+    // the generator drops the defensive boundary `.clone()`. The declaring crate emits a compile-time
+    // `Copy` assertion for each (see `export.rs`), and the tag rides the extern-interface seam like
+    // `@raw_bytes_flavor` so `--extern-import` consumers inherit it. See `RuleMetadata::copy`.
+    copy_externs: BTreeSet<RustIdent>,
     // Base generic extern idents tagged `@raw_bytes_flavor`: an instance of one whose argument
     // resolves to a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` aliases the `<Base>RawBytes` wrapper flavor
     // instead of the plain `<Base>`. Opt-in only — see `RuleMetadata::raw_bytes_flavor`.
@@ -254,6 +260,7 @@ impl<'a> IntermediateTypes<'a> {
             key_demand: BTreeMap::new(),
             key_demand_roots: BTreeMap::new(),
             used_as_elem: BTreeSet::new(),
+            copy_externs: BTreeSet::new(),
             raw_bytes_flavor: BTreeSet::new(),
             raw_bytes_flavor_emitted: BTreeSet::new(),
             rust_name_pins: BTreeMap::new(),
@@ -3295,6 +3302,16 @@ impl<'a> IntermediateTypes<'a> {
 
     pub fn mark_raw_bytes_flavor(&mut self, name: RustIdent) {
         self.raw_bytes_flavor.insert(name);
+    }
+
+    /// Whether `ident` names an extern / raw-bytes rule declared `@copy`. `is_copy` ORs this into its
+    /// `Rust(ident)` arm so the generator stops cloning a value whose rust type derives `Copy`.
+    pub fn is_copy_extern(&self, ident: &RustIdent) -> bool {
+        self.copy_externs.contains(ident)
+    }
+
+    pub fn mark_copy_extern(&mut self, name: RustIdent) {
+        self.copy_externs.insert(name);
     }
 
     /// The base generic extern idents for which a flavored (`<Base>RawBytes`) instance was actually

@@ -180,7 +180,7 @@ type TagParse = (s: string) => { id: string; rest: string } | null;
 // side without the other fails every importer's selfCheck (project_corpus runs in the fast tier).
 const MIRRORED_DIRECTIVES = new Set([
   "@name", "@rust_name", "@newtype", "@no_alias", "@used_as_key", "@used_as_elem",
-  "@raw_bytes_flavor", "@duplicates", "@custom_json", "@custom_serialize", "@custom_deserialize", "@doc",
+  "@copy", "@raw_bytes_flavor", "@duplicates", "@custom_json", "@custom_serialize", "@custom_deserialize", "@doc",
 ]);
 const ws = (s: string) => s.replace(/^\s+/, ""); // take_while(char::is_whitespace)
 const argRequired = (id: string, tag: string): TagParse => s => {
@@ -232,6 +232,9 @@ const DSL_TAGS: TagParse[] = [
     }
   },
   noArg("dsl.used_as_elem", "@used_as_elem"),
+  // @copy: bare no-arg tag (valid only on a `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_`
+  // rule — the Copy-ness channel that drops boundary clones).
+  noArg("dsl.copy", "@copy"),
   // @raw_bytes_flavor: bare no-arg tag (valid only on a `_CDDL_CODEGEN_EXTERN_TYPE_` generic).
   noArg("dsl.raw_bytes_flavor", "@raw_bytes_flavor"),
   // @duplicates: one REQUIRED argument from a strict vocabulary (`preserve`/`reject`), consumed as

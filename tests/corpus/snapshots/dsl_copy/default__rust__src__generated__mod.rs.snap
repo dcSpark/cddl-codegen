@@ -1,0 +1,65 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+pub mod error;
+mod extern_interface_check;
+pub mod serialization;
+// cddl-codegen extern re-export contract: this crate's hand-written root lib.rs must re-export
+// each name below (`pub use <your_module>::<Name>;`) so the generated glue resolves against the
+// user-owned definition. See the extern types section of docs/output_format.
+pub use crate::Ext;
+pub use crate::Hash;
+
+use crate::generated::error::*;
+use std::collections::BTreeMap;
+
+#[derive(Clone, Debug)]
+pub enum Choice {
+    Hash(Hash),
+    U64(u64),
+}
+
+impl Choice {
+    pub fn new_hash(hash: Hash) -> Self {
+        Self::Hash(hash)
+    }
+
+    pub fn new_uint(uint: u64) -> Self {
+        Self::U64(uint)
+    }
+}
+
+pub type HashList = Vec<Hash>;
+
+pub type Hashes = Vec<Hash>;
+
+pub type Htable = BTreeMap<Hash, u64>;
+
+#[derive(Clone, Debug)]
+pub struct Record {
+    pub key_0: Hash,
+    pub key_1: Option<Ext>,
+    pub key_2: BTreeMap<Hash, u64>,
+}
+
+impl Record {
+    pub fn new(key_0: Hash, key_2: BTreeMap<Hash, u64>) -> Self {
+        Self {
+            key_0,
+            key_1: None,
+            key_2,
+        }
+    }
+}
+
+pub type Vtable = BTreeMap<u64, Hash>;

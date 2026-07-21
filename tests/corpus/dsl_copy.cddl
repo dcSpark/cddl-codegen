@@ -1,0 +1,25 @@
+; @copy declares that an extern / raw-bytes rule's externally-defined rust type derives `Copy`, so
+; the generator stops emitting a defensive `.clone()` at every boundary that moves the value.
+; Exercises both flavors (raw-bytes + extern) across every clone-dropping shape:
+;   - a required Copy record field   (wasm getter: `self.0.h.into()`)
+;   - an optional Copy record field  (wasm getter: `self.0.e.map(Into::into)`)
+;   - a Copy list element            (wasm indexed getter: `self.0[index].into()`)
+;   - a Copy map key                 (rust deser loop: `table.insert(key, ..)`)
+;   - a Copy type-choice arm         (wasm enum accessor: `(*hash).into()`)
+hash = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @copy
+
+ext = _CDDL_CODEGEN_EXTERN_TYPE_ ; @copy
+
+record = {
+  0: hash,
+  ? 1: ext,
+  2: { * hash => uint },
+}
+
+hashes = [* hash]
+
+htable = { * hash => uint }
+
+vtable = { * uint => hash }
+
+choice = hash / uint

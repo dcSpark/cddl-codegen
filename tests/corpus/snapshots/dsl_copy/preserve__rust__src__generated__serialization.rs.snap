@@ -1,0 +1,367 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::cbor_encodings::*;
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for Choice {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            Choice::Hash {
+                hash,
+                hash_encoding,
+            } => serializer.write_bytes_sz(
+                hash.to_raw_bytes(),
+                hash_encoding.to_str_len_sz(hash.to_raw_bytes().len() as u64),
+            ),
+            Choice::U64 {
+                uint,
+                uint_encoding,
+            } => serializer.write_unsigned_integer_sz(*uint, fit_sz(*uint, *uint_encoding)),
+        }
+    }
+}
+
+impl Deserialize for Choice {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::Bytes => {
+                    let (hash, hash_encoding) = raw
+                        .bytes_sz()
+                        .map_err(Into::<DeserializeError>::into)
+                        .and_then(|(bytes, enc)| {
+                            Hash::from_raw_bytes(&bytes)
+                                .map(|bytes| (bytes, StringEncoding::from(enc)))
+                                .map_err(|e| {
+                                    DeserializeFailure::InvalidStructure(Box::new(e)).into()
+                                })
+                        })?;
+                    Ok(Self::Hash {
+                        hash,
+                        hash_encoding,
+                    })
+                }
+                cbor_event::Type::UnsignedInteger => {
+                    let (uint, uint_encoding) =
+                        raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                    Ok(Self::U64 {
+                        uint,
+                        uint_encoding,
+                    })
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("Choice"))
+    }
+}
+
+impl cbor_event::se::Serialize for Record {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(
+                    2 + match &self.key_1 {
+                        Some(_) => 1,
+                        None => 0,
+                    },
+                ),
+        )?;
+        let deser_order = self
+            .encodings
+            .as_ref()
+            .filter(|encs| {
+                encs.orig_deser_order.len()
+                    == 2 + match &self.key_1 {
+                        Some(_) => 1,
+                        None => 0,
+                    }
+            })
+            .map(|encs| encs.orig_deser_order.clone())
+            .unwrap_or_else(|| (0..3).collect());
+        for field_index in deser_order {
+            match field_index {
+                0 => {
+                    serializer.write_unsigned_integer_sz(
+                        0u64,
+                        fit_sz(
+                            0u64,
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.key_0_key_encoding)
+                                .unwrap_or_default(),
+                        ),
+                    )?;
+                    serializer.write_bytes_sz(
+                        self.key_0.to_raw_bytes(),
+                        self.encodings
+                            .as_ref()
+                            .map(|encs| encs.key_0_encoding.clone())
+                            .unwrap_or_default()
+                            .to_str_len_sz(self.key_0.to_raw_bytes().len() as u64),
+                    )?;
+                }
+                1 => {
+                    if let Some(field) = &self.key_1 {
+                        serializer.write_unsigned_integer_sz(
+                            1u64,
+                            fit_sz(
+                                1u64,
+                                self.encodings
+                                    .as_ref()
+                                    .map(|encs| encs.key_1_key_encoding)
+                                    .unwrap_or_default(),
+                            ),
+                        )?;
+                        field.serialize(serializer)?;
+                    }
+                }
+                2 => {
+                    serializer.write_unsigned_integer_sz(
+                        2u64,
+                        fit_sz(
+                            2u64,
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.key_2_key_encoding)
+                                .unwrap_or_default(),
+                        ),
+                    )?;
+                    serializer.write_map_sz(
+                        self.encodings
+                            .as_ref()
+                            .map(|encs| encs.key_2_encoding)
+                            .unwrap_or_default()
+                            .to_len_sz(self.key_2.len() as u64),
+                    )?;
+                    for (key, value) in self.key_2.iter() {
+                        let key_2_key_encoding = self
+                            .encodings
+                            .as_ref()
+                            .and_then(|encs| encs.key_2_key_encodings.get(key))
+                            .cloned()
+                            .unwrap_or_default();
+                        serializer.write_bytes_sz(
+                            key.to_raw_bytes(),
+                            key_2_key_encoding.to_str_len_sz(key.to_raw_bytes().len() as u64),
+                        )?;
+                        let key_2_value_encoding = self
+                            .encodings
+                            .as_ref()
+                            .and_then(|encs| encs.key_2_value_encodings.get(key))
+                            .cloned()
+                            .unwrap_or_default();
+                        serializer.write_unsigned_integer_sz(
+                            *value,
+                            fit_sz(*value, key_2_value_encoding),
+                        )?;
+                    }
+                    self.encodings
+                        .as_ref()
+                        .map(|encs| encs.key_2_encoding)
+                        .unwrap_or_default()
+                        .end(serializer)?;
+                }
+                _ => unreachable!(),
+            };
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for Record {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(2)?;
+            let mut orig_deser_order = Vec::new();
+            let mut key_0_encoding = StringEncoding::default();
+            let mut key_0_key_encoding = None;
+            let mut key_0 = None;
+            let mut key_1_key_encoding = None;
+            let mut key_1 = None;
+            let mut key_2_encoding = LenEncoding::default();
+            let mut key_2_key_encodings = BTreeMap::new();
+            let mut key_2_value_encodings = BTreeMap::new();
+            let mut key_2_key_encoding = None;
+            let mut key_2 = None;
+            let mut read = 0;
+            while match len {
+                cbor_event::LenSz::Len(n, _) => read < n,
+                cbor_event::LenSz::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => match raw.unsigned_integer_sz()? {
+                        (0, key_enc) => {
+                            if key_0.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Uint(0)).into());
+                            }
+                            let (tmp_key_0, tmp_key_0_encoding) = raw
+                                .bytes_sz()
+                                .map_err(Into::<DeserializeError>::into)
+                                .and_then(|(bytes, enc)| {
+                                    Hash::from_raw_bytes(&bytes)
+                                        .map(|bytes| (bytes, StringEncoding::from(enc)))
+                                        .map_err(|e| {
+                                            DeserializeFailure::InvalidStructure(Box::new(e)).into()
+                                        })
+                                })
+                                .map_err(|e: DeserializeError| e.annotate("key_0"))?;
+                            key_0 = Some(tmp_key_0);
+                            key_0_encoding = tmp_key_0_encoding;
+                            key_0_key_encoding = Some(key_enc);
+                            orig_deser_order.push(0);
+                        }
+                        (1, key_enc) => {
+                            if key_1.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Uint(1)).into());
+                            }
+                            let tmp_key_1 = (|| -> Result<_, DeserializeError> {
+                                read_len.read_elems(1)?;
+                                Ext::deserialize(raw)
+                            })()
+                            .map_err(|e| e.annotate("key_1"))?;
+                            key_1 = Some(tmp_key_1);
+                            key_1_key_encoding = Some(key_enc);
+                            orig_deser_order.push(1);
+                        }
+                        (2, key_enc) => {
+                            if key_2.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Uint(2)).into());
+                            }
+                            let (
+                                tmp_key_2,
+                                tmp_key_2_encoding,
+                                tmp_key_2_key_encodings,
+                                tmp_key_2_value_encodings,
+                            ) = (|| -> Result<_, DeserializeError> {
+                                let mut key_2_table = OrderedHashMap::new();
+                                let key_2_len = raw.map_sz()?;
+                                let key_2_encoding = key_2_len.into();
+                                let mut key_2_key_encodings = BTreeMap::new();
+                                let mut key_2_value_encodings = BTreeMap::new();
+                                while match key_2_len {
+                                    cbor_event::LenSz::Len(n, _) => (key_2_table.len() as u64) < n,
+                                    cbor_event::LenSz::Indefinite => true,
+                                } {
+                                    if matches!(key_2_len, cbor_event::LenSz::Indefinite)
+                                        && raw.cbor_type()? == cbor_event::Type::Special
+                                        && raw.special_break()?
+                                    {
+                                        break;
+                                    }
+                                    let (key_2_key, key_2_key_encoding) = raw
+                                        .bytes_sz()
+                                        .map_err(Into::<DeserializeError>::into)
+                                        .and_then(|(bytes, enc)| {
+                                            Hash::from_raw_bytes(&bytes)
+                                                .map(|bytes| (bytes, StringEncoding::from(enc)))
+                                                .map_err(|e| {
+                                                    DeserializeFailure::InvalidStructure(Box::new(
+                                                        e,
+                                                    ))
+                                                    .into()
+                                                })
+                                        })?;
+                                    let (key_2_value, key_2_value_encoding) =
+                                        raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                                    if key_2_table.insert(key_2_key, key_2_value).is_some() {
+                                        return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                            String::from("some complicated/unsupported type"),
+                                        ))
+                                        .into());
+                                    }
+                                    key_2_key_encodings.insert(key_2_key, key_2_key_encoding);
+                                    key_2_value_encodings.insert(key_2_key, key_2_value_encoding);
+                                }
+                                Ok((
+                                    key_2_table,
+                                    key_2_encoding,
+                                    key_2_key_encodings,
+                                    key_2_value_encodings,
+                                ))
+                            })()
+                            .map_err(|e| e.annotate("key_2"))?;
+                            key_2 = Some(tmp_key_2);
+                            key_2_encoding = tmp_key_2_encoding;
+                            key_2_key_encodings = tmp_key_2_key_encodings;
+                            key_2_value_encodings = tmp_key_2_value_encodings;
+                            key_2_key_encoding = Some(key_enc);
+                            orig_deser_order.push(2);
+                        }
+                        (unknown_key, _enc) => {
+                            return Err(
+                                DeserializeFailure::UnknownKey(Key::Uint(unknown_key)).into()
+                            );
+                        }
+                    },
+                    cbor_event::Type::Text => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Str(raw.text()?)).into());
+                    }
+                    cbor_event::Type::Special => match len {
+                        cbor_event::LenSz::Len(_, _) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                        }
+                        cbor_event::LenSz::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
+                    }
+                }
+                read += 1;
+            }
+            let key_0 = match key_0 {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Uint(0)).into()),
+            };
+            let key_2 = match key_2 {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Uint(2)).into()),
+            };
+            read_len.finish()?;
+            Ok(Self {
+                key_0,
+                key_1,
+                key_2,
+                encodings: Some(RecordEncoding {
+                    len_encoding,
+                    orig_deser_order,
+                    key_0_key_encoding,
+                    key_0_encoding,
+                    key_1_key_encoding,
+                    key_2_key_encoding,
+                    key_2_encoding,
+                    key_2_key_encodings,
+                    key_2_value_encodings,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("Record"))
+    }
+}

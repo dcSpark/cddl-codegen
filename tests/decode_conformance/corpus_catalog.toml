@@ -1215,6 +1215,62 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "dsl_copy.choice"
+axis = "corpus"
+example = "hash = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @copy\nchoice = hash / uint"
+fixture = "dsl_copy"
+rule = "choice"
+pinned_reason = "ruby generator cannot mint this construct (last exit 1)"
+
+[[row]]
+id = "dsl_copy.ext"
+axis = "corpus"
+example = "ext = _CDDL_CODEGEN_EXTERN_TYPE_ ; @copy"
+fixture = "dsl_copy"
+rule = "ext"
+pinned_reason = "ruby generator cannot mint this construct (last exit 1)"
+
+[[row]]
+id = "dsl_copy.hash"
+axis = "corpus"
+example = "hash = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @copy"
+fixture = "dsl_copy"
+rule = "hash"
+pinned_reason = "ruby generator cannot mint this construct (last exit 1)"
+
+[[row]]
+id = "dsl_copy.hashes"
+axis = "corpus"
+example = "hash = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @copy\nhashes = [* hash]"
+fixture = "dsl_copy"
+rule = "hashes"
+pinned_reason = "ruby generator cannot mint this construct (last exit 1)"
+
+[[row]]
+id = "dsl_copy.htable"
+axis = "corpus"
+example = "hash = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @copy\nhtable = { * hash => uint }"
+fixture = "dsl_copy"
+rule = "htable"
+pinned_reason = "ruby generator cannot mint this construct (last exit 1)"
+
+[[row]]
+id = "dsl_copy.record"
+axis = "corpus"
+example = "hash = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @copy\next = _CDDL_CODEGEN_EXTERN_TYPE_ ; @copy\nrecord = {\n  0: hash,\n  ? 1: ext,\n  2: { * hash => uint },\n}"
+fixture = "dsl_copy"
+rule = "record"
+pinned_reason = "ruby generator cannot mint this construct (last exit 1)"
+
+[[row]]
+id = "dsl_copy.vtable"
+axis = "corpus"
+example = "hash = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @copy\nvtable = { * uint => hash }"
+fixture = "dsl_copy"
+rule = "vtable"
+pinned_reason = "ruby generator cannot mint this construct (last exit 1)"
+
+[[row]]
 id = "dsl_custom.custom_newtype"
 axis = "corpus"
 example = "custom_newtype = uint ; @newtype @custom_json"

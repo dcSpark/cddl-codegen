@@ -1262,6 +1262,12 @@ impl GenerationScope {
             let any_raw_bytes = entries
                 .iter()
                 .any(|e| matches!(e.kind, ExternCheckKind::RawBytes));
+            // `@copy` roots: every exported extern / raw-bytes ident declared `@copy`. The honesty
+            // assertion proves the externally-defined rust type actually derives `Copy` in THIS
+            // crate, so a false `@copy` fails the declaring crate's own build with a named error —
+            // never a distant consumer's (a consumer imports the tag through a non-exported extern-dep
+            // scope, which never reaches these entries).
+            let any_copy = entries.iter().any(|e| types.is_copy_extern(&e.ident));
             // The embedded-group surface (`serialize_as_embedded_group` / `deserialize_as_embedded_group`)
             // a spliced record MEMBER delegates through, asserted only for group-body rows. Its
             // `Deserialize` twin is gated per-type on the dep generating one, exactly like the
@@ -1304,6 +1310,9 @@ impl GenerationScope {
                 file.push_str(&format!(
                     "#[allow(dead_code)]\nfn _assert_raw_bytes<T: {common}::serialization::RawBytesEncoding>() {{}}\n"
                 ));
+            }
+            if any_copy {
+                file.push_str("#[allow(dead_code)]\nfn _assert_copy<T: Copy>() {}\n");
             }
             // The embedded-group traits are the crate's own runtime traits in ALL modes (unlike
             // whole-value `Serialize`, whose custom canonical variant only exists in canonical mode).
@@ -1358,6 +1367,12 @@ impl GenerationScope {
                         file.push_str(&format!("    _assert_raw_bytes::<{path}>();\n"));
                     }
                     ExternCheckKind::Use | ExternCheckKind::None => {}
+                }
+                // `@copy` honesty assertion, orthogonal to the wire-surface kind above: a `@copy`
+                // extern is a Serialize row, a `@copy` raw-bytes type a RawBytes row, and either must
+                // actually be `Copy`.
+                if types.is_copy_extern(&entry.ident) {
+                    file.push_str(&format!("    _assert_copy::<{path}>();\n"));
                 }
             }
             file.push_str("}\n");

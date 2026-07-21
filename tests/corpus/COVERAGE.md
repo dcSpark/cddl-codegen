@@ -240,10 +240,11 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 ## cddl-codegen vendor profile (comment DSL + sentinels — not RFC 8610)
 
-### `comment_dsl` (16)
+### `comment_dsl` (17)
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
+| `dsl.copy` | ✅ | @copy — extern/raw-bytes type derives Copy, drop boundary clones | `dsl_copy.cddl` |
 | `dsl.custom_deserialize` | ✅ | @custom_deserialize — override deserialization | `dsl_custom.cddl` |
 | `dsl.custom_json` | ✅ | @custom_json — suppress generated JSON traits | `dsl_custom.cddl` |
 | `dsl.custom_serialize` | ✅ | @custom_serialize — override serialization | `dsl_custom.cddl` |
@@ -328,9 +329,9 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 ## Summary
 
-- Features: **114** — ✅ 63 covered · ➕ 20 supported-untested · ⚠️ 4 partial · ➖ 27 not supported
+- Features: **115** — ✅ 64 covered · ➕ 20 supported-untested · ⚠️ 4 partial · ➖ 27 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
-- Corpus fixtures: 77
+- Corpus fixtures: 78
 
 **Per-cell coverage (role × feature).** Where a construct's support *differs by role*,
 coverage is keyed on the (role × feature) cell, derived from a real `cddl`-crate AST walk

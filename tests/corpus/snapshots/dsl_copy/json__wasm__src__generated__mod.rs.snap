@@ -1,0 +1,355 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+// cddl-codegen extern re-export contract: this crate's hand-written root lib.rs must re-export
+// each name below (`pub use <your_module>::<Name>;`) so the generated glue resolves against the
+// user-owned definition. See the extern types section of docs/output_format.
+pub use crate::Ext;
+pub use crate::Hash;
+
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Choice(pub(crate) cddl_lib::Choice);
+
+#[wasm_bindgen]
+impl Choice {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Choice, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<Choice, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new_hash(hash: &Hash) -> Self {
+        Self(cddl_lib::Choice::new_hash(hash.clone().into()))
+    }
+
+    pub fn new_uint(uint: u64) -> Self {
+        Self(cddl_lib::Choice::new_uint(uint))
+    }
+
+    pub fn kind(&self) -> ChoiceKind {
+        match &self.0 {
+            cddl_lib::Choice::Hash(_) => ChoiceKind::Hash,
+            cddl_lib::Choice::U64(_) => ChoiceKind::U64,
+        }
+    }
+
+    pub fn as_hash(&self) -> Option<Hash> {
+        match &self.0 {
+            cddl_lib::Choice::Hash(hash) => Some((*hash).into()),
+            _ => None,
+        }
+    }
+
+    pub fn as_uint(&self) -> Option<u64> {
+        match &self.0 {
+            cddl_lib::Choice::U64(uint) => Some(*uint),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::Choice> for Choice {
+    fn from(native: cddl_lib::Choice) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Choice> for cddl_lib::Choice {
+    fn from(wasm: Choice) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Choice> for Choice {
+    fn as_ref(&self) -> &cddl_lib::Choice {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum ChoiceKind {
+    Hash,
+    U64,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct HashList(pub(crate) Vec<cddl_lib::Hash>);
+
+#[wasm_bindgen]
+impl HashList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> Hash {
+        self.0[index].into()
+    }
+
+    pub fn add(&mut self, elem: &Hash) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<cddl_lib::Hash>> for HashList {
+    fn from(native: Vec<cddl_lib::Hash>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<HashList> for Vec<cddl_lib::Hash> {
+    fn from(wasm: HashList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<cddl_lib::Hash>> for HashList {
+    fn as_ref(&self) -> &Vec<cddl_lib::Hash> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Hashes(pub(crate) Vec<cddl_lib::Hash>);
+
+#[wasm_bindgen]
+impl Hashes {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> Hash {
+        self.0[index].into()
+    }
+
+    pub fn add(&mut self, elem: &Hash) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<cddl_lib::Hash>> for Hashes {
+    fn from(native: Vec<cddl_lib::Hash>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Hashes> for Vec<cddl_lib::Hash> {
+    fn from(wasm: Hashes) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<cddl_lib::Hash>> for Hashes {
+    fn as_ref(&self) -> &Vec<cddl_lib::Hash> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Htable(pub(crate) cddl_lib::Htable);
+
+#[wasm_bindgen]
+impl Htable {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: &Hash, value: u64) -> Option<u64> {
+        self.0.insert(key.clone().into(), value)
+    }
+
+    pub fn get(&self, key: &Hash) -> Option<u64> {
+        self.0.get(key.as_ref()).copied()
+    }
+
+    pub fn keys(&self) -> HashList {
+        HashList(self.0.keys().copied().collect::<Vec<_>>())
+    }
+}
+
+impl From<cddl_lib::Htable> for Htable {
+    fn from(native: cddl_lib::Htable) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Htable> for cddl_lib::Htable {
+    fn from(wasm: Htable) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Htable> for Htable {
+    fn as_ref(&self) -> &cddl_lib::Htable {
+        &self.0
+    }
+}
+
+pub type MapHashToU64 = Htable;
+
+pub type MapU64ToHash = Vtable;
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Record(pub(crate) cddl_lib::Record);
+
+#[wasm_bindgen]
+impl Record {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Record, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<Record, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn key_0(&self) -> Hash {
+        self.0.key_0.into()
+    }
+
+    pub fn set_key_1(&mut self, key_1: &Ext) {
+        self.0.key_1 = Some(key_1.clone().into())
+    }
+
+    pub fn key_1(&self) -> Option<Ext> {
+        self.0.key_1.map(std::convert::Into::into)
+    }
+
+    pub fn key_2(&self) -> MapHashToU64 {
+        self.0.key_2.clone().into()
+    }
+
+    pub fn new(key_0: &Hash, key_2: &MapHashToU64) -> Self {
+        Self(cddl_lib::Record::new(
+            key_0.clone().into(),
+            key_2.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::Record> for Record {
+    fn from(native: cddl_lib::Record) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Record> for cddl_lib::Record {
+    fn from(wasm: Record) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Record> for Record {
+    fn as_ref(&self) -> &cddl_lib::Record {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Vtable(pub(crate) cddl_lib::Vtable);
+
+#[wasm_bindgen]
+impl Vtable {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: u64, value: &Hash) -> Option<Hash> {
+        self.0.insert(key, value.clone().into()).map(Into::into)
+    }
+
+    pub fn get(&self, key: u64) -> Option<Hash> {
+        self.0.get(&key).map(|v| (*v).into())
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<cddl_lib::Vtable> for Vtable {
+    fn from(native: cddl_lib::Vtable) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Vtable> for cddl_lib::Vtable {
+    fn from(wasm: Vtable) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Vtable> for Vtable {
+    fn as_ref(&self) -> &cddl_lib::Vtable {
+        &self.0
+    }
+}

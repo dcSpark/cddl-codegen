@@ -1,0 +1,85 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+pub mod cbor_encodings;
+mod extern_interface_check;
+pub mod serialization;
+// cddl-codegen extern re-export contract: this crate's hand-written root lib.rs must re-export
+// each name below (`pub use <your_module>::<Name>;`) so the generated glue resolves against the
+// user-owned definition. See the extern types section of docs/output_format.
+pub use crate::Ext;
+pub use crate::Hash;
+
+use crate::generated::error::*;
+use crate::generated::ordered_hash_map::OrderedHashMap;
+use crate::generated::serialization::StringEncoding;
+use cbor_encodings::RecordEncoding;
+use std::collections::BTreeMap;
+
+#[derive(Clone, Debug)]
+pub enum Choice {
+    Hash {
+        hash: Hash,
+        hash_encoding: StringEncoding,
+    },
+    U64 {
+        uint: u64,
+        uint_encoding: Option<cbor_event::Sz>,
+    },
+}
+
+impl Choice {
+    pub fn new_hash(hash: Hash) -> Self {
+        Self::Hash {
+            hash,
+            hash_encoding: StringEncoding::default(),
+        }
+    }
+
+    pub fn new_uint(uint: u64) -> Self {
+        Self::U64 {
+            uint,
+            uint_encoding: None,
+        }
+    }
+}
+
+pub type HashList = Vec<Hash>;
+
+pub type Hashes = Vec<Hash>;
+
+pub type Htable = OrderedHashMap<Hash, u64>;
+
+#[derive(Clone, Debug)]
+pub struct Record {
+    pub key_0: Hash,
+    pub key_1: Option<Ext>,
+    pub key_2: OrderedHashMap<Hash, u64>,
+    pub encodings: Option<RecordEncoding>,
+}
+
+impl Record {
+    pub fn new(key_0: Hash, key_2: OrderedHashMap<Hash, u64>) -> Self {
+        Self {
+            key_0,
+            key_1: None,
+            key_2,
+            encodings: None,
+        }
+    }
+}
+
+pub type Vtable = OrderedHashMap<u64, Hash>;
