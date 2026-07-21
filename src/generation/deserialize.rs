@@ -882,6 +882,10 @@ impl GenerationScope {
                          x: &str,
                          x_expr: &str,
                          width: Option<(i128, i128)>| {
+                            // The nint reader (`negative_integer_sz`) yields the value as `i128`
+                            // already, so its RangeCheck `found` needs no widening cast (the unsigned
+                            // `func`s read a `u64`, which does).
+                            let found_i128 = func == "negative_integer";
                             if cli.preserve_encodings {
                                 let enc_expr = match func {
                                     "text" | "bytes" => "StringEncoding::from(enc)",
@@ -897,6 +901,7 @@ impl GenerationScope {
                                             "(x, enc)",
                                             "(x, enc)",
                                             !error_convert.is_empty(),
+                                            found_i128,
                                         )
                                     })
                                     .unwrap_or_default();
@@ -922,6 +927,7 @@ impl GenerationScope {
                                             false,
                                             primitive_non_negative(*p),
                                             None,
+                                            found_i128,
                                         ),
                                         final_expr(final_exprs, Some(x_expr.to_owned())),
                                     ),
@@ -952,6 +958,7 @@ impl GenerationScope {
                                             "x",
                                             "x",
                                             !bounds_fn.is_empty(),
+                                            found_i128,
                                         )
                                     })
                                     .unwrap_or_default();
@@ -1029,17 +1036,19 @@ impl GenerationScope {
                                 arm_final_exprs.push("Some(enc)".to_owned());
                                 let arm_tuple =
                                     final_expr(arm_final_exprs, Some(format!("x as {p}")));
-                                let bounds_fn = |arm: &SignArmBounds| match sign_arm_if_block(
-                                    arm, "x", false,
-                                ) {
-                                    // always convert error to have consistent E for the and_then
-                                    Some(if_block) => Cow::Owned(format!(
-                                        "{}.and_then(|(x, enc)| {} else {{ Ok((x, enc)) }})",
-                                        convert_err_to_ours, if_block,
-                                    )),
-                                    None => Cow::Borrowed(""),
+                                // `found_i128`: the uint arm reads a `u64` (real widening cast) while
+                                // the nint arm reads `negative_integer_sz()` (already `i128` — no cast).
+                                let bounds_fn = |arm: &SignArmBounds, found_i128: bool| {
+                                    match sign_arm_if_block(arm, "x", false, found_i128) {
+                                        // always convert error to have consistent E for the and_then
+                                        Some(if_block) => Cow::Owned(format!(
+                                            "{}.and_then(|(x, enc)| {} else {{ Ok((x, enc)) }})",
+                                            convert_err_to_ours, if_block,
+                                        )),
+                                        None => Cow::Borrowed(""),
+                                    }
                                 };
-                                let uint_bounds_fn = bounds_fn(&uint_arm);
+                                let uint_bounds_fn = bounds_fn(&uint_arm, false);
                                 let mut pos = Block::new("cbor_event::Type::UnsignedInteger =>");
                                 pos.line(format!(
                                     "let (x, enc) = {}.unsigned_integer_sz(){}{}?;",
@@ -1053,6 +1062,7 @@ impl GenerationScope {
                                             "(x, enc)",
                                             "(x, enc)",
                                             !uint_bounds_fn.is_empty(),
+                                            false,
                                         )
                                     } else {
                                         String::new()
@@ -1062,7 +1072,7 @@ impl GenerationScope {
                                 .after(",");
                                 type_check.push_block(pos);
                                 // let this cover both the negative int case + error case
-                                let nint_bounds_fn = bounds_fn(&nint_arm);
+                                let nint_bounds_fn = bounds_fn(&nint_arm, true);
                                 let mut neg = Block::new("_ =>");
                                 neg.line(format!(
                                     "let (x, enc) = {}.negative_integer_sz(){}{}?;",
@@ -1076,6 +1086,7 @@ impl GenerationScope {
                                             "(x, enc)",
                                             "(x, enc)",
                                             !nint_bounds_fn.is_empty(),
+                                            true,
                                         )
                                     } else {
                                         String::new()
@@ -1085,8 +1096,11 @@ impl GenerationScope {
                                 .after(",");
                                 type_check.push_block(neg);
                             } else {
+                                // Both arms here read a narrower-than-i128 value (the uint arm a
+                                // `u64`, the I8/I16/I32 nint arm an `i64` from `negative_integer()`),
+                                // so the widening `as i128` cast is real — never `found_i128`.
                                 let non_preserve_arm_fn = |arm: &SignArmBounds, x: &str| {
-                                    match sign_arm_if_block(arm, x, false) {
+                                    match sign_arm_if_block(arm, x, false, false) {
                                         // always convert error to have consistent E for the and_then
                                         Some(if_block) => Cow::Owned(format!(
                                             "{}.and_then(|{}| {} else {{ Ok({}) }})",
@@ -1102,7 +1116,7 @@ impl GenerationScope {
                                     deserializer_name,
                                     uint_arm_fn,
                                     if uint_width {
-                                        width_reject(&format!("x > {wmax}"), wmin, wmax, "x", "x", !uint_arm_fn.is_empty())
+                                        width_reject(&format!("x > {wmax}"), wmin, wmax, "x", "x", !uint_arm_fn.is_empty(), false)
                                     } else {
                                         String::new()
                                     },
@@ -1123,6 +1137,8 @@ impl GenerationScope {
                                                 false,
                                                 primitive_non_negative(*p),
                                                 None,
+                                                // `negative_integer_sz()` yields the value as i128
+                                                true,
                                             ),
                                         )),
                                         None => Cow::Borrowed(""),
@@ -1131,7 +1147,7 @@ impl GenerationScope {
                                     "_ => {}.negative_integer_sz(){}{}.map(|(x, _enc)| x)? as {},",
                                     deserializer_name, bounds_fn,
                                     if nint_width {
-                                        width_reject(&format!("x < {wmin}"), wmin, wmax, "(x, _enc)", "(x, _enc)", !bounds_fn.is_empty())
+                                        width_reject(&format!("x < {wmin}"), wmin, wmax, "(x, _enc)", "(x, _enc)", !bounds_fn.is_empty(), true)
                                     } else {
                                         String::new()
                                     },
@@ -1151,6 +1167,8 @@ impl GenerationScope {
                                                 "x",
                                                 "x",
                                                 !nint_arm_fn.is_empty(),
+                                                // I8/I16/I32 read `negative_integer()` -> i64: real cast
+                                                false,
                                             )
                                         } else {
                                             String::new()
@@ -1179,14 +1197,29 @@ impl GenerationScope {
                                 // of the nint range (below i64::MIN); the _sz reader yields i128
                                 // across the full range, so we use it directly
                                 let bounds_fn = match &type_cfg.bounds {
+                                    // Convert the read's error to DeserializeError so the `.and_then`
+                                    // closure's `Err(DeserializeFailure::…into())` sees a consistent E
+                                    // — but ONLY when the site's `error_convert` did not already (it is
+                                    // empty under `--annotate-fields=false`, where nothing else on this
+                                    // chain converts, so the bare `.and_then` would otherwise infer the
+                                    // reader's native `cbor_event::Error` and fail E0277). Same
+                                    // convert-at-most-once rule as the I64 nint arm and the bounds fns;
+                                    // guarded by `deserialize_converts_error_at_most_once`.
                                     Some(bounds) => Cow::Owned(format!(
-                                        ".and_then(|(x, _enc)| {} else {{ Ok((x + 1).unsigned_abs() as u64) }})",
+                                        "{}.and_then(|(x, _enc)| {} else {{ Ok((x + 1).unsigned_abs() as u64) }})",
+                                        if error_convert.is_empty() {
+                                            convert_err_to_ours
+                                        } else {
+                                            ""
+                                        },
                                         bounds_check_if_block(
                                             bounds,
                                             &bounds_check_expr(*p, "x"),
                                             false,
                                             primitive_non_negative(*p),
                                             None,
+                                            // `negative_integer_sz()` yields the value as i128
+                                            true,
                                         ),
                                     )),
                                     None => Cow::Borrowed(
@@ -1725,6 +1758,8 @@ impl GenerationScope {
                                 true,
                                 true,
                                 None,
+                                // `.len()` is usize — the widening cast is real
+                                false,
                             ));
                         }
                     } else if type_cfg.bounds == Some((Some(1), None)) {
@@ -1743,6 +1778,8 @@ impl GenerationScope {
                             true,
                             true,
                             None,
+                            // `.len()` is usize — the widening cast is real
+                            false,
                         ));
                     }
                     if cli.preserve_encodings {
@@ -1959,6 +1996,8 @@ impl GenerationScope {
                                         true,
                                         true,
                                         None,
+                                        // `.len()` is usize — the widening cast is real
+                                        false,
                                     ));
                                 }
                             }
@@ -2077,6 +2116,8 @@ impl GenerationScope {
                                 true,
                                 true,
                                 None,
+                                // `.len()` is usize — the widening cast is real
+                                false,
                             ));
                         }
                         if cli.preserve_encodings {

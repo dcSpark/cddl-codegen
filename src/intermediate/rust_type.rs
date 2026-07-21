@@ -1357,6 +1357,13 @@ impl ConceptualRustType {
             format!("{expr}.clone()")
         };
         let mut ops = match self {
+            // A c-style enum is `pub use`-re-exported into the wasm crate (its wasm face IS the rust
+            // type), so the wasm->rust `.into()` is identity — skip it (clippy::useless_conversion).
+            // `is_copy` already dropped the clone, so an enum reduces to the bare `expr`. Every other
+            // `Rust` ident is a distinct wasm wrapper that needs the real `.into()`.
+            Self::Rust(ident) if types.is_enum(ident) => {
+                vec![ToWasmBoundaryOperations::Code(expr_cloned)]
+            }
             Self::Rust(_ident) => vec![
                 ToWasmBoundaryOperations::Code(expr_cloned),
                 ToWasmBoundaryOperations::Into,
@@ -1598,11 +1605,11 @@ impl ConceptualRustType {
     /// must stay inline because its boundary can't be expressed by those two bits.
     ///
     /// Note on enums: `get` takes no `.into()` (enums are `Copy`, returned by value) so
-    /// `needs_into = false` — but the inline `add` does emit `elem.into()`
-    /// (`from_wasm_boundary_clone`'s `Rust` arm). That stays correct under `needs_into = false`
-    /// (i.e. the macro's `push(elem)`) because c-style enums are re-exported into the wasm crate
-    /// (`pub use ...::Color`), so the emitted `rust_elem` and `wasm_elem` are the *same* type and
-    /// no conversion is needed either way. `Optional`/`Fixed` return `None`: an `Optional` element's
+    /// `needs_into = false` — and the inline `add` matches: `from_wasm_boundary_clone`'s `Rust` arm
+    /// skips the `.into()` for a c-style enum (which is re-exported into the wasm crate via
+    /// `pub use ...::Color`, so `rust_elem` and `wasm_elem` are the *same* type — no conversion
+    /// needed either way, and the macro's `push(elem)` is exactly what both sides emit).
+    /// `Optional`/`Fixed` return `None`: an `Optional` element's
     /// wasm return type is `Option<T>`, which the two-bit form can't express, so it falls back to
     /// the inline wrapper (reachable, e.g. `m = text / null; [* m]`).
     pub fn wasm_list_macro_needs_into(&self, types: &IntermediateTypes) -> Option<bool> {

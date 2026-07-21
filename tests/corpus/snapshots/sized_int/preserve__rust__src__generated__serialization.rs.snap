@@ -170,7 +170,7 @@ impl Deserialize for BoundedInts {
                             .and_then(|(x, enc)| {
                                 if x < -128 {
                                     Err(DeserializeFailure::RangeCheck {
-                                        found: x as i128,
+                                        found: x,
                                         min: Some(-128),
                                         max: Some(127),
                                     }

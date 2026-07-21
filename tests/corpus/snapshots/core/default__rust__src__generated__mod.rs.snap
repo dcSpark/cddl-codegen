@@ -1747,7 +1747,7 @@ impl TaggedFooBytes {
 
 impl From<Foo> for TaggedFooBytes {
     fn from(inner: Foo) -> Self {
-        TaggedFooBytes::new(inner.clone().into())
+        TaggedFooBytes::new(inner)
     }
 }
 
@@ -2040,7 +2040,7 @@ impl WrapperTable {
 
 impl From<BTreeMap<u64, u64>> for WrapperTable {
     fn from(inner: BTreeMap<u64, u64>) -> Self {
-        WrapperTable::new(inner.clone().into())
+        WrapperTable::new(inner)
     }
 }
 

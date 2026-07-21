@@ -12,6 +12,7 @@ expression: content
 )]
 pub mod collections;
 
+pub use cddl_lib::ClippyEnum;
 use cddl_lib::ordered_hash_map::OrderedHashMap;
 use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
@@ -206,6 +207,141 @@ impl From<CborInCbor> for cddl_lib::CborInCbor {
 
 impl AsRef<cddl_lib::CborInCbor> for CborInCbor {
     fn as_ref(&self) -> &cddl_lib::CborInCbor {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ClippyEnumRecord(pub(crate) cddl_lib::ClippyEnumRecord);
+
+#[wasm_bindgen]
+impl ClippyEnumRecord {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::Serialize::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ClippyEnumRecord, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn tag(&self) -> ClippyEnum {
+        self.0.tag
+    }
+
+    pub fn rest(&self) -> u64 {
+        self.0.rest
+    }
+
+    pub fn new(tag: ClippyEnum, rest: u64) -> Self {
+        Self(cddl_lib::ClippyEnumRecord::new(tag, rest))
+    }
+}
+
+impl From<cddl_lib::ClippyEnumRecord> for ClippyEnumRecord {
+    fn from(native: cddl_lib::ClippyEnumRecord) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ClippyEnumRecord> for cddl_lib::ClippyEnumRecord {
+    fn from(wasm: ClippyEnumRecord) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::ClippyEnumRecord> for ClippyEnumRecord {
+    fn as_ref(&self) -> &cddl_lib::ClippyEnumRecord {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ClippyNegBounded(pub(crate) cddl_lib::ClippyNegBounded);
+
+#[wasm_bindgen]
+impl ClippyNegBounded {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::Serialize::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ClippyNegBounded, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn neg(&self) -> u64 {
+        self.0.neg
+    }
+
+    pub fn new(neg: u64) -> Result<ClippyNegBounded, JsError> {
+        cddl_lib::ClippyNegBounded::new(neg)
+            .map(Into::into)
+            .map_err(Into::into)
+    }
+}
+
+impl From<cddl_lib::ClippyNegBounded> for ClippyNegBounded {
+    fn from(native: cddl_lib::ClippyNegBounded) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ClippyNegBounded> for cddl_lib::ClippyNegBounded {
+    fn from(wasm: ClippyNegBounded) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::ClippyNegBounded> for ClippyNegBounded {
+    fn as_ref(&self) -> &cddl_lib::ClippyNegBounded {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ClippyWrappedMap(pub(crate) cddl_lib::ClippyWrappedMap);
+
+#[wasm_bindgen]
+impl ClippyWrappedMap {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::Serialize::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ClippyWrappedMap, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: &MapU64ToText) -> Self {
+        Self(cddl_lib::ClippyWrappedMap::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> MapU64ToText {
+        self.0.get().clone().into()
+    }
+}
+
+impl From<cddl_lib::ClippyWrappedMap> for ClippyWrappedMap {
+    fn from(native: cddl_lib::ClippyWrappedMap) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ClippyWrappedMap> for cddl_lib::ClippyWrappedMap {
+    fn from(wasm: ClippyWrappedMap) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::ClippyWrappedMap> for ClippyWrappedMap {
+    fn as_ref(&self) -> &cddl_lib::ClippyWrappedMap {
         &self.0
     }
 }

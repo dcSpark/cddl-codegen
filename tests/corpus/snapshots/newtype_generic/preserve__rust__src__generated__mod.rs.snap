@@ -75,7 +75,7 @@ impl WrappedMap {
 
 impl From<OrderedHashMap<u64, String>> for WrappedMap {
     fn from(inner: OrderedHashMap<u64, String>) -> Self {
-        WrappedMap::new(inner.clone().into())
+        WrappedMap::new(inner)
     }
 }
 

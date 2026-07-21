@@ -435,6 +435,9 @@ pub(super) fn generate_wrapper_struct(
                     true,
                     bounds_check_expr_non_negative(field_type),
                     location,
+                    // the wrapper checks its stored `inner` (a member type: i8..i64/u64, or a
+                    // `.len()` usize) — never already i128, so the widening cast is real.
+                    false,
                 )
             }
         };
@@ -477,15 +480,12 @@ pub(super) fn generate_wrapper_struct(
             .new_fn("try_from")
             .arg("inner", field_type.for_rust_member(types, false, cli))
             .ret("Result<Self, Self::Error>")
-            .line(format!(
-                "{}::new({})",
-                type_name,
-                ToWasmBoundaryOperations::format(
-                    field_type
-                        .from_wasm_boundary_clone(types, "inner", false)
-                        .into_iter()
-                )
-            ));
+            // `inner` is by-value and already exactly `new()`'s param type
+            // (`for_rust_member(false)` == `for_rust_move`), so pass it straight through — routing
+            // it via `from_wasm_boundary_clone` would emit an identity `.clone().into()`
+            // (clippy::useless_conversion + a redundant clone of the owned last-use param). `new()`
+            // returns the `Result` here (the bounded/float branch), so TryFrom keeps its semantics.
+            .line(format!("{type_name}::new(inner)"));
         try_from
     } else {
         // let field_type_tagged = if let Some(t) = tag {
@@ -551,15 +551,9 @@ pub(super) fn generate_wrapper_struct(
         .new_fn("from")
         .arg("inner", field_type.for_rust_member(types, false, cli))
         .ret("Self")
-        .line(format!(
-            "{}::new({})",
-            type_name,
-            ToWasmBoundaryOperations::format(
-                field_type
-                    .from_wasm_boundary_clone(types, "inner", false)
-                    .into_iter()
-            )
-        ));
+        // `inner` is by-value and already exactly `new()`'s param type, so pass it straight
+        // through — see the `try_from` twin above (this unbounded branch's `new()` returns `Self`).
+        .line(format!("{type_name}::new(inner)"));
         from
     };
     // Flush the accumulated deserialize() body: wrap it in a single `.annotate(type_name)` error

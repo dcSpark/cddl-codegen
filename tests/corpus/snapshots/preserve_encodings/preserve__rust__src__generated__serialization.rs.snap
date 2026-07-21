@@ -1035,7 +1035,7 @@ impl Deserialize for Bounds {
                             .and_then(|(x, enc)| {
                                 if x < -1000 {
                                     Err(DeserializeFailure::RangeCheck {
-                                        found: x as i128,
+                                        found: x,
                                         min: Some(-1000),
                                         max: None,
                                     }
@@ -1071,7 +1071,7 @@ impl Deserialize for Bounds {
                 .and_then(|(x, enc)| {
                     if x < -5 {
                         Err(DeserializeFailure::RangeCheck {
-                            found: x as i128,
+                            found: x,
                             min: Some(-5),
                             max: None,
                         }
@@ -6320,7 +6320,7 @@ impl Deserialize for SignBounds {
                             .and_then(|(x, enc)| {
                                 if x < -10 || x > -3 {
                                     Err(DeserializeFailure::RangeCheck {
-                                        found: x as i128,
+                                        found: x,
                                         min: Some(-10),
                                         max: Some(-3),
                                     }
@@ -6361,7 +6361,7 @@ impl Deserialize for SignBounds {
                             .and_then(|(x, enc)| {
                                 if x < -10 {
                                     Err(DeserializeFailure::RangeCheck {
-                                        found: x as i128,
+                                        found: x,
                                         min: Some(-10),
                                         max: None,
                                     }
@@ -6402,7 +6402,7 @@ impl Deserialize for SignBounds {
                             .and_then(|(x, enc)| {
                                 if x > -3 {
                                     Err(DeserializeFailure::RangeCheck {
-                                        found: x as i128,
+                                        found: x,
                                         min: None,
                                         max: Some(-3),
                                     }
@@ -6414,7 +6414,7 @@ impl Deserialize for SignBounds {
                             .and_then(|(x, enc)| {
                                 if x < -9223372036854775808 {
                                     Err(DeserializeFailure::RangeCheck {
-                                        found: x as i128,
+                                        found: x,
                                         min: Some(-9223372036854775808),
                                         max: Some(9223372036854775807),
                                     }
@@ -6455,7 +6455,7 @@ impl Deserialize for SignBounds {
                             .and_then(|(x, enc)| {
                                 if x < -9223372036854775808 {
                                     Err(DeserializeFailure::RangeCheck {
-                                        found: x as i128,
+                                        found: x,
                                         min: Some(-9223372036854775808),
                                         max: Some(9223372036854775807),
                                     }
@@ -6508,7 +6508,7 @@ impl Deserialize for SignBounds {
                             .and_then(|(x, enc)| {
                                 if true {
                                     Err(DeserializeFailure::RangeCheck {
-                                        found: x as i128,
+                                        found: x,
                                         min: Some(3),
                                         max: None,
                                     }
@@ -6561,7 +6561,7 @@ impl Deserialize for SignBounds {
                             .and_then(|(x, enc)| {
                                 if x < -9223372036854775808 {
                                     Err(DeserializeFailure::RangeCheck {
-                                        found: x as i128,
+                                        found: x,
                                         min: Some(-9223372036854775808),
                                         max: Some(9223372036854775807),
                                     }
@@ -6602,7 +6602,7 @@ impl Deserialize for SignBounds {
                             .and_then(|(x, enc)| {
                                 if x == -5 {
                                     Err(DeserializeFailure::RangeCheck {
-                                        found: x as i128,
+                                        found: x,
                                         min: Some(-4),
                                         max: Some(-6),
                                     }
@@ -6614,7 +6614,7 @@ impl Deserialize for SignBounds {
                             .and_then(|(x, enc)| {
                                 if x < -9223372036854775808 {
                                     Err(DeserializeFailure::RangeCheck {
-                                        found: x as i128,
+                                        found: x,
                                         min: Some(-9223372036854775808),
                                         max: Some(9223372036854775807),
                                     }
@@ -6655,7 +6655,7 @@ impl Deserialize for SignBounds {
                             .and_then(|(x, enc)| {
                                 if x < -10 {
                                     Err(DeserializeFailure::RangeCheck {
-                                        found: x as i128,
+                                        found: x,
                                         min: Some(-10),
                                         max: None,
                                     }
@@ -6708,7 +6708,7 @@ impl Deserialize for SignBounds {
                             .and_then(|(x, enc)| {
                                 if x < -9223372036854775808 {
                                     Err(DeserializeFailure::RangeCheck {
-                                        found: x as i128,
+                                        found: x,
                                         min: Some(-9223372036854775808),
                                         max: Some(9223372036854775807),
                                     }
@@ -6761,7 +6761,7 @@ impl Deserialize for SignBounds {
                             .and_then(|(x, enc)| {
                                 if x < -9223372036854775808 {
                                     Err(DeserializeFailure::RangeCheck {
-                                        found: x as i128,
+                                        found: x,
                                         min: Some(-9223372036854775808),
                                         max: Some(9223372036854775807),
                                     }
@@ -7085,7 +7085,7 @@ impl Deserialize for SignedInts {
                             .and_then(|(x, enc)| {
                                 if x < -128 {
                                     Err(DeserializeFailure::RangeCheck {
-                                        found: x as i128,
+                                        found: x,
                                         min: Some(-128),
                                         max: Some(127),
                                     }
@@ -7126,7 +7126,7 @@ impl Deserialize for SignedInts {
                             .and_then(|(x, enc)| {
                                 if x < -32768 {
                                     Err(DeserializeFailure::RangeCheck {
-                                        found: x as i128,
+                                        found: x,
                                         min: Some(-32768),
                                         max: Some(32767),
                                     }
@@ -7167,7 +7167,7 @@ impl Deserialize for SignedInts {
                             .and_then(|(x, enc)| {
                                 if x < -2147483648 {
                                     Err(DeserializeFailure::RangeCheck {
-                                        found: x as i128,
+                                        found: x,
                                         min: Some(-2147483648),
                                         max: Some(2147483647),
                                     }
@@ -7208,7 +7208,7 @@ impl Deserialize for SignedInts {
                             .and_then(|(x, enc)| {
                                 if x < -9223372036854775808 {
                                     Err(DeserializeFailure::RangeCheck {
-                                        found: x as i128,
+                                        found: x,
                                         min: Some(-9223372036854775808),
                                         max: Some(9223372036854775807),
                                     }
@@ -8220,7 +8220,7 @@ impl Deserialize for TopLevelNegRange {
                         .and_then(|(x, enc)| {
                             if x < -9223372036854775808 {
                                 Err(DeserializeFailure::RangeCheck {
-                                    found: x as i128,
+                                    found: x,
                                     min: Some(-9223372036854775808),
                                     max: Some(9223372036854775807),
                                 }
@@ -8658,7 +8658,7 @@ impl Deserialize for WidthCollapse {
                             .and_then(|(x, enc)| {
                                 if x < -128 {
                                     Err(DeserializeFailure::RangeCheck {
-                                        found: x as i128,
+                                        found: x,
                                         min: Some(-128),
                                         max: Some(127),
                                     }
@@ -8699,7 +8699,7 @@ impl Deserialize for WidthCollapse {
                             .and_then(|(x, enc)| {
                                 if x < -9223372036854775808 {
                                     Err(DeserializeFailure::RangeCheck {
-                                        found: x as i128,
+                                        found: x,
                                         min: Some(-9223372036854775808),
                                         max: Some(9223372036854775807),
                                     }
