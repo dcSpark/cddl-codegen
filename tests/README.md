@@ -521,6 +521,12 @@ extractor):
   `crate::generated::<scope>::…` import (full `cargo check`), and a scoped extern element is
   imported through its crate-root re-export glue (generation assertion — a bare-stub extern has no
   hand-written runtime to compile against).
+  `workspace_requests_cohosted_keys_list_no_self_import` is the keys-list twin of that walk's loose-
+  `try_from`-source guards: when a hosted map's `keys()`-list wrapper is itself co-requested into the
+  same `requested_collections.rs` (the normal case — borrowing `{* k => v}` also borrows `[* k]`), the
+  walk must NOT emit `use crate::generated::<KeysList>;` for it (it is minted in that very file, so
+  the root defines no such name — E0432); the map's genuine root-hosted element class is still
+  imported, and the wasm crate `cargo check`s (RED pre-fix: E0432 unresolved import).
 - `workspace_regen_two_consumer_contract` — the regen-contract gate over `tests/workspace-regen/`:
   an umbrella wasm cdylib linking one dep + TWO consumers, RED with duplicate symbols when both
   consumers mint and GREEN after a reverse-dependency-order holistic regen, then the in-place

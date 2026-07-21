@@ -9826,6 +9826,106 @@ fn workspace_requests_hosts_cross_scope_elements() {
     );
 }
 
+/// `--wrapper-requests` HOST-side keys-list self-import: when a hosted map wrapper's `keys()`-list
+/// wrapper is ITSELF co-hosted into the same `requested_collections.rs` (the normal case — a consumer
+/// borrowing `{* k => v}` also borrows `[* k]` for the map's `keys()`), the requested-collections
+/// import walk must NOT emit `use crate::generated::<KeysList>;` for it: the class is minted in the
+/// very file doing the importing, and the generated ROOT defines no such name (E0432). This is the
+/// keys-list twin of the loose-`try_from`-source `!requested_idents.contains(...)` guards the same
+/// walk already applies to the list/map non-empty arms; the keys-list `register_root_keys_list` call
+/// was the one registration that lacked it.
+///
+/// The map's ELEMENT class (`StakeCred`, a real record living at the generated root) is a genuine
+/// cross-file import and MUST survive — the guard is precise to the co-hosted structural name only.
+/// Full compile: the fixture's key is a real record, so the wasm crate `cargo check`s (RED pre-fix:
+/// E0432 unresolved import `crate::generated::StakeCredList`).
+#[test]
+fn workspace_requests_cohosted_keys_list_no_self_import() {
+    use std::str::FromStr;
+    if !tool_exists("cargo") {
+        return;
+    }
+    let base = std::path::PathBuf::from_str("tests/workspace-requests").unwrap();
+    let target_dir = std::env::temp_dir().join(format!(
+        "cddl_codegen_cohosted_keys_{:016x}",
+        checkout_hash()
+    ));
+    let scratch = base.join("export_cohosted_keys_scratch");
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let sidecar = scratch.join("sc.rs");
+    // A map over a dep-owned key AND its keys()-list, co-requested — exactly what a consumer borrowing
+    // `{* stake_cred => uint}` records (the keys() accessor needs `[* stake_cred]` too).
+    std::fs::write(
+        &sidecar,
+        "// This file was code-generated using an experimental CDDL to rust tool:\n\
+         // https://github.com/dcSpark/cddl-codegen\n\n\
+         #[allow(unused_imports)]\n\
+         mod borrowed {}\n\
+         #[allow(dead_code)]\n\
+         pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[\n\
+         \x20   (\"wr_dep\", \"MapStakeCredToU64\", \"{* stake_cred => uint}\"),\n\
+         \x20   (\"wr_dep\", \"StakeCredList\", \"[* stake_cred]\"),\n];\n",
+    )
+    .unwrap();
+    let out = base.join("export_cohosted_keys");
+    let _ = std::fs::remove_dir_all(&out);
+    let o = tool_cmd("cargo")
+        .arg("run")
+        .arg("--")
+        .arg("--input=tests/workspace-requests/dep_inputs_cohosted_keys")
+        .arg("--output=tests/workspace-requests/export_cohosted_keys")
+        .arg("--lib-name=wr-dep")
+        .arg("--wasm=true")
+        .arg("--preserve-encodings=true")
+        .arg(format!(
+            "--wrapper-requests=consumer={}",
+            sidecar.to_str().unwrap()
+        ))
+        .output()
+        .unwrap();
+    assert!(
+        o.status.success(),
+        "co-hosted keys-list dep generation failed:\n{}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    let requested =
+        std::fs::read_to_string(out.join("wasm/src/generated/requested_collections.rs")).unwrap();
+    // The keys-list wrapper is minted in THIS file — it must not be self-imported from the root.
+    assert!(
+        !requested
+            .lines()
+            .any(|l| l.contains("use crate::generated::") && l.contains("StakeCredList")),
+        "the co-hosted keys-list wrapper must not be imported from crate::generated (it is minted \
+         here — E0432 otherwise):\n{requested}"
+    );
+    // It IS still minted locally, and the map's genuine cross-file element class IS still imported.
+    assert!(
+        requested.contains("pub struct StakeCredList"),
+        "the keys-list wrapper must still be minted in requested_collections.rs:\n{requested}"
+    );
+    assert!(
+        requested
+            .lines()
+            .any(|l| l.contains("use crate::generated::")
+                && l.contains("StakeCred")
+                && !l.contains("StakeCredList")),
+        "the map's element class StakeCred must still be imported from crate::generated:\n{requested}"
+    );
+    // Honest compile gate (RED at HEAD before the fix: E0432 unresolved import StakeCredList).
+    let check = tool_cmd("cargo")
+        .arg("check")
+        .current_dir(out.join("wasm"))
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .output()
+        .unwrap();
+    assert!(
+        check.status.success(),
+        "the co-hosted-keys wasm crate must compile (no self-import of StakeCredList):\n{}",
+        String::from_utf8_lossy(&check.stderr)
+    );
+}
+
 /// Criterion 8 #4 at unit level: two DISTINCT shapes deriving the SAME structural name is a hard
 /// error naming both shapes and their requesters. Driven directly through the union collision path
 /// with a hand-built pair whose reverse-ambiguity (`{* a => b_to_c}` vs `{* a_to_b => c}`) collapses

@@ -1588,9 +1588,21 @@ impl<'a> IntermediateTypes<'a> {
                     ConceptualRustType::Map(key, value) => {
                         // The map class's `keys()` accessor names the keys-list wrapper bare at the
                         // emission scope (deferred from a dep's `collections`, or a ROOT-minted
-                        // `<Key>List` for a non-exposable key).
+                        // `<Key>List` for a non-exposable key). Skip the ROOT-import when the keys-list
+                        // is ITSELF a co-hosted requested wrapper (same file): it is minted here, so
+                        // `register_root_keys_list` would misroute the structural name to the crate
+                        // root (E0432) — the keys-list twin of the loose-`try_from`-source guards on
+                        // the list/map non-empty arms above. `register_deferred_keys_list` stays
+                        // unguarded: it is a no-op for a locally-hosted keys-list and MUST still run
+                        // for a mid-chain host whose keys-list is deferred to a deeper dep.
                         register_deferred_keys_list(&mut refs, self, deferred, req_scope, key);
-                        register_root_keys_list(&mut refs, self, wasm, deferred, req_scope, key);
+                        let keys_ident =
+                            RustIdent::new(CDDLIdent::new(key.name_as_wasm_array(self)));
+                        if !requested_idents.contains(&keys_ident) {
+                            register_root_keys_list(
+                                &mut refs, self, wasm, deferred, req_scope, key,
+                            );
+                        }
                         // A restricted `{+ …}` map borrows a LOOSE `MapKToV` as its `try_from` source
                         // named bare at the emission scope — same requested-source guard as the list arm.
                         if rt.is_non_empty_map() {
