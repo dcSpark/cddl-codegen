@@ -860,8 +860,19 @@ impl GenerationScope {
         // rust. The codegen provenance header is stamped once per emitted FILE (see
         // `generated_files` / `export`), not per scope — a scope-level raw would hoist above the
         // module-linking raws that `merge_scopes_to_strings` prepends into a merged root file.
-        self.rust_lib()
-            .raw("#![allow(clippy::too_many_arguments)]\n");
+        //
+        // These lints are module-scoped rather than detected per-site because their triggers are
+        // intrinsic to the emitted shape, and the fix each lint suggests would distort the generated
+        // public API: CDDL `/` choices become enums whose variant sizes are wildly asymmetric (a bare
+        // newtype next to a large record), and boxing the big variant to satisfy `large_enum_variant`
+        // would change the type's public shape; every fallible generated API returns
+        // `Result<_, DeserializeError>`, a static error type sitting near `result_large_err`'s size
+        // threshold that boxing likewise can't fix without altering signatures. Scoping to the
+        // generated module (not the crate) keeps all three lints live for hand-written code in
+        // consuming crates, matching the `too_many_arguments` precedent.
+        self.rust_lib().raw(
+            "#![allow(clippy::too_many_arguments, clippy::large_enum_variant, clippy::result_large_err)]\n",
+        );
 
         // declare modules (root lib specific)
         if cli.export_static_files() {
