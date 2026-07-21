@@ -678,19 +678,48 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   so an emission rename flips the liveness half red instead of leaving the negative half
   vacuous. Meanwhile the working rule when renaming emitted text: grep the test tree for needles
   pinning the old spelling in the same change.
-- **`--extern-wrapper-index` deferral-boundaries — per-wrapper emission MODE × wrapper shape is an
-  unswept axis.** The NonEmpty defer boundary is now closed: `generate_non_empty_array_type` /
-  `generate_non_empty_map_type` consult `try_defer_wrapper`, their loose `try_from`-source mints
-  defer normally (eager decisions, order-independent), and the source's conversion-internal import —
-  invisible to the field walk — is routed at the restricted class's emission scope
+- **`--extern-wrapper-index` deferral-boundaries — build the deferral-profile leg (DUE):
+  per-wrapper emission MODE × wrapper shape × reference POSITION, with a per-mode compile floor.**
+  The axis: every wrapper a spec implies has an emission MODE (local vs index-deferred vs
+  workspace-borrowed under `--workspace-dep` vs requested-hosted under `--wrapper-requests`)
+  crossed with the wrapper-shape space, and no existing honesty rule sweeps it (the wasm-ABI
+  matrix's SHAPES/ROLES cover what types look like and where they sit; the third honesty axis
+  covers flag × input mode; neither enumerates flag × shape). Leg spec: each extern-capable shape
+  probed once per mode (dep index listing its structural name / absent / workspace-dep configured /
+  requested by a consumer sidecar), each probe crossed with reference POSITION (inline-anonymous vs
+  NAMED-rule — the named-rule flavor takes struct-walk arms inline pins never touch), asserting the
+  mode outcome (deferred-import vs local-mint vs borrowed+sidecar-recorded vs hosted+indexed) AND
+  the shape row's IMPLIED COMPANIONS per mode (a table's synthesized keys-list:
+  imported-from-dep vs root-minted vs co-hosted-locally), with a compile floor per mode (wasm32
+  link consumer-side; `cargo check` of the host crate for the requested-hosted mode — one arming
+  instance was observable only there). The user-rule cross-crate cell and the map-side NonEmpty
+  source-routing cell join the leg rather than accreting per-shape hand fixtures. The leg doubles
+  as the regression net for accidental-provider removals — a fix suppressing a walk path other
+  positions silently relied on, a class fix-review reach-analysis asks about ("who else relied on
+  this path?") but only a mode × shape × position compile floor answers mechanically. Arming
+  evidence (the recur-first trigger is met; every instance was found by reading the emitters or
+  reported by a consumer, never by a gate): after the NonEmpty first instance (below), one
+  consumer-reported delivery produced two companion-wrapper cells — NAMED-table ×
+  workspace-borrowed (a synthesized keys-list whose deferred import only the inline-map reference
+  position ever registered: E0412 stranding plus a false criterion-9 shadow warning, entered when
+  an alias-recursion suppression removed the walk route that had been registering the import;
+  pinned by `workspace_dep_named_table_deferred_keys_list`) and requested-hosted ×
+  co-hosted-keys-list (the host importing from root a class it mints itself: E0432; pinned by
+  `workspace_requests_cohosted_keys_list_no_self_import`). Both were companion-wrapper failures at
+  the named/hosted flavor, not primary-shape failures — which is why the leg crosses POSITION and
+  asserts COMPANIONS rather than probing primary shapes alone. Closed context the leg builds on —
+  the NonEmpty defer boundary: `generate_non_empty_array_type` / `generate_non_empty_map_type`
+  consult `try_defer_wrapper`, their loose `try_from`-source mints defer normally (eager
+  decisions, order-independent), and the source's conversion-internal import — invisible to the
+  field walk — is routed at the restricted class's emission scope
   (`register_deferred_non_empty_{list,map}_source`, the same follow-the-class pattern as the R3d
-  keys-list registration). Pinned by `extern_wrapper_index_defers_to_dep`'s
+  keys-list registration); pinned by `extern_wrapper_index_defers_to_dep`'s
   `[+ idx_foo]`/`NonEmptyIdxFooList` cell (whole-wrapper deferral) plus its order-hostile
   deferred-source cells: the unreferenced named rule `abc_bars = [+ idx_bar]` (walked first, only
   loose use in another module — RED as duplicate-symbol if the source re-mints, RED as unresolved
-  `IdxBarList` if the import isn't routed) and the inline `only_nb_baz: [+ idx_baz]` twin (no loose
-  use anywhere). The map-side source routing is the same helper pattern but has no dedicated cell —
-  it joins the deferral-profile leg below. Two related gaps stay open. (1) USER rules claiming a
+  `IdxBarList` if the import isn't routed) and the inline `only_nb_baz: [+ idx_baz]` twin (no
+  loose use anywhere); the map-side source routing is the same helper pattern but has no dedicated
+  cell until the leg lands. A separate open DECISION rides this entry: USER rules claiming a
   dep-indexed structural name split by flavor under `--extern-wrapper-index`, and neither flavor is
   fully right: a rule whose ident EQUALS the structural name passes the shipped name-identity
   guard for ARRAYS and silently DEFERS — the user's own class is suppressed in favor of the dep's
@@ -707,36 +736,7 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   masquerades as rule-declared) and warns + keeps the user's class
   (`workspace_dep_defers_to_dep`'s shadowing cell); the open decision is whether the INDEX path
   should adopt the same guard — a behavior change to shipped semantics (today's array-flavor defer
-  is at least link-clean), so it needs its own red-first cell, not a drive-by. (2) The CLASS behind
-  all of these — a per-wrapper emission MODE (local vs index-deferred vs workspace-borrowed under
-  `--workspace-dep` vs requested-hosted under `--wrapper-requests`) crossed with the wrapper-shape
-  space — is an axis no existing honesty rule
-  sweeps (the wasm-ABI matrix's SHAPES/ROLES cover what types look like and where they sit; the third
-  honesty axis covers flag × input mode; neither enumerates flag × shape). Every instance has been
-  found by reading the emitters or reported by a consumer, never by a gate — and the mechanical
-  layer's arming trigger (a SECOND read-caught or consumer-reported instance after the NonEmpty
-  cell) has FIRED, twice in one consumer-reported delivery: the NAMED-table × workspace-borrowed
-  cell (a synthesized keys-list whose deferred import only the inline-map reference position ever
-  registered — E0412 stranding plus a false criterion-9 shadow warning, pinned by
-  `workspace_dep_named_table_deferred_keys_list`) and the requested-hosted × co-hosted-keys-list
-  cell (the host importing from root a class it mints itself — E0432, pinned by
-  `workspace_requests_cohosted_keys_list_no_self_import`). The deferral-profile leg is therefore
-  DUE, with two axis refinements those instances proved necessary: the shape rows must cross
-  reference POSITION (inline-anonymous vs NAMED-rule — the named-rule flavor takes walk-arm paths
-  every inline pin missed), and each shape row must assert its IMPLIED COMPANIONS per mode (a
-  table's synthesized keys-list: imported-from-dep vs root-minted vs co-hosted-locally), because
-  both trigger instances were companion-wrapper failures, not primary-shape failures. Leg spec
-  otherwise as recorded: each extern-capable shape probed once per mode (dep index listing its
-  structural name / absent / workspace-dep configured / requested by a consumer sidecar), asserting
-  deferred-import vs local-mint vs borrowed+sidecar-recorded vs hosted+indexed with a compile floor
-  per mode (wasm32 link consumer-side; `cargo check` of the host crate for the requested-hosted
-  mode — the self-import instance was only ever observable there); the user-rule cross-crate cell
-  and the map-side NonEmpty source-routing cell join it — rather than accreting per-shape hand
-  fixtures. The leg doubles as the regression net for accidental-provider removals (a fix
-  suppressing a walk path other positions silently relied on — how the named-table stranding
-  entered: the alias-recursion suppression removed the route that had been registering the
-  deferred import), a class fix-review reach-analysis asks about ("who else relied on this
-  path?") but only a mode × shape × position compile floor answers mechanically.
+  is at least link-clean), so it needs its own red-first cell, not a drive-by.
 - **Extern-deps wasm-boundary surface: packaging- and json-gen-gaps beyond the behavioral floor.**
   The split-dep cell (`integration_tests::extern_deps_wasm`, `--extern-wasm-crate`) drives the
   generated wasm crate's cross-crate wrappers behaviorally: `tests/extern-deps-wasm/tests_wasm.rs`
