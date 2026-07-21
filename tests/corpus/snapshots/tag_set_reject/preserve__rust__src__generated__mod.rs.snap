@@ -20,7 +20,6 @@ pub mod cbor_encodings;
 mod extern_interface_check;
 pub mod serialization;
 
-use crate::generated::error::*;
 use crate::generated::ordered_set::{NonEmptyOrderedSet, OrderedSet};
 use cbor_encodings::HolderEncoding;
 

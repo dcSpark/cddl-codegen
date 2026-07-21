@@ -202,6 +202,14 @@ pub struct GenerationScope {
     /// `wasm_externs_by_scope` `pub use crate::{ident};` loop. Only populated under `--wasm`.
     required_wasm_reexports: BTreeSet<String>,
     no_deser_reasons: BTreeMap<RustIdent, Vec<String>>,
+    /// Every cross-scope generator-minted type ident pushed into some module by
+    /// `add_imports_from_scope_refs` this run (flattened from the rust + wasm `scope_references`
+    /// maps). `scope_references` over-approximates (a type referenced by a later-collapsed/deferred
+    /// alias still lands here), so a referencing module can carry an import it never names — the
+    /// usage-derived prune removes it. Handed to `import_prune::PruneConfig` as name-scan-prunable
+    /// candidates (every entry is a concrete generated type, so name-scan is sound). Empty until
+    /// `generate()` populates it at the two `add_imports_from_scope_refs` loops.
+    scope_ref_import_idents: BTreeSet<String>,
 }
 
 impl Default for GenerationScope {
@@ -239,6 +247,7 @@ impl GenerationScope {
             required_rust_reexports: BTreeSet::new(),
             required_wasm_reexports: BTreeSet::new(),
             no_deser_reasons: BTreeMap::new(),
+            scope_ref_import_idents: BTreeSet::new(),
         }
     }
 
@@ -1234,6 +1243,14 @@ impl GenerationScope {
         // The rust pass registers no collection-wrapper class imports (those are wasm-only), so
         // deferral never applies here — pass an empty map so rust output is untouched by the flag.
         let rust_imports = types.scope_references(false, &BTreeMap::new(), &[], None);
+        // Record every cross-scope ident these imports push, so the usage-derived prune can name-scan
+        // away the ones a referencing module never uses (`scope_references` over-approximates).
+        for per_scope in rust_imports.values() {
+            for idents in per_scope.values() {
+                self.scope_ref_import_idents
+                    .extend(idents.iter().map(|i| i.to_string()));
+            }
+        }
         for (scope, content) in self.rust_scopes.iter_mut() {
             add_imports_from_scope_refs(
                 scope,
@@ -1405,6 +1422,12 @@ impl GenerationScope {
                 &self.requested_wrapper_types,
                 Some(&requested_scope),
             );
+            for per_scope in wasm_imports.values() {
+                for idents in per_scope.values() {
+                    self.scope_ref_import_idents
+                        .extend(idents.iter().map(|i| i.to_string()));
+                }
+            }
             for (scope, content) in self.wasm_scopes.iter_mut() {
                 // imports from other struct modules; the wasm generated tree nests one level under
                 // `crate::generated` (same as the rust crate)

@@ -19,8 +19,6 @@ pub mod serialization;
 // user-owned definition. See the extern types section of docs/output_format.
 pub use crate::PubKey;
 
-use crate::generated::error::*;
-
 #[derive(Clone, Debug)]
 pub struct Foo {
     pub pub_key: PubKey,

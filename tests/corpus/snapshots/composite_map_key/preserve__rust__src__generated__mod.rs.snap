@@ -19,7 +19,6 @@ pub mod cbor_encodings;
 mod extern_interface_check;
 pub mod serialization;
 
-use crate::generated::error::*;
 use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::ordered_hash_map::OrderedHashMap;
 use cbor_encodings::HolderEncoding;

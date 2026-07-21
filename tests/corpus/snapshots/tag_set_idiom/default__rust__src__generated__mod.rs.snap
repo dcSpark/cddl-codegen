@@ -16,7 +16,6 @@ mod extern_interface_check;
 pub mod non_empty;
 pub mod serialization;
 
-use crate::generated::error::*;
 use crate::generated::non_empty::NonEmptyVec;
 
 #[derive(Clone, Debug)]

@@ -697,19 +697,29 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   (`unused_parens` et al.): evaluate specific beyond-`all` lints one at a time, adding a per-lint
   deny only if it is currently green-able on both profiles (nursery lints carry known false
   positives). Act on a second instance or a consumer report, not before.
-- **`unused_imports` on the pruned collection-type imports — residual imprecision classes not yet
-  escalated.** The rustc-warning DETECTOR is live — the unused-allowlisted-import scan
-  (`unused_allowlisted_import_lines`) inside `feature_corpus_compiles`, cache-key-versioned by the
-  `lint=unused-imports-v1` marker; current state in `tests/README.md`'s description of that gate —
-  and its arming-run find (104 warning cells, from the prune's generated-only view of the
-  encoding-enum prelude) is closed by the two nearest-binding disqualifiers on a descendant's
-  protection (direct-import; target-module) in `import_prune::prune_generated_files`. Still
-  future-facing: the two deliberately-conservative keep classes the disqualifiers do not cover —
-  (a) an intermediate module between the ancestor and a deeper protector that consumes the
-  ancestor's copy for everything below it, and (b) descendants that never actually glob-chain back
-  to the ancestor (exact glob-EDGE tracking). Both are warning-severity only (never a compile
-  error) and watched by the live arm; replace the descendant-closure approximation with exact
-  resolution modelling only on a real warning report from that arm — not before.
+- **`unused_imports` on generated crates — residual trait-import class the name-scan model cannot
+  reach.** The rustc-warning DETECTOR is live and BROAD — the generated-code unused-import scan
+  (`unused_generated_import_lines`) inside `feature_corpus_compiles` fails on ANY `unused import`
+  warning in the purely-generated crates, cache-key-versioned by the `lint=unused-imports-v2`
+  marker (current state in `tests/README.md`'s description of that gate). Its escalation trigger
+  (a 26-warning consumer report + chain/cip36 regen) fired and is delivered: `import_prune` now
+  prunes the `use super::*;` and `use <common>::error::*;` globs when a fully-enumerable universe
+  proves them unused, computes each file's protector set via the super-glob EDGE graph
+  (`reachable_via_super`) rather than every structural descendant (which is what closed the root
+  `mod.rs` over-breadth — a sub-scope `serialization.rs` no longer protects the root), adds the
+  source-glob disqualifier (a descendant that globs the module the ancestor imports X from, the
+  `--common-import-override` `serialization::*` shape), and name-scan-prunes an extended candidate
+  set (the wasm prelude names, the `--wasm-*-macro` leaf names, and the cross-scope type idents
+  `scope_references` over-imports). Still future-facing: the `cbor_event::se::Serialize` TRAIT
+  import the non-canonical serialization prelude emits — a trait is exercised by a method call
+  whose ident never appears, so name-scan cannot prove it unused; the detector's
+  `UNUSED_IMPORT_TRAIT_RESIDUE` skips it. A per-file trait-need model (scan for the `.serialize(`
+  method call / a bare `Serialize` bound) would remove it, but is deferred until the class recurs
+  with a second unremovable trait. Also watched, warning-severity only (never a compile error):
+  the one deliberately-conservative keep the disqualifiers do not cover — an intermediate module
+  between the ancestor and a deeper protector that consumes the ancestor's copy for everything
+  below it; replace the per-descendant approximation with exact resolution modelling only on a
+  real warning report from the live arm.
 - **Mechanical layers for the two review-owned design rules in `tests/README.md` § "Design
   rules" (invariant-softening, vacuity-floor witness) — build only if a class recurs.** The
   vacuity-floor detector is a scoped mutation sweep over the harness's emission helpers — a

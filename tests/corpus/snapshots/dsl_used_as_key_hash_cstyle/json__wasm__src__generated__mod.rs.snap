@@ -13,4 +13,3 @@ expression: content
 pub mod collections;
 
 pub use cddl_lib::FixedEnum;
-use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};

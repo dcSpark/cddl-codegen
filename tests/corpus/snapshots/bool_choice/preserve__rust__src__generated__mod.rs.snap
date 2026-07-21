@@ -17,7 +17,6 @@ extern crate derivative;
 mod extern_interface_check;
 pub mod serialization;
 
-use crate::generated::error::*;
 use crate::generated::serialization::StringEncoding;
 
 #[derive(Clone, Debug)]

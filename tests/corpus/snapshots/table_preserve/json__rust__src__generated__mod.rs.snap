@@ -17,7 +17,6 @@ pub mod non_empty_map;
 pub mod pair_map;
 pub mod serialization;
 
-use crate::generated::error::*;
 use crate::generated::pair_map::{NonEmptyPairMap, PairMap};
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]

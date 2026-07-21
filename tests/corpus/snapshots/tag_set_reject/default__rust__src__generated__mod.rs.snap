@@ -17,7 +17,6 @@ pub mod non_empty;
 pub mod ordered_set;
 pub mod serialization;
 
-use crate::generated::error::*;
 use crate::generated::ordered_set::{NonEmptyOrderedSet, OrderedSet};
 
 #[derive(Clone, Debug)]

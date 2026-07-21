@@ -11,9 +11,7 @@ pub mod serialization;
 use crate::generated::a::Baz;
 use crate::generated::a::c::foo::Foo;
 use cbor_encodings::BarEncoding;
-use extern_dep_crate::error::*;
 use extern_dep_crate::ordered_hash_map::OrderedHashMap;
-use extern_dep_crate::serialization::{LenEncoding, StringEncoding};
 
 #[derive(Clone, Debug)]
 pub struct Bar {

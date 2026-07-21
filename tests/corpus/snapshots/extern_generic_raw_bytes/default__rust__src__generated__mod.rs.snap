@@ -21,8 +21,6 @@ pub use crate::ExtSet;
 pub use crate::ExtSetRawBytes;
 pub use crate::PubKey;
 
-use crate::generated::error::*;
-
 pub type ExtSetPlain = ExtSet<Plain>;
 
 pub type ExtSetPubKey = ExtSetRawBytes<PubKey>;

@@ -19,7 +19,6 @@ extern crate derivative;
 mod extern_interface_check;
 pub mod serialization;
 
-use crate::generated::error::*;
 use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::non_empty_map::NonEmptyMap;
 

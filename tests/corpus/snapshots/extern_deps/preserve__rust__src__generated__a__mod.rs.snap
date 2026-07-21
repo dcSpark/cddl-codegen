@@ -10,8 +10,6 @@ pub mod cbor_encodings;
 pub mod serialization;
 
 use cbor_encodings::BazEncoding;
-use extern_dep_crate::error::*;
-use extern_dep_crate::serialization::{LenEncoding, StringEncoding};
 
 #[derive(Clone, Debug)]
 pub struct Baz {

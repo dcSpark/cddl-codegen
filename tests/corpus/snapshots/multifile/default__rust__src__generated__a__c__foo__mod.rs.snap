@@ -7,8 +7,6 @@ expression: content
 
 pub mod serialization;
 
-use crate::generated::error::*;
-
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Foo {
     pub index_0: u64,
