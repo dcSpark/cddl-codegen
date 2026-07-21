@@ -342,7 +342,23 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   sibling `[[note]]`s whose defects had been fixed out from under them (the `bool`-in-type-choice
   E0282, the single-letter-`r` E0574, the inline-group data-loss "Bug", and the top-level
   fixed-value "panics" prose) — these render into `tests/corpus/COVERAGE.md`, a GENERATED span
-  `lint_doc_citations` never scans, so that gate could never have caught them. The mechanical layer
+  `lint_doc_citations` never scans, so that gate could never have caught them. THIRD instance, a
+  distinct rot mode — a NEGATIVE-INVENTORY scan claim (caught at item pickup during the tag-set
+  matrix-cell delivery): a `cddl-matrix/ROADMAP.md` bullet asserted "no current row's example
+  matches the recognized shape" as its coverage-hole premise, and the claim was silently falsified
+  the SAME DAY it shipped when the `dsl.duplicates.{reject,preserve}` registration (`5485b2c`)
+  landed a matching example (`#6.258([* uint]) / [* uint] ; @duplicates reject`; harmless there —
+  that row's verdict was minted with the collapse live, so nothing was actually stale — but the
+  prose was wrong from that commit on). The class property: a point-in-time inventory claim
+  DANGLES NOTHING — every artifact it names keeps resolving — so no citation lint can ever fire;
+  and mechanically re-checking arbitrary prose inventory claims against the live matrix is the
+  same claim-semantics boundary check `I` deliberately stops at. No mechanical layer proposed; the
+  guard is pickup discipline, which worked here: a roadmap item's scan/inventory premises are
+  claims to re-verify against the live tree when the item is picked up (AGENTS.md's
+  premise-probing rule — the re-scan is one grep), and the delivery prunes the whole bullet,
+  premise included. Authoring rule for future bullets: scope any inventory claim to its evidence
+  ("scanned at <sha>") or phrase it as the check to re-run, never as a standing fact. The
+  SECOND-instance mechanical layer
   is now BUILT for that home: the findings-claims arm (`project_corpus.ts` check `I`, local tier)
   fails a failure-claim finding that names no resolvable tracking pin — current state, including
   its accepted looseness (a resolving citation does not validate claim SEMANTICS, which stay
