@@ -109,7 +109,7 @@ impl From<cbor_event::LenSz> for LenEncoding {
 /// size", which is exactly the ambiguity this avoids.
 ///
 /// `Default` is `Tagged(None)`: a newly constructed value serializes tagged with the fit-minimal
-/// size (for tag 258 that is `Sz::Two`), matching the current-era Cardano ledger's emission.
+/// size (for tag 258 that is `Sz::Two`)
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum TagPresenceEncoding {
     Tagged(Option<cbor_event::Sz>),
