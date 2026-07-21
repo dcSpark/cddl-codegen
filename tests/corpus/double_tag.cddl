@@ -1,0 +1,20 @@
+; Stacked tag encodings — a tag applied to an already-tagged value, reached through alias/rule
+; reference stacking (literal `#6.24(#6.258(..))` is parse-rejected as doubly-nested, so the stack
+; is expressed by a tag rule wrapping another tag rule / a tag-set idiom).
+;
+; Under --preserve-encodings each tag LEVEL needs its OWN encoding member or the two levels collide
+; on one name and the encoding struct fails to compile. Levels count OUTSIDE-IN: level 1 keeps the
+; historical `{name}_tag_encoding`, level k >= 2 gets `{name}_tag{k}_encoding`.
+;
+; - `homogeneous_inner` / `homogeneous` — two MANDATORY tags stack (24 over 258), both lowering to
+;   `Option<cbor_event::Sz>`; pins `inner_tag_encoding` + `inner_tag2_encoding` and that the nested
+;   deserialize match arms bind distinct sizes (`tag_enc` / `tag_enc2`) instead of shadowing.
+; - `heterogeneous_set` / `heterogeneous` — a MANDATORY outer tag 24 over the optional-tag set idiom
+;   (258-or-untagged): level 1 is `Option<cbor_event::Sz>` (mandatory) and level 2 is
+;   `TagPresenceEncoding` (optional), pinning that the two encoding kinds sit at their own levels.
+; - `holder` — embeds both in record-field position so member-side (de)serialize compiles + roundtrips.
+homogeneous_inner = #6.258([* uint])
+homogeneous = #6.24(homogeneous_inner)
+heterogeneous_set = #6.258([* uint]) / [* uint]
+heterogeneous = #6.24(heterogeneous_set)
+holder = [h: homogeneous, s: heterogeneous]

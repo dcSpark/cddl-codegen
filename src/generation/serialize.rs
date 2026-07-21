@@ -16,6 +16,10 @@ pub(super) struct SerializeConfig<'a> {
     serializer_name_overload: Option<(&'a str, bool)>,
     /// Override regular serialization lgoic with a call to this function
     custom_serialize: Option<String>,
+    /// number of tag levels already crossed on this member name (0 at the field root). Drives the
+    /// `tag`/`tag2`/… encoding-var infix so stacked tags read their own level's var. See
+    /// `tag_encoding_infix`.
+    tag_depth: usize,
 }
 
 impl<'a> SerializeConfig<'a> {
@@ -29,6 +33,7 @@ impl<'a> SerializeConfig<'a> {
             encoding_var_in_option_struct: None,
             serializer_name_overload: None,
             custom_serialize: None,
+            tag_depth: 0,
         }
     }
 
@@ -90,6 +95,11 @@ impl<'a> SerializeConfig<'a> {
 
     pub(super) fn custom_serialize(mut self, func: String) -> Self {
         self.custom_serialize = Some(func);
+        self
+    }
+
+    pub(super) fn tag_depth(mut self, tag_depth: usize) -> Self {
+        self.tag_depth = tag_depth;
         self
     }
 
@@ -541,7 +551,7 @@ impl GenerationScope {
         if let Some(custom_serialize) = &config.custom_serialize {
             let pass_encoding_args = if cli.preserve_encodings {
                 Cow::Owned(
-                    encoding_fields_impl(types, &config.var_name, serializing_rust_type, cli)
+                    encoding_fields_impl(types, &config.var_name, serializing_rust_type, cli, 0)
                         .into_iter()
                         .map(|enc| {
                             format!(
@@ -579,6 +589,10 @@ impl GenerationScope {
                     CBOREncodingOperation::Tagged(tag),
                     child,
                 ) => {
+                    // level (tag_depth + 1) counted outside-in; the infix keeps the member name in
+                    // lockstep with `encoding_fields_impl`, and the child recurses one level deeper.
+                    let tag_level = config.tag_depth + 1;
+                    let tag_infix = tag_encoding_infix(tag_level);
                     let expr = format!("{tag}u64");
                     write_using_sz(
                         body,
@@ -590,16 +604,20 @@ impl GenerationScope {
                         &format!(
                             "{}{}",
                             encoding_deref,
-                            config.encoding_var(Some("tag"), encoding_var_is_copy)
+                            config.encoding_var(Some(&tag_infix), encoding_var_is_copy)
                         ),
                         cli,
                     );
-                    self.generate_serialize(types, *child, body, config, cli);
+                    self.generate_serialize(types, *child, body, config.tag_depth(tag_level), cli);
                 }
                 SerializingRustType::EncodingOperation(
                     CBOREncodingOperation::OptionallyTagged(tag),
                     child,
                 ) => {
+                    // level (tag_depth + 1) counted outside-in; the infix keeps the member name in
+                    // lockstep with `encoding_fields_impl`, and the child recurses one level deeper.
+                    let tag_level = config.tag_depth + 1;
+                    let tag_infix = tag_encoding_infix(tag_level);
                     let expr = format!("{tag}u64");
                     if cli.preserve_encodings {
                         // CANONICAL POLICY (decided): force_canonical normalizes the tag's SIZE
@@ -610,7 +628,7 @@ impl GenerationScope {
                         let enc_expr = format!(
                             "{}{}",
                             encoding_deref,
-                            config.encoding_var(Some("tag"), encoding_var_is_copy)
+                            config.encoding_var(Some(&tag_infix), encoding_var_is_copy)
                         );
                         let mut tag_block = Block::new(format!(
                             "if let TagPresenceEncoding::Tagged(tag_sz) = {enc_expr}"
@@ -640,7 +658,7 @@ impl GenerationScope {
                             cli,
                         );
                     }
-                    self.generate_serialize(types, *child, body, config, cli);
+                    self.generate_serialize(types, *child, body, config.tag_depth(tag_level), cli);
                 }
                 SerializingRustType::EncodingOperation(CBOREncodingOperation::CBORBytes, child) => {
                     let inner_se = format!("{}_inner_se", config.var_name);
