@@ -984,6 +984,27 @@ impl<'a> IntermediateTypes<'a> {
                 ConceptualRustType::Alias(alias_ident, alias_ty) => {
                     if let AliasIdent::Rust(rust_ident) = alias_ident {
                         set_ref(refs, types, current_scope, rust_ident);
+                        // A named COLLECTION rule (`recs = [* foo]` / `withdrawals = {* k => v}`, or a
+                        // generic instance like `gcn = gcoll<foo>`) registers a transparent alias, so
+                        // a field referencing it is `Alias(Recs, Array(Foo))`. In the WASM pass the
+                        // rule's OWN class (imported above via `set_ref`) IS the boundary surface —
+                        // recursing the collection target would mint a structural-wrapper import
+                        // (`FooList` / `MapKToV`) the rule subsumes and nothing else defines: E0432 for
+                        // a locally-owned rule, or a dangling `crate::generated::MapKToV` for a
+                        // DEP-owned rule (`table_shape_sole_owners` excludes non-exported scopes, so it
+                        // falls back to a root structural name with no owner). Suppress the target
+                        // recursion for such an alias; its element/key/value are the rule's concern,
+                        // imported at the rule's own scope by its Table/Array struct-walk arm. Only the
+                        // WASM pass names these structural wrappers, so the rust pass still recurses
+                        // (byte-identical output).
+                        if wasm
+                            && matches!(
+                                types.rust_struct(rust_ident).map(|rs| rs.variant()),
+                                Some(RustStructType::Array { .. } | RustStructType::Table { .. })
+                            )
+                        {
+                            return;
+                        }
                     }
                     // Also import idents the serialization INLINED through this transparent alias
                     // will name. A cross-module NAMED `.cbor` ref (`fb = bytes .cbor foo` in module

@@ -1,0 +1,3 @@
+; Root scope holds an unrelated rule so the consumer's dep-owned collection reference lives ONLY in a
+; NON-root module (`consumer`), where the import tracker must not mint a local structural wrapper.
+root_thing = [uint]

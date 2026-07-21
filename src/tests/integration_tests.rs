@@ -229,12 +229,11 @@ For more information about this error, try `rustc --explain E0583`.\n";
 /// `wasm_collection_wrapper` helper (the emitter's `for_wasm_member` twin) instead of a hard-coded
 /// pre-NonEmpty spelling from ROOT_SCOPE, and the restricted wrappers' loose `try_from` source is
 /// imported at its emission scope — so `collrec__anon` and the whole `necoll`/`necollrec`/`nemap`/
-/// `nepmap`/`nepmapa` restricted-wrapper family compile. What it holds now is the NAMED-collection
-/// alias-target recursion residue (`collrec__named` / `gcolln__named`): a field referencing a named
-/// `[* foo]` rule resolves to `Alias(Recs, Array(Foo))`, and the Alias arm's target recursion mints a
-/// spurious `FooList` structural-wrapper import that the rule's own class (`Recs`) subsumes — E0432.
-/// The fix queue is the cddl-matrix/ROADMAP.md § findings alias-target-recursion entry. Four-state
-/// verdict in
+/// `nepmap`/`nepmapa` restricted-wrapper family compile. The NAMED-collection alias-target recursion
+/// class is fixed too: the `Alias` arm suppresses the structural-wrapper import when the alias names a
+/// collection rule whose own class (imported via `set_ref`) subsumes the target's surface, so
+/// `collrec__named` / `gcolln__named` (and the dep-owned named-map flavor) keep only the rule ident.
+/// Currently EMPTY: no multifile-placement cell is deliberately red. Four-state verdict in
 /// `multifile_matrix_compiles`: red+listed = expected (held here) — but ADDITIONALLY the observed
 /// rustc error-code set (extracted from the captured cargo stderr) must EQUAL the pinned set, or the
 /// cell's failure CLASS changed and the pin is re-triaged loudly; red+unlisted = failure (fix the
@@ -242,35 +241,7 @@ For more information about this error, try `rustc --explain E0583`.\n";
 /// landed)"; green+unlisted = pass. A skip cell whose GENERATION aborts (no rustc compile error at
 /// all) is likewise a class mismatch. An up-front stale-key guard rejects a listed stem absent from
 /// the projected fixture set, so the list can't rot silently.
-const MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)] = &[
-    // --- The NAMED-collection alias-target recursion class. `collrec` = `recs = [* foo]` with record
-    // element `foo` in module `a`. The ANON/aliased/unref modes are FIXED (`wasm_collection_wrapper`
-    // resolves the wrapper name+home; the restricted-wrapper family compiles). What remains is the
-    // NAMED mode: a field referencing `recs` cross-module resolves to `Alias(Recs, Array(Foo))`, and
-    // the Alias arm's target recursion mints a spurious `FooList` import in the using module that the
-    // rule's own `Recs` class subsumes — E0432 (the structural name is minted nowhere). Fixed by
-    // suppressing the structural-wrapper import when the alias names a collection rule whose own class
-    // owns the surface (cddl-matrix/ROADMAP.md § findings).
-    (
-        "collrec__named",
-        &["E0432"],
-        "E0432: alias-target recursion imports the structural `FooList` in the using module, but a \
-         NAMED collection alias mints only its own wrapper (`Recs`) — the structural name exists \
-         nowhere",
-    ),
-    // The generic-instance twin of `collrec__named`: `gcn = gcoll<foo>` is a NAMED collection alias
-    // to `[* foo]` (record element), so a field referencing it resolves to `Alias(Gcn, Array(Foo))`
-    // and hits the identical alias-target-recursion class — E0432 on the spurious `FooList`. The
-    // ANONYMOUS instance flavors (`gcolla`/`gcollexp`/`gtbla`) are green in every mode.
-    (
-        "gcolln__named",
-        &["E0432"],
-        "E0432: `gcn = gcoll<foo>` — a NAMED generic-collection-instance alias — imports the \
-         structural `FooList` in the using module via the Alias arm's target recursion, but the \
-         named alias mints only its own wrapper (`Gcn`), so the structural name exists nowhere (the \
-         collrec__named alias-target-recursion class; cddl-matrix/ROADMAP.md § findings)",
-    ),
-];
+const MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)] = &[];
 
 /// Per-profile round-trip skips for `wasm_matrix_roundtrips` ONLY (never consulted by
 /// `wasm_matrix_compiles`, which stays the always-on default-profile floor). Each `(profile, cell
@@ -287,30 +258,13 @@ const WASM_MATRIX_PROFILE_SKIP: &[(&str, &str, &str)] = &[];
 /// Multifile-placement cells whose ROUND-TRIP (`multifile_matrix_roundtrips`) is deliberately red
 /// in EVERY profile — `(cell stem, reason)`, the roundtrip precedent's shape (`WASM_MATRIX_SKIP`):
 /// no rustc-error-code class assertion here, because the compile floor's `MULTIFILE_MATRIX_SKIP`
-/// already pins each cell's exact failure class. The seed is the compile-floor red carried
-/// over: `collrec__named` / `gcolln__named`'s WASM crate never compiles (the `mark_refs`
-/// NAMED-collection alias-target-recursion class — ledgered in cddl-matrix/ROADMAP.md § findings,
-/// exact E-codes pinned in `MULTIFILE_MATRIX_SKIP`), so their `cargo test` can never go green (the
-/// restricted-wrapper family is fixed, so those cells round-trip and are no longer listed).
-/// Four-state verdict +
-/// stale-key guard as the compile floor; a listed cell that starts round-tripping fails the
-/// resurfaced guard (remove the pin — a fix landed).
-const MULTIFILE_ROUNDTRIP_SKIP: &[(&str, &str)] = &[
-    (
-        "collrec__named",
-        "wasm crate never compiles: alias-target recursion imports the structural wrapper from \
-         root scope where a NAMED collection alias mints only its own wrapper (the Array-arm \
-         structural-wrapper findings entry in cddl-matrix/ROADMAP.md; E0432 class pinned by \
-         MULTIFILE_MATRIX_SKIP)",
-    ),
-    (
-        "gcolln__named",
-        "wasm crate never compiles: `gcn = gcoll<foo>` (the generic-instance twin of collrec) — a \
-         NAMED collection alias imports the structural `FooList` from root scope where it mints only \
-         its own wrapper (`Gcn`) (E0432 class pinned by MULTIFILE_MATRIX_SKIP; cddl-matrix/ROADMAP.md \
-         § findings)",
-    ),
-];
+/// already pins each cell's exact failure class. Currently EMPTY: every multifile-placement cell
+/// compiles (`MULTIFILE_MATRIX_SKIP` is empty) and round-trips — the NAMED-collection
+/// alias-target-recursion cells that seeded this list (`collrec__named` / `gcolln__named`) are fixed
+/// by the `Alias` arm's structural-wrapper suppression. Four-state verdict + stale-key guard as the
+/// compile floor; a listed cell that starts round-tripping fails the resurfaced guard (remove the
+/// pin — a fix landed).
+const MULTIFILE_ROUNDTRIP_SKIP: &[(&str, &str)] = &[];
 
 /// Per-profile round-trip skips for `multifile_matrix_roundtrips` ONLY — `(profile, cell stem,
 /// reason)` for cells red under a SPECIFIC profile, distinct from `MULTIFILE_ROUNDTRIP_SKIP`'s
@@ -7044,6 +6998,71 @@ fn extern_deps_wasm_unknown_dep_errors() {
         stderr.contains("not an extern dependency"),
         "expected an unknown-dependency error, got stderr:\n{stderr}"
     );
+}
+
+/// A consumer referencing a DEP-OWNED NAMED collection rule (`dep_withdrawals = { * uint =>
+/// extern_crate_foo } ; @rust_name DepWithdrawals`, declared under `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/`)
+/// from a NON-root module must NOT emit a local `crate::generated::<structural>` import for the
+/// shape. The code emitter resolves each use site to the dep's pinned class (`use
+/// extern_dep_crate_wasm::DepWithdrawals;`), but `mark_refs`' `Alias` arm used to ALSO recurse the
+/// alias target and mint the structural map/list spelling (`MapU64ToExternCrateFoo` /
+/// `ExternCrateFooList`) as a local import — nothing local defines it (dep-owned;
+/// `table_shape_sole_owners` excludes non-exported scopes), so it is an import-only E0432 (the CML
+/// `withdrawals`/`mint` regression). The `Alias` arm now suppresses the structural-wrapper import
+/// when the alias names a collection rule whose own class subsumes the surface. A generation-output
+/// assertion (not a full compile) because the fixture's dep is a bare stub with no hand-written
+/// runtime — the pinned invariant is exactly "no dangling local structural import in the consumer".
+#[test]
+fn dep_owned_named_collection_no_local_structural_import() {
+    let out = std::env::temp_dir().join(format!(
+        "cddl_codegen_dep_owned_named_collections_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&out);
+    let run = tool_cmd("cargo")
+        .arg("run")
+        .arg("--")
+        .arg("--input=tests/dep-owned-named-collections/inputs")
+        .arg(format!("--output={}", out.to_str().unwrap()))
+        .arg("--wasm=true")
+        .arg("--common-import-override=extern_dep_crate")
+        .arg("--extern-wasm-crate=extern_dep_crate=extern_dep_crate_wasm")
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "generation failed:\n{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let consumer = out.join("wasm/src/generated/consumer/mod.rs");
+    let src = std::fs::read_to_string(&consumer)
+        .unwrap_or_else(|e| panic!("cannot read {consumer:?}: {e}"));
+    let _ = std::fs::remove_dir_all(&out);
+    // The dep-owned shapes' structural spellings must NOT be imported from the local crate — they are
+    // dep-owned and minted nowhere in the consumer, so any such import is a dangling E0432. Scan every
+    // `use crate::generated…` line (the emitter groups imports — `crate::generated::{A, B}` — so a
+    // naive `crate::generated::<Name>` substring would miss the grouped form).
+    let local_generated_imports: String = src
+        .lines()
+        .filter(|l| l.contains("use crate::generated"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    for structural in ["MapU64ToExternCrateFoo", "ExternCrateFooList"] {
+        assert!(
+            !local_generated_imports.contains(structural),
+            "consumer emitted a dangling local structural import of `{structural}` for a dep-owned \
+             named collection rule (the CML withdrawals/mint E0432 regression); local generated \
+             imports:\n{local_generated_imports}\n\nfull consumer wasm module:\n{src}"
+        );
+    }
+    // ...while the emitter's own dep-qualified imports of the pinned classes ARE present.
+    for pinned in ["DepWithdrawals", "DepCerts"] {
+        assert!(
+            src.contains("extern_dep_crate_wasm::") && src.contains(pinned),
+            "consumer is missing the dep-qualified import of `{pinned}` — expected `use \
+             extern_dep_crate_wasm::…;`; consumer wasm module:\n{src}"
+        );
+    }
 }
 
 /// Whether the `wasm32-unknown-unknown` target is installed (the honest link gate in

@@ -853,10 +853,10 @@ across the same layers:
   (named-rule + anonymous-instance flavors, each × all 8 boundary roles, compile floor +
   three-profile round-trips) and the same shapes × 3 reference modes in the multifile placement
   matrix. Enumerating them found + fixed the `[*]`-reject wasm-boundary conversion gap (E0308,
-  pinned by `newtype_over_plain_reject_ordered_set_converts_wasm_boundary`) and surfaced the
-  cross-module restricted-wrapper placement class — every collection occurrence now resolves its
-  wasm wrapper name + home scope through `wasm_collection_wrapper`, leaving only the
-  NAMED-collection alias-target-recursion residue (`cddl-matrix/ROADMAP.md` § findings).
+  pinned by `newtype_over_plain_reject_ordered_set_converts_wasm_boundary`) and the cross-module
+  restricted-wrapper placement class — every collection occurrence resolves its wasm wrapper name +
+  home scope through `wasm_collection_wrapper`, and a field referencing a named/dep-owned collection
+  rule keeps only the rule ident (the `Alias` arm's structural-wrapper suppression).
 
 ### Decode-direction conformance (`tests/decode_conformance/` — accept what the spec accepts)
 
@@ -1889,11 +1889,11 @@ the two raw-CBOR-argument constructors and a source-level `pub type IntError = J
 A **coverage-by-construction** gate for the axis every OTHER construct gate is blind to: **module
 placement**. The corpus gates, the wasm-ABI matrix, and the parity differential all feed the
 generator SINGLE-file specs, so every construct is only ever verified in root scope. Multifile
-emission branches on scope — `mark_refs` (`intermediate/mod.rs`) resolves the import source for the
-generator-invented structural wrappers (owner-resolved for map shapes via
-`IntermediateTypes::table_shape_sole_owners`; still root-hard-coded for arrays, the pinned
-`collrec` class and the remaining `issue #138` TODO), while the wrapper/alias definitions land
-wherever `types.scope(ident)` puts them — and that region had exactly one hand fixture
+emission branches on scope — `mark_refs` (`intermediate/mod.rs`) resolves each collection
+occurrence's wasm wrapper NAME and HOME scope through `IntermediateTypes::wasm_collection_wrapper`
+(the emitter's `for_wasm_member` twin, `table_shape_sole_owners`-aware), while the wrapper/alias
+definitions land wherever `types.scope(ident)` puts them — and that region had exactly one hand
+fixture
 (`tests/multifile`, which covers NAMED cross-module refs but no structural-wrapper-ownership
 cells). This sweep enumerates the placement grid, compile-floors it (always-on), and round-trips it
 (manual, full tier). Two placement vectors the grid does NOT enumerate are hand-fixture-owned:
@@ -1945,14 +1945,14 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   `named`/`aliased`/`unref` apply to every shape; `anon` exists ONLY for a shape whose anon holder
   `holder = [field0: <anonForm>]` compiles GREEN as a **single-file control** — otherwise the red
   would be a single-file limitation, not a placement finding, and the shape carries no `anonForm`
-  (the controls are throwaway, not committed). All 11 candidates
-  (`coll`/`collmap`/`collrec`/`tblrec`/`tag`/`nullable`/`bwrap`/`cborwrap` and the restricted
-  non-empty shapes `necoll`/`necollrec`/`nemap`) probed green. `anonb` applies to
+  (the controls are throwaway, not committed). All 13 candidates
+  (`coll`/`collmap`/`collrec`/`tblrec`/`tag`/`nullable`/`bwrap`/`cborwrap`, the restricted
+  non-empty shapes `necoll`/`necollrec`/`nemap`, and the synthesized-NonEmpty shapes
+  `nesyncoll`/`nesynmap`) probed green. `anonb` applies to
   exactly the anon shapes whose plain `anon` cell would be masked by an alias-only module `a`
   emitting no serialization (`coll`/`collmap`/`nullable`/`necoll`/`nemap`); the other anon shapes'
   module `a` already emits serialization, so nothing masks their b-side verdict and a ballast
-  variant adds no discrimination (their `anon` cells are green except the pinned `necollrec__anon`
-  and the other structural-wrapper-class pins below).
+  variant adds no discrimination (their `anon` cells are green).
   The field-embedding modes reference the shape from a record-FIELD position; `aliased` is the
   type-alias-TARGET position (added when its import class escaped to production — the second
   position-keyed escape after the group-ctor one below); other reference POSITIONS are
@@ -1969,7 +1969,7 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   path-depends on the rust crate, so rust-side breakage surfaces transitively). Own scratch +
   `CARGO_TARGET_DIR` (`cddl_codegen_multifile_matrix`). Always-on (no `#[ignore]`): it joins the
   default `cargo test` / check.ts local tier. Wall-clock ~35 s (first cold run, shared target warms
-  once) / ~30 s warm measured at 43 cells (121 at HEAD).
+  once) / ~30 s warm measured at 43 cells (129 at HEAD).
 - **The round-trip gate** (`integration_tests::multifile_matrix_roundtrips`, `#[ignore]`d, check.ts
   **full** tier — the behavioural upgrade, mirroring `wasm_matrix_roundtrips`): same cell
   enumeration, but each cell is generated `--wasm=true --emit-tests=true` across `ALL_PROFILES`
@@ -1994,20 +1994,18 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   globs, without which every multifile cell is E0433-uncompilable) is pinned always-on by the
   in-process `emit_tests_multifile_scope_imports`, so a regression there doesn't wait for full
   tier. Run with `cargo test --bin cddl-codegen multifile_matrix_roundtrips -- --ignored`
-  (~4.6 min measured at 48 cells, scaling with the cell count — 121 at HEAD; every run is effectively cold — the scratch root, shared target
+  (~4.6 min measured at 48 cells, scaling with the cell count — 129 at HEAD; every run is effectively cold — the scratch root, shared target
   included, is cleared at start and end — with the deps built once up front and the remainder
   dominated by the per-cell-per-profile generate + two nested `cargo test` invocations (3 profiles x the cell count each).
 - **Skip ledgers (round-trip gate).** `MULTIFILE_ROUNDTRIP_SKIP: &[(&str, &str)]` (cell stem,
-  reason) holds cells red in EVERY profile — seeded with the `collrec__named` compile-floor carry
-  (its wasm crate never compiles, so `cargo test` can never pass; the reason cites the Array-arm
-  structural-wrapper findings entry in `cddl-matrix/ROADMAP.md`). No rustc-error-code class
-  assertion here: the compile floor's `MULTIFILE_MATRIX_SKIP` already pins each cell's exact class.
-  `MULTIFILE_ROUNDTRIP_PROFILE_SKIP: &[(&str, &str, &str)]` (profile, cell stem, reason) holds
-  profile-specific reds — expected EMPTY: the first full sweep was green across all three profiles
-  outside the collrec pins. Both are four-state (red+listed = expected; red+unlisted = fail;
-  green+listed = resurfaced — remove the pin; green+unlisted = pass) with up-front stale-key guards
-  (unknown stem or profile fails before any heavy work). Verify a new guard the poison way:
-  pin a green cell → resurfaced failure; drop a collrec pin → red+unlisted failure; revert.
+  reason) holds cells red in EVERY profile — currently EMPTY (every cell compiles and round-trips).
+  No rustc-error-code class assertion here: the compile floor's `MULTIFILE_MATRIX_SKIP` already pins
+  each cell's exact class. `MULTIFILE_ROUNDTRIP_PROFILE_SKIP: &[(&str, &str, &str)]` (profile, cell
+  stem, reason) holds profile-specific reds — also EMPTY: the sweep is green across all three
+  profiles. Both are four-state (red+listed = expected; red+unlisted = fail; green+listed =
+  resurfaced — remove the pin; green+unlisted = pass) with up-front stale-key guards (unknown stem or
+  profile fails before any heavy work). Verify a new guard the poison way: pin a green cell →
+  resurfaced failure; add a bogus stem → stale-key failure; revert.
 - **Skip ledger (compile floor).** `MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)]` (cell stem, expected rustc
   error codes, reason) holds the deliberately-red cells, four-state like `WASM_MATRIX_SKIP`:
   red+listed = expected; red+unlisted = a new placement finding to fix or (deliberately, with a
@@ -2027,28 +2025,23 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   change a real pin's error code to a bogus one, e.g. `E9999` → the class-changed message fires),
   watch it fail, revert.
 
-**What it pins today.** Seventeen cells, all the same `mark_refs` structural-wrapper ROOT_SCOPE
-placement class (fix queue in `cddl-matrix/ROADMAP.md` § findings): `collrec__named` and its
-generic-instance twin `gcolln__named` (E0432 — the
-ARRAY structural-NAME class, `[* <record>]` reached by a NAMED rule (`recs = [* foo]` /
-`gcn = gcoll<foo>`), the only loose array whose wasm representation needs a
-generated `FooList`-style wrapper; a NAMED collection alias mints only its own wrapper, so the
-structural name imported from root scope exists nowhere; enumerated from a review-found `SHAPES`
-hole — its `collrec__anon` sibling round-trips green, element refs being registered from the
-wrapper's emission scope, and its `collrec__aliased` sibling likewise: the alias-base mint walk
-mints the loose wrapper at root and the type-alias import walk covers the base symmetrically),
-plus fifteen restricted-wrapper cells (all E0425: the restricted wrapper's `try_from(&Loose)` or anon
-dedup-to-named reference names the root-minted loose builder/element/rule bare from a non-root
-module) — the eleven non-empty cells
-(`necollrec__{aliased,anon,named,unref}`, `nemap__{aliased,anon,anonb,named,unref}`,
-`necoll__{anon,anonb}`; the `aliased` pair is red purely on module `a`'s self-contained reference, the aliasing
-module `b`'s own import being emitted correctly) and the four `@duplicates preserve` pair-map cells
-(`nepmap__{aliased,named,unref}`, `nepmapa__aliased` — the restricted `NonEmptyPairMap`'s
-`try_from(&MapU64ToText)` naming the root-minted loose pair-map builder bare; the anon-instance
-flavor reds only in `aliased`, where the alias-base mint walk drops the loose-builder import;
-the per-shape breakdown is on the same findings
-entry). Every
-other cell is green, and greenness rests on four emitter invariants this matrix guards: a module
+**What it guards today.** Every projected cell compiles and round-trips — both skip ledgers are
+empty. Greenness rests on emitter invariants this matrix guards, each once a loud cross-module
+failure class: every cross-module collection occurrence imports the SAME wasm wrapper the emitter
+names, from the module it is minted in (`scope_references`/`mark_refs` resolve the wrapper name +
+home scope through `IntermediateTypes::wasm_collection_wrapper`, the `for_wasm_member` twin, so
+import and emission placement cannot disagree — the restricted `[+ T]`/`{+ k => v}`/`@duplicates
+preserve` `NonEmpty*` family and the synthesized-NonEmpty facet `nesyncoll`/`nesynmap` all name the
+`NonEmpty*` wrapper the emitter uses, not the pre-NonEmpty spelling); each restricted wrapper's loose
+`try_from(&Loose)` source is imported at the wrapper's emission scope
+(`register_root_non_empty_{list,map}_source`, the non-deferred analogues of the keys-list/deferred
+helpers — the E0425 class the `necollrec`/`nemap`/`nepmap` cells guard); and a field referencing a
+NAMED collection rule (`recs = [* foo]` / `gcn = gcoll<foo>`, or a DEP-owned `@rust_name`-pinned map)
+imports only the rule ident, never a structural wrapper the rule's own class subsumes (the `Alias`
+arm suppresses the structural-wrapper import when the alias names a collection rule — the E0432 class
+`collrec__named`/`gcolln__named` guard, and the dep-owned flavor
+`dep_owned_named_collection_no_local_structural_import` guards). Greenness also rests on four further
+emitter invariants this matrix guards: a module
 declares `pub mod serialization;` only when that file is written (the module-declaration loop in
 `generation/export.rs` shares the `serialize_scopes` predicate with the file-write, so an alias/enum-only
 non-root module cannot declare a phantom module — the E0583 class); an anonymous same-shape table

@@ -1,0 +1,7 @@
+; NON-root consumer module referencing the dep-owned named collection rules by name. This is the
+; use-site the tracker mis-scoped: it emitted a local `crate::generated::MapU64ToExternCrateFoo` /
+; `ExternCrateFooList` import that nothing here defines, alongside the correct dep import.
+consumer_holder = [
+  wd: dep_withdrawals,
+  cs: dep_certs,
+]
