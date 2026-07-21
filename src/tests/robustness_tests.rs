@@ -712,6 +712,68 @@ fn duplicates_directive_accepts_live_and_default_noops() {
     );
 }
 
+/// `@duplicates` on a GENERIC def must ride instantiation: the policy is rule metadata on the
+/// def, and every instantiation path must resolve to the policy's twin — the named-alias path
+/// (`foo = oset<uint>`, also pinned by tests/corpus/tag_set_reject.cddl) AND the anonymous
+/// member-position path (`holder = [g: oset<uint>]`, pinned by
+/// tests/corpus/tag_set_reject_anon_generic.cddl), which registers the instance at the use site
+/// without any rule in between. The `preserve` direction is today's set default, so its
+/// propagation is asserted as byte-identity with the directive absent; it becomes independently
+/// observable only if the set default flips (the reject legs here are the template for that
+/// observable opt-out test).
+#[test]
+fn duplicates_on_generic_def_rides_instantiation() {
+    let gen_src = |cddl: &str| -> std::collections::BTreeMap<String, String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_dup_generic_{}_{}.cddl",
+            std::process::id(),
+            cddl.len()
+        ));
+        std::fs::write(&path, cddl).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "dup_generic_unused",
+            "--wasm=false",
+        ]);
+        let out = crate::api::generated_strings(&cli).unwrap_or_else(|e| {
+            panic!("@duplicates on a generic def should generate cleanly for {cddl:?}, got: {e}")
+        });
+        std::fs::remove_file(&path).ok();
+        out
+    };
+    let joined =
+        |out: &std::collections::BTreeMap<String, String>| out.values().cloned().collect::<Vec<_>>().join("\n");
+
+    // reject def + NAMED instance alias: the alias must resolve to the uniqueness twin.
+    let named = gen_src("oset<a0> = #6.258([* a0]) / [* a0] ; @duplicates reject\nfoo = oset<uint>\n");
+    assert!(
+        joined(&named).contains("OrderedSet<u64>"),
+        "reject on a generic def must reach a named instance, got:\n{}",
+        joined(&named)
+    );
+
+    // reject def + ANONYMOUS member-position instance: the seam the named-alias corpus vector
+    // does NOT cover.
+    let anon =
+        gen_src("oset<a0> = #6.258([* a0]) / [* a0] ; @duplicates reject\nholder = [g: oset<uint>]\n");
+    assert!(
+        joined(&anon).contains("OrderedSet<u64>"),
+        "reject on a generic def must reach an anonymous member-position instance, got:\n{}",
+        joined(&anon)
+    );
+
+    // preserve def: today's default — must be a no-op byte-identical through instantiation
+    // (proves the metadata attaches to the def and rides instantiation without corrupting it).
+    assert_eq!(
+        gen_src("oset<a0> = #6.258([* a0]) / [* a0] ; @duplicates preserve\nfoo = oset<uint>\n"),
+        gen_src("oset<a0> = #6.258([* a0]) / [* a0]\nfoo = oset<uint>\n"),
+        "@duplicates preserve on a generic set def must be a no-op vs no directive"
+    );
+}
+
 /// A `{+ …}` `@duplicates preserve` table generates a full wasm wrapper (the WP-P2A stopgap that
 /// rejected it under `--wasm` is gone). The rule's JS class wraps `NonEmptyPairMap<K, V>` (not the
 /// loose `NonEmptyMap`), enters through a `try_from(&loose_pair_map_wrapper)` door, and its `new`
