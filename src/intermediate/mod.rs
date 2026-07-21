@@ -1218,11 +1218,32 @@ impl<'a> IntermediateTypes<'a> {
                     element_type,
                     bounds,
                 } => {
-                    // A NAMED `[+ …]` rule's restricted class (rule ident — never deferred) still
-                    // borrows the LOOSE structural wrapper as its `try_from` source; when that
-                    // source is deferred, import it at THIS rule's scope (its emission scope).
-                    // The rule-named analogue of the inline Array arm's registration above.
-                    if wasm && *bounds == Some((Some(1), None)) {
+                    // A NAMED rule whose emitted class borrows the LOOSE `<Elem>List` as its
+                    // `try_from(&<Elem>List)` source names that builder bare in THIS scope. Two rule
+                    // families do so: a restricted `[+ …]` rule (`generate_non_empty_array_type`) and
+                    // a `@duplicates reject` rule of ANY bounds (`generate_reject_ordered_set_type`) —
+                    // a plain `[*] reject` set still enters through `try_from(&FooList)`, so gating on
+                    // the non-empty bound alone left its loose-source import (at the rule's scope) and
+                    // the loose builder's element ref (at ROOT, its emission scope) unregistered
+                    // (E0425 on both `FooList` and its element). The two helpers below apply the
+                    // element-exposable / non-empty-element / self-named / deferred guards that decide
+                    // whether a loose source actually exists, so a plain non-reject `[* foo]` rule
+                    // (whose class wraps `Vec<Foo>` directly, no `try_from` source) is correctly a
+                    // no-op even when it reaches here.
+                    // LOCKSTEP: this gate mirrors `generate_reject_ordered_set_type`'s /
+                    // `generate_non_empty_array_type`'s `loose_list` decision — a reject rule emits
+                    // `try_from(&Loose)` regardless of its `[*]`/`[+]` bound. Change them together.
+                    if wasm
+                        && (*bounds == Some((Some(1), None))
+                            || rust_struct.config().duplicates
+                                == Some(crate::comment_ast::DuplicatesPolicy::Reject))
+                    {
+                        // The deferred (`--extern-wrapper-index`) analogue: when the loose `<Elem>List`
+                        // is owned by a mapped dependency, import it from the dep's `collections`
+                        // module at this rule's scope. Routed for reject rules too, by the same
+                        // same-condition principle (a reject rule over a dep-owned element defers its
+                        // loose source exactly as a non-empty rule does); a no-op when `deferred` is
+                        // empty, so output is byte-identical without the flag.
                         register_deferred_non_empty_list_source(
                             &mut refs,
                             self,
@@ -1232,7 +1253,8 @@ impl<'a> IntermediateTypes<'a> {
                         );
                         // The non-deferred analogue: the loose `<Elem>List` is a locally (ROOT-)
                         // minted class the rule's `try_from(&<Elem>List)` names bare in THIS scope,
-                        // so import it here (E0425 otherwise). Fixes the `necollrec` cells.
+                        // so import it here (E0425 otherwise). Fixes the `necollrec` and `rsetrec`
+                        // cells.
                         register_root_non_empty_list_source(
                             &mut refs,
                             self,

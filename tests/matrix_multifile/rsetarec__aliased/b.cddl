@@ -1,0 +1,2 @@
+; cell: rsetarec x aliased (reference from module b)
+bal = oset<foo>

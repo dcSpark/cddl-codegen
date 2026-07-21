@@ -1969,7 +1969,7 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   path-depends on the rust crate, so rust-side breakage surfaces transitively). Own scratch +
   `CARGO_TARGET_DIR` (`cddl_codegen_multifile_matrix`). Always-on (no `#[ignore]`): it joins the
   default `cargo test` / check.ts local tier. Wall-clock ~35 s (first cold run, shared target warms
-  once) / ~30 s warm measured at 43 cells (129 at HEAD).
+  once) / ~30 s warm measured at 43 cells (144 at HEAD).
 - **The round-trip gate** (`integration_tests::multifile_matrix_roundtrips`, `#[ignore]`d, check.ts
   **full** tier — the behavioural upgrade, mirroring `wasm_matrix_roundtrips`): same cell
   enumeration, but each cell is generated `--wasm=true --emit-tests=true` across `ALL_PROFILES`
@@ -1994,7 +1994,7 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   globs, without which every multifile cell is E0433-uncompilable) is pinned always-on by the
   in-process `emit_tests_multifile_scope_imports`, so a regression there doesn't wait for full
   tier. Run with `cargo test --bin cddl-codegen multifile_matrix_roundtrips -- --ignored`
-  (~4.6 min measured at 48 cells, scaling with the cell count — 129 at HEAD; every run is effectively cold — the scratch root, shared target
+  (~4.6 min measured at 48 cells, scaling with the cell count — 144 at HEAD; every run is effectively cold — the scratch root, shared target
   included, is cleared at start and end — with the deps built once up front and the remainder
   dominated by the per-cell-per-profile generate + two nested `cargo test` invocations (3 profiles x the cell count each).
 - **Skip ledgers (round-trip gate).** `MULTIFILE_ROUNDTRIP_SKIP: &[(&str, &str)]` (cell stem,

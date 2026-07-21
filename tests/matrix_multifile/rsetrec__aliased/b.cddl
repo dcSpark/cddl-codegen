@@ -1,0 +1,2 @@
+; cell: rsetrec x aliased (reference from module b)
+bal = rs

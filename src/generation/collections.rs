@@ -483,6 +483,11 @@ impl GenerationScope {
         let elem_rust = element_type.for_rust_member(types, true, cli);
         let inner_type = format!("{twin}<{elem_rust}>");
         let elem_wasm = element_type.for_wasm_member(types);
+        // LOCKSTEP: a `@duplicates reject` rule of ANY bounds enters through `try_from(&<Elem>List)`
+        // whenever this `loose_list` is `Some` (non-exposable, non-nested, not self-named element), so
+        // the import tracker's struct-walk Array arm (`scope_references`/`mark_refs`, intermediate/mod.rs)
+        // registers the loose source for reject rules under the SAME condition — its gate keys on
+        // `duplicates == Reject` (not just the non-empty bound). Change the two together.
         let loose_list = (!element_type.directly_wasm_exposable(types)
             && !element_type.is_non_empty_array())
         .then(|| element_type.name_as_wasm_array(types));

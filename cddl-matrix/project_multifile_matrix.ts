@@ -107,6 +107,12 @@ const SHAPES: Record<string, Shape> = {
   // resolves the wrapper name+home so both compile green.
   nesyncoll: { defs: ["foo = [a0: uint]"], ty: "foo", anonForm: "[+ foo]" },
   nesynmap: { defs: ["foo = [a0: uint]"], ty: "foo", anonForm: "{ + uint => foo }" },
+  // Named NESTED restricted map (the CML issue's "placement half"): the outer `{+ …}` rule's
+  // `try_from(&MapU64ToMapU64ToText)` loose source is itself keyed on the inner `{+ …}`'s loose
+  // `MapU64ToText` builder, all minted at the rule's emission scope. Witnessed green (the map
+  // struct-walk arm registers each loose source + key/value at its emission scope). No `anonForm` —
+  // referenced by its named rule (the nested inline spelling would only duplicate `named`).
+  nenestmap: { defs: ["nn = { + uint => { + uint => text } }"], ty: "nn" },
   passthru: { defs: ["nums = [* uint]", "pt = nums"], ty: "pt" },
   passthrumap: { defs: ["mp = { * uint => text }", "ptm = mp"], ty: "ptm" },
   struct: { defs: ["st = [a: uint, b: text]"], ty: "st" },
@@ -181,6 +187,23 @@ const SHAPES: Record<string, Shape> = {
   // (like `gcollexp`), so every reference mode is green.
   rseta: { defs: ["oset<e0> = [* e0] ; @duplicates reject"], ty: "oset<uint>" },
   nerseta: { defs: ["neoset<e0> = [+ e0] ; @duplicates reject"], ty: "neoset<uint>" },
+  // Reject rules over a NON-exposable (record) element — the reject sibling of `collrec`/`necollrec`.
+  // Unlike `rset`/`nerset` (exposable `uint` element, no structural element wrapper), the record
+  // element mints a loose `FooList` at ROOT that the rule's `try_from(&FooList)` names bare, so the
+  // struct-walk Array arm must register the loose source for reject rules of ANY bounds (keyed on
+  // `duplicates == Reject`, LOCKSTEP with `generate_reject_ordered_set_type`'s `loose_list`). `rsetrec`
+  // (a plain `[*]` reject rule) probes the gap the non-empty-bound gate left open — E0425 on `FooList`
+  // (at the rule's scope) and its element `Foo` (at ROOT) before the fix; `nersetrec` (`[+]`) was
+  // already covered by the non-empty bound but is witnessed regardless. No `anonForm` (per-RULE
+  // directive, like `rset`/`nerset`).
+  rsetrec: { defs: ["foo = [a0: uint]", "rs = [* foo] ; @duplicates reject"], ty: "rs" },
+  nersetrec: { defs: ["foo = [a0: uint]", "nrs = [+ foo] ; @duplicates reject"], ty: "nrs" },
+  // Anonymous generic reject-set instances over a record element (the `gcolla`/`rseta` pattern): the
+  // inline Array arm registers the loose source + element from the wrapper's emission scope, so every
+  // reference mode is green — witnessed here to lock the anon-instance reject placement. No `anonForm`
+  // (the instance `ty` IS the anonymous same-shape spelling).
+  rsetarec: { defs: ["foo = [a0: uint]", "oset<e0> = [* e0] ; @duplicates reject"], ty: "oset<foo>" },
+  nersetarec: { defs: ["foo = [a0: uint]", "neoset<e0> = [+ e0] ; @duplicates reject"], ty: "neoset<foo>" },
   // `@duplicates preserve` PairMap ABI class (copied verbatim-with-provenance from the wasm
   // projection's `SHAPES`). No `anonForm`: `@duplicates preserve` is a per-RULE directive with no
   // inline anonymous spelling for the named `pmap`/`nepmap`, and the anonymous-instance shapes' `ty`
@@ -293,7 +316,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 129; // 37 shapes × {aliased, named, unref} = 111 + 13 anon-form shapes × {anon} + 5 anonb shapes × {anonb} -> 129
+const EXPECTED_CELLS = 144; // 42 shapes × {aliased, named, unref} = 126 + 13 anon-form shapes × {anon} + 5 anonb shapes × {anonb} -> 144
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `multifile grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,

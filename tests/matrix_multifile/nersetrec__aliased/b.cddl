@@ -1,0 +1,2 @@
+; cell: nersetrec x aliased (reference from module b)
+bal = nrs

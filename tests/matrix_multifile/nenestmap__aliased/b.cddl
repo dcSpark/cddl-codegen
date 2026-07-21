@@ -1,0 +1,2 @@
+; cell: nenestmap x aliased (reference from module b)
+bal = nn
