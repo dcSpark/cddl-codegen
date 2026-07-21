@@ -1,0 +1,2 @@
+; cell: rset x aliased (reference from module b)
+bal = rs

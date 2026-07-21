@@ -1,0 +1,3 @@
+; cell: nerset x array-element
+nrs = [+ uint] ; @duplicates reject
+holder = [* nrs]

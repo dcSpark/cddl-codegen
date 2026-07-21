@@ -1,0 +1,2 @@
+; cell: nerset x named (shape defs, module a)
+nrs = [+ uint] ; @duplicates reject

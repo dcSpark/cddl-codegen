@@ -1,0 +1,3 @@
+; cell: rset x array-element
+rs = [* uint] ; @duplicates reject
+holder = [* rs]

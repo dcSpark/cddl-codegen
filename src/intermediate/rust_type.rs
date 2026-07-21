@@ -960,9 +960,13 @@ impl RustType {
         format!("Vec<{}>", self.for_rust_member(types, from_wasm, cli))
     }
 
-    /// FROM rust TO wasm (getter/return). A NonEmpty array crosses as its restricted wrapper.
+    /// FROM rust TO wasm (getter/return). A NonEmpty array OR a `@duplicates reject` set crosses as
+    /// its restricted wrapper class (`NonEmpty*List` / `*OrderedSet`), never as a bare `Vec` — so the
+    /// core value is cloned and `.into()`'d into that wrapper. A plain `[*]` reject set is a reject
+    /// set but NOT a non-empty array, so it needs its own arm here (the sibling type-name methods
+    /// `for_wasm_member`/`for_wasm_param`/`directly_wasm_exposable` already treat both the same way).
     pub fn to_wasm_boundary(&self, types: &IntermediateTypes, expr: &str, is_ref: bool) -> String {
-        if self.is_non_empty_array() {
+        if self.is_non_empty_array() || self.is_reject_ordered_set() {
             return format!("{expr}.clone().into()");
         }
         self.conceptual_type.to_wasm_boundary(types, expr, is_ref)
@@ -974,15 +978,17 @@ impl RustType {
         expr: &str,
         is_ref: bool,
     ) -> String {
-        if self.is_non_empty_array() {
+        if self.is_non_empty_array() || self.is_reject_ordered_set() {
             return format!("{expr}.clone().map(std::convert::Into::into)");
         }
         self.conceptual_type
             .to_wasm_boundary_optional(types, expr, is_ref)
     }
 
-    /// FROM wasm TO rust (owning). A NonEmpty array is handed over as `&NonEmpty*List` and cloned
-    /// + `.into()`'d into the core `NonEmptyVec` (the wrapper's `From`/`AsRef` conversion methods).
+    /// FROM wasm TO rust (owning). A NonEmpty array OR a `@duplicates reject` set is handed over as
+    /// `&NonEmpty*List` / `&*OrderedSet` and cloned + `.into()`'d into the core `NonEmptyVec` /
+    /// `OrderedSet` (the wrapper's `From`/`AsRef` conversion methods). A plain `[*]` reject set is a
+    /// reject set but NOT a non-empty array, so it needs its own arm here.
     #[allow(clippy::wrong_self_convention)]
     pub fn from_wasm_boundary_clone(
         &self,
@@ -990,7 +996,7 @@ impl RustType {
         expr: &str,
         can_fail: bool,
     ) -> Vec<ToWasmBoundaryOperations> {
-        if self.is_non_empty_array() {
+        if self.is_non_empty_array() || self.is_reject_ordered_set() {
             let mut ops = vec![
                 ToWasmBoundaryOperations::Code(format!("{expr}.clone()")),
                 ToWasmBoundaryOperations::Into,
@@ -1004,10 +1010,11 @@ impl RustType {
             .from_wasm_boundary_clone(types, expr, can_fail)
     }
 
-    /// FROM wasm as non-owning ref. A NonEmpty-array wrapper is passed by-ref unchanged.
+    /// FROM wasm as non-owning ref. A NonEmpty-array OR `@duplicates reject`-set wrapper is passed
+    /// by-ref unchanged (both cross as `&Wrapper`).
     #[allow(clippy::wrong_self_convention)]
     pub fn from_wasm_boundary_ref(&self, types: &IntermediateTypes, expr: &str) -> String {
-        if self.is_non_empty_array() {
+        if self.is_non_empty_array() || self.is_reject_ordered_set() {
             return expr.to_owned();
         }
         self.conceptual_type.from_wasm_boundary_ref(types, expr)

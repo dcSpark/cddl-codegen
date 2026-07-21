@@ -1,0 +1,2 @@
+; cell: rset x named (shape defs, module a)
+rs = [* uint] ; @duplicates reject

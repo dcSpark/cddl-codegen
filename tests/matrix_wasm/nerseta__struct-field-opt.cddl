@@ -1,0 +1,3 @@
+; cell: nerseta x struct-field-opt
+neoset<e0> = [+ e0] ; @duplicates reject
+holder = [pre: uint, ? field0: neoset<uint>]

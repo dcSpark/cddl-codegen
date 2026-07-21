@@ -1,0 +1,2 @@
+; cell: rseta x named (reference from module b)
+bholder = [field0: oset<uint>]

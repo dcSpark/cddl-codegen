@@ -1,0 +1,2 @@
+; cell: rseta x aliased (shape defs, module a)
+oset<e0> = [* e0] ; @duplicates reject

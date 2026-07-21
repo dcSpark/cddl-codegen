@@ -1,0 +1,3 @@
+; cell: rset x struct-field-opt
+rs = [* uint] ; @duplicates reject
+holder = [pre: uint, ? field0: rs]

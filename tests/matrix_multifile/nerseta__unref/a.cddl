@@ -1,0 +1,2 @@
+; cell: nerseta x unref (shape defs, module a)
+neoset<e0> = [+ e0] ; @duplicates reject
