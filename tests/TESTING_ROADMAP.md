@@ -245,9 +245,12 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
 5. **Rustfmt-stability sweep over the preserve-fixture corpus.** The rustfmt match-tail
    comment-fold escape (the second rustfmt exposure instance in the `prettyplease` entry above)
    was found by a manual repro, not by any standing layer — the overlay's fixtures all exercised
-   `preserve(old, new)` on pre-rustfmt text, so "the tool's own rustfmt pass rewrites a marker
-   placement the next run's scan can't read" had no systematic witness; the delivered
-   `preserve_markers_survive_rustfmt_fold_roundtrip` closes only the one hand-picked shape.
+   `preserve(old, new)` on pre-rustfmt text, and the one standing test that DOES drive the real
+   rustfmt seam twice (`comment_preservation_disk_round_trip`) injects a replace block that swaps
+   a mid-function statement, a position rustfmt never folds — so "the tool's own rustfmt pass
+   rewrites a marker placement the next run's scan can't read" had no systematic witness; the
+   delivered `preserve_markers_survive_rustfmt_fold_roundtrip` closes only the one hand-picked
+   shape.
    The general property is cheap to sweep because the corpus already enumerates every supported
    overlay structure: for each `tests/preserve-fixtures/<case>/expected.rs`, run
    `rustfmt_generated_string(expected)` and assert `preserve(formatted, new)` still succeeds with
@@ -261,19 +264,23 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    — role/feature/encoding grids — and none would have caught this class; output post-processing
    round-trips are this roadmap's domain.)
 
-6. **Default-warn lint cleanliness over generated output (partially systematic at best).** The
-   `large_enum_variant`/`result_large_err` generated-root allows were consumer-reported; no gate
-   runs clippy over generated crates, so a lint that fires on emitted shapes is invisible until a
-   consumer's CI gates on it. The systematizable subclass: a full-tier gate running
-   `cargo clippy -- -D warnings` over a small set of already-compiled fixture crates, including
-   one lint-provocation fixture authored to trip shape-dependent lints (an asymmetric `/` choice
-   enum big enough for `large_enum_variant`'s 200-byte default — the scratch fixture from the
-   allow-set delivery needed ~30 uint fields). Known residual that keeps this "partial":
-   threshold-adjacent lints depend on the CONSUMER's spec and target layout —
-   `result_large_err` did NOT fire on a synthetic fixture (the static `DeserializeError` sits at
-   ~the 128-byte threshold) while it does fire in CML's CI — so the gate certifies "no lint fires
-   on shapes we can provoke", never "no consumer CI will trip"; the consumer-report channel stays
-   load-bearing for that remainder, which is why the delivered fix allows the lints at the
+6. **Lint-provocation shapes for `generated_code_clippy_clean` (partially systematic at best).**
+   The gate itself already exists and denies `clippy::all` over the generated rust and wasm crates
+   on two profiles (`generated_code_clippy_clean`, local tier; documented in `tests/README.md`) —
+   yet the
+   `large_enum_variant`/`result_large_err` generated-root allows still arrived consumer-reported,
+   because the gate's rich input is provocation-POOR for shape/threshold-dependent lints: it has
+   no `/` choice asymmetric enough for `large_enum_variant`'s 200-byte default (a synthetic
+   provocation needed a ~30-uint-field record variant), and the static `DeserializeError` sits
+   just under `result_large_err`'s ~128-byte threshold on that input while exceeding it in CML's
+   CI. The work item: add a deliberately lint-provoking shape (the asymmetric choice) to the
+   gate's input so the NEXT default-warn lint of this class — e.g. one a toolchain bump
+   introduces — goes red in-repo instead of in a consumer's CI; the two now-allowed lints are
+   permanently silenced by the generated root's allow, so for them the shape merely pins that the
+   allow keeps covering what it was added for. Known residual that keeps this "partial":
+   threshold-adjacent lints fire spec- and layout-dependently, so the gate certifies "no lint
+   fires on shapes we provoke", never "no consumer CI will trip"; the consumer-report channel
+   stays load-bearing for that remainder, which is why the delivered fix allows the lints at the
    generated root rather than chasing per-spec detection.
 
 ## Standing-system residuals (recur-first)
