@@ -1,0 +1,2 @@
+; cell: nesynmap x named (shape defs, module a)
+foo = [a0: uint]

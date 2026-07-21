@@ -96,6 +96,17 @@ const SHAPES: Record<string, Shape> = {
   // Placement mirrors `collmap` (the map arm is sole-owner-aware), so both reference modes are green;
   // module `a` is table-alias-only, so it carries `anonBallast` like `collmap`.
   nemap: { defs: ["mp = { + uint => text }"], ty: "mp", anonForm: "{ + uint => text }", anonBallast: true },
+  // SYNTHESIZED-NonEmpty facet: an inline `[+ foo]` / `{+ uint => foo}` over a NON-exposable (record)
+  // element with NO named collection rule anywhere, so the restricted wrapper synthesizes
+  // `NonEmptyFooList` / `NonEmptyMapU64ToFoo` at ROOT (no dedup-to-named — unlike `necollrec`/`nemap`,
+  // whose module `a` carries a named `[+ …]`/`{+ …}` rule the inline occurrence dedups to). This is
+  // the facet the import tracker got wrong independently of the ledgered restricted cells: it imported
+  // the pre-NonEmpty `FooList`/`MapU64ToFoo` spelling while the emitter names the `NonEmpty*` wrapper
+  // bare (E0425). `ty: foo` (a plain record) drives the named/aliased/unref modes; the discriminating
+  // cell is `anon` (the inline synthesized wrapper referenced cross-module). `wasm_collection_wrapper`
+  // resolves the wrapper name+home so both compile green.
+  nesyncoll: { defs: ["foo = [a0: uint]"], ty: "foo", anonForm: "[+ foo]" },
+  nesynmap: { defs: ["foo = [a0: uint]"], ty: "foo", anonForm: "{ + uint => foo }" },
   passthru: { defs: ["nums = [* uint]", "pt = nums"], ty: "pt" },
   passthrumap: { defs: ["mp = { * uint => text }", "ptm = mp"], ty: "ptm" },
   struct: { defs: ["st = [a: uint, b: text]"], ty: "st" },
@@ -231,7 +242,7 @@ const MODES: Record<string, Mode> = {
 // `anonForm` key would silently drop a shape from `anon` (TS excess-property check catches an unknown
 // key at the literal, but not a value dropped by a downstream filter) — pin the derived set so any
 // grid shrink/growth is an explicit reviewed edit, exactly like EXPECTED_CELLS below.
-const EXPECTED_ANON_SHAPES = ["bwrap", "cborwrap", "coll", "collmap", "collrec", "necoll", "necollrec", "nemap", "nullable", "tag", "tblrec"];
+const EXPECTED_ANON_SHAPES = ["bwrap", "cborwrap", "coll", "collmap", "collrec", "necoll", "necollrec", "nemap", "nesyncoll", "nesynmap", "nullable", "tag", "tblrec"];
 const anonShapes = Object.keys(SHAPES)
   .filter((k) => SHAPES[k].anonForm)
   .sort();
@@ -282,7 +293,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 121; // 35 shapes × {aliased, named, unref} = 105 + 11 anon-form shapes × {anon} + 5 anonb shapes × {anonb} -> 121
+const EXPECTED_CELLS = 129; // 37 shapes × {aliased, named, unref} = 111 + 13 anon-form shapes × {anon} + 5 anonb shapes × {anonb} -> 129
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `multifile grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,

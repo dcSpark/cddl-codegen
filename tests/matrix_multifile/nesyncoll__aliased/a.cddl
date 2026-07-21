@@ -1,0 +1,2 @@
+; cell: nesyncoll x aliased (shape defs, module a)
+foo = [a0: uint]

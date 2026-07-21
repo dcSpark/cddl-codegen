@@ -853,9 +853,10 @@ across the same layers:
   (named-rule + anonymous-instance flavors, each × all 8 boundary roles, compile floor +
   three-profile round-trips) and the same shapes × 3 reference modes in the multifile placement
   matrix. Enumerating them found + fixed the `[*]`-reject wasm-boundary conversion gap (E0308,
-  pinned by `newtype_over_plain_reject_ordered_set_converts_wasm_boundary`) and pinned the
-  restricted pair-map cross-module cells (`nepmap__{aliased,named,unref}` and `nepmapa__aliased`,
-  the structural-wrapper ROOT_SCOPE class — `cddl-matrix/ROADMAP.md` § findings).
+  pinned by `newtype_over_plain_reject_ordered_set_converts_wasm_boundary`) and surfaced the
+  cross-module restricted-wrapper placement class — every collection occurrence now resolves its
+  wasm wrapper name + home scope through `wasm_collection_wrapper`, leaving only the
+  NAMED-collection alias-target-recursion residue (`cddl-matrix/ROADMAP.md` § findings).
 
 ### Decode-direction conformance (`tests/decode_conformance/` — accept what the spec accepts)
 
