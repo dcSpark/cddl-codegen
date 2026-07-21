@@ -1702,6 +1702,36 @@
         "status": "supported"
       },
       {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=n/a (nothing minted); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "id": "contain.choice-member.type2.tag.set_idiom",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 9 foreign spec-derived vector(s); ruby=ok rust=ok",
+        "id": "contain.choice-member.type2.tag.set_idiom_near_miss",
+        "status": "supported"
+      },
+      {
         "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
         "id": "contain.generic-arg.type2.map",
         "status": "unsupported"
@@ -2783,6 +2813,22 @@
       "feature": "type2.tag",
       "id": "contain.choice-member.type2.tag",
       "note": "Tagged types as choice alternatives (tag-discriminated union): `#6.10(int) / #6.11(tstr)`. RFC8610 §2.2.2, §3.6; ABNF type-choice / type2 tagged-data.",
+      "role": "role.choice-member",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = #6.258([* uint]) / [* uint]",
+      "feature": "type2.tag",
+      "id": "contain.choice-member.type2.tag.set_idiom",
+      "note": "The transparent tag-set idiom: a spec-legal two-arm choice whose arms are the SAME collection but for exactly ONE Tagged op (`#6.258([* uint]) / [* uint]`). cddl-codegen recognizes arms equal-but-for-one-tag — occurrence bounds INCLUDED in the equality — and collapses to ONE transparent optionally-tagged collection alias (`pub type T = Vec<u64>`, IR tag_optional) instead of a two-variant enum: the arm distinction carries no type-level information, so the enum was the accident (doc: current_capacities § 'Transparent tag-set idiom'). Being a transparent alias, it mints no standalone surface — the probe embeds via the synthetic holder, itself a collapse signal. The verdict pins the collapse AND that BOTH wire arms decode: the default encoder serializes tagged, so the UNTAGGED arm is a direction our own output never emits — the foreign untagged vectors (bare-array head, CBOR major 4) are the independent decode evidence, alongside tagged instances (tag-258 head `d9 0102`, major 6). The vendor sibling `dsl.duplicates.reject` pins the reject-flavored idiom; this cell pins the bare/default-preserve collapse. RFC8610 §2.2.2, §3.6; ABNF type-choice / type2 tagged-data.",
+      "role": "role.choice-member",
+      "spec": "allowed"
+    },
+    {
+      "example": "t = #6.258([+ uint]) / [* uint]",
+      "feature": "type2.tag",
+      "id": "contain.choice-member.type2.tag.set_idiom_near_miss",
+      "note": "The one-arm-tagged near miss (`#6.258([+ uint]) / [* uint]`): mismatched occurrence bounds mean the tagged arm (>=1) and untagged arm (empty-allowed) are DIFFERENT logical values, so the equal-but-for-one-tag collapse condition fails and today's two-variant type-choice enum is RETAINED (a tagged `NonEmptyVec<u64>` variant, an untagged `Vec<u64>` variant). This completes the enum-side pinning the both-tagged sibling `contain.choice-member.type2.tag` (`#6.10(int) / #6.11(tstr)`) began, covering the one-arm-tagged case where collapse could plausibly-but-wrongly fire; the retained enum still round-trips both arms standalone. Other near misses (different element types, both arms tagged, 3+ arms, non-collection inner) are pinned in-process in `optional_tag_set_tests.rs` and by `tests/corpus/tag_set_near_miss.cddl`. RFC8610 §2.2.2, §3.6; ABNF type-choice / type2 tagged-data.",
       "role": "role.choice-member",
       "spec": "allowed"
     },

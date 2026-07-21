@@ -794,6 +794,117 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "contain.choice-member.type2.tag.set_idiom"
+axis = "containment"
+example = "t = #6.258([* uint]) / [* uint]"
+spec = "__probe_holder = [0, t]\nt = #6.258([* uint]) / [* uint]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820080"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008218e41901b6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008219069318c6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200841904cd0c190516190ae7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d9010280"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d901028119076b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d9010281190a0e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d9010281190c32"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d90102821903361908d4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d90102821912391903a7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "contain.choice-member.type2.tag.set_idiom_near_miss"
+axis = "containment"
+example = "t = #6.258([+ uint]) / [* uint]"
+spec = "t = #6.258([+ uint]) / [* uint]"
+mode = "standalone"
+type_name = "T"
+
+[[row.vector]]
+hex = "80"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "81190f43"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82190986190ff0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "831906de19079a1905f4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "83190ae8190fe21906e6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "84190ad11911b3190d1b190720"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "d9010283190519190dd3190dce"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "d9010283190a99190e1119088a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "d90102841903cd190bdd1910c31903f6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "contain.group-choice-arm.grpchoice.sequence.array"
 axis = "containment"
 example = "t = [ a: uint, b: tstr // c: bytes ]"
