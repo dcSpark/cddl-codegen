@@ -94,18 +94,25 @@ pub(crate) fn nint_bounds_to_u64(
 /// `DeserializeError::new(name, ..)` (the wrapper's `new()`/deserialize sites, which annotate the
 /// type), `None` produces a bare `DeserializeFailure::RangeCheck{..}.into()` (member ctor/setter and
 /// primitive deserialize sites). Mirrors `range_check_err_float`'s `location` duality.
+/// `found_i128` states the found expression is ALREADY `i128` (the nint deserialize arms, whose
+/// value comes from `negative_integer_sz()` — an `(i128, Sz)`), so the widening `as i128` is
+/// omitted to avoid a `clippy::unnecessary_cast` no-op; every other source (a `u64` uint read, an
+/// `i64` `negative_integer()` read, a `.len()` usize, a narrower member field) keeps the real cast.
 fn range_check_err(
     e: &str,
     min: Option<i128>,
     max: Option<i128>,
     return_err: bool,
     location: Option<&str>,
+    found_i128: bool,
 ) -> String {
     let possible_return = if return_err { "return " } else { "" };
     let opt = |b: Option<i128>| b.map_or_else(|| "None".to_owned(), |b| format!("Some({b})"));
+    let cast = if found_i128 { "" } else { " as i128" };
     let failure = format!(
-        "DeserializeFailure::RangeCheck{{ found: {} as i128, min: {}, max: {}}}",
+        "DeserializeFailure::RangeCheck{{ found: {}{}, min: {}, max: {}}}",
         e,
+        cast,
         opt(min),
         opt(max),
     );
@@ -256,6 +263,9 @@ pub(super) fn value_bounds_check_line(ty: &RustType, e: &str, return_err: bool) 
             return_err,
             non_negative,
             None,
+            // member/setter/ctor site: `e` is the stored field (a `u64` magnitude for N64, or an
+            // i8..i64/u64 elsewhere) — never already i128, so keep the widening cast.
+            false,
         ))
     } else {
         Some(bounds_check_if_block(
@@ -264,6 +274,7 @@ pub(super) fn value_bounds_check_line(ty: &RustType, e: &str, return_err: bool) 
             return_err,
             non_negative,
             None,
+            false,
         ))
     }
 }
@@ -275,12 +286,14 @@ pub(super) fn value_bounds_check_line(ty: &RustType, e: &str, return_err: bool) 
 /// unsure a site passes `false` and keeps the long form. `location` threads through to
 /// `range_check_err` (the wrapper's name-carrying `new()` copy vs the locationless deserialize copy).
 /// The reported `min`/`max` are ALWAYS the original bounds, regardless of how the condition simplifies.
+/// `found_i128` threads through to `range_check_err` (whether the found expression is already i128).
 pub(super) fn bounds_check_if_block(
     bounds: &(Option<i128>, Option<i128>),
     e: &str,
     return_err: bool,
     non_negative: bool,
     location: Option<&str>,
+    found_i128: bool,
 ) -> String {
     let cond = match bounds {
         // `.ne N` is encoded as Range(N+1, N-1) (see parsing.rs NE): min > max means an
@@ -301,7 +314,7 @@ pub(super) fn bounds_check_if_block(
     format!(
         "if {} {}",
         cond,
-        range_check_err(e, bounds.0, bounds.1, return_err, location)
+        range_check_err(e, bounds.0, bounds.1, return_err, location, found_i128)
     )
 }
 
@@ -388,17 +401,22 @@ pub(super) fn classify_sign_arm(
 /// The `if <cond> { Err(RangeCheck..) }` for one classified sign arm, or `None` when the arm
 /// needs no check. The `Empty` case rejects unconditionally (`if true`) rather than emitting the
 /// real comparison, since the uint arm can't compare a `u64` against a negative bound.
-pub(super) fn sign_arm_if_block(arm: &SignArmBounds, e: &str, return_err: bool) -> Option<String> {
+pub(super) fn sign_arm_if_block(
+    arm: &SignArmBounds,
+    e: &str,
+    return_err: bool,
+    found_i128: bool,
+) -> Option<String> {
     match arm {
         SignArmBounds::Unconstrained => None,
         // sign-arm classification is its own concern; keep the long spelling (`non_negative = false`)
         // and stay locationless — the `min == max` collapse is unconditional and still applies.
-        SignArmBounds::Check(bounds) => {
-            Some(bounds_check_if_block(bounds, e, return_err, false, None))
-        }
+        SignArmBounds::Check(bounds) => Some(bounds_check_if_block(
+            bounds, e, return_err, false, None, found_i128,
+        )),
         SignArmBounds::Empty(orig) => Some(format!(
             "if true {}",
-            range_check_err(e, orig.0, orig.1, return_err, None)
+            range_check_err(e, orig.0, orig.1, return_err, None, found_i128)
         )),
     }
 }
@@ -422,6 +440,9 @@ pub(super) fn non_preserve_bounds_fn(
                 false,
                 primitive_non_negative(p),
                 None,
+                // this fn only serves the u64 unsigned reads and the `.len()` (bytes/text) checks —
+                // never a nint `i128` source, so the widening cast is real.
+                false,
             ),
             x,
         )),
@@ -466,9 +487,14 @@ pub(super) fn width_reject(
     pat: &str,
     ok: &str,
     converted: bool,
+    found_i128: bool,
 ) -> String {
+    // `found_i128`: the guarded `x` is already `i128` (a nint arm reading `negative_integer_sz()`),
+    // so omit the no-op `as i128`; the uint arms (`x: u64`) and the i64 `negative_integer()` arm
+    // keep the real widening cast.
+    let cast = if found_i128 { "" } else { " as i128" };
     format!(
-        "{}.and_then(|{pat}| if {cond} {{ Err(DeserializeFailure::RangeCheck{{ found: x as i128, min: Some({wmin}), max: Some({wmax}) }}.into()) }} else {{ Ok({ok}) }})",
+        "{}.and_then(|{pat}| if {cond} {{ Err(DeserializeFailure::RangeCheck{{ found: x{cast}, min: Some({wmin}), max: Some({wmax}) }}.into()) }} else {{ Ok({ok}) }})",
         if converted { "" } else { CONVERT_ERR_TO_OURS },
     )
 }

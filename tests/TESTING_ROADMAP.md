@@ -267,21 +267,25 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
 6. **Lint-provocation shapes for `generated_code_clippy_clean` (partially systematic at best).**
    The gate itself already exists and denies `clippy::all` over the generated rust and wasm crates
    on two profiles (`generated_code_clippy_clean`, local tier; documented in `tests/README.md`) —
-   yet the
-   `large_enum_variant`/`result_large_err` generated-root allows still arrived consumer-reported,
-   because the gate's rich input is provocation-POOR for shape/threshold-dependent lints: it has
-   no `/` choice asymmetric enough for `large_enum_variant`'s 200-byte default (a synthetic
-   provocation needed a ~30-uint-field record variant), and the static `DeserializeError` sits
-   just under `result_large_err`'s ~128-byte threshold on that input while exceeding it in CML's
-   CI. The work item: add a deliberately lint-provoking shape (the asymmetric choice) to the
-   gate's input so the NEXT default-warn lint of this class — e.g. one a toolchain bump
-   introduces — goes red in-repo instead of in a consumer's CI; the two now-allowed lints are
-   permanently silenced by the generated root's allow, so for them the shape merely pins that the
-   allow keeps covering what it was added for. Known residual that keeps this "partial":
-   threshold-adjacent lints fire spec- and layout-dependently, so the gate certifies "no lint
-   fires on shapes we provoke", never "no consumer CI will trip"; the consumer-report channel
-   stays load-bearing for that remainder, which is why the delivered fix allows the lints at the
-   generated root rather than chasing per-spec detection.
+   yet lint classes still arrive consumer-reported when the gate's rich input is provocation-POOR
+   for the shape that mints them. The gate's input (`tests/canonical/input.cddl`) now carries the
+   identity-op provocations (`clippy_neg_bounded` — a record-field bounded `nint` whose deserialize
+   RangeCheck exercises the no-`as i128`-cast path; `clippy_wrapped_map` — a `@newtype` over a map
+   whose rust `From` impl must be `new(inner)`; `clippy_enum_record` — a record with a c-style enum
+   field whose wasm ctor/getter cross by value), so a regression re-minting any of those
+   `clippy::unnecessary_cast` / `clippy::useless_conversion` shapes is hard-red in both profiles.
+   The still-open work item is the THRESHOLD/shape-dependent default-warn lints the input still
+   can't provoke: it has no `/` choice asymmetric enough for `large_enum_variant`'s 200-byte
+   default (a synthetic provocation needs a ~30-uint-field record variant), and the static
+   `DeserializeError` sits just under `result_large_err`'s ~128-byte threshold on this input while
+   exceeding it in CML's CI. Add a deliberately lint-provoking asymmetric choice so the NEXT
+   default-warn lint of that class — e.g. one a toolchain bump introduces — goes red in-repo
+   instead of in a consumer's CI; those two lints are already permanently silenced by the generated
+   root's allow, so for them the shape merely pins that the allow keeps covering what it was added
+   for. Known residual that keeps this "partial": threshold-adjacent lints fire spec- and
+   layout-dependently, so the gate certifies "no lint fires on shapes we provoke", never "no
+   consumer CI will trip"; the consumer-report channel stays load-bearing for that remainder, which
+   is why those two lints are allowed at the generated root rather than chased per-spec.
 
 ## Standing-system residuals (recur-first)
 
@@ -678,12 +682,18 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   blessed diff, never accept blind, ESPECIALLY when snapshots were already red before your
   change (the diff then contains someone else's unreviewed delta interleaved with yours).
 - **Emitted-shape lint classes OUTSIDE `clippy::all` are beyond `generated_code_clippy_clean`'s
-  reach — one proven instance recorded, no machinery yet.** Review of the wasm burn-down
-  retirement (dropping the identity `.into()`) exposed `Holder::new(val.clone())` in a wasm
-  ctor — a clone of an owned, last-use argument (the boundary ops clone every non-Copy expr
-  regardless of the call site's ownership). `clippy::redundant_clone` would flag it but is
-  nursery-tier, so the gate's `-D clippy::all` cannot see the class; behavior and bytes are
-  unaffected (allocation cost only). Disposition mirrors the curated rustc style-deny precedent
+  reach — the wasm-boundary clone-of-owned class stays ledgered, no machinery yet.** The
+  boundary ops (`from_wasm_boundary_clone`) clone every non-Copy expr regardless of the call
+  site's ownership, so a wasm ctor over an owned last-use arg emits `Holder::new(val.clone())` — a
+  redundant clone `clippy::redundant_clone` would flag but is nursery-tier, so the gate's `-D
+  clippy::all` cannot see it; behavior and bytes are unaffected (allocation cost only). One
+  neighboring FLAVOR of this class is now retired at the source and needs no ledger: the rust
+  `From`/`TryFrom` wrapper impls used to route their owned `inner` through the same boundary ops
+  (`new(inner.clone().into())`), but they now construct via `new(inner)` directly — the `inner`
+  is by-value and already `new()`'s exact param type, so both the clone and the `.into()` were
+  identity (also a `clippy::useless_conversion` the gate DOES see, provoked by `clippy_wrapped_map`
+  in `generated_code_clippy_clean`'s input). The wasm-boundary clone-of-owned flavor above stays
+  ledgered with unchanged disposition, mirroring the curated rustc style-deny precedent
   (`unused_parens` et al.): evaluate specific beyond-`all` lints one at a time, adding a per-lint
   deny only if it is currently green-able on both profiles (nursery lints carry known false
   positives). Act on a second instance or a consumer report, not before.

@@ -129,7 +129,7 @@ impl Deserialize for BoundsMembers {
                 .and_then(|(x, enc)| {
                     if x < -100 {
                         Err(DeserializeFailure::RangeCheck {
-                            found: x as i128,
+                            found: x,
                             min: Some(-100),
                             max: None,
                         }

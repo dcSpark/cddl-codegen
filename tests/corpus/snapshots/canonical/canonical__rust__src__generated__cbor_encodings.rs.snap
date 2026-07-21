@@ -33,6 +33,26 @@ pub struct CborInCborEncoding {
     pub uint_bytes_encoding: Option<cbor_event::Sz>,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct ClippyEnumRecordEncoding {
+    pub len_encoding: LenEncoding,
+    pub tag_encoding: Option<cbor_event::Sz>,
+    pub rest_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ClippyNegBoundedEncoding {
+    pub len_encoding: LenEncoding,
+    pub neg_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ClippyWrappedMapEncoding {
+    pub inner_encoding: LenEncoding,
+    pub inner_key_encodings: BTreeMap<u64, Option<cbor_event::Sz>>,
+    pub inner_value_encodings: BTreeMap<u64, StringEncoding>,
+}
+
 pub type DeeplyNestedDataValueEncodings = BTreeMap<
     Vec<u8>,
     (

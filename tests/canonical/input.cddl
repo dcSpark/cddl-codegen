@@ -46,3 +46,21 @@ mixed_len_keys = {
 	256: uint,
 	a: uint,
 }
+
+; --- lint-provocation shapes for generated_code_clippy_clean ---
+; (a) a bounded negative int at a record-FIELD site: its deserialize emits a nint RangeCheck whose
+; `found` value comes from `negative_integer_sz()` (already i128, so no widening cast). A regression
+; re-adding the no-op `as i128` is clippy::unnecessary_cast — hard-red here. (A wrapper site would
+; instead check the stored u64 magnitude with a REAL `as i128`, so it must be a member.)
+clippy_neg_bounded = [ neg: nint .ge -100 ]
+
+; (b) a @newtype over a map: the rust `From<map>` impl must construct via `new(inner)` directly,
+; with no identity `.clone().into()` (clippy::useless_conversion + a redundant clone of the owned
+; last-use param).
+clippy_wrapped_map = { * uint => text } ; @newtype
+
+; (c) a c-style enum as a record field: the wasm ctor/getter cross the enum BY VALUE (it is
+; `pub use`-re-exported into the wasm crate, so the wasm face IS the rust type), so no identity
+; `.into()` may be emitted at the boundary (clippy::useless_conversion).
+clippy_enum = 0 / 1 / 2
+clippy_enum_record = [ tag: clippy_enum, rest: uint ]

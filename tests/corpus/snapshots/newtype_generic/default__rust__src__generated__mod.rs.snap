@@ -58,7 +58,7 @@ impl WrappedMap {
 
 impl From<BTreeMap<u64, String>> for WrappedMap {
     fn from(inner: BTreeMap<u64, String>) -> Self {
-        WrappedMap::new(inner.clone().into())
+        WrappedMap::new(inner)
     }
 }
 

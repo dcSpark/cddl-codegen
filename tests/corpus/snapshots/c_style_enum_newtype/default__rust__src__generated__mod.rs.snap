@@ -46,6 +46,6 @@ impl WrappedEnum {
 
 impl From<FixedEnum> for WrappedEnum {
     fn from(inner: FixedEnum) -> Self {
-        WrappedEnum::new(inner.into())
+        WrappedEnum::new(inner)
     }
 }

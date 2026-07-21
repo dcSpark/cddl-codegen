@@ -352,7 +352,7 @@ impl IntWrapper {
 
 impl From<Int> for IntWrapper {
     fn from(inner: Int) -> Self {
-        IntWrapper::new(inner.clone().into())
+        IntWrapper::new(inner)
     }
 }
 
@@ -577,7 +577,7 @@ impl StructWrapper {
 
 impl From<U64Wrapper> for StructWrapper {
     fn from(inner: U64Wrapper) -> Self {
-        StructWrapper::new(inner.clone().into())
+        StructWrapper::new(inner)
     }
 }
 

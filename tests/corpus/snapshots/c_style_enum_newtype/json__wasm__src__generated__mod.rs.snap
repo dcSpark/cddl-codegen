@@ -47,7 +47,7 @@ impl WrappedEnum {
     }
 
     pub fn new(inner: FixedEnum) -> Self {
-        Self(cddl_lib::WrappedEnum::new(inner.into()))
+        Self(cddl_lib::WrappedEnum::new(inner))
     }
 
     pub fn get(&self) -> FixedEnum {

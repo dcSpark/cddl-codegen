@@ -31,7 +31,7 @@ impl EnumKeyedMap {
     }
 
     pub fn insert(&mut self, key: FixedEnum, value: u64) -> Option<u64> {
-        self.0.insert(key.into(), value)
+        self.0.insert(key, value)
     }
 
     pub fn get(&self, key: FixedEnum) -> Option<u64> {
