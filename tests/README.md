@@ -766,6 +766,14 @@ idiom") is verified across the layers:
   fixtures (`feature_corpus` snapshots + `feature_corpus_compiles`' three-profile compile and the
   default-profile `--emit-tests` byte-exact round-trip of the tagged arm).
 - **Wire bytes** — the `opt_set` golden vectors above (both arms + canonical size-not-presence).
+- **Matrix cells (choice-member axis)** — `contain.choice-member.type2.tag.set_idiom` /
+  `contain.choice-member.type2.tag.set_idiom_near_miss`
+  (`cddl-matrix/containment/choice-member.toml`): the bare collapse and the mismatched-bounds
+  NON-collapse as execution-probed (role × feature) cells, each with per-wire-arm decode-foreign
+  vectors in `tests/decode_conformance/catalog.toml` (arm floor `["4","6"]` pinned in
+  `project_decode_conformance.ts` — the untagged major-4 arm is the direction the default encoder
+  never emits, so those vectors are the independent decode evidence). The reject-flavored idiom is
+  pinned separately by the vendor feature row `dsl.duplicates.reject`.
 - **Boundary limitations** — `tests/TESTING_ROADMAP.md` § "Deferred features" (non-idiom
   choice-bodied generic-def crash, alias-of-instance chains, inline choices, and the pre-existing
   multi-tag-per-field encoding-var collision).
