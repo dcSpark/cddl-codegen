@@ -12,9 +12,16 @@
 ; - `heterogeneous_set` / `heterogeneous` — a MANDATORY outer tag 24 over the optional-tag set idiom
 ;   (258-or-untagged): level 1 is `Option<cbor_event::Sz>` (mandatory) and level 2 is
 ;   `TagPresenceEncoding` (optional), pinning that the two encoding kinds sit at their own levels.
-; - `holder` — embeds both in record-field position so member-side (de)serialize compiles + roundtrips.
+; - `elem_tagged` / `outer_over_array` — a MANDATORY outer tag 24 over an ARRAY whose ELEMENT carries
+;   its own tag 258. The array element opens a fresh `{field}_elem` name namespace, so the element's
+;   tag is LEVEL 1 THERE (`{field}_elem_tag_encoding`) even though the field crossed tag 24 outside the
+;   array — the tag depth must RESET at the element boundary on the serialize side exactly as it does
+;   in the encoding-member derivation, or the write reads a depth-inflated var the struct never minted.
+; - `holder` — embeds all three in record-field position so member-side (de)serialize compiles + roundtrips.
 homogeneous_inner = #6.258([* uint])
 homogeneous = #6.24(homogeneous_inner)
 heterogeneous_set = #6.258([* uint]) / [* uint]
 heterogeneous = #6.24(heterogeneous_set)
-holder = [h: homogeneous, s: heterogeneous]
+elem_tagged = #6.258([* uint])
+outer_over_array = #6.24([* elem_tagged])
+holder = [h: homogeneous, s: heterogeneous, a: outer_over_array]

@@ -16,6 +16,47 @@ use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct ElemTagged(pub(crate) Vec<u64>);
+
+#[wasm_bindgen]
+impl ElemTagged {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) {
+        self.0.push(elem);
+    }
+}
+
+impl From<Vec<u64>> for ElemTagged {
+    fn from(native: Vec<u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ElemTagged> for Vec<u64> {
+    fn from(wasm: ElemTagged) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<u64>> for ElemTagged {
+    fn as_ref(&self) -> &Vec<u64> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct Heterogeneous(pub(crate) cddl_lib::Heterogeneous);
 
 #[wasm_bindgen]
@@ -152,8 +193,16 @@ impl Holder {
         self.0.s.clone().into()
     }
 
-    pub fn new(h: &Homogeneous, s: &Heterogeneous) -> Self {
-        Self(cddl_lib::Holder::new(h.clone().into(), s.clone().into()))
+    pub fn a(&self) -> OuterOverArray {
+        self.0.a.clone().into()
+    }
+
+    pub fn new(h: &Homogeneous, s: &Heterogeneous, a: &OuterOverArray) -> Self {
+        Self(cddl_lib::Holder::new(
+            h.clone().into(),
+            s.clone().into(),
+            a.clone().into(),
+        ))
     }
 }
 
@@ -270,6 +319,47 @@ impl From<HomogeneousInner> for Vec<u64> {
 
 impl AsRef<Vec<u64>> for HomogeneousInner {
     fn as_ref(&self) -> &Vec<u64> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OuterOverArray(pub(crate) Vec<cddl_lib::ElemTagged>);
+
+#[wasm_bindgen]
+impl OuterOverArray {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> ElemTagged {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &ElemTagged) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<cddl_lib::ElemTagged>> for OuterOverArray {
+    fn from(native: Vec<cddl_lib::ElemTagged>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OuterOverArray> for Vec<cddl_lib::ElemTagged> {
+    fn from(wasm: OuterOverArray) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<cddl_lib::ElemTagged>> for OuterOverArray {
+    fn as_ref(&self) -> &Vec<cddl_lib::ElemTagged> {
         &self.0
     }
 }

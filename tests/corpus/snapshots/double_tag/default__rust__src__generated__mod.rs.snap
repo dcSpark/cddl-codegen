@@ -15,6 +15,8 @@ pub mod error;
 mod extern_interface_check;
 pub mod serialization;
 
+pub type ElemTagged = Vec<u64>;
+
 #[derive(Clone, Debug)]
 pub struct Heterogeneous(pub(crate) Vec<u64>);
 
@@ -48,11 +50,12 @@ pub type HeterogeneousSet = Vec<u64>;
 pub struct Holder {
     pub h: Homogeneous,
     pub s: Heterogeneous,
+    pub a: OuterOverArray,
 }
 
 impl Holder {
-    pub fn new(h: Homogeneous, s: Heterogeneous) -> Self {
-        Self { h, s }
+    pub fn new(h: Homogeneous, s: Heterogeneous, a: OuterOverArray) -> Self {
+        Self { h, s, a }
     }
 }
 
@@ -82,3 +85,5 @@ impl From<Homogeneous> for Vec<u64> {
 }
 
 pub type HomogeneousInner = Vec<u64>;
+
+pub type OuterOverArray = Vec<ElemTagged>;
