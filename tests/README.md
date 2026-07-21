@@ -846,10 +846,16 @@ across the same layers:
   vendor feature rows (flavored siblings, no bare row — the bare directive panics on its missing
   argument; recipe notes: `cddl-matrix/README.md` § "Registering a new vendor (CDDL_CODEGEN)
   feature row"), with minted decode-foreign catalog rows and the `table_preserve.cddl` corpus
-  fixture's minted corpus decode rows. The per-role wasm-ABI grid row for the appending-`insert`
-  pair-map ABI class remains OWED, recorded in `cddl-matrix/ROADMAP.md` § "wasm-ABI & multifile
-  placement matrices — remaining work" alongside its reject sibling; the robustness/core pins
-  above are the interim per-fixture coverage.
+  fixture's minted corpus decode rows.
+- **wasm-ABI + multifile matrix grid rows (both flavors)** — the per-role grid layer on top of the
+  per-fixture pins above: the reject twins as `rset`/`nerset`/`rseta`/`nerseta` and the preserve
+  pair-map twins as `pmap`/`nepmap`/`pmapa`/`nepmapa` in `project_wasm_matrix.ts`'s `SHAPES`
+  (named-rule + anonymous-instance flavors, each × all 8 boundary roles, compile floor +
+  three-profile round-trips) and the same shapes × 3 reference modes in the multifile placement
+  matrix. Enumerating them found + fixed the `[*]`-reject wasm-boundary conversion gap (E0308,
+  pinned by `newtype_over_plain_reject_ordered_set_converts_wasm_boundary`) and pinned the
+  restricted pair-map cross-module cells (`nepmap__{aliased,named,unref}` and `nepmapa__aliased`,
+  the structural-wrapper ROOT_SCOPE class — `cddl-matrix/ROADMAP.md` § findings).
 
 ### Decode-direction conformance (`tests/decode_conformance/` — accept what the spec accepts)
 
@@ -1574,7 +1580,14 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
     `From<cddl_lib::Tg>` / cbor bytes), `bwrap` (a bounded/range wrapper struct — the only
     `Result`-returning wasm `new`: `new(inner)` enforces the `.size` bound, alongside `get()`),
     `cenum` (Copy c-style enum), `denum` (data-carrying type-choice enum),
-    `nullable` (`Option<T>`), `generic`, `chain`, `extern`, `rawbytes` (a user-supplied
+    `nullable` (`Option<T>`), `generic` (a monomorphized RECORD-generic instance),
+    `gcolla`/`gcollexp`/`gcolln`/`gtbla` (anonymous generic-COLLECTION/TABLE-instance lowerings —
+    wrapper-needing element → structural class, exposable element → bare `Vec`, plus the
+    named-instance-rule own-name control), `rset`/`nerset`/`rseta`/`nerseta` (`@duplicates reject`
+    uniqueness twins over `OrderedSet`/`NonEmptyOrderedSet` — the FALLIBLE `add` door, named-rule and
+    anonymous-instance flavors), `pmap`/`nepmap`/`pmapa`/`nepmapa` (`@duplicates preserve` pair-map
+    twins over `PairMap`/`NonEmptyPairMap` — the APPENDING `insert` and the `{+}` borrow-clone
+    `try_from` door, same two flavors), `chain`, `extern`, `rawbytes` (a user-supplied
     `RawBytesEncoding` type). This is the
     `is_copy × directly_wasm_exposable × has-a-wrapper-RustStruct` axis the CBOR feature matrix
     deliberately does *not* individuate (wrapper-vs-transparent is a struct-table fact, not a shape fact
@@ -2013,20 +2026,26 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   change a real pin's error code to a bogus one, e.g. `E9999` → the class-changed message fires),
   watch it fail, revert.
 
-**What it pins today.** Twelve cells, all the same `mark_refs` structural-wrapper ROOT_SCOPE
-placement class (fix queue in `cddl-matrix/ROADMAP.md` § findings): `collrec__named` (E0432 — the
-ARRAY structural-NAME class, `[* <record>]`, the only loose array whose wasm representation needs a
+**What it pins today.** Seventeen cells, all the same `mark_refs` structural-wrapper ROOT_SCOPE
+placement class (fix queue in `cddl-matrix/ROADMAP.md` § findings): `collrec__named` and its
+generic-instance twin `gcolln__named` (E0432 — the
+ARRAY structural-NAME class, `[* <record>]` reached by a NAMED rule (`recs = [* foo]` /
+`gcn = gcoll<foo>`), the only loose array whose wasm representation needs a
 generated `FooList`-style wrapper; a NAMED collection alias mints only its own wrapper, so the
 structural name imported from root scope exists nowhere; enumerated from a review-found `SHAPES`
 hole — its `collrec__anon` sibling round-trips green, element refs being registered from the
 wrapper's emission scope, and its `collrec__aliased` sibling likewise: the alias-base mint walk
 mints the loose wrapper at root and the type-alias import walk covers the base symmetrically),
-plus the eleven restricted
-non-empty cells (`necollrec__{aliased,anon,named,unref}`, `nemap__{aliased,anon,anonb,named,unref}`,
-`necoll__{anon,anonb}` — all E0425: the restricted wrapper's `try_from(&Loose)` or anon
+plus fifteen restricted-wrapper cells (all E0425: the restricted wrapper's `try_from(&Loose)` or anon
 dedup-to-named reference names the root-minted loose builder/element/rule bare from a non-root
-module; the `aliased` pair is red purely on module `a`'s self-contained reference, the aliasing
-module `b`'s own import being emitted correctly; the per-shape breakdown is on the same findings
+module) — the eleven non-empty cells
+(`necollrec__{aliased,anon,named,unref}`, `nemap__{aliased,anon,anonb,named,unref}`,
+`necoll__{anon,anonb}`; the `aliased` pair is red purely on module `a`'s self-contained reference, the aliasing
+module `b`'s own import being emitted correctly) and the four `@duplicates preserve` pair-map cells
+(`nepmap__{aliased,named,unref}`, `nepmapa__aliased` — the restricted `NonEmptyPairMap`'s
+`try_from(&MapU64ToText)` naming the root-minted loose pair-map builder bare; the anon-instance
+flavor reds only in `aliased`, where the alias-base mint walk drops the loose-builder import;
+the per-shape breakdown is on the same findings
 entry). Every
 other cell is green, and greenness rests on four emitter invariants this matrix guards: a module
 declares `pub mod serialization;` only when that file is written (the module-declaration loop in
