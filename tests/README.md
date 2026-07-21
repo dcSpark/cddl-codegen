@@ -344,12 +344,17 @@ review the diff like a snapshot. Blessing never creates `error.txt` cases. The d
 intents live in `tests/preserve-fixtures/README.md`.
 
 What the pure fixtures CANNOT see — assumptions about real generator output (the header banner,
-doc ownership) and the disk-level write seam — is
-pinned by exactly two integration tests: `comment_preservation_disk_round_trip` (real pipeline;
+doc ownership) and the disk-level write / toolchain-formatter seams — is
+pinned by exactly three integration tests: `comment_preservation_disk_round_trip` (real pipeline;
 injects comments + an insert block + a replace block, regenerates twice, asserts the post-rustfmt
-fixed point) and `comment_preserve_lexer_round_trip_over_corpus` (lexer assumptions vs everything
-the generator emits across flag profiles). Keep that pair thin; new merge behavior belongs in
-fixtures.
+fixed point), `comment_preserve_lexer_round_trip_over_corpus` (lexer assumptions vs everything
+the generator emits across flag profiles), and `preserve_markers_survive_rustfmt_fold_roundtrip`
+(the formatter seam the first test's mid-function replace block cannot reach: rustfmt folds a
+match-TAIL block's markers into trailing position — `} // cddl-codegen:replaces` — so this runs
+the tool's exact rustfmt pass over a match-tail block and asserts the result re-parses, staying
+meaningful across rustfmt versions because "both spellings parse" is the assertion, while the
+`replace_rustfmt_folded_tail_arm_markers` fixture family pins the merge semantics of today's known
+folded shape). Keep that set thin; new merge behavior belongs in fixtures.
 
 One generator-output assumption is deliberately NOT pinned by that pair, because neither test can
 see its violation: "the generator emits no comment on a row a spec change can delete" (which

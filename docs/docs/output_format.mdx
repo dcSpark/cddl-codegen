@@ -285,7 +285,9 @@ halves so your hand edits to the crate root survive regeneration:
   re-placed becomes a `compile_error!` block (loud, never a silent drop) so you review it. See
   [preserving edits](preserving_edits.mdx) for the full syntax, failure modes, and limits; pass
   `--no-preserve-comments` to turn the whole overlay off and clobber pristine. Two carve-outs:
-  trailing (end-of-line) comments are not carried — move them to their own line — and `///` doc
+  trailing (end-of-line) comments are not carried — move them to their own line (a
+  `// cddl-codegen:` tag that `rustfmt` itself folded into trailing position is the exception:
+  the overlay recognizes it there, so a formatted repo needs no hand-unfolding) — and `///` doc
   text on tool-documented items is tool-owned (it flows from your CDDL/`@doc`; hand edits to it
   are dropped, so edit the CDDL instead).
 - **User-owned: the crate root `src/lib.rs` (seeded once, then never touched).** On a first export the
