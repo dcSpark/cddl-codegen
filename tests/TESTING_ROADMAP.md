@@ -1306,7 +1306,8 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   `integration_tests::getting_started_example`.)
 - **Full `2^N` flag powerset / PICT pairwise** — the curated named profiles cover the flag
   *combinations* worth testing, so the full powerset stays out of scope. Escaped interactions earn
-  their own standing cells rather than the whole powerset — three so far. First:
+  their own standing cells rather than the whole powerset — four so far (the Fourth is recorded
+  after the Third below, with a now-armed trigger). First:
   `--common-import-override` × `--preserve-encodings=false` targeting a preserve-flavored common
   crate emitted `CBORReadLen::new(Len)` against a `new(LenSz)` runtime (E0308). Second:
   `--workspace-dep` × `--wasm=false` silently ignored the flag — validation included — fixed to
@@ -1323,7 +1324,27 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   over the arm's outer accumulator (E0308 assign-to-shadow) — the first found by reading during
   the optional-fixed-value delivery, the second at the arming run of the standing cell that now
   owns the combination (`preserve_no_annotate_fixed_members_generate`, generating both fixed-member
-  corpus fixtures under the pair). Both fixed. Recur-first lesson: a THIRD validating
+  corpus fixtures under the pair). Both fixed. Fourth, the same input-poverty mechanism as the
+  Third on a different emit path: `--annotate-fields=false` (non-preserve) × a value-bounded
+  `nint` MEMBER — the N64 bounds `.and_then` relied solely on the site's `error_convert`, which
+  is empty under annotate=false, so the closure inferred the reader's native `cbor_event::Error`
+  and the emitted crate failed E0277. `flag_value_smoke` swept the flag the whole time but its
+  input (`tests/canonical/input.cddl`) had no bounded nint, so the path was unreachable by every
+  gate until the `generated_code_clippy_clean` provocation shape (`clippy_neg_bounded`) entered
+  that shared input and turned the smoke red. Fixed (convert-at-most-once, pinned by
+  `deserialize_converts_error_at_most_once`; the shape stays in the smoke's input permanently).
+  Cross-check at discovery: no cddl-matrix item covers this axis — the matrix enumerates INPUT
+  surface under the named profiles, and the corpus already held the provoking shape
+  (`bounds_spellings.cddl`'s `m_nint_range`, verified red-reproducing under annotate=false at the
+  pre-fix rev) — the unswept dimension was the FLAG value. Recur-first: this is the SECOND
+  input-poverty instance (a smoke sweeping a flag over an input too shape-poor to reach the
+  flag's divergent emission paths), so the trigger for that sub-class is ARMED; the named layer
+  is an `--annotate-fields=false` compile-floor leg over the feature corpus (or its
+  deserialize-shape subset) inside `feature_corpus_compiles`' machinery — the corpus is the
+  shape-rich input the canonical smoke is not, and gate-cache memoization bounds the added
+  nested-cargo cost. Build it on the next escaped annotate=false instance OR when touching that
+  gate's profile set for another reason, whichever comes first. Recur-first lesson from the first
+  three: a THIRD validating
   flag turning up mode-inert is the trigger
   to build the class-level validation-smoke sweep — each clap flag with documented startup
   validation invoked once with a deliberately invalid value under each `--wasm` mode, asserting
