@@ -1,0 +1,10 @@
+; Co-hosted keys-list DEP spec (`--wrapper-requests` host side). The dep OWNS `stake_cred` (a real
+; record) but its own spec produces NEITHER of the two requested shapes below. A consumer that
+; borrows `{* stake_cred => uint}` also borrows `[* stake_cred]` for that map's `keys()` accessor, so
+; both wrappers are co-hosted into THIS crate's `requested_collections.rs` in one run. The keys-list
+; wrapper (`StakeCredList`) is minted in that same file, so the requested-collections import walk must
+; NOT emit `use crate::generated::StakeCredList;` for it (the generated root defines no such name —
+; E0432). Contrast the map's ELEMENT class `StakeCred`, which genuinely lives at the root and IS
+; imported. `container` merely keeps `stake_cred` referenced as a struct.
+stake_cred = [x: uint]
+container = [c: stake_cred]
