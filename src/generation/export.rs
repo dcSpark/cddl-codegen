@@ -580,6 +580,13 @@ impl GenerationScope {
         // orphan (a file a prior run generated but this one no longer does — e.g. a removed/renamed
         // scope) from live output.
         let mut written_generated_rs: BTreeSet<std::path::PathBuf> = BTreeSet::new();
+        // Layer-3 re-export diagnostic input, DEFERRED until every generated file is written this
+        // run. The warning must not fire for a required name whose glue line the user deleted via a
+        // `cddl-codegen:replace` block — and that survives-or-not decision reads the POST-OVERLAY
+        // bytes the loop below is still producing, so the seed-once root text is only collected here
+        // and the warning is resolved at loop end (see the resolution block after the write loop).
+        // Each entry is (seed-once root rel_path, its already-existing text).
+        let mut deferred_reexport_candidates: Vec<(String, String)> = Vec::new();
         for (rel_path, content) in &files {
             let path = rust_dir.join(rel_path);
             if is_preservable_generated_path(rel_path) {
@@ -620,24 +627,12 @@ impl GenerationScope {
                     // (2) Own-spec extern re-export contract: this run's glue needs the crate-root
                     // `lib.rs` to re-export a known set of names. When the seed-once root pre-dates
                     // the current required set (a contract change since it was seeded), the user gets
-                    // a bare E0432 with no hint. Name the missing idents and the exact fix. Scoped by
-                    // crate: rust root ⇢ rust set, wasm root ⇢ wasm set; json-gen has none.
-                    let required = match rel_path.as_str() {
-                        "rust/src/lib.rs" => Some(&self.required_rust_reexports),
-                        "wasm/src/lib.rs" => Some(&self.required_wasm_reexports),
-                        _ => None,
-                    };
-                    if let Some(required) = required {
-                        let missing = missing_reexports(&existing, required);
-                        if !missing.is_empty() {
-                            eprintln!(
-                                "warning: {rel_path} is missing crate-root re-exports the generated \
-                                 extern glue requires: {}. Add to your hand-written root (one per \
-                                 name): `pub use <your_module>::<Name>;`. See the extern types \
-                                 section of docs/output_format.",
-                                missing.join(", ")
-                            );
-                        }
+                    // a bare E0432 with no hint. Deferred to the post-write resolution block below so
+                    // the survival scan can subtract names whose glue a `cddl-codegen:replace` block
+                    // deleted from this run's output. Only the rust/wasm roots have a required set
+                    // (json-gen has none), so only those are collected.
+                    if matches!(rel_path.as_str(), "rust/src/lib.rs" | "wasm/src/lib.rs") {
+                        deferred_reexport_candidates.push((rel_path.clone(), existing));
                     }
                 }
                 continue;
@@ -679,6 +674,60 @@ impl GenerationScope {
                 let path = rust_dir.join(&rel_path);
                 write_rs_with_preserve(&path, &rel_path, content, cli.preserve_comments)?;
                 written_generated_rs.insert(path);
+            }
+        }
+
+        // Layer-3 re-export diagnostic, resolved now that every generated `.rs` for this run has
+        // been written (all the glue-carrying scope `mod.rs` files included). A required extern name
+        // is nagged as "missing from the seed-once lib.rs" only when its glue line
+        // (`pub use crate::<Name>;`) actually SURVIVES in this run's written generated output: when
+        // the user deleted that glue via a `cddl-codegen:replace` block, the run no longer requires
+        // the re-export, so a warning would be a false nag on every regen. Survival is read from THIS
+        // run's OWN just-written files — re-reading our own output is not a prior-output read: it
+        // does not feed back into WHAT code is generated, so the no-prior-output invariant and
+        // run-twice=run-once both still hold. Deciding from the written bytes (not from
+        // `comment_preserve` internals) keeps this self-verifying and robust to future overlay
+        // changes. Still emits stderr guidance ONLY and writes ZERO bytes.
+        for (rel_path, existing) in &deferred_reexport_candidates {
+            let (required, generated_prefix) = match rel_path.as_str() {
+                "rust/src/lib.rs" => (&self.required_rust_reexports, "rust/src/generated"),
+                "wasm/src/lib.rs" => (&self.required_wasm_reexports, "wasm/src/generated"),
+                _ => continue,
+            };
+            // Post-overlay written bytes of this crate's generated `.rs` files (the glue lives in a
+            // scope module `mod.rs`). Collect every own-line, non-comment `use` statement once; a
+            // required name whose LIVE `pub use crate::<Name>;` glue no longer appears was deleted by
+            // the user and is not required this run. The match is on the whole trimmed line, NOT a
+            // substring: a `cddl-codegen:replace` deletion leaves the recorded original behind as a
+            // `// pub use crate::<Name>;` comment line, which a substring scan would wrongly read as
+            // survival — the trimmed-equality test excludes it (a comment line starts with `//`).
+            // rustfmt keeps each single-name `pub use crate::X;` on its own line, so this is robust
+            // to the files being rustfmt'd.
+            let crate_generated_root = rust_dir.join(generated_prefix);
+            let live_glue_lines: BTreeSet<String> = written_generated_rs
+                .iter()
+                .filter(|p| p.starts_with(&crate_generated_root))
+                .filter_map(|p| std::fs::read_to_string(p).ok())
+                .flat_map(|text| {
+                    text.lines()
+                        .map(|line| line.trim().to_owned())
+                        .collect::<Vec<_>>()
+                })
+                .collect();
+            let surviving: BTreeSet<String> = required
+                .iter()
+                .filter(|name| live_glue_lines.contains(&format!("pub use crate::{name};")))
+                .cloned()
+                .collect();
+            let missing = missing_reexports(existing, &surviving);
+            if !missing.is_empty() {
+                eprintln!(
+                    "warning: {rel_path} is missing crate-root re-exports the generated \
+                     extern glue requires: {}. Add to your hand-written root (one per \
+                     name): `pub use <your_module>::<Name>;`. See the extern types \
+                     section of docs/output_format.",
+                    missing.join(", ")
+                );
             }
         }
 
