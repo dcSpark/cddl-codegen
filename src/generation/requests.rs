@@ -200,6 +200,11 @@ impl GenerationScope {
         self.requested_scope_override = Some(requested_scope.clone());
         for (_, rt, structural, _) in &to_emit {
             let ident = RustIdent::new(CDDLIdent::new(structural.clone()));
+            // Record the hosted wrapper so the per-scope wasm import walk can mark the element/key/value
+            // wasm classes its body names at the requested scope (cross-scope + scoped-extern imports a
+            // bare `use super::*;` cannot reach). The structural ident is the emitted class name.
+            self.requested_wrapper_types
+                .push((ident.clone(), rt.clone()));
             match &rt.conceptual_type {
                 ConceptualRustType::Array(inner) => {
                     if rt.is_reject_ordered_set() {

@@ -1,0 +1,5 @@
+; The dep's `scoped_ext`, a hand/extern type in the `sub::module` scope. The extern's wasm class lives
+; only at the crate root under the re-export contract (`pub use crate::ScopedExt;` re-exported into this
+; scope's generated module), never at the generated root — so a hosted `{* uint => scoped_ext}` map's
+; value wasm class must be imported into `requested_collections.rs` from `crate::generated::sub::module`.
+scoped_ext = _CDDL_CODEGEN_EXTERN_TYPE_
