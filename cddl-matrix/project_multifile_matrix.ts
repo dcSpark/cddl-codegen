@@ -39,16 +39,19 @@ const DIR = `${HERE}/../tests/matrix_multifile`;
 const CHECK = process.argv.includes("--check");
 
 // --- Axis 1: type-shapes. Defs + `ty` copied verbatim (provenance) from project_wasm_matrix.ts's
-// `SHAPES` — do NOT import it (that module runs projection on import) — plus `collrec`, which is
-// multifile-SPECIFIC (the structural array wrapper only needs placement cross-module; at the wasm
-// matrix's root scope the class cannot bite). Included: every shape that HAS
+// `SHAPES` — do NOT import it (that module runs projection on import) — plus `collrec` and `tblrec`,
+// which are multifile-SPECIFIC (the structural array wrapper / root-minted keys-list only need
+// placement cross-module; at the wasm
+// matrix's root scope those classes cannot bite). Included: every shape that HAS
 // defs and is self-contained (can compile standalone). `anonForm` is the shape's inline anonymous
 // same-shape spelling (the `mark_refs` structural-wrapper class); present iff the anon holder
-// `holder = [field0: <anonForm>]` compiles GREEN as a single-file spec — verified once during
-// construction (throwaway generate + `cargo check` rust+wasm). All 7 anon-cell candidates
-// probed green (coll/collmap/collrec/tag/nullable/bwrap/cborwrap), so all 7 admit an anon cell; a red
+// `holder = [field0: <anonForm>]` compiles GREEN as a single-file spec — verified once when the
+// shape lands (throwaway generate + `cargo check` rust+wasm). All 11 anon-cell candidates probed
+// green (the EXPECTED_ANON_SHAPES list below), so all 11 admit an anon cell; a red
 // there would be a single-file limitation, not a placement finding, and the shape would carry no
-// `anonForm`.
+// `anonForm`. (The generic-instance and `@duplicates` directive shapes carry no `anonForm` by
+// construction — an instance `ty` IS the anonymous spelling, and the per-rule directive has no
+// inline spelling — so they are not anon-cell candidates at all; see their entry comments.)
 //
 // Excluded shapes (present in the wasm matrix, deliberately absent here):
 //   - `prim` (`ty: uint`, no defs) — nothing to PLACE in a module; a module needs at least one rule.
