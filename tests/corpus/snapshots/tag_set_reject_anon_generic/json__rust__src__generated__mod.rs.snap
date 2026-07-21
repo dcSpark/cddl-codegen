@@ -1,0 +1,37 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+pub mod error;
+mod extern_interface_check;
+pub mod ordered_set;
+pub mod serialization;
+
+use crate::generated::ordered_set::OrderedSet;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct Holder {
+    pub g: OsetU64,
+}
+
+impl Holder {
+    pub fn new(g: OsetU64) -> Self {
+        Self { g }
+    }
+}
+
+/// Synthesized convenience alias for an anonymous generic-collection instance (not a CDDL rule name).
+/// The tag-258 set idiom: the tag is an encoding detail — both the `#6.258(...)` and the bare-array wire forms are accepted (serialization defaults to tagged), so either round-trips byte-exactly.
+/// `@duplicates reject`: a repeated element is refused (a `DuplicateKey` error) on both the wire and the API; accepted (duplicate-free) input re-emits byte-exactly in wire order (the set is order-preserving, never sorted).
+pub type OsetU64 = OrderedSet<u64>;
+
+pub type Outer = Vec<OsetU64>;

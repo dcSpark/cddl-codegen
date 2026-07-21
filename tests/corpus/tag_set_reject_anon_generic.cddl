@@ -1,0 +1,13 @@
+; `@duplicates reject` on a GENERIC set def, instantiated ANONYMOUSLY at use sites (no named alias
+; rule in between): the policy must ride the anonymous-instance registration path, not just the
+; named-rule re-resolution that tests/corpus/tag_set_reject.cddl's `oset_u64 = oset<uint>` pins.
+; Distinct seam: a named alias resolves through rule registration; an anonymous member/element
+; instantiation registers the instance ident directly at the use site (see
+; tests/corpus/generic_call_member.cddl for the non-duplicates version of this position family).
+;
+; - `holder` — member position: the field must bind to the reject twin (`OrderedSet<u64>`).
+; - `outer`  — the SAME instantiation under an occurrence (element position): the double
+;              registration stays deterministic and shares one emitted instance, twin included.
+oset<a0> = #6.258([* a0]) / [* a0] ; @duplicates reject
+holder = [g: oset<uint>]
+outer = [* oset<uint>]
