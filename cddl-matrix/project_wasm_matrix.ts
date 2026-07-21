@@ -175,6 +175,38 @@ const SHAPES: Record<string, Shape> = {
   // anonymous instance `[+]` -> the STRUCTURAL `NonEmptyU64OrderedSet` class (`pub type NeosetU64 =
   // NonEmptyOrderedSet<u64>`); the non-empty reject twin of `rseta`, same marked-alias parity carve-out.
   nerseta: { defs: ["neoset<e0> = [+ e0] ; @duplicates reject"], ty: "neoset<uint>" },
+  // --- `@duplicates preserve` PairMap ABI class (the mirror of the reject class, one boundary over).
+  // A `{* k => v}`/`{+ k => v}` rule carrying `@duplicates preserve` lowers to the ORDER-FAITHFUL
+  // multimap twin — rust core `PairMap<K, V>` / `NonEmptyPairMap<K, V>`, a `Vec<(K, V)>` with NO dedup
+  // (static/pair_map.rs) — and crosses the wasm boundary as a TWO-WRAPPER pair distinct from
+  // `collmap`/`nemap` (whose rust side is a `BTreeMap`-backed wrapper that REPLACES on a duplicate
+  // key). The loose `{*}` wrapper's `insert(key, value) -> Option<V>` APPENDS (order-preserving,
+  // duplicate keys retained) rather than replacing; its structural spelling is minted as
+  // `MapU64ToText` (aliased to the rule wrapper) like an ordinary map, but the emitter routes it
+  // through `codegen_table_type(preserve_pair_map: true)`. The restricted `{+}` wrapper
+  // (`NonEmptyPairMap`) is entered through the single checked door
+  // `try_from(&LoosePairMapWrapper) -> Result<_, JsError>` (BORROW + CLONE the loose wrapper, like
+  // `necollrec`/`nemap`) alongside an infallible `new(first_key, first_value)` + infallible `insert`.
+  // All roles compile — a `PairMap` derives `Ord` + `Hash` (static/pair_map.rs), so the map-KEY cell is
+  // valid, not a degenerate prune (probed). No wasm-boundary conversion gap (the reject class's
+  // `newtype-inner` E0308) surfaces here: the preserve wrappers are rust-side wrapper structs, so the
+  // `RustType` boundary helpers convert them via the ordinary wrapper arm.
+  // named `{*}` -> the `Pm` loose wrapper (appending `insert`, loose `new()`).
+  pmap: { defs: ["pm = { * uint => text } ; @duplicates preserve"], ty: "pm" },
+  // named `{+}` -> the `Npm` NonEmptyPairMap wrapper — the restricted preserve twin: a distinct wasm
+  // surface from `pmap` (a min-1 bound + the `try_from(&MapU64ToText)` borrow-clone door alongside the
+  // infallible `new`/`insert`), the pair-map analog of `nemap`'s restricted-map surface.
+  nepmap: { defs: ["npm = { + uint => text } ; @duplicates preserve"], ty: "npm" },
+  // anonymous instance `{*}` -> the loose pair-map wrapper via a synthesized
+  // `pub type PtblU64Text = PairMap<u64, String>` (rust) / `= MapU64ToText` (wasm) alias — the preserve
+  // analog of `gtbla`. The rust alias carries `SYNTHESIZED_INSTANCE_ALIAS_DOC`, so `wasm_api_parity`
+  // rules 2+5 skip it (the documented structural lowering, no CDDL rule name at stake), keeping
+  // PARITY_EXEMPT empty; the pair-map flavor is recovered from the shape (pinned by
+  // `generic_preserve_table_instance_lowers_to_pair_map_under_wasm`).
+  pmapa: { defs: ["ptbl<k0, v0> = { * k0 => v0 } ; @duplicates preserve"], ty: "ptbl<uint, text>" },
+  // anonymous instance `{+}` -> the restricted NonEmptyPairMap wrapper (`pub type NeptblU64Text =
+  // NonEmptyPairMap<u64, String>`); the non-empty preserve twin of `pmapa`, same marked-alias parity carve-out.
+  nepmapa: { defs: ["neptbl<k0, v0> = { + k0 => v0 } ; @duplicates preserve"], ty: "neptbl<uint, text>" },
   // --- Depth / representative smoke cells: same boundary logic as a 1-hop shape above, kept only to
   // guard alias-chain *resolution depth* (>1 hop). One role each — full role coverage would only
   // duplicate `passthru`/`cborwrap` accessors (verified: differs from them only by type name).
@@ -267,7 +299,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 226; // 28 full shapes × 8 roles − 2 map-key skips (nullable, rawbytes) + 4 single-role shapes (chain, cborwrap2, extern, mstruct)
+const EXPECTED_CELLS = 258; // 32 full shapes × 8 roles − 2 map-key skips (nullable, rawbytes) + 4 single-role shapes (chain, cborwrap2, extern, mstruct)
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `wasm-ABI grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,

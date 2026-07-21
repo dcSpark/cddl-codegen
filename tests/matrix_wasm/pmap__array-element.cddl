@@ -1,0 +1,3 @@
+; cell: pmap x array-element
+pm = { * uint => text } ; @duplicates preserve
+holder = [* pm]

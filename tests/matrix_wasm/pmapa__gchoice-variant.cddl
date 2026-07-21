@@ -1,0 +1,3 @@
+; cell: pmapa x gchoice-variant
+ptbl<k0, v0> = { * k0 => v0 } ; @duplicates preserve
+holder = [ f0: ptbl<uint, text> // f1: nint ]

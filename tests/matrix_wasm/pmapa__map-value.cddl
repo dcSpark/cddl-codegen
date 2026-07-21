@@ -1,0 +1,3 @@
+; cell: pmapa x map-value
+ptbl<k0, v0> = { * k0 => v0 } ; @duplicates preserve
+holder = { * uint => ptbl<uint, text> }

@@ -1,0 +1,2 @@
+; cell: pmapa x named (reference from module b)
+bholder = [field0: ptbl<uint, text>]

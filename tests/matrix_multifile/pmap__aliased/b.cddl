@@ -1,0 +1,2 @@
+; cell: pmap x aliased (reference from module b)
+bal = pm

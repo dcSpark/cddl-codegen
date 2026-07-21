@@ -1,0 +1,2 @@
+; cell: nepmapa x named (shape defs, module a)
+neptbl<k0, v0> = { + k0 => v0 } ; @duplicates preserve

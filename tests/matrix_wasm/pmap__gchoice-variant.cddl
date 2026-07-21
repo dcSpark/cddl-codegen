@@ -1,0 +1,3 @@
+; cell: pmap x gchoice-variant
+pm = { * uint => text } ; @duplicates preserve
+holder = [ f0: pm // f1: nint ]

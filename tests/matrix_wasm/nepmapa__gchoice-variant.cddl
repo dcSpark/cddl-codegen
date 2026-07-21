@@ -1,0 +1,3 @@
+; cell: nepmapa x gchoice-variant
+neptbl<k0, v0> = { + k0 => v0 } ; @duplicates preserve
+holder = [ f0: neptbl<uint, text> // f1: nint ]

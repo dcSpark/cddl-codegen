@@ -167,6 +167,24 @@ const SHAPES: Record<string, Shape> = {
   // (like `gcollexp`), so every reference mode is green.
   rseta: { defs: ["oset<e0> = [* e0] ; @duplicates reject"], ty: "oset<uint>" },
   nerseta: { defs: ["neoset<e0> = [+ e0] ; @duplicates reject"], ty: "neoset<uint>" },
+  // `@duplicates preserve` PairMap ABI class (copied verbatim-with-provenance from the wasm
+  // projection's `SHAPES`). No `anonForm`: `@duplicates preserve` is a per-RULE directive with no
+  // inline anonymous spelling for the named `pmap`/`nepmap`, and the anonymous-instance shapes' `ty`
+  // (`ptbl<uint, text>` / `neptbl<uint, text>`) IS already the anonymous same-shape spelling — the
+  // `anon` modes would only duplicate what `named`/`aliased` place.
+  // LOOSE `{*}` pair maps (named `pmap` + anon-instance `pmapa`) mirror `collmap`/`gtbla` (the map arm
+  // is sole-owner-aware), so every reference mode is green (probed).
+  pmap: { defs: ["pm = { * uint => text } ; @duplicates preserve"], ty: "pm" },
+  pmapa: { defs: ["ptbl<k0, v0> = { * k0 => v0 } ; @duplicates preserve"], ty: "ptbl<uint, text>" },
+  // The RESTRICTED `{+}` NonEmptyPairMap wrappers reach the SAME structural-wrapper ROOT_SCOPE class
+  // as `nemap`: the restricted wrapper's `try_from(&MapU64ToText)` names the root-minted loose pair-map
+  // builder bare from a non-root module (E0425). `nepmap` (a named `{+}` rule) mints its wrapper in
+  // module `a`, so all three modes are red; `nepmapa` (an anon instance) is red only in `aliased` — the
+  // alias-base mint walk drops the loose-builder import, while the field-driven `named` mode imports it
+  // and `unref` materializes no wrapper (probed). Pinned by MULTIFILE_MATRIX_SKIP /
+  // MULTIFILE_ROUNDTRIP_SKIP citing the structural-wrapper ROOT_SCOPE findings entry.
+  nepmap: { defs: ["npm = { + uint => text } ; @duplicates preserve"], ty: "npm" },
+  nepmapa: { defs: ["neptbl<k0, v0> = { + k0 => v0 } ; @duplicates preserve"], ty: "neptbl<uint, text>" },
   chain: { defs: ["ca = [* uint]", "cb = ca", "cc = cb"], ty: "cc" },
   cborwrap2: { defs: ["foo = [a: uint]", "fb = bytes .cbor foo", "fb2 = fb"], ty: "fb2" },
 };
@@ -261,7 +279,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 109; // 31 shapes × {aliased, named, unref} = 93 + 11 anon-form shapes × {anon} + 5 anonb shapes × {anonb} -> 109
+const EXPECTED_CELLS = 121; // 35 shapes × {aliased, named, unref} = 105 + 11 anon-form shapes × {anon} + 5 anonb shapes × {anonb} -> 121
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `multifile grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,

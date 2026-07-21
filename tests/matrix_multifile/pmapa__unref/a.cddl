@@ -1,0 +1,2 @@
+; cell: pmapa x unref (shape defs, module a)
+ptbl<k0, v0> = { * k0 => v0 } ; @duplicates preserve
