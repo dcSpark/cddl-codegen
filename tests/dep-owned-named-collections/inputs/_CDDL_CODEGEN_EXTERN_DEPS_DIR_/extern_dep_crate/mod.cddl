@@ -1,0 +1,13 @@
+; A cross-crate dependency stub (declared under _CDDL_CODEGEN_EXTERN_DEPS_DIR_/): the types here are
+; DEFINED and OWNED by `extern_dep_crate`, not minted by the consumer. `extern_crate_foo` is a plain
+; extern type; the two NAMED collection rules below are @rust_name-pinned (their dep-crate export name
+; differs from the consumer-derived one) exactly like CML's `withdrawals`/`certificates`.
+extern_crate_foo = _CDDL_CODEGEN_EXTERN_TYPE_
+
+; Dep-owned NAMED map + array rules over the extern element. The consumer references these BY NAME, so
+; the code emitter resolves each use site to the dep's pinned class (`use extern_dep_crate_wasm::…;`).
+; The import tracker must not ALSO mint the structural map/list spelling (`MapU64ToExternCrateFoo` /
+; `ExternCrateFooList`) as a local `crate::generated::…` import — nothing local defines it (dep-owned),
+; so that is an import-only E0432.
+dep_withdrawals = { * uint => extern_crate_foo } ; @rust_name DepWithdrawals
+dep_certs = [* extern_crate_foo] ; @rust_name DepCerts

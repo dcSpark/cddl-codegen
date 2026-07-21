@@ -228,36 +228,6 @@ are ledgered here (that's what the probe/gate error messages point at).
   `contain.occurrence-target.grpent.member.{zero,plus}_array`. Real support needs decode
   lookahead: a repeated-item run bounded by the following fields' types — middle-position repeats
   (`[uint, * bytes, tstr]`) need peek-type disambiguation.
-- **Cross-module NAMED-collection alias-target recursion mints a spurious structural-wrapper import**
-  — the residue in `mark_refs`' `Alias` arm (intermediate/mod.rs). Every cross-module collection
-  occurrence now resolves its wasm wrapper NAME and HOME scope through the shared
-  `wasm_collection_wrapper` helper (the emitter's `for_wasm_member` twin, `table_shape_sole_owners`-
-  aware), and each restricted wrapper's loose `try_from` source is imported at its emission scope,
-  rather than the earlier hard-coded pre-NonEmpty spelling from ROOT_SCOPE — so `collrec__anon`, the
-  whole two-type-constraint family (`necoll`/`necollrec`/`nemap`/`nepmap`/`nepmapa` — `[+ T]` →
-  `NonEmptyVec`, `{+ k => v}` → `NonEmptyMap`, `{+ k => v}` preserve → `NonEmptyPairMap`), and the
-  SYNTHESIZED-NonEmpty facet (inline `[+ foo]` / `{+ uint => foo}` over a record element with NO named
-  collection rule, pinned by `nesyncoll` / `nesynmap`) compile and round-trip. What remains is the
-  NAMED reference mode of a collection rule, pinned by `collrec__named` / `gcolln__named` in
-  `tests/matrix_multifile/` (`MULTIFILE_MATRIX_SKIP` with the exact E-code; carried into the
-  round-trip gate's `MULTIFILE_ROUNDTRIP_SKIP` — the wasm crate never compiles, so `cargo test` can
-  never pass):
-  - `collrec__named` / `gcolln__named` (E0432): a field referencing a named `recs = [* foo]` rule
-    (or the generic instance `gcn = gcoll<foo>`) cross-module resolves to `Alias(Recs, Array(Foo))`;
-    the `Alias` arm imports the rule ident (correct) then recurses the alias TARGET, whose Array arm
-    mints a `FooList` structural-wrapper import in the using module — but a named collection rule
-    mints only its own `Recs`/`Gcn` class, so the structural name exists nowhere. Before this
-    recursion landed the same cell failed RUST-side (E0433, the inlined-alias-import class), so the
-    recursion cannot simply be removed. Fix: suppress the structural-wrapper import when the alias
-    names a collection rule whose own class subsumes the target's surface (recurse the target with the
-    collection-wrapper special-casing off), so the using site keeps only the rule ident.
-  - The DEP-OWNED flavor is the same mechanism: a consumer referencing a dep-owned named map rule
-    (`withdrawals = { * reward_account => uint } ; @rust_name Withdrawals`, declared under
-    `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/`) currently emits a local `use crate::generated::MapRewardAccountToU64;`
-    that nothing defines (import-only E0432) alongside the correct `use <dep>::Withdrawals;` —
-    `table_shape_sole_owners` excludes non-exported scopes, so the structural fallback dangles at root
-    with no owner. The alias-target suppression above fixes it (the rule ident already imports from the
-    dep); covered by the `extern-deps` wasm fixture family.
 - Mixed struct+table maps (`{ a: uint, * k => v }`) unsupported — a map is detected as EITHER a struct or a
   homogenous table, never both. Inline anonymous nested composites need a name.
 - **Real bounded `?` / `n*m` table cardinality is a candidate feature.** A count-permitting occurrence
@@ -623,9 +593,9 @@ composition-space cross-check that complements this matrix's curated per-shape g
   has a proven instance: the collection-of-records shape (`[* <record>]`, the only array whose wasm
   representation needs a generated structural wrapper) was missing from `SHAPES`, so the Array-arm
   placement class stayed invisible to every gate until review of the Map-arm fix asked what the new
-  alias recursion could reach — now enumerated as the `collrec` cells (`collrec__named` red,
-  pinned; `collrec__anon` and `collrec__aliased` green under the emission-scope element
-  registration; § findings).
+  alias recursion could reach — now enumerated as the `collrec` cells (all green: `collrec__anon`/
+  `collrec__aliased` under the emission-scope element registration, `collrec__named` once the `Alias`
+  arm stopped minting a structural-wrapper import the named rule's own class subsumes).
   A SECOND multifile-`SHAPES` instance is on record with a different discovery signature — an
   adjacent test STEERING AROUND the hole rather than a fix's review: the non-exposable-KEYED table
   (`{ * <record> => text }`, whose wasm `keys()` names a root-minted keys-list wrapper) was in
