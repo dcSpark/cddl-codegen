@@ -70,9 +70,20 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
   `pub(crate)` tuple fields, fatal under `export.rs`'s deliberate non-0/3-exit-is-fatal contract)
   aborted consumer regens outright and forced a `#[rustfmt::skip]` + hand-canonical-layout
   workaround into shipped output (`WasmWrapper::push_inner_field`; pinned by
-  `integration_overwidth_wasm_wrapper_field_gets_rustfmt_skip`). `prettyplease` has no
-  internal-error/bail class, so adopting it retires that workaround (grep `rustfmt::skip` in
-  `src/generation/` and remove the over-width branch in the same change) — weigh that retirement
+  `integration_overwidth_wasm_wrapper_field_gets_rustfmt_skip`). A SECOND proven instance of the
+  same exposure class: rustfmt's comment-ownership misattribution (the open upstream family of
+  rust-lang/rustfmt#6347 / #4654 / #3527) folds an own-line comment after a match's last arm onto
+  that arm's `}` as a trailing comment — which rewrote the preserve overlay's own emitted
+  `// cddl-codegen:` markers into a form the overlay's next-run scan could not read, breaking
+  run-twice=run-once until the overlay grew an unfold pre-pass (pinned by
+  `preserve_markers_survive_rustfmt_fold_roundtrip` and the
+  `replace_rustfmt_folded_tail_arm_markers` fixture family;
+  probed edition-independent and idempotent-on-folded-output, so the folded form is a
+  genuine fixed point under current stable). `prettyplease` has no
+  internal-error/bail class and does not re-own comments, so adopting it retires both workarounds
+  (grep `rustfmt::skip` in
+  `src/generation/` and remove the over-width branch in the same change; the unfold pre-pass must
+  STAY for files already committed in the folded form) — weigh that retirement
   plus the exposure against the emitted-token-stability constraints in AGENTS.md (the snapshot
   corpus and comment-preservation overlay key on the formatter's exact output, so the swap
   re-blesses broadly and must hold the overlay's idempotent-fixed-point property).
@@ -230,6 +241,40 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      its standalone holder synthesis trips the pre-existing recursive-union-valued-table
      `cbor_types` panic (the cddl-matrix findings entry) — while the fixture's
      `holder`/`pmap`/`nepmap`/`pmap_txt`/`md` rows minted with vectors.)
+
+5. **Rustfmt-stability sweep over the preserve-fixture corpus.** The rustfmt match-tail
+   comment-fold escape (the second rustfmt exposure instance in the `prettyplease` entry above)
+   was found by a manual repro, not by any standing layer — the overlay's fixtures all exercised
+   `preserve(old, new)` on pre-rustfmt text, so "the tool's own rustfmt pass rewrites a marker
+   placement the next run's scan can't read" had no systematic witness; the delivered
+   `preserve_markers_survive_rustfmt_fold_roundtrip` closes only the one hand-picked shape.
+   The general property is cheap to sweep because the corpus already enumerates every supported
+   overlay structure: for each `tests/preserve-fixtures/<case>/expected.rs`, run
+   `rustfmt_generated_string(expected)` and assert `preserve(formatted, new)` still succeeds with
+   the same user content surviving (reuse the harness's never-silent unit check; error-expectation
+   cases are exempt — they have no `expected.rs`). That makes "the on-disk, post-rustfmt form of
+   every overlay structure re-parses" a standing property over all current AND future fixtures, so
+   the next formatter canonicalization quirk (or a `prettyplease` swap) fails a sweep instead of a
+   consumer regen. Cost: one in-process rustfmt call per expected-case (~50 fixtures, sub-second
+   each) — fits the default suite next to `preserve_fixtures`.
+   (The cddl-matrix roadmap was checked for overlap: its pending items cover CDDL *input* surface
+   — role/feature/encoding grids — and none would have caught this class; output post-processing
+   round-trips are this roadmap's domain.)
+
+6. **Default-warn lint cleanliness over generated output (partially systematic at best).** The
+   `large_enum_variant`/`result_large_err` generated-root allows were consumer-reported; no gate
+   runs clippy over generated crates, so a lint that fires on emitted shapes is invisible until a
+   consumer's CI gates on it. The systematizable subclass: a full-tier gate running
+   `cargo clippy -- -D warnings` over a small set of already-compiled fixture crates, including
+   one lint-provocation fixture authored to trip shape-dependent lints (an asymmetric `/` choice
+   enum big enough for `large_enum_variant`'s 200-byte default — the scratch fixture from the
+   allow-set delivery needed ~30 uint fields). Known residual that keeps this "partial":
+   threshold-adjacent lints depend on the CONSUMER's spec and target layout —
+   `result_large_err` did NOT fire on a synthetic fixture (the static `DeserializeError` sits at
+   ~the 128-byte threshold) while it does fire in CML's CI — so the gate certifies "no lint fires
+   on shapes we can provoke", never "no consumer CI will trip"; the consumer-report channel stays
+   load-bearing for that remainder, which is why the delivered fix allows the lints at the
+   generated root rather than chasing per-spec detection.
 
 ## Standing-system residuals (recur-first)
 
