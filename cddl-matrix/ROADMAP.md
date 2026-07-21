@@ -699,10 +699,13 @@ composition-space cross-check that complements this matrix's curated per-shape g
   mechanism they extend only exists under directory input. (`--no-synthesized-rust-collection-aliases`
   is emission-only alias suppression with no per-module placement logic; its pin is single-file,
   a deliberate posture.) A SIBLING axis with the same silent-hole character — per-wrapper emission
-  MODE (local vs index-deferred vs workspace-borrowed) × wrapper shape, which neither
-  SHAPES/ROLES nor this input-mode rule enumerates — is recorded with its recur-first mechanical
-  layer (a deferral-profile leg over the extern-capable shapes) in `tests/TESTING_ROADMAP.md`'s
-  `--extern-wrapper-index` deferral-boundaries entry.
+  MODE (local vs index-deferred vs workspace-borrowed vs requested-hosted) × wrapper shape, which
+  neither SHAPES/ROLES nor this input-mode rule enumerates — is recorded in
+  `tests/TESTING_ROADMAP.md`'s `--extern-wrapper-index` deferral-boundaries entry, whose
+  mechanical layer (a deferral-profile leg over the extern-capable shapes) is now DUE: its
+  recur-first trigger fired on a consumer-reported pair of companion-wrapper cells (the
+  named-table workspace keys-list and the co-hosted requested keys-list — details and the leg's
+  axis refinements live in that entry).
 - **Mint the two remaining unminted wasm-surface classes (or declare them permanent).** Extern /
   raw-bytes ctor args (user-supplied types with no generated conversion) and the `--wasm-*-macro`
   modes (they replace the whole wrapper method surface) fall back to the compile verdict with loud

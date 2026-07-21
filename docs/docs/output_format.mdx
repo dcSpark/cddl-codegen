@@ -602,7 +602,11 @@ loose `try_from` source wrapper as an (unattributed) transitive support type. Ea
 also carries explicit imports for the element types its body names — a cross-scope generated
 element from its scope module (`crate::generated::<scope>::X`), an extern or hand-written element
 through its crate-root re-export glue — so hosting works for elements that live outside the
-generated root rather than relying on the module's `use super::*;` reaching them.
+generated root rather than relying on the module's `use super::*;` reaching them. A companion
+wrapper hosted in the **same file** gets no import at all: a hosted map's `keys()`-list wrapper is
+normally co-requested by the same consumers (borrowing `{* k => v}` borrows `[* k]` too), minted
+alongside it here, and named bare — importing it from anywhere else would point at a definition
+that doesn't exist.
 
 ### The regeneration contract
 
