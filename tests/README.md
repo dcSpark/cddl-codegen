@@ -597,8 +597,9 @@ back via `--extern-import` in place of a hand-stub tree (user docs:
   read-back contract).
 - **`@rust_name` floor**: `comment_ast.rs` unit vectors plus `src/tests/rust_name_tests.rs`
   (import-seam aliasing, the wasm full-path bypass site, exported-rule rejection, reserved-name
-  pin rejection); the directive is lockstep-mirrored in `cddl-matrix/corpus_detect.ts` (its
-  registration as a matrix feature row is tracked in `cddl-matrix/ROADMAP.md`).
+  pin rejection); the directive is lockstep-mirrored in `cddl-matrix/corpus_detect.ts` and
+  registered as the `dsl.rust_name` matrix feature row (compile-exempt: it pins a dependency-crate
+  type name, so it cannot compile standalone).
 
 `flag_value_smoke` generate + `cargo check`s a rich extern-free input (`tests/canonical`) under each
 documented flag *value* that no named profile exercises (`--annotate-fields=false`,
@@ -622,12 +623,15 @@ only allow is permanent and input-dependent: `clippy::disallowed_names` (the fix
 `foo`/`bar` rule names become generated parameter names — not a generator defect). The gate also
 denies a curated rustc style-lint set (`unused_parens`, `unused_braces`, `unused_allocation`) that
 catches redundant emitted grouping/allocation without turning the remaining legitimate
-generated-code warnings into failures — `unused_variables`, and `unused_imports` on the trait/glob
-imports that the usage-derived import prune (`import_prune::prune_generated_files`) deliberately
-leaves because they can't be proven unused by ident-scanning (the concrete allowlisted imports —
-the four collection helpers plus the `--preserve-encodings` enums `LenEncoding`/`StringEncoding` —
-ARE pruned at generation time, as is every private import of a re-export-only extern-glue file; the
-warning-severity residue gate for those is a `TESTING_ROADMAP.md` entry). It is intentionally not `-D warnings` (see `tool_cmd`'s doc comment). The wasm leg uses the same deny/allow set as the rust leg; any new
+generated-code warnings into failures — `unused_variables`, and `unused_imports` on the one
+residue the usage-derived import prune (`import_prune::prune_generated_files`) deliberately
+leaves: trait imports (`cbor_event::se::Serialize`), exercised via method calls whose ident never
+appears, so name-scanning cannot prove them unused. Everything else — the concrete
+collection/encoding idents, the `super::*`/`error::*` globs (pruned against enumerable
+universes), cross-scope type imports, wasm macro/prelude imports, and every private import of a
+re-export-only extern-glue file — IS pruned at generation time (the contract lives in
+`docs/docs/output_format.mdx`; the warning-severity detector is `feature_corpus_compiles`'
+`unused_generated_import_lines` scan). It is intentionally not `-D warnings` (see `tool_cmd`'s doc comment). The wasm leg uses the same deny/allow set as the rust leg; any new
 `clippy::all` lint class is hard-red on both profiles and both generated crates.
 Tier: check.ts `local` as a plain non-ignored test, kept below the ~90s warm wall-clock threshold.
 A warm run measures ~2s, which looks vacuous but is not: regeneration is byte-identical, so cargo's

@@ -404,10 +404,11 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   `cbor-payload` / `choice-member` / `generic-arg` / `occurrence-target`) use 2-field map examples so
   any panic is attributable to the real **anonymous-group** reason (an inline map inside a role needs
   a name), with no single-field-map shape to confound it.
-- **Execution-gate exemptions.** 5 user-code features stay `supported` via the documented
-  `COMPILE_GATE_EXEMPT` allowlist — they reference user-supplied code, so they can't compile (or
-  test) standalone: `ext.extern`, `ext.raw_bytes`, `dsl.custom_serialize`, `dsl.custom_deserialize`,
-  `dsl.raw_bytes_flavor` (integration-tested instead). The exemption has a recorded cost: it once let
+- **Execution-gate exemptions.** 7 user-code features stay `supported` via the documented
+  `COMPILE_GATE_EXEMPT` allowlist — they reference user-supplied code (or pin a dependency-crate
+  name), so they can't compile (or test) standalone: `ext.extern`, `ext.raw_bytes`,
+  `dsl.custom_serialize`, `dsl.custom_deserialize`, `dsl.raw_bytes_flavor`, `dsl.copy`,
+  `dsl.rust_name` (integration-tested instead). The exemption has a recorded cost: it once let
   an extern-only-scope undeclared-module compile break ship unseen (since fixed — string-pinned by
   `integration_extern_only_scope_declared_in_root` and compile-pinned at the hand-fixture level by
   `facade_composition_compiles`, which builds the documented facade consumer over exactly that
