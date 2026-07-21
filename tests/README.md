@@ -356,8 +356,8 @@ meaningful across rustfmt versions because "both spellings parse" is the asserti
 `replace_rustfmt_folded_tail_arm_markers` fixture family pins the merge semantics of today's known
 folded shape). Keep that set thin; new merge behavior belongs in fixtures.
 
-One generator-output assumption is deliberately NOT pinned by that pair, because neither test can
-see its violation: "the generator emits no comment on a row a spec change can delete" (which
+One generator-output assumption is deliberately NOT pinned by that set, because none of the three
+can see its violation: "the generator emits no comment on a row a spec change can delete" (which
 subsumes "no trailing comments"). The disk round-trip regenerates the SAME spec — no row is ever
 deleted — and the corpus round-trip self-preserves (`preserve(content, content)`), a no-op for any
 comment whether or not a real regen would strand it. That blindness shipped a real trap once (the
