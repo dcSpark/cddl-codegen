@@ -1,0 +1,2 @@
+; cell: nesyncoll x named (reference from module b)
+bholder = [field0: foo]

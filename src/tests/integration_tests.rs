@@ -224,13 +224,16 @@ For more information about this error, try `rustc --explain E0583`.\n";
 /// E0432 anonymous same-shape table importing the structural name from root scope instead of the
 /// sole owner's module; E0433 cross-module named `.cbor` ref omitting the inner-type import) are all
 /// fixed in `generation/export.rs`'s module-declaration loop and `intermediate/mod.rs`'s
-/// `scope_references`/`mark_refs`. The ANON element-import half of the ARRAY structural-wrapper class
-/// (`collrec__anon` — the `[* <record>]` shape's anonymous use, whose wasm representation needs a
-/// generated `FooList`-style array wrapper) is now fixed too: `mark_refs`' Array arm registers the
-/// element ref from the wrapper's root emission scope. What it holds now is the residue — the
-/// NAMED-alias structural-NAME placement (`collrec__named`) and the restricted-wrapper cells, where
-/// `mark_refs` still hard-codes ROOT_SCOPE for the WRAPPER name (the remaining issue-138 half). The
-/// fix queue is the cddl-matrix/ROADMAP.md § findings array-wrapper entry. Four-state
+/// `scope_references`/`mark_refs`. The ARRAY/MAP structural-WRAPPER placement class is fixed too:
+/// `mark_refs` resolves each collection occurrence's wrapper NAME and HOME scope through the shared
+/// `wasm_collection_wrapper` helper (the emitter's `for_wasm_member` twin) instead of a hard-coded
+/// pre-NonEmpty spelling from ROOT_SCOPE, and the restricted wrappers' loose `try_from` source is
+/// imported at its emission scope — so `collrec__anon` and the whole `necoll`/`necollrec`/`nemap`/
+/// `nepmap`/`nepmapa` restricted-wrapper family compile. What it holds now is the NAMED-collection
+/// alias-target recursion residue (`collrec__named` / `gcolln__named`): a field referencing a named
+/// `[* foo]` rule resolves to `Alias(Recs, Array(Foo))`, and the Alias arm's target recursion mints a
+/// spurious `FooList` structural-wrapper import that the rule's own class (`Recs`) subsumes — E0432.
+/// The fix queue is the cddl-matrix/ROADMAP.md § findings alias-target-recursion entry. Four-state
 /// verdict in
 /// `multifile_matrix_compiles`: red+listed = expected (held here) — but ADDITIONALLY the observed
 /// rustc error-code set (extracted from the captured cargo stderr) must EQUAL the pinned set, or the
@@ -240,149 +243,32 @@ For more information about this error, try `rustc --explain E0583`.\n";
 /// all) is likewise a class mismatch. An up-front stale-key guard rejects a listed stem absent from
 /// the projected fixture set, so the list can't rot silently.
 const MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)] = &[
-    // --- The ARRAY structural-wrapper placement class. `collrec` = `recs = [* foo]` with record
-    // element `foo` in module `a`. The ANON half (`collrec__anon` — a root-minted anonymous array
-    // wrapper naming its non-root element type bare) is FIXED: `mark_refs`' Array arm now registers
-    // the element ref from the wrapper's root emission scope, so the import is emitted. What remains
-    // is the NAMED-alias structural-name placement (below) plus the restricted-wrapper cells further
-    // down — both still hard-code ROOT_SCOPE for the WRAPPER name (the remaining issue-138 half;
-    // ledgered in cddl-matrix/ROADMAP.md § findings).
+    // --- The NAMED-collection alias-target recursion class. `collrec` = `recs = [* foo]` with record
+    // element `foo` in module `a`. The ANON/aliased/unref modes are FIXED (`wasm_collection_wrapper`
+    // resolves the wrapper name+home; the restricted-wrapper family compiles). What remains is the
+    // NAMED mode: a field referencing `recs` cross-module resolves to `Alias(Recs, Array(Foo))`, and
+    // the Alias arm's target recursion mints a spurious `FooList` import in the using module that the
+    // rule's own `Recs` class subsumes — E0432 (the structural name is minted nowhere). Fixed by
+    // suppressing the structural-wrapper import when the alias names a collection rule whose own class
+    // owns the surface (cddl-matrix/ROADMAP.md § findings).
     (
         "collrec__named",
         &["E0432"],
-        "E0432: alias-target recursion imports the structural `FooList` from root scope, but a \
+        "E0432: alias-target recursion imports the structural `FooList` in the using module, but a \
          NAMED collection alias mints only its own wrapper (`Recs`) — the structural name exists \
          nowhere",
     ),
     // The generic-instance twin of `collrec__named`: `gcn = gcoll<foo>` is a NAMED collection alias
-    // to `[* foo]` (record element), so its NAMED cross-module reference hits the identical Array-arm
-    // structural-WRAPPER-NAME ROOT_SCOPE class — E0432 on the root-minted `FooList`. The ANONYMOUS
-    // instance flavors (`gcolla`/`gcollexp`/`gtbla`) are green in every mode (anon-instance placement,
-    // like `collrec__anon`), so only the named-rule flavor's `named` cell is red.
+    // to `[* foo]` (record element), so a field referencing it resolves to `Alias(Gcn, Array(Foo))`
+    // and hits the identical alias-target-recursion class — E0432 on the spurious `FooList`. The
+    // ANONYMOUS instance flavors (`gcolla`/`gcollexp`/`gtbla`) are green in every mode.
     (
         "gcolln__named",
         &["E0432"],
         "E0432: `gcn = gcoll<foo>` — a NAMED generic-collection-instance alias — imports the \
-         structural `FooList` from root scope, but the named alias mints only its own wrapper \
-         (`Gcn`), so the structural name exists nowhere (the collrec__named Array-arm \
-         structural-wrapper ROOT_SCOPE class; cddl-matrix/ROADMAP.md § findings)",
-    ),
-    // --- The two-type-constraint restricted wasm wrappers (`[+ T]` -> NonEmptyVec, `{+ k=>v}` ->
-    // NonEmptyMap; draft/two-type-constraint-enforcement.md) reach the SAME mark_refs
-    // structural-wrapper ROOT_SCOPE placement class cross-module: the loose builder (`FooList`/
-    // `MapU64ToText`) is minted at root, and the restricted wrapper — or the anon dedup-to-named
-    // reference — names it (and the element/rule type) bare from a non-root module. E0425 throughout
-    // (the collrec Array-arm findings entry in cddl-matrix/ROADMAP.md § findings). NOT fixed in this
-    // WI (the placement fix is the pre-existing issue-138 mark_refs work the finding tracks).
-    (
-        "necoll__anon",
-        &["E0425"],
-        "E0425: the anonymous `[+ uint]` dedups to module `a`'s `Nums` rule but names it bare in \
-         module `b` (the restricted wrapper's anon dedup-to-named cross-module reference) — the \
-         structural-wrapper ROOT_SCOPE class in cddl-matrix/ROADMAP.md § findings",
-    ),
-    (
-        "necoll__anonb",
-        &["E0425"],
-        "E0425: as necoll__anon (ballast variant) — anonymous `[+ uint]` dedups to module `a`'s \
-         `Nums` named bare in module `b` (cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "necollrec__aliased",
-        &["E0425"],
-        "E0425: as necollrec__named — module `a`'s restricted wrapper names the root-minted loose \
-         `FooList` bare (`Recs::try_from`), red regardless of the aliasing module `b` (whose own \
-         `pub type Bal = Recs;` import the type-alias walk emits correctly) — the Array-arm \
-         structural-wrapper ROOT_SCOPE class (cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "necollrec__anon",
-        &["E0425"],
-        "E0425: the root-minted loose `FooList`, element `Foo`, and restricted `Recs` wrappers are \
-         named bare from modules `a`/`b` — the `+` analogue of collrec's Array-arm structural-wrapper \
-         ROOT_SCOPE class (cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "necollrec__named",
-        &["E0425"],
-        "E0425: the restricted wrapper references the root-minted loose `FooList`/element `Foo` by \
-         bare name from module `a` — the Array-arm structural-wrapper ROOT_SCOPE class \
-         (cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "necollrec__unref",
-        &["E0425"],
-        "E0425: as necollrec__named — the restricted+loose array wrappers' root-minted `FooList`/`Foo` \
-         named bare from module `a` (cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "nemap__aliased",
-        &["E0425"],
-        "E0425: as nemap__named — module `a`'s `Mp::try_from` names the root-minted loose \
-         `MapU64ToText` bare, red regardless of the aliasing module `b` (whose own \
-         `pub type Bal = Mp;` import the type-alias walk emits correctly) — the structural-wrapper \
-         ROOT_SCOPE class (cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "nemap__anon",
-        &["E0425"],
-        "E0425: the root-minted loose `MapU64ToText` and restricted `Mp` wrappers are named bare from \
-         modules `a`/`b` — the map-side manifestation of the structural-wrapper ROOT_SCOPE class \
-         (collmap is loose-only and green; cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "nemap__anonb",
-        &["E0425"],
-        "E0425: as nemap__anon (ballast variant) (cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "nemap__named",
-        &["E0425"],
-        "E0425: the restricted `Mp::try_from(&MapU64ToText)` references the root-minted loose \
-         `MapU64ToText` builder by bare name from module `a` — the structural-wrapper ROOT_SCOPE \
-         class reached via the restricted map wrapper (cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "nemap__unref",
-        &["E0425"],
-        "E0425: as nemap__named — `Mp::try_from` names the root-minted loose `MapU64ToText` bare from \
-         module `a` (cddl-matrix/ROADMAP.md § findings)",
-    ),
-    // The `@duplicates preserve` RESTRICTED `{+}` NonEmptyPairMap wrappers reach the SAME
-    // structural-wrapper ROOT_SCOPE class as `nemap`: `try_from(&MapU64ToText)` names the root-minted
-    // loose pair-map builder bare from a non-root module (E0425). `nepmap` is a NAMED `{+}` rule (its
-    // `Npm` wrapper lives in module `a`), so all three modes red — exactly like `nemap`. `nepmapa` is
-    // an anon INSTANCE: only `aliased` red (the alias-base mint walk drops the loose-builder import),
-    // while `named` (field-driven `mark_refs` imports it) and `unref` (no wrapper materialized) are
-    // green — so only its `aliased` cell is pinned.
-    (
-        "nepmap__aliased",
-        &["E0425"],
-        "E0425: as nepmap__named — module `a`'s `Npm::try_from` names the root-minted loose \
-         `MapU64ToText` pair-map builder bare, red regardless of the aliasing module `b` — the \
-         pair-map manifestation of the structural-wrapper ROOT_SCOPE class (cddl-matrix/ROADMAP.md \
-         § findings)",
-    ),
-    (
-        "nepmap__named",
-        &["E0425"],
-        "E0425: the restricted `Npm::try_from(&MapU64ToText)` references the root-minted loose \
-         pair-map builder bare from module `a` — the `@duplicates preserve` twin of nemap__named \
-         (cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "nepmap__unref",
-        &["E0425"],
-        "E0425: as nepmap__named — `Npm::try_from` names the root-minted loose `MapU64ToText` bare from \
-         module `a` (cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "nepmapa__aliased",
-        &["E0425"],
-        "E0425: the anon-instance restricted wrapper's `try_from(&MapU64ToText)` is minted in the \
-         aliasing module `b` (`bal = neptbl<uint, text>`) without the loose-builder import — the \
-         alias-base mint walk drops it (the field-driven `named` mode imports it, so nepmapa__named is \
-         green). Same structural-wrapper ROOT_SCOPE class (cddl-matrix/ROADMAP.md § findings)",
+         structural `FooList` in the using module via the Alias arm's target recursion, but the \
+         named alias mints only its own wrapper (`Gcn`), so the structural name exists nowhere (the \
+         collrec__named alias-target-recursion class; cddl-matrix/ROADMAP.md § findings)",
     ),
 ];
 
@@ -402,10 +288,11 @@ const WASM_MATRIX_PROFILE_SKIP: &[(&str, &str, &str)] = &[];
 /// in EVERY profile — `(cell stem, reason)`, the roundtrip precedent's shape (`WASM_MATRIX_SKIP`):
 /// no rustc-error-code class assertion here, because the compile floor's `MULTIFILE_MATRIX_SKIP`
 /// already pins each cell's exact failure class. The seed is the compile-floor red carried
-/// over: `collrec__named`'s WASM crate never compiles (the `mark_refs` Array-arm structural-NAME
-/// placement class — ledgered in cddl-matrix/ROADMAP.md § findings, exact E-codes pinned in
-/// `MULTIFILE_MATRIX_SKIP`), so its `cargo test` can never go green (`collrec__anon`'s
-/// element-import class is fixed, so it round-trips and is no longer listed). Four-state verdict +
+/// over: `collrec__named` / `gcolln__named`'s WASM crate never compiles (the `mark_refs`
+/// NAMED-collection alias-target-recursion class — ledgered in cddl-matrix/ROADMAP.md § findings,
+/// exact E-codes pinned in `MULTIFILE_MATRIX_SKIP`), so their `cargo test` can never go green (the
+/// restricted-wrapper family is fixed, so those cells round-trip and are no longer listed).
+/// Four-state verdict +
 /// stale-key guard as the compile floor; a listed cell that starts round-tripping fails the
 /// resurfaced guard (remove the pin — a fix landed).
 const MULTIFILE_ROUNDTRIP_SKIP: &[(&str, &str)] = &[
@@ -422,96 +309,6 @@ const MULTIFILE_ROUNDTRIP_SKIP: &[(&str, &str)] = &[
          NAMED collection alias imports the structural `FooList` from root scope where it mints only \
          its own wrapper (`Gcn`) (E0432 class pinned by MULTIFILE_MATRIX_SKIP; cddl-matrix/ROADMAP.md \
          § findings)",
-    ),
-    // The two-type restricted wasm wrappers hit the same structural-wrapper ROOT_SCOPE placement
-    // class cross-module (E0425 in every case, pinned by MULTIFILE_MATRIX_SKIP), so their wasm crate
-    // never compiles and `cargo test` can never go green (cddl-matrix/ROADMAP.md § findings).
-    (
-        "necoll__anon",
-        "wasm crate never compiles: anonymous `[+ uint]` dedups to module `a`'s `Nums` named bare \
-         (E0425 class pinned by MULTIFILE_MATRIX_SKIP; cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "necoll__anonb",
-        "wasm crate never compiles: as necoll__anon, ballast variant (E0425 class pinned by \
-         MULTIFILE_MATRIX_SKIP; cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "necollrec__aliased",
-        "wasm crate never compiles: module `a`'s restricted wrapper names the root-minted loose \
-         `FooList` bare, red regardless of the aliasing module `b` (E0425 class pinned by \
-         MULTIFILE_MATRIX_SKIP; cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "necollrec__anon",
-        "wasm crate never compiles: root-minted `FooList`/`Foo`/`Recs` named bare cross-module — the \
-         `+` analogue of collrec's Array-arm class (E0425 class pinned by MULTIFILE_MATRIX_SKIP; \
-         cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "necollrec__named",
-        "wasm crate never compiles: restricted wrapper references root-minted `FooList`/`Foo` bare \
-         from module `a` (E0425 class pinned by MULTIFILE_MATRIX_SKIP; cddl-matrix/ROADMAP.md \
-         § findings)",
-    ),
-    (
-        "necollrec__unref",
-        "wasm crate never compiles: as necollrec__named (E0425 class pinned by MULTIFILE_MATRIX_SKIP; \
-         cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "nemap__aliased",
-        "wasm crate never compiles: module `a`'s `Mp::try_from` names the root-minted loose \
-         `MapU64ToText` bare, red regardless of the aliasing module `b` (E0425 class pinned by \
-         MULTIFILE_MATRIX_SKIP; cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "nemap__anon",
-        "wasm crate never compiles: root-minted `MapU64ToText`/`Mp` named bare cross-module (E0425 \
-         class pinned by MULTIFILE_MATRIX_SKIP; cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "nemap__anonb",
-        "wasm crate never compiles: as nemap__anon, ballast variant (E0425 class pinned by \
-         MULTIFILE_MATRIX_SKIP; cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "nemap__named",
-        "wasm crate never compiles: restricted `Mp::try_from(&MapU64ToText)` references the \
-         root-minted loose builder bare from module `a` (E0425 class pinned by MULTIFILE_MATRIX_SKIP; \
-         cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "nemap__unref",
-        "wasm crate never compiles: as nemap__named (E0425 class pinned by MULTIFILE_MATRIX_SKIP; \
-         cddl-matrix/ROADMAP.md § findings)",
-    ),
-    // The `@duplicates preserve` restricted NonEmptyPairMap wrappers hit the same structural-wrapper
-    // ROOT_SCOPE class as nemap (E0425, pinned by MULTIFILE_MATRIX_SKIP), so their wasm crate never
-    // compiles and `cargo test` can never go green. `nepmapa`'s `named`/`unref` cells compile+round-trip
-    // (only its `aliased` cell is red), so they are NOT listed.
-    (
-        "nepmap__aliased",
-        "wasm crate never compiles: module `a`'s `Npm::try_from` names the root-minted loose \
-         `MapU64ToText` bare, red regardless of the aliasing module `b` (E0425 class pinned by \
-         MULTIFILE_MATRIX_SKIP; cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "nepmap__named",
-        "wasm crate never compiles: restricted `Npm::try_from(&MapU64ToText)` references the \
-         root-minted loose pair-map builder bare from module `a` (E0425 class pinned by \
-         MULTIFILE_MATRIX_SKIP; cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "nepmap__unref",
-        "wasm crate never compiles: as nepmap__named (E0425 class pinned by MULTIFILE_MATRIX_SKIP; \
-         cddl-matrix/ROADMAP.md § findings)",
-    ),
-    (
-        "nepmapa__aliased",
-        "wasm crate never compiles: the anon-instance restricted wrapper minted in the aliasing \
-         module `b` names the root-minted loose `MapU64ToText` bare (E0425 class pinned by \
-         MULTIFILE_MATRIX_SKIP; cddl-matrix/ROADMAP.md § findings)",
     ),
 ];
 

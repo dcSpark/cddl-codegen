@@ -1,0 +1,2 @@
+; cell: nesynmap x aliased (reference from module b)
+bal = foo
