@@ -7985,6 +7985,92 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[];
     );
 }
 
+/// A workspace-mode consumer with a NAMED table rule over a dep-owned key (`named_keyed =
+/// { * idx_foo => local_thing }`), declared in a NON-ROOT scope, must borrow the map's `keys()`-list
+/// wrapper cleanly — NOT trip the criterion-9 shadow warning and NOT strand its import. Two coupled
+/// regressions this pins.
+///
+/// 2a: the keys-list `IdxFooList` is generator-SYNTHESIZED at registration time by the table
+/// rule's `create_and_register_array_type` — no rule declares it. Before the fix the wasm struct
+/// walk's Array arm passed `rule_declared: true` unconditionally, firing a false "rule-declared
+/// type IdxFooList shadows…" warning whose remedy (rename the rule) is inapplicable.
+///
+/// 2b: `keys()` returns `IdxFooList`, which workspace-defers to the dep; the named-table
+/// struct-walk arm registered only `register_root_keys_list` (a no-op for a deferred keys-list),
+/// never the deferred import, so `use index_dep_crate_wasm::collections::IdxFooList;` was missing
+/// from the scope module holding the table class — E0412 on the `keys()` return type.
+///
+/// Both surfaced together as the issue's three-way contradiction (warned-shadowed, sidecar-borrowed,
+/// yet never-imported) in ONE regen. The fixture is isolated from the `inputs` set: that set's inline
+/// `foo_keyed` map already registers the same keys-list import at the root, which would mask 2b.
+/// Assertions are generation-output (the criterion-9 warning is asserted by substring — do not
+/// reword). The E0412/false-warning RED was captured by hand-generating the fixture at the pre-fix
+/// HEAD (recorded in the commit message).
+#[test]
+fn workspace_dep_named_table_deferred_keys_list() {
+    use std::str::FromStr;
+    let base = std::path::PathBuf::from_str("tests/workspace-dep-wasm").unwrap();
+    let out = base.join("export_named_table");
+    let _ = std::fs::remove_dir_all(&out);
+    let o = tool_cmd("cargo")
+        .arg("run")
+        .arg("--")
+        .arg("--input=tests/workspace-dep-wasm/inputs_named_table")
+        .arg("--output=tests/workspace-dep-wasm/export_named_table")
+        .arg("--wasm=true")
+        .arg("--preserve-encodings=true")
+        .arg("--common-import-override=index_dep_crate")
+        .arg("--extern-wasm-crate=index_dep_crate=index_dep_crate_wasm")
+        .arg("--workspace-dep=index_dep_crate")
+        .output()
+        .unwrap();
+    assert!(
+        o.status.success(),
+        "named-table deferred keys-list generation failed:\n{}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&o.stderr);
+    // 2a: no false criterion-9 shadow warning for the synthesized keys-list (no rule declares it).
+    assert!(
+        !stderr.contains("shadows"),
+        "a synthesized keys-list must not trip the criterion-9 shadow warning; stderr:\n{stderr}"
+    );
+    let read = |rel: &str| std::fs::read_to_string(out.join(rel)).unwrap();
+    // The table class is emitted in its non-root scope module; its `keys()` returns the keys-list.
+    let scope_mod = read("wasm/src/generated/sub/module/mod.rs");
+    assert!(
+        scope_mod.contains("fn keys(&self) -> IdxFooList"),
+        "the named table's keys() must return the keys-list wrapper:\n{scope_mod}"
+    );
+    // 2b: the deferred keys-list import lands in the module holding the table class (was stranded).
+    assert!(
+        scope_mod.contains("use index_dep_crate_wasm::collections::IdxFooList;"),
+        "the deferred keys-list must be imported from the dep's collections module into the scope \
+         module holding the table class (E0412 otherwise):\n{scope_mod}"
+    );
+    // The keys-list is NOT minted locally anywhere (it is borrowed).
+    let mut minted_in = Vec::new();
+    for rel in [
+        "wasm/src/generated/mod.rs",
+        "wasm/src/generated/sub/mod.rs",
+        "wasm/src/generated/sub/module/mod.rs",
+    ] {
+        if read(rel).contains("pub struct IdxFooList") {
+            minted_in.push(rel);
+        }
+    }
+    assert!(
+        minted_in.is_empty(),
+        "the deferred keys-list must never be minted locally; found in: {minted_in:?}"
+    );
+    // The borrow IS recorded in the sidecar (the cross-crate contract), matching the imports above.
+    let sidecar = read("wasm/src/generated/borrowed_collections.rs");
+    assert!(
+        sidecar.contains("(\"index_dep_crate\", \"IdxFooList\", \"[* idx_foo]\")"),
+        "the borrowed keys-list must be recorded in the sidecar:\n{sidecar}"
+    );
+}
+
 /// Item E of W1's diagnostics: two DISTINCT shapes in one consumer's spec that derive the SAME
 /// structural wrapper name (the `MapAToBToC` reverse-ambiguity) is a hard error at borrowed-wrapper
 /// recording time, naming both shapes. Unit-level because constructing the ambiguous pair through a

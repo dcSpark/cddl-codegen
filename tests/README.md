@@ -499,7 +499,14 @@ extractor):
   all-one-dep deferral incl. NonEmpty and nested shapes, the byte-frozen `borrowed_collections.rs`
   sidecar format asserted as full-file equality — it is a cross-crate contract — plus
   ownerless/mixed composition with `--extern-wrapper-index` and the rule-declared shadowing
-  warning.
+  warning (the AUTHORED-rule TRUE positive: `idx_foo_list = [* idx_foo]` warns and mints locally).
+  `workspace_dep_named_table_deferred_keys_list` is its FALSE-positive companion (same fixture
+  family, isolated input set): a NAMED table over a dep-owned key in a non-root scope
+  (`{ * idx_foo => local_thing }`) synthesizes its `keys()`-list `IdxFooList` at registration time,
+  so that keys-list must borrow cleanly — no criterion-9 shadow warning (it is not rule-declared)
+  and the deferred `use <dep_wasm>::collections::IdxFooList;` import present in the module holding
+  the table class (previously stranded — the issue's warned-shadowed + sidecar-borrowed +
+  never-imported three-way contradiction, E0412).
 - `workspace_requests_hosts_borrowed_wrappers` + the hard-error tests (including
   `workspace_key_requests_derive_effect_and_hard_errors`, the `--key-requests` intake: derive
   effect, unknown-ident hard error, other-dep row filtering; and
@@ -2080,10 +2087,14 @@ helper the wasm emit path uses, so import and emission placement cannot disagree
 class); a cross-module *named* reference to a `.cbor` wrapper imports the inner named type into
 the referencing module (`mark_refs`' Alias arm recurses into the alias target so idents the inlined
 serialization names get imported — the E0433 class); and a non-root table class whose KEY is
-non-exposable imports the root-minted keys-list wrapper its `keys()` accessor names bare
-(`register_root_keys_list` at both `mark_refs` walk arms, mirroring `codegen_table_type`'s emission
-condition — the `tblrec` E0425 class, guarded green by all three `tblrec` cells and exercised
-end-to-end by `wasm_collections_index`'s record-keyed non-root table). The two gates split the verdict: the
+non-exposable imports the keys-list wrapper its `keys()` accessor names bare — the root-minted
+`<Key>List` (`register_root_keys_list`) OR, when that keys-list workspace/index-defers to a
+dependency, `use <dep_wasm>::collections::<KeysList>;` (`register_deferred_keys_list`) — with BOTH
+homes registered at both the inline-`Map` and the NAMED-`Table` struct-walk arms, mirroring
+`codegen_table_type`'s emission condition (the `tblrec` E0425 class, guarded green by all three
+`tblrec` cells and exercised end-to-end by `wasm_collections_index`'s record-keyed non-root table;
+the deferred flavor for a NAMED table over a dep-owned key — E0412 when its import is stranded —
+by `workspace_dep_named_table_deferred_keys_list`). The two gates split the verdict: the
 always-on **compile floor** pins that every non-pinned cell's cross-module wiring type-checks (its
 four-state class-asserting verdict stays live so any regression re-pins with the observed
 error-code evidence), and the full-tier **round-trip gate** executes that wiring across all three

@@ -631,7 +631,13 @@ impl GenerationScope {
                                     types,
                                     element_type.clone(),
                                     rust_ident,
-                                    true,
+                                    // A rule authored the class UNLESS this Array struct was
+                                    // generator-synthesized (a table rule's keys-list): a synthesized
+                                    // keys-list must never claim `rule_declared` (criterion-9 shadow
+                                    // warning over a wrapper no rule declares). A synthesized keys-list
+                                    // is always `bounds: None`, so this arm is authored in practice;
+                                    // pass the computed value for consistency with the plain arm.
+                                    !types.is_synthesized_collection(rust_ident),
                                     cli,
                                 );
                             } else {
@@ -639,7 +645,11 @@ impl GenerationScope {
                                     types,
                                     element_type.clone(),
                                     rust_ident,
-                                    true,
+                                    // See the non-empty arm: a generator-synthesized keys-list
+                                    // (`create_and_register_array_type`) must not pass
+                                    // `rule_declared: true` — no rule declares it, so the workspace
+                                    // criterion-9 shadow warning must not fire for it.
+                                    !types.is_synthesized_collection(rust_ident),
                                     cli,
                                 );
                             }
