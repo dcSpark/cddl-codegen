@@ -368,6 +368,12 @@ for (const r of rows) {
 const EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
   "contain.choice-member.prelude.null": ["3", "7"],
   "contain.choice-member.type2.tag": ["6"],
+  // The tag-set idiom rows spell the two WIRE arms (`#6.258([..]) → major 6`, `[..] → major 4`)
+  // regardless of whether codegen collapses (set_idiom) or retains the enum (set_idiom_near_miss), so
+  // the floor demands a spec-valid accept per arm — the untagged (major 4) direction our default
+  // encoder never emits is the independent decode evidence the verdict rests on.
+  "contain.choice-member.type2.tag.set_idiom": ["4", "6"],
+  "contain.choice-member.type2.tag.set_idiom_near_miss": ["4", "6"],
   // `@duplicates reject`'s example spells the tag-set idiom's two WIRE arms (`#6.258([..]) / [..]`
   // — tag → major 6, array → major 4) even though codegen collapses it to one transparent type, so
   // the floor demands an accept vector per wire arm — the same per-arm evidence the corpus
