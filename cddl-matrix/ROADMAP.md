@@ -581,6 +581,15 @@ annotations (`verify.ts`'s default-on `--wasm` probe); the recombination fuzzer'
 (`recombination_wasm_crates_check`, `tests/README.md` § "Shape-recombination fuzzer") is the
 composition-space cross-check that complements this matrix's curated per-shape grid. What remains:
 
+- **Enumerate the multifile matrix's referencing-MODULE axis (root-position references).** Every
+  reference mode places the referencing `bholder` in module `b`, so a reference FROM THE ROOT scope
+  (`lib.cddl`) — which takes `mark_refs`' distinct emission-scope/no-import paths — is systematically
+  unenumerated. Proven consequential: before the shared `wasm_collection_wrapper` helper, a
+  root-scope anonymous use of a map shape sole-owned by a scope module named the structural class
+  bare with no import (never witnessed red; corrected incidentally by the shared-helper change, so
+  the root side of that path has no red→green vector). Candidate: a `rootref` mode (the `bholder`
+  lands in `lib.cddl`) over the wrapper-minting shape subset, with the same participation-pin idiom
+  (`EXPECTED_*` lists) the `anon` mode uses.
 - **Keep BOTH matrix axes honest (periodic).** Grid coverage equals the hand-curated `SHAPES` ×
   `ROLES` lists in `project_wasm_matrix.ts` — and a hole in *either* axis is silent, not a red cell. A
   wasm representation not in `SHAPES` is an un-gated shape; equally, an emitter path that places types
@@ -604,6 +613,15 @@ composition-space cross-check that complements this matrix's curated per-shape g
   wearing a disguise, and grepping for such steering is a cheap arm of the periodic sweep.
   Enumerated as the `tblrec` cells (red, E0425-pinned) and fixed (`register_root_keys_list` at both
   `mark_refs` walk arms) in the same change series; all three cells green at HEAD.
+  A THIRD multifile-`SHAPES` instance repeated the steering-comment tell verbatim: every reject-set
+  shape (`rset`/`nerset`/`rseta`/`nerseta`) carried a deliberately-EXPOSABLE element — their own
+  projector comment says so — while a RECORD-element reject rule emits a `try_from(&<Elem>List)`
+  loose source the struct-walk arm only registered under the non-empty bound, leaving a plain
+  `[*] reject` rule cross-module a live E0425 no gate could see, found by fix-review reach-analysis
+  ("which OTHER rule families emit a loose source?") over the restricted-wrapper delivery.
+  Enumerated as the `rsetrec`/`nersetrec`/`rsetarec`/`nersetarec` cells (`rsetrec` red-proven,
+  then fixed by keying the struct-walk gate on `duplicates == Reject`, LOCKSTEP with
+  `generate_reject_ordered_set_type`'s `loose_list` decision); all green at HEAD.
   A second proven instance on the wasm matrix itself: the alias-to-record shape (`ral = st`) was
   missing from `SHAPES`, so the group-choice wasm-ctor alias-resolution divergence was un-gated for
   plain aliases (only its `.cbor`-wrapper sibling `cborwrap` had a cell) until the fix's review

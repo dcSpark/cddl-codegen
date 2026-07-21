@@ -508,7 +508,13 @@ extractor):
   alias-element hosting: request leaves resolve through the pipeline's `resolve_alias`, the single
   owner of the alias-substitution rule, so requested wrappers over
   `stake_credential = credential`-style aliases, primitive aliases, and externs generate exactly
-  what the dep's own spec would.
+  what the dep's own spec would. `workspace_requests_hosts_cross_scope_elements` is the host-side
+  element-import contract: a hosted wrapper's body names its element wasm classes bare, and the
+  requested-collections module computes explicit imports for them instead of relying on the
+  root-only `use super::*;` — a cross-scope generated element compiles via its true
+  `crate::generated::<scope>::…` import (full `cargo check`), and a scoped extern element is
+  imported through its crate-root re-export glue (generation assertion — a bare-stub extern has no
+  hand-written runtime to compile against).
 - `workspace_regen_two_consumer_contract` — the regen-contract gate over `tests/workspace-regen/`:
   an umbrella wasm cdylib linking one dep + TWO consumers, RED with duplicate symbols when both
   consumers mint and GREEN after a reverse-dependency-order holistic regen, then the in-place
