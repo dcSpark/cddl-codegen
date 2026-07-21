@@ -19,7 +19,6 @@ mod extern_interface_check;
 mod key_demand_assertions;
 pub mod serialization;
 
-use crate::generated::error::*;
 use crate::generated::ordered_hash_map::OrderedHashMap;
 use cbor_encodings::EnumKeyHolderEncoding;
 use std::collections::BTreeMap;

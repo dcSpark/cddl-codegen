@@ -8,7 +8,6 @@ expression: content
 pub mod serialization;
 
 use crate::generated::b::bar::{RelayHost, RelayPort};
-use crate::generated::error::*;
 
 #[derive(Clone, Debug)]
 pub struct Qux {

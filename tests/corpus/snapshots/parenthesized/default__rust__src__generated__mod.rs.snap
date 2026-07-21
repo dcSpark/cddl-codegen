@@ -15,8 +15,6 @@ pub mod error;
 mod extern_interface_check;
 pub mod serialization;
 
-use crate::generated::error::*;
-
 pub type Basic = u64;
 
 #[derive(Clone, Debug)]

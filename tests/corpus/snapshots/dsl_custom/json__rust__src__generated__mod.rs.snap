@@ -15,8 +15,6 @@ pub mod error;
 mod extern_interface_check;
 pub mod serialization;
 
-use crate::generated::error::*;
-
 #[derive(Clone, Debug, Copy)]
 pub struct CustomNewtype(pub(crate) u64);
 

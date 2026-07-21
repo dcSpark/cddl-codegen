@@ -1240,49 +1240,87 @@ fn run_test(
 /// Generate + gate every `tests/corpus/*.cddl` crate under each emission profile. The snapshot
 /// suite (`snapshot_tests::feature_corpus`) only pins the generated *source*, so a construct that
 /// emits non-compiling Rust would be snapshotted as "correct"; this is the compile gate for it.
-/// Scan rustc/cargo stderr for rendered `unused import` warnings whose import path names an
-/// allowlisted collection-type ident (`crate::import_prune::ALLOWLIST` — single owner, never
-/// mirrored here). Rustc renders these as a single line `warning: unused import: `PATH`` (or the
-/// plural `warning: unused imports: `A`, `B``) with the path(s) inline in backticks, so matching
-/// that line for the marker AND an allowlisted ident catches the whole class. Returns each
-/// offending line (trimmed) so the caller can name it in the failure.
-fn unused_allowlisted_import_lines(stderr: &str) -> Vec<String> {
+/// Trait imports the usage-derived prune (`crate::import_prune`) deliberately cannot remove: a trait
+/// is exercised by a method call whose ident never appears (`x.serialize(..)` for `cbor_event`'s
+/// `Serialize`), so name-scanning can't prove it unused. The generated serialization prelude imports
+/// `Serialize` (non-canonical profiles) and a scope that never calls it warns — an out-of-model
+/// residue tracked in `tests/TESTING_ROADMAP.md`'s `unused_imports` entry, NOT a prune regression.
+/// Everything else in a PURELY-generated crate is a prune target, so the scan flags it.
+const UNUSED_IMPORT_TRAIT_RESIDUE: &[&str] = &["Serialize"];
+
+/// Scan rustc/cargo stderr for rendered `unused import` warnings in the generated crates. These
+/// crates are 100% generated, so ANY unused import is a generator imprecision the import prune should
+/// have removed — the scan flags every one EXCEPT warnings that name only a documented trait residue
+/// (`UNUSED_IMPORT_TRAIT_RESIDUE`). Rustc renders these as a single line `warning: unused import:
+/// `PATH`` (or the plural `warning: unused imports: `A`, `B``) with the path(s) inline in backticks;
+/// the leaf ident is the last `::` segment (`super::*` → `*`, always flagged). Returns each offending
+/// line (trimmed) so the caller can name it in the failure.
+fn unused_generated_import_lines(stderr: &str) -> Vec<String> {
     stderr
         .lines()
-        .filter(|line| {
-            line.contains("warning: unused import")
-                && crate::import_prune::ALLOWLIST
+        .filter_map(|line| {
+            if !line.contains("warning: unused import") {
+                return None;
+            }
+            // Leaf ident of every backtick-quoted import path on the line.
+            let idents: Vec<&str> = line
+                .split('`')
+                .skip(1)
+                .step_by(2)
+                .map(|path| path.rsplit("::").next().unwrap_or(path))
+                .collect();
+            // A warning naming ONLY documented trait residue is not a prune target.
+            if !idents.is_empty()
+                && idents
                     .iter()
-                    .any(|ident| line.contains(ident))
+                    .all(|id| UNUSED_IMPORT_TRAIT_RESIDUE.contains(id))
+            {
+                return None;
+            }
+            Some(line.trim().to_string())
         })
-        .map(|line| line.trim().to_string())
         .collect()
 }
 
-/// Red-path guard for the scan above: a planted `unused import` warning naming an allowlisted ident
-/// is flagged, while a warning naming a non-allowlisted (user) type is ignored. Durable proof the
-/// arm can fire, without needing a real under-prune to occur.
+/// Red-path guard for the scan: an allowlisted ident, a cross-scope user type, and a `super::*` /
+/// `error::*` glob unused-import warning are all flagged (a purely-generated crate should carry
+/// none), while a warning naming only the documented `Serialize` trait residue is ignored.
 #[test]
-fn unused_allowlisted_import_scan_flags_allowlisted_and_ignores_user_types() {
-    let allowlisted = "warning: unused import: `std::collections::BTreeMap`\n \
-                       --> src/generated/mod.rs:3:5";
-    let hits = unused_allowlisted_import_lines(allowlisted);
-    assert_eq!(
-        hits.len(),
-        1,
-        "allowlisted unused import must be flagged: {hits:?}"
-    );
-    assert!(hits[0].contains("BTreeMap"));
+fn unused_generated_import_scan_flags_prune_targets_and_ignores_trait_residue() {
+    for (label, line) in [
+        (
+            "allowlisted",
+            "warning: unused import: `std::collections::BTreeMap`\n --> src/generated/mod.rs:3:5",
+        ),
+        (
+            "cross-scope user type",
+            "warning: unused import: `governance::Voter`\n --> src/generated/mod.rs:3:5",
+        ),
+        (
+            "super glob",
+            "warning: unused import: `super::*`\n --> src/generated/cbor_encodings.rs:4:5",
+        ),
+        (
+            "error glob",
+            "warning: unused import: `cml_core::error::*`\n --> src/generated/mod.rs:5:5",
+        ),
+    ] {
+        assert_eq!(
+            unused_generated_import_lines(line).len(),
+            1,
+            "{label} unused import must be flagged"
+        );
+    }
 
-    let user_type = "warning: unused import: `self::SomeUserType`\n \
-                     --> src/generated/mod.rs:3:5";
+    let trait_residue = "warning: unused import: `cbor_event::se::Serialize`\n \
+                         --> src/generated/serialization.rs:8:5";
     assert!(
-        unused_allowlisted_import_lines(user_type).is_empty(),
-        "a non-allowlisted (user) unused import must be ignored"
+        unused_generated_import_lines(trait_residue).is_empty(),
+        "the documented Serialize trait residue must be ignored"
     );
 
     // A clean build has no such warning at all.
-    assert!(unused_allowlisted_import_lines("   Compiling foo v0.1.0\n    Finished").is_empty());
+    assert!(unused_generated_import_lines("   Compiling foo v0.1.0\n    Finished").is_empty());
 }
 
 /// Runs all three `default`/`preserve`/`json` profiles the corpus is snapshotted under, since
@@ -1447,10 +1485,12 @@ fn feature_corpus_compiles() {
                     (*cargo_cmd).to_string(),
                 ]);
             }
-            // Closure-logic version marker: the cached cell now ALSO scans stderr for allowlisted
-            // unused-import warnings, so pre-scan cached PASSes must be invalidated (bump on any
-            // future change to that scan's verdict).
-            argv_for_key.push("lint=unused-imports-v1".to_string());
+            // Closure-logic version marker: the cached cell scans stderr for unused-import warnings.
+            // v2 broadens that scan from the allowlist-only set to EVERY generated-crate unused import
+            // (super::*/error::* globs, cross-scope type imports, wasm macro/prelude imports) minus a
+            // documented trait residue — so pre-v2 cached PASSes must be invalidated. Bump on any
+            // future change to the scan's verdict.
+            argv_for_key.push("lint=unused-imports-v2".to_string());
             let outcome = gate_cache::run_cached(
                 "feature_corpus_compiles",
                 &label,
@@ -1477,14 +1517,13 @@ fn feature_corpus_compiles() {
                             ok = false;
                         }
                         // Warning-severity residue the compile gates (over-prune only) can't see: an
-                        // `unused import` naming an allowlisted ident means the usage-derived import
-                        // prune (crate::import_prune) under-pruned. These crates are PURELY generated,
-                        // so any such warning is generator-owned. `ok = false` so a warning cell is
-                        // never cached as PASS.
-                        let unused = unused_allowlisted_import_lines(&stderr);
+                        // `unused import` in a PURELY-generated crate means the usage-derived import
+                        // prune (crate::import_prune) under-pruned (a documented trait residue aside).
+                        // `ok = false` so a warning cell is never cached as PASS.
+                        let unused = unused_generated_import_lines(&stderr);
                         if !unused.is_empty() {
                             failures.push(format!(
-                                "{label} ({crate_sub}): allowlisted unused-import residue — import prune under-pruned:\n{}",
+                                "{label} ({crate_sub}): generated-code unused-import residue — import prune under-pruned:\n{}",
                                 unused.join("\n")
                             ));
                             ok = false;

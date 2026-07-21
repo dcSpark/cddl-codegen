@@ -18,8 +18,6 @@ mod extern_interface_check;
 mod key_demand_assertions;
 pub mod serialization;
 
-use crate::generated::error::*;
-
 #[derive(Copy, Clone, Debug, derivative::Derivative)]
 #[derivative(
     Eq,

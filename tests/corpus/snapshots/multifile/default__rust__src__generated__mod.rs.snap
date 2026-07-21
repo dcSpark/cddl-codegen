@@ -22,7 +22,6 @@ pub mod serialization;
 // user-owned definition. See the extern types section of docs/output_format.
 pub use crate::ExternalFoo;
 
-use crate::generated::error::*;
 use a::Baz;
 use a::c::foo::Foo;
 use b::bar::{Bar, BarTypedef};

@@ -15,7 +15,6 @@ pub mod error;
 mod extern_interface_check;
 pub mod serialization;
 
-use crate::generated::error::*;
 use std::collections::BTreeMap;
 
 pub type Table = BTreeMap<u64, String>;

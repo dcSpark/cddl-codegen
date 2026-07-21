@@ -20,7 +20,6 @@ pub mod serialization;
 pub use crate::Ext;
 pub use crate::Hash;
 
-use crate::generated::error::*;
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]

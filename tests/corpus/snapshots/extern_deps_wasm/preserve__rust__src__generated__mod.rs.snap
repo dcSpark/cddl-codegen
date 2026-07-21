@@ -20,9 +20,7 @@ pub mod serialization;
 
 use cbor_encodings::{EverythingEncoding, IntHolderEncoding};
 use extern_dep_crate::ExternCrateFoo;
-use extern_dep_crate::error::*;
 use extern_dep_crate::ordered_hash_map::OrderedHashMap;
-use extern_dep_crate::serialization::LenEncoding;
 use std::collections::BTreeMap;
 
 pub type DeltaCoin = Int;

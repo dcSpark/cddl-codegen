@@ -543,6 +543,18 @@ impl GenerationScope {
                 "rust/src/generated/serialization.rs".to_owned(),
                 stamp_codegen_header(&rustfmt_generated_string(&merged.to_string())?),
             );
+            // The import prune in `generated_files` saw serialization.rs GENERATED-ONLY (no prelude),
+            // so a root scope with no per-type serialize impls looked like a bare re-export file and
+            // the rebuild above reintroduced the blindly-pushed `use super::*;`. Re-run the prune over
+            // the rebuilt map: now serialization.rs carries the prelude (code), so the glob-prune
+            // decides `super::*` against real usage (dropped when nothing names a root-module item,
+            // kept where the prelude/impls do). Every other file is already a prune fixed point, so
+            // only serialization.rs can change here.
+            let prune_config = self.build_prune_config(cli);
+            for (path, pruned) in crate::import_prune::prune_generated_files(&files, &prune_config)
+            {
+                files.insert(path, rustfmt_generated_string(&pruned)?.into_owned());
+            }
         }
 
         // Manifests merge into whatever is already on disk (the declarative changeset) rather than
@@ -1620,22 +1632,62 @@ impl GenerationScope {
             }
         }
 
-        // Usage-derived import prune: drop the blindly-pushed collection-type imports
-        // (`BTreeMap`/`OrderedHashMap`/`NonEmptyVec`/`NonEmptyMap`) that a file's module family
+        // Usage-derived import prune: drop the blindly-pushed collection-type imports, unused
+        // `super::*` / `error::*` globs, and cross-scope type imports that a file's module family
         // references nowhere. Runs here, over the WHOLE file map, rather than per-file in
         // `rustfmt_generated_string`, because soundness needs each file's descendant modules in
         // view: a child's `use super::*;` chain can consume the parent's private imports, so a
-        // file's import is genuinely unused only when neither the file nor any descendant module
-        // names the ident (see `import_prune.rs`). The pass returns the changed files' pruned
-        // (not-yet-rustfmt'd) content; rustfmt normalizes the splice here. This is still BEFORE the
-        // comment-preservation overlay (which runs at `export` write time), so fresh content stays
-        // a rustfmt-stable fixed point run-over-run.
-        for (path, pruned) in crate::import_prune::prune_generated_files(&out) {
+        // file's import is genuinely unused only when neither the file nor any super-reachable
+        // descendant module names the ident (see `import_prune.rs`). The pass returns the changed
+        // files' pruned (not-yet-rustfmt'd) content; rustfmt normalizes the splice here. This is
+        // still BEFORE the comment-preservation overlay (which runs at `export` write time), so fresh
+        // content stays a rustfmt-stable fixed point run-over-run.
+        //
+        // Beyond the built-in `ALLOWLIST`, the name-scan candidate set carries: the wasm prelude
+        // names (`JsError`/`JsValue` concrete types, `wasm_bindgen` attribute macro), the configured
+        // `--wasm-*-macro` leaf names (each exercised only via `name!(…)`), and every cross-scope
+        // generated type ident `scope_references` over-imported. The configured wasm macros MUST be
+        // written fully-qualified (they must not assume `JsError`/`JsValue`/`wasm_bindgen` in scope) —
+        // the contract documented next to those flags in `command_line_flags.mdx`.
+        let prune_config = self.build_prune_config(cli);
+        for (path, pruned) in crate::import_prune::prune_generated_files(&out, &prune_config) {
             let formatted = rustfmt_generated_string(&pruned)?.into_owned();
             out.insert(path, formatted);
         }
 
         Ok(out)
+    }
+
+    /// The name-scan candidate set the usage-derived import prune may remove beyond the built-in
+    /// `ALLOWLIST` (see `import_prune::PruneConfig`): the wasm prelude names (`JsError`/`JsValue`
+    /// concrete types, the `wasm_bindgen` attribute macro), the `--wasm-*-macro` leaf names (each
+    /// exercised only via `name!(…)`), and every cross-scope generated type ident
+    /// `scope_references` over-imported. Every entry is a concrete type or a macro — never a trait —
+    /// so name-scanning stays sound. Shared by `generated_files` and the post-rebuild re-prune in
+    /// `export` so the two can't diverge.
+    fn build_prune_config(&self, cli: &Cli) -> crate::import_prune::PruneConfig {
+        let mut prune_config = crate::import_prune::PruneConfig::default();
+        prune_config.extra_candidates.extend(
+            ["JsError", "JsValue", "wasm_bindgen"]
+                .into_iter()
+                .map(String::from),
+        );
+        for macro_flag in [
+            &cli.wasm_cbor_json_api_macro,
+            &cli.wasm_conversions_macro,
+            &cli.wasm_list_macro,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if let Some((_, leaf)) = macro_flag.rsplit_once("::") {
+                prune_config.extra_candidates.insert(leaf.to_owned());
+            }
+        }
+        prune_config
+            .extra_candidates
+            .extend(self.scope_ref_import_idents.iter().cloned());
+        prune_config
     }
 }
 

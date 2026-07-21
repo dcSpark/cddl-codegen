@@ -10,55 +10,71 @@
 //! references the imported name. [`prune_generated_files`] is the entry point — the driver in
 //! `generated_files` calls it once over the whole file map.
 //!
-//! **Module family, not single file.** The unit of analysis for a file F is F plus its *descendant
-//! modules*, not F alone: a child module's `use super::*;` re-exports the parent module's *private*
-//! imports (`serialization.rs` reaches the `BTreeMap` it uses through `use super::*;` from
-//! `mod.rs`, even though `mod.rs`'s own body never names `BTreeMap`), so pruning F on its own
-//! idents alone breaks the crate (E0433 at the child). The privacy rule bounds who can do this: a
-//! private `use` binding in module M is nameable only from M and M's descendants — a glob from a
-//! NON-descendant (`use crate::generated::foo::*;` from a sibling) imports only `pub` items, never
-//! M's private imports. So descendants are the complete set of possible consumers, and F is
-//! protected by the union of its own used idents and each descendant's used idents — but a
-//! descendant D contributes an ident it names only when D's resolution of that ident can actually
-//! reach F's re-import. Rust resolves to the NEAREST binding, so two disqualifiers drop D as a
-//! protector of ident X:
+//! **Module family via the super-glob edge graph.** The unit of analysis for a file F is F plus the
+//! descendants that can actually CONSUME its private imports. A child re-exports the parent's
+//! *private* imports only through `use super::*;` (`serialization.rs` reaches the `BTreeMap` it uses
+//! through `use super::*;` from `mod.rs`, even though `mod.rs`'s own body never names `BTreeMap`), so
+//! pruning F on its own idents alone breaks the crate (E0433 at the child). Privacy bounds who can do
+//! this: a private `use` binding in module M is nameable only from M and M's descendants — a glob
+//! from a NON-descendant imports only `pub` items, never M's private imports — and a descendant
+//! reaches it EXCLUSIVELY through an unbroken chain of `use super::*;` edges (explicit `super::X`
+//! paths are not emitted by the generator; verified). So F's protectors are exactly the descendants
+//! D linked to F by such a chain ([`reachable_via_super`]); a sub-scope `serialization.rs` whose own
+//! scope `mod.rs` does NOT re-glob the root can never consume the root's imports even though it names
+//! the same idents. F is protected by its own used idents plus each super-reachable D's used idents,
+//! MINUS the idents D resolves through a nearer binding of its own. Rust resolves to the NEAREST
+//! binding, so three disqualifiers drop D as a protector of ident X:
 //!   1. **Direct import** — D carries `use …::X;` of its own; D's uses of `X` resolve to that, never
-//!      to F's copy reached through `use super::*;`. This sheds a `mod.rs` re-import whose only
-//!      descendant consumer holds its own direct copy (the `cbor_encodings.rs` shape).
-//!   2. **Target module (A2)** — D's module is AT or UNDER the module F imports X FROM
-//!      (`use crate::<segs>::X;` → module `crate::<segs>`). F's import compiling at all requires X in
-//!      that module's namespace, and D-at-or-under-it resolves X there (a local item/binding beats
-//!      anything glob-chained from an ancestor), so D's chain never reaches F's re-import. This is
-//!      what sheds `mod.rs`'s blindly-pushed `use crate::…::serialization::LenEncoding;` /
-//!      `StringEncoding` whose consumer is the `serialization.rs` descendant that DEFINES them.
+//!      to F's copy reached through `use super::*;` (the `cbor_encodings.rs` shape).
+//!   2. **Target file** — D IS the file of the module F imports X FROM (`use crate::<segs>::X;` →
+//!      module `crate::<segs>`, whose file is `<segs>.rs`/`<segs>/mod.rs`). That file DEFINES X (the
+//!      `serialization.rs` static prelude, concatenated LATER — invisible to this generated-only
+//!      pass, so the target is read from the import PATH), so D resolves X locally. Restricted to the
+//!      target FILE, not everything under it: a deeper descendant reaches the target's items only via
+//!      its own `super::*` chain (the un-modeled intermediate case, kept conservative), and a
+//!      crate-ROOT target (`use crate::generated::X;`) must not disqualify every file merely nested
+//!      under `generated/`.
+//!   3. **Source glob** — D carries a `use M::*;` of the SAME module F imports X from, so D resolves X
+//!      through its own glob (the `--common-import-override` shape where the sub-scope
+//!      `serialization.rs` globs `<dep>::serialization::*` and the definition is external, so
+//!      disqualifier 2 can't see it).
 //!
-//! Disqualifier 2 is derived from the import PATH rather than by scanning D for a local definition
-//! ON PURPOSE: this pass runs over the GENERATED-ONLY file map (`generation/export.rs`'s
-//! `generated_files`), and `serialization.rs`'s static prelude — which is where `LenEncoding` /
-//! `StringEncoding` are actually defined — is concatenated onto the root file LATER, so the
-//! definition is invisible here; the import path is the only in-view evidence of where X lives. The
-//! `/src/` crate split (`rust` / `wasm` / `wasm/json-gen` are separate crates) stays the outer
-//! boundary; leaf files (a scope's `serialization.rs` has no descendants) are pruned purely on their
-//! own idents.
+//! The `/src/` crate split (`rust` / `wasm` / `wasm/json-gen` are separate crates) stays the outer
+//! boundary; a leaf file (no super-reachable descendants) is pruned purely on its own idents.
 //!
-//! **Deliberately-conservative residue (documented, not implemented).** The two disqualifiers can
-//! still leave a protector standing and KEEP a would-be-prunable import — never remove one a consumer
-//! needs, so any imprecision is warning-severity, never a compile error: (a) an INTERMEDIATE module M
-//! between F and a deeper descendant D consumes F's copy for everything at or below M (M directly
-//! imports X, or is itself at/under X's target module), yet the rule still counts D — which reaches X
-//! through M, not F — as a protector of F; (b) descendants that never actually glob-chain back to F
-//! (exact glob-EDGE tracking would drop these). Both are watched by the unused-allowlisted-import
-//! scan in the `feature_corpus_compiles` gate (src/tests), which fails on any `unused import` rustc
-//! warning naming an [`ALLOWLIST`] ident across the corpus; escalation to exact resolution modelling
-//! is gated on a real warning report from that arm.
+//! **Glob pruning.** Two blindly-pushed private globs are themselves prunable when provably unused,
+//! each against a fully-enumerable universe (conservative-keep when it can't be enumerated):
+//!   - `use super::*;` — universe = the PARENT module's bound names ([`bound_names`]: its item defs,
+//!     its `use`-bound leaves, and its own globs' exports, recursively). Removed from a file with no
+//!     super-reachable descendant whose body names no parent-bound name it doesn't itself bind/define
+//!     ([`super_glob_needed`]). Drops the `cbor_encodings.rs` `super::*` that only needs its own
+//!     direct encoding imports; KEPT where an encoding struct is keyed by a parent-scope generated
+//!     type (`BTreeMap<Ikey, StringEncoding>`).
+//!   - `use <path>::error::*;` — universe = the fixed [`ERROR_MODULE_EXPORTS`]. Removed when neither F
+//!     nor a super-reachable descendant demands an error export it doesn't resolve locally
+//!     ([`error_glob_needed`]); the sub-scope `serialization.rs` carries its OWN `error::*`, so it
+//!     resolves error names through that (source-glob), not the parent copy.
 //!
-//! **Soundness boundary — why an allowlist.** Ident-scanning can prove a *concrete type* unused: a
-//! type can only be used by naming it, so "ident absent from the module family" ⇒ unused. That
-//! implication does NOT hold for traits (`use std::io::Write;` is exercised by `w.write_all(..)` —
-//! the ident `Write` never appears), macros, or globs (no ident to check). So this pass prunes
-//! ONLY the explicit [`ALLOWLIST`] of concrete-type imports — exactly the blindly-pushed types
-//! (the six collection helpers plus the three `--preserve-encodings` encoding enums). Everything
-//! else is kept untouched.
+//! **Documented-conservative residue.** The disqualifiers can still leave a protector standing and
+//! KEEP a would-be-prunable import — never remove one a consumer needs, so any imprecision is
+//! warning-severity, never a compile error: an INTERMEDIATE module M between F and a deeper
+//! descendant D that consumes F's copy for everything at/below M, yet the per-descendant rule still
+//! counts D — which reaches X through M, not F — as a protector. Watched by the
+//! generated-code unused-import scan in the `feature_corpus_compiles` gate (src/tests), which fails
+//! on ANY `unused import` rustc warning in the generated crates (minus a documented trait residue).
+//!
+//! **Soundness boundary — the name-scan candidate set.** Ident-scanning can prove a *concrete type*
+//! unused: a type can only be used by naming it, so "ident absent from the module family" ⇒ unused.
+//! That implication does NOT hold for traits (`use std::io::Write;` is exercised by `w.write_all(..)`
+//! — the ident `Write` never appears). So name-scan pruning is restricted to concrete-type / macro
+//! candidates: the built-in [`ALLOWLIST`] (collection helpers + `--preserve-encodings` encoding
+//! enums) plus the per-run [`PruneConfig::extra_candidates`] — the wasm prelude names (`JsError` /
+//! `JsValue` concrete types, the `wasm_bindgen` attribute macro exercised only via `#[wasm_bindgen]`,
+//! whose ident the scan sees), the `--wasm-*-macro` leaf names (each exercised only via `name!(…)`),
+//! and the cross-scope generator-minted type idents `scope_references` over-imports. Everything
+//! else — notably the `cbor_event::se::Serialize` TRAIT the serialization prelude imports — is kept
+//! untouched (a documented residue). Globs are handled by the separate glob-prune above, never by
+//! name-scan.
 //!
 //! **Second rule — re-export-only files (file-shape scoped).** An extern-only CDDL scope generates
 //! a `mod.rs` containing nothing but extern re-export glue (`pub use crate::Address;`). The
@@ -109,18 +125,13 @@ use quote::ToTokens;
 use syn::spanned::Spanned;
 use syn::{Item, ItemUse, UseTree};
 
-/// The concrete-type import names this pass is allowed to remove. These are exactly the
-/// blindly-pushed types that the emission sites in `generation/` add unconditionally (or gated only
-/// on spec-global facts): the six collection helpers plus the three `--preserve-encodings` encoding
-/// enums. Extending this list later (e.g. `JsValue`) is a one-line change plus a snapshot re-bless —
-/// but every addition must be a concrete type (never a trait/macro/glob), or the soundness argument
-/// above breaks. All three encoding enums are concrete enums (`static/serialization_preserve.rs`)
-/// only ever consumed by being named, so the "ident absent from the module family ⇒ unused"
-/// implication holds for them exactly as for the collection types.
-///
-/// `pub(crate)` so the `feature_corpus_compiles` gate (src/tests) can scan generated-crate rustc
-/// stderr for `unused import` warnings naming one of these idents — the warning-severity residue
-/// this prune is meant to eliminate — against the single owner rather than a mirrored copy.
+/// The built-in concrete-type import names this pass may remove by name-scan, always available (the
+/// per-run [`PruneConfig::extra_candidates`] add to these). These are exactly the blindly-pushed
+/// types the emission sites in `generation/` add unconditionally (or gated only on spec-global
+/// facts): the six collection helpers plus the three `--preserve-encodings` encoding enums. Every
+/// entry must be a concrete type (never a trait/macro/glob), or the "ident absent from the module
+/// family ⇒ unused" implication that makes name-scanning sound breaks — the three encoding enums are
+/// concrete enums (`static/serialization_preserve.rs`) only ever consumed by being named.
 pub(crate) const ALLOWLIST: &[&str] = &[
     "BTreeMap",
     "OrderedHashMap",
@@ -135,6 +146,42 @@ pub(crate) const ALLOWLIST: &[&str] = &[
     "TagPresenceEncoding",
 ];
 
+/// The concrete-type names the static `error` module (`static/error.rs`) binds into a module's
+/// namespace. A `use <common>::error::*;` glob supplies EXACTLY these, so this is the complete
+/// universe for deciding whether such a glob is unused (see [`error_glob_needed`]). Held here as the
+/// single owner and drift-guarded against `static/error.rs` by `error_exports_match_static_source`
+/// (a stale entry there is a compile-time-caught test failure, not a silent under-prune). In
+/// `--common-import-override` mode the glob targets the dependency crate's `error` module, which is
+/// this same runtime copied into the dependency — the contract that keeps the universe complete.
+pub(crate) const ERROR_MODULE_EXPORTS: &[&str] = &["Key", "DeserializeFailure", "DeserializeError"];
+
+/// Per-run configuration for [`prune_generated_files`]: the name-scan-prunable idents BEYOND the
+/// built-in [`ALLOWLIST`]. Everything here is a CONCRETE type, an attribute macro, or a
+/// generator-minted type ident — never a trait — so the "ident absent from the module family ⇒
+/// unused" implication that makes name-scanning sound holds for each (a trait like `cbor_event`'s
+/// `Serialize` is exercised by a method call whose ident never appears, so it is NEVER added here;
+/// it stays a documented residue). A pure function of CLI config + the finalized IR, so the prune
+/// stays deterministic.
+#[derive(Default)]
+pub(crate) struct PruneConfig {
+    /// Extra idents the prune may remove by name-scan, unioned onto [`ALLOWLIST`]:
+    ///   - the wasm prelude names `JsError` / `JsValue` (concrete types) and the `wasm_bindgen`
+    ///     attribute macro (exercised only via `#[wasm_bindgen]`, whose ident the scan sees);
+    ///   - the `--wasm-*-macro` leaf names (each exercised only via `name!(…)`, whose ident the scan
+    ///     sees) — the configured macros MUST be written fully-qualified (they must not assume
+    ///     `JsError`/`JsValue`/`wasm_bindgen` in scope), the contract documented next to those flags;
+    ///   - cross-scope generator-minted type idents pushed by `add_imports_from_scope_refs`, which
+    ///     a referencing module over-imports (the `scope_references` set is an over-approximation).
+    pub extra_candidates: std::collections::BTreeSet<String>,
+}
+
+fn is_candidate(ident: &str, config: &PruneConfig) -> bool {
+    ALLOWLIST.contains(&ident) || config.extra_candidates.contains(ident)
+}
+
+/// Test-only: the driver uses [`is_candidate`] (allowlist ∪ per-run extras). Kept for the
+/// self-contained unit-test path that exercises the built-in allowlist alone.
+#[cfg(test)]
 fn is_allowlisted(ident: &str) -> bool {
     ALLOWLIST.contains(&ident)
 }
@@ -157,31 +204,35 @@ fn is_allowlisted(ident: &str) -> bool {
 /// deletion also consumes the line's leading indentation and trailing newline when the item was
 /// alone on its line(s), so no blank-line scar is left behind (rustfmt does NOT collapse those).
 /// rustfmt runs after this pass and normalizes the splice's spacing.
+#[cfg(test)]
 pub(crate) fn prune_unused_type_imports_with_used<'a>(
     source: &'a str,
     used: &HashSet<String>,
 ) -> Cow<'a, str> {
-    prune_private_use_items(source, &PruneMode::Allowlist(used))
+    // Allowlist-only behaviour (unit-test path): drop allowlisted leaves absent from `used`; no glob
+    // is ever removed.
+    splice_private_uses(
+        source,
+        false,
+        &|ident| is_allowlisted(ident) && !used.contains(ident),
+        &HashSet::new(),
+    )
 }
 
-/// Which private `use` items a splice pass targets — the two rules documented on this module.
-enum PruneMode<'u> {
-    /// Allowlist-scoped: within each private `use`, drop only allowlisted leaves absent from the
-    /// supplied protected ident set; every other leaf (traits, globs, renames, non-allowlisted
-    /// names) is kept. Non-qualifying files always take this path — byte-identical to the pass's
-    /// long-standing behaviour.
-    Allowlist(&'u HashSet<String>),
-    /// Re-export-only file shape: drop EVERY private `use` item wholesale (allowlist irrelevant).
-    /// Only reached for files that qualify via [`is_reexport_only_file`] + the driver's
-    /// no-descendant check, where the file-shape soundness argument (module docs) proves nothing
-    /// can consume a private import.
-    ReexportOnly,
-}
-
-/// Shared span-splicing edit loop for both prune rules. Iterates top-level PRIVATE `use` items;
+/// Shared span-splicing edit loop for every prune rule. Iterates top-level PRIVATE `use` items;
 /// non-`use` items and `pub use` re-exports are never edited. Re-emission is targeted byte-range
 /// splicing (never whole-file token re-printing), so comments survive byte-for-byte.
-fn prune_private_use_items<'a>(source: &'a str, mode: &PruneMode) -> Cow<'a, str> {
+///
+/// `remove_all` drops every private `use` item wholesale (the re-export-only file shape). Otherwise
+/// each item is filtered by [`filter_use_tree`]: a `Name` leaf is dropped when `remove_named`
+/// returns true for it, and a `Glob` leaf is dropped when its full `::`-joined module path is in
+/// `remove_globs` (renames are always kept — the alias target can't be name-scanned).
+fn splice_private_uses<'a>(
+    source: &'a str,
+    remove_all: bool,
+    remove_named: &dyn Fn(&str) -> bool,
+    remove_globs: &HashSet<String>,
+) -> Cow<'a, str> {
     let file = match syn::parse_file(source) {
         Ok(file) => file,
         // Conservative-keep: unparseable input (a generator bug rustfmt will also reject loudly)
@@ -189,8 +240,6 @@ fn prune_private_use_items<'a>(source: &'a str, mode: &PruneMode) -> Cow<'a, str
         Err(_) => return Cow::Borrowed(source),
     };
 
-    // Compute the byte-range edits for every top-level PRIVATE `use` item whose tree changes.
-    // Non-`use` items and `pub use` re-exports are never edited.
     let line_starts = line_start_offsets(source);
     let mut edits: Vec<(usize, usize, Option<String>)> = Vec::new();
     for item in &file.items {
@@ -202,30 +251,27 @@ fn prune_private_use_items<'a>(source: &'a str, mode: &PruneMode) -> Cow<'a, str
             // may import the name, so usage analysis inside this crate can never justify removal.
             continue;
         }
-        match mode {
-            PruneMode::Allowlist(used) => {
-                if let Some(pruned_tree) = prune_tree(&use_item.tree, used) {
-                    // Tree changed but is non-empty: replace with the filtered use item.
-                    if !trees_equal(&use_item.tree, &pruned_tree) {
-                        let mut new_item = use_item.clone();
-                        new_item.tree = pruned_tree;
-                        let (start, end) = item_byte_range(use_item, &line_starts, source);
-                        edits.push((start, end, Some(new_item.to_token_stream().to_string())));
-                    }
-                } else {
-                    // Tree emptied entirely: drop the whole item, including the line it occupied —
-                    // plain span deletion would leave a blank-line scar rustfmt does not collapse.
+        let drop_whole = |edits: &mut Vec<(usize, usize, Option<String>)>| {
+            // Drop the whole item, including the line it occupied — plain span deletion would leave a
+            // blank-line scar rustfmt does not collapse.
+            let (start, end) = item_byte_range(use_item, &line_starts, source);
+            let (start, end) = expand_to_whole_line(source, start, end);
+            edits.push((start, end, None));
+        };
+        if remove_all {
+            drop_whole(&mut edits);
+            continue;
+        }
+        match filter_use_tree(&use_item.tree, &mut Vec::new(), remove_named, remove_globs) {
+            Some(pruned_tree) => {
+                if !trees_equal(&use_item.tree, &pruned_tree) {
+                    let mut new_item = use_item.clone();
+                    new_item.tree = pruned_tree;
                     let (start, end) = item_byte_range(use_item, &line_starts, source);
-                    let (start, end) = expand_to_whole_line(source, start, end);
-                    edits.push((start, end, None));
+                    edits.push((start, end, Some(new_item.to_token_stream().to_string())));
                 }
             }
-            PruneMode::ReexportOnly => {
-                // Drop the whole private `use` item (same whole-line deletion as an emptied tree).
-                let (start, end) = item_byte_range(use_item, &line_starts, source);
-                let (start, end) = expand_to_whole_line(source, start, end);
-                edits.push((start, end, None));
-            }
+            None => drop_whole(&mut edits),
         }
     }
 
@@ -258,49 +304,61 @@ pub(crate) fn prune_unused_type_imports(source: &str) -> Cow<'_, str> {
     }
 }
 
-/// Import prune over the full generated-file map, at module-family precision. For each
-/// generated-tree file F (`.rs` under a `/generated/` dir), the PROTECTED ident set is
+/// Import prune over the full generated-file map, at module-family precision. Two removals per file
+/// F (a `.rs` under a `/generated/` dir): named-candidate leaves ([`PruneConfig`] ∪ [`ALLOWLIST`])
+/// and unused private globs (`use super::*;` / `use <common>::error::*;`). Both are gated on whether
+/// F's private binding can still be CONSUMED by any file — F's own body, or a descendant.
 ///
-/// > protected(F) = used_idents(F) ∪ ⋃ { X ∈ used_idents(D) : D does not RESOLVE X locally } for
-/// > every D in the map whose module is a strict path-descendant of F's module (same crate — the
-/// > `/src/` split is the outer boundary)
+/// **Who can consume F's private import: the super-glob edge graph.** A private `use` binding in
+/// module M is nameable only inside M and M's descendants, and a descendant reaches it exclusively
+/// through a `use super::*;` chain (a glob from a non-descendant imports only `pub` items; explicit
+/// `super::X` paths are not emitted by the generator — verified). So the ONLY files that can consume
+/// F's privates are the descendants D linked to F by an UNBROKEN chain of `use super::*;` edges
+/// (`reachable_via_super`). This is what makes a scope `mod.rs`'s blindly-pushed imports prunable:
+/// the sub-scope `serialization.rs`/`cbor_encodings.rs` files that name the same idents do NOT
+/// `use super::*;` the ROOT (their own scope `mod.rs` doesn't re-glob upward), so they never chained
+/// to the root's copy in the first place — they resolve their idents inside their own scope.
 ///
-/// and an allowlisted private import of F is removed iff its ident is absent from protected(F). A
-/// descendant D "resolves X locally" — and so does NOT protect F's copy — when either D directly
-/// imports X (`direct_imports(D)`, see [`collect_directly_imported_idents`]) OR D's module is at/under
-/// the module F imports X from (`use crate::<segs>::X;` → module `crate::<segs>`, see
-/// [`collect_allowlisted_import_targets`]). Both follow from nearest-binding resolution: a directly-
-/// importing D consumes its own copy, and a D at/under X's defining module reaches X there, so neither
-/// chains back to F's re-import through `use super::*;`. Together they remove the `--preserve-encodings`
-/// `LenEncoding`/`StringEncoding` walls a blindly-imported ancestor `mod.rs` grows: the direct-import
-/// disqualifier drops the `cbor_encodings.rs` consumer, the target-module one drops the
-/// `serialization.rs` consumer that DEFINES them (the definition is invisible to this generated-only
-/// pass — see the module docs). Descendants are the complete set of files that can consume F's private
-/// imports, so this is sound; leaf files (a scope's `serialization.rs` — no descendants) are pruned
-/// purely on their own idents, which is what removes the per-file unused-import walls.
+/// **Named-candidate protection.** X (a candidate F imports privately) is protected iff F's own body
+/// names X, or a super-reachable descendant D names X and D does NOT resolve X through a nearer
+/// binding of its own. Three disqualifiers, all from nearest-binding resolution:
+///   1. **Direct import** — D carries `use …::X;` (`direct_by_path`).
+///   2. **Target module** — D is at/under the crate-anchored module F imports X FROM
+///      (`collect_candidate_import_targets`) — the self-contained `serialization.rs`-DEFINES-it shape.
+///   3. **Source glob** — D carries a `use M::*;` of the SAME module F imports X from
+///      (`collect_candidate_import_sources` ∩ D's private glob paths) — the
+///      `--common-import-override` `serialization::*` shape, where the definition is external and
+///      target-module cannot see it. Over-removal stays loud (E0412/E0432/E0433) in the compile gates.
 ///
-/// Module→dir mapping: `d/mod.rs`'s module dir is `d/`; `d/foo.rs`'s module dir is `d/foo/`.
-/// Descendants of F = every `.rs` in the map strictly under F's module dir.
+/// **Glob pruning.** `use super::*;` is removed from a file with no super-reachable descendant whose
+/// own body names no PARENT-bound name it doesn't itself bind (`super_glob_needed`, universe =
+/// `bound_names(parent)`). A `use <path>::error::*;` is removed when neither F nor a super-reachable
+/// descendant demands an [`ERROR_MODULE_EXPORTS`] name it doesn't resolve locally (`error_glob_needed`).
 ///
-/// A file that fails to parse might use anything, so it poisons every file it could be protecting:
-/// any F with an unparseable descendant is skipped (F itself is skipped inside the prune fn).
-/// Files elsewhere in the crate are unaffected — a non-descendant cannot consume F's privates.
-///
-/// Returns `(path, pruned_content)` for each file that CHANGED; the content is NOT rustfmt'd (the
-/// splice can leave loose spacing), so the caller must rustfmt each returned entry before writing.
-pub(crate) fn prune_generated_files(files: &BTreeMap<String, String>) -> Vec<(String, String)> {
-    // Used idents per `.rs` file, computed once; `None` marks an unparseable file. `direct_by_path`
-    // is each file's DIRECTLY-imported leaf idents (see [`collect_directly_imported_idents`]) — used
-    // to decide, per descendant, whether it resolves an ident through its own `use` (consuming its
-    // own copy) or through the `use super::*;` chain (consuming the ancestor's).
+/// A super-reachable descendant that fails to parse might consume ANY private import, so it poisons F
+/// (F is skipped). Returns `(path, pruned_content)` for each CHANGED file; the content is NOT
+/// rustfmt'd (the splice can leave loose spacing), so the caller must rustfmt each returned entry.
+pub(crate) fn prune_generated_files(
+    files: &BTreeMap<String, String>,
+    config: &PruneConfig,
+) -> Vec<(String, String)> {
+    // Per `.rs` file, computed once. `None` in `used_by_path` marks an unparseable file. `direct` is
+    // the DIRECTLY-imported leaf idents; `glob` is the module paths of the file's PRIVATE globs
+    // (`super`, `cml_core::error`, …); `defs` is the top-level item names it defines.
     let mut used_by_path: BTreeMap<&str, Option<HashSet<String>>> = BTreeMap::new();
     let mut direct_by_path: BTreeMap<&str, HashSet<String>> = BTreeMap::new();
+    let mut glob_by_path: BTreeMap<&str, HashSet<String>> = BTreeMap::new();
+    let mut defs_by_path: BTreeMap<&str, HashSet<String>> = BTreeMap::new();
     for (path, content) in files {
         if path.ends_with(".rs") {
             used_by_path.insert(path, collect_used_idents_from_source(content));
             direct_by_path.insert(path, collect_directly_imported_idents(content));
+            glob_by_path.insert(path, collect_private_glob_paths(content));
+            defs_by_path.insert(path, collect_module_item_defs(content));
         }
     }
+    // A file re-imports its PARENT's namespace via `use super::*;`.
+    let has_super = |p: &str| glob_by_path.get(p).is_some_and(|g| g.contains("super"));
 
     let mut changed = Vec::new();
     for (path, content) in files {
@@ -308,16 +366,18 @@ pub(crate) fn prune_generated_files(files: &BTreeMap<String, String>) -> Vec<(St
             continue;
         }
         let Some(Some(own_used)) = used_by_path.get(path.as_str()) else {
-            continue; // this file doesn't parse — the prune fn would refuse anyway
+            continue; // this file doesn't parse — the splicer would refuse anyway
         };
         let dir = module_dir(path);
         let key = crate_key(path);
-        // Per-import target module of F's own allowlisted imports (see A2 below). Maps an allowlisted
-        // leaf ident X to the crate-relative file base(s) of the module F imports it FROM, when that
-        // path is `crate::`-anchored (external/relative imports contribute nothing — no in-crate
-        // module to be at/under).
-        let import_targets = collect_allowlisted_import_targets(content, key);
-        let mut protected = own_used.clone();
+        let import_targets = collect_candidate_import_targets(content, key, config);
+        let import_sources = collect_candidate_import_sources(content, config);
+
+        // The super-reachable descendants of F (the complete set of files that can consume F's private
+        // imports) plus whether F has any STRUCTURAL descendant module (the re-export-only rule needs
+        // the structural check: a descendant that doesn't `use super::*;` still can't consume F's
+        // privates, so the re-export-only wholesale removal is even safer, but we keep its guard as-is).
+        let mut reach: Vec<&str> = Vec::new();
         let mut poisoned = false;
         let mut has_descendant = false;
         for (desc_path, desc_used) in &used_by_path {
@@ -328,51 +388,22 @@ pub(crate) fn prune_generated_files(files: &BTreeMap<String, String>) -> Vec<(St
                 continue;
             }
             has_descendant = true;
-            match desc_used {
-                // A descendant D protects F's import of ident X only when D's resolution of X can
-                // actually reach F's re-import — i.e. D neither has its OWN binding of X nor a shorter
-                // path to X's definition. Two disqualifiers, both from nearest-binding resolution:
-                //   • DIRECT IMPORT: D carries `use …::X;` of its own, so D's uses of X resolve to
-                //     that, never to F's copy reached through the `use super::*;` chain.
-                //   • TARGET-MODULE (A2): D's module is AT or UNDER the module F imports X FROM
-                //     (`use crate::<segs>::X;` → module `crate::<segs>`). F's import compiling at all
-                //     requires X to be in that module's namespace, and a descendant at/under it
-                //     resolves X there (a local item/binding beats anything glob-chained from above),
-                //     so D's chain can never reach F's re-import. This is what the pruner CANNOT see
-                //     via local definitions: its view is generated-only (the static prelude that
-                //     defines `LenEncoding`/`StringEncoding` in `serialization.rs` concats AFTER this
-                //     pass), so the disqualifier is derived from the import PATH, not a scanned def.
-                // A disqualified descendant does not contribute X; every other descendant naming X
-                // still protects (conservative keep). Over-removal stays loud (E0412/E0433) in the
-                // compile gates.
-                Some(idents) => {
-                    let direct = direct_by_path.get(desc_path).cloned().unwrap_or_default();
-                    for id in idents {
-                        if direct.contains(id) {
-                            continue;
-                        }
-                        if let Some(bases) = import_targets.get(id)
-                            && bases.iter().any(|base| module_at_or_under(desc_path, base))
-                        {
-                            continue;
-                        }
-                        protected.insert(id.clone());
-                    }
-                }
-                // An unparseable descendant might consume ANY of this file's private imports.
-                None => {
-                    poisoned = true;
-                    break;
-                }
+            if desc_used.is_none() {
+                // An unparseable descendant might carry a `use super::*;` we can't see and consume ANY
+                // private import of F — conservatively poison F (skip it entirely).
+                poisoned = true;
+                break;
+            }
+            if reachable_via_super(desc_path, path, files, &has_super) {
+                reach.push(desc_path);
             }
         }
-        // Re-export-only file shape (module docs, second rule): no descendant module can consume a
-        // private import (`has_descendant` is false, so `poisoned` is too), and the file is all
-        // `use` items with only `crate::`-anchored `pub use`s — so every private `use` is provably
-        // dead and removed wholesale, regardless of the allowlist. Non-qualifying files fall through
-        // to the byte-identical allowlist rule below.
+
+        // Re-export-only file shape: no descendant module can consume a private import, and the file
+        // is all `use` items with only `crate::`-anchored `pub use`s — every private `use` is dead and
+        // removed wholesale, regardless of the candidate set.
         if !has_descendant && is_reexport_only_file(content) {
-            let pruned = prune_private_use_items(content, &PruneMode::ReexportOnly);
+            let pruned = splice_private_uses(content, true, &|_| false, &HashSet::new());
             if let Cow::Owned(new_content) = pruned {
                 changed.push((path.clone(), new_content));
             }
@@ -381,12 +412,257 @@ pub(crate) fn prune_generated_files(files: &BTreeMap<String, String>) -> Vec<(St
         if poisoned {
             continue;
         }
-        let pruned = prune_unused_type_imports_with_used(content, &protected);
+
+        // Named-candidate protected set.
+        let mut protected = own_used.clone();
+        for desc_path in &reach {
+            let idents = used_by_path[desc_path].as_ref().unwrap();
+            let direct = &direct_by_path[desc_path];
+            let desc_globs = &glob_by_path[desc_path];
+            for id in idents {
+                if direct.contains(id) {
+                    continue; // disqualifier 1: D's own direct import
+                }
+                if let Some(bases) = import_targets.get(id)
+                    && bases
+                        .iter()
+                        .any(|base| module_is_target_file(desc_path, base))
+                {
+                    continue; // disqualifier 2: D IS the file of X's crate-anchored target module
+                }
+                if let Some(srcs) = import_sources.get(id)
+                    && srcs.iter().any(|s| desc_globs.contains(s))
+                {
+                    continue; // disqualifier 3: D globs the module F imports X from
+                }
+                protected.insert(id.clone());
+            }
+        }
+
+        // Glob pruning.
+        let mut remove_globs: HashSet<String> = HashSet::new();
+        let own_globs = &glob_by_path[path.as_str()];
+        if own_globs.contains("super")
+            && reach.is_empty()
+            && !super_glob_needed(
+                path,
+                files,
+                &used_by_path,
+                &glob_by_path,
+                &defs_by_path,
+                &direct_by_path,
+            )
+        {
+            remove_globs.insert("super".to_owned());
+        }
+        let error_universe: HashSet<String> =
+            ERROR_MODULE_EXPORTS.iter().map(|s| s.to_string()).collect();
+        for gp in own_globs {
+            if gp == "super" || gp.rsplit("::").next() != Some("error") {
+                continue;
+            }
+            if !error_glob_needed(
+                gp,
+                &error_universe,
+                path,
+                &reach,
+                &used_by_path,
+                &direct_by_path,
+                &glob_by_path,
+            ) {
+                remove_globs.insert(gp.clone());
+            }
+        }
+
+        let pruned = splice_private_uses(
+            content,
+            false,
+            &|ident| is_candidate(ident, config) && !protected.contains(ident),
+            &remove_globs,
+        );
         if let Cow::Owned(new_content) = pruned {
             changed.push((path.clone(), new_content));
         }
     }
     changed
+}
+
+/// Walk from descendant `d` up the module tree to `f`, requiring an unbroken chain of `use super::*;`
+/// edges: `d` re-imports its parent's namespace only if `d` carries `use super::*;`, and each
+/// intermediate must too for the chain to keep reaching upward. True iff `f` is reached.
+fn reachable_via_super(
+    d: &str,
+    f: &str,
+    files: &BTreeMap<String, String>,
+    has_super: &impl Fn(&str) -> bool,
+) -> bool {
+    let mut cur = d.to_owned();
+    // Bounded by module-tree depth; the generated tree is shallow, but cap defensively.
+    for _ in 0..64 {
+        if !has_super(&cur) {
+            return false;
+        }
+        match parent_mod_file(&cur, files) {
+            None => return false,
+            Some(parent) => {
+                if parent == f {
+                    return true;
+                }
+                cur = parent;
+            }
+        }
+    }
+    false
+}
+
+/// The FILE of the parent module of `path`, or `None` for the generated-tree root (or a path outside
+/// a `/generated/` tree, or a parent not present in the map). The parent module lives in some
+/// directory `pd`; its file is `pd/mod.rs` OR the 2018 plain-file layout `pd.rs`, whichever the map
+/// holds. `gen/a/mod.rs`'s parent module dir is `gen`; `gen/a/leaf.rs`'s parent module dir is
+/// `gen/a`; `.../generated/mod.rs` (the root) has no parent.
+fn parent_mod_file(path: &str, files: &BTreeMap<String, String>) -> Option<String> {
+    let dir = &path[..path.rfind('/')?];
+    let parent_module_dir = if path.ends_with("/mod.rs") {
+        if dir.ends_with("/generated") {
+            return None; // the generated-tree root has no parent module
+        }
+        &dir[..dir.rfind('/')?]
+    } else {
+        // `path` is `dir/leaf.rs`; its module is `dir`, whose parent module dir is `dir` itself
+        // (the parent file is `dir/mod.rs` or the plain-file `dir.rs`).
+        dir
+    };
+    let as_mod = format!("{parent_module_dir}/mod.rs");
+    if files.contains_key(&as_mod) {
+        return Some(as_mod);
+    }
+    let as_file = format!("{parent_module_dir}.rs");
+    files.contains_key(&as_file).then_some(as_file)
+}
+
+/// Whether a file's `use super::*;` is NEEDED: F names some name bound in its PARENT module's
+/// namespace (`bound_names`) that F does not itself directly bind. Conservative-keep (`true`) when
+/// the parent's namespace can't be fully enumerated (an unknown glob) — never remove a load-bearing
+/// re-glob. Only consulted for files with NO super-reachable descendant (see the driver).
+fn super_glob_needed(
+    f: &str,
+    files: &BTreeMap<String, String>,
+    used_by_path: &BTreeMap<&str, Option<HashSet<String>>>,
+    glob_by_path: &BTreeMap<&str, HashSet<String>>,
+    defs_by_path: &BTreeMap<&str, HashSet<String>>,
+    direct_by_path: &BTreeMap<&str, HashSet<String>>,
+) -> bool {
+    let Some(parent) = parent_mod_file(f, files) else {
+        return true;
+    };
+    let empty = HashSet::new();
+    let own_used = match used_by_path.get(f) {
+        Some(Some(u)) => u,
+        _ => return true, // unparseable F — keep conservatively (the splicer refuses it anyway)
+    };
+    // Names F resolves WITHOUT `super::*`: its own direct imports, its own item defs, and the exports
+    // of its own enumerable non-super globs (`error::*` → ERROR_MODULE_EXPORTS). The last matters when
+    // F and its parent BOTH carry `error::*`: F resolves `DeserializeError` through its own error
+    // glob, so a `super::*` supplying only such names is dead (the leaf `serialization.rs` of a
+    // c-style-enum-only scope names error types from the prelude but nothing from the parent module).
+    let mut own_resolvable = direct_by_path.get(f).unwrap_or(&empty).clone();
+    own_resolvable.extend(defs_by_path.get(f).unwrap_or(&empty).iter().cloned());
+    if let Some(globs) = glob_by_path.get(f)
+        && globs.iter().any(|g| g.rsplit("::").next() == Some("error"))
+    {
+        own_resolvable.extend(ERROR_MODULE_EXPORTS.iter().map(|s| s.to_string()));
+    }
+    match bound_names(
+        &parent,
+        files,
+        defs_by_path,
+        direct_by_path,
+        glob_by_path,
+        0,
+    ) {
+        // F names a parent-bound name it does NOT itself resolve through a nearer binding.
+        Some(universe) => own_used
+            .iter()
+            .any(|y| universe.contains(y) && !own_resolvable.contains(y)),
+        None => true,
+    }
+}
+
+/// The complete set of names module `m` binds into its namespace — item definitions, `use`-bound
+/// leaf idents, and the exports of each of its private globs — or `None` when a glob's exports can't
+/// be enumerated (so the caller must conservatively keep any dependent re-glob). `error::*` → the
+/// fixed [`ERROR_MODULE_EXPORTS`]; `super::*` → recurse into the parent; any other glob → `None`.
+fn bound_names(
+    m: &str,
+    files: &BTreeMap<String, String>,
+    defs_by_path: &BTreeMap<&str, HashSet<String>>,
+    direct_by_path: &BTreeMap<&str, HashSet<String>>,
+    glob_by_path: &BTreeMap<&str, HashSet<String>>,
+    depth: usize,
+) -> Option<HashSet<String>> {
+    if depth > 32 {
+        return None;
+    }
+    let mut result = defs_by_path.get(m)?.clone();
+    if let Some(direct) = direct_by_path.get(m) {
+        result.extend(direct.iter().cloned());
+    }
+    if let Some(globs) = glob_by_path.get(m) {
+        for gp in globs {
+            if gp.rsplit("::").next() == Some("error") {
+                result.extend(ERROR_MODULE_EXPORTS.iter().map(|s| s.to_string()));
+            } else if gp == "super" {
+                let parent = parent_mod_file(m, files)?;
+                let inner = bound_names(
+                    &parent,
+                    files,
+                    defs_by_path,
+                    direct_by_path,
+                    glob_by_path,
+                    depth + 1,
+                )?;
+                result.extend(inner);
+            } else {
+                return None; // unenumerable glob → universe incomplete
+            }
+        }
+    }
+    Some(result)
+}
+
+/// Whether a `use <path>::error::*;` glob (`gp`, universe = [`ERROR_MODULE_EXPORTS`]) is NEEDED:
+/// F's own body, or a super-reachable descendant, demands an error export it doesn't resolve locally.
+/// A descendant resolves an error name locally when it directly imports it OR carries its OWN glob of
+/// the same error module (`gp`).
+fn error_glob_needed(
+    gp: &str,
+    universe: &HashSet<String>,
+    f: &str,
+    reach: &[&str],
+    used_by_path: &BTreeMap<&str, Option<HashSet<String>>>,
+    direct_by_path: &BTreeMap<&str, HashSet<String>>,
+    glob_by_path: &BTreeMap<&str, HashSet<String>>,
+) -> bool {
+    let demands = |file: &str| -> bool {
+        let Some(Some(used)) = used_by_path.get(file) else {
+            return false;
+        };
+        let direct = direct_by_path.get(file).cloned().unwrap_or_default();
+        used.iter()
+            .any(|y| universe.contains(y) && !direct.contains(y))
+    };
+    if demands(f) {
+        return true;
+    }
+    for d in reach {
+        if glob_by_path.get(d).is_some_and(|g| g.contains(gp)) {
+            continue; // D resolves error names through its own glob of the same module
+        }
+        if demands(d) {
+            return true;
+        }
+    }
+    false
 }
 
 /// The crate a generated file belongs to: everything before `/src/` (`rust/src/generated/mod.rs`
@@ -540,17 +816,18 @@ fn collect_use_tree_leaf_idents(tree: &UseTree, direct: &mut HashSet<String>) {
     }
 }
 
-/// For F's own PRIVATE allowlisted imports (the only ones this pass can remove), map each allowlisted
-/// leaf ident X to the crate-relative FILE BASE(s) of the module F imports X FROM — but only when the
-/// import path is `crate::`-anchored. `use crate::a::b::X;` in crate `<crate_root>` yields base
-/// `<crate_root>/src/a/b`, whose module is the file `…/a/b.rs` (or `…/a/b/mod.rs`) plus everything
-/// under `…/a/b/`. An `std::`/external/`self::`/`super::` path names no in-crate module, so it
-/// contributes nothing and the A2 target-module skip never fires for that leaf (behavior unchanged
+/// For F's own PRIVATE candidate imports (the only named ones this pass can remove), map each
+/// candidate leaf ident X to the crate-relative FILE BASE(s) of the module F imports X FROM — but
+/// only when the import path is `crate::`-anchored. `use crate::a::b::X;` in crate `<crate_root>`
+/// yields base `<crate_root>/src/a/b`, whose module is the file `…/a/b.rs` (or `…/a/b/mod.rs`) plus
+/// everything under `…/a/b/`. An `std::`/external/`self::`/`super::` path names no in-crate module,
+/// so it contributes nothing and the target-module disqualifier never fires for that leaf (unchanged
 /// for the collection helpers, which come from `std`/the runtime crate). Combined `use a::{X, Y};`
 /// applies the same prefix to each leaf. Returns empty if `source` doesn't parse.
-fn collect_allowlisted_import_targets(
+fn collect_candidate_import_targets(
     source: &str,
     crate_root: &str,
+    config: &PruneConfig,
 ) -> BTreeMap<String, Vec<String>> {
     let mut targets: BTreeMap<String, Vec<String>> = BTreeMap::new();
     if let Ok(file) = syn::parse_file(source) {
@@ -558,7 +835,13 @@ fn collect_allowlisted_import_targets(
             if let Item::Use(use_item) = item
                 && matches!(use_item.vis, syn::Visibility::Inherited)
             {
-                walk_use_targets(&use_item.tree, &mut Vec::new(), crate_root, &mut targets);
+                walk_use_targets(
+                    &use_item.tree,
+                    &mut Vec::new(),
+                    crate_root,
+                    config,
+                    &mut targets,
+                );
             }
         }
     }
@@ -569,31 +852,152 @@ fn walk_use_targets(
     tree: &UseTree,
     prefix: &mut Vec<String>,
     crate_root: &str,
+    config: &PruneConfig,
     targets: &mut BTreeMap<String, Vec<String>>,
 ) {
     match tree {
         UseTree::Path(path) => {
             prefix.push(path.ident.to_string());
-            walk_use_targets(&path.tree, prefix, crate_root, targets);
+            walk_use_targets(&path.tree, prefix, crate_root, config, targets);
             prefix.pop();
         }
         UseTree::Group(group) => {
             for item in &group.items {
-                walk_use_targets(item, prefix, crate_root, targets);
+                walk_use_targets(item, prefix, crate_root, config, targets);
             }
         }
         UseTree::Name(name) => {
             let ident = name.ident.to_string();
-            if is_allowlisted(&ident)
+            if is_candidate(&ident, config)
                 && let Some(base) = target_base_from_prefix(prefix, crate_root)
             {
                 targets.entry(ident).or_default().push(base);
             }
         }
         // A rename binds a different local name (its `as` target, not X), and a glob binds no
-        // specific ident — neither is an allowlisted-leaf import path to derive a target from.
+        // specific ident — neither is a candidate-leaf import path to derive a target from.
         UseTree::Rename(_) | UseTree::Glob(_) => {}
     }
+}
+
+/// For F's own PRIVATE candidate imports, map each candidate leaf ident X to the `::`-joined module
+/// path(s) F imports X FROM (`use cml_core::serialization::LenEncoding;` → `cml_core::serialization`).
+/// This is the source-glob disqualifier's key: a descendant that carries a `use <same path>::*;`
+/// resolves X through its own glob, not through F's re-import. Verbatim path (external or relative) —
+/// no crate-anchoring needed, since it's compared against another file's glob path spelled the same
+/// way by the same emitter. Returns empty if `source` doesn't parse.
+fn collect_candidate_import_sources(
+    source: &str,
+    config: &PruneConfig,
+) -> BTreeMap<String, Vec<String>> {
+    let mut sources: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    if let Ok(file) = syn::parse_file(source) {
+        for item in &file.items {
+            if let Item::Use(use_item) = item
+                && matches!(use_item.vis, syn::Visibility::Inherited)
+            {
+                walk_use_sources(&use_item.tree, &mut Vec::new(), config, &mut sources);
+            }
+        }
+    }
+    sources
+}
+
+fn walk_use_sources(
+    tree: &UseTree,
+    prefix: &mut Vec<String>,
+    config: &PruneConfig,
+    sources: &mut BTreeMap<String, Vec<String>>,
+) {
+    match tree {
+        UseTree::Path(path) => {
+            prefix.push(path.ident.to_string());
+            walk_use_sources(&path.tree, prefix, config, sources);
+            prefix.pop();
+        }
+        UseTree::Group(group) => {
+            for item in &group.items {
+                walk_use_sources(item, prefix, config, sources);
+            }
+        }
+        UseTree::Name(name) => {
+            let ident = name.ident.to_string();
+            if is_candidate(&ident, config) && !prefix.is_empty() {
+                sources.entry(ident).or_default().push(prefix.join("::"));
+            }
+        }
+        UseTree::Rename(_) | UseTree::Glob(_) => {}
+    }
+}
+
+/// The `::`-joined module path of every PRIVATE glob (`use PATH::*;`) in `source` — `super`,
+/// `cml_core::error`, `super::cbor_encodings`, … Used both as the source-glob disqualifier's
+/// membership set and to detect a file's own prunable `super`/`error` globs. Empty if `source`
+/// doesn't parse.
+fn collect_private_glob_paths(source: &str) -> HashSet<String> {
+    let mut globs = HashSet::new();
+    if let Ok(file) = syn::parse_file(source) {
+        for item in &file.items {
+            if let Item::Use(use_item) = item
+                && matches!(use_item.vis, syn::Visibility::Inherited)
+            {
+                walk_glob_paths(&use_item.tree, &mut Vec::new(), &mut globs);
+            }
+        }
+    }
+    globs
+}
+
+fn walk_glob_paths(tree: &UseTree, prefix: &mut Vec<String>, globs: &mut HashSet<String>) {
+    match tree {
+        UseTree::Path(path) => {
+            prefix.push(path.ident.to_string());
+            walk_glob_paths(&path.tree, prefix, globs);
+            prefix.pop();
+        }
+        UseTree::Group(group) => {
+            for item in &group.items {
+                walk_glob_paths(item, prefix, globs);
+            }
+        }
+        UseTree::Glob(_) => {
+            if !prefix.is_empty() {
+                globs.insert(prefix.join("::"));
+            }
+        }
+        UseTree::Name(_) | UseTree::Rename(_) => {}
+    }
+}
+
+/// The top-level item NAMES a module defines in its own namespace (`struct`/`enum`/`fn`/`type`/
+/// `const`/`static`/`trait`/`union`/`mod`/`macro_rules`/`extern crate`). Combined with the module's
+/// `use`-bound leaves and its globs' exports, this is what `use super::*;` re-exports downward — the
+/// universe for deciding whether a child's `super::*` is load-bearing. Empty if `source` doesn't parse.
+fn collect_module_item_defs(source: &str) -> HashSet<String> {
+    let mut defs = HashSet::new();
+    if let Ok(file) = syn::parse_file(source) {
+        for item in &file.items {
+            let name = match item {
+                Item::Struct(i) => Some(i.ident.to_string()),
+                Item::Enum(i) => Some(i.ident.to_string()),
+                Item::Fn(i) => Some(i.sig.ident.to_string()),
+                Item::Type(i) => Some(i.ident.to_string()),
+                Item::Const(i) => Some(i.ident.to_string()),
+                Item::Static(i) => Some(i.ident.to_string()),
+                Item::Trait(i) => Some(i.ident.to_string()),
+                Item::TraitAlias(i) => Some(i.ident.to_string()),
+                Item::Union(i) => Some(i.ident.to_string()),
+                Item::Mod(i) => Some(i.ident.to_string()),
+                Item::ExternCrate(i) => Some(i.ident.to_string()),
+                Item::Macro(i) => i.ident.as_ref().map(|id| id.to_string()),
+                _ => None,
+            };
+            if let Some(name) = name {
+                defs.insert(name);
+            }
+        }
+    }
+    defs
 }
 
 /// The crate-relative file base of the module a `crate::`-anchored path prefix names: `["crate",
@@ -613,39 +1017,65 @@ fn target_base_from_prefix(prefix: &[String], crate_root: &str) -> Option<String
     }
 }
 
-/// True iff `file_path` is the module at `target_base` (`{base}.rs`) or a file strictly under its
-/// module dir (`{base}/…`, which covers `{base}/mod.rs` and any deeper descendant).
-fn module_at_or_under(file_path: &str, target_base: &str) -> bool {
-    file_path == format!("{target_base}.rs") || file_path.starts_with(&format!("{target_base}/"))
+/// True iff `file_path` IS the file of the module at `target_base` — `{base}.rs` or `{base}/mod.rs`.
+/// The target-module disqualifier only holds for the file that DEFINES X (the `serialization.rs`
+/// that owns `LenEncoding` via its static prelude), NOT for a file merely nested under it: a deeper
+/// descendant reaches the target's items only through a `super::*` chain, and if that chain is
+/// unbroken to the target it is a NEARER binding than F only when the target lies between D and F —
+/// the un-modeled intermediate case, kept conservative (never remove X a deeper file might need). A
+/// crate-ROOT target (`use crate::generated::X;` → base `.../generated`) makes only the root
+/// `mod.rs` the definer, so a `plutus/serialization.rs` naming a root-defined `X` still protects the
+/// `plutus/mod.rs` re-import it actually consumes.
+fn module_is_target_file(file_path: &str, target_base: &str) -> bool {
+    file_path == format!("{target_base}.rs") || file_path == format!("{target_base}/mod.rs")
 }
 
-/// Prune allowlisted-and-unused leaves from a `UseTree`. Returns `None` if the whole tree becomes
-/// empty (the caller drops the item), otherwise the filtered tree. `Rename` and `Glob` leaves are
-/// always kept; a single-element group collapses back to its inner tree (so `use x::{Kept};`
-/// renders as `use x::Kept;`).
-fn prune_tree(tree: &UseTree, used: &HashSet<String>) -> Option<UseTree> {
+/// Filter leaves from a `UseTree`. A `Name` leaf is dropped when `remove_named` returns true; a
+/// `Glob` leaf is dropped when its full `::`-joined module path (built from the `prefix` of `Path`
+/// segments walked to reach it) is in `remove_globs`. Returns `None` if the whole tree becomes empty
+/// (the caller drops the item), otherwise the filtered tree. `Rename` leaves are always kept (the
+/// alias target can't be connected to the local name by an ident scan); a single-element group
+/// collapses back to its inner tree (so `use x::{Kept};` renders as `use x::Kept;`).
+fn filter_use_tree(
+    tree: &UseTree,
+    prefix: &mut Vec<String>,
+    remove_named: &dyn Fn(&str) -> bool,
+    remove_globs: &HashSet<String>,
+) -> Option<UseTree> {
     match tree {
         UseTree::Name(name) => {
-            let ident = name.ident.to_string();
-            if is_allowlisted(&ident) && !used.contains(&ident) {
+            if remove_named(&name.ident.to_string()) {
                 None
             } else {
                 Some(tree.clone())
             }
         }
-        // A rename's binding (`use x::A as B;`) is exercised by the local name `B`, which our
-        // ident scan cannot connect back to `A`; a glob has no ident to check. Both kept.
-        UseTree::Rename(_) | UseTree::Glob(_) => Some(tree.clone()),
-        UseTree::Path(path) => prune_tree(&path.tree, used).map(|inner| {
-            let mut new_path = path.clone();
-            new_path.tree = Box::new(inner);
-            UseTree::Path(new_path)
-        }),
+        // A rename's binding (`use x::A as B;`) is exercised by the local name `B`, which our ident
+        // scan cannot connect back to `A`, so it is always kept.
+        UseTree::Rename(_) => Some(tree.clone()),
+        UseTree::Glob(_) => {
+            if remove_globs.contains(&prefix.join("::")) {
+                None
+            } else {
+                Some(tree.clone())
+            }
+        }
+        UseTree::Path(path) => {
+            prefix.push(path.ident.to_string());
+            let inner = filter_use_tree(&path.tree, prefix, remove_named, remove_globs);
+            prefix.pop();
+            inner.map(|inner| {
+                let mut new_path = path.clone();
+                new_path.tree = Box::new(inner);
+                UseTree::Path(new_path)
+            })
+        }
         UseTree::Group(group) => {
+            // A group shares the prefix accumulated so far; filter each item under that same prefix.
             let kept: Vec<UseTree> = group
                 .items
                 .iter()
-                .filter_map(|item| prune_tree(item, used))
+                .filter_map(|item| filter_use_tree(item, prefix, remove_named, remove_globs))
                 .collect();
             match kept.len() {
                 0 => None,
@@ -1013,7 +1443,7 @@ mod tests {
                 "use super::*;\nfn f() { let _ = BTreeMap::<u8, u8>::new(); }\n",
             ),
         ]);
-        let changed = prune_generated_files(&map);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
         assert!(
             changed.is_empty(),
             "BTreeMap is used by the child via super::*; nothing should be pruned: {changed:?}"
@@ -1036,7 +1466,7 @@ mod tests {
                 "use std::collections::BTreeMap;\npub struct Bar;\n",
             ),
         ]);
-        let changed = prune_generated_files(&map);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
         assert_eq!(changed.len(), 1, "exactly bar.rs must change: {changed:?}");
         assert_eq!(changed[0].0, "rust/src/generated/bar.rs");
         assert!(
@@ -1065,7 +1495,7 @@ mod tests {
                 "use super::*;\nfn f() { let _ = BTreeMap::<u8, u8>::new(); }\n",
             ),
         ]);
-        let changed = prune_generated_files(&map);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
         assert!(
             changed.is_empty(),
             "the grand-child's use must protect both ancestors' imports: {changed:?}"
@@ -1092,7 +1522,7 @@ mod tests {
                 "use std::collections::BTreeMap;\npub struct Other;\n",
             ),
         ]);
-        let changed = prune_generated_files(&map);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
         assert_eq!(
             changed.len(),
             1,
@@ -1103,6 +1533,8 @@ mod tests {
     }
 
     /// When the allowlisted ident is absent from a file's whole module family, the driver prunes it.
+    /// The child `serialization.rs` names nothing from the parent, so its own `use super::*;` is a
+    /// dead glob and is pruned too (glob-prune) — both files change.
     #[test]
     fn prunes_when_ident_absent_across_module_family() {
         let map = files(&[
@@ -1115,13 +1547,24 @@ mod tests {
                 "use super::*;\nfn f() {}\n",
             ),
         ]);
-        let changed = prune_generated_files(&map);
-        assert_eq!(changed.len(), 1, "only mod.rs changes: {changed:?}");
-        assert_eq!(changed[0].0, "rust/src/generated/mod.rs");
+        let changed = prune_generated_files(&map, &PruneConfig::default());
+        let mod_rs = changed
+            .iter()
+            .find(|(p, _)| p == "rust/src/generated/mod.rs")
+            .expect("mod.rs changes");
         assert!(
-            !changed[0].1.contains("BTreeMap"),
+            !mod_rs.1.contains("BTreeMap"),
             "family-unused BTreeMap pruned: {}",
-            changed[0].1
+            mod_rs.1
+        );
+        let ser = changed
+            .iter()
+            .find(|(p, _)| p == "rust/src/generated/serialization.rs")
+            .expect("serialization.rs changes (dead super glob)");
+        assert!(
+            !ser.1.contains("use super::*"),
+            "dead super::* glob pruned: {}",
+            ser.1
         );
     }
 
@@ -1139,7 +1582,7 @@ mod tests {
                 "use std::collections::BTreeMap;\npub struct Bar { m: BTreeMap<u8, u8> }\n",
             ),
         ]);
-        let changed = prune_generated_files(&map);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
         assert_eq!(changed.len(), 1, "only the rust file changes: {changed:?}");
         assert_eq!(changed[0].0, "rust/src/generated/mod.rs");
         assert!(!changed[0].1.contains("BTreeMap"));
@@ -1161,7 +1604,7 @@ mod tests {
             ),
             ("rust/src/generated/broken.rs", "this is not @@@ rust {{{"),
         ]);
-        let changed = prune_generated_files(&map);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
         assert_eq!(
             changed.len(),
             1,
@@ -1185,7 +1628,7 @@ mod tests {
                 "use std::collections::BTreeMap;\npub struct Foo;\n",
             ),
         ]);
-        let changed = prune_generated_files(&map);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
         assert!(
             changed.iter().all(|(p, _)| p != "rust/src/lib.rs"),
             "lib.rs must not be rewritten: {changed:?}"
@@ -1211,7 +1654,7 @@ mod tests {
             "pub use crate::RewardAddress;\n",
         );
         let map = files(&[("rust/src/generated/address/mod.rs", content)]);
-        let changed = prune_generated_files(&map);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
         assert_eq!(
             changed.len(),
             1,
@@ -1230,10 +1673,10 @@ mod tests {
         );
     }
 
-    /// A descendant module in the map means `use super::*;` could consume a private import, so the
-    /// wholesale rule must NOT fire — only the ordinary allowlist prune applies. With the descendant
-    /// naming `BTreeMap`, that prune keeps everything, so the re-export-only file is left unchanged
-    /// (its trait/glob imports are NOT removed).
+    /// A descendant module means `use super::*;` could consume a private import, so the WHOLESALE
+    /// re-export rule must NOT fire: the `TryFrom` trait import (which only the wholesale rule could
+    /// remove) survives, and `BTreeMap` survives because the child names it through `super::*`. The
+    /// `error::*` glob is still dropped by the ordinary glob-prune (the child names no error export).
     #[test]
     fn reexport_rule_skips_when_descendant_present() {
         let content = concat!(
@@ -1249,18 +1692,25 @@ mod tests {
                 "use super::*;\nfn f() { let _ = BTreeMap::<u8, u8>::new(); }\n",
             ),
         ]);
-        let changed = prune_generated_files(&map);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
+        let out = changed
+            .iter()
+            .find(|(p, _)| p == "rust/src/generated/address/mod.rs")
+            .map(|(_, c)| c.clone())
+            .unwrap_or_else(|| content.to_owned());
         assert!(
-            !changed
-                .iter()
-                .any(|(p, _)| p == "rust/src/generated/address/mod.rs"),
-            "descendant present: wholesale rule must not fire, allowlist keeps everything: {changed:?}"
+            out.contains("use std::convert::TryFrom"),
+            "wholesale rule must not fire — trait import kept: {out}"
+        );
+        assert!(
+            out.contains("BTreeMap"),
+            "child names BTreeMap via super::*, so it is kept: {out}"
         );
     }
 
-    /// A single code item (here a `struct`) disqualifies the wholesale rule; the ordinary allowlist
-    /// prune still runs, so the trait import and `error::*` glob survive while the unused `BTreeMap`
-    /// leaf is dropped from the group.
+    /// A single code item (here a `struct`) disqualifies the wholesale rule; the ordinary prune still
+    /// runs, so the `TryFrom` trait import survives (traits are outside the name-scan model) while the
+    /// unused `BTreeMap` leaf and the unused `error::*` glob are dropped.
     #[test]
     fn reexport_rule_skips_when_a_code_item_present() {
         let content = concat!(
@@ -1271,18 +1721,17 @@ mod tests {
             "pub struct Foo;\n",
         );
         let map = files(&[("rust/src/generated/mod.rs", content)]);
-        let changed = prune_generated_files(&map);
-        assert_eq!(
-            changed.len(),
-            1,
-            "allowlist prune drops BTreeMap: {changed:?}"
-        );
+        let changed = prune_generated_files(&map, &PruneConfig::default());
+        assert_eq!(changed.len(), 1, "{changed:?}");
         let out = &changed[0].1;
         assert!(
             out.contains("use std::convert::TryFrom"),
             "trait import NOT removed wholesale (rule did not fire): {out}"
         );
-        assert!(out.contains("use cml_core::error::*"), "glob kept: {out}");
+        assert!(
+            !out.contains("use cml_core::error::*"),
+            "unused error::* glob pruned by the glob-prune: {out}"
+        );
         assert!(
             out.contains("pub use crate::Address"),
             "pub use kept: {out}"
@@ -1345,7 +1794,7 @@ mod tests {
             "pub use crate::RewardAddress;\n",
         );
         let map = files(&[("rust/src/generated/a/mod.rs", content)]);
-        let changed = prune_generated_files(&map);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
         assert_eq!(changed.len(), 1, "{changed:?}");
         let out = &changed[0].1;
         assert!(
@@ -1375,7 +1824,7 @@ mod tests {
              use cml_core::serialization::StringEncoding;\n\
              pub struct Foo;\n",
         )]);
-        let changed = prune_generated_files(&map);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
         assert_eq!(changed.len(), 1, "{changed:?}");
         let out = &changed[0].1;
         assert!(
@@ -1406,7 +1855,7 @@ mod tests {
                 "use super::*;\nfn f(a: LenEncoding, b: StringEncoding) {}\n",
             ),
         ]);
-        let changed = prune_generated_files(&map);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
         assert!(
             changed.is_empty(),
             "descendant names both encodings; nothing pruned: {changed:?}"
@@ -1417,8 +1866,10 @@ mod tests {
 
     /// Direct-import disqualifier (the `cbor_encodings.rs` shape): a descendant that names
     /// `LenEncoding` AND carries its own `use crate::…::LenEncoding;` resolves to its own copy, so the
-    /// ancestor `mod.rs`'s blindly-pushed copy is dead and pruned. (`cbor_encodings.rs` is NOT under
-    /// the `serialization` target module, so this isolates the direct-import path.)
+    /// ancestor `mod.rs`'s blindly-pushed copy is dead and pruned. (`cbor_encodings.rs` is NOT the
+    /// `serialization` target file, so this isolates the direct-import path.) The child's `use
+    /// super::*;` is itself dead here (it names `LenEncoding` through its own direct import and defines
+    /// `E` locally), so the glob-prune removes it too — both files change.
     #[test]
     fn descendant_direct_import_does_not_protect_ancestor_copy() {
         let map = files(&[
@@ -1435,13 +1886,15 @@ mod tests {
                  pub struct E {\n    pub e: LenEncoding,\n}\n",
             ),
         ]);
-        let changed = prune_generated_files(&map);
-        assert_eq!(changed.len(), 1, "only mod.rs changes: {changed:?}");
-        assert_eq!(changed[0].0, "rust/src/generated/mod.rs");
+        let changed = prune_generated_files(&map, &PruneConfig::default());
+        let mod_rs = changed
+            .iter()
+            .find(|(p, _)| p == "rust/src/generated/mod.rs")
+            .expect("mod.rs changes");
         assert!(
-            !changed[0].1.contains("LenEncoding"),
+            !mod_rs.1.contains("LenEncoding"),
             "direct-import consumer does not protect; ancestor copy pruned: {}",
-            changed[0].1
+            mod_rs.1
         );
     }
 
@@ -1464,7 +1917,7 @@ mod tests {
                 "use super::*;\nfn de() {\n    let _x: LenEncoding = todo!();\n}\n",
             ),
         ]);
-        let changed = prune_generated_files(&map);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
         assert_eq!(changed.len(), 1, "only mod.rs changes: {changed:?}");
         assert_eq!(changed[0].0, "rust/src/generated/mod.rs");
         assert!(
@@ -1492,7 +1945,7 @@ mod tests {
                 "use super::*;\nfn f() {\n    let _x: LenEncoding = todo!();\n}\n",
             ),
         ]);
-        let changed = prune_generated_files(&map);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
         assert!(
             changed.is_empty(),
             "other.rs (not under serialization, no own import) protects mod.rs's copy: {changed:?}"
@@ -1517,7 +1970,7 @@ mod tests {
                 "use super::*;\nfn f() {\n    let _ = BTreeMap::<u8, u8>::new();\n}\n",
             ),
         ]);
-        let changed = prune_generated_files(&map);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
         assert!(
             changed.is_empty(),
             "std target: serialization.rs still protects via super-glob; nothing pruned: {changed:?}"
@@ -1540,7 +1993,7 @@ mod tests {
                 "use super::*;\nfn de(a: LenEncoding, b: StringEncoding) {}\n",
             ),
         ]);
-        let changed = prune_generated_files(&map);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
         assert_eq!(changed.len(), 1, "only mod.rs changes: {changed:?}");
         assert_eq!(changed[0].0, "rust/src/generated/mod.rs");
         assert!(
@@ -1571,7 +2024,7 @@ mod tests {
                 "use super::*;\nfn de(a: LenEncoding) {}\n",
             ),
         ]);
-        let changed = prune_generated_files(&map);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
         assert!(
             changed.is_empty(),
             "mod.rs's own body uses LenEncoding; import kept: {changed:?}"
@@ -1607,12 +2060,340 @@ mod tests {
             ),
             ("rust/src/generated/serialization.rs", "use super::*;\n"),
         ]);
-        let changed = prune_generated_files(&map);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
         assert!(
             !changed
                 .iter()
                 .any(|(p, _)| p == "rust/src/generated/mod.rs"),
             "root copy conservatively kept (a/b.rs protects it under the descendant rule): {changed:?}"
+        );
+    }
+
+    // ----- glob pruning: `use super::*;` -----
+
+    fn cfg(extra: &[&str]) -> PruneConfig {
+        PruneConfig {
+            extra_candidates: extra.iter().map(|s| (*s).to_owned()).collect(),
+        }
+    }
+
+    /// A `cbor_encodings.rs`-shaped file whose body names nothing from its parent module has its
+    /// `use super::*;` removed (class (a)); its own direct imports and definitions do not count.
+    #[test]
+    fn super_glob_pruned_when_parent_names_unused() {
+        let map = files(&[
+            (
+                "rust/src/generated/mod.rs",
+                "use crate::generated::error::*;\npub mod cbor_encodings;\npub struct Foo;\n",
+            ),
+            (
+                "rust/src/generated/cbor_encodings.rs",
+                "use super::*;\nuse crate::generated::serialization::LenEncoding;\n\
+                 pub struct E {\n    pub e: LenEncoding,\n}\n",
+            ),
+        ]);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
+        let enc = changed
+            .iter()
+            .find(|(p, _)| p == "rust/src/generated/cbor_encodings.rs")
+            .expect("cbor_encodings changes");
+        assert!(
+            !enc.1.contains("use super::*"),
+            "unused super::* pruned: {}",
+            enc.1
+        );
+        assert!(
+            enc.1.contains("LenEncoding"),
+            "direct import kept: {}",
+            enc.1
+        );
+    }
+
+    /// The transaction-scope shape: a `cbor_encodings.rs` whose encoding struct is keyed by a
+    /// PARENT-scope generated type reaches that type through `use super::*;`, so the glob is
+    /// load-bearing and MUST stay.
+    #[test]
+    fn super_glob_kept_when_parent_type_named() {
+        let map = files(&[
+            (
+                "rust/src/generated/mod.rs",
+                "pub mod cbor_encodings;\npub struct TxInput;\n",
+            ),
+            (
+                "rust/src/generated/cbor_encodings.rs",
+                "use super::*;\npub struct E {\n    pub keys: Vec<TxInput>,\n}\n",
+            ),
+        ]);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
+        assert!(
+            !changed
+                .iter()
+                .any(|(p, _)| p == "rust/src/generated/cbor_encodings.rs"),
+            "super::* is load-bearing (names parent-scope TxInput); must stay: {changed:?}"
+        );
+    }
+
+    /// The c-style-enum-only-scope leaf `serialization.rs`: it names error types (`DeserializeError`
+    /// from the static prelude) but nothing from the parent MODULE, and it carries its OWN `error::*`
+    /// glob. The parent also globs `error::*`, so `bound_names(parent)` includes the error exports —
+    /// but F resolves them through its own glob, not `super::*`, so `super::*` is dead and pruned
+    /// while `error::*` stays.
+    #[test]
+    fn super_glob_pruned_when_only_names_resolve_via_own_error_glob() {
+        let map = files(&[
+            (
+                "rust/src/generated/mod.rs",
+                "use crate::generated::error::*;\npub enum FixedEnum {\n    A,\n    B,\n}\n",
+            ),
+            (
+                "rust/src/generated/serialization.rs",
+                "use super::*;\nuse crate::generated::error::*;\n\
+                 pub trait De {\n    fn de() -> Result<(), DeserializeError>;\n}\n",
+            ),
+        ]);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
+        let ser = changed
+            .iter()
+            .find(|(p, _)| p == "rust/src/generated/serialization.rs")
+            .expect("serialization changes");
+        assert!(
+            !ser.1.contains("use super::*"),
+            "dead super::* pruned (error names resolve via own glob): {}",
+            ser.1
+        );
+        assert!(
+            ser.1.contains("use crate::generated::error::*"),
+            "own error::* kept (it resolves DeserializeError): {}",
+            ser.1
+        );
+    }
+
+    /// A file whose parent module carries an UNENUMERABLE glob (a non-`error` foreign glob) can't have
+    /// its parent namespace fully computed, so its `use super::*;` is conservatively KEPT.
+    #[test]
+    fn super_glob_kept_when_parent_universe_unknown() {
+        let map = files(&[
+            (
+                "rust/src/generated/mod.rs",
+                "use some_dep::prelude::*;\npub mod cbor_encodings;\npub struct Foo;\n",
+            ),
+            (
+                "rust/src/generated/cbor_encodings.rs",
+                "use super::*;\npub struct E {\n    pub x: u8,\n}\n",
+            ),
+        ]);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
+        assert!(
+            !changed
+                .iter()
+                .any(|(p, _)| p == "rust/src/generated/cbor_encodings.rs"),
+            "parent has an unenumerable glob → super::* conservatively kept: {changed:?}"
+        );
+    }
+
+    // ----- glob pruning: `use <path>::error::*;` -----
+
+    /// A `mod.rs` whose family names no error export has its `error::*` glob pruned (class (b)); the
+    /// descendant `serialization.rs`, which uses error names through its OWN `error::*`, does not
+    /// protect the parent copy (source-glob disqualifier for the glob universe).
+    #[test]
+    fn error_glob_pruned_when_family_uses_no_error_name() {
+        let map = files(&[
+            (
+                "rust/src/generated/mod.rs",
+                "use cml_core::error::*;\npub mod serialization;\npub struct Foo;\n",
+            ),
+            (
+                "rust/src/generated/serialization.rs",
+                "use super::*;\nuse cml_core::error::*;\n\
+                 fn de() -> Result<(), DeserializeError> {\n    Ok(())\n}\n",
+            ),
+        ]);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
+        let mod_rs = changed
+            .iter()
+            .find(|(p, _)| p == "rust/src/generated/mod.rs")
+            .expect("mod.rs changes");
+        assert!(
+            !mod_rs.1.contains("use cml_core::error::*"),
+            "mod.rs error::* pruned (only serialization uses error, via its own glob): {}",
+            mod_rs.1
+        );
+    }
+
+    /// A bounds-carrying wrapper whose `mod.rs` BODY does a fallible conversion naming `DeserializeError`
+    /// keeps its `error::*` glob.
+    #[test]
+    fn error_glob_kept_when_mod_body_uses_error_name() {
+        let map = files(&[(
+            "rust/src/generated/mod.rs",
+            "use cml_core::error::*;\n\
+             pub struct W(u8);\n\
+             impl TryFrom<u8> for W {\n    type Error = DeserializeError;\n    \
+             fn try_from(x: u8) -> Result<Self, DeserializeError> {\n        Ok(W(x))\n    }\n}\n",
+        )]);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
+        assert!(
+            changed.is_empty(),
+            "mod.rs body names DeserializeError; error::* kept: {changed:?}"
+        );
+    }
+
+    // ----- source-glob disqualifier (class (c), --common-import-override shape) -----
+
+    /// `mod.rs` imports `LenEncoding` from `cml_core::serialization` (external — no crate-anchored
+    /// target). Its only super-reachable namer is `serialization.rs`, which resolves `LenEncoding`
+    /// through its OWN `use cml_core::serialization::*;` glob — the source-glob disqualifier drops it,
+    /// so the parent copy is pruned. `cbor_encodings.rs` directly imports it (disqualifier 1).
+    #[test]
+    fn source_glob_descendant_does_not_protect() {
+        let map = files(&[
+            (
+                "rust/src/generated/assets/mod.rs",
+                "use cml_core::serialization::LenEncoding;\n\
+                 pub mod cbor_encodings;\npub mod serialization;\npub struct Foo;\n",
+            ),
+            (
+                "rust/src/generated/assets/cbor_encodings.rs",
+                "use super::*;\nuse cml_core::serialization::LenEncoding;\n\
+                 pub struct E {\n    pub e: LenEncoding,\n}\n",
+            ),
+            (
+                "rust/src/generated/assets/serialization.rs",
+                "use super::*;\nuse cml_core::serialization::*;\n\
+                 fn ser(x: LenEncoding) {}\n",
+            ),
+        ]);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
+        let mod_rs = changed
+            .iter()
+            .find(|(p, _)| p == "rust/src/generated/assets/mod.rs")
+            .expect("mod.rs changes");
+        assert!(
+            !mod_rs.1.contains("LenEncoding"),
+            "serialization resolves LenEncoding via its own glob; parent copy pruned: {}",
+            mod_rs.1
+        );
+    }
+
+    // ----- super-glob-edge reachability (class (c)/(d) root over-breadth) -----
+
+    /// A SUB-SCOPE `serialization.rs` does not `use super::*;` the ROOT (its own scope `mod.rs` does
+    /// not re-glob upward), so it can NOT consume the root's private imports — even though it NAMES the
+    /// same ident. The root's unused import is pruned; a same-scope sibling that DOES chain to its own
+    /// scope's `mod.rs` still protects that scope's copy.
+    #[test]
+    fn sub_scope_serialization_does_not_protect_root_import() {
+        let map = files(&[
+            (
+                "rust/src/generated/mod.rs",
+                "use std::collections::BTreeMap;\npub mod tx;\npub struct Root;\n",
+            ),
+            (
+                "rust/src/generated/tx/mod.rs",
+                // a sub-scope mod.rs: no `use super::*;` back to root
+                "use std::collections::BTreeMap;\npub mod serialization;\n\
+                 pub struct Tx {\n    pub m: BTreeMap<u8, u8>,\n}\n",
+            ),
+            (
+                "rust/src/generated/tx/serialization.rs",
+                "use super::*;\nfn de() {\n    let _ = BTreeMap::<u8, u8>::new();\n}\n",
+            ),
+        ]);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
+        let root = changed
+            .iter()
+            .find(|(p, _)| p == "rust/src/generated/mod.rs")
+            .expect("root mod.rs changes");
+        assert!(
+            !root.1.contains("BTreeMap"),
+            "root's BTreeMap is not consumable by tx/serialization (no super chain to root): {}",
+            root.1
+        );
+        // tx/mod.rs's own BTreeMap is used by its own body AND its serialization descendant — kept.
+        assert!(
+            !changed
+                .iter()
+                .any(|(p, _)| p == "rust/src/generated/tx/mod.rs"),
+            "tx/mod.rs BTreeMap kept (own body + descendant use it): {changed:?}"
+        );
+    }
+
+    // ----- extra name-scan candidates (classes (d)/(e)) -----
+
+    /// A cross-scope generated type ident supplied via [`PruneConfig::extra_candidates`] is pruned
+    /// exactly like an allowlisted name when the module family never names it.
+    #[test]
+    fn extra_candidate_pruned_when_family_unused() {
+        let map = files(&[(
+            "rust/src/generated/mod.rs",
+            "use governance::Voter;\nuse assets::Coin;\n\
+             pub struct Foo {\n    pub c: Coin,\n}\n",
+        )]);
+        let changed = prune_generated_files(&map, &cfg(&["Voter", "Coin"]));
+        assert_eq!(changed.len(), 1, "{changed:?}");
+        assert!(
+            !changed[0].1.contains("Voter"),
+            "unused cross-scope Voter pruned: {}",
+            changed[0].1
+        );
+        assert!(
+            changed[0].1.contains("Coin"),
+            "used Coin kept: {}",
+            changed[0].1
+        );
+    }
+
+    /// A non-candidate name (not allowlisted, not in the extra set) is never touched even when unused —
+    /// the soundness floor for names outside the name-scan model (e.g. the `Serialize` trait residue).
+    #[test]
+    fn non_candidate_unused_import_untouched() {
+        let map = files(&[(
+            "rust/src/generated/mod.rs",
+            "use cbor_event::se::Serialize;\npub struct Foo;\n",
+        )]);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
+        assert!(
+            changed.is_empty(),
+            "unused non-candidate trait import kept: {changed:?}"
+        );
+    }
+
+    // ----- drift guard: ERROR_MODULE_EXPORTS vs static/error.rs -----
+
+    /// The error-glob universe must match the actual `static/error.rs` public items exactly. A drift
+    /// (a new pub type added to the static error module) would make the universe incomplete and could
+    /// under-prune-then-break a consumer, so pin it here against the on-disk source.
+    #[test]
+    fn error_exports_match_static_source() {
+        let src = std::fs::read_to_string("static/error.rs")
+            .expect("static/error.rs readable from repo root");
+        let file = syn::parse_file(&src).expect("static/error.rs parses");
+        let mut pub_items: Vec<String> = Vec::new();
+        for item in &file.items {
+            let (vis, name) = match item {
+                Item::Struct(i) => (&i.vis, Some(i.ident.to_string())),
+                Item::Enum(i) => (&i.vis, Some(i.ident.to_string())),
+                Item::Type(i) => (&i.vis, Some(i.ident.to_string())),
+                Item::Trait(i) => (&i.vis, Some(i.ident.to_string())),
+                Item::Fn(i) => (&i.vis, Some(i.sig.ident.to_string())),
+                Item::Const(i) => (&i.vis, Some(i.ident.to_string())),
+                _ => (&syn::Visibility::Inherited, None),
+            };
+            if matches!(vis, syn::Visibility::Public(_))
+                && let Some(name) = name
+            {
+                pub_items.push(name);
+            }
+        }
+        pub_items.sort();
+        let mut expected: Vec<String> =
+            ERROR_MODULE_EXPORTS.iter().map(|s| s.to_string()).collect();
+        expected.sort();
+        assert_eq!(
+            pub_items, expected,
+            "ERROR_MODULE_EXPORTS drifted from static/error.rs public items — update the const \
+             (the error-glob universe must stay complete or the glob-prune could under-prune)"
         );
     }
 }

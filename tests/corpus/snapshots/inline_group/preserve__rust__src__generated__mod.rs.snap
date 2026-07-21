@@ -18,7 +18,6 @@ pub mod cbor_encodings;
 mod extern_interface_check;
 pub mod serialization;
 
-use crate::generated::error::*;
 use cbor_encodings::InlineGroupEncoding;
 
 #[derive(Clone, Debug)]

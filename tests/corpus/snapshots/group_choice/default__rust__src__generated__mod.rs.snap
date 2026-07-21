@@ -15,8 +15,6 @@ pub mod error;
 mod extern_interface_check;
 pub mod serialization;
 
-use crate::generated::error::*;
-
 #[derive(Clone, Debug)]
 pub enum GroupChoice {
     GroupChoice0(u64),

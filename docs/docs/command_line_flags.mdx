@@ -397,6 +397,8 @@ This macro will be called regardless of the values of to-from-bytes-methods / js
 
 If the macro's *expansion* names a collection type (`BTreeMap`, `OrderedHashMap`, `NonEmptyVec`, `NonEmptyMap`), it must fully-qualify it (`$crate::...` / `std::collections::BTreeMap`) rather than rely on the call-site file's ambient imports — imports are emitted only for names the generated code itself references, and ident-scanning cannot see through macro expansion (the in-repo stub macro crate already complies and is compile-gated).
 
+**The same rule applies to `JsError`, `JsValue`, and `wasm_bindgen`.** The unused-import prune removes those from any generated wasm file that does not itself name them, so a file whose only reason to hold `JsError` in scope would be *this* macro's expansion will have that import pruned. All three configured wasm macros — this one, `--wasm-conversions-macro`, and `--wasm-list-macro` — must therefore be written with fully-qualified paths (`wasm_bindgen::JsError::new(..)`, `#[wasm_bindgen::prelude::wasm_bindgen]`) and must **not** assume `JsError` / `JsValue` / `wasm_bindgen` are in scope at the call site. The in-repo stub macros (`tests/wasm-macro-crate`) comply (all three fully-qualify), and this is compile-gated.
+
 ```bash
 cddl-codegen --input=example --output=export --wasm-cbor-json-api-macro=cml_core_wasm::impl_wasm_cbor_json_api
 ```

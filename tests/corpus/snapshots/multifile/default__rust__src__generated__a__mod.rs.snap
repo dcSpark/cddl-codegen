@@ -8,8 +8,6 @@ expression: content
 pub mod c;
 pub mod serialization;
 
-use crate::generated::error::*;
-
 #[derive(Clone, Debug)]
 pub struct Baz {
     pub index_1: u64,

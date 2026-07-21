@@ -5,7 +5,6 @@ expression: content
 // This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
 
-use super::*;
 use crate::generated::serialization::{LenEncoding, StringEncoding};
 
 #[derive(Clone, Debug, Default)]
