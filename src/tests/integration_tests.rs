@@ -4482,6 +4482,129 @@ fn extern_reexport_contract_surfaced() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// Layer-3 refinement of the extern re-export diagnostic (`extern_reexport_contract_surfaced` pins
+/// the three layers; this pins the opt-out): a required re-export name must NOT be nagged as
+/// "missing from the seed-once lib.rs" when the user deliberately deleted its glue line
+/// (`pub use crate::<Name>;`) via a `cddl-codegen:replace` block. The generator's own contract no
+/// longer requires that re-export once the glue is gone from this run's WRITTEN output, so the
+/// warning would be a recurring false nag on every regen. The decision reads the post-overlay
+/// written bytes (not `comment_preserve` internals), so this also pins the whole chain — the overlay
+/// really deletes the glue AND the warning subtracts the deleted name — while the second extern's
+/// surviving glue still warns. `cargo`-guarded (the warning is only observable through the
+/// subprocess) and driven over a real regen so the comment-preservation overlay actually runs.
+#[test]
+fn extern_reexport_diagnostic_skips_replace_deleted_glue() {
+    if !tool_exists("cargo") {
+        return;
+    }
+
+    fn run_gen(input: &std::path::Path, out: &std::path::Path) -> String {
+        let run = tool_cmd("cargo")
+            .args(["run", "--"])
+            .arg(format!("--input={}", input.to_str().unwrap()))
+            .arg(format!("--output={}", out.to_str().unwrap()))
+            .arg("--wasm=true")
+            .output()
+            .unwrap();
+        assert!(
+            run.status.success(),
+            "generation failed:\n{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        String::from_utf8_lossy(&run.stderr).into_owned()
+    }
+
+    // Wrap a whole-line `use` item in a delete-only replace block: empty user section (nothing
+    // between `replace-start` and `replaces`), and the recorded original is the `//`-commented line
+    // — the anchor the overlay re-finds in the regenerated item and splices the (empty) user section
+    // over, deleting the glue from this run's written output.
+    fn delete_glue_via_replace_block(mod_path: &std::path::Path, glue_line: &str) {
+        let text = std::fs::read_to_string(mod_path).unwrap();
+        assert!(
+            text.contains(glue_line),
+            "expected glue `{glue_line}` in {}:\n{text}",
+            mod_path.display()
+        );
+        let block = format!(
+            "// cddl-codegen:replace-start\n\
+             // cddl-codegen:replaces\n\
+             // {glue_line}\n\
+             // cddl-codegen:replace-end"
+        );
+        let edited = text.replacen(glue_line, &block, 1);
+        std::fs::write(mod_path, edited).unwrap();
+    }
+
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_extern_replace_optout_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+
+    // Two plain in-crate externs used by one generated wrapper: required rust+wasm re-export set
+    // {FirstExt, SecondExt}. `FirstExt` sorts before `SecondExt`, and neither is a substring of the
+    // other, so the stderr assertions can distinguish them by whole-name substring.
+    let input = root.join("input.cddl");
+    std::fs::write(
+        &input,
+        "first_ext = _CDDL_CODEGEN_EXTERN_TYPE_\n\
+         second_ext = _CDDL_CODEGEN_EXTERN_TYPE_\n\
+         wrapper = [id: uint, a: first_ext, b: second_ext]\n",
+    )
+    .unwrap();
+    let out = root.join("crate");
+
+    // Seed run: writes the seed-once roots (the default thin roots re-export neither extern) and the
+    // generated scope mod.rs files carrying both glue lines for each crate.
+    let _ = run_gen(&input, &out);
+    let rust_mod = out.join("rust/src/generated/mod.rs");
+    let wasm_mod = out.join("wasm/src/generated/mod.rs");
+
+    // User deletes ONLY FirstExt's glue in BOTH crates via a replace block; SecondExt's glue stays.
+    for mod_path in [&rust_mod, &wasm_mod] {
+        delete_glue_via_replace_block(mod_path, "pub use crate::FirstExt;");
+    }
+
+    // Regen over the edited prior output: the overlay splices the empty user section over the
+    // recorded FirstExt line, deleting it; SecondExt survives.
+    let stderr = run_gen(&input, &out);
+
+    // Chain half 1: the overlay actually removed FirstExt's LIVE glue and kept SecondExt's in the
+    // written output — so the survival scan is reading a real deletion, not a no-op. A replace
+    // deletion leaves the recorded original behind as a `// pub use crate::FirstExt;` comment, so
+    // this must be a whole-trimmed-line check, not a substring `contains` (which the comment matches).
+    for (label, mod_path) in [("rust", &rust_mod), ("wasm", &wasm_mod)] {
+        let written = std::fs::read_to_string(mod_path).unwrap();
+        let live_lines: std::collections::BTreeSet<String> =
+            written.lines().map(|l| l.trim().to_owned()).collect();
+        assert!(
+            !live_lines.contains("pub use crate::FirstExt;"),
+            "{label} generated mod.rs must have the replace-deleted FirstExt LIVE glue removed:\n{written}"
+        );
+        assert!(
+            live_lines.contains("pub use crate::SecondExt;"),
+            "{label} generated mod.rs must still carry the surviving SecondExt glue:\n{written}"
+        );
+    }
+
+    // Chain half 2: the diagnostic warns for the SURVIVING name (SecondExt, absent from the seed
+    // roots) but is SILENT for the replace-deleted name (FirstExt) in either crate.
+    for lib in ["rust/src/lib.rs", "wasm/src/lib.rs"] {
+        assert!(
+            stderr.contains(&format!("{lib} is missing crate-root re-exports"))
+                && stderr.contains("SecondExt"),
+            "{lib} must still warn for the surviving SecondExt re-export:\n{stderr}"
+        );
+    }
+    assert!(
+        !stderr.contains("FirstExt"),
+        "the diagnostic must NOT nag for a name whose glue a replace block deleted:\n{stderr}"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// Compile-level pin for the documented per-scope FACADE COMPOSITION
 /// (docs/docs/output_format.mdx § "Per-scope hand modules: the facade pattern", plus the preceding
 /// extern-glue section and the following "Generated wrapper fields are pub(crate)" section). The
