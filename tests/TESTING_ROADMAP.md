@@ -702,21 +702,41 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   `synthesized_name_interaction_sweep` spells no dep-index cells — see `tests/README.md`
   § "Synthesized-name interaction sweep + duplicate-ident backstop"), so it is owned HERE.
   Workspace mode already threads real rule provenance (`rule_declared`, from the
-  `RustStructType::{Array,Table}` call sites) and warns + keeps the user's class
+  `RustStructType::{Array,Table}` call sites — reading TRUE authorship via
+  `is_synthesized_collection`, so a table rule's parse-time-synthesized keys-list never
+  masquerades as rule-declared) and warns + keeps the user's class
   (`workspace_dep_defers_to_dep`'s shadowing cell); the open decision is whether the INDEX path
   should adopt the same guard — a behavior change to shipped semantics (today's array-flavor defer
   is at least link-clean), so it needs its own red-first cell, not a drive-by. (2) The CLASS behind
   all of these — a per-wrapper emission MODE (local vs index-deferred vs workspace-borrowed under
-  `--workspace-dep`) crossed with the wrapper-shape space — is an axis no existing honesty rule
+  `--workspace-dep` vs requested-hosted under `--wrapper-requests`) crossed with the wrapper-shape
+  space — is an axis no existing honesty rule
   sweeps (the wasm-ABI matrix's SHAPES/ROLES cover what types look like and where they sit; the third
-  honesty axis covers flag × input mode; neither enumerates flag × shape). Each has been found by
-  reading the emitters, not by any gate. Mechanical layer on the SECOND read-caught or
-  consumer-reported instance of the class (the NonEmpty cell above being the first, now pinned by
-  hand): a deferral-profile leg over the wasm-ABI matrix's extern-capable shapes — each shape probed
-  once per mode (dep index listing its structural name / absent / workspace-dep configured),
-  asserting deferred-import vs local-mint vs borrowed+sidecar-recorded and a wasm32 link (the
-  user-rule cross-crate cell and the map-side NonEmpty source-routing cell join it) — rather than
-  accreting per-shape hand fixtures.
+  honesty axis covers flag × input mode; neither enumerates flag × shape). Every instance has been
+  found by reading the emitters or reported by a consumer, never by a gate — and the mechanical
+  layer's arming trigger (a SECOND read-caught or consumer-reported instance after the NonEmpty
+  cell) has FIRED, twice in one consumer-reported delivery: the NAMED-table × workspace-borrowed
+  cell (a synthesized keys-list whose deferred import only the inline-map reference position ever
+  registered — E0412 stranding plus a false criterion-9 shadow warning, pinned by
+  `workspace_dep_named_table_deferred_keys_list`) and the requested-hosted × co-hosted-keys-list
+  cell (the host importing from root a class it mints itself — E0432, pinned by
+  `workspace_requests_cohosted_keys_list_no_self_import`). The deferral-profile leg is therefore
+  DUE, with two axis refinements those instances proved necessary: the shape rows must cross
+  reference POSITION (inline-anonymous vs NAMED-rule — the named-rule flavor takes walk-arm paths
+  every inline pin missed), and each shape row must assert its IMPLIED COMPANIONS per mode (a
+  table's synthesized keys-list: imported-from-dep vs root-minted vs co-hosted-locally), because
+  both trigger instances were companion-wrapper failures, not primary-shape failures. Leg spec
+  otherwise as recorded: each extern-capable shape probed once per mode (dep index listing its
+  structural name / absent / workspace-dep configured / requested by a consumer sidecar), asserting
+  deferred-import vs local-mint vs borrowed+sidecar-recorded vs hosted+indexed with a compile floor
+  per mode (wasm32 link consumer-side; `cargo check` of the host crate for the requested-hosted
+  mode — the self-import instance was only ever observable there); the user-rule cross-crate cell
+  and the map-side NonEmpty source-routing cell join it — rather than accreting per-shape hand
+  fixtures. The leg doubles as the regression net for accidental-provider removals (a fix
+  suppressing a walk path other positions silently relied on — how the named-table stranding
+  entered: the alias-recursion suppression removed the route that had been registering the
+  deferred import), a class fix-review reach-analysis asks about ("who else relied on this
+  path?") but only a mode × shape × position compile floor answers mechanically.
 - **Extern-deps wasm-boundary surface: packaging- and json-gen-gaps beyond the behavioral floor.**
   The split-dep cell (`integration_tests::extern_deps_wasm`, `--extern-wasm-crate`) drives the
   generated wasm crate's cross-crate wrappers behaviorally: `tests/extern-deps-wasm/tests_wasm.rs`
@@ -872,6 +892,27 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   asserted by a static-runtime op, and every asserted dep must appear in the text — a natural
   sibling of `warmup_manifest_covers_registry_dep_universe`, accepting the source-scan heuristics
   then, not before.
+- **Comment-residue false matches in text scans over emitted/prior `.rs` output — one proven
+  instance, no machinery yet.** Any diagnostic or decision that SCANS generated (or user-edited
+  prior) Rust text for a code pattern shares one trap: the comment-preservation overlay and the
+  users of its block grammar leave the scanned pattern behind as COMMENT bytes — a
+  `cddl-codegen:replaces` recorded original is the exact deleted line `//`-commented, and
+  unpreserved-comment blocks / doc comments can quote code verbatim — so a substring `contains`
+  scan reads deleted code as live. Proven instance (development-red-caught, not by any shipped
+  gate): the extern-glue re-export survival scan's first cut used a substring match and read a
+  replace block's recorded `// pub use crate::<Name>;` original as surviving glue — corrected to
+  whole-trimmed-line equality before landing, with the residue case pinned by
+  `extern_reexport_diagnostic_skips_replace_deleted_glue`'s chain assertions (overlay really
+  deleted the live line AND the warning subtracted the name). Working rule meanwhile: a scan over
+  emitted/prior `.rs` text matches live tokens (whole-trimmed-line or token-aware), never
+  substrings, and its test includes a comment-residue adversarial fixture (the pattern present
+  ONLY as a recorded original / comment). One untested premise worth probing when next in the
+  area: `missing_reexports`' whole-ident scan over the USER's seed-once `lib.rs` — whether a
+  commented-out `// pub use generated::<Name>;` line counts as "provided" (same residue class,
+  opposite direction: a false NEGATIVE of the warning). Mechanical layer on a SECOND instance: an
+  adversarial-fixture family enumerating every output-text-scanning decision point (the
+  bounded-exception diagnostics list in AGENTS.md is the seed inventory) with one residue fixture
+  each, rather than trusting each new scan to remember the rule.
 
 ## Deferred features (build when a real consumer needs them)
 
