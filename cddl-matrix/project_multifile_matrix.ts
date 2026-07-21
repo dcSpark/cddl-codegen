@@ -151,6 +151,22 @@ const SHAPES: Record<string, Shape> = {
   // anonymous generic TABLE instance -> the structural keyed wrapper (`MapU64ToText`); the sole-owner
   // table machinery is scope-aware, so every reference mode is green (like `collmap`).
   gtbla: { defs: ["gtbl<k0, v0> = { * k0 => v0 }"], ty: "gtbl<uint, text>" },
+  // `@duplicates reject` OrderedSet ABI class (copied verbatim-with-provenance from the wasm
+  // projection's `SHAPES`). Element is EXPOSABLE (`uint`), so — like `coll`/`necoll` — the reject twin
+  // is a transparent core-type alias (`OrderedSet<u64>` / `NonEmptyOrderedSet<u64>`) with no
+  // structural ELEMENT wrapper minted at root, so no cross-module structural name can dangle: every
+  // reference mode is green (probed). No `anonForm`: `@duplicates reject` is a per-RULE directive with
+  // no inline anonymous spelling for the named `rset`/`nerset`, and the anonymous-instance shapes'
+  // `ty` (`oset<uint>` / `neoset<uint>`) IS already the anonymous same-shape spelling — the `anon`
+  // modes would only duplicate what `named`/`aliased` place.
+  // named `[*]`/`[+]` reject rules — transparent alias to the uniqueness twin, imported cross-module
+  // like a bare `Vec`/`NonEmptyVec` (the `coll`/`necoll` placement class).
+  rset: { defs: ["rs = [* uint] ; @duplicates reject"], ty: "rs" },
+  nerset: { defs: ["nrs = [+ uint] ; @duplicates reject"], ty: "nrs" },
+  // anonymous generic reject-set instances over an exposable element — no structural wrapper crosses
+  // (like `gcollexp`), so every reference mode is green.
+  rseta: { defs: ["oset<e0> = [* e0] ; @duplicates reject"], ty: "oset<uint>" },
+  nerseta: { defs: ["neoset<e0> = [+ e0] ; @duplicates reject"], ty: "neoset<uint>" },
   chain: { defs: ["ca = [* uint]", "cb = ca", "cc = cb"], ty: "cc" },
   cborwrap2: { defs: ["foo = [a: uint]", "fb = bytes .cbor foo", "fb2 = fb"], ty: "fb2" },
 };
@@ -245,7 +261,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 97; // 27 shapes × {aliased, named, unref} = 81 + 11 anon-form shapes × {anon} + 5 anonb shapes × {anonb} -> 97
+const EXPECTED_CELLS = 109; // 31 shapes × {aliased, named, unref} = 93 + 11 anon-form shapes × {anon} + 5 anonb shapes × {anonb} -> 109
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `multifile grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,

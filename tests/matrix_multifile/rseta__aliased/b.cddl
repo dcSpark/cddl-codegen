@@ -1,0 +1,2 @@
+; cell: rseta x aliased (reference from module b)
+bal = oset<uint>

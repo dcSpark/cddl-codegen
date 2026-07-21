@@ -912,6 +912,58 @@ fn duplicates_reject_inline_generic_instance_lowers_to_twin_under_wasm() {
     std::fs::remove_file(&path).ok();
 }
 
+/// A `@newtype` wrapper over a PLAIN `[*]` `@duplicates reject` set (`holder = rs ; @newtype` with
+/// `rs = [* uint] ; @duplicates reject`) must CONVERT its inner across the wasm boundary — the wasm
+/// `new`/`get` cross as the restricted `U64OrderedSet` wrapper (`&U64OrderedSet` in, `U64OrderedSet`
+/// out) and must `.clone().into()` it to/from the rust core `OrderedSet<u64>`, exactly as the
+/// NonEmpty (`[+]`) reject set already does. The four wasm-boundary conversion helpers
+/// (`to_wasm_boundary` / `to_wasm_boundary_optional` / `from_wasm_boundary_clone` /
+/// `from_wasm_boundary_ref` on `RustType`) each special-cased `is_non_empty_array()` but omitted the
+/// plain `is_reject_ordered_set()` arm, so a `[*]` reject set (a reject set that is NOT a non-empty
+/// array) fell through and the newtype wrapper emitted `cddl_lib::Holder::new(inner)` (a `&Wrapper`
+/// where the rust ctor wants `OrderedSet<u64>` by value) and `self.0.get().clone()` (an
+/// `OrderedSet<u64>` where the getter returns `U64OrderedSet`) — E0308. The `[+]` twin never red
+/// because `is_non_empty_array()` already routed it; only the `[*]` flavor exposed the gap. Its
+/// sibling type-name methods (`for_wasm_member`/`for_wasm_param`/`directly_wasm_exposable`) already
+/// treat both flavors identically, so the conversion helpers now do too. The `rset__newtype-inner`
+/// wasm-ABI matrix cell is the per-role compile grid on top of this in-process pin.
+#[test]
+fn newtype_over_plain_reject_ordered_set_converts_wasm_boundary() {
+    const CDDL: &str = "rs = [* uint] ; @duplicates reject\n\
+                        holder = rs ; @newtype\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_newtype_reject_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let out = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "newtype_reject_unused",
+        "--wasm=true",
+    ]))
+    .expect("a @newtype over a plain [*] reject set must generate under --wasm");
+    std::fs::remove_file(&path).ok();
+    let src = out.values().cloned().collect::<Vec<_>>().join("\n");
+    // the wasm ctor converts the `&U64OrderedSet` inner into the rust core `OrderedSet<u64>`
+    assert!(
+        src.contains("cddl_lib::Holder::new(inner.clone().into())"),
+        "the wasm newtype ctor must `.clone().into()` the reject-set wrapper into the rust core, got:\n{src}"
+    );
+    // and the getter converts the rust core `&OrderedSet<u64>` back into the `U64OrderedSet` wrapper
+    assert!(
+        src.contains("self.0.get().clone().into()"),
+        "the wasm newtype getter must `.clone().into()` the rust core back into the reject-set wrapper, got:\n{src}"
+    );
+    // the un-converted (E0308) forms must appear NOWHERE
+    assert!(
+        !src.contains("cddl_lib::Holder::new(inner))"),
+        "the wasm ctor must NOT pass the `&U64OrderedSet` wrapper directly (E0308), got:\n{src}"
+    );
+}
+
 /// A `@duplicates reject` named `[+ elem]` rule must NOT capture an inline `[+ elem]` of the same
 /// element for the wasm inline-dedup: inline occurrences are directive-less (always preserve), so
 /// their rust member is `NonEmptyVec` while the reject rule's wrapper wraps `NonEmptyOrderedSet` —

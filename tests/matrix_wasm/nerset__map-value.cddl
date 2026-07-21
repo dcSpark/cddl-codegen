@@ -1,0 +1,3 @@
+; cell: nerset x map-value
+nrs = [+ uint] ; @duplicates reject
+holder = { * uint => nrs }

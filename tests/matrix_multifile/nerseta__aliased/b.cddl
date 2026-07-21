@@ -1,0 +1,2 @@
+; cell: nerseta x aliased (reference from module b)
+bal = neoset<uint>

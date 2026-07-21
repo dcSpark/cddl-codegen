@@ -143,6 +143,38 @@ const SHAPES: Record<string, Shape> = {
   // (the anonymous instance recorded as its own shape's sole owner) — the class its grid row makes red;
   // fixed + pinned by `generic_table_instance_lowers_to_structural_wrapper_under_wasm`.
   gtbla: { defs: ["gtbl<k0, v0> = { * k0 => v0 }"], ty: "gtbl<uint, text>" },
+  // --- `@duplicates reject` OrderedSet ABI class. A `[* T]`/`[+ T]` rule carrying `@duplicates
+  // reject` lowers to the uniqueness twin — rust core `OrderedSet<T>` / `NonEmptyOrderedSet<T>` — and
+  // crosses the wasm boundary through a RESTRICTED wrapper class distinct from every list shape above:
+  // its `add(elem) -> Result<(), JsError>` is FALLIBLE (refusing a duplicate), unlike `coll`'s
+  // infallible `add` and `necoll`'s min-1 (a push can never break the bound). Construction is the
+  // single checked door `try_from(Vec<T>) -> Result<_, JsError>` (exposable element -> by value).
+  // Reject sets are transparent `pub type` aliases on the RUST side (`pub type Rs = OrderedSet<u64>`,
+  // no new wrapper struct — the core type already carries uniqueness) yet still need a wasm wrapper to
+  // expose the set API to JS, so their boundary crossing is a distinct fact from `coll`/`necoll`
+  // (whose rust side IS a wrapper struct). Reject sets NEVER dedup to a named rule: an anonymous
+  // instance synthesizes the STRUCTURAL `<Elem>OrderedSet` class. All roles compile — an OrderedSet
+  // is `Ord` (static/ordered_set.rs derives it), so the map-KEY cell is valid, not a degenerate prune.
+  // named `[*]` -> the `Rs` wrapper (loose `new()`, FALLIBLE `add`). Its
+  // newtype-inner cell found the missing reject arm in the four `RustType` wasm-boundary conversion
+  // helpers (`to_wasm_boundary` etc. special-cased `is_non_empty_array()` but not the plain
+  // `is_reject_ordered_set()`, so `Holder::new(inner)`/`self.0.get().clone()` skipped the
+  // `.clone().into()` and hit E0308); fixed + pinned by
+  // `newtype_over_plain_reject_ordered_set_converts_wasm_boundary`.
+  rset: { defs: ["rs = [* uint] ; @duplicates reject"], ty: "rs" },
+  // named `[+]` -> `NonEmptyOrderedSet<u64>` wrapper (the non-empty reject twin). Distinct wasm surface
+  // from `rset`: a min-1 bound alongside the reject door. Already routed through the non-empty-array
+  // boundary arm, so it never red on the gap the `[*]` flavor exposed.
+  nerset: { defs: ["nrs = [+ uint] ; @duplicates reject"], ty: "nrs" },
+  // anonymous instance `[*]` -> the STRUCTURAL `U64OrderedSet` class via a synthesized
+  // `pub type OsetU64 = OrderedSet<u64>` (rust) / `= U64OrderedSet` (wasm) alias — the reject analog of
+  // `gcollexp`/`gcolla`. The rust alias carries `SYNTHESIZED_INSTANCE_ALIAS_DOC`, so `wasm_api_parity`
+  // rules 2+5 skip it (no CDDL rule name at stake; the documented structural lowering), keeping
+  // PARITY_EXEMPT empty.
+  rseta: { defs: ["oset<e0> = [* e0] ; @duplicates reject"], ty: "oset<uint>" },
+  // anonymous instance `[+]` -> the STRUCTURAL `NonEmptyU64OrderedSet` class (`pub type NeosetU64 =
+  // NonEmptyOrderedSet<u64>`); the non-empty reject twin of `rseta`, same marked-alias parity carve-out.
+  nerseta: { defs: ["neoset<e0> = [+ e0] ; @duplicates reject"], ty: "neoset<uint>" },
   // --- Depth / representative smoke cells: same boundary logic as a 1-hop shape above, kept only to
   // guard alias-chain *resolution depth* (>1 hop). One role each — full role coverage would only
   // duplicate `passthru`/`cborwrap` accessors (verified: differs from them only by type name).
@@ -235,7 +267,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 194; // 24 full shapes × 8 roles − 2 map-key skips (nullable, rawbytes) + 4 single-role shapes (chain, cborwrap2, extern, mstruct)
+const EXPECTED_CELLS = 226; // 28 full shapes × 8 roles − 2 map-key skips (nullable, rawbytes) + 4 single-role shapes (chain, cborwrap2, extern, mstruct)
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `wasm-ABI grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,

@@ -1,0 +1,3 @@
+; cell: nerset x tchoice-variant
+nrs = [+ uint] ; @duplicates reject
+holder = nrs / nint

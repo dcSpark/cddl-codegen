@@ -631,15 +631,6 @@ annotations (`verify.ts`'s default-on `--wasm` probe); the recombination fuzzer'
 (`recombination_wasm_crates_check`, `tests/README.md` § "Shape-recombination fuzzer") is the
 composition-space cross-check that complements this matrix's curated per-shape grid. What remains:
 
-- **OWED by the same shape-addition rule: the `@duplicates reject` restricted-wrapper ABI class.**
-  The uniqueness twins (`OrderedSet`/`NonEmptyOrderedSet`) cross the wasm boundary as a restricted
-  wrapper whose `add` returns `Result<(), JsError>` — FALLIBLE, refusing a duplicate — unlike the
-  non-empty restricted wrapper's infallible `add`, and anonymous instances lower to the structural
-  `<Elem>OrderedSet` / `NonEmpty<Elem>OrderedSet` names; no `SHAPES` entry was added, so this new
-  fallible-`add` ABI class is silent-green rather than gated. Candidate entries: the reject restricted
-  wrapper in both its named-rule and anonymous-instance flavors (`[*]` and `[+]`), swept across the
-  existing `ROLES`. Interim pin until enumerated: the `tag_set_reject` corpus fixture's wasm compile
-  (via `feature_corpus_compiles`) — per-fixture, not the per-role grid.
 - **OWED by the same shape-addition rule: the `@duplicates preserve` pair-map wrapper ABI class.**
   The mirror of the reject class, one boundary over. A preserve table's pair-map twins
   (`PairMap`/`NonEmptyPairMap`) cross the wasm boundary as a two-wrapper pair: the loose `{*}`

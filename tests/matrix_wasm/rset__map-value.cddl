@@ -1,0 +1,3 @@
+; cell: rset x map-value
+rs = [* uint] ; @duplicates reject
+holder = { * uint => rs }
