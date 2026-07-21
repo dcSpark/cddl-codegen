@@ -1,0 +1,6 @@
+; Item 2 consumer spec: a NAMED table rule over a dep-owned key type, declared in a NON-ROOT scope
+; (`sub/module.cddl` -> the `sub::module` scope module). Isolated from the `inputs` set on purpose:
+; that set's inline `foo_keyed` map already registers the same keys-list import at the root, which
+; would mask the stranded-import red state this fixture pins. `root` only exists to give the crate a
+; root scope; it references nothing scoped.
+root = [a: uint]

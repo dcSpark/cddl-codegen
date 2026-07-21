@@ -1349,9 +1349,15 @@ impl<'a> IntermediateTypes<'a> {
                     bounds,
                 } => {
                     // The named table's own wasm class is emitted in `current_scope`; its `keys()`
-                    // accessor names the ROOT-minted keys-list wrapper bare for a non-exposable key,
-                    // so import it into this (non-root) module — the named/unref analogue of the Map
-                    // arm's inline-use registration above.
+                    // accessor names the keys-list wrapper bare. Register BOTH homes, exactly as the
+                    // inline Map arm above does: a ROOT-minted `<Key>List` for a non-exposable key
+                    // (`register_root_keys_list`), OR a `use <dep_wasm>::collections::<KeysList>;` when
+                    // the keys-list is workspace/index deferred (`register_deferred_keys_list`). Before
+                    // the alias-recursion suppression that removed the accidental import route, a field
+                    // referencing this named table recursed into the Map arm, whose call registered the
+                    // deferred import; the named-rule arm is the correct home for it (follow the CLASS,
+                    // not the using site — same rationale as the existing helpers).
+                    register_deferred_keys_list(&mut refs, self, deferred, current_scope, domain);
                     register_root_keys_list(&mut refs, self, wasm, deferred, current_scope, domain);
                     // A NAMED `{+ …}` rule's restricted class borrows the LOOSE structural
                     // `MapKToV` as its `try_from` source; when that source is deferred, import it
@@ -2236,6 +2242,13 @@ impl<'a> IntermediateTypes<'a> {
             );
         }
         if cli.wasm {
+            // Whether an AUTHORED rule of this exact structural ident (`foo_list = [* foo]`) already
+            // registered its own Array struct. When it did, THIS synthesis re-mints a byte-identical
+            // entry (the last-wins idiom) but must NOT stamp the `synthesized_collection` marker over
+            // the authored provenance: an authored keys-list is a rule-declared class that must still
+            // survive `--no-synthesized-rust-collection-aliases` AND still trip the criterion-9 shadow
+            // warning. Only a purely-synthesized keys-list (no authored rule) gets the marker.
+            let already_registered = self.rust_structs.contains_key(&array_type_ident);
             // we don't pass in tags here. If a tag-wrapped array is done I think it generates
             // 2 separate types (array wrapper -> tag wrapper struct)
             self.register_rust_struct(
@@ -2252,8 +2265,13 @@ impl<'a> IntermediateTypes<'a> {
             // register_rust_struct's Array arm just registered this keys-list's transparent rust
             // alias (`pub type XxxList = Vec<Elem>;`) via `new_manual` — indistinguishable from an
             // authored `foo_list = [* foo]` by provenance alone. Mark it here (the sole synthesis
-            // site) so `--no-synthesized-rust-collection-aliases` can suppress only it.
-            if let Some(alias) = self.type_aliases.get_mut(&array_type_ident.into()) {
+            // site) so `--no-synthesized-rust-collection-aliases` can suppress only it, AND so the
+            // wasm struct walk's Array arm does not pass `rule_declared: true` for it (a false
+            // criterion-9 shadow warning over a keys-list no rule declares). Suppressed when an
+            // authored rule registered first, preserving that rule's provenance.
+            if !already_registered
+                && let Some(alias) = self.type_aliases.get_mut(&array_type_ident.into())
+            {
                 alias.synthesized_collection = true;
             }
         }
@@ -3249,6 +3267,19 @@ impl<'a> IntermediateTypes<'a> {
     /// name, reached through the flipped-on `gen_wasm_alias` passthrough. See the field's doc.
     pub fn is_anonymous_collection_instance(&self, ident: &RustIdent) -> bool {
         self.anonymous_collection_instances.contains(ident)
+    }
+
+    /// Whether `ident`'s transparent rust alias was generator-SYNTHESIZED (a table rule's auto-named
+    /// keys-list, `create_and_register_array_type`) rather than authored as a rule. The wasm struct
+    /// walk's Array arm reads this to decide `rule_declared`: a synthesized keys-list must NOT trip
+    /// the criterion-9 shadow warning (no rule declares it), whereas an authored `foo_list = [* foo]`
+    /// of the same structural ident must (its class shadows the would-be-borrowed dep wrapper). False
+    /// for an ident with no rust alias (`type_aliases` miss), and for an authored rule that registered
+    /// its Array struct before any synthesis re-mint reached it.
+    pub fn is_synthesized_collection(&self, ident: &RustIdent) -> bool {
+        self.type_aliases
+            .get(&AliasIdent::Rust(ident.clone()))
+            .is_some_and(|alias| alias.synthesized_collection)
     }
 
     pub fn mark_used_as_elem(&mut self, name: RustIdent) {

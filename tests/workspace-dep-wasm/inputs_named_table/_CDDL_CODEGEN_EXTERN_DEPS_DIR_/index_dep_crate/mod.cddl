@@ -1,0 +1,4 @@
+; The dependency's extern type. Its wasm wrapper lives in `index_dep_crate_wasm` (via
+; --extern-wasm-crate), and its keys-list wrapper `IdxFooList` lives in that crate's `collections`
+; index — which this consumer's named table `{ * idx_foo => local_thing }` defers to for `keys()`.
+idx_foo = _CDDL_CODEGEN_EXTERN_TYPE_

@@ -1,0 +1,14 @@
+; The consumer's NAMED table rule, living in the `sub::module` scope. `named_keyed` is a MIXED map
+; (extern dep key `idx_foo` + consumer-owned value `local_thing`), so its wasm class is minted
+; LOCALLY in this scope module — but its synthesized keys()-list wrapper `IdxFooList` is all-one-dep,
+; so it WORKSPACE-defers to index-dep-crate-wasm's `collections` module.
+;
+; Two invariants this pins (both regressions before Item 2):
+;   - 2a: the synthesized `IdxFooList` must NOT trip the criterion-9 "rule-declared type IdxFooList
+;     shadows..." warning — no rule declares it (it is created at registration time by the table
+;     rule's `create_and_register_array_type`).
+;   - 2b: `keys()` returns `IdxFooList`, so the module holding this table class must carry
+;     `use index_dep_crate_wasm::collections::IdxFooList;` — the deferred keys-list import that the
+;     named-table struct-walk arm now registers (previously stranded -> E0412).
+local_thing = [a: uint, b: tstr]
+named_keyed = { * idx_foo => local_thing }
