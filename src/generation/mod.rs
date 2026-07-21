@@ -2226,7 +2226,7 @@ fn encoding_fields(
 ) -> Vec<EncodingField> {
     assert!(cli.preserve_encodings);
     // TODO: how do we handle defaults for nested things? e.g. inside of a ConceptualRustType::Map
-    let mut encs = encoding_fields_impl(types, name, ty.into(), cli);
+    let mut encs = encoding_fields_impl(types, name, ty.into(), cli, 0);
     if include_default && ty.config.default.is_some() {
         encs.push(EncodingField {
             field_name: format!("{name}_default_present"),
@@ -2240,11 +2240,30 @@ fn encoding_fields(
     encs
 }
 
+/// The tag-level infix for a stacked tag's encoding member name. Tag levels count OUTSIDE-IN:
+/// level 1 (the outermost tag) keeps the historical `tag` spelling so all existing single-tag
+/// output stays byte-identical; each deeper level appends its 1-based number (`tag2`, `tag3`, …),
+/// keeping the `_encoding` suffix terminal like every other member. Callers combine it as
+/// `{name}_{infix}_encoding`. Shared by the member declaration (`encoding_fields_impl`), the
+/// serialize read, and the deserialize write so the three can never drift on the scheme.
+pub(super) fn tag_encoding_infix(tag_level: usize) -> String {
+    if tag_level <= 1 {
+        "tag".to_owned()
+    } else {
+        format!("tag{tag_level}")
+    }
+}
+
+/// `tag_depth` is the number of tag levels already crossed on THIS member name (0 at the member
+/// root, incremented each time a `Tagged`/`OptionallyTagged` op recurses into its child under the
+/// same name). It drives `tag_encoding_infix` so stacked tags get distinct members. Name-changing
+/// recursions (array element, map key/value) start a fresh sub-member and reset it to 0.
 fn encoding_fields_impl(
     types: &IntermediateTypes,
     name: &str,
     ty: SerializingRustType,
     cli: &Cli,
+    tag_depth: usize,
 ) -> Vec<EncodingField> {
     assert!(cli.preserve_encodings);
     match ty {
@@ -2258,7 +2277,7 @@ fn encoding_fields_impl(
                 is_copy: true,
             };
             let inner_encs =
-                encoding_fields_impl(types, &format!("{name}_elem"), (&**elem_ty).into(), cli);
+                encoding_fields_impl(types, &format!("{name}_elem"), (&**elem_ty).into(), cli, 0);
             if inner_encs.is_empty() {
                 vec![base]
             } else {
@@ -2285,9 +2304,10 @@ fn encoding_fields_impl(
                 enc_conversion_after: "",
                 is_copy: true,
             }];
-            let key_encs = encoding_fields_impl(types, &format!("{name}_key"), (&**k).into(), cli);
+            let key_encs =
+                encoding_fields_impl(types, &format!("{name}_key"), (&**k).into(), cli, 0);
             let val_encs =
-                encoding_fields_impl(types, &format!("{name}_value"), (&**v).into(), cli);
+                encoding_fields_impl(types, &format!("{name}_value"), (&**v).into(), cli, 0);
 
             // `@duplicates preserve` (the pair-map twin): a `BTreeMap` keyed by key VALUE is
             // structurally incapable of holding two entries with the same key, so the encoding
@@ -2387,31 +2407,37 @@ fn encoding_fields_impl(
                 name,
                 (&ConceptualRustType::Primitive(Primitive::I64)).into(),
                 cli,
+                tag_depth,
             ),
             FixedValue::Uint(_) => encoding_fields_impl(
                 types,
                 name,
                 (&ConceptualRustType::Primitive(Primitive::U64)).into(),
                 cli,
+                tag_depth,
             ),
             FixedValue::Float(_) => encoding_fields_impl(
                 types,
                 name,
                 (&ConceptualRustType::Primitive(Primitive::F64)).into(),
                 cli,
+                tag_depth,
             ),
             FixedValue::Text(_) => encoding_fields_impl(
                 types,
                 name,
                 (&ConceptualRustType::Primitive(Primitive::Str)).into(),
                 cli,
+                tag_depth,
             ),
         },
         SerializingRustType::Root(ConceptualRustType::Alias(_, ty), _cfg) => {
-            encoding_fields_impl(types, name, (&**ty).into(), cli)
+            encoding_fields_impl(types, name, (&**ty).into(), cli, tag_depth)
         }
         SerializingRustType::Root(ConceptualRustType::Optional(ty), _cfg) => {
-            encoding_fields(types, name, ty, false, cli)
+            // same-name recursion (a nullable can still carry a tagged inner), so thread the depth
+            // rather than resetting it via the `encoding_fields` wrapper.
+            encoding_fields_impl(types, name, (&**ty).into(), cli, tag_depth)
         }
         SerializingRustType::Root(ConceptualRustType::Rust(rust_ident), _cfg) => {
             match &types.rust_struct(rust_ident).unwrap().variant() {
@@ -2427,19 +2453,27 @@ fn encoding_fields_impl(
                     name,
                     (&ConceptualRustType::Primitive(Primitive::Bytes)).into(),
                     cli,
+                    tag_depth,
                 ),
                 // no encodings here. they're contained inside the struct
                 _ => vec![],
             }
         }
         SerializingRustType::EncodingOperation(CBOREncodingOperation::Tagged(tag), child) => {
+            // This tag is the (tag_depth + 1)th level crossed on this member name; its member keeps
+            // `tag` at level 1 and gains a numeric infix deeper, so stacked tags don't collide.
+            let tag_level = tag_depth + 1;
+            let tag_infix = tag_encoding_infix(tag_level);
             let mut encs = encoding_fields_impl(
                 types,
-                &format!("{name}_tag"),
+                &format!("{name}_{tag_infix}"),
                 (&ConceptualRustType::Fixed(FixedValue::Uint(*tag as u64))).into(),
                 cli,
+                tag_depth,
             );
-            encs.append(&mut encoding_fields_impl(types, name, *child, cli));
+            encs.append(&mut encoding_fields_impl(
+                types, name, *child, cli, tag_level,
+            ));
             encs
         }
         SerializingRustType::EncodingOperation(
@@ -2448,15 +2482,19 @@ fn encoding_fields_impl(
         ) => {
             // the tri-state tag-presence var (absent | present(sz)); the deserialize preamble
             // produces a fully-formed `TagPresenceEncoding`, so no enc conversion is applied.
+            let tag_level = tag_depth + 1;
+            let tag_infix = tag_encoding_infix(tag_level);
             let mut encs = vec![EncodingField {
-                field_name: format!("{name}_tag_encoding"),
+                field_name: format!("{name}_{tag_infix}_encoding"),
                 type_name: "TagPresenceEncoding".to_owned(),
                 default_expr: "TagPresenceEncoding::default()",
                 enc_conversion_before: "",
                 enc_conversion_after: "",
                 is_copy: true,
             }];
-            encs.append(&mut encoding_fields_impl(types, name, *child, cli));
+            encs.append(&mut encoding_fields_impl(
+                types, name, *child, cli, tag_level,
+            ));
             encs
         }
         SerializingRustType::EncodingOperation(CBOREncodingOperation::CBORBytes, child) => {
@@ -2465,8 +2503,11 @@ fn encoding_fields_impl(
                 &format!("{name}_bytes"),
                 (&ConceptualRustType::Primitive(Primitive::Bytes)).into(),
                 cli,
+                tag_depth,
             );
-            encs.append(&mut encoding_fields_impl(types, name, *child, cli));
+            encs.append(&mut encoding_fields_impl(
+                types, name, *child, cli, tag_depth,
+            ));
             encs
         }
     }

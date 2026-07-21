@@ -328,10 +328,11 @@ fn extract_impl(src: &str, marker: &str) -> String {
 /// tag) OUTERMOST, so both paths emit the same outer-tag-then-inner-optional-tag ordering. Using the
 /// same field name `g` in both specs makes the whole `Holder` impl comparable byte-for-byte.
 ///
-/// NOTE: this pins the SHAPE/ordering, not standalone compilation — an outer tag over an
-/// already-inner-tagged field collides two `<field>_tag_encoding` vars in the encoding struct, a
-/// PRE-EXISTING codegen limitation independent of this feature (`#6.24(#6.258(text))` collides the
-/// same way); tracked in `tests/TESTING_ROADMAP.md`. The parity invariant holds regardless of that fix.
+/// This pins the SHAPE/ordering; standalone compilation of a stacked outer-over-inner tag is pinned
+/// separately by the `double_tag` corpus fixture and
+/// `robustness_tests::stacked_tag_encoding_members_are_depth_disambiguated` — each tag LEVEL gets its
+/// own depth-suffixed encoding member (`g_tag_encoding` at level 1, `g_tag2_encoding` at level 2), so
+/// the encoding struct no longer collides. The parity invariant holds either way.
 #[test]
 fn outer_tag_over_instance_matches_non_generic_byte_for_byte() {
     let generic = generate(

@@ -1,0 +1,106 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+pub mod cbor_encodings;
+mod extern_interface_check;
+pub mod serialization;
+
+use cbor_encodings::{HeterogeneousEncoding, HolderEncoding, HomogeneousEncoding};
+
+#[derive(Clone, Debug)]
+pub struct Heterogeneous {
+    pub(crate) inner: Vec<u64>,
+    pub encodings: Option<HeterogeneousEncoding>,
+}
+
+impl Heterogeneous {
+    pub fn get(&self) -> &Vec<u64> {
+        &self.inner
+    }
+
+    pub fn new(inner: Vec<u64>) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<Vec<u64>> for Heterogeneous {
+    fn from(inner: Vec<u64>) -> Self {
+        Heterogeneous::new(inner)
+    }
+}
+
+impl From<Heterogeneous> for Vec<u64> {
+    fn from(wrapper: Heterogeneous) -> Self {
+        wrapper.inner
+    }
+}
+
+/// The tag-258 set idiom: the tag is an encoding detail — both the `#6.258(...)` and the bare-array wire forms are accepted (serialization defaults to tagged), so either round-trips byte-exactly.
+/// Duplicate elements are preserved and re-emitted byte-exactly in wire order (the default for a set idiom; opt into rejection with `@duplicates reject`).
+pub type HeterogeneousSet = Vec<u64>;
+
+#[derive(Clone, Debug)]
+pub struct Holder {
+    pub h: Homogeneous,
+    pub s: Heterogeneous,
+    pub encodings: Option<HolderEncoding>,
+}
+
+impl Holder {
+    pub fn new(h: Homogeneous, s: Heterogeneous) -> Self {
+        Self {
+            h,
+            s,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Homogeneous {
+    pub(crate) inner: Vec<u64>,
+    pub encodings: Option<HomogeneousEncoding>,
+}
+
+impl Homogeneous {
+    pub fn get(&self) -> &Vec<u64> {
+        &self.inner
+    }
+
+    pub fn new(inner: Vec<u64>) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<Vec<u64>> for Homogeneous {
+    fn from(inner: Vec<u64>) -> Self {
+        Homogeneous::new(inner)
+    }
+}
+
+impl From<Homogeneous> for Vec<u64> {
+    fn from(wrapper: Homogeneous) -> Self {
+        wrapper.inner
+    }
+}
+
+pub type HomogeneousInner = Vec<u64>;

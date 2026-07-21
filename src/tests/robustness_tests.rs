@@ -744,11 +744,13 @@ fn duplicates_on_generic_def_rides_instantiation() {
         std::fs::remove_file(&path).ok();
         out
     };
-    let joined =
-        |out: &std::collections::BTreeMap<String, String>| out.values().cloned().collect::<Vec<_>>().join("\n");
+    let joined = |out: &std::collections::BTreeMap<String, String>| {
+        out.values().cloned().collect::<Vec<_>>().join("\n")
+    };
 
     // reject def + NAMED instance alias: the alias must resolve to the uniqueness twin.
-    let named = gen_src("oset<a0> = #6.258([* a0]) / [* a0] ; @duplicates reject\nfoo = oset<uint>\n");
+    let named =
+        gen_src("oset<a0> = #6.258([* a0]) / [* a0] ; @duplicates reject\nfoo = oset<uint>\n");
     assert!(
         joined(&named).contains("OrderedSet<u64>"),
         "reject on a generic def must reach a named instance, got:\n{}",
@@ -757,8 +759,9 @@ fn duplicates_on_generic_def_rides_instantiation() {
 
     // reject def + ANONYMOUS member-position instance: the seam the named-alias corpus vector
     // does NOT cover.
-    let anon =
-        gen_src("oset<a0> = #6.258([* a0]) / [* a0] ; @duplicates reject\nholder = [g: oset<uint>]\n");
+    let anon = gen_src(
+        "oset<a0> = #6.258([* a0]) / [* a0] ; @duplicates reject\nholder = [g: oset<uint>]\n",
+    );
     assert!(
         joined(&anon).contains("OrderedSet<u64>"),
         "reject on a generic def must reach an anonymous member-position instance, got:\n{}",
@@ -2261,6 +2264,102 @@ fn size_on_signed_int_rejects_gracefully() {
     // boundary: the uint half of `.size` stays supported.
     run("u = uint .size 2\n", "uint_ok")
         .expect("`uint .size N` is spec-defined and supported — must keep generating");
+}
+
+/// Stacked tag encodings (a tag applied to an already-tagged value, reached via alias/rule-reference
+/// stacking since literal `#6.24(#6.258(..))` is parse-rejected) must give each tag level its OWN
+/// encoding member. Levels are counted OUTSIDE-IN: level 1 keeps today's `{name}_tag_encoding`
+/// (byte-stability for all existing single-tag output), level k >= 2 mints `{name}_tag{k}_encoding`.
+/// Without this both levels reuse `inner_tag_encoding`, emitting a struct with two identically-named
+/// members that does not compile — homogeneous (two mandatory tags -> two `Option<cbor_event::Sz>`)
+/// and heterogeneous (mandatory outer + optional inner -> `Option<Sz>` at level 1 plus
+/// `TagPresenceEncoding` at level 2) alike.
+#[test]
+fn stacked_tag_encoding_members_are_depth_disambiguated() {
+    fn gen_encodings(spec: &str, tag: &str) -> String {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_stacked_tag_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "stacked_tag_unused",
+            "--preserve-encodings=true",
+            "--wasm=false",
+        ]);
+        let out = crate::api::generated_strings(&cli).unwrap();
+        std::fs::remove_file(&path).ok();
+        out.get("rust/src/generated/cbor_encodings.rs")
+            .cloned()
+            .expect("preserve-encodings generation must emit a cbor_encodings.rs")
+    }
+
+    // The declaration lines inside `pub struct FooEncoding { .. }` — the members that collide.
+    fn foo_member_lines(encodings: &str) -> Vec<String> {
+        let start = encodings
+            .find("pub struct FooEncoding {")
+            .unwrap_or_else(|| panic!("no FooEncoding struct in:\n{encodings}"));
+        let rest = &encodings[start..];
+        let end = rest.find('}').expect("FooEncoding struct must close");
+        rest[..end]
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.starts_with("pub ") && l.contains(": "))
+            .map(str::to_owned)
+            .collect()
+    }
+
+    // Flavor A (homogeneous): two mandatory tags stack, both lowering to `Option<cbor_event::Sz>`.
+    let flavor_a = gen_encodings(
+        "xs = #6.258([* uint])\nfoo = #6.24(xs)\nholder = [f: foo]\n",
+        "a",
+    );
+    let a_members = foo_member_lines(&flavor_a);
+    let mut a_sorted = a_members.clone();
+    a_sorted.sort();
+    a_sorted.dedup();
+    assert_eq!(
+        a_sorted.len(),
+        a_members.len(),
+        "FooEncoding must have no duplicated member declaration; got:\n{a_members:#?}"
+    );
+    assert!(
+        flavor_a.contains("pub inner_tag_encoding: Option<cbor_event::Sz>")
+            && flavor_a.contains("pub inner_tag2_encoding: Option<cbor_event::Sz>"),
+        "homogeneous stacked tags must mint level-1 `inner_tag_encoding` and level-2 \
+         `inner_tag2_encoding`; got:\n{flavor_a}"
+    );
+
+    // Flavor B (heterogeneous): mandatory outer 24 (level 1, `Option<Sz>`) + optional inner 258
+    // (level 2, `TagPresenceEncoding`).
+    let flavor_b = gen_encodings(
+        "set = #6.258([* uint]) / [* uint]\nfoo = #6.24(set)\nholder = [f: foo]\n",
+        "b",
+    );
+    let b_members = foo_member_lines(&flavor_b);
+    let mut b_sorted = b_members.clone();
+    b_sorted.sort();
+    b_sorted.dedup();
+    assert_eq!(
+        b_sorted.len(),
+        b_members.len(),
+        "FooEncoding must have no duplicated member declaration; got:\n{b_members:#?}"
+    );
+    assert!(
+        flavor_b.contains("pub inner_tag_encoding: Option<cbor_event::Sz>"),
+        "heterogeneous outer mandatory 24 must be level-1 `inner_tag_encoding: Option<cbor_event::Sz>`; \
+         got:\n{flavor_b}"
+    );
+    assert!(
+        flavor_b.contains("pub inner_tag2_encoding: TagPresenceEncoding"),
+        "heterogeneous inner optional 258 must be level-2 `inner_tag2_encoding: TagPresenceEncoding`; \
+         got:\n{flavor_b}"
+    );
 }
 
 /// `concat_files` must surface an unreadable path as a real `io::Error` (which callers propagate

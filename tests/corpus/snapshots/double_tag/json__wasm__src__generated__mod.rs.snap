@@ -1,0 +1,275 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Heterogeneous(pub(crate) cddl_lib::Heterogeneous);
+
+#[wasm_bindgen]
+impl Heterogeneous {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Heterogeneous, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<Heterogeneous, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: Vec<u64>) -> Self {
+        Self(cddl_lib::Heterogeneous::new(inner))
+    }
+
+    pub fn get(&self) -> Vec<u64> {
+        self.0.get().clone()
+    }
+}
+
+impl From<cddl_lib::Heterogeneous> for Heterogeneous {
+    fn from(native: cddl_lib::Heterogeneous) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Heterogeneous> for cddl_lib::Heterogeneous {
+    fn from(wasm: Heterogeneous) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Heterogeneous> for Heterogeneous {
+    fn as_ref(&self) -> &cddl_lib::Heterogeneous {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct HeterogeneousSet(pub(crate) Vec<u64>);
+
+#[wasm_bindgen]
+impl HeterogeneousSet {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) {
+        self.0.push(elem);
+    }
+}
+
+impl From<Vec<u64>> for HeterogeneousSet {
+    fn from(native: Vec<u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<HeterogeneousSet> for Vec<u64> {
+    fn from(wasm: HeterogeneousSet) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<u64>> for HeterogeneousSet {
+    fn as_ref(&self) -> &Vec<u64> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Holder(pub(crate) cddl_lib::Holder);
+
+#[wasm_bindgen]
+impl Holder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Holder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<Holder, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn h(&self) -> Homogeneous {
+        self.0.h.clone().into()
+    }
+
+    pub fn s(&self) -> Heterogeneous {
+        self.0.s.clone().into()
+    }
+
+    pub fn new(h: &Homogeneous, s: &Heterogeneous) -> Self {
+        Self(cddl_lib::Holder::new(h.clone().into(), s.clone().into()))
+    }
+}
+
+impl From<cddl_lib::Holder> for Holder {
+    fn from(native: cddl_lib::Holder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Holder> for cddl_lib::Holder {
+    fn from(wasm: Holder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Holder> for Holder {
+    fn as_ref(&self) -> &cddl_lib::Holder {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Homogeneous(pub(crate) cddl_lib::Homogeneous);
+
+#[wasm_bindgen]
+impl Homogeneous {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Homogeneous, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<Homogeneous, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: Vec<u64>) -> Self {
+        Self(cddl_lib::Homogeneous::new(inner))
+    }
+
+    pub fn get(&self) -> Vec<u64> {
+        self.0.get().clone()
+    }
+}
+
+impl From<cddl_lib::Homogeneous> for Homogeneous {
+    fn from(native: cddl_lib::Homogeneous) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Homogeneous> for cddl_lib::Homogeneous {
+    fn from(wasm: Homogeneous) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Homogeneous> for Homogeneous {
+    fn as_ref(&self) -> &cddl_lib::Homogeneous {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct HomogeneousInner(pub(crate) Vec<u64>);
+
+#[wasm_bindgen]
+impl HomogeneousInner {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) {
+        self.0.push(elem);
+    }
+}
+
+impl From<Vec<u64>> for HomogeneousInner {
+    fn from(native: Vec<u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<HomogeneousInner> for Vec<u64> {
+    fn from(wasm: HomogeneousInner) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<u64>> for HomogeneousInner {
+    fn as_ref(&self) -> &Vec<u64> {
+        &self.0
+    }
+}

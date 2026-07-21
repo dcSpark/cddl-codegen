@@ -19,6 +19,10 @@ pub(super) struct DeserializeConfig<'a> {
     read_len_overload: Option<String>,
     /// Override regular deserialization lgoic with a call to this function
     custom_deserialize: Option<String>,
+    /// number of tag levels already crossed on this member name (0 at the field root). Drives the
+    /// `tag`/`tag2`/… encoding-var infix (and the `tag_enc`/`tag_enc2` binding) so stacked tags each
+    /// record their own level's size instead of shadowing. See `tag_encoding_infix`.
+    tag_depth: usize,
 }
 
 impl<'a> DeserializeConfig<'a> {
@@ -31,6 +35,7 @@ impl<'a> DeserializeConfig<'a> {
             deserializer_name_overload: None,
             read_len_overload: None,
             custom_deserialize: None,
+            tag_depth: 0,
         }
     }
 
@@ -65,6 +70,11 @@ impl<'a> DeserializeConfig<'a> {
 
     pub(super) fn optional_field(mut self, is_optional: bool) -> Self {
         self.optional_field = is_optional;
+        self
+    }
+
+    pub(super) fn tag_depth(mut self, tag_depth: usize) -> Self {
+        self.tag_depth = tag_depth;
         self
     }
 
@@ -634,7 +644,7 @@ impl GenerationScope {
         if let Some(custom_deserialize) = &config.custom_deserialize {
             let deser_err_map = if !config.final_exprs.is_empty() {
                 let enc_fields =
-                    encoding_fields_impl(types, config.var_name, serializing_rust_type, cli);
+                    encoding_fields_impl(types, config.var_name, serializing_rust_type, cli, 0);
                 let (closure_args, tuple_fields) = if enc_fields.is_empty() {
                     (config.var_name.to_owned(), "".to_owned())
                 } else {
@@ -2212,6 +2222,17 @@ impl GenerationScope {
                     CBOREncodingOperation::Tagged(tag),
                     child,
                 ) => {
+                    // level (tag_depth + 1) counted outside-in. Stacked mandatory tags NEST these
+                    // `match .tag_sz()` blocks, so an un-suffixed `tag_enc` binding would let the
+                    // inner level shadow the outer and both final exprs would read the innermost
+                    // size. Depth-suffix the binding (`tag_enc` -> `tag_enc2` at level >= 2) so each
+                    // level's `Some(..)` final expr references its own size.
+                    let tag_level = config.tag_depth + 1;
+                    let tag_enc_binding = if tag_level <= 1 {
+                        "tag_enc".to_owned()
+                    } else {
+                        format!("tag_enc{tag_level}")
+                    };
                     if config.optional_field {
                         deser_code.content.line("read_len.read_elems(1)?;");
                         deser_code.read_len_used = true;
@@ -2221,20 +2242,21 @@ impl GenerationScope {
                             "{}match {}.tag_sz()?",
                             before_after.before, deserializer_name
                         ));
-                        config.final_exprs.push("Some(tag_enc)".to_owned());
+                        config.final_exprs.push(format!("Some({tag_enc_binding})"));
                         let some_deser_code = self
                             .generate_deserialize(
                                 types,
                                 *child,
                                 DeserializeBeforeAfter::new("", "", before_after.expects_result),
-                                config.optional_field(false),
+                                config.optional_field(false).tag_depth(tag_level),
                                 cli,
                             )
                             .mark_and_extract_content(&mut deser_code);
                         if let Some(single_line) = some_deser_code.as_single_line() {
-                            tag_check.line(format!("({tag}, tag_enc) => {single_line},"));
+                            tag_check.line(format!("({tag}, {tag_enc_binding}) => {single_line},"));
                         } else {
-                            let mut deser_block = Block::new(format!("({tag}, tag_enc) =>"));
+                            let mut deser_block =
+                                Block::new(format!("({tag}, {tag_enc_binding}) =>"));
                             deser_block.push_all(some_deser_code);
                             deser_block.after(",");
                             tag_check.push_block(deser_block);
@@ -2251,7 +2273,7 @@ impl GenerationScope {
                                 types,
                                 *child,
                                 DeserializeBeforeAfter::new("", "", before_after.expects_result),
-                                config.optional_field(false),
+                                config.optional_field(false).tag_depth(tag_level),
                                 cli,
                             )
                             .mark_and_extract_content(&mut deser_code);
@@ -2284,13 +2306,18 @@ impl GenerationScope {
                     // presence; otherwise record `Untagged`. Then deserialize the child normally.
                     // Mirrors CML's hand impl (chain/rust/src/utils.rs).
                     let var_name = config.var_name;
+                    // level (tag_depth + 1) counted outside-in; the infix keeps the presence-var
+                    // member name in lockstep with `encoding_fields_impl` (`tag` -> `tag2` deeper),
+                    // and the local it binds stays unique across nested levels.
+                    let tag_level = config.tag_depth + 1;
+                    let tag_infix = tag_encoding_infix(tag_level);
                     if config.optional_field {
                         deser_code.content.line("read_len.read_elems(1)?;");
                         deser_code.read_len_used = true;
                     }
                     if cli.preserve_encodings {
                         let mut presence_match = Block::new(format!(
-                            "let {var_name}_tag_encoding = match {deserializer_name}.cbor_type()?"
+                            "let {var_name}_{tag_infix}_encoding = match {deserializer_name}.cbor_type()?"
                         ));
                         let mut tag_arm = Block::new("cbor_event::Type::Tag =>");
                         tag_arm.line(format!(
@@ -2309,7 +2336,9 @@ impl GenerationScope {
                         deser_code.content.push_block(presence_match);
                         // FIRST encoding expr, matching `encoding_fields_impl`'s field order (tag
                         // field, then the child's) — the child recursion appends its own after this.
-                        config.final_exprs.push(format!("{var_name}_tag_encoding"));
+                        config
+                            .final_exprs
+                            .push(format!("{var_name}_{tag_infix}_encoding"));
                     } else {
                         let mut if_tag = Block::new(format!(
                             "if {deserializer_name}.cbor_type()? == cbor_event::Type::Tag"
@@ -2326,7 +2355,7 @@ impl GenerationScope {
                         types,
                         *child,
                         before_after,
-                        config.optional_field(false),
+                        config.optional_field(false).tag_depth(tag_level),
                         cli,
                     )
                     .add_to_code(&mut deser_code);

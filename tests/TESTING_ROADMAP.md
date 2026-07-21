@@ -1118,17 +1118,6 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   - *Inline/anonymous two-arm choices are not recognized.* Recognition lives at the
     `parse_type_choices` named-rule seam, so an inline `[x: #6.258([* uint]) / [* uint]]` stays a
     two-variant enum. Remedy when it bites: run the recognition on anonymous choices too.
-- **Multiple tags on one field collide their encoding vars (pre-existing, not REQUEST-08-specific).**
-  A reference site that adds an OUTER tag over an already-inner-tagged field emits two struct fields
-  both named `<field>_tag_encoding` — `#6.24(#6.258(text))` collides two `Option<cbor_event::Sz>`
-  fields, and `#6.24(<collapsed-set>)` collides an `Option<Sz>` with a `TagPresenceEncoding` — so the
-  encoding struct does not compile under `--preserve-encodings`. Independent of the tag-set feature
-  (the double-tag-on-a-primitive form predates it); surfaced while pinning REQUEST-08's outer-tag
-  PARITY invariant, which holds regardless (generic-instance and non-generic references generate
-  byte-identically — `optional_tag_set_tests::outer_tag_over_instance_matches_non_generic_byte_for_byte`
-  compares the whole `Holder` impl, a source-shape test that does not depend on the collision being
-  fixed). Remedy when a consumer stacks tags on one field: disambiguate the per-tag encoding-var
-  names by depth at the reference site.
 - **Named bytes-element collection aliases generate a wasm wrapper class that fails E0271
   (pre-existing, not REQUEST-08-specific).** A named collection over byte-string elements
   (`Vec<Vec<u8>>` / `NonEmptyVec<Vec<u8>>`) mints a `#[wasm_bindgen]` list-wrapper class exposing the
