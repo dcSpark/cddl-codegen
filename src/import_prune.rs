@@ -10,6 +10,17 @@
 //! references the imported name. [`prune_generated_files`] is the entry point — the driver in
 //! `generated_files` calls it once over the whole file map.
 //!
+//! **The prune runs against FINAL content.** "The generated code references the name" must hold for
+//! the bytes that ship, so `export` calls [`prune_generated_files`] a SECOND time after the
+//! comment-preservation overlay (`comment_preserve`) has been applied to the in-memory file map. A
+//! user `cddl-codegen:replace` block can delete the last reference to an import the freshly-generated
+//! content still justified (e.g. replacing `pub type Mint = OrderedHashMap<…>` with a hand type that
+//! names neither), so the justified set is recomputed against the post-overlay content. The recorded
+//! original under a `:replaces` marker is a `//` comment — trivia, never a token — so it cannot
+//! re-justify the import it removed. This second pass is still the same pure function of the file map,
+//! so it stays deterministic and idempotent (a later run regenerates the same fresh imports, the
+//! overlay re-applies the same blocks, and this pass re-removes the same imports).
+//!
 //! **Module family via the super-glob edge graph.** The unit of analysis for a file F is F plus the
 //! descendants that can actually CONSUME its private imports. A child re-exports the parent's
 //! *private* imports only through `use super::*;` (`serialization.rs` reaches the `BTreeMap` it uses
