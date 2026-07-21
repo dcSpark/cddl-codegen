@@ -683,7 +683,8 @@ composition-space cross-check that complements this matrix's curated per-shape g
   dangling-name bug) plus a planned multi-block replace-overlay workaround spanning the whole
   `Int` surface, retired by routing `Int`/`IntError` through `--common-import-override` — the
   re-export plus the `borrowed_key_types.rs` `int` key-flavor row (pinned by
-  `extern_deps` and `extern_deps_wasm` for the re-export,
+  `extern_deps`, `extern_deps_wasm`, and the pure-consumer cell `common_override_wasm_int` for the
+  re-export,
   `int_key_via_common_import_override_sidecar` and the `int`
   leg of `workspace_key_requests_derive_effect_and_hard_errors` for the flavor channel).
 - **Third honesty axis — flag-gated EMISSION SURFACES × input mode (periodic, same footing as the
