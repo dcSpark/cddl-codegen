@@ -800,7 +800,12 @@ family must update the count and keep the entry in the list whose framing matche
 stage (generation-failure vs layer-2 compile/round-trip). If a count or a mis-homed entry slips
 through review again, fold these counts into `project_status_headers.ts`'s generated-counter
 system (the same mechanism that already generates the status-header counts) instead of adding
-another review rule.
+another review rule. The class is not confined to this doc — one armed instance on record: the
+wasm-ABI shape-family delivery (2026-07-21) grew the multifile skip ledger across three reviewed
+commits while `tests/README.md`'s "Twelve cells" pinned-cell prose (count + enumeration) went
+stale, caught only by a dedicated post-delivery doc audit, not by any of the six per-commit
+reviews. A second such instance in the pinned-cell prose is the trigger to derive that count/list
+from `MULTIFILE_MATRIX_SKIP` itself (a generated span, per this rule) rather than re-auditing.
 
 `verify.ts`'s hard-fail accounting (the `hard_fail` expression) and its console sections are two
 hand-maintained parallel lists, so a category can join the failure verdict without joining the
