@@ -65,6 +65,14 @@ the code that follows it, through the same tiers as a comment. The inserted code
 (`{}`/`()`/`[]`) and is otherwise arbitrary: statements inside a function, an extra field in a
 struct definition, even a whole new item between two generated ones.
 
+Write the tags on their own line; you do not have to keep them there. `rustfmt`'s canonical form
+folds a marker that trails the closing `}` of a match's **last arm** onto that `}` as a trailing
+comment (`} // cddl-codegen:replaces`), and the tool applies `rustfmt` to its own output — so a
+formatted repo commits the folded shape. Both spellings are recognized: the overlay unfolds a
+trailing `cddl-codegen:` marker back to its own line before scanning, so a block whose user section
+ends at a match's tail arm regenerates cleanly whether the file is in the emitted own-line form or
+the `rustfmt`-folded form.
+
 ## Replace blocks — swapping code
 
 A replace block has three sections: your code, the marker `replaces`, and a `//`-commented copy
@@ -124,10 +132,12 @@ closes a delimiter it did not open (or, for a replace block, a user section and 
 whose net delimiter deltas differ), an empty or unlexable recorded original, code lines under
 `replaces` (every line
 there must be `//`-commented), a recorded original spanning multiple top-level items — and *any*
-unrecognized own-line comment starting with `// cddl-codegen:`. That last rule is what keeps the
+unrecognized comment starting with `// cddl-codegen:`. That last rule is what keeps the
 never-silent contract airtight: a typo'd tag can never demote your block to plain text and let
-half of it be clobbered. Fix the tag structure (or pass `--no-preserve-comments` to clobber
-pristine) and re-run.
+half of it be clobbered. It covers the reserved namespace wherever a marker sits, including the
+`rustfmt`-folded trailing position — so a mistyped `} // cddl-codegen:not-a-tag` at a match tail is
+a hard error, not a silently-dropped trailing comment. Fix the tag structure (or pass
+`--no-preserve-comments` to clobber pristine) and re-run.
 
 **Placement failures trap the payload in the output.** When the file regenerates but a comment or
 block can't be safely re-placed, the export succeeds and the affected payload lands at the top of
@@ -150,7 +160,9 @@ lost. The reasons you'll see, and what they mean:
 | `The generated code for …changed, so its recorded original no longer appears (drift)` | the generator now emits different code where your replace block applied | re-review: update your replacement for the new behavior, re-record the new original under `replaces` |
 | `…recorded original is not unique within …` / `…appears more than once…` | the item *also* changed (so the item-identity fast path didn't apply) and the recorded original then matches zero-or-multiple spots ambiguously | include more surrounding lines in the recorded original so it's unique, or re-place by hand |
 | `Its anchor lies inside code replaced by a …replace-start block` | a separate comment/insert block pointed into a span your replace block overrides | move that comment/block inside the replace block |
-| `It is a trailing (end-of-line) comment` | trailing comments aren't carried | move it to its own line |
+| `It is a trailing (end-of-line) comment` | a plain trailing comment (no `cddl-codegen:` tag) can't be carried | move it to its own line |
+
+(A trailing comment that *is* a `cddl-codegen:` marker is unfolded to its own line before scanning, so a well-formed folded block is recognized and an unknown-tag one hits the hard reserved-namespace error above rather than this row.)
 
 ## Guarantees and residual limits
 

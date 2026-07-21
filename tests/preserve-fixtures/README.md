@@ -47,6 +47,7 @@ harness module docs for the byte-for-byte assertion and the three cross-cutting 
 - `insert_adjacent_blocks` — two back-to-back blocks keep their top-to-bottom order.
 - `insert_at_eof` — block with no following code lands at end of file.
 - `insert_crlf` — a CRLF block is placed as clean LF.
+- `insert_rustfmt_folded_tail_marker` — an insert block at a match's tail arm in `rustfmt`'s canonical folded form (`} // cddl-codegen:insert-start`, continuation lines re-indented); the entry unfold recognizes it and places it own-line above the match's closing brace.
 
 ## Replace-block cases
 
@@ -73,6 +74,7 @@ the harness's fixed-point property (`preserve(expected, new) == expected`) exerc
 - `replace_duplicate_fragment_positional` — a balanced fragment appears 3× in one item and a replace block over one occurrence records only that bare (non-unique) fragment; when the item regenerates token-identically the block places by its own position (item-identity fast path), round-tripping byte-identically.
 - `replace_equal_delta_unbalanced_block_round_trips` — the CML CIP36 shape: one item with an insert block declaring a local flag plus three replace blocks, the third a Δ+1 `if flag {` / `if self.vp != 0 {` pair (equal-delta rule), the condition appearing 3× in the item; a pristine regeneration round-trips byte-identically via the item-identity path.
 - `replace_two_occurrences_of_duplicated_fragment` — two replace blocks in one item replace two different occurrences of the same duplicated fragment (identical recorded originals); both place positionally under a token-identical regeneration (impossible under both-sides uniqueness alone).
+- `replace_rustfmt_folded_tail_arm_markers` — a replace block whose user section is a match's tail arm, in `rustfmt`'s canonical folded form (`} // cddl-codegen:replaces`, the recorded-original + `:replace-end` lines re-indented as an aligned block); the entry unfold moves the trailing markers own-line so the arm's `}` stays in the user section, and the block splices verbatim. Pins that the tool's own `rustfmt` pass produces a stable fixed point.
 
 ## Replace-block fail-loudly cases (`compile_error!`, blessed `expected.rs`)
 
@@ -83,6 +85,7 @@ the harness's fixed-point property (`preserve(expected, new) == expected`) exerc
 - `replace_same_key_count_change_fails_loudly` — the same-keyed item count changed, so occurrence matching is unsound.
 - `replace_comment_inside_replaced_span_conflict_fails_loudly` — a plain user comment whose anchor lands strictly inside a replaced byte span (op-composition conflict); the replace still splices, the comment fails loudly.
 - `replace_positional_blocked_by_in_item_drift_fails_loudly` — a duplicated-fragment block whose item ALSO changed (unrelated in-item drift), so the item-identity fast path does not apply and the non-unique needle is trapped in a `compile_error!`.
+- `replace_rustfmt_folded_tail_drift_fails_loudly` — the `rustfmt`-folded tail-arm shape, but the generator's tail arm changed so the recorded original no longer matches; the unfolded block is trapped in a `compile_error!` (folding must not weaken drift detection).
 
 ## Hard-error cases (`error.txt`)
 
@@ -102,3 +105,4 @@ the harness's fixed-point property (`preserve(expected, new) == expected`) exerc
 - `replace_orphaned_end_errors` — `replace-end` with no matching `replace-start`.
 - `replace_nested_blocks_errors` — a `replace-start` nested inside another replace block's user section.
 - `replace_straddles_item_boundary_errors` — a recorded original spanning more than one top-level item.
+- `trailing_unknown_cddl_tag_errors` — a trailing `// cddl-codegen:<unknown-tag>` comment; the entry unfold moves it own-line, so the reserved namespace catches it as a hard error rather than the softer "move it to its own line" trailing-comment trap (never-silent applied uniformly to the folded position).

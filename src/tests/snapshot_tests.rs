@@ -960,6 +960,67 @@ fn rustfmt_rejects_unparseable_source() {
     );
 }
 
+/// The comment-preserve overlay's markers must survive the tool's OWN rustfmt pass. rustfmt folds a
+/// `// cddl-codegen:<tag>` comment trailing the closing `}` of a match's last arm onto that `}` as a
+/// trailing comment, so a `preserve → rustfmt_generated_string → preserve` loop would otherwise write
+/// an on-disk form the next regen's own-line scan gate can't read. This closes that loop end to end:
+/// emit an own-line match-tail replace block, run the tool's EXACT rustfmt pass (folds it on a folding
+/// rustfmt, leaves it own-line otherwise — both spellings parse), then re-run `preserve`; the user
+/// section and recorded original must survive. Robust across rustfmt versions: the acceptance
+/// criterion is only that the rustfmt'd form re-parses, not that it folds.
+#[test]
+fn preserve_markers_survive_rustfmt_fold_roundtrip() {
+    use crate::comment_preserve::preserve;
+    // `old` as codegen+preserve would leave it on disk: an own-line match-tail replace block whose
+    // user section swaps the generated `unknown => return Err(())` tail arm for a lenient skip.
+    let old = "\
+// header
+impl Foo {
+    fn deserialize(&self, key: u8) -> Result<u8, ()> {
+        match key {
+            0 => Ok(key),
+            // cddl-codegen:replace-start
+            unknown => {
+                let _ = unknown;
+                Ok(key)
+            }
+            // cddl-codegen:replaces
+            // unknown => return Err(()),
+            // cddl-codegen:replace-end
+        }
+    }
+}
+";
+    // pristine regen: the generator re-emits the recorded original tail arm.
+    let new = "\
+// header
+impl Foo {
+    fn deserialize(&self, key: u8) -> Result<u8, ()> {
+        match key {
+            0 => Ok(key),
+            unknown => return Err(()),
+        }
+    }
+}
+";
+    // The tool's exact pass: `rustfmt --edition 2024` over the preserved on-disk content.
+    let formatted =
+        crate::generation::rustfmt_generated_string(old).expect("valid Rust must format Ok");
+    // The next regen must re-parse the (possibly folded) on-disk form and re-apply the swap.
+    let merged = preserve(&formatted, new)
+        .expect("the rustfmt'd match-tail replace block must re-parse (fold-tolerant)");
+    assert!(
+        merged.content.contains("let _ = unknown;"),
+        "user section lost across the rustfmt fold round-trip:\n{}",
+        merged.content
+    );
+    assert!(
+        merged.content.contains("// unknown => return Err(()),"),
+        "recorded original lost across the rustfmt fold round-trip:\n{}",
+        merged.content
+    );
+}
+
 /// `generate_tag_check` (the tag check a directly-deserializing tagged type emits) has two arms
 /// selected by `--annotate-fields`. The `annotated=true` arm is exercised end-to-end by the core
 /// `tagged_type_choice` fixture (whole_program snapshot + the wrong-tag behavioral test), but that

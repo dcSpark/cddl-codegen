@@ -37,7 +37,16 @@
 //!
 //! v1 scope is own-line comments (only whitespace before them on their line). A user-added trailing
 //! (end-of-line) comment is detected but not re-placed — it fails loudly with a hint to move it to
-//! its own line — so the never-silent property holds without a trailing-anchor flavor. Trailing
+//! its own line — so the never-silent property holds without a trailing-anchor flavor. One class of
+//! trailing marker is NOT a user typo but rustfmt's own canonical form: a `// cddl-codegen:<tag>`
+//! comment that trails the closing `}` of a match's LAST arm folds onto that `}` as a trailing comment
+//! (`} // cddl-codegen:replaces`, following recorded-original lines re-indented as an aligned block).
+//! The tool's own rustfmt pass writes that shape on any regen that splices a match-tail replace/insert
+//! block, so [`unfold_trailing_markers`] runs at the shared entry of both scan paths ([`preserve`] and
+//! the never-silent harness) and moves any trailing `cddl-codegen:` marker back onto its own line
+//! below the code it trailed — both spellings then parse and the rustfmt'd on-disk form is a stable
+//! fixed point, so "run twice = run once" survives the format step with no consumer `cargo fmt`
+//! needed. Emission is unchanged (own-line everywhere); rustfmt re-folds on write. Trailing
 //! comments whose exact text appears in `new`'s trailing set cancel silently. INVARIANT: the
 //! generator emits NO trailing comment on a row a spec change can delete — such a comment strands on
 //! the deleted row and re-injects as a `compile_error!` trap that carries forward across regens, so
@@ -111,6 +120,12 @@
 //! which errors instead of truncating. So a bare `unpreserved-comment` marker NOT backed by the
 //! `compile_error!` shape is a hard error too (it is a malformed fail-loudly block, not a user
 //! comment), and an orphaned `replaces`/`replace-end` errors rather than degrading to a user comment.
+//! Because [`unfold_trailing_markers`] moves EVERY trailing `cddl-codegen:` marker onto its own line
+//! before the scan, this reservation now covers the rustfmt-folded position uniformly: a trailing
+//! marker with an UNKNOWN tag (`} // cddl-codegen:not-a-real-tag`) becomes the same hard
+//! namespace-reservation error an own-line unknown tag raises, rather than the softer "move it to its
+//! own line" trailing-comment trap it fell to before — never-silent applied in one place regardless of
+//! where rustfmt put the marker.
 //! An INSERT block's user section must have absolutely balanced `{}`/`()`/`[]` (it has no recorded
 //! original to pair against). A REPLACE block instead obeys the DELTA rule: the user section and the
 //! recorded original must each be never-negative (neither closes a delimiter it does not open) and must
@@ -137,6 +152,7 @@
 //! fail-loudly path, never a silent misplacement — so imperfect splitting degrades to item-match
 //! failure, which is loud.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Own-line comment line that marks a fail-loudly block. Matched at the START of a comment's text so
@@ -1324,9 +1340,88 @@ fn reindent_block(old_src: &str, b: &InsertBlock, target_indent: &str) -> String
     reindent_span(old_src, b.byte_start, b.byte_end, target_indent, true)
 }
 
+/// Normalize rustfmt's canonical marker placement back to the own-line form the scanner expects.
+///
+/// rustfmt folds a `// cddl-codegen:<tag>` comment that trails the closing `}` of a match's LAST arm
+/// onto that `}` as a trailing comment (`} // cddl-codegen:replaces`), re-indenting the following
+/// recorded-original / `:replace-end` lines as an aligned continuation block. The tool's own
+/// [`rustfmt_generated_string`](crate::generation::export::rustfmt_generated_string) pass writes that
+/// folded form on any regen that splices a match-tail replace/insert block, so the next regen would
+/// read a marker the own-line scan gate can't see. We unfold at the shared entry of both scan paths
+/// so both spellings parse and the rustfmt'd on-disk form is a stable fixed point.
+///
+/// For every LINE comment that is NOT own-line but IS in the reserved `cddl-codegen:` namespace
+/// (`cddl_tag` matches — block comments can never match, and a namespace lookalike inside a string
+/// literal is inert because the lexer is literal-aware), we insert a newline + the trailing line's
+/// leading indentation immediately before the marker, moving it onto its own line below the code it
+/// trailed. The `}` (or other tail code) it trailed stays on the line above, so it becomes part of the
+/// user section being closed — the same split as if the marker had been emitted own-line.
+///
+/// Returns the normalized text (a borrowed `Cow` when nothing folded — the dominant case) plus, for
+/// each inserted newline, the 1-based line it created in the normalized text, so a `PreserveError`'s
+/// line can be mapped back to the on-disk line via [`map_disk_line`].
+fn unfold_trailing_markers(src: &str) -> Result<(Cow<'_, str>, Vec<usize>), PreserveError> {
+    let lexed = lex(src)?;
+    // Byte offset of each trailing marker's comment start, in source order (comments lex in order).
+    let cuts: Vec<usize> = lexed
+        .comments
+        .iter()
+        .filter(|cm| !cm.own_line && cddl_tag(cm.text).is_some())
+        .map(|cm| cm.start)
+        .collect();
+    if cuts.is_empty() {
+        return Ok((Cow::Borrowed(src), Vec::new()));
+    }
+    let mut out = String::with_capacity(src.len() + cuts.len() * 8);
+    let mut inserted_lines: Vec<usize> = Vec::new();
+    let mut line_count = 0usize; // running count of `\n` emitted into `out`
+    let mut prev = 0usize;
+    for pos in cuts {
+        let chunk = &src[prev..pos];
+        out.push_str(chunk);
+        line_count += chunk.bytes().filter(|&b| b == b'\n').count();
+        out.push('\n');
+        line_count += 1;
+        out.push_str(line_indent(src, pos));
+        // The marker now begins on the line just started (== newlines so far + 1).
+        inserted_lines.push(line_count + 1);
+        prev = pos;
+    }
+    out.push_str(&src[prev..]);
+    Ok((Cow::Owned(out), inserted_lines))
+}
+
+/// Map a 1-based line in the unfolded text back to the on-disk line. Each unfold inserted exactly one
+/// newline (recorded in `inserted_lines` as the normalized line it created), so an on-disk line is the
+/// normalized line minus the count of inserted lines at or before it — a marker moved onto its own new
+/// line maps back to the on-disk line it trailed.
+fn map_disk_line(normalized_line: usize, inserted_lines: &[usize]) -> usize {
+    let shift = inserted_lines
+        .iter()
+        .filter(|&&nl| nl <= normalized_line)
+        .count();
+    normalized_line - shift
+}
+
 /// Overlay the user comments from `old` onto the freshly generated `new`. See the module docs for
 /// the tiered anchoring. Pure: no I/O; output is a function of `(old, new)`.
+///
+/// `old` is first normalized by [`unfold_trailing_markers`] so rustfmt-folded match-tail markers parse
+/// like their own-line spelling; a `PreserveError`'s line is mapped back to the on-disk line here, the
+/// one place that boundary is crossed. `new` (freshly generated) never carries markers, so it is not
+/// normalized.
 pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
+    let (normalized, inserted_lines) = unfold_trailing_markers(old)?;
+    preserve_inner(&normalized, new).map_err(|mut e| {
+        if let Some(l) = e.line {
+            e.line = Some(map_disk_line(l, &inserted_lines));
+        }
+        e
+    })
+}
+
+/// The merge proper, operating on already-unfolded `old`. See [`preserve`].
+fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
     let old_lex = lex(old)?;
     let new_lex = lex(new)?;
 
@@ -2021,6 +2116,11 @@ fn place_replace(
 #[cfg(test)]
 #[allow(dead_code)]
 pub(crate) fn never_silent_units(src: &str) -> Result<Vec<String>, PreserveError> {
+    // Normalize rustfmt-folded match-tail markers exactly as [`preserve`] does at its entry, so a
+    // folded-form fixture's blocks are recognized here too (this drives the harness's never-silent
+    // property; an un-normalized scan would miss the folded block and fail the property).
+    let (src, _) = unfold_trailing_markers(src)?;
+    let src = src.as_ref();
     let lexed = lex(src)?;
     let sentinel = recognize_sentinels(&lexed);
     let scan = scan_blocks(&lexed, &sentinel.sentinel_comment)?;
