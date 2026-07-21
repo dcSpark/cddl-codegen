@@ -22,9 +22,13 @@ fn _assert_serialize<T: cbor_event::se::Serialize>() {}
 #[allow(dead_code)]
 fn _assert_deserialize<T: crate::generated::serialization::Deserialize>() {}
 #[allow(unused_imports)]
+use crate::generated::ElemTagged as _;
+#[allow(unused_imports)]
 use crate::generated::HeterogeneousSet as _;
 #[allow(unused_imports)]
 use crate::generated::HomogeneousInner as _;
+#[allow(unused_imports)]
+use crate::generated::OuterOverArray as _;
 #[allow(dead_code)]
 fn _extern_interface_self_check() {
     _assert_serialize::<crate::generated::Heterogeneous>();

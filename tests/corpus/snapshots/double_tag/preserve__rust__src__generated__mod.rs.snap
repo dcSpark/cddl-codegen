@@ -20,6 +20,8 @@ pub mod serialization;
 
 use cbor_encodings::{HeterogeneousEncoding, HolderEncoding, HomogeneousEncoding};
 
+pub type ElemTagged = Vec<u64>;
+
 #[derive(Clone, Debug)]
 pub struct Heterogeneous {
     pub(crate) inner: Vec<u64>,
@@ -59,14 +61,16 @@ pub type HeterogeneousSet = Vec<u64>;
 pub struct Holder {
     pub h: Homogeneous,
     pub s: Heterogeneous,
+    pub a: OuterOverArray,
     pub encodings: Option<HolderEncoding>,
 }
 
 impl Holder {
-    pub fn new(h: Homogeneous, s: Heterogeneous) -> Self {
+    pub fn new(h: Homogeneous, s: Heterogeneous, a: OuterOverArray) -> Self {
         Self {
             h,
             s,
+            a,
             encodings: None,
         }
     }
@@ -104,3 +108,5 @@ impl From<Homogeneous> for Vec<u64> {
 }
 
 pub type HomogeneousInner = Vec<u64>;
+
+pub type OuterOverArray = Vec<ElemTagged>;

@@ -2276,7 +2276,7 @@ fn size_on_signed_int_rejects_gracefully() {
 /// `TagPresenceEncoding` at level 2) alike.
 #[test]
 fn stacked_tag_encoding_members_are_depth_disambiguated() {
-    fn gen_encodings(spec: &str, tag: &str) -> String {
+    fn gen_file(spec: &str, tag: &str, file: &str) -> String {
         let path = std::env::temp_dir().join(format!(
             "cddl_codegen_stacked_tag_{}_{}.cddl",
             tag,
@@ -2294,10 +2294,12 @@ fn stacked_tag_encoding_members_are_depth_disambiguated() {
         ]);
         let out = crate::api::generated_strings(&cli).unwrap();
         std::fs::remove_file(&path).ok();
-        out.get("rust/src/generated/cbor_encodings.rs")
+        out.get(file)
             .cloned()
-            .expect("preserve-encodings generation must emit a cbor_encodings.rs")
+            .unwrap_or_else(|| panic!("preserve-encodings generation must emit {file}"))
     }
+    let gen_encodings =
+        |spec: &str, tag: &str| gen_file(spec, tag, "rust/src/generated/cbor_encodings.rs");
 
     // The declaration lines inside `pub struct FooEncoding { .. }` — the members that collide.
     fn foo_member_lines(encodings: &str) -> Vec<String> {
@@ -2359,6 +2361,27 @@ fn stacked_tag_encoding_members_are_depth_disambiguated() {
         flavor_b.contains("pub inner_tag2_encoding: TagPresenceEncoding"),
         "heterogeneous inner optional 258 must be level-2 `inner_tag2_encoding: TagPresenceEncoding`; \
          got:\n{flavor_b}"
+    );
+
+    // Flavor C (name-boundary reset): an outer mandatory tag 24 over an ARRAY whose element carries
+    // its own tag 258. The array element starts a fresh `{field}_elem` name namespace, so the
+    // element's tag is LEVEL 1 there (`f_elem_tag_encoding`) even though the field crossed tag 24
+    // outside the array. The serialize-side element config must reset tag depth to 0 at that
+    // boundary — the same reset `encoding_fields_impl` does — or the write reads a depth-inflated
+    // `f_elem_tag2_encoding` the encoding struct never minted (E0425, the generated crate breaks).
+    let flavor_c_ser = gen_file(
+        "t258s = #6.258([* uint])\nfoo = #6.24([* t258s])\nholder = [f: foo]\n",
+        "c",
+        "rust/src/generated/serialization.rs",
+    );
+    assert!(
+        flavor_c_ser.contains("f_elem_tag_encoding"),
+        "the array element's own tag must ride the level-1 `f_elem_tag_encoding` var; got:\n{flavor_c_ser}"
+    );
+    assert!(
+        !flavor_c_ser.contains("f_elem_tag2_encoding"),
+        "the element tag must NOT read a depth-inflated `f_elem_tag2_encoding` (outer-tag depth \
+         must reset at the array-element boundary); got:\n{flavor_c_ser}"
     );
 }
 

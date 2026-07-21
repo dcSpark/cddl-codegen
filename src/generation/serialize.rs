@@ -19,6 +19,16 @@ pub(super) struct SerializeConfig<'a> {
     /// number of tag levels already crossed on this member name (0 at the field root). Drives the
     /// `tag`/`tag2`/… encoding-var infix so stacked tags read their own level's var. See
     /// `tag_encoding_infix`.
+    ///
+    /// INVARIANT: this must stay in lockstep with `encoding_fields_impl`'s own `tag_depth`, which
+    /// MINTS the member names this reads. So a child config must reset it to 0 at EXACTLY the
+    /// recursion boundaries where `encoding_fields_impl` resets to 0 — the array element, the map
+    /// key, the map value, and the CStyleEnum variant hand-off (which routes through the
+    /// `encoding_fields` wrapper, i.e. reset) — and must THREAD it (unchanged, or +1 at a tag) where
+    /// `encoding_fields_impl` threads: the Fixed conversions, Alias, Optional, the CBORBytes child,
+    /// and the Tagged/OptionallyTagged child (at level+1). A child built by cloning the parent config
+    /// across a name boundary WITHOUT the reset leaks the parent's depth, so serialize reads
+    /// `{elem}_tag2_encoding` while the struct only minted `{elem}_tag_encoding` (E0425).
     tag_depth: usize,
 }
 
@@ -905,7 +915,10 @@ impl GenerationScope {
                                     types,
                                     (variant.rust_type()).into(),
                                     &mut variant_match,
-                                    config.clone().is_end(true),
+                                    // the CStyleEnum variant hand-off resets tag depth to 0 to match
+                                    // `encoding_fields_impl` (which recurses the variant through the
+                                    // `encoding_fields` wrapper, i.e. reset).
+                                    config.clone().is_end(true).tag_depth(0),
                                     cli,
                                 );
                                 enum_body.push_block(variant_match);
@@ -1005,7 +1018,11 @@ impl GenerationScope {
                         .var_name(elem_var_name)
                         .is_end(false)
                         .encoding_var_no_option_struct()
-                        .encoding_var_is_ref(false);
+                        .encoding_var_is_ref(false)
+                        // fresh `{name}_elem` name namespace: reset tag depth to 0 to match
+                        // `encoding_fields_impl`'s array-element reset (else the element's own tag
+                        // reads a depth-inflated var the struct never minted).
+                        .tag_depth(0);
                     self.generate_serialize(
                         types,
                         (&**ty).into(),
@@ -1169,7 +1186,10 @@ impl GenerationScope {
                                 .var_name(format!("{}_key", config.var_name))
                                 .is_end(false)
                                 .encoding_var_no_option_struct()
-                                .encoding_var_is_ref(false);
+                                .encoding_var_is_ref(false)
+                                // fresh `{name}_key` namespace: reset tag depth to match
+                                // `encoding_fields_impl`'s map-key reset.
+                                .tag_depth(0);
                             self.generate_serialize(
                                 types,
                                 (&**key).into(),
@@ -1193,7 +1213,10 @@ impl GenerationScope {
                             .var_name(format!("{}_value", config.var_name))
                             .is_end(false)
                             .encoding_var_no_option_struct()
-                            .encoding_var_is_ref(false);
+                            .encoding_var_is_ref(false)
+                            // fresh `{name}_value` namespace: reset tag depth to match
+                            // `encoding_fields_impl`'s map-value reset.
+                            .tag_depth(0);
                         self.generate_serialize(
                             types,
                             (&**value).into(),
@@ -1212,11 +1235,15 @@ impl GenerationScope {
                             .var_name(format!("{}_key", config.var_name))
                             .is_end(false)
                             .encoding_var_no_option_struct()
-                            .encoding_var_is_ref(false);
+                            .encoding_var_is_ref(false)
+                            // fresh `{name}_key` namespace: reset tag depth (as above).
+                            .tag_depth(0);
                         let value_config = key_config
                             .clone()
                             .expr("value")
-                            .var_name(format!("{}_value", config.var_name));
+                            // `{name}_value` namespace; key_config already reset, kept explicit.
+                            .var_name(format!("{}_value", config.var_name))
+                            .tag_depth(0);
                         self.generate_serialize(
                             types,
                             (&**key).into(),
