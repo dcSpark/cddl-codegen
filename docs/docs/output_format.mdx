@@ -266,7 +266,10 @@ halves so your hand edits to the crate root survive regeneration:
 
 - **Tool-owned: `src/generated/**` (clobbered every run).** All generated code lives here —
   `generated/mod.rs` (the type definitions + module decls + generator crate attrs like
-  `#![allow(clippy::too_many_arguments)]` as inner attrs), `generated/serialization.rs`, per-scope
+  `#![allow(clippy::too_many_arguments, clippy::large_enum_variant, clippy::result_large_err)]` as
+  inner attrs — the latter two silence lints intrinsic to the emitted shape: CDDL choices become
+  enums with wildly asymmetric variant sizes, and fallible APIs return a `Result` over the static
+  `DeserializeError`), `generated/serialization.rs`, per-scope
   submodules, the copied runtime modules (`error.rs`, `ordered_hash_map.rs`), and — when any rule
   carries [`@used_as_key`](./comment_dsl) — `key_demand_assertions.rs`. (Under
   [`--common-import-override`](./command_line_flags) the runtime modules are
