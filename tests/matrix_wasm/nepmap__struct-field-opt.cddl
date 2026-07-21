@@ -1,0 +1,3 @@
+; cell: nepmap x struct-field-opt
+npm = { + uint => text } ; @duplicates preserve
+holder = [pre: uint, ? field0: npm]

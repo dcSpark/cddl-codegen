@@ -1,0 +1,3 @@
+; cell: pmap x struct-field-opt
+pm = { * uint => text } ; @duplicates preserve
+holder = [pre: uint, ? field0: pm]

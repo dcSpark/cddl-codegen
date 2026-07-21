@@ -1,0 +1,3 @@
+; cell: nepmapa x struct-field
+neptbl<k0, v0> = { + k0 => v0 } ; @duplicates preserve
+holder = [field0: neptbl<uint, text>]

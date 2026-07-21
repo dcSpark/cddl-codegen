@@ -1,0 +1,3 @@
+; cell: nepmap x newtype-inner
+npm = { + uint => text } ; @duplicates preserve
+holder = npm ; @newtype

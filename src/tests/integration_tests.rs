@@ -348,6 +348,42 @@ const MULTIFILE_MATRIX_SKIP: &[(&str, &[&str], &str)] = &[
         "E0425: as nemap__named — `Mp::try_from` names the root-minted loose `MapU64ToText` bare from \
          module `a` (cddl-matrix/ROADMAP.md § findings)",
     ),
+    // The `@duplicates preserve` RESTRICTED `{+}` NonEmptyPairMap wrappers reach the SAME
+    // structural-wrapper ROOT_SCOPE class as `nemap`: `try_from(&MapU64ToText)` names the root-minted
+    // loose pair-map builder bare from a non-root module (E0425). `nepmap` is a NAMED `{+}` rule (its
+    // `Npm` wrapper lives in module `a`), so all three modes red — exactly like `nemap`. `nepmapa` is
+    // an anon INSTANCE: only `aliased` red (the alias-base mint walk drops the loose-builder import),
+    // while `named` (field-driven `mark_refs` imports it) and `unref` (no wrapper materialized) are
+    // green — so only its `aliased` cell is pinned.
+    (
+        "nepmap__aliased",
+        &["E0425"],
+        "E0425: as nepmap__named — module `a`'s `Npm::try_from` names the root-minted loose \
+         `MapU64ToText` pair-map builder bare, red regardless of the aliasing module `b` — the \
+         pair-map manifestation of the structural-wrapper ROOT_SCOPE class (cddl-matrix/ROADMAP.md \
+         § findings)",
+    ),
+    (
+        "nepmap__named",
+        &["E0425"],
+        "E0425: the restricted `Npm::try_from(&MapU64ToText)` references the root-minted loose \
+         pair-map builder bare from module `a` — the `@duplicates preserve` twin of nemap__named \
+         (cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
+        "nepmap__unref",
+        &["E0425"],
+        "E0425: as nepmap__named — `Npm::try_from` names the root-minted loose `MapU64ToText` bare from \
+         module `a` (cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
+        "nepmapa__aliased",
+        &["E0425"],
+        "E0425: the anon-instance restricted wrapper's `try_from(&MapU64ToText)` is minted in the \
+         aliasing module `b` (`bal = neptbl<uint, text>`) without the loose-builder import — the \
+         alias-base mint walk drops it (the field-driven `named` mode imports it, so nepmapa__named is \
+         green). Same structural-wrapper ROOT_SCOPE class (cddl-matrix/ROADMAP.md § findings)",
+    ),
 ];
 
 /// Per-profile round-trip skips for `wasm_matrix_roundtrips` ONLY (never consulted by
@@ -449,6 +485,33 @@ const MULTIFILE_ROUNDTRIP_SKIP: &[(&str, &str)] = &[
         "nemap__unref",
         "wasm crate never compiles: as nemap__named (E0425 class pinned by MULTIFILE_MATRIX_SKIP; \
          cddl-matrix/ROADMAP.md § findings)",
+    ),
+    // The `@duplicates preserve` restricted NonEmptyPairMap wrappers hit the same structural-wrapper
+    // ROOT_SCOPE class as nemap (E0425, pinned by MULTIFILE_MATRIX_SKIP), so their wasm crate never
+    // compiles and `cargo test` can never go green. `nepmapa`'s `named`/`unref` cells compile+round-trip
+    // (only its `aliased` cell is red), so they are NOT listed.
+    (
+        "nepmap__aliased",
+        "wasm crate never compiles: module `a`'s `Npm::try_from` names the root-minted loose \
+         `MapU64ToText` bare, red regardless of the aliasing module `b` (E0425 class pinned by \
+         MULTIFILE_MATRIX_SKIP; cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
+        "nepmap__named",
+        "wasm crate never compiles: restricted `Npm::try_from(&MapU64ToText)` references the \
+         root-minted loose pair-map builder bare from module `a` (E0425 class pinned by \
+         MULTIFILE_MATRIX_SKIP; cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
+        "nepmap__unref",
+        "wasm crate never compiles: as nepmap__named (E0425 class pinned by MULTIFILE_MATRIX_SKIP; \
+         cddl-matrix/ROADMAP.md § findings)",
+    ),
+    (
+        "nepmapa__aliased",
+        "wasm crate never compiles: the anon-instance restricted wrapper minted in the aliasing \
+         module `b` names the root-minted loose `MapU64ToText` bare (E0425 class pinned by \
+         MULTIFILE_MATRIX_SKIP; cddl-matrix/ROADMAP.md § findings)",
     ),
 ];
 

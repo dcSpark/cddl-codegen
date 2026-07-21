@@ -1,0 +1,3 @@
+; cell: pmap x map-value
+pm = { * uint => text } ; @duplicates preserve
+holder = { * uint => pm }

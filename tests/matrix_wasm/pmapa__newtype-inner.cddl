@@ -1,0 +1,3 @@
+; cell: pmapa x newtype-inner
+ptbl<k0, v0> = { * k0 => v0 } ; @duplicates preserve
+holder = ptbl<uint, text> ; @newtype

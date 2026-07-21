@@ -1,0 +1,2 @@
+; cell: nepmapa x aliased (reference from module b)
+bal = neptbl<uint, text>

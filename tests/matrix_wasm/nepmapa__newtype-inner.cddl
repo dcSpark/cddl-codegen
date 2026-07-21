@@ -1,0 +1,3 @@
+; cell: nepmapa x newtype-inner
+neptbl<k0, v0> = { + k0 => v0 } ; @duplicates preserve
+holder = neptbl<uint, text> ; @newtype

@@ -278,6 +278,14 @@ are ledgered here (that's what the probe/gate error messages point at).
     `try_from(Vec)` needs no loose twin) dangles on the ANON path: the anonymous `[+ uint]` dedups to
     the named rule in the shape's module but the cross-module import is not emitted (`named`/`unref`
     stay green). The same Array-arm owner-resolution fix covers all three shapes.
+  - `nepmap__{aliased,named,unref}` / `nepmapa__aliased` — the `@duplicates preserve` manifestation:
+    the restricted `NonEmptyPairMap` wrapper's `try_from(&MapU64ToText)` names the root-minted loose
+    PAIR-MAP builder (`codegen_table_type(preserve_pair_map: true)` mints it as `MapU64ToText`, aliased
+    to the loose rule wrapper) bare from a non-root module — the pair-map twin of the `nemap` map arm.
+    `nepmap` is a NAMED `{+}` rule, so its `Npm` wrapper lives in module `a` and all three modes red,
+    as with `nemap`. `nepmapa` is an anon INSTANCE, so only its `aliased` cell red (the alias-base mint
+    walk drops the loose-builder import; the field-driven `named` mode imports it and `unref`
+    materializes no wrapper). Same Array-/map-arm owner-resolution fix.
 - Mixed struct+table maps (`{ a: uint, * k => v }`) unsupported — a map is detected as EITHER a struct or a
   homogenous table, never both. Inline anonymous nested composites need a name.
 - **Real bounded `?` / `n*m` table cardinality is a candidate feature.** A count-permitting occurrence
@@ -631,23 +639,6 @@ annotations (`verify.ts`'s default-on `--wasm` probe); the recombination fuzzer'
 (`recombination_wasm_crates_check`, `tests/README.md` § "Shape-recombination fuzzer") is the
 composition-space cross-check that complements this matrix's curated per-shape grid. What remains:
 
-- **OWED by the same shape-addition rule: the `@duplicates preserve` pair-map wrapper ABI class.**
-  The mirror of the reject class, one boundary over. A preserve table's pair-map twins
-  (`PairMap`/`NonEmptyPairMap`) cross the wasm boundary as a two-wrapper pair: the loose `{*}`
-  `PairMap` wrapper is the builder, exposing the ordinary map surface (`new`/`insert`/`get`/`keys`/
-  `len`) except `insert(key, value)` **APPENDS** and returns `Option<V>` (never throws, never rejects
-  — the opposite of the reject set's fallible `add`); the `{+}` `NonEmptyPairMap` wrapper is the
-  restricted door (`try_from(&Map<K>To<V>) -> Result<_, JsError>` for the min-1 check). Anonymous
-  generic table instances lower to the structural keyed wrapper recovering the pair-map flavor from
-  the shape; no `SHAPES` entry was added, so this appending-`insert` ABI class is silent-green rather
-  than gated. Candidate entries: the preserve pair-map wrapper in both its loose (`{*}`) and
-  non-empty-restricted (`{+}`) flavors, named-rule and anonymous-instance, swept across the existing
-  `ROLES`. Interim pins until enumerated (per-fixture/in-process, not the per-role grid):
-  `tests/core`'s `wasm_preserve_pair_map_insert_appends` (the appending-insert wasm surface),
-  `duplicates_preserve_nonempty_table_lowers_to_twin_under_wasm` (the `{+}` NonEmptyPairMap wrapper),
-  `generic_preserve_table_instance_lowers_to_pair_map_under_wasm` (the anonymous-instance flavor), and
-  `duplicates_preserve_pair_map_shape_collision_rejects_gracefully` (the structural-collision detector)
-  in `src/tests/robustness_tests.rs`.
 - **Keep BOTH matrix axes honest (periodic).** Grid coverage equals the hand-curated `SHAPES` ×
   `ROLES` lists in `project_wasm_matrix.ts` — and a hole in *either* axis is silent, not a red cell. A
   wasm representation not in `SHAPES` is an un-gated shape; equally, an emitter path that places types

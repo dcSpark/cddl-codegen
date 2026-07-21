@@ -1,0 +1,3 @@
+; cell: nepmapa x map-key
+neptbl<k0, v0> = { + k0 => v0 } ; @duplicates preserve
+holder = { * neptbl<uint, text> => uint }

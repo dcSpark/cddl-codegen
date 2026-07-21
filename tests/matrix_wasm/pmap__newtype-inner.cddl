@@ -1,0 +1,3 @@
+; cell: pmap x newtype-inner
+pm = { * uint => text } ; @duplicates preserve
+holder = pm ; @newtype

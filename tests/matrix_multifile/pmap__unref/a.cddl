@@ -1,0 +1,2 @@
+; cell: pmap x unref (shape defs, module a)
+pm = { * uint => text } ; @duplicates preserve
