@@ -149,6 +149,16 @@ desc = "On a _CDDL_CODEGEN_EXTERN_TYPE_ generic, makes instances whose argument 
 example = "ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_ ; @raw_bytes_flavor"
 
 [[feature]]
+id = "dsl.copy"
+production = "comment_dsl"
+alt = "@copy"
+rfc = "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@copy; src/comment_ast.rs"
+profile = "CDDL_CODEGEN"
+title = "@copy — extern/raw-bytes type derives Copy, drop boundary clones"
+desc = "On a _CDDL_CODEGEN_EXTERN_TYPE_ or _CDDL_CODEGEN_RAW_BYTES_TYPE_ rule, declares that the externally-defined rust type derives Copy, so the generator stops emitting a defensive .clone() at boundaries that move the value (map-key deserialize loops, wasm getters/accessors). The declaring crate emits a compile-time Copy assertion for the type, so a false @copy fails that crate's own build. Rides the extern-interface seam like @raw_bytes_flavor, so --extern-import consumers inherit it. The wasm face (a distinct wrapper) is not Copy, so the wasm->rust boundary keeps its clone."
+example = "hash = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @copy"
+
+[[feature]]
 id = "dsl.duplicates.reject"
 production = "comment_dsl"
 alt = "@duplicates reject"

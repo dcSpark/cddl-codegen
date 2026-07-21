@@ -706,6 +706,10 @@
       "reason": "duplicate rule names (choice-extension / redefinition)"
     },
     {
+      "feature": "dsl.copy",
+      "reason": "DSL comment in root RHS; not a clean reusable expression"
+    },
+    {
       "feature": "dsl.custom_deserialize",
       "reason": "DSL comment in an auxiliary rule (may reference user-supplied code); not self-contained"
     },

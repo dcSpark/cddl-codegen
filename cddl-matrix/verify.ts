@@ -93,6 +93,7 @@ const COMPILE_GATE_EXEMPT: Record<string, string> = {
   "dsl.custom_serialize": "references a user-provided serialize fn; integration-tested in tests/custom_serialization",
   "dsl.custom_deserialize": "references a user-provided deserialize fn; integration-tested in tests/custom_serialization",
   "dsl.raw_bytes_flavor": "references user-provided extern wrapper flavors; integration-tested in tests/extern-generic-raw-bytes",
+  "dsl.copy": "references a user-provided Copy extern/raw-bytes type; integration-tested in tests/corpus/dsl_copy.cddl + the clippy-consumer-report scratch e2e",
   "dsl.rust_name":
     "pins a dependency-crate type name, so the generated `use extern_dep::…` cannot compile standalone; integration-tested in src/tests/rust_name_tests.rs and the extern_import byte-identity pair",
 };

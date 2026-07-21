@@ -209,6 +209,21 @@
       {
         "emission": {
           "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (references a user-provided Copy extern/raw-bytes type; integration-tested in tests/corpus/dsl_copy.cddl)",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; standalone-compile N/A (references a user-provided Copy extern/raw-bytes type; integration-tested in tests/corpus/dsl_copy.cddl)",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; standalone-compile N/A (references a user-provided Copy extern/raw-bytes type; integration-tested in tests/corpus/dsl_copy.cddl + the scratch e2e in the clippy-consumer-report delivery); wasm standalone-test N/A (user-supplied code); no committed decode vectors (see catalog); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "id": "dsl.copy",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
             "evidence": "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (pins a dependency-crate type name, so the generated `use extern_dep::…` cannot compile standalone; integration-tested in src/tests/rust_name_tests.rs and the extern_import byte-identity pair)",
             "status": "supported"
           },
@@ -4320,6 +4335,16 @@
       "profile": "CDDL_CODEGEN",
       "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@raw_bytes_flavor; src/comment_ast.rs",
       "title": "@raw_bytes_flavor — extern generic raw-bytes wrapper flavor"
+    },
+    {
+      "alt": "@copy",
+      "desc": "On a _CDDL_CODEGEN_EXTERN_TYPE_ or _CDDL_CODEGEN_RAW_BYTES_TYPE_ rule, declares that the externally-defined rust type derives Copy, so the generator stops emitting a defensive .clone() at boundaries that move the value (map-key deserialize loops, wasm getters/accessors). The declaring crate emits a compile-time Copy assertion for the type, so a false @copy fails that crate's own build. Rides the extern-interface seam like @raw_bytes_flavor, so --extern-import consumers inherit it. The wasm face (a distinct wrapper) is not Copy, so the wasm->rust boundary keeps its clone.",
+      "example": "hash = _CDDL_CODEGEN_RAW_BYTES_TYPE_ ; @copy",
+      "id": "dsl.copy",
+      "production": "comment_dsl",
+      "profile": "CDDL_CODEGEN",
+      "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@copy; src/comment_ast.rs",
+      "title": "@copy — extern/raw-bytes type derives Copy, drop boundary clones"
     },
     {
       "alt": "@duplicates reject",

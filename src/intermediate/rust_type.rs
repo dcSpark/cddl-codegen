@@ -1351,7 +1351,11 @@ impl ConceptualRustType {
         expr: &str,
         can_fail: bool,
     ) -> Vec<ToWasmBoundaryOperations> {
-        let expr_cloned = if self.is_copy(types) {
+        // WASM face: `expr` here holds the value on the WASM side (crossing INTO rust), so the clone
+        // decision is `is_wasm_copy`, NOT `is_copy`. A `@copy` extern is rust-Copy but its wasm face
+        // is a non-Copy wrapper, so its `.clone()` MUST stay (dropping it here would move out of a
+        // borrowed wasm value — E0507).
+        let expr_cloned = if self.is_wasm_copy(types) {
             expr.to_owned()
         } else {
             format!("{expr}.clone()")
@@ -1512,6 +1516,16 @@ impl ConceptualRustType {
             Self::Rust(ident) => {
                 if types.is_enum(ident) {
                     primitive_impl()
+                } else if self.is_copy(types) {
+                    // A `@copy` extern: rust-Copy but wasm-wrapped. Drop the defensive `.clone()`
+                    // (the value copies), keep the `.into()` to the wasm wrapper. `(*expr).into()`
+                    // when the binding is a reference (enum-variant match accessors — report site 3),
+                    // else `expr.into()` (record/wrapper getters, list indexed getter).
+                    if is_ref {
+                        format!("(*{expr}).into()")
+                    } else {
+                        format!("{expr}.into()")
+                    }
                 } else {
                     format!("{expr}.clone().into()")
                 }
@@ -1540,7 +1554,11 @@ impl ConceptualRustType {
                 // `.into()` into its wrapper. `is_copy` handles the alias without the `is_enum`
                 // precondition (which panics on pure type-aliases that are neither struct nor generic).
                 AliasIdent::Rust(_) => {
-                    if self.is_copy(types) {
+                    // `is_wasm_copy`, not `is_copy`: `primitive_impl` emits the value with NO
+                    // `.into()`, correct only when the wasm face IS the rust type (a c-style-enum or
+                    // primitive alias). A `@copy` extern alias is rust-Copy but wasm-wrapped, so it
+                    // needs the `.into()` — it falls through to the `.clone().into()` arm below.
+                    if self.is_wasm_copy(types) {
                         primitive_impl()
                     } else if matches!(&**ty, Self::Optional(_)) {
                         // An alias of an optional (`x = inner / null`) is exposed transparently as
@@ -1567,12 +1585,22 @@ impl ConceptualRustType {
     ) -> String {
         if self.directly_wasm_exposable_ct(types) {
             self.to_wasm_boundary(types, expr, is_ref)
+        } else if self.is_copy(types) {
+            // A `@copy` extern in an `Option<T>` field: `Option<T>` is itself Copy (T: Copy), so the
+            // `.map` consumes it by copy — drop the `.clone()` (clippy::clone_on_copy — report
+            // site 2). The `.into()` to the wasm wrapper still runs per element.
+            format!("{expr}.map(std::convert::Into::into)")
         } else {
             format!("{expr}.clone().map(std::convert::Into::into)")
         }
     }
 
     // if it impements the Copy trait in rust
+    //
+    // This is the RUST-face question. A `Rust(ident)` is Copy when it is a c-style enum (a plain
+    // fieldless rust enum) OR an extern / raw-bytes type declared `@copy` (its hand-written rust type
+    // derives Copy). Note the wasm face of a `@copy` extern is a distinct `#[wasm_bindgen]` wrapper
+    // that is NOT Copy — wasm-side clone decisions must use `is_wasm_copy`, not this.
     pub fn is_copy(&self, types: &IntermediateTypes) -> bool {
         match self {
             Self::Fixed(_f) => unreachable!(),
@@ -1591,11 +1619,28 @@ impl ConceptualRustType {
                 | Primitive::U64 => true,
                 Primitive::Str | Primitive::Bytes => false,
             },
-            Self::Rust(ident) => types.is_enum(ident),
+            Self::Rust(ident) => types.is_enum(ident) || types.is_copy_extern(ident),
             Self::Array(_) => false,
             Self::Map(_k, _v) => false,
             Self::Optional(ty) => ty.conceptual_type.is_copy(types),
             Self::Alias(_ident, ty) => ty.is_copy(types),
+        }
+    }
+
+    /// Whether the WASM face of this type is Copy. This differs from [`is_copy`] (the rust face) at
+    /// exactly one shape: a `@copy` extern / raw-bytes type, whose rust type derives Copy but whose
+    /// wasm face is a distinct `#[wasm_bindgen]` wrapper struct (Clone, never Copy). Every OTHER Copy
+    /// shape — primitives, c-style enums (`pub use`-re-exported so wasm face IS the rust type) — is
+    /// Copy on both faces, so `is_wasm_copy == is_copy` there. Wasm-side clone/`.copied()` decisions
+    /// on a value whose type is the wasm wrapper (e.g. `from_wasm_boundary_clone`) use THIS, so a
+    /// `@copy` extern still clones its wasm wrapper across the wasm→rust boundary.
+    pub fn is_wasm_copy(&self, types: &IntermediateTypes) -> bool {
+        match self {
+            Self::Rust(ident) => types.is_enum(ident),
+            Self::Optional(ty) => ty.conceptual_type.is_wasm_copy(types),
+            Self::Alias(_ident, ty) => ty.is_wasm_copy(types),
+            // Every non-`Rust` shape is Copy on both faces iff it is Copy at all.
+            _ => self.is_copy(types),
         }
     }
 

@@ -794,6 +794,11 @@ fn project_extern_interface(
                 if types.raw_bytes_flavor().contains(ident) {
                     annotations.push("@raw_bytes_flavor".to_string());
                 }
+                // `@copy` travels verbatim so a `--extern-import` consumer inherits the Copy-ness and
+                // drops the same boundary clones (mirrors `@raw_bytes_flavor`).
+                if types.is_copy_extern(ident) {
+                    annotations.push("@copy".to_string());
+                }
                 let check = if generic_bases.contains(ident) {
                     ExternCheckKind::None
                 } else {
@@ -808,15 +813,22 @@ fn project_extern_interface(
                     check,
                 )
             }
-            // A raw-bytes type is opaque behind its own marker.
-            RustStructType::RawBytesType => (
-                Ok((
-                    crate::parsing::RAW_BYTES_MARKER.to_string(),
-                    Vec::new(),
-                    BTreeSet::new(),
-                )),
-                ExternCheckKind::RawBytes,
-            ),
+            // A raw-bytes type is opaque behind its own marker. `@copy` travels verbatim (mirrors the
+            // extern arm) so a `--extern-import` consumer inherits the Copy-ness.
+            RustStructType::RawBytesType => {
+                let mut annotations = Vec::new();
+                if types.is_copy_extern(ident) {
+                    annotations.push("@copy".to_string());
+                }
+                (
+                    Ok((
+                        crate::parsing::RAW_BYTES_MARKER.to_string(),
+                        annotations,
+                        BTreeSet::new(),
+                    )),
+                    ExternCheckKind::RawBytes,
+                )
+            }
             // Named collections: transparent. The rust surface is a `pub type`, so spelling it opaque
             // would violate the fidelity contract — render the registered transparent alias body and
             // collect the rule idents it references for the closure. The self-check is a `use`

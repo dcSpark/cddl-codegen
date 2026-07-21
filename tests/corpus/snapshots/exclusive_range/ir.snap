@@ -54,6 +54,7 @@ expression: ir
                             no_alias: false,
                             key_demand: None,
                             used_as_elem: false,
+                            copy: false,
                             raw_bytes_flavor: false,
                             duplicates: None,
                             custom_json: false,

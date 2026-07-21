@@ -418,6 +418,15 @@ fn parse_type_choices(
                  whose argument is a {RAW_BYTES_MARKER} type. Remove it from this rule."
             ));
         }
+        // A multi-choice type rule can never be an extern / raw-bytes marker, so `@copy` cannot apply
+        // here — reject loudly rather than silently ignore it.
+        if rule_metadata.copy {
+            types.record_rejection(format!(
+                "@copy on `{name}`: this tag is only valid on a {EXTERN_MARKER} or \
+                 {RAW_BYTES_MARKER} rule — it declares that the externally-defined rust type derives \
+                 `Copy` so the generator stops cloning it at boundaries. Remove it from this rule."
+            ));
+        }
         handle_rust_name_pin(types, name, &rule_metadata);
         let variants = create_variants_from_type_choices(types, parent_visitor, type_choices, cli);
         // Transparent tag-set collapse: a bare (no OUTER tag) two-arm choice differing only in tag
@@ -1127,11 +1136,25 @@ fn parse_type(
         &type1.type2,
         Type2::Typename { ident, .. } if ident.ident == EXTERN_MARKER
     );
+    let is_raw_bytes_marker = matches!(
+        &type1.type2,
+        Type2::Typename { ident, .. } if ident.ident == RAW_BYTES_MARKER
+    );
     if rule_metadata.raw_bytes_flavor && !is_extern_marker {
         types.record_rejection(format!(
             "@raw_bytes_flavor on `{type_name}`: this tag is only valid on a {EXTERN_MARKER} \
              rule — it selects the `<ExternName>RawBytes` wrapper flavor for generic instances \
              whose argument is a {RAW_BYTES_MARKER} type. Remove it from this rule."
+        ));
+    }
+    // `@copy` is valid ONLY on a `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule
+    // (the marker branches below record it). Anywhere else it would silently do nothing, so reject
+    // loudly here in the house style of the other comment-DSL misuse rejections.
+    if rule_metadata.copy && !is_extern_marker && !is_raw_bytes_marker {
+        types.record_rejection(format!(
+            "@copy on `{type_name}`: this tag is only valid on a {EXTERN_MARKER} or \
+             {RAW_BYTES_MARKER} rule — it declares that the externally-defined rust type derives \
+             `Copy` so the generator stops cloning it at boundaries. Remove it from this rule."
         ));
     }
     // `@duplicates` is a collection concept. A `Map`/`Array` body (and a tag-head / parenthesized
@@ -1174,12 +1197,18 @@ fn parse_type(
                 if rule_metadata.raw_bytes_flavor {
                     types.mark_raw_bytes_flavor(type_name.clone());
                 }
+                if rule_metadata.copy {
+                    types.mark_copy_extern(type_name.clone());
+                }
             } else if ident.ident == RAW_BYTES_MARKER {
                 types.register_rust_struct(
                     parent_visitor,
                     RustStruct::new_raw_bytes(type_name.clone()),
                     cli,
                 );
+                if rule_metadata.copy {
+                    types.mark_copy_extern(type_name.clone());
+                }
             } else {
                 // Note: this handles bool constants too, since we apply the type aliases and they resolve
                 // and there's no Type2::BooleanValue
@@ -2957,6 +2986,19 @@ fn parse_record_from_group_choice(
                     "@raw_bytes_flavor on field `{field_name}` of rule `{source_name}`: this tag \
                      is only valid on a {EXTERN_MARKER} rule definition, not a field. Remove it \
                      from this entry."
+                ));
+            }
+            // `@copy` only applies to a `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_`
+            // rule definition, never a field/member position — reject loudly instead of ignoring it.
+            if rule_metadata.copy {
+                let source_name = types
+                    .source_rule_name(name)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| name.to_string());
+                types.record_rejection(format!(
+                    "@copy on field `{field_name}` of rule `{source_name}`: this tag is only valid \
+                     on a {EXTERN_MARKER} or {RAW_BYTES_MARKER} rule definition, not a field. \
+                     Remove it from this entry."
                 ));
             }
             // `@duplicates` is per-rule and never applies at a field/member position — reject loudly

@@ -81,6 +81,15 @@ pub struct RuleMetadata {
     /// rule's type as if the spec contained an inline `[* foo]` usage, so a downstream crate can
     /// import the canonical wrapper class from THIS crate. See `IntermediateTypes::mark_used_as_elem`.
     pub used_as_elem: bool,
+    /// `@copy`: valid ONLY on a `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule.
+    /// Declares that the referenced (externally-defined) rust type derives `Copy`, so the generator
+    /// stops emitting a defensive `.clone()` at every boundary that moves the value (map-key
+    /// deserialize loops, wasm getters/accessors). The declaring crate emits a compile-time `Copy`
+    /// assertion for the type (see `export.rs`), so a false `@copy` fails THAT crate's own build with
+    /// a named error — never a distant consumer's. Rides the extern-interface seam like
+    /// `@raw_bytes_flavor`, so `--extern-import` consumers inherit it. On any other placement it is a
+    /// graceful parse-time rejection (never silently ignored). See `IntermediateTypes::is_copy_extern`.
+    pub copy: bool,
     /// `@raw_bytes_flavor`: valid ONLY on a `_CDDL_CODEGEN_EXTERN_TYPE_` generic rule. When a
     /// generic instance of the tagged extern has any argument that resolves to a
     /// `_CDDL_CODEGEN_RAW_BYTES_TYPE_`, the monomorphized alias references the convention-named
@@ -122,6 +131,7 @@ pub fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
         no_alias: r1.no_alias || r2.no_alias,
         key_demand: merge_key_demand(r1.key_demand, r2.key_demand),
         used_as_elem: r1.used_as_elem || r2.used_as_elem,
+        copy: r1.copy || r2.copy,
         raw_bytes_flavor: r1.raw_bytes_flavor || r2.raw_bytes_flavor,
         duplicates: merge_metadata_fields!(r1.duplicates, r2.duplicates, "duplicates"),
         custom_json: r1.custom_json || r2.custom_json,
@@ -148,6 +158,7 @@ enum ParseResult {
     DontGenAlias,
     UsedAsKey(DemandSet),
     UsedAsElem,
+    Copy,
     RawBytesFlavor,
     Duplicates(DuplicatesPolicy),
     CustomJson,
@@ -193,6 +204,9 @@ impl RuleMetadata {
                 }
                 ParseResult::UsedAsElem => {
                     base.used_as_elem = true;
+                }
+                ParseResult::Copy => {
+                    base.copy = true;
                 }
                 ParseResult::RawBytesFlavor => {
                     base.raw_bytes_flavor = true;
@@ -306,6 +320,12 @@ fn tag_used_as_elem(input: &str) -> IResult<&str, ParseResult> {
     Ok((input, ParseResult::UsedAsElem))
 }
 
+fn tag_copy(input: &str) -> IResult<&str, ParseResult> {
+    let (input, _) = tag("@copy")(input)?;
+
+    Ok((input, ParseResult::Copy))
+}
+
 fn tag_raw_bytes_flavor(input: &str) -> IResult<&str, ParseResult> {
     let (input, _) = tag("@raw_bytes_flavor")(input)?;
 
@@ -381,6 +401,7 @@ fn whitespace_then_tag(input: &str) -> IResult<&str, ParseResult> {
         tag_no_alias,
         tag_used_as_key,
         tag_used_as_elem,
+        tag_copy,
         tag_raw_bytes_flavor,
         tag_duplicates,
         tag_custom_json,
@@ -413,6 +434,7 @@ pub const KNOWN_RULE_METADATA_TAGS: &[&str] = &[
     "@no_alias",
     "@used_as_key",
     "@used_as_elem",
+    "@copy",
     "@raw_bytes_flavor",
     "@duplicates",
     "@custom_json",
@@ -453,6 +475,7 @@ fn parse_comment_name() {
                 no_alias: false,
                 key_demand: None,
                 used_as_elem: false,
+                copy: false,
                 raw_bytes_flavor: false,
                 duplicates: None,
                 custom_json: false,
@@ -477,6 +500,7 @@ fn parse_comment_newtype() {
                 no_alias: false,
                 key_demand: None,
                 used_as_elem: false,
+                copy: false,
                 raw_bytes_flavor: false,
                 duplicates: None,
                 custom_json: false,
@@ -505,6 +529,7 @@ fn parse_comment_newtype_getter_before() {
                     ord: false
                 }),
                 used_as_elem: false,
+                copy: false,
                 raw_bytes_flavor: false,
                 duplicates: None,
                 custom_json: false,
@@ -533,6 +558,7 @@ fn parse_comment_newtype_getter_after() {
                     ord: false
                 }),
                 used_as_elem: false,
+                copy: false,
                 raw_bytes_flavor: false,
                 duplicates: None,
                 custom_json: false,
@@ -557,6 +583,7 @@ fn parse_comment_newtype_and_name() {
                 no_alias: false,
                 key_demand: None,
                 used_as_elem: false,
+                copy: false,
                 raw_bytes_flavor: false,
                 duplicates: None,
                 custom_json: false,
@@ -585,6 +612,7 @@ fn parse_comment_newtype_and_name_and_used_as_key() {
                     ord: false
                 }),
                 used_as_elem: false,
+                copy: false,
                 raw_bytes_flavor: false,
                 duplicates: None,
                 custom_json: false,
@@ -613,6 +641,7 @@ fn parse_comment_used_as_key() {
                     ord: false
                 }),
                 used_as_elem: false,
+                copy: false,
                 raw_bytes_flavor: false,
                 duplicates: None,
                 custom_json: false,
@@ -739,6 +768,7 @@ fn parse_comment_used_as_elem() {
                 no_alias: false,
                 key_demand: None,
                 used_as_elem: true,
+                copy: false,
                 raw_bytes_flavor: false,
                 duplicates: None,
                 custom_json: false,
@@ -768,6 +798,7 @@ fn parse_comment_used_as_elem_and_key() {
                     ord: false
                 }),
                 used_as_elem: true,
+                copy: false,
                 raw_bytes_flavor: false,
                 duplicates: None,
                 custom_json: false,
@@ -796,6 +827,7 @@ fn parse_comment_used_as_key_and_elem_inverse() {
                     ord: false
                 }),
                 used_as_elem: true,
+                copy: false,
                 raw_bytes_flavor: false,
                 duplicates: None,
                 custom_json: false,
@@ -821,6 +853,7 @@ fn parse_comment_newtype_getter_before_used_as_elem() {
                 no_alias: false,
                 key_demand: None,
                 used_as_elem: true,
+                copy: false,
                 raw_bytes_flavor: false,
                 duplicates: None,
                 custom_json: false,
@@ -845,6 +878,7 @@ fn parse_comment_used_as_elem_before_newtype_getter() {
                 no_alias: false,
                 key_demand: None,
                 used_as_elem: true,
+                copy: false,
                 raw_bytes_flavor: false,
                 duplicates: None,
                 custom_json: false,
@@ -902,6 +936,36 @@ fn merge_metadata_ors_raw_bytes_flavor() {
     assert!(merge_metadata(&lhs, &rhs).raw_bytes_flavor);
     assert!(merge_metadata(&rhs, &lhs).raw_bytes_flavor);
     assert!(!merge_metadata(&rhs, &rhs).raw_bytes_flavor);
+}
+
+#[test]
+fn parse_comment_copy() {
+    assert!(rule_metadata("@copy").unwrap().1.copy);
+}
+
+// `@copy` is an independent flag that co-occurs with other tags, in either order, without
+// swallowing them (mirrors `@raw_bytes_flavor`'s ordering coverage).
+#[test]
+fn parse_comment_copy_and_name() {
+    let md = rule_metadata("@copy @name foo").unwrap().1;
+    assert!(md.copy);
+    assert_eq!(md.name, Some("foo".to_string()));
+    let inverse = rule_metadata("@name foo @copy").unwrap().1;
+    assert!(inverse.copy);
+    assert_eq!(inverse.name, Some("foo".to_string()));
+}
+
+// Merging two comment lines OR-folds the flag, matching the other boolean tags' merge semantics.
+#[test]
+fn merge_metadata_ors_copy() {
+    let lhs = RuleMetadata {
+        copy: true,
+        ..Default::default()
+    };
+    let rhs = RuleMetadata::default();
+    assert!(merge_metadata(&lhs, &rhs).copy);
+    assert!(merge_metadata(&rhs, &lhs).copy);
+    assert!(!merge_metadata(&rhs, &rhs).copy);
 }
 
 // `@duplicates` parses both values into the strict `DuplicatesPolicy` enum.
@@ -992,6 +1056,7 @@ fn parse_comment_newtype_and_name_inverse() {
                 no_alias: false,
                 key_demand: None,
                 used_as_elem: false,
+                copy: false,
                 raw_bytes_flavor: false,
                 duplicates: None,
                 custom_json: false,
@@ -1016,6 +1081,7 @@ fn parse_comment_name_noalias() {
                 no_alias: true,
                 key_demand: None,
                 used_as_elem: false,
+                copy: false,
                 raw_bytes_flavor: false,
                 duplicates: None,
                 custom_json: false,
@@ -1040,6 +1106,7 @@ fn parse_comment_newtype_and_custom_json() {
                 no_alias: false,
                 key_demand: None,
                 used_as_elem: false,
+                copy: false,
                 raw_bytes_flavor: false,
                 duplicates: None,
                 custom_json: true,
@@ -1070,6 +1137,7 @@ fn parse_comment_custom_serialize_deserialize() {
                 no_alias: false,
                 key_demand: None,
                 used_as_elem: false,
+                copy: false,
                 raw_bytes_flavor: false,
                 duplicates: None,
                 custom_json: false,
@@ -1101,6 +1169,7 @@ fn parse_comment_all_except_no_alias() {
                     ord: false
                 }),
                 used_as_elem: true,
+                copy: false,
                 raw_bytes_flavor: false,
                 duplicates: None,
                 custom_json: true,

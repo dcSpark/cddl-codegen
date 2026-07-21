@@ -53,7 +53,7 @@ function loadMatrix(path: string): MatrixJson {
 // The known profile universe (F1). Spec order, not alphabetical — the diff reads "what P+1 added".
 const KNOWN_PROFILES = ["RFC8610", "RFC9682", "CDDL_CODEGEN"];
 const VENDOR_PROFILE = "CDDL_CODEGEN";
-const VENDOR_FEATURE_COUNT = 18; // the comment-DSL / sentinel surface — pinned (README.md § the model); 18 since the dsl.duplicates.{reject,preserve} flavored registrations (no bare dsl.duplicates row — the bare directive panics on its missing required argument)
+const VENDOR_FEATURE_COUNT = 19; // the comment-DSL / sentinel surface — pinned (README.md § the model); 19 since the dsl.copy registration (extern/raw-bytes Copy-ness channel, exempt class like dsl.raw_bytes_flavor)
 
 // ==================================================================================================
 // MODE 2 — snapshot diff (two positional args).
