@@ -1,0 +1,4 @@
+; The dep's `scoped_foo`, living in the `sub::module` scope. A plain uint record, referenced nowhere
+; at the generated root — a hosted `[* scoped_foo]` requested wrapper is its only user, so its wasm
+; class must be imported into `requested_collections.rs` from `crate::generated::sub::module`.
+scoped_foo = [x: uint]

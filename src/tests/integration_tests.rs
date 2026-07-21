@@ -9425,6 +9425,147 @@ fn workspace_requests_alias_elements_host() {
     );
 }
 
+/// `--wrapper-requests` HOST-side element import: a hosted wrapper's body names its element/key/value
+/// wasm classes BARE, and the module carries only `use super::*;` — which reaches the generated ROOT
+/// alone. When the element wasm class lives in a NON-ROOT scope of the host (a struct in a scope
+/// module, or a scoped extern whose re-export glue lands in its declaring scope, not the root) the bare
+/// glob cannot reach it: `E0425`/`E0412`. The request-collections import walk must compute per-file
+/// element imports the SAME way the rest of the wasm pass does — scope paths for generated types, the
+/// crate-root re-export contract for extern/hand types.
+///
+/// Facet 1 (cross-scope GENERATED struct element) is a full compile: the dep hosts a `[* scoped_foo]`
+/// wrapper over `scoped_foo` (a struct in the dep's `sub::module` scope, referenced nowhere at the
+/// root, so no coincidental root import masks the gap) and the crate must `cargo check`. Pre-fix it
+/// fails `E0425 cannot find type ScopedFoo` at the hosted wrapper.
+///
+/// Facet 2 (scoped EXTERN / facade element) is a generation-output assertion — like
+/// `dep_owned_named_collection_no_local_structural_import`, a full compile is impossible here because
+/// the bare fixture has no hand-written extern runtime (an extern's `extern_interface_check.rs`
+/// self-check asserts `Serialize`/`Deserialize` on the user-owned type). The pinned invariant is that
+/// the hosted `{* uint => scoped_ext}` wrapper imports the scoped extern's wasm class from its
+/// crate-root re-export home (`crate::generated::sub::module::ScopedExt`, where the glue emits
+/// `pub use crate::ScopedExt;`), not from a bare `use super::*;` reaching only the generated root.
+#[test]
+fn workspace_requests_hosts_cross_scope_elements() {
+    use std::str::FromStr;
+    if !tool_exists("cargo") {
+        return;
+    }
+    let base = std::path::PathBuf::from_str("tests/workspace-requests").unwrap();
+    // One shared CARGO_TARGET_DIR (per-checkout) so cbor_event + wasm_bindgen build once.
+    let target_dir = std::env::temp_dir().join(format!(
+        "cddl_codegen_xscope_elems_{:016x}",
+        checkout_hash()
+    ));
+
+    let write_sidecar = |path: &std::path::Path, rows: &str| {
+        std::fs::write(
+            path,
+            format!(
+                "// This file was code-generated using an experimental CDDL to rust tool:\n\
+                 // https://github.com/dcSpark/cddl-codegen\n\n\
+                 #[allow(unused_imports)]\n\
+                 mod borrowed {{}}\n\
+                 #[allow(dead_code)]\n\
+                 pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[\n{rows}];\n"
+            ),
+        )
+        .unwrap();
+    };
+    let gen_dep = |input: &str, output: &str, sidecar: &std::path::Path| -> std::process::Output {
+        let _ = std::fs::remove_dir_all(base.join(output));
+        tool_cmd("cargo")
+            .arg("run")
+            .arg("--")
+            .arg(format!("--input=tests/workspace-requests/{input}"))
+            .arg(format!("--output=tests/workspace-requests/{output}"))
+            .arg("--lib-name=wr-dep")
+            .arg("--wasm=true")
+            .arg("--preserve-encodings=true")
+            .arg(format!(
+                "--wrapper-requests=consumer={}",
+                sidecar.to_str().unwrap()
+            ))
+            .output()
+            .unwrap()
+    };
+
+    // ===== Facet 1: cross-scope GENERATED struct element — full compile (RED: E0425 pre-fix) =====
+    let scratch1 = base.join("export_xscope_f1_scratch");
+    let _ = std::fs::remove_dir_all(&scratch1);
+    std::fs::create_dir_all(&scratch1).unwrap();
+    let sidecar1 = scratch1.join("sc.rs");
+    write_sidecar(
+        &sidecar1,
+        "    (\"wr_dep\", \"ScopedFooList\", \"[* scoped_foo]\"),\n",
+    );
+    let o1 = gen_dep("dep_inputs_scoped_elem", "export_xscope_f1", &sidecar1);
+    assert!(
+        o1.status.success(),
+        "facet-1 dep generation failed:\n{}",
+        String::from_utf8_lossy(&o1.stderr)
+    );
+    let f1_out = base.join("export_xscope_f1");
+    let requested1 =
+        std::fs::read_to_string(f1_out.join("wasm/src/generated/requested_collections.rs"))
+            .unwrap();
+    // The element wasm class is imported from its TRUE scoped home, not left to `use super::*;`.
+    assert!(
+        requested1.contains("use crate::generated::sub::module::ScopedFoo;"),
+        "the hosted wrapper must import its cross-scope element from crate::generated::sub::module, \
+         not rely on the root-only `use super::*;`:\n{requested1}"
+    );
+    // The honest compile gate (RED at HEAD before the fix: E0425 cannot find type `ScopedFoo`).
+    let check1 = tool_cmd("cargo")
+        .arg("check")
+        .current_dir(f1_out.join("wasm"))
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .output()
+        .unwrap();
+    assert!(
+        check1.status.success(),
+        "the facet-1 wasm crate must compile: the hosted `[* scoped_foo]` wrapper's element resolves \
+         at crate::generated::sub::module::ScopedFoo:\n{}",
+        String::from_utf8_lossy(&check1.stderr)
+    );
+
+    // ===== Facet 2: scoped EXTERN / facade element — generation assertion (bare-stub, no runtime) ===
+    let scratch2 = base.join("export_xscope_f2_scratch");
+    let _ = std::fs::remove_dir_all(&scratch2);
+    std::fs::create_dir_all(&scratch2).unwrap();
+    let sidecar2 = scratch2.join("sc.rs");
+    write_sidecar(
+        &sidecar2,
+        "    (\"wr_dep\", \"MapU64ToScopedExt\", \"{* uint => scoped_ext}\"),\n",
+    );
+    let o2 = gen_dep("dep_inputs_scoped_extern", "export_xscope_f2", &sidecar2);
+    assert!(
+        o2.status.success(),
+        "facet-2 dep generation failed:\n{}",
+        String::from_utf8_lossy(&o2.stderr)
+    );
+    let f2_out = base.join("export_xscope_f2");
+    let requested2 =
+        std::fs::read_to_string(f2_out.join("wasm/src/generated/requested_collections.rs"))
+            .unwrap();
+    // The scoped extern's wasm class is imported from its crate-root re-export home (the facade path),
+    // not left to the root-only `use super::*;`. The fixture's only scoped type is `ScopedExt`, so the
+    // import is the single-item form.
+    assert!(
+        requested2.contains("use crate::generated::sub::module::ScopedExt;"),
+        "the hosted map's scoped-extern value must be imported from crate::generated::sub::module (its \
+         re-export home), not rely on the root-only `use super::*;`:\n{requested2}"
+    );
+    // The re-export glue that makes that facade path resolve lands in the DECLARING scope's module.
+    let scoped_mod =
+        std::fs::read_to_string(f2_out.join("wasm/src/generated/sub/module/mod.rs")).unwrap();
+    assert!(
+        scoped_mod.contains("pub use crate::ScopedExt;"),
+        "the scoped extern's crate-root re-export glue must land in its declaring scope module (so the \
+         hosted wrapper's import resolves):\n{scoped_mod}"
+    );
+}
+
 /// Criterion 8 #4 at unit level: two DISTINCT shapes deriving the SAME structural name is a hard
 /// error naming both shapes and their requesters. Driven directly through the union collision path
 /// with a hand-built pair whose reverse-ambiguity (`{* a => b_to_c}` vs `{* a_to_b => c}`) collapses

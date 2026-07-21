@@ -151,6 +151,14 @@ pub struct GenerationScope {
     /// the requested wrappers are not in the dep's IR, so they have no natural scope. Set only around
     /// the requested-wrapper emission in `emit_requested_collections`; `None` everywhere else.
     requested_scope_override: Option<ModuleScope>,
+    /// W2 dep side (`--wrapper-requests`): every requested collection wrapper actually hosted this run,
+    /// as `(structural class ident, requested RustType)`. The hosted wrappers are emitted into the
+    /// `requested_collections` scope but are NOT in the dep's IR, so the per-scope wasm import walk
+    /// (`scope_references`, which walks IR structs) never marks the element/key/value wasm classes each
+    /// wrapper body names — a bare `use super::*;` reaches only the generated ROOT, not a non-root scope
+    /// module nor a scoped extern's re-export glue. `scope_references` consumes this to mark those refs
+    /// at the requested scope, mirroring the Array/Table struct-walk arms. Empty except under the flag.
+    requested_wrapper_types: Vec<(RustIdent, RustType)>,
     /// W2 dep side: attribution doc text (`Generated at the request of: …`) keyed by requested-wrapper
     /// ident. Consulted by `create_base_wasm_struct` (and prepended by the NonEmpty emitters, which set
     /// their own struct doc). Empty except during requested emission, so own-spec wrappers are
@@ -199,6 +207,7 @@ impl GenerationScope {
             borrowed_wrappers: BTreeMap::new(),
             own_wrapper_shapes: BTreeMap::new(),
             requested_scope_override: None,
+            requested_wrapper_types: Vec::new(),
             requested_attribution: BTreeMap::new(),
             requested_non_empty_vec: false,
             requested_non_empty_map: false,
@@ -1165,7 +1174,7 @@ impl GenerationScope {
         // imports for generated structs from other files (struct files)
         // The rust pass registers no collection-wrapper class imports (those are wasm-only), so
         // deferral never applies here — pass an empty map so rust output is untouched by the flag.
-        let rust_imports = types.scope_references(false, &BTreeMap::new());
+        let rust_imports = types.scope_references(false, &BTreeMap::new(), &[], None);
         for (scope, content) in self.rust_scopes.iter_mut() {
             add_imports_from_scope_refs(
                 scope,
@@ -1307,7 +1316,16 @@ impl GenerationScope {
             // `deferred_wrappers` was fully populated during the wasm struct walk above (every
             // deferred wrapper's mint point recorded it), so referencing modules now get a plain
             // `use <dep_wasm>::collections::<Name>;` for each instead of a local class.
-            let wasm_imports = types.scope_references(true, &self.deferred_wrappers);
+            // The `requested_collections` host module (`--wrapper-requests`) hosts wrappers that are not
+            // in the IR; hand `scope_references` the hosted set + its scope so their element/key/value
+            // wasm classes are imported at that scope (a bare `use super::*;` reaches only the root).
+            let requested_scope = ModuleScope::from(vec!["requested_collections".to_owned()]);
+            let wasm_imports = types.scope_references(
+                true,
+                &self.deferred_wrappers,
+                &self.requested_wrapper_types,
+                Some(&requested_scope),
+            );
             for (scope, content) in self.wasm_scopes.iter_mut() {
                 // imports from other struct modules; the wasm generated tree nests one level under
                 // `crate::generated` (same as the rust crate)

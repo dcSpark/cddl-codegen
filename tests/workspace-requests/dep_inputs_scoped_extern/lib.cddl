@@ -1,0 +1,9 @@
+; Scoped-EXTERN requested-element DEP spec (`--wrapper-requests` host side, facade case). The dep
+; declares `scoped_ext` as a hand/extern type (`_CDDL_CODEGEN_EXTERN_TYPE_`) in a NON-ROOT scope
+; (`sub/module.cddl` -> `sub::module`). Its wasm class is user-owned: the crate-root re-export contract
+; makes the tool emit `pub use crate::ScopedExt;` INTO the declaring scope's generated module
+; (`crate::generated::sub::module`), NOT the generated root. So a hosted `{* uint => scoped_ext}`
+; request cannot reach the element wasm class through the module's bare `use super::*;` (which reaches
+; only the generated root) — the request-collections import walk must import it from the scoped
+; re-export home. `root` references nothing scoped so no coincidental root import masks the gap.
+root = [a: uint]

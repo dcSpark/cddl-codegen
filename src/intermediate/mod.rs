@@ -726,10 +726,20 @@ impl<'a> IntermediateTypes<'a> {
     /// plain `use <dep_wasm>::collections::<Name>;` after the `--extern-wasm-crate` remap) from EVERY
     /// using scope, root included, since the class no longer lives locally. Empty for the rust pass
     /// and whenever `--extern-wrapper-index` is unused, so output is byte-identical without the flag.
+    ///
+    /// `requested` (wasm pass, `--wrapper-requests` host side) is every collection wrapper hosted into
+    /// `requested_scope` this run as `(structural class ident, requested RustType)`. Those wrappers are
+    /// NOT IR structs, so the struct walk below never sees them; after it runs, each is walked as if it
+    /// were a rule emitted at `requested_scope` (mirroring the Array/Table struct-walk arms) so its body
+    /// imports EXACTLY the cross-scope element / scoped-extern wasm classes it names. Empty (and
+    /// `requested_scope` `None`) for the rust pass and whenever `--wrapper-requests` is unused, so output
+    /// is byte-identical without the flag.
     pub fn scope_references(
         &self,
         wasm: bool,
         deferred: &BTreeMap<RustIdent, ModuleScope>,
+        requested: &[(RustIdent, RustType)],
+        requested_scope: Option<&ModuleScope>,
     ) -> BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>> {
         // we only want to mark TOP-LEVEL references without recursing into those types
         // which is why we don't use visit_types() here
@@ -1487,6 +1497,112 @@ impl<'a> IntermediateTypes<'a> {
                 current_scope,
                 &alias_info.base_type,
             );
+        }
+        // W2 dep side (`--wrapper-requests`): the hosted requested wrappers are emitted into
+        // `requested_scope` but are NOT in the IR, so the struct walk above never marked the wasm
+        // classes their bodies name (element for a list, key/value/keys-list for a map, plus a
+        // restricted wrapper's loose `try_from` source). Mirror the Array/Table struct-walk arms with
+        // `requested_scope` as the emission scope — a hosted wrapper is exactly a rule emitted there —
+        // so a cross-scope element (a struct in a non-root module) or a scoped extern (whose re-export
+        // glue lands in its declaring scope, not the root) is imported from its true home instead of
+        // being (un)reached by the ROOT-only `use super::*;`. Empty `requested` (rust pass / flag unused)
+        // makes this a no-op, so output is byte-identical without the flag.
+        if wasm && let Some(req_scope) = requested_scope {
+            let requested_idents: BTreeSet<RustIdent> =
+                requested.iter().map(|(id, _)| id.clone()).collect();
+            // Mark the ref a hosted wrapper's body names for one member (element / key / value). A member
+            // that is ITSELF a hosted requested collection lives in `requested_scope` too (same file):
+            // its wasm class is named bare with nothing to import, and its own body is walked when the
+            // loop reaches its entry — so skip it rather than let `wasm_collection_wrapper` misroute the
+            // structural name to the crate root (`types.scope` doesn't know the requested wrappers). Every
+            // other member routes through the shared `mark_refs`, resolving to the member's true home.
+            let mark_requested_member =
+                |refs: &mut BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
+                 member: &RustType| {
+                    if let Some((wrapper, _)) =
+                        self.wasm_collection_wrapper(member, &table_shape_sole_owners)
+                        && requested_idents.contains(&wrapper)
+                    {
+                        return;
+                    }
+                    mark_refs(
+                        refs,
+                        self,
+                        wasm,
+                        &table_shape_sole_owners,
+                        deferred,
+                        req_scope,
+                        member,
+                    );
+                };
+            for (wid, rt) in requested {
+                match &rt.conceptual_type {
+                    ConceptualRustType::Array(elem) => {
+                        // A restricted list (`[+ …]` / `@duplicates reject`) borrows a LOOSE `<Elem>List`
+                        // as its `try_from` source, named bare at the emission scope. Import it there —
+                        // unless that loose source is itself a hosted requested wrapper (same scope, no
+                        // import; `register_root_*` would misroute the structural name to root).
+                        if rt.is_non_empty_array() || rt.is_reject_ordered_set() {
+                            register_deferred_non_empty_list_source(
+                                &mut refs, self, deferred, wid, elem,
+                            );
+                            let loose =
+                                RustIdent::new(CDDLIdent::new(elem.name_as_wasm_array(self)));
+                            if !requested_idents.contains(&loose) {
+                                register_root_non_empty_list_source(
+                                    &mut refs,
+                                    self,
+                                    wasm,
+                                    &table_shape_sole_owners,
+                                    deferred,
+                                    req_scope,
+                                    wid,
+                                    elem,
+                                );
+                            }
+                        }
+                        mark_requested_member(&mut refs, elem);
+                    }
+                    ConceptualRustType::Map(key, value) => {
+                        // The map class's `keys()` accessor names the keys-list wrapper bare at the
+                        // emission scope (deferred from a dep's `collections`, or a ROOT-minted
+                        // `<Key>List` for a non-exposable key).
+                        register_deferred_keys_list(&mut refs, self, deferred, req_scope, key);
+                        register_root_keys_list(&mut refs, self, wasm, deferred, req_scope, key);
+                        // A restricted `{+ …}` map borrows a LOOSE `MapKToV` as its `try_from` source
+                        // named bare at the emission scope — same requested-source guard as the list arm.
+                        if rt.is_non_empty_map() {
+                            register_deferred_non_empty_map_source(
+                                &mut refs,
+                                self,
+                                deferred,
+                                &table_shape_sole_owners,
+                                wid,
+                                key,
+                                value,
+                            );
+                            let loose = ConceptualRustType::name_for_wasm_map(key, value);
+                            if !requested_idents.contains(&loose) {
+                                register_root_non_empty_map_source(
+                                    &mut refs,
+                                    self,
+                                    wasm,
+                                    &table_shape_sole_owners,
+                                    deferred,
+                                    req_scope,
+                                    wid,
+                                    key,
+                                    value,
+                                );
+                            }
+                        }
+                        mark_requested_member(&mut refs, key);
+                        mark_requested_member(&mut refs, value);
+                    }
+                    // A requested shape is always a collection (guarded in `emit_requested_collections`).
+                    _ => {}
+                }
+            }
         }
         refs
     }
