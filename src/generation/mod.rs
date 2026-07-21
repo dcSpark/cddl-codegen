@@ -92,6 +92,17 @@ mod requests;
 pub(crate) use requests::render_wrapper_shape;
 use requests::{load_extern_wrapper_indices, load_workspace_deps};
 
+/// The contract comment emitted just above each scope's own-spec extern re-export glue group in the
+/// generated `mod.rs` (rust and wasm). It restates the boundary contract at the E0432 site itself:
+/// the crate's hand-written root `lib.rs` must re-export every glued name from wherever the user
+/// defined it, so the `pub use crate::<Name>;` lines below resolve. A plain `//` line group (never a
+/// doc comment) so rustfmt keeps it stable and the re-export-only import prune — which keys on
+/// `syn::Item`s, and comments are not items — still classifies the file unchanged.
+const EXTERN_REEXPORT_CONTRACT_COMMENT: &str = "\
+// cddl-codegen extern re-export contract: this crate's hand-written root lib.rs must re-export\n\
+// each name below (`pub use <your_module>::<Name>;`) so the generated glue resolves against the\n\
+// user-owned definition. See the extern types section of docs/output_format.";
+
 pub struct GenerationScope {
     rust_lib_scope: codegen::Scope,
     rust_scopes: BTreeMap<ModuleScope, codegen::Scope>,
@@ -178,6 +189,18 @@ pub struct GenerationScope {
     /// `requested_ordered_set`. `true` when requested-wrapper emission produced a preserve-mode table
     /// wrapper whose `pair_map` runtime the dep's OWN spec does not otherwise pull in.
     requested_pair_map: bool,
+    /// Own-spec extern re-export contract: the crate-root re-export names the hand-written thin
+    /// `lib.rs` MUST provide (`pub use <your_module>::<Name>;`) for this run's emitted glue to
+    /// resolve. Collected at EXACTLY the glue-emission sites in `generate()` (the `externs_by_scope`
+    /// `pub use crate::{ident};` loop plus the `<Base>RawBytes` flavor loop) so the surfaced list can
+    /// never drift from what the glue actually needs. `BTreeSet` keeps the surfaced order
+    /// deterministic; the built-in `Int` extern is already filtered out at the emission site, so it
+    /// never appears here. Consumed by the run-output print and the seed-once-`lib.rs`
+    /// missing-re-export diagnostic (both in `export`). Empty for any spec with no own-spec externs.
+    required_rust_reexports: BTreeSet<String>,
+    /// The wasm-crate counterpart of `required_rust_reexports`, collected at the
+    /// `wasm_externs_by_scope` `pub use crate::{ident};` loop. Only populated under `--wasm`.
+    required_wasm_reexports: BTreeSet<String>,
     no_deser_reasons: BTreeMap<RustIdent, Vec<String>>,
 }
 
@@ -213,6 +236,8 @@ impl GenerationScope {
             requested_non_empty_map: false,
             requested_ordered_set: false,
             requested_pair_map: false,
+            required_rust_reexports: BTreeSet::new(),
+            required_wasm_reexports: BTreeSet::new(),
             no_deser_reasons: BTreeMap::new(),
         }
     }
@@ -923,10 +948,18 @@ impl GenerationScope {
                 }
             }
         }
+        // Scopes that have already received the contract comment, so the `@raw_bytes_flavor` loop
+        // below doesn't emit a second comment into a scope whose base extern already carried one.
+        let mut rust_glue_commented: BTreeSet<ModuleScope> = BTreeSet::new();
         for (scope, idents) in &externs_by_scope {
             let content = self.rust_scopes.entry(scope.clone()).or_default();
+            content.raw(EXTERN_REEXPORT_CONTRACT_COMMENT);
+            rust_glue_commented.insert(scope.clone());
             for ident in idents {
                 content.raw(format!("pub use crate::{ident};"));
+                // Collected at the emission site (single source of truth) so the surfaced required
+                // set can never drift from the glue actually emitted.
+                self.required_rust_reexports.insert(ident.to_string());
             }
         }
         // `@raw_bytes_flavor` re-export glue. A tagged extern generic instantiated with a raw-bytes
@@ -940,7 +973,12 @@ impl GenerationScope {
             let scope = types.scope(base);
             if scope.export() {
                 let content = self.rust_scopes.entry(scope.clone()).or_default();
+                if rust_glue_commented.insert(scope.clone()) {
+                    content.raw(EXTERN_REEXPORT_CONTRACT_COMMENT);
+                }
                 content.raw(format!("pub use crate::{base}RawBytes;"));
+                self.required_rust_reexports
+                    .insert(format!("{base}RawBytes"));
             }
         }
 
@@ -1485,8 +1523,11 @@ impl GenerationScope {
             }
             for (scope, idents) in &wasm_externs_by_scope {
                 let content = self.wasm_scopes.entry(scope.clone()).or_default();
+                content.raw(EXTERN_REEXPORT_CONTRACT_COMMENT);
                 for ident in idents {
                     content.raw(format!("pub use crate::{ident};"));
+                    // Collected at the emission site (single source of truth), like the rust set.
+                    self.required_wasm_reexports.insert(ident.to_string());
                 }
             }
             // wasm module declarations. Emitted AFTER the extern re-export glue above, for the same

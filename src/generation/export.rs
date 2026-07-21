@@ -263,6 +263,96 @@ fn top_level_type_ident(line: &str) -> Option<&str> {
     (!ident.is_empty()).then_some(ident)
 }
 
+/// Run-output surfacing helper for the own-spec extern re-export contract (Layer 1). Prints nothing
+/// for an empty set (specs with no own-spec externs are silent), otherwise one header line naming
+/// the crate root plus one `pub use` hint per required name in deterministic (`BTreeSet`-sorted)
+/// order. Stdout, alongside the existing `print!` progress logging.
+fn print_required_reexports(root_rel_path: &str, required: &std::collections::BTreeSet<String>) {
+    if required.is_empty() {
+        return;
+    }
+    println!(
+        "Own-spec extern re-export contract: the hand-written {root_rel_path} must re-export these \
+         names for the generated glue to resolve:"
+    );
+    for name in required {
+        println!("    pub use <your_module>::{name};");
+    }
+}
+
+/// The required-name subset a seed-once `lib.rs` does NOT already provide (Layer 3 diagnostic input).
+/// A name counts as provided when it appears in the file text as a WHOLE identifier (word-boundary
+/// match) — so `Foo` inside `FooBar` is not a false match. Glob-noise carve-out: if the file
+/// re-exports through a glob whose path's last segment is NOT `generated` (`pub use <path>::*;`), the
+/// scan cannot see which names that glob provides, so it suppresses ALL per-name warnings rather than
+/// risk a false positive. The tool's own `pub use generated::*;` (last segment `generated`) does NOT
+/// suppress: the extern is defined OUTSIDE `generated/**`, so that glob provably never provides it.
+fn missing_reexports(lib_text: &str, required: &std::collections::BTreeSet<String>) -> Vec<String> {
+    if has_foreign_glob(lib_text) {
+        return Vec::new();
+    }
+    required
+        .iter()
+        .filter(|name| !contains_whole_ident(lib_text, name))
+        .cloned()
+        .collect()
+}
+
+/// True if `text` contains a `use` item ending in a glob (`::*`) whose path's last segment is not
+/// `generated` — a re-export the name-based scan can't see through. See [`missing_reexports`].
+fn has_foreign_glob(text: &str) -> bool {
+    for line in text.lines() {
+        let line = line.trim();
+        let Some(use_idx) = line.find("use ") else {
+            continue;
+        };
+        // Only treat this as a `use` item when nothing but a visibility modifier precedes `use `
+        // (so a `use` appearing inside some other construct's text doesn't trip the carve-out).
+        let prefix = line[..use_idx].trim();
+        let is_use_item = prefix.is_empty()
+            || prefix == "pub"
+            || (prefix.starts_with("pub(") && prefix.ends_with(')'));
+        if !is_use_item {
+            continue;
+        }
+        let after = &line[use_idx + "use ".len()..];
+        if let Some(star_idx) = after.find("::*") {
+            let path = after[..star_idx].trim();
+            let last_seg = path.rsplit("::").next().unwrap_or("");
+            if last_seg != "generated" {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// True if `needle` occurs in `haystack` as a whole ASCII identifier (neither neighbouring byte is an
+/// identifier byte). Used by [`missing_reexports`] so a required name is only "provided" on a real
+/// token match, not a substring of a longer ident.
+fn contains_whole_ident(haystack: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return false;
+    }
+    let hb = haystack.as_bytes();
+    let mut search_from = 0;
+    while let Some(rel) = haystack[search_from..].find(needle) {
+        let start = search_from + rel;
+        let end = start + needle.len();
+        let before_ok = start == 0 || !is_ident_byte(hb[start - 1]);
+        let after_ok = end == hb.len() || !is_ident_byte(hb[end]);
+        if before_ok && after_ok {
+            return true;
+        }
+        search_from = start + 1;
+    }
+    false
+}
+
+fn is_ident_byte(b: u8) -> bool {
+    b == b'_' || b.is_ascii_alphanumeric()
+}
+
 pub(crate) fn concat_files<P: AsRef<Path>>(paths: &Vec<P>) -> std::io::Result<String> {
     let mut buf = String::new();
     for path in paths {
@@ -417,6 +507,17 @@ impl GenerationScope {
             cli.output.clone()
         };
 
+        // Run-output surfacing of the own-spec extern re-export contract. When this spec declares
+        // externs in exported scopes, the generated glue (`pub use crate::<Name>;` in each declaring
+        // scope's `mod.rs`) resolves only if the hand-written crate-root `lib.rs` re-exports those
+        // names — a contract the generator alone knows the exact required set of at emission time.
+        // Printing it here (deterministic, sorted; rust then wasm) turns a bare E0432 on a stale root
+        // into an actionable checklist. Reads only this run's computed sets, never prior output.
+        print_required_reexports("rust/src/lib.rs", &self.required_rust_reexports);
+        if cli.wasm {
+            print_required_reexports("wasm/src/lib.rs", &self.required_wasm_reexports);
+        }
+
         // All generated files come from the single producer the snapshot tests also use, so the
         // shipped output and the tested output can't drift.
         let mut files = self.generated_files(types, export_raw_bytes_encoding_trait, cli)?;
@@ -493,25 +594,51 @@ impl GenerationScope {
                 "rust/src/lib.rs" | "wasm/src/lib.rs" | "wasm/json-gen/src/lib.rs"
             ) && path.exists()
             {
-                // A root that predates the thin-root split still carries generated type definitions
-                // interleaved with hand wiring; under seed-once the tool leaves it untouched, so the
-                // now-under-`generated/**` types it duplicates produce loud compile errors. Detect
-                // that shape (no `mod generated;`) and name the one-time migration on stderr — a
-                // diagnostic only, so the written bytes (and the no-prior-output invariant) are
-                // unchanged. Reading the file here is the same bounded existence-adjacent peek the
-                // seed-once check already makes; it never feeds back into what is generated.
-                if let Ok(existing) = std::fs::read_to_string(&path)
-                    && !existing.contains("mod generated")
-                {
-                    eprintln!(
-                        "warning: {rel_path} predates the thin-root layout (no `mod generated;`). \
-                         Generated code now lives under `src/generated/**` and this root is \
-                         seed-once (never overwritten), so any generated items still in it will \
-                         collide with the regenerated subtree. One-time migration: delete the \
-                         generated items from {rel_path}, keep your hand wiring, and add \
-                         `mod generated;` and `pub use generated::*;`. See the \"Migrating from \
-                         pre-split layouts\" section of docs/output_format."
-                    );
+                // Two diagnostics fire here, both reading this already-existing (seed-skipped) root.
+                // Like the manifest changeset, this is a bounded existence-adjacent peek: it emits
+                // stderr guidance ONLY and writes ZERO bytes (the seed is skipped either way), so the
+                // no-prior-output invariant and run-twice-equals-run-once both hold. Never fires on a
+                // fresh seed — that path does not `exist`, so this whole branch is skipped and the
+                // file is written below.
+                if let Ok(existing) = std::fs::read_to_string(&path) {
+                    // (1) A root that predates the thin-root split still carries generated type
+                    // definitions interleaved with hand wiring; under seed-once the tool leaves it
+                    // untouched, so the now-under-`generated/**` types it duplicates produce loud
+                    // compile errors. Detect that shape (no `mod generated;`) and name the one-time
+                    // migration on stderr.
+                    if !existing.contains("mod generated") {
+                        eprintln!(
+                            "warning: {rel_path} predates the thin-root layout (no `mod generated;`). \
+                             Generated code now lives under `src/generated/**` and this root is \
+                             seed-once (never overwritten), so any generated items still in it will \
+                             collide with the regenerated subtree. One-time migration: delete the \
+                             generated items from {rel_path}, keep your hand wiring, and add \
+                             `mod generated;` and `pub use generated::*;`. See the \"Migrating from \
+                             pre-split layouts\" section of docs/output_format."
+                        );
+                    }
+                    // (2) Own-spec extern re-export contract: this run's glue needs the crate-root
+                    // `lib.rs` to re-export a known set of names. When the seed-once root pre-dates
+                    // the current required set (a contract change since it was seeded), the user gets
+                    // a bare E0432 with no hint. Name the missing idents and the exact fix. Scoped by
+                    // crate: rust root ⇢ rust set, wasm root ⇢ wasm set; json-gen has none.
+                    let required = match rel_path.as_str() {
+                        "rust/src/lib.rs" => Some(&self.required_rust_reexports),
+                        "wasm/src/lib.rs" => Some(&self.required_wasm_reexports),
+                        _ => None,
+                    };
+                    if let Some(required) = required {
+                        let missing = missing_reexports(&existing, required);
+                        if !missing.is_empty() {
+                            eprintln!(
+                                "warning: {rel_path} is missing crate-root re-exports the generated \
+                                 extern glue requires: {}. Add to your hand-written root (one per \
+                                 name): `pub use <your_module>::<Name>;`. See the extern types \
+                                 section of docs/output_format.",
+                                missing.join(", ")
+                            );
+                        }
+                    }
                 }
                 continue;
             }
@@ -1445,5 +1572,61 @@ impl GenerationScope {
         }
 
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod extern_reexport_diagnostic_tests {
+    use super::{contains_whole_ident, has_foreign_glob, missing_reexports};
+    use std::collections::BTreeSet;
+
+    fn set(names: &[&str]) -> BTreeSet<String> {
+        names.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    #[test]
+    fn whole_ident_match_is_not_a_substring_match() {
+        // A required `Foo` provided verbatim is present; `Foo` as a substring of `FooBar` is NOT.
+        assert!(contains_whole_ident("pub use utils::Foo;", "Foo"));
+        assert!(!contains_whole_ident("pub use utils::FooBar;", "Foo"));
+        assert!(!contains_whole_ident("pub use utils::BarFoo;", "Foo"));
+        assert!(contains_whole_ident("pub use a::Foo as Bar;", "Foo"));
+        assert!(!contains_whole_ident("", "Foo"));
+    }
+
+    #[test]
+    fn seeded_root_glob_is_not_foreign() {
+        // The tool's own seed (`pub use generated::*;`) must NOT be treated as a foreign glob —
+        // otherwise the diagnostic would be suppressed on EVERY seeded root and never fire.
+        assert!(!has_foreign_glob("mod generated;\npub use generated::*;\n"));
+        assert!(!has_foreign_glob("pub use crate::generated::*;\n"));
+    }
+
+    #[test]
+    fn user_glob_is_foreign() {
+        assert!(has_foreign_glob("pub mod utils;\npub use utils::*;\n"));
+        assert!(has_foreign_glob("pub use crate::hand::exports::*;\n"));
+        // A `use` inside some other construct's text is not a top-level use item.
+        assert!(!has_foreign_glob("let x = \"use foo::*;\";\n"));
+    }
+
+    #[test]
+    fn missing_reexports_reports_only_absent_names() {
+        let required = set(&["MyExt", "PubKeyRawBytes"]);
+        // Seeded root re-exports one of the two; the other is missing.
+        let root = "mod generated;\npub use generated::*;\npub use utils::MyExt;\n";
+        assert_eq!(missing_reexports(root, &required), vec!["PubKeyRawBytes"]);
+        // Both present -> nothing missing.
+        let full = format!("{root}pub use utils::PubKeyRawBytes;\n");
+        assert!(missing_reexports(&full, &required).is_empty());
+    }
+
+    #[test]
+    fn foreign_glob_suppresses_all_missing() {
+        let required = set(&["MyExt", "Other"]);
+        // A non-`generated` glob the scan can't see through: suppress, even though neither name
+        // appears verbatim.
+        let root = "mod generated;\npub use generated::*;\npub use utils::*;\n";
+        assert!(missing_reexports(root, &required).is_empty());
     }
 }
