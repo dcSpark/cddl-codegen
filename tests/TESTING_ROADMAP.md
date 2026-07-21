@@ -1079,7 +1079,7 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
     deliberately rather than tracing every site every run.
   - The pre-cache remedies stay valid if the UNCACHED path ever bites (a touch-everything change
     pays full price): batch cells into fewer crates, or adopt `cargo-nextest` as the suite runner
-    (`multifile_matrix_compiles` measured ~35 s cold / ~30 s warm at 43 cells; 62 at HEAD).
+    (`multifile_matrix_compiles` measured ~35 s cold / ~30 s warm at 43 cells; 144 at HEAD).
 - **Registry-fetch transients in nested-cargo cells.** Nested-cargo cells used to resolve deps
   from crates.io per temp crate, so a flaky network/proxy (a proxy aborting ~1-in-6 CONNECTs to
   index.crates.io, a class cargo's own transient retry never engages on) killed otherwise-green
