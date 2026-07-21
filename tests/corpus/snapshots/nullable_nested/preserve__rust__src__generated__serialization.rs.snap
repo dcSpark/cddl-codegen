@@ -246,7 +246,7 @@ impl cbor_event::se::Serialize for NullableOptionalField {
                 .unwrap_or_default()
                 .to_len_sz(
                     1 + match &self.field0 {
-                        Some(x) => 1,
+                        Some(_) => 1,
                         None => 0,
                     },
                 ),

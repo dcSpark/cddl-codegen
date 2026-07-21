@@ -1323,6 +1323,37 @@ fn unused_generated_import_scan_flags_prune_targets_and_ignores_trait_residue() 
     assert!(unused_generated_import_lines("   Compiling foo v0.1.0\n    Finished").is_empty());
 }
 
+/// Scan rustc/cargo stderr for rendered `unused variable` warnings in the generated crates. Like the
+/// unused-import scan, these crates are 100% generated, so ANY named binding rustc reports as unused
+/// is a generator imprecision — e.g. a definite-length count match whose arm body is a compile-time
+/// constant (`Some(x) => 3`) should bind `_`, not `x`. Rustc renders these as `warning: unused
+/// variable: `x``. There is no trait-residue analogue here (every such binding is generator-owned),
+/// so every matching line is returned (trimmed) for the caller to name in the failure.
+fn unused_generated_variable_lines(stderr: &str) -> Vec<String> {
+    stderr
+        .lines()
+        .filter(|line| line.contains("warning: unused variable"))
+        .map(|line| line.trim().to_string())
+        .collect()
+}
+
+/// Red-path guard for the variable scan: a real `unused variable` warning is flagged; a clean build
+/// and an unrelated unused-import warning are not.
+#[test]
+fn unused_generated_variable_scan_flags_named_binding() {
+    let warning = "warning: unused variable: `x`\n --> src/generated/serialization.rs:24:14";
+    assert_eq!(
+        unused_generated_variable_lines(warning).len(),
+        1,
+        "an unused variable in a purely-generated crate must be flagged"
+    );
+    assert!(unused_generated_variable_lines("   Compiling foo v0.1.0\n    Finished").is_empty());
+    assert!(unused_generated_variable_lines(
+        "warning: unused import: `std::collections::BTreeMap`"
+    )
+    .is_empty());
+}
+
 /// Runs all three `default`/`preserve`/`json` profiles the corpus is snapshotted under, since
 /// non-compiling output can be flag-specific (a bare construct compiled but its preserve/json
 /// variant did not). Generates with `--wasm=true` and `cargo check`s BOTH the `rust` and (when
@@ -1488,9 +1519,10 @@ fn feature_corpus_compiles() {
             // Closure-logic version marker: the cached cell scans stderr for unused-import warnings.
             // v2 broadens that scan from the allowlist-only set to EVERY generated-crate unused import
             // (super::*/error::* globs, cross-scope type imports, wasm macro/prelude imports) minus a
-            // documented trait residue — so pre-v2 cached PASSes must be invalidated. Bump on any
-            // future change to the scan's verdict.
-            argv_for_key.push("lint=unused-imports-v2".to_string());
+            // documented trait residue. v3 additionally scans for `unused variable` warnings (a named
+            // count-match binding the generator never uses) — so pre-v3 cached PASSes must be
+            // invalidated. Bump on any future change to the scan's verdict.
+            argv_for_key.push("lint=unused-imports-v3".to_string());
             let outcome = gate_cache::run_cached(
                 "feature_corpus_compiles",
                 &label,
@@ -1525,6 +1557,16 @@ fn feature_corpus_compiles() {
                             failures.push(format!(
                                 "{label} ({crate_sub}): generated-code unused-import residue — import prune under-pruned:\n{}",
                                 unused.join("\n")
+                            ));
+                            ok = false;
+                        }
+                        // Same reasoning for `unused variable`: a named binding in a purely-generated
+                        // crate is generator imprecision (a count-match arm that should bind `_`).
+                        let unused_vars = unused_generated_variable_lines(&stderr);
+                        if !unused_vars.is_empty() {
+                            failures.push(format!(
+                                "{label} ({crate_sub}): generated-code unused-variable residue — generator emitted a named binding it never uses:\n{}",
+                                unused_vars.join("\n")
                             ));
                             ok = false;
                         }
