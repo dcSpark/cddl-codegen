@@ -422,7 +422,13 @@ convention `extern_deps` needs) and so can never link for the real wasm target. 
 `extern-dep-crate` pair also carries the common `Int` the `--common-import-override` cells
 re-export instead of minting: `tests/extern-dep-crate` a single `#[wasm_bindgen]` `Int` serving
 both faces (the same single-crate convention), `tests/extern-dep-crate-wasm` a wrapper over it
-with the `From`/`AsRef` boundary contract. Both are hand mirrors of generated `Int` — the
+with the `From`/`AsRef` boundary contract. The same pair backs two further cells:
+`common_override_wasm_int` (the PURE override consumer — no `_CDDL_CODEGEN_EXTERN_DEPS_DIR_`, the
+`--extern-wasm-crate` key naming the override crate itself, with a content assertion pinning the
+`Int` wasm face to the WASM crate because the rust stand-in's `#[wasm_bindgen]` `Int` makes a
+wrong-direction re-export compile-indistinguishable) and `dep_owned_named_collection_compiles`
+(the pair's `DepWithdrawals`/`DepCerts` — transparent `BTreeMap`/`Vec` aliases plus thin wasm
+faces — give the dep-owned named-collection cell a full cross-crate compile). Both are hand mirrors of generated `Int` — the
 preserve-encodings `Uint`/`Nint` representation, wire impls, and encoding-insensitive key
 semantics — enforced today only by round-tripping through the fixture's own impls (the mirror
 drift gate is a recorded `TESTING_ROADMAP.md` item, "Negative failure-SHAPE vectors + the
@@ -2046,7 +2052,10 @@ NAMED collection rule (`recs = [* foo]` / `gcn = gcoll<foo>`, or a DEP-owned `@r
 imports only the rule ident, never a structural wrapper the rule's own class subsumes (the `Alias`
 arm suppresses the structural-wrapper import when the alias names a collection rule — the E0432 class
 `collrec__named`/`gcolln__named` guard, and the dep-owned flavor
-`dep_owned_named_collection_no_local_structural_import` guards). Greenness also rests on four further
+`dep_owned_named_collection_no_local_structural_import` guards, with its cross-crate compile
+companion `dep_owned_named_collection_compiles` building both generated crates against the
+stand-in dep pair so the pinned-absent dangling import is also caught as the E0432 it would be).
+Greenness also rests on four further
 emitter invariants this matrix guards: a module
 declares `pub mod serialization;` only when that file is written (the module-declaration loop in
 `generation/export.rs` shares the `serialize_scopes` predicate with the file-write, so an alias/enum-only

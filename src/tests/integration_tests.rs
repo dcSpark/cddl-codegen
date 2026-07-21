@@ -7164,6 +7164,13 @@ fn extern_deps_wasm() {
 /// = int` is the alias-leak shape (`pub type DeltaCoin = Int;` in `#[wasm_bindgen]` signatures) that
 /// forces the wasm crate to name `Int` at its boundary. The harness `cargo build`s the generated wasm
 /// crate (acceptance for the routed wasm face) and `cargo test`s the rust crate (the round-trip floor).
+///
+/// The remap DIRECTION is additionally pinned by content: the stand-in rust crate's `Int` is itself
+/// `#[wasm_bindgen]`-annotated (the single-crate convention `extern_deps` needs — see
+/// tests/README.md on the `extern-dep-crate` pair), so a regression re-pointing the wasm face at the
+/// RUST crate (`pub use extern_dep_crate::Int;`) would still COMPILE (identity `From`, and the rust
+/// `Int` is a wasm class too). The compile proves the validation + a resolvable face; the assertion
+/// below proves the face is the WASM crate's.
 #[test]
 fn common_override_wasm_int() {
     run_test(
@@ -7183,6 +7190,16 @@ fn common_override_wasm_int() {
             "\nextern-dep-crate = { path = \"../../../extern-dep-crate\" }",
             "\nextern-dep-crate-wasm = { path = \"../../../extern-dep-crate-wasm\" }",
         ],
+    );
+    let wasm_mod = std::path::Path::new("tests/common-override-wasm-int/export")
+        .join("wasm/src/generated/mod.rs");
+    let src = std::fs::read_to_string(&wasm_mod)
+        .unwrap_or_else(|e| panic!("cannot read {wasm_mod:?}: {e}"));
+    assert!(
+        src.contains("pub use extern_dep_crate_wasm::Int;"),
+        "the built-in Int's wasm face must be re-exported from the MAPPED WASM crate (a rust-crate \
+         re-export compiles too, because the stand-in rust Int is #[wasm_bindgen]); wasm generated \
+         root:\n{src}"
     );
 }
 

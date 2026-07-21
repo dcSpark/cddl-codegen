@@ -1213,13 +1213,28 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   against the `extern-dep-crate` fixture's key-capable `Int`) and the `int` leg of
   `workspace_key_requests_derive_effect_and_hard_errors` (dep — an `int` `--key-requests` row emits a
   key-flavored `Int` a spec never references, while a `uint` row still hard-errors), with the
-  `extern_deps`/`extern_deps_wasm` cells covering the plain `Int`/`IntError` re-export path.
+  `extern_deps`/`extern_deps_wasm` cells and the pure-consumer cell `common_override_wasm_int`
+  (override crate NOT also a declared extern dep) covering the plain `Int`/`IntError` re-export path.
   Every individual flag *value* now appears in some profile or test: the five that previously
   didn't are covered by `flag_value_smoke` (`--annotate-fields=false`,
   `--to-from-bytes-methods=false`, `--binary-wrappers=true`), `wasm_cbor_json_api_macro_compiles`
   (`--wasm-cbor-json-api-macro`), and — for `--canonical-form=true` without `--preserve-encodings`,
   which emitted a non-compiling crate — a CLI rejection (`api::with_types`, pinned by
   `flag_value_rejects_canonical_without_preserve`).
+- **Documented-example execution sweep for `command_line_flags.mdx`.** A documented flag pairing
+  can be broken while every fixture stays green when the fixtures satisfy its preconditions by
+  accident: the doc's own `--extern-wasm-crate` example
+  (`--common-import-override=cml_core --extern-wasm-crate=cml_core=cml_core_wasm`) panicked at
+  startup validation for every PURE consumer (override crate not also a declared extern dep) from
+  the `Int`-override feature's ship until a consumer report, because `extern_deps_wasm`'s override
+  crate doubles as a declared dep and so satisfied the key check by accident — the exact cell the
+  doc example describes was never executed (found by reading the fixture, not by any gate; now
+  pinned by `common_override_wasm_int`). Systematic layer: a sweep that executes each
+  `command_line_flags.mdx` example invocation verbatim against a minimal spec assuming only what
+  the example's own prose states, asserting generation exits zero — so a doc-example/validation
+  divergence fails a gate instead of shipping prose-only. Complements the class-level
+  validation-smoke sweep above (that one asserts documented-INVALID values reject; this one asserts
+  documented-VALID pairings run).
 - **Negative failure-SHAPE vectors + the fixture-`Int` mirror gate for the cross-crate `Int`
   channel.** The shipped `Int`-under-`--common-import-override` coverage proves the positive paths
   and asserts row-ABSENCE on the degraded path, but none of the three documented failure shapes is
