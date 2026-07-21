@@ -95,19 +95,19 @@ impl cbor_event::se::Serialize for ArrayOptFields {
         serializer.write_array(cbor_event::Len::Len(
             2 + if self.x { 1 } else { 0 }
                 + match &self.a {
-                    Some(x) => 1,
+                    Some(_) => 1,
                     None => 0,
                 }
                 + match &self.b {
-                    Some(x) => 1,
+                    Some(_) => 1,
                     None => 0,
                 }
                 + match &self.d {
-                    Some(x) => 1,
+                    Some(_) => 1,
                     None => 0,
                 }
                 + match &self.e {
-                    Some(x) => 1,
+                    Some(_) => 1,
                     None => 0,
                 }
                 + if self.z { 1 } else { 0 },
@@ -1394,7 +1394,7 @@ impl cbor_event::se::Serialize for Ed {
     ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array(cbor_event::Len::Len(
             2 + match &self.index_2 {
-                Some(x) => 1,
+                Some(_) => 1,
                 None => 0,
             },
         ))?;
@@ -1489,7 +1489,7 @@ impl cbor_event::se::Serialize for Ee {
     ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array(cbor_event::Len::Len(
             3 + match &self.index_2 {
-                Some(x) => 1,
+                Some(_) => 1,
                 None => 0,
             },
         ))?;
@@ -1597,7 +1597,7 @@ impl cbor_event::se::Serialize for EnumOptEmbedFields {
             EnumOptEmbedFields::Eb(index_1) => {
                 serializer.write_array(cbor_event::Len::Len(
                     2 + match index_1 {
-                        Some(x) => 1,
+                        Some(_) => 1,
                         None => 0,
                     },
                 ))?;
@@ -1620,7 +1620,7 @@ impl cbor_event::se::Serialize for EnumOptEmbedFields {
             EnumOptEmbedFields::Ef(non_overlapping_type_choice_some) => {
                 serializer.write_array(cbor_event::Len::Len(
                     2 + match non_overlapping_type_choice_some {
-                        Some(x) => 1,
+                        Some(_) => 1,
                         None => 0,
                     },
                 ))?;
@@ -1635,7 +1635,7 @@ impl cbor_event::se::Serialize for EnumOptEmbedFields {
             EnumOptEmbedFields::Eg(overlapping_inlined) => {
                 serializer.write_array(cbor_event::Len::Len(
                     2 + match overlapping_inlined {
-                        Some(x) => 1,
+                        Some(_) => 1,
                         None => 0,
                     },
                 ))?;

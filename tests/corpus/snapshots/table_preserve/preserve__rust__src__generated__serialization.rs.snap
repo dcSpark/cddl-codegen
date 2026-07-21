@@ -23,7 +23,7 @@ impl cbor_event::se::Serialize for Holder {
                 .unwrap_or_default()
                 .to_len_sz(
                     4 + match &self.o {
-                        Some(x) => 1,
+                        Some(_) => 1,
                         None => 0,
                     },
                 ),
