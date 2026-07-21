@@ -209,7 +209,13 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      `tests/robustness/any_member.cddl`), so relaxing it globally would break that class. Closing the
      recursive-key gap therefore needs the deeper route — defer the keys-list synthesis past the
      recursive registration cycle (so the domain is classifiable when `name_as_wasm_array_ct` runs)
-     — which is out of scope for a duplicates-policy packet. The union-KEYED shape is not the real
+     — which is out of scope for a duplicates-policy packet. That deferral seam now EXISTS:
+     `finalize_generic_table_keys_lists` (intermediate/mod.rs, from the wasm-ABI matrix's
+     generic-instance-keyed-map fix) already defers the keys-list mint past `finalize`'s domain
+     resolution for GENERIC-INSTANCE domains, naming from the final domain — extending the same
+     defer-to-finalize route to recursively-registered union domains is the concrete pickup, with
+     the `any`-member panic-class pin (`tests/robustness/any_member.cddl`) as the boundary that
+     must stay intact. The union-KEYED shape is not the real
      Cardano driver anyway (metadata keys are int/text/bytes; the recursion is in the VALUE, covered
      by the tstr-keyed headline).
    - **Cross-crate wrapper-request hosting of a preserve table.** `requests.rs` threads
@@ -217,16 +223,13 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      carries no directive, so a preserve table hosted purely via `--wrapper-requests` from a consumer
      is untested (the named-rule and generic-instance paths ARE covered). A cross-crate preserve
      wrapper-request fixture would close it.
-   - **wasm-ABI per-role grid row.** The matrix FEATURE rows (`dsl.duplicates.{reject,preserve}`),
-     their decode-foreign catalog rows, and the `table_preserve.cddl` corpus fixture + corpus decode
-     rows are registered and minted; what remains is the per-role wasm-ABI grid row for the
-     appending-`insert` pair-map ABI class, recorded in `cddl-matrix/ROADMAP.md` § "wasm-ABI &
-     multifile placement matrices — remaining work" as the third OWED shape-addition entry
-     (alongside the tag-set and reject siblings), with the interim per-fixture pins named. Note from
-     the corpus mint: `table_preserve.mdmap` is a `pinned_reason` row — its standalone holder
-     synthesis trips the pre-existing recursive-union-valued-table `cbor_types` panic (the
-     cddl-matrix findings entry) — while the fixture's `holder`/`pmap`/`nepmap`/`pmap_txt`/`md` rows
-     minted with vectors.
+   - (The per-role wasm-ABI/multifile grid rows for both flavors are delivered — the
+     `rset`/`nerset`/`rseta`/`nerseta` and `pmap`/`nepmap`/`pmapa`/`nepmapa` `SHAPES` entries;
+     inventory in `tests/README.md` § "Per-rule duplicates policy (`@duplicates`) — test map".
+     Corpus-mint note that outlives the delivery: `table_preserve.mdmap` is a `pinned_reason` row —
+     its standalone holder synthesis trips the pre-existing recursive-union-valued-table
+     `cbor_types` panic (the cddl-matrix findings entry) — while the fixture's
+     `holder`/`pmap`/`nepmap`/`pmap_txt`/`md` rows minted with vectors.)
 
 ## Standing-system residuals (recur-first)
 
