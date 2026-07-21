@@ -1,0 +1,3 @@
+; cell: nersetrec x unref (shape defs, module a)
+foo = [a0: uint]
+nrs = [+ foo] ; @duplicates reject

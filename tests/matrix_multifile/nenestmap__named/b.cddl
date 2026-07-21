@@ -1,0 +1,2 @@
+; cell: nenestmap x named (reference from module b)
+bholder = [field0: nn]

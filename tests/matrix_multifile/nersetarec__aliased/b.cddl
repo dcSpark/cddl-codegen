@@ -1,0 +1,2 @@
+; cell: nersetarec x aliased (reference from module b)
+bal = neoset<foo>
