@@ -1,0 +1,1 @@
+old.rs:5: Unrecognized reserved comment in the `cddl-codegen:` namespace
