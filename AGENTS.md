@@ -276,6 +276,18 @@ For sessions that spawn their own sub-agents (an orchestrating session, or a sub
   own terms. So: spell out the multi-minute-gate run discipline (foreground, extended timeout,
   full-output-to-file) in every delegation prompt that runs gates, re-assert it in mid-task
   corrections, and treat plan-vs-report diffing as a mandatory review step, not a spot check.
+- **Sequential-phase delegation patterns, proven 2026-07-22/23 (set-architecture Delivery 2,
+  five Opus phases):** (1) prompt-embedded foreground-gate rules still failed once — an agent
+  backgrounded its tier run and stopped to "await" it despite an explicit prohibition; the
+  recovery that works is cheap because `check.ts` self-logs to `draft/logs/`: read the run's own
+  log, then SendMessage-resume the SAME agent with findings — resuming preserves its context and
+  beat respawning every time it was used (mid-task rulings, budget-limit continuations).
+  (2) Write an explicit budget-exhaustion protocol INTO the prompt: "commit only the green
+  subset, report the precise remainder, stop cleanly — never stall." (3) A per-phase spec file
+  (`draft/<delivery>-spec.md`) with every code-behavior premise marked as a claim-to-probe, plus
+  a report structured item-by-item against that spec, made the plan-vs-report diff mechanical —
+  each phase's report diff caught something (a hardcoded tag in a pinned message, an
+  under-specified wasm surface, a scope deviation needing a ruling).
 - **A plan's cited code-behavior premises are claims to verify, not facts — require implementing
   sub-agents to probe them empirically before building on them, and independently re-verify any
   premise a reviewer's approval rests on.** Proven 2026-07-19, twice in one reviewed delivery (the
