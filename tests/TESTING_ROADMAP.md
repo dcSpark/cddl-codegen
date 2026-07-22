@@ -136,6 +136,17 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      `opt_set`/`opt_neset` now carry the explicit `; @duplicates preserve` opt-out (byte-identical to
      the pre-flip no-directive `Vec` output — verified in-process, but the full crate compile +
      duplicate KAT run is the `golden_hex_preserve` / `golden_hex_canonical` integration gate).
+- **Nested-inline-258-inside-named-idiom suppression boundary (documented, pinned).** The inline
+  registry default is suppressed for the WHOLE transient arm subtree while a named two-arm rule
+  builds (`InlineTagDefaultSuppression`), so an inline `#6.258` array nested inside a written-out
+  named idiom rule keeps `Vec` — the outer rule still collapses and takes the rule-level default.
+  Pinned by `nested_inline_258_inside_named_idiom_keeps_vec_documented_boundary` (which states the
+  retire-together contract) and documented in `current_capacities.mdx` § inline positions.
+  Root-only suppression needs depth discrimination through the type-build recursion (and
+  misclassifies parenthesized arm roots) — disproportionate for a spelling with no real-spec
+  consumer, and the Delivery-2 inline name-synthesis work restructures this seam anyway.
+  Reopening signal: a real spec nests a raw inline 258 array inside the named idiom spelling
+  (hoisting the inner occurrence is the interim remedy the notice already teaches).
 
 ## Next work items, in priority order
 
