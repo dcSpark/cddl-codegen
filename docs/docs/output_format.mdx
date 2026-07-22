@@ -85,19 +85,28 @@ or mandatory) aborts generation at the float deserialize stub, the general
 `preserve_encodings_supports_floats` limitation — tracked by that stub gate and the preserve-side
 float rows in `cddl-matrix/ROADMAP.md`'s findings ledger.
 
-## Transparent tag-set collections
+## Nominal tag-258 set types
 
-The recognized tagged-or-untagged set idiom (`my_set = #6.258([* a]) / [* a]` — see
-[Current capacities](current_capacities) § "Transparent tag-set idiom") emits the SAME output a
-bare `#6.N([* a])` array rule gets: a transparent alias (`pub type MySet = Vec<a>;`, or
-`NonEmptyVec<a>` for the `[+]` flavor with the full non-empty contract below), never an enum or a
-dedicated set struct. Under `--preserve-encodings` the tag's wire presence rides a
-`*_tag_encoding: TagPresenceEncoding` field in the **holder's** encoding struct — a tri-state
-(`Tagged(Option<Sz>)` / `Untagged`, default `Tagged(None)` = tagged at fit-minimal size) that is
-deliberately NOT `Option<Sz>`, which would conflate "untagged" with "tagged, default size". Like
-every collection encoding detail, it is positional (holder-side) rather than value-carried: a
-value moved to a different holder re-serializes with the defaults. `--canonical-form` normalizes
-the tag's size, never its presence.
+A tag-258 set — the two-arm idiom (`my_set = #6.258([* a]) / [* a]`), the single-arm mandatory-tag
+form (`#6.258([* a])`), a generic set instantiation (`set<a>`), or an **inline** `#6.258([* a])`
+occurrence — is a NOMINAL wrapper struct that OWNS its `{tag, len, elem}` encodings, not a
+transparent `Vec`/`OrderedSet` alias. Named rules take the rule name; generic instantiations are
+instantiation-derived (`SetKeyHash`); inline occurrences are shape-derived (`SetU64`,
+`SetNonEmptyText`), one per deduped shape. See
+[Current capacities](current_capacities) § "Duplicates policy — tag 258 defaults to reject" for the
+three naming regimes and the reject default. The wrapper carries the set ergonomics
+(`Deref`/`DerefMut` to the inner collection, borrowed + owned `IntoIterator`, `From`/`TryFrom<Vec>`)
+and always-on encodings-ignored `PartialEq/Eq/PartialOrd/Ord/Hash`; JSON/schemars stay transparent
+(the wrapper serializes as its inner collection).
+
+Grammar selects the tag record, which lives on the **nominal's own** encoding struct (not the
+holder's — a set field no longer flattens its encodings onto the containing record): a two-arm
+idiom's OPTIONAL tag rides `inner_tag_encoding: TagPresenceEncoding` — a tri-state
+(`Tagged(Option<Sz>)` / `Untagged`, default `Tagged(None)` = tagged at fit-minimal size) deliberately
+NOT `Option<Sz>`, which would conflate "untagged" with "tagged, default size" — while the single-arm
+and inline MANDATORY tag rides a plain `inner_tag_encoding: Option<Sz>`. `--canonical-form` normalizes
+the tag's size, never its presence. A non-258 tag has no set-semantics registry entry, so a non-258
+tagged idiom stays a transparent optionally-tagged alias exactly as before.
 
 ## Non-empty containers
 
@@ -148,15 +157,19 @@ two-wrapper pattern — see [Wasm Differences](./wasm_differences.mdx).
 
 ## Reject-duplicates containers (uniqueness twins)
 
-A [`@duplicates reject`](./comment_dsl) directive on an array-shaped collection rule — a plain `[* T]`
-/ `[+ T]`, or either arm of the transparent tag-set idiom (`#6.258([* a]) / [* a]`) — swaps the
-transparent-alias target from the bare `Vec`/`NonEmptyVec` to a **uniqueness twin** that makes a
-duplicate element unrepresentable, the same enforcement-by-type move the non-empty containers make for
-the length bound:
+A [`@duplicates reject`](./comment_dsl) directive on a plain (non-tag-258) array-shaped collection
+rule — `[* T]` / `[+ T]` — swaps the transparent-alias target from the bare `Vec`/`NonEmptyVec` to a
+**uniqueness twin** that makes a duplicate element unrepresentable, the same enforcement-by-type move
+the non-empty containers make for the length bound:
 
 - `[* T]` → **`OrderedSet<T>`** (`signers = [* key] ; @duplicates reject` emits
   `pub type Signers = OrderedSet<Key>`).
 - `[+ T]` → **`NonEmptyOrderedSet<T>`**, whose door composes BOTH invariants (min-1 *and* uniqueness).
+
+A tag-258 set (which defaults to `reject`) uses the SAME twins for its inner collection, but wraps
+them in a nominal struct that owns its encodings rather than aliasing to them transparently — see
+[Nominal tag-258 set types](#nominal-tag-258-set-types) above. The twin conversion contract below
+describes the inner collection either way.
 
 The default is `preserve` — today's bare `Vec`/`NonEmptyVec`, which accept and re-emit duplicates
 byte-exactly for multi-era readers; writing `@duplicates preserve` explicitly is an accepted,
