@@ -997,6 +997,13 @@ pub struct GenericInstance {
     // (`BarTextList`), exactly like the equivalent inline `[* text]`, rather than minting a
     // rule-named `#[wasm_bindgen]` class. See `converge_anonymous_collection_instance_wasm`.
     pub(super) anonymous: bool,
+    /// The INSTANTIATION-derived nominal ident this instance mints, computed identically for every
+    /// spelling of the same instantiation (`<def>_<args' for_variant()>` → `SetKeyHash`; Phase 2.3).
+    /// For an anonymous use site this equals `instance_ident`; for a named binding
+    /// (`named_set = set<key_hash>`, ident `NamedSet`) it is the instantiation nominal the binding
+    /// aliases TO. Only consulted when the resolved def is a SET NOMINAL wrapper — every other
+    /// instance keeps minting under `instance_ident` unchanged.
+    pub(super) canonical_ident: RustIdent,
 }
 
 #[derive(Debug, Clone)]
@@ -1006,6 +1013,18 @@ pub struct GenericInstance {
 pub enum GenericResolved {
     // resolved with types swapped to concrete instance
     Resolved(RustStruct),
+    /// A generic SET-NOMINAL instance (`set<key_hash>` → `SetKeyHash`; Phase 2.3): the instantiation
+    /// mints ONE nominal wrapper struct under `canonical_ident`, DEDUPED across every spelling of the
+    /// same instantiation. `finalize` registers the struct once per distinct `canonical_ident`, and
+    /// registers a transparent alias `instance_ident = canonical_ident` whenever the two differ (a
+    /// named binding) — an anonymous instance's `instance_ident` already equals its canonical, so it
+    /// needs no alias. The author's spelling is the identity (rev 7): `set<[* uint]>` and
+    /// `set<xs_int>` mint DIFFERENT nominals openly.
+    SetNominal {
+        instance_ident: RustIdent,
+        canonical_ident: RustIdent,
+        resolved: RustStruct,
+    },
     // could not resolve (def is extern)
     Extern {
         // internal generic ident e.g. FooBar for Foo<Bar>
@@ -1025,12 +1044,14 @@ impl GenericInstance {
         generic_ident: RustIdent,
         generic_args: Vec<RustType>,
         anonymous: bool,
+        canonical_ident: RustIdent,
     ) -> Self {
         Self {
             instance_ident,
             generic_ident,
             generic_args,
             anonymous,
+            canonical_ident,
         }
     }
 
@@ -1096,6 +1117,11 @@ impl GenericInstance {
         let mut instance = def.orig.clone();
         instance.ident = self.instance_ident.clone();
 
+        // A generic SET NOMINAL def (`set<a0> = #6.258([* a0]) / [* a0]`) resolves to ONE nominal
+        // wrapper per instantiation (Phase 2.3). Capture the flag before the `&mut instance.variant`
+        // borrow so both the element resolution below and the post-match rename can consult it.
+        let set_nominal = instance.config.set_nominal;
+
         match &mut instance.variant {
             RustStructType::Record(record) => {
                 for field in record.fields.iter_mut() {
@@ -1125,6 +1151,19 @@ impl GenericInstance {
                 // }
                 todo!("we might need to recursively resolve on these");
             }
+            RustStructType::Wrapper { wrapped, .. } if set_nominal => {
+                // A set nominal always wraps a homogeneous occurrence array (`Array(elem)`); resolve
+                // the ELEMENT (the generic param) to the concrete instance type, exactly like the
+                // `Array` arm above. The optional-tag encoding op and occurrence bounds ride on the
+                // wrapped `RustType` unchanged.
+                if let ConceptualRustType::Array(elem) = &mut wrapped.conceptual_type {
+                    **elem = Self::resolve_type(&resolved_args, elem);
+                } else {
+                    unreachable!(
+                        "a generic set nominal always wraps a homogeneous occurrence array"
+                    );
+                }
+            }
             RustStructType::Wrapper { .. } => {
                 todo!("should we look this up in types to resolve?");
             }
@@ -1135,6 +1174,17 @@ impl GenericInstance {
                 panic!("generics not supported on raw bytes types")
             }
         };
+        if set_nominal {
+            // Mint under the INSTANTIATION-derived canonical ident (`SetKeyHash`), deduped by
+            // `finalize` across every spelling of this instantiation; the binding's own ident aliases
+            // to it when it differs.
+            instance.ident = self.canonical_ident.clone();
+            return Ok(GenericResolved::SetNominal {
+                instance_ident: self.instance_ident.clone(),
+                canonical_ident: self.canonical_ident.clone(),
+                resolved: instance,
+            });
+        }
         Ok(GenericResolved::Resolved(instance))
     }
 

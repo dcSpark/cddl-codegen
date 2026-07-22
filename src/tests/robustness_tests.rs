@@ -1322,12 +1322,13 @@ fn exposable_generic_collection_instance_keyed_map_lowers_keys_list_structurally
     );
 }
 
-/// `@duplicates reject` on an INLINE (anonymous) generic-set instance (`[g: oset<uint>]`) lowers to
-/// the uniqueness twin on BOTH sides: rust core `OrderedSet<u64>` and — the point of this test — a
-/// wasm class that WRAPS the twin (`pub struct U64OrderedSet(pub(crate) OrderedSet<u64>)`, reached
-/// via `pub type OsetU64 = U64OrderedSet;`), NOT a loose `Vec<u64>` wrapper. The `tag_set_reject`
-/// corpus fixture exercises the NAMED-instance path plus a full `cargo check`; this pins the inline
-/// (anonymous) path — the shape WP3 taught `for_wasm_member` + the mint path to lower structurally.
+/// `@duplicates reject` on an ANONYMOUS generic-set instance (`[g: oset<uint>]`) NOMINALIZES per
+/// instantiation (Phase 2.3): `oset<uint>` mints one nominal `OsetU64` over the reject uniqueness
+/// twin on BOTH sides — rust core `OsetU64(pub(crate) OrderedSet<u64>)` and a wasm class
+/// `OsetU64(pub(crate) cddl_lib::OsetU64)` whose `new()`/`get()` boundary rides the structural
+/// `U64OrderedSet` twin wrapper, NOT a loose `Vec<u64>`. The `tag_set_reject` corpus fixture
+/// exercises the named-instance path plus a full `cargo check`; this pins the anonymous
+/// instantiation path.
 #[test]
 fn duplicates_reject_inline_generic_instance_lowers_to_twin_under_wasm() {
     const CDDL: &str = "oset<a0> = #6.258([* a0]) / [* a0] ; @duplicates reject\n\
@@ -1348,21 +1349,26 @@ fn duplicates_reject_inline_generic_instance_lowers_to_twin_under_wasm() {
         ]))
     };
 
-    // --wasm=true: generates cleanly (no rejection), and the wasm wrapper wraps the uniqueness twin.
+    // --wasm=true: generates cleanly (no rejection); the instance nominalizes to `OsetU64`, and its
+    // wasm boundary still rides the structural `U64OrderedSet` uniqueness twin.
     let out = run("--wasm=true")
-        .expect("@duplicates reject on an inline generic instance must generate under --wasm");
+        .expect("@duplicates reject on an anonymous generic instance must generate under --wasm");
     let src = out.values().cloned().collect::<Vec<_>>().join("\n");
     assert!(
         src.contains("pub struct U64OrderedSet(pub(crate) OrderedSet<u64>)"),
-        "inline reject must mint a wasm class WRAPPING the OrderedSet twin, not a loose Vec, got:\n{src}"
+        "the reject instance's wasm boundary must ride the OrderedSet twin wrapper, not a loose Vec, got:\n{src}"
     );
     assert!(
-        src.contains("pub type OsetU64 = U64OrderedSet;"),
-        "the anonymous instance alias must point at the structural reject wrapper, got:\n{src}"
+        src.contains("pub struct OsetU64(pub(crate) cddl_lib::OsetU64)"),
+        "the anonymous instance nominalizes to a `OsetU64` wasm class over its rust nominal, got:\n{src}"
+    );
+    assert!(
+        src.contains("pub struct OsetU64(pub(crate) OrderedSet<u64>)"),
+        "the rust nominal `OsetU64` must wrap the OrderedSet twin, got:\n{src}"
     );
     assert!(
         !src.contains("pub struct U64List") && !src.contains("pub type OsetU64 = U64List;"),
-        "inline reject must NOT lower to the loose Vec (`U64List`) wrapper, got:\n{src}"
+        "reject must NOT lower to the loose Vec (`U64List`) wrapper, got:\n{src}"
     );
 
     // --wasm=false: the same shape generates cleanly (rust-only inline reject is supported too)

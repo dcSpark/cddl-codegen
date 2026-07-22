@@ -210,14 +210,17 @@ fn non_preserve_defaults_to_tagged_and_accepts_either() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Generic defs (collapse reaches the transparent-alias IR — no panic, no enum)
+// Generic defs (collapse reaches the set-nominal IR — no panic, no enum; Phase 2.3 nominalizes
+// per instantiation)
 // ---------------------------------------------------------------------------------------------
 
 /// `set<a0> = #6.258([* a0]) / [* a0]` (choice-bodied generic def) collapses BEFORE the generic
-/// machinery into an Array-bodied generic def, so instances resolve to transparent aliases and the
-/// finalize-time `is_enum` panic (which a non-collapsed choice-bodied generic def hits) never fires.
+/// machinery into a set-nominal Wrapper-bodied generic def, so each instantiation mints ONE nominal
+/// wrapper (`set<uint>` → `SetU64`, Phase 2.3) — NOT a transparent alias — and the finalize-time
+/// `is_enum` panic (which a non-collapsed choice-bodied generic def would hit) never fires. The
+/// duplicates policy selects only the inner type (no directive ⇒ the reject `OrderedSet` twin).
 #[test]
-fn generic_set_defs_collapse_to_transparent_instances() {
+fn generic_set_defs_nominalize_per_instantiation() {
     let src = generate(
         "set<a0> = #6.258([* a0]) / [* a0]\n\
          nonempty_set<a0> = #6.258([+ a0]) / [+ a0]\n\
@@ -227,13 +230,19 @@ fn generic_set_defs_collapse_to_transparent_instances() {
     )
     .expect("choice-bodied generic set defs must collapse and generate (no is_enum panic)");
     assert!(
-        src.contains("pub type SetU64 = OrderedSet<u64>;"),
-        "empty-allowed generic instance is a transparent OrderedSet alias (258 defaults to reject):\n{src}"
+        src.contains("pub struct SetU64 {")
+            && src.contains("pub(crate) inner: OrderedSet<u64>,")
+            && !src.contains("pub type SetU64 ="),
+        "the empty-allowed generic instance nominalizes to a wrapper over the reject OrderedSet twin \
+         (258 defaults to reject), not a transparent alias:\n{src}"
     );
     assert!(
-        src.contains("pub type NonemptySetText = NonEmptyOrderedSet<String>;")
-            && src.contains("pub type NonemptySetU64 = NonEmptyOrderedSet<u64>;"),
-        "non-empty generic instances are distinct NonEmptyOrderedSet aliases:\n{src}"
+        src.contains("pub struct NonemptySetText {")
+            && src.contains("pub(crate) inner: NonEmptyOrderedSet<String>,")
+            && src.contains("pub struct NonemptySetU64 {")
+            && src.contains("pub(crate) inner: NonEmptyOrderedSet<u64>,"),
+        "each non-empty generic instantiation mints a DISTINCT nominal over the NonEmptyOrderedSet \
+         twin:\n{src}"
     );
     assert!(
         !src.contains("pub enum Set") && !src.contains("pub enum NonemptySet"),
@@ -352,14 +361,14 @@ fn extract_impl(src: &str, marker: &str) -> String {
 
 /// A field whose reference site adds an OUTER tag (`#6.24(..)`) over a collapsed-set reference.
 ///
-/// Phase 2.2 DELIBERATELY splits the two reference paths (parity is restored in Phase 2.3, when
-/// generic instances nominalize too):
+/// Phase 2.3 RESTORES parity between the two reference paths — a generic instance now nominalizes
+/// exactly like the non-generic named rule (Phase 2.2 had deliberately split them):
 /// - the NON-GENERIC named set rule (`ys_int = #6.258([* uint]) / [* uint]`) nominalizes, so the
 ///   reference-site outer `#6.24` tag wraps a NOMINAL delegation (`write_tag_sz(24u64, ..)` then
 ///   `self.g.serialize(..)`) — the inner optional-258 tag lives inside `YsInt::serialize`;
-/// - the GENERIC INSTANCE (`xs_int = xs<uint>`) stays a transparent alias (Phase 2.3 territory), so
-///   `#6.24(xs_int)` still INLINES the set under the outer tag with each tag LEVEL owning its own
-///   depth-suffixed member (`g_tag_encoding` at level 1, `g_tag2_encoding` at level 2).
+/// - the GENERIC INSTANCE (`xs_int = xs<uint>`, a named binding of `xs<uint>` → nominal `XsU64`)
+///   ALSO nominalizes, so `#6.24(xs_int)` likewise wraps a nominal delegation — the inner
+///   optional-258 tag lives inside the instantiation nominal, NOT flattened onto the holder.
 ///
 /// Either way the outer `#6.24` tag is emitted OUTSIDE (before) the inner optional-258 tag. Standalone
 /// compilation of a stacked outer-over-inner tag is pinned by the `double_tag` corpus fixture and
@@ -379,30 +388,20 @@ fn outer_tag_over_set_reference_orders_outer_before_inner() {
     )
     .expect("non-generic outer-tag ref must generate");
 
-    // non-generic: the named set nominalizes — outer tag 24 wraps a nominal delegation.
-    let ng_ser = extract_impl(&non_generic, "impl Serialize for Holder");
-    assert!(
-        ng_ser.contains("24u64")
-            && ng_ser.contains("self.g.serialize(serializer, force_canonical)?"),
-        "the non-generic named set nominalizes: outer tag 24 then a nominal `self.g.serialize`:\n{ng_ser}"
-    );
-    assert!(
-        !ng_ser.contains("g_tag2_encoding"),
-        "the inner 258 tag must live inside the nominal, not flattened onto the holder:\n{ng_ser}"
-    );
-
-    // generic instance: still transparent (Phase 2.3 pending) — inlined, outer tag before inner tag.
-    let g_ser = extract_impl(&generic, "impl Serialize for Holder");
-    let outer = g_ser
-        .find("24u64")
-        .expect("outer tag 24 must be serialized");
-    let inner = g_ser
-        .find("if let TagPresenceEncoding::Tagged(tag_sz)")
-        .expect("inner optional-tag branch must be serialized (transparent instance)");
-    assert!(
-        outer < inner,
-        "reference-site outer tag must be written OUTSIDE (before) the alias's own optional tag:\n{g_ser}"
-    );
+    // Both the non-generic named set AND the generic instantiation nominalize: outer tag 24 wraps a
+    // nominal delegation, and the inner 258 tag lives inside the nominal (never on the holder).
+    for (label, src) in [("non-generic", &non_generic), ("generic", &generic)] {
+        let ser = extract_impl(src, "impl Serialize for Holder");
+        assert!(
+            ser.contains("24u64") && ser.contains("self.g.serialize(serializer, force_canonical)?"),
+            "the {label} set nominalizes: outer tag 24 then a nominal `self.g.serialize`:\n{ser}"
+        );
+        assert!(
+            !ser.contains("g_tag2_encoding"),
+            "the inner 258 tag must live inside the nominal, not flattened onto the holder \
+             ({label}):\n{ser}"
+        );
+    }
 }
 
 /// A collapsed set used as a VARIANT of a larger type choice (`thing = my_set / uint`) generates a

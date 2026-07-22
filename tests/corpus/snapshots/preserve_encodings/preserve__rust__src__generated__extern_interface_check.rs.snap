@@ -37,8 +37,6 @@ use crate::generated::FooBytes as _;
 #[allow(unused_imports)]
 use crate::generated::NullableBool as _;
 #[allow(unused_imports)]
-use crate::generated::OsetPU64 as _;
-#[allow(unused_imports)]
 use crate::generated::Table as _;
 #[allow(unused_imports)]
 use crate::generated::U32 as _;
@@ -106,6 +104,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::OptFixedArr>();
     _assert_serialize::<crate::generated::OptFixedMap>();
     _assert_deserialize::<crate::generated::OptFixedMap>();
+    _assert_serialize::<crate::generated::OsetPU64>();
+    _assert_deserialize::<crate::generated::OsetPU64>();
     _assert_serialize::<crate::generated::OverlapBasicEmbed>();
     _assert_deserialize::<crate::generated::OverlapBasicEmbed>();
     _assert_serialize::<crate::generated::OverlappingInlined>();

@@ -17,9 +17,55 @@ pub mod non_empty_map;
 pub mod ordered_hash_map;
 pub mod ordered_set;
 extern crate derivative;
-pub mod cbor_encodings;
 mod extern_interface_check;
 mod key_demand_assertions;
+impl std::ops::Deref for OsetPU64 {
+    type Target = OrderedSet<u64>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl std::ops::DerefMut for OsetPU64 {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+
+impl<'a> IntoIterator for &'a OsetPU64 {
+    type Item = &'a u64;
+    type IntoIter = std::slice::Iter<'a, u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.iter()
+    }
+}
+
+impl IntoIterator for OsetPU64 {
+    type Item = u64;
+    type IntoIter = std::vec::IntoIter<u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Vec::<u64>::from(self.inner).into_iter()
+    }
+}
+
+impl From<OsetPU64> for Vec<u64> {
+    fn from(wrapper: OsetPU64) -> Self {
+        Vec::from(wrapper.inner)
+    }
+}
+
+impl TryFrom<Vec<u64>> for OsetPU64 {
+    type Error = DeserializeError;
+
+    fn try_from(vec: Vec<u64>) -> Result<Self, Self::Error> {
+        Ok(OsetPU64::new(<OrderedSet<u64>>::try_from(vec)?))
+    }
+}
+
+pub mod cbor_encodings;
 pub mod serialization;
 
 use crate::generated::error::*;
@@ -33,9 +79,9 @@ use cbor_encodings::{
     BoundsEncoding, BytesUintEncoding, CEncoding, CborInCborEncoding, CustomFieldHolderEncoding,
     DeeplyNestedEncoding, EdEncoding, EeEncoding, EnumsEncoding, FirstEncoding, FooEncoding,
     HashEncoding, MapWithDefaultsEncoding, NemPreserveEncoding, NevPreserveEncoding,
-    NullableSpecialsEncoding, OptFixedArrEncoding, OptFixedMapEncoding, PlainArraysEncoding,
-    PlainEncoding, RejectSetPreserveEncoding, SecondEncoding, SignBoundsEncoding,
-    SignedIntsEncoding, String64Encoding, String1632Encoding,
+    NullableSpecialsEncoding, OptFixedArrEncoding, OptFixedMapEncoding, OsetPU64Encoding,
+    PlainArraysEncoding, PlainEncoding, RejectSetPreserveEncoding, SecondEncoding,
+    SignBoundsEncoding, SignedIntsEncoding, String64Encoding, String1632Encoding,
     StructWithCustomSerializationEncoding, TableArrMembersEncoding, TaggedFooBytesEncoding,
     TaggedTextEncoding, ThreeEncoding, TopLevelNegRangeEncoding, TopLevelPosRangeEncoding,
     TopLevelTaggedRangeEncoding, WidthCollapseEncoding, WrapperListEncoding, WrapperTableEncoding,
@@ -1117,9 +1163,39 @@ impl OptFixedMap {
     }
 }
 
-/// The tag-258 set idiom: the tag is an encoding detail — both the `#6.258(...)` and the bare-array wire forms are accepted (serialization defaults to tagged), so either round-trips byte-exactly.
-/// `@duplicates reject`: a repeated element is refused (a `DuplicateKey` error) on both the wire and the API; accepted (duplicate-free) input re-emits byte-exactly in wire order (the set is order-preserving, never sorted).
-pub type OsetPU64 = OrderedSet<u64>;
+#[derive(Clone, Debug, derivative::Derivative)]
+#[derivative(Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct OsetPU64 {
+    pub(crate) inner: OrderedSet<u64>,
+    #[derivative(
+        PartialEq = "ignore",
+        Ord = "ignore",
+        PartialOrd = "ignore",
+        Hash = "ignore"
+    )]
+    pub encodings: Option<OsetPU64Encoding>,
+}
+
+impl OsetPU64 {
+    pub fn new(inner: OrderedSet<u64>) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<OrderedSet<u64>> for OsetPU64 {
+    fn from(inner: OrderedSet<u64>) -> Self {
+        OsetPU64::new(inner)
+    }
+}
+
+impl From<OsetPU64> for OrderedSet<u64> {
+    fn from(wrapper: OsetPU64) -> Self {
+        wrapper.inner
+    }
+}
 
 #[derive(Clone, Debug)]
 pub enum OverlapBasicEmbed {

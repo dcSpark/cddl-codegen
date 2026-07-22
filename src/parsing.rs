@@ -593,13 +593,14 @@ fn parse_type_choices(
             // bare `@newtype` emits no getter, `@newtype <name>` a custom one; neither shadows
             // `OrderedSet::get(index)`). A non-258 collapse (or a table inner) stays a transparent
             // optionally-tagged alias, byte-identical to today.
-            // NOMINALIZATION is scoped to NAMED NON-GENERIC set rules (Phase 2.2). A generic set def
-            // (`set<a0> = #6.258([* a0]) / [* a0]`) stays the collapsed transparent Array-bodied generic
-            // def whose instances resolve to transparent aliases (`pub type SetU64 = OrderedSet<u64>`) —
-            // nominal-per-instantiation is Phase 2.3, and the generic fixtures must stay byte-identical.
-            let is_set_nominal = is_array
-                && generic_params.is_none()
-                && well_known_tag_default_duplicates(set_tag, true).is_some();
+            // NOMINALIZATION covers BOTH non-generic set rules (Phase 2.2) and generic set DEFS
+            // (`set<a0> = #6.258([* a0]) / [* a0]`, Phase 2.3). A generic def's wrapper stores the
+            // generic PARAM as its wrapped element and is registered as a `GenericDef`; each
+            // instantiation then mints ONE nominal wrapper per distinct `<def>_<args>` (`SetKeyHash`)
+            // in `GenericInstance::resolve`. A named binding of an instance aliases the instantiation
+            // nominal.
+            let is_set_nominal =
+                is_array && well_known_tag_default_duplicates(set_tag, true).is_some();
             let defaulted = rule_metadata.duplicates.is_none()
                 && well_known_tag_default_duplicates(set_tag, is_array).is_some();
             let collapse_desc = if is_set_nominal {
@@ -1580,7 +1581,7 @@ fn parse_type(
                                     Some(arg) => {
                                         // This is for named generic instances such as:
                                         // foo = bar<text>
-                                        let generic_args = arg
+                                        let generic_args: Vec<RustType> = arg
                                             .args
                                             .iter()
                                             .map(|a| {
@@ -1592,6 +1593,14 @@ fn parse_type(
                                                 )
                                             })
                                             .collect();
+                                        // The instantiation nominal a set binding aliases TO
+                                        // (`named_set = set<key_hash>` → `SetKeyHash`); identical to
+                                        // the anonymous-use spelling so both dedup to one nominal.
+                                        let canonical_ident =
+                                            RustIdent::new(generic_instance_canonical_cddl_ident(
+                                                &cddl_ident,
+                                                &generic_args,
+                                            ));
                                         types.register_generic_instance(GenericInstance::new(
                                             type_name.clone(),
                                             RustIdent::new(cddl_ident.clone()),
@@ -1599,6 +1608,7 @@ fn parse_type(
                                             // author-declared rule name (`foo = bar<text>`), not
                                             // synthesized — keeps its own wasm class / criterion-8 name.
                                             false,
+                                            canonical_ident,
                                         ))
                                     }
                                     None => {
@@ -2621,6 +2631,23 @@ fn rust_type_from_type1(
 /// Shared by every member/element position that can carry a generic instantiation
 /// (`rust_type_from_type2`'s `Type2::Typename` arm and `parse_group_type`'s single-entry
 /// `TypeGroupname` array arm) so the two paths cannot drift.
+/// The INSTANTIATION-derived canonical CDDL ident of a generic invocation:
+/// `<def-name>_<args' for_variant() names>` (`set` + `[key_hash]` → `set_KeyHash`, camel-cased to
+/// `SetKeyHash` by `RustIdent::new`). The ONE owner of this spelling so every call site — anonymous
+/// use (`generic_instance_or_new_type`) and named binding (`foo = bar<text>`) — derives the SAME
+/// instantiation identity, which the Phase 2.3 set-nominal dedup keys on.
+fn generic_instance_canonical_cddl_ident(
+    cddl_ident: &CDDLIdent,
+    generic_args: &[RustType],
+) -> CDDLIdent {
+    let args_name = generic_args
+        .iter()
+        .map(|t| t.for_variant().to_string())
+        .collect::<Vec<String>>()
+        .join("_");
+    CDDLIdent::new(format!("{cddl_ident}_{args_name}"))
+}
+
 fn generic_instance_or_new_type(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
@@ -2639,22 +2666,20 @@ fn generic_instance_or_new_type(
                 .iter()
                 .map(|a| rust_type_from_type1(types, parent_visitor, &a.arg, cli))
                 .collect::<Vec<_>>();
-            let args_name = generic_args
-                .iter()
-                .map(|t| t.for_variant().to_string())
-                .collect::<Vec<String>>()
-                .join("_");
-            let instance_cddl_ident = CDDLIdent::new(format!("{cddl_ident}_{args_name}"));
+            let instance_cddl_ident =
+                generic_instance_canonical_cddl_ident(&cddl_ident, &generic_args);
             let instance_ident = RustIdent::new(instance_cddl_ident.clone());
             let generic_ident = RustIdent::new(cddl_ident);
             types.register_generic_instance(GenericInstance::new(
-                instance_ident,
+                instance_ident.clone(),
                 generic_ident,
                 generic_args,
                 // synthesized name for an anonymous use site (`[a: bar<text>]` → `BarText`): when
                 // this resolves to a transparent collection, its wasm wrapper lowers to the
                 // STRUCTURAL name, not this synthesized ident (see the anonymous-collapse convergence).
                 true,
+                // an anonymous use site's ident IS the instantiation canonical (`SetKeyHash`).
+                instance_ident,
             ));
             types.new_type(&instance_cddl_ident, cli)
         }
@@ -3365,10 +3390,11 @@ fn parse_group_choice(
                     cli,
                 );
             }
-            // Scoped to NAMED NON-GENERIC set rules (Phase 2.2); a generic single-arm set def keeps the
-            // transparent Array alias so its instances stay byte-identical (Phase 2.3 nominalizes those).
-            let is_set_nominal = generic_params.is_none()
-                && tag.is_some_and(|t| well_known_tag_default_duplicates(t, true).is_some());
+            // Covers non-generic set rules (Phase 2.2) and generic single-arm set DEFS (Phase 2.3):
+            // a generic def stores the wrapper (param element) as a `GenericDef`, and each
+            // instantiation mints one nominal per `<def>_<args>` in `GenericInstance::resolve`.
+            let is_set_nominal =
+                tag.is_some_and(|t| well_known_tag_default_duplicates(t, true).is_some());
             if is_set_nominal {
                 // A single-arm mandatory-tag 258 SET rule (`#6.258([* a])`) NOMINALIZES into a
                 // `Wrapper` struct owning its `{tag, len, elem}` encodings (Phase 2.2), exactly like

@@ -20,4 +20,5 @@ pub fn export_schemas() {
         std::fs::create_dir(schema_path).unwrap();
     }
     gen_json_schema!(cddl_lib::Holder);
+    gen_json_schema!(cddl_lib::OsetU64);
 }

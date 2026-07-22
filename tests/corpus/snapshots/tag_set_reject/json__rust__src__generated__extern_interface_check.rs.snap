@@ -22,8 +22,6 @@ fn _assert_serialize<T: cbor_event::se::Serialize>() {}
 #[allow(dead_code)]
 fn _assert_deserialize<T: crate::generated::serialization::Deserialize>() {}
 #[allow(unused_imports)]
-use crate::generated::OsetU64 as _;
-#[allow(unused_imports)]
 use crate::generated::Plain as _;
 #[allow(dead_code)]
 fn _extern_interface_self_check() {
@@ -33,6 +31,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::IntNeset>();
     _assert_serialize::<crate::generated::IntSet>();
     _assert_deserialize::<crate::generated::IntSet>();
+    _assert_serialize::<crate::generated::OsetU64>();
+    _assert_deserialize::<crate::generated::OsetU64>();
     _assert_serialize::<crate::generated::TextSet>();
     _assert_deserialize::<crate::generated::TextSet>();
 }

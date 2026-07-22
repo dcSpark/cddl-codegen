@@ -103,9 +103,15 @@ pub(super) fn generate_wrapper_struct(
                 if set_nominal && !matches!(struct_config.newtype_getter.as_ref(), Some(Some(_))) {
                     // qualified-path form `<T>::from` — a generic inner (`OrderedSet<u64>`) parses `<` as a
                     // comparison in the bare `T::from` spelling ("comparison operators cannot be chained").
+                    // `from_wasm=true` crate-qualifies the ELEMENT (`cddl_lib::KeyHash`) so the inner
+                    // spelling matches the structural wasm wrapper's native field
+                    // (`OrderedSet<cddl_lib::KeyHash>` / `Vec<cddl_lib::KeyHash>`, both imported in the
+                    // wasm crate) — a non-exposable-element set nominal (`set<key_hash>`) otherwise
+                    // names an unqualified `KeyHash` that resolves in no wasm-crate scope. Exposable
+                    // std elements (`u64`) are unaffected (no ident to qualify).
                     format!(
                         "<{}>::from(self.0.clone())",
-                        field_type.for_rust_member(types, false, cli)
+                        field_type.for_rust_member(types, true, cli)
                     )
                 } else {
                     format!("self.0.{getter_name}()")

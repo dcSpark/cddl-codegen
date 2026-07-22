@@ -2113,6 +2113,23 @@ impl<'a> IntermediateTypes<'a> {
                 continue;
             };
             let shallow = rt.conceptual_type.resolve_alias_shallow();
+            // A NAMED set-nominal binding (`named_set = set<key_hash>`) resolves to
+            // `Alias(NamedSet, Rust(SetKeyHash))` whose base is the instantiation NOMINAL struct — not
+            // a transparent Array/Map. Its use-site fields were built as a bare `Rust(NamedSet)` at
+            // parse time (before the late alias existed), which generation would look up as a struct
+            // and panic. Re-resolve those leaves to the `Alias` so they name the nominal through the
+            // `pub type NamedSet = SetKeyHash;` binding (Phase 2.3). Anonymous instances already carry
+            // `Rust(SetKeyHash)` at their fields (the canonical IS a registered struct) and need no
+            // re-resolution here.
+            let is_set_nominal_alias = matches!(
+                shallow,
+                ConceptualRustType::Rust(id)
+                    if self.rust_struct(id).map(|rs| rs.config().set_nominal).unwrap_or(false)
+            );
+            if is_set_nominal_alias {
+                resolved.insert(ident, rt);
+                continue;
+            }
             if !matches!(
                 shallow,
                 ConceptualRustType::Array(_) | ConceptualRustType::Map(_, _)
@@ -2339,9 +2356,37 @@ impl<'a> IntermediateTypes<'a> {
             .values()
             .map(|instance| instance.resolve(self, cli))
             .collect::<Result<Vec<_>, _>>()?;
+        // Dedup guard for generic SET-NOMINAL instantiations: every spelling of `set<key_hash>`
+        // resolves to the same `canonical_ident` (`SetKeyHash`), which must mint exactly ONE nominal
+        // wrapper struct. A named binding whose own ident differs (`named_set` → `NamedSet`) then
+        // aliases transparently to it.
+        let mut minted_set_nominals: BTreeSet<RustIdent> = BTreeSet::new();
         for resolved_instance in resolved_generics {
             match resolved_instance {
                 GenericResolved::Resolved(rs) => self.register_rust_struct(parent_visitor, rs, cli),
+                GenericResolved::SetNominal {
+                    instance_ident,
+                    canonical_ident,
+                    resolved,
+                } => {
+                    if minted_set_nominals.insert(canonical_ident.clone()) {
+                        self.register_rust_struct(parent_visitor, resolved, cli);
+                    }
+                    // A named binding (`named_set = set<key_hash>`) becomes a transparent alias TO the
+                    // instantiation nominal: `pub type NamedSet = SetKeyHash;` (rust AND wasm — wasm
+                    // keeps ONE class + this passthrough alias). An anonymous instance's ident already
+                    // IS the canonical, so it needs no alias.
+                    if instance_ident != canonical_ident {
+                        self.register_type_alias(
+                            instance_ident,
+                            AliasInfo::new_manual(
+                                ConceptualRustType::Rust(canonical_ident).into(),
+                                true,
+                                true,
+                            ),
+                        );
+                    }
+                }
                 GenericResolved::Extern {
                     instance_ident,
                     real_ident,
@@ -2420,6 +2465,14 @@ impl<'a> IntermediateTypes<'a> {
             hash: false,
             ord: true,
         };
+        // A SET NOMINAL's element needs the FULL comparison bundle: the wrapper's always-on
+        // `PartialEq/Eq/PartialOrd/Ord/Hash` derives flow through its `OrderedSet`/`Vec` inner onto
+        // the element type. Matches the demand the wrapper forces on ITSELF (`wrappers.rs`).
+        let full_set_demand = DemandSet {
+            bare: true,
+            hash: true,
+            ord: true,
+        };
         fn check_used_as_key(
             ty: &ConceptualRustType,
             types: &IntermediateTypes<'_>,
@@ -2487,6 +2540,20 @@ impl<'a> IntermediateTypes<'a> {
                     == Some(crate::comment_ast::DuplicatesPolicy::Reject)
             {
                 element_type.visit_types(self, &mut |ty| mark_key_demand(ty, &mut key_demand, ord));
+            }
+            // A SET NOMINAL wrapper (Phase 2.2/2.3) derives always-on encodings-ignored
+            // `PartialEq/Eq/PartialOrd/Ord/Hash`, and its inner collection (`OrderedSet<Elem>` under
+            // reject, `Vec<Elem>` under preserve) propagates every one of those bounds onto `Elem`.
+            // So the element needs the FULL demand (`bare + hash + ord`), regardless of policy —
+            // otherwise a Rust-struct element (`set<key_hash>`) fails to satisfy `Eq/Ord/Hash` and the
+            // crate does not compile. Primitive/std elements carry the bounds intrinsically (no-op).
+            if let RustStructType::Wrapper { wrapped, .. } = rust_struct.variant()
+                && rust_struct.config().set_nominal
+                && let ConceptualRustType::Array(element_type) = &wrapped.conceptual_type
+            {
+                element_type.visit_types(self, &mut |ty| {
+                    mark_key_demand(ty, &mut key_demand, full_set_demand)
+                });
             }
             if let RustStructType::Table { domain, .. } = rust_struct.variant() {
                 // A `@duplicates preserve` table's key is compared with the pair-map's linear
@@ -2887,6 +2954,36 @@ impl<'a> IntermediateTypes<'a> {
                     "name collision: rule '{structural}' collides with the '{structural}' wasm \
                      wrapper generated for an inline `@duplicates reject` set occurrence — rename \
                      the rule to avoid shadowing the restricted OrderedSet wrapper"
+                ));
+            }
+        }
+        // A SET NOMINAL wrapper (Phase 2.2 named rule, Phase 2.3 generic instantiation) whose inner is
+        // the reject uniqueness twin mints the SAME structural `<Elem>OrderedSet` /
+        // `NonEmpty<Elem>OrderedSet` wasm class for its `new()`/`get()` boundary. A user rule claiming
+        // that ident silently collides (a `pub struct`/`pub type` of the wrong shape) — the nominal
+        // sibling of the inline occurrence above. Message names the reject twin (the "OrderedSet
+        // wrapper" pinned substring), distinct from the NonEmpty siblings.
+        for (ident, rs) in self.rust_structs.iter() {
+            let RustStructType::Wrapper { wrapped, .. } = rs.variant() else {
+                continue;
+            };
+            if !rs.config().set_nominal || !wrapped.duplicates_reject() {
+                continue;
+            }
+            let ConceptualRustType::Array(element_type) = &wrapped.conceptual_type else {
+                continue;
+            };
+            let variant = element_type.conceptual_type.for_variant();
+            let structural = if wrapped.is_non_empty_array() {
+                format!("NonEmpty{variant}OrderedSet")
+            } else {
+                format!("{variant}OrderedSet")
+            };
+            if self.wasm_ident_claimed_by_user_rule(&structural) {
+                msgs.insert(format!(
+                    "name collision: rule '{structural}' collides with the '{structural}' wasm \
+                     wrapper generated for the nominal `@duplicates reject` set `{ident}`'s \
+                     boundary — rename the rule to avoid shadowing the restricted OrderedSet wrapper"
                 ));
             }
         }

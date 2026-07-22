@@ -1,15 +1,15 @@
-; REQUEST-09: a dep whose own spec produces a collapsed-set shape through ANONYMOUS generic
-; instances at field sites (`set<key_hash>` / `nonempty_set<key_hash>`), NOT a named rule. The
-; synthesized instance wasm wrapper lowers to the STRUCTURAL name (`KeyHashList` /
-; `NonEmptyKeyHashList`), exactly like the inline `[* key_hash]` / `[+ key_hash]` equivalent — so a
-; consumer's `--wrapper-requests` for that structural shape is satisfied by own-spec (no criterion-8
-; #3 hard error on the synthesized name), and the two spellings are ONE wasm class.
+; REQUEST-09 under Phase 2.3 (nominal-per-instantiation): a dep whose own spec produces a
+; collapsed-set shape through generic instances at field sites (`set<key_hash>` /
+; `nonempty_set<key_hash>`). Each instance now NOMINALIZES — `set<key_hash>` mints its own
+; `SetKeyHash` wasm class — but the STRUCTURAL boundary wrapper (`KeyHashList` /
+; `NonEmptyKeyHashList`) still exists (it is the nominal's `new()`/`get()` boundary, and the inline
+; `[* key_hash]` mints it too), so a consumer's `--wrapper-requests` for that structural shape is
+; STILL satisfied from own-spec — the re-key to nominal classes does not strand the structural row.
 ;
 ; The generic defs carry the explicit `; @duplicates preserve` opt-out: tag 258 now defaults to
-; `@duplicates reject` (the well-known-tag registry), which would swap the plain `Vec`/structural-list
-; wrapper for the `OrderedSet` twin and break the structural convergence this REQUEST-09 fixture pins.
-; The convergence machinery under test is orthogonal to the duplicates policy, so it stays on the
-; plain representation via the opt-out.
+; `@duplicates reject` (the well-known-tag registry), which would give the nominals an `OrderedSet`
+; inner and a different boundary wrapper. The satisfied-from-own-spec behavior under test is
+; orthogonal to the duplicates policy, so the fixture stays on the plain `Vec` representation.
 key_hash = bytes ; @newtype
 set<a0> = #6.258([* a0]) / [* a0] ; @duplicates preserve
 nonempty_set<a0> = #6.258([+ a0]) / [+ a0] ; @duplicates preserve

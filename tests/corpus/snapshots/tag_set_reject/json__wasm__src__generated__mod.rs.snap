@@ -264,50 +264,60 @@ impl AsRef<NonEmptyOrderedSet<u64>> for NonEmptyU64OrderedSet {
     }
 }
 
-/// `[* uint] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door).
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct OsetU64(pub(crate) OrderedSet<u64>);
+pub struct OsetU64(pub(crate) cddl_lib::OsetU64);
 
 #[wasm_bindgen]
 impl OsetU64 {
-    pub fn new() -> Self {
-        Self(OrderedSet::new())
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
     }
 
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn get(&self, index: usize) -> u64 {
-        self.0[index]
-    }
-
-    pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
-        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
-    }
-
-    pub fn try_from(elements: Vec<u64>) -> Result<OsetU64, JsError> {
-        OrderedSet::try_from(elements)
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OsetU64, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
             .map(Self)
-            .map_err(|e| JsError::new(&e.to_string()))
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<OsetU64, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: &U64OrderedSet) -> Self {
+        Self(cddl_lib::OsetU64::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> U64OrderedSet {
+        <OrderedSet<u64>>::from(self.0.clone()).clone().into()
     }
 }
 
-impl From<OrderedSet<u64>> for OsetU64 {
-    fn from(native: OrderedSet<u64>) -> Self {
+impl From<cddl_lib::OsetU64> for OsetU64 {
+    fn from(native: cddl_lib::OsetU64) -> Self {
         Self(native)
     }
 }
 
-impl From<OsetU64> for OrderedSet<u64> {
+impl From<OsetU64> for cddl_lib::OsetU64 {
     fn from(wasm: OsetU64) -> Self {
         wasm.0
     }
 }
 
-impl AsRef<OrderedSet<u64>> for OsetU64 {
-    fn as_ref(&self) -> &OrderedSet<u64> {
+impl AsRef<cddl_lib::OsetU64> for OsetU64 {
+    fn as_ref(&self) -> &cddl_lib::OsetU64 {
         &self.0
     }
 }

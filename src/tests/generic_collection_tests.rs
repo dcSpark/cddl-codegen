@@ -191,32 +191,30 @@ fn generic_instance_collection_field_converges_with_nongeneric() {
             .unwrap_or_else(|e| panic!("non-generic `{nrule}` ({ptag}) must generate: {e:?}"));
 
             let g_ser = file_ending(&g, "serialization.rs");
-            // The generic instance ALWAYS stays a transparent alias this phase (Phase 2.3 nominalizes
-            // those), so its collection field must be INLINED — the exact pre-fix breakage was routing
-            // a bare-alias field through method calls.
-            assert!(
-                !g_ser.contains("self.a.serialize("),
-                "generic `{gdef}` ({ptag}) must inline the collection, not call `self.a.serialize()`:\n{g_ser}"
-            );
-            assert!(
-                !g_ser.contains("XsInt::deserialize("),
-                "generic `{gdef}` ({ptag}) must inline the collection, not call `XsInt::deserialize()`:\n{g_ser}"
-            );
-
-            // A NAMED NON-GENERIC 258 set NOMINALIZES (Phase 2.2), so the non-generic reference
-            // DELEGATES to the nominal — DELIBERATELY diverging from the still-transparent generic
-            // instance until Phase 2.3 nominalizes generic instances too. For non-258 (plain) collections
-            // neither side nominalizes, so the original byte-identical convergence still holds.
+            // A 258 set NOMINALIZES on BOTH sides now (Phase 2.3: the generic instantiation mints a
+            // nominal exactly like the non-generic named rule), so BOTH consumers DELEGATE to their
+            // nominal (`self.a.serialize()`); parity is restored. A non-258 (plain) collection
+            // nominalizes on neither side, so both INLINE and converge byte-identically modulo name.
             let nominalizes = nrule.contains("258");
             let n_ser = file_ending(&n, "serialization.rs");
             let norm = |s: &str| s.replace("XsInt", "ALIAS").replace("Foo", "ALIAS");
             if nominalizes {
                 assert!(
+                    g_ser.contains("self.a.serialize("),
+                    "the generic 258 instantiation must nominalize and delegate `self.a.serialize()` \
+                     for `{gdef}` ({ptag}):\n{g_ser}"
+                );
+                assert!(
                     n_ser.contains("self.a.serialize("),
                     "the non-generic 258 set must nominalize and delegate `self.a.serialize()` \
-                     (generic stays transparent until Phase 2.3) for `{nrule}` ({ptag}):\n{n_ser}"
+                     for `{nrule}` ({ptag}):\n{n_ser}"
                 );
             } else {
+                assert!(
+                    !g_ser.contains("self.a.serialize(") && !g_ser.contains("XsInt::deserialize("),
+                    "a non-258 generic instance stays transparent and INLINES the collection, not \
+                     `self.a.serialize()` for `{gdef}` ({ptag}):\n{g_ser}"
+                );
                 // Full behavioral convergence: the serialize/deserialize impls and the encoding struct
                 // are byte-identical to the non-generic equivalent once the alias names are unified.
                 for basename in ["serialization.rs", "cbor_encodings.rs"] {
@@ -249,10 +247,11 @@ fn generic_instance_collection_field_converges_with_nongeneric() {
     }
 }
 
-/// Under `--preserve-encodings`, the consumer's encoding struct must carry the collection's
-/// tag/len/elem encoding vars for a generic-instance field, exactly as the non-generic path does —
-/// otherwise the tagged and untagged wire arms could not roundtrip byte-exact. Pins the tag-presence
-/// var specifically (the Phase-2 `TagPresenceEncoding`), which the pre-fix bare-alias field omitted.
+/// Under `--preserve-encodings`, a 258 generic instantiation NOMINALIZES (Phase 2.3), so its
+/// tag/len/elem encoding vars move OFF the consumer's encoding struct and INTO the instantiation
+/// nominal's OWN encoding struct (`XsU64Encoding`) — exactly as the non-generic named nominal does.
+/// The consumer's field just delegates. Pins the tag-presence var specifically (the
+/// `TagPresenceEncoding`), which the nominal owns.
 #[test]
 fn generic_instance_collection_field_carries_preserve_encoding_vars() {
     let files = generate(
@@ -267,16 +266,26 @@ fn generic_instance_collection_field_carries_preserve_encoding_vars() {
     )
     .expect("must generate");
     let encs = file_ending(&files, "cbor_encodings.rs");
+    // The nominal `XsU64` owns its `{tag, len, elem}` encoding record; the consumer no longer carries
+    // per-field `a_*` collection encoding vars.
     for field in [
-        "a_tag_encoding: TagPresenceEncoding",
-        "a_encoding: LenEncoding",
-        "a_elem_encodings",
+        "inner_tag_encoding: TagPresenceEncoding",
+        "inner_encoding: LenEncoding",
+        "inner_elem_encodings",
     ] {
         assert!(
             encs.contains(field),
-            "UsesEncoding must carry `{field}` for the generic-instance collection field; got:\n{encs}"
+            "XsU64Encoding must carry `{field}` on the instantiation nominal; got:\n{encs}"
         );
     }
+    assert!(
+        encs.contains("pub struct XsU64Encoding"),
+        "the instantiation nominal must own its encoding struct; got:\n{encs}"
+    );
+    assert!(
+        !encs.contains("a_tag_encoding"),
+        "the consumer must NOT flatten the set's tag encoding onto its own field; got:\n{encs}"
+    );
 }
 
 /// Boundary regression: a RECORD-bodied generic def registers no instance alias, so it never
@@ -297,20 +306,17 @@ fn record_bodied_generic_def_still_generates() {
     );
 }
 
-/// REQUEST-09: an ANONYMOUS collapsed-set instance at a field site (`[pool_owners: set<key_hash>]`,
-/// element a non-exposable `@newtype`) must lower its wasm wrapper onto the STRUCTURAL name
-/// (`KeyHashList`), exactly like the inline `[* key_hash]` — NOT mint a rule-named `SetKeyHash`
-/// class. The synthesized instance name survives as a wasm passthrough alias so the field's
-/// reference stays valid; the rust side is untouched. This is what keeps the anonymous instance and
-/// its inline twin ONE wasm concept (so a `--wrapper-requests` structural import resolves via
-/// own-spec), and it holds for the `[+]` flavor onto `NonEmptyKeyHashList`.
+/// Phase 2.3: an ANONYMOUS collapsed-set instance at a field site (`[pool_owners: set<key_hash>]`,
+/// element a non-exposable `@newtype`) NOMINALIZES per instantiation — `set<key_hash>` mints ONE
+/// nominal `SetKeyHash` (rust wrapper struct + a `#[wasm_bindgen]` class over it), NOT a transparent
+/// alias converging onto the structural `KeyHashList`. The inner reject/preserve twin still rides the
+/// structural boundary class (`KeyHashList` for the preserve `Vec`), so that structural wrapper still
+/// exists — but the instance is its OWN nominal concept now.
 #[test]
-fn anonymous_collapsed_set_instance_lowers_wasm_to_structural_wrapper() {
-    // The generic def carries the explicit `; @duplicates preserve` opt-out: tag 258 now defaults to
-    // `@duplicates reject` (the well-known-tag registry), which would swap the transparent `Vec` for
-    // the `OrderedSet` twin and its own wasm wrapper. This test pins the anonymous-instance STRUCTURAL
-    // convergence machinery (REQUEST-09), orthogonal to the duplicates policy, so it stays on the
-    // plain `Vec`/`KeyHashList` representation via the opt-out.
+fn anonymous_collapsed_set_instance_nominalizes() {
+    // Explicit `; @duplicates preserve` opt-out keeps the inner on the plain `Vec`/`KeyHashList`
+    // representation (tag 258 now defaults to `@duplicates reject`); the nominalization under test is
+    // orthogonal to the duplicates policy.
     let spec = "key_hash = bytes ; @newtype\n\
                 set<a0> = #6.258([* a0]) / [* a0] ; @duplicates preserve\n\
                 cert = [pool_owners: set<key_hash>]\n";
@@ -322,32 +328,28 @@ fn anonymous_collapsed_set_instance_lowers_wasm_to_structural_wrapper() {
     .expect("anonymous collapsed-set instance must generate");
     let wasm = file_ending(&files, "wasm/src/generated/mod.rs");
     assert!(
-        wasm.contains("pub struct KeyHashList("),
-        "the anonymous instance must mint the STRUCTURAL KeyHashList wasm class:\n{wasm}"
+        wasm.contains("pub struct SetKeyHash(pub(crate) cddl_lib::SetKeyHash)"),
+        "the anonymous instance mints its OWN nominal wasm class over the rust nominal:\n{wasm}"
     );
     assert!(
-        !wasm.contains("pub struct SetKeyHash("),
-        "the synthesized instance name must NOT mint its own wasm class:\n{wasm}"
+        !wasm.contains("pub type SetKeyHash = KeyHashList;"),
+        "the nominal must NOT be a passthrough alias to the structural class any more:\n{wasm}"
     );
-    assert!(
-        wasm.contains("pub type SetKeyHash = KeyHashList;"),
-        "the synthesized name must survive as a wasm passthrough alias to the structural class:\n{wasm}"
-    );
-    // rust side is untouched: the transparent alias stays.
+    // rust side nominalizes too: a wrapper struct, not a transparent alias.
     let rust = file_ending(&files, "rust/src/generated/mod.rs");
     assert!(
-        rust.contains("pub type SetKeyHash = Vec<KeyHash>;"),
-        "the rust-side transparent alias must remain byte-for-byte:\n{rust}"
+        rust.contains("pub struct SetKeyHash {")
+            && rust.contains("pub(crate) inner: Vec<KeyHash>,")
+            && !rust.contains("pub type SetKeyHash ="),
+        "the rust-side instance nominalizes to a wrapper over the preserve `Vec` inner:\n{rust}"
     );
 }
 
-/// The `[+]` flavor of the anonymous collapse: `nonempty_set<key_hash>` lowers to the restricted
-/// STRUCTURAL wrapper `NonEmptyKeyHashList`, never a rule-named `NonemptySetKeyHash` class.
+/// The `[+]` flavor of the anonymous collapse: `nonempty_set<key_hash>` likewise nominalizes to
+/// `NonemptySetKeyHash` (over the restricted `NonEmptyVec` inner), never a passthrough alias to the
+/// structural `NonEmptyKeyHashList`.
 #[test]
-fn anonymous_collapsed_nonempty_set_lowers_to_nonempty_structural_wrapper() {
-    // Explicit `; @duplicates preserve` opt-out keeps this on the plain `NonEmptyVec`/
-    // `NonEmptyKeyHashList` representation the structural-convergence machinery targets (tag 258 now
-    // defaults to `reject`; the convergence mechanism under test is orthogonal to that policy).
+fn anonymous_collapsed_nonempty_set_nominalizes() {
     let spec = "key_hash = bytes ; @newtype\n\
                 nonempty_set<a0> = #6.258([+ a0]) / [+ a0] ; @duplicates preserve\n\
                 signers = [required: nonempty_set<key_hash>]\n";
@@ -359,14 +361,12 @@ fn anonymous_collapsed_nonempty_set_lowers_to_nonempty_structural_wrapper() {
     .expect("anonymous nonempty collapsed-set instance must generate");
     let wasm = file_ending(&files, "wasm/src/generated/mod.rs");
     assert!(
-        wasm.contains("pub struct NonEmptyKeyHashList(")
-            && !wasm.contains("pub struct NonemptySetKeyHash("),
-        "the nonempty anonymous instance must mint the structural NonEmptyKeyHashList, not a \
-         rule-named class:\n{wasm}"
+        wasm.contains("pub struct NonemptySetKeyHash(pub(crate) cddl_lib::NonemptySetKeyHash)"),
+        "the nonempty anonymous instance mints its own nominal wasm class:\n{wasm}"
     );
     assert!(
-        wasm.contains("pub type NonemptySetKeyHash = NonEmptyKeyHashList;"),
-        "the synthesized nonempty name must survive as a passthrough alias:\n{wasm}"
+        !wasm.contains("pub type NonemptySetKeyHash = NonEmptyKeyHashList;"),
+        "the nonempty nominal must NOT be a passthrough alias any more:\n{wasm}"
     );
 }
 
@@ -394,17 +394,15 @@ fn anonymous_instance_and_inline_collapsed_set_are_one_wasm_class() {
     );
 }
 
-/// The directly-EXPOSABLE anonymous cell also converges: a `set<uint>` instance at a field site
-/// lowers to the bare inline collection (`Vec<u64>`, by value, no wrapper class) — its wasm output is
-/// BYTE-IDENTICAL to the inline `[* uint]` equivalent. The convergence is at field CLASSIFICATION:
-/// the field is lowered to the bare `Array` shape, so the wasm boundary crosses by value exactly like
-/// inline (not through a `&SetU64` ref that has no `RefFromWasmAbi`). The rust field-type SPELLING
-/// becomes `Vec<u64>` (same transparent type the `pub type SetU64 = Vec<u64>` alias still names).
+/// Phase 2.3: even the directly-EXPOSABLE cell nominalizes — a `set<uint>` instance mints its own
+/// nominal `SetU64` (rust wrapper + wasm class), DIVERGING from the inline `[* uint]` equivalent
+/// (which stays a bare `Vec<u64>`). The author's spelling is the identity: `set<uint>` is a named
+/// concept, `[* uint]` is an anonymous shape. The field getter returns the nominal wasm class, and
+/// the field type is the nominal (not the bare `Vec`).
 #[test]
-fn anonymous_exposable_instance_wasm_matches_inline() {
-    // Explicit `; @duplicates preserve` opt-out keeps the instance on the plain `Vec<u64>` shape so it
-    // matches the inline `[* uint]` equivalent byte-for-byte (tag 258 now defaults to `reject`; the
-    // by-value exposable-convergence mechanism under test is orthogonal to that policy).
+fn anonymous_exposable_instance_nominalizes() {
+    // Explicit `; @duplicates preserve` opt-out keeps the inner on the plain `Vec<u64>` (tag 258 now
+    // defaults to `reject`); the nominalization under test is orthogonal to the duplicates policy.
     let instance = generate(
         "set<a0> = #6.258([* a0]) / [* a0] ; @duplicates preserve\ncert = [nums: set<uint>]\n",
         "anon_expo_inst",
@@ -417,42 +415,37 @@ fn anonymous_exposable_instance_wasm_matches_inline() {
         &["--wasm", "true", "--preserve-encodings=true"],
     )
     .expect("inline equivalent must generate");
-    // The whole wasm crate output must match the inline equivalent byte-for-byte: no `SetU64` class,
-    // by-value `Vec<u64>` getter/ctor. (The tag-presence encoding var is rust-side, so it does not
-    // affect the wasm surface.)
-    for suffix in [
-        "wasm/src/generated/mod.rs",
-        "wasm/src/generated/collections.rs",
-    ] {
-        assert_eq!(
-            file_ending(&instance, suffix),
-            file_ending(&inline, suffix),
-            "anonymous exposable instance {suffix} must equal the inline equivalent byte-for-byte"
-        );
-    }
+    // The instance no longer matches the inline equivalent: it mints a nominal class the inline lacks.
     let wasm = file_ending(&instance, "wasm/src/generated/mod.rs");
+    let inline_wasm = file_ending(&inline, "wasm/src/generated/mod.rs");
     assert!(
-        !wasm.contains("pub struct SetU64(") && !wasm.contains("pub type SetU64"),
-        "the exposable instance must NOT mint or alias a SetU64 wasm class:\n{wasm}"
+        wasm.contains("pub struct SetU64(pub(crate) cddl_lib::SetU64)"),
+        "the exposable instance must mint its own nominal SetU64 wasm class:\n{wasm}"
     );
     assert!(
-        wasm.contains("pub fn nums(&self) -> Vec<u64>"),
-        "the getter must return a by-value bare Vec<u64>, exactly like inline:\n{wasm}"
+        !inline_wasm.contains("SetU64"),
+        "the inline `[* uint]` equivalent must NOT mint a SetU64 (it stays a bare Vec):\n{inline_wasm}"
     );
-    // rust-side: the transparent alias still exists (its target unchanged); the field spells the bare
-    // Vec (same type). rust CBOR bytes are unaffected (the collapse's encoding vars are intact).
+    assert!(
+        wasm.contains("pub fn nums(&self) -> SetU64"),
+        "the getter must return the nominal class, not a bare Vec<u64>:\n{wasm}"
+    );
+    // rust-side: the field is typed as the nominal wrapper, not a transparent alias.
     let rust = file_ending(&instance, "rust/src/generated/mod.rs");
     assert!(
-        rust.contains("pub type SetU64 = Vec<u64>;") && rust.contains("pub nums: Vec<u64>"),
-        "rust keeps the transparent SetU64 alias; the field spells the bare Vec:\n{rust}"
+        rust.contains("pub struct SetU64 {")
+            && rust.contains("pub nums: SetU64")
+            && !rust.contains("pub type SetU64 ="),
+        "rust nominalizes the instance; the field is typed as the nominal:\n{rust}"
     );
 }
 
-/// The named-rule BOUNDARY: the same collapsed-set shape bound to a NAMED rule
-/// (`named_set = set<key_hash>`, ident `NamedSet`) is NOT anonymous — it keeps its own rule-named
-/// wasm class, so the criterion-8 `--wrapper-requests` contract still applies to it.
+/// Phase 2.3: a named rule BINDING an instance (`named_set = set<key_hash>`, ident `NamedSet`)
+/// becomes a transparent alias TO the instantiation nominal — `pub type NamedSet = SetKeyHash;` on
+/// BOTH the rust and wasm sides (the instantiation is the identity; wasm keeps ONE class + this
+/// passthrough alias). It does NOT mint a second nominal for the binding spelling.
 #[test]
-fn named_collapsed_set_instance_rule_keeps_its_own_wasm_class() {
+fn named_collapsed_set_instance_rule_aliases_the_instantiation_nominal() {
     let spec = "key_hash = bytes ; @newtype\n\
                 set<a0> = #6.258([* a0]) / [* a0]\n\
                 named_set = set<key_hash>\n\
@@ -463,13 +456,18 @@ fn named_collapsed_set_instance_rule_keeps_its_own_wasm_class() {
         &["--wasm", "true", "--preserve-encodings=true"],
     )
     .expect("named collapsed-set instance rule must generate");
+    let rust = file_ending(&files, "rust/src/generated/mod.rs");
     let wasm = file_ending(&files, "wasm/src/generated/mod.rs");
     assert!(
-        wasm.contains("pub struct NamedSet("),
-        "a NAMED collapsed-set instance rule keeps its own rule-named wasm class:\n{wasm}"
+        rust.contains("pub type NamedSet = SetKeyHash;")
+            && rust.contains("pub struct SetKeyHash {")
+            && !rust.contains("pub struct NamedSet"),
+        "the named binding aliases the instantiation nominal (rust), minting no second nominal:\n{rust}"
     );
     assert!(
-        !wasm.contains("pub type NamedSet = KeyHashList;"),
-        "a named rule must NOT be converged to a passthrough alias (the boundary):\n{wasm}"
+        wasm.contains("pub type NamedSet = SetKeyHash;")
+            && wasm.contains("pub struct SetKeyHash(pub(crate) cddl_lib::SetKeyHash)")
+            && !wasm.contains("pub struct NamedSet("),
+        "the named binding is a wasm passthrough alias to the ONE instantiation class:\n{wasm}"
     );
 }

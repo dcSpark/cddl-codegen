@@ -14,36 +14,191 @@ expression: content
 pub mod error;
 mod extern_interface_check;
 pub mod non_empty;
+impl std::ops::Deref for NonemptyOsetPoint {
+    type Target = NonEmptyVec<Point>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for NonemptyOsetPoint {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a> IntoIterator for &'a NonemptyOsetPoint {
+    type Item = &'a Point;
+    type IntoIter = std::slice::Iter<'a, Point>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for NonemptyOsetPoint {
+    type Item = Point;
+    type IntoIter = std::vec::IntoIter<Point>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Vec::<Point>::from(self.0).into_iter()
+    }
+}
+
+impl From<NonemptyOsetPoint> for Vec<Point> {
+    fn from(wrapper: NonemptyOsetPoint) -> Self {
+        Vec::from(wrapper.0)
+    }
+}
+
+impl TryFrom<Vec<Point>> for NonemptyOsetPoint {
+    type Error = DeserializeError;
+
+    fn try_from(vec: Vec<Point>) -> Result<Self, Self::Error> {
+        Ok(NonemptyOsetPoint::new(<NonEmptyVec<Point>>::try_from(vec)?))
+    }
+}
+
+impl std::ops::Deref for NonemptySetText {
+    type Target = NonEmptyVec<String>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for NonemptySetText {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a> IntoIterator for &'a NonemptySetText {
+    type Item = &'a String;
+    type IntoIter = std::slice::Iter<'a, String>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for NonemptySetText {
+    type Item = String;
+    type IntoIter = std::vec::IntoIter<String>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Vec::<String>::from(self.0).into_iter()
+    }
+}
+
+impl From<NonemptySetText> for Vec<String> {
+    fn from(wrapper: NonemptySetText) -> Self {
+        Vec::from(wrapper.0)
+    }
+}
+
+impl TryFrom<Vec<String>> for NonemptySetText {
+    type Error = DeserializeError;
+
+    fn try_from(vec: Vec<String>) -> Result<Self, Self::Error> {
+        Ok(NonemptySetText::new(<NonEmptyVec<String>>::try_from(vec)?))
+    }
+}
+
+impl std::ops::Deref for SetU64 {
+    type Target = Vec<u64>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for SetU64 {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a> IntoIterator for &'a SetU64 {
+    type Item = &'a u64;
+    type IntoIter = std::slice::Iter<'a, u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for SetU64 {
+    type Item = u64;
+    type IntoIter = std::vec::IntoIter<u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
 pub mod serialization;
 
+use crate::generated::error::*;
 use crate::generated::non_empty::NonEmptyVec;
 
 #[derive(Clone, Debug)]
 pub struct Holder {
-    pub a: Vec<u64>,
+    pub a: SetU64,
     pub b: NonemptySetText,
     pub c: NonemptyOsetPoint,
 }
 
 impl Holder {
-    pub fn new(a: Vec<u64>, b: NonemptySetText, c: NonemptyOsetPoint) -> Self {
+    pub fn new(a: SetU64, b: NonemptySetText, c: NonemptyOsetPoint) -> Self {
         Self { a, b, c }
     }
 }
 
-/// Synthesized convenience alias for an anonymous generic-collection instance (not a CDDL rule name).
-/// `[+ Point]`: at least one element, enforced at the `NonEmptyVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
-/// The tag-258 set idiom: the tag is an encoding detail — both the `#6.258(...)` and the bare-array wire forms are accepted (serialization defaults to tagged), so either round-trips byte-exactly.
-/// Duplicate elements are preserved and re-emitted byte-exactly in wire order (the default for a set idiom; opt into rejection with `@duplicates reject`).
-pub type NonemptyOsetPoint = NonEmptyVec<Point>;
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct NonemptyOsetPoint(pub(crate) NonEmptyVec<Point>);
 
-/// Synthesized convenience alias for an anonymous generic-collection instance (not a CDDL rule name).
-/// `[+ String]`: at least one element, enforced at the `NonEmptyVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
-/// The tag-258 set idiom: the tag is an encoding detail — both the `#6.258(...)` and the bare-array wire forms are accepted (serialization defaults to tagged), so either round-trips byte-exactly.
-/// Duplicate elements are preserved and re-emitted byte-exactly in wire order (the default for a set idiom; opt into rejection with `@duplicates reject`).
-pub type NonemptySetText = NonEmptyVec<String>;
+impl NonemptyOsetPoint {
+    pub fn new(inner: NonEmptyVec<Point>) -> Self {
+        Self(inner)
+    }
+}
 
-#[derive(Clone, Debug)]
+impl From<NonEmptyVec<Point>> for NonemptyOsetPoint {
+    fn from(inner: NonEmptyVec<Point>) -> Self {
+        NonemptyOsetPoint::new(inner)
+    }
+}
+
+impl From<NonemptyOsetPoint> for NonEmptyVec<Point> {
+    fn from(wrapper: NonemptyOsetPoint) -> Self {
+        wrapper.0
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct NonemptySetText(pub(crate) NonEmptyVec<String>);
+
+impl NonemptySetText {
+    pub fn new(inner: NonEmptyVec<String>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<NonEmptyVec<String>> for NonemptySetText {
+    fn from(inner: NonEmptyVec<String>) -> Self {
+        NonemptySetText::new(inner)
+    }
+}
+
+impl From<NonemptySetText> for NonEmptyVec<String> {
+    fn from(wrapper: NonemptySetText) -> Self {
+        wrapper.0
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Point {
     pub x: u64,
     pub y: u64,
@@ -55,7 +210,23 @@ impl Point {
     }
 }
 
-/// Synthesized convenience alias for an anonymous generic-collection instance (not a CDDL rule name).
-/// The tag-258 set idiom: the tag is an encoding detail — both the `#6.258(...)` and the bare-array wire forms are accepted (serialization defaults to tagged), so either round-trips byte-exactly.
-/// Duplicate elements are preserved and re-emitted byte-exactly in wire order (the default for a set idiom; opt into rejection with `@duplicates reject`).
-pub type SetU64 = Vec<u64>;
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct SetU64(pub(crate) Vec<u64>);
+
+impl SetU64 {
+    pub fn new(inner: Vec<u64>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<Vec<u64>> for SetU64 {
+    fn from(inner: Vec<u64>) -> Self {
+        SetU64::new(inner)
+    }
+}
+
+impl From<SetU64> for Vec<u64> {
+    fn from(wrapper: SetU64) -> Self {
+        wrapper.0
+    }
+}
