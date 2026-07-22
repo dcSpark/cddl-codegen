@@ -60,6 +60,14 @@ impl TryFrom<Vec<u64>> for ElemTagged {
     }
 }
 
+impl ElemTagged {
+    /// Empty input is `Ok(None)` (the optional set field is absent); a non-empty input goes through
+    /// the inner uniqueness door wrapped in `Some`, so ONLY a duplicate surfaces as `Err`.
+    pub fn try_opt_from(vec: Vec<u64>) -> Result<Option<Self>, DeserializeError> {
+        Ok(<OrderedSet<u64>>::try_opt_from(vec)?.map(ElemTagged::new))
+    }
+}
+
 impl std::ops::Deref for HeterogeneousSet {
     type Target = OrderedSet<u64>;
 
@@ -106,6 +114,14 @@ impl TryFrom<Vec<u64>> for HeterogeneousSet {
     }
 }
 
+impl HeterogeneousSet {
+    /// Empty input is `Ok(None)` (the optional set field is absent); a non-empty input goes through
+    /// the inner uniqueness door wrapped in `Some`, so ONLY a duplicate surfaces as `Err`.
+    pub fn try_opt_from(vec: Vec<u64>) -> Result<Option<Self>, DeserializeError> {
+        Ok(<OrderedSet<u64>>::try_opt_from(vec)?.map(HeterogeneousSet::new))
+    }
+}
+
 impl std::ops::Deref for HomogeneousInner {
     type Target = OrderedSet<u64>;
 
@@ -149,6 +165,14 @@ impl TryFrom<Vec<u64>> for HomogeneousInner {
 
     fn try_from(vec: Vec<u64>) -> Result<Self, Self::Error> {
         Ok(HomogeneousInner::new(<OrderedSet<u64>>::try_from(vec)?))
+    }
+}
+
+impl HomogeneousInner {
+    /// Empty input is `Ok(None)` (the optional set field is absent); a non-empty input goes through
+    /// the inner uniqueness door wrapped in `Some`, so ONLY a duplicate surfaces as `Err`.
+    pub fn try_opt_from(vec: Vec<u64>) -> Result<Option<Self>, DeserializeError> {
+        Ok(<OrderedSet<u64>>::try_opt_from(vec)?.map(HomogeneousInner::new))
     }
 }
 

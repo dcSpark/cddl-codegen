@@ -121,10 +121,40 @@ use crate::cli::Cli;
 use clap::Parser;
 
 /// Deliberately-accepted rust→wasm asymmetries: `(profile, input label, "Type" | "Type::member",
-/// reason)`. Starts EMPTY — every legitimate asymmetry class is baked into the correspondence rules
-/// above, not listed here (see the module header). A live finding not covered by an entry fails the
-/// gate; an entry with no matching live finding fails as "resurfaced".
-const PARITY_EXEMPT: &[(&str, &str, &str, &str)] = &[];
+/// reason)`. Most legitimate asymmetry classes are baked into the correspondence rules above rather
+/// than listed here (see the module header). A live finding not covered by an entry fails the gate;
+/// an entry with no matching live finding fails as "resurfaced".
+///
+/// The current entries are the set-nominal `try_opt_from` constructor: it is a rust-only
+/// empty-means-absent door added on the rust side (the `OrderedSet`/`NonEmptyOrderedSet` API), and the
+/// wasm set-nominal surface that would delegate it is a separate deliverable. When that wasm surface
+/// lands, each of these must resurface (the emitter grew the wasm mirror) — remove the entry then.
+const PARITY_EXEMPT: &[(&str, &str, &str, &str)] = &[
+    (
+        "default",
+        "tests/core",
+        "RejectUintSet::try_opt_from",
+        "rust-only empty-means-absent set constructor; no wasm set-nominal delegation surface yet",
+    ),
+    (
+        "json",
+        "tests/core",
+        "RejectUintSet::try_opt_from",
+        "rust-only empty-means-absent set constructor; no wasm set-nominal delegation surface yet",
+    ),
+    (
+        "preserve",
+        "tests/golden_hex_preserve",
+        "RejectSet::try_opt_from",
+        "rust-only empty-means-absent set constructor; no wasm set-nominal delegation surface yet",
+    ),
+    (
+        "preserve",
+        "tests/preserve-encodings",
+        "OsetPU64::try_opt_from",
+        "rust-only empty-means-absent set constructor; no wasm set-nominal delegation surface yet",
+    ),
+];
 
 /// `(profile, input label, reason)` pairs whose generation deliberately aborts. Four-state verdict
 /// with a resurfaced guard: a listed pair that now generates fails ("gap closed — remove the pin");

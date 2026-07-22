@@ -663,6 +663,18 @@ pub(super) fn generate_wrapper_struct(
                 "\nimpl From<{type_name}> for Vec<{elem_ty}> {{\n    fn from(wrapper: {type_name}) -> Self {{\n        Vec::from(wrapper.{inner_var})\n    }}\n}}\n\nimpl TryFrom<Vec<{elem_ty}>> for {type_name} {{\n    type Error = DeserializeError;\n\n    fn try_from(vec: Vec<{elem_ty}>) -> Result<Self, Self::Error> {{\n        Ok({type_name}::new(<{inner_ty}>::try_from(vec)?))\n    }}\n}}\n"
             ));
         }
+        // `try_opt_from` — the empty-means-absent constructor for an optional set field — is a NAMED
+        // door (not the blanket-conflicting `TryFrom`), so it is emitted inherently on the nominal,
+        // delegating to the inner uniqueness twin's runtime door and re-wrapping each accepted set via
+        // `new`. Only the `OrderedSet`/`NonEmptyOrderedSet` inners have this door (the `Vec`/`NonEmptyVec`
+        // preserve inners do not), so gate on the twin inner, not merely on `!inner_is_plain_vec`.
+        let inner_is_ordered_set =
+            inner_ty.starts_with("OrderedSet<") || inner_ty.starts_with("NonEmptyOrderedSet<");
+        if inner_is_ordered_set {
+            ergo.push_str(&format!(
+                "\nimpl {type_name} {{\n    /// Empty input is `Ok(None)` (the optional set field is absent); a non-empty input goes through\n    /// the inner uniqueness door wrapped in `Some`, so ONLY a duplicate surfaces as `Err`.\n    pub fn try_opt_from(vec: Vec<{elem_ty}>) -> Result<Option<Self>, DeserializeError> {{\n        Ok(<{inner_ty}>::try_opt_from(vec)?.map({type_name}::new))\n    }}\n}}\n"
+            ));
+        }
         gen_scope.rust(types, type_name).raw(&ergo);
     }
     if !struct_config.custom_json {

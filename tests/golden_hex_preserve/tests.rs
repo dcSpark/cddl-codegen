@@ -473,6 +473,81 @@ mod golden_hex_preserve {
         assert_eq!(set.len(), 2, "the refused push left the set unchanged");
     }
 
+    // The std set contract (`insert`/`contains`/`Extend`/`FromIterator`/`sort`), the empty-means-absent
+    // `try_opt_from` door (runtime + emitted nominal), and the two twin refinement doors. These are the
+    // consumer-facing set operations (union, dedup-normalize, empty-or-set construction) the wrappers
+    // ship so a downstream crate never hand-rolls a `let _ = push(…)` loop.
+    #[test]
+    fn reject_set_std_contract_and_refinement_doors() {
+        use crate::generated::ordered_set::{NonEmptyOrderedSet, OrderedSet};
+
+        // insert -> bool (std set contract): true = newly added, false = already present (no-op).
+        let mut s = OrderedSet::<String>::new();
+        assert!(s.insert("a".to_string()), "a fresh element is newly inserted");
+        assert!(!s.insert("a".to_string()), "an already-present element is a no-op");
+        assert_eq!(s.len(), 1, "the no-op insert left the set unchanged");
+        assert!(s.contains(&"a".to_string()), "contains reports membership");
+        assert!(!s.contains(&"z".to_string()));
+
+        // Extend dedups keep-first (a set union): "a" already present is dropped, "b"/"c" added.
+        s.extend(vec!["a".to_string(), "b".to_string(), "c".to_string(), "b".to_string()]);
+        assert_eq!(
+            s.iter().map(String::as_str).collect::<Vec<_>>(),
+            vec!["a", "b", "c"],
+            "extend is a keep-first union"
+        );
+
+        // FromIterator dedups keep-first (IndexSet::from_iter semantics).
+        let collected: OrderedSet<u64> = vec![3u64, 1, 3, 2, 1].into_iter().collect();
+        assert_eq!(collected.as_slice(), &[3, 1, 2], "collect dedups keep-first, order preserved");
+
+        // sort() preserves uniqueness AND changes the (re-)emitted order.
+        let mut to_sort: OrderedSet<u64> = vec![3u64, 1, 2].try_into().unwrap();
+        to_sort.sort();
+        assert_eq!(to_sort.as_slice(), &[1, 2, 3], "sort reorders in place");
+        assert_eq!(to_sort.len(), 3, "sort cannot create a duplicate");
+
+        // try_opt_from: empty -> None, non-empty unique -> Some, duplicate -> Err (NOT swallowed).
+        assert!(OrderedSet::<u64>::try_opt_from(vec![]).unwrap().is_none());
+        assert_eq!(
+            OrderedSet::<u64>::try_opt_from(vec![1, 2]).unwrap().unwrap().len(),
+            2
+        );
+        assert!(
+            OrderedSet::<u64>::try_opt_from(vec![1, 1]).is_err(),
+            "the duplicate error surfaces through try_opt_from, not silently swallowed"
+        );
+        // the non-empty twin: empty is None (the min-1 RangeCheck deliberately does NOT fire).
+        assert!(NonEmptyOrderedSet::<u64>::try_opt_from(vec![]).unwrap().is_none());
+        assert_eq!(
+            NonEmptyOrderedSet::<u64>::try_opt_from(vec![7]).unwrap().unwrap().len(),
+            1
+        );
+
+        // Refinement doors between the twins.
+        let os: OrderedSet<u64> = vec![1u64, 2].try_into().unwrap();
+        let ne: NonEmptyOrderedSet<u64> = os.try_into().expect("non-empty OrderedSet narrows");
+        assert_eq!(ne.len(), 2);
+        assert!(
+            NonEmptyOrderedSet::<u64>::try_from(OrderedSet::<u64>::new()).is_err(),
+            "an empty OrderedSet is refused by the min-1 narrowing door"
+        );
+        let widened: OrderedSet<u64> = ne.into(); // infallible widening
+        assert_eq!(widened.len(), 2);
+
+        // Emitted nominal `try_opt_from` (e2e): RejectSet wraps OrderedSet<String>, so its inherent
+        // door re-wraps each accepted set via `new` and yields the nominal.
+        assert!(crate::generated::RejectSet::try_opt_from(vec![]).unwrap().is_none());
+        let nominal = crate::generated::RejectSet::try_opt_from(vec!["a".to_string(), "b".to_string()])
+            .unwrap()
+            .expect("a non-empty unique vec builds the nominal");
+        assert_eq!(nominal.len(), 2, "the nominal Derefs to its inner set's len");
+        assert!(
+            crate::generated::RejectSet::try_opt_from(vec!["a".to_string(), "a".to_string()]).is_err(),
+            "the nominal door surfaces the duplicate error"
+        );
+    }
+
     // ---- `@duplicates preserve` table (PairMap): duplicate-key byte-exact round-trip ----
     // The consensus-critical property for Cardano `transaction_metadata`: a duplicate-keyed map is
     // spec-valid CBOR and MUST re-emit byte-exact (the aux-data hash is over the original bytes). The
