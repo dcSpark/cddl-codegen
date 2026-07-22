@@ -334,9 +334,7 @@ are ledgered here (that's what the probe/gate error messages point at).
     feature to BUILD, not an exclusion): the runtime half already exists — the self-describing
     `AnyCbor` value type (`static/any_cbor_preserve.rs` / `any_cbor_non_preserve.rs`,
     span-oracle property tests in `src/tests/any_cbor_tests.rs`), deliberately not wired into any
-    export list yet. The remaining work is the IR/generation half (a `ConceptualRustType::Any`
-    routed around the `generic_instances` machinery), which retires this whole pinned family —
-    ledger updates in `src/tests/recombination_tests.rs` land in the same commits.
+    export list yet — so start from it rather than re-deriving a value-type design.
   - A type-choice arm with no storable representation panics `Option::unwrap()` on `None`
     (intermediate/rust_type.rs): `a = any / tstr` (the `any` extern arm). The sibling anonymous
     array-of-plain-group arm (`a = [coords] / tstr`) is storable — it promotes the plain group
@@ -472,8 +470,8 @@ are ledgered here (that's what the probe/gate error messages point at).
   property layer (`src/tests/any_cbor_tests.rs`). The remaining float work is generator-side (the
   preserve-mode `unimplemented!` stubs in generation/deserialize.rs, the `float16`→`F32` alias
   folding in parsing) plus the generated-crate template pin (still crates.io 3.2.0, which lacks
-  the `_sz` float endpoints, until the loose-cbor generation phase git-deps the templates at the
-  fork rev). Under `--preserve-encodings` the float gap is positional, and the emission axis
+  the `_sz` float endpoints, until generated crates move to a cbor_event carrying them). Under
+  `--preserve-encodings` the float gap is positional, and the emission axis
   records it honestly: a bare `float`/`float32`/`float64` alias still generates and compiles
   (`emission.preserve = supported`, but compile-only evidence — the synthetic embed holder panics
   generation, so floats **as members** are the broken shape), while the choice-carrying prelude types
