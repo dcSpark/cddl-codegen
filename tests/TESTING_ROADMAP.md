@@ -1025,7 +1025,10 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   locally, which is at worst the documented cross-crate duplicate-symbol link class — loud at
   link time, never a silent data-behavior skew. Reopening signal: a real multi-crate consumer
   puts a reject set behind a wrapper-request boundary (hand-authoring the sidecar row is the
-  interim workaround).
+  interim workaround). Note the well-known-tag registry
+  (`parsing::well_known_tag_default_duplicates`) WIDENS who hits this: every no-directive
+  tag-258 set is now the reject shape, not just rules with an explicit `; @duplicates reject` —
+  same loud failure class, larger audience, so the reopening signal fires sooner.
 - **Extern-interface export dialect v2 candidates.** Each bumps the seam header
   (`_CDDL_CODEGEN_EXTERN_INTERFACE_ v1` — unknown versions hard-error, pinned by
   `extern_import_unknown_version_hard_errors`), so batch them when one gets a real consumer:
