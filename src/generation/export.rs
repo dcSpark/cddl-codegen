@@ -651,7 +651,8 @@ impl GenerationScope {
         // Only re-prune when the overlay actually rewrote something: otherwise the fresh map is still
         // the `generated_files` prune fixed point and a second pass would change nothing.
         if overlay_changed_any {
-            for (path, pruned) in crate::import_prune::prune_generated_files(&files, &prune_config) {
+            for (path, pruned) in crate::import_prune::prune_generated_files(&files, &prune_config)
+            {
                 files.insert(path, rustfmt_generated_string(&pruned)?.into_owned());
             }
         }
