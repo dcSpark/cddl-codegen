@@ -1,7 +1,10 @@
 [toolchain]
 # Pinned for reproducible builds. Bump deliberately, not automatically.
 # (was bare `nightly`, which reinstalled "latest nightly" on every CI run.)
-channel = "1.96.0"
+# Bumped 1.96.0 -> 1.96.1 deliberately: the dcSpark/cbor_event `float-round-trip` fork (the
+# `AnyCbor` float API dependency) declares `rust-version = "1.96.1"`, which cargo's rust-version
+# resolver enforces. One patch version; a required consequence of the fork pin in Cargo.toml.
+channel = "1.96.1"
 components = ["rustfmt", "clippy"]
 # wasm_json_roundtrip builds generated bindings with wasm-pack and runs them under node.
 targets = ["wasm32-unknown-unknown"]
