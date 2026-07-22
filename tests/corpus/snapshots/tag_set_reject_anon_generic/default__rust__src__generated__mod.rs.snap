@@ -14,8 +14,55 @@ expression: content
 pub mod error;
 mod extern_interface_check;
 pub mod ordered_set;
+impl std::ops::Deref for OsetU64 {
+    type Target = OrderedSet<u64>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for OsetU64 {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a> IntoIterator for &'a OsetU64 {
+    type Item = &'a u64;
+    type IntoIter = std::slice::Iter<'a, u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for OsetU64 {
+    type Item = u64;
+    type IntoIter = std::vec::IntoIter<u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Vec::<u64>::from(self.0).into_iter()
+    }
+}
+
+impl From<OsetU64> for Vec<u64> {
+    fn from(wrapper: OsetU64) -> Self {
+        Vec::from(wrapper.0)
+    }
+}
+
+impl TryFrom<Vec<u64>> for OsetU64 {
+    type Error = DeserializeError;
+
+    fn try_from(vec: Vec<u64>) -> Result<Self, Self::Error> {
+        Ok(OsetU64::new(<OrderedSet<u64>>::try_from(vec)?))
+    }
+}
+
 pub mod serialization;
 
+use crate::generated::error::*;
 use crate::generated::ordered_set::OrderedSet;
 
 #[derive(Clone, Debug)]
@@ -29,9 +76,25 @@ impl Holder {
     }
 }
 
-/// Synthesized convenience alias for an anonymous generic-collection instance (not a CDDL rule name).
-/// The tag-258 set idiom: the tag is an encoding detail — both the `#6.258(...)` and the bare-array wire forms are accepted (serialization defaults to tagged), so either round-trips byte-exactly.
-/// `@duplicates reject`: a repeated element is refused (a `DuplicateKey` error) on both the wire and the API; accepted (duplicate-free) input re-emits byte-exactly in wire order (the set is order-preserving, never sorted).
-pub type OsetU64 = OrderedSet<u64>;
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct OsetU64(pub(crate) OrderedSet<u64>);
+
+impl OsetU64 {
+    pub fn new(inner: OrderedSet<u64>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<OrderedSet<u64>> for OsetU64 {
+    fn from(inner: OrderedSet<u64>) -> Self {
+        OsetU64::new(inner)
+    }
+}
+
+impl From<OsetU64> for OrderedSet<u64> {
+    fn from(wrapper: OsetU64) -> Self {
+        wrapper.0
+    }
+}
 
 pub type Outer = Vec<OsetU64>;

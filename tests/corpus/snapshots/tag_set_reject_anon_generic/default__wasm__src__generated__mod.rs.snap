@@ -58,7 +58,48 @@ impl AsRef<cddl_lib::Holder> for Holder {
     }
 }
 
-pub type OsetU64 = U64OrderedSet;
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OsetU64(pub(crate) cddl_lib::OsetU64);
+
+#[wasm_bindgen]
+impl OsetU64 {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OsetU64, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: &U64OrderedSet) -> Self {
+        Self(cddl_lib::OsetU64::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> U64OrderedSet {
+        <OrderedSet<u64>>::from(self.0.clone()).clone().into()
+    }
+}
+
+impl From<cddl_lib::OsetU64> for OsetU64 {
+    fn from(native: cddl_lib::OsetU64) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OsetU64> for cddl_lib::OsetU64 {
+    fn from(wasm: OsetU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::OsetU64> for OsetU64 {
+    fn as_ref(&self) -> &cddl_lib::OsetU64 {
+        &self.0
+    }
+}
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]

@@ -31,8 +31,8 @@ impl Holder {
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
     }
 
-    pub fn a(&self) -> Vec<u64> {
-        self.0.a.clone()
+    pub fn a(&self) -> SetU64 {
+        self.0.a.clone().into()
     }
 
     pub fn b(&self) -> NonemptySetText {
@@ -43,8 +43,12 @@ impl Holder {
         self.0.c.clone().into()
     }
 
-    pub fn new(a: Vec<u64>, b: &NonemptySetText, c: &NonemptyOsetPoint) -> Self {
-        Self(cddl_lib::Holder::new(a, b.clone().into(), c.clone().into()))
+    pub fn new(a: &SetU64, b: &NonemptySetText, c: &NonemptyOsetPoint) -> Self {
+        Self(cddl_lib::Holder::new(
+            a.clone().into(),
+            b.clone().into(),
+            c.clone().into(),
+        ))
     }
 }
 
@@ -167,9 +171,93 @@ impl AsRef<NonEmptyVec<String>> for NonEmptyTextList {
     }
 }
 
-pub type NonemptyOsetPoint = NonEmptyPointList;
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonemptyOsetPoint(pub(crate) cddl_lib::NonemptyOsetPoint);
 
-pub type NonemptySetText = NonEmptyTextList;
+#[wasm_bindgen]
+impl NonemptyOsetPoint {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NonemptyOsetPoint, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: &NonEmptyPointList) -> Self {
+        Self(cddl_lib::NonemptyOsetPoint::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> NonEmptyPointList {
+        <NonEmptyVec<cddl_lib::Point>>::from(self.0.clone())
+            .clone()
+            .into()
+    }
+}
+
+impl From<cddl_lib::NonemptyOsetPoint> for NonemptyOsetPoint {
+    fn from(native: cddl_lib::NonemptyOsetPoint) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonemptyOsetPoint> for cddl_lib::NonemptyOsetPoint {
+    fn from(wasm: NonemptyOsetPoint) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NonemptyOsetPoint> for NonemptyOsetPoint {
+    fn as_ref(&self) -> &cddl_lib::NonemptyOsetPoint {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonemptySetText(pub(crate) cddl_lib::NonemptySetText);
+
+#[wasm_bindgen]
+impl NonemptySetText {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NonemptySetText, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: &NonEmptyTextList) -> Self {
+        Self(cddl_lib::NonemptySetText::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> NonEmptyTextList {
+        <NonEmptyVec<String>>::from(self.0.clone()).clone().into()
+    }
+}
+
+impl From<cddl_lib::NonemptySetText> for NonemptySetText {
+    fn from(native: cddl_lib::NonemptySetText) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonemptySetText> for cddl_lib::NonemptySetText {
+    fn from(wasm: NonemptySetText) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NonemptySetText> for NonemptySetText {
+    fn as_ref(&self) -> &cddl_lib::NonemptySetText {
+        &self.0
+    }
+}
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
@@ -255,6 +343,49 @@ impl From<PointList> for Vec<cddl_lib::Point> {
 
 impl AsRef<Vec<cddl_lib::Point>> for PointList {
     fn as_ref(&self) -> &Vec<cddl_lib::Point> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct SetU64(pub(crate) cddl_lib::SetU64);
+
+#[wasm_bindgen]
+impl SetU64 {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<SetU64, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: Vec<u64>) -> Self {
+        Self(cddl_lib::SetU64::new(inner))
+    }
+
+    pub fn get(&self) -> Vec<u64> {
+        <Vec<u64>>::from(self.0.clone()).clone()
+    }
+}
+
+impl From<cddl_lib::SetU64> for SetU64 {
+    fn from(native: cddl_lib::SetU64) -> Self {
+        Self(native)
+    }
+}
+
+impl From<SetU64> for cddl_lib::SetU64 {
+    fn from(wasm: SetU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::SetU64> for SetU64 {
+    fn as_ref(&self) -> &cddl_lib::SetU64 {
         &self.0
     }
 }

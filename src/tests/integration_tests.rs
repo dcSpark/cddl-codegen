@@ -8949,13 +8949,18 @@ fn workspace_requests_hard_errors() {
     );
 }
 
-/// REQUEST-09: a collapsed-set shape produced through an ANONYMOUS generic instance
-/// (`[pool_owners: set<key_hash>]`) lowers its wasm wrapper to the STRUCTURAL name (`KeyHashList`),
-/// exactly like the inline `[* key_hash]` — so a consumer's `--wrapper-requests` for the structural
-/// shape is satisfied by own-spec (no criterion-8 #3 hard error on the synthesized `SetKeyHash`
-/// name), two spellings of the shape are ONE wasm class, and the `[+]` flavor behaves identically.
-/// The BOUNDARY: the same shape bound to a NAMED rule (`named_set = set<key_hash>`) keeps its own
-/// class and still hard-errors — a synthesized name carries no author intent, a rule name does.
+/// REQUEST-09 under Phase 2.3 (nominal-per-instantiation): a collapsed-set shape produced through a
+/// generic instance (`[pool_owners: set<key_hash>]`) now NOMINALIZES — `set<key_hash>` mints its own
+/// `SetKeyHash` wasm class rather than lowering to a passthrough alias of the structural
+/// `KeyHashList`. The structural boundary class (`KeyHashList` / `NonEmptyKeyHashList`) STILL exists
+/// (it is the nominal's `new()`/`get()` boundary, and the inline `[* key_hash]` mints it too), so a
+/// consumer's `--wrapper-requests` for the structural shape is STILL satisfied from own-spec — the
+/// re-key does not strand the structural row. The BOUNDARY flip (deliberate, probe-verified): the
+/// same shape bound to a NAMED rule (`named_set = set<key_hash>`) no longer hard-errors — it
+/// becomes `pub type NamedSet = SetKeyHash;` and the structural `KeyHashList` request resolves via
+/// the nominal's boundary, so the pre-2.3 criterion-8 #3 collision is retired (the shape is now
+/// structurally own-produced). One fixture stays on the satisfied path (anon), one documents the
+/// retired boundary (named).
 #[test]
 fn workspace_requests_anonymous_collapsed_set_satisfies_from_own_spec() {
     use std::str::FromStr;
@@ -9016,58 +9021,67 @@ fn workspace_requests_anonymous_collapsed_set_satisfies_from_own_spec() {
     let requested = read("wasm/src/generated/requested_collections.rs");
 
     // BOTH structural requests are satisfied from own-spec => nothing re-emitted into
-    // requested_collections.rs (the file exists but hosts no wrapper).
+    // requested_collections.rs (the structural boundary classes persist alongside the nominals).
     assert!(
         !requested.contains("pub struct KeyHashList(")
             && !requested.contains("pub struct NonEmptyKeyHashList("),
-        "both structural shapes are own-produced => neither must be re-emitted into \
+        "both structural shapes stay own-produced => neither must be re-emitted into \
          requested_collections.rs:\n{requested}"
     );
-    // (c) both spellings (`set<key_hash>` AND inline `[* key_hash]`) collapse to ONE `KeyHashList`.
+    // (c) the structural `KeyHashList` boundary class still exists exactly ONCE (the nominal's
+    // boundary + the inline `[* key_hash]` share it).
     assert_eq!(
         wasm_mod.matches("pub struct KeyHashList(").count(),
         1,
-        "the anonymous instance and the inline `[* key_hash]` must define ONE KeyHashList class"
+        "the nominal boundary and the inline `[* key_hash]` must share ONE KeyHashList class"
     );
-    // (d) the [+] flavor mints the structural NonEmpty wrapper, not a `NonemptySetKeyHash` class.
+    // (d) the instances NOMINALIZE now: `set<key_hash>` / `nonempty_set<key_hash>` mint their OWN
+    // wasm classes, NOT passthrough aliases to the structural wrappers.
     assert!(
-        wasm_mod.contains("pub struct NonEmptyKeyHashList(")
-            && !wasm_mod.contains("pub struct NonemptySetKeyHash("),
-        "the nonempty anonymous instance must mint the structural NonEmptyKeyHashList, not a \
-         rule-named class:\n{wasm_mod}"
+        wasm_mod.contains("pub struct SetKeyHash(pub(crate) wr_dep::SetKeyHash)")
+            && wasm_mod
+                .contains("pub struct NonemptySetKeyHash(pub(crate) wr_dep::NonemptySetKeyHash)"),
+        "the anonymous instances must mint their own nominal wasm classes:\n{wasm_mod}"
     );
-    // The synthesized instance names survive as wasm PASSTHROUGH aliases (rust-side references stay
-    // valid), pointing at the structural classes.
     assert!(
-        wasm_mod.contains("pub type SetKeyHash = KeyHashList;")
-            && wasm_mod.contains("pub type NonemptySetKeyHash = NonEmptyKeyHashList;"),
-        "the synthesized instance names must survive as wasm passthrough aliases:\n{wasm_mod}"
+        !wasm_mod.contains("pub type SetKeyHash = KeyHashList;")
+            && !wasm_mod.contains("pub type NonemptySetKeyHash = NonEmptyKeyHashList;"),
+        "the instance names are nominal classes now, NOT structural passthrough aliases:\n{wasm_mod}"
     );
-    // The dep's own index re-exports the STRUCTURAL names (never the synthesized ones).
+    // The structural boundary wrappers still exist (the nominals need them + the inline `[+]` mints).
+    assert!(
+        wasm_mod.contains("pub struct NonEmptyKeyHashList("),
+        "the structural NonEmptyKeyHashList boundary wrapper must still exist:\n{wasm_mod}"
+    );
+    // The dep's own index re-exports the structural names (their request is satisfied structurally)
+    // AND the new nominal instance classes.
     assert!(
         index.contains("pub use crate::generated::KeyHashList;")
-            && index.contains("pub use crate::generated::NonEmptyKeyHashList;")
-            && !index.contains("SetKeyHash")
-            && !index.contains("NonemptySetKeyHash"),
-        "the dep index must re-export only the structural wrapper names:\n{index}"
+            && index.contains("pub use crate::generated::NonEmptyKeyHashList;"),
+        "the dep index must re-export the structural wrapper names:\n{index}"
     );
 
-    // (b) BOUNDARY: the same shape under a NAMED rule keeps the criterion-8 #3 hard error, and the
-    // message names the rule-declared (`NamedSet`) producer, not a structural name.
+    // (b) BOUNDARY flip (Phase 2.3): the same shape bound to a NAMED rule NO LONGER hard-errors. The
+    // named binding becomes `pub type NamedSet = SetKeyHash;`, the structural `KeyHashList` request
+    // resolves via the nominal's boundary (own-produced), so generation SUCCEEDS — the pre-2.3
+    // criterion-8 #3 collision is retired by nominalization (the shape is structurally own-produced).
     let sb = write_sidecar(
         "named.rs",
         "    (\"wr_dep\", \"KeyHashList\", \"[* key_hash]\"),\n",
     );
     let named = run("dep_inputs_named_set", "export_named_set", &sb);
     assert!(
-        !named.status.success(),
-        "a NAMED collapsed-set instance rule requested by a consumer must still hard-error"
+        named.status.success(),
+        "a NAMED collapsed-set binding no longer collides — the structural request resolves via the \
+         nominal's own boundary class:\n{}",
+        String::from_utf8_lossy(&named.stderr)
     );
-    let named_err = String::from_utf8_lossy(&named.stderr);
+    let named_dir = base.join("export_named_set");
+    let named_wasm = std::fs::read_to_string(named_dir.join("wasm/src/generated/mod.rs")).unwrap();
     assert!(
-        named_err.contains("non-structural rule name NamedSet"),
-        "the named-rule boundary must hard-error naming the rule-declared NamedSet producer, got: \
-         {named_err}"
+        named_wasm.contains("pub type NamedSet = SetKeyHash;")
+            && named_wasm.contains("pub struct SetKeyHash(pub(crate) wr_dep::SetKeyHash)"),
+        "the named binding passthrough-aliases the ONE instantiation nominal:\n{named_wasm}"
     );
 }
 

@@ -12,7 +12,6 @@ expression: content
 // drift. Downstream crates point `--extern-wrapper-index <dep>=<this file>` here to
 // avoid re-minting these wrappers (a wasm duplicate-symbol link error otherwise).
 pub use crate::generated::NonEmptyU64OrderedSet;
-pub use crate::generated::OsetU64;
 pub use crate::generated::Plain;
 pub use crate::generated::TextOrderedSet;
 pub use crate::generated::U64OrderedSet;

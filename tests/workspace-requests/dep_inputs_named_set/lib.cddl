@@ -1,13 +1,15 @@
-; REQUEST-09 boundary: the collapsed-set instance is bound to a NAMED rule the author wrote
-; (`named_set = set<key_hash>`, ident `NamedSet`), not an anonymous field-site instance. A named
-; rule keeps its own wasm class and the criterion-8 #3 contract: a consumer requesting the
-; structural `[* key_hash]` (KeyHashList) collides with the dep's own `NamedSet` producer and must
-; hard-error with a remedy the author can act on (rename / @name / drop the rule).
+; REQUEST-09 boundary under Phase 2.3 (nominal-per-instantiation): the collapsed-set instance is
+; bound to a NAMED rule the author wrote (`named_set = set<key_hash>`, ident `NamedSet`). The binding
+; becomes a transparent alias to the instantiation nominal — `pub type NamedSet = SetKeyHash;` — and
+; the consumer's structural `[* key_hash]` (KeyHashList) request resolves via the nominal's OWN
+; boundary class (own-produced), so generation SUCCEEDS. The pre-2.3 criterion-8 #3 hard error is
+; deliberately retired: nominalization makes the shape structurally own-produced, so the collision
+; that once required a rename/@name/drop no longer exists.
 ;
-; The generic def carries the explicit `; @duplicates preserve` opt-out so `NamedSet` stays the plain
-; `Vec`/`KeyHashList` structural shape this boundary collision requires — tag 258 now defaults to
-; `@duplicates reject` (the well-known-tag registry), which would give `NamedSet` an `OrderedSet`
-; shape that no longer matches the requested `[* key_hash]` structural wrapper.
+; The generic def carries the explicit `; @duplicates preserve` opt-out so the nominal keeps the plain
+; `Vec`/`KeyHashList` boundary shape this fixture inspects — tag 258 now defaults to
+; `@duplicates reject` (the well-known-tag registry), which would give the nominal an `OrderedSet`
+; inner and a different boundary wrapper.
 key_hash = bytes ; @newtype
 set<a0> = #6.258([* a0]) / [* a0] ; @duplicates preserve
 named_set = set<key_hash>

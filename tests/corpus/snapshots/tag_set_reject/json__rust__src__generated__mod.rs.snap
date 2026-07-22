@@ -107,6 +107,52 @@ impl TryFrom<Vec<u64>> for IntSet {
     }
 }
 
+impl std::ops::Deref for OsetU64 {
+    type Target = OrderedSet<u64>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for OsetU64 {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a> IntoIterator for &'a OsetU64 {
+    type Item = &'a u64;
+    type IntoIter = std::slice::Iter<'a, u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for OsetU64 {
+    type Item = u64;
+    type IntoIter = std::vec::IntoIter<u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Vec::<u64>::from(self.0).into_iter()
+    }
+}
+
+impl From<OsetU64> for Vec<u64> {
+    fn from(wrapper: OsetU64) -> Self {
+        Vec::from(wrapper.0)
+    }
+}
+
+impl TryFrom<Vec<u64>> for OsetU64 {
+    type Error = DeserializeError;
+
+    fn try_from(vec: Vec<u64>) -> Result<Self, Self::Error> {
+        Ok(OsetU64::new(<OrderedSet<u64>>::try_from(vec)?))
+    }
+}
+
 impl std::ops::Deref for TextSet {
     type Target = OrderedSet<String>;
 
@@ -287,9 +333,59 @@ impl schemars::JsonSchema for IntSet {
     }
 }
 
-/// The tag-258 set idiom: the tag is an encoding detail — both the `#6.258(...)` and the bare-array wire forms are accepted (serialization defaults to tagged), so either round-trips byte-exactly.
-/// `@duplicates reject`: a repeated element is refused (a `DuplicateKey` error) on both the wire and the API; accepted (duplicate-free) input re-emits byte-exactly in wire order (the set is order-preserving, never sorted).
-pub type OsetU64 = OrderedSet<u64>;
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct OsetU64(pub(crate) OrderedSet<u64>);
+
+impl OsetU64 {
+    pub fn new(inner: OrderedSet<u64>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<OrderedSet<u64>> for OsetU64 {
+    fn from(inner: OrderedSet<u64>) -> Self {
+        OsetU64::new(inner)
+    }
+}
+
+impl From<OsetU64> for OrderedSet<u64> {
+    fn from(wrapper: OsetU64) -> Self {
+        wrapper.0
+    }
+}
+
+impl serde::Serialize for OsetU64 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for OsetU64 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <OrderedSet<u64> as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for OsetU64 {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("OsetU64")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <OrderedSet<u64> as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <OrderedSet<u64> as schemars::JsonSchema>::inline_schema()
+    }
+}
 
 /// `@duplicates reject`: a repeated element is refused (a `DuplicateKey` error) on both the wire and the API; accepted (duplicate-free) input re-emits byte-exactly in wire order (the set is order-preserving, never sorted).
 pub type Plain = OrderedSet<u64>;
