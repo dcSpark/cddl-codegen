@@ -196,7 +196,7 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 [[package]]
 name = "cbor_event"
 version = "3.2.0"
-source = "git+https://github.com/dcSpark/cbor_event?rev=9b115bb#9b115bb193f9f8db13af2a534436527d2ad90424"
+source = "git+https://github.com/dcSpark/cbor_event?rev=252c425ad056504317ca09b0b67dd369b50236f1#252c425ad056504317ca09b0b67dd369b50236f1"
 
 [[package]]
 name = "cc"
