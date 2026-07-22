@@ -1,0 +1,18 @@
+; A named rule BINDING a generic set-nominal instantiation, used at MORE THAN ONE site — the CML
+; `required_signers = nonempty_set<ed25519_key_hash>` shape. Because the instantiation
+; (`nonempty_set<uint>`) is spelled both by the named rule AND anonymously (in `other`), it mints
+; ONE nominal wrapper under its own canonical ident (`NonemptySetU64`) and the named rule lowers to a
+; transparent `pub type ReqSigners = NonemptySetU64;` alias TO it — NOT the identity mint a
+; single-use named instance gets (see tag_set_reject.cddl's `oset_u64`, which IS the nominal).
+;
+; The pin here is the ALIAS's self-documenting doc: it carries a bare `Rust(<nominal>)` base_type, so
+; the doc block must RESOLVE the bound nominal's registered policy — the `NonEmptyOrderedSet` door
+; (min-1 uniqueness twin) and the `@duplicates reject` blurb (a set nominal is always the reject
+; twin; a `preserve` set stays a transparent `Vec` alias, never a nominal). CML's first regen emitted
+; the INVERTED policy on exactly this shape (a `NonEmptyVec` door + a preserve blurb — the one
+; decode-time breaking change, misdocumented); the polarity is hard-pinned in-process by
+; `optional_tag_set_tests::alias_binding_set_nominal_documents_resolved_reject_policy`, and this
+; corpus entry pins the full emitted bytes across profiles.
+nonempty_set<a0> = #6.258([+ a0]) / [+ a0]
+req_signers = nonempty_set<uint>
+other = [rs: req_signers, more: nonempty_set<uint>]

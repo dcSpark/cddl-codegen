@@ -382,6 +382,52 @@ impl GenerationScope {
                                 .to_owned(),
                         );
                     }
+                    // An alias BINDING a generic set-nominal instantiation
+                    // (`required_signers = nonempty_set<ed25519_key_hash>` →
+                    // `pub type RequiredSigners = NonemptySetEd25519KeyHash;`) carries a bare
+                    // `Rust(<nominal>)` base_type — the array/tag/policy predicates above see an
+                    // opaque reference and fire nothing. Resolve the bound nominal's REGISTERED
+                    // policy and emit the same self-describing door/tag/reject lines the
+                    // transparent set alias gets: the rule name hides the nominal's name, so
+                    // without this the one decode-time breaking change (uniqueness) goes
+                    // undocumented on exactly the rule a consumer reads first. A set nominal is
+                    // ALWAYS the uniqueness (`reject`) twin — a `preserve` set stays a transparent
+                    // `Vec` alias, never a nominal — so the policy line is always the reject blurb.
+                    if let ConceptualRustType::Rust(bound_ident) =
+                        &alias_info.base_type.conceptual_type
+                        && let Some(bound_struct) = types.rust_struct(bound_ident)
+                        && bound_struct.config().set_nominal
+                        && let RustStructType::Wrapper { wrapped, .. } = bound_struct.variant()
+                        && let ConceptualRustType::Array(elem) = &wrapped.conceptual_type
+                    {
+                        // The min-1 (`[+]`) nominal's door is `NonEmptyOrderedSet`; a min-0 (`[*]`)
+                        // nominal has no non-emptiness to enforce, so it emits no door line (the
+                        // same convention as the transparent-alias block above).
+                        if wrapped.is_non_empty_array() {
+                            doc_lines.push(format!(
+                                "`[+ {}]`: at least one element, enforced at the \
+                                 `NonEmptyOrderedSet` `TryFrom<Vec<_>>` door (the CBOR decoder \
+                                 routes through the same door, so wire-side and API-side rejection \
+                                 are identical).",
+                                elem.for_rust_member(types, false, cli)
+                            ));
+                        }
+                        if let Some(n) = bound_struct.tag() {
+                            doc_lines.push(format!(
+                                "The tag-{n} set idiom: the tag is an encoding detail — both the \
+                                 `#6.{n}(...)` and the bare-array wire forms are accepted \
+                                 (serialization defaults to tagged), so either round-trips \
+                                 byte-exactly."
+                            ));
+                        }
+                        doc_lines.push(
+                            "`@duplicates reject`: a repeated element is refused (a \
+                             `DuplicateKey` error) on both the wire and the API; accepted \
+                             (duplicate-free) input re-emits byte-exactly in wire order (the set is \
+                             order-preserving, never sorted)."
+                                .to_owned(),
+                        );
+                    }
                     if !doc_lines.is_empty() {
                         type_alias.doc(doc_lines.join("\n"));
                     }

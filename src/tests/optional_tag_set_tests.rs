@@ -257,6 +257,51 @@ fn generic_set_defs_nominalize_per_instantiation() {
     );
 }
 
+/// A named rule BINDING a generic set-nominal instantiation used at more than one site
+/// (`required_signers = nonempty_set<uint>`, with a second anonymous use forcing the instantiation
+/// to mint under its own canonical ident) lowers to a transparent `pub type` alias TO the nominal —
+/// and that alias must SELF-DOCUMENT the bound nominal's resolved policy. The alias carries a bare
+/// `Rust(<nominal>)` base_type, so the doc block resolves the nominal's registered config: the door
+/// is `NonEmptyOrderedSet` (min-1) and the policy line is the `@duplicates reject` blurb. This pins
+/// the POLARITY (CML's regen once emitted the inverted `NonEmptyVec` door + a preserve blurb on
+/// exactly this shape — the one decode-time breaking change, misdocumented).
+#[test]
+fn alias_binding_set_nominal_documents_resolved_reject_policy() {
+    let src = generate(
+        "nonempty_set<a0> = #6.258([+ a0]) / [+ a0]\n\
+         required_signers = nonempty_set<uint>\n\
+         other = [rs: required_signers, more: nonempty_set<uint>]\n",
+        "alias_instance",
+        PRESERVE,
+    )
+    .expect("alias-of-instantiation must generate");
+    // The named binding is a transparent alias to the instantiation nominal, not the identity mint.
+    assert!(
+        src.contains("pub type RequiredSigners = NonemptySetU64;"),
+        "the multi-use named binding must alias the instantiation nominal:\n{src}"
+    );
+    // Correct door: `NonEmptyOrderedSet` (the min-1 uniqueness twin), NOT the inverted `NonEmptyVec`.
+    assert!(
+        src.contains(
+            "`[+ u64]`: at least one element, enforced at the `NonEmptyOrderedSet` `TryFrom<Vec<_>>` door"
+        ),
+        "the alias doc must name the resolved `NonEmptyOrderedSet` door, not `NonEmptyVec`:\n{src}"
+    );
+    assert!(
+        !src.contains("enforced at the `NonEmptyVec`"),
+        "the alias doc must NOT emit the inverted `NonEmptyVec` door:\n{src}"
+    );
+    // Correct policy: the reject blurb, NOT the preserve blurb.
+    assert!(
+        src.contains("`@duplicates reject`: a repeated element is refused"),
+        "the alias doc must emit the reject blurb (the resolved nominal policy):\n{src}"
+    );
+    assert!(
+        !src.contains("Duplicate elements are preserved and re-emitted byte-exactly"),
+        "the alias doc must NOT emit the inverted preserve blurb:\n{src}"
+    );
+}
+
 /// A BYTES-element set collapses to a transparent `NonEmptyOrderedSet<Vec<u8>>` alias (258 defaults
 /// to reject) and, under `--preserve-encodings`, its byte-string elements ride the EXISTING per-element `StringEncoding`
 /// machinery (`..._elem_encodings: Vec<StringEncoding>`) — so `@raw_bytes_flavor` is moot for the

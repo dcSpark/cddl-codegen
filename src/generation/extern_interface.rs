@@ -916,7 +916,32 @@ fn project_extern_interface(
         // policy on the alias base type; project the representation-changing halves (set `reject`,
         // table `preserve`) for the same anti-skew reason.
         extra_annotations.extend(duplicates_annotation(&alias_info.base_type));
-        let projected: RuleProjection = if let Some(target) = &alias_info.wasm_alias_target {
+        // An alias BINDING a generic set-nominal instantiation (`required_signers =
+        // nonempty_set<ed25519_key_hash>` → `pub type RequiredSigners = NonemptySetEd25519KeyHash;`)
+        // references the instantiation-minted nominal by a bare `Rust(<nominal>)` base_type. That
+        // nominal is a class-backed `Wrapper` struct with NO source CDDL rule name (it is minted
+        // from the instantiation, not authored), so the transparent renderer's `render_rust_ref`
+        // would hard-`Err` on the unspellable reference and DROP the whole rule with a
+        // `; unexported:` record. Project it as the SAME opaque row the nominal itself takes in
+        // pass 1 (the Wrapper arm): the consumer references it as an opaque class named by the
+        // alias's `@rust_name`, and the instantiation's spelling never crosses. Scoped to set
+        // nominals per the fidelity ask — an alias to any OTHER no-source-name class-backed struct
+        // is not a shape a spec produces today.
+        let set_nominal_ref = matches!(
+            &alias_info.base_type.conceptual_type,
+            ConceptualRustType::Rust(bound)
+                if types.source_rule_name(bound).is_none()
+                    && types
+                        .rust_struct(bound)
+                        .is_some_and(|rs| rs.config().set_nominal)
+        );
+        let projected: RuleProjection = if set_nominal_ref {
+            Ok((
+                crate::parsing::EXTERN_MARKER.to_string(),
+                extra_annotations,
+                BTreeSet::new(),
+            ))
+        } else if let Some(target) = &alias_info.wasm_alias_target {
             // A `ptm = mp` rule whose `Alias(mp, …)` wrapper was stripped to inline the type keeps a
             // `wasm_alias_target`; spell it truthfully as a reference to that target's original ident
             // rather than re-inlining the whole collection shape.
@@ -944,8 +969,12 @@ fn project_extern_interface(
         };
         // A transparent alias materializes a named rust surface (a `pub type`) only when
         // `gen_rust_alias` is set. A `@no_alias` rule (and a `wasm_alias_target` inline) generates no
-        // rust type — nothing for the self-check to `use`, so it asserts nothing (`None`).
-        let kind = if alias_info.gen_rust_alias {
+        // rust type — nothing for the self-check to `use`, so it asserts nothing (`None`). The opaque
+        // set-nominal row asserts `Serialize` on the concrete `pub type` (the same bound the pass-1
+        // Wrapper arm uses), since the alias resolves to a Serialize-implementing nominal.
+        let kind = if set_nominal_ref {
+            ExternCheckKind::Serialize
+        } else if alias_info.gen_rust_alias {
             ExternCheckKind::Use
         } else {
             ExternCheckKind::None

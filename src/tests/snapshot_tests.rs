@@ -1232,6 +1232,43 @@ fn extern_interface_emit_exclusions_and_closure() {
     );
 }
 
+/// A named rule BINDING a generic set-nominal instantiation used at more than one site
+/// (`req_signers = nonempty_set<uint>`, with a second anonymous use forcing the instantiation to
+/// mint under its own canonical ident) lowers to a `pub type` alias TO the nominal — and that alias
+/// must project into the extern interface as an OPAQUE row, not drop out with a `; unexported:`
+/// record. The instantiation-minted nominal (`NonemptySetU64`) has NO source CDDL rule name, so the
+/// transparent renderer's `render_rust_ref` once hard-`Err`ed on the unspellable `Rust(<nominal>)`
+/// reference and dropped the whole rule (CML's first regen lost its `required_signers` row this
+/// way); it now takes the same opaque marker the nominal itself would in pass 1, named by the
+/// alias's `@rust_name`. The consumer references it opaquely and never needs the instantiation's
+/// spelling.
+#[test]
+fn extern_interface_projects_alias_to_set_nominal_as_opaque() {
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_extif_setnominal_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        "nonempty_set<a0> = #6.258([+ a0]) / [+ a0]\n\
+         req_signers = nonempty_set<uint>\n\
+         holder = [rs: req_signers, more: nonempty_set<uint>]\n",
+    )
+    .unwrap();
+    let cli = cli_for(&path, &["--wasm", "false", "--lib-name", "dep"]);
+    let files = crate::api::extern_interface_strings(&cli).unwrap();
+    std::fs::remove_file(&path).ok();
+    let root = &files["extern-interface/dep/mod.cddl"];
+    assert!(
+        root.contains("req_signers = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name ReqSigners"),
+        "the alias-to-set-nominal rule must project as an opaque row named by its @rust_name:\n{root}"
+    );
+    assert!(
+        !root.contains("; unexported: req_signers"),
+        "the alias-to-set-nominal rule must NOT drop out with an unexported record:\n{root}"
+    );
+}
+
 // --- Dep-side extern-interface compiled self-check (commit 5) ------------------------------------
 
 /// Snapshot the dep-side compiled self-check (`generated/extern_interface_check.rs`) the emit
