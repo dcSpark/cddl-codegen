@@ -4,7 +4,10 @@
 ; Mismatched occurrence bounds (`#6.258([+ uint]) / [* uint]`): the tagged arm requires >=1 element,
 ; the untagged arm allows empty, so the arms are not the same value and the collapse condition (arms
 ; equal but for one `Tagged` op, occurrence bounds INCLUDED) does not hold. The IR keeps a
-; `TypeChoice` with a tagged `NonEmptyVec<u64>` variant and an untagged `Vec<u64>` variant. The other
+; `TypeChoice`; the SURVIVING tagged arm is itself an inline `#6.258([+ uint])` occurrence, so it
+; nominalizes to the shape-derived `SetNonEmptyU64` set wrapper (Phase 2.4), while the untagged arm
+; stays a plain `Vec<u64>` variant — the union does not collapse, but its tagged arm gets set
+; semantics exactly like any other inline 258 occurrence. The other
 ; near misses (different element types, both arms tagged, 3+ arms) are pinned in-process in
 ; `optional_tag_set_tests.rs`; this fixture locks that the retained enum still compiles and
 ; round-trips under every profile.

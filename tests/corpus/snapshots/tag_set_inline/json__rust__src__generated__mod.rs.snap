@@ -14,18 +14,111 @@ expression: content
 pub mod error;
 mod extern_interface_check;
 pub mod ordered_set;
+impl std::ops::Deref for SetText {
+    type Target = OrderedSet<String>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for SetText {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a> IntoIterator for &'a SetText {
+    type Item = &'a String;
+    type IntoIter = std::slice::Iter<'a, String>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for SetText {
+    type Item = String;
+    type IntoIter = std::vec::IntoIter<String>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Vec::<String>::from(self.0).into_iter()
+    }
+}
+
+impl From<SetText> for Vec<String> {
+    fn from(wrapper: SetText) -> Self {
+        Vec::from(wrapper.0)
+    }
+}
+
+impl TryFrom<Vec<String>> for SetText {
+    type Error = DeserializeError;
+
+    fn try_from(vec: Vec<String>) -> Result<Self, Self::Error> {
+        Ok(SetText::new(<OrderedSet<String>>::try_from(vec)?))
+    }
+}
+
+impl std::ops::Deref for SetU64 {
+    type Target = OrderedSet<u64>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for SetU64 {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a> IntoIterator for &'a SetU64 {
+    type Item = &'a u64;
+    type IntoIter = std::slice::Iter<'a, u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for SetU64 {
+    type Item = u64;
+    type IntoIter = std::vec::IntoIter<u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Vec::<u64>::from(self.0).into_iter()
+    }
+}
+
+impl From<SetU64> for Vec<u64> {
+    fn from(wrapper: SetU64) -> Self {
+        Vec::from(wrapper.0)
+    }
+}
+
+impl TryFrom<Vec<u64>> for SetU64 {
+    type Error = DeserializeError;
+
+    fn try_from(vec: Vec<u64>) -> Result<Self, Self::Error> {
+        Ok(SetU64::new(<OrderedSet<u64>>::try_from(vec)?))
+    }
+}
+
 pub mod serialization;
 
+use crate::generated::error::*;
 use crate::generated::ordered_set::OrderedSet;
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub enum ArrU64OrArrU64 {
-    ArrU64(OrderedSet<u64>),
+    ArrU64(SetU64),
     ArrU642(Vec<u64>),
 }
 
 impl ArrU64OrArrU64 {
-    pub fn new_arr_u64(arr_u64: OrderedSet<u64>) -> Self {
+    pub fn new_arr_u64(arr_u64: SetU64) -> Self {
         Self::ArrU64(arr_u64)
     }
 
@@ -36,14 +129,122 @@ impl ArrU64OrArrU64 {
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct InlineHolder {
-    pub a: OrderedSet<u64>,
-    pub b: Option<OrderedSet<String>>,
-    pub c: Vec<OrderedSet<u64>>,
+    pub a: SetU64,
+    pub b: Option<SetText>,
+    pub c: Vec<SetU64>,
     pub x: ArrU64OrArrU64,
 }
 
 impl InlineHolder {
-    pub fn new(a: OrderedSet<u64>, c: Vec<OrderedSet<u64>>, x: ArrU64OrArrU64) -> Self {
+    pub fn new(a: SetU64, c: Vec<SetU64>, x: ArrU64OrArrU64) -> Self {
         Self { a, b: None, c, x }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct SetText(pub(crate) OrderedSet<String>);
+
+impl SetText {
+    pub fn new(inner: OrderedSet<String>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<OrderedSet<String>> for SetText {
+    fn from(inner: OrderedSet<String>) -> Self {
+        SetText::new(inner)
+    }
+}
+
+impl From<SetText> for OrderedSet<String> {
+    fn from(wrapper: SetText) -> Self {
+        wrapper.0
+    }
+}
+
+impl serde::Serialize for SetText {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for SetText {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <OrderedSet<String> as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for SetText {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("SetText")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <OrderedSet<String> as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <OrderedSet<String> as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct SetU64(pub(crate) OrderedSet<u64>);
+
+impl SetU64 {
+    pub fn new(inner: OrderedSet<u64>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<OrderedSet<u64>> for SetU64 {
+    fn from(inner: OrderedSet<u64>) -> Self {
+        SetU64::new(inner)
+    }
+}
+
+impl From<SetU64> for OrderedSet<u64> {
+    fn from(wrapper: SetU64) -> Self {
+        wrapper.0
+    }
+}
+
+impl serde::Serialize for SetU64 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for SetU64 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <OrderedSet<u64> as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for SetU64 {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("SetU64")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <OrderedSet<u64> as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <OrderedSet<u64> as schemars::JsonSchema>::inline_schema()
     }
 }

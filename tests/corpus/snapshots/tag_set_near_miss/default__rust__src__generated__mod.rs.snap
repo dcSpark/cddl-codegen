@@ -14,9 +14,59 @@ expression: content
 pub mod error;
 mod extern_interface_check;
 pub mod non_empty;
+pub mod ordered_set;
+impl std::ops::Deref for SetNonEmptyU64 {
+    type Target = NonEmptyOrderedSet<u64>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for SetNonEmptyU64 {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a> IntoIterator for &'a SetNonEmptyU64 {
+    type Item = &'a u64;
+    type IntoIter = std::slice::Iter<'a, u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for SetNonEmptyU64 {
+    type Item = u64;
+    type IntoIter = std::vec::IntoIter<u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Vec::<u64>::from(self.0).into_iter()
+    }
+}
+
+impl From<SetNonEmptyU64> for Vec<u64> {
+    fn from(wrapper: SetNonEmptyU64) -> Self {
+        Vec::from(wrapper.0)
+    }
+}
+
+impl TryFrom<Vec<u64>> for SetNonEmptyU64 {
+    type Error = DeserializeError;
+
+    fn try_from(vec: Vec<u64>) -> Result<Self, Self::Error> {
+        Ok(SetNonEmptyU64::new(<NonEmptyOrderedSet<u64>>::try_from(
+            vec,
+        )?))
+    }
+}
+
 pub mod serialization;
 
-use crate::generated::non_empty::NonEmptyVec;
+use crate::generated::error::*;
+use crate::generated::ordered_set::NonEmptyOrderedSet;
 
 #[derive(Clone, Debug)]
 pub struct Holder {
@@ -31,16 +81,37 @@ impl Holder {
 
 #[derive(Clone, Debug)]
 pub enum NearMiss {
-    ArrU64(NonEmptyVec<u64>),
+    ArrU64(SetNonEmptyU64),
     ArrU642(Vec<u64>),
 }
 
 impl NearMiss {
-    pub fn new_arr_u64(arr_u64: NonEmptyVec<u64>) -> Self {
+    pub fn new_arr_u64(arr_u64: SetNonEmptyU64) -> Self {
         Self::ArrU64(arr_u64)
     }
 
     pub fn new_arr_u642(arr_u642: Vec<u64>) -> Self {
         Self::ArrU642(arr_u642)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct SetNonEmptyU64(pub(crate) NonEmptyOrderedSet<u64>);
+
+impl SetNonEmptyU64 {
+    pub fn new(inner: NonEmptyOrderedSet<u64>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<NonEmptyOrderedSet<u64>> for SetNonEmptyU64 {
+    fn from(inner: NonEmptyOrderedSet<u64>) -> Self {
+        SetNonEmptyU64::new(inner)
+    }
+}
+
+impl From<SetNonEmptyU64> for NonEmptyOrderedSet<u64> {
+    fn from(wrapper: SetNonEmptyU64) -> Self {
+        wrapper.0
     }
 }

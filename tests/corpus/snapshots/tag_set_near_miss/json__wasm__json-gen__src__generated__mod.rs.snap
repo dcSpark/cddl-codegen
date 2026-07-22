@@ -21,4 +21,5 @@ pub fn export_schemas() {
     }
     gen_json_schema!(cddl_lib::Holder);
     gen_json_schema!(cddl_lib::NearMiss);
+    gen_json_schema!(cddl_lib::SetNonEmptyU64);
 }

@@ -939,18 +939,19 @@ fn well_known_tag_258_bounded_occurrence_composes_with_reject_twin() {
     );
 }
 
-/// Inline-position tag-258 arrays default to `@duplicates reject` — the well-known-tag registry
-/// (`well_known_tag_default_duplicates`) applied at the `Type2::TaggedData` arm of
-/// `rust_type_from_type2`, the seam that builds EVERY inline tagged occurrence: a member, an optional
-/// member, an array element. All three positions must lower to the `OrderedSet` uniqueness twin, under
-/// BOTH the default and `--preserve-encodings` profiles (the reject twin and full encoding
-/// preservation coexist on pure inline aliases). Guard NEGATIVES ride along in the same test: an inline
-/// two-arm choice `#6.258([* uint]) / [* uint]` STAYS a two-variant enum (1b does NOT collapse inline
-/// choices — the documented REQUEST-08 recognition boundary; only the 258 arm gains the twin), and the
-/// 258-shape guard still excludes an inline map (`#6.258({* k => v})` — a map is not a set) and an
-/// inline record-shaped array (`#6.258([uint, text])` — a Record, not a homogeneous collection). The
-/// hoist opt-out that the generation notice prints is pinned separately by
-/// `inline_258_reject_opts_out_via_hoist_to_named_rule`.
+/// Inline-position tag-258 arrays NOMINALIZE into shape-derived `Set<Elem>` wrappers (Phase 2.4) —
+/// minted at the single post-collapse seam (`IntermediateTypes::nominalize_inline_sets`), one wrapper
+/// per deduped inline shape, each owning its `{tag, len, elem}` encodings and defaulting to
+/// `@duplicates reject` (IANA set semantics). Every inline tagged position feeds it: a member, an
+/// optional member, an array element. `#6.258([* uint])` mints `SetU64` (wrapping the `OrderedSet<u64>`
+/// reject twin), `#6.258([* text])` mints `SetText`; a repeated inline shape (`a` and `c`'s element
+/// here) DEDUPES to one nominal. Holds under BOTH the default and `--preserve-encodings` profiles.
+/// Guard NEGATIVES ride along: an inline two-arm choice `#6.258([* uint]) / [* uint]` STAYS a
+/// two-variant enum (inline unions do NOT collapse — the documented REQUEST-08 recognition boundary;
+/// only the tagged arm nominalizes, the untagged arm stays a plain `Vec<u64>`), and the 258-shape guard
+/// still excludes an inline map (`#6.258({* k => v})` — a map is not a set) and an inline record-shaped
+/// array (`#6.258(<record>)` — a Record, not a homogeneous collection). The hoist opt-out is pinned
+/// separately by `inline_258_reject_opts_out_via_hoist_to_named_rule`.
 #[test]
 fn inline_258_array_defaults_to_reject() {
     let gen_src = |cddl: &str, preserve: bool| -> String {
@@ -979,41 +980,53 @@ fn inline_258_array_defaults_to_reject() {
     };
 
     // Every inline seam: `a` a mandatory member, `b` an optional member, `c` an array element. Each is
-    // an inline `#6.258([* …])`, so each defaults to the `OrderedSet` twin.
+    // an inline `#6.258([* …])`, so each nominalizes to a shape-derived `Set<Elem>` wrapper.
     const HOLDER: &str =
         "holder = [a: #6.258([* uint]), ? b: #6.258([* text]), c: [* #6.258([* uint])]]\n";
     for preserve in [false, true] {
         let src = gen_src(HOLDER, preserve);
-        // `a` (member) and `c` (array element) are `[* uint]` sets → `OrderedSet<u64>`.
+        // `a` (member) and `c` (array element) are `[* uint]` sets → one deduped nominal `SetU64`,
+        // referenced directly (`a`) and at element depth (`c`: `Vec<SetU64>`). The nominal wraps the
+        // `OrderedSet<u64>` reject twin.
+        // (`pub struct SetU64` is a tuple struct by default, a named-field struct with an `encodings`
+        // member under `--preserve-encodings` — assert the ident + inner twin, not the struct shape.)
         assert!(
-            src.contains("OrderedSet<u64>"),
-            "inline 258 member/element sets must default to OrderedSet<u64> (preserve={preserve}):\n{src}"
+            src.contains("pub struct SetU64") && src.contains("OrderedSet<u64>"),
+            "inline 258 member/element sets must nominalize to SetU64 over OrderedSet<u64> (preserve={preserve}):\n{src}"
         );
-        // `b` (optional member) is a `[* text]` set → `OrderedSet<String>` (under an `Option`).
         assert!(
-            src.contains("OrderedSet<String>"),
-            "inline 258 optional-member set must default to OrderedSet<String> (preserve={preserve}):\n{src}"
+            src.contains("pub a: SetU64") && src.contains("pub c: Vec<SetU64>"),
+            "inline 258 member/element fields must reference the SetU64 nominal (preserve={preserve}):\n{src}"
+        );
+        // `b` (optional member) is a `[* text]` set → nominal `SetText` (over `OrderedSet<String>`),
+        // referenced under an `Option`.
+        assert!(
+            src.contains("pub struct SetText")
+                && src.contains("OrderedSet<String>")
+                && src.contains("pub b: Option<SetText>"),
+            "inline 258 optional-member set must nominalize to SetText and ride an Option (preserve={preserve}):\n{src}"
         );
     }
 
-    // Guard negative — inline two-arm choice: 1b does NOT collapse it (REQUEST-08 boundary). It stays a
-    // two-variant enum; only the tagged arm gains the twin (the untagged arm is a plain `Vec`).
+    // Guard negative — inline two-arm choice: inline unions do NOT collapse (REQUEST-08 boundary). It
+    // stays a two-variant enum; only the tagged arm nominalizes (to `SetU64`), the untagged arm stays a
+    // plain `Vec<u64>`.
     let two_arm = gen_src("holder = [x: #6.258([* uint]) / [* uint]]\n", false);
     assert!(
         two_arm.contains("pub enum"),
         "inline two-arm 258 choice must stay a two-variant enum (not collapse to a single set):\n{two_arm}"
     );
     assert!(
-        two_arm.contains("OrderedSet<u64>") && two_arm.contains("Vec<u64>"),
-        "the inline two-arm enum's tagged arm gains the twin while the untagged arm stays a plain Vec:\n{two_arm}"
+        two_arm.contains("(SetU64)") && two_arm.contains("(Vec<u64>)"),
+        "the inline two-arm enum's tagged arm nominalizes to SetU64 while the untagged arm stays a plain Vec:\n{two_arm}"
     );
 
     // Guard negative — inline map: `#6.258({* k => v})` is a Map, not an Array. The registry returns
     // `None` for a map inner, so no uniqueness twin appears.
     let inline_map = gen_src("holder = [m: #6.258({ * uint => text })]\n", false);
     assert!(
-        !inline_map.contains("OrderedSet"),
-        "an inline 258 map must NOT acquire a set twin (a map is not a set):\n{inline_map}"
+        !inline_map.contains("OrderedSet") && !inline_map.contains("pub struct Set"),
+        "an inline 258 map must NOT acquire a set twin OR a set nominal (a map is not a set):\n{inline_map}"
     );
 
     // Guard negative — inline record-shaped array under a 258 tag. A bare inline heterogeneous group
@@ -1025,22 +1038,23 @@ fn inline_258_array_defaults_to_reject() {
         false,
     );
     assert!(
-        !record_shaped.contains("OrderedSet"),
-        "an inline record-shaped `#6.258(<record>)` must NOT acquire a set twin:\n{record_shaped}"
+        !record_shaped.contains("OrderedSet") && !record_shaped.contains("pub struct Set"),
+        "an inline record-shaped `#6.258(<record>)` must NOT acquire a set twin OR a set nominal:\n{record_shaped}"
     );
 }
 
-/// DOCUMENTED BOUNDARY pin: an inline `#6.258` array nested INSIDE a named two-arm idiom rule does
-/// NOT receive the registry's reject default — the named rule's transient arm builds run under
-/// `InlineTagDefaultSuppression`, which covers the whole arm subtree (suppressing only the arm ROOT
-/// needs depth discrimination through the type-build recursion that misclassifies parenthesized arm
-/// roots; disproportionate for a spelling no real spec uses, and Delivery 2's inline name-synthesis
-/// restructures this seam anyway — see the TESTING_ROADMAP entry, which names this test as the pin).
-/// The OUTER rule still collapses and takes the rule-level default; only the NESTED occurrence stays
-/// `Vec`. If this pin breaks because the nested occurrence acquired the twin, the boundary was fixed:
-/// retire this test AND the ledger entry together.
+/// BOUNDARY-RETIREMENT pin (Phase 2.4): an inline `#6.258` array nested INSIDE a named two-arm idiom
+/// rule NOW nominalizes, exactly like any other inline occurrence — the former
+/// `SUPPRESS_INLINE_TAG_DEFAULT` suppression boundary is gone. Nominalization runs at a single
+/// post-collapse seam (`IntermediateTypes::nominalize_inline_sets`) over the finalized construction
+/// products, so a nested inline occurrence inside the OUTER rule's collapsed nominal is reached the
+/// same as one in a plain member. The outer rule collapses to nominal `Foo` (Phase 2.2); its element
+/// is the inner inline set nominalized to `SetU64`, so `Foo` wraps `OrderedSet<SetU64>` (previously
+/// `OrderedSet<Vec<u64>>`, the retired boundary). This replaces the former
+/// `nested_inline_258_inside_named_idiom_keeps_vec_documented_boundary` pin, retired together with its
+/// TESTING_ROADMAP ledger entry and the `current_capacities.mdx` boundary note.
 #[test]
-fn nested_inline_258_inside_named_idiom_keeps_vec_documented_boundary() {
+fn nested_inline_258_inside_named_idiom_nominalizes() {
     let path = std::env::temp_dir().join(format!(
         "cddl_codegen_nested258_{}.cddl",
         std::process::id()
@@ -1063,11 +1077,11 @@ fn nested_inline_258_inside_named_idiom_keeps_vec_documented_boundary() {
     let src = out.values().cloned().collect::<Vec<_>>().join("\n");
     assert!(
         src.contains("pub struct Foo")
-            && src.contains("OrderedSet<Vec<u64>>")
+            && src.contains("OrderedSet<SetU64>")
+            && src.contains("pub struct SetU64(")
             && !src.contains("pub type Foo ="),
-        "outer rule nominalizes and takes the rule-level reject default; the NESTED inline occurrence \
-         stays Vec (the documented suppression boundary). If this now reads OrderedSet<OrderedSet<u64>>, \
-         the boundary was fixed — retire this pin and its ledger entry together. Got:\n{src}"
+        "the nested inline occurrence must nominalize to SetU64 (boundary retired): Foo wraps \
+         OrderedSet<SetU64>, not OrderedSet<Vec<u64>>. Got:\n{src}"
     );
 }
 
@@ -1116,6 +1130,96 @@ fn inline_258_reject_opts_out_via_hoist_to_named_rule() {
             && hoisted_default.contains("OrderedSet<u64>")
             && !hoisted_default.contains("pub type Named ="),
         "a hoisted named 258 set without a directive nominalizes and keeps the reject default:\n{hoisted_default}"
+    );
+}
+
+/// The shape-derived name distinguishes the `[+]` non-empty flavor from `[*]`, and DEDUPES one nominal
+/// per distinct inline shape: `#6.258([+ text])` mints `SetNonEmptyText` (over `NonEmptyOrderedSet`)
+/// while `#6.258([* text])` mints a SEPARATE `SetText` (over `OrderedSet`), and two occurrences of the
+/// same shape share one nominal.
+#[test]
+fn inline_258_nominal_names_distinguish_nonempty_and_dedupe() {
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_inline258_ne_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        "holder = [a: #6.258([+ text]), b: #6.258([* text]), c: #6.258([* text])]\n",
+    )
+    .unwrap();
+    let out = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "inline258_ne_unused",
+        "--wasm=false",
+    ]))
+    .expect("inline 258 non-empty/dedup spec must generate cleanly");
+    std::fs::remove_file(&path).ok();
+    let src = out.values().cloned().collect::<Vec<_>>().join("\n");
+    assert!(
+        src.contains("pub struct SetNonEmptyText") && src.contains("NonEmptyOrderedSet<String>"),
+        "the `[+ text]` inline set must mint SetNonEmptyText over NonEmptyOrderedSet:\n{src}"
+    );
+    assert!(
+        src.contains("pub struct SetText")
+            && src.contains("pub b: SetText")
+            && src.contains("pub c: SetText"),
+        "the two `[* text]` occurrences must DEDUPE to one SetText nominal both fields reference:\n{src}"
+    );
+    // exactly one `SetText` struct definition (dedup) — count the tuple/named struct header.
+    let set_text_defs = src.matches("pub struct SetText").count();
+    assert_eq!(
+        set_text_defs, 1,
+        "SetText must be minted exactly once (deduped):\n{src}"
+    );
+}
+
+/// A shape-derived inline nominal name that collides with an already-defined rule / generic set
+/// instantiation is REFUSED loudly (the per-kind sibling of the duplicate-top-level-ident backstop),
+/// never silently re-pointed at the colliding type. Both a user type alias (`set_u64 = text` →
+/// `SetU64`) and a generic instantiation (`set<uint>` → `SetU64`, a structurally-different nominal)
+/// trigger the same set-specific message. The pinned substring is a message key.
+#[test]
+fn inline_258_nominal_name_collision_is_rejected() {
+    let gen_err = |cddl: &str| -> String {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_inline258_col_{}_{}.cddl",
+            std::process::id(),
+            cddl.len()
+        ));
+        std::fs::write(&path, cddl).unwrap();
+        let err = crate::api::generated_strings(&Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "inline258_col_unused",
+            "--wasm=false",
+        ]))
+        .expect_err(
+            "a shape-derived inline nominal colliding with an existing name must be rejected",
+        );
+        std::fs::remove_file(&path).ok();
+        err.to_string()
+    };
+
+    // User type alias claiming `SetU64`.
+    let alias_err = gen_err("set_u64 = text\nholder = [a: #6.258([* uint]), b: set_u64]\n");
+    assert!(
+        alias_err.contains("shape-derived nominal `SetU64`") && alias_err.contains("collides"),
+        "user-alias collision must name the shape-derived nominal and say it collides: {alias_err}"
+    );
+
+    // Generic instantiation `set<uint>` → `SetU64` (a DIFFERENT, optional-tag nominal).
+    let generic_err = gen_err(
+        "set<a0> = #6.258([* a0]) / [* a0]\nholder = [a: #6.258([* uint]), b: set<uint>]\n",
+    );
+    assert!(
+        generic_err.contains("shape-derived nominal `SetU64`") && generic_err.contains("collides"),
+        "generic-instantiation collision must name the shape-derived nominal and say it collides: {generic_err}"
     );
 }
 

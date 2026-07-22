@@ -17,47 +17,6 @@ use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct ArrU64List(pub(crate) Vec<OrderedSet<u64>>);
-
-#[wasm_bindgen]
-impl ArrU64List {
-    pub fn new() -> Self {
-        Self(Vec::new())
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn get(&self, index: usize) -> U64OrderedSet {
-        self.0[index].clone().into()
-    }
-
-    pub fn add(&mut self, elem: &U64OrderedSet) {
-        self.0.push(elem.clone().into());
-    }
-}
-
-impl From<Vec<OrderedSet<u64>>> for ArrU64List {
-    fn from(native: Vec<OrderedSet<u64>>) -> Self {
-        Self(native)
-    }
-}
-
-impl From<ArrU64List> for Vec<OrderedSet<u64>> {
-    fn from(wasm: ArrU64List) -> Self {
-        wasm.0
-    }
-}
-
-impl AsRef<Vec<OrderedSet<u64>>> for ArrU64List {
-    fn as_ref(&self) -> &Vec<OrderedSet<u64>> {
-        &self.0
-    }
-}
-
-#[derive(Clone, Debug)]
-#[wasm_bindgen]
 pub struct ArrU64OrArrU64(pub(crate) cddl_lib::ArrU64OrArrU64);
 
 #[wasm_bindgen]
@@ -87,7 +46,7 @@ impl ArrU64OrArrU64 {
             .map_err(|e| JsError::new(&format!("from_json: {}", e)))
     }
 
-    pub fn new_arr_u64(arr_u64: &U64OrderedSet) -> Self {
+    pub fn new_arr_u64(arr_u64: &SetU64) -> Self {
         Self(cddl_lib::ArrU64OrArrU64::new_arr_u64(
             arr_u64.clone().into(),
         ))
@@ -104,7 +63,7 @@ impl ArrU64OrArrU64 {
         }
     }
 
-    pub fn as_arr_u64(&self) -> Option<U64OrderedSet> {
+    pub fn as_arr_u64(&self) -> Option<SetU64> {
         match &self.0 {
             cddl_lib::ArrU64OrArrU64::ArrU64(arr_u64) => Some(arr_u64.clone().into()),
             _ => None,
@@ -174,19 +133,19 @@ impl InlineHolder {
             .map_err(|e| JsError::new(&format!("from_json: {}", e)))
     }
 
-    pub fn a(&self) -> U64OrderedSet {
+    pub fn a(&self) -> SetU64 {
         self.0.a.clone().into()
     }
 
-    pub fn set_b(&mut self, b: &TextOrderedSet) {
+    pub fn set_b(&mut self, b: &SetText) {
         self.0.b = Some(b.clone().into())
     }
 
-    pub fn b(&self) -> Option<TextOrderedSet> {
+    pub fn b(&self) -> Option<SetText> {
         self.0.b.clone().map(std::convert::Into::into)
     }
 
-    pub fn c(&self) -> ArrU64List {
+    pub fn c(&self) -> SetU64List {
         self.0.c.clone().into()
     }
 
@@ -194,7 +153,7 @@ impl InlineHolder {
         self.0.x.clone().into()
     }
 
-    pub fn new(a: &U64OrderedSet, c: &ArrU64List, x: &ArrU64OrArrU64) -> Self {
+    pub fn new(a: &SetU64, c: &SetU64List, x: &ArrU64OrArrU64) -> Self {
         Self(cddl_lib::InlineHolder::new(
             a.clone().into(),
             c.clone().into(),
@@ -217,6 +176,163 @@ impl From<InlineHolder> for cddl_lib::InlineHolder {
 
 impl AsRef<cddl_lib::InlineHolder> for InlineHolder {
     fn as_ref(&self) -> &cddl_lib::InlineHolder {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct SetText(pub(crate) cddl_lib::SetText);
+
+#[wasm_bindgen]
+impl SetText {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<SetText, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<SetText, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: &TextOrderedSet) -> Self {
+        Self(cddl_lib::SetText::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> TextOrderedSet {
+        <OrderedSet<String>>::from(self.0.clone()).clone().into()
+    }
+}
+
+impl From<cddl_lib::SetText> for SetText {
+    fn from(native: cddl_lib::SetText) -> Self {
+        Self(native)
+    }
+}
+
+impl From<SetText> for cddl_lib::SetText {
+    fn from(wasm: SetText) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::SetText> for SetText {
+    fn as_ref(&self) -> &cddl_lib::SetText {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct SetU64(pub(crate) cddl_lib::SetU64);
+
+#[wasm_bindgen]
+impl SetU64 {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<SetU64, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<SetU64, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: &U64OrderedSet) -> Self {
+        Self(cddl_lib::SetU64::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> U64OrderedSet {
+        <OrderedSet<u64>>::from(self.0.clone()).clone().into()
+    }
+}
+
+impl From<cddl_lib::SetU64> for SetU64 {
+    fn from(native: cddl_lib::SetU64) -> Self {
+        Self(native)
+    }
+}
+
+impl From<SetU64> for cddl_lib::SetU64 {
+    fn from(wasm: SetU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::SetU64> for SetU64 {
+    fn as_ref(&self) -> &cddl_lib::SetU64 {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct SetU64List(pub(crate) Vec<cddl_lib::SetU64>);
+
+#[wasm_bindgen]
+impl SetU64List {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> SetU64 {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &SetU64) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<cddl_lib::SetU64>> for SetU64List {
+    fn from(native: Vec<cddl_lib::SetU64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<SetU64List> for Vec<cddl_lib::SetU64> {
+    fn from(wasm: SetU64List) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<cddl_lib::SetU64>> for SetU64List {
+    fn as_ref(&self) -> &Vec<cddl_lib::SetU64> {
         &self.0
     }
 }

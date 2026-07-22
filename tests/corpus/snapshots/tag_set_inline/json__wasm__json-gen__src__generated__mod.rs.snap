@@ -21,4 +21,6 @@ pub fn export_schemas() {
     }
     gen_json_schema!(cddl_lib::ArrU64OrArrU64);
     gen_json_schema!(cddl_lib::InlineHolder);
+    gen_json_schema!(cddl_lib::SetText);
+    gen_json_schema!(cddl_lib::SetU64);
 }
