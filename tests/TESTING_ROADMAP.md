@@ -358,8 +358,9 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   grep-level floor over `tests/*/tests.rs`), accepting its enumeration cost then, not before.
 - **Regenerating over prior output with a rule DELETION is exercised as a gate for only two files,
   not corpus-wide — an emitted-comment-on-a-deletable-row trap in any OTHER generated file would
-  ship unseen.** The comment-preservation overlay only runs on the disk-write seam, and its one
-  corpus-scale gate (`comment_preserve_lexer_round_trip_over_corpus`) does SELF-preserve
+  ship unseen.** The comment-preservation overlay participates only when `export()` runs over
+  prior on-disk output (it is applied to the in-memory file map ahead of the write loop), and its
+  one corpus-scale gate (`comment_preserve_lexer_round_trip_over_corpus`) does SELF-preserve
   (`preserve(content, content)`), which is a no-op for any trailing comment regardless of whether a
   real regen would strand it — so it cannot see the sentinel-trap class at all. Proven instance
   (feature-requests 03/04, reproduced before fixing): `extern_interface_check.rs` and

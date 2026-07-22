@@ -119,18 +119,20 @@ move it into the block.
 
 **Imports and your block's code.** The generated struct modules import the collection helper types
 (`BTreeMap`, `OrderedHashMap`, `NonEmptyVec`, `NonEmptyMap`) only when the file — or one of its
-descendant modules — references them (see [Output format](./output_format)). Your inserted/replaced
-code is not scanned for these — an import is kept iff the *generated* code names it. So if your
-block references e.g. `BTreeMap` in a file whose generated code doesn't, name it by a fully
-qualified path (`std::collections::BTreeMap`) rather than relying on a `use` that won't be there.
+descendant modules — references them (see [Output format](./output_format)). The relationship to
+your block's code is asymmetric. Your block cannot make an import *appear*: the initial import
+derivation runs over the pristine generated content, before your edits are applied, so a file whose
+generated code never justified `BTreeMap` won't gain the `use` just because your block names it —
+name such types by a fully qualified path (`std::collections::BTreeMap`) rather than relying on a
+`use` that won't be there. But once your edits are applied, the import set is re-derived from that
+*final* content — your block's code included — so a block that names an import the generated code
+also justified keeps that import alive even if your block replaced the generated reference.
 
 Conversely, if your replace block removes the *last* generated reference to an import — say you
 replace `pub type Mint = OrderedHashMap<PolicyId, …>` with a hand type that names neither — the now
 unused `use` is pruned for you on the next export. You do **not** need a second replace block to
-delete the orphaned import. The import set is re-derived from the *final* code after your edits are
-applied, so it always tracks what those edits leave behind, and this holds even when the reference
-you removed lived in a different file of the module (e.g. a `serialization.rs` edit orphaning a
-`mod.rs` import).
+delete the orphaned import. This holds even when the reference you removed lived in a different
+file of the module (e.g. a `serialization.rs` edit orphaning a `mod.rs` import).
 
 ## When preservation fails: the two failure channels
 
