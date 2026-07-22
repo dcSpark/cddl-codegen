@@ -385,6 +385,23 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   therefore enforced as an emitter invariant instead). Second, the leg only exercises
   `key_demand_assertions.rs` where a fixture carries a `@used_as_key` tag — the deletion-variant
   fixture set must include at least one, or that file's rows are vacuously green.
+  SECOND instance on record (2026-07-22, consumer-reported, so the corpus-wide leg's trigger has
+  FIRED and the leg is now DUE) — the regen-over-EDITED-output flavor: the import prune ran only
+  over freshly-generated content while the overlay applied later, per file, at the disk-write seam,
+  so a `cddl-codegen:replace` block that removed an import's last user shipped the orphaned `use`
+  (CML's regen unused-import residue). Fixed by ordering — `export()` applies the overlay to the
+  in-memory file map, then reruns the prune family-wide over the post-overlay map — with the two
+  known shapes pinned (`comment_preservation_replace_orphans_import_same_file`,
+  `comment_preservation_replace_in_descendant_orphans_parent_import`): the same
+  known-shapes-by-name posture as the deletion instance's per-file pins, and the same residual
+  blindness to a third shape. Consequence for the named layer's design: the corpus-wide regen leg
+  must carry BOTH variant families — the rule-DELETED variant (fail on any
+  `cddl-codegen:unpreserved-comment` in the tool-owned trees) AND a user-EDIT variant (a canonical
+  replace block injected over a corpus fixture's own output) asserting the regenerated crate stays
+  rustc-warning-clean (the `feature_corpus_compiles` unused-import/variable scan applied to the
+  regen) and reaches a byte-identical fixed point on the following run. Cross-checked against the
+  cddl-matrix ROADMAP at this instance too: its pending items enumerate CDDL input surface;
+  regen-over-prior-output interaction stays this roadmap's domain.
 - **Stale "known limitation" prose surviving its fix — a finding ledgered in TWO homes where the
   fixing commit prunes only one.** First instance (read-caught during the facade-pin delivery, not
   by any gate): the extern-only-scope undeclared-module finding was ledgered both in
@@ -700,8 +717,29 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
 - **`unused_imports` on generated crates — residual trait-import class the name-scan model cannot
   reach.** The rustc-warning DETECTOR is live and BROAD — the generated-code unused-import scan
   (`unused_generated_import_lines`) inside `feature_corpus_compiles` fails on ANY `unused import`
-  warning in the purely-generated crates, cache-key-versioned by the `lint=unused-imports-v2`
-  marker (current state in `tests/README.md`'s description of that gate). Its escalation trigger
+  warning in the purely-generated crates, and (v3) its sibling `unused_generated_variable_lines`
+  fails on ANY `unused variable` warning too, cache-key-versioned by the `lint=unused-imports-v3`
+  marker (current state in `tests/README.md`'s description of that gate). The variables half was
+  added on a consumer-reported instance (the constant count-arm `Some(x) => 1` binding): the corpus
+  held the provoking shape all along (33 committed-snapshot instances), so the escape mechanism was
+  a missing ASSERTED CLASS, not input poverty — `generated_code_clippy_clean` deliberately kept
+  `unused_variables` at warn, lumping it with `unused_imports`, whose stay-warn rationale (the
+  legitimate trait residue below) has no variables analogue. Follow-up on the next touch of that
+  gate: add `-D unused_variables` to its rustc deny set (imports stay warn there — the trait
+  residue is real); until then the corpus scan is the class owner. A second known DETECTOR blind
+  spot, proven by the path-tail instance below: the scan lives only in `feature_corpus_compiles`
+  cells, which never generate under the cross-crate workspace flags, so prune imprecision visible
+  only in `--wrapper-requests`/`--workspace-dep` output (the requested-collections sidecar) reaches
+  consumers before any gate — a detector-coverage cousin of the input-poverty sub-class ledgered in
+  the flag-powerset entry (there the swept input lacks the shape; here the scanning gate lacks the
+  flag). Named layer: apply the same unused-import/variable stderr scan to the nested `cargo check`
+  output the workspace-requests/extern-deps e2e gates already capture — near-zero added cost, and
+  it closes that family's blind spot without new cells. Proven instance of exactly that blind spot
+  (2026-07-22, consumer-reported, fixed class-level): the used-ident scan counted `::`-path-tail
+  segments (`cml_chain::assets::Coin` counting `assets`), which collide with the parent's `pub mod`
+  defs, so `super_glob_needed` conservatively kept the sidecar's dead `use super::*;`; the
+  path-tail exclusion in `collect_idents_in_tokens` removed the false-positive class (unit + map-
+  level twin tests pin both directions). The entry's earlier escalation trigger
   (a 26-warning consumer report + chain/cip36 regen) fired and is delivered: `import_prune` now
   prunes the `use super::*;` and `use <common>::error::*;` globs when a fully-enumerable universe
   proves them unused, computes each file's protector set via the super-glob EDGE graph
