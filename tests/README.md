@@ -104,7 +104,7 @@ the command sequence in path-normalized form (scratch paths are run- or checkout
 carry the command SHAPE — subcommand + crate role within the hashed tree — never a literal
 scratch path, which would make every key unique to its run), and a schema version. A gate whose
 cached closure ALSO asserts something beyond the cargo exit code versions that extra verdict logic
-into the key as an explicit argv marker (`feature_corpus_compiles`' `lint=unused-imports-v2`), so
+into the key as an explicit argv marker (`feature_corpus_compiles`' `lint=unused-imports-v3`), so
 changing what the closure checks re-runs every previously-cached cell instead of laundering old
 PASSes past the new check. Soundness
 rests on the same enforced determinism
@@ -1340,9 +1340,12 @@ cargo invocation it scans stderr (`unused_generated_import_lines`) and fails on 
 warning in the generated crates — collection/encoding idents, `super::*`/`error::*` globs,
 cross-scope type imports, and wasm macro/prelude imports — minus a documented trait residue
 (`UNUSED_IMPORT_TRAIT_RESIDUE`, the `cbor_event::se::Serialize` trait the name-scan model can't
-prove unused). This catches a warning-severity under-prune the compile-error gates (E0412/E0433,
+prove unused). It also fails on ANY `unused variable` warning (`unused_generated_variable_lines`):
+a named binding rustc reports unused in a purely-generated crate is generator imprecision (a
+count-match arm that should bind `_`), with no trait-residue analogue. This catches a
+warning-severity under-prune (or unused-binding emission) the compile-error gates (E0412/E0433,
 over-prune only) cannot see. The scan is versioned into the gate-cache key via a
-`lint=unused-imports-v2` marker so a change to its verdict re-runs every cached cell.
+`lint=unused-imports-v3` marker so a change to its verdict re-runs every cached cell.
 
 Generated output lands in `tests/<dir>/export*/` — disposable, gitignored, and safe to
 `git clean -fdx tests` if the ~GBs of build artifacts pile up locally. CI starts clean each run.
