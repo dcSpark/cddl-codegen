@@ -1414,6 +1414,9 @@ pub(super) fn codegen_struct(
                 }
                 // needs to be in one line rather than a block because Block::after() only takes a string
                 deser_code.content.line("let mut read = 0;");
+                // the loop condition and the Special-key arm below both read the bare `len`,
+                // which in a plain group is the embedded-group param
+                deser_code.len_used = true;
                 let mut deser_loop = make_deser_loop("len", "read", cli);
                 let mut type_match = Block::new("match raw.cbor_type()?");
                 if uint_field_deserializers.is_empty() {
