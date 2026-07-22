@@ -371,7 +371,7 @@ impl DeserializeEmbeddedGroup for RelayHost {
     fn deserialize_as_embedded_group(
         raw: &mut Deserializer,
         _read_len: &mut CBORReadLen,
-        len: cbor_event::Len,
+        _len: cbor_event::Len,
     ) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             (|| -> Result<_, DeserializeError> {

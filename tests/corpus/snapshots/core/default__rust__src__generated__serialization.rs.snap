@@ -1,5 +1,6 @@
 ---
 source: src/tests/snapshot_tests.rs
+assertion_line: 101
 expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
@@ -61,7 +62,7 @@ impl DeserializeEmbeddedGroup for A {
     fn deserialize_as_embedded_group(
         raw: &mut Deserializer,
         _read_len: &mut CBORReadLen,
-        len: cbor_event::Len,
+        _len: cbor_event::Len,
     ) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let a = Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("a"))?;
@@ -555,7 +556,7 @@ impl DeserializeEmbeddedGroup for Basic {
     fn deserialize_as_embedded_group(
         raw: &mut Deserializer,
         _read_len: &mut CBORReadLen,
-        len: cbor_event::Len,
+        _len: cbor_event::Len,
     ) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let index_0 =
@@ -985,7 +986,7 @@ impl DeserializeEmbeddedGroup for BytesUint {
     fn deserialize_as_embedded_group(
         raw: &mut Deserializer,
         _read_len: &mut CBORReadLen,
-        len: cbor_event::Len,
+        _len: cbor_event::Len,
     ) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let index_0 = Ok(raw.bytes()?).map_err(|e: DeserializeError| e.annotate("index_0"))?;
@@ -1049,7 +1050,7 @@ impl DeserializeEmbeddedGroup for C {
     fn deserialize_as_embedded_group(
         raw: &mut Deserializer,
         _read_len: &mut CBORReadLen,
-        len: cbor_event::Len,
+        _len: cbor_event::Len,
     ) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             (|| -> Result<_, DeserializeError> {
@@ -1445,7 +1446,7 @@ impl DeserializeEmbeddedGroup for Ed {
     fn deserialize_as_embedded_group(
         raw: &mut Deserializer,
         read_len: &mut CBORReadLen,
-        len: cbor_event::Len,
+        _len: cbor_event::Len,
     ) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             (|| -> Result<_, DeserializeError> {
@@ -1541,7 +1542,7 @@ impl DeserializeEmbeddedGroup for Ee {
     fn deserialize_as_embedded_group(
         raw: &mut Deserializer,
         read_len: &mut CBORReadLen,
-        len: cbor_event::Len,
+        _len: cbor_event::Len,
     ) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             (|| -> Result<_, DeserializeError> {
@@ -2225,7 +2226,7 @@ impl DeserializeEmbeddedGroup for First {
     fn deserialize_as_embedded_group(
         raw: &mut Deserializer,
         _read_len: &mut CBORReadLen,
-        len: cbor_event::Len,
+        _len: cbor_event::Len,
     ) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let x = Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("x"))?;
@@ -5918,7 +5919,7 @@ impl DeserializeEmbeddedGroup for Plain {
     fn deserialize_as_embedded_group(
         raw: &mut Deserializer,
         _read_len: &mut CBORReadLen,
-        len: cbor_event::Len,
+        _len: cbor_event::Len,
     ) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let d = (|| -> Result<_, DeserializeError> {
@@ -6178,7 +6179,7 @@ impl DeserializeEmbeddedGroup for Second {
     fn deserialize_as_embedded_group(
         raw: &mut Deserializer,
         _read_len: &mut CBORReadLen,
-        len: cbor_event::Len,
+        _len: cbor_event::Len,
     ) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let y = Ok(raw.text()?).map_err(|e: DeserializeError| e.annotate("y"))?;
@@ -7825,7 +7826,7 @@ impl DeserializeEmbeddedGroup for Three {
     fn deserialize_as_embedded_group(
         raw: &mut Deserializer,
         _read_len: &mut CBORReadLen,
-        len: cbor_event::Len,
+        _len: cbor_event::Len,
     ) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             (|| -> Result<_, DeserializeError> {
