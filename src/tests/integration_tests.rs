@@ -15756,6 +15756,86 @@ fn export_static_crate_writes_composed_runtime_and_manifest() {
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
+/// `--export-static-crate` writes into a HAND-OWNED crate root the tool never touches, so a static
+/// runtime file that did NOT already exist needs a matching `pub mod <module>;` declaration added by
+/// hand or it sits dead in-tree (an E0432 → cascading-E0119 signature in a consumer). The tool must
+/// print a loud per-file stderr notice for each genuinely-new file — and, being existence-gated, be
+/// SILENT on an idempotent re-export (the "run twice = run once" property must hold for stderr too).
+/// Pins all three cases end-to-end (the notice text is built by
+/// `generation::export::new_static_file_notice`):
+///   1. first export — every runtime file is new, so `ordered_set.rs` (the file whose absence caused
+///      the CML cascade) gets the notice naming `pub mod ordered_set;`;
+///   2. immediate re-export — nothing is new, so NO notice fires;
+///   3. a deleted-then-reintroduced file (a version-bump's incremental case) — the notice fires again
+///      for exactly that file and no other.
+#[test]
+fn export_static_crate_warns_on_new_files_only() {
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_export_static_newfile_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let input = root.join("input.cddl");
+    std::fs::write(&input, "foo = uint\n").unwrap();
+    let out = root.join("crate");
+    let runtime_crate = root.join("exported-runtime");
+
+    let export = || -> String {
+        let run = tool_cmd("cargo")
+            .args(["run", "--"])
+            .arg(format!("--input={}", input.to_str().unwrap()))
+            .arg(format!("--output={}", out.to_str().unwrap()))
+            .arg("--wasm=false")
+            .arg(format!(
+                "--export-static-crate={}",
+                runtime_crate.to_str().unwrap()
+            ))
+            .output()
+            .unwrap();
+        assert!(
+            run.status.success(),
+            "generation failed:\n{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        String::from_utf8_lossy(&run.stderr).into_owned()
+    };
+
+    // 1. First export: ordered_set.rs is new — the notice names its `pub mod` line and the cascade.
+    let stderr1 = export();
+    assert!(
+        stderr1.contains("NEW static file ordered_set.rs")
+            && stderr1.contains("declare `pub mod ordered_set;`"),
+        "first export must warn that ordered_set.rs needs a `pub mod ordered_set;` declaration:\n{stderr1}"
+    );
+    assert!(
+        stderr1.contains("E0432") && stderr1.contains("E0119"),
+        "the notice must name the E0432→E0119 cascade signature so a consumer recognizes it:\n{stderr1}"
+    );
+
+    // 2. Idempotent re-export: nothing is new, so the notice is silent (determinism for stderr too).
+    let stderr2 = export();
+    assert!(
+        !stderr2.contains("NEW static file"),
+        "an idempotent re-export must emit NO new-file notice:\n{stderr2}"
+    );
+
+    // 3. Delete one runtime file (the version-bump incremental case) and re-export: the notice fires
+    //    again for exactly that file, and not for a file that still exists.
+    std::fs::remove_file(runtime_crate.join("src").join("ordered_set.rs")).unwrap();
+    let stderr3 = export();
+    assert!(
+        stderr3.contains("NEW static file ordered_set.rs"),
+        "re-adding a deleted runtime file must warn for it again:\n{stderr3}"
+    );
+    assert!(
+        !stderr3.contains("NEW static file error.rs"),
+        "a still-present runtime file must NOT be warned about:\n{stderr3}"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// A broken existing generated file is a hard error naming the file — never a silent clobber:
 /// both an unlexable one (valid UTF-8, unterminated string) and an unreadable one (not UTF-8).
 /// `--no-preserve-comments` restores the plain clobber for the same dir.
