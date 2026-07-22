@@ -354,7 +354,13 @@ match-TAIL block's markers into trailing position — `} // cddl-codegen:replace
 the tool's exact rustfmt pass over a match-tail block and asserts the result re-parses, staying
 meaningful across rustfmt versions because "both spellings parse" is the assertion, while the
 `replace_rustfmt_folded_tail_arm_markers` fixture family pins the merge semantics of today's known
-folded shape). Keep that set thin; new merge behavior belongs in fixtures.
+folded shape). A fourth seam — the overlay's ORDERING against the usage-derived import prune
+(`export()` applies the overlay to the in-memory file map, then re-derives the import set from the
+post-overlay content, so an import whose last user a replace block removed vanishes from the final
+bytes) — is pinned by `comment_preservation_replace_orphans_import_same_file` and
+`comment_preservation_replace_in_descendant_orphans_parent_import` (the cross-file flavor that
+makes the re-prune family-wide); that property lives in the export driver, not in the merge, so it
+cannot be a fixture. Keep both sets thin; new merge behavior belongs in fixtures.
 
 One generator-output assumption is deliberately NOT pinned by that set, because none of the three
 can see its violation: "the generator emits no comment on a row a spec change can delete" (which
@@ -622,11 +628,12 @@ Both generated crates are denied under `clippy::all` with an empty emission-qual
 only allow is permanent and input-dependent: `clippy::disallowed_names` (the fixture's own
 `foo`/`bar` rule names become generated parameter names — not a generator defect). The gate also
 denies a curated rustc style-lint set (`unused_parens`, `unused_braces`, `unused_allocation`) that
-catches redundant emitted grouping/allocation without turning the remaining legitimate
-generated-code warnings into failures — `unused_variables`, and `unused_imports` on the one
-residue the usage-derived import prune (`import_prune::prune_generated_files`) deliberately
-leaves: trait imports (`cbor_event::se::Serialize`), exercised via method calls whose ident never
-appears, so name-scanning cannot prove them unused. Everything else — the concrete
+catches redundant emitted grouping/allocation without denying `unused_imports` — that class keeps
+the one residue the usage-derived import prune (`import_prune::prune_generated_files`)
+deliberately leaves: trait imports (`cbor_event::se::Serialize`), exercised via method calls whose
+ident never appears, so name-scanning cannot prove them unused. `unused_variables` is also not
+denied here, but has NO legitimate residue — its zero-tolerance owner is `feature_corpus_compiles`'
+`unused_generated_variable_lines` scan. Everything else — the concrete
 collection/encoding idents, the `super::*`/`error::*` globs (pruned against enumerable
 universes), cross-scope type imports, wasm macro/prelude imports, and every private import of a
 re-export-only extern-glue file — IS pruned at generation time (the contract lives in
