@@ -330,6 +330,13 @@ are ledgered here (that's what the probe/gate error messages point at).
   - `any` in member/element position (`a = [any]`, `{ k: any }`) panics intermediate/mod.rs's
     `generic_instances` assert — distinct from the top-level `x = any` compile-class gap
     (`tests/matrix_reject/prelude.any.cddl`). Pinned by `tests/robustness/any_member.cddl`.
+    Fact for whoever picks up the `any` panic family (maintainer-ruled 2026-07-23: `any` is now a
+    feature to BUILD, not an exclusion): the runtime half already exists — the self-describing
+    `AnyCbor` value type (`static/any_cbor_preserve.rs` / `any_cbor_non_preserve.rs`,
+    span-oracle property tests in `src/tests/any_cbor_tests.rs`), deliberately not wired into any
+    export list yet. The remaining work is the IR/generation half (a `ConceptualRustType::Any`
+    routed around the `generic_instances` machinery), which retires this whole pinned family —
+    ledger updates in `src/tests/recombination_tests.rs` land in the same commits.
   - A type-choice arm with no storable representation panics `Option::unwrap()` on `None`
     (intermediate/rust_type.rs): `a = any / tstr` (the `any` extern arm). The sibling anonymous
     array-of-plain-group arm (`a = [coords] / tstr`) is storable — it promotes the plain group
@@ -457,8 +464,16 @@ are ledgered here (that's what the probe/gate error messages point at).
   nint shapes land as graceful rejections + enumeration cells; when one does, the work is the
   runtime/emitted-type design plus the upstream literal-width question, not IR plumbing — then
   flip the pinned rejection rows (record path first, then the group-choice arm).
-- `float16` / float-choice aliases unsupported (no native Rust f16) while `float32/64` work; generics on
-  plain groups rejected. Under `--preserve-encodings` the float gap is positional, and the emission axis
+- `float16` / float-choice aliases unsupported while `float32/64` work; generics on
+  plain groups rejected. The historical blocker rationale ("no native Rust f16") is RETIRED as of
+  2026-07-23: the dcSpark `cbor_event` fork the main crate now pins ships lossless software
+  f16/f32↔f64 conversion plus width-carrying endpoints (`float_sz` / `write_float_sz` /
+  `smallest_float_sz`, NaN payloads preserved) — already exercised by the `AnyCbor` runtime type's
+  property layer (`src/tests/any_cbor_tests.rs`). The remaining float work is generator-side (the
+  preserve-mode `unimplemented!` stubs in generation/deserialize.rs, the `float16`→`F32` alias
+  folding in parsing) plus the generated-crate template pin (still crates.io 3.2.0, which lacks
+  the `_sz` float endpoints, until the loose-cbor generation phase git-deps the templates at the
+  fork rev). Under `--preserve-encodings` the float gap is positional, and the emission axis
   records it honestly: a bare `float`/`float32`/`float64` alias still generates and compiles
   (`emission.preserve = supported`, but compile-only evidence — the synthetic embed holder panics
   generation, so floats **as members** are the broken shape), while the choice-carrying prelude types

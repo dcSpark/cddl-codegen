@@ -1607,6 +1607,36 @@ bytes differently — RFC 8949 §3.4.3 bignum tags 2/3, which `ciborium` folds i
 `minicbor` leaves as `Tag(2/3, Bytes)` (our `biguint`/`bignint` prelude types) — is canonicalized by
 `fold_bignums` before comparison, so only a genuine structural divergence turns the gate red.
 
+## Static-runtime property layer (`src/tests/any_cbor_tests.rs`)
+
+The `AnyCbor` self-describing CBOR value type (`static/any_cbor_preserve.rs` + its two
+per-assembly serialize fragments, `static/any_cbor_non_preserve.rs`) is hand-written runtime
+code whose contract — byte-identical re-serialization of ANY well-formed CBOR item under
+`--preserve-encodings` — no snapshot can judge, so it gets a dedicated property layer instead
+of fixture coverage. `src/tests/any_cbor_tests.rs` `include!`s the static files into one shim
+module per static assembly (non-preserve / preserve / preserve+force-canonical — the same
+technique the fidelity mutator uses via `include!` in `integration_tests.rs`) and runs under
+plain `cargo test` (`cargo test --bin cddl-codegen any_cbor`; in-tier via the local tier's
+workspace `cargo test`, no nested cargo, no dedicated gate).
+
+The core assertion is a **span oracle**: deserialize one item, recover its true byte extent
+from `Deserializer::position()` diffs, and require `serialize(deserialize(span)) == span`
+byte-identically (preserve variant) / value-fixed-point (non-preserve variant), plus
+canonical-serialization fixed points and equal-value-different-encoding → identical canonical
+bytes. Corpus: the RFC 8949 appendix-A vectors (`cddl-matrix/sources/appendix_a.json`; one
+principled skip — `f818`, `simple(24)`, is ill-formed per RFC 8949 §3.3), hand vectors per
+`Sz` width, NaN payloads at every float width (the fork-supplied `float_sz` fidelity), mixed
+chunk-width indefinite strings, duplicate map keys (identical AND differently-encoded),
+malformed/truncated prefixes (must `Err`, never panic), and seeded-PRNG random structural
+values for both variants — the seed prints on failure, so a red run reproduces by pasting the
+seed.
+
+Two standing caveats: the static files are NOT yet in any export/copy list (`export.rs`), so
+this layer is currently their only compile and behavior coverage; and the depth corpus stops
+at a stack-safe 64 because the depth guard isn't reachable from unconditionally-present
+static code yet — the guard-exceeded vector is a ledgered deferral
+(`tests/TESTING_ROADMAP.md`, the `AnyCbor` depth entry).
+
 ## wasm-ABI matrix (`tests/matrix_wasm/` + `integration_tests::wasm_matrix_compiles`)
 
 A **coverage-by-construction** gate for the generated wasm-bindgen bindings: it compiles the wasm crate
