@@ -1348,10 +1348,10 @@ fn unused_generated_variable_scan_flags_named_binding() {
         "an unused variable in a purely-generated crate must be flagged"
     );
     assert!(unused_generated_variable_lines("   Compiling foo v0.1.0\n    Finished").is_empty());
-    assert!(unused_generated_variable_lines(
-        "warning: unused import: `std::collections::BTreeMap`"
-    )
-    .is_empty());
+    assert!(
+        unused_generated_variable_lines("warning: unused import: `std::collections::BTreeMap`")
+            .is_empty()
+    );
 }
 
 /// Runs all three `default`/`preserve`/`json` profiles the corpus is snapshotted under, since
@@ -15352,7 +15352,10 @@ fn comment_preservation_replace_orphans_import_same_file() {
         "fresh mod.rs must import BTreeMap:\n{first}"
     );
     let alias = "pub type Bar = BTreeMap<u64, String>;";
-    assert!(first.contains(alias), "expected type alias missing:\n{first}");
+    assert!(
+        first.contains(alias),
+        "expected type alias missing:\n{first}"
+    );
 
     // Inject a `cddl-codegen:replace` block swapping the alias for a Vec that never names BTreeMap;
     // the `//`-commented recorded original is the placement anchor + drift detector.
