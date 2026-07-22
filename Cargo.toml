@@ -13,16 +13,17 @@ default = ["which-rustfmt"]
 which-rustfmt = ["which"]
 
 [dependencies]
-# dcSpark fork pinned to the `float-round-trip` branch (commit 9b115bb), not yet in a crates.io
+# dcSpark fork pinned to the `float-round-trip` branch head (commit 252c425), not yet in a crates.io
 # release: adds `Deserializer::float_sz() -> (f64, Sz)` / `Serializer::write_float_sz(f64, Sz)` — a
 # width-preserving float API with software NaN-payload-preserving widening/narrowing (lossy narrowing
 # errors `InvalidLenPassed`), so `(f64, Sz)` is a complete lossless wire-float representation. It also
-# rejects the reserved simple values `0xfc-0xfe` at read (`InvalidSimpleValue`). Needed by the
-# `AnyCbor` runtime type (loose CBOR parsing) whose float slot is `Float(f64, Option<Sz>)`. Only the
-# MAIN crate's dep switches here; generated-crate templates (static/Cargo_*.toml) stay on crates.io
-# 3.2.0 until the fork lands as a release / upstream PR (a maintainer pin decision, see
-# draft/loose-cbor/a1-spec.md §1). Move back to a crates.io version once it lands.
-cbor_event = { git = "https://github.com/dcSpark/cbor_event", rev = "9b115bb" }
+# rejects the reserved simple values `0xfc-0xfe` at read (`InvalidSimpleValue`), and exports
+# `smallest_float_sz(f64) -> Sz` (the canonical float-width helper). Needed by the `AnyCbor` runtime
+# type (loose CBOR parsing) whose float slot is `Float(f64, Option<Sz>)`. Only the MAIN crate's dep
+# switches here; generated-crate templates (static/Cargo_*.toml) stay on crates.io 3.2.0 until the
+# fork lands as a release / upstream PR (a maintainer pin decision, see draft/loose-cbor/a1-spec.md
+# §1). Move back to a crates.io version once it lands.
+cbor_event = { git = "https://github.com/dcSpark/cbor_event", rev = "252c425ad056504317ca09b0b67dd369b50236f1" }
 # dcSpark fork pinned to fixes not yet in a crates.io release. Parser (feeds our AST): upstream
 # discards all comments (breaking our @name/@newtype/@doc DSL), mis-parses a colon member key `b:`
 # as an arrow/type key when a `=>` appears anywhere in the entry, and mis-lexes the RFC 8610 radix
