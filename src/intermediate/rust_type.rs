@@ -459,12 +459,22 @@ impl RustType {
         match self.expanded_field_count(types) {
             Some(count) => count.to_string(),
             None => match self.conceptual_type.resolve_alias_shallow() {
-                ConceptualRustType::Optional(ty) => format!(
-                    "match {}{} {{ Some(x) => {}, None => 1 }}",
-                    if self_is_ref { "" } else { "&" },
-                    self_expr,
-                    ty.definite_info("x", true, types, cli)
-                ),
+                ConceptualRustType::Optional(ty) => {
+                    // when ty.expanded_field_count is Some, ty.definite_info returns the constant
+                    // count.to_string() and never uses the binding, so bind `_` to avoid an
+                    // unused-variable warning in the generated match.
+                    let (binding, contribution) = match ty.expanded_field_count(types) {
+                        Some(count) => ("_", count.to_string()),
+                        None => ("x", ty.definite_info("x", true, types, cli)),
+                    };
+                    format!(
+                        "match {}{} {{ Some({}) => {}, None => 1 }}",
+                        if self_is_ref { "" } else { "&" },
+                        self_expr,
+                        binding,
+                        contribution
+                    )
+                }
                 ConceptualRustType::Rust(ident) => {
                     if types.is_plain_group(ident) {
                         match types.rust_structs.get(ident) {

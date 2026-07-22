@@ -104,7 +104,7 @@ the command sequence in path-normalized form (scratch paths are run- or checkout
 carry the command SHAPE — subcommand + crate role within the hashed tree — never a literal
 scratch path, which would make every key unique to its run), and a schema version. A gate whose
 cached closure ALSO asserts something beyond the cargo exit code versions that extra verdict logic
-into the key as an explicit argv marker (`feature_corpus_compiles`' `lint=unused-imports-v2`), so
+into the key as an explicit argv marker (`feature_corpus_compiles`' `lint=unused-imports-v3`), so
 changing what the closure checks re-runs every previously-cached cell instead of laundering old
 PASSes past the new check. Soundness
 rests on the same enforced determinism
@@ -354,7 +354,13 @@ match-TAIL block's markers into trailing position — `} // cddl-codegen:replace
 the tool's exact rustfmt pass over a match-tail block and asserts the result re-parses, staying
 meaningful across rustfmt versions because "both spellings parse" is the assertion, while the
 `replace_rustfmt_folded_tail_arm_markers` fixture family pins the merge semantics of today's known
-folded shape). Keep that set thin; new merge behavior belongs in fixtures.
+folded shape). A fourth seam — the overlay's ORDERING against the usage-derived import prune
+(`export()` applies the overlay to the in-memory file map, then re-derives the import set from the
+post-overlay content, so an import whose last user a replace block removed vanishes from the final
+bytes) — is pinned by `comment_preservation_replace_orphans_import_same_file` and
+`comment_preservation_replace_in_descendant_orphans_parent_import` (the cross-file flavor that
+makes the re-prune family-wide); that property lives in the export driver, not in the merge, so it
+cannot be a fixture. Keep both sets thin; new merge behavior belongs in fixtures.
 
 One generator-output assumption is deliberately NOT pinned by that set, because none of the three
 can see its violation: "the generator emits no comment on a row a spec change can delete" (which
@@ -597,8 +603,9 @@ back via `--extern-import` in place of a hand-stub tree (user docs:
   read-back contract).
 - **`@rust_name` floor**: `comment_ast.rs` unit vectors plus `src/tests/rust_name_tests.rs`
   (import-seam aliasing, the wasm full-path bypass site, exported-rule rejection, reserved-name
-  pin rejection); the directive is lockstep-mirrored in `cddl-matrix/corpus_detect.ts` (its
-  registration as a matrix feature row is tracked in `cddl-matrix/ROADMAP.md`).
+  pin rejection); the directive is lockstep-mirrored in `cddl-matrix/corpus_detect.ts` and
+  registered as the `dsl.rust_name` matrix feature row (compile-exempt: it pins a dependency-crate
+  type name, so it cannot compile standalone).
 
 `flag_value_smoke` generate + `cargo check`s a rich extern-free input (`tests/canonical`) under each
 documented flag *value* that no named profile exercises (`--annotate-fields=false`,
@@ -621,13 +628,17 @@ Both generated crates are denied under `clippy::all` with an empty emission-qual
 only allow is permanent and input-dependent: `clippy::disallowed_names` (the fixture's own
 `foo`/`bar` rule names become generated parameter names — not a generator defect). The gate also
 denies a curated rustc style-lint set (`unused_parens`, `unused_braces`, `unused_allocation`) that
-catches redundant emitted grouping/allocation without turning the remaining legitimate
-generated-code warnings into failures — `unused_variables`, and `unused_imports` on the trait/glob
-imports that the usage-derived import prune (`import_prune::prune_generated_files`) deliberately
-leaves because they can't be proven unused by ident-scanning (the concrete allowlisted imports —
-the four collection helpers plus the `--preserve-encodings` enums `LenEncoding`/`StringEncoding` —
-ARE pruned at generation time, as is every private import of a re-export-only extern-glue file; the
-warning-severity residue gate for those is a `TESTING_ROADMAP.md` entry). It is intentionally not `-D warnings` (see `tool_cmd`'s doc comment). The wasm leg uses the same deny/allow set as the rust leg; any new
+catches redundant emitted grouping/allocation without denying `unused_imports` — that class keeps
+the one residue the usage-derived import prune (`import_prune::prune_generated_files`)
+deliberately leaves: trait imports (`cbor_event::se::Serialize`), exercised via method calls whose
+ident never appears, so name-scanning cannot prove them unused. `unused_variables` is also not
+denied here, but has NO legitimate residue — its zero-tolerance owner is `feature_corpus_compiles`'
+`unused_generated_variable_lines` scan. Everything else — the concrete
+collection/encoding idents, the `super::*`/`error::*` globs (pruned against enumerable
+universes), cross-scope type imports, wasm macro/prelude imports, and every private import of a
+re-export-only extern-glue file — IS pruned at generation time (the contract lives in
+`docs/docs/output_format.mdx`; the warning-severity detector is `feature_corpus_compiles`'
+`unused_generated_import_lines` scan). It is intentionally not `-D warnings` (see `tool_cmd`'s doc comment). The wasm leg uses the same deny/allow set as the rust leg; any new
 `clippy::all` lint class is hard-red on both profiles and both generated crates.
 Tier: check.ts `local` as a plain non-ignored test, kept below the ~90s warm wall-clock threshold.
 A warm run measures ~2s, which looks vacuous but is not: regeneration is byte-identical, so cargo's
@@ -1336,9 +1347,12 @@ cargo invocation it scans stderr (`unused_generated_import_lines`) and fails on 
 warning in the generated crates — collection/encoding idents, `super::*`/`error::*` globs,
 cross-scope type imports, and wasm macro/prelude imports — minus a documented trait residue
 (`UNUSED_IMPORT_TRAIT_RESIDUE`, the `cbor_event::se::Serialize` trait the name-scan model can't
-prove unused). This catches a warning-severity under-prune the compile-error gates (E0412/E0433,
+prove unused). It also fails on ANY `unused variable` warning (`unused_generated_variable_lines`):
+a named binding rustc reports unused in a purely-generated crate is generator imprecision (a
+count-match arm that should bind `_`), with no trait-residue analogue. This catches a
+warning-severity under-prune (or unused-binding emission) the compile-error gates (E0412/E0433,
 over-prune only) cannot see. The scan is versioned into the gate-cache key via a
-`lint=unused-imports-v2` marker so a change to its verdict re-runs every cached cell.
+`lint=unused-imports-v3` marker so a change to its verdict re-runs every cached cell.
 
 Generated output lands in `tests/<dir>/export*/` — disposable, gitignored, and safe to
 `git clean -fdx tests` if the ~GBs of build artifacts pile up locally. CI starts clean each run.

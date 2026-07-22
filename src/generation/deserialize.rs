@@ -114,6 +114,9 @@ impl<'a> DeserializeConfig<'a> {
 pub(super) struct DeserializationCode {
     pub(super) content: BlocksOrLines,
     pub(super) read_len_used: bool,
+    // whether the embedded-group `len` param is referenced (only the plain-group delegation
+    // does; under --preserve-encodings the param is always consumed by `len_encoding` instead)
+    pub(super) len_used: bool,
     // whether ? is used in content
     pub(super) throws: bool,
 }
@@ -129,6 +132,9 @@ impl DeserializationCode {
     pub(super) fn add_to_code(self, target: &mut Self) {
         if self.read_len_used {
             target.read_len_used = true;
+        }
+        if self.len_used {
+            target.len_used = true;
         }
         if self.throws {
             target.throws = true;
@@ -162,6 +168,9 @@ impl DeserializationCode {
         if self.read_len_used {
             target.read_len_used = true;
         }
+        if self.len_used {
+            target.len_used = true;
+        }
         if self.throws {
             target.throws = true;
         }
@@ -174,6 +183,7 @@ impl From<BlocksOrLines> for DeserializationCode {
         Self {
             content,
             read_len_used: false,
+            len_used: false,
             throws: false,
         }
     }
@@ -1457,6 +1467,7 @@ impl GenerationScope {
                                     // since otherwise it'd only length check the optional fields within the type.
                                     assert!(!config.optional_field);
                                     deser_code.read_len_used = true;
+                                    deser_code.len_used = true;
                                     let final_expr_value = format!(
                                         "{}::deserialize_as_embedded_group({}, {}, len)",
                                         ident,

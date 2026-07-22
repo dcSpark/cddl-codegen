@@ -1323,6 +1323,37 @@ fn unused_generated_import_scan_flags_prune_targets_and_ignores_trait_residue() 
     assert!(unused_generated_import_lines("   Compiling foo v0.1.0\n    Finished").is_empty());
 }
 
+/// Scan rustc/cargo stderr for rendered `unused variable` warnings in the generated crates. Like the
+/// unused-import scan, these crates are 100% generated, so ANY named binding rustc reports as unused
+/// is a generator imprecision — e.g. a definite-length count match whose arm body is a compile-time
+/// constant (`Some(x) => 3`) should bind `_`, not `x`. Rustc renders these as `warning: unused
+/// variable: `x``. There is no trait-residue analogue here (every such binding is generator-owned),
+/// so every matching line is returned (trimmed) for the caller to name in the failure.
+fn unused_generated_variable_lines(stderr: &str) -> Vec<String> {
+    stderr
+        .lines()
+        .filter(|line| line.contains("warning: unused variable"))
+        .map(|line| line.trim().to_string())
+        .collect()
+}
+
+/// Red-path guard for the variable scan: a real `unused variable` warning is flagged; a clean build
+/// and an unrelated unused-import warning are not.
+#[test]
+fn unused_generated_variable_scan_flags_named_binding() {
+    let warning = "warning: unused variable: `x`\n --> src/generated/serialization.rs:24:14";
+    assert_eq!(
+        unused_generated_variable_lines(warning).len(),
+        1,
+        "an unused variable in a purely-generated crate must be flagged"
+    );
+    assert!(unused_generated_variable_lines("   Compiling foo v0.1.0\n    Finished").is_empty());
+    assert!(
+        unused_generated_variable_lines("warning: unused import: `std::collections::BTreeMap`")
+            .is_empty()
+    );
+}
+
 /// Runs all three `default`/`preserve`/`json` profiles the corpus is snapshotted under, since
 /// non-compiling output can be flag-specific (a bare construct compiled but its preserve/json
 /// variant did not). Generates with `--wasm=true` and `cargo check`s BOTH the `rust` and (when
@@ -1488,9 +1519,10 @@ fn feature_corpus_compiles() {
             // Closure-logic version marker: the cached cell scans stderr for unused-import warnings.
             // v2 broadens that scan from the allowlist-only set to EVERY generated-crate unused import
             // (super::*/error::* globs, cross-scope type imports, wasm macro/prelude imports) minus a
-            // documented trait residue — so pre-v2 cached PASSes must be invalidated. Bump on any
-            // future change to the scan's verdict.
-            argv_for_key.push("lint=unused-imports-v2".to_string());
+            // documented trait residue. v3 additionally scans for `unused variable` warnings (a named
+            // count-match binding the generator never uses) — so pre-v3 cached PASSes must be
+            // invalidated. Bump on any future change to the scan's verdict.
+            argv_for_key.push("lint=unused-imports-v3".to_string());
             let outcome = gate_cache::run_cached(
                 "feature_corpus_compiles",
                 &label,
@@ -1525,6 +1557,16 @@ fn feature_corpus_compiles() {
                             failures.push(format!(
                                 "{label} ({crate_sub}): generated-code unused-import residue — import prune under-pruned:\n{}",
                                 unused.join("\n")
+                            ));
+                            ok = false;
+                        }
+                        // Same reasoning for `unused variable`: a named binding in a purely-generated
+                        // crate is generator imprecision (a count-match arm that should bind `_`).
+                        let unused_vars = unused_generated_variable_lines(&stderr);
+                        if !unused_vars.is_empty() {
+                            failures.push(format!(
+                                "{label} ({crate_sub}): generated-code unused-variable residue — generator emitted a named binding it never uses:\n{}",
+                                unused_vars.join("\n")
                             ));
                             ok = false;
                         }
@@ -15266,6 +15308,194 @@ fn comment_preservation_disk_round_trip() {
     assert_eq!(
         changed, changed_again,
         "the fail-loudly block must reach a byte-identical fixed point"
+    );
+
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// Delivery-B regression (same-file flavor): a `cddl-codegen:replace` block that removes the SOLE
+/// user of a blindly-pushed candidate import must leave the regenerated crate with that import GONE.
+/// The usage-derived import prune's premise is "an import is justified iff the FINAL code references
+/// the name", so the prune has to rerun over the POST-overlay content — `generated_files` pruned the
+/// fresh content, which still used the name. Here the orphaned `use std::collections::BTreeMap;` and
+/// the replaced `pub type Bar = BTreeMap<…>;` both live in mod.rs. Asserts: import removed, the
+/// replace block itself survives, and the third regen is a byte-identical fixed point (idempotence).
+#[test]
+fn comment_preservation_replace_orphans_import_same_file() {
+    use clap::Parser;
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_orphan_import_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    // A root map rule generates `pub type Bar = BTreeMap<u64, String>;`, importing BTreeMap and using
+    // it in exactly one place — the CML `pub type Mint = OrderedHashMap<…>` shape.
+    std::fs::write(&input, "bar = {* uint => text}\n").unwrap();
+    let out = scratch.join("crate");
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+        "--wasm=false",
+    ]);
+    let mod_rs = out.join("rust/src/generated/mod.rs");
+
+    // Run 1: fresh. mod.rs imports BTreeMap and uses it once, in the `pub type Bar` alias.
+    crate::api::generate_to_disk(&cli).unwrap();
+    let first = std::fs::read_to_string(&mod_rs).unwrap();
+    assert!(
+        import_line_present(&first, "BTreeMap"),
+        "fresh mod.rs must import BTreeMap:\n{first}"
+    );
+    let alias = "pub type Bar = BTreeMap<u64, String>;";
+    assert!(
+        first.contains(alias),
+        "expected type alias missing:\n{first}"
+    );
+
+    // Inject a `cddl-codegen:replace` block swapping the alias for a Vec that never names BTreeMap;
+    // the `//`-commented recorded original is the placement anchor + drift detector.
+    let replaced = format!(
+        "// cddl-codegen:replace-start\n\
+         pub type Bar = Vec<(u64, String)>;\n\
+         // cddl-codegen:replaces\n\
+         // {alias}\n\
+         // cddl-codegen:replace-end"
+    );
+    std::fs::write(&mod_rs, first.replacen(alias, &replaced, 1)).unwrap();
+
+    // Run 2: the replace removed BTreeMap's sole user, so the post-overlay re-prune drops the now
+    // orphaned `use std::collections::BTreeMap;`; the recorded original (a `//` comment) is trivia and
+    // does not re-protect it. The replace block itself survives.
+    crate::api::generate_to_disk(&cli).unwrap();
+    let second = std::fs::read_to_string(&mod_rs).unwrap();
+    assert!(
+        !import_line_present(&second, "BTreeMap"),
+        "the orphaned BTreeMap import must be pruned post-overlay:\n{second}"
+    );
+    assert!(
+        second.contains("// cddl-codegen:replace-start") && second.contains("Vec<(u64, String)>"),
+        "the replace block must survive:\n{second}"
+    );
+    assert!(
+        !second.contains("compile_error!"),
+        "a clean regen must not fail loudly:\n{second}"
+    );
+
+    // Run 3: byte-identical fixed point (overlay re-applies the same block; re-prune re-removes the
+    // same import).
+    crate::api::generate_to_disk(&cli).unwrap();
+    let third = std::fs::read_to_string(&mod_rs).unwrap();
+    assert_eq!(
+        second, third,
+        "overlay + re-prune must reach a byte-identical fixed point"
+    );
+
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// Delivery-B regression (family flavor — why the re-prune is map-level, not per-file): the replace
+/// block lives in a DESCENDANT (serialization.rs) and orphans an import in the PARENT (mod.rs). Under
+/// --preserve-encodings, mod.rs's blindly-pushed `use std::collections::BTreeMap;` is named by
+/// NOTHING in mod.rs's own body (the map field is `OrderedHashMap`); its sole consumer is
+/// serialization.rs's two `BTreeMap::new()` encoding maps, reached through `use super::*;` (the
+/// sibling cbor_encodings.rs carries its OWN `use BTreeMap`, so it does not protect the parent). A
+/// replace block removing serialization.rs's uses must orphan — and re-prune — the parent import,
+/// which only a whole-map re-prune can see.
+#[test]
+fn comment_preservation_replace_in_descendant_orphans_parent_import() {
+    use clap::Parser;
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_orphan_parent_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    std::fs::write(&input, "baz = [m: {* uint => text}]\n").unwrap();
+    let out = scratch.join("crate");
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+        "--wasm=false",
+        "--preserve-encodings=true",
+    ]);
+    let mod_rs = out.join("rust/src/generated/mod.rs");
+    let ser_rs = out.join("rust/src/generated/serialization.rs");
+
+    // Run 1: fresh. mod.rs imports BTreeMap but never names it (the field is OrderedHashMap); the sole
+    // consumer is serialization.rs, via super.
+    crate::api::generate_to_disk(&cli).unwrap();
+    let mod_first = std::fs::read_to_string(&mod_rs).unwrap();
+    assert!(
+        import_line_present(&mod_first, "BTreeMap"),
+        "fresh mod.rs must import BTreeMap:\n{mod_first}"
+    );
+    assert_eq!(
+        mod_first.matches("BTreeMap").count(),
+        1,
+        "mod.rs's body must not itself name BTreeMap — its import is protected only by the \
+         serialization.rs descendant:\n{mod_first}"
+    );
+    let ser_first = std::fs::read_to_string(&ser_rs).unwrap();
+    let l1 = "let mut m_key_encodings = BTreeMap::new();";
+    let l2 = "let mut m_value_encodings = BTreeMap::new();";
+    let start = ser_first
+        .find(l1)
+        .expect("m_key_encodings BTreeMap init missing from serialization.rs");
+    let line_start = ser_first[..start].rfind('\n').unwrap() + 1;
+    let indent = ser_first[line_start..start].to_owned();
+    let end = ser_first.find(l2).expect("m_value_encodings init missing") + l2.len();
+    let span = ser_first[line_start..end].to_owned();
+
+    // Inject a replace block over the two consecutive `BTreeMap::new()` lines, swapping them for a Vec
+    // that never names BTreeMap. Indentation is preserved so the tag lines stay own-line comments.
+    let block = format!(
+        "{indent}// cddl-codegen:replace-start\n\
+         {indent}let mut m_key_encodings = Vec::new();\n\
+         {indent}let mut m_value_encodings = Vec::new();\n\
+         {indent}// cddl-codegen:replaces\n\
+         {indent}// {l1}\n\
+         {indent}// {l2}\n\
+         {indent}// cddl-codegen:replace-end"
+    );
+    std::fs::write(&ser_rs, ser_first.replacen(&span, &block, 1)).unwrap();
+
+    // Run 2: the descendant no longer names BTreeMap, so the whole-map re-prune drops the parent's
+    // now-orphaned import; the replace block in serialization.rs survives.
+    crate::api::generate_to_disk(&cli).unwrap();
+    let mod_second = std::fs::read_to_string(&mod_rs).unwrap();
+    assert!(
+        !import_line_present(&mod_second, "BTreeMap"),
+        "the parent mod.rs BTreeMap import must be pruned once its sole descendant consumer is \
+         replaced away:\n{mod_second}"
+    );
+    let ser_second = std::fs::read_to_string(&ser_rs).unwrap();
+    assert!(
+        ser_second.contains("// cddl-codegen:replace-start")
+            && ser_second.contains("let mut m_key_encodings = Vec::new();"),
+        "the replace block must survive in serialization.rs:\n{ser_second}"
+    );
+    assert!(
+        !ser_second.contains("compile_error!") && !mod_second.contains("compile_error!"),
+        "a clean regen must not fail loudly"
+    );
+
+    // Run 3: byte-identical fixed point across both files.
+    crate::api::generate_to_disk(&cli).unwrap();
+    let mod_third = std::fs::read_to_string(&mod_rs).unwrap();
+    let ser_third = std::fs::read_to_string(&ser_rs).unwrap();
+    assert_eq!(mod_second, mod_third, "mod.rs must reach a fixed point");
+    assert_eq!(
+        ser_second, ser_third,
+        "serialization.rs must reach a fixed point"
     );
 
     let _ = std::fs::remove_dir_all(&scratch);

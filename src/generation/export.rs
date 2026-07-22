@@ -39,11 +39,16 @@ pub(crate) fn is_preservable_generated_path(path: &str) -> bool {
                 || path.starts_with("wasm/json-gen/src/generated/")))
 }
 
-/// The preserve-or-clobber write every overlay-covered `.rs` goes through — the common write loop
-/// and the four static runtime files (`error.rs`, `ordered_hash_map.rs`, `non_empty.rs`,
-/// `non_empty_map.rs`) alike, so the "all generated trees uniformly" promise holds. An existing
-/// file that cannot be read (not UTF-8) or lexed is a hard error naming the file, never a silent
-/// clobber. Only content that actually received an insertion pays the extra rustfmt pass.
+/// The preserve-or-clobber write for the composed runtime static files (`error.rs`,
+/// `ordered_hash_map.rs`, `non_empty.rs`, `non_empty_map.rs`, `ordered_set.rs`, `pair_map.rs`) and
+/// the `--export-static-crate` target's files. These are the overlay-covered `.rs` that are NOT in
+/// the generated-file map (they are composed from `static/` and written directly), so they cannot
+/// ride the map-level overlay + re-prune that the mapped `.rs` files go through in `export` — they
+/// carry no prunable imports either, so per-file preservation here is complete for them. The mapped
+/// generated `.rs` files instead get their overlay before the common write loop (see `export`), so
+/// the "all generated trees uniformly" promise still holds. An existing file that cannot be read
+/// (not UTF-8) or lexed is a hard error naming the file, never a silent clobber. Only content that
+/// actually received an insertion pays the extra rustfmt pass.
 fn write_rs_with_preserve(
     path: &std::path::Path,
     rel_path: &str,
@@ -588,6 +593,70 @@ impl GenerationScope {
             }
         }
 
+        // Comment/code-preservation overlay over the in-memory file map, then a post-overlay import
+        // re-prune. This is the third bounded exception to the no-prior-output invariant. For each
+        // generated `.rs` in the map that ALREADY EXISTS on disk (an existence check only, like the
+        // manifest `SeedOnce`), carry the user's prior-run own-line comments and
+        // `cddl-codegen:insert`/`:replace` code blocks onto the fresh content
+        // (`comment_preserve::preserve`); an unplaceable one becomes a loud `compile_error!` block,
+        // never a silent drop. Prior output therefore contributes ONLY comment bytes, the tagged
+        // `compile_error!` regions, and the token span a `:replace` block records as removed — never a
+        // code token OUTSIDE those tagged blocks.
+        //
+        // Why the re-prune: the usage-derived import prune's premise is "an import is justified iff
+        // the FINAL generated code references the name". `generated_files` already pruned the FRESH
+        // content, but a `:replace` block can delete the last user of an import the fresh content still
+        // referenced, so the justified set must be recomputed against the POST-overlay content. It runs
+        // over the WHOLE map, not per file, because a replace block in a DESCENDANT (e.g.
+        // `serialization.rs`) can orphan an import in the parent `mod.rs`, which only a family-wide
+        // re-prune sees. The prune is a pure function of the post-overlay content, so "same inputs →
+        // same bytes" and run-twice = run-once both still hold: a later run regenerates the same pruned
+        // imports in fresh content, re-applies the same replace blocks, and re-removes the same imports.
+        //
+        // Error semantics are byte-identical to `write_rs_with_preserve`'s (the messages are
+        // test-pinned by `comment_preservation_broken_existing_file_hard_errors`): an existing file
+        // that cannot be read (not UTF-8) is a hard error naming it; a `PreserveError` renders with the
+        // file name.
+        let prune_config = self.build_prune_config(cli);
+        let mut overlay_changed_any = false;
+        if cli.preserve_comments {
+            // Snapshot the preservable keys up front so the map can be mutated in the loop body.
+            let preservable: Vec<String> = files
+                .keys()
+                .filter(|rel_path| is_preservable_generated_path(rel_path))
+                .cloned()
+                .collect();
+            for rel_path in preservable {
+                let path = rust_dir.join(&rel_path);
+                if !path.exists() {
+                    continue;
+                }
+                let existing = std::fs::read_to_string(&path).map_err(|e| {
+                    std::io::Error::other(format!(
+                        "{rel_path}: cannot read the existing generated file for comment \
+                         preservation: {e}. Fix or delete the file, or pass --no-preserve-comments."
+                    ))
+                })?;
+                let preserved = crate::comment_preserve::preserve(&existing, &files[&rel_path])
+                    .map_err(|e| std::io::Error::other(e.render(&rel_path)))?;
+                if preserved.changed {
+                    files.insert(
+                        rel_path,
+                        rustfmt_generated_string(&preserved.content)?.into_owned(),
+                    );
+                    overlay_changed_any = true;
+                }
+            }
+        }
+        // Only re-prune when the overlay actually rewrote something: otherwise the fresh map is still
+        // the `generated_files` prune fixed point and a second pass would change nothing.
+        if overlay_changed_any {
+            for (path, pruned) in crate::import_prune::prune_generated_files(&files, &prune_config)
+            {
+                files.insert(path, rustfmt_generated_string(&pruned)?.into_owned());
+            }
+        }
+
         // Every generated-tree `.rs` written this run, so the stale-file scan below can tell an
         // orphan (a file a prior run generated but this one no longer does — e.g. a removed/renamed
         // scope) from live output.
@@ -652,18 +721,12 @@ impl GenerationScope {
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            // Comment-preservation overlay: for a generated `.rs` that already exists on disk, carry
-            // the user's own-line comments from the prior output onto the fresh content (unplaceable
-            // ones become tagged `compile_error!` blocks — loud, never a silent drop). This is the
-            // third bounded exception to the no-prior-output invariant: prior output contributes ONLY
-            // comment bytes and `cddl-codegen:unpreserved-comment` compile_error blocks — never a
-            // code token OUTSIDE those tagged blocks — and run-twice-equals-run-once still holds
-            // (see `comment_preserve`).
-            if is_preservable_generated_path(rel_path) {
-                write_rs_with_preserve(&path, rel_path, content, cli.preserve_comments)?;
-            } else {
-                std::fs::write(path, content)?;
-            }
+            // The comment/code-preservation overlay and the post-overlay import re-prune already ran
+            // over the whole in-memory file map above, so every map entry is final — write it plainly.
+            // The overlay is NOT applied per file here (unlike the composed runtime statics below):
+            // the re-prune it feeds needs the whole map in view at once, because a `:replace` block in
+            // one file can orphan an import in a sibling/parent file.
+            std::fs::write(&path, content)?;
         }
 
         // static files copied/assembled verbatim (only when we own the common types). The runtime
@@ -672,7 +735,10 @@ impl GenerationScope {
         // drift; the returned content is already rustfmt'd (load-bearing for the overlay — see that
         // helper). In-crate the NonEmpty runtimes are gated on spec usage: only for crates that use
         // `[+ T]` / `{+ k => v}`. `--wrapper-requests`: a dep hosting a requested NonEmpty wrapper
-        // needs the runtime file even when its own spec has none.
+        // needs the runtime file even when its own spec has none. These composed statics are NOT in
+        // the generated-file `files` map, so they miss the map-level overlay + re-prune above and get
+        // their comment preservation per file here via `write_rs_with_preserve` — sound because they
+        // carry no prunable imports (nothing to re-prune), so per-file preservation is complete.
         if cli.export_static_files() {
             let runtime_files = composed_runtime_static_files(
                 cli,

@@ -17,7 +17,7 @@ impl cbor_event::se::Serialize for Holder {
     ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array(cbor_event::Len::Len(
             4 + match &self.t {
-                Some(x) => 1,
+                Some(_) => 1,
                 None => 0,
             },
         ))?;

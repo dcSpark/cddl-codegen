@@ -863,8 +863,17 @@ impl RustRecord {
                             }
                         } else {
                             let (field_expr, field_contribution) = match self.rep {
+                                // when expanded_field_count is Some, definite_info returns the
+                                // constant count.to_string() and never uses the binding, so bind
+                                // `_` to avoid an unused-variable warning in the generated match.
                                 Representation::Array => {
-                                    ("x", field.rust_type.definite_info("x", true, types, cli))
+                                    match field.rust_type.expanded_field_count(types) {
+                                        Some(count) => ("_", count.to_string()),
+                                        None => (
+                                            "x",
+                                            field.rust_type.definite_info("x", true, types, cli),
+                                        ),
+                                    }
                                 }
                                 // maps are defined by their keys instead (although they shouldn't have multi-length values either...)
                                 Representation::Map => ("_", String::from("1")),

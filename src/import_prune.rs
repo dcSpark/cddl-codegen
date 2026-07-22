@@ -10,6 +10,17 @@
 //! references the imported name. [`prune_generated_files`] is the entry point — the driver in
 //! `generated_files` calls it once over the whole file map.
 //!
+//! **The prune runs against FINAL content.** "The generated code references the name" must hold for
+//! the bytes that ship, so `export` calls [`prune_generated_files`] a SECOND time after the
+//! comment-preservation overlay (`comment_preserve`) has been applied to the in-memory file map. A
+//! user `cddl-codegen:replace` block can delete the last reference to an import the freshly-generated
+//! content still justified (e.g. replacing `pub type Mint = OrderedHashMap<…>` with a hand type that
+//! names neither), so the justified set is recomputed against the post-overlay content. The recorded
+//! original under a `:replaces` marker is a `//` comment — trivia, never a token — so it cannot
+//! re-justify the import it removed. This second pass is still the same pure function of the file map,
+//! so it stays deterministic and idempotent (a later run regenerates the same fresh imports, the
+//! overlay re-applies the same blocks, and this pass re-removes the same imports).
+//!
 //! **Module family via the super-glob edge graph.** The unit of analysis for a file F is F plus the
 //! descendants that can actually CONSUME its private imports. A child re-exports the parent's
 //! *private* imports only through `use super::*;` (`serialization.rs` reaches the `BTreeMap` it uses
@@ -76,6 +87,19 @@
 //! untouched (a documented residue). Globs are handled by the separate glob-prune above, never by
 //! name-scan.
 //!
+//! **Soundness boundary — path-tail idents.** The used-ident scan counts a bare ident as a use but
+//! must NOT count an ident that is a PATH TAIL — the segment after a `::` (a module path, an
+//! associated item, an enum variant, a macro-path segment). Such an ident is always resolved
+//! relative to the preceding path segment, never through the local module namespace, so it can never
+//! consume a `use` binding — counting it would wrongly PROTECT an import or glob that the code does
+//! not actually reference (the residual behind the sidecar `use super::*;` that survived because the
+//! body's `<dep>::sub::module::X` path made the scan count `sub`, which the parent module binds via
+//! `pub mod sub;`). [`collect_idents_in_tokens`] therefore skips an ident immediately preceded by
+//! `::` (two adjacent joint `Punct(':')`), keeping the direction of the failure asymmetry: a LONE
+//! `:` (a struct field type, `let x: BTreeMap<…>`) is NOT a path separator and its following ident
+//! still counts — over-skipping there would un-protect a load-bearing import (over-prune = consumer
+//! compile error; under-prune = warning; when in doubt, count).
+//!
 //! **Second rule — re-export-only files (file-shape scoped).** An extern-only CDDL scope generates
 //! a `mod.rs` containing nothing but extern re-export glue (`pub use crate::Address;`). The
 //! unconditional common-import push still adds `error::*` and (under `--preserve-encodings`) the
@@ -120,7 +144,7 @@
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashSet};
 
-use proc_macro2::{TokenStream, TokenTree};
+use proc_macro2::{Spacing, TokenStream, TokenTree};
 use quote::ToTokens;
 use syn::spanned::Spanned;
 use syn::{Item, ItemUse, UseTree};
@@ -746,7 +770,9 @@ fn is_plain_path_tail(tree: &UseTree) -> bool {
 /// into the token streams of macro bodies and attributes (which `syn::visit` does NOT descend
 /// into). We render each collected item back to a `TokenStream` and walk it, so field types, fn
 /// signatures, expressions, attribute tokens, and macro-invocation tokens are ALL covered uniformly
-/// — a `TokenTree::Ident` anywhere in that stream counts as a use. `pub use` items are collected
+/// — a `TokenTree::Ident` anywhere in that stream counts as a use, EXCEPT a path-tail segment
+/// immediately following `::`, which resolves relative to its preceding segment and can never consume
+/// a `use` binding (see [`collect_idents_in_tokens`]). `pub use` items are collected
 /// too (only private ones are excluded): a re-export path like `pub use BTreeMap;` consumes a
 /// private binding in scope, so its idents must protect the corresponding import. Returns `None` if
 /// `source` doesn't parse (the caller must then treat this file as possibly-using-anything and skip
@@ -765,15 +791,37 @@ pub(crate) fn collect_used_idents_from_source(source: &str) -> Option<HashSet<St
     Some(used)
 }
 
+/// Ident collector with the path-tail exclusion (see the module docs' "Soundness boundary —
+/// path-tail idents"): an `Ident` immediately preceded by the path separator `::` is a path-tail
+/// segment (module path, associated item, enum variant) that resolves relative to the preceding
+/// segment, NEVER through the local module namespace, so it can never consume a `use` binding and
+/// must not protect an import or glob. `::` is two adjacent `Punct(':')` tokens — the first with
+/// `Spacing::Joint`, the second with `Spacing::Alone` — so the precise test is: the previous token
+/// is `Punct(':')` AND the one before it is `Punct(':')` with `Spacing::Joint`. A LONE `:` (struct
+/// field type, `let x: BTreeMap<…>`) fails the two-token joint check, so the ident after it still
+/// counts (over-skipping there would un-protect a load-bearing import — failure asymmetry: an
+/// over-prune is a consumer compile error, an under-prune only a warning). The last-two-token
+/// context is per token stream: a `Group`'s inner stream starts unpreceded, so recursion begins with
+/// a fresh context.
 fn collect_idents_in_tokens(tokens: TokenStream, used: &mut HashSet<String>) {
+    // The two tokens immediately preceding the current one (in THIS stream). `prev1` is the token
+    // right before; `prev2` is the one before that.
+    let mut prev1: Option<TokenTree> = None;
+    let mut prev2: Option<TokenTree> = None;
     for tree in tokens {
-        match tree {
+        match &tree {
             TokenTree::Ident(ident) => {
-                used.insert(ident.to_string());
+                let after_path_sep = matches!(&prev1, Some(TokenTree::Punct(p)) if p.as_char() == ':')
+                    && matches!(&prev2, Some(TokenTree::Punct(p)) if p.as_char() == ':' && p.spacing() == Spacing::Joint);
+                if !after_path_sep {
+                    used.insert(ident.to_string());
+                }
             }
             TokenTree::Group(group) => collect_idents_in_tokens(group.stream(), used),
             TokenTree::Punct(_) | TokenTree::Literal(_) => {}
         }
+        prev2 = prev1.take();
+        prev1 = Some(tree);
     }
 }
 
@@ -1416,6 +1464,79 @@ mod tests {
             "same-line trailing comment must survive: {out}"
         );
         assert!(!out.contains("BTreeMap"), "import still removed: {out}");
+    }
+
+    // ----- path-tail ident exclusion (`collect_idents_in_tokens`) -----
+
+    fn idents_in(src: &str) -> HashSet<String> {
+        let mut used = HashSet::new();
+        collect_idents_in_tokens(src.parse().expect("tokenizes"), &mut used);
+        used
+    }
+
+    /// A `::`-qualified path counts only its LEADING segment: the tail segments resolve relative to
+    /// the preceding path, never through the local `use` namespace, so they must not be counted.
+    #[test]
+    fn path_tail_segments_not_counted() {
+        let used = idents_in("crate::generated::assets::Coin::new()");
+        assert!(
+            !used.contains("assets"),
+            "path-tail `assets` must not count: {used:?}"
+        );
+        assert!(
+            !used.contains("Coin"),
+            "path-tail `Coin` must not count: {used:?}"
+        );
+        assert!(
+            used.contains("crate"),
+            "leading path segment still counts: {used:?}"
+        );
+    }
+
+    /// A LONE `:` (a struct field type / `let x: T`) is not a path separator: the ident after it
+    /// resolves through the local namespace and MUST count (over-skipping would un-protect the import).
+    #[test]
+    fn lone_colon_does_not_skip_field_type() {
+        let used = idents_in("struct S { inner: BTreeMap<u8, u8> }");
+        assert!(
+            used.contains("BTreeMap"),
+            "field type after a lone `:` must count: {used:?}"
+        );
+    }
+
+    /// A turbofish type arg (`foo::<T>()`) is preceded by `<`, not `::`, and DOES resolve from local
+    /// scope, so it must count.
+    #[test]
+    fn turbofish_type_arg_counted() {
+        let used = idents_in("foo::<BTreeMap>()");
+        assert!(
+            used.contains("BTreeMap"),
+            "turbofish type arg must count: {used:?}"
+        );
+    }
+
+    /// Inside a macro invocation's token stream the same rule holds: `::`-path segments don't count,
+    /// but the bare LEADING crate segment and bare argument idents do.
+    #[test]
+    fn macro_tokens_skip_path_tails_keep_bare_args() {
+        let used = idents_in("impl_wasm_list_needs_into!(wr_dep::sub::module::X, X, XList, Foo)");
+        assert!(
+            !used.contains("sub"),
+            "macro path-segment `sub` must not count: {used:?}"
+        );
+        assert!(
+            !used.contains("module"),
+            "macro path-segment `module` must not count: {used:?}"
+        );
+        assert!(
+            used.contains("wr_dep"),
+            "bare leading `wr_dep` counts: {used:?}"
+        );
+        assert!(used.contains("X"), "bare `X` argument counts: {used:?}");
+        assert!(
+            used.contains("XList"),
+            "bare `XList` argument counts: {used:?}"
+        );
     }
 
     // ----- module-family driver (`prune_generated_files`) -----
@@ -2188,6 +2309,71 @@ mod tests {
                 .iter()
                 .any(|(p, _)| p == "rust/src/generated/cbor_encodings.rs"),
             "parent has an unenumerable glob → super::* conservatively kept: {changed:?}"
+        );
+    }
+
+    /// The sidecar-shape residual (`--wrapper-requests` `requested_collections.rs`): a flat file whose
+    /// only references to the parent-bound module `sub` are `::`-QUALIFIED path tails
+    /// (`<dep>::sub::module::X`). Before the path-tail exclusion the token scan counted `sub`, which the
+    /// root binds via `pub mod sub;`, so `super::*` was conservatively (and wrongly) kept. With
+    /// path-tail idents excluded the family names nothing parent-bound, so the dead `super::*` is pruned.
+    #[test]
+    fn sidecar_super_glob_pruned_when_sub_only_path_qualified() {
+        let map = files(&[
+            (
+                "wasm/src/generated/mod.rs",
+                "pub mod sub;\npub struct Root;\n",
+            ),
+            (
+                "wasm/src/generated/requested_collections.rs",
+                "use super::*;\n\
+                 use crate::generated::assets::Coin;\n\
+                 pub struct L(Vec<Coin>);\n\
+                 impl L {\n    pub fn ext(&self) -> wr_dep::sub::module::ScopedExt {\n        todo!()\n    }\n}\n",
+            ),
+        ]);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
+        let sidecar = changed
+            .iter()
+            .find(|(p, _)| p == "wasm/src/generated/requested_collections.rs")
+            .expect("sidecar changes (dead super glob)");
+        assert!(
+            !sidecar.1.contains("use super::*"),
+            "dead super::* pruned (sub only appears as a `::` path tail): {}",
+            sidecar.1
+        );
+        assert!(
+            sidecar.1.contains("use crate::generated::assets::Coin"),
+            "the explicit Coin import (used in Vec<Coin>) is kept: {}",
+            sidecar.1
+        );
+    }
+
+    /// The near-miss twin: same sidecar, but one BARE (non-`::`-preceded) reference to the parent-bound
+    /// `sub` module. That leading segment DOES count, so `super::*` is load-bearing and must stay —
+    /// pinning the guard against over-pruning in the direction that breaks consumer builds.
+    #[test]
+    fn sidecar_super_glob_kept_when_bare_parent_ident_present() {
+        let map = files(&[
+            (
+                "wasm/src/generated/mod.rs",
+                "pub mod sub;\npub struct Root;\n",
+            ),
+            (
+                "wasm/src/generated/requested_collections.rs",
+                "use super::*;\n\
+                 use crate::generated::assets::Coin;\n\
+                 pub struct L(Vec<Coin>);\n\
+                 impl L {\n    pub fn ext(&self) {\n        let _ = sub::module::helper();\n    }\n}\n",
+            ),
+        ]);
+        let changed = prune_generated_files(&map, &PruneConfig::default());
+        let sidecar = changed
+            .iter()
+            .find(|(p, _)| p == "wasm/src/generated/requested_collections.rs");
+        assert!(
+            sidecar.is_none_or(|(_, c)| c.contains("use super::*")),
+            "bare leading `sub` is parent-bound; super::* must be kept: {changed:?}"
         );
     }
 
