@@ -12,11 +12,24 @@ In the wasm crate we can't always go one to one with the rust crate. Here are so
 Any array of non-primitives such as `[foo]` will generate another type called `FooList` which supports all basic array operations.
 This array wrapper implements `len() -> usize`, `get(usize) -> T` and `add(T)`.
 
-These lowering rules apply **by spelling, not by construct**: an anonymous generic-collection
-instance (`x: set<foo>`, including the transparent tag-set idiom's bases) crosses the wasm
-boundary exactly as its inline equivalent (`x: [* foo]`) would — the structural `FooList` class
-when the element needs a wrapper, or the direct exposure below when it doesn't — while a NAMED
-collection rule (`foos = [* foo]`) exposes a class under its own rule name.
+These lowering rules apply **by spelling, not by construct**: an anonymous **plain** (non-258)
+generic-collection instance (`x: xs<foo>` for `xs<a> = [* a]`) crosses the wasm boundary exactly
+as its inline equivalent (`x: [* foo]`) would — the structural `FooList` class when the element
+needs a wrapper, or the direct exposure below when it doesn't — while a NAMED collection rule
+(`foos = [* foo]`) exposes a class under its own rule name.
+
+A **258 set** generic instance is instead **nominal per instantiation** (see
+[current capacities](current_capacities), tag-set section): `set<foo>` mints its own
+`#[wasm_bindgen]` class `SetFoo` (over the rust nominal), distinct from the inline `[* foo]`
+structural `FooList`; a named binding of an instance (`named = set<foo>`) is a passthrough
+`pub type Named = SetFoo;`. The nominal's `new()`/`get()` boundary still uses the structural
+collection wrapper (`FooList`, or the `<Elem>OrderedSet` reject twin) for element crossing, so the
+structural class is not eliminated — it is the nominal's boundary. **Class re-key note for
+consumers:** a spec whose generic set instances previously surfaced as structural `*List` /
+`*OrderedSet` passthrough aliases now surfaces one nominal class per instantiation; downstream
+JS/`--wrapper-requests` code that imported the synthesized instance name as a structural alias
+should move to the nominal class (the structural wrapper name itself is unchanged and still
+own-produced).
 
 The wrapper exists primarily for **ownership safety**, not just type-support gaps. In `wasm_bindgen`,
 passing an exported class to a function **by value** transfers ownership: the JavaScript object's
