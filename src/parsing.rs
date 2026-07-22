@@ -612,17 +612,14 @@ fn parse_type_choices(
                     "Collapsing rule `{name}` (tag {set_tag} set idiom) into {collapse_desc}; defaulting to @duplicates reject (IANA set semantics) — write `; @duplicates preserve` on the rule to opt out"
                 );
             } else {
-                println!(
-                    "Collapsing rule `{name}` (tag {set_tag} set idiom) into {collapse_desc}"
-                );
+                println!("Collapsing rule `{name}` (tag {set_tag} set idiom) into {collapse_desc}");
             }
             let effective_metadata =
                 with_well_known_tag_default(&rule_metadata, set_tag, is_array, None);
             let bounds = base.config.bounds;
             let rust_struct = match base.conceptual_type {
                 ConceptualRustType::Array(element_type) if is_set_nominal => {
-                    let mut array_type: RustType =
-                        ConceptualRustType::Array(element_type).into();
+                    let mut array_type: RustType = ConceptualRustType::Array(element_type).into();
                     if let Some(bounds) = bounds {
                         array_type = array_type.with_bounds(bounds);
                     }

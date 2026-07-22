@@ -1544,7 +1544,8 @@ fn newtype_on_two_arm_258_idiom_is_accepted_and_nominalizes() {
     );
 
     // `@newtype <name>`: the custom getter is emitted (no shadowing on a custom name).
-    let named = gen_src("foo = #6.258([* uint]) / [* uint] ; @newtype entries\nholder = [f: foo]\n");
+    let named =
+        gen_src("foo = #6.258([* uint]) / [* uint] ; @newtype entries\nholder = [f: foo]\n");
     assert!(
         named.contains("pub struct Foo") && named.contains("pub fn entries("),
         "a custom `@newtype <name>` getter must be emitted on the set nominal:\n{named}"
