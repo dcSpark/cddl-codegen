@@ -594,7 +594,7 @@ fn parse_type_choices(
                      two-arm set idiom (`#6.{set_tag}([* a]) / [* a]`) — the two arms collapse into one \
                      transparent optionally-tagged collection with no wrapper struct to carry the \
                      newtype getter, so it would be silently dropped. Use the single-arm mandatory-tag \
-                     form `#6.258([* a]) ; @newtype` (which produces a newtype wrapper), or remove \
+                     form `#6.{set_tag}([* a]) ; @newtype` (which produces a newtype wrapper), or remove \
                      `@newtype` from this rule."
                 ));
             }
