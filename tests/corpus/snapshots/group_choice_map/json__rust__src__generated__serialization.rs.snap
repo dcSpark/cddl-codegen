@@ -125,7 +125,7 @@ impl DeserializeEmbeddedGroup for FixedValueArm0 {
     fn deserialize_as_embedded_group(
         raw: &mut Deserializer,
         _read_len: &mut CBORReadLen,
-        len: cbor_event::Len,
+        _len: cbor_event::Len,
     ) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let mut key_1_present = false;
@@ -391,7 +391,7 @@ impl DeserializeEmbeddedGroup for MultiFieldArm0 {
     fn deserialize_as_embedded_group(
         raw: &mut Deserializer,
         _read_len: &mut CBORReadLen,
-        len: cbor_event::Len,
+        _len: cbor_event::Len,
     ) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let mut a = None;
@@ -592,7 +592,7 @@ impl DeserializeEmbeddedGroup for NonemptyArm0 {
     fn deserialize_as_embedded_group(
         raw: &mut Deserializer,
         _read_len: &mut CBORReadLen,
-        len: cbor_event::Len,
+        _len: cbor_event::Len,
     ) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let mut f0 = None;
