@@ -930,6 +930,140 @@ fn well_known_tag_258_bounded_occurrence_composes_with_reject_twin() {
     );
 }
 
+/// Inline-position tag-258 arrays default to `@duplicates reject` — the well-known-tag registry
+/// (`well_known_tag_default_duplicates`) applied at the `Type2::TaggedData` arm of
+/// `rust_type_from_type2`, the seam that builds EVERY inline tagged occurrence: a member, an optional
+/// member, an array element. All three positions must lower to the `OrderedSet` uniqueness twin, under
+/// BOTH the default and `--preserve-encodings` profiles (the reject twin and full encoding
+/// preservation coexist on pure inline aliases). Guard NEGATIVES ride along in the same test: an inline
+/// two-arm choice `#6.258([* uint]) / [* uint]` STAYS a two-variant enum (1b does NOT collapse inline
+/// choices — the documented REQUEST-08 recognition boundary; only the 258 arm gains the twin), and the
+/// 258-shape guard still excludes an inline map (`#6.258({* k => v})` — a map is not a set) and an
+/// inline record-shaped array (`#6.258([uint, text])` — a Record, not a homogeneous collection). The
+/// hoist opt-out that the generation notice prints is pinned separately by
+/// `inline_258_reject_opts_out_via_hoist_to_named_rule`.
+#[test]
+fn inline_258_array_defaults_to_reject() {
+    let gen_src = |cddl: &str, preserve: bool| -> String {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_inline258_{}_{}_{}.cddl",
+            std::process::id(),
+            preserve as u8,
+            cddl.len()
+        ));
+        std::fs::write(&path, cddl).unwrap();
+        let mut args = vec![
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "inline258_unused",
+            "--wasm=false",
+        ];
+        if preserve {
+            args.push("--preserve-encodings=true");
+        }
+        let out = crate::api::generated_strings(&Cli::parse_from(args))
+            .unwrap_or_else(|e| panic!("inline 258 spec must generate cleanly for {cddl:?}: {e}"));
+        std::fs::remove_file(&path).ok();
+        out.values().cloned().collect::<Vec<_>>().join("\n")
+    };
+
+    // Every inline seam: `a` a mandatory member, `b` an optional member, `c` an array element. Each is
+    // an inline `#6.258([* …])`, so each defaults to the `OrderedSet` twin.
+    const HOLDER: &str =
+        "holder = [a: #6.258([* uint]), ? b: #6.258([* text]), c: [* #6.258([* uint])]]\n";
+    for preserve in [false, true] {
+        let src = gen_src(HOLDER, preserve);
+        // `a` (member) and `c` (array element) are `[* uint]` sets → `OrderedSet<u64>`.
+        assert!(
+            src.contains("OrderedSet<u64>"),
+            "inline 258 member/element sets must default to OrderedSet<u64> (preserve={preserve}):\n{src}"
+        );
+        // `b` (optional member) is a `[* text]` set → `OrderedSet<String>` (under an `Option`).
+        assert!(
+            src.contains("OrderedSet<String>"),
+            "inline 258 optional-member set must default to OrderedSet<String> (preserve={preserve}):\n{src}"
+        );
+    }
+
+    // Guard negative — inline two-arm choice: 1b does NOT collapse it (REQUEST-08 boundary). It stays a
+    // two-variant enum; only the tagged arm gains the twin (the untagged arm is a plain `Vec`).
+    let two_arm = gen_src("holder = [x: #6.258([* uint]) / [* uint]]\n", false);
+    assert!(
+        two_arm.contains("pub enum"),
+        "inline two-arm 258 choice must stay a two-variant enum (not collapse to a single set):\n{two_arm}"
+    );
+    assert!(
+        two_arm.contains("OrderedSet<u64>") && two_arm.contains("Vec<u64>"),
+        "the inline two-arm enum's tagged arm gains the twin while the untagged arm stays a plain Vec:\n{two_arm}"
+    );
+
+    // Guard negative — inline map: `#6.258({* k => v})` is a Map, not an Array. The registry returns
+    // `None` for a map inner, so no uniqueness twin appears.
+    let inline_map = gen_src("holder = [m: #6.258({ * uint => text })]\n", false);
+    assert!(
+        !inline_map.contains("OrderedSet"),
+        "an inline 258 map must NOT acquire a set twin (a map is not a set):\n{inline_map}"
+    );
+
+    // Guard negative — inline record-shaped array under a 258 tag. A bare inline heterogeneous group
+    // (`[uint, text]`) is not an expressible inline shape (it needs a name), so this uses the expressible
+    // form: a named record referenced under an inline `#6.258(...)`. Its conceptual type is a Record
+    // (`Rust(ident)`), never a homogeneous `Array`, so the registry (`is_array` false) never fires.
+    let record_shaped = gen_src(
+        "rec_inner = [uint, text]\nholder = [r: #6.258(rec_inner)]\n",
+        false,
+    );
+    assert!(
+        !record_shaped.contains("OrderedSet"),
+        "an inline record-shaped `#6.258(<record>)` must NOT acquire a set twin:\n{record_shaped}"
+    );
+}
+
+/// The hoist recipe the inline-258 generation notice prints actually works: extracting the inline
+/// occurrence to a named rule carrying `; @duplicates preserve` opts back out to the plain `Vec` twin
+/// (today's wire behavior verbatim), while the same named rule WITHOUT the directive keeps the reject
+/// default. This rides the 1a named-rule machinery — the assert is the point (the notice must not point
+/// consumers at a recipe that doesn't opt out).
+#[test]
+fn inline_258_reject_opts_out_via_hoist_to_named_rule() {
+    let gen_src = |cddl: &str| -> String {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_inline258_hoist_{}_{}.cddl",
+            std::process::id(),
+            cddl.len()
+        ));
+        std::fs::write(&path, cddl).unwrap();
+        let out = crate::api::generated_strings(&Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "inline258_hoist_unused",
+            "--wasm=false",
+        ]))
+        .unwrap_or_else(|e| panic!("hoisted 258 spec must generate cleanly for {cddl:?}: {e}"));
+        std::fs::remove_file(&path).ok();
+        out.values().cloned().collect::<Vec<_>>().join("\n")
+    };
+
+    // Hoisted WITH `; @duplicates preserve`: the named rule opts out to the plain `Vec` twin.
+    let opted_out =
+        gen_src("named = #6.258([* uint]) ; @duplicates preserve\nholder = [a: named]\n");
+    assert!(
+        opted_out.contains("pub type Named = Vec<u64>;") && !opted_out.contains("OrderedSet"),
+        "hoisting to a named rule with `; @duplicates preserve` must opt out to the plain Vec twin:\n{opted_out}"
+    );
+
+    // The SAME hoisted rule WITHOUT the directive keeps the reject default (parity with the inline seam).
+    let hoisted_default = gen_src("named = #6.258([* uint])\nholder = [a: named]\n");
+    assert!(
+        hoisted_default.contains("pub type Named = OrderedSet<u64>;"),
+        "a hoisted named 258 set without a directive keeps the reject default:\n{hoisted_default}"
+    );
+}
+
 /// A `{+ …}` `@duplicates preserve` table generates a full wasm wrapper (the WP-P2A stopgap that
 /// rejected it under `--wasm` is gone). The rule's JS class wraps `NonEmptyPairMap<K, V>` (not the
 /// loose `NonEmptyMap`), enters through a `try_from(&loose_pair_map_wrapper)` door, and its `new`

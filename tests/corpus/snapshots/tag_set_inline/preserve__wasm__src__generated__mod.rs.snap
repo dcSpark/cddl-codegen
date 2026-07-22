@@ -1,0 +1,288 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use cddl_lib::ordered_set::OrderedSet;
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ArrU64List(pub(crate) Vec<OrderedSet<u64>>);
+
+#[wasm_bindgen]
+impl ArrU64List {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> U64OrderedSet {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &U64OrderedSet) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<OrderedSet<u64>>> for ArrU64List {
+    fn from(native: Vec<OrderedSet<u64>>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ArrU64List> for Vec<OrderedSet<u64>> {
+    fn from(wasm: ArrU64List) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<OrderedSet<u64>>> for ArrU64List {
+    fn as_ref(&self) -> &Vec<OrderedSet<u64>> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ArrU64OrArrU64(pub(crate) cddl_lib::ArrU64OrArrU64);
+
+#[wasm_bindgen]
+impl ArrU64OrArrU64 {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ArrU64OrArrU64, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_arr_u64(arr_u64: &U64OrderedSet) -> Self {
+        Self(cddl_lib::ArrU64OrArrU64::new_arr_u64(
+            arr_u64.clone().into(),
+        ))
+    }
+
+    pub fn new_arr_u642(arr_u642: Vec<u64>) -> Self {
+        Self(cddl_lib::ArrU64OrArrU64::new_arr_u642(arr_u642))
+    }
+
+    pub fn kind(&self) -> ArrU64OrArrU64Kind {
+        match &self.0 {
+            cddl_lib::ArrU64OrArrU64::ArrU64 { .. } => ArrU64OrArrU64Kind::ArrU64,
+            cddl_lib::ArrU64OrArrU64::ArrU642 { .. } => ArrU64OrArrU64Kind::ArrU642,
+        }
+    }
+
+    pub fn as_arr_u64(&self) -> Option<U64OrderedSet> {
+        match &self.0 {
+            cddl_lib::ArrU64OrArrU64::ArrU64 { arr_u64, .. } => Some(arr_u64.clone().into()),
+            _ => None,
+        }
+    }
+
+    pub fn as_arr_u642(&self) -> Option<Vec<u64>> {
+        match &self.0 {
+            cddl_lib::ArrU64OrArrU64::ArrU642 { arr_u642, .. } => Some(arr_u642.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::ArrU64OrArrU64> for ArrU64OrArrU64 {
+    fn from(native: cddl_lib::ArrU64OrArrU64) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ArrU64OrArrU64> for cddl_lib::ArrU64OrArrU64 {
+    fn from(wasm: ArrU64OrArrU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::ArrU64OrArrU64> for ArrU64OrArrU64 {
+    fn as_ref(&self) -> &cddl_lib::ArrU64OrArrU64 {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum ArrU64OrArrU64Kind {
+    ArrU64,
+    ArrU642,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct InlineHolder(pub(crate) cddl_lib::InlineHolder);
+
+#[wasm_bindgen]
+impl InlineHolder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<InlineHolder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn a(&self) -> U64OrderedSet {
+        self.0.a.clone().into()
+    }
+
+    pub fn set_b(&mut self, b: &TextOrderedSet) {
+        self.0.b = Some(b.clone().into())
+    }
+
+    pub fn b(&self) -> Option<TextOrderedSet> {
+        self.0.b.clone().map(std::convert::Into::into)
+    }
+
+    pub fn c(&self) -> ArrU64List {
+        self.0.c.clone().into()
+    }
+
+    pub fn x(&self) -> ArrU64OrArrU64 {
+        self.0.x.clone().into()
+    }
+
+    pub fn new(a: &U64OrderedSet, c: &ArrU64List, x: &ArrU64OrArrU64) -> Self {
+        Self(cddl_lib::InlineHolder::new(
+            a.clone().into(),
+            c.clone().into(),
+            x.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::InlineHolder> for InlineHolder {
+    fn from(native: cddl_lib::InlineHolder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<InlineHolder> for cddl_lib::InlineHolder {
+    fn from(wasm: InlineHolder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::InlineHolder> for InlineHolder {
+    fn as_ref(&self) -> &cddl_lib::InlineHolder {
+        &self.0
+    }
+}
+
+/// `[* text] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door).
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TextOrderedSet(pub(crate) OrderedSet<String>);
+
+#[wasm_bindgen]
+impl TextOrderedSet {
+    pub fn new() -> Self {
+        Self(OrderedSet::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> String {
+        self.0[index].clone()
+    }
+
+    pub fn add(&mut self, elem: String) -> Result<(), JsError> {
+        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn try_from(elements: Vec<String>) -> Result<TextOrderedSet, JsError> {
+        OrderedSet::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<OrderedSet<String>> for TextOrderedSet {
+    fn from(native: OrderedSet<String>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TextOrderedSet> for OrderedSet<String> {
+    fn from(wasm: TextOrderedSet) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<OrderedSet<String>> for TextOrderedSet {
+    fn as_ref(&self) -> &OrderedSet<String> {
+        &self.0
+    }
+}
+
+/// `[* uint] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door).
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct U64OrderedSet(pub(crate) OrderedSet<u64>);
+
+#[wasm_bindgen]
+impl U64OrderedSet {
+    pub fn new() -> Self {
+        Self(OrderedSet::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
+        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<U64OrderedSet, JsError> {
+        OrderedSet::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<OrderedSet<u64>> for U64OrderedSet {
+    fn from(native: OrderedSet<u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<U64OrderedSet> for OrderedSet<u64> {
+    fn from(wasm: U64OrderedSet) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<OrderedSet<u64>> for U64OrderedSet {
+    fn as_ref(&self) -> &OrderedSet<u64> {
+        &self.0
+    }
+}

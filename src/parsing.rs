@@ -413,6 +413,64 @@ fn single_arm_array_effective_metadata(
     }
 }
 
+thread_local! {
+    /// Set only while `parse_type_choices` builds the arms of a NAMED type-choice rule. Those arms are
+    /// a transient means to recognize the tag-258 idiom collapse (`recognize_optional_tag_set`), which
+    /// re-derives the duplicates policy at the collapse site from the rule's own metadata and then
+    /// DISCARDS the per-arm builds. Injecting the inline well-known-tag default into the discarded
+    /// tagged arm would (a) give it a `Reject` the untagged arm lacks, breaking the collapse's
+    /// exact-config match (a 258 idiom would degrade to a two-variant enum), and (b) fire the inline
+    /// hoist notice — wrong advice for a rule that already HAS a name and whose real notice is the
+    /// collapse/single-arm one. Suppressing here keeps named-rule behavior exactly as Delivery 1a left
+    /// it. Genuine inline positions (members, elements, map k/v, generic args) and INLINE anonymous
+    /// unions build with this `false`, so they still acquire the set default.
+    static SUPPRESS_INLINE_TAG_DEFAULT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// RAII guard that suppresses the inline well-known-tag default for the duration of a named
+/// type-choice arm build, restoring the prior value on drop (so nesting composes correctly).
+struct InlineTagDefaultSuppression(bool);
+
+impl InlineTagDefaultSuppression {
+    fn enter() -> Self {
+        Self(SUPPRESS_INLINE_TAG_DEFAULT.with(|c| c.replace(true)))
+    }
+}
+
+impl Drop for InlineTagDefaultSuppression {
+    fn drop(&mut self) {
+        SUPPRESS_INLINE_TAG_DEFAULT.with(|c| c.set(self.0));
+    }
+}
+
+/// Inline application of the well-known-tag registry (`well_known_tag_default_duplicates`) to a tagged
+/// INLINE occurrence — the `RustType` built by the `Type2::TaggedData` arm of `rust_type_from_type2`,
+/// which is the single seam for every inline tagged position (a member, an optional member, an array
+/// element, a map key/value, a generic argument, an inline anonymous union arm). NAMED rules flow
+/// through their own construction sites (the two-arm collapse and the single-arm array rule) which
+/// inject the registry default there; those sites build their transient arms under
+/// `InlineTagDefaultSuppression`, so this path stays disjoint and never double-applies or
+/// double-notices. When the tag has a set-semantics default (258 on an array inner) and the built type
+/// carries no explicit policy (inline positions have no comment slot for `@duplicates`, so this is
+/// normally the case), swap in the uniqueness twin and print the hoist-recipe notice — the inline
+/// opt-out is to hoist the occurrence to a named rule bearing `; @duplicates preserve` (no new DSL
+/// surface).
+fn apply_inline_well_known_tag_default(ty: RustType, tag: usize) -> RustType {
+    if SUPPRESS_INLINE_TAG_DEFAULT.with(std::cell::Cell::get) {
+        return ty;
+    }
+    let is_array = matches!(ty.conceptual_type, ConceptualRustType::Array(_));
+    if ty.config.duplicates.is_none()
+        && let Some(default) = well_known_tag_default_duplicates(tag, is_array)
+    {
+        println!(
+            "Inline #6.258 array defaults to @duplicates reject (IANA set semantics) — hoist it to a named rule with `; @duplicates preserve` to opt out"
+        );
+        return ty.with_duplicates_policy(Some(default));
+    }
+    ty
+}
+
 fn parse_type_choices(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
@@ -496,7 +554,15 @@ fn parse_type_choices(
             ));
         }
         handle_rust_name_pin(types, name, &rule_metadata);
-        let variants = create_variants_from_type_choices(types, parent_visitor, type_choices, cli);
+        // Build the arms with the inline well-known-tag default SUPPRESSED: for a tag-258 idiom the
+        // policy is re-derived at the collapse site below (and the arms are discarded), and for a
+        // genuine named union the arms keep Delivery-1a behavior. Either way the inline hoist notice
+        // (wrong for an already-named rule) must not fire here. INLINE anonymous unions build outside
+        // this guard, so they still default. See `InlineTagDefaultSuppression`.
+        let variants = {
+            let _suppress = InlineTagDefaultSuppression::enter();
+            create_variants_from_type_choices(types, parent_visitor, type_choices, cli)
+        };
         // Transparent tag-set collapse: a bare (no OUTER tag) two-arm choice differing only in tag
         // presence is not two types — it is one collection whose tag is an encoding detail. Collapse
         // it into the SAME registration a bare `#6.N([* a])` array rule gets (transparent alias +
@@ -2741,7 +2807,12 @@ fn rust_type_from_type2(
         // unsure if we need to handle the None case - when does this happen?
         Type2::TaggedData { tag, t, .. } => {
             let tag_unwrap = tag_literal(tag).expect("tagged data without tag not supported");
-            rust_type(types, parent_visitor, t, cli).tag(tag_unwrap)
+            let tagged = rust_type(types, parent_visitor, t, cli).tag(tag_unwrap);
+            // Inline application of the well-known-tag registry: an inline `#6.258([* a])` defaults to
+            // `@duplicates reject` (set semantics) just like a named 258 set rule, with hoist-to-named
+            // as the opt-out. The record-shaped/primitive/map guard rides for free — those inner shapes
+            // never produce a `ConceptualRustType::Array`, so the registry returns `None` for them.
+            apply_inline_well_known_tag_default(tagged, tag_unwrap)
         }
         Type2::ParenthesizedType { pt, .. } => rust_type(types, parent_visitor, pt, cli),
         _ => {
@@ -3093,7 +3164,10 @@ fn parse_record_from_group_choice(
                 types.record_rejection(format!(
                     "@duplicates on field `{field_name}` of rule `{source_name}`: this directive \
                      is per-rule and does not apply to a field/member position. Name the collection \
-                     as its own rule and put `; @duplicates <preserve|reject>` on that rule."
+                     as its own rule and put `; @duplicates <preserve|reject>` on that rule. \
+                     (An inline `#6.258` array in this position already defaults to `@duplicates \
+                     reject` via the well-known-tag registry — hoisting it to a named rule with `; \
+                     @duplicates preserve` is exactly how to opt out.)"
                 ));
             }
             // does not exist for fixed values importantly
