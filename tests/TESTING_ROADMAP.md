@@ -116,11 +116,17 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
   but no spec-derived accept vectors nor a duplicate-bearing reject vector exist for it yet. Three
   heavy-tier follow-ups, each requiring a coordinated run (they contend on `/tmp` scratch and disk —
   see the ENOSPC entry — so get an explicit go-ahead while another session is active):
-  1. Mint the corpus decode vectors for `tag_set_default` (`bun run verify.ts --mint-decode-corpus
-     --only=tag_set_default`), which enumerates its rules into `tests/decode_conformance/corpus_catalog.toml`;
-     add a hand `source="hand"` duplicate-bearing vector with `expect="reject"` (+ `class`/`reason`/
-     `expect_err` naming the `DuplicateKey` door) so the reject DEFAULT has a wire-level reject pin,
-     mirroring `tag_set_reject`'s in-process `reject_set_duplicate_wire_and_api_identical`.
+  1. ~~Mint the corpus decode vectors for `tag_set_default`~~ — DONE (accept vectors minted; the
+     `project_decode_conformance` enumeration gate forced it into the local-green path). The
+     remaining piece is the wire-level duplicate-REJECT pin, which is BLOCKED on a catalog-model
+     extension: a duplicate-bearing set is spec-VALID CDDL (`[* uint]` permits duplicates; only
+     the tag-258 registry semantics narrow it), so `class="constraint"`'s re-validated
+     spec-INVALID invariant cannot hold and `class="over-acceptance"` is its inverse. Needs a new
+     vector class (spec-VALID, policy-rejected: both oracles accept, our decoder rejects BY
+     DESIGN, `expect_err` pinning the `DuplicateKey` door) threaded through the mint + replay
+     gate before the hand vector can exist. Until then the reject default's wire behavior is
+     pinned in-process only (`reject_set_duplicate_wire_and_api_identical` covers the shared
+     door).
   2. Confirm the matrix cell `contain.choice-member.type2.tag.set_idiom`
      (`cddl-matrix/containment/choice-member.toml`, inline `t = #6.258([* uint]) / [* uint]`) still
      passes after the flip — its generated decoder now rejects duplicates; its ruby-generate vectors
@@ -1142,6 +1148,12 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
     collection-of-instance ELEMENT (`[* xs_int]` is inlined correctly, both directions), but an
     alias-of-an-instance is a second hop it does not follow. Remedy when it bites: extend the walk
     (or `resolve_alias`) to chase an alias whose target is itself a structural collection instance.
+    A REJECT-instance-ELEMENT flavor of the same boundary is now concretely pinned: embedding a
+    named array rule whose element is a reject-flavored instance (`outer = [* oset<uint>]` used as
+    a member) inlines the array loop but leaves `element.serialize()` /
+    `OsetU64::deserialize()` calls on the impl-less transparent `OrderedSet` alias — the
+    decode-conformance row `tag_set_reject_anon_generic.outer` is `pinned_reason`-pinned on it
+    (the fixture itself compiles; only an EMBEDDING of the rule materializes the calls).
   - *Inline/anonymous two-arm choices are not recognized.* Recognition lives at the
     `parse_type_choices` named-rule seam, so an inline `[x: #6.258([* uint]) / [* uint]]` stays a
     two-variant enum. Remedy when it bites: run the recognition on anonymous choices too.
