@@ -49,6 +49,19 @@ pub(super) fn generate_wrapper_struct(
         Some(Some(name)) => name.as_str(),
         _ => "get",
     };
+    // A SET NOMINAL (Phase 2.2) does NOT emit the inherent `get()`: a 0-arg `get(&self)` shadows the
+    // inner `OrderedSet::get(index)` reached through `Deref`, turning every indexed read into a
+    // compile error (E0061 — method probing stops at the inherent name). `Deref` covers inner access.
+    // An explicit `@newtype <name>` custom getter is still emitted (a custom name doesn't shadow
+    // `get(index)`); a bare set nominal emits none.
+    let set_nominal = struct_config.set_nominal;
+    let emit_getter =
+        !set_nominal || matches!(struct_config.newtype_getter.as_ref(), Some(Some(_)));
+    let set_demand = crate::comment_ast::DemandSet {
+        bare: true,
+        hash: true,
+        ord: true,
+    };
     if cli.wasm {
         let mut wrapper = create_base_wasm_wrapper(gen_scope, types, type_name, true, cli);
         if let Some(doc) = struct_config.doc.as_ref() {
@@ -79,18 +92,45 @@ pub(super) fn generate_wrapper_struct(
             wasm_new.ret("Self").line(format!("Self({ctor})"));
         }
         wrapper.s_impl.push_fn(wasm_new);
-        let mut get = codegen::Function::new(getter_name);
-        get.vis("pub")
-            .arg_ref_self()
-            .ret(field_type.for_wasm_return(types))
-            .line(field_type.to_wasm_boundary(types, &format!("self.0.{getter_name}()"), false));
-        wrapper.s_impl.push_fn(get);
+        // The wasm class has no `Deref` (so no `get(index)` shadow exists on the wasm side): a set
+        // nominal ALWAYS keeps a wasm `get()` — dropping it would regress the JS read surface. Its
+        // body cannot delegate to a rust inherent `get()` (suppressed on bare set nominals), so it
+        // reconstructs the inner through the emitted `From<Wrapper> for <inner>` impl, then applies the
+        // usual inner→wasm boundary conversion. Non-set wrappers (and custom `@newtype <name>` getters)
+        // keep delegating to the rust getter, byte-identical.
+        if emit_getter || set_nominal {
+            let getter_body = if set_nominal
+                && !matches!(struct_config.newtype_getter.as_ref(), Some(Some(_)))
+            {
+                // qualified-path form `<T>::from` — a generic inner (`OrderedSet<u64>`) parses `<` as a
+                // comparison in the bare `T::from` spelling ("comparison operators cannot be chained").
+                format!(
+                    "<{}>::from(self.0.clone())",
+                    field_type.for_rust_member(types, false, cli)
+                )
+            } else {
+                format!("self.0.{getter_name}()")
+            };
+            let mut get = codegen::Function::new(getter_name);
+            get.vis("pub")
+                .arg_ref_self()
+                .ret(field_type.for_wasm_return(types))
+                .line(field_type.to_wasm_boundary(types, &getter_body, false));
+            wrapper.s_impl.push_fn(get);
+        }
         wrapper.push(gen_scope, types);
     }
 
     // TODO: do we want to get rid of the rust struct and embed the tag / min/max size here?
     // The tag is easy but the min/max size would require error types in any place that sets/modifies these in other structs.
-    let (mut s, mut s_impl) = create_base_rust_struct(types, type_name, true, cli);
+    let (mut s, mut s_impl) = create_base_rust_struct(
+        types,
+        type_name,
+        true,
+        // Set nominals mandate always-on encodings-ignored comparison derives (rethink fact 5).
+        if set_nominal { Some(set_demand) } else { None },
+        cli,
+    );
     if let Some(doc) = struct_config.doc.as_ref() {
         s.doc(doc);
     }
@@ -262,10 +302,18 @@ pub(super) fn generate_wrapper_struct(
         );
 
         if !enc_fields.is_empty() {
+            // A set nominal derives always-on comparisons (see `create_base_rust_struct` above), so its
+            // encodings field must be derivative-IGNORED exactly like a key-demanded struct's — union
+            // the full set demand into whatever key demand the rule already carries.
+            let enc_demand = match (types.key_demand(type_name), set_nominal) {
+                (Some(d), true) => Some(d.union(set_demand)),
+                (d, false) => d,
+                (None, true) => Some(set_demand),
+            };
             s.field(
                 format!(
                     "{}pub encodings",
-                    encoding_var_macros(types.key_demand(type_name), true, cli)
+                    encoding_var_macros(enc_demand, true, cli)
                 ),
                 format!("Option<{encoding_name}>"),
             );
@@ -298,7 +346,7 @@ pub(super) fn generate_wrapper_struct(
     if field_type.is_copy(types) && !cli.preserve_encodings {
         s.derive("Copy");
     }
-    {
+    if emit_getter {
         let mut get = codegen::Function::new(getter_name);
         get.vis("pub").arg_ref_self();
         if field_type.is_copy(types) {
@@ -582,6 +630,36 @@ pub(super) fn generate_wrapper_struct(
         .push_impl(s_impl)
         .push_impl(from_impl)
         .push_impl(from_inner_impl);
+    // Set-nominal ergonomics (Phase 2.2), for parity with what a transparent `OrderedSet`/`Vec` alias
+    // offered directly: `Deref`/`DerefMut` to the inner collection (`OrderedSet` mutation stays
+    // checked, so `DerefMut` cannot break uniqueness), borrowed + owned `IntoIterator`, and Vec
+    // conversions. The wrapper path already emits `From<inner>`/`From<Self> for inner` and `new()`.
+    // For a plain `Vec` inner (preserve, non-`[+]`) those already ARE the Vec conversions; the
+    // fallible-door inners (`NonEmptyVec`/`OrderedSet`/`NonEmptyOrderedSet`) add `From<Self> for
+    // Vec<T>` and a duplicate/emptiness-checking `TryFrom<Vec<T>>`.
+    if set_nominal {
+        let inner_ty = field_type.for_rust_member(types, false, cli);
+        let elem_ty = if let ConceptualRustType::Array(elem) = &field_type.conceptual_type {
+            elem.for_rust_member(types, false, cli)
+        } else {
+            unreachable!("a set nominal always wraps a homogeneous occurrence array")
+        };
+        let inner_is_plain_vec = inner_ty.starts_with("Vec<");
+        let owned_iter_body = if inner_is_plain_vec {
+            format!("{self_var}.into_iter()")
+        } else {
+            format!("Vec::<{elem_ty}>::from({self_var}).into_iter()")
+        };
+        let mut ergo = format!(
+            "impl std::ops::Deref for {type_name} {{\n    type Target = {inner_ty};\n\n    fn deref(&self) -> &Self::Target {{\n        &{self_var}\n    }}\n}}\n\nimpl std::ops::DerefMut for {type_name} {{\n    fn deref_mut(&mut self) -> &mut Self::Target {{\n        &mut {self_var}\n    }}\n}}\n\nimpl<'a> IntoIterator for &'a {type_name} {{\n    type Item = &'a {elem_ty};\n    type IntoIter = std::slice::Iter<'a, {elem_ty}>;\n\n    fn into_iter(self) -> Self::IntoIter {{\n        {self_var}.iter()\n    }}\n}}\n\nimpl IntoIterator for {type_name} {{\n    type Item = {elem_ty};\n    type IntoIter = std::vec::IntoIter<{elem_ty}>;\n\n    fn into_iter(self) -> Self::IntoIter {{\n        {owned_iter_body}\n    }}\n}}\n"
+        );
+        if !inner_is_plain_vec {
+            ergo.push_str(&format!(
+                "\nimpl From<{type_name}> for Vec<{elem_ty}> {{\n    fn from(wrapper: {type_name}) -> Self {{\n        Vec::from(wrapper.{inner_var})\n    }}\n}}\n\nimpl TryFrom<Vec<{elem_ty}>> for {type_name} {{\n    type Error = DeserializeError;\n\n    fn try_from(vec: Vec<{elem_ty}>) -> Result<Self, Self::Error> {{\n        Ok({type_name}::new(<{inner_ty}>::try_from(vec)?))\n    }}\n}}\n"
+            ));
+        }
+        gen_scope.rust(types, type_name).raw(&ergo);
+    }
     if !struct_config.custom_json {
         if cli.json_serde_derives {
             gen_scope

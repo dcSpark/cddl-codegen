@@ -22,29 +22,45 @@ expression: ir
             duplicates: Some(
                 Reject,
             ),
+            set_nominal: true,
         },
-        variant: Array {
-            element_type: RustType {
-                conceptual_type: Primitive(
-                    U64,
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Array(
+                    RustType {
+                        conceptual_type: Primitive(
+                            U64,
+                        ),
+                        encodings: [],
+                        config: RustTypeSerializeConfig {
+                            default: None,
+                            bounds: None,
+                            duplicates: None,
+                            float_bounds: None,
+                            basic_override: false,
+                        },
+                    },
                 ),
                 encodings: [],
                 config: RustTypeSerializeConfig {
                     default: None,
-                    bounds: None,
-                    duplicates: None,
+                    bounds: Some(
+                        (
+                            Some(
+                                1,
+                            ),
+                            None,
+                        ),
+                    ),
+                    duplicates: Some(
+                        Reject,
+                    ),
                     float_bounds: None,
                     basic_override: false,
                 },
             },
-            bounds: Some(
-                (
-                    Some(
-                        1,
-                    ),
-                    None,
-                ),
-            ),
+            min_max: None,
+            float_min_max: None,
         },
     },
     RustIdent(
@@ -66,22 +82,38 @@ expression: ir
             duplicates: Some(
                 Reject,
             ),
+            set_nominal: true,
         },
-        variant: Array {
-            element_type: RustType {
-                conceptual_type: Primitive(
-                    U64,
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Array(
+                    RustType {
+                        conceptual_type: Primitive(
+                            U64,
+                        ),
+                        encodings: [],
+                        config: RustTypeSerializeConfig {
+                            default: None,
+                            bounds: None,
+                            duplicates: None,
+                            float_bounds: None,
+                            basic_override: false,
+                        },
+                    },
                 ),
                 encodings: [],
                 config: RustTypeSerializeConfig {
                     default: None,
                     bounds: None,
-                    duplicates: None,
+                    duplicates: Some(
+                        Reject,
+                    ),
                     float_bounds: None,
                     basic_override: false,
                 },
             },
-            bounds: None,
+            min_max: None,
+            float_min_max: None,
         },
     },
     RustIdent(
@@ -99,6 +131,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Record(
             RustRecord {
@@ -107,39 +140,16 @@ expression: ir
                     RustField {
                         name: "s",
                         rust_type: RustType {
-                            conceptual_type: Alias(
-                                Rust(
-                                    RustIdent(
-                                        "DefaultSet",
-                                    ),
-                                ),
-                                Array(
-                                    RustType {
-                                        conceptual_type: Primitive(
-                                            U64,
-                                        ),
-                                        encodings: [],
-                                        config: RustTypeSerializeConfig {
-                                            default: None,
-                                            bounds: None,
-                                            duplicates: None,
-                                            float_bounds: None,
-                                            basic_override: false,
-                                        },
-                                    },
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "DefaultSet",
                                 ),
                             ),
-                            encodings: [
-                                OptionallyTagged(
-                                    258,
-                                ),
-                            ],
+                            encodings: [],
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
-                                duplicates: Some(
-                                    Reject,
-                                ),
+                                duplicates: None,
                                 float_bounds: None,
                                 basic_override: false,
                             },
@@ -165,46 +175,16 @@ expression: ir
                     RustField {
                         name: "ns",
                         rust_type: RustType {
-                            conceptual_type: Alias(
-                                Rust(
-                                    RustIdent(
-                                        "DefaultNeset",
-                                    ),
-                                ),
-                                Array(
-                                    RustType {
-                                        conceptual_type: Primitive(
-                                            U64,
-                                        ),
-                                        encodings: [],
-                                        config: RustTypeSerializeConfig {
-                                            default: None,
-                                            bounds: None,
-                                            duplicates: None,
-                                            float_bounds: None,
-                                            basic_override: false,
-                                        },
-                                    },
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "DefaultNeset",
                                 ),
                             ),
-                            encodings: [
-                                OptionallyTagged(
-                                    258,
-                                ),
-                            ],
+                            encodings: [],
                             config: RustTypeSerializeConfig {
                                 default: None,
-                                bounds: Some(
-                                    (
-                                        Some(
-                                            1,
-                                        ),
-                                        None,
-                                    ),
-                                ),
-                                duplicates: Some(
-                                    Reject,
-                                ),
+                                bounds: None,
+                                duplicates: None,
                                 float_bounds: None,
                                 basic_override: false,
                             },
@@ -230,39 +210,16 @@ expression: ir
                     RustField {
                         name: "sa",
                         rust_type: RustType {
-                            conceptual_type: Alias(
-                                Rust(
-                                    RustIdent(
-                                        "SingleArm",
-                                    ),
-                                ),
-                                Array(
-                                    RustType {
-                                        conceptual_type: Primitive(
-                                            U64,
-                                        ),
-                                        encodings: [],
-                                        config: RustTypeSerializeConfig {
-                                            default: None,
-                                            bounds: None,
-                                            duplicates: None,
-                                            float_bounds: None,
-                                            basic_override: false,
-                                        },
-                                    },
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "SingleArm",
                                 ),
                             ),
-                            encodings: [
-                                Tagged(
-                                    258,
-                                ),
-                            ],
+                            encodings: [],
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
-                                duplicates: Some(
-                                    Reject,
-                                ),
+                                duplicates: None,
                                 float_bounds: None,
                                 basic_override: false,
                             },
@@ -288,39 +245,16 @@ expression: ir
                     RustField {
                         name: "o",
                         rust_type: RustType {
-                            conceptual_type: Alias(
-                                Rust(
-                                    RustIdent(
-                                        "OptOut",
-                                    ),
-                                ),
-                                Array(
-                                    RustType {
-                                        conceptual_type: Primitive(
-                                            U64,
-                                        ),
-                                        encodings: [],
-                                        config: RustTypeSerializeConfig {
-                                            default: None,
-                                            bounds: None,
-                                            duplicates: None,
-                                            float_bounds: None,
-                                            basic_override: false,
-                                        },
-                                    },
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "OptOut",
                                 ),
                             ),
-                            encodings: [
-                                OptionallyTagged(
-                                    258,
-                                ),
-                            ],
+                            encodings: [],
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
-                                duplicates: Some(
-                                    Preserve,
-                                ),
+                                duplicates: None,
                                 float_bounds: None,
                                 basic_override: false,
                             },
@@ -362,6 +296,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Extern,
     },
@@ -384,22 +319,38 @@ expression: ir
             duplicates: Some(
                 Preserve,
             ),
+            set_nominal: true,
         },
-        variant: Array {
-            element_type: RustType {
-                conceptual_type: Primitive(
-                    U64,
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Array(
+                    RustType {
+                        conceptual_type: Primitive(
+                            U64,
+                        ),
+                        encodings: [],
+                        config: RustTypeSerializeConfig {
+                            default: None,
+                            bounds: None,
+                            duplicates: None,
+                            float_bounds: None,
+                            basic_override: false,
+                        },
+                    },
                 ),
                 encodings: [],
                 config: RustTypeSerializeConfig {
                     default: None,
                     bounds: None,
-                    duplicates: None,
+                    duplicates: Some(
+                        Preserve,
+                    ),
                     float_bounds: None,
                     basic_override: false,
                 },
             },
-            bounds: None,
+            min_max: None,
+            float_min_max: None,
         },
     },
     RustIdent(
@@ -421,22 +372,38 @@ expression: ir
             duplicates: Some(
                 Reject,
             ),
+            set_nominal: true,
         },
-        variant: Array {
-            element_type: RustType {
-                conceptual_type: Primitive(
-                    U64,
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Array(
+                    RustType {
+                        conceptual_type: Primitive(
+                            U64,
+                        ),
+                        encodings: [],
+                        config: RustTypeSerializeConfig {
+                            default: None,
+                            bounds: None,
+                            duplicates: None,
+                            float_bounds: None,
+                            basic_override: false,
+                        },
+                    },
                 ),
                 encodings: [],
                 config: RustTypeSerializeConfig {
                     default: None,
                     bounds: None,
-                    duplicates: None,
+                    duplicates: Some(
+                        Reject,
+                    ),
                     float_bounds: None,
                     basic_override: false,
                 },
             },
-            bounds: None,
+            min_max: None,
+            float_min_max: None,
         },
     },
 }

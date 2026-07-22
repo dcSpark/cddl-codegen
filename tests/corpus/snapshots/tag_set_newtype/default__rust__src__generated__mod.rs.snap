@@ -15,8 +15,135 @@ pub mod error;
 mod extern_interface_check;
 pub mod non_empty;
 pub mod ordered_set;
+impl std::ops::Deref for OptOut {
+    type Target = Vec<u64>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for OptOut {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a> IntoIterator for &'a OptOut {
+    type Item = &'a u64;
+    type IntoIter = std::slice::Iter<'a, u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for OptOut {
+    type Item = u64;
+    type IntoIter = std::vec::IntoIter<u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl std::ops::Deref for SingleArmNeset {
+    type Target = NonEmptyOrderedSet<u64>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for SingleArmNeset {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a> IntoIterator for &'a SingleArmNeset {
+    type Item = &'a u64;
+    type IntoIter = std::slice::Iter<'a, u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for SingleArmNeset {
+    type Item = u64;
+    type IntoIter = std::vec::IntoIter<u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Vec::<u64>::from(self.0).into_iter()
+    }
+}
+
+impl From<SingleArmNeset> for Vec<u64> {
+    fn from(wrapper: SingleArmNeset) -> Self {
+        Vec::from(wrapper.0)
+    }
+}
+
+impl TryFrom<Vec<u64>> for SingleArmNeset {
+    type Error = DeserializeError;
+
+    fn try_from(vec: Vec<u64>) -> Result<Self, Self::Error> {
+        Ok(SingleArmNeset::new(<NonEmptyOrderedSet<u64>>::try_from(
+            vec,
+        )?))
+    }
+}
+
+impl std::ops::Deref for SingleArmSet {
+    type Target = OrderedSet<u64>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for SingleArmSet {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a> IntoIterator for &'a SingleArmSet {
+    type Item = &'a u64;
+    type IntoIter = std::slice::Iter<'a, u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for SingleArmSet {
+    type Item = u64;
+    type IntoIter = std::vec::IntoIter<u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Vec::<u64>::from(self.0).into_iter()
+    }
+}
+
+impl From<SingleArmSet> for Vec<u64> {
+    fn from(wrapper: SingleArmSet) -> Self {
+        Vec::from(wrapper.0)
+    }
+}
+
+impl TryFrom<Vec<u64>> for SingleArmSet {
+    type Error = DeserializeError;
+
+    fn try_from(vec: Vec<u64>) -> Result<Self, Self::Error> {
+        Ok(SingleArmSet::new(<OrderedSet<u64>>::try_from(vec)?))
+    }
+}
+
 pub mod serialization;
 
+use crate::generated::error::*;
 use crate::generated::ordered_set::{NonEmptyOrderedSet, OrderedSet};
 use std::collections::BTreeMap;
 
@@ -43,14 +170,10 @@ impl Holder {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct OptOut(pub(crate) Vec<u64>);
 
 impl OptOut {
-    pub fn get(&self) -> &Vec<u64> {
-        &self.0
-    }
-
     pub fn new(inner: Vec<u64>) -> Self {
         Self(inner)
     }
@@ -143,14 +266,10 @@ impl From<PlainTable> for BTreeMap<u64, String> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct SingleArmNeset(pub(crate) NonEmptyOrderedSet<u64>);
 
 impl SingleArmNeset {
-    pub fn get(&self) -> &NonEmptyOrderedSet<u64> {
-        &self.0
-    }
-
     pub fn new(inner: NonEmptyOrderedSet<u64>) -> Self {
         Self(inner)
     }
@@ -168,14 +287,10 @@ impl From<SingleArmNeset> for NonEmptyOrderedSet<u64> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct SingleArmSet(pub(crate) OrderedSet<u64>);
 
 impl SingleArmSet {
-    pub fn get(&self) -> &OrderedSet<u64> {
-        &self.0
-    }
-
     pub fn new(inner: OrderedSet<u64>) -> Self {
         Self(inner)
     }

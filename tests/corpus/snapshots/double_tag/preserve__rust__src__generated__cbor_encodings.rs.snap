@@ -8,9 +8,20 @@ expression: content
 use crate::generated::serialization::{LenEncoding, TagPresenceEncoding};
 
 #[derive(Clone, Debug, Default)]
+pub struct ElemTaggedEncoding {
+    pub inner_tag_encoding: Option<cbor_event::Sz>,
+    pub inner_encoding: LenEncoding,
+    pub inner_elem_encodings: Vec<Option<cbor_event::Sz>>,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct HeterogeneousEncoding {
     pub inner_tag_encoding: Option<cbor_event::Sz>,
-    pub inner_tag2_encoding: TagPresenceEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct HeterogeneousSetEncoding {
+    pub inner_tag_encoding: TagPresenceEncoding,
     pub inner_encoding: LenEncoding,
     pub inner_elem_encodings: Vec<Option<cbor_event::Sz>>,
 }
@@ -20,17 +31,16 @@ pub struct HolderEncoding {
     pub len_encoding: LenEncoding,
     pub a_tag_encoding: Option<cbor_event::Sz>,
     pub a_encoding: LenEncoding,
-    pub a_elem_encodings: Vec<(
-        Option<cbor_event::Sz>,
-        LenEncoding,
-        Vec<Option<cbor_event::Sz>>,
-    )>,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct HomogeneousEncoding {
     pub inner_tag_encoding: Option<cbor_event::Sz>,
-    pub inner_tag2_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct HomogeneousInnerEncoding {
+    pub inner_tag_encoding: Option<cbor_event::Sz>,
     pub inner_encoding: LenEncoding,
     pub inner_elem_encodings: Vec<Option<cbor_event::Sz>>,
 }

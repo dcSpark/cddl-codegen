@@ -1,22 +1,22 @@
-; Stacked tag encodings — a tag applied to an already-tagged value, reached through alias/rule
-; reference stacking (literal `#6.24(#6.258(..))` is parse-rejected as doubly-nested, so the stack
-; is expressed by a tag rule wrapping another tag rule / a tag-set idiom).
+; An OUTER tag applied to a rule whose body is a NOMINAL SET (the tag-258 idiom / single-arm form).
+; Since a named non-generic 258 set NOMINALIZES (Phase 2.2), the INNER 258 tag is OWNED by the
+; nominal's own encoding struct and no longer flattens onto the holder — so the outer `#6.24` is the
+; ONLY tag level in the reference-site encoding, and the `#6.24(<258-set>)` double-tag collision class
+; is closed STRUCTURALLY by nominalization (there is nothing left to stack). This fixture pins that
+; outcome; the depth-suffixed stacking of genuinely-flattened NON-set tags (`{name}_tag_encoding` at
+; level 1, `{name}_tag{k}_encoding` at level k>=2) is pinned by
+; `robustness_tests::stacked_tag_encoding_members_are_depth_disambiguated` (non-258 tags, which stay
+; transparent aliases whose tag DOES flatten).
 ;
-; Under --preserve-encodings each tag LEVEL needs its OWN encoding member or the two levels collide
-; on one name and the encoding struct fails to compile. Levels count OUTSIDE-IN: level 1 keeps the
-; historical `{name}_tag_encoding`, level k >= 2 gets `{name}_tag{k}_encoding`.
-;
-; - `homogeneous_inner` / `homogeneous` — two MANDATORY tags stack (24 over 258), both lowering to
-;   `Option<cbor_event::Sz>`; pins `inner_tag_encoding` + `inner_tag2_encoding` and that the nested
-;   deserialize match arms bind distinct sizes (`tag_enc` / `tag_enc2`) instead of shadowing.
-; - `heterogeneous_set` / `heterogeneous` — a MANDATORY outer tag 24 over the optional-tag set idiom
-;   (258-or-untagged): level 1 is `Option<cbor_event::Sz>` (mandatory) and level 2 is
-;   `TagPresenceEncoding` (optional), pinning that the two encoding kinds sit at their own levels.
-; - `elem_tagged` / `outer_over_array` — a MANDATORY outer tag 24 over an ARRAY whose ELEMENT carries
-;   its own tag 258. The array element opens a fresh `{field}_elem` name namespace, so the element's
-;   tag is LEVEL 1 THERE (`{field}_elem_tag_encoding`) even though the field crossed tag 24 outside the
-;   array — the tag depth must RESET at the element boundary on the serialize side exactly as it does
-;   in the encoding-member derivation, or the write reads a depth-inflated var the struct never minted.
+; - `homogeneous_inner` / `homogeneous` — outer mandatory tag 24 over a single-arm 258 set nominal:
+;   `HomogeneousEncoding` carries only `inner_tag_encoding: Option<cbor_event::Sz>` (the 258 lives in
+;   `HomogeneousInnerEncoding`), and `homogeneous` serializes as tag 24 then a nominal delegation.
+; - `heterogeneous_set` / `heterogeneous` — outer mandatory tag 24 over the two-arm 258 set nominal:
+;   again only the outer `Option<cbor_event::Sz>` sits on the holder; the optional-258
+;   `TagPresenceEncoding` lives inside the nominal set.
+; - `elem_tagged` / `outer_over_array` — a MANDATORY outer tag 24 over an ARRAY whose ELEMENT is a 258
+;   set nominal: the element serializes via its own nominal deserialize, so no `{field}_elem_tag*`
+;   member is minted on the holder at all — the element boundary owns its tag through the nominal.
 ; - `holder` — embeds all three in record-field position so member-side (de)serialize compiles + roundtrips.
 homogeneous_inner = #6.258([* uint])
 homogeneous = #6.24(homogeneous_inner)

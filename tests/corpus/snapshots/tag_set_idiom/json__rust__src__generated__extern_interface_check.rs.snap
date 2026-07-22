@@ -21,14 +21,14 @@ expression: content
 fn _assert_serialize<T: cbor_event::se::Serialize>() {}
 #[allow(dead_code)]
 fn _assert_deserialize<T: crate::generated::serialization::Deserialize>() {}
-#[allow(unused_imports)]
-use crate::generated::IntNeset as _;
-#[allow(unused_imports)]
-use crate::generated::IntSet as _;
-#[allow(unused_imports)]
-use crate::generated::TextSet as _;
 #[allow(dead_code)]
 fn _extern_interface_self_check() {
     _assert_serialize::<crate::generated::Holder>();
     _assert_deserialize::<crate::generated::Holder>();
+    _assert_serialize::<crate::generated::IntNeset>();
+    _assert_deserialize::<crate::generated::IntNeset>();
+    _assert_serialize::<crate::generated::IntSet>();
+    _assert_deserialize::<crate::generated::IntSet>();
+    _assert_serialize::<crate::generated::TextSet>();
+    _assert_deserialize::<crate::generated::TextSet>();
 }

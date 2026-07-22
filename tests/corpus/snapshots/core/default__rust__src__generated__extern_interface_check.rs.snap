@@ -61,8 +61,6 @@ use crate::generated::ParenSize as _;
 #[allow(unused_imports)]
 use crate::generated::PreserveUintMap as _;
 #[allow(unused_imports)]
-use crate::generated::RejectUintSet as _;
-#[allow(unused_imports)]
 use crate::generated::StandaloneTable as _;
 #[allow(unused_imports)]
 use crate::generated::StandaloneText as _;
@@ -212,6 +210,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::PreservePmapHolder>();
     _assert_serialize::<crate::generated::RejectSetHolder>();
     _assert_deserialize::<crate::generated::RejectSetHolder>();
+    _assert_serialize::<crate::generated::RejectUintSet>();
+    _assert_deserialize::<crate::generated::RejectUintSet>();
     _assert_serialize::<crate::generated::SignBounds>();
     _assert_deserialize::<crate::generated::SignBounds>();
     _assert_serialize::<crate::generated::SignedInts>();

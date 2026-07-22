@@ -83,13 +83,101 @@ impl AsRef<cddl_lib::Holder> for Holder {
     }
 }
 
-/// `[+ uint] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door).
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct IntNeset(pub(crate) NonEmptyOrderedSet<u64>);
+pub struct IntNeset(pub(crate) cddl_lib::IntNeset);
 
 #[wasm_bindgen]
 impl IntNeset {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<IntNeset, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: &NonEmptyU64OrderedSet) -> Self {
+        Self(cddl_lib::IntNeset::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> NonEmptyU64OrderedSet {
+        <NonEmptyOrderedSet<u64>>::from(self.0.clone())
+            .clone()
+            .into()
+    }
+}
+
+impl From<cddl_lib::IntNeset> for IntNeset {
+    fn from(native: cddl_lib::IntNeset) -> Self {
+        Self(native)
+    }
+}
+
+impl From<IntNeset> for cddl_lib::IntNeset {
+    fn from(wasm: IntNeset) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::IntNeset> for IntNeset {
+    fn as_ref(&self) -> &cddl_lib::IntNeset {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct IntSet(pub(crate) cddl_lib::IntSet);
+
+#[wasm_bindgen]
+impl IntSet {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<IntSet, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: &U64OrderedSet) -> Self {
+        Self(cddl_lib::IntSet::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> U64OrderedSet {
+        <OrderedSet<u64>>::from(self.0.clone()).clone().into()
+    }
+}
+
+impl From<cddl_lib::IntSet> for IntSet {
+    fn from(native: cddl_lib::IntSet) -> Self {
+        Self(native)
+    }
+}
+
+impl From<IntSet> for cddl_lib::IntSet {
+    fn from(wasm: IntSet) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::IntSet> for IntSet {
+    fn as_ref(&self) -> &cddl_lib::IntSet {
+        &self.0
+    }
+}
+
+/// `[+ uint] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door).
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonEmptyU64OrderedSet(pub(crate) NonEmptyOrderedSet<u64>);
+
+#[wasm_bindgen]
+impl NonEmptyU64OrderedSet {
     pub fn new(first: u64) -> Self {
         Self(NonEmptyOrderedSet::new(first))
     }
@@ -106,75 +194,27 @@ impl IntNeset {
         self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
     }
 
-    pub fn try_from(elements: Vec<u64>) -> Result<IntNeset, JsError> {
+    pub fn try_from(elements: Vec<u64>) -> Result<NonEmptyU64OrderedSet, JsError> {
         NonEmptyOrderedSet::try_from(elements)
             .map(Self)
             .map_err(|e| JsError::new(&e.to_string()))
     }
 }
 
-impl From<NonEmptyOrderedSet<u64>> for IntNeset {
+impl From<NonEmptyOrderedSet<u64>> for NonEmptyU64OrderedSet {
     fn from(native: NonEmptyOrderedSet<u64>) -> Self {
         Self(native)
     }
 }
 
-impl From<IntNeset> for NonEmptyOrderedSet<u64> {
-    fn from(wasm: IntNeset) -> Self {
+impl From<NonEmptyU64OrderedSet> for NonEmptyOrderedSet<u64> {
+    fn from(wasm: NonEmptyU64OrderedSet) -> Self {
         wasm.0
     }
 }
 
-impl AsRef<NonEmptyOrderedSet<u64>> for IntNeset {
+impl AsRef<NonEmptyOrderedSet<u64>> for NonEmptyU64OrderedSet {
     fn as_ref(&self) -> &NonEmptyOrderedSet<u64> {
-        &self.0
-    }
-}
-
-/// `[* uint] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door).
-#[derive(Clone, Debug)]
-#[wasm_bindgen]
-pub struct IntSet(pub(crate) OrderedSet<u64>);
-
-#[wasm_bindgen]
-impl IntSet {
-    pub fn new() -> Self {
-        Self(OrderedSet::new())
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn get(&self, index: usize) -> u64 {
-        self.0[index]
-    }
-
-    pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
-        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
-    }
-
-    pub fn try_from(elements: Vec<u64>) -> Result<IntSet, JsError> {
-        OrderedSet::try_from(elements)
-            .map(Self)
-            .map_err(|e| JsError::new(&e.to_string()))
-    }
-}
-
-impl From<OrderedSet<u64>> for IntSet {
-    fn from(native: OrderedSet<u64>) -> Self {
-        Self(native)
-    }
-}
-
-impl From<IntSet> for OrderedSet<u64> {
-    fn from(wasm: IntSet) -> Self {
-        wasm.0
-    }
-}
-
-impl AsRef<OrderedSet<u64>> for IntSet {
-    fn as_ref(&self) -> &OrderedSet<u64> {
         &self.0
     }
 }
@@ -278,10 +318,10 @@ impl AsRef<OrderedSet<u64>> for Plain {
 /// `[* text] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door).
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct TextSet(pub(crate) OrderedSet<String>);
+pub struct TextOrderedSet(pub(crate) OrderedSet<String>);
 
 #[wasm_bindgen]
-impl TextSet {
+impl TextOrderedSet {
     pub fn new() -> Self {
         Self(OrderedSet::new())
     }
@@ -298,27 +338,118 @@ impl TextSet {
         self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
     }
 
-    pub fn try_from(elements: Vec<String>) -> Result<TextSet, JsError> {
+    pub fn try_from(elements: Vec<String>) -> Result<TextOrderedSet, JsError> {
         OrderedSet::try_from(elements)
             .map(Self)
             .map_err(|e| JsError::new(&e.to_string()))
     }
 }
 
-impl From<OrderedSet<String>> for TextSet {
+impl From<OrderedSet<String>> for TextOrderedSet {
     fn from(native: OrderedSet<String>) -> Self {
         Self(native)
     }
 }
 
-impl From<TextSet> for OrderedSet<String> {
+impl From<TextOrderedSet> for OrderedSet<String> {
+    fn from(wasm: TextOrderedSet) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<OrderedSet<String>> for TextOrderedSet {
+    fn as_ref(&self) -> &OrderedSet<String> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TextSet(pub(crate) cddl_lib::TextSet);
+
+#[wasm_bindgen]
+impl TextSet {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TextSet, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: &TextOrderedSet) -> Self {
+        Self(cddl_lib::TextSet::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> TextOrderedSet {
+        <OrderedSet<String>>::from(self.0.clone()).clone().into()
+    }
+}
+
+impl From<cddl_lib::TextSet> for TextSet {
+    fn from(native: cddl_lib::TextSet) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TextSet> for cddl_lib::TextSet {
     fn from(wasm: TextSet) -> Self {
         wasm.0
     }
 }
 
-impl AsRef<OrderedSet<String>> for TextSet {
-    fn as_ref(&self) -> &OrderedSet<String> {
+impl AsRef<cddl_lib::TextSet> for TextSet {
+    fn as_ref(&self) -> &cddl_lib::TextSet {
+        &self.0
+    }
+}
+
+/// `[* uint] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door).
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct U64OrderedSet(pub(crate) OrderedSet<u64>);
+
+#[wasm_bindgen]
+impl U64OrderedSet {
+    pub fn new() -> Self {
+        Self(OrderedSet::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
+        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<U64OrderedSet, JsError> {
+        OrderedSet::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<OrderedSet<u64>> for U64OrderedSet {
+    fn from(native: OrderedSet<u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<U64OrderedSet> for OrderedSet<u64> {
+    fn from(wasm: U64OrderedSet) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<OrderedSet<u64>> for U64OrderedSet {
+    fn as_ref(&self) -> &OrderedSet<u64> {
         &self.0
     }
 }

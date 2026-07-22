@@ -19,7 +19,10 @@ pub fn export_schemas() {
     if !schema_path.exists() {
         std::fs::create_dir(schema_path).unwrap();
     }
+    gen_json_schema!(cddl_lib::ElemTagged);
     gen_json_schema!(cddl_lib::Heterogeneous);
+    gen_json_schema!(cddl_lib::HeterogeneousSet);
     gen_json_schema!(cddl_lib::Holder);
     gen_json_schema!(cddl_lib::Homogeneous);
+    gen_json_schema!(cddl_lib::HomogeneousInner);
 }

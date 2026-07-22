@@ -85,15 +85,131 @@ impl AsRef<cddl_lib::Holder> for Holder {
     }
 }
 
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct IntNeset(pub(crate) cddl_lib::IntNeset);
+
+#[wasm_bindgen]
+impl IntNeset {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<IntNeset, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<IntNeset, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: &NonEmptyU64List) -> Self {
+        Self(cddl_lib::IntNeset::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> NonEmptyU64List {
+        <NonEmptyVec<u64>>::from(self.0.clone()).clone().into()
+    }
+}
+
+impl From<cddl_lib::IntNeset> for IntNeset {
+    fn from(native: cddl_lib::IntNeset) -> Self {
+        Self(native)
+    }
+}
+
+impl From<IntNeset> for cddl_lib::IntNeset {
+    fn from(wasm: IntNeset) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::IntNeset> for IntNeset {
+    fn as_ref(&self) -> &cddl_lib::IntNeset {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct IntSet(pub(crate) cddl_lib::IntSet);
+
+#[wasm_bindgen]
+impl IntSet {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<IntSet, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<IntSet, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: Vec<u64>) -> Self {
+        Self(cddl_lib::IntSet::new(inner))
+    }
+
+    pub fn get(&self) -> Vec<u64> {
+        <Vec<u64>>::from(self.0.clone()).clone()
+    }
+}
+
+impl From<cddl_lib::IntSet> for IntSet {
+    fn from(native: cddl_lib::IntSet) -> Self {
+        Self(native)
+    }
+}
+
+impl From<IntSet> for cddl_lib::IntSet {
+    fn from(wasm: IntSet) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::IntSet> for IntSet {
+    fn as_ref(&self) -> &cddl_lib::IntSet {
+        &self.0
+    }
+}
+
 /// `[+ u64]`: at least one element, enforced by the `NonEmptyVec` representation.
 /// Enter via `try_from` or `new(first)`.
 /// `add` can never violate the bound; removal is checked in the core type.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct IntNeset(pub(crate) NonEmptyVec<u64>);
+pub struct NonEmptyU64List(pub(crate) NonEmptyVec<u64>);
 
 #[wasm_bindgen]
-impl IntNeset {
+impl NonEmptyU64List {
     pub fn new(first: u64) -> Self {
         Self(NonEmptyVec::new(first))
     }
@@ -110,26 +226,26 @@ impl IntNeset {
         self.0.push(elem);
     }
 
-    pub fn try_from(elements: Vec<u64>) -> Result<IntNeset, JsError> {
+    pub fn try_from(elements: Vec<u64>) -> Result<NonEmptyU64List, JsError> {
         NonEmptyVec::try_from(elements)
             .map(Self)
             .map_err(|e| JsError::new(&e.to_string()))
     }
 }
 
-impl From<NonEmptyVec<u64>> for IntNeset {
+impl From<NonEmptyVec<u64>> for NonEmptyU64List {
     fn from(native: NonEmptyVec<u64>) -> Self {
         Self(native)
     }
 }
 
-impl From<IntNeset> for NonEmptyVec<u64> {
-    fn from(wasm: IntNeset) -> Self {
+impl From<NonEmptyU64List> for NonEmptyVec<u64> {
+    fn from(wasm: NonEmptyU64List) -> Self {
         wasm.0
     }
 }
 
-impl AsRef<NonEmptyVec<u64>> for IntNeset {
+impl AsRef<NonEmptyVec<u64>> for NonEmptyU64List {
     fn as_ref(&self) -> &NonEmptyVec<u64> {
         &self.0
     }
@@ -137,82 +253,58 @@ impl AsRef<NonEmptyVec<u64>> for IntNeset {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct IntSet(pub(crate) Vec<u64>);
-
-#[wasm_bindgen]
-impl IntSet {
-    pub fn new() -> Self {
-        Self(Vec::new())
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn get(&self, index: usize) -> u64 {
-        self.0[index]
-    }
-
-    pub fn add(&mut self, elem: u64) {
-        self.0.push(elem);
-    }
-}
-
-impl From<Vec<u64>> for IntSet {
-    fn from(native: Vec<u64>) -> Self {
-        Self(native)
-    }
-}
-
-impl From<IntSet> for Vec<u64> {
-    fn from(wasm: IntSet) -> Self {
-        wasm.0
-    }
-}
-
-impl AsRef<Vec<u64>> for IntSet {
-    fn as_ref(&self) -> &Vec<u64> {
-        &self.0
-    }
-}
-
-#[derive(Clone, Debug)]
-#[wasm_bindgen]
-pub struct TextSet(pub(crate) Vec<String>);
+pub struct TextSet(pub(crate) cddl_lib::TextSet);
 
 #[wasm_bindgen]
 impl TextSet {
-    pub fn new() -> Self {
-        Self(Vec::new())
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
     }
 
-    pub fn len(&self) -> usize {
-        self.0.len()
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TextSet, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
     }
 
-    pub fn get(&self, index: usize) -> String {
-        self.0[index].clone()
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
     }
 
-    pub fn add(&mut self, elem: String) {
-        self.0.push(elem);
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<TextSet, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: Vec<String>) -> Self {
+        Self(cddl_lib::TextSet::new(inner))
+    }
+
+    pub fn get(&self) -> Vec<String> {
+        <Vec<String>>::from(self.0.clone()).clone()
     }
 }
 
-impl From<Vec<String>> for TextSet {
-    fn from(native: Vec<String>) -> Self {
+impl From<cddl_lib::TextSet> for TextSet {
+    fn from(native: cddl_lib::TextSet) -> Self {
         Self(native)
     }
 }
 
-impl From<TextSet> for Vec<String> {
+impl From<TextSet> for cddl_lib::TextSet {
     fn from(wasm: TextSet) -> Self {
         wasm.0
     }
 }
 
-impl AsRef<Vec<String>> for TextSet {
-    fn as_ref(&self) -> &Vec<String> {
+impl AsRef<cddl_lib::TextSet> for TextSet {
+    fn as_ref(&self) -> &cddl_lib::TextSet {
         &self.0
     }
 }

@@ -18,6 +18,52 @@ pub mod non_empty;
 pub mod non_empty_map;
 pub mod ordered_set;
 pub mod pair_map;
+impl std::ops::Deref for RejectUintSet {
+    type Target = OrderedSet<u64>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for RejectUintSet {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a> IntoIterator for &'a RejectUintSet {
+    type Item = &'a u64;
+    type IntoIter = std::slice::Iter<'a, u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for RejectUintSet {
+    type Item = u64;
+    type IntoIter = std::vec::IntoIter<u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Vec::<u64>::from(self.0).into_iter()
+    }
+}
+
+impl From<RejectUintSet> for Vec<u64> {
+    fn from(wrapper: RejectUintSet) -> Self {
+        Vec::from(wrapper.0)
+    }
+}
+
+impl TryFrom<Vec<u64>> for RejectUintSet {
+    type Error = DeserializeError;
+
+    fn try_from(vec: Vec<u64>) -> Result<Self, Self::Error> {
+        Ok(RejectUintSet::new(<OrderedSet<u64>>::try_from(vec)?))
+    }
+}
+
 pub mod serialization;
 // cddl-codegen extern re-export contract: this crate's hand-written root lib.rs must re-export
 // each name below (`pub use <your_module>::<Name>;`) so the generated glue resolves against the
@@ -1448,9 +1494,26 @@ impl RejectSetHolder {
     }
 }
 
-/// The tag-258 set idiom: the tag is an encoding detail — both the `#6.258(...)` and the bare-array wire forms are accepted (serialization defaults to tagged), so either round-trips byte-exactly.
-/// `@duplicates reject`: a repeated element is refused (a `DuplicateKey` error) on both the wire and the API; accepted (duplicate-free) input re-emits byte-exactly in wire order (the set is order-preserving, never sorted).
-pub type RejectUintSet = OrderedSet<u64>;
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct RejectUintSet(pub(crate) OrderedSet<u64>);
+
+impl RejectUintSet {
+    pub fn new(inner: OrderedSet<u64>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<OrderedSet<u64>> for RejectUintSet {
+    fn from(inner: OrderedSet<u64>) -> Self {
+        RejectUintSet::new(inner)
+    }
+}
+
+impl From<RejectUintSet> for OrderedSet<u64> {
+    fn from(wrapper: RejectUintSet) -> Self {
+        wrapper.0
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct Second {

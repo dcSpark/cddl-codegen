@@ -16,10 +16,137 @@ pub mod non_empty;
 pub mod ordered_hash_map;
 pub mod ordered_set;
 extern crate derivative;
-pub mod cbor_encodings;
 mod extern_interface_check;
+impl std::ops::Deref for OptOut {
+    type Target = Vec<u64>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl std::ops::DerefMut for OptOut {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+
+impl<'a> IntoIterator for &'a OptOut {
+    type Item = &'a u64;
+    type IntoIter = std::slice::Iter<'a, u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.iter()
+    }
+}
+
+impl IntoIterator for OptOut {
+    type Item = u64;
+    type IntoIter = std::vec::IntoIter<u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.into_iter()
+    }
+}
+
+impl std::ops::Deref for SingleArmNeset {
+    type Target = NonEmptyOrderedSet<u64>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl std::ops::DerefMut for SingleArmNeset {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+
+impl<'a> IntoIterator for &'a SingleArmNeset {
+    type Item = &'a u64;
+    type IntoIter = std::slice::Iter<'a, u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.iter()
+    }
+}
+
+impl IntoIterator for SingleArmNeset {
+    type Item = u64;
+    type IntoIter = std::vec::IntoIter<u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Vec::<u64>::from(self.inner).into_iter()
+    }
+}
+
+impl From<SingleArmNeset> for Vec<u64> {
+    fn from(wrapper: SingleArmNeset) -> Self {
+        Vec::from(wrapper.inner)
+    }
+}
+
+impl TryFrom<Vec<u64>> for SingleArmNeset {
+    type Error = DeserializeError;
+
+    fn try_from(vec: Vec<u64>) -> Result<Self, Self::Error> {
+        Ok(SingleArmNeset::new(<NonEmptyOrderedSet<u64>>::try_from(
+            vec,
+        )?))
+    }
+}
+
+impl std::ops::Deref for SingleArmSet {
+    type Target = OrderedSet<u64>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl std::ops::DerefMut for SingleArmSet {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+
+impl<'a> IntoIterator for &'a SingleArmSet {
+    type Item = &'a u64;
+    type IntoIter = std::slice::Iter<'a, u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.iter()
+    }
+}
+
+impl IntoIterator for SingleArmSet {
+    type Item = u64;
+    type IntoIter = std::vec::IntoIter<u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Vec::<u64>::from(self.inner).into_iter()
+    }
+}
+
+impl From<SingleArmSet> for Vec<u64> {
+    fn from(wrapper: SingleArmSet) -> Self {
+        Vec::from(wrapper.inner)
+    }
+}
+
+impl TryFrom<Vec<u64>> for SingleArmSet {
+    type Error = DeserializeError;
+
+    fn try_from(vec: Vec<u64>) -> Result<Self, Self::Error> {
+        Ok(SingleArmSet::new(<OrderedSet<u64>>::try_from(vec)?))
+    }
+}
+
+pub mod cbor_encodings;
 pub mod serialization;
 
+use crate::generated::error::*;
 use crate::generated::ordered_hash_map::OrderedHashMap;
 use crate::generated::ordered_set::{NonEmptyOrderedSet, OrderedSet};
 use cbor_encodings::{
@@ -60,17 +187,20 @@ impl Holder {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, derivative::Derivative)]
+#[derivative(Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct OptOut {
     pub(crate) inner: Vec<u64>,
+    #[derivative(
+        PartialEq = "ignore",
+        Ord = "ignore",
+        PartialOrd = "ignore",
+        Hash = "ignore"
+    )]
     pub encodings: Option<OptOutEncoding>,
 }
 
 impl OptOut {
-    pub fn get(&self) -> &Vec<u64> {
-        &self.inner
-    }
-
     pub fn new(inner: Vec<u64>) -> Self {
         Self {
             inner,
@@ -184,17 +314,20 @@ impl From<PlainTable> for OrderedHashMap<u64, String> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, derivative::Derivative)]
+#[derivative(Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct SingleArmNeset {
     pub(crate) inner: NonEmptyOrderedSet<u64>,
+    #[derivative(
+        PartialEq = "ignore",
+        Ord = "ignore",
+        PartialOrd = "ignore",
+        Hash = "ignore"
+    )]
     pub encodings: Option<SingleArmNesetEncoding>,
 }
 
 impl SingleArmNeset {
-    pub fn get(&self) -> &NonEmptyOrderedSet<u64> {
-        &self.inner
-    }
-
     pub fn new(inner: NonEmptyOrderedSet<u64>) -> Self {
         Self {
             inner,
@@ -215,17 +348,20 @@ impl From<SingleArmNeset> for NonEmptyOrderedSet<u64> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, derivative::Derivative)]
+#[derivative(Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct SingleArmSet {
     pub(crate) inner: OrderedSet<u64>,
+    #[derivative(
+        PartialEq = "ignore",
+        Ord = "ignore",
+        PartialOrd = "ignore",
+        Hash = "ignore"
+    )]
     pub encodings: Option<SingleArmSetEncoding>,
 }
 
 impl SingleArmSet {
-    pub fn get(&self) -> &OrderedSet<u64> {
-        &self.inner
-    }
-
     pub fn new(inner: OrderedSet<u64>) -> Self {
         Self {
             inner,

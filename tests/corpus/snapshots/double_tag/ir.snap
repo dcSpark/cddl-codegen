@@ -22,39 +22,7 @@ expression: ir
             duplicates: Some(
                 Reject,
             ),
-        },
-        variant: Array {
-            element_type: RustType {
-                conceptual_type: Primitive(
-                    U64,
-                ),
-                encodings: [],
-                config: RustTypeSerializeConfig {
-                    default: None,
-                    bounds: None,
-                    duplicates: None,
-                    float_bounds: None,
-                    basic_override: false,
-                },
-            },
-            bounds: None,
-        },
-    },
-    RustIdent(
-        "Heterogeneous",
-    ): RustStruct {
-        ident: RustIdent(
-            "Heterogeneous",
-        ),
-        tag: None,
-        tag_optional: false,
-        config: RustStructConfig {
-            custom_json: false,
-            custom_serialize: None,
-            custom_deserialize: None,
-            doc: None,
-            newtype_getter: None,
-            duplicates: None,
+            set_nominal: true,
         },
         variant: Wrapper {
             wrapped: RustType {
@@ -73,10 +41,46 @@ expression: ir
                         },
                     },
                 ),
-                encodings: [
-                    OptionallyTagged(
-                        258,
+                encodings: [],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    duplicates: Some(
+                        Reject,
                     ),
+                    float_bounds: None,
+                    basic_override: false,
+                },
+            },
+            min_max: None,
+            float_min_max: None,
+        },
+    },
+    RustIdent(
+        "Heterogeneous",
+    ): RustStruct {
+        ident: RustIdent(
+            "Heterogeneous",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Rust(
+                    RustIdent(
+                        "HeterogeneousSet",
+                    ),
+                ),
+                encodings: [
                     Tagged(
                         24,
                     ),
@@ -84,9 +88,7 @@ expression: ir
                 config: RustTypeSerializeConfig {
                     default: None,
                     bounds: None,
-                    duplicates: Some(
-                        Reject,
-                    ),
+                    duplicates: None,
                     float_bounds: None,
                     basic_override: false,
                 },
@@ -114,22 +116,38 @@ expression: ir
             duplicates: Some(
                 Reject,
             ),
+            set_nominal: true,
         },
-        variant: Array {
-            element_type: RustType {
-                conceptual_type: Primitive(
-                    U64,
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Array(
+                    RustType {
+                        conceptual_type: Primitive(
+                            U64,
+                        ),
+                        encodings: [],
+                        config: RustTypeSerializeConfig {
+                            default: None,
+                            bounds: None,
+                            duplicates: None,
+                            float_bounds: None,
+                            basic_override: false,
+                        },
+                    },
                 ),
                 encodings: [],
                 config: RustTypeSerializeConfig {
                     default: None,
                     bounds: None,
-                    duplicates: None,
+                    duplicates: Some(
+                        Reject,
+                    ),
                     float_bounds: None,
                     basic_override: false,
                 },
             },
-            bounds: None,
+            min_max: None,
+            float_min_max: None,
         },
     },
     RustIdent(
@@ -147,6 +165,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Record(
             RustRecord {
@@ -233,39 +252,16 @@ expression: ir
                                 ),
                                 Array(
                                     RustType {
-                                        conceptual_type: Alias(
-                                            Rust(
-                                                RustIdent(
-                                                    "ElemTagged",
-                                                ),
-                                            ),
-                                            Array(
-                                                RustType {
-                                                    conceptual_type: Primitive(
-                                                        U64,
-                                                    ),
-                                                    encodings: [],
-                                                    config: RustTypeSerializeConfig {
-                                                        default: None,
-                                                        bounds: None,
-                                                        duplicates: None,
-                                                        float_bounds: None,
-                                                        basic_override: false,
-                                                    },
-                                                },
+                                        conceptual_type: Rust(
+                                            RustIdent(
+                                                "ElemTagged",
                                             ),
                                         ),
-                                        encodings: [
-                                            Tagged(
-                                                258,
-                                            ),
-                                        ],
+                                        encodings: [],
                                         config: RustTypeSerializeConfig {
                                             default: None,
                                             bounds: None,
-                                            duplicates: Some(
-                                                Reject,
-                                            ),
+                                            duplicates: None,
                                             float_bounds: None,
                                             basic_override: false,
                                         },
@@ -322,28 +318,16 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Wrapper {
             wrapped: RustType {
-                conceptual_type: Array(
-                    RustType {
-                        conceptual_type: Primitive(
-                            U64,
-                        ),
-                        encodings: [],
-                        config: RustTypeSerializeConfig {
-                            default: None,
-                            bounds: None,
-                            duplicates: None,
-                            float_bounds: None,
-                            basic_override: false,
-                        },
-                    },
+                conceptual_type: Rust(
+                    RustIdent(
+                        "HomogeneousInner",
+                    ),
                 ),
                 encodings: [
-                    Tagged(
-                        258,
-                    ),
                     Tagged(
                         24,
                     ),
@@ -351,9 +335,7 @@ expression: ir
                 config: RustTypeSerializeConfig {
                     default: None,
                     bounds: None,
-                    duplicates: Some(
-                        Reject,
-                    ),
+                    duplicates: None,
                     float_bounds: None,
                     basic_override: false,
                 },
@@ -381,22 +363,38 @@ expression: ir
             duplicates: Some(
                 Reject,
             ),
+            set_nominal: true,
         },
-        variant: Array {
-            element_type: RustType {
-                conceptual_type: Primitive(
-                    U64,
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Array(
+                    RustType {
+                        conceptual_type: Primitive(
+                            U64,
+                        ),
+                        encodings: [],
+                        config: RustTypeSerializeConfig {
+                            default: None,
+                            bounds: None,
+                            duplicates: None,
+                            float_bounds: None,
+                            basic_override: false,
+                        },
+                    },
                 ),
                 encodings: [],
                 config: RustTypeSerializeConfig {
                     default: None,
                     bounds: None,
-                    duplicates: None,
+                    duplicates: Some(
+                        Reject,
+                    ),
                     float_bounds: None,
                     basic_override: false,
                 },
             },
-            bounds: None,
+            min_max: None,
+            float_min_max: None,
         },
     },
     RustIdent(
@@ -414,6 +412,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Extern,
     },
@@ -434,42 +433,20 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Array {
             element_type: RustType {
-                conceptual_type: Alias(
-                    Rust(
-                        RustIdent(
-                            "ElemTagged",
-                        ),
-                    ),
-                    Array(
-                        RustType {
-                            conceptual_type: Primitive(
-                                U64,
-                            ),
-                            encodings: [],
-                            config: RustTypeSerializeConfig {
-                                default: None,
-                                bounds: None,
-                                duplicates: None,
-                                float_bounds: None,
-                                basic_override: false,
-                            },
-                        },
+                conceptual_type: Rust(
+                    RustIdent(
+                        "ElemTagged",
                     ),
                 ),
-                encodings: [
-                    Tagged(
-                        258,
-                    ),
-                ],
+                encodings: [],
                 config: RustTypeSerializeConfig {
                     default: None,
                     bounds: None,
-                    duplicates: Some(
-                        Reject,
-                    ),
+                    duplicates: None,
                     float_bounds: None,
                     basic_override: false,
                 },

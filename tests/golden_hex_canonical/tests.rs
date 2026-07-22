@@ -268,7 +268,7 @@ mod golden_hex_canonical {
         &[0x81, 0xdb, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x81, 0x61, 0x61],
         &[0x81, 0xd9, 0x01, 0x02, 0x81, 0x61, 0x61],
         |d: &OptSetHolder| {
-            assert_eq!(d.s, vec!["a".to_string()]);
+            assert_eq!(*d.s, vec!["a".to_string()]);
         }
     );
     // untagged stays untagged: canonicality governs encoding MINIMALITY, not which arm the author
@@ -280,7 +280,7 @@ mod golden_hex_canonical {
         &[0x81, 0x81, 0x61, 0x61],
         &[0x81, 0x81, 0x61, 0x61],
         |d: &OptSetHolder| {
-            assert_eq!(d.s, vec!["a".to_string()]);
+            assert_eq!(*d.s, vec!["a".to_string()]);
         }
     );
 

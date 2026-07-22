@@ -18,6 +18,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Array {
             element_type: RustType {
@@ -60,6 +61,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Extern,
     },
@@ -78,6 +80,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Record(
             RustRecord {
@@ -276,6 +279,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Array {
             element_type: RustType {

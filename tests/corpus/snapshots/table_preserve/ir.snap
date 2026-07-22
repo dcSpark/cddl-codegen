@@ -18,6 +18,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Record(
             RustRecord {
@@ -352,6 +353,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Extern,
     },
@@ -370,6 +372,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: TypeChoice {
             variants: [
@@ -560,6 +563,7 @@ expression: ir
             duplicates: Some(
                 Preserve,
             ),
+            set_nominal: false,
         },
         variant: Table {
             domain: RustType {
@@ -610,6 +614,7 @@ expression: ir
             duplicates: Some(
                 Preserve,
             ),
+            set_nominal: false,
         },
         variant: Table {
             domain: RustType {
@@ -665,6 +670,7 @@ expression: ir
             duplicates: Some(
                 Preserve,
             ),
+            set_nominal: false,
         },
         variant: Table {
             domain: RustType {
@@ -713,6 +719,7 @@ expression: ir
             duplicates: Some(
                 Preserve,
             ),
+            set_nominal: false,
         },
         variant: Table {
             domain: RustType {

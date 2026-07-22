@@ -18,6 +18,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Record(
             RustRecord {
@@ -252,6 +253,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Extern,
     },
@@ -276,6 +278,7 @@ expression: ir
             duplicates: Some(
                 Preserve,
             ),
+            set_nominal: true,
         },
         variant: Wrapper {
             wrapped: RustType {
@@ -328,6 +331,7 @@ expression: ir
             duplicates: Some(
                 Reject,
             ),
+            set_nominal: false,
         },
         variant: Wrapper {
             wrapped: RustType {
@@ -387,6 +391,7 @@ expression: ir
             duplicates: Some(
                 Reject,
             ),
+            set_nominal: false,
         },
         variant: Wrapper {
             wrapped: RustType {
@@ -437,6 +442,7 @@ expression: ir
                 None,
             ),
             duplicates: None,
+            set_nominal: false,
         },
         variant: Wrapper {
             wrapped: RustType {
@@ -502,6 +508,7 @@ expression: ir
             duplicates: Some(
                 Reject,
             ),
+            set_nominal: true,
         },
         variant: Wrapper {
             wrapped: RustType {
@@ -563,6 +570,7 @@ expression: ir
             duplicates: Some(
                 Reject,
             ),
+            set_nominal: true,
         },
         variant: Wrapper {
             wrapped: RustType {
