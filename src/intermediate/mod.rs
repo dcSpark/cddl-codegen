@@ -1870,7 +1870,7 @@ impl<'a> IntermediateTypes<'a> {
     pub fn register_rust_struct(
         &mut self,
         parent_visitor: &ParentVisitor,
-        rust_struct: RustStruct,
+        mut rust_struct: RustStruct,
         cli: &Cli,
     ) {
         match &rust_struct.variant {
@@ -1971,6 +1971,32 @@ impl<'a> IntermediateTypes<'a> {
                 self.mark_new_can_fail(rust_struct.ident.clone());
             }
             _ => (),
+        }
+        // A `@newtype` wrapper over an INLINE ARRAY set (`#6.258([* a]) ; @newtype`,
+        // `[* a] ; @newtype @duplicates reject`) selects its inner representation by the effective
+        // `@duplicates` policy exactly as a transparent array alias does (the `Array` arm above
+        // `with_duplicates_policy` its stored member type): reject ⇒ the `OrderedSet`/`NonEmptyOrderedSet`
+        // uniqueness twin, preserve ⇒ today's plain `Vec`/`NonEmptyVec`. The policy is written on THIS
+        // rule (an explicit `@duplicates` directive or the single-arm registry default) so it lives in
+        // the wrapper's struct config, but the inline array type built at the parse site carries none —
+        // thread it onto the STORED wrapped type here so `generate_wrapper_struct` (which reads the inner
+        // via the wrapped type, not the struct config) and every IR walker see one consistent shape.
+        // Only override when this rule actually carries a policy: a `@newtype` over a REFERENCED set
+        // rule (`homogeneous = #6.24(homogeneous_inner)`) has no directive of its own, and its wrapped
+        // type already carries the referenced rule's policy through the alias — overwriting with `None`
+        // would clobber that inherited reject/preserve back to a plain `Vec`.
+        // Scoped to ARRAY wrapped types deliberately: the table twin (`{* k => v} ; @newtype` +
+        // `@duplicates preserve` ⇒ a `PairMap` inner) has NO wired wasm boundary — the synthesized
+        // structural map wasm wrapper class wraps `BTreeMap`, not `PairMap` (a preserve-table ALIAS
+        // works under wasm only because the named rule itself becomes the `PairMap` wasm class). Wiring
+        // that PairMap-aware synthesized wasm class is Phase 2.2's per-kind wrapper work; until then the
+        // parse site hard-rejects `@duplicates` on a `@newtype` table rather than emit a broken wasm
+        // crate or silently drop the directive.
+        if let Some(policy) = rust_struct.config().duplicates
+            && let RustStructType::Wrapper { wrapped, .. } = &mut rust_struct.variant
+            && matches!(wrapped.conceptual_type, ConceptualRustType::Array(_))
+        {
+            *wrapped = wrapped.clone().with_duplicates_policy(Some(policy));
         }
         self.rust_structs
             .insert(rust_struct.ident().clone(), rust_struct);

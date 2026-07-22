@@ -1412,6 +1412,154 @@ fn newtype_over_plain_reject_ordered_set_converts_wasm_boundary() {
     );
 }
 
+/// Gap 1 (parse-side): a single-arm mandatory-tag `#6.258([* a]) ; @newtype` wrapper picks up the
+/// well-known-tag registry's set-semantics default (reject) exactly as the plain single-arm array
+/// rule does — its inner is the `OrderedSet` uniqueness twin, never a plain `Vec`. Before the fix the
+/// `@newtype` branch passed raw `rule_metadata` (never consulting `single_arm_array_effective_metadata`),
+/// so the registry default was silently dropped and the inner stayed `Vec<u64>`.
+#[test]
+fn single_arm_258_newtype_defaults_to_reject_ordered_set() {
+    const CDDL: &str = "foo = #6.258([* uint]) ; @newtype\n\
+                        holder = [f: foo]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_single_arm_258_newtype_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let out = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "single_arm_258_newtype_unused",
+    ]))
+    .expect("a single-arm 258 @newtype rule must generate cleanly");
+    std::fs::remove_file(&path).ok();
+    let src = out.values().cloned().collect::<Vec<_>>().join("\n");
+    assert!(
+        src.contains("pub struct Foo(pub(crate) OrderedSet<u64>)"),
+        "a single-arm 258 @newtype wrapper must default to the OrderedSet twin (registry set semantics), got:\n{src}"
+    );
+    assert!(
+        !src.contains("pub struct Foo(pub(crate) Vec<u64>)"),
+        "the plain-Vec wrapper (silently-dropped registry default) must NOT appear, got:\n{src}"
+    );
+}
+
+/// Gap 2 (generation-side): an explicit `[* a] ; @newtype @duplicates reject` captures the directive
+/// in the wrapper's struct config, but the wrapped inner type must ALSO become the `OrderedSet`
+/// uniqueness twin. Before the fix the directive was captured yet never consumed at the wrapper seam:
+/// the inner stayed `Vec<u64>` and the generated code contained no `try_from`/`DuplicateKey` door at
+/// all. The `[+]` non-empty flavor selects `NonEmptyOrderedSet`.
+#[test]
+fn newtype_plain_reject_selects_ordered_set_inner() {
+    for (occ, twin) in [("*", "OrderedSet<u64>"), ("+", "NonEmptyOrderedSet<u64>")] {
+        let cddl = format!("foo = [{occ} uint] ; @newtype @duplicates reject\nholder = [f: foo]\n");
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_newtype_plain_reject_{}_{}.cddl",
+            std::process::id(),
+            occ
+        ));
+        std::fs::write(&path, &cddl).unwrap();
+        let out = crate::api::generated_strings(&Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "newtype_plain_reject_unused",
+        ]))
+        .unwrap_or_else(|e| {
+            panic!("a @newtype @duplicates reject rule must generate cleanly: {e}")
+        });
+        std::fs::remove_file(&path).ok();
+        let src = out.values().cloned().collect::<Vec<_>>().join("\n");
+        assert!(
+            src.contains(&format!("pub struct Foo(pub(crate) {twin})")),
+            "a @newtype @duplicates reject `[{occ}]` wrapper must wrap {twin}, got:\n{src}"
+        );
+        assert!(
+            !src.contains("pub struct Foo(pub(crate) Vec<u64>)")
+                && !src.contains("pub struct Foo(pub(crate) NonEmptyVec<u64>)"),
+            "the duplicate-permitting Vec inner (dropped directive) must NOT appear for `[{occ}]`, got:\n{src}"
+        );
+    }
+}
+
+/// Gap 3 (dispatch-side): `@newtype` on the collapsed two-arm 258 idiom
+/// (`#6.258([* a]) / [* a] ; @newtype`) is hard-rejected for this phase. The structural collapse turns
+/// the two arms into one transparent optionally-tagged collection with no wrapper struct to carry a
+/// newtype getter, so the directive would be silently dropped. The rejection names the rule, states the
+/// directive is not yet meaningful on the collapsed idiom, and points at the single-arm workaround. The
+/// message text is a pinned key (Phase 2.2's nominalization subsumes this rejection).
+#[test]
+fn newtype_on_two_arm_258_idiom_rejects_gracefully() {
+    const CDDL: &str = "foo = #6.258([* uint]) / [* uint] ; @newtype\n\
+                        holder = [f: foo]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_newtype_two_arm_258_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let result = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "newtype_two_arm_258_unused",
+    ]));
+    std::fs::remove_file(&path).ok();
+    let err = result.expect_err(
+        "@newtype on the collapsed two-arm 258 idiom must be a graceful Err, not a silent drop",
+    );
+    let msg = err.to_string();
+    assert!(
+        msg.contains("@newtype on rule `Foo`")
+            && msg.contains("collapsed two-arm set idiom")
+            && msg.contains("#6.258([* a]) ; @newtype"),
+        "the rejection must name the rule, the collapsed-idiom reason, and the single-arm workaround, got: {msg}"
+    );
+}
+
+/// Gap-2 table corner: `@duplicates` on a `@newtype` TABLE (`{* k => v} ; @newtype @duplicates …`)
+/// is hard-rejected this phase. A `preserve` policy would swap the wrapper's inner to the `PairMap`
+/// twin, but the synthesized structural map wasm wrapper class wraps `BTreeMap`, not `PairMap`, so the
+/// wasm crate would not compile — the boundary is pinned loudly rather than silenced or shipped broken.
+/// The message names the rule and the transparent-table-alias workaround. Pinned key (Phase 2.2 wires
+/// the PairMap wasm wrapper and subsumes this).
+#[test]
+fn newtype_table_duplicates_rejects_gracefully() {
+    for policy in ["preserve", "reject"] {
+        let cddl = format!(
+            "foo = {{ * uint => text }} ; @newtype @duplicates {policy}\nholder = [f: foo]\n"
+        );
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_newtype_table_dup_{}_{}.cddl",
+            std::process::id(),
+            policy
+        ));
+        std::fs::write(&path, &cddl).unwrap();
+        let result = crate::api::generated_strings(&Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "newtype_table_dup_unused",
+            "--wasm=true",
+        ]));
+        std::fs::remove_file(&path).ok();
+        let err = result.expect_err(
+            "@duplicates on a @newtype table must be a graceful Err (unwired PairMap wasm boundary)",
+        );
+        let msg = err.to_string();
+        assert!(
+            msg.contains("@duplicates on rule `Foo`")
+                && msg.contains("@newtype` table")
+                && msg.contains("transparent table alias"),
+            "the rejection must name the rule and the table-alias workaround, got: {msg}"
+        );
+    }
+}
+
 /// A `@duplicates reject` named `[+ elem]` rule must NOT capture an inline `[+ elem]` of the same
 /// element for the wasm inline-dedup: inline occurrences are directive-less (always preserve), so
 /// their rust member is `NonEmptyVec` while the reject rule's wrapper wraps `NonEmptyOrderedSet` —

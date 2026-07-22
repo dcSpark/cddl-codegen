@@ -1,0 +1,194 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+pub mod error;
+mod extern_interface_check;
+pub mod non_empty;
+pub mod ordered_set;
+pub mod serialization;
+
+use crate::generated::ordered_set::{NonEmptyOrderedSet, OrderedSet};
+use std::collections::BTreeMap;
+
+#[derive(Clone, Debug)]
+pub struct Holder {
+    pub s: SingleArmSet,
+    pub ns: SingleArmNeset,
+    pub r: PlainReject,
+    pub nr: PlainNesetReject,
+    pub o: OptOut,
+    pub t: PlainTable,
+}
+
+impl Holder {
+    pub fn new(
+        s: SingleArmSet,
+        ns: SingleArmNeset,
+        r: PlainReject,
+        nr: PlainNesetReject,
+        o: OptOut,
+        t: PlainTable,
+    ) -> Self {
+        Self { s, ns, r, nr, o, t }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct OptOut(pub(crate) Vec<u64>);
+
+impl OptOut {
+    pub fn get(&self) -> &Vec<u64> {
+        &self.0
+    }
+
+    pub fn new(inner: Vec<u64>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<Vec<u64>> for OptOut {
+    fn from(inner: Vec<u64>) -> Self {
+        OptOut::new(inner)
+    }
+}
+
+impl From<OptOut> for Vec<u64> {
+    fn from(wrapper: OptOut) -> Self {
+        wrapper.0
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PlainNesetReject(pub(crate) NonEmptyOrderedSet<u64>);
+
+impl PlainNesetReject {
+    pub fn get(&self) -> &NonEmptyOrderedSet<u64> {
+        &self.0
+    }
+
+    pub fn new(inner: NonEmptyOrderedSet<u64>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<NonEmptyOrderedSet<u64>> for PlainNesetReject {
+    fn from(inner: NonEmptyOrderedSet<u64>) -> Self {
+        PlainNesetReject::new(inner)
+    }
+}
+
+impl From<PlainNesetReject> for NonEmptyOrderedSet<u64> {
+    fn from(wrapper: PlainNesetReject) -> Self {
+        wrapper.0
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PlainReject(pub(crate) OrderedSet<u64>);
+
+impl PlainReject {
+    pub fn get(&self) -> &OrderedSet<u64> {
+        &self.0
+    }
+
+    pub fn new(inner: OrderedSet<u64>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<OrderedSet<u64>> for PlainReject {
+    fn from(inner: OrderedSet<u64>) -> Self {
+        PlainReject::new(inner)
+    }
+}
+
+impl From<PlainReject> for OrderedSet<u64> {
+    fn from(wrapper: PlainReject) -> Self {
+        wrapper.0
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PlainTable(pub(crate) BTreeMap<u64, String>);
+
+impl PlainTable {
+    pub fn get(&self) -> &BTreeMap<u64, String> {
+        &self.0
+    }
+
+    pub fn new(inner: BTreeMap<u64, String>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<BTreeMap<u64, String>> for PlainTable {
+    fn from(inner: BTreeMap<u64, String>) -> Self {
+        PlainTable::new(inner)
+    }
+}
+
+impl From<PlainTable> for BTreeMap<u64, String> {
+    fn from(wrapper: PlainTable) -> Self {
+        wrapper.0
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SingleArmNeset(pub(crate) NonEmptyOrderedSet<u64>);
+
+impl SingleArmNeset {
+    pub fn get(&self) -> &NonEmptyOrderedSet<u64> {
+        &self.0
+    }
+
+    pub fn new(inner: NonEmptyOrderedSet<u64>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<NonEmptyOrderedSet<u64>> for SingleArmNeset {
+    fn from(inner: NonEmptyOrderedSet<u64>) -> Self {
+        SingleArmNeset::new(inner)
+    }
+}
+
+impl From<SingleArmNeset> for NonEmptyOrderedSet<u64> {
+    fn from(wrapper: SingleArmNeset) -> Self {
+        wrapper.0
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SingleArmSet(pub(crate) OrderedSet<u64>);
+
+impl SingleArmSet {
+    pub fn get(&self) -> &OrderedSet<u64> {
+        &self.0
+    }
+
+    pub fn new(inner: OrderedSet<u64>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<OrderedSet<u64>> for SingleArmSet {
+    fn from(inner: OrderedSet<u64>) -> Self {
+        SingleArmSet::new(inner)
+    }
+}
+
+impl From<SingleArmSet> for OrderedSet<u64> {
+    fn from(wrapper: SingleArmSet) -> Self {
+        wrapper.0
+    }
+}

@@ -583,6 +583,21 @@ fn parse_type_choices(
             // Tag 258 additionally acquires a registry default: a no-directive 258 SET (array inner)
             // defaults to `@duplicates reject`. Extend the collapse notice to state it and the opt-out
             // when that default applies; no such wording when the directive is explicit (either value).
+            // `@newtype` on the collapsed two-arm idiom is not yet meaningful: the arms collapse into
+            // one transparent optionally-tagged collection with no wrapper struct to carry a newtype
+            // getter, so the directive would be silently dropped. Reject loudly for this phase.
+            // draft/set-architecture-plan.md "Phase 2.2 — named set rules nominalize" emits the wrapper
+            // struct for this idiom and subsumes this rejection. The message text is a pinned key.
+            if rule_metadata.newtype.is_some() {
+                types.record_rejection(format!(
+                    "@newtype on rule `{name}`: this directive is not yet meaningful on a collapsed \
+                     two-arm set idiom (`#6.{set_tag}([* a]) / [* a]`) — the two arms collapse into one \
+                     transparent optionally-tagged collection with no wrapper struct to carry the \
+                     newtype getter, so it would be silently dropped. Use the single-arm mandatory-tag \
+                     form `#6.258([* a]) ; @newtype` (which produces a newtype wrapper), or remove \
+                     `@newtype` from this rule."
+                ));
+            }
             let is_array = matches!(base.conceptual_type, ConceptualRustType::Array(_));
             let defaulted = rule_metadata.duplicates.is_none()
                 && well_known_tag_default_duplicates(set_tag, is_array).is_some();
@@ -3306,118 +3321,145 @@ fn parse_group_choice(
     } else {
         rule_metadata
     };
-    let rust_struct =
-        match parse_group_type(types, parent_visitor, group_choice, rep, Some(name), cli) {
-            GroupParsingType::HomogenousArray(element_type, bounds) => {
-                // Array-shaped collection: `@duplicates reject` is LIVE (rides the alias built in
-                // `register_rust_struct`), `preserve` is the default (accepted no-op). Nothing to
-                // reject here.
-                // A plain group used as the array element (`pair = (int, tstr)`, `a = [* pair]`) must be
-                // registered as a concrete Array-rep rust struct, exactly like the anonymous member-array
-                // path (`rust_type_from_type2`'s `Type2::Array` arm) and the record path both do. Without
-                // this the element ident stays an unregistered plain group and `is_enum`/`for_rust_member`
-                // trip their "must be a struct or a generic instance" assert at generation time.
-                if let ConceptualRustType::Rust(element_ident) = &element_type.conceptual_type {
+    let rust_struct = match parse_group_type(
+        types,
+        parent_visitor,
+        group_choice,
+        rep,
+        Some(name),
+        cli,
+    ) {
+        GroupParsingType::HomogenousArray(element_type, bounds) => {
+            // Array-shaped collection: `@duplicates reject` is LIVE (rides the alias built in
+            // `register_rust_struct`), `preserve` is the default (accepted no-op). Nothing to
+            // reject here.
+            // A plain group used as the array element (`pair = (int, tstr)`, `a = [* pair]`) must be
+            // registered as a concrete Array-rep rust struct, exactly like the anonymous member-array
+            // path (`rust_type_from_type2`'s `Type2::Array` arm) and the record path both do. Without
+            // this the element ident stays an unregistered plain group and `is_enum`/`for_rust_member`
+            // trip their "must be a struct or a generic instance" assert at generation time.
+            if let ConceptualRustType::Rust(element_ident) = &element_type.conceptual_type {
+                types.set_rep_if_plain_group(
+                    parent_visitor,
+                    element_ident,
+                    Representation::Array,
+                    cli,
+                );
+            }
+            if rule_metadata.newtype.is_some() {
+                // generate newtype over array. Route through the SAME effective-metadata helper the
+                // plain single-arm array path uses so a single-arm tag-258 `@newtype` wrapper
+                // (`#6.258([* a]) ; @newtype`) picks up the registry's set-semantics default
+                // (reject) and fires the single-arm defaulting notice, exactly as the non-newtype
+                // flavor does — no-op for a non-258 tag or an explicit directive. The effective
+                // `@duplicates` policy lands in the wrapper's struct config; the register-side
+                // `Wrapper` arm then threads it onto the stored inner collection type so generation
+                // selects the `OrderedSet` twin.
+                let effective_metadata =
+                    single_arm_array_effective_metadata(&rule_metadata, tag, name);
+                let mut array_type: RustType =
+                    ConceptualRustType::Array(Box::new(element_type)).into();
+                if let Some(bounds) = bounds {
+                    array_type = array_type.with_bounds(bounds);
+                }
+                RustStruct::new_wrapper(
+                    name.clone(),
+                    tag,
+                    Some(&effective_metadata),
+                    array_type,
+                    None,
+                )
+            } else {
+                // Array - homogeneous element type with proper occurence operator. A single-arm
+                // tag-258 set picks up the registry's reject default via the helper (no-op for a
+                // non-258 tag or an explicit directive).
+                let effective_metadata =
+                    single_arm_array_effective_metadata(&rule_metadata, tag, name);
+                RustStruct::new_array(
+                    name.clone(),
+                    tag,
+                    Some(&effective_metadata),
+                    element_type,
+                    bounds,
+                )
+            }
+        }
+        GroupParsingType::HomogenousMap(key_type, value_type, bounds) => {
+            // Table collection: `reject` is today's default (accepted no-op) and `preserve` is
+            // LIVE — the policy rides the transparent alias built in `register_rust_struct`,
+            // swapping the member to the `PairMap`/`NonEmptyPairMap` vec-of-pairs twin. Nothing
+            // to reject here.
+            // Same registration gap as the array arm above: a plain group used as a table key or
+            // value (`pair = (int, tstr)`, `a = { * int => pair }`) must be registered as a concrete
+            // Array-rep rust struct — a CBOR map value can only be one item, so the group is encoded
+            // as a nested array, exactly the interpretation the table alias (`BTreeMap<Int, Pair>`)
+            // already commits to. Without this the ident stays an unregistered plain group and
+            // `is_enum` trips its "must be a struct or a generic instance" assert at generation time.
+            for member in [&key_type, &value_type] {
+                if let ConceptualRustType::Rust(member_ident) = &member.conceptual_type {
                     types.set_rep_if_plain_group(
                         parent_visitor,
-                        element_ident,
+                        member_ident,
                         Representation::Array,
                         cli,
                     );
                 }
-                if rule_metadata.newtype.is_some() {
-                    // generate newtype over array
-                    let mut array_type: RustType =
-                        ConceptualRustType::Array(Box::new(element_type)).into();
-                    if let Some(bounds) = bounds {
-                        array_type = array_type.with_bounds(bounds);
-                    }
-                    RustStruct::new_wrapper(
-                        name.clone(),
-                        tag,
-                        Some(&rule_metadata),
-                        array_type,
-                        None,
-                    )
-                } else {
-                    // Array - homogeneous element type with proper occurence operator. A single-arm
-                    // tag-258 set picks up the registry's reject default via the helper (no-op for a
-                    // non-258 tag or an explicit directive).
-                    let effective_metadata =
-                        single_arm_array_effective_metadata(&rule_metadata, tag, name);
-                    RustStruct::new_array(
-                        name.clone(),
-                        tag,
-                        Some(&effective_metadata),
-                        element_type,
-                        bounds,
-                    )
-                }
             }
-            GroupParsingType::HomogenousMap(key_type, value_type, bounds) => {
-                // Table collection: `reject` is today's default (accepted no-op) and `preserve` is
-                // LIVE — the policy rides the transparent alias built in `register_rust_struct`,
-                // swapping the member to the `PairMap`/`NonEmptyPairMap` vec-of-pairs twin. Nothing
-                // to reject here.
-                // Same registration gap as the array arm above: a plain group used as a table key or
-                // value (`pair = (int, tstr)`, `a = { * int => pair }`) must be registered as a concrete
-                // Array-rep rust struct — a CBOR map value can only be one item, so the group is encoded
-                // as a nested array, exactly the interpretation the table alias (`BTreeMap<Int, Pair>`)
-                // already commits to. Without this the ident stays an unregistered plain group and
-                // `is_enum` trips its "must be a struct or a generic instance" assert at generation time.
-                for member in [&key_type, &value_type] {
-                    if let ConceptualRustType::Rust(member_ident) = &member.conceptual_type {
-                        types.set_rep_if_plain_group(
-                            parent_visitor,
-                            member_ident,
-                            Representation::Array,
-                            cli,
-                        );
-                    }
-                }
-                if rule_metadata.newtype.is_some() {
-                    // generate newtype over map
-                    let mut map_type: RustType =
-                        ConceptualRustType::Map(Box::new(key_type), Box::new(value_type)).into();
-                    if let Some(bounds) = bounds {
-                        map_type = map_type.with_bounds(bounds);
-                    }
-                    RustStruct::new_wrapper(name.clone(), tag, Some(&rule_metadata), map_type, None)
-                } else {
-                    // Table map - homogeneous key/value types
-                    RustStruct::new_table(
-                        name.clone(),
-                        tag,
-                        Some(&rule_metadata),
-                        key_type,
-                        value_type,
-                        bounds,
-                    )
-                }
-            }
-            GroupParsingType::Heterogenous | GroupParsingType::WrappedBasicGroup(_) => {
-                // A heterogenous struct/record (or a single wrapped basic group) is not a collection,
-                // so `@duplicates` can never apply here.
+            if rule_metadata.newtype.is_some() {
+                // `@duplicates` on a `@newtype` TABLE is not yet supported: a `preserve` policy
+                // would swap the wrapper's inner to the `PairMap` twin, but the synthesized
+                // structural map wasm wrapper class wraps `BTreeMap`, not `PairMap`, so the wasm
+                // crate would not compile (a preserve-table transparent ALIAS works under wasm only
+                // because the named rule itself becomes the `PairMap` wasm class). Rather than emit
+                // a broken wasm crate or silently drop the directive, reject loudly and point at the
+                // transparent-table-alias workaround. draft/set-architecture-plan.md
+                // "Phase 2.2 — named set rules nominalize" wires the PairMap-aware wasm wrapper and
+                // subsumes this rejection.
                 if rule_metadata.duplicates.is_some() {
-                    reject_duplicates_not_applicable(types, name);
+                    types.record_rejection(format!(
+                            "@duplicates on rule `{name}`: a `@duplicates` policy on a `@newtype` table \
+                             (`{{ * k => v }} ; @newtype`) is not yet supported — the PairMap wasm \
+                             boundary for the wrapped inner is unwired. Use a transparent table alias \
+                             (drop `@newtype`) to carry the policy, or remove `@duplicates` from this \
+                             rule."
+                        ));
                 }
-                assert!(
-                    rule_metadata.newtype.is_none(),
-                    "Can only use @newtype on primtives + heterogenious arrays/maps"
-                );
-                // Heterogenous map or array with defined key/value pairs in the cddl like a struct
-                let record = parse_record_from_group_choice(
-                    types,
-                    rep,
-                    parent_visitor,
-                    name,
-                    group_choice,
-                    cli,
-                );
-                // We need to store this in IntermediateTypes so we can refer from one struct to another.
-                RustStruct::new_record(name.clone(), tag, Some(&rule_metadata), record)
+                // generate newtype over map
+                let mut map_type: RustType =
+                    ConceptualRustType::Map(Box::new(key_type), Box::new(value_type)).into();
+                if let Some(bounds) = bounds {
+                    map_type = map_type.with_bounds(bounds);
+                }
+                RustStruct::new_wrapper(name.clone(), tag, Some(&rule_metadata), map_type, None)
+            } else {
+                // Table map - homogeneous key/value types
+                RustStruct::new_table(
+                    name.clone(),
+                    tag,
+                    Some(&rule_metadata),
+                    key_type,
+                    value_type,
+                    bounds,
+                )
             }
-        };
+        }
+        GroupParsingType::Heterogenous | GroupParsingType::WrappedBasicGroup(_) => {
+            // A heterogenous struct/record (or a single wrapped basic group) is not a collection,
+            // so `@duplicates` can never apply here.
+            if rule_metadata.duplicates.is_some() {
+                reject_duplicates_not_applicable(types, name);
+            }
+            assert!(
+                rule_metadata.newtype.is_none(),
+                "Can only use @newtype on primtives + heterogenious arrays/maps"
+            );
+            // Heterogenous map or array with defined key/value pairs in the cddl like a struct
+            let record =
+                parse_record_from_group_choice(types, rep, parent_visitor, name, group_choice, cli);
+            // We need to store this in IntermediateTypes so we can refer from one struct to another.
+            RustStruct::new_record(name.clone(), tag, Some(&rule_metadata), record)
+        }
+    };
     match generic_params {
         Some(params) => types.register_generic_def(GenericDef::new(params, rust_struct)),
         None => types.register_rust_struct(parent_visitor, rust_struct, cli),

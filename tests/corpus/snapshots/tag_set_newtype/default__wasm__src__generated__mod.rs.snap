@@ -1,0 +1,493 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use cddl_lib::ordered_set::{NonEmptyOrderedSet, OrderedSet};
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Holder(pub(crate) cddl_lib::Holder);
+
+#[wasm_bindgen]
+impl Holder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Holder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn s(&self) -> SingleArmSet {
+        self.0.s.clone().into()
+    }
+
+    pub fn ns(&self) -> SingleArmNeset {
+        self.0.ns.clone().into()
+    }
+
+    pub fn r(&self) -> PlainReject {
+        self.0.r.clone().into()
+    }
+
+    pub fn nr(&self) -> PlainNesetReject {
+        self.0.nr.clone().into()
+    }
+
+    pub fn o(&self) -> OptOut {
+        self.0.o.clone().into()
+    }
+
+    pub fn t(&self) -> PlainTable {
+        self.0.t.clone().into()
+    }
+
+    pub fn new(
+        s: &SingleArmSet,
+        ns: &SingleArmNeset,
+        r: &PlainReject,
+        nr: &PlainNesetReject,
+        o: &OptOut,
+        t: &PlainTable,
+    ) -> Self {
+        Self(cddl_lib::Holder::new(
+            s.clone().into(),
+            ns.clone().into(),
+            r.clone().into(),
+            nr.clone().into(),
+            o.clone().into(),
+            t.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::Holder> for Holder {
+    fn from(native: cddl_lib::Holder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Holder> for cddl_lib::Holder {
+    fn from(wasm: Holder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Holder> for Holder {
+    fn as_ref(&self) -> &cddl_lib::Holder {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapU64ToText(pub(crate) BTreeMap<u64, String>);
+
+#[wasm_bindgen]
+impl MapU64ToText {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: u64, value: String) -> Option<String> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: u64) -> Option<String> {
+        self.0.get(&key).cloned()
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<BTreeMap<u64, String>> for MapU64ToText {
+    fn from(native: BTreeMap<u64, String>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapU64ToText> for BTreeMap<u64, String> {
+    fn from(wasm: MapU64ToText) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BTreeMap<u64, String>> for MapU64ToText {
+    fn as_ref(&self) -> &BTreeMap<u64, String> {
+        &self.0
+    }
+}
+
+/// `[+ uint] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door).
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonEmptyU64OrderedSet(pub(crate) NonEmptyOrderedSet<u64>);
+
+#[wasm_bindgen]
+impl NonEmptyU64OrderedSet {
+    pub fn new(first: u64) -> Self {
+        Self(NonEmptyOrderedSet::new(first))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
+        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<NonEmptyU64OrderedSet, JsError> {
+        NonEmptyOrderedSet::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<NonEmptyOrderedSet<u64>> for NonEmptyU64OrderedSet {
+    fn from(native: NonEmptyOrderedSet<u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonEmptyU64OrderedSet> for NonEmptyOrderedSet<u64> {
+    fn from(wasm: NonEmptyU64OrderedSet) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyOrderedSet<u64>> for NonEmptyU64OrderedSet {
+    fn as_ref(&self) -> &NonEmptyOrderedSet<u64> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OptOut(pub(crate) cddl_lib::OptOut);
+
+#[wasm_bindgen]
+impl OptOut {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OptOut, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: Vec<u64>) -> Self {
+        Self(cddl_lib::OptOut::new(inner))
+    }
+
+    pub fn get(&self) -> Vec<u64> {
+        self.0.get().clone()
+    }
+}
+
+impl From<cddl_lib::OptOut> for OptOut {
+    fn from(native: cddl_lib::OptOut) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OptOut> for cddl_lib::OptOut {
+    fn from(wasm: OptOut) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::OptOut> for OptOut {
+    fn as_ref(&self) -> &cddl_lib::OptOut {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PlainNesetReject(pub(crate) cddl_lib::PlainNesetReject);
+
+#[wasm_bindgen]
+impl PlainNesetReject {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<PlainNesetReject, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: &NonEmptyU64OrderedSet) -> Self {
+        Self(cddl_lib::PlainNesetReject::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> NonEmptyU64OrderedSet {
+        self.0.get().clone().into()
+    }
+}
+
+impl From<cddl_lib::PlainNesetReject> for PlainNesetReject {
+    fn from(native: cddl_lib::PlainNesetReject) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PlainNesetReject> for cddl_lib::PlainNesetReject {
+    fn from(wasm: PlainNesetReject) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::PlainNesetReject> for PlainNesetReject {
+    fn as_ref(&self) -> &cddl_lib::PlainNesetReject {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PlainReject(pub(crate) cddl_lib::PlainReject);
+
+#[wasm_bindgen]
+impl PlainReject {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<PlainReject, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: &U64OrderedSet) -> Self {
+        Self(cddl_lib::PlainReject::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> U64OrderedSet {
+        self.0.get().clone().into()
+    }
+}
+
+impl From<cddl_lib::PlainReject> for PlainReject {
+    fn from(native: cddl_lib::PlainReject) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PlainReject> for cddl_lib::PlainReject {
+    fn from(wasm: PlainReject) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::PlainReject> for PlainReject {
+    fn as_ref(&self) -> &cddl_lib::PlainReject {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct PlainTable(pub(crate) cddl_lib::PlainTable);
+
+#[wasm_bindgen]
+impl PlainTable {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<PlainTable, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: &MapU64ToText) -> Self {
+        Self(cddl_lib::PlainTable::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> MapU64ToText {
+        self.0.get().clone().into()
+    }
+}
+
+impl From<cddl_lib::PlainTable> for PlainTable {
+    fn from(native: cddl_lib::PlainTable) -> Self {
+        Self(native)
+    }
+}
+
+impl From<PlainTable> for cddl_lib::PlainTable {
+    fn from(wasm: PlainTable) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::PlainTable> for PlainTable {
+    fn as_ref(&self) -> &cddl_lib::PlainTable {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct SingleArmNeset(pub(crate) cddl_lib::SingleArmNeset);
+
+#[wasm_bindgen]
+impl SingleArmNeset {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<SingleArmNeset, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: &NonEmptyU64OrderedSet) -> Self {
+        Self(cddl_lib::SingleArmNeset::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> NonEmptyU64OrderedSet {
+        self.0.get().clone().into()
+    }
+}
+
+impl From<cddl_lib::SingleArmNeset> for SingleArmNeset {
+    fn from(native: cddl_lib::SingleArmNeset) -> Self {
+        Self(native)
+    }
+}
+
+impl From<SingleArmNeset> for cddl_lib::SingleArmNeset {
+    fn from(wasm: SingleArmNeset) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::SingleArmNeset> for SingleArmNeset {
+    fn as_ref(&self) -> &cddl_lib::SingleArmNeset {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct SingleArmSet(pub(crate) cddl_lib::SingleArmSet);
+
+#[wasm_bindgen]
+impl SingleArmSet {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<SingleArmSet, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: &U64OrderedSet) -> Self {
+        Self(cddl_lib::SingleArmSet::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> U64OrderedSet {
+        self.0.get().clone().into()
+    }
+}
+
+impl From<cddl_lib::SingleArmSet> for SingleArmSet {
+    fn from(native: cddl_lib::SingleArmSet) -> Self {
+        Self(native)
+    }
+}
+
+impl From<SingleArmSet> for cddl_lib::SingleArmSet {
+    fn from(wasm: SingleArmSet) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::SingleArmSet> for SingleArmSet {
+    fn as_ref(&self) -> &cddl_lib::SingleArmSet {
+        &self.0
+    }
+}
+
+/// `[* uint] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door).
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct U64OrderedSet(pub(crate) OrderedSet<u64>);
+
+#[wasm_bindgen]
+impl U64OrderedSet {
+    pub fn new() -> Self {
+        Self(OrderedSet::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
+        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<U64OrderedSet, JsError> {
+        OrderedSet::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<OrderedSet<u64>> for U64OrderedSet {
+    fn from(native: OrderedSet<u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<U64OrderedSet> for OrderedSet<u64> {
+    fn from(wasm: U64OrderedSet) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<OrderedSet<u64>> for U64OrderedSet {
+    fn as_ref(&self) -> &OrderedSet<u64> {
+        &self.0
+    }
+}

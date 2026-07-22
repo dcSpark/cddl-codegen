@@ -1,0 +1,247 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+pub mod error;
+pub mod non_empty;
+pub mod ordered_hash_map;
+pub mod ordered_set;
+extern crate derivative;
+pub mod cbor_encodings;
+mod extern_interface_check;
+pub mod serialization;
+
+use crate::generated::ordered_hash_map::OrderedHashMap;
+use crate::generated::ordered_set::{NonEmptyOrderedSet, OrderedSet};
+use cbor_encodings::{
+    HolderEncoding, OptOutEncoding, PlainNesetRejectEncoding, PlainRejectEncoding,
+    PlainTableEncoding, SingleArmNesetEncoding, SingleArmSetEncoding,
+};
+use std::collections::BTreeMap;
+
+#[derive(Clone, Debug)]
+pub struct Holder {
+    pub s: SingleArmSet,
+    pub ns: SingleArmNeset,
+    pub r: PlainReject,
+    pub nr: PlainNesetReject,
+    pub o: OptOut,
+    pub t: PlainTable,
+    pub encodings: Option<HolderEncoding>,
+}
+
+impl Holder {
+    pub fn new(
+        s: SingleArmSet,
+        ns: SingleArmNeset,
+        r: PlainReject,
+        nr: PlainNesetReject,
+        o: OptOut,
+        t: PlainTable,
+    ) -> Self {
+        Self {
+            s,
+            ns,
+            r,
+            nr,
+            o,
+            t,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct OptOut {
+    pub(crate) inner: Vec<u64>,
+    pub encodings: Option<OptOutEncoding>,
+}
+
+impl OptOut {
+    pub fn get(&self) -> &Vec<u64> {
+        &self.inner
+    }
+
+    pub fn new(inner: Vec<u64>) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<Vec<u64>> for OptOut {
+    fn from(inner: Vec<u64>) -> Self {
+        OptOut::new(inner)
+    }
+}
+
+impl From<OptOut> for Vec<u64> {
+    fn from(wrapper: OptOut) -> Self {
+        wrapper.inner
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PlainNesetReject {
+    pub(crate) inner: NonEmptyOrderedSet<u64>,
+    pub encodings: Option<PlainNesetRejectEncoding>,
+}
+
+impl PlainNesetReject {
+    pub fn get(&self) -> &NonEmptyOrderedSet<u64> {
+        &self.inner
+    }
+
+    pub fn new(inner: NonEmptyOrderedSet<u64>) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<NonEmptyOrderedSet<u64>> for PlainNesetReject {
+    fn from(inner: NonEmptyOrderedSet<u64>) -> Self {
+        PlainNesetReject::new(inner)
+    }
+}
+
+impl From<PlainNesetReject> for NonEmptyOrderedSet<u64> {
+    fn from(wrapper: PlainNesetReject) -> Self {
+        wrapper.inner
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PlainReject {
+    pub(crate) inner: OrderedSet<u64>,
+    pub encodings: Option<PlainRejectEncoding>,
+}
+
+impl PlainReject {
+    pub fn get(&self) -> &OrderedSet<u64> {
+        &self.inner
+    }
+
+    pub fn new(inner: OrderedSet<u64>) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<OrderedSet<u64>> for PlainReject {
+    fn from(inner: OrderedSet<u64>) -> Self {
+        PlainReject::new(inner)
+    }
+}
+
+impl From<PlainReject> for OrderedSet<u64> {
+    fn from(wrapper: PlainReject) -> Self {
+        wrapper.inner
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PlainTable {
+    pub(crate) inner: OrderedHashMap<u64, String>,
+    pub encodings: Option<PlainTableEncoding>,
+}
+
+impl PlainTable {
+    pub fn get(&self) -> &OrderedHashMap<u64, String> {
+        &self.inner
+    }
+
+    pub fn new(inner: OrderedHashMap<u64, String>) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<OrderedHashMap<u64, String>> for PlainTable {
+    fn from(inner: OrderedHashMap<u64, String>) -> Self {
+        PlainTable::new(inner)
+    }
+}
+
+impl From<PlainTable> for OrderedHashMap<u64, String> {
+    fn from(wrapper: PlainTable) -> Self {
+        wrapper.inner
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SingleArmNeset {
+    pub(crate) inner: NonEmptyOrderedSet<u64>,
+    pub encodings: Option<SingleArmNesetEncoding>,
+}
+
+impl SingleArmNeset {
+    pub fn get(&self) -> &NonEmptyOrderedSet<u64> {
+        &self.inner
+    }
+
+    pub fn new(inner: NonEmptyOrderedSet<u64>) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<NonEmptyOrderedSet<u64>> for SingleArmNeset {
+    fn from(inner: NonEmptyOrderedSet<u64>) -> Self {
+        SingleArmNeset::new(inner)
+    }
+}
+
+impl From<SingleArmNeset> for NonEmptyOrderedSet<u64> {
+    fn from(wrapper: SingleArmNeset) -> Self {
+        wrapper.inner
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SingleArmSet {
+    pub(crate) inner: OrderedSet<u64>,
+    pub encodings: Option<SingleArmSetEncoding>,
+}
+
+impl SingleArmSet {
+    pub fn get(&self) -> &OrderedSet<u64> {
+        &self.inner
+    }
+
+    pub fn new(inner: OrderedSet<u64>) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<OrderedSet<u64>> for SingleArmSet {
+    fn from(inner: OrderedSet<u64>) -> Self {
+        SingleArmSet::new(inner)
+    }
+}
+
+impl From<SingleArmSet> for OrderedSet<u64> {
+    fn from(wrapper: SingleArmSet) -> Self {
+        wrapper.inner
+    }
+}
