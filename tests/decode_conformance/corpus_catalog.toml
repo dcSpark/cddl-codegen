@@ -7753,6 +7753,66 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "tag_set_inline.inline_holder"
+axis = "corpus"
+example = "inline_holder = [\n  a: #6.258([* uint]),\n  ? b: #6.258([* text]),\n  c: [* #6.258([* uint])],\n  x: #6.258([* uint]) / [* uint],\n]"
+fixture = "tag_set_inline"
+rule = "inline_holder"
+spec = "__probe_holder = [0, inline_holder]\ninline_holder = [\n  a: #6.258([* uint]),\n  ? b: #6.258([* text]),\n  c: [* #6.258([* uint])],\n  x: #6.258([* uint]) / [* uint],\n]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820083d9010280808218c9190a84"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083d901028083d9010282190e5719026ed90102831902b3190833190859d9010280831911aa19062619085c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083d901028084d9010280d9010282190298190be8d9010281190369d901028080"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083d901028084d901028118b3d9010283190c461907ca190884d9010281190353d9010281190abfd9010280"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083d9010282190c411908d584d9010284190b8f190a531908d019107ad90102841911e8190139190d76190667d90102821867190860d901028319049f190c241910e08319011d190856190b1c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083d9010283190fb11903d11905a981d9010284190332190c561908ea190981d901028419120f190a11190b73190ad3"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820083d9010284190329190ea118761901ca82d9010282190d591905fad9010280d9010283190cbe190c91190a0a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820084d9010280d901028081d901028219039f19075c80"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820084d90102821903521902c8d90102826544616e7465647769736582d9010283190a33190b48190265d9010280d90102821901771909dd"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820084d90102841902c3190679190b92190d24d90102846a616e696d617465646c7966626c6f6f6d73686275636b6574277368656e61626c696e6784d90102841911fb19022d190f701903e8d9010280d9010281190f4ed90102841906cf19023b190e9319119c84190d67190f791905531911d9"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "tag_set_near_miss.holder"
 axis = "corpus"
 example = "near_miss = #6.258([+ uint]) / [* uint]\nholder = [x: near_miss]"

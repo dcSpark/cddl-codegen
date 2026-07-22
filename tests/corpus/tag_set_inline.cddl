@@ -1,0 +1,25 @@
+; INLINE-position application of the well-known-tag registry (Delivery 1b). A `#6.258` that directly
+; wraps a homogeneous occurrence collection carries set semantics — uniqueness — EVERYWHERE the shape
+; guard matches, not only at a named rule. The `Type2::TaggedData` arm of `rust_type_from_type2` is the
+; single seam that builds every inline tagged occurrence (a member, an optional member, an array
+; element, and — for the boundary below — an inline union arm), so each defaults to `@duplicates
+; reject` ⇒ the `OrderedSet` uniqueness twin when the author wrote no explicit directive. Inline
+; positions have no comment slot for `@duplicates`, so the opt-out is to HOIST the occurrence to a named
+; rule bearing `; @duplicates preserve` (see tag_set_default.cddl `opt_out`); a generation-time notice
+; states that recipe at every inline 258 site.
+;
+; - `a` — a mandatory member `#6.258([* uint])` -> `OrderedSet<u64>`.
+; - `b` — an OPTIONAL member `#6.258([* text])` -> `Option<OrderedSet<String>>` (the reject twin
+;         composes with optional-field wrapping).
+; - `c` — an ARRAY ELEMENT `[* #6.258([* uint])]` -> `Vec<OrderedSet<u64>>` (the twin at element depth).
+; - `x` — the REQUEST-08 boundary: an inline two-arm choice `#6.258([* uint]) / [* uint]` is NOT
+;         collapsed inline (1b does not collapse inline choices — that is Delivery-2 name-synthesis
+;         territory). It stays a two-variant enum; only the tagged arm gains the twin, the untagged arm
+;         stays a plain `Vec<u64>`. (A NAMED two-arm rule with this body collapses instead — see
+;         tag_set_default.cddl `default_set`.)
+inline_holder = [
+  a: #6.258([* uint]),
+  ? b: #6.258([* text]),
+  c: [* #6.258([* uint])],
+  x: #6.258([* uint]) / [* uint],
+]
