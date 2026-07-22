@@ -13,27 +13,30 @@ expression: content
 
 pub mod error;
 pub mod ordered_hash_map;
+pub mod ordered_set;
 extern crate derivative;
 pub mod cbor_encodings;
 mod extern_interface_check;
 pub mod serialization;
 
+use crate::generated::ordered_set::OrderedSet;
 use cbor_encodings::{HeterogeneousEncoding, HolderEncoding, HomogeneousEncoding};
 
-pub type ElemTagged = Vec<u64>;
+/// `@duplicates reject`: a repeated element is refused (a `DuplicateKey` error) on both the wire and the API; accepted (duplicate-free) input re-emits byte-exactly in wire order (the set is order-preserving, never sorted).
+pub type ElemTagged = OrderedSet<u64>;
 
 #[derive(Clone, Debug)]
 pub struct Heterogeneous {
-    pub(crate) inner: Vec<u64>,
+    pub(crate) inner: OrderedSet<u64>,
     pub encodings: Option<HeterogeneousEncoding>,
 }
 
 impl Heterogeneous {
-    pub fn get(&self) -> &Vec<u64> {
+    pub fn get(&self) -> &OrderedSet<u64> {
         &self.inner
     }
 
-    pub fn new(inner: Vec<u64>) -> Self {
+    pub fn new(inner: OrderedSet<u64>) -> Self {
         Self {
             inner,
             encodings: None,
@@ -41,21 +44,21 @@ impl Heterogeneous {
     }
 }
 
-impl From<Vec<u64>> for Heterogeneous {
-    fn from(inner: Vec<u64>) -> Self {
+impl From<OrderedSet<u64>> for Heterogeneous {
+    fn from(inner: OrderedSet<u64>) -> Self {
         Heterogeneous::new(inner)
     }
 }
 
-impl From<Heterogeneous> for Vec<u64> {
+impl From<Heterogeneous> for OrderedSet<u64> {
     fn from(wrapper: Heterogeneous) -> Self {
         wrapper.inner
     }
 }
 
 /// The tag-258 set idiom: the tag is an encoding detail — both the `#6.258(...)` and the bare-array wire forms are accepted (serialization defaults to tagged), so either round-trips byte-exactly.
-/// Duplicate elements are preserved and re-emitted byte-exactly in wire order (the default for a set idiom; opt into rejection with `@duplicates reject`).
-pub type HeterogeneousSet = Vec<u64>;
+/// `@duplicates reject`: a repeated element is refused (a `DuplicateKey` error) on both the wire and the API; accepted (duplicate-free) input re-emits byte-exactly in wire order (the set is order-preserving, never sorted).
+pub type HeterogeneousSet = OrderedSet<u64>;
 
 #[derive(Clone, Debug)]
 pub struct Holder {
@@ -78,16 +81,16 @@ impl Holder {
 
 #[derive(Clone, Debug)]
 pub struct Homogeneous {
-    pub(crate) inner: Vec<u64>,
+    pub(crate) inner: OrderedSet<u64>,
     pub encodings: Option<HomogeneousEncoding>,
 }
 
 impl Homogeneous {
-    pub fn get(&self) -> &Vec<u64> {
+    pub fn get(&self) -> &OrderedSet<u64> {
         &self.inner
     }
 
-    pub fn new(inner: Vec<u64>) -> Self {
+    pub fn new(inner: OrderedSet<u64>) -> Self {
         Self {
             inner,
             encodings: None,
@@ -95,18 +98,19 @@ impl Homogeneous {
     }
 }
 
-impl From<Vec<u64>> for Homogeneous {
-    fn from(inner: Vec<u64>) -> Self {
+impl From<OrderedSet<u64>> for Homogeneous {
+    fn from(inner: OrderedSet<u64>) -> Self {
         Homogeneous::new(inner)
     }
 }
 
-impl From<Homogeneous> for Vec<u64> {
+impl From<Homogeneous> for OrderedSet<u64> {
     fn from(wrapper: Homogeneous) -> Self {
         wrapper.inner
     }
 }
 
-pub type HomogeneousInner = Vec<u64>;
+/// `@duplicates reject`: a repeated element is refused (a `DuplicateKey` error) on both the wire and the API; accepted (duplicate-free) input re-emits byte-exactly in wire order (the set is order-preserving, never sorted).
+pub type HomogeneousInner = OrderedSet<u64>;
 
 pub type OuterOverArray = Vec<ElemTagged>;

@@ -3,10 +3,16 @@
 //! A two-arm type choice whose arms are the SAME collection but for exactly one `Tagged(N)`
 //! encoding op denotes one logical value; which arm was used is an encoding detail, not a type
 //! distinction. `parse_type_choices` recognizes this structurally and collapses it into the SAME
-//! registration a bare `#6.N([* a])` array rule gets — a transparent `Vec`/`NonEmptyVec` alias plus
-//! an `Array`-variant `RustStruct` — with the tag flagged OPTIONAL so it rides a
-//! `TagPresenceEncoding` var under `--preserve-encodings` (either wire arm roundtrips byte-exact)
-//! and defaults to tagged otherwise. Near misses keep today's two-variant enum.
+//! registration a bare `#6.N([* a])` array rule gets — a transparent alias plus an `Array`-variant
+//! `RustStruct` — with the tag flagged OPTIONAL so it rides a `TagPresenceEncoding` var under
+//! `--preserve-encodings` (either wire arm roundtrips byte-exact) and defaults to tagged otherwise.
+//! Near misses keep today's two-variant enum.
+//!
+//! The alias TARGET depends on the effective `@duplicates` policy: tag 258 is the IANA set tag, so
+//! the well-known-tag registry (`parsing::well_known_tag_default_duplicates`) defaults a no-directive
+//! 258 idiom to `reject` ⇒ the `OrderedSet`/`NonEmptyOrderedSet` uniqueness twin. A NON-258 idiom
+//! keeps the plain `Vec`/`NonEmptyVec` preserve default, and `@duplicates preserve` opts any 258
+//! idiom back out to `Vec` (today's wire behavior verbatim).
 //!
 //! These tests drive the full in-process generation pipeline (`api::generated_strings`) and assert
 //! the emitted SOURCE shape. Generic-def rows assert the collapse reaches the transparent-alias IR
@@ -52,8 +58,10 @@ const PRESERVE: &[&str] = &[
 // Recognition-positive (the collapse fires)
 // ---------------------------------------------------------------------------------------------
 
-/// The canonical `nonempty_set` idiom collapses to a transparent `NonEmptyVec` alias — NOT an enum —
-/// and the `[+]` bound is enforced through `NonEmptyVec`'s single `TryFrom` door.
+/// The canonical `nonempty_set` idiom (tag 258, no directive) collapses to a transparent uniqueness
+/// twin alias — NOT an enum — defaulting to `reject` via the well-known-tag registry, and the `[+]`
+/// bound is enforced through `NonEmptyOrderedSet`'s single `TryFrom` door (which composes uniqueness
+/// with the min-1 check).
 #[test]
 fn nonempty_set_collapses_to_transparent_alias() {
     let src = generate(
@@ -63,22 +71,23 @@ fn nonempty_set_collapses_to_transparent_alias() {
     )
     .expect("must generate");
     assert!(
-        src.contains("pub type MySet = NonEmptyVec<u64>;"),
-        "expected transparent NonEmptyVec alias, got:\n{src}"
+        src.contains("pub type MySet = NonEmptyOrderedSet<u64>;"),
+        "expected transparent NonEmptyOrderedSet alias (258 defaults to reject), got:\n{src}"
     );
     assert!(
         !src.contains("pub enum MySet"),
         "must not emit a type-choice enum for the collapsed idiom:\n{src}"
     );
-    // the `[+]` invariant rides the same TryFrom door the API uses
+    // the `[+]` + uniqueness invariant rides the same TryFrom door the API uses
     assert!(
-        src.contains("NonEmptyVec::try_from(items_arr)?"),
-        "wire-side `[+]` enforcement must route through the NonEmptyVec door:\n{src}"
+        src.contains("NonEmptyOrderedSet::try_from(items_arr)?"),
+        "wire-side `[+]` + uniqueness enforcement must route through the NonEmptyOrderedSet door:\n{src}"
     );
 }
 
-/// The `[*]` (empty-allowed) flavor collapses to a DISTINCT `Vec` alias — the empty and non-empty
-/// flavors must never be conflated (the defect the CML hand impl carried).
+/// The `[*]` (empty-allowed) flavor collapses to a DISTINCT alias from the `[+]` flavor — the empty
+/// and non-empty flavors must never be conflated (the defect the CML hand impl carried). Tag 258 with
+/// no directive defaults to `reject`, so the alias is `OrderedSet<u64>` (not `NonEmptyOrderedSet`).
 #[test]
 fn empty_allowed_set_collapses_to_vec_alias() {
     let src = generate(
@@ -88,8 +97,8 @@ fn empty_allowed_set_collapses_to_vec_alias() {
     )
     .expect("must generate");
     assert!(
-        src.contains("pub type MySet = Vec<u64>;"),
-        "expected transparent Vec alias, got:\n{src}"
+        src.contains("pub type MySet = OrderedSet<u64>;"),
+        "expected transparent OrderedSet alias (258 defaults to reject), got:\n{src}"
     );
     assert!(
         !src.contains("pub enum MySet"),
@@ -97,7 +106,7 @@ fn empty_allowed_set_collapses_to_vec_alias() {
     );
 }
 
-/// Arm order is irrelevant: untagged-first still collapses.
+/// Arm order is irrelevant: untagged-first still collapses (tag 258 → reject default).
 #[test]
 fn arm_order_is_irrelevant() {
     let src = generate(
@@ -107,12 +116,15 @@ fn arm_order_is_irrelevant() {
     )
     .expect("must generate");
     assert!(
-        src.contains("pub type MySet = NonEmptyVec<u64>;") && !src.contains("pub enum MySet"),
+        src.contains("pub type MySet = NonEmptyOrderedSet<u64>;")
+            && !src.contains("pub enum MySet"),
         "untagged-first arm order must collapse identically:\n{src}"
     );
 }
 
-/// The tag number is taken from the arm, never hardcoded to 258.
+/// The tag number is taken from the arm, never hardcoded to 258. This also pins the non-258 registry
+/// boundary: tag 42 has no well-known-tag entry, so it keeps the plain `NonEmptyVec` PRESERVE default
+/// (only 258 acquires set semantics — the structural collapse itself stays tag-agnostic).
 #[test]
 fn any_tag_number_is_recognized() {
     let src = generate(
@@ -123,7 +135,7 @@ fn any_tag_number_is_recognized() {
     .expect("must generate");
     assert!(
         src.contains("pub type MySet = NonEmptyVec<u64>;") && !src.contains("pub enum MySet"),
-        "any tag number must collapse:\n{src}"
+        "any tag number must collapse; a non-258 tag keeps the plain NonEmptyVec default:\n{src}"
     );
     assert!(
         src.contains("write_tag_sz(42u64") && src.contains("expected: 42"),
@@ -171,8 +183,8 @@ fn non_preserve_defaults_to_tagged_and_accepts_either() {
     )
     .expect("must generate");
     assert!(
-        src.contains("pub type MySet = NonEmptyVec<u64>;"),
-        "still a transparent alias without preserve-encodings:\n{src}"
+        src.contains("pub type MySet = NonEmptyOrderedSet<u64>;"),
+        "still a transparent alias without preserve-encodings (258 defaults to reject):\n{src}"
     );
     assert!(
         src.contains("write_tag(258u64)"),
@@ -202,13 +214,13 @@ fn generic_set_defs_collapse_to_transparent_instances() {
     )
     .expect("choice-bodied generic set defs must collapse and generate (no is_enum panic)");
     assert!(
-        src.contains("pub type SetU64 = Vec<u64>;"),
-        "empty-allowed generic instance is a transparent Vec alias:\n{src}"
+        src.contains("pub type SetU64 = OrderedSet<u64>;"),
+        "empty-allowed generic instance is a transparent OrderedSet alias (258 defaults to reject):\n{src}"
     );
     assert!(
-        src.contains("pub type NonemptySetText = NonEmptyVec<String>;")
-            && src.contains("pub type NonemptySetU64 = NonEmptyVec<u64>;"),
-        "non-empty generic instances are distinct NonEmptyVec aliases:\n{src}"
+        src.contains("pub type NonemptySetText = NonEmptyOrderedSet<String>;")
+            && src.contains("pub type NonemptySetU64 = NonEmptyOrderedSet<u64>;"),
+        "non-empty generic instances are distinct NonEmptyOrderedSet aliases:\n{src}"
     );
     assert!(
         !src.contains("pub enum Set") && !src.contains("pub enum NonemptySet"),
@@ -216,8 +228,8 @@ fn generic_set_defs_collapse_to_transparent_instances() {
     );
 }
 
-/// A BYTES-element set collapses to a transparent `NonEmptyVec<Vec<u8>>` alias and, under
-/// `--preserve-encodings`, its byte-string elements ride the EXISTING per-element `StringEncoding`
+/// A BYTES-element set collapses to a transparent `NonEmptyOrderedSet<Vec<u8>>` alias (258 defaults
+/// to reject) and, under `--preserve-encodings`, its byte-string elements ride the EXISTING per-element `StringEncoding`
 /// machinery (`..._elem_encodings: Vec<StringEncoding>`) — so `@raw_bytes_flavor` is moot for the
 /// generated type (it stays extern-only). This is asserted in-process on the RUST side only: the
 /// corpus fixtures omit a bytes element because a named bytes-element collection's WASM wrapper class
@@ -232,9 +244,9 @@ fn bytes_element_set_collapses_with_elem_encodings() {
     )
     .expect("a bytes-element set must collapse and generate");
     assert!(
-        src.contains("pub type ByteSet = NonEmptyVec<Vec<u8>>;")
+        src.contains("pub type ByteSet = NonEmptyOrderedSet<Vec<u8>>;")
             && !src.contains("pub enum ByteSet"),
-        "bytes-element set collapses to a transparent NonEmptyVec<Vec<u8>> alias:\n{src}"
+        "bytes-element set collapses to a transparent NonEmptyOrderedSet<Vec<u8>> alias (258 defaults to reject):\n{src}"
     );
     assert!(
         src.contains("s_elem_encodings: Vec<StringEncoding>"),
@@ -395,10 +407,11 @@ fn collapsed_set_as_type_choice_variant_discriminates_coherently() {
         de.contains("cbor_event::Type::UnsignedInteger =>"),
         "the uint variant must keep its own discriminator arm:\n{de}"
     );
-    // the set arm still peeks the optional 258 tag and enforces `[+]` through the NonEmptyVec door
+    // the set arm still peeks the optional 258 tag and enforces `[+]` + uniqueness through the
+    // NonEmptyOrderedSet door (258 defaults to reject)
     assert!(
-        de.contains("TagPresenceEncoding::Untagged") && de.contains("NonEmptyVec::try_from"),
-        "the set arm must peek the optional tag and route through the NonEmptyVec door:\n{de}"
+        de.contains("TagPresenceEncoding::Untagged") && de.contains("NonEmptyOrderedSet::try_from"),
+        "the set arm must peek the optional tag and route through the NonEmptyOrderedSet door:\n{de}"
     );
     assert!(
         de.contains("DeserializeFailure::NoVariantMatched"),

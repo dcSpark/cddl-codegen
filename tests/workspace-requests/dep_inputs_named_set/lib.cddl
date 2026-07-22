@@ -3,7 +3,12 @@
 ; rule keeps its own wasm class and the criterion-8 #3 contract: a consumer requesting the
 ; structural `[* key_hash]` (KeyHashList) collides with the dep's own `NamedSet` producer and must
 ; hard-error with a remedy the author can act on (rename / @name / drop the rule).
+;
+; The generic def carries the explicit `; @duplicates preserve` opt-out so `NamedSet` stays the plain
+; `Vec`/`KeyHashList` structural shape this boundary collision requires — tag 258 now defaults to
+; `@duplicates reject` (the well-known-tag registry), which would give `NamedSet` an `OrderedSet`
+; shape that no longer matches the requested `[* key_hash]` structural wrapper.
 key_hash = bytes ; @newtype
-set<a0> = #6.258([* a0]) / [* a0]
+set<a0> = #6.258([* a0]) / [* a0] ; @duplicates preserve
 named_set = set<key_hash>
 cert = [pool_owners: named_set]

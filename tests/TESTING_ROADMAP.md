@@ -107,6 +107,30 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
   policy, § above); until then the mitigating discipline is unchanged: run `local` before
   considering matrix-surface work done, and expect stacked reds behind fail-fast when de-rotting.
 
+- **Mint decode-conformance + confirm matrix coverage for the tag-258 reject-default flip.** The
+  well-known-tag registry (`parsing::well_known_tag_default_duplicates`) defaults a no-directive
+  tag-258 set to `@duplicates reject`. The registry's DEFAULT path (as opposed to an explicit
+  `; @duplicates reject`, already covered by `tag_set_reject`) currently has **no duplicate-REJECT
+  wire-vector coverage** in the decode-conformance catalog: the new `tests/corpus/tag_set_default.cddl`
+  fixture pins the emitted source shape (`feature_corpus` snapshots) and its `cargo check` compiles,
+  but no spec-derived accept vectors nor a duplicate-bearing reject vector exist for it yet. Three
+  heavy-tier follow-ups, each requiring a coordinated run (they contend on `/tmp` scratch and disk —
+  see the ENOSPC entry — so get an explicit go-ahead while another session is active):
+  1. Mint the corpus decode vectors for `tag_set_default` (`bun run verify.ts --mint-decode-corpus
+     --only=tag_set_default`), which enumerates its rules into `tests/decode_conformance/corpus_catalog.toml`;
+     add a hand `source="hand"` duplicate-bearing vector with `expect="reject"` (+ `class`/`reason`/
+     `expect_err` naming the `DuplicateKey` door) so the reject DEFAULT has a wire-level reject pin,
+     mirroring `tag_set_reject`'s in-process `reject_set_duplicate_wire_and_api_identical`.
+  2. Confirm the matrix cell `contain.choice-member.type2.tag.set_idiom`
+     (`cddl-matrix/containment/choice-member.toml`, inline `t = #6.258([* uint]) / [* uint]`) still
+     passes after the flip — its generated decoder now rejects duplicates; its ruby-generate vectors
+     are duplicate-free (so should still accept) but its role/enforce projection is a heavy-tier
+     (`build_matrix_check` / `matrix_typecheck`) confirm this task did not run.
+  3. Re-verify the golden suites regenerate clean: `tests/golden_hex_preserve` / `tests/golden_hex_canonical`
+     `opt_set`/`opt_neset` now carry the explicit `; @duplicates preserve` opt-out (byte-identical to
+     the pre-flip no-directive `Vec` output — verified in-process, but the full crate compile +
+     duplicate KAT run is the `golden_hex_preserve` / `golden_hex_canonical` integration gate).
+
 ## Next work items, in priority order
 
 1. **Grammar-fuzzer escalations.** The lazy-first shape-recombination fuzzer is shipped

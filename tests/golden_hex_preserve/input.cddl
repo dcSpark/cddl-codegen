@@ -48,18 +48,21 @@ bool_table_holder = [bt: bool_table]
 
 ; tag-258 set idiom (`#6.258([* a]) / [* a]`): the tag PRESENCE is an encoding variable, so BOTH
 ; wire arms — tagged (at any header size) and untagged — must re-serialize byte-identically under
-; --preserve-encodings, and a non-minimal tag header is preserved verbatim. Transparent alias
-; (Vec<String>), wrap in a record.
-opt_set        = #6.258([* tstr]) / [* tstr]
+; --preserve-encodings, and a non-minimal tag header is preserved verbatim. These rules carry the
+; EXPLICIT `; @duplicates preserve` opt-out: tag 258 now DEFAULTS to `@duplicates reject`, so the
+; opt-out is what pins the transparent alias (Vec<String>) here — the multi-era byte-exact reader
+; for historical duplicate-bearing data (see the duplicate KATs in tests.rs). Wrap in a record.
+opt_set        = #6.258([* tstr]) / [* tstr] ; @duplicates preserve
 opt_set_holder = [s: opt_set]
 
 ; DUPLICATE-carrying set instances are spec-VALID (cddl `[* a]` / `[+ a]` are plain arrays; tag 258's
-; "mathematical set" semantics is not a cddl uniqueness constraint) and, in the default preserve-mode
-; policy, must round-trip BYTE-EXACT with the duplicates and their order intact — the multi-era
-; byte-exact-reader guarantee that made preserve the correct set default. This is the regression floor
-; for that guarantee: the `[+]` twin (collapses to NonEmptyVec) alongside the `[*]` twin above, so both
-; occurrence flavors are pinned. Vectors live in tests.rs.
-opt_neset        = #6.258([+ tstr]) / [+ tstr]
+; "mathematical set" semantics is not a cddl uniqueness constraint) and, under the EXPLICIT
+; `@duplicates preserve` opt-out, must round-trip BYTE-EXACT with the duplicates and their order
+; intact — the multi-era byte-exact-reader contract that lives on the `preserve` spelling now that the
+; 258 default is `reject`. This is the regression floor for that contract: the `[+]` twin (collapses
+; to NonEmptyVec) alongside the `[*]` twin above, so both occurrence flavors are pinned. Vectors live
+; in tests.rs.
+opt_neset        = #6.258([+ tstr]) / [+ tstr] ; @duplicates preserve
 opt_neset_holder = [s: opt_neset]
 
 ; `@duplicates reject` set idiom under preserve: `reject` narrows WHICH inputs are accepted (a

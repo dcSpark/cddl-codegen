@@ -1,12 +1,21 @@
-; The tagged-or-untagged set idiom (`x = #6.N([* a]) / [* a]`), non-generic flavor.
+; The tagged-or-untagged set idiom (`x = #6.N([* a]) / [* a]`), non-generic flavor, pinned here on
+; the EXPLICIT `@duplicates preserve` opt-out.
 ;
 ; A two-arm type choice whose arms are the SAME collection but for exactly one `Tagged(N)` encoding
 ; op is not two types: both arms denote the same logical value and which arm was written is an
 ; encoding detail (older on-chain data is untagged, the Conway-era Cardano ledger emits tag 258).
-; cddl-codegen recognizes this structurally and collapses it into ONE transparent Vec/NonEmptyVec
-; alias — never an enum — with the tag riding a `TagPresenceEncoding` var under
-; --preserve-encodings so either wire arm roundtrips byte-exact, and defaulting to tagged otherwise.
-; Near misses keep the two-variant enum (see tag_set_near_miss.cddl).
+; cddl-codegen recognizes this structurally and collapses it into ONE transparent alias — never an
+; enum — with the tag riding a `TagPresenceEncoding` var under --preserve-encodings so either wire
+; arm roundtrips byte-exact, and defaulting to tagged otherwise. Near misses keep the two-variant
+; enum (see tag_set_near_miss.cddl).
+;
+; These rules carry `; @duplicates preserve` DELIBERATELY: tag 258 is the IANA set tag, so a
+; no-directive 258 idiom now DEFAULTS to `@duplicates reject` (the uniqueness twin — see
+; tag_set_default.cddl). This fixture is the OPT-OUT contract: `preserve` restores the plain
+; `Vec`/`NonEmptyVec` alias — the multi-era byte-exact reader for historical duplicate-bearing wire
+; data — which is exactly the migration recipe the docs ship to consumers. The structural collapse
+; itself is unchanged; only the effective duplicates policy is spelled explicitly. The trailing
+; directive on a choice rule is RULE-level and must follow the LAST arm.
 ;
 ; - `int_set`   — the `[*]` (empty-allowed) flavor collapses to a transparent `Vec<u64>` alias.
 ; - `int_neset` — the `[+]` (non-empty) flavor collapses to a DISTINCT `NonEmptyVec<u64>` alias; the
@@ -16,7 +25,7 @@
 ; - `holder`    — embeds the collapsed rules in record-field position, including an OPTIONAL field, so
 ;                 the member-side (de)serialize and the optional-field wrapping both compile and
 ;                 round-trip.
-int_set = #6.258([* uint]) / [* uint]
-int_neset = #6.258([+ uint]) / [+ uint]
-text_set = [* text] / #6.258([* text])
+int_set = #6.258([* uint]) / [* uint] ; @duplicates preserve
+int_neset = #6.258([+ uint]) / [+ uint] ; @duplicates preserve
+text_set = [* text] / #6.258([* text]) ; @duplicates preserve
 holder = [s: int_set, ns: int_neset, ? t: text_set]

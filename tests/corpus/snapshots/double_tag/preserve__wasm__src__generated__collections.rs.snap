@@ -15,3 +15,4 @@ pub use crate::generated::ElemTagged;
 pub use crate::generated::HeterogeneousSet;
 pub use crate::generated::HomogeneousInner;
 pub use crate::generated::OuterOverArray;
+pub use crate::generated::U64OrderedSet;

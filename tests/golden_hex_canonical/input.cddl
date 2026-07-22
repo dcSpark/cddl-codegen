@@ -38,8 +38,9 @@ int_holder = [it: int_table]
 
 ; tag-258 set idiom (`#6.258([* a]) / [* a]`): --canonical-form normalizes the tag's SIZE (a
 ; non-minimal header minimizes) but NEVER its PRESENCE — a tagged value stays tagged, an untagged
-; value stays untagged. Transparent alias (Vec<String>), wrap in a record.
-opt_set        = #6.258([* tstr]) / [* tstr]
+; value stays untagged. Carries the EXPLICIT `; @duplicates preserve` opt-out (tag 258 now DEFAULTS
+; to `@duplicates reject`), which pins the transparent alias (Vec<String>) here. Wrap in a record.
+opt_set        = #6.258([* tstr]) / [* tstr] ; @duplicates preserve
 opt_set_holder = [s: opt_set]
 
 ; `@duplicates preserve` table (PairMap): under --canonical-form a preserve-mode table STABLE-sorts

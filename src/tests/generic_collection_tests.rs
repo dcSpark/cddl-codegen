@@ -290,8 +290,13 @@ fn record_bodied_generic_def_still_generates() {
 /// own-spec), and it holds for the `[+]` flavor onto `NonEmptyKeyHashList`.
 #[test]
 fn anonymous_collapsed_set_instance_lowers_wasm_to_structural_wrapper() {
+    // The generic def carries the explicit `; @duplicates preserve` opt-out: tag 258 now defaults to
+    // `@duplicates reject` (the well-known-tag registry), which would swap the transparent `Vec` for
+    // the `OrderedSet` twin and its own wasm wrapper. This test pins the anonymous-instance STRUCTURAL
+    // convergence machinery (REQUEST-09), orthogonal to the duplicates policy, so it stays on the
+    // plain `Vec`/`KeyHashList` representation via the opt-out.
     let spec = "key_hash = bytes ; @newtype\n\
-                set<a0> = #6.258([* a0]) / [* a0]\n\
+                set<a0> = #6.258([* a0]) / [* a0] ; @duplicates preserve\n\
                 cert = [pool_owners: set<key_hash>]\n";
     let files = generate(
         spec,
@@ -324,8 +329,11 @@ fn anonymous_collapsed_set_instance_lowers_wasm_to_structural_wrapper() {
 /// STRUCTURAL wrapper `NonEmptyKeyHashList`, never a rule-named `NonemptySetKeyHash` class.
 #[test]
 fn anonymous_collapsed_nonempty_set_lowers_to_nonempty_structural_wrapper() {
+    // Explicit `; @duplicates preserve` opt-out keeps this on the plain `NonEmptyVec`/
+    // `NonEmptyKeyHashList` representation the structural-convergence machinery targets (tag 258 now
+    // defaults to `reject`; the convergence mechanism under test is orthogonal to that policy).
     let spec = "key_hash = bytes ; @newtype\n\
-                nonempty_set<a0> = #6.258([+ a0]) / [+ a0]\n\
+                nonempty_set<a0> = #6.258([+ a0]) / [+ a0] ; @duplicates preserve\n\
                 signers = [required: nonempty_set<key_hash>]\n";
     let files = generate(
         spec,
@@ -350,8 +358,11 @@ fn anonymous_collapsed_nonempty_set_lowers_to_nonempty_structural_wrapper() {
 /// inline `[* key_hash]` — must define exactly ONE `KeyHashList` wasm class, not two.
 #[test]
 fn anonymous_instance_and_inline_collapsed_set_are_one_wasm_class() {
+    // Explicit `; @duplicates preserve` opt-out: the "two spellings, ONE class" convergence pins the
+    // plain `KeyHashList` shape; without the opt-out the 258 default (`reject`) would give the
+    // instance its own `OrderedSet` wrapper, diverging from the inline `[* key_hash]` twin.
     let spec = "key_hash = bytes ; @newtype\n\
-                set<a0> = #6.258([* a0]) / [* a0]\n\
+                set<a0> = #6.258([* a0]) / [* a0] ; @duplicates preserve\n\
                 cert = [pool_owners: set<key_hash>, extra: [* key_hash]]\n";
     let files = generate(
         spec,
@@ -375,8 +386,11 @@ fn anonymous_instance_and_inline_collapsed_set_are_one_wasm_class() {
 /// becomes `Vec<u64>` (same transparent type the `pub type SetU64 = Vec<u64>` alias still names).
 #[test]
 fn anonymous_exposable_instance_wasm_matches_inline() {
+    // Explicit `; @duplicates preserve` opt-out keeps the instance on the plain `Vec<u64>` shape so it
+    // matches the inline `[* uint]` equivalent byte-for-byte (tag 258 now defaults to `reject`; the
+    // by-value exposable-convergence mechanism under test is orthogonal to that policy).
     let instance = generate(
-        "set<a0> = #6.258([* a0]) / [* a0]\ncert = [nums: set<uint>]\n",
+        "set<a0> = #6.258([* a0]) / [* a0] ; @duplicates preserve\ncert = [nums: set<uint>]\n",
         "anon_expo_inst",
         &["--wasm", "true", "--preserve-encodings=true"],
     )
