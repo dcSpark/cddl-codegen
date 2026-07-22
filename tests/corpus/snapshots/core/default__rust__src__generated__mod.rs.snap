@@ -64,6 +64,14 @@ impl TryFrom<Vec<u64>> for RejectUintSet {
     }
 }
 
+impl RejectUintSet {
+    /// Empty input is `Ok(None)` (the optional set field is absent); a non-empty input goes through
+    /// the inner uniqueness door wrapped in `Some`, so ONLY a duplicate surfaces as `Err`.
+    pub fn try_opt_from(vec: Vec<u64>) -> Result<Option<Self>, DeserializeError> {
+        Ok(<OrderedSet<u64>>::try_opt_from(vec)?.map(RejectUintSet::new))
+    }
+}
+
 pub mod serialization;
 // cddl-codegen extern re-export contract: this crate's hand-written root lib.rs must re-export
 // each name below (`pub use <your_module>::<Name>;`) so the generated glue resolves against the

@@ -65,6 +65,14 @@ impl TryFrom<Vec<u64>> for NonemptySetU64 {
     }
 }
 
+impl NonemptySetU64 {
+    /// Empty input is `Ok(None)` (the optional set field is absent); a non-empty input goes through
+    /// the inner uniqueness door wrapped in `Some`, so ONLY a duplicate surfaces as `Err`.
+    pub fn try_opt_from(vec: Vec<u64>) -> Result<Option<Self>, DeserializeError> {
+        Ok(<NonEmptyOrderedSet<u64>>::try_opt_from(vec)?.map(NonemptySetU64::new))
+    }
+}
+
 pub mod cbor_encodings;
 pub mod serialization;
 

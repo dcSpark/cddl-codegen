@@ -61,6 +61,14 @@ impl TryFrom<Vec<u64>> for DefaultNeset {
     }
 }
 
+impl DefaultNeset {
+    /// Empty input is `Ok(None)` (the optional set field is absent); a non-empty input goes through
+    /// the inner uniqueness door wrapped in `Some`, so ONLY a duplicate surfaces as `Err`.
+    pub fn try_opt_from(vec: Vec<u64>) -> Result<Option<Self>, DeserializeError> {
+        Ok(<NonEmptyOrderedSet<u64>>::try_opt_from(vec)?.map(DefaultNeset::new))
+    }
+}
+
 impl std::ops::Deref for DefaultSet {
     type Target = OrderedSet<u64>;
 
@@ -104,6 +112,14 @@ impl TryFrom<Vec<u64>> for DefaultSet {
 
     fn try_from(vec: Vec<u64>) -> Result<Self, Self::Error> {
         Ok(DefaultSet::new(<OrderedSet<u64>>::try_from(vec)?))
+    }
+}
+
+impl DefaultSet {
+    /// Empty input is `Ok(None)` (the optional set field is absent); a non-empty input goes through
+    /// the inner uniqueness door wrapped in `Some`, so ONLY a duplicate surfaces as `Err`.
+    pub fn try_opt_from(vec: Vec<u64>) -> Result<Option<Self>, DeserializeError> {
+        Ok(<OrderedSet<u64>>::try_opt_from(vec)?.map(DefaultSet::new))
     }
 }
 
@@ -182,6 +198,14 @@ impl TryFrom<Vec<u64>> for SingleArm {
 
     fn try_from(vec: Vec<u64>) -> Result<Self, Self::Error> {
         Ok(SingleArm::new(<OrderedSet<u64>>::try_from(vec)?))
+    }
+}
+
+impl SingleArm {
+    /// Empty input is `Ok(None)` (the optional set field is absent); a non-empty input goes through
+    /// the inner uniqueness door wrapped in `Some`, so ONLY a duplicate surfaces as `Err`.
+    pub fn try_opt_from(vec: Vec<u64>) -> Result<Option<Self>, DeserializeError> {
+        Ok(<OrderedSet<u64>>::try_opt_from(vec)?.map(SingleArm::new))
     }
 }
 

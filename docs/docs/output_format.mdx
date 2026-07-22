@@ -99,6 +99,38 @@ three naming regimes and the reject default. The wrapper carries the set ergonom
 and always-on encodings-ignored `PartialEq/Eq/PartialOrd/Ord/Hash`; JSON/schemars stay transparent
 (the wrapper serializes as its inner collection).
 
+Because the wrapper `Deref`/`DerefMut`s to the inner uniqueness twin, the std set contract the twin
+carries (`insert -> bool`, `contains`, `Extend`, `FromIterator`, `sort` — see
+[Reject-duplicates containers](#reject-duplicates-containers-uniqueness-twins)) resolves through
+method-call syntax on the nominal itself: `set.insert(x)`, `set.extend(other)`, `set.sort()` all work
+without unwrapping. The one door that CANNOT ride `Deref` (it returns the inner type, not the nominal)
+is **`try_opt_from`**, so it is emitted **inherently** on every set nominal whose inner is a uniqueness
+twin: `Nominal::try_opt_from(Vec<Elem>) -> Result<Option<Self>, DeserializeError>` — empty is
+`Ok(None)`, non-empty routes through the inner door and re-wraps via `new`.
+
+**LOAD-BEARING uniformity contract.** Every generated set nominal with a fallible inner door — i.e.
+every `@duplicates reject` set (the tag-258 default) and every non-empty (`[+]`) set — implements
+`TryFrom<Vec<Elem>, Error = DeserializeError>`. This signature is **uniform across all such
+instantiations by design**: consumer-side generic helpers depend on it (e.g. an
+`opt_nonempty_set<S: TryFrom<Vec<T>, Error = DeserializeError>>(elems) -> Result<Option<S>, _>`
+works for every instantiation only because the door's error type never varies). Keep it uniform, or
+version it consciously. The single exception is the `@duplicates preserve` empty-allowed (`[*]`) case:
+its inner is a plain `Vec`, so it exposes an **infallible** `From<Vec<Elem>>` (and hence std's blanket
+`TryFrom<Vec<Elem>, Error = Infallible>`) rather than the fallible `DeserializeError` door — a
+duplicate-tolerant set has nothing to reject, so there is no fallible door to make uniform.
+
+The three set operations every consumer of these types reaches for are one-liners on this surface:
+
+- **Union** — `dst.extend(src)` (std set `Extend`: a duplicate is a keep-first no-op, so extending is
+  union; nothing is discarded and no `Result` is threaded).
+- **Empty-means-absent** for an optional field — `Nominal::try_opt_from(vec)` (empty → `None`;
+  non-empty → the checked door in `Some`; only a duplicate surfaces as `Err`). Prefer this over
+  `Vec::try_into().ok()`, which silently swallows the duplicate error alongside the empty one.
+- **Dedup-normalize** a duplicate-tolerant source (legacy eras, loose JSON, JS arrays) — collect
+  through `FromIterator`, which dedups keep-first: `vec.into_iter().collect::<OrderedSet<_>>()`, and
+  for the non-empty twin compose it with the refinement door:
+  `vec.into_iter().collect::<OrderedSet<_>>().try_into()?`.
+
 Grammar selects the tag record, which lives on the **nominal's own** encoding struct (not the
 holder's — a set field no longer flattens its encodings onto the containing record): a two-arm
 idiom's OPTIONAL tag rides `inner_tag_encoding: TagPresenceEncoding` — a tri-state
@@ -193,8 +225,31 @@ Each twin provides one conversion contract, parallel to the non-empty one:
 - **Checked `push` returns `Result`.** Appending an element already present is refused with
   `DuplicateKey(Key::Uint(index))` — in contrast to `NonEmptyVec::push`, which is **infallible**
   (growing can never break a *minimum* bound, but it *can* mint a duplicate, so the set twin's `push`
-  must be fallible). `NonEmptyOrderedSet` additionally gives checked `pop`/`remove` (refused at
-  length 1) exactly like `NonEmptyVec`.
+  must be fallible). The index `push` reports for a duplicate is the SAME index the `TryFrom` door
+  reports for the identical duplicate (a would-be append position equals a bulk scan's first-repeat
+  position), so the strict door and the bulk door never disagree. `NonEmptyOrderedSet` additionally
+  gives checked `pop`/`remove` (refused at length 1) exactly like `NonEmptyVec`.
+- **The std set contract, alongside the strict `push`.** Both twins also implement the
+  `HashSet`/`BTreeSet`/`IndexSet` surface, for callers who treat "already present" as benign rather
+  than a bug: `insert(T) -> bool` (`false` = already present, set unchanged — so a union is a plain
+  `insert` loop), `contains(&T) -> bool`, `Extend<T>` (a duplicate is a keep-first no-op, so
+  `dst.extend(src)` is union), and `sort()` (the `IndexSet::sort` precedent — sorting unique elements
+  cannot create a duplicate; it DOES change the re-emitted byte order, so the wire-order round-trip
+  guarantee applies only to an *untouched* decoded set). `OrderedSet` additionally implements
+  `FromIterator<T>` (`collect` **dedups keep-first**, the `IndexSet::from_iter` semantics) — there is
+  deliberately no `FromIterator` on `NonEmptyOrderedSet`, since an empty iterator is unrepresentable
+  there; the dedup-nonempty path composes the two:
+  `vec.into_iter().collect::<OrderedSet<_>>().try_into()?`.
+- **`try_opt_from(Vec<T>) -> Result<Option<Self>, DeserializeError>` — empty-means-absent.** For an
+  optional set field: empty input is `Ok(None)` (the field is absent — the min-1 `RangeCheck` does NOT
+  fire on the non-empty twin), a non-empty input routes through the `TryFrom<Vec<T>>` door in `Some`,
+  and *only* a duplicate surfaces as `Err`. This is the discriminating constructor to reach for
+  instead of `Vec::try_into().ok()`, which silently swallows the duplicate failure along with the
+  empty one.
+- **Refinement doors between the twins.** `TryFrom<OrderedSet<T>> for NonEmptyOrderedSet<T>` narrows
+  (the only check is non-emptiness — elements are already unique — so an empty set fails with the same
+  `0 not at least 1` `RangeCheck` as every other min-1 door), and `From<NonEmptyOrderedSet<T>> for
+  OrderedSet<T>` widens infallibly.
 - **A stricter blocked-mutator set than the non-empty twins.** `NonEmptyVec` permits value-level
   `&mut` access (`iter_mut` / `as_mut_slice` / `IndexMut`) because its invariant is only about
   *length*, which a `&mut` to an element cannot reach. The ordered-set twins expose **none of those**
@@ -216,6 +271,16 @@ length:
 | `Foo::new(signers: Vec<Key>) -> Foo` (duplicates silently accepted) | `Foo::new(signers: OrderedSet<Key>) -> Foo` |
 | `let foo = Foo::new(signers);` (a later `foo.signers.push(dup)` cannot even be expressed) | `let signers: OrderedSet<Key> = signers.try_into()?; let foo = Foo::new(signers);` |
 | in-place element edit via `foo.signers[i] = …` | `let mut v = foo.signers.into_inner(); v[i] = …; foo.signers = v.try_into()?;` |
+
+Three operations every consumer of the new set types needs — none of which the previous `Vec` field
+required a decision about — have a sanctioned one-liner, so no consumer should hand-roll a
+`let _ = push(…)` loop:
+
+| Need | Recipe |
+|---|---|
+| **Union** two sets (merge witnesses, accumulate) | `dst.extend(src);` — the std set `Extend`; a duplicate is a keep-first no-op, so this *is* union (no discarded `Result`) |
+| **Empty-means-absent** for an optional field (`? 4 : nonempty_set<…>`) | `Foo::try_opt_from(vec)?` — empty → `None`, non-empty → the checked door in `Some`; only a duplicate errors. NOT `vec.try_into().ok()` (it swallows the duplicate error too) |
+| **Dedup-normalize** a duplicate-tolerant source (pre-Conway eras, loose JSON, JS arrays — where duplicates are legal and dropping the whole field is wrong) | `vec.into_iter().collect::<OrderedSet<_>>()`, or for the non-empty twin `…collect::<OrderedSet<_>>().try_into()?` — `FromIterator` dedups keep-first (a repeated element is semantically redundant) |
 
 The wasm boundary mirrors this with the same two-wrapper pattern as the non-empty case, except the
 restricted wrapper's `add` is **fallible** — see [Wasm Differences](./wasm_differences.mdx#reject-duplicates-containers).

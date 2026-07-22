@@ -60,6 +60,14 @@ impl TryFrom<Vec<String>> for SetText {
     }
 }
 
+impl SetText {
+    /// Empty input is `Ok(None)` (the optional set field is absent); a non-empty input goes through
+    /// the inner uniqueness door wrapped in `Some`, so ONLY a duplicate surfaces as `Err`.
+    pub fn try_opt_from(vec: Vec<String>) -> Result<Option<Self>, DeserializeError> {
+        Ok(<OrderedSet<String>>::try_opt_from(vec)?.map(SetText::new))
+    }
+}
+
 impl std::ops::Deref for SetU64 {
     type Target = OrderedSet<u64>;
 
@@ -103,6 +111,14 @@ impl TryFrom<Vec<u64>> for SetU64 {
 
     fn try_from(vec: Vec<u64>) -> Result<Self, Self::Error> {
         Ok(SetU64::new(<OrderedSet<u64>>::try_from(vec)?))
+    }
+}
+
+impl SetU64 {
+    /// Empty input is `Ok(None)` (the optional set field is absent); a non-empty input goes through
+    /// the inner uniqueness door wrapped in `Some`, so ONLY a duplicate surfaces as `Err`.
+    pub fn try_opt_from(vec: Vec<u64>) -> Result<Option<Self>, DeserializeError> {
+        Ok(<OrderedSet<u64>>::try_opt_from(vec)?.map(SetU64::new))
     }
 }
 

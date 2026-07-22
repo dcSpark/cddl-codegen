@@ -63,6 +63,14 @@ impl TryFrom<Vec<u64>> for SetNonEmptyU64 {
     }
 }
 
+impl SetNonEmptyU64 {
+    /// Empty input is `Ok(None)` (the optional set field is absent); a non-empty input goes through
+    /// the inner uniqueness door wrapped in `Some`, so ONLY a duplicate surfaces as `Err`.
+    pub fn try_opt_from(vec: Vec<u64>) -> Result<Option<Self>, DeserializeError> {
+        Ok(<NonEmptyOrderedSet<u64>>::try_opt_from(vec)?.map(SetNonEmptyU64::new))
+    }
+}
+
 pub mod serialization;
 
 use crate::generated::error::*;

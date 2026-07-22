@@ -63,6 +63,14 @@ impl TryFrom<Vec<u64>> for IntNeset {
     }
 }
 
+impl IntNeset {
+    /// Empty input is `Ok(None)` (the optional set field is absent); a non-empty input goes through
+    /// the inner uniqueness door wrapped in `Some`, so ONLY a duplicate surfaces as `Err`.
+    pub fn try_opt_from(vec: Vec<u64>) -> Result<Option<Self>, DeserializeError> {
+        Ok(<NonEmptyOrderedSet<u64>>::try_opt_from(vec)?.map(IntNeset::new))
+    }
+}
+
 impl std::ops::Deref for IntSet {
     type Target = OrderedSet<u64>;
 
@@ -106,6 +114,14 @@ impl TryFrom<Vec<u64>> for IntSet {
 
     fn try_from(vec: Vec<u64>) -> Result<Self, Self::Error> {
         Ok(IntSet::new(<OrderedSet<u64>>::try_from(vec)?))
+    }
+}
+
+impl IntSet {
+    /// Empty input is `Ok(None)` (the optional set field is absent); a non-empty input goes through
+    /// the inner uniqueness door wrapped in `Some`, so ONLY a duplicate surfaces as `Err`.
+    pub fn try_opt_from(vec: Vec<u64>) -> Result<Option<Self>, DeserializeError> {
+        Ok(<OrderedSet<u64>>::try_opt_from(vec)?.map(IntSet::new))
     }
 }
 
@@ -155,6 +171,14 @@ impl TryFrom<Vec<u64>> for OsetU64 {
     }
 }
 
+impl OsetU64 {
+    /// Empty input is `Ok(None)` (the optional set field is absent); a non-empty input goes through
+    /// the inner uniqueness door wrapped in `Some`, so ONLY a duplicate surfaces as `Err`.
+    pub fn try_opt_from(vec: Vec<u64>) -> Result<Option<Self>, DeserializeError> {
+        Ok(<OrderedSet<u64>>::try_opt_from(vec)?.map(OsetU64::new))
+    }
+}
+
 impl std::ops::Deref for TextSet {
     type Target = OrderedSet<String>;
 
@@ -198,6 +222,14 @@ impl TryFrom<Vec<String>> for TextSet {
 
     fn try_from(vec: Vec<String>) -> Result<Self, Self::Error> {
         Ok(TextSet::new(<OrderedSet<String>>::try_from(vec)?))
+    }
+}
+
+impl TextSet {
+    /// Empty input is `Ok(None)` (the optional set field is absent); a non-empty input goes through
+    /// the inner uniqueness door wrapped in `Some`, so ONLY a duplicate surfaces as `Err`.
+    pub fn try_opt_from(vec: Vec<String>) -> Result<Option<Self>, DeserializeError> {
+        Ok(<OrderedSet<String>>::try_opt_from(vec)?.map(TextSet::new))
     }
 }
 
