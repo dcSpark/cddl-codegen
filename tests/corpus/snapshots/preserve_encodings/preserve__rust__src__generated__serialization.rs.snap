@@ -140,16 +140,16 @@ impl cbor_event::se::Serialize for ArrayOptFields {
                 .unwrap_or_default()
                 .to_len_sz(
                     2 + match &self.a {
-                        Some(x) => 1,
+                        Some(_) => 1,
                         None => 0,
                     } + match &self.b {
-                        Some(x) => 1,
+                        Some(_) => 1,
                         None => 0,
                     } + match &self.d {
-                        Some(x) => 1,
+                        Some(_) => 1,
                         None => 0,
                     } + match &self.e {
-                        Some(x) => 1,
+                        Some(_) => 1,
                         None => 0,
                     },
                 ),
@@ -2145,7 +2145,7 @@ impl cbor_event::se::Serialize for Ed {
                 .unwrap_or_default()
                 .to_len_sz(
                     2 + match &self.index_2 {
-                        Some(x) => 1,
+                        Some(_) => 1,
                         None => 0,
                     },
                 ),
@@ -2291,7 +2291,7 @@ impl cbor_event::se::Serialize for Ee {
                 .unwrap_or_default()
                 .to_len_sz(
                     3 + match &self.index_2 {
-                        Some(x) => 1,
+                        Some(_) => 1,
                         None => 0,
                     },
                 ),
@@ -2466,7 +2466,7 @@ impl cbor_event::se::Serialize for EnumOptEmbedFields {
             } => {
                 serializer.write_array_sz(len_encoding.to_len_sz(
                     2 + match index_1 {
-                        Some(x) => 1,
+                        Some(_) => 1,
                         None => 0,
                     },
                 ))?;
@@ -2505,7 +2505,7 @@ impl cbor_event::se::Serialize for EnumOptEmbedFields {
             } => {
                 serializer.write_array_sz(len_encoding.to_len_sz(
                     2 + match non_overlapping_type_choice_some {
-                        Some(x) => 1,
+                        Some(_) => 1,
                         None => 0,
                     },
                 ))?;
@@ -2527,7 +2527,7 @@ impl cbor_event::se::Serialize for EnumOptEmbedFields {
             } => {
                 serializer.write_array_sz(len_encoding.to_len_sz(
                     2 + match overlapping_inlined {
-                        Some(x) => 1,
+                        Some(_) => 1,
                         None => 0,
                     },
                 ))?;

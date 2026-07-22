@@ -399,8 +399,9 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   grep-level floor over `tests/*/tests.rs`), accepting its enumeration cost then, not before.
 - **Regenerating over prior output with a rule DELETION is exercised as a gate for only two files,
   not corpus-wide — an emitted-comment-on-a-deletable-row trap in any OTHER generated file would
-  ship unseen.** The comment-preservation overlay only runs on the disk-write seam, and its one
-  corpus-scale gate (`comment_preserve_lexer_round_trip_over_corpus`) does SELF-preserve
+  ship unseen.** The comment-preservation overlay participates only when `export()` runs over
+  prior on-disk output (it is applied to the in-memory file map ahead of the write loop), and its
+  one corpus-scale gate (`comment_preserve_lexer_round_trip_over_corpus`) does SELF-preserve
   (`preserve(content, content)`), which is a no-op for any trailing comment regardless of whether a
   real regen would strand it — so it cannot see the sentinel-trap class at all. Proven instance
   (feature-requests 03/04, reproduced before fixing): `extern_interface_check.rs` and
@@ -426,6 +427,23 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   therefore enforced as an emitter invariant instead). Second, the leg only exercises
   `key_demand_assertions.rs` where a fixture carries a `@used_as_key` tag — the deletion-variant
   fixture set must include at least one, or that file's rows are vacuously green.
+  SECOND instance on record (2026-07-22, consumer-reported, so the corpus-wide leg's trigger has
+  FIRED and the leg is now DUE) — the regen-over-EDITED-output flavor: the import prune ran only
+  over freshly-generated content while the overlay applied later, per file, at the disk-write seam,
+  so a `cddl-codegen:replace` block that removed an import's last user shipped the orphaned `use`
+  (CML's regen unused-import residue). Fixed by ordering — `export()` applies the overlay to the
+  in-memory file map, then reruns the prune family-wide over the post-overlay map — with the two
+  known shapes pinned (`comment_preservation_replace_orphans_import_same_file`,
+  `comment_preservation_replace_in_descendant_orphans_parent_import`): the same
+  known-shapes-by-name posture as the deletion instance's per-file pins, and the same residual
+  blindness to a third shape. Consequence for the named layer's design: the corpus-wide regen leg
+  must carry BOTH variant families — the rule-DELETED variant (fail on any
+  `cddl-codegen:unpreserved-comment` in the tool-owned trees) AND a user-EDIT variant (a canonical
+  replace block injected over a corpus fixture's own output) asserting the regenerated crate stays
+  rustc-warning-clean (the `feature_corpus_compiles` unused-import/variable scan applied to the
+  regen) and reaches a byte-identical fixed point on the following run. Cross-checked against the
+  cddl-matrix ROADMAP at this instance too: its pending items enumerate CDDL input surface;
+  regen-over-prior-output interaction stays this roadmap's domain.
 - **Stale "known limitation" prose surviving its fix — a finding ledgered in TWO homes where the
   fixing commit prunes only one.** First instance (read-caught during the facade-pin delivery, not
   by any gate): the extern-only-scope undeclared-module finding was ledgered both in
@@ -741,8 +759,29 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
 - **`unused_imports` on generated crates — residual trait-import class the name-scan model cannot
   reach.** The rustc-warning DETECTOR is live and BROAD — the generated-code unused-import scan
   (`unused_generated_import_lines`) inside `feature_corpus_compiles` fails on ANY `unused import`
-  warning in the purely-generated crates, cache-key-versioned by the `lint=unused-imports-v2`
-  marker (current state in `tests/README.md`'s description of that gate). Its escalation trigger
+  warning in the purely-generated crates, and (v3) its sibling `unused_generated_variable_lines`
+  fails on ANY `unused variable` warning too, cache-key-versioned by the `lint=unused-imports-v3`
+  marker (current state in `tests/README.md`'s description of that gate). The variables half was
+  added on a consumer-reported instance (the constant count-arm `Some(x) => 1` binding): the corpus
+  held the provoking shape all along (33 committed-snapshot instances), so the escape mechanism was
+  a missing ASSERTED CLASS, not input poverty — `generated_code_clippy_clean` deliberately kept
+  `unused_variables` at warn, lumping it with `unused_imports`, whose stay-warn rationale (the
+  legitimate trait residue below) has no variables analogue. Follow-up on the next touch of that
+  gate: add `-D unused_variables` to its rustc deny set (imports stay warn there — the trait
+  residue is real); until then the corpus scan is the class owner. A second known DETECTOR blind
+  spot, proven by the path-tail instance below: the scan lives only in `feature_corpus_compiles`
+  cells, which never generate under the cross-crate workspace flags, so prune imprecision visible
+  only in `--wrapper-requests`/`--workspace-dep` output (the requested-collections sidecar) reaches
+  consumers before any gate — a detector-coverage cousin of the input-poverty sub-class ledgered in
+  the flag-powerset entry (there the swept input lacks the shape; here the scanning gate lacks the
+  flag). Named layer: apply the same unused-import/variable stderr scan to the nested `cargo check`
+  output the workspace-requests/extern-deps e2e gates already capture — near-zero added cost, and
+  it closes that family's blind spot without new cells. Proven instance of exactly that blind spot
+  (2026-07-22, consumer-reported, fixed class-level): the used-ident scan counted `::`-path-tail
+  segments (`cml_chain::assets::Coin` counting `assets`), which collide with the parent's `pub mod`
+  defs, so `super_glob_needed` conservatively kept the sidecar's dead `use super::*;`; the
+  path-tail exclusion in `collect_idents_in_tokens` removed the false-positive class (unit + map-
+  level twin tests pin both directions). The entry's earlier escalation trigger
   (a 26-warning consumer report + chain/cip36 regen) fired and is delivered: `import_prune` now
   prunes the `use super::*;` and `use <common>::error::*;` globs when a fully-enumerable universe
   proves them unused, computes each file's protector set via the super-glob EDGE graph
@@ -1345,7 +1384,8 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   `integration_tests::getting_started_example`.)
 - **Full `2^N` flag powerset / PICT pairwise** — the curated named profiles cover the flag
   *combinations* worth testing, so the full powerset stays out of scope. Escaped interactions earn
-  their own standing cells rather than the whole powerset — three so far. First:
+  their own standing cells rather than the whole powerset — four so far (the Fourth is recorded
+  after the Third below, with a now-armed trigger). First:
   `--common-import-override` × `--preserve-encodings=false` targeting a preserve-flavored common
   crate emitted `CBORReadLen::new(Len)` against a `new(LenSz)` runtime (E0308). Second:
   `--workspace-dep` × `--wasm=false` silently ignored the flag — validation included — fixed to
@@ -1362,7 +1402,27 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   over the arm's outer accumulator (E0308 assign-to-shadow) — the first found by reading during
   the optional-fixed-value delivery, the second at the arming run of the standing cell that now
   owns the combination (`preserve_no_annotate_fixed_members_generate`, generating both fixed-member
-  corpus fixtures under the pair). Both fixed. Recur-first lesson: a THIRD validating
+  corpus fixtures under the pair). Both fixed. Fourth, the same input-poverty mechanism as the
+  Third on a different emit path: `--annotate-fields=false` (non-preserve) × a value-bounded
+  `nint` MEMBER — the N64 bounds `.and_then` relied solely on the site's `error_convert`, which
+  is empty under annotate=false, so the closure inferred the reader's native `cbor_event::Error`
+  and the emitted crate failed E0277. `flag_value_smoke` swept the flag the whole time but its
+  input (`tests/canonical/input.cddl`) had no bounded nint, so the path was unreachable by every
+  gate until the `generated_code_clippy_clean` provocation shape (`clippy_neg_bounded`) entered
+  that shared input and turned the smoke red. Fixed (convert-at-most-once, pinned by
+  `deserialize_converts_error_at_most_once`; the shape stays in the smoke's input permanently).
+  Cross-check at discovery: no cddl-matrix item covers this axis — the matrix enumerates INPUT
+  surface under the named profiles, and the corpus already held the provoking shape
+  (`bounds_spellings.cddl`'s `m_nint_range`, verified red-reproducing under annotate=false at the
+  pre-fix rev) — the unswept dimension was the FLAG value. Recur-first: this is the SECOND
+  input-poverty instance (a smoke sweeping a flag over an input too shape-poor to reach the
+  flag's divergent emission paths), so the trigger for that sub-class is ARMED; the named layer
+  is an `--annotate-fields=false` compile-floor leg over the feature corpus (or its
+  deserialize-shape subset) inside `feature_corpus_compiles`' machinery — the corpus is the
+  shape-rich input the canonical smoke is not, and gate-cache memoization bounds the added
+  nested-cargo cost. Build it on the next escaped annotate=false instance OR when touching that
+  gate's profile set for another reason, whichever comes first. Recur-first lesson from the first
+  three: a THIRD validating
   flag turning up mode-inert is the trigger
   to build the class-level validation-smoke sweep — each clap flag with documented startup
   validation invoked once with a deliberately invalid value under each `--wasm` mode, asserting

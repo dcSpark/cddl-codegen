@@ -1,5 +1,6 @@
 ---
 source: src/tests/snapshot_tests.rs
+assertion_line: 101
 expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
@@ -61,7 +62,7 @@ impl DeserializeEmbeddedGroup for Coords {
     fn deserialize_as_embedded_group(
         raw: &mut Deserializer,
         _read_len: &mut CBORReadLen,
-        len: cbor_event::Len,
+        _len: cbor_event::Len,
     ) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let index_0 =
