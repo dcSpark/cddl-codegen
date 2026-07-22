@@ -131,6 +131,19 @@ The three set operations every consumer of these types reaches for are one-liner
   for the non-empty twin compose it with the refinement door:
   `vec.into_iter().collect::<OrderedSet<_>>().try_into()?`.
 
+**Wasm surface (flattened).** The wasm `#[wasm_bindgen]` class for a set nominal has no `Deref`, so
+it DELEGATES the collection surface directly rather than forcing a two-layer unwrap: `len()`,
+indexed `get(index) -> Elem`, `insert(elem) -> bool` (the std-set door: `false` = already present),
+`add(elem)` (the CHECKED door — a duplicate is refused with an error), `contains(elem) -> bool`, a
+list-taking `try_from(<Elem>List | Vec<Elem>)`, and the empty-means-absent
+`try_opt_from(...) -> Option<Nominal>`. A JS read is `set.get(i)` — not `set.get().get(i)` — and the
+wasm surface tells the same story as the rust API above. The companion collection class
+(`<Elem>OrderedSet`, still the element-crossing boundary for the nominal's `new(inner)`) carries the
+same `insert`/`contains`/`add` doors. A rule-name alias binding a set instantiation
+(`required_signers = nonempty_set<key>`) produces no wasm class of its own — see the JS re-key note
+in [Current capacities](current_capacities#migrating-a-consumer-across-the-set-changes) § "Wasm class
+re-key".
+
 Grammar selects the tag record, which lives on the **nominal's own** encoding struct (not the
 holder's — a set field no longer flattens its encodings onto the containing record): a two-arm
 idiom's OPTIONAL tag rides `inner_tag_encoding: TagPresenceEncoding` — a tri-state

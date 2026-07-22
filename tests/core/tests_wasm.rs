@@ -471,14 +471,33 @@ fn wasm_reject_set_checked_add_and_door() {
     assert_eq!(inner.len(), 2);
     assert_eq!(inner.get(0), 1);
     assert_eq!(inner.get(1), 2);
-    // the nominal wraps the companion; get() returns the whole inner companion.
-    let set = RejectUintSet::new(&inner);
-    assert_eq!(set.get().len(), 2);
-    // the try_from uniqueness door (on the companion) accepts a duplicate-free Vec
-    let ok_inner =
-        U64OrderedSet::try_from(vec![3, 4, 5]).expect("a duplicate-free try_from is accepted");
-    let ok = RejectUintSet::new(&ok_inner);
-    assert_eq!(ok.get().len(), 3);
+    // the nominal FLATTENS the companion surface: `len`/`get(index)`/`insert`/`contains` read
+    // directly off the nominal (no `set.get().get(i)` two-layer unwrap).
+    let mut set = RejectUintSet::new(&inner);
+    assert_eq!(set.len(), 2);
+    assert_eq!(set.get(0), 1);
+    assert_eq!(set.get(1), 2);
+    assert!(set.contains(1));
+    assert!(!set.contains(9));
+    assert!(set.insert(3), "a new element inserts (true)");
+    assert!(!set.insert(3), "an already-present element is a no-op (false)");
+    assert_eq!(set.len(), 3);
+    // the nominal's own list-taking `try_from` door builds the whole nominal from a Vec.
+    let ok = RejectUintSet::try_from(vec![3, 4, 5]).expect("a duplicate-free try_from is accepted");
+    assert_eq!(ok.len(), 3);
+    // the empty-means-absent `try_opt_from` delegating door: empty -> None, non-empty -> Some.
+    assert!(
+        RejectUintSet::try_opt_from(vec![])
+            .expect("empty is Ok")
+            .is_none(),
+        "empty input is the absent case (None)"
+    );
+    assert!(
+        RejectUintSet::try_opt_from(vec![1, 2])
+            .expect("unique is Ok")
+            .is_some(),
+        "non-empty unique input is Some"
+    );
     // the refusal is the core door's — assert it through the re-exported core type (whose error is the
     // plain runtime error, not the host-trapping JsError the wasm wrapper maps it into).
     assert!(
@@ -492,7 +511,7 @@ fn wasm_reject_set_checked_add_and_door() {
         .ok()
         .expect("RejectSetHolder round-trip");
     assert_eq!(back.to_cbor_bytes(), bytes);
-    assert_eq!(back.s().get().len(), 3);
+    assert_eq!(back.s().len(), 3);
 }
 
 // `@duplicates preserve` table (`PreserveUintMap`, wrapping the `PairMap` twin): the wasm wrapper's

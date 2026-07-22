@@ -24,14 +24,22 @@ section): a generic instance mints one class per instantiation — `set<foo>` mi
 structural `FooList` — and an **inline** `#6.258([* foo])` set occurrence (member, element, map
 key/value, generic arg) likewise mints a shape-derived nominal class (`SetFoo`), deduped one per
 inline shape rather than the transparent `FooList`. A named binding of an instance
-(`named = set<foo>`) is a passthrough `pub type Named = SetFoo;`. In every case the nominal's
-`new()`/`get()` boundary still uses the structural collection wrapper (`FooList`, or the
-`<Elem>OrderedSet` reject twin) for element crossing, so the structural companion class is not
-eliminated — it is the nominal's boundary. **Class re-key note for consumers:** a spec whose
-generic set instances (or inline `#6.258` occurrences) previously surfaced as structural `*List` /
-`*OrderedSet` passthrough aliases now surfaces one nominal class per instantiation/shape; downstream
-JS/`--wrapper-requests` code that imported the synthesized name as a structural alias should move to
-the nominal class (the structural wrapper name itself is unchanged and still own-produced).
+(`named = set<foo>`) is a passthrough `pub type Named = SetFoo;`. The nominal's `new(inner)` still
+uses the structural collection wrapper (`FooList`, or the `<Elem>OrderedSet` reject twin) for element
+crossing, so the structural companion class is not eliminated — it is the nominal's construction
+boundary. The **read/mutate surface is FLATTENED** onto the nominal class itself: because the wasm
+class has no `Deref`, it delegates `len()`, indexed `get(index) -> Foo`, `insert(elem) -> bool` (the
+std-set door), `add(elem)` (the checked door), `contains(elem) -> bool`, `try_from(<Foo>List)`, and
+the empty-means-absent `try_opt_from(...)`. A JS read is `set.get(i)`, not the two-layer
+`set.get().get(i)`. **Class re-key note for consumers:** a spec whose generic set instances (or
+inline `#6.258` occurrences) previously surfaced as structural `*List` / `*OrderedSet` passthrough
+aliases now surfaces one nominal class per instantiation/shape; downstream JS/`--wrapper-requests`
+code that imported the synthesized name as a structural alias should move to the nominal class (the
+structural wrapper name itself is unchanged and still own-produced). A **rule-name binding** of an
+instance (`required_signers = nonempty_set<key>`) has no wasm class of its own — wasm-bindgen exports
+no type aliases — so JS call sites re-key from the rule name to the nominal class name; the tool
+emits a `typescript_custom_section` `export type RequiredSigners = NonemptySetKey;` so TypeScript
+type positions keep compiling (JS value positions still re-key to the nominal class).
 
 The wrapper exists primarily for **ownership safety**, not just type-support gaps. In `wasm_bindgen`,
 passing an exported class to a function **by value** transfers ownership: the JavaScript object's

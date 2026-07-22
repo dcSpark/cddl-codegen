@@ -170,8 +170,36 @@ impl SetText {
         Self(cddl_lib::SetText::new(inner.clone().into()))
     }
 
-    pub fn get(&self) -> TextOrderedSet {
-        <OrderedSet<String>>::from(self.0.clone()).clone().into()
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> String {
+        self.0[index].clone()
+    }
+
+    pub fn add(&mut self, elem: String) -> Result<(), JsError> {
+        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn insert(&mut self, elem: String) -> bool {
+        self.0.insert(elem)
+    }
+
+    pub fn contains(&self, elem: String) -> bool {
+        self.0.contains(&elem)
+    }
+
+    pub fn try_from(elements: Vec<String>) -> Result<SetText, JsError> {
+        cddl_lib::SetText::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn try_opt_from(elements: Vec<String>) -> Result<Option<SetText>, JsError> {
+        cddl_lib::SetText::try_opt_from(elements)
+            .map(|opt| opt.map(Self))
+            .map_err(|e| JsError::new(&e.to_string()))
     }
 }
 
@@ -213,8 +241,36 @@ impl SetU64 {
         Self(cddl_lib::SetU64::new(inner.clone().into()))
     }
 
-    pub fn get(&self) -> U64OrderedSet {
-        <OrderedSet<u64>>::from(self.0.clone()).clone().into()
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
+        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn insert(&mut self, elem: u64) -> bool {
+        self.0.insert(elem)
+    }
+
+    pub fn contains(&self, elem: u64) -> bool {
+        self.0.contains(&elem)
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<SetU64, JsError> {
+        cddl_lib::SetU64::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn try_opt_from(elements: Vec<u64>) -> Result<Option<SetU64>, JsError> {
+        cddl_lib::SetU64::try_opt_from(elements)
+            .map(|opt| opt.map(Self))
+            .map_err(|e| JsError::new(&e.to_string()))
     }
 }
 
@@ -277,7 +333,7 @@ impl AsRef<Vec<cddl_lib::SetU64>> for SetU64List {
     }
 }
 
-/// `[* text] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door).
+/// `[* text] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door). `insert` is the std-set door (returns `false`, set unchanged, for an already-present element); `contains` tests membership.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct TextOrderedSet(pub(crate) OrderedSet<String>);
@@ -298,6 +354,14 @@ impl TextOrderedSet {
 
     pub fn add(&mut self, elem: String) -> Result<(), JsError> {
         self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn insert(&mut self, elem: String) -> bool {
+        self.0.insert(elem)
+    }
+
+    pub fn contains(&self, elem: String) -> bool {
+        self.0.contains(&elem)
     }
 
     pub fn try_from(elements: Vec<String>) -> Result<TextOrderedSet, JsError> {
@@ -325,7 +389,7 @@ impl AsRef<OrderedSet<String>> for TextOrderedSet {
     }
 }
 
-/// `[* uint] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door).
+/// `[* uint] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door). `insert` is the std-set door (returns `false`, set unchanged, for an already-present element); `contains` tests membership.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct U64OrderedSet(pub(crate) OrderedSet<u64>);
@@ -346,6 +410,14 @@ impl U64OrderedSet {
 
     pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
         self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn insert(&mut self, elem: u64) -> bool {
+        self.0.insert(elem)
+    }
+
+    pub fn contains(&self, elem: u64) -> bool {
+        self.0.contains(&elem)
     }
 
     pub fn try_from(elements: Vec<u64>) -> Result<U64OrderedSet, JsError> {

@@ -427,6 +427,18 @@ impl GenerationScope {
                              order-preserving, never sorted)."
                                 .to_owned(),
                         );
+                        if cli.wasm {
+                            // wasm-bindgen exports no type aliases, so the rule-name class collapses:
+                            // JS/TS callers re-key from the rule name to the nominal class name. A
+                            // generated `.d.ts` `export type` keeps TS type positions compiling; JS
+                            // value positions (`new`, static methods) must use the nominal class.
+                            doc_lines.push(format!(
+                                "wasm/JS: this rule has no class of its own — the wasm surface is the \
+                                 nominal class `{bound_ident}`. TypeScript keeps `{ident}` as a \
+                                 generated type alias (`export type {ident} = {bound_ident};`), but JS \
+                                 call sites re-key to `{bound_ident}`."
+                            ));
+                        }
                     }
                     if !doc_lines.is_empty() {
                         type_alias.doc(doc_lines.join("\n"));
@@ -470,8 +482,37 @@ impl GenerationScope {
                             .resolved_wasm_alias_target(types)
                             .map(|target| target.to_string())
                             .unwrap_or_else(|| alias_info.base_type.for_wasm_member(types));
-                        self.wasm(types, ident)
+                        // A rule-name alias BINDING a set nominal (`required_signers =
+                        // nonempty_set<...>` → `pub type RequiredSigners = NonemptySetEd25519KeyHash;`)
+                        // gets NO wasm-bindgen class of its own — wasm-bindgen exports no type aliases,
+                        // so the rule name would vanish from the generated `.d.ts`. Inject a
+                        // `typescript_custom_section` re-exporting the rule name as a TS type alias to
+                        // the nominal class, so TS callers keep compiling through the rename. (JS call
+                        // sites still re-key to the nominal class name — wasm-bindgen cannot alias a
+                        // class as a *value*; the collapse notice + migration docs spell that out.)
+                        // Scoped to set nominals: the collapse the CML set-nominalization regen hit.
+                        let ts_alias_section = if let ConceptualRustType::Rust(bound_ident) =
+                            &alias_info.base_type.conceptual_type
+                        {
+                            types
+                                .rust_struct(bound_ident)
+                                .filter(|rs| rs.config().set_nominal)
+                                .map(|_| {
+                                    let const_name =
+                                        convert_to_snake_case(ident.as_ref()).to_uppercase();
+                                    format!(
+                                        "#[wasm_bindgen(typescript_custom_section)]\nconst TS_ALIAS_{const_name}: &'static str = \"export type {ident} = {wasm_target};\";"
+                                    )
+                                })
+                        } else {
+                            None
+                        };
+                        let wasm_scope = self.wasm(types, ident);
+                        wasm_scope
                             .push_type_alias(TypeAlias::new(ident, wasm_target).vis("pub").clone());
+                        if let Some(section) = ts_alias_section {
+                            wasm_scope.raw(&section);
+                        }
                     }
                     // A type-alias BASE can carry an inline `[+ T]` / `{+ k => v}` shape that only
                     // this alias reaches — e.g. `x = bytes .cbor [+ uint]` classifies as a plain

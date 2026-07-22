@@ -497,7 +497,8 @@ impl GenerationScope {
         wrapper.s.doc(format!(
             "{attr_prefix}`{shape}`: an insertion-ordered, duplicate-free set (order preserved for \
              byte-exact round-trip). `add` is checked — an already-present element is refused; \
-             construct via `try_from` (the uniqueness door)."
+             construct via `try_from` (the uniqueness door). `insert` is the std-set door (returns \
+             `false`, set unchanged, for an already-present element); `contains` tests membership."
         ));
         wrapper.push_inner_field(&inner_type);
         if non_empty {
@@ -549,6 +550,40 @@ impl GenerationScope {
             .arg("elem", element_type.for_wasm_param(types))
             .line(format!(
                 "self.0.push({}).map_err(|e| JsError::new(&e.to_string()))",
+                ToWasmBoundaryOperations::format(
+                    element_type
+                        .from_wasm_boundary_clone(types, "elem", false)
+                        .into_iter()
+                )
+            ));
+        // insert / contains: the std-set doors mirroring the core `OrderedSet` runtime additions
+        // (Phase B). `insert -> bool` is the union-friendly no-panic door (`false` = already present,
+        // set unchanged); `contains` tests membership. Both keep the wasm surface telling the same
+        // story as the rust set API reachable through `Deref`.
+        wrapper
+            .s_impl
+            .new_fn("insert")
+            .vis("pub")
+            .ret("bool")
+            .arg_mut_self()
+            .arg("elem", element_type.for_wasm_param(types))
+            .line(format!(
+                "self.0.insert({})",
+                ToWasmBoundaryOperations::format(
+                    element_type
+                        .from_wasm_boundary_clone(types, "elem", false)
+                        .into_iter()
+                )
+            ));
+        wrapper
+            .s_impl
+            .new_fn("contains")
+            .vis("pub")
+            .ret("bool")
+            .arg_ref_self()
+            .arg("elem", element_type.for_wasm_param(types))
+            .line(format!(
+                "self.0.contains(&{})",
                 ToWasmBoundaryOperations::format(
                     element_type
                         .from_wasm_boundary_clone(types, "elem", false)

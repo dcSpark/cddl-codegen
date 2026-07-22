@@ -302,6 +302,51 @@ fn alias_binding_set_nominal_documents_resolved_reject_policy() {
     );
 }
 
+/// The wasm surface for the CML alias shape (`required_signers = nonempty_set<uint>`), under
+/// `--wasm=true`. Two deliverables are pinned here:
+///   - C1 (flattened nominal class): the nominal wasm class DELEGATES the companion collection
+///     surface directly (`get(index)`, `insert`, `try_from`, `try_opt_from`), so a JS read is
+///     `set.get(i)` — not the old two-layer `set.get().get(i)` unwrap. The `try_opt_from` mirror is
+///     what let the four `PARITY_EXEMPT` entries retire.
+///   - C2 (rule-name collapse visibility): the alias emits a `typescript_custom_section` re-exporting
+///     the rule name as a TS type alias to the nominal class (so TS callers compile through the
+///     rename), and the rust alias doc names the JS-side re-key explicitly.
+#[test]
+fn alias_binding_set_nominal_wasm_surface_flattens_and_names_the_rekey() {
+    let src = generate(
+        "nonempty_set<a0> = #6.258([+ a0]) / [+ a0]\n\
+         required_signers = nonempty_set<uint>\n\
+         other = [rs: required_signers, more: nonempty_set<uint>]\n",
+        "alias_instance_wasm",
+        &["--wasm", "true"],
+    )
+    .expect("alias-of-instantiation must generate with wasm");
+    // C1: the nominal class delegates the flat collection surface (indexed get + the set doors).
+    assert!(
+        src.contains("pub fn get(&self, index: usize) -> u64 {") && src.contains("self.0[index]"),
+        "the nominal wasm class must delegate an indexed `get(index)` (flattened read surface):\n{src}"
+    );
+    assert!(
+        src.contains("pub fn insert(&mut self, elem: u64) -> bool {")
+            && src.contains("pub fn try_opt_from(elements: Vec<u64>) -> Result<Option<NonemptySetU64>, JsError> {"),
+        "the nominal wasm class must delegate `insert -> bool` and the empty-means-absent \
+         `try_opt_from` (the mirror that retired the PARITY_EXEMPT entries):\n{src}"
+    );
+    // C2: the rule name survives into TypeScript via a typescript_custom_section alias.
+    assert!(
+        src.contains("#[wasm_bindgen(typescript_custom_section)]")
+            && src.contains("export type RequiredSigners = NonemptySetU64;"),
+        "the alias must emit a typescript_custom_section re-exporting the rule name as a TS alias to \
+         the nominal class:\n{src}"
+    );
+    // C2: the rust alias doc names the JS-side re-key (rule name -> nominal class name).
+    assert!(
+        src.contains("the wasm surface is the nominal class `NonemptySetU64`")
+            && src.contains("JS call sites re-key to `NonemptySetU64`"),
+        "the collapse notice must name the JS-side re-key to the nominal class:\n{src}"
+    );
+}
+
 /// A BYTES-element set collapses to a transparent `NonEmptyOrderedSet<Vec<u8>>` alias (258 defaults
 /// to reject) and, under `--preserve-encodings`, its byte-string elements ride the EXISTING per-element `StringEncoding`
 /// machinery (`..._elem_encodings: Vec<StringEncoding>`) — so `@raw_bytes_flavor` is moot for the
