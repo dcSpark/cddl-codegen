@@ -676,6 +676,16 @@ const CORPUS_EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
   "tag_set_reject.int_neset": ["4", "6"],
   "tag_set_reject.int_set": ["4", "6"],
   "tag_set_reject.text_set": ["4", "6"],
+  // Stacked-tag fixture: `heterogeneous_set` is itself the two-arm idiom spelling (tag → 6,
+  // array → 4); the outer-tag rules wrapping it are single-arm and out of floor scope.
+  "double_tag.heterogeneous_set": ["4", "6"],
+  // Well-known-tag registry fixture: the no-directive rules and the explicit-preserve opt-out all
+  // keep the two-arm WIRE spelling (`#6.258([..]) / [..]`) — the registry default, like the
+  // directive, is invisible to the oracle, so the same per-arm floor holds. `single_arm` is
+  // single-arm (tag only) and out of floor scope.
+  "tag_set_default.default_neset": ["4", "6"],
+  "tag_set_default.default_set": ["4", "6"],
+  "tag_set_default.opt_out": ["4", "6"],
   "type_choice.type_choice": ["2", "3", "int"],
 };
 const CORPUS_MIN_FIXTURES = 55;   // ≥ 55 corpus fixtures enumerated (adjust to actuals; 60 at HEAD)

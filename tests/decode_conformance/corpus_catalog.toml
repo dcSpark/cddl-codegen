@@ -8291,7 +8291,7 @@ pinned_reason = "generic rule (head carries `<...>`); cannot be holder-wrapped b
 [[row]]
 id = "tag_set_reject_anon_generic.outer"
 axis = "corpus"
-example = "outer = [* oset<uint>]"
+example = "oset<a0> = #6.258([* a0]) / [* a0] ; @duplicates reject\nouter = [* oset<uint>]"
 fixture = "tag_set_reject_anon_generic"
 rule = "outer"
 pinned_reason = "probe crate does not compile: holder-mode EMBEDS the rule, inlining its array loop, and the loop's element is a reject-instance transparent alias (`element.serialize()` / `OsetU64::deserialize()` on an impl-less `OrderedSet<u64>` alias) — the 'Alias-of-instance chains don't compile' second-hop convergence-walk boundary (tests/TESTING_ROADMAP.md, REQUEST-08 entry), reject-instance-ELEMENT flavor; the fixture itself compiles (nothing embeds `outer`). Re-mint when the convergence walk chases the reject-instance-element hop."
