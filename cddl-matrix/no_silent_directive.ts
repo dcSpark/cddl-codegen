@@ -46,9 +46,12 @@ interface Cell {
   shape: string;
 }
 
-// The corpus. The first three cells reproduce the three shipped wrapper-seam gaps (each byte-identical
-// with/without the toggled directive BEFORE the Phase-2.1 fixes, distinct AFTER); the last two are the
-// allowlisted accepted-no-op controls that prove the gate does not simply pass everything.
+// The corpus. The first two cells reproduce shipped wrapper-seam gaps (each byte-identical
+// with/without the toggled directive BEFORE the Phase-2.1 fixes, distinct AFTER); the third pins that a
+// custom `@newtype <name>` getter is honored on a nominalized two-arm 258 set (Phase 2.2 subsumed the
+// gap-3 rejection — bare `@newtype` on a set nominal is now an accepted no-op, allowlisted below);
+// the last two are the allowlisted accepted-no-op controls that prove the gate does not simply pass
+// everything.
 const CORPUS: Cell[] = [
   {
     id: "single_arm_258_newtype_preserve_optout",
@@ -65,11 +68,14 @@ const CORPUS: Cell[] = [
     shape: "plain [* a] @newtype wrapper",
   },
   {
-    id: "two_arm_258_idiom_newtype",
+    // Phase 2.2: the two-arm 258 idiom nominalizes; a custom `@newtype <name>` getter is honored on the
+    // set nominal (adds `pub fn entries(..)`), so toggling it changes output. (Bare `@newtype` on a set
+    // nominal is a no-op — no getter, to avoid the Deref shadow — covered by the allowlist cell below.)
+    id: "two_arm_258_idiom_newtype_named_getter",
     ruleBody: "#6.258([* uint]) / [* uint]",
     base: [],
-    toggled: "@newtype",
-    shape: "collapsed two-arm 258 set idiom",
+    toggled: "@newtype entries",
+    shape: "collapsed two-arm 258 set idiom (nominalized)",
   },
   {
     id: "plain_array_preserve",
@@ -84,6 +90,17 @@ const CORPUS: Cell[] = [
     base: [],
     toggled: "@duplicates reject",
     shape: "collapsed two-arm 258 set idiom",
+  },
+  {
+    // Bare `@newtype` on a nominalized 258 set is an ACCEPTED NO-OP: the set already nominalizes into a
+    // wrapper, and a bare `@newtype` requests an inherent `get()` that is deliberately suppressed (it
+    // would shadow `OrderedSet::get(index)` through `Deref` — E0061). So it is byte-identical with/without
+    // the directive; allowlisted below as the documented no-op.
+    id: "two_arm_258_idiom_bare_newtype_noop",
+    ruleBody: "#6.258([* uint]) / [* uint]",
+    base: [],
+    toggled: "@newtype",
+    shape: "collapsed two-arm 258 set idiom (bare @newtype, no getter)",
   },
 ];
 
@@ -100,6 +117,11 @@ const ALLOWLIST: Record<string, string> = {
   // clause of the collapse notice, so the with-run prints no @duplicates mention.
   two_arm_258_idiom_reject:
     "explicit @duplicates reject on a 258 set idiom = registry default (OrderedSet); byte-identical no-op",
+  // A named non-generic 258 set NOMINALIZES with or without `@newtype`; a BARE `@newtype` requests an
+  // inherent `get()` that is suppressed on set nominals (it would shadow `OrderedSet::get(index)` through
+  // `Deref`), so it adds nothing. A custom `@newtype <name>` getter IS honored (see the positive cell).
+  two_arm_258_idiom_bare_newtype_noop:
+    "bare @newtype on a nominalized 258 set = no getter (suppressed to avoid the Deref shadow); byte-identical no-op",
 };
 
 /** The `@`-prefixed directive token used to detect an acknowledging notice/rejection
