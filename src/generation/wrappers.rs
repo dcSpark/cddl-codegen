@@ -99,18 +99,17 @@ pub(super) fn generate_wrapper_struct(
         // usual inner→wasm boundary conversion. Non-set wrappers (and custom `@newtype <name>` getters)
         // keep delegating to the rust getter, byte-identical.
         if emit_getter || set_nominal {
-            let getter_body = if set_nominal
-                && !matches!(struct_config.newtype_getter.as_ref(), Some(Some(_)))
-            {
-                // qualified-path form `<T>::from` — a generic inner (`OrderedSet<u64>`) parses `<` as a
-                // comparison in the bare `T::from` spelling ("comparison operators cannot be chained").
-                format!(
-                    "<{}>::from(self.0.clone())",
-                    field_type.for_rust_member(types, false, cli)
-                )
-            } else {
-                format!("self.0.{getter_name}()")
-            };
+            let getter_body =
+                if set_nominal && !matches!(struct_config.newtype_getter.as_ref(), Some(Some(_))) {
+                    // qualified-path form `<T>::from` — a generic inner (`OrderedSet<u64>`) parses `<` as a
+                    // comparison in the bare `T::from` spelling ("comparison operators cannot be chained").
+                    format!(
+                        "<{}>::from(self.0.clone())",
+                        field_type.for_rust_member(types, false, cli)
+                    )
+                } else {
+                    format!("self.0.{getter_name}()")
+                };
             let mut get = codegen::Function::new(getter_name);
             get.vis("pub")
                 .arg_ref_self()

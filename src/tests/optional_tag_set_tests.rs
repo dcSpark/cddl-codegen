@@ -382,7 +382,8 @@ fn outer_tag_over_set_reference_orders_outer_before_inner() {
     // non-generic: the named set nominalizes — outer tag 24 wraps a nominal delegation.
     let ng_ser = extract_impl(&non_generic, "impl Serialize for Holder");
     assert!(
-        ng_ser.contains("24u64") && ng_ser.contains("self.g.serialize(serializer, force_canonical)?"),
+        ng_ser.contains("24u64")
+            && ng_ser.contains("self.g.serialize(serializer, force_canonical)?"),
         "the non-generic named set nominalizes: outer tag 24 then a nominal `self.g.serialize`:\n{ng_ser}"
     );
     assert!(
@@ -392,7 +393,9 @@ fn outer_tag_over_set_reference_orders_outer_before_inner() {
 
     // generic instance: still transparent (Phase 2.3 pending) — inlined, outer tag before inner tag.
     let g_ser = extract_impl(&generic, "impl Serialize for Holder");
-    let outer = g_ser.find("24u64").expect("outer tag 24 must be serialized");
+    let outer = g_ser
+        .find("24u64")
+        .expect("outer tag 24 must be serialized");
     let inner = g_ser
         .find("if let TagPresenceEncoding::Tagged(tag_sz)")
         .expect("inner optional-tag branch must be serialized (transparent instance)");
