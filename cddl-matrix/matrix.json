@@ -59,6 +59,21 @@
       {
         "emission": {
           "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (references a user-provided Copy extern/raw-bytes type; integration-tested in tests/corpus/dsl_copy.cddl + the clippy-consumer-report scratch e2e)",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; standalone-compile N/A (references a user-provided Copy extern/raw-bytes type; integration-tested in tests/corpus/dsl_copy.cddl + the clippy-consumer-report scratch e2e)",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; standalone-compile N/A (references a user-provided Copy extern/raw-bytes type; integration-tested in tests/corpus/dsl_copy.cddl + the clippy-consumer-report scratch e2e); wasm standalone-test N/A (user-supplied code); no committed decode vectors (see catalog); ruby=fail rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "id": "dsl.copy",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
             "evidence": "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (references a user-provided deserialize fn; integration-tested in tests/custom_serialization)",
             "status": "supported"
           },
@@ -204,21 +219,6 @@
         },
         "evidence": "probe: cddl-codegen exit 0; standalone-compile N/A (references user-provided extern wrapper flavors; integration-tested in tests/extern-generic-raw-bytes); wasm standalone-test N/A (user-supplied code); no committed decode vectors (see catalog); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "dsl.raw_bytes_flavor",
-        "status": "supported"
-      },
-      {
-        "emission": {
-          "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (references a user-provided Copy extern/raw-bytes type; integration-tested in tests/corpus/dsl_copy.cddl)",
-            "status": "supported"
-          },
-          "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; standalone-compile N/A (references a user-provided Copy extern/raw-bytes type; integration-tested in tests/corpus/dsl_copy.cddl)",
-            "status": "supported"
-          }
-        },
-        "evidence": "probe: cddl-codegen exit 0; standalone-compile N/A (references a user-provided Copy extern/raw-bytes type; integration-tested in tests/corpus/dsl_copy.cddl + the scratch e2e in the clippy-consumer-report delivery); wasm standalone-test N/A (user-supplied code); no committed decode vectors (see catalog); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
-        "id": "dsl.copy",
         "status": "supported"
       },
       {
