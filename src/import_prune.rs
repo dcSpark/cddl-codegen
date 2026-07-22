@@ -2372,7 +2372,7 @@ mod tests {
             .iter()
             .find(|(p, _)| p == "wasm/src/generated/requested_collections.rs");
         assert!(
-            sidecar.map_or(true, |(_, c)| c.contains("use super::*")),
+            sidecar.is_none_or(|(_, c)| c.contains("use super::*")),
             "bare leading `sub` is parent-bound; super::* must be kept: {changed:?}"
         );
     }
