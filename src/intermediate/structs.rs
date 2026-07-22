@@ -321,6 +321,13 @@ pub struct RustStructConfig {
     /// table). Carried onto the registered transparent alias's `RustType` at `register_rust_struct`
     /// so every embed site (and generic use-site re-resolution) sees the policy.
     pub duplicates: Option<crate::comment_ast::DuplicatesPolicy>,
+    /// A named non-generic SET rule (the tag-258 idiom or single-arm mandatory-258 form) nominalized
+    /// into a `Wrapper` struct that OWNS its `{tag, len, elem}` encodings (Phase 2.2). Distinct from
+    /// a plain `@newtype` wrapper: the set nominal suppresses the inherent `get()` (it shadows
+    /// `OrderedSet::get(index)` through `Deref` — E0061), emits the set ergonomics
+    /// (`Deref`/`DerefMut`/`IntoIterator`/`From`/`TryFrom`), and mandates always-on
+    /// encodings-ignored comparison derives for parity with `OrderedSet`'s unconditional derives.
+    pub set_nominal: bool,
 }
 
 impl From<Option<&RuleMetadata>> for RustStructConfig {
@@ -333,6 +340,7 @@ impl From<Option<&RuleMetadata>> for RustStructConfig {
                 doc: rule_metadata.comment.clone(),
                 newtype_getter: rule_metadata.newtype.clone(),
                 duplicates: rule_metadata.duplicates,
+                set_nominal: false,
             },
             None => Self::default(),
         }
@@ -592,6 +600,13 @@ impl RustStruct {
     #[allow(clippy::wrong_self_convention)]
     pub fn as_optionally_tagged(mut self) -> Self {
         self.tag_optional = true;
+        self
+    }
+
+    /// Mark this `Wrapper` struct as a nominalized SET (Phase 2.2). See `RustStructConfig::set_nominal`.
+    #[allow(clippy::wrong_self_convention)]
+    pub fn as_set_nominal(mut self) -> Self {
+        self.config.set_nominal = true;
         self
     }
 

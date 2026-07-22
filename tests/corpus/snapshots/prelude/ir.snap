@@ -18,6 +18,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Extern,
     },
@@ -36,6 +37,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Record(
             RustRecord {
@@ -616,6 +618,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Wrapper {
             wrapped: RustType {
@@ -654,6 +657,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Wrapper {
             wrapped: RustType {
@@ -694,6 +698,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Record(
             RustRecord {
@@ -788,6 +793,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: TypeChoice {
             variants: [
@@ -859,6 +865,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Wrapper {
             wrapped: RustType {
@@ -897,6 +904,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Wrapper {
             wrapped: RustType {
@@ -937,6 +945,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Record(
             RustRecord {
@@ -1031,6 +1040,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Wrapper {
             wrapped: RustType {
@@ -1069,6 +1079,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: TypeChoice {
             variants: [
@@ -1140,6 +1151,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Wrapper {
             wrapped: RustType {
@@ -1178,6 +1190,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Wrapper {
             wrapped: RustType {
@@ -1216,6 +1229,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Wrapper {
             wrapped: RustType {
@@ -1254,6 +1268,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: TypeChoice {
             variants: [
@@ -1323,6 +1338,7 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: None,
+            set_nominal: false,
         },
         variant: Wrapper {
             wrapped: RustType {

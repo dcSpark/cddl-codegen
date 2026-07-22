@@ -327,7 +327,7 @@ mod golden_hex_preserve {
         OptSetHolder,
         &[0x81, 0x81, 0x61, 0x61],
         |d: &OptSetHolder| {
-            assert_eq!(d.s, vec!["a".to_string()]);
+            assert_eq!(*d.s, vec!["a".to_string()]);
         }
     );
     // tagged arm, minimal tag head (258 = 0xd9 0x01 0x02, the smallest form for a 2-byte argument).
@@ -336,7 +336,7 @@ mod golden_hex_preserve {
         OptSetHolder,
         &[0x81, 0xd9, 0x01, 0x02, 0x81, 0x61, 0x61],
         |d: &OptSetHolder| {
-            assert_eq!(d.s, vec!["a".to_string()]);
+            assert_eq!(*d.s, vec!["a".to_string()]);
         }
     );
     // tagged arm, NON-minimal 8-byte tag head (0xdb + 0x0000000000000102): the wide header is
@@ -346,7 +346,7 @@ mod golden_hex_preserve {
         OptSetHolder,
         &[0x81, 0xdb, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x81, 0x61, 0x61],
         |d: &OptSetHolder| {
-            assert_eq!(d.s, vec!["a".to_string()]);
+            assert_eq!(*d.s, vec!["a".to_string()]);
         }
     );
 
@@ -366,7 +366,7 @@ mod golden_hex_preserve {
         &[0x81, 0x82, 0x61, 0x61, 0x61, 0x61],
         |d: &OptSetHolder| {
             assert_eq!(d.s.len(), 2);
-            assert_eq!(d.s, vec!["a".to_string(), "a".to_string()]);
+            assert_eq!(*d.s, vec!["a".to_string(), "a".to_string()]);
         }
     );
     // `[*]` flavor, tagged arm `[258(["a","a"])]` (258 = 0xd9 0x01 0x02).
@@ -376,7 +376,7 @@ mod golden_hex_preserve {
         &[0x81, 0xd9, 0x01, 0x02, 0x82, 0x61, 0x61, 0x61, 0x61],
         |d: &OptSetHolder| {
             assert_eq!(d.s.len(), 2);
-            assert_eq!(d.s, vec!["a".to_string(), "a".to_string()]);
+            assert_eq!(*d.s, vec!["a".to_string(), "a".to_string()]);
         }
     );
     // `[+]` flavor (OptNesetHolder, s: NonEmptyVec<String>): untagged `[["a","a"]]`. The

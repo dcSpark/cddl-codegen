@@ -678,11 +678,15 @@ fn duplicates_directive_accepts_live_and_default_noops() {
     // set now lowers to the `OrderedSet` uniqueness twin, NOT `Vec`.
     let absent_set = gen_src("foo = #6.258([* uint]) / [* uint]\n");
     let absent_src = absent_set.values().cloned().collect::<Vec<_>>().join("\n");
+    // Phase 2.2: a named non-generic 258 set NOMINALIZES into a wrapper struct (no longer a transparent
+    // alias); the reject default selects the `OrderedSet` inner.
     assert!(
-        absent_src.contains("pub type Foo = OrderedSet<u64>;"),
-        "a no-directive 258 set must default to the OrderedSet twin:\n{absent_src}"
+        absent_src.contains("pub struct Foo")
+            && absent_src.contains("OrderedSet<u64>")
+            && !absent_src.contains("pub type Foo ="),
+        "a no-directive 258 set nominalizes to a wrapper over the OrderedSet twin:\n{absent_src}"
     );
-    // `@duplicates preserve` is now the OBSERVABLE opt-out: it restores the plain `Vec` twin (today's
+    // `@duplicates preserve` is now the OBSERVABLE opt-out: it restores the plain `Vec` inner (today's
     // wire behavior verbatim), so it is NO LONGER byte-identical to the absent (defaulted) case.
     let preserve_set = gen_src("foo = #6.258([* uint]) / [* uint] ; @duplicates preserve\n");
     let preserve_src = preserve_set
@@ -691,8 +695,11 @@ fn duplicates_directive_accepts_live_and_default_noops() {
         .collect::<Vec<_>>()
         .join("\n");
     assert!(
-        preserve_src.contains("pub type Foo = Vec<u64>;") && !preserve_src.contains("OrderedSet"),
-        "@duplicates preserve on a 258 set must opt back out to the plain Vec twin:\n{preserve_src}"
+        preserve_src.contains("pub struct Foo")
+            && preserve_src.contains("Vec<u64>")
+            && !preserve_src.contains("OrderedSet")
+            && !preserve_src.contains("pub type Foo ="),
+        "@duplicates preserve on a 258 set nominalizes with the plain Vec inner:\n{preserve_src}"
     );
     assert_ne!(
         absent_set, preserve_set,
@@ -916,8 +923,10 @@ fn well_known_tag_258_bounded_occurrence_composes_with_reject_twin() {
     std::fs::remove_file(&path).ok();
     let src = out.values().cloned().collect::<Vec<_>>().join("\n");
     assert!(
-        src.contains("pub type Foo = OrderedSet<u64>;"),
-        "a bounded 258 set must default to the OrderedSet uniqueness twin:\n{src}"
+        src.contains("pub struct Foo")
+            && src.contains("OrderedSet<u64>")
+            && !src.contains("pub type Foo ="),
+        "a bounded 258 set nominalizes to a wrapper over the OrderedSet uniqueness twin:\n{src}"
     );
     assert!(
         src.contains("OrderedSet::try_from"),
@@ -1053,9 +1062,11 @@ fn nested_inline_258_inside_named_idiom_keeps_vec_documented_boundary() {
     std::fs::remove_file(&path).ok();
     let src = out.values().cloned().collect::<Vec<_>>().join("\n");
     assert!(
-        src.contains("pub type Foo = OrderedSet<Vec<u64>>;"),
-        "outer rule takes the rule-level reject default; the NESTED inline occurrence stays Vec \
-         (the documented suppression boundary). If this now reads OrderedSet<OrderedSet<u64>>, \
+        src.contains("pub struct Foo")
+            && src.contains("OrderedSet<Vec<u64>>")
+            && !src.contains("pub type Foo ="),
+        "outer rule nominalizes and takes the rule-level reject default; the NESTED inline occurrence \
+         stays Vec (the documented suppression boundary). If this now reads OrderedSet<OrderedSet<u64>>, \
          the boundary was fixed — retire this pin and its ledger entry together. Got:\n{src}"
     );
 }
@@ -1091,15 +1102,20 @@ fn inline_258_reject_opts_out_via_hoist_to_named_rule() {
     let opted_out =
         gen_src("named = #6.258([* uint]) ; @duplicates preserve\nholder = [a: named]\n");
     assert!(
-        opted_out.contains("pub type Named = Vec<u64>;") && !opted_out.contains("OrderedSet"),
-        "hoisting to a named rule with `; @duplicates preserve` must opt out to the plain Vec twin:\n{opted_out}"
+        opted_out.contains("pub struct Named")
+            && opted_out.contains("Vec<u64>")
+            && !opted_out.contains("OrderedSet")
+            && !opted_out.contains("pub type Named ="),
+        "hoisting to a named rule with `; @duplicates preserve` nominalizes with the plain Vec inner:\n{opted_out}"
     );
 
     // The SAME hoisted rule WITHOUT the directive keeps the reject default (parity with the inline seam).
     let hoisted_default = gen_src("named = #6.258([* uint])\nholder = [a: named]\n");
     assert!(
-        hoisted_default.contains("pub type Named = OrderedSet<u64>;"),
-        "a hoisted named 258 set without a directive keeps the reject default:\n{hoisted_default}"
+        hoisted_default.contains("pub struct Named")
+            && hoisted_default.contains("OrderedSet<u64>")
+            && !hoisted_default.contains("pub type Named ="),
+        "a hoisted named 258 set without a directive nominalizes and keeps the reject default:\n{hoisted_default}"
     );
 }
 
@@ -1487,36 +1503,51 @@ fn newtype_plain_reject_selects_ordered_set_inner() {
 
 /// Gap 3 (dispatch-side): `@newtype` on the collapsed two-arm 258 idiom
 /// (`#6.258([* a]) / [* a] ; @newtype`) is hard-rejected for this phase. The structural collapse turns
-/// the two arms into one transparent optionally-tagged collection with no wrapper struct to carry a
-/// newtype getter, so the directive would be silently dropped. The rejection names the rule, states the
-/// directive is not yet meaningful on the collapsed idiom, and points at the single-arm workaround. The
-/// message text is a pinned key (Phase 2.2's nominalization subsumes this rejection).
+/// Phase 2.2 SUBSUMES the Phase 2.1 gap-3 rejection: the two-arm 258 idiom now nominalizes into a
+/// wrapper struct that HAS somewhere to carry a getter, so `@newtype` is accepted rather than rejected.
+/// A BARE `@newtype` on a set nominal emits NO inherent getter (a 0-arg `get()` would shadow
+/// `OrderedSet::get(index)` through `Deref` — E0061), so it is a no-op ergonomically; a
+/// `@newtype <name>` custom getter IS emitted (a custom name doesn't shadow). Both must GENERATE
+/// cleanly (no rejection, no silent drop).
 #[test]
-fn newtype_on_two_arm_258_idiom_rejects_gracefully() {
-    const CDDL: &str = "foo = #6.258([* uint]) / [* uint] ; @newtype\n\
-                        holder = [f: foo]\n";
-    let path = std::env::temp_dir().join(format!(
-        "cddl_codegen_newtype_two_arm_258_{}.cddl",
-        std::process::id()
-    ));
-    std::fs::write(&path, CDDL).unwrap();
-    let result = crate::api::generated_strings(&Cli::parse_from([
-        "cddl-codegen",
-        "--input",
-        path.to_str().unwrap(),
-        "--output",
-        "newtype_two_arm_258_unused",
-    ]));
-    std::fs::remove_file(&path).ok();
-    let err = result.expect_err(
-        "@newtype on the collapsed two-arm 258 idiom must be a graceful Err, not a silent drop",
-    );
-    let msg = err.to_string();
+fn newtype_on_two_arm_258_idiom_is_accepted_and_nominalizes() {
+    let gen_src = |cddl: &str| -> String {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_newtype_two_arm_258_{}_{}.cddl",
+            std::process::id(),
+            cddl.len()
+        ));
+        std::fs::write(&path, cddl).unwrap();
+        let out = crate::api::generated_strings(&Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "newtype_two_arm_258_unused",
+            "--wasm=false",
+        ]))
+        .unwrap_or_else(|e| {
+            panic!("@newtype on the collapsed two-arm 258 idiom must generate cleanly, got: {e}")
+        });
+        std::fs::remove_file(&path).ok();
+        out.values().cloned().collect::<Vec<_>>().join("\n")
+    };
+
+    // bare `@newtype`: nominalizes, no inherent getter (would shadow OrderedSet::get(index)).
+    let bare = gen_src("foo = #6.258([* uint]) / [* uint] ; @newtype\nholder = [f: foo]\n");
     assert!(
-        msg.contains("@newtype on rule `Foo`")
-            && msg.contains("collapsed two-arm set idiom")
-            && msg.contains("#6.258([* a]) ; @newtype"),
-        "the rejection must name the rule, the collapsed-idiom reason, and the single-arm workaround, got: {msg}"
+        bare.contains("pub struct Foo")
+            && bare.contains("OrderedSet<u64>")
+            && !bare.contains("pub type Foo =")
+            && !bare.contains("pub fn get("),
+        "bare @newtype on the idiom nominalizes with NO inherent get():\n{bare}"
+    );
+
+    // `@newtype <name>`: the custom getter is emitted (no shadowing on a custom name).
+    let named = gen_src("foo = #6.258([* uint]) / [* uint] ; @newtype entries\nholder = [f: foo]\n");
+    assert!(
+        named.contains("pub struct Foo") && named.contains("pub fn entries("),
+        "a custom `@newtype <name>` getter must be emitted on the set nominal:\n{named}"
     );
 }
 
@@ -2790,9 +2821,14 @@ fn stacked_tag_encoding_members_are_depth_disambiguated() {
             .collect()
     }
 
+    // Non-258 tags throughout: a 258 SET now NOMINALIZES (Phase 2.2), so it OWNS its tag inside its own
+    // encoding struct and no longer flattens onto the holder — the flattened-stack scenario this pins
+    // (depth-suffixed members) is exercised by a NON-258 tagged collection, which stays a transparent
+    // alias whose tag DOES flatten. (The `#6.24(<258-set>)` double-tag flavor is closed structurally by
+    // nominalization; `double_tag.cddl` pins that outcome.)
     // Flavor A (homogeneous): two mandatory tags stack, both lowering to `Option<cbor_event::Sz>`.
     let flavor_a = gen_encodings(
-        "xs = #6.258([* uint])\nfoo = #6.24(xs)\nholder = [f: foo]\n",
+        "xs = #6.100([* uint])\nfoo = #6.24(xs)\nholder = [f: foo]\n",
         "a",
     );
     let a_members = foo_member_lines(&flavor_a);
@@ -2814,7 +2850,7 @@ fn stacked_tag_encoding_members_are_depth_disambiguated() {
     // Flavor B (heterogeneous): mandatory outer 24 (level 1, `Option<Sz>`) + optional inner 258
     // (level 2, `TagPresenceEncoding`).
     let flavor_b = gen_encodings(
-        "set = #6.258([* uint]) / [* uint]\nfoo = #6.24(set)\nholder = [f: foo]\n",
+        "set = #6.100([* uint]) / [* uint]\nfoo = #6.24(set)\nholder = [f: foo]\n",
         "b",
     );
     let b_members = foo_member_lines(&flavor_b);
@@ -2844,7 +2880,7 @@ fn stacked_tag_encoding_members_are_depth_disambiguated() {
     // boundary — the same reset `encoding_fields_impl` does — or the write reads a depth-inflated
     // `f_elem_tag2_encoding` the encoding struct never minted (E0425, the generated crate breaks).
     let flavor_c_ser = gen_file(
-        "t258s = #6.258([* uint])\nfoo = #6.24([* t258s])\nholder = [f: foo]\n",
+        "t100s = #6.100([* uint])\nfoo = #6.24([* t100s])\nholder = [f: foo]\n",
         "c",
         "rust/src/generated/serialization.rs",
     );

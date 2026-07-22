@@ -21,16 +21,16 @@ expression: content
 fn _assert_serialize<T: cbor_event::se::Serialize>() {}
 #[allow(dead_code)]
 fn _assert_deserialize<T: crate::generated::serialization::Deserialize>() {}
-#[allow(unused_imports)]
-use crate::generated::DefaultNeset as _;
-#[allow(unused_imports)]
-use crate::generated::DefaultSet as _;
-#[allow(unused_imports)]
-use crate::generated::OptOut as _;
-#[allow(unused_imports)]
-use crate::generated::SingleArm as _;
 #[allow(dead_code)]
 fn _extern_interface_self_check() {
+    _assert_serialize::<crate::generated::DefaultNeset>();
+    _assert_deserialize::<crate::generated::DefaultNeset>();
+    _assert_serialize::<crate::generated::DefaultSet>();
+    _assert_deserialize::<crate::generated::DefaultSet>();
     _assert_serialize::<crate::generated::Holder>();
     _assert_deserialize::<crate::generated::Holder>();
+    _assert_serialize::<crate::generated::OptOut>();
+    _assert_deserialize::<crate::generated::OptOut>();
+    _assert_serialize::<crate::generated::SingleArm>();
+    _assert_deserialize::<crate::generated::SingleArm>();
 }

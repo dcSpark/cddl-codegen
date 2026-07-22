@@ -58,12 +58,13 @@ const PRESERVE: &[&str] = &[
 // Recognition-positive (the collapse fires)
 // ---------------------------------------------------------------------------------------------
 
-/// The canonical `nonempty_set` idiom (tag 258, no directive) collapses to a transparent uniqueness
-/// twin alias — NOT an enum — defaulting to `reject` via the well-known-tag registry, and the `[+]`
-/// bound is enforced through `NonEmptyOrderedSet`'s single `TryFrom` door (which composes uniqueness
-/// with the min-1 check).
+/// The canonical `nonempty_set` idiom (tag 258, no directive) NOMINALIZES (Phase 2.2) into a wrapper
+/// struct owning its encodings — NOT an enum, NOT a transparent alias — with a `NonEmptyOrderedSet`
+/// inner (258 defaults to `reject` via the well-known-tag registry); the `[+]` bound is enforced
+/// through `NonEmptyOrderedSet`'s single `TryFrom` door (which composes uniqueness with the min-1
+/// check).
 #[test]
-fn nonempty_set_collapses_to_transparent_alias() {
+fn nonempty_set_nominalizes_to_wrapper() {
     let src = generate(
         "my_set = #6.258([+ uint]) / [+ uint]\nholder = [items: my_set]\n",
         "nonempty",
@@ -71,8 +72,13 @@ fn nonempty_set_collapses_to_transparent_alias() {
     )
     .expect("must generate");
     assert!(
-        src.contains("pub type MySet = NonEmptyOrderedSet<u64>;"),
-        "expected transparent NonEmptyOrderedSet alias (258 defaults to reject), got:\n{src}"
+        src.contains("pub struct MySet {")
+            && src.contains("pub(crate) inner: NonEmptyOrderedSet<u64>,"),
+        "expected a nominal set wrapper over NonEmptyOrderedSet (258 defaults to reject), got:\n{src}"
+    );
+    assert!(
+        !src.contains("pub type MySet ="),
+        "the named set rule must no longer be a transparent alias:\n{src}"
     );
     assert!(
         !src.contains("pub enum MySet"),
@@ -80,16 +86,17 @@ fn nonempty_set_collapses_to_transparent_alias() {
     );
     // the `[+]` + uniqueness invariant rides the same TryFrom door the API uses
     assert!(
-        src.contains("NonEmptyOrderedSet::try_from(items_arr)?"),
+        src.contains("NonEmptyOrderedSet::try_from(inner_arr)?"),
         "wire-side `[+]` + uniqueness enforcement must route through the NonEmptyOrderedSet door:\n{src}"
     );
 }
 
-/// The `[*]` (empty-allowed) flavor collapses to a DISTINCT alias from the `[+]` flavor — the empty
-/// and non-empty flavors must never be conflated (the defect the CML hand impl carried). Tag 258 with
-/// no directive defaults to `reject`, so the alias is `OrderedSet<u64>` (not `NonEmptyOrderedSet`).
+/// The `[*]` (empty-allowed) flavor nominalizes to a wrapper with a DISTINCT inner from the `[+]`
+/// flavor — the empty and non-empty flavors must never be conflated (the defect the CML hand impl
+/// carried). Tag 258 with no directive defaults to `reject`, so the inner is `OrderedSet<u64>` (not
+/// `NonEmptyOrderedSet`).
 #[test]
-fn empty_allowed_set_collapses_to_vec_alias() {
+fn empty_allowed_set_nominalizes_with_ordered_set_inner() {
     let src = generate(
         "my_set = #6.258([* uint]) / [* uint]\nholder = [items: my_set]\n",
         "star",
@@ -97,12 +104,12 @@ fn empty_allowed_set_collapses_to_vec_alias() {
     )
     .expect("must generate");
     assert!(
-        src.contains("pub type MySet = OrderedSet<u64>;"),
-        "expected transparent OrderedSet alias (258 defaults to reject), got:\n{src}"
+        src.contains("pub struct MySet {") && src.contains("pub(crate) inner: OrderedSet<u64>,"),
+        "expected a nominal set wrapper over OrderedSet (258 defaults to reject), got:\n{src}"
     );
     assert!(
-        !src.contains("pub enum MySet"),
-        "must not be an enum:\n{src}"
+        !src.contains("pub type MySet =") && !src.contains("pub enum MySet"),
+        "must be neither a transparent alias nor an enum:\n{src}"
     );
 }
 
@@ -116,9 +123,11 @@ fn arm_order_is_irrelevant() {
     )
     .expect("must generate");
     assert!(
-        src.contains("pub type MySet = NonEmptyOrderedSet<u64>;")
+        src.contains("pub struct MySet {")
+            && src.contains("pub(crate) inner: NonEmptyOrderedSet<u64>,")
+            && !src.contains("pub type MySet =")
             && !src.contains("pub enum MySet"),
-        "untagged-first arm order must collapse identically:\n{src}"
+        "untagged-first arm order must nominalize identically:\n{src}"
     );
 }
 
@@ -153,9 +162,13 @@ fn preserve_encodings_emits_tag_presence_tristate() {
         PRESERVE,
     )
     .expect("must generate");
+    // The tag encoding now lives on the NOMINAL set's own encoding struct (`inner_tag_encoding`), not
+    // flattened onto the holder (`items_tag_encoding`) — holder-side flattening disappears for set
+    // fields (Phase 2.2).
     assert!(
-        src.contains("items_tag_encoding: TagPresenceEncoding"),
-        "the encoding struct must carry a TagPresenceEncoding field:\n{src}"
+        src.contains("inner_tag_encoding: TagPresenceEncoding")
+            && !src.contains("items_tag_encoding"),
+        "the set's own encoding struct must carry the TagPresenceEncoding field:\n{src}"
     );
     // serialize: conditional on the tri-state, size normalized via fit_sz
     assert!(
@@ -183,8 +196,8 @@ fn non_preserve_defaults_to_tagged_and_accepts_either() {
     )
     .expect("must generate");
     assert!(
-        src.contains("pub type MySet = NonEmptyOrderedSet<u64>;"),
-        "still a transparent alias without preserve-encodings (258 defaults to reject):\n{src}"
+        src.contains("pub struct MySet(pub(crate) NonEmptyOrderedSet<u64>);"),
+        "a nominal tuple-struct set wrapper without preserve-encodings (258 defaults to reject):\n{src}"
     );
     assert!(
         src.contains("write_tag(258u64)"),
@@ -244,16 +257,20 @@ fn bytes_element_set_collapses_with_elem_encodings() {
     )
     .expect("a bytes-element set must collapse and generate");
     assert!(
-        src.contains("pub type ByteSet = NonEmptyOrderedSet<Vec<u8>>;")
+        src.contains("pub struct ByteSet {")
+            && src.contains("pub(crate) inner: NonEmptyOrderedSet<Vec<u8>>,")
+            && !src.contains("pub type ByteSet =")
             && !src.contains("pub enum ByteSet"),
-        "bytes-element set collapses to a transparent NonEmptyOrderedSet<Vec<u8>> alias (258 defaults to reject):\n{src}"
+        "bytes-element set nominalizes to a wrapper over NonEmptyOrderedSet<Vec<u8>> (258 defaults to reject):\n{src}"
     );
+    // the per-element StringEncoding + tag encoding now live on the set's OWN encoding struct (moved
+    // off the holder), so they're keyed on the wrapper's `inner` member name.
     assert!(
-        src.contains("s_elem_encodings: Vec<StringEncoding>"),
+        src.contains("inner_elem_encodings: Vec<StringEncoding>"),
         "byte-string elements must carry per-element StringEncoding preservation:\n{src}"
     );
     assert!(
-        src.contains("s_tag_encoding: TagPresenceEncoding"),
+        src.contains("inner_tag_encoding: TagPresenceEncoding"),
         "the optional tag still rides a TagPresenceEncoding var:\n{src}"
     );
 }
@@ -333,20 +350,22 @@ fn extract_impl(src: &str, marker: &str) -> String {
     rest[..end + 3].to_string()
 }
 
-/// A field whose reference site adds an OUTER tag (`#6.24(..)`) over a collapsed-set reference must
-/// generate byte-identically whether the reference is a generic INSTANCE (`xs_int = xs<uint>`) or the
-/// non-generic equivalent (`ys_int = #6.258([* uint]) / [* uint]`). Phase 2.5's field-convergence walk
-/// substitutes the instance's transparent alias while KEEPING the reference-site encoding (the `#6.24`
-/// tag) OUTERMOST, so both paths emit the same outer-tag-then-inner-optional-tag ordering. Using the
-/// same field name `g` in both specs makes the whole `Holder` impl comparable byte-for-byte.
+/// A field whose reference site adds an OUTER tag (`#6.24(..)`) over a collapsed-set reference.
 ///
-/// This pins the SHAPE/ordering; standalone compilation of a stacked outer-over-inner tag is pinned
-/// separately by the `double_tag` corpus fixture and
-/// `robustness_tests::stacked_tag_encoding_members_are_depth_disambiguated` — each tag LEVEL gets its
-/// own depth-suffixed encoding member (`g_tag_encoding` at level 1, `g_tag2_encoding` at level 2), so
-/// the encoding struct no longer collides. The parity invariant holds either way.
+/// Phase 2.2 DELIBERATELY splits the two reference paths (parity is restored in Phase 2.3, when
+/// generic instances nominalize too):
+/// - the NON-GENERIC named set rule (`ys_int = #6.258([* uint]) / [* uint]`) nominalizes, so the
+///   reference-site outer `#6.24` tag wraps a NOMINAL delegation (`write_tag_sz(24u64, ..)` then
+///   `self.g.serialize(..)`) — the inner optional-258 tag lives inside `YsInt::serialize`;
+/// - the GENERIC INSTANCE (`xs_int = xs<uint>`) stays a transparent alias (Phase 2.3 territory), so
+///   `#6.24(xs_int)` still INLINES the set under the outer tag with each tag LEVEL owning its own
+///   depth-suffixed member (`g_tag_encoding` at level 1, `g_tag2_encoding` at level 2).
+///
+/// Either way the outer `#6.24` tag is emitted OUTSIDE (before) the inner optional-258 tag. Standalone
+/// compilation of a stacked outer-over-inner tag is pinned by the `double_tag` corpus fixture and
+/// `robustness_tests::stacked_tag_encoding_members_are_depth_disambiguated`.
 #[test]
-fn outer_tag_over_instance_matches_non_generic_byte_for_byte() {
+fn outer_tag_over_set_reference_orders_outer_before_inner() {
     let generic = generate(
         "xs<a0> = #6.258([* a0]) / [* a0]\nxs_int = xs<uint>\nholder = [g: #6.24(xs_int)]\n",
         "outer_generic",
@@ -360,28 +379,26 @@ fn outer_tag_over_instance_matches_non_generic_byte_for_byte() {
     )
     .expect("non-generic outer-tag ref must generate");
 
-    for marker in [
-        "impl Serialize for Holder",
-        "impl Deserialize for Holder",
-        "pub struct HolderEncoding",
-    ] {
-        assert_eq!(
-            extract_impl(&generic, marker),
-            extract_impl(&non_generic, marker),
-            "generic-instance and non-generic reference must emit byte-identical `{marker}`"
-        );
-    }
+    // non-generic: the named set nominalizes — outer tag 24 wraps a nominal delegation.
+    let ng_ser = extract_impl(&non_generic, "impl Serialize for Holder");
+    assert!(
+        ng_ser.contains("24u64") && ng_ser.contains("self.g.serialize(serializer, force_canonical)?"),
+        "the non-generic named set nominalizes: outer tag 24 then a nominal `self.g.serialize`:\n{ng_ser}"
+    );
+    assert!(
+        !ng_ser.contains("g_tag2_encoding"),
+        "the inner 258 tag must live inside the nominal, not flattened onto the holder:\n{ng_ser}"
+    );
 
-    // ordering: the OUTER #6.24 tag is written before the INNER #6.258 optional-tag branch
-    // (rustfmt wraps `write_tag_sz(` and its `24u64` arg onto separate lines, so match the literal).
-    let ser = extract_impl(&generic, "impl Serialize for Holder");
-    let outer = ser.find("24u64").expect("outer tag 24 must be serialized");
-    let inner = ser
+    // generic instance: still transparent (Phase 2.3 pending) — inlined, outer tag before inner tag.
+    let g_ser = extract_impl(&generic, "impl Serialize for Holder");
+    let outer = g_ser.find("24u64").expect("outer tag 24 must be serialized");
+    let inner = g_ser
         .find("if let TagPresenceEncoding::Tagged(tag_sz)")
-        .expect("inner optional-tag branch must be serialized");
+        .expect("inner optional-tag branch must be serialized (transparent instance)");
     assert!(
         outer < inner,
-        "reference-site outer tag must be written OUTSIDE (before) the alias's own optional tag:\n{ser}"
+        "reference-site outer tag must be written OUTSIDE (before) the alias's own optional tag:\n{g_ser}"
     );
 }
 
@@ -407,14 +424,100 @@ fn collapsed_set_as_type_choice_variant_discriminates_coherently() {
         de.contains("cbor_event::Type::UnsignedInteger =>"),
         "the uint variant must keep its own discriminator arm:\n{de}"
     );
-    // the set arm still peeks the optional 258 tag and enforces `[+]` + uniqueness through the
-    // NonEmptyOrderedSet door (258 defaults to reject)
+    // the set arm now DELEGATES to the nominal set's own deserialize (Phase 2.2) rather than inlining
+    // the tag peek + door — the `[+]` + uniqueness enforcement moved into `MySet::deserialize`.
     assert!(
-        de.contains("TagPresenceEncoding::Untagged") && de.contains("NonEmptyOrderedSet::try_from"),
-        "the set arm must peek the optional tag and route through the NonEmptyOrderedSet door:\n{de}"
+        de.contains("Thing::MySet(MySet::deserialize(raw)?)"),
+        "the set arm must delegate to the nominal set's deserialize:\n{de}"
     );
     assert!(
         de.contains("DeserializeFailure::NoVariantMatched"),
         "an unrecognized major type must fall through to NoVariantMatched:\n{de}"
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Out-of-scope byte-identity pins (Phase 2.2 nominalizes ONLY named non-generic 258 set rules)
+// ---------------------------------------------------------------------------------------------
+
+/// A NON-258 tag carries no set semantics, so a non-258 tagged collection rule (single-arm or the
+/// two-arm idiom) stays a TRANSPARENT ALIAS — never a nominal wrapper. This pins the scope boundary:
+/// only the 258 registry entry nominalizes; the structural collapse itself stays tag-agnostic and
+/// transparent for every other tag.
+#[test]
+fn non_258_tagged_collections_stay_transparent_aliases() {
+    // single-arm non-258 tagged array
+    let single = generate(
+        "foo = #6.42([* uint])\nholder = [f: foo]\n",
+        "non258_single",
+        PRESERVE,
+    )
+    .expect("must generate");
+    assert!(
+        single.contains("pub type Foo = Vec<u64>;") && !single.contains("pub struct Foo"),
+        "a non-258 single-arm tagged array stays a transparent Vec alias:\n{single}"
+    );
+    // two-arm non-258 idiom
+    let two_arm = generate(
+        "foo = #6.42([* uint]) / [* uint]\nholder = [f: foo]\n",
+        "non258_twoarm",
+        PRESERVE,
+    )
+    .expect("must generate");
+    assert!(
+        two_arm.contains("pub type Foo = Vec<u64>;") && !two_arm.contains("pub struct Foo"),
+        "a non-258 two-arm idiom stays a transparent Vec alias:\n{two_arm}"
+    );
+}
+
+/// An UNTAGGED array carrying `@duplicates reject` (a pre-Conway Cardano set) is NOT a tagged set
+/// rule, so it stays a TRANSPARENT `OrderedSet` alias — nominalization is gated on the 258 tag, not on
+/// the `reject` policy or the `OrderedSet` inner alone.
+#[test]
+fn untagged_reject_array_stays_transparent_alias() {
+    let src = generate(
+        "foo = [* uint] ; @duplicates reject\nholder = [f: foo]\n",
+        "untagged_reject",
+        PRESERVE,
+    )
+    .expect("must generate");
+    assert!(
+        src.contains("pub type Foo = OrderedSet<u64>;") && !src.contains("pub struct Foo"),
+        "an untagged reject array stays a transparent OrderedSet alias (no tag = no nominalization):\n{src}"
+    );
+}
+
+/// JSON stays TRANSPARENT: a nominal set serializes AS the bare inner array, not as a
+/// `{inner, encodings}` object. The wrapper path hand-writes a `self.inner.serialize(serializer)`
+/// serde `Serialize` (never a derive over the struct), and schemars routes through the inner type — so
+/// the JSON shape is byte-for-byte the inner collection's, matching the transparent-alias behavior.
+#[test]
+fn set_nominal_json_is_transparent() {
+    let src = generate(
+        "foo = #6.258([* uint]) / [* uint]\nholder = [f: foo]\n",
+        "json_transparent",
+        &[
+            "--preserve-encodings=true",
+            "--json-serde-derives=true",
+            "--json-schema-export=true",
+            "--wasm=false",
+        ],
+    )
+    .expect("must generate");
+    assert!(
+        src.contains("pub struct Foo {"),
+        "the 258 set must nominalize under the json profile too:\n{src}"
+    );
+    // transparent serde: the Serialize delegates to the inner, and the struct is NOT #[derive(Serialize)]
+    assert!(
+        src.contains("impl serde::Serialize for Foo")
+            && src.contains("self.inner.serialize(serializer)"),
+        "the set nominal must hand-write a transparent serde Serialize delegating to the inner:\n{src}"
+    );
+    // schemars routes through the inner collection type (transparent), not a struct schema. The 258
+    // reject default makes the inner `OrderedSet<u64>`, whose own schemars impl is the bare array.
+    assert!(
+        src.contains("<OrderedSet<u64> as schemars::JsonSchema>::json_schema(generator)"),
+        "schemars must route through the inner collection type (transparent JSON):\n{src}"
     );
 }

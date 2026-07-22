@@ -207,7 +207,7 @@ impl OptOut {
     }
 
     pub fn get(&self) -> Vec<u64> {
-        self.0.get().clone()
+        <Vec<u64>>::from(self.0.clone()).clone()
     }
 }
 
@@ -379,7 +379,9 @@ impl SingleArmNeset {
     }
 
     pub fn get(&self) -> NonEmptyU64OrderedSet {
-        self.0.get().clone().into()
+        <NonEmptyOrderedSet<u64>>::from(self.0.clone())
+            .clone()
+            .into()
     }
 }
 
@@ -422,7 +424,7 @@ impl SingleArmSet {
     }
 
     pub fn get(&self) -> U64OrderedSet {
-        self.0.get().clone().into()
+        <OrderedSet<u64>>::from(self.0.clone()).clone().into()
     }
 }
 

@@ -692,11 +692,20 @@ impl GenerationScope {
                         min_max,
                         float_min_max,
                     } => match rust_struct.tag() {
+                        // A nominalized two-arm set idiom carries an OPTIONAL tag: attach
+                        // `OptionallyTagged` (a `TagPresenceEncoding` record) rather than the mandatory
+                        // `Tagged`, so either wire arm round-trips byte-exact — grammar decides the tag
+                        // record. Every other tagged wrapper (single-arm mandatory-tag set, bare
+                        // `@newtype` over a tag) keeps `Tagged`.
                         Some(tag) => generate_wrapper_struct(
                             self,
                             types,
                             rust_ident,
-                            &wrapped.clone().tag(tag),
+                            &if rust_struct.tag_optional() {
+                                wrapped.clone().optionally_tag(tag)
+                            } else {
+                                wrapped.clone().tag(tag)
+                            },
                             *min_max,
                             *float_min_max,
                             rust_struct.config(),
@@ -1848,18 +1857,20 @@ fn create_base_rust_struct(
     types: &IntermediateTypes<'_>,
     ident: &RustIdent,
     manual_json_impl: bool,
+    // A demand UNIONED into the struct's own `key_demand` before deriving. Set nominals pass a full
+    // demand (`bare/hash/ord`) so their encodings-ignored `PartialEq/Eq/PartialOrd/Ord/Hash` are
+    // always-on — parity with `OrderedSet`'s unconditional derives (rethink fact 5), never dependent
+    // on whether the rule is used as a map key. `None` everywhere else (byte-identical).
+    force_demand: Option<crate::comment_ast::DemandSet>,
     cli: &Cli,
 ) -> (codegen::Struct, codegen::Impl) {
     let name = &ident.to_string();
     let mut s = codegen::Struct::new(name);
-    add_struct_derives(
-        &mut s,
-        types.key_demand(ident),
-        false,
-        false,
-        manual_json_impl,
-        cli,
-    );
+    let key_demand = match (types.key_demand(ident), force_demand) {
+        (Some(a), Some(b)) => Some(a.union(b)),
+        (a, b) => a.or(b),
+    };
+    add_struct_derives(&mut s, key_demand, false, false, manual_json_impl, cli);
     let group_impl = codegen::Impl::new(name);
     // TODO: anything here?
     (s, group_impl)

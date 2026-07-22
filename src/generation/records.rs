@@ -962,7 +962,7 @@ pub(super) fn codegen_struct(
 
     // Struct (fields) + constructor
     let (mut native_struct, mut native_impl) =
-        create_base_rust_struct(types, name, config.custom_json, cli);
+        create_base_rust_struct(types, name, config.custom_json, None, cli);
     native_struct.vis("pub");
     if let Some(doc) = config.doc.as_ref() {
         native_struct.doc(doc);

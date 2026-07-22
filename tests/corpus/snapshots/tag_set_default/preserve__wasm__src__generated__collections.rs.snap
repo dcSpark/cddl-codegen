@@ -11,7 +11,5 @@ expression: content
 // line naming a removed wrapper fails this crate's own build — the index cannot
 // drift. Downstream crates point `--extern-wrapper-index <dep>=<this file>` here to
 // avoid re-minting these wrappers (a wasm duplicate-symbol link error otherwise).
-pub use crate::generated::DefaultNeset;
-pub use crate::generated::DefaultSet;
-pub use crate::generated::OptOut;
-pub use crate::generated::SingleArm;
+pub use crate::generated::NonEmptyU64OrderedSet;
+pub use crate::generated::U64OrderedSet;

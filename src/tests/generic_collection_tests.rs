@@ -191,7 +191,9 @@ fn generic_instance_collection_field_converges_with_nongeneric() {
             .unwrap_or_else(|e| panic!("non-generic `{nrule}` ({ptag}) must generate: {e:?}"));
 
             let g_ser = file_ending(&g, "serialization.rs");
-            // The exact pre-fix breakage: a bare-`Vec` alias field routed through method calls.
+            // The generic instance ALWAYS stays a transparent alias this phase (Phase 2.3 nominalizes
+            // those), so its collection field must be INLINED — the exact pre-fix breakage was routing
+            // a bare-alias field through method calls.
             assert!(
                 !g_ser.contains("self.a.serialize("),
                 "generic `{gdef}` ({ptag}) must inline the collection, not call `self.a.serialize()`:\n{g_ser}"
@@ -201,34 +203,48 @@ fn generic_instance_collection_field_converges_with_nongeneric() {
                 "generic `{gdef}` ({ptag}) must inline the collection, not call `XsInt::deserialize()`:\n{g_ser}"
             );
 
-            // Full behavioral convergence: the serialize/deserialize impls and the encoding struct
-            // are byte-identical to the non-generic equivalent once the alias names are unified.
+            // A NAMED NON-GENERIC 258 set NOMINALIZES (Phase 2.2), so the non-generic reference
+            // DELEGATES to the nominal — DELIBERATELY diverging from the still-transparent generic
+            // instance until Phase 2.3 nominalizes generic instances too. For non-258 (plain) collections
+            // neither side nominalizes, so the original byte-identical convergence still holds.
+            let nominalizes = nrule.contains("258");
+            let n_ser = file_ending(&n, "serialization.rs");
             let norm = |s: &str| s.replace("XsInt", "ALIAS").replace("Foo", "ALIAS");
-            for basename in ["serialization.rs", "cbor_encodings.rs"] {
+            if nominalizes {
+                assert!(
+                    n_ser.contains("self.a.serialize("),
+                    "the non-generic 258 set must nominalize and delegate `self.a.serialize()` \
+                     (generic stays transparent until Phase 2.3) for `{nrule}` ({ptag}):\n{n_ser}"
+                );
+            } else {
+                // Full behavioral convergence: the serialize/deserialize impls and the encoding struct
+                // are byte-identical to the non-generic equivalent once the alias names are unified.
+                for basename in ["serialization.rs", "cbor_encodings.rs"] {
+                    assert_eq!(
+                        norm(&file_ending(&g, basename)),
+                        norm(&file_ending(&n, basename)),
+                        "generic vs non-generic `{basename}` diverged for `{gdef}` ({ptag})"
+                    );
+                }
+                // mod.rs carries the same declarations, but the generic instance's alias is registered
+                // at finalize (vs parse for the named rule), so the `pub type` line and the consumer
+                // struct land in a different relative order. That ordering is immaterial (deterministic
+                // per input, both compile), so compare the type declarations order-independently.
+                let decls = |s: &str| {
+                    let mut lines: Vec<String> = norm(s)
+                        .lines()
+                        .map(|l| l.trim().to_owned())
+                        .filter(|l| !l.is_empty())
+                        .collect();
+                    lines.sort();
+                    lines
+                };
                 assert_eq!(
-                    norm(&file_ending(&g, basename)),
-                    norm(&file_ending(&n, basename)),
-                    "generic vs non-generic `{basename}` diverged for `{gdef}` ({ptag})"
+                    decls(&file_ending(&g, "mod.rs")),
+                    decls(&file_ending(&n, "mod.rs")),
+                    "generic vs non-generic `mod.rs` declarations diverged for `{gdef}` ({ptag})"
                 );
             }
-            // mod.rs carries the same declarations, but the generic instance's alias is registered at
-            // finalize (vs parse for the named rule), so the `pub type` line and the consumer struct
-            // land in a different relative order. That ordering is immaterial (deterministic per input,
-            // both compile), so compare the type declarations order-independently.
-            let decls = |s: &str| {
-                let mut lines: Vec<String> = norm(s)
-                    .lines()
-                    .map(|l| l.trim().to_owned())
-                    .filter(|l| !l.is_empty())
-                    .collect();
-                lines.sort();
-                lines
-            };
-            assert_eq!(
-                decls(&file_ending(&g, "mod.rs")),
-                decls(&file_ending(&n, "mod.rs")),
-                "generic vs non-generic `mod.rs` declarations diverged for `{gdef}` ({ptag})"
-            );
         }
     }
 }

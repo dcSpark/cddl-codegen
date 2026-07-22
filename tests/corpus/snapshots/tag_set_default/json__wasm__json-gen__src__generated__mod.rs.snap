@@ -19,5 +19,9 @@ pub fn export_schemas() {
     if !schema_path.exists() {
         std::fs::create_dir(schema_path).unwrap();
     }
+    gen_json_schema!(cddl_lib::DefaultNeset);
+    gen_json_schema!(cddl_lib::DefaultSet);
     gen_json_schema!(cddl_lib::Holder);
+    gen_json_schema!(cddl_lib::OptOut);
+    gen_json_schema!(cddl_lib::SingleArm);
 }

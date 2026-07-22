@@ -15,50 +15,45 @@ pub mod collections;
 use cddl_lib::ordered_set::OrderedSet;
 use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
-/// `[* uint] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door).
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct ElemTagged(pub(crate) OrderedSet<u64>);
+pub struct ElemTagged(pub(crate) cddl_lib::ElemTagged);
 
 #[wasm_bindgen]
 impl ElemTagged {
-    pub fn new() -> Self {
-        Self(OrderedSet::new())
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
     }
 
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn get(&self, index: usize) -> u64 {
-        self.0[index]
-    }
-
-    pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
-        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
-    }
-
-    pub fn try_from(elements: Vec<u64>) -> Result<ElemTagged, JsError> {
-        OrderedSet::try_from(elements)
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ElemTagged, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
             .map(Self)
-            .map_err(|e| JsError::new(&e.to_string()))
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: &U64OrderedSet) -> Self {
+        Self(cddl_lib::ElemTagged::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> U64OrderedSet {
+        <OrderedSet<u64>>::from(self.0.clone()).clone().into()
     }
 }
 
-impl From<OrderedSet<u64>> for ElemTagged {
-    fn from(native: OrderedSet<u64>) -> Self {
+impl From<cddl_lib::ElemTagged> for ElemTagged {
+    fn from(native: cddl_lib::ElemTagged) -> Self {
         Self(native)
     }
 }
 
-impl From<ElemTagged> for OrderedSet<u64> {
+impl From<ElemTagged> for cddl_lib::ElemTagged {
     fn from(wasm: ElemTagged) -> Self {
         wasm.0
     }
 }
 
-impl AsRef<OrderedSet<u64>> for ElemTagged {
-    fn as_ref(&self) -> &OrderedSet<u64> {
+impl AsRef<cddl_lib::ElemTagged> for ElemTagged {
+    fn as_ref(&self) -> &cddl_lib::ElemTagged {
         &self.0
     }
 }
@@ -79,11 +74,11 @@ impl Heterogeneous {
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
     }
 
-    pub fn new(inner: &U64OrderedSet) -> Self {
+    pub fn new(inner: &HeterogeneousSet) -> Self {
         Self(cddl_lib::Heterogeneous::new(inner.clone().into()))
     }
 
-    pub fn get(&self) -> U64OrderedSet {
+    pub fn get(&self) -> HeterogeneousSet {
         self.0.get().clone().into()
     }
 }
@@ -106,50 +101,45 @@ impl AsRef<cddl_lib::Heterogeneous> for Heterogeneous {
     }
 }
 
-/// `[* uint] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door).
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct HeterogeneousSet(pub(crate) OrderedSet<u64>);
+pub struct HeterogeneousSet(pub(crate) cddl_lib::HeterogeneousSet);
 
 #[wasm_bindgen]
 impl HeterogeneousSet {
-    pub fn new() -> Self {
-        Self(OrderedSet::new())
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
     }
 
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn get(&self, index: usize) -> u64 {
-        self.0[index]
-    }
-
-    pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
-        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
-    }
-
-    pub fn try_from(elements: Vec<u64>) -> Result<HeterogeneousSet, JsError> {
-        OrderedSet::try_from(elements)
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<HeterogeneousSet, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
             .map(Self)
-            .map_err(|e| JsError::new(&e.to_string()))
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: &U64OrderedSet) -> Self {
+        Self(cddl_lib::HeterogeneousSet::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> U64OrderedSet {
+        <OrderedSet<u64>>::from(self.0.clone()).clone().into()
     }
 }
 
-impl From<OrderedSet<u64>> for HeterogeneousSet {
-    fn from(native: OrderedSet<u64>) -> Self {
+impl From<cddl_lib::HeterogeneousSet> for HeterogeneousSet {
+    fn from(native: cddl_lib::HeterogeneousSet) -> Self {
         Self(native)
     }
 }
 
-impl From<HeterogeneousSet> for OrderedSet<u64> {
+impl From<HeterogeneousSet> for cddl_lib::HeterogeneousSet {
     fn from(wasm: HeterogeneousSet) -> Self {
         wasm.0
     }
 }
 
-impl AsRef<OrderedSet<u64>> for HeterogeneousSet {
-    fn as_ref(&self) -> &OrderedSet<u64> {
+impl AsRef<cddl_lib::HeterogeneousSet> for HeterogeneousSet {
+    fn as_ref(&self) -> &cddl_lib::HeterogeneousSet {
         &self.0
     }
 }
@@ -225,11 +215,11 @@ impl Homogeneous {
             .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
     }
 
-    pub fn new(inner: &U64OrderedSet) -> Self {
+    pub fn new(inner: &HomogeneousInner) -> Self {
         Self(cddl_lib::Homogeneous::new(inner.clone().into()))
     }
 
-    pub fn get(&self) -> U64OrderedSet {
+    pub fn get(&self) -> HomogeneousInner {
         self.0.get().clone().into()
     }
 }
@@ -252,50 +242,45 @@ impl AsRef<cddl_lib::Homogeneous> for Homogeneous {
     }
 }
 
-/// `[* uint] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door).
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct HomogeneousInner(pub(crate) OrderedSet<u64>);
+pub struct HomogeneousInner(pub(crate) cddl_lib::HomogeneousInner);
 
 #[wasm_bindgen]
 impl HomogeneousInner {
-    pub fn new() -> Self {
-        Self(OrderedSet::new())
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
     }
 
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn get(&self, index: usize) -> u64 {
-        self.0[index]
-    }
-
-    pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
-        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
-    }
-
-    pub fn try_from(elements: Vec<u64>) -> Result<HomogeneousInner, JsError> {
-        OrderedSet::try_from(elements)
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<HomogeneousInner, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
             .map(Self)
-            .map_err(|e| JsError::new(&e.to_string()))
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: &U64OrderedSet) -> Self {
+        Self(cddl_lib::HomogeneousInner::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> U64OrderedSet {
+        <OrderedSet<u64>>::from(self.0.clone()).clone().into()
     }
 }
 
-impl From<OrderedSet<u64>> for HomogeneousInner {
-    fn from(native: OrderedSet<u64>) -> Self {
+impl From<cddl_lib::HomogeneousInner> for HomogeneousInner {
+    fn from(native: cddl_lib::HomogeneousInner) -> Self {
         Self(native)
     }
 }
 
-impl From<HomogeneousInner> for OrderedSet<u64> {
+impl From<HomogeneousInner> for cddl_lib::HomogeneousInner {
     fn from(wasm: HomogeneousInner) -> Self {
         wasm.0
     }
 }
 
-impl AsRef<OrderedSet<u64>> for HomogeneousInner {
-    fn as_ref(&self) -> &OrderedSet<u64> {
+impl AsRef<cddl_lib::HomogeneousInner> for HomogeneousInner {
+    fn as_ref(&self) -> &cddl_lib::HomogeneousInner {
         &self.0
     }
 }

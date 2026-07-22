@@ -14,8 +14,119 @@ expression: content
 pub mod error;
 mod extern_interface_check;
 pub mod non_empty;
+impl std::ops::Deref for IntNeset {
+    type Target = NonEmptyVec<u64>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for IntNeset {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a> IntoIterator for &'a IntNeset {
+    type Item = &'a u64;
+    type IntoIter = std::slice::Iter<'a, u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for IntNeset {
+    type Item = u64;
+    type IntoIter = std::vec::IntoIter<u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Vec::<u64>::from(self.0).into_iter()
+    }
+}
+
+impl From<IntNeset> for Vec<u64> {
+    fn from(wrapper: IntNeset) -> Self {
+        Vec::from(wrapper.0)
+    }
+}
+
+impl TryFrom<Vec<u64>> for IntNeset {
+    type Error = DeserializeError;
+
+    fn try_from(vec: Vec<u64>) -> Result<Self, Self::Error> {
+        Ok(IntNeset::new(<NonEmptyVec<u64>>::try_from(vec)?))
+    }
+}
+
+impl std::ops::Deref for IntSet {
+    type Target = Vec<u64>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for IntSet {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a> IntoIterator for &'a IntSet {
+    type Item = &'a u64;
+    type IntoIter = std::slice::Iter<'a, u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for IntSet {
+    type Item = u64;
+    type IntoIter = std::vec::IntoIter<u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl std::ops::Deref for TextSet {
+    type Target = Vec<String>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for TextSet {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a> IntoIterator for &'a TextSet {
+    type Item = &'a String;
+    type IntoIter = std::slice::Iter<'a, String>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for TextSet {
+    type Item = String;
+    type IntoIter = std::vec::IntoIter<String>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
 pub mod serialization;
 
+use crate::generated::error::*;
 use crate::generated::non_empty::NonEmptyVec;
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
@@ -31,15 +142,164 @@ impl Holder {
     }
 }
 
-/// `[+ u64]`: at least one element, enforced at the `NonEmptyVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
-/// The tag-258 set idiom: the tag is an encoding detail — both the `#6.258(...)` and the bare-array wire forms are accepted (serialization defaults to tagged), so either round-trips byte-exactly.
-/// Duplicate elements are preserved and re-emitted byte-exactly in wire order (the default for a set idiom; opt into rejection with `@duplicates reject`).
-pub type IntNeset = NonEmptyVec<u64>;
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct IntNeset(pub(crate) NonEmptyVec<u64>);
 
-/// The tag-258 set idiom: the tag is an encoding detail — both the `#6.258(...)` and the bare-array wire forms are accepted (serialization defaults to tagged), so either round-trips byte-exactly.
-/// Duplicate elements are preserved and re-emitted byte-exactly in wire order (the default for a set idiom; opt into rejection with `@duplicates reject`).
-pub type IntSet = Vec<u64>;
+impl IntNeset {
+    pub fn new(inner: NonEmptyVec<u64>) -> Self {
+        Self(inner)
+    }
+}
 
-/// The tag-258 set idiom: the tag is an encoding detail — both the `#6.258(...)` and the bare-array wire forms are accepted (serialization defaults to tagged), so either round-trips byte-exactly.
-/// Duplicate elements are preserved and re-emitted byte-exactly in wire order (the default for a set idiom; opt into rejection with `@duplicates reject`).
-pub type TextSet = Vec<String>;
+impl From<NonEmptyVec<u64>> for IntNeset {
+    fn from(inner: NonEmptyVec<u64>) -> Self {
+        IntNeset::new(inner)
+    }
+}
+
+impl From<IntNeset> for NonEmptyVec<u64> {
+    fn from(wrapper: IntNeset) -> Self {
+        wrapper.0
+    }
+}
+
+impl serde::Serialize for IntNeset {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for IntNeset {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <NonEmptyVec<u64> as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for IntNeset {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("IntNeset")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <NonEmptyVec<u64> as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <NonEmptyVec<u64> as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct IntSet(pub(crate) Vec<u64>);
+
+impl IntSet {
+    pub fn new(inner: Vec<u64>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<Vec<u64>> for IntSet {
+    fn from(inner: Vec<u64>) -> Self {
+        IntSet::new(inner)
+    }
+}
+
+impl From<IntSet> for Vec<u64> {
+    fn from(wrapper: IntSet) -> Self {
+        wrapper.0
+    }
+}
+
+impl serde::Serialize for IntSet {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for IntSet {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <Vec<u64> as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for IntSet {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("IntSet")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <Vec<u64> as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <Vec<u64> as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct TextSet(pub(crate) Vec<String>);
+
+impl TextSet {
+    pub fn new(inner: Vec<String>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<Vec<String>> for TextSet {
+    fn from(inner: Vec<String>) -> Self {
+        TextSet::new(inner)
+    }
+}
+
+impl From<TextSet> for Vec<String> {
+    fn from(wrapper: TextSet) -> Self {
+        wrapper.0
+    }
+}
+
+impl serde::Serialize for TextSet {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for TextSet {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <Vec<String> as serde::de::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for TextSet {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("TextSet")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <Vec<String> as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        <Vec<String> as schemars::JsonSchema>::inline_schema()
+    }
+}

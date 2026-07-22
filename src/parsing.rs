@@ -583,37 +583,59 @@ fn parse_type_choices(
             // Tag 258 additionally acquires a registry default: a no-directive 258 SET (array inner)
             // defaults to `@duplicates reject`. Extend the collapse notice to state it and the opt-out
             // when that default applies; no such wording when the directive is explicit (either value).
-            // `@newtype` on the collapsed two-arm idiom is not yet meaningful: the arms collapse into
-            // one transparent optionally-tagged collection with no wrapper struct to carry a newtype
-            // getter, so the directive would be silently dropped. Reject loudly for this phase.
-            // draft/set-architecture-plan.md "Phase 2.2 — named set rules nominalize" emits the wrapper
-            // struct for this idiom and subsumes this rejection. The message text is a pinned key.
-            if rule_metadata.newtype.is_some() {
-                types.record_rejection(format!(
-                    "@newtype on rule `{name}`: this directive is not yet meaningful on a collapsed \
-                     two-arm set idiom (`#6.{set_tag}([* a]) / [* a]`) — the two arms collapse into one \
-                     transparent optionally-tagged collection with no wrapper struct to carry the \
-                     newtype getter, so it would be silently dropped. Use the single-arm mandatory-tag \
-                     form `#6.{set_tag}([* a]) ; @newtype` (which produces a newtype wrapper), or remove \
-                     `@newtype` from this rule."
-                ));
-            }
             let is_array = matches!(base.conceptual_type, ConceptualRustType::Array(_));
+            // A named non-generic 258 SET rule (array inner) NOMINALIZES into a `Wrapper` struct that
+            // owns its `{tag, len, elem}` encodings (Phase 2.2) — both `reject` and `preserve` flavors
+            // (policy selects the inner type only). Grammar decides the tag record: the two-arm idiom's
+            // OPTIONAL tag rides `OptionallyTagged(258)` (a `TagPresenceEncoding` under
+            // --preserve-encodings), attached to the wrapped array type by the dispatch. `@newtype`
+            // now carries a custom getter on the wrapper (Phase 2.1's gap-3 rejection is SUBSUMED — a
+            // bare `@newtype` emits no getter, `@newtype <name>` a custom one; neither shadows
+            // `OrderedSet::get(index)`). A non-258 collapse (or a table inner) stays a transparent
+            // optionally-tagged alias, byte-identical to today.
+            // NOMINALIZATION is scoped to NAMED NON-GENERIC set rules (Phase 2.2). A generic set def
+            // (`set<a0> = #6.258([* a0]) / [* a0]`) stays the collapsed transparent Array-bodied generic
+            // def whose instances resolve to transparent aliases (`pub type SetU64 = OrderedSet<u64>`) —
+            // nominal-per-instantiation is Phase 2.3, and the generic fixtures must stay byte-identical.
+            let is_set_nominal = is_array
+                && generic_params.is_none()
+                && well_known_tag_default_duplicates(set_tag, true).is_some();
             let defaulted = rule_metadata.duplicates.is_none()
                 && well_known_tag_default_duplicates(set_tag, is_array).is_some();
+            let collapse_desc = if is_set_nominal {
+                "a nominal set wrapper owning its encodings"
+            } else {
+                "a transparent optionally-tagged collection"
+            };
             if defaulted {
                 println!(
-                    "Collapsing rule `{name}` (tag {set_tag} set idiom) into a transparent optionally-tagged collection; defaulting to @duplicates reject (IANA set semantics) — write `; @duplicates preserve` on the rule to opt out"
+                    "Collapsing rule `{name}` (tag {set_tag} set idiom) into {collapse_desc}; defaulting to @duplicates reject (IANA set semantics) — write `; @duplicates preserve` on the rule to opt out"
                 );
             } else {
                 println!(
-                    "Collapsing rule `{name}` (tag {set_tag} set idiom) into a transparent optionally-tagged collection"
+                    "Collapsing rule `{name}` (tag {set_tag} set idiom) into {collapse_desc}"
                 );
             }
             let effective_metadata =
                 with_well_known_tag_default(&rule_metadata, set_tag, is_array, None);
             let bounds = base.config.bounds;
             let rust_struct = match base.conceptual_type {
+                ConceptualRustType::Array(element_type) if is_set_nominal => {
+                    let mut array_type: RustType =
+                        ConceptualRustType::Array(element_type).into();
+                    if let Some(bounds) = bounds {
+                        array_type = array_type.with_bounds(bounds);
+                    }
+                    RustStruct::new_wrapper(
+                        name.clone(),
+                        Some(set_tag),
+                        Some(&effective_metadata),
+                        array_type,
+                        None,
+                    )
+                    .as_optionally_tagged()
+                    .as_set_nominal()
+                }
                 ConceptualRustType::Array(element_type) => RustStruct::new_array(
                     name.clone(),
                     Some(set_tag),
@@ -3346,7 +3368,35 @@ fn parse_group_choice(
                     cli,
                 );
             }
-            if rule_metadata.newtype.is_some() {
+            // Scoped to NAMED NON-GENERIC set rules (Phase 2.2); a generic single-arm set def keeps the
+            // transparent Array alias so its instances stay byte-identical (Phase 2.3 nominalizes those).
+            let is_set_nominal = generic_params.is_none()
+                && tag.is_some_and(|t| well_known_tag_default_duplicates(t, true).is_some());
+            if is_set_nominal {
+                // A single-arm mandatory-tag 258 SET rule (`#6.258([* a])`) NOMINALIZES into a
+                // `Wrapper` struct owning its `{tag, len, elem}` encodings (Phase 2.2), exactly like
+                // the two-arm idiom but with a MANDATORY tag (grammar decides the record: `Option<Sz>`,
+                // NOT the two-arm `TagPresenceEncoding`). The registry set-semantics default (reject)
+                // rides `single_arm_array_effective_metadata` and the `Wrapper` register arm threads it
+                // onto the stored inner array type, selecting the `OrderedSet`/`NonEmptyOrderedSet`
+                // twin. `@newtype` carries a custom getter on the wrapper; a bare set nominal emits no
+                // inherent `get()` (it would shadow `OrderedSet::get(index)` through `Deref`).
+                let effective_metadata =
+                    single_arm_array_effective_metadata(&rule_metadata, tag, name);
+                let mut array_type: RustType =
+                    ConceptualRustType::Array(Box::new(element_type)).into();
+                if let Some(bounds) = bounds {
+                    array_type = array_type.with_bounds(bounds);
+                }
+                RustStruct::new_wrapper(
+                    name.clone(),
+                    tag,
+                    Some(&effective_metadata),
+                    array_type,
+                    None,
+                )
+                .as_set_nominal()
+            } else if rule_metadata.newtype.is_some() {
                 // generate newtype over array. Route through the SAME effective-metadata helper the
                 // plain single-arm array path uses so a single-arm tag-258 `@newtype` wrapper
                 // (`#6.258([* a]) ; @newtype`) picks up the registry's set-semantics default

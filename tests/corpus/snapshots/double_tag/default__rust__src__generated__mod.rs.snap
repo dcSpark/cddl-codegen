@@ -14,41 +14,215 @@ expression: content
 pub mod error;
 mod extern_interface_check;
 pub mod ordered_set;
-pub mod serialization;
+impl std::ops::Deref for ElemTagged {
+    type Target = OrderedSet<u64>;
 
-use crate::generated::ordered_set::OrderedSet;
-
-/// `@duplicates reject`: a repeated element is refused (a `DuplicateKey` error) on both the wire and the API; accepted (duplicate-free) input re-emits byte-exactly in wire order (the set is order-preserving, never sorted).
-pub type ElemTagged = OrderedSet<u64>;
-
-#[derive(Clone, Debug)]
-pub struct Heterogeneous(pub(crate) OrderedSet<u64>);
-
-impl Heterogeneous {
-    pub fn get(&self) -> &OrderedSet<u64> {
+    fn deref(&self) -> &Self::Target {
         &self.0
     }
+}
 
+impl std::ops::DerefMut for ElemTagged {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a> IntoIterator for &'a ElemTagged {
+    type Item = &'a u64;
+    type IntoIter = std::slice::Iter<'a, u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for ElemTagged {
+    type Item = u64;
+    type IntoIter = std::vec::IntoIter<u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Vec::<u64>::from(self.0).into_iter()
+    }
+}
+
+impl From<ElemTagged> for Vec<u64> {
+    fn from(wrapper: ElemTagged) -> Self {
+        Vec::from(wrapper.0)
+    }
+}
+
+impl TryFrom<Vec<u64>> for ElemTagged {
+    type Error = DeserializeError;
+
+    fn try_from(vec: Vec<u64>) -> Result<Self, Self::Error> {
+        Ok(ElemTagged::new(<OrderedSet<u64>>::try_from(vec)?))
+    }
+}
+
+impl std::ops::Deref for HeterogeneousSet {
+    type Target = OrderedSet<u64>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for HeterogeneousSet {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a> IntoIterator for &'a HeterogeneousSet {
+    type Item = &'a u64;
+    type IntoIter = std::slice::Iter<'a, u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for HeterogeneousSet {
+    type Item = u64;
+    type IntoIter = std::vec::IntoIter<u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Vec::<u64>::from(self.0).into_iter()
+    }
+}
+
+impl From<HeterogeneousSet> for Vec<u64> {
+    fn from(wrapper: HeterogeneousSet) -> Self {
+        Vec::from(wrapper.0)
+    }
+}
+
+impl TryFrom<Vec<u64>> for HeterogeneousSet {
+    type Error = DeserializeError;
+
+    fn try_from(vec: Vec<u64>) -> Result<Self, Self::Error> {
+        Ok(HeterogeneousSet::new(<OrderedSet<u64>>::try_from(vec)?))
+    }
+}
+
+impl std::ops::Deref for HomogeneousInner {
+    type Target = OrderedSet<u64>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for HomogeneousInner {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a> IntoIterator for &'a HomogeneousInner {
+    type Item = &'a u64;
+    type IntoIter = std::slice::Iter<'a, u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for HomogeneousInner {
+    type Item = u64;
+    type IntoIter = std::vec::IntoIter<u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Vec::<u64>::from(self.0).into_iter()
+    }
+}
+
+impl From<HomogeneousInner> for Vec<u64> {
+    fn from(wrapper: HomogeneousInner) -> Self {
+        Vec::from(wrapper.0)
+    }
+}
+
+impl TryFrom<Vec<u64>> for HomogeneousInner {
+    type Error = DeserializeError;
+
+    fn try_from(vec: Vec<u64>) -> Result<Self, Self::Error> {
+        Ok(HomogeneousInner::new(<OrderedSet<u64>>::try_from(vec)?))
+    }
+}
+
+pub mod serialization;
+
+use crate::generated::error::*;
+use crate::generated::ordered_set::OrderedSet;
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct ElemTagged(pub(crate) OrderedSet<u64>);
+
+impl ElemTagged {
     pub fn new(inner: OrderedSet<u64>) -> Self {
         Self(inner)
     }
 }
 
-impl From<OrderedSet<u64>> for Heterogeneous {
+impl From<OrderedSet<u64>> for ElemTagged {
     fn from(inner: OrderedSet<u64>) -> Self {
+        ElemTagged::new(inner)
+    }
+}
+
+impl From<ElemTagged> for OrderedSet<u64> {
+    fn from(wrapper: ElemTagged) -> Self {
+        wrapper.0
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Heterogeneous(pub(crate) HeterogeneousSet);
+
+impl Heterogeneous {
+    pub fn get(&self) -> &HeterogeneousSet {
+        &self.0
+    }
+
+    pub fn new(inner: HeterogeneousSet) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<HeterogeneousSet> for Heterogeneous {
+    fn from(inner: HeterogeneousSet) -> Self {
         Heterogeneous::new(inner)
     }
 }
 
-impl From<Heterogeneous> for OrderedSet<u64> {
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct HeterogeneousSet(pub(crate) OrderedSet<u64>);
+
+impl From<Heterogeneous> for HeterogeneousSet {
     fn from(wrapper: Heterogeneous) -> Self {
         wrapper.0
     }
 }
 
-/// The tag-258 set idiom: the tag is an encoding detail — both the `#6.258(...)` and the bare-array wire forms are accepted (serialization defaults to tagged), so either round-trips byte-exactly.
-/// `@duplicates reject`: a repeated element is refused (a `DuplicateKey` error) on both the wire and the API; accepted (duplicate-free) input re-emits byte-exactly in wire order (the set is order-preserving, never sorted).
-pub type HeterogeneousSet = OrderedSet<u64>;
+impl HeterogeneousSet {
+    pub fn new(inner: OrderedSet<u64>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<OrderedSet<u64>> for HeterogeneousSet {
+    fn from(inner: OrderedSet<u64>) -> Self {
+        HeterogeneousSet::new(inner)
+    }
+}
+
+impl From<HeterogeneousSet> for OrderedSet<u64> {
+    fn from(wrapper: HeterogeneousSet) -> Self {
+        wrapper.0
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct Holder {
@@ -64,31 +238,49 @@ impl Holder {
 }
 
 #[derive(Clone, Debug)]
-pub struct Homogeneous(pub(crate) OrderedSet<u64>);
+pub struct Homogeneous(pub(crate) HomogeneousInner);
 
 impl Homogeneous {
-    pub fn get(&self) -> &OrderedSet<u64> {
+    pub fn get(&self) -> &HomogeneousInner {
         &self.0
     }
 
-    pub fn new(inner: OrderedSet<u64>) -> Self {
+    pub fn new(inner: HomogeneousInner) -> Self {
         Self(inner)
     }
 }
 
-impl From<OrderedSet<u64>> for Homogeneous {
-    fn from(inner: OrderedSet<u64>) -> Self {
+impl From<HomogeneousInner> for Homogeneous {
+    fn from(inner: HomogeneousInner) -> Self {
         Homogeneous::new(inner)
     }
 }
 
-impl From<Homogeneous> for OrderedSet<u64> {
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct HomogeneousInner(pub(crate) OrderedSet<u64>);
+
+impl From<Homogeneous> for HomogeneousInner {
     fn from(wrapper: Homogeneous) -> Self {
         wrapper.0
     }
 }
 
-/// `@duplicates reject`: a repeated element is refused (a `DuplicateKey` error) on both the wire and the API; accepted (duplicate-free) input re-emits byte-exactly in wire order (the set is order-preserving, never sorted).
-pub type HomogeneousInner = OrderedSet<u64>;
+impl HomogeneousInner {
+    pub fn new(inner: OrderedSet<u64>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<OrderedSet<u64>> for HomogeneousInner {
+    fn from(inner: OrderedSet<u64>) -> Self {
+        HomogeneousInner::new(inner)
+    }
+}
+
+impl From<HomogeneousInner> for OrderedSet<u64> {
+    fn from(wrapper: HomogeneousInner) -> Self {
+        wrapper.0
+    }
+}
 
 pub type OuterOverArray = Vec<ElemTagged>;
