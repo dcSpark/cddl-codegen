@@ -15,22 +15,110 @@ pub mod error;
 pub mod ordered_hash_map;
 pub mod ordered_set;
 extern crate derivative;
-pub mod cbor_encodings;
 mod extern_interface_check;
+impl std::ops::Deref for SetText {
+    type Target = OrderedSet<String>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl std::ops::DerefMut for SetText {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+
+impl<'a> IntoIterator for &'a SetText {
+    type Item = &'a String;
+    type IntoIter = std::slice::Iter<'a, String>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.iter()
+    }
+}
+
+impl IntoIterator for SetText {
+    type Item = String;
+    type IntoIter = std::vec::IntoIter<String>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Vec::<String>::from(self.inner).into_iter()
+    }
+}
+
+impl From<SetText> for Vec<String> {
+    fn from(wrapper: SetText) -> Self {
+        Vec::from(wrapper.inner)
+    }
+}
+
+impl TryFrom<Vec<String>> for SetText {
+    type Error = DeserializeError;
+
+    fn try_from(vec: Vec<String>) -> Result<Self, Self::Error> {
+        Ok(SetText::new(<OrderedSet<String>>::try_from(vec)?))
+    }
+}
+
+impl std::ops::Deref for SetU64 {
+    type Target = OrderedSet<u64>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl std::ops::DerefMut for SetU64 {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+
+impl<'a> IntoIterator for &'a SetU64 {
+    type Item = &'a u64;
+    type IntoIter = std::slice::Iter<'a, u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.iter()
+    }
+}
+
+impl IntoIterator for SetU64 {
+    type Item = u64;
+    type IntoIter = std::vec::IntoIter<u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Vec::<u64>::from(self.inner).into_iter()
+    }
+}
+
+impl From<SetU64> for Vec<u64> {
+    fn from(wrapper: SetU64) -> Self {
+        Vec::from(wrapper.inner)
+    }
+}
+
+impl TryFrom<Vec<u64>> for SetU64 {
+    type Error = DeserializeError;
+
+    fn try_from(vec: Vec<u64>) -> Result<Self, Self::Error> {
+        Ok(SetU64::new(<OrderedSet<u64>>::try_from(vec)?))
+    }
+}
+
+pub mod cbor_encodings;
 pub mod serialization;
 
+use crate::generated::error::*;
 use crate::generated::ordered_set::OrderedSet;
 use crate::generated::serialization::LenEncoding;
-use cbor_encodings::InlineHolderEncoding;
+use cbor_encodings::{InlineHolderEncoding, SetTextEncoding, SetU64Encoding};
 
 #[derive(Clone, Debug)]
 pub enum ArrU64OrArrU64 {
-    ArrU64 {
-        arr_u64: OrderedSet<u64>,
-        arr_u64_tag_encoding: Option<cbor_event::Sz>,
-        arr_u64_encoding: LenEncoding,
-        arr_u64_elem_encodings: Vec<Option<cbor_event::Sz>>,
-    },
+    ArrU64(SetU64),
     ArrU642 {
         arr_u642: Vec<u64>,
         arr_u642_encoding: LenEncoding,
@@ -39,13 +127,8 @@ pub enum ArrU64OrArrU64 {
 }
 
 impl ArrU64OrArrU64 {
-    pub fn new_arr_u64(arr_u64: OrderedSet<u64>) -> Self {
-        Self::ArrU64 {
-            arr_u64,
-            arr_u64_tag_encoding: None,
-            arr_u64_encoding: LenEncoding::default(),
-            arr_u64_elem_encodings: Vec::new(),
-        }
+    pub fn new_arr_u64(arr_u64: SetU64) -> Self {
+        Self::ArrU64(arr_u64)
     }
 
     pub fn new_arr_u642(arr_u642: Vec<u64>) -> Self {
@@ -59,15 +142,15 @@ impl ArrU64OrArrU64 {
 
 #[derive(Clone, Debug)]
 pub struct InlineHolder {
-    pub a: OrderedSet<u64>,
-    pub b: Option<OrderedSet<String>>,
-    pub c: Vec<OrderedSet<u64>>,
+    pub a: SetU64,
+    pub b: Option<SetText>,
+    pub c: Vec<SetU64>,
     pub x: ArrU64OrArrU64,
     pub encodings: Option<InlineHolderEncoding>,
 }
 
 impl InlineHolder {
-    pub fn new(a: OrderedSet<u64>, c: Vec<OrderedSet<u64>>, x: ArrU64OrArrU64) -> Self {
+    pub fn new(a: SetU64, c: Vec<SetU64>, x: ArrU64OrArrU64) -> Self {
         Self {
             a,
             b: None,
@@ -75,5 +158,73 @@ impl InlineHolder {
             x,
             encodings: None,
         }
+    }
+}
+
+#[derive(Clone, Debug, derivative::Derivative)]
+#[derivative(Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct SetText {
+    pub(crate) inner: OrderedSet<String>,
+    #[derivative(
+        PartialEq = "ignore",
+        Ord = "ignore",
+        PartialOrd = "ignore",
+        Hash = "ignore"
+    )]
+    pub encodings: Option<SetTextEncoding>,
+}
+
+impl SetText {
+    pub fn new(inner: OrderedSet<String>) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<OrderedSet<String>> for SetText {
+    fn from(inner: OrderedSet<String>) -> Self {
+        SetText::new(inner)
+    }
+}
+
+impl From<SetText> for OrderedSet<String> {
+    fn from(wrapper: SetText) -> Self {
+        wrapper.inner
+    }
+}
+
+#[derive(Clone, Debug, derivative::Derivative)]
+#[derivative(Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct SetU64 {
+    pub(crate) inner: OrderedSet<u64>,
+    #[derivative(
+        PartialEq = "ignore",
+        Ord = "ignore",
+        PartialOrd = "ignore",
+        Hash = "ignore"
+    )]
+    pub encodings: Option<SetU64Encoding>,
+}
+
+impl SetU64 {
+    pub fn new(inner: OrderedSet<u64>) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<OrderedSet<u64>> for SetU64 {
+    fn from(inner: OrderedSet<u64>) -> Self {
+        SetU64::new(inner)
+    }
+}
+
+impl From<SetU64> for OrderedSet<u64> {
+    fn from(wrapper: SetU64) -> Self {
+        wrapper.inner
     }
 }

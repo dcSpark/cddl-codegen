@@ -107,36 +107,15 @@ expression: ir
                     ),
                     data: RustType(
                         RustType {
-                            conceptual_type: Array(
-                                RustType {
-                                    conceptual_type: Primitive(
-                                        U64,
-                                    ),
-                                    encodings: [],
-                                    config: RustTypeSerializeConfig {
-                                        default: None,
-                                        bounds: None,
-                                        duplicates: None,
-                                        float_bounds: None,
-                                        basic_override: false,
-                                    },
-                                },
-                            ),
-                            encodings: [
-                                Tagged(
-                                    258,
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "SetNonEmptyU64",
                                 ),
-                            ],
+                            ),
+                            encodings: [],
                             config: RustTypeSerializeConfig {
                                 default: None,
-                                bounds: Some(
-                                    (
-                                        Some(
-                                            1,
-                                        ),
-                                        None,
-                                    ),
-                                ),
+                                bounds: None,
                                 duplicates: None,
                                 float_bounds: None,
                                 basic_override: false,
@@ -183,6 +162,66 @@ expression: ir
                     key: None,
                 },
             ],
+        },
+    },
+    RustIdent(
+        "SetNonEmptyU64",
+    ): RustStruct {
+        ident: RustIdent(
+            "SetNonEmptyU64",
+        ),
+        tag: Some(
+            258,
+        ),
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: Some(
+                Reject,
+            ),
+            set_nominal: true,
+        },
+        variant: Wrapper {
+            wrapped: RustType {
+                conceptual_type: Array(
+                    RustType {
+                        conceptual_type: Primitive(
+                            U64,
+                        ),
+                        encodings: [],
+                        config: RustTypeSerializeConfig {
+                            default: None,
+                            bounds: None,
+                            duplicates: None,
+                            float_bounds: None,
+                            basic_override: false,
+                        },
+                    },
+                ),
+                encodings: [],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: Some(
+                        (
+                            Some(
+                                1,
+                            ),
+                            None,
+                        ),
+                    ),
+                    duplicates: Some(
+                        Reject,
+                    ),
+                    float_bounds: None,
+                    basic_override: false,
+                },
+            },
+            min_max: None,
+            float_min_max: None,
         },
     },
 }
