@@ -1021,6 +1021,45 @@ fn inline_258_array_defaults_to_reject() {
     );
 }
 
+/// DOCUMENTED BOUNDARY pin: an inline `#6.258` array nested INSIDE a named two-arm idiom rule does
+/// NOT receive the registry's reject default — the named rule's transient arm builds run under
+/// `InlineTagDefaultSuppression`, which covers the whole arm subtree (suppressing only the arm ROOT
+/// needs depth discrimination through the type-build recursion that misclassifies parenthesized arm
+/// roots; disproportionate for a spelling no real spec uses, and Delivery 2's inline name-synthesis
+/// restructures this seam anyway — see the TESTING_ROADMAP entry, which names this test as the pin).
+/// The OUTER rule still collapses and takes the rule-level default; only the NESTED occurrence stays
+/// `Vec`. If this pin breaks because the nested occurrence acquired the twin, the boundary was fixed:
+/// retire this test AND the ledger entry together.
+#[test]
+fn nested_inline_258_inside_named_idiom_keeps_vec_documented_boundary() {
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_nested258_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        "foo = #6.258([* #6.258([* uint])]) / [* #6.258([* uint])]\n",
+    )
+    .unwrap();
+    let out = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "nested258_unused",
+        "--wasm=false",
+    ]))
+    .expect("nested inline 258 inside the named idiom must generate cleanly");
+    std::fs::remove_file(&path).ok();
+    let src = out.values().cloned().collect::<Vec<_>>().join("\n");
+    assert!(
+        src.contains("pub type Foo = OrderedSet<Vec<u64>>;"),
+        "outer rule takes the rule-level reject default; the NESTED inline occurrence stays Vec \
+         (the documented suppression boundary). If this now reads OrderedSet<OrderedSet<u64>>, \
+         the boundary was fixed — retire this pin and its ledger entry together. Got:\n{src}"
+    );
+}
+
 /// The hoist recipe the inline-258 generation notice prints actually works: extracting the inline
 /// occurrence to a named rule carrying `; @duplicates preserve` opts back out to the plain `Vec` twin
 /// (today's wire behavior verbatim), while the same named rule WITHOUT the directive keeps the reject
