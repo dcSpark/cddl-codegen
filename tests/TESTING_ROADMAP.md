@@ -264,6 +264,45 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      carries no directive, so a preserve table hosted purely via `--wrapper-requests` from a consumer
      is untested (the named-rule and generic-instance paths ARE covered). A cross-crate preserve
      wrapper-request fixture would close it.
+   - **Set-nominalization residuals (Delivery 2 of the set-architecture rethink —
+     `d177516`/`816969f`/`13b63a2`/`7daca67`).** Named, generic-instance, and inline `#6.258` sets
+     are now nominal wrapper types owning their `{tag, len, elem}` encodings. Three follow-ups
+     outlive the delivery:
+     - *`From` between same-shape set instantiations.* `set<xs_int>` and `set<[* uint]>` (where
+       `xs_int = [* uint]`) mint DISTINCT nominals over the same wire shape by the
+       spelling-is-identity rule; a member-wise-encoding `From` between two such structurally
+       identical nominals would let a consumer convert without a rebuild, but it needs
+       structurally-identical-nominal-pair DETECTION that does not exist yet. Niche — CML writes
+       sets through one generic `set<a0>`, so it never mints a same-shape pair; build it when a real
+       spec mints the pair. The set ergonomics that DID ship (`Deref`/`DerefMut`, both
+       `IntoIterator`s, `From`/`TryFrom` Vec) are inventoried in the user docs
+       (`docs/docs/output_format.mdx` § "Nominal tag-258 set types").
+     - *Dedicated collision message for the generic-instantiation naming family.* An inline
+       shape-derived nominal name colliding with a user rule or a structurally-different generic
+       instantiation is refused with a set-specific message
+       (`inline_258_nominal_name_collision_is_rejected`). The GENERIC-INSTANTIATION family
+       (`SetKeyHash` from `set<key_hash>` vs a user `set_key_hash` rule) still falls through to the
+       generic duplicate-top-level-ident backstop, whose "list/map wrapper families" text is
+       misleading for a set nominal — a dedicated per-kind sibling (the decided per-naming-family
+       detector structure) is message polish, deferred until a real collision makes the generic
+       message actively wrong.
+     - *Member-position `@duplicates` extension.* The inline opt-out is hoist-to-named-rule (no new
+       DSL surface); a member-position `; @duplicates` directive on an inline set was DEFERRED until
+       a real spec demands it. It looks one-line (the member-position rejection seam in `parsing.rs`
+       is ready) but carries hidden machinery: a per-site policy on a named-rule or generic-instance
+       reference forks one shared type into two, so it must be restricted to inline shapes, and even
+       there the shape-deduped synthesized names would need the policy folded into type identity
+       plus policy-variant name disambiguation. Every directive is permanent surface (parser,
+       LOCKSTEP `corpus_detect` mirror, docs, wasm matrix); the deferral costs no architectural
+       rework (the rejection seam stays), and CML-shaped CDDL never hits it (Cardano writes sets
+       through the named generic `set<a0>`, where the rule-level directive already works). Reopening
+       signal: a third-party author who won't restructure a spec to hoist.
+
+     The wire-level duplicate-REJECT decode vector for the 258 reject default (the spec-VALID,
+     policy-rejected vector class blocked on a catalog-model extension) is the separate
+     "Mint decode-conformance + confirm matrix coverage for the tag-258 reject-default flip" entry
+     above; it now applies to the nominal-set inner too, which routes duplicates through the SAME
+     `OrderedSet::try_from` / `DuplicateKey` door, so no second entry is needed.
    - (The per-role wasm-ABI/multifile grid rows for both flavors are delivered — the
      `rset`/`nerset`/`rseta`/`nerseta` and `pmap`/`nepmap`/`pmapa`/`nepmapa` `SHAPES` entries;
      inventory in `tests/README.md` § "Per-rule duplicates policy (`@duplicates`) — test map".
