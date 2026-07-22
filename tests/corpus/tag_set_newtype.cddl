@@ -1,0 +1,40 @@
+; `@newtype` over a set/table collection selects its inner representation by the effective
+; `@duplicates` policy — the wrapper seam honors duplicates exactly as a transparent array/table
+; alias does. Three distinct seams converge here (see draft/set-architecture-plan.md
+; "Phase 2.1 — wrapper seam honors duplicates"):
+;
+; - the single-arm mandatory-tag `#6.258([* a]) ; @newtype` wrapper picks up the well-known-tag
+;   registry's set-semantics default (reject) via `single_arm_array_effective_metadata`, so its
+;   inner is the `OrderedSet` uniqueness twin, never a plain `Vec` (parse-side);
+; - an explicit `[* a] ; @newtype @duplicates reject` threads the captured directive onto the stored
+;   inner collection type at the `Wrapper` registration arm, so the inner becomes `OrderedSet` too —
+;   the directive is no longer silently captured-but-ignored (generation-side);
+; Two boundaries are graceful rejections this phase (a rejected spec generates no output, so neither
+; appears as a rule here) — each pinned by a robustness test rather than a corpus snapshot:
+; - `@newtype` on the COLLAPSED two-arm idiom (`#6.258([* a]) / [* a] ; @newtype`): the collapse has no
+;   wrapper struct to carry the getter (`newtype_on_two_arm_258_idiom_rejects_gracefully`);
+; - `@duplicates` on a `@newtype` TABLE (`{* k => v} ; @newtype @duplicates preserve`): the PairMap
+;   wasm boundary for the wrapped inner is unwired (`newtype_table_duplicates_rejects_gracefully`). The
+;   transparent-table alias (drop `@newtype`) carries the policy fully today.
+;
+; The tag on a single-arm rule stays a mandatory `Option<Sz>` (grammar decides the encoding record);
+; only the inner element type gains uniqueness.
+;
+; - `single_arm_set`    — `#6.258([* uint]) ; @newtype` -> `Foo(OrderedSet<u64>)` by registry default.
+; - `single_arm_neset`  — `#6.258([+ uint]) ; @newtype` -> `NonEmptyOrderedSet<u64>` (the `[+]` min-1
+;                         bound composes with uniqueness in the twin's single `TryFrom` door).
+; - `plain_reject`      — `[* uint] ; @newtype @duplicates reject` (no tag) -> `OrderedSet<u64>`: the
+;                         explicit directive drives the inner swap with no registry involvement.
+; - `plain_neset_reject`— `[+ uint] ; @newtype @duplicates reject` -> `NonEmptyOrderedSet<u64>`.
+; - `opt_out`           — `#6.258([* uint]) ; @newtype @duplicates preserve`: the documented per-rule
+;                         opt-out restores the plain `Vec<u64>` inner, byte-identical to today's wire.
+; - `plain_table`       — `{* uint => text} ; @newtype` (no `@duplicates`): the table newtype wrapper
+;                         stays `BTreeMap<u64, String>`, unaffected — the ARRAY policy threading is
+;                         scoped to array wrapped types, so a directive-less table wrapper is untouched.
+single_arm_set = #6.258([* uint]) ; @newtype
+single_arm_neset = #6.258([+ uint]) ; @newtype
+plain_reject = [* uint] ; @newtype @duplicates reject
+plain_neset_reject = [+ uint] ; @newtype @duplicates reject
+opt_out = #6.258([* uint]) ; @newtype @duplicates preserve
+plain_table = { * uint => text } ; @newtype
+holder = [s: single_arm_set, ns: single_arm_neset, r: plain_reject, nr: plain_neset_reject, o: opt_out, t: plain_table]
