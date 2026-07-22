@@ -351,12 +351,13 @@ mod golden_hex_preserve {
     );
 
     // ---- DUPLICATE-carrying set instances: the preserve-mode default's load-bearing guarantee ----
-    // A tag-258 set idiom accepts duplicate wire entries and, under --preserve-encodings, MUST
-    // re-emit them byte-exact including their order — the multi-era byte-exact-reader contract that
-    // makes `preserve` the correct set default (see input.cddl). The value anchor asserts the
-    // duplicate is actually PRESENT (len == 2, both elements "a"), so the KAT can't pass by a silent
-    // dedup that happened to re-encode to the same bytes; the macro's byte-identity assert then pins
-    // the round-trip. Both wire arms (untagged / tagged) of both occurrence flavors (`[*]` / `[+]`).
+    // A tag-258 set idiom under the EXPLICIT `@duplicates preserve` opt-out accepts duplicate wire
+    // entries and, under --preserve-encodings, MUST re-emit them byte-exact including their order —
+    // the multi-era byte-exact-reader contract that lives on the `preserve` spelling now that the 258
+    // default is `reject` (see input.cddl). The value anchor asserts the duplicate is actually PRESENT
+    // (len == 2, both elements "a"), so the KAT can't pass by a silent dedup that happened to
+    // re-encode to the same bytes; the macro's byte-identity assert then pins the round-trip. Both
+    // wire arms (untagged / tagged) of both occurrence flavors (`[*]` / `[+]`).
     //
     // `[*]` flavor (OptSetHolder, s: Vec<String>): untagged `[["a","a"]]`.
     kat_preserve!(

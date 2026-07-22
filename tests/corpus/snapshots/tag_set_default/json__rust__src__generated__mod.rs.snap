@@ -1,0 +1,50 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+pub mod error;
+mod extern_interface_check;
+pub mod non_empty;
+pub mod ordered_set;
+pub mod serialization;
+
+use crate::generated::ordered_set::{NonEmptyOrderedSet, OrderedSet};
+
+/// `[+ u64]`: at least one element, enforced at the `NonEmptyOrderedSet` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
+/// The tag-258 set idiom: the tag is an encoding detail — both the `#6.258(...)` and the bare-array wire forms are accepted (serialization defaults to tagged), so either round-trips byte-exactly.
+/// `@duplicates reject`: a repeated element is refused (a `DuplicateKey` error) on both the wire and the API; accepted (duplicate-free) input re-emits byte-exactly in wire order (the set is order-preserving, never sorted).
+pub type DefaultNeset = NonEmptyOrderedSet<u64>;
+
+/// The tag-258 set idiom: the tag is an encoding detail — both the `#6.258(...)` and the bare-array wire forms are accepted (serialization defaults to tagged), so either round-trips byte-exactly.
+/// `@duplicates reject`: a repeated element is refused (a `DuplicateKey` error) on both the wire and the API; accepted (duplicate-free) input re-emits byte-exactly in wire order (the set is order-preserving, never sorted).
+pub type DefaultSet = OrderedSet<u64>;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct Holder {
+    pub s: DefaultSet,
+    pub ns: DefaultNeset,
+    pub sa: SingleArm,
+    pub o: OptOut,
+}
+
+impl Holder {
+    pub fn new(s: DefaultSet, ns: DefaultNeset, sa: SingleArm, o: OptOut) -> Self {
+        Self { s, ns, sa, o }
+    }
+}
+
+/// The tag-258 set idiom: the tag is an encoding detail — both the `#6.258(...)` and the bare-array wire forms are accepted (serialization defaults to tagged), so either round-trips byte-exactly.
+/// Duplicate elements are preserved and re-emitted byte-exactly in wire order (the default for a set idiom; opt into rejection with `@duplicates reject`).
+pub type OptOut = Vec<u64>;
+
+/// `@duplicates reject`: a repeated element is refused (a `DuplicateKey` error) on both the wire and the API; accepted (duplicate-free) input re-emits byte-exactly in wire order (the set is order-preserving, never sorted).
+pub type SingleArm = OrderedSet<u64>;

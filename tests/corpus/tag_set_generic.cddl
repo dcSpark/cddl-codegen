@@ -1,6 +1,6 @@
 ; The tag-set idiom as CDDL generics — the Cardano ledger's `set<T>` / `nonempty_set<T>` /
 ; `nonempty_oset<T>` bases, which move from hand-written externs to generated types once the idiom is
-; recognized.
+; recognized — pinned here on the EXPLICIT `@duplicates preserve` opt-out.
 ;
 ; The collapse happens at parse time, BEFORE the generic machinery, so a
 ; `set<a0> = #6.258([* a0]) / [* a0]` choice-bodied generic def stores the already-collapsed Array
@@ -9,6 +9,15 @@
 ; typed as an instance serializes through that alias identically to the non-generic equivalent — the
 ; generic and non-generic paths converge on one resolution.
 ;
+; These generic defs carry `; @duplicates preserve` DELIBERATELY: tag 258 is the IANA set tag, so a
+; no-directive 258 idiom now DEFAULTS to `@duplicates reject`. This fixture is the OPT-OUT contract at
+; the GENERIC-def level — `preserve` on the def restores the plain `Vec`/`NonEmptyVec` alias and, per
+; instance, rides instantiation unchanged (a live corpus pin that the opt-out propagates through every
+; instantiation path, complementing the in-process pins in
+; `robustness_tests::duplicates_on_generic_def_rides_instantiation`). The reject DEFAULT on generic
+; defs is exercised by tag_set_reject.cddl (`oset<a0> … ; @duplicates reject`) and
+; tag_set_reject_anon_generic.cddl.
+;
 ; Instances span uint / text / a struct-typed element so transparent-alias resolution is exercised
 ; across element kinds; `nonempty_oset` is the third in-the-wild base (conway + dijkstra ledger CDDL)
 ; proving the mechanism covers N rules, not a hardcoded two. A BYTES element is deliberately omitted:
@@ -16,8 +25,8 @@
 ; this feature — a pre-existing limitation tracked in tests/TESTING_ROADMAP.md; the rust-side bytes
 ; collapse (incl. per-element StringEncoding preservation) is pinned in-process by
 ; `optional_tag_set_tests::bytes_element_set_collapses_with_elem_encodings`.
-set<a0> = #6.258([* a0]) / [* a0]
-nonempty_set<a0> = #6.258([+ a0]) / [+ a0]
-nonempty_oset<a0> = #6.258([+ a0]) / [+ a0]
+set<a0> = #6.258([* a0]) / [* a0] ; @duplicates preserve
+nonempty_set<a0> = #6.258([+ a0]) / [+ a0] ; @duplicates preserve
+nonempty_oset<a0> = #6.258([+ a0]) / [+ a0] ; @duplicates preserve
 point = [x: uint, y: uint]
 holder = [a: set<uint>, b: nonempty_set<text>, c: nonempty_oset<point>]

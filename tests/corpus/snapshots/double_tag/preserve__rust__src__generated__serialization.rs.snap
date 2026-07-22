@@ -103,6 +103,7 @@ impl Deserialize for Heterogeneous {
                         inner_arr.push(inner_elem);
                         inner_elem_encodings.push(inner_elem_encoding);
                     }
+                    let inner_arr = OrderedSet::try_from(inner_arr)?;
                     (
                         inner_arr,
                         Some(tag_enc),
@@ -252,6 +253,7 @@ impl Deserialize for Holder {
                                             a_elem_arr.push(a_elem_elem);
                                             a_elem_elem_encodings.push(a_elem_elem_encoding);
                                         }
+                                        let a_elem_arr = OrderedSet::try_from(a_elem_arr)?;
                                         (
                                             a_elem_arr,
                                             Some(tag_enc),
@@ -388,6 +390,7 @@ impl Deserialize for Homogeneous {
                             inner_arr.push(inner_elem);
                             inner_elem_encodings.push(inner_elem_encoding);
                         }
+                        let inner_arr = OrderedSet::try_from(inner_arr)?;
                         (
                             inner_arr,
                             Some(tag_enc),

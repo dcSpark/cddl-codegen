@@ -1,0 +1,27 @@
+; The well-known-tag registry default: tag 258 is the IANA set tag, so a `#6.258` that directly
+; wraps a homogeneous occurrence collection carries set semantics — uniqueness — and defaults to
+; `@duplicates reject` when the author wrote NO explicit directive. The alias target is the
+; uniqueness twin (`OrderedSet` / `NonEmptyOrderedSet`), exactly as an explicit `@duplicates reject`
+; would produce (see tag_set_reject.cddl); the registry merely supplies that policy as the default a
+; per-rule directive can still override. This is a decode-time behavior change: loose historical wire
+; data that carried duplicate elements now fails `DuplicateKey`. The opt-out is one line of CDDL the
+; consumer controls — `; @duplicates preserve` — which restores today's plain `Vec`/`NonEmptyVec`
+; behavior verbatim on the wire (the multi-era byte-exact reader for duplicate-bearing data).
+;
+; - `default_set`    — no-directive `[*]` two-arm idiom -> `OrderedSet<u64>` by default.
+; - `default_neset`  — no-directive `[+]` two-arm idiom -> `NonEmptyOrderedSet<u64>` by default (the
+;                      `[+]` min-1 bound composes with uniqueness in the twin's single `TryFrom` door).
+; - `single_arm`     — a single-arm MANDATORY-tag rule (`#6.258([* a])`, no untagged twin) also
+;                      matches the registry shape guard, so it too defaults to reject; its tag stays a
+;                      mandatory `Option<Sz>` (grammar decides the encoding record), only the inner
+;                      becomes `OrderedSet<u64>`.
+; - `opt_out`        — the documented opt-out recipe: an explicit `; @duplicates preserve` restores
+;                      the plain `Vec<u64>` twin, byte-identical to today's no-directive output. This
+;                      is the hoist-to-named-rule migration recipe the docs ship to consumers.
+; - `holder`         — embeds the rules in record-field position (incl. an optional field) so the
+;                      member-side (de)serialize and optional-field wrapping compile and round-trip.
+default_set = #6.258([* uint]) / [* uint]
+default_neset = #6.258([+ uint]) / [+ uint]
+single_arm = #6.258([* uint])
+opt_out = #6.258([* uint]) / [* uint] ; @duplicates preserve
+holder = [s: default_set, ns: default_neset, sa: single_arm, o: opt_out]

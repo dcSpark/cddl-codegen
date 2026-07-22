@@ -54,6 +54,7 @@ impl Deserialize for Heterogeneous {
                         }
                         inner_arr.push(raw.unsigned_integer()?);
                     }
+                    let inner_arr = OrderedSet::try_from(inner_arr)?;
                     inner_arr
                 }
                 tag => {
@@ -131,6 +132,7 @@ impl Deserialize for Holder {
                                         }
                                         a_elem_arr.push(raw.unsigned_integer()?);
                                     }
+                                    let a_elem_arr = OrderedSet::try_from(a_elem_arr)?;
                                     a_elem_arr
                                 }
                                 tag => {
@@ -200,6 +202,7 @@ impl Deserialize for Homogeneous {
                             }
                             inner_arr.push(raw.unsigned_integer()?);
                         }
+                        let inner_arr = OrderedSet::try_from(inner_arr)?;
                         inner_arr
                     }
                     tag => {

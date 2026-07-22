@@ -49,7 +49,9 @@ expression: ir
                             config: RustTypeSerializeConfig {
                                 default: None,
                                 bounds: None,
-                                duplicates: None,
+                                duplicates: Some(
+                                    Preserve,
+                                ),
                                 float_bounds: None,
                                 basic_override: false,
                             },
@@ -112,7 +114,9 @@ expression: ir
                                         None,
                                     ),
                                 ),
-                                duplicates: None,
+                                duplicates: Some(
+                                    Preserve,
+                                ),
                                 float_bounds: None,
                                 basic_override: false,
                             },
@@ -177,7 +181,9 @@ expression: ir
                                         None,
                                     ),
                                 ),
-                                duplicates: None,
+                                duplicates: Some(
+                                    Preserve,
+                                ),
                                 float_bounds: None,
                                 basic_override: false,
                             },
@@ -238,7 +244,9 @@ expression: ir
             custom_deserialize: None,
             doc: None,
             newtype_getter: None,
-            duplicates: None,
+            duplicates: Some(
+                Preserve,
+            ),
         },
         variant: Array {
             element_type: RustType {
@@ -282,7 +290,9 @@ expression: ir
             custom_deserialize: None,
             doc: None,
             newtype_getter: None,
-            duplicates: None,
+            duplicates: Some(
+                Preserve,
+            ),
         },
         variant: Array {
             element_type: RustType {
@@ -414,7 +424,9 @@ expression: ir
             custom_deserialize: None,
             doc: None,
             newtype_getter: None,
-            duplicates: None,
+            duplicates: Some(
+                Preserve,
+            ),
         },
         variant: Array {
             element_type: RustType {

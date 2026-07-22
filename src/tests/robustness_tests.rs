@@ -623,11 +623,14 @@ fn duplicates_directive_rejects_gracefully() {
     }
 }
 
-/// The now-live `@duplicates` placements generate cleanly (no rejection): array/set `reject`
-/// (live uniqueness twin), array `preserve` (default no-op) and table `reject` (default no-op). The
-/// no-op cases must produce output byte-identical to the same rule with NO directive (self-
-/// documentation, never a representation change). Rust-only generation keeps this a fast unit check;
-/// the twin runtime + round-trip land in the corpus/integration gates.
+/// The `@duplicates` placements generate cleanly (no rejection) and select the right twin. For a
+/// tag-258 SET the well-known-tag registry now defaults to `reject`, so: absent ⇒ `OrderedSet` (the
+/// new default), explicit `reject` ⇒ byte-identical to absent (self-documentation), explicit
+/// `preserve` ⇒ the OBSERVABLE opt-out back to plain `Vec` (today's wire behavior verbatim, no longer
+/// byte-identical to absent). TABLE legs are UNCHANGED (a map is not a set, so the registry has no
+/// entry): table `reject` stays a default no-op, table `preserve` stays the live `PairMap` twin.
+/// Rust-only generation keeps this a fast unit check; the twin runtime + round-trip land in the
+/// corpus/integration gates.
 #[test]
 fn duplicates_directive_accepts_live_and_default_noops() {
     let gen_src = |cddl: &str| -> std::collections::BTreeMap<String, String> {
@@ -671,11 +674,34 @@ fn duplicates_directive_accepts_live_and_default_noops() {
         "non-empty set reject must lower to NonEmptyOrderedSet, got:\n{reject_neset_src}"
     );
 
-    // preserve on an array/set is the default (no-op): byte-identical to no directive.
+    // The tag-258 set default flipped to reject (the well-known-tag registry): a no-directive 258
+    // set now lowers to the `OrderedSet` uniqueness twin, NOT `Vec`.
+    let absent_set = gen_src("foo = #6.258([* uint]) / [* uint]\n");
+    let absent_src = absent_set.values().cloned().collect::<Vec<_>>().join("\n");
+    assert!(
+        absent_src.contains("pub type Foo = OrderedSet<u64>;"),
+        "a no-directive 258 set must default to the OrderedSet twin:\n{absent_src}"
+    );
+    // `@duplicates preserve` is now the OBSERVABLE opt-out: it restores the plain `Vec` twin (today's
+    // wire behavior verbatim), so it is NO LONGER byte-identical to the absent (defaulted) case.
+    let preserve_set = gen_src("foo = #6.258([* uint]) / [* uint] ; @duplicates preserve\n");
+    let preserve_src = preserve_set
+        .values()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        preserve_src.contains("pub type Foo = Vec<u64>;") && !preserve_src.contains("OrderedSet"),
+        "@duplicates preserve on a 258 set must opt back out to the plain Vec twin:\n{preserve_src}"
+    );
+    assert_ne!(
+        absent_set, preserve_set,
+        "post-flip, preserve is an observable opt-out — no longer byte-identical to the absent default"
+    );
+    // Explicit `@duplicates reject` now EQUALS the absent default (self-documentation): byte-identical.
     assert_eq!(
-        gen_src("foo = #6.258([* uint]) / [* uint] ; @duplicates preserve\n"),
-        gen_src("foo = #6.258([* uint]) / [* uint]\n"),
-        "@duplicates preserve on a set must be a no-op vs no directive"
+        reject_set, absent_set,
+        "@duplicates reject on a 258 set is now the default: byte-identical to no directive"
     );
 
     // reject on a table is the default (no-op): byte-identical to no directive.
@@ -717,10 +743,10 @@ fn duplicates_directive_accepts_live_and_default_noops() {
 /// (`foo = oset<uint>`, also pinned by tests/corpus/tag_set_reject.cddl) AND the anonymous
 /// member-position path (`holder = [g: oset<uint>]`, pinned by
 /// tests/corpus/tag_set_reject_anon_generic.cddl), which registers the instance at the use site
-/// without any rule in between. The `preserve` direction is today's set default, so its
-/// propagation is asserted as byte-identity with the directive absent; it becomes independently
-/// observable only if the set default flips (the reject legs here are the template for that
-/// observable opt-out test).
+/// without any rule in between. The tag-258 set default flipped to `reject` (the well-known-tag
+/// registry), so `preserve` on the def is now the OBSERVABLE opt-out rather than a no-op: an absent
+/// directive instantiates to `OrderedSet`, `@duplicates preserve` opts back out to plain `Vec`, and
+/// that difference must ride BOTH instantiation paths.
 #[test]
 fn duplicates_on_generic_def_rides_instantiation() {
     let gen_src = |cddl: &str| -> std::collections::BTreeMap<String, String> {
@@ -768,12 +794,139 @@ fn duplicates_on_generic_def_rides_instantiation() {
         joined(&anon)
     );
 
-    // preserve def: today's default — must be a no-op byte-identical through instantiation
-    // (proves the metadata attaches to the def and rides instantiation without corrupting it).
-    assert_eq!(
-        gen_src("oset<a0> = #6.258([* a0]) / [* a0] ; @duplicates preserve\nfoo = oset<uint>\n"),
-        gen_src("oset<a0> = #6.258([* a0]) / [* a0]\nfoo = oset<uint>\n"),
-        "@duplicates preserve on a generic set def must be a no-op vs no directive"
+    // preserve def is now the OBSERVABLE opt-out (the set default flipped to reject): a no-directive
+    // generic 258 set def instantiates to `OrderedSet`, while `@duplicates preserve` on the def opts
+    // back out to plain `Vec` — different bytes — and that difference must ride BOTH instantiation
+    // paths (the named alias AND the anonymous member position).
+    for use_site in [
+        "foo = oset<uint>\n",         // named-alias instantiation path
+        "holder = [g: oset<uint>]\n", // anonymous member-position instantiation path
+    ] {
+        let absent = gen_src(&format!("oset<a0> = #6.258([* a0]) / [* a0]\n{use_site}"));
+        let preserve = gen_src(&format!(
+            "oset<a0> = #6.258([* a0]) / [* a0] ; @duplicates preserve\n{use_site}"
+        ));
+        assert!(
+            joined(&absent).contains("OrderedSet<u64>"),
+            "a no-directive generic 258 set def must instantiate to OrderedSet via `{use_site}`:\n{}",
+            joined(&absent)
+        );
+        assert!(
+            joined(&preserve).contains("Vec<u64>") && !joined(&preserve).contains("OrderedSet"),
+            "@duplicates preserve on a generic set def must opt back out to Vec via `{use_site}`:\n{}",
+            joined(&preserve)
+        );
+        assert_ne!(
+            absent, preserve,
+            "preserve on a generic set def is now an observable opt-out, not a no-op, via `{use_site}`"
+        );
+    }
+}
+
+/// The well-known-tag registry (`well_known_tag_default_duplicates`) defaults a no-directive tag-258
+/// set to `@duplicates reject` ONLY where the shape guard matches — `#6.258` directly wrapping a
+/// homogeneous occurrence collection. These are the guard NEGATIVES and the non-258 boundary: none
+/// of them may acquire the `OrderedSet` uniqueness twin, so each proves the registry did NOT fire
+/// where set semantics are meaningless (a record-shaped array, a tagged primitive, a map) or where
+/// the tag is not the IANA set tag (259). The positive flips are pinned by
+/// `tests/corpus/tag_set_default.cddl`; the explicit-directive precedence is pinned by
+/// `duplicates_directive_accepts_live_and_default_noops`.
+#[test]
+fn well_known_tag_258_default_shape_guard_negatives() {
+    let gen_src = |cddl: &str| -> String {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_wk258_guard_{}_{}.cddl",
+            std::process::id(),
+            cddl.len()
+        ));
+        std::fs::write(&path, cddl).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "wk258_guard_unused",
+            "--wasm=false",
+        ]);
+        let out = crate::api::generated_strings(&cli).unwrap_or_else(|e| {
+            panic!("guard-negative spec must generate cleanly for {cddl:?}: {e}")
+        });
+        std::fs::remove_file(&path).ok();
+        out.values().cloned().collect::<Vec<_>>().join("\n")
+    };
+
+    // `#6.258(text)`: a tagged PRIMITIVE, not a collection — becomes a Wrapper. The registry never
+    // sees it (it never reaches the array/table construction sites), so no uniqueness twin.
+    let tagged_primitive = gen_src("foo = #6.258(text)\nholder = [f: foo]\n");
+    assert!(
+        !tagged_primitive.contains("OrderedSet"),
+        "a tagged primitive `#6.258(text)` must NOT acquire a set twin:\n{tagged_primitive}"
+    );
+
+    // `#6.258([uint, text])`: a RECORD-shaped array (heterogeneous tuple positions) — uniqueness of
+    // tuple positions is meaningless, and it becomes a Record struct, never a homogeneous Array.
+    let record_shaped = gen_src("foo = #6.258([uint, text])\nholder = [f: foo]\n");
+    assert!(
+        !record_shaped.contains("OrderedSet"),
+        "a record-shaped `#6.258([uint, text])` must NOT acquire a set twin:\n{record_shaped}"
+    );
+
+    // `#6.258({* k => v})`: a MAP, not a set — the registry returns `None` for a map inner (`is_array`
+    // false), so it stays the plain table representation with no uniqueness twin.
+    let tagged_map = gen_src("foo = #6.258({ * uint => text })\nholder = [f: foo]\n");
+    assert!(
+        !tagged_map.contains("OrderedSet"),
+        "a tagged map `#6.258({{* k => v}})` must NOT acquire a set twin (a map is not a set):\n{tagged_map}"
+    );
+
+    // Non-258 collapse (`#6.259([* uint]) / [* uint]`): the collapse is tag-agnostic but the registry
+    // is not — only 258 carries set semantics, so a 259 idiom keeps today's PRESERVE default (`Vec`).
+    let non_258 = gen_src("foo = #6.259([* uint]) / [* uint]\nholder = [f: foo]\n");
+    assert!(
+        non_258.contains("pub type Foo = Vec<u64>;") && !non_258.contains("OrderedSet"),
+        "a non-258 collapsed idiom must keep the plain `Vec` preserve default:\n{non_258}"
+    );
+}
+
+/// A bounded-occurrence tag-258 set (`#6.258([3*5 uint]) / [3*5 uint]`) composes the registry's
+/// reject default with a general occurrence bound: the reject twin picker routes the collected `Vec`
+/// through `OrderedSet::try_from` (uniqueness) and THEN a runtime length check for the `3*5` window
+/// (`src/generation/deserialize.rs`). Bounded-reject is therefore SUPPORTED — no guard-exclusion, no
+/// panic; this pins that a bounded 258 set gets the twin AND still enforces its length window.
+#[test]
+fn well_known_tag_258_bounded_occurrence_composes_with_reject_twin() {
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_wk258_bounded_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        "foo = #6.258([3*5 uint]) / [3*5 uint]\nholder = [f: foo]\n",
+    )
+    .unwrap();
+    let out = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "wk258_bounded_unused",
+        "--wasm=false",
+    ]))
+    .expect("a bounded tag-258 set must generate cleanly (bounded-reject is supported)");
+    std::fs::remove_file(&path).ok();
+    let src = out.values().cloned().collect::<Vec<_>>().join("\n");
+    assert!(
+        src.contains("pub type Foo = OrderedSet<u64>;"),
+        "a bounded 258 set must default to the OrderedSet uniqueness twin:\n{src}"
+    );
+    assert!(
+        src.contains("OrderedSet::try_from"),
+        "the bounded 258 set must route through the OrderedSet uniqueness door:\n{src}"
+    );
+    // the `3*5` window survives as a runtime length check on the accepted (unique) collection
+    assert!(
+        src.contains(".len()") && (src.contains("3") && src.contains("5")),
+        "the `3*5` occurrence window must still be enforced as a length check:\n{src}"
     );
 }
 

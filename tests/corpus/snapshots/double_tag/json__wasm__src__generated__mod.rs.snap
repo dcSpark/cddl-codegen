@@ -12,16 +12,18 @@ expression: content
 )]
 pub mod collections;
 
+use cddl_lib::ordered_set::OrderedSet;
 use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
+/// `[* uint] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door).
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct ElemTagged(pub(crate) Vec<u64>);
+pub struct ElemTagged(pub(crate) OrderedSet<u64>);
 
 #[wasm_bindgen]
 impl ElemTagged {
     pub fn new() -> Self {
-        Self(Vec::new())
+        Self(OrderedSet::new())
     }
 
     pub fn len(&self) -> usize {
@@ -32,25 +34,31 @@ impl ElemTagged {
         self.0[index]
     }
 
-    pub fn add(&mut self, elem: u64) {
-        self.0.push(elem);
+    pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
+        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<ElemTagged, JsError> {
+        OrderedSet::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
     }
 }
 
-impl From<Vec<u64>> for ElemTagged {
-    fn from(native: Vec<u64>) -> Self {
+impl From<OrderedSet<u64>> for ElemTagged {
+    fn from(native: OrderedSet<u64>) -> Self {
         Self(native)
     }
 }
 
-impl From<ElemTagged> for Vec<u64> {
+impl From<ElemTagged> for OrderedSet<u64> {
     fn from(wasm: ElemTagged) -> Self {
         wasm.0
     }
 }
 
-impl AsRef<Vec<u64>> for ElemTagged {
-    fn as_ref(&self) -> &Vec<u64> {
+impl AsRef<OrderedSet<u64>> for ElemTagged {
+    fn as_ref(&self) -> &OrderedSet<u64> {
         &self.0
     }
 }
@@ -86,12 +94,12 @@ impl Heterogeneous {
             .map_err(|e| JsError::new(&format!("from_json: {}", e)))
     }
 
-    pub fn new(inner: Vec<u64>) -> Self {
-        Self(cddl_lib::Heterogeneous::new(inner))
+    pub fn new(inner: &U64OrderedSet) -> Self {
+        Self(cddl_lib::Heterogeneous::new(inner.clone().into()))
     }
 
-    pub fn get(&self) -> Vec<u64> {
-        self.0.get().clone()
+    pub fn get(&self) -> U64OrderedSet {
+        self.0.get().clone().into()
     }
 }
 
@@ -113,14 +121,15 @@ impl AsRef<cddl_lib::Heterogeneous> for Heterogeneous {
     }
 }
 
+/// `[* uint] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door).
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct HeterogeneousSet(pub(crate) Vec<u64>);
+pub struct HeterogeneousSet(pub(crate) OrderedSet<u64>);
 
 #[wasm_bindgen]
 impl HeterogeneousSet {
     pub fn new() -> Self {
-        Self(Vec::new())
+        Self(OrderedSet::new())
     }
 
     pub fn len(&self) -> usize {
@@ -131,25 +140,31 @@ impl HeterogeneousSet {
         self.0[index]
     }
 
-    pub fn add(&mut self, elem: u64) {
-        self.0.push(elem);
+    pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
+        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<HeterogeneousSet, JsError> {
+        OrderedSet::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
     }
 }
 
-impl From<Vec<u64>> for HeterogeneousSet {
-    fn from(native: Vec<u64>) -> Self {
+impl From<OrderedSet<u64>> for HeterogeneousSet {
+    fn from(native: OrderedSet<u64>) -> Self {
         Self(native)
     }
 }
 
-impl From<HeterogeneousSet> for Vec<u64> {
+impl From<HeterogeneousSet> for OrderedSet<u64> {
     fn from(wasm: HeterogeneousSet) -> Self {
         wasm.0
     }
 }
 
-impl AsRef<Vec<u64>> for HeterogeneousSet {
-    fn as_ref(&self) -> &Vec<u64> {
+impl AsRef<OrderedSet<u64>> for HeterogeneousSet {
+    fn as_ref(&self) -> &OrderedSet<u64> {
         &self.0
     }
 }
@@ -255,12 +270,12 @@ impl Homogeneous {
             .map_err(|e| JsError::new(&format!("from_json: {}", e)))
     }
 
-    pub fn new(inner: Vec<u64>) -> Self {
-        Self(cddl_lib::Homogeneous::new(inner))
+    pub fn new(inner: &U64OrderedSet) -> Self {
+        Self(cddl_lib::Homogeneous::new(inner.clone().into()))
     }
 
-    pub fn get(&self) -> Vec<u64> {
-        self.0.get().clone()
+    pub fn get(&self) -> U64OrderedSet {
+        self.0.get().clone().into()
     }
 }
 
@@ -282,14 +297,15 @@ impl AsRef<cddl_lib::Homogeneous> for Homogeneous {
     }
 }
 
+/// `[* uint] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door).
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct HomogeneousInner(pub(crate) Vec<u64>);
+pub struct HomogeneousInner(pub(crate) OrderedSet<u64>);
 
 #[wasm_bindgen]
 impl HomogeneousInner {
     pub fn new() -> Self {
-        Self(Vec::new())
+        Self(OrderedSet::new())
     }
 
     pub fn len(&self) -> usize {
@@ -300,25 +316,31 @@ impl HomogeneousInner {
         self.0[index]
     }
 
-    pub fn add(&mut self, elem: u64) {
-        self.0.push(elem);
+    pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
+        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<HomogeneousInner, JsError> {
+        OrderedSet::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
     }
 }
 
-impl From<Vec<u64>> for HomogeneousInner {
-    fn from(native: Vec<u64>) -> Self {
+impl From<OrderedSet<u64>> for HomogeneousInner {
+    fn from(native: OrderedSet<u64>) -> Self {
         Self(native)
     }
 }
 
-impl From<HomogeneousInner> for Vec<u64> {
+impl From<HomogeneousInner> for OrderedSet<u64> {
     fn from(wasm: HomogeneousInner) -> Self {
         wasm.0
     }
 }
 
-impl AsRef<Vec<u64>> for HomogeneousInner {
-    fn as_ref(&self) -> &Vec<u64> {
+impl AsRef<OrderedSet<u64>> for HomogeneousInner {
+    fn as_ref(&self) -> &OrderedSet<u64> {
         &self.0
     }
 }
@@ -360,6 +382,54 @@ impl From<OuterOverArray> for Vec<cddl_lib::ElemTagged> {
 
 impl AsRef<Vec<cddl_lib::ElemTagged>> for OuterOverArray {
     fn as_ref(&self) -> &Vec<cddl_lib::ElemTagged> {
+        &self.0
+    }
+}
+
+/// `[* uint] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door).
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct U64OrderedSet(pub(crate) OrderedSet<u64>);
+
+#[wasm_bindgen]
+impl U64OrderedSet {
+    pub fn new() -> Self {
+        Self(OrderedSet::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
+        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<U64OrderedSet, JsError> {
+        OrderedSet::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<OrderedSet<u64>> for U64OrderedSet {
+    fn from(native: OrderedSet<u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<U64OrderedSet> for OrderedSet<u64> {
+    fn from(wasm: U64OrderedSet) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<OrderedSet<u64>> for U64OrderedSet {
+    fn as_ref(&self) -> &OrderedSet<u64> {
         &self.0
     }
 }

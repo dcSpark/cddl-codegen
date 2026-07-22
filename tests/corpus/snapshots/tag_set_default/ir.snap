@@ -4,6 +4,87 @@ expression: ir
 ---
 {
     RustIdent(
+        "DefaultNeset",
+    ): RustStruct {
+        ident: RustIdent(
+            "DefaultNeset",
+        ),
+        tag: Some(
+            258,
+        ),
+        tag_optional: true,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: Some(
+                Reject,
+            ),
+        },
+        variant: Array {
+            element_type: RustType {
+                conceptual_type: Primitive(
+                    U64,
+                ),
+                encodings: [],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    duplicates: None,
+                    float_bounds: None,
+                    basic_override: false,
+                },
+            },
+            bounds: Some(
+                (
+                    Some(
+                        1,
+                    ),
+                    None,
+                ),
+            ),
+        },
+    },
+    RustIdent(
+        "DefaultSet",
+    ): RustStruct {
+        ident: RustIdent(
+            "DefaultSet",
+        ),
+        tag: Some(
+            258,
+        ),
+        tag_optional: true,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: Some(
+                Reject,
+            ),
+        },
+        variant: Array {
+            element_type: RustType {
+                conceptual_type: Primitive(
+                    U64,
+                ),
+                encodings: [],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    duplicates: None,
+                    float_bounds: None,
+                    basic_override: false,
+                },
+            },
+            bounds: None,
+        },
+    },
+    RustIdent(
         "Holder",
     ): RustStruct {
         ident: RustIdent(
@@ -29,7 +110,7 @@ expression: ir
                             conceptual_type: Alias(
                                 Rust(
                                     RustIdent(
-                                        "IntSet",
+                                        "DefaultSet",
                                     ),
                                 ),
                                 Array(
@@ -57,7 +138,7 @@ expression: ir
                                 default: None,
                                 bounds: None,
                                 duplicates: Some(
-                                    Preserve,
+                                    Reject,
                                 ),
                                 float_bounds: None,
                                 basic_override: false,
@@ -87,7 +168,7 @@ expression: ir
                             conceptual_type: Alias(
                                 Rust(
                                     RustIdent(
-                                        "IntNeset",
+                                        "DefaultNeset",
                                     ),
                                 ),
                                 Array(
@@ -122,7 +203,7 @@ expression: ir
                                     ),
                                 ),
                                 duplicates: Some(
-                                    Preserve,
+                                    Reject,
                                 ),
                                 float_bounds: None,
                                 basic_override: false,
@@ -147,18 +228,76 @@ expression: ir
                         },
                     },
                     RustField {
-                        name: "t",
+                        name: "sa",
                         rust_type: RustType {
                             conceptual_type: Alias(
                                 Rust(
                                     RustIdent(
-                                        "TextSet",
+                                        "SingleArm",
                                     ),
                                 ),
                                 Array(
                                     RustType {
                                         conceptual_type: Primitive(
-                                            Str,
+                                            U64,
+                                        ),
+                                        encodings: [],
+                                        config: RustTypeSerializeConfig {
+                                            default: None,
+                                            bounds: None,
+                                            duplicates: None,
+                                            float_bounds: None,
+                                            basic_override: false,
+                                        },
+                                    },
+                                ),
+                            ),
+                            encodings: [
+                                Tagged(
+                                    258,
+                                ),
+                            ],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: Some(
+                                    Reject,
+                                ),
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            duplicates: None,
+                            custom_json: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            comment: None,
+                        },
+                    },
+                    RustField {
+                        name: "o",
+                        rust_type: RustType {
+                            conceptual_type: Alias(
+                                Rust(
+                                    RustIdent(
+                                        "OptOut",
+                                    ),
+                                ),
+                                Array(
+                                    RustType {
+                                        conceptual_type: Primitive(
+                                            U64,
                                         ),
                                         encodings: [],
                                         config: RustTypeSerializeConfig {
@@ -186,7 +325,7 @@ expression: ir
                                 basic_override: false,
                             },
                         },
-                        optional: true,
+                        optional: false,
                         key: None,
                         rule_metadata: RuleMetadata {
                             name: None,
@@ -227,54 +366,10 @@ expression: ir
         variant: Extern,
     },
     RustIdent(
-        "IntNeset",
+        "OptOut",
     ): RustStruct {
         ident: RustIdent(
-            "IntNeset",
-        ),
-        tag: Some(
-            258,
-        ),
-        tag_optional: true,
-        config: RustStructConfig {
-            custom_json: false,
-            custom_serialize: None,
-            custom_deserialize: None,
-            doc: None,
-            newtype_getter: None,
-            duplicates: Some(
-                Preserve,
-            ),
-        },
-        variant: Array {
-            element_type: RustType {
-                conceptual_type: Primitive(
-                    U64,
-                ),
-                encodings: [],
-                config: RustTypeSerializeConfig {
-                    default: None,
-                    bounds: None,
-                    duplicates: None,
-                    float_bounds: None,
-                    basic_override: false,
-                },
-            },
-            bounds: Some(
-                (
-                    Some(
-                        1,
-                    ),
-                    None,
-                ),
-            ),
-        },
-    },
-    RustIdent(
-        "IntSet",
-    ): RustStruct {
-        ident: RustIdent(
-            "IntSet",
+            "OptOut",
         ),
         tag: Some(
             258,
@@ -308,15 +403,15 @@ expression: ir
         },
     },
     RustIdent(
-        "TextSet",
+        "SingleArm",
     ): RustStruct {
         ident: RustIdent(
-            "TextSet",
+            "SingleArm",
         ),
         tag: Some(
             258,
         ),
-        tag_optional: true,
+        tag_optional: false,
         config: RustStructConfig {
             custom_json: false,
             custom_serialize: None,
@@ -324,13 +419,13 @@ expression: ir
             doc: None,
             newtype_getter: None,
             duplicates: Some(
-                Preserve,
+                Reject,
             ),
         },
         variant: Array {
             element_type: RustType {
                 conceptual_type: Primitive(
-                    Str,
+                    U64,
                 ),
                 encodings: [],
                 config: RustTypeSerializeConfig {

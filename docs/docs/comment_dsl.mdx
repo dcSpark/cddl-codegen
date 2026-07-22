@@ -238,9 +238,11 @@ tag-258 set idiom), across the Rust, JSON, and **wasm** boundaries: the rule's t
 becomes an order-preserving, duplicate-free set on every target. `@duplicates preserve` is **live for
 table rules** (`{ * k => v }` and `{ + k => v }`) across the Rust, JSON, and **wasm** boundaries: the
 alias becomes a byte-exact, duplicate-keyed pair-map — `PairMap<K, V>`, or `NonEmptyPairMap<K, V>` for
-the non-empty `{+ …}` flavor (its single `try_from` door composes the min-1 check). The no-op defaults
-(`preserve` on a set, `reject` on a table) are accepted for self-documentation. A preserve table and a
-non-preserve map/table of the *identical* key/value shape cannot coexist under `--wasm` (they would
+the non-empty `{+ …}` flavor (its single `try_from` door composes the min-1 check). A **tag-258** set
+now defaults to `reject` (see *Defaults* below); every other set defaults to `preserve` and tables to
+`reject`. Writing the effective default explicitly is accepted for self-documentation (a no-op). A
+preserve table and a non-preserve map/table of the *identical* key/value shape cannot coexist under
+`--wasm` (they would
 need one structural wrapper class to be two incompatible inner types); that is a graceful,
 distinctly-worded rejection — give one a distinct shape, or align their policy.
 :::
@@ -264,9 +266,25 @@ The directive takes **one required argument**:
 
 A missing or unknown argument is a hard error.
 
-**Defaults are today's behavior, unchanged** — sets (the tag-258 idiom) default to `preserve`,
-tables default to `reject`. Writing the default explicitly is accepted as self-documentation (a
-no-op, no warning).
+**Defaults depend on the tag.** Tag 258 is the IANA set tag, so a **tag-258 set** rule — the
+`#6.258([* a]) / [* a]` idiom, a single-arm `#6.258([* a])`, or an inline `#6.258` occurrence —
+defaults to **`reject`**: the well-known-tag registry supplies set semantics (uniqueness) as the
+default. Every **other** set/array rule (a non-258 tagged idiom, a plain `[* a]` / `[+ a]`) still
+defaults to `preserve`, and **tables** still default to `reject`. Writing the effective default
+explicitly is accepted as self-documentation (a no-op, no warning); the opposite value is the live
+opt-out. In particular, `@duplicates preserve` on a tag-258 set is the **opt-out** back to plain
+`Vec<T>`/`NonEmptyVec<T>` (today's wire behavior verbatim) for a rule that must accept and re-emit
+historical duplicate-bearing data.
+
+:::warning Breaking change (decode-time)
+A tag-258 set previously defaulted to `preserve`; it now defaults to `reject`. Generated code still
+compiles, but a decoder built from a no-directive 258 set now fails with `DuplicateKey` on loose
+historical bytes that carried duplicate elements. The migration is one line of CDDL you control: add
+`; @duplicates preserve` to the rule. For an **inline** `#6.258` occurrence that has no rule-level
+comment slot, hoist it to a named rule to carry the directive
+(`input_set = #6.258([* input]) / [* input] ; @duplicates preserve`, then reference `input_set`) —
+CDDL rule references are transparent, so the hoist is semantically identical.
+:::
 
 Under `@duplicates reject` a set rule's transparent alias targets an order-preserving,
 duplicate-free set type (`OrderedSet<T>`, or `NonEmptyOrderedSet<T>` for the `[+]` flavor) instead of
@@ -293,6 +311,10 @@ The policy is a **per-rule** knob (not a CLI flag) because mixed-era specs need 
 document — a Conway-strict set next to a historical preserve-mode set. Because it is per-rule, an
 **inline map arm of a union must be given its own named rule** to carry the directive, e.g.
 `metadata_map = { * metadatum => metadatum } ; @duplicates preserve`, referenced from the union.
+
+The directive is **rule-level scoped**: on a type-choice rule (the tag-set idiom's two arms) it
+applies to the whole collapsed rule, and it must be written as a trailing comment **after the last
+arm** — a comment placed after an earlier arm is not read.
 
 It applies **only to set/array collection rules and table rules**. On any other placement — a
 text/int alias, a struct/group/record rule, a union rule, an extern marker, or a field/member

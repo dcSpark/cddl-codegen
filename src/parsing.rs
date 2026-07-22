@@ -3,7 +3,7 @@ use cddl::ast::parent::ParentVisitor;
 use cddl::{ast::*, token};
 use std::collections::BTreeMap;
 
-use crate::comment_ast::{RuleMetadata, merge_metadata, metadata_from_comments};
+use crate::comment_ast::{DuplicatesPolicy, RuleMetadata, merge_metadata, metadata_from_comments};
 use crate::intermediate::{
     AliasIdent, AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant,
     FixedValue, FloatWindow, GenericDef, GenericInstance, IntermediateTypes, ModuleScope,
@@ -345,6 +345,74 @@ fn reject_duplicates_not_applicable(types: &mut IntermediateTypes, name: &RustId
     ));
 }
 
+/// The well-known-tag semantics registry: THE single place mapping a CBOR tag number to the
+/// duplicate-handling policy its IANA-registered semantics imply, applied wherever the tag directly
+/// wraps a homogeneous occurrence collection (the shape the array/table construction sites already
+/// guard — a record-shaped `#6.258([uint, text])` becomes a Record and a primitive `#6.258(text)` a
+/// Wrapper, so neither reaches those sites). This is the extension point for future well-known-tag
+/// entries (e.g. the bignum tags 2/3): add an arm here rather than scattering tag-number checks
+/// through the parser.
+///
+/// `is_array` distinguishes a set-shaped inner (`#6.258([* a])`) from a map-shaped inner
+/// (`#6.258({* k => v})`). Tag 258 is the IANA set tag, so it implies `Reject` (uniqueness) ONLY on
+/// an array inner — a map is not a set and gets nothing. The default returned here applies only when
+/// the author wrote no explicit `@duplicates` directive; an explicit directive always wins (explicit
+/// `reject` is an accepted self-documenting no-op, explicit `preserve` is the per-rule opt-out back
+/// to today's plain `Vec`/`NonEmptyVec` behavior verbatim on the wire).
+fn well_known_tag_default_duplicates(tag: usize, is_array: bool) -> Option<DuplicatesPolicy> {
+    match (tag, is_array) {
+        (258, true) => Some(DuplicatesPolicy::Reject),
+        _ => None,
+    }
+}
+
+/// Return `rule_metadata` with the well-known-tag registry default injected into its `duplicates`
+/// field when (a) the author wrote no explicit directive and (b) the registry has a default for this
+/// `(tag, is_array)`. When the default applies and `notice` is `Some`, print it (a one-line
+/// generation-time notice; no notice when the directive is explicit, either value). The returned
+/// metadata is what the RustStruct constructor reads, so `config().duplicates` reflects the
+/// EFFECTIVE policy for every downstream consumer (embed sites, generic use-site re-resolution, the
+/// wasm collision detectors, the extern-interface projection).
+fn with_well_known_tag_default(
+    rule_metadata: &RuleMetadata,
+    tag: usize,
+    is_array: bool,
+    notice: Option<&str>,
+) -> RuleMetadata {
+    let mut effective = rule_metadata.clone();
+    if effective.duplicates.is_none()
+        && let Some(default) = well_known_tag_default_duplicates(tag, is_array)
+    {
+        effective.duplicates = Some(default);
+        if let Some(notice) = notice {
+            println!("{notice}");
+        }
+    }
+    effective
+}
+
+/// Effective metadata for a single-arm tagged ARRAY rule (`foo = #6.258([* a])`, mandatory tag):
+/// inject the registry's set-semantics default (258 → reject) when no explicit `@duplicates`, and
+/// print the single-arm defaulting notice if it applies. The tag stays a mandatory `Option<Sz>`
+/// (grammar decides the encoding record); only the inner element type gains uniqueness.
+fn single_arm_array_effective_metadata(
+    rule_metadata: &RuleMetadata,
+    tag: Option<usize>,
+    name: &RustIdent,
+) -> RuleMetadata {
+    match tag {
+        Some(t) => with_well_known_tag_default(
+            rule_metadata,
+            t,
+            true,
+            Some(&format!(
+                "Rule `{name}` (single-arm tag {t} set) defaulting to @duplicates reject (IANA set semantics) — write `; @duplicates preserve` on the rule to opt out"
+            )),
+        ),
+        None => rule_metadata.clone(),
+    }
+}
+
 fn parse_type_choices(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
@@ -442,19 +510,33 @@ fn parse_type_choices(
         if tag.is_none()
             && let Some((set_tag, base)) = recognize_optional_tag_set(&variants)
         {
-            println!(
-                "Collapsing rule `{name}` (tag {set_tag} set idiom) into a transparent optionally-tagged collection"
-            );
             // The collapse target is an array-shaped collection (or a table). `@duplicates` is LIVE
             // for both: an array `reject` swaps to the `OrderedSet` twin, a table `preserve` swaps to
             // the `PairMap` twin — each rides the alias built below. An array `preserve` and a table
             // `reject` are today's defaults (accepted no-op, self-documentation). Nothing is refused.
+            // Tag 258 additionally acquires a registry default: a no-directive 258 SET (array inner)
+            // defaults to `@duplicates reject`. Extend the collapse notice to state it and the opt-out
+            // when that default applies; no such wording when the directive is explicit (either value).
+            let is_array = matches!(base.conceptual_type, ConceptualRustType::Array(_));
+            let defaulted = rule_metadata.duplicates.is_none()
+                && well_known_tag_default_duplicates(set_tag, is_array).is_some();
+            if defaulted {
+                println!(
+                    "Collapsing rule `{name}` (tag {set_tag} set idiom) into a transparent optionally-tagged collection; defaulting to @duplicates reject (IANA set semantics) — write `; @duplicates preserve` on the rule to opt out"
+                );
+            } else {
+                println!(
+                    "Collapsing rule `{name}` (tag {set_tag} set idiom) into a transparent optionally-tagged collection"
+                );
+            }
+            let effective_metadata =
+                with_well_known_tag_default(&rule_metadata, set_tag, is_array, None);
             let bounds = base.config.bounds;
             let rust_struct = match base.conceptual_type {
                 ConceptualRustType::Array(element_type) => RustStruct::new_array(
                     name.clone(),
                     Some(set_tag),
-                    Some(&rule_metadata),
+                    Some(&effective_metadata),
                     *element_type,
                     bounds,
                 )
@@ -462,7 +544,7 @@ fn parse_type_choices(
                 ConceptualRustType::Map(key_type, value_type) => RustStruct::new_table(
                     name.clone(),
                     Some(set_tag),
-                    Some(&rule_metadata),
+                    Some(&effective_metadata),
                     *key_type,
                     *value_type,
                     bounds,
@@ -3184,11 +3266,15 @@ fn parse_group_choice(
                         None,
                     )
                 } else {
-                    // Array - homogeneous element type with proper occurence operator
+                    // Array - homogeneous element type with proper occurence operator. A single-arm
+                    // tag-258 set picks up the registry's reject default via the helper (no-op for a
+                    // non-258 tag or an explicit directive).
+                    let effective_metadata =
+                        single_arm_array_effective_metadata(&rule_metadata, tag, name);
                     RustStruct::new_array(
                         name.clone(),
                         tag,
-                        Some(&rule_metadata),
+                        Some(&effective_metadata),
                         element_type,
                         bounds,
                     )
