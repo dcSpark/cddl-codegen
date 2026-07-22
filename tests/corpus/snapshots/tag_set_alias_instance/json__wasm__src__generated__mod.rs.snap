@@ -1,0 +1,188 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use cddl_lib::ordered_set::NonEmptyOrderedSet;
+use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
+
+/// `[+ uint] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door).
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonEmptyU64OrderedSet(pub(crate) NonEmptyOrderedSet<u64>);
+
+#[wasm_bindgen]
+impl NonEmptyU64OrderedSet {
+    pub fn new(first: u64) -> Self {
+        Self(NonEmptyOrderedSet::new(first))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
+        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<NonEmptyU64OrderedSet, JsError> {
+        NonEmptyOrderedSet::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<NonEmptyOrderedSet<u64>> for NonEmptyU64OrderedSet {
+    fn from(native: NonEmptyOrderedSet<u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonEmptyU64OrderedSet> for NonEmptyOrderedSet<u64> {
+    fn from(wasm: NonEmptyU64OrderedSet) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyOrderedSet<u64>> for NonEmptyU64OrderedSet {
+    fn as_ref(&self) -> &NonEmptyOrderedSet<u64> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonemptySetU64(pub(crate) cddl_lib::NonemptySetU64);
+
+#[wasm_bindgen]
+impl NonemptySetU64 {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NonemptySetU64, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<NonemptySetU64, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new(inner: &NonEmptyU64OrderedSet) -> Self {
+        Self(cddl_lib::NonemptySetU64::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> NonEmptyU64OrderedSet {
+        <NonEmptyOrderedSet<u64>>::from(self.0.clone())
+            .clone()
+            .into()
+    }
+}
+
+impl From<cddl_lib::NonemptySetU64> for NonemptySetU64 {
+    fn from(native: cddl_lib::NonemptySetU64) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonemptySetU64> for cddl_lib::NonemptySetU64 {
+    fn from(wasm: NonemptySetU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NonemptySetU64> for NonemptySetU64 {
+    fn as_ref(&self) -> &cddl_lib::NonemptySetU64 {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Other(pub(crate) cddl_lib::Other);
+
+#[wasm_bindgen]
+impl Other {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Other, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<Other, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn rs(&self) -> ReqSigners {
+        self.0.rs.clone().into()
+    }
+
+    pub fn more(&self) -> NonemptySetU64 {
+        self.0.more.clone().into()
+    }
+
+    pub fn new(rs: &ReqSigners, more: &NonemptySetU64) -> Self {
+        Self(cddl_lib::Other::new(rs.clone().into(), more.clone().into()))
+    }
+}
+
+impl From<cddl_lib::Other> for Other {
+    fn from(native: cddl_lib::Other) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Other> for cddl_lib::Other {
+    fn from(wasm: Other) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Other> for Other {
+    fn as_ref(&self) -> &cddl_lib::Other {
+        &self.0
+    }
+}
+
+pub type ReqSigners = NonemptySetU64;

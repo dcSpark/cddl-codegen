@@ -1,0 +1,107 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+pub mod error;
+mod extern_interface_check;
+pub mod non_empty;
+pub mod ordered_set;
+impl std::ops::Deref for NonemptySetU64 {
+    type Target = NonEmptyOrderedSet<u64>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for NonemptySetU64 {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'a> IntoIterator for &'a NonemptySetU64 {
+    type Item = &'a u64;
+    type IntoIter = std::slice::Iter<'a, u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for NonemptySetU64 {
+    type Item = u64;
+    type IntoIter = std::vec::IntoIter<u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Vec::<u64>::from(self.0).into_iter()
+    }
+}
+
+impl From<NonemptySetU64> for Vec<u64> {
+    fn from(wrapper: NonemptySetU64) -> Self {
+        Vec::from(wrapper.0)
+    }
+}
+
+impl TryFrom<Vec<u64>> for NonemptySetU64 {
+    type Error = DeserializeError;
+
+    fn try_from(vec: Vec<u64>) -> Result<Self, Self::Error> {
+        Ok(NonemptySetU64::new(<NonEmptyOrderedSet<u64>>::try_from(
+            vec,
+        )?))
+    }
+}
+
+pub mod serialization;
+
+use crate::generated::error::*;
+use crate::generated::ordered_set::NonEmptyOrderedSet;
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct NonemptySetU64(pub(crate) NonEmptyOrderedSet<u64>);
+
+impl NonemptySetU64 {
+    pub fn new(inner: NonEmptyOrderedSet<u64>) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<NonEmptyOrderedSet<u64>> for NonemptySetU64 {
+    fn from(inner: NonEmptyOrderedSet<u64>) -> Self {
+        NonemptySetU64::new(inner)
+    }
+}
+
+impl From<NonemptySetU64> for NonEmptyOrderedSet<u64> {
+    fn from(wrapper: NonemptySetU64) -> Self {
+        wrapper.0
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Other {
+    pub rs: ReqSigners,
+    pub more: NonemptySetU64,
+}
+
+impl Other {
+    pub fn new(rs: ReqSigners, more: NonemptySetU64) -> Self {
+        Self { rs, more }
+    }
+}
+
+/// `[+ u64]`: at least one element, enforced at the `NonEmptyOrderedSet` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
+/// The tag-258 set idiom: the tag is an encoding detail — both the `#6.258(...)` and the bare-array wire forms are accepted (serialization defaults to tagged), so either round-trips byte-exactly.
+/// `@duplicates reject`: a repeated element is refused (a `DuplicateKey` error) on both the wire and the API; accepted (duplicate-free) input re-emits byte-exactly in wire order (the set is order-preserving, never sorted).
+pub type ReqSigners = NonemptySetU64;
