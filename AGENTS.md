@@ -67,11 +67,14 @@ changing the *runtime behaviour* of generated code usually means editing `static
     dropped too. That drop is a pure function of the FINAL (post-overlay) content — not an extra
     prior-output read — so the bound on what prior output ITSELF contributes (comment bytes, tagged
     regions, the recorded replace-span removal) is unchanged, and "same inputs → same bytes" still
-    holds (default on, `--no-preserve-comments` disables it). Three diagnostic-only stderr warnings read prior output but change no output bytes: the
+    holds (default on, `--no-preserve-comments` disables it). Four diagnostic-only stderr warnings read prior output but change no output bytes: the
     legacy-root
     check (missing `mod generated;`), the stale-file scan (orphaned `.rs` under the generated
-    trees), and the missing-crate-root-re-export warning (a seed-skipped `lib.rs` lacking a name the
-    own-spec extern glue requires). Nothing reads prior *tool* output to decide what code to generate, so "run twice = run
+    trees), the missing-crate-root-re-export warning (a seed-skipped `lib.rs` lacking a name the
+    own-spec extern glue requires), and the `--export-static-crate` new-static-file notice (an
+    existence check on each runtime file written into the hand-owned target crate — a file that did
+    NOT exist needs a hand `pub mod <module>;`, so the notice names it; existence-gated, so an
+    idempotent re-export is silent). Nothing reads prior *tool* output to decide what code to generate, so "run twice = run
     once = clean run" still holds. (Cross-crate request sidecars — `--wrapper-requests` /
     `--key-requests` reading a CONSUMER's committed `borrowed_collections.rs` /
     `borrowed_key_types.rs`, and `--extern-import` reading a DEPENDENCY's committed

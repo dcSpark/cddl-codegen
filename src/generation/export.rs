@@ -92,6 +92,40 @@ fn write_rs_with_preserve(
 /// trailing comma) would make a later run's fresh tokens mismatch the written tokens and trap an
 /// already-placed comment with no input change (pinned by
 /// `comment_preservation_static_files_rustfmt_stable`).
+/// `--export-static-crate` writes into a crate whose root (`lib.rs`/`mod.rs`) is HAND-OWNED — the
+/// tool never touches it (unlike the generated crates, whose roots it seeds and whose `generated/`
+/// tree it clobbers). So a static runtime file that did NOT already exist — the incremental case a
+/// version bump introduces (`ordered_set.rs` when set nominalization shipped) as well as every file
+/// on a first export — needs a matching `pub mod <module>;` line the user must add BY HAND, or the
+/// module sits dead in-tree: a consumer's `use <crate>::<module>::…` fails E0432, and that one
+/// unresolved import cascades into a swarm of spurious E0119 "conflicting implementations" errors in
+/// generated code (error-type unification against std's blanket `impl<T, U> TryFrom<U> for T`),
+/// pointing a reviewer at phantom problems before the one-line real cause. This is a diagnostic-only
+/// prior-output read (an existence check; it changes no output byte) — the notice is printed AFTER
+/// the write so the file state it reports is the pre-write one. See AGENTS.md's determinism
+/// invariant (the enumerated diagnostic-only stderr reads) and the consumer-migration notes.
+fn warn_new_static_file(is_new: bool, filename: &str) {
+    if is_new {
+        eprintln!("{}", new_static_file_notice(filename));
+    }
+}
+
+/// The stderr notice body for a newly-written `--export-static-crate` runtime file (see
+/// [`warn_new_static_file`] for why it fires). Pure (no I/O) so the message — the required
+/// `pub mod <module>;` edit and the E0432→E0119 cascade signature a consumer sees when the edit is
+/// missing — is unit-pinnable without a nested export run.
+pub(crate) fn new_static_file_notice(filename: &str) -> String {
+    let module = filename.strip_suffix(".rs").unwrap_or(filename);
+    format!(
+        "warning: NEW static file {filename} written to the --export-static-crate target — \
+         declare `pub mod {module};` in the target crate root (its hand-owned `lib.rs`/`mod.rs` \
+         is not tool-managed, so the module is otherwise dead in-tree: a consumer's \
+         `use …::{module}::…` fails E0432, cascading into spurious E0119 conflicting-\
+         implementation errors across generated code). See the consumer-migration notes in \
+         docs/current_capacities."
+    )
+}
+
 fn composed_runtime_static_files(
     cli: &Cli,
     include_non_empty_vec: bool,
@@ -826,7 +860,9 @@ impl GenerationScope {
             let runtime_files = composed_runtime_static_files(cli, true, true, true, true)?;
             for (filename, content) in &runtime_files {
                 let path = export_dir.join(filename);
+                let is_new = !path.exists();
                 write_rs_with_preserve(&path, filename, content, cli.preserve_comments)?;
+                warn_new_static_file(is_new, filename);
             }
             // serialization.rs — the static prelude only. `export_raw_bytes_encoding_trait` is
             // forced true (always include raw_bytes_encoding, per the pure-function-of-flags rule).
@@ -844,12 +880,14 @@ impl GenerationScope {
                 Self::serialization_prelude(true, cli)?
             );
             let serialization_path = export_dir.join("serialization.rs");
+            let serialization_is_new = !serialization_path.exists();
             write_rs_with_preserve(
                 &serialization_path,
                 "serialization.rs",
                 rustfmt_generated_string(&prelude)?.as_ref(),
                 cli.preserve_comments,
             )?;
+            warn_new_static_file(serialization_is_new, "serialization.rs");
 
             // The crate's Cargo.toml gets the static-runtime changeset merged in — the exported
             // source and the manifest that has to satisfy its dependencies are one artifact, so the
