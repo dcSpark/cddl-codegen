@@ -145,4 +145,5 @@ impl Other {
 /// `[+ u64]`: at least one element, enforced at the `NonEmptyOrderedSet` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
 /// The tag-258 set idiom: the tag is an encoding detail — both the `#6.258(...)` and the bare-array wire forms are accepted (serialization defaults to tagged), so either round-trips byte-exactly.
 /// `@duplicates reject`: a repeated element is refused (a `DuplicateKey` error) on both the wire and the API; accepted (duplicate-free) input re-emits byte-exactly in wire order (the set is order-preserving, never sorted).
+/// wasm/JS: this rule has no class of its own — the wasm surface is the nominal class `NonemptySetU64`. TypeScript keeps `ReqSigners` as a generated type alias (`export type ReqSigners = NonemptySetU64;`), but JS call sites re-key to `NonemptySetU64`.
 pub type ReqSigners = NonemptySetU64;

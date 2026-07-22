@@ -951,7 +951,7 @@ impl AsRef<cddl_lib::RejectSetJson> for RejectSetJson {
     }
 }
 
-/// `[* uint] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door).
+/// `[* uint] @duplicates reject`: an insertion-ordered, duplicate-free set (order preserved for byte-exact round-trip). `add` is checked — an already-present element is refused; construct via `try_from` (the uniqueness door). `insert` is the std-set door (returns `false`, set unchanged, for an already-present element); `contains` tests membership.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct RejectUints(pub(crate) OrderedSet<u64>);
@@ -972,6 +972,14 @@ impl RejectUints {
 
     pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
         self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    pub fn insert(&mut self, elem: u64) -> bool {
+        self.0.insert(elem)
+    }
+
+    pub fn contains(&self, elem: u64) -> bool {
+        self.0.contains(&elem)
     }
 
     pub fn try_from(elements: Vec<u64>) -> Result<RejectUints, JsError> {
