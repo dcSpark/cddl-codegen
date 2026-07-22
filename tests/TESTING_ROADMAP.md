@@ -27,8 +27,11 @@ Concretely: enumerate the feature space (`cddl-matrix/` already does this), then
 *generate → compile → execute* (round-trip real values, reject invalid ones), and treat every
 failure as one of two things — a construct we deliberately don't support (documented, not a gap) or a
 bug to fix — closing the loop until coverage is complete and self-checking. "Worth supporting" is
-load-bearing: some constructs (`any`, `float16`, socket plugs, …) are design decisions to *exclude*,
-not holes to grind toward 100%.
+load-bearing: some constructs (`#`/`cbor-any`, `float16`, socket plugs, …) are design decisions to
+*exclude*, not holes to grind toward 100% — and the exclude list is revisable: `any` (the prelude
+name) moved OFF it 2026-07-23 (maintainer-ruled feature; its runtime half, the `AnyCbor` value
+type, is shipped and property-tested, with the IR/generation half to follow — see the `any`
+panic-class entries in `cddl-matrix/ROADMAP.md`).
 
 The value is in removing the human from that loop without losing trust: the gates must be strict
 enough that "the matrix says this feature is supported" *means* it generates, compiles (rust **and**
@@ -1246,6 +1249,31 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   glue), which is exactly why this never surfaced there. Remedy when it bites: in the wasm
   list-wrapper minting machinery, expose the byte-string element through its own wrapper class or a
   `js_sys::Uint8Array`-based ABI instead of a bare `Vec<u8>` element.
+
+- **`AnyCbor` depth-limit-EXCEEDED coverage — deferred until the generator wires the depth guard
+  through the static value type.** The `AnyCbor` runtime type (`static/any_cbor_preserve.rs` /
+  `any_cbor_non_preserve.rs`, property layer `src/tests/any_cbor_tests.rs`) recurses through a
+  single `read` seam but cannot yet acquire `DepthGuard`: the guard runtime is pushed into the
+  static assembly only under `--deserialize-depth-limit` and its limit is a baked literal at
+  generated call sites, both unreachable from an unconditionally-present static file without
+  generator support. The property layer therefore runs its depth corpus at a stack-safe 64
+  (unguarded recursion overflows the 2 MB test thread near 300) and asserts NOTHING about the
+  guard-exceeded path. Trigger: the generation phase that wires `AnyCbor` into generated crates
+  must add the per-flag guard hook at the seam AND un-defer this corpus item (at/under/over the
+  limit; over errors `DepthLimitExceeded`, no SIGABRT) in the same delivery — shipping the wiring
+  without the over-limit vector recreates exactly the silently-bypassed-flag hole the seam exists
+  to close.
+
+- **Fidelity mutator float-width premise expires when floats become reachable under
+  `--preserve-encodings`.** `static/emit_tests_encoding_fidelity.rs` copies major-type-7 heads
+  verbatim on the recorded premise "floats can't appear under preserve" — true today only because
+  native-float members panic generation under preserve (`preserve_encodings_supports_floats`
+  stub). The `AnyCbor` value type already round-trips f16/f32/f64 with width fidelity (via the
+  cbor_event fork's `float_sz` API), so the first delivery that makes an `AnyCbor`-typed or
+  native-float member reachable under a preserve profile falsifies the premise. Trigger: that
+  delivery either adds a float-width mutation class to the mutator (widen f16→f32→f64 on the
+  head, assert byte-exact re-encode) or deliberately re-records the comment's premise — silence
+  leaves the fidelity oracle blind on exactly the encoding axis the new type preserves.
 
 ## Operational watches
 
