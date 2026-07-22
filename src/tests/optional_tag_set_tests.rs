@@ -1,23 +1,30 @@
-//! The transparent tag-set idiom (`x = #6.N([* a]) / [* a]`).
+//! The tag-set idiom (`x = #6.N([* a]) / [* a]`) and its nominalization.
 //!
 //! A two-arm type choice whose arms are the SAME collection but for exactly one `Tagged(N)`
 //! encoding op denotes one logical value; which arm was used is an encoding detail, not a type
-//! distinction. `parse_type_choices` recognizes this structurally and collapses it into the SAME
-//! registration a bare `#6.N([* a])` array rule gets — a transparent alias plus an `Array`-variant
-//! `RustStruct` — with the tag flagged OPTIONAL so it rides a `TagPresenceEncoding` var under
+//! distinction. `parse_type_choices` recognizes this structurally and collapses it into one
+//! collection, with the tag flagged OPTIONAL so it rides a `TagPresenceEncoding` var under
 //! `--preserve-encodings` (either wire arm roundtrips byte-exact) and defaults to tagged otherwise.
 //! Near misses keep today's two-variant enum.
 //!
-//! The alias TARGET depends on the effective `@duplicates` policy: tag 258 is the IANA set tag, so
-//! the well-known-tag registry (`parsing::well_known_tag_default_duplicates`) defaults a no-directive
-//! 258 idiom to `reject` ⇒ the `OrderedSet`/`NonEmptyOrderedSet` uniqueness twin. A NON-258 idiom
-//! keeps the plain `Vec`/`NonEmptyVec` preserve default, and `@duplicates preserve` opts any 258
-//! idiom back out to `Vec` (today's wire behavior verbatim).
+//! What the collapsed body becomes depends on the tag. Tag 258 is the IANA set tag, so the
+//! well-known-tag registry (`parsing::well_known_tag_default_duplicates`) gives a 258 idiom set
+//! semantics — and a 258 set is NOMINAL: instead of a transparent alias it emits a wrapper `struct`
+//! that OWNS its `{tag, len, elem}` encodings (grammar decides the tag record — the two-arm optional
+//! tag rides a `TagPresenceEncoding`, the single-arm mandatory tag an `Option<Sz>`) with the set
+//! ergonomics and always-on encodings-ignored comparisons. This holds for named non-generic rules,
+//! for each generic instantiation (`set<uint>` → `SetU64`), and for inline `#6.258([* a])`
+//! occurrences (shape-derived `Set<Elem>` names). The `@duplicates` policy selects only the inner
+//! collection: reject (the 258 default) ⇒ the `OrderedSet`/`NonEmptyOrderedSet` uniqueness twin;
+//! `@duplicates preserve` opts back out to plain `Vec`/`NonEmptyVec` (today's wire behavior
+//! verbatim) while STILL nominalizing. A NON-258 idiom keeps the plain transparent alias (the same
+//! registration a bare `#6.N([* a])` array rule gets), preserve default.
 //!
 //! These tests drive the full in-process generation pipeline (`api::generated_strings`) and assert
-//! the emitted SOURCE shape. Generic-def rows assert the collapse reaches the transparent-alias IR
-//! (mirroring `generic_collection_tests`' no-panic contract — a collection-bodied generic def's
-//! emitted (de)serialize is a separate pre-existing concern, so these do not compile the output).
+//! the emitted SOURCE shape. Generic-def rows assert the collapse reaches the set-nominal IR (no
+//! panic, no enum — a collection-bodied generic def collapses BEFORE the generic machinery, so each
+//! instantiation mints one nominal wrapper) rather than the `is_enum` panic a non-collapsing
+//! choice-bodied generic def would hit.
 
 use crate::cli::Cli;
 use clap::Parser;
