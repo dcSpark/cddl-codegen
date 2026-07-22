@@ -7933,6 +7933,401 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "tag_set_newtype.holder"
+axis = "corpus"
+example = "single_arm_set = #6.258([* uint]) ; @newtype\nsingle_arm_neset = #6.258([+ uint]) ; @newtype\nplain_reject = [* uint] ; @newtype @duplicates reject\nplain_neset_reject = [+ uint] ; @newtype @duplicates reject\nopt_out = #6.258([* uint]) ; @newtype @duplicates preserve\nplain_table = { * uint => text } ; @newtype\nholder = [s: single_arm_set, ns: single_arm_neset, r: plain_reject, nr: plain_neset_reject, o: opt_out, t: plain_table]"
+fixture = "tag_set_newtype"
+rule = "holder"
+spec = "__probe_holder = [0, holder]\nsingle_arm_set = #6.258([* uint]) ; @newtype\nsingle_arm_neset = #6.258([+ uint]) ; @newtype\nplain_reject = [* uint] ; @newtype @duplicates reject\nplain_neset_reject = [+ uint] ; @newtype @duplicates reject\nopt_out = #6.258([* uint]) ; @newtype @duplicates preserve\nplain_table = { * uint => text } ; @newtype\nholder = [s: single_arm_set, ns: single_arm_neset, r: plain_reject, nr: plain_neset_reject, o: opt_out, t: plain_table]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820086d9010280d9010281190c8082190d7d1904df8419096d190f9919077f186ad9010282188f19059fa2190f3e6b7472616e73666f726d657219029769427567617474692773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820086d9010280d90102841901d6190d5a19080e190c50831903f5191015190593831905f219062c18d0d9010283190af21906b819076ba0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820086d9010280d90102841902911905eb18ee1903ba841904d7190eb51911f11901bc82190a09190ee6d9010284190f27190f81190309190c89a219118e6f6765726f6e746f6c6f676973742773190abd63464452"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820086d90102821907b419028dd9010284190bdf182818d91902cd811905ac8218441903aad9010283189a1906ea1909f1a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820086d90102821909c618dcd90102841911fb001905d01901c9841904d5190f4c19038f190efc84190a9d191227190db71911c7d901028119011fa41910ae6764696666696e671903686a617474656e756174656419044666626173657374185a6b68657861646563696d616c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820086d9010282190fd81902c6d9010282190e3d190256841908ec190f19190d9119064b81190dd3d901028119077aa119041c6562616e6573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820086d90102831908db1902631909e1d9010281190a3084190ddf190b7219039119110183190ba6190ca1190598d9010283190d4b190386190520a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820086d90102841904ac1904e51906c41907e9d9010281190d2883190176190bc31906bd831910e519109a1907fed9010283191188190dfb190da7a4190e936672656c6965641906216b696e64756374696f6e2773190f5e6870757269736d27731905f869677574747572616c73"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820086d9010284190991190f901909a819091ed901028219080a19088184190c2b190dcb190ba6190f9e83190a49190e2019059ad9010280a21904346e636f6e74656d706f726172792773190274666c617a696572"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820086d90102841909d3190acb19117f191179d9010281190fc4831901b9191096190cd581190bbdd9010282190e371901cca4184d6663616c6c6572190c586b73636f7265626f61726473190b6866506f676f27731904076770726573657473"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "tag_set_newtype.opt_out"
+axis = "corpus"
+example = "opt_out = #6.258([* uint]) ; @newtype @duplicates preserve"
+fixture = "tag_set_newtype"
+rule = "opt_out"
+spec = "__probe_holder = [0, opt_out]\nopt_out = #6.258([* uint]) ; @newtype @duplicates preserve"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200d9010280"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d90102821906031907e7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d901028219091b190811"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d9010282190a4a191193"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d9010282191252190942"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d90102831906ba190c71190f99"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d901028319075519067719113d"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d90102831908ab190bf519022e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d9010283190bb9190679190fb5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d9010284190581190ce0190600190c9b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "tag_set_newtype.plain_neset_reject"
+axis = "corpus"
+example = "plain_neset_reject = [+ uint] ; @newtype @duplicates reject"
+fixture = "tag_set_newtype"
+rule = "plain_neset_reject"
+spec = "__probe_holder = [0, plain_neset_reject]\nplain_neset_reject = [+ uint] ; @newtype @duplicates reject"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82008118f8"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190733"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190adc"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190d20"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200811910aa"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821906c21908c8"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200831907d3190c24190b32"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200831910781906e81910c3"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200841904cb1903a018271907a7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820084190a1d1904b61907cf18e5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "tag_set_newtype.plain_reject"
+axis = "corpus"
+example = "plain_reject = [* uint] ; @newtype @duplicates reject"
+fixture = "tag_set_newtype"
+rule = "plain_reject"
+spec = "__probe_holder = [0, plain_reject]\nplain_reject = [* uint] ; @newtype @duplicates reject"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820080"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190522"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190f02"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190163190e23"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821904c919034b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821909a61901ea"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190cb51896"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200841910d8190fdd190aec191068"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "tag_set_newtype.plain_table"
+axis = "corpus"
+example = "plain_table = { * uint => text } ; @newtype"
+fixture = "tag_set_newtype"
+rule = "plain_table"
+spec = "__probe_holder = [0, plain_table]\nplain_table = { * uint => text } ; @newtype"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a11908e66672616d696679"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a219021a6673696c76616e1909236c64697362656c696576696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a2190ba167706f7274696e67190ae765686f6b6579"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a2190fb6677075626c697368190e4c696e6563657373697479"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a31909f86c7665746572696e617269616e190aaa654a61636b79190bc0686a7564696369616c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a319116268627573796e65737319115c6b7374657073697374657273190cdf6870726f7070696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a41904a765636f7567681911466a6d6964706f696e7427731902da6b65787472656d69736d277319082c6b6c696768746e6573732773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "tag_set_newtype.single_arm_neset"
+axis = "corpus"
+example = "single_arm_neset = #6.258([+ uint]) ; @newtype"
+fixture = "tag_set_newtype"
+rule = "single_arm_neset"
+spec = "__probe_holder = [0, single_arm_neset]\nsingle_arm_neset = #6.258([+ uint]) ; @newtype"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200d901028118e3"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d90102811901ef"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d9010281190d8f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d901028319070b190b2d1908ae"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d9010283191086190ef5190d4b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d901028418ba1904b5191216190bd0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d90102841902f61905d7190a481878"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d90102841905bb19096919051c190804"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d9010284190c6c190e1b1903a9190526"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d9010284190db0190862190d59190854"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "tag_set_newtype.single_arm_set"
+axis = "corpus"
+example = "single_arm_set = #6.258([* uint]) ; @newtype"
+fixture = "tag_set_newtype"
+rule = "single_arm_set"
+spec = "__probe_holder = [0, single_arm_set]\nsingle_arm_set = #6.258([* uint]) ; @newtype"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200d9010280"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d9010281190f2f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d90102821903ad190eb1"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d90102821909f0190d09"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d9010282190c63190d87"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d9010282190fe61905cb"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d9010283190657190c25191095"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d901028319089d190e6f19064f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200d90102841906c11908db19094319035a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "tag_set_reject.holder"
 axis = "corpus"
 example = "int_set = #6.258([* uint]) / [* uint] ; @duplicates reject\nint_neset = #6.258([+ uint]) / [+ uint] ; @duplicates reject\ntext_set = [* text] / #6.258([* text]) ; @duplicates reject\noset<a0> = #6.258([* a0]) / [* a0] ; @duplicates reject\noset_u64 = oset<uint>\nplain = [* uint] ; @duplicates reject\nholder = [s: int_set, ns: int_neset, g: oset_u64, p: plain, ? t: text_set]"
