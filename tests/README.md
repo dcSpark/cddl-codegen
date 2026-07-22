@@ -817,13 +817,27 @@ idiom above, verified across the same layers as the idiom plus the cross-crate o
 - **Corpus fixture + compile** — `tests/corpus/tag_set_reject.cddl` (five reject shapes + a `holder`
   embedding them incl. an optional field: `int_set` `[*]` idiom, `int_neset` `[+]` idiom, `text_set`,
   `oset_u64` a named generic-instance of a reject generic def, `plain` a non-idiom array) drives the
-  `feature_corpus` snapshots and `feature_corpus_compiles`' three-profile compile.
+  `feature_corpus` snapshots and `feature_corpus_compiles`' three-profile compile. Its sibling
+  `tests/corpus/tag_set_alias_instance.cddl` pins the ALIAS-of-instantiation shape
+  (`required_signers = nonempty_set<...>` with a second anonymous use — the CML regen shape): the
+  `pub type` alias to the minted nominal, its resolved-policy self-doc, the opaque
+  extern-interface row, and the `typescript_custom_section` TS alias line; its decode-conformance
+  rows ride the same catalog as `tag_set_reject`'s below. In-process polarity/seam pins:
+  `optional_tag_set_tests::alias_binding_set_nominal_documents_resolved_reject_policy` (doc says
+  `NonEmptyOrderedSet` + reject, never the inverted `NonEmptyVec`/preserve texts),
+  `snapshot_tests::extern_interface_projects_alias_to_set_nominal_as_opaque`, and
+  `optional_tag_set_tests::alias_binding_set_nominal_wasm_surface_flattens_and_names_the_rekey`
+  (the flat wasm nominal surface + the JS re-key naming).
 - **Preserve-mode floor + reject KATs** — `tests/golden_hex_preserve/tests.rs`: the duplicate-carrying
   `opt_set_{untagged,tagged}_duplicate` / `opt_neset_{untagged,tagged}_duplicate` KATs pin that the
   DEFAULT (`preserve`) accepts and re-emits duplicates byte-exactly (the regression floor `reject`
   narrows from), while `reject_set_untagged` / `reject_set_tagged_wide` pin a duplicate-FREE reject set
   round-tripping byte-exactly and the in-process `reject_set_duplicate_wire_and_api_identical` pins the
-  wire door and the API door reporting the same `DuplicateKey`.
+  wire door and the API door reporting the same `DuplicateKey`. The std set contract on the runtime
+  twins (`insert -> bool`, `contains`, keep-first `Extend`/`FromIterator`, `sort`, `try_opt_from`,
+  the `OrderedSet` ↔ `NonEmptyOrderedSet` refinement doors) and the set nominals' emitted
+  `try_opt_from` are covered e2e by `reject_set_std_contract_and_refinement_doors` in the same
+  suite.
 - **Decode-conformance (composition depth)** — the `tests/decode_conformance/corpus_catalog.toml` rows
   `tag_set_reject.{holder,int_set,int_neset,oset,oset_u64,plain,text_set}` (duplicate-free spec-derived
   vectors the generated decoder must accept), replayed by the `corpus_decode_replay` gate.
@@ -1639,8 +1653,11 @@ cddl-matrix/project_wasm_matrix.ts  ─►  tests/matrix_wasm/<shape>__<role>.cd
     `gcolla`/`gcollexp`/`gcolln`/`gtbla` (anonymous generic-COLLECTION/TABLE-instance lowerings —
     wrapper-needing element → structural class, exposable element → bare `Vec`, plus the
     named-instance-rule own-name control), `rset`/`nerset`/`rseta`/`nerseta` (`@duplicates reject`
-    uniqueness twins over `OrderedSet`/`NonEmptyOrderedSet` — the FALLIBLE `add` door, named-rule and
-    anonymous-instance flavors), `pmap`/`nepmap`/`pmapa`/`nepmapa` (`@duplicates preserve` pair-map
+    uniqueness twins over `OrderedSet`/`NonEmptyOrderedSet` — the FALLIBLE `add` door plus the
+    std-set `insert -> bool`/`contains` doors, named-rule and anonymous-instance flavors; a reject
+    set NOMINAL class delegates this same surface flat — `len`/`get(index)`/`add`/`insert`/
+    `contains`/`try_from`/`try_opt_from` — instead of the two-layer `get() -> companion` shape,
+    which only `@duplicates preserve` nominals keep), `pmap`/`nepmap`/`pmapa`/`nepmapa` (`@duplicates preserve` pair-map
     twins over `PairMap`/`NonEmptyPairMap` — the APPENDING `insert` and the `{+}` borrow-clone
     `try_from` door, same two flavors), `chain`, `extern`, `rawbytes` (a user-supplied
     `RawBytesEncoding` type). This is the
