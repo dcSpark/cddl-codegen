@@ -101,7 +101,7 @@ impl cbor_event::se::Serialize for InlineHolder {
     ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_array(cbor_event::Len::Len(
             3 + match &self.b {
-                Some(x) => 1,
+                Some(_) => 1,
                 None => 0,
             },
         ))?;
