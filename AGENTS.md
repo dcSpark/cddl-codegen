@@ -96,6 +96,12 @@ changing the *runtime behaviour* of generated code usually means editing `static
   paths — CI and documented commands select tests by substring.
 - **The CLI flags change codegen substantially** (preserve-encodings, canonical, json, wasm, …).
   When behaviour depends on a flag, check `cli.rs` and `docs/docs/command_line_flags.mdx`.
+- **Adding a `ConceptualRustType` variant has no compilable intermediate state** (proven by the
+  A2 `Any` delivery, `7a08a0f`): ~24 exhaustive match sites error loudly, but `rust_type.rs`
+  alone has ~30 wildcard `_ =>` arms that silently swallow a new variant — hand-audit every
+  wildcard method (is its default right for the new variant?) and plan the first commit at
+  variant + all arms + emission granularity; emitter arms are reachable and can't be stubbed
+  without breaking snapshots.
 - **Some comments and panic messages are load-bearing test keys.** `LOCKSTEP`-paired comments and
   the panic-class ledgers in `src/tests/recombination_tests.rs` (keys are substrings of
   `<message> @ <file> @ fn <symbol>`) mean: moved code carries its comments verbatim; a pinned
