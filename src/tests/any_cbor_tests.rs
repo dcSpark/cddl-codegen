@@ -16,11 +16,12 @@
 //! return `Err`, never panic. A seeded structural generator (no in-tree property-test crate — see
 //! the A1 report's PROBE-6) drives 10k+ random well-formed items through the same oracle.
 //!
-//! Depth-guard participation is deferred to A2 (a reported PROBE-4 conflict: the guard runtime is
-//! only present under `--deserialize-depth-limit` and its limit is a generation-time literal, so an
-//! unconditionally-present static file cannot reference it without generator support). The depth
-//! corpus therefore exercises the recursion at a stack-safe depth for round-trip and a truncated
-//! deep item for the error path; the guard-limit-exceeded case is an A2 item.
+//! Depth-guard participation (A2): the `read` recursion seam calls an `any_cbor_recursion_guard!()`
+//! macro the includer defines. The three round-trip shims below define a no-op variant (unguarded
+//! recursion, exercised at a stack-safe depth). The `depth_guard` shim additionally includes the
+//! `DepthGuard` runtime and defines an acquiring variant with a small baked limit, so the
+//! guard-limit-exceeded path — at / under / over the limit, a graceful `DepthLimitExceeded` with no
+//! SIGABRT — is covered here exactly as a generated `--deserialize-depth-limit` crate behaves.
 
 // ---------------------------------------------------------------------------------------------
 // Module-independent corpus + generator (operate on raw bytes / cbor_event only; no AnyCbor).
@@ -357,6 +358,11 @@ mod preserve {
     include!("../../static/serialization.rs");
     include!("../../static/serialization_preserve.rs");
     include!("../../static/serialization_preserve_force_canonical.rs");
+    // No-op depth-guard hook (this shim exercises the unguarded path; the `depth_guard` shim below
+    // supplies an acquiring variant). Must precede the fragment include that calls it.
+    macro_rules! any_cbor_recursion_guard {
+        () => {};
+    }
     include!("../../static/any_cbor_preserve.rs");
     include!("../../static/any_cbor_preserve_force_canonical.rs");
 
@@ -489,7 +495,8 @@ mod preserve {
 
     #[test]
     fn depth_roundtrip_no_crash() {
-        // Recursion works at a stack-safe depth (guard-limit-exceeded is deferred to A2).
+        // Recursion works at a stack-safe depth, unguarded (the guard-limit-exceeded path is the
+        // `depth_guard` shim's job).
         let (indef, def) = super::depth_bytes(64);
         oracle("deep indefinite x64", &indef);
         oracle("deep definite x64", &def);
@@ -632,6 +639,9 @@ mod preserve_non_canonical {
     include!("../../static/serialization_preserve.rs");
     include!("../../static/serialization_preserve_non_force_canonical.rs");
     include!("../../static/serialization_non_force_canonical.rs");
+    macro_rules! any_cbor_recursion_guard {
+        () => {};
+    }
     include!("../../static/any_cbor_preserve.rs");
     include!("../../static/any_cbor_preserve_non_force_canonical.rs");
 
@@ -666,6 +676,9 @@ mod non_preserve {
     include!("../../static/serialization.rs");
     include!("../../static/serialization_non_preserve.rs");
     include!("../../static/serialization_non_force_canonical.rs");
+    macro_rules! any_cbor_recursion_guard {
+        () => {};
+    }
     include!("../../static/any_cbor_non_preserve.rs");
 
     fn parse(bytes: &[u8]) -> (AnyCbor, usize) {
@@ -799,5 +812,81 @@ mod non_preserve {
         );
         assert_eq!(parse(&super::hex_to_bytes("18ff")).0.as_text(), None);
         assert_eq!(parse(&super::hex_to_bytes("f6")).0.as_bool(), None);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Depth-guard variant (A2). Assembles the non-preserve AnyCbor PLUS the opt-in `DepthGuard`
+// runtime, and defines the `any_cbor_recursion_guard!` macro to acquire that guard with a small
+// baked limit — exactly what a generated crate built with `--deserialize-depth-limit=N` produces.
+// Proves the guard-limit-exceeded path is a graceful `DepthLimitExceeded`, never a SIGABRT.
+#[allow(dead_code, clippy::upper_case_acronyms, clippy::wrong_self_convention)]
+mod depth_guard {
+    use cbor_event::de::Deserializer;
+    use cbor_event::se::Serializer;
+
+    // Baked limit, mirroring the generation-time literal a `--deserialize-depth-limit=8` crate
+    // bakes. An N-deep array wrapping a leaf reaches read-depth N+1 (one `read` per nesting level
+    // plus one for the leaf), so `depth_bytes(N)` succeeds iff N+1 <= LIMIT.
+    const LIMIT: usize = 8;
+
+    include!("../../static/error.rs");
+    include!("../../static/serialization.rs");
+    include!("../../static/serialization_non_preserve.rs");
+    include!("../../static/serialization_non_force_canonical.rs");
+    include!("../../static/serialization_depth_guard.rs");
+    // Acquiring hook, defined before the fragment include that calls it. This is the exact shape
+    // `export.rs` prepends to the assembled `any_cbor.rs` under `--deserialize-depth-limit`.
+    macro_rules! any_cbor_recursion_guard {
+        () => {
+            let _depth_guard = DepthGuard::acquire(LIMIT)?;
+        };
+    }
+    include!("../../static/any_cbor_non_preserve.rs");
+
+    #[test]
+    fn under_the_limit_deserializes() {
+        // depth 7 (< limit 8)
+        let (indef, def) = super::depth_bytes(LIMIT - 2);
+        AnyCbor::from_cbor_bytes(&def).expect("definite depth under the limit deserializes");
+        AnyCbor::from_cbor_bytes(&indef).expect("indefinite depth under the limit deserializes");
+    }
+
+    #[test]
+    fn at_the_limit_deserializes() {
+        // depth 8 (== limit 8)
+        let (indef, def) = super::depth_bytes(LIMIT - 1);
+        AnyCbor::from_cbor_bytes(&def).expect("definite depth at the limit deserializes");
+        AnyCbor::from_cbor_bytes(&indef).expect("indefinite depth at the limit deserializes");
+    }
+
+    #[test]
+    fn over_the_limit_errors_gracefully() {
+        // depth 9 (> limit 8) — the guard fires with its existing error, no SIGABRT.
+        let (indef, def) = super::depth_bytes(LIMIT);
+        for (label, bytes) in [("definite", def), ("indefinite", indef)] {
+            let err = AnyCbor::from_cbor_bytes(&bytes)
+                .expect_err(&format!("{label} depth over the limit must error"));
+            assert!(
+                matches!(err.failure(), DeserializeFailure::DepthLimitExceeded { limit } if *limit == LIMIT),
+                "{label}: expected DepthLimitExceeded {{ limit: {LIMIT} }}, got {err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn pathologically_deep_input_never_overflows() {
+        // Far past any stack budget: the guard must stop the recursion early (Err), never SIGABRT.
+        let (indef, def) = super::depth_bytes(200_000);
+        assert!(matches!(
+            AnyCbor::from_cbor_bytes(&def)
+                .map_err(|e| matches!(e.failure(), DeserializeFailure::DepthLimitExceeded { .. })),
+            Err(true)
+        ));
+        assert!(matches!(
+            AnyCbor::from_cbor_bytes(&indef)
+                .map_err(|e| matches!(e.failure(), DeserializeFailure::DepthLimitExceeded { .. })),
+            Err(true)
+        ));
     }
 }

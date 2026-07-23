@@ -14,8 +14,16 @@
 // `indef_containers` (indefinite array/map framing), `chunk_strings` (indefinite two-chunk
 // strings), `reverse_maps` (reversed map entry order), and `everything` (structure transforms
 // first, then `widen_step` over every head of the resulting tree — chunk headers and heads inside
-// indefinite containers included, break bytes excluded). Major-type-7 heads (bool/null/simple;
-// floats can't appear under preserve) are copied verbatim: they carry a single wire form.
+// indefinite containers included, break bytes excluded). Major-type-7 heads (bool/null/simple)
+// are copied verbatim: each carries a single wire form. NO float head ever reaches this mutator,
+// because its input is always an emit-tests-MINTED value and neither float-carrying construct is
+// mintable under a preserve profile: native-float members still panic generation under preserve
+// (`preserve_encodings_supports_floats` stub), and an `AnyCbor`-typed (`any`) member — which CAN
+// carry a width-preserving f16/f32/f64 (cbor_event fork `float_sz` API, exercised by
+// `any_cbor_tests`) — is silently skipped by the emit-tests minter until its mint path lands (A3).
+// The delivery that adds that mint path makes floats reachable here and must, in the same commit,
+// add a float-width mutation class (widen f16→f32→f64 on the head; assert byte-exact re-encode)
+// rather than leave the verbatim-copy path silently narrowing them.
 //
 // `bytes .cbor T` wrappers are treated as opaque byte strings — the outer string is mutated, the
 // inner CBOR is left untouched (mutating the inner encoding is a deliberate out-of-scope extension).

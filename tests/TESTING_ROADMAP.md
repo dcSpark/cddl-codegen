@@ -1250,30 +1250,18 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   list-wrapper minting machinery, expose the byte-string element through its own wrapper class or a
   `js_sys::Uint8Array`-based ABI instead of a bare `Vec<u8>` element.
 
-- **`AnyCbor` depth-limit-EXCEEDED coverage — deferred until the generator wires the depth guard
-  through the static value type.** The `AnyCbor` runtime type (`static/any_cbor_preserve.rs` /
-  `any_cbor_non_preserve.rs`, property layer `src/tests/any_cbor_tests.rs`) recurses through a
-  single `read` seam but cannot yet acquire `DepthGuard`: the guard runtime is pushed into the
-  static assembly only under `--deserialize-depth-limit` and its limit is a baked literal at
-  generated call sites, both unreachable from an unconditionally-present static file without
-  generator support. The property layer therefore runs its depth corpus at a stack-safe 64
-  (unguarded recursion overflows the 2 MB test thread near 300) and asserts NOTHING about the
-  guard-exceeded path. Trigger: the generation phase that wires `AnyCbor` into generated crates
-  must add the per-flag guard hook at the seam AND un-defer this corpus item (at/under/over the
-  limit; over errors `DepthLimitExceeded`, no SIGABRT) in the same delivery — shipping the wiring
-  without the over-limit vector recreates exactly the silently-bypassed-flag hole the seam exists
-  to close.
-
-- **Fidelity mutator float-width premise expires when floats become reachable under
-  `--preserve-encodings`.** `static/emit_tests_encoding_fidelity.rs` copies major-type-7 heads
-  verbatim on the recorded premise "floats can't appear under preserve" — true today only because
-  native-float members panic generation under preserve (`preserve_encodings_supports_floats`
-  stub). The `AnyCbor` value type already round-trips f16/f32/f64 with width fidelity (via the
-  cbor_event fork's `float_sz` API), so the first delivery that makes an `AnyCbor`-typed or
-  native-float member reachable under a preserve profile falsifies the premise. Trigger: that
-  delivery either adds a float-width mutation class to the mutator (widen f16→f32→f64 on the
-  head, assert byte-exact re-encode) or deliberately re-records the comment's premise — silence
-  leaves the fidelity oracle blind on exactly the encoding axis the new type preserves.
+- **Fidelity mutator float-width class lands with the `any` emit-tests mint path (A3).**
+  `static/emit_tests_encoding_fidelity.rs` copies major-type-7 heads verbatim because NO float head
+  reaches the mutator: its input is always an emit-tests-minted value, and both float-carrying
+  constructs are unmintable under a preserve profile — native-float members panic generation
+  (`preserve_encodings_supports_floats` stub), and `AnyCbor`-typed (`any`) members (which DO
+  round-trip f16/f32/f64 with width fidelity via the cbor_event fork's `float_sz` API, exercised by
+  `any_cbor_tests`) are silently skipped by the minter until A3 wires their mint path. The A2 comment
+  now records this justification deliberately (re-recorded when `AnyCbor` entered generated crates).
+  Trigger: A3's `any` mint path makes floats reachable here, so that delivery must add a float-width
+  mutation class to the mutator (widen f16→f32→f64 on the head, assert byte-exact re-encode) in the
+  same commit — otherwise the verbatim-copy path silently narrows exactly the encoding axis
+  `AnyCbor` preserves.
 
 ## Operational watches
 
