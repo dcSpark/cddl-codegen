@@ -415,8 +415,9 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   multi-scope extern shape; the residual BREADTH hole — extern cells at corpus/matrix breadth stay
   compile-exempt — is tracked in `ROADMAP.md` § findings). `prelude.any` was the canonical execution-gate catch — `x = any` exited 0
   but emitted `pub type X = Any;`, an undefined type — and the gate held it ➖ until first-class
-  `any` support landed (2026-07-23); the row is now execution-verified `supported` on the rust leg
-  (wasm/JSON legs record the graceful rejection until those surfaces ship).
+  `any` support landed (2026-07-23); the row is now execution-verified `supported` with the wasm
+  and JSON emission legs green too (all three surfaces shipped the same day; the evidence records
+  the wasm crate compiling and the json emission round-tripping when embedded).
 - **Role floor (role × feature coverage) — NOT a serde JSON-AST dump.** The `cddl` AST's `Serialize`
   is gated on `target_arch = "wasm32"`, so there's no free serde dump on a native build;
   `examples/ast_roles.rs` hand-walks via the crate's `Visitor` trait instead. Role-detection only
