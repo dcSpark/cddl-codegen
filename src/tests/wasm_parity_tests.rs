@@ -125,12 +125,33 @@ use clap::Parser;
 /// than listed here (see the module header). A live finding not covered by an entry fails the gate;
 /// an entry with no matching live finding fails as "resurfaced".
 ///
-/// There are no current entries: the one asymmetry that lived here — the set-nominal `try_opt_from`
-/// empty-means-absent constructor, rust-only while the wasm set-nominal class had no delegation
-/// surface — is closed. The flattened wasm set-nominal surface now emits a delegating `try_opt_from`
-/// (alongside `len`/`get(index)`/`insert`/`add`/`contains`/`try_from`), so the rust and wasm set APIs
-/// tell the same story and every set-nominal member has a same-name/arity wasm counterpart.
-const PARITY_EXEMPT: &[(&str, &str, &str, &str)] = &[];
+/// The current entries are the top-level `any`-alias class: a rule `top_alias = any` lowers to a
+/// bare `pub type TopAlias = AnyCbor`, and wasm_bindgen exports no type aliases, so the rule name is
+/// JS-invisible and the value is handled through the generator's `AnyCbor` wrapper class directly.
+/// This is the accepted loose-CBOR v1 posture (DESIGN §6: the `AnyCbor` wrapper IS the JS surface; a
+/// distinct per-alias JS class follows demand) and the same alias-only class as any `x = <wrapper>`
+/// top-level alias. Every OTHER `any` position (member, array, table, tagged, choice arm) carries a
+/// real AnyCbor / AnyList / MapAnyTo* / enum-variant wasm counterpart and needs no exemption.
+const PARITY_EXEMPT: &[(&str, &str, &str, &str)] = &[
+    (
+        "default",
+        "tests/any-positions",
+        "TopAlias",
+        "top-level `any` alias -> `pub type TopAlias = AnyCbor` (no wasm type-alias export); use the `AnyCbor` class",
+    ),
+    (
+        "preserve",
+        "tests/any-positions",
+        "TopAlias",
+        "top-level `any` alias -> `pub type TopAlias = AnyCbor` (no wasm type-alias export); use the `AnyCbor` class",
+    ),
+    (
+        "json",
+        "tests/any-positions",
+        "TopAlias",
+        "top-level `any` alias -> `pub type TopAlias = AnyCbor` (no wasm type-alias export); use the `AnyCbor` class",
+    ),
+];
 
 /// `(profile, input label, reason)` pairs whose generation deliberately aborts. Four-state verdict
 /// with a resurfaced guard: a listed pair that now generates fails ("gap closed — remove the pin");
@@ -239,6 +260,26 @@ const CORPUS_PARITY_INPUTS: &[CorpusParityInput] = &[
         "wasm_json",
         &[("json_serde", &["--json-serde-derives=true"])],
     ),
+    // Loose-CBOR `any` fixtures: full-surface citizens since A3 WP3 lifted the wasm guard, so they
+    // join the parity sweep. The differential parses `mod.rs` only (AnyCbor's rich rust-only runtime
+    // internals live in the allowed `any_cbor.rs`), and every per-spec type carries its AnyCbor /
+    // AnyList / MapAnyTo* wasm counterpart.
+    (
+        "any-positions",
+        &[
+            ("default", &[]),
+            ("preserve", &["--preserve-encodings=true"]),
+            (
+                "json",
+                &["--json-serde-derives=true", "--json-schema-export=true"],
+            ),
+        ],
+    ),
+    (
+        "any-choice",
+        &[("preserve", &["--preserve-encodings=true"])],
+    ),
+    ("any-shadow", &[("default", &[])]),
 ];
 
 const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
@@ -270,25 +311,6 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
          instance under the json flags): its integration gate generates with --wasm=false and \
          injects hand-written extern defs, so there is no generated wasm surface to differential",
     ),
-    (
-        "any-positions",
-        "rust-only loose-CBOR `any` positions fixture (member / array / table / alias / tagged): a \
-         spec whose IR contains `any` is gracefully rejected under --wasm=true (the AnyCbor wasm \
-         wrapper is phase A3), so there is no generated wasm surface to differential",
-    ),
-    (
-        "any-shadow",
-        "rust-only interception fixture (`any = uint` shadows the prelude): pins that a user rule \
-         named `any` behaves as today; no `any` lowering, and its integration coverage is the \
-         `user_rule_named_any_shadows_the_prelude` unit test, not a wasm differential",
-    ),
-    (
-        "any-choice",
-        "rust-only loose-CBOR content-fallthrough fixture (`uint .le 5 / any`): a spec whose IR \
-         contains `any` is gracefully rejected under --wasm=true (the AnyCbor wasm wrapper is phase \
-         A3 WP3), so there is no generated wasm surface to differential; its coverage is the \
-         `any_choice_content_fallthrough` integration test",
-    ),
 ];
 
 /// Only these `.rs` basenames may appear under `rust/src/generated/` (default/json profiles); only
@@ -307,6 +329,10 @@ const ALLOWED_RUST_GENERATED: &[&str] = &[
     "error.rs",
     "key_demand_assertions.rs",
     "extern_interface_check.rs",
+    // The AnyCbor runtime module (CDDL `any`). A runtime type like serialization/ordered_hash_map,
+    // not per-spec-type surface, so the differential does not parse it — but it must be an ALLOWED
+    // key so a fixture using `any` does not trip the stray-file guard.
+    "any_cbor.rs",
 ];
 const ALLOWED_WASM_GENERATED: &[&str] = &["mod.rs", "collections.rs"];
 
