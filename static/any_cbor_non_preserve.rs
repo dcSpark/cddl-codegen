@@ -144,12 +144,80 @@ impl AnyCbor {
         }
     }
 
+    /// The simple-value code of an `unassigned` special (0..=19 or 32..=255), else `None`. Needed by
+    /// the JSON surface's reverse mapping (there is no other way to read the code back out).
+    pub fn as_unassigned(&self) -> Option<u8> {
+        match self {
+            AnyCbor::Special(AnySpecial::Unassigned(v)) => Some(*v),
+            _ => None,
+        }
+    }
+
     pub fn is_null(&self) -> bool {
         matches!(self, AnyCbor::Special(AnySpecial::Null))
     }
 
     pub fn is_undefined(&self) -> bool {
         matches!(self, AnyCbor::Special(AnySpecial::Undefined))
+    }
+
+    // --- constructors (mode-paired with the preserve variant; here there are no encoding slots to
+    // fill). These are the value-building surface the JSON deserialize path, the wasm wrapper, and
+    // the emit-tests mint all construct through, so the same call sites serve every mode. ---
+
+    pub fn new_uint(value: u64) -> Self {
+        AnyCbor::UInt(value)
+    }
+
+    /// `value` must lie in the CBOR nint domain `-2^64..=-1`; out-of-domain is a debug-assert (no
+    /// clamping — the caller is responsible, mirroring the crate-wide "no silent coercion" stance).
+    pub fn new_nint(value: i128) -> Self {
+        debug_assert!(
+            (-(1i128 << 64)..=-1).contains(&value),
+            "AnyCbor::new_nint: {value} outside the CBOR nint domain -2^64..=-1"
+        );
+        AnyCbor::NInt(value)
+    }
+
+    pub fn new_bytes(bytes: Vec<u8>) -> Self {
+        AnyCbor::Bytes(bytes)
+    }
+
+    pub fn new_text(text: String) -> Self {
+        AnyCbor::Text(text)
+    }
+
+    pub fn new_array(elems: Vec<AnyCbor>) -> Self {
+        AnyCbor::Array(elems)
+    }
+
+    pub fn new_map(pairs: Vec<(AnyCbor, AnyCbor)>) -> Self {
+        AnyCbor::Map(pairs)
+    }
+
+    pub fn new_tag(tag: u64, inner: AnyCbor) -> Self {
+        AnyCbor::Tag(tag, Box::new(inner))
+    }
+
+    pub fn new_bool(b: bool) -> Self {
+        AnyCbor::Special(AnySpecial::Bool(b))
+    }
+
+    pub fn new_null() -> Self {
+        AnyCbor::Special(AnySpecial::Null)
+    }
+
+    pub fn new_undefined() -> Self {
+        AnyCbor::Special(AnySpecial::Undefined)
+    }
+
+    pub fn new_unassigned(code: u8) -> Self {
+        AnyCbor::Special(AnySpecial::Unassigned(code))
+    }
+
+    /// Canonical-width float (non-preserve carries no width slot).
+    pub fn new_float(f: f64) -> Self {
+        AnyCbor::Special(AnySpecial::Float(f))
     }
 
     /// Canonical-ish value re-encoding (smallest widths, definite lengths, f64 floats).
