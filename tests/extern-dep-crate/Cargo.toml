@@ -7,6 +7,10 @@ edition = "2024"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-cbor_event = "3.2.0"
+# dcSpark fork (same rev the generated crates pin): a shared dependency tree with the generated
+# crate that references this crate's extern types passes cbor_event Serializer/Deserializer values
+# across the boundary, so both sides must resolve the SAME cbor_event. Interim measure — back to a
+# crates.io version once the fork upstreams + releases.
+cbor_event = { git = "https://github.com/dcSpark/cbor_event", rev = "e2bca6d257f70ab0c226c4efd0726d3f5c1b4490" }
 wasm-bindgen = "0.2"
 linked-hash-map = "0.5.3"

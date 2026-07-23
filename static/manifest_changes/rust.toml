@@ -31,3 +31,13 @@ set = '"2.4.0"'
 id = 6
 path = "dependencies.cbor_event"
 set = '"3.2.0"'
+
+# dcSpark fork pinned to the `float-round-trip` branch head (same rev the MAIN crate's Cargo.toml
+# pins): adds the width-preserving `float_sz`/`write_float_sz` API and rejects reserved simple
+# values `0xfc-0xfe` at read. Generated crates need it once they carry the `AnyCbor` runtime type
+# (loose CBOR parsing), whose float slot is `Float(f64, Option<Sz>)`. Interim measure — move this
+# back to a crates.io version `set` once the fork upstreams to primetype/cbor_event + releases.
+[[change]]
+id = 7
+path = "dependencies.cbor_event"
+set = '{ git = "https://github.com/dcSpark/cbor_event", rev = "e2bca6d257f70ab0c226c4efd0726d3f5c1b4490" }'
