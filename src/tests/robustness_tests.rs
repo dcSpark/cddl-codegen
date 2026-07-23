@@ -628,6 +628,63 @@ fn duplicates_directive_rejects_gracefully() {
     }
 }
 
+/// A float set element must reject GRACEFULLY at generation: the uniqueness twins' `TryFrom` door
+/// is bounded `T: Ord` (the hybrid `scan_unique`), and a set nominal's always-on comparison derives
+/// demand `Ord`/`Hash` on the element regardless of policy — floats satisfy neither, so silently
+/// generating would emit a non-compiling crate (E0277 far from the rule). The set-side twin of the
+/// float-table-key rejection, covering both seams: a plain reject array (`Array` + reject policy)
+/// and a tag-258 set nominal (`Wrapper` + `set_nominal`), directly and via a float-containing
+/// element rule. A plain array WITHOUT the uniqueness requirement must keep generating (floats are
+/// only unordered, not unserializable).
+#[test]
+fn float_set_element_rejects_gracefully() {
+    let run =
+        |tag: &str, cddl: &str| -> Result<std::collections::BTreeMap<String, String>, String> {
+            let path = std::env::temp_dir().join(format!(
+                "cddl_codegen_float_set_{}_{}.cddl",
+                tag,
+                std::process::id()
+            ));
+            std::fs::write(&path, cddl).unwrap();
+            let cli = Cli::parse_from([
+                "cddl-codegen",
+                "--input",
+                path.to_str().unwrap(),
+                "--output",
+                "float_set_unused",
+            ]);
+            let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
+            std::fs::remove_file(&path).ok();
+            result
+        };
+
+    let reject_vectors = [
+        ("reject_array", "foo = [* float64] ; @duplicates reject\n"),
+        (
+            "reject_ne_array",
+            "foo = [+ float64] ; @duplicates reject\n",
+        ),
+        ("set_nominal", "foo = #6.258([* float64]) / [* float64]\n"),
+        (
+            "nested_elem_rule",
+            "has_float = [uint, float64]\nfoo = [* has_float] ; @duplicates reject\n",
+        ),
+    ];
+    for (tag, cddl) in reject_vectors {
+        let msg = run(tag, cddl).expect_err(&format!(
+            "float set element ({tag}) must be a graceful Err, not Ok"
+        ));
+        assert!(
+            msg.contains("rule `Foo`") && msg.contains("float") && msg.contains("total order"),
+            "float set rejection for {tag} should name the rule and the float cause, got: {msg}"
+        );
+    }
+
+    // Control: no uniqueness requirement ⇒ a float element stays supported (plain Vec inner).
+    run("plain_array", "foo = [* float64]\n")
+        .expect("a plain float array without @duplicates reject must keep generating");
+}
+
 /// The `@duplicates` placements generate cleanly (no rejection) and select the right twin. For a
 /// tag-258 SET the well-known-tag registry now defaults to `reject`, so: absent ⇒ `OrderedSet` (the
 /// new default), explicit `reject` ⇒ byte-identical to absent (self-documentation), explicit

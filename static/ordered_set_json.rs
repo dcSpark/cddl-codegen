@@ -8,7 +8,7 @@ impl<T: serde::Serialize> serde::Serialize for OrderedSet<T> {
     }
 }
 
-impl<'de, T: serde::Deserialize<'de> + PartialEq> serde::de::Deserialize<'de> for OrderedSet<T> {
+impl<'de, T: serde::Deserialize<'de> + Ord> serde::de::Deserialize<'de> for OrderedSet<T> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::de::Deserializer<'de>,
@@ -29,7 +29,7 @@ impl<T: serde::Serialize> serde::Serialize for NonEmptyOrderedSet<T> {
     }
 }
 
-impl<'de, T: serde::Deserialize<'de> + PartialEq> serde::de::Deserialize<'de>
+impl<'de, T: serde::Deserialize<'de> + Ord> serde::de::Deserialize<'de>
     for NonEmptyOrderedSet<T>
 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
