@@ -2964,15 +2964,20 @@ fn assertion_roots(types: &IntermediateTypes) -> Vec<(RustIdent, DemandSet)> {
 }
 
 /// The serde/schemars position an `any`-carrying field or arm occupies, selecting which natural
-/// adapter (loose-CBOR Phase B, ruling R1) steers its JSON: a bare `AnyCbor` (`Direct`), an
-/// `Option<AnyCbor>` (`Optional`), a `Vec<AnyCbor>` element (`Seq`), or a `BTreeMap<K, AnyCbor>`
-/// value with a stringifiable key (`Map`).
+/// adapter (loose-CBOR Phase B, ruling R1) steers its JSON. Bare `AnyCbor` (`Direct`); a `Vec`
+/// element (`Seq`); a stringifiable-keyed `BTreeMap` value (`Map`, non-preserve) or `OrderedHashMap`
+/// value (`OrderedMap`, preserve); and the `Option<…>` counterpart of each (paired with
+/// `#[serde(default)]`).
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum NaturalAnyPosition {
     Direct,
     Optional,
     Seq,
+    OptSeq,
     Map,
+    OptMap,
+    OrderedMap,
+    OptOrderedMap,
 }
 
 /// The `#[serde(with = …)]` / `#[schemars(schema_with = …)]` / `#[serde(default)]` annotation lines
@@ -2985,15 +2990,42 @@ pub fn natural_any_serde_annotations(cli: &Cli, pos: NaturalAnyPosition) -> Vec<
     use NaturalAnyPosition::*;
     let mut out = Vec::new();
     let base = format!("{}::any_cbor", cli.common_import_rust());
-    let (with_mod, schema_fn) = match pos {
-        Direct => ("natural_any_cbor", "natural_any_cbor_schema"),
-        Optional => ("natural_any_cbor_opt", "natural_any_cbor_schema"),
-        Seq => ("natural_any_cbor_seq", "natural_any_cbor_seq_schema"),
-        Map => ("natural_any_cbor_btreemap", "natural_any_cbor_map_schema"),
+    // (serde adapter module, permissive schema fn, needs `#[serde(default)]`). One permissive schema
+    // serves both required and optional (an empty/array/object-with-any schema accepts null/absent);
+    // required-ness is derived from the field's `Option<..>`-ness, not from `schema_with`.
+    let (with_mod, schema_fn, optional) = match pos {
+        Direct => ("natural_any_cbor", "natural_any_cbor_schema", false),
+        Optional => ("natural_any_cbor_opt", "natural_any_cbor_schema", true),
+        Seq => ("natural_any_cbor_seq", "natural_any_cbor_seq_schema", false),
+        OptSeq => (
+            "natural_any_cbor_opt_seq",
+            "natural_any_cbor_seq_schema",
+            true,
+        ),
+        Map => (
+            "natural_any_cbor_btreemap",
+            "natural_any_cbor_map_schema",
+            false,
+        ),
+        OptMap => (
+            "natural_any_cbor_opt_btreemap",
+            "natural_any_cbor_map_schema",
+            true,
+        ),
+        OrderedMap => (
+            "natural_any_cbor_orderedmap",
+            "natural_any_cbor_map_schema",
+            false,
+        ),
+        OptOrderedMap => (
+            "natural_any_cbor_opt_orderedmap",
+            "natural_any_cbor_map_schema",
+            true,
+        ),
     };
     if cli.json_serde_derives {
         out.push(format!("#[serde(with = \"{base}::{with_mod}\")]"));
-        if pos == Optional {
+        if optional {
             // A `#[serde(with)]` field is otherwise required on read; `default` restores the
             // ordinary "missing optional key ⇒ None" behavior the plain derive gives.
             out.push("#[serde(default)]".to_owned());

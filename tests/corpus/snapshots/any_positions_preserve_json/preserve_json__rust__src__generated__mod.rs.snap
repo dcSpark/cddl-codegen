@@ -33,16 +33,20 @@ impl From<Tagged> for crate::generated::any_cbor::AnyCbor {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub enum ChoiceLastAny {
     U64 {
         uint: u64,
+        #[serde(skip)]
         uint_encoding: Option<cbor_event::Sz>,
     },
     Text {
         text: String,
+        #[serde(skip)]
         text_encoding: StringEncoding,
     },
+    #[serde(with = "crate::generated::any_cbor::natural_any_cbor")]
+    #[schemars(schema_with = "crate::generated::any_cbor::natural_any_cbor_schema")]
     Any(crate::generated::any_cbor::AnyCbor),
 }
 
@@ -66,14 +70,18 @@ impl ChoiceLastAny {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub enum ChoiceTaggedAny {
+    #[serde(with = "crate::generated::any_cbor::natural_any_cbor")]
+    #[schemars(schema_with = "crate::generated::any_cbor::natural_any_cbor_schema")]
     Any {
         any: crate::generated::any_cbor::AnyCbor,
+        #[serde(skip)]
         any_tag_encoding: Option<cbor_event::Sz>,
     },
     Text {
         text: String,
+        #[serde(skip)]
         text_encoding: StringEncoding,
     },
 }
@@ -96,10 +104,13 @@ impl ChoiceTaggedAny {
 
 pub type HomogArray = Vec<crate::generated::any_cbor::AnyCbor>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct MemberArray {
+    #[serde(with = "crate::generated::any_cbor::natural_any_cbor")]
+    #[schemars(schema_with = "crate::generated::any_cbor::natural_any_cbor_schema")]
     pub any: crate::generated::any_cbor::AnyCbor,
     pub index_1: u64,
+    #[serde(skip)]
     pub encodings: Option<MemberArrayEncoding>,
 }
 
@@ -113,10 +124,13 @@ impl MemberArray {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct MemberHomog {
     pub key_1: u64,
+    #[serde(with = "crate::generated::any_cbor::natural_any_cbor_seq")]
+    #[schemars(schema_with = "crate::generated::any_cbor::natural_any_cbor_seq_schema")]
     pub key_2: Vec<crate::generated::any_cbor::AnyCbor>,
+    #[serde(skip)]
     pub encodings: Option<MemberHomogEncoding>,
 }
 
@@ -130,10 +144,13 @@ impl MemberHomog {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct MemberMap {
+    #[serde(with = "crate::generated::any_cbor::natural_any_cbor")]
+    #[schemars(schema_with = "crate::generated::any_cbor::natural_any_cbor_schema")]
     pub key_1: crate::generated::any_cbor::AnyCbor,
     pub key_2: Option<u64>,
+    #[serde(skip)]
     pub encodings: Option<MemberMapEncoding>,
 }
 
@@ -147,10 +164,14 @@ impl MemberMap {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct MemberOptHomog {
     pub key_1: u64,
+    #[serde(with = "crate::generated::any_cbor::natural_any_cbor_opt_seq")]
+    #[serde(default)]
+    #[schemars(schema_with = "crate::generated::any_cbor::natural_any_cbor_seq_schema")]
     pub key_2: Option<Vec<crate::generated::any_cbor::AnyCbor>>,
+    #[serde(skip)]
     pub encodings: Option<MemberOptHomogEncoding>,
 }
 
@@ -164,10 +185,14 @@ impl MemberOptHomog {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct MemberOptTable {
     pub key_1: u64,
+    #[serde(with = "crate::generated::any_cbor::natural_any_cbor_opt_orderedmap")]
+    #[serde(default)]
+    #[schemars(schema_with = "crate::generated::any_cbor::natural_any_cbor_map_schema")]
     pub key_2: Option<OrderedHashMap<u64, crate::generated::any_cbor::AnyCbor>>,
+    #[serde(skip)]
     pub encodings: Option<MemberOptTableEncoding>,
 }
 
@@ -181,10 +206,13 @@ impl MemberOptTable {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct MemberTable {
     pub key_1: u64,
+    #[serde(with = "crate::generated::any_cbor::natural_any_cbor_orderedmap")]
+    #[schemars(schema_with = "crate::generated::any_cbor::natural_any_cbor_map_schema")]
     pub key_2: OrderedHashMap<u64, crate::generated::any_cbor::AnyCbor>,
+    #[serde(skip)]
     pub encodings: Option<MemberTableEncoding>,
 }
 
@@ -230,6 +258,39 @@ impl Tagged {
 impl From<crate::generated::any_cbor::AnyCbor> for Tagged {
     fn from(inner: crate::generated::any_cbor::AnyCbor) -> Self {
         Tagged::new(inner)
+    }
+}
+
+impl serde::Serialize for Tagged {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        crate::generated::any_cbor::natural_any_cbor::serialize(&self.inner, serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for Tagged {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = crate::generated::any_cbor::natural_any_cbor::deserialize(deserializer)?;
+        Ok(Self::new(inner))
+    }
+}
+
+impl schemars::JsonSchema for Tagged {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("Tagged")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        crate::generated::any_cbor::natural_any_cbor_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        false
     }
 }
 

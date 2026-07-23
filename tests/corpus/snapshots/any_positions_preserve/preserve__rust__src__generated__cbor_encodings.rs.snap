@@ -34,6 +34,27 @@ pub struct MemberMapEncoding {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct MemberOptHomogEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub key_1_encoding: Option<cbor_event::Sz>,
+    pub key_1_key_encoding: Option<cbor_event::Sz>,
+    pub key_2_encoding: LenEncoding,
+    pub key_2_key_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct MemberOptTableEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub key_1_encoding: Option<cbor_event::Sz>,
+    pub key_1_key_encoding: Option<cbor_event::Sz>,
+    pub key_2_encoding: LenEncoding,
+    pub key_2_key_encodings: BTreeMap<u64, Option<cbor_event::Sz>>,
+    pub key_2_key_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct MemberTableEncoding {
     pub len_encoding: LenEncoding,
     pub orig_deser_order: Vec<usize>,

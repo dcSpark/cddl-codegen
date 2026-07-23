@@ -325,13 +325,15 @@ fn any_cbor_natural_key_from_string(key: &str) -> AnyCbor {
     if let Some(u) = key.parse::<u64>().ok().filter(|u| u.to_string() == key) {
         return AnyCbor::new_uint(u);
     }
-    // i64 negatives all lie inside the CBOR nint domain (-2^64..=-1).
+    // Keys are STRINGS, so a nint key has no `i64` ceiling (unlike a nint VALUE, bounded by
+    // serde_json's number model): parse the whole CBOR nint domain (-2^64..=-1) as `i128`, matching
+    // what `any_cbor_natural_key_string` writes. The domain check subsumes the sign check.
     if let Some(i) = key
-        .parse::<i64>()
+        .parse::<i128>()
         .ok()
-        .filter(|i| *i < 0 && i.to_string() == key)
+        .filter(|i| (-(1i128 << 64)..=-1).contains(i) && i.to_string() == key)
     {
-        return AnyCbor::new_nint(i as i128);
+        return AnyCbor::new_nint(i);
     }
     AnyCbor::new_text(key.to_owned())
 }
@@ -485,6 +487,70 @@ pub mod natural_any_cbor_btreemap {
         let map =
             <BTreeMap<K, NaturalAnyCborDe> as serde::Deserialize>::deserialize(deserializer)?;
         Ok(map.into_iter().map(|(k, v)| (k, v.0)).collect())
+    }
+}
+
+/// `#[serde(with = …)]` adapter for an OPTIONAL homogeneous-array member (`? N: [* any]` →
+/// `Option<Vec<AnyCbor>>`), paired with `#[serde(default)]`. `None` → JSON null / missing.
+pub mod natural_any_cbor_opt_seq {
+    use super::{AnyCbor, NaturalAnyCborDe, NaturalAnyCborSer};
+
+    pub fn serialize<S>(value: &Option<Vec<AnyCbor>>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match value {
+            Some(v) => {
+                let wrapped: Vec<NaturalAnyCborSer> = v.iter().map(NaturalAnyCborSer).collect();
+                serializer.serialize_some(&wrapped)
+            }
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Vec<AnyCbor>>, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let opt =
+            <Option<Vec<NaturalAnyCborDe>> as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(opt.map(|v| v.into_iter().map(|e| e.0).collect()))
+    }
+}
+
+/// `#[serde(with = …)]` adapter for an OPTIONAL non-preserve table member (`? N: {* K => any}` →
+/// `Option<BTreeMap<K, AnyCbor>>`), paired with `#[serde(default)]`.
+pub mod natural_any_cbor_opt_btreemap {
+    use super::{AnyCbor, NaturalAnyCborDe, NaturalAnyCborSer};
+    use std::collections::BTreeMap;
+
+    pub fn serialize<K, S>(
+        value: &Option<BTreeMap<K, AnyCbor>>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        K: serde::Serialize + Ord,
+        S: serde::Serializer,
+    {
+        match value {
+            Some(m) => {
+                let wrapped: BTreeMap<&K, NaturalAnyCborSer> =
+                    m.iter().map(|(k, v)| (k, NaturalAnyCborSer(v))).collect();
+                serializer.serialize_some(&wrapped)
+            }
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, K, D>(deserializer: D) -> Result<Option<BTreeMap<K, AnyCbor>>, D::Error>
+    where
+        K: serde::Deserialize<'de> + Ord,
+        D: serde::Deserializer<'de>,
+    {
+        let opt = <Option<BTreeMap<K, NaturalAnyCborDe>> as serde::Deserialize>::deserialize(
+            deserializer,
+        )?;
+        Ok(opt.map(|m| m.into_iter().map(|(k, v)| (k, v.0)).collect()))
     }
 }
 

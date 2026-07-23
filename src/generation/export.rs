@@ -306,6 +306,16 @@ fn composed_runtime_static_files(
             any_cbor_rs.push_str(&std::fs::read_to_string(
                 cli.static_dir.join("any_cbor_json.rs"),
             )?);
+            // Preserve-only natural-JSON adapters for `any`-valued MAP members (OrderedHashMap): a
+            // `{* K => any}` member is `OrderedHashMap<K, AnyCbor>` under --preserve-encodings.
+            // `ordered_hash_map.rs` is emitted unconditionally under preserve (above), so the
+            // OrderedHashMap this fragment names is always in scope — this is the existing
+            // conditional-assembly mechanism, no parallel path.
+            if cli.preserve_encodings {
+                any_cbor_rs.push_str(&std::fs::read_to_string(
+                    cli.static_dir.join("any_cbor_json_preserve.rs"),
+                )?);
+            }
         }
         if cli.json_schema_export {
             any_cbor_rs.push_str(&std::fs::read_to_string(
