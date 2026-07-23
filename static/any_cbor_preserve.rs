@@ -163,12 +163,83 @@ impl AnyCbor {
         }
     }
 
+    /// The simple-value code of an `unassigned` special (0..=19 or 32..=255), else `None`. Needed by
+    /// the JSON surface's reverse mapping (there is no other way to read the code back out).
+    pub fn as_unassigned(&self) -> Option<u8> {
+        match self {
+            AnyCbor::Special(AnySpecial::Unassigned(v)) => Some(*v),
+            _ => None,
+        }
+    }
+
     pub fn is_null(&self) -> bool {
         matches!(self, AnyCbor::Special(AnySpecial::Null))
     }
 
     pub fn is_undefined(&self) -> bool {
         matches!(self, AnyCbor::Special(AnySpecial::Undefined))
+    }
+
+    // --- constructors (mode-paired with the non-preserve variant; SAME names/signatures). Each fills
+    // the DEFAULT encoding (`None`/`Canonical`), i.e. the encoding a Rust-constructed value carries:
+    // serialize (non-canonical) then emits the canonical smallest-width form, exactly like a value the
+    // generated code built itself. These are the value-building surface the JSON deserialize path, the
+    // wasm wrapper, and the emit-tests mint all construct through. ---
+
+    pub fn new_uint(value: u64) -> Self {
+        AnyCbor::UInt(value, None)
+    }
+
+    /// `value` must lie in the CBOR nint domain `-2^64..=-1`; out-of-domain is a debug-assert (no
+    /// clamping — the caller is responsible, mirroring the crate-wide "no silent coercion" stance).
+    pub fn new_nint(value: i128) -> Self {
+        debug_assert!(
+            (-(1i128 << 64)..=-1).contains(&value),
+            "AnyCbor::new_nint: {value} outside the CBOR nint domain -2^64..=-1"
+        );
+        AnyCbor::NInt(value, None)
+    }
+
+    pub fn new_bytes(bytes: Vec<u8>) -> Self {
+        AnyCbor::Bytes(bytes, StringEncoding::Canonical)
+    }
+
+    pub fn new_text(text: String) -> Self {
+        AnyCbor::Text(text, StringEncoding::Canonical)
+    }
+
+    pub fn new_array(elems: Vec<AnyCbor>) -> Self {
+        AnyCbor::Array(elems, LenEncoding::Canonical)
+    }
+
+    pub fn new_map(pairs: Vec<(AnyCbor, AnyCbor)>) -> Self {
+        AnyCbor::Map(pairs, LenEncoding::Canonical)
+    }
+
+    pub fn new_tag(tag: u64, inner: AnyCbor) -> Self {
+        AnyCbor::Tag(tag, Box::new(inner), None)
+    }
+
+    pub fn new_bool(b: bool) -> Self {
+        AnyCbor::Special(AnySpecial::Bool(b))
+    }
+
+    pub fn new_null() -> Self {
+        AnyCbor::Special(AnySpecial::Null)
+    }
+
+    pub fn new_undefined() -> Self {
+        AnyCbor::Special(AnySpecial::Undefined)
+    }
+
+    pub fn new_unassigned(code: u8) -> Self {
+        AnyCbor::Special(AnySpecial::Unassigned(code))
+    }
+
+    /// Canonical-width float: stores `None` per the `Float` slot's documented contract (emit the
+    /// canonical smallest-width form for a Rust-constructed value).
+    pub fn new_float(f: f64) -> Self {
+        AnyCbor::Special(AnySpecial::Float(f, None))
     }
 
     /// Byte-exact re-encoding (replays stored encodings). Never fails for a value produced by
