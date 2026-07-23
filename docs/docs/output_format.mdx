@@ -153,6 +153,42 @@ and inline MANDATORY tag rides a plain `inner_tag_encoding: Option<Sz>`. `--cano
 the tag's size, never its presence. A non-258 tag has no set-semantics registry entry, so a non-258
 tagged idiom stays a transparent optionally-tagged alias exactly as before.
 
+## The `any` type (`AnyCbor` runtime value)
+
+CDDL `any` matches any single well-formed CBOR item, so it lowers to a dedicated runtime type,
+`AnyCbor` — a structured enum over the CBOR data model (unsigned/negative integer, byte/text string,
+array, map, tag, and the major-type-7 specials: bool, null, undefined, unassigned simple, float).
+A crate whose spec uses `any` in any [supported position](current_capacities#the-any-type-loose-cbor)
+carries a generated `any_cbor.rs` runtime module (emitted only when the finalized types actually
+contain `any`; specs without it are byte-identical to before). An `any`-typed member (de)serializes
+through `AnyCbor` like any other field — it contributes no encoding metadata of its own (it carries
+its own), so the owner's length and key machinery is unchanged.
+
+`AnyCbor` comes in two flavors, matching the crate-wide `--preserve-encodings` split:
+
+- **Non-preserve** (default): value-level. Deserialize accepts any well-formed item; re-serialization
+  is canonical-ish (smallest integer widths, definite lengths, floats written `f64`), exactly as the
+  rest of a non-preserve crate behaves. Equality/ordering/hashing compare **value** (floats by bit
+  pattern so the relations stay total and NaN is self-consistent).
+- **Preserve** (`--preserve-encodings`): representational. Every value additionally carries the
+  encoding detail needed to re-emit the **original bytes byte-for-byte** — integer/tag argument
+  widths, string chunking, and array/map length encoding. Under `--canonical-form` the same value
+  serializes to RFC 8949 §4.2 deterministic encoding instead. Equality/ordering/hashing are
+  **representational** (two values with equal content but different encoding — `0x01` vs `0x1801`,
+  both the integer 1 — compare unequal), matching the `@used_as_key` preserve-struct precedent, so an
+  `AnyCbor` map key never silently collides. This total order by construction is why `any` is a legal
+  table domain (`{ * any => v }`) under both flavors.
+
+Both flavors deserialize without panicking on malformed input (truncated data, over-claimed lengths,
+reserved simple values, stray break codes all return a `DeserializeError`), never allocate from an
+untrusted claimed length, and — under [`--deserialize-depth-limit=N`](command_line_flags) — bound
+their own recursion through the same depth guard the generated composite deserializers use, so hostile
+deeply-nested CBOR in an `any` position returns a graceful error rather than overflowing the stack.
+
+The wasm wrapper and JSON/schema surfaces for `any` are not yet available; a spec whose types contain
+`any` is [rejected at generation time](current_capacities#the-any-type-loose-cbor) under `--wasm=true`
+or the JSON flags, with a message naming the workaround. Those surfaces arrive in a later phase.
+
 ## Non-empty containers
 
 An occurrence lower bound of exactly one — `[+ T]` and the equivalent `[1* T]` on arrays, `{+ k => v}`

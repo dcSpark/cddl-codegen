@@ -122,6 +122,27 @@ A top-level **range** rule whose window does not collapse exactly onto a Rust pr
 
 A top-level single-type **tag** rule is the exception: it always generates the tag-writing/tag-checking newtype wrapper (`pub struct Tagged(pub(crate) String)` whose serialize writes `write_tag(42)` and whose deserialize rejects a wrong tag with `TagMismatch`). This holds for *every* single-type inner — a primitive or named type (`tagged = #6.42(text)`, `uri = #6.32(tstr)`), a `bytes .cbor T` wrapper (`foo_bytes = #6.20(bytes .cbor foo)`), a `.default`-carrying inner (`#6.42(uint .default 5)` — the default has no meaning on an always-present standalone value and is dropped), and a ranged inner (`#6.42(uint .le 255)` or the literal-headed `#6.5(3..10)`, whether or not the range collapses exactly onto a rust primitive). A transparent `pub type` alias cannot carry a custom serialize impl, so an alias would silently drop the tag from that type's own standalone `to/from_cbor_bytes` API — a CBOR conformance bug. `@newtype` is therefore redundant (though harmless) on a tag rule. Tag rules whose body is a group (`rational = #6.30([...])`) already generate a struct that writes the tag and are unaffected.
 
+## The `any` type (loose CBOR)
+
+CDDL `any` (the prelude type matching any single well-formed CBOR item) is supported in every
+non-choice position: a struct-map member value (`{ 1: any }`), an array-record member (`[any, uint]`),
+a homogeneous array element (`[* any]`), a table domain and/or range (`{ * any => any }`,
+`{ * uint => any }`, `{ * any => uint }`), a top-level alias (`x = any`), and a tagged rule
+(`t = #6.11(any)`). It lowers to the `AnyCbor` runtime value — see
+[The `any` type](output_format#the-any-type-anycbor-runtime-value) for the runtime type, its
+value-vs-representational flavors, and self-carried encodings. Because `AnyCbor` has a total order by
+construction, `any` is a legal map-key/table domain in both preserve and non-preserve modes.
+
+Two limits apply today. **Surfaces**: only the Rust surface is generated. A spec whose types contain
+`any` is rejected gracefully at generation time under `--wasm=true` or the JSON flags
+(`--json-serde-derives` / `--json-schema-export`), each with a message naming the workaround
+(`--wasm=false`, or drop the JSON flags); the wasm wrapper and JSON/schema surfaces arrive in a later
+phase. **Type-choice arms**: `any` as a type-choice alternative (`a = any / tstr`, `a = [* any] / tstr`)
+is not yet supported and is rejected gracefully at generation — a last-position `any` arm needs forced
+backtracking semantics that also arrive in the later phase. Note the distinct construct `#`
+(`Type2::Any`, a bare `#` matching any item at the *grammar* level) stays unsupported and is a separate
+[Limitations](#unsupported-constructs) row.
+
 ## Recursive types
 
 Terminable recursive types are supported — a rule may reference itself through an occurrence that can terminate, e.g. `tree = [value: uint, children: [* tree]]` (an empty `children` ends the recursion). These generate and round-trip normally.
@@ -130,7 +151,7 @@ The generated deserializer is recursive-descent, so by default it has **no depth
 
 Consumers that deserialize **untrusted input** (e.g. on-chain data) should generate with [`--deserialize-depth-limit=N`](command_line_flags), which makes the generated deserializers return a graceful `DeserializeError` once nesting exceeds `N` instead of overflowing the stack. See the flag's documentation for the tradeoff (it also rejects legitimately deep documents past `N`).
 
-Depth is the only hostile-input class that needs an opt-in flag. The other classes are handled by the runtime (`cbor_event` 3.x): truncated input, over-claiming length headers, reserved simple values, and stray break codes all return a `DeserializeError` — no panic, and no allocation sized from an untrusted claimed length (an 8-byte header claiming gigabytes errors before any allocation).
+Depth is the only hostile-input class that needs an opt-in flag. The other classes are handled by the runtime (the pinned dcSpark `cbor_event` 3.x fork the generated `Cargo.toml` depends on): truncated input, over-claiming length headers, reserved simple values (the `0xfc`–`0xfe` heads — this rejection is specific to the pinned fork; stock crates.io `cbor_event` 3.2.0 admits them), and stray break codes all return a `DeserializeError` — no panic, and no allocation sized from an untrusted claimed length (an 8-byte header claiming gigabytes errors before any allocation).
 
 ## Multi-file specs, cross-crate dependencies & CDDL modules
 
@@ -162,7 +183,6 @@ This section is generated from [`cddl-matrix/matrix.json`](https://github.com/dc
 | Incremental group-choice extension (//=) | `tcpopts = (1: int); tcpopts //= (2: tstr)` | rejected gracefully at parse |
 | Incremental type-choice extension (/=) | `a = int; a /= tstr` | rejected gracefully at parse |
 | Generic group definition | `set<a> = (* a)` | panics generation |
-| any | `x = any` | generates but does not compile |
 | cbor-any | `x = cbor-any` | panics generation |
 | eb16 | `x = eb16` | panics generation |
 | eb64legacy | `x = eb64legacy` | panics generation |
