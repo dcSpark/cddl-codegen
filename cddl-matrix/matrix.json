@@ -647,9 +647,19 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen generates but does not compile (cargo check exit 101); wasm crate failed to compile (cargo test exit 101); ruby=ok rust=ok",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen rejected at parse/lex (exit 1)",
+            "status": "unsupported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles (no minted round-trip surface)",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm crate failed to compile (cargo test exit 1); no committed decode vectors (see catalog); ruby=ok rust=ok",
         "id": "prelude.any",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "emission": {
