@@ -217,17 +217,21 @@ fn scan_extern_import_seam(
     content: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crate::generation::extern_interface::{
-        EXTERN_INTERFACE_HEADER, EXTERN_INTERFACE_HEADER_PREFIX,
+        EXTERN_INTERFACE_HEADER, EXTERN_INTERFACE_HEADER_PREFIX, EXTERN_INTERFACE_HEADER_V2,
     };
     let first = content.lines().next().unwrap_or("").trim_end();
-    if first != EXTERN_INTERFACE_HEADER {
+    // Both v1 and v2 are accepted (ruling §10.7): v2 is the conditional bump for `any`-bearing
+    // exports, and this reader (A2+) understands the `any` spelling. A PRE-A2 reader accepts only v1,
+    // so an `any`-bearing v2 export fails loudly at ITS seam with the version diagnostic below.
+    if first != EXTERN_INTERFACE_HEADER && first != EXTERN_INTERFACE_HEADER_V2 {
         let msg = if first
             .trim_start()
             .starts_with(EXTERN_INTERFACE_HEADER_PREFIX)
         {
             format!(
                 "extern-interface file {} carries an unsupported version header {first:?}; this \
-                 cddl-codegen understands only `{EXTERN_INTERFACE_HEADER}`. Regenerate the \
+                 cddl-codegen understands `{EXTERN_INTERFACE_HEADER}` and \
+                 `{EXTERN_INTERFACE_HEADER_V2}`. Regenerate the \
                  dependency with a compatible cddl-codegen — the extern-interface seam is versioned.",
                 path.display()
             )

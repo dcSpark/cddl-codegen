@@ -471,6 +471,36 @@ fn strip_header(export_file: &str) -> String {
     format!("{rest}\n")
 }
 
+/// The conditional `v2` seam header (ruling §10.7): an extern-interface export whose finalized IR
+/// contains CDDL `any` bumps EVERY file to `v2`; an export with no `any` stays `v1`, so unaffected
+/// dep/consumer pairs keep working and an `any`-bearing export a PRE-A2 consumer reads fails loudly
+/// at its own version seam (a current A2+ reader accepts both — the reader edit in
+/// `api::scan_extern_import_seam`).
+#[test]
+fn extern_interface_v2_header_conditional_on_any() {
+    // any-bearing dep → every export file opens with v2.
+    let any_export = mint_export("meta = {* uint => any}\n", "anydep", "v2any");
+    assert!(!any_export.is_empty(), "any dep must emit at least one file");
+    for (path, content) in &any_export {
+        assert_eq!(
+            content.lines().next().unwrap_or(""),
+            "; _CDDL_CODEGEN_EXTERN_INTERFACE_ v2",
+            "an any-bearing export file {path} must carry the v2 seam header"
+        );
+    }
+
+    // no-any dep → stays v1 (unaffected pairs compatible).
+    let plain_export = mint_export("thing = {1: uint, 2: text}\n", "plaindep", "v2plain");
+    assert!(!plain_export.is_empty());
+    for (path, content) in &plain_export {
+        assert_eq!(
+            content.lines().next().unwrap_or(""),
+            "; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1",
+            "a no-any export file {path} must stay on the v1 seam header"
+        );
+    }
+}
+
 /// The plain-group acceptance criterion (the proposal's, CML-shaped): a consumer that hand-copied a
 /// dependency's plain groups swaps to `--extern-import` with ZERO generated-output diff. The dep
 /// (`dep-groups`) carries a record-member plain group, three group-choice-variant plain groups with

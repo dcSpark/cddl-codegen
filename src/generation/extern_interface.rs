@@ -609,6 +609,13 @@ fn render_f64(f: f64) -> String {
 /// carries its seam.
 pub(crate) const EXTERN_INTERFACE_HEADER: &str = "; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1";
 
+/// The `v2` seam header, emitted CONDITIONALLY — only for an export that actually contains the
+/// loose-CBOR `any` spelling (DESIGN ruling §10.7). An export with no `any` stays `v1`, so
+/// unaffected dep/consumer pairs keep working; an `any`-bearing export a PRE-A2 consumer reads fails
+/// loudly at the version seam (`api::scan_extern_import_seam`) with the "regenerate the dependency"
+/// message rather than confusingly downstream. A current (A2+) reader accepts both.
+pub(crate) const EXTERN_INTERFACE_HEADER_V2: &str = "; _CDDL_CODEGEN_EXTERN_INTERFACE_ v2";
+
 /// The version-agnostic prefix of the seam header (everything before the ` v1` version token). A
 /// flag-fed file whose first line starts with this prefix but is not exactly [`EXTERN_INTERFACE_HEADER`]
 /// carries an UNSUPPORTED version (distinct diagnostic from a MISSING header); see the consumer-side
@@ -685,7 +692,10 @@ pub(crate) fn extern_interface_files(
     cli: &Cli,
 ) -> BTreeMap<String, String> {
     let (dep_key, included, excluded) = project_extern_interface(types, cli);
-    render_export_files(&dep_key, &included, &excluded)
+    // Conditional v2 header (ruling §10.7): bump the whole export to v2 exactly when its IR contains
+    // CDDL `any` (the new spelling). Whole-export granularity — an `any`-bearing dep's every file
+    // carries v2, so a pre-A2 consumer fails at the seam regardless of which file it imports.
+    render_export_files(&dep_key, &included, &excluded, types.uses_any_cbor())
 }
 
 /// One entry of the dep-side compiled self-check (commit 5): the exported name, its scope-path
@@ -1213,7 +1223,13 @@ fn render_export_files(
     dep_key: &str,
     included: &BTreeMap<RustIdent, IncludedRule>,
     excluded: &BTreeMap<RustIdent, ExcludedRule>,
+    contains_any: bool,
 ) -> BTreeMap<String, String> {
+    let header = if contains_any {
+        EXTERN_INTERFACE_HEADER_V2
+    } else {
+        EXTERN_INTERFACE_HEADER
+    };
     // scope components -> sorted (source ident -> line / reason).
     let mut rules_by_scope: BTreeMap<Vec<String>, BTreeMap<String, String>> = BTreeMap::new();
     let mut excluded_by_scope: BTreeMap<Vec<String>, BTreeMap<String, String>> = BTreeMap::new();
@@ -1244,7 +1260,7 @@ fn render_export_files(
         } else {
             format!("{}/mod.cddl", components.join("/"))
         };
-        let mut content = String::from(EXTERN_INTERFACE_HEADER);
+        let mut content = String::from(header);
         content.push('\n');
         if let Some(records) = excluded_by_scope.get(components) {
             for (source, reason) in records {
