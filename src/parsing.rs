@@ -7,9 +7,8 @@ use crate::comment_ast::{DuplicatesPolicy, RuleMetadata, merge_metadata, metadat
 use crate::intermediate::{
     AliasIdent, AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant,
     EnumVariantData, FixedValue, FloatWindow, GenericDef, GenericInstance, IntermediateTypes,
-    ModuleScope,
-    PlainGroupInfo, Primitive, Representation, RustField, RustIdent, RustRecord, RustStruct,
-    RustStructType, RustType, VariantIdent, reserved_pin_rejection,
+    ModuleScope, PlainGroupInfo, Primitive, Representation, RustField, RustIdent, RustRecord,
+    RustStruct, RustStructType, RustType, VariantIdent, reserved_pin_rejection,
 };
 use crate::utils::{
     append_number_if_duplicate, convert_to_camel_case, convert_to_snake_case,
