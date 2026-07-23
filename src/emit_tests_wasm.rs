@@ -351,8 +351,9 @@ fn wasm_value(
         // `wasm_arg` where the wrapper name survives; a resolved `Map(_,_)` here has lost it.
         ConceptualRustType::Map(_, _) => None,
         ConceptualRustType::Rust(ident) => wasm_named(types, ident, mv, scoped, cli),
-        // `any` has no wasm ctor mint path in A2 (silent skip, like Fixed/Alias). Reachable only
-        // via the shared type walk — specs using `any` reject under --wasm before emit-tests-wasm.
+        // `any` has no wasm ctor mint path (silent skip, like Fixed/Alias): the wasm `AnyCbor`
+        // wrapper is byte-oriented with no value-destructuring ctor, so a minted `any` value has no
+        // wasm-side round-trip differential — the rust-leg mint covers it. Lifting follows demand.
         ConceptualRustType::Fixed(_)
         | ConceptualRustType::Alias(_, _)
         | ConceptualRustType::Any => None,

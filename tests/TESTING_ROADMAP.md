@@ -30,11 +30,15 @@ bug to fix — closing the loop until coverage is complete and self-checking. "W
 load-bearing: some constructs (`#`/`cbor-any`, `float16`, socket plugs, …) are design decisions to
 *exclude*, not holes to grind toward 100% — and the exclude list is revisable: `any` (the prelude
 name) moved OFF it 2026-07-23 (maintainer-ruled feature). Its `AnyCbor` runtime type plus first-class
-support in every non-choice position (member / homogeneous array / table domain-range / top-level
-alias / tagged), depth-guarded and matrix-`supported` on the rust leg, are shipped. Still to follow:
-the wasm wrapper and JSON/schema surfaces (an `any`-using spec is rejected gracefully under
-`--wasm=true` or the JSON flags until then) and type-choice `any` arms (forced-backtracking catch-all
-unions) — see the `any` type-choice entry in `cddl-matrix/ROADMAP.md`.
+support in every position (member / homogeneous array / table domain-range / top-level alias / tagged /
+last-position type-choice arm) are shipped across the rust, wasm, and JSON/schema surfaces,
+depth-guarded. The permanent exclusions around it stay: `#` (`Type2::Any`), `cbor-any`, `@newtype` and
+control operators on `any`, and non-last bare `any` choice arms (forced-backtracking catch-all unions
+put the catch-all last, so an earlier one is unreachable dead code) — see the `any` type-choice entry
+in `cddl-matrix/ROADMAP.md`. One deferred coverage item remains: the wasm emit-tests minter has no
+`any` ctor path (`src/emit_tests_wasm.rs`, `Any => None`), so a minted `any` value gets no wasm-side
+round-trip differential (the rust leg's mint covers it); lifting it follows demand, since the wasm
+`AnyCbor` wrapper is byte-oriented and exposes no value-destructuring constructor.
 
 The value is in removing the human from that loop without losing trust: the gates must be strict
 enough that "the matrix says this feature is supported" *means* it generates, compiles (rust **and**
