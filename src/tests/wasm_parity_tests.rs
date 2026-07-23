@@ -270,6 +270,18 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
          instance under the json flags): its integration gate generates with --wasm=false and \
          injects hand-written extern defs, so there is no generated wasm surface to differential",
     ),
+    (
+        "any-positions",
+        "rust-only loose-CBOR `any` positions fixture (member / array / table / alias / tagged): a \
+         spec whose IR contains `any` is gracefully rejected under --wasm=true (the AnyCbor wasm \
+         wrapper is phase A3), so there is no generated wasm surface to differential",
+    ),
+    (
+        "any-shadow",
+        "rust-only interception fixture (`any = uint` shadows the prelude): pins that a user rule \
+         named `any` behaves as today; no `any` lowering, and its integration coverage is the \
+         `user_rule_named_any_shadows_the_prelude` unit test, not a wasm differential",
+    ),
 ];
 
 /// Only these `.rs` basenames may appear under `rust/src/generated/` (default/json profiles); only
