@@ -1085,8 +1085,9 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
     tests; a bare `type_name` contains is deliberately NOT used, since single-letter type names
     like `T` would vacuously match "TagMismatch"). Two stale-guarded ledgers hold the honest
     exceptions: `HEADER_MUTANT_ACCEPT_SKIP` — a mutant the row's spec genuinely accepts WITHOUT any
-    accept vector evidencing that major (an `any`-typed row, an unsampled choice arm; EMPTY at
-    HEAD; `trunc_head` can never be here, asserted as a hard error) — and
+    accept vector evidencing that major (an `any`-typed row, an unsampled choice arm; one resident
+    at HEAD: `(prelude.any, wrong_major)`, since `x = any` accepts every major by definition;
+    `trunc_head` can never be here, asserted as a hard error) — and
     `HEADER_MUTANT_LOCATION_SKIP` — a rejection carrying no location: EMPTY at HEAD now that
     embedded/plain-group header scaffolding and newtype-wrapper container reads are annotated, with
     the locationless `from_cbor_bytes` `TrailingData` path the only known-legitimate resident (no
