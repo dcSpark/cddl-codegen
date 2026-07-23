@@ -75,6 +75,14 @@ fn all_supported_constructs_generate() {
         "no supported fixtures in {dir:?} (run `bun run project_robustness.ts`)"
     );
 
+    // Rust-only matrix-supported constructs: the matrix verdict is gated on the rust leg
+    // (`verify.ts` probes `--wasm=false`), and a few constructs are deliberately generated for the
+    // rust surface only, with `--wasm=true` a GRACEFUL generation-time rejection naming the plan. On
+    // the `--wasm=true` leg these expect `Ok(Err(_))` (graceful reject) instead of `Ok(Ok(_))` — a
+    // panic or an unexpected success both stay failures. `any` (the `AnyCbor` lowering) is such a
+    // construct: its wasm wrapper is loose-CBOR phase A3.
+    const WASM_GRACEFUL_REJECT: &[&str] = &["prelude.any"];
+
     // catch_unwind (without touching the global panic hook, to avoid racing other tests) so we report
     // *all* failing constructs at once rather than aborting on the first.
     let mut failures = Vec::new();
@@ -90,10 +98,15 @@ fn all_supported_constructs_generate() {
                 "--wasm",
                 wasm,
             ]);
+            let wasm_reject = wasm == "true" && WASM_GRACEFUL_REJECT.contains(&id);
             match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 crate::api::generated_strings(&cli)
             })) {
+                Ok(Ok(_)) if wasm_reject => failures.push(format!(
+                    "{id} (--wasm {wasm}): expected a graceful wasm rejection but generation SUCCEEDED"
+                )),
                 Ok(Ok(_)) => {}
+                Ok(Err(_)) if wasm_reject => {}
                 Ok(Err(e)) => failures.push(format!("{id} (--wasm {wasm}): error: {e}")),
                 Err(_) => failures.push(format!("{id} (--wasm {wasm}): PANIC")),
             }
