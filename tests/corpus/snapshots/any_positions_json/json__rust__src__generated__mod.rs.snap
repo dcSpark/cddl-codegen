@@ -28,6 +28,8 @@ impl From<Tagged> for crate::generated::any_cbor::AnyCbor {
 pub enum ChoiceLastAny {
     U64(u64),
     Text(String),
+    #[serde(with = "crate::generated::any_cbor::natural_any_cbor")]
+    #[schemars(schema_with = "crate::generated::any_cbor::natural_any_cbor_schema")]
     Any(crate::generated::any_cbor::AnyCbor),
 }
 
@@ -47,6 +49,8 @@ impl ChoiceLastAny {
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub enum ChoiceTaggedAny {
+    #[serde(with = "crate::generated::any_cbor::natural_any_cbor")]
+    #[schemars(schema_with = "crate::generated::any_cbor::natural_any_cbor_schema")]
     Any(crate::generated::any_cbor::AnyCbor),
     Text(String),
 }
@@ -65,6 +69,8 @@ pub type HomogArray = Vec<crate::generated::any_cbor::AnyCbor>;
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct MemberArray {
+    #[serde(with = "crate::generated::any_cbor::natural_any_cbor")]
+    #[schemars(schema_with = "crate::generated::any_cbor::natural_any_cbor_schema")]
     pub any: crate::generated::any_cbor::AnyCbor,
     pub index_1: u64,
 }
@@ -76,7 +82,23 @@ impl MemberArray {
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct MemberHomog {
+    pub key_1: u64,
+    #[serde(with = "crate::generated::any_cbor::natural_any_cbor_seq")]
+    #[schemars(schema_with = "crate::generated::any_cbor::natural_any_cbor_seq_schema")]
+    pub key_2: Vec<crate::generated::any_cbor::AnyCbor>,
+}
+
+impl MemberHomog {
+    pub fn new(key_1: u64, key_2: Vec<crate::generated::any_cbor::AnyCbor>) -> Self {
+        Self { key_1, key_2 }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct MemberMap {
+    #[serde(with = "crate::generated::any_cbor::natural_any_cbor")]
+    #[schemars(schema_with = "crate::generated::any_cbor::natural_any_cbor_schema")]
     pub key_1: crate::generated::any_cbor::AnyCbor,
     pub key_2: Option<u64>,
 }
@@ -84,6 +106,20 @@ pub struct MemberMap {
 impl MemberMap {
     pub fn new(key_1: crate::generated::any_cbor::AnyCbor) -> Self {
         Self { key_1, key_2: None }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct MemberTable {
+    pub key_1: u64,
+    #[serde(with = "crate::generated::any_cbor::natural_any_cbor_btreemap")]
+    #[schemars(schema_with = "crate::generated::any_cbor::natural_any_cbor_map_schema")]
+    pub key_2: BTreeMap<u64, crate::generated::any_cbor::AnyCbor>,
+}
+
+impl MemberTable {
+    pub fn new(key_1: u64, key_2: BTreeMap<u64, crate::generated::any_cbor::AnyCbor>) -> Self {
+        Self { key_1, key_2 }
     }
 }
 
@@ -118,7 +154,7 @@ impl serde::Serialize for Tagged {
     where
         S: serde::Serializer,
     {
-        self.0.serialize(serializer)
+        crate::generated::any_cbor::natural_any_cbor::serialize(&self.0, serializer)
     }
 }
 
@@ -127,9 +163,7 @@ impl<'de> serde::de::Deserialize<'de> for Tagged {
     where
         D: serde::de::Deserializer<'de>,
     {
-        let inner = <crate::generated::any_cbor::AnyCbor as serde::de::Deserialize>::deserialize(
-            deserializer,
-        )?;
+        let inner = crate::generated::any_cbor::natural_any_cbor::deserialize(deserializer)?;
         Ok(Self::new(inner))
     }
 }
@@ -140,11 +174,11 @@ impl schemars::JsonSchema for Tagged {
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        <crate::generated::any_cbor::AnyCbor as schemars::JsonSchema>::json_schema(generator)
+        crate::generated::any_cbor::natural_any_cbor_schema(generator)
     }
 
     fn inline_schema() -> bool {
-        <crate::generated::any_cbor::AnyCbor as schemars::JsonSchema>::inline_schema()
+        false
     }
 }
 

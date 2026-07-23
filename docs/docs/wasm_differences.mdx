@@ -194,8 +194,14 @@ Its v1 surface is intentionally byte-oriented rather than field-destructuring:
 - `kind() -> AnyCborKind` — a c-style `AnyCborKind` enum (variants `UInt`, `NInt`, `Bytes`, `Text`,
   `Array`, `Map`, `Tag`, `Bool`, `Null`, `Undefined`, `Unassigned`, `Float`) for checking which CBOR
   item is held, mirroring the `FooKind` pattern used for [enums](#enums).
-- `to_json()` / `from_json(json: &str)` — emitted only under `--json-serde-derives`, rendering the
-  [JSON representation of CBOR](output_format#the-any-type-anycbor-runtime-value).
+- `to_json()` / `from_json(json: &str)` — emitted only under `--json-serde-derives`, per the
+  [`any` JSON representation](output_format#the-any-type-anycbor-runtime-value). The **`AnyCbor` wasm
+  class itself** renders the *tagged value codec*; every **other** generated wasm type that *contains*
+  an `any` — a member, a table range, a list element, an `any` choice arm — renders its `to_json()`
+  **naturally**, since its `to_json()` is `serde_json` over the rust value and the rust serde flip
+  carries through. A generated type's `to_json()` is therefore **fallible on data**: a contained `any`
+  holding bytes, a tag, `undefined`, a non-finite float, or a complex/colliding map key makes it
+  return a `JsError` naming the node kind.
 
 Value-destructuring accessors (`as_uint()`, `as_bytes()`, …) are deliberately **not** on the wasm
 class in v1 (they follow demand): to inspect a value, read `kind()` and take its bytes or JSON.

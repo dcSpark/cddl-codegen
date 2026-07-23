@@ -1037,6 +1037,43 @@ pub(super) fn codegen_struct(
             if let Some(comment) = &field.rule_metadata.comment {
                 codegen_field.doc(comment);
             }
+            // Loose-CBOR Phase B (R1): a member CARRYING `any` renders its JSON NATURALLY (not
+            // through `AnyCbor`'s tagged codec). Route the serde/schemars derives on this field
+            // through the matching natural adapter. Skipped when the struct owns a custom json impl
+            // (no derives to steer). Positions covered: a bare `any` (`Direct`/`Optional`), a
+            // homogeneous `[* any]` array member (`Seq`), and a non-preserve `{* K => any}` table
+            // member with a stringifiable (non-`any`) key (`Map`). A preserve-mode map member keeps
+            // the tagged element rendering for now (the `OrderedHashMap` adapter is a later item).
+            if !config.custom_json {
+                use super::NaturalAnyPosition;
+                let resolves_any = |ty: &crate::intermediate::RustType| {
+                    matches!(
+                        ty.conceptual_type.resolve_alias_shallow(),
+                        ConceptualRustType::Any
+                    )
+                };
+                let position = match field.rust_type.conceptual_type.resolve_alias_shallow() {
+                    ConceptualRustType::Any if field.optional => Some(NaturalAnyPosition::Optional),
+                    ConceptualRustType::Any => Some(NaturalAnyPosition::Direct),
+                    ConceptualRustType::Array(inner) if !field.optional && resolves_any(inner) => {
+                        Some(NaturalAnyPosition::Seq)
+                    }
+                    ConceptualRustType::Map(k, v)
+                        if !field.optional
+                            && !cli.preserve_encodings
+                            && resolves_any(v)
+                            && !resolves_any(k) =>
+                    {
+                        Some(NaturalAnyPosition::Map)
+                    }
+                    _ => None,
+                };
+                if let Some(position) = position {
+                    for annotation in super::natural_any_serde_annotations(cli, position) {
+                        codegen_field.annotation(annotation);
+                    }
+                }
+            }
             native_struct.push_field(codegen_field);
         } else if field.optional && field.rust_type.is_fixed_value() {
             // An OPTIONAL fixed value carries exactly one bit — present or absent — so it needs a
