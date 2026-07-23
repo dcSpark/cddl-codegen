@@ -3810,15 +3810,15 @@ fn flag_value_rejects_canonical_without_preserve() {
     );
 }
 
-/// A spec whose finalized IR lowers CDDL `any` to the `AnyCbor` runtime type must be gracefully
-/// rejected under `--wasm=true` and under the JSON flags (loose-CBOR A2 is rust-only; the wasm
-/// wrapper and serde/schemars impls are phase A3). Pins the rejection AND its message so the guard
-/// can't silently become a no-op, and confirms the same input with `--wasm=false` and no JSON flags
-/// is accepted — so the rejection is specific to the surface flags, not the `any` input itself.
+/// A spec whose finalized IR lowers CDDL `any` to the `AnyCbor` runtime type is gracefully rejected
+/// under `--wasm=true` (the wasm wrapper class is phase A3 WP3), but ACCEPTED under the JSON flags
+/// (the serde/schemars impls landed in A3 WP2). Pins the wasm rejection AND its message so the guard
+/// can't silently become a no-op, and pins the json acceptance baseline so a future regression that
+/// re-adds a json guard is caught. (WP3 finishes the retirement, flipping the wasm leg positive.)
 #[test]
-fn flag_value_rejects_any_under_wasm_and_json() {
+fn flag_value_rejects_any_under_wasm_but_accepts_json() {
     // tests/robustness/any_member.cddl is `a = [any]` — its IR contains `Any`. `Cli` isn't `Clone`,
-    // so build a fresh rust-only base per case and flip exactly the surface flag under test.
+    // so build a fresh base per case and flip exactly the surface flag under test.
     let any_cli = |wasm: bool, serde: bool, schemars: bool| crate::cli::Cli {
         input: std::path::PathBuf::from("tests/robustness/any_member.cddl"),
         output: std::path::PathBuf::from("unused"),
@@ -3837,14 +3837,16 @@ fn flag_value_rejects_any_under_wasm_and_json() {
         "wasm rejection message should name wasm + AnyCbor, got: {msg}"
     );
 
-    // JSON flags (serde OR schemars) → rejected, message names JSON.
-    for json_cli in [any_cli(false, true, false), any_cli(false, false, true)] {
-        let msg = crate::api::with_types(&json_cli, |_, _| ())
-            .expect_err("`any` under a JSON flag should be rejected")
-            .to_string();
+    // JSON flags (serde, schemars, or both) → ACCEPTED (WP2 delivered the impls). The static
+    // assembly appends the serde/schemars fragments; the IR build itself must not reject.
+    for json_cli in [
+        any_cli(false, true, false),
+        any_cli(false, false, true),
+        any_cli(false, true, true),
+    ] {
         assert!(
-            msg.contains("JSON"),
-            "json rejection message should name JSON, got: {msg}"
+            crate::api::with_types(&json_cli, |_, _| ()).is_ok(),
+            "`any` under a JSON flag should be accepted (A3 WP2 delivered the serde/schemars surface)"
         );
     }
 

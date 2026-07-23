@@ -299,6 +299,19 @@ fn composed_runtime_static_files(
                 cli.static_dir.join("any_cbor_non_preserve.rs"),
             )?);
         }
+        // JSON companions — the mode-agnostic serde + schemars impls, appended under the same flags
+        // as the ordered_hash_map ones (a single fragment serves both preserve/non-preserve because
+        // it is written against the `kind()`/`as_*`/`new_*` mode-independent surface).
+        if cli.json_serde_derives {
+            any_cbor_rs.push_str(&std::fs::read_to_string(
+                cli.static_dir.join("any_cbor_json.rs"),
+            )?);
+        }
+        if cli.json_schema_export {
+            any_cbor_rs.push_str(&std::fs::read_to_string(
+                cli.static_dir.join("any_cbor_schemars.rs"),
+            )?);
+        }
         out.push((
             "any_cbor.rs".to_owned(),
             rustfmt_generated_string(&any_cbor_rs)?.into_owned(),

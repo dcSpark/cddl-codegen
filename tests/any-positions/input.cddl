@@ -1,7 +1,9 @@
-; Loose-CBOR `any` positions, all rust-only (--wasm=false): every position that lowers CDDL `any`
-; to the AnyCbor static-runtime type. Snapshotted under default / preserve / preserve+canonical by
-; the `whole_program` suite (any-using specs reject under --wasm=true and the JSON flags, which is
-; why this lives here rather than in the all-profile feature corpus).
+; Loose-CBOR `any` positions: every position that lowers CDDL `any` to the AnyCbor static-runtime
+; type. Snapshotted under default / preserve / preserve+canonical / json by the `whole_program`
+; suite. An any-using spec still rejects under --wasm=true (the wasm AnyCbor wrapper is loose-CBOR
+; phase A3 WP3), which is why this lives here (all legs pass --wasm=false) rather than in the
+; all-profile feature corpus. The JSON flags are accepted (A3 WP2 delivered the serde/schemars
+; surface — see the `any_positions_json` snapshot leg).
 ;
 ; Non-choice positions (A2): member value, array element, table domain/range, top-level alias, tag.
 ; Type-choice-arm positions (A3): a BARE `any` catch-all in LAST position (forced-backtracking

@@ -95,8 +95,14 @@ toml = "0.8"
 # Harness-side ONLY (never a generated-crate dep): `recombination_tests` parses the projected
 # `tests/recomb/ingredients.json` (cddl-matrix/project_recombination.ts). Already in-tree
 # transitively (via the `cddl` validator), so this adds no lockfile weight. Navigated via
-# `serde_json::Value` — no serde derives of our own.
+# `serde_json::Value` — no serde derives of our own. Also drives the `any_cbor_tests` json shim,
+# which compiles the shipped `static/any_cbor_json.rs` fragment to pin the JSON round-trip laws.
 serde_json = "1"
+# Harness-side ONLY (never a generated-crate dep): the `any_cbor_tests` json shim `include!`s
+# `static/any_cbor_json.rs`, whose manual serde impls reference `serde` (traits) + `#[serde(untagged)]`
+# derive. Generated crates get this same dep under `--json-serde-derives` (cargo_manifest.rs); it is
+# already in-tree transitively (via serde_json), so this adds no lockfile weight.
+serde = { version = "1", features = ["derive"] }
 # Harness-side ONLY: `gate_cache` content-addresses generated-crate trees (memoize-and-skip for
 # the nested-cargo gates). Already in-tree transitively, so this adds no lockfile weight.
 sha2 = "0.10"
