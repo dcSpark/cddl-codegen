@@ -1321,6 +1321,26 @@ impl GenerationScope {
                         }
                     };
                 }
+                // `any` deserializes via `AnyCbor::deserialize` (self-delimiting; leaves the cursor at
+                // the item's end). Same composition as a plain Rust struct's `.deserialize()`, minus
+                // owner-encoding threading. The type is named through the common-import glue so
+                // `--export-static-crate` / `--common-import-override` resolve it (no `use` needed).
+                SerializingRustType::Root(ConceptualRustType::Any, _cfg) => {
+                    if config.optional_field {
+                        deser_code.content.line("read_len.read_elems(1)?;");
+                        deser_code.read_len_used = true;
+                        deser_code.throws = true;
+                    }
+                    let final_expr_value = format!(
+                        "{}::any_cbor::AnyCbor::deserialize({deserializer_name})",
+                        cli.common_import_rust()
+                    );
+                    deser_code.content.line(&final_result_expr_complete(
+                        &mut deser_code.throws,
+                        config.final_exprs,
+                        &final_expr_value,
+                    ));
+                }
                 SerializingRustType::Root(ConceptualRustType::Rust(ident), type_cfg) => {
                     // check for type-level @custom_deserialize
                     if let Some(custom_deserialize) = &types
@@ -2389,6 +2409,8 @@ impl GenerationScope {
         match field_type {
             ConceptualRustType::Fixed(_) => true,
             ConceptualRustType::Primitive(_) => true,
+            // `AnyCbor` always has a hand-written `Deserialize` impl in the static runtime.
+            ConceptualRustType::Any => true,
             ConceptualRustType::Rust(ident) => {
                 types.is_enum(ident) || self.deserialize_generated(ident)
             }

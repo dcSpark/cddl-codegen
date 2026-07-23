@@ -1003,6 +1003,12 @@ impl GenerationScope {
             if types.uses_pair_map() || self.requested_pair_map {
                 self.rust_lib().raw("pub mod pair_map;");
             }
+            // only crates that actually use CDDL `any` pull in the AnyCbor runtime — keeps every
+            // non-`any` crate's output byte-identical (usage-gating). Present in BOTH modes (the
+            // non-preserve variant is a distinct fragment), so gated on usage alone, not preserve.
+            if types.uses_any_cbor() {
+                self.rust_lib().raw("pub mod any_cbor;");
+            }
         }
         if cli.preserve_encodings {
             self.rust_lib().raw("extern crate derivative;");
@@ -2557,6 +2563,10 @@ fn encoding_fields_impl(
                 _ => vec![],
             }
         }
+        // `any` is self-carried: the `AnyCbor` value stores its own encodings, so it contributes no
+        // owner encoding fields (the member's ordinary KEY encoding slot mints separately via
+        // `key_encoding_field`, so it is unaffected). Mirrors the `Rust(ident)` self-carried case.
+        SerializingRustType::Root(ConceptualRustType::Any, _cfg) => vec![],
         SerializingRustType::EncodingOperation(CBOREncodingOperation::Tagged(tag), child) => {
             // This tag is the (tag_depth + 1)th level crossed on this member name; its member keeps
             // `tag` at level 1 and gains a numeric infix deeper, so stacked tags don't collide.

@@ -132,6 +132,7 @@ fn composed_runtime_static_files(
     include_non_empty_map: bool,
     include_ordered_set: bool,
     include_pair_map: bool,
+    include_any_cbor: bool,
 ) -> std::io::Result<Vec<(String, String)>> {
     let mut out = Vec::new();
 
@@ -252,6 +253,42 @@ fn composed_runtime_static_files(
         out.push((
             "pair_map.rs".to_owned(),
             rustfmt_generated_string(&pair_map_rs)?.into_owned(),
+        ));
+    }
+
+    // any_cbor.rs (the AnyCbor runtime — the lowering of CDDL `any`). Own-module route, mirroring
+    // ordered_hash_map: the mode-appropriate fragment concat, emitted only when the finalized IR
+    // contains `any`. The fragments reference the serialization prelude (StringEncoding/LenEncoding/
+    // sz_max/Deserialize/local Serialize) and error types, so the module opens with the same
+    // `super::…` imports the standalone serialization prelude uses — in-crate `super` is
+    // `generated`, and under `--export-static-crate` it is the target crate's flat module dir.
+    // The mode split follows the serialization prelude's own: preserve carries the encoding-bearing
+    // base + exactly one canonical fragment; non-preserve is the plain structural variant.
+    if include_any_cbor {
+        let mut any_cbor_rs = String::from(
+            "use super::error::{DeserializeError, DeserializeFailure};\n\
+             use super::serialization::*;\n\n",
+        );
+        if cli.preserve_encodings {
+            any_cbor_rs.push_str(&std::fs::read_to_string(
+                cli.static_dir.join("any_cbor_preserve.rs"),
+            )?);
+            let canonical_fragment = if cli.canonical_form {
+                "any_cbor_preserve_force_canonical.rs"
+            } else {
+                "any_cbor_preserve_non_force_canonical.rs"
+            };
+            any_cbor_rs.push_str(&std::fs::read_to_string(
+                cli.static_dir.join(canonical_fragment),
+            )?);
+        } else {
+            any_cbor_rs.push_str(&std::fs::read_to_string(
+                cli.static_dir.join("any_cbor_non_preserve.rs"),
+            )?);
+        }
+        out.push((
+            "any_cbor.rs".to_owned(),
+            rustfmt_generated_string(&any_cbor_rs)?.into_owned(),
         ));
     }
 
@@ -780,6 +817,7 @@ impl GenerationScope {
                 types.uses_non_empty_map() || self.requested_non_empty_map,
                 types.uses_ordered_set() || self.requested_ordered_set,
                 types.uses_pair_map() || self.requested_pair_map,
+                types.uses_any_cbor(),
             )?;
             for (filename, content) in &runtime_files {
                 let rel_path = format!("rust/src/generated/{filename}");
@@ -857,7 +895,7 @@ impl GenerationScope {
         if let Some(export_crate) = &cli.export_static_crate {
             let export_dir = export_crate.join("src");
             std::fs::create_dir_all(&export_dir)?;
-            let runtime_files = composed_runtime_static_files(cli, true, true, true, true)?;
+            let runtime_files = composed_runtime_static_files(cli, true, true, true, true, true)?;
             for (filename, content) in &runtime_files {
                 let path = export_dir.join(filename);
                 let is_new = !path.exists();

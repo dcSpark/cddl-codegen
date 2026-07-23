@@ -28,6 +28,8 @@ pub(crate) fn bounds_check_expr_rust_type(ty: &RustType, e: &str) -> Option<Stri
         ConceptualRustType::Alias(_, _) => unreachable!(),
         // RustType is covered by passed in ctor
         ConceptualRustType::Rust(_) |
+        // `any` carries no value bounds (control operators on `any` are rejected)
+        ConceptualRustType::Any |
         // Optional is not passed into ctor, but instead set later
         ConceptualRustType::Optional(_) |
         // FixedValue has no field associated with it

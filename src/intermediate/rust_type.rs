@@ -543,6 +543,19 @@ impl RustType {
                     FixedValue::Bool(_) => CBORType::Special,
                 }],
                 ConceptualRustType::Primitive(p) => p.cbor_types(),
+                // `any` accepts every well-formed CBOR item, so it starts as any major type. A
+                // type-choice discriminator must treat it as overlapping everything (which is why
+                // `any` is only ever a LAST/catch-all arm — A3; A2 rejects it in choice position).
+                ConceptualRustType::Any => vec![
+                    CBORType::UnsignedInteger,
+                    CBORType::NegativeInteger,
+                    CBORType::Bytes,
+                    CBORType::Text,
+                    CBORType::Array,
+                    CBORType::Map,
+                    CBORType::Tag,
+                    CBORType::Special,
+                ],
                 ConceptualRustType::Rust(ident) => {
                     let rust_struct = types.rust_struct(ident).unwrap();
                     if rust_struct.tag.is_some() && rust_struct.tag_optional() {
@@ -740,6 +753,15 @@ impl RustType {
             }
             _ => false,
         }
+    }
+
+    /// Whether this type, at ANY nesting level, contains CDDL `any` (the `AnyCbor` runtime type), so
+    /// `export`/import wiring pulls in the `any_cbor` runtime module + `AnyCbor` import only for
+    /// crates that need it (keeping every non-`any` crate's output byte-identical). Recurses into
+    /// container inners AND the `Alias` base (a top-level `x = any` registers a transparent alias
+    /// whose base is `Any`).
+    pub fn contains_any_cbor(&self) -> bool {
+        self.conceptual_type.contains_any_cbor()
     }
 
     /// Whether this type carries a value window (integer OR float) that a constructor/setter must
@@ -1053,6 +1075,10 @@ pub enum ConceptualRustType {
     Map(Box<RustType>, Box<RustType>),
     // Alias for another type
     Alias(AliasIdent, Box<ConceptualRustType>),
+    // CDDL `any` — a structured, self-describing CBOR value lowered to the static-runtime
+    // `AnyCbor` type. Self-carried encodings (contributes no owner encoding fields). The rust
+    // token is import-glued (`<common>::any_cbor::AnyCbor`) via `for_rust_member`.
+    Any,
     // TODO: for non-table-type ones we could define a RustField(Ident, RustType) and then
     // a variant here Struct(Vec<RustField>) and delegate field/argument generation to
     // RustField so that we could basically expand them and not care about having to generate
@@ -1090,6 +1116,9 @@ impl ConceptualRustType {
         match self {
             Self::Fixed(_) => false,
             Self::Primitive(_) => true,
+            // `AnyCbor` is a static-runtime type with no wasm-bindgen surface in A2 (specs using
+            // `any` reject under --wasm); it is not directly exposable, like a Rust wrapper struct.
+            Self::Any => false,
             Self::Rust(ident) => types.is_enum(ident),
             // wasm_bindgen doesn't support nested vecs, even if the inner vec would be supported
             Self::Array(ty) => {
@@ -1162,6 +1191,19 @@ impl ConceptualRustType {
         }
     }
 
+    /// See [`RustType::contains_any_cbor`]. Recurses container inners and the `Alias` base.
+    pub fn contains_any_cbor(&self) -> bool {
+        match self {
+            Self::Any => true,
+            Self::Array(inner) | Self::Optional(inner) => inner.conceptual_type.contains_any_cbor(),
+            Self::Map(k, v) => {
+                k.conceptual_type.contains_any_cbor() || v.conceptual_type.contains_any_cbor()
+            }
+            Self::Alias(_, inner) => inner.contains_any_cbor(),
+            _ => false,
+        }
+    }
+
     pub fn name_as_wasm_array_ct(&self, types: &IntermediateTypes) -> String {
         if Self::Array(Box::new(self.clone().into())).directly_wasm_exposable_ct(types) {
             format!("Vec<{}>", self.for_wasm_member_ct(types))
@@ -1192,6 +1234,8 @@ impl ConceptualRustType {
                 self
             ),
             Self::Primitive(p) => p.to_string(),
+            // Honest-but-unreachable: A2 rejects `any` under --wasm before any wasm param renders.
+            Self::Any => format!("{opt_ref}AnyCbor"),
             Self::Rust(ident) => {
                 if types.is_enum(ident) {
                     ident.to_string()
@@ -1268,6 +1312,8 @@ impl ConceptualRustType {
                 self
             ),
             Self::Primitive(p) => p.to_string(),
+            // Honest-but-unreachable: A2 rejects `any` under --wasm before a wasm member renders.
+            Self::Any => "AnyCbor".to_owned(),
             Self::Rust(ident) => ident.to_string(),
             Self::Array(ty) => ty.conceptual_type.name_as_wasm_array_ct(types),
             Self::Optional(ty) => {
@@ -1297,6 +1343,10 @@ impl ConceptualRustType {
                 self
             ),
             Self::Primitive(p) => p.to_string(),
+            // The static-runtime `AnyCbor`, reached through the same common-import glue as the other
+            // own-module runtime types (`ordered_hash_map::OrderedHashMap`), so
+            // `--export-static-crate` / `--common-import-override` resolve it unchanged.
+            Self::Any => format!("{}::any_cbor::AnyCbor", cli.common_import_rust()),
             Self::Rust(ident) => {
                 if from_wasm && !types.is_enum(ident) {
                     crate::generation::rust_crate_struct_from_wasm(types, ident, cli)
@@ -1335,6 +1385,10 @@ impl ConceptualRustType {
         match self {
             Self::Fixed(f) => f.for_variant(),
             Self::Primitive(p) => p.to_variant(),
+            // Choice-arm `any` is A3 (A2 rejects it), but `for_variant` is also reached by
+            // structural names (`MapAnyToAny`, `ArrAny`) for tables/arrays of `any`, so it needs a
+            // stable custom spelling here.
+            Self::Any => VariantIdent::new_custom("Any"),
             Self::Rust(ident) => VariantIdent::new_rust(ident.clone()),
             Self::Array(inner) => {
                 VariantIdent::new_custom(format!("Arr{}", inner.conceptual_type.for_variant()))
@@ -1523,6 +1577,8 @@ impl ConceptualRustType {
         match self {
             Self::Fixed(_) => panic!("fixed types are a serialization detail"),
             Self::Primitive(_) => primitive_impl(),
+            // Honest-but-unreachable: A2 rejects `any` under --wasm before a boundary crossing.
+            Self::Any => format!("{expr}.clone().into()"),
             Self::Rust(ident) => {
                 if types.is_enum(ident) {
                     primitive_impl()
@@ -1632,6 +1688,8 @@ impl ConceptualRustType {
             Self::Rust(ident) => types.is_enum(ident) || types.is_copy_extern(ident),
             Self::Array(_) => false,
             Self::Map(_k, _v) => false,
+            // `AnyCbor` holds Vec/String/Box — not Copy.
+            Self::Any => false,
             Self::Optional(ty) => ty.conceptual_type.is_copy(types),
             Self::Alias(_ident, ty) => ty.is_copy(types),
         }
@@ -1689,8 +1747,9 @@ impl ConceptualRustType {
                     }
                 }
             },
-            // serialization-only / can't reduce to the two-bit form
-            Self::Optional(_) | Self::Fixed(_) => None,
+            // serialization-only / can't reduce to the two-bit form (`any` has no wasm surface in
+            // A2 — falls back to the inline path, honest-but-unreachable under the --wasm reject).
+            Self::Optional(_) | Self::Fixed(_) | Self::Any => None,
         }
     }
 
@@ -1728,6 +1787,11 @@ impl ConceptualRustType {
                 .conceptual_type
                 .visit_types_excluding(types, f, already_visited),
             Self::Fixed(_) => (),
+            // Leaf: `any` is opaque (`AnyCbor` carries its own inner CBOR, not IR types), so we
+            // visit self (via `f(self)` above) and do NOT recurse. This is what keeps
+            // `key_contains_float` false for `Any` — floats are reachable INSIDE an `AnyCbor` value
+            // at runtime, but they are not IR float types the key-float pass can see.
+            Self::Any => (),
             Self::Map(k, v) => {
                 k.conceptual_type
                     .visit_types_excluding(types, f, already_visited);

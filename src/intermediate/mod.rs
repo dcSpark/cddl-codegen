@@ -313,6 +313,18 @@ impl<'a> IntermediateTypes<'a> {
     /// visitor's alias-base walk does cover today, so this check is redundant in every shape observed;
     /// but that redundancy is unproven across all IR shapes, and dropping a cheap belt-and-suspenders
     /// guard on an unverified premise is how a latent regression ships — so it stays.
+    /// Whether ANY generated type uses CDDL `any` (the `AnyCbor` runtime type), so `export`/import
+    /// wiring pulls in the `any_cbor` runtime module + `AnyCbor` import only for crates that need it
+    /// (keeping every non-`any` crate's output byte-identical — the usage-gating invariant). Folds
+    /// `contains_any_cbor` over `visit_all_rust_types`, the same superset walk `uses_non_empty_map`
+    /// uses (reaches type-alias base types, record fields, table domain AND range, wrapper inners,
+    /// array elements, tagged inners, and enum variants).
+    pub fn uses_any_cbor(&self) -> bool {
+        let mut found = false;
+        self.visit_all_rust_types(&mut |rt| found |= rt.contains_any_cbor());
+        found
+    }
+
     pub fn uses_non_empty_vec(&self) -> bool {
         let mut found = false;
         self.visit_all_rust_types(&mut |rt| found |= rt.contains_non_empty_array());
@@ -1125,7 +1137,12 @@ impl<'a> IntermediateTypes<'a> {
                         elem_ty,
                     );
                 }
-                ConceptualRustType::Fixed(_) | ConceptualRustType::Primitive(_) => {
+                ConceptualRustType::Fixed(_)
+                | ConceptualRustType::Primitive(_)
+                // `AnyCbor` is a static-runtime type imported globally (see the `uses_any_cbor`
+                // dumb-push in generation/mod.rs), not a cross-scope generated ident, so ref-marking
+                // has nothing to add here.
+                | ConceptualRustType::Any => {
                     // nothing to import
                 }
                 ConceptualRustType::Map(key, value) => {
@@ -1738,6 +1755,13 @@ impl<'a> IntermediateTypes<'a> {
         let resolved = match self.resolve_alias(&alias_ident) {
             Some(ty) => ty,
             None => match &alias_ident {
+                // CDDL `any` — the prelude name for "some CBOR I don't model". Intercept it here at
+                // the unresolved-Rust fallback so a USER rule literally named `any` (`any = uint`)
+                // still shadows it: a registered user alias resolves via `resolve_alias` ABOVE and
+                // never reaches this arm. `any` is not in `is_identifier_reserved`, so it classes
+                // as `AliasIdent::Rust`; without this it would return a bare `Rust("Any")` naming a
+                // struct that never exists (the historic panic/non-compile class).
+                AliasIdent::Rust(_) if raw.to_string() == "any" => ConceptualRustType::Any.into(),
                 AliasIdent::Rust(_) => ConceptualRustType::Rust(RustIdent::new(raw.clone())).into(),
                 AliasIdent::Reserved(reserved) if reserved == "int" => {
                     // We define an Int rust struct in prelude.rs
@@ -3629,6 +3653,8 @@ fn rewrite_inline_sets_in_conceptual(
         ConceptualRustType::Alias(_, inner) => rewrite_inline_sets_in_conceptual(inner, minted),
         ConceptualRustType::Fixed(_)
         | ConceptualRustType::Primitive(_)
+        // `any` is opaque — no inline IR sets to rewrite.
+        | ConceptualRustType::Any
         | ConceptualRustType::Rust(_) => {}
     }
 }

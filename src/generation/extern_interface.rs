@@ -316,6 +316,12 @@ fn render_conceptual(
             Ok(render_fixed_value(fixed))
         }
         ConceptualRustType::Primitive(p) => render_primitive(rule, *p, config),
+        // `any` projects back to the CDDL prelude spelling verbatim. Control operators / value
+        // windows on `any` are rejected upstream, so a bound here is unexpected.
+        ConceptualRustType::Any => {
+            reject_value_config(rule, config, "the `any` type")?;
+            Ok("any".to_owned())
+        }
         ConceptualRustType::Rust(ident) => {
             reject_value_config(rule, config, "a named-rule reference")?;
             render_rust_ref(rule, ident, types)
@@ -1189,7 +1195,10 @@ fn collect_rule_refs(ty: &RustType, types: &IntermediateTypes) -> BTreeSet<RustI
                 walk(key, types, out);
                 walk(value, types, out);
             }
-            ConceptualRustType::Primitive(_) | ConceptualRustType::Fixed(_) => {}
+            // `any` renders self-contained by its prelude name — references no exported rule.
+            ConceptualRustType::Primitive(_)
+            | ConceptualRustType::Fixed(_)
+            | ConceptualRustType::Any => {}
         }
     }
     let mut out = BTreeSet::new();

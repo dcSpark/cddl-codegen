@@ -6,7 +6,8 @@ use std::collections::BTreeMap;
 use crate::comment_ast::{DuplicatesPolicy, RuleMetadata, merge_metadata, metadata_from_comments};
 use crate::intermediate::{
     AliasIdent, AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant,
-    FixedValue, FloatWindow, GenericDef, GenericInstance, IntermediateTypes, ModuleScope,
+    EnumVariantData, FixedValue, FloatWindow, GenericDef, GenericInstance, IntermediateTypes,
+    ModuleScope,
     PlainGroupInfo, Primitive, Representation, RustField, RustIdent, RustRecord, RustStruct,
     RustStructType, RustType, VariantIdent, reserved_pin_rejection,
 };
@@ -503,6 +504,30 @@ fn parse_type_choices(
         // post-collapse seam (`nominalize_inline_sets`, run in `finalize`) nominalizes them on the
         // registered product, so a discarded arm never mints a spurious nominal.
         let variants = create_variants_from_type_choices(types, parent_visitor, type_choices, cli);
+        // A bare (or tagged) `any` type-choice arm is A2-rejected gracefully: `any` accepts every
+        // CBOR item, so it overlaps every other arm — it can only ever be a LAST catch-all, and even
+        // there the correct dispatch is forced backtracking (a typed arm matching on wire type but
+        // failing on content must fall through to `any`), which is A3 scope (DESIGN §3.5/§10.6). A
+        // CONTAINER-of-any arm (`[* any]` = `Array(Any)`, `{* any => any}` = `Map(..)`) is a normal
+        // distinct-CBOR-type arm and is NOT caught here (its conceptual type is Array/Map, not Any) —
+        // it dispatches correctly through the ordinary choice machinery.
+        if variants.iter().any(|v| {
+            matches!(
+                &v.data,
+                EnumVariantData::RustType(ty)
+                    if matches!(ty.conceptual_type.resolve_alias_shallow(), ConceptualRustType::Any)
+            )
+        }) {
+            types.record_rejection(format!(
+                "`any` in a type-choice arm (`{name} = … / any / …`) is not yet supported: `any` \
+                 overlaps every other arm, so a catch-all union arm needs forced-backtracking \
+                 dispatch (planned). For now use `any` in a member (`{{ 1: any }}`), array element \
+                 (`[* any]`), table (`{{ * k => any }}`), tagged (`#6.n(any)`), or top-level \
+                 (`x = any`) position — or wrap it (`[* any]` / `{{ * any => any }}`) as a choice \
+                 arm, which is supported."
+            ));
+            return;
+        }
         // Transparent tag-set collapse: a bare (no OUTER tag) two-arm choice differing only in tag
         // presence is not two types — it is one collection whose tag is an encoding detail. Collapse
         // it into the SAME registration a bare `#6.N([* a])` array rule gets (transparent alias +

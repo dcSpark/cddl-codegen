@@ -597,7 +597,10 @@ fn type_uses_custom_ser(
                     .map(|s| struct_uses_custom_ser_inner(types, s, visited))
                     .unwrap_or(false)
             }
-            ConceptualRustType::Fixed(_) | ConceptualRustType::Primitive(_) => false,
+            // `any` uses no custom serialization.
+            ConceptualRustType::Fixed(_)
+            | ConceptualRustType::Primitive(_)
+            | ConceptualRustType::Any => false,
         }
     }
     walk(types, &ty.conceptual_type, visited)
