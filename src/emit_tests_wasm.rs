@@ -299,6 +299,10 @@ fn rust_scoped(mv: &MintValue, scoped: &ScopeMap) -> String {
         }
         MintValue::TableEmpty { ident } => format!("{}::new()", sc(ident)),
         MintValue::IntExtern { ident, value } => format!("{}::new_uint({value})", sc(ident)),
+        // Unreachable in the wasm crate: `wasm_value` maps `ConceptualRustType::Any` to `None` (loud
+        // skip at the caller — the wasm AnyCbor wrapper exposes no composite `new_*` ctors), so an
+        // `Any` mint never reaches this scoped renderer. Delegate for exhaustiveness only.
+        MintValue::Any => emit_tests::render_rust(mv),
     }
 }
 

@@ -165,6 +165,13 @@ pub(crate) enum MintValue {
     /// non-negative baseline. Its wasm twin exposes a single `Ident::new(value as i64)` ctor, so the
     /// wasm renderer keys off this variant rather than the generic wrapper/record shapes.
     IntExtern { ident: String, value: i128 },
+    /// a CDDL `any` (`AnyCbor`): a fixed composite `[uint 5, float 1.5]` built through the mode-paired
+    /// `new_*` constructors. The float head is deliberate — it is what makes the `--preserve-encodings`
+    /// encoding-fidelity `widen_float` mutation class reachable (a uint-only mint would leave that
+    /// class dead). Renders via the `__AnyCborMint` alias `emit_generated_tests` injects for the
+    /// import-glued `AnyCbor` path, so `render_rust` stays free of the CLI (the alias resolves in both
+    /// the default and `--common-import-override` arrangements).
+    Any,
 }
 
 /// Render a `MintValue` as the rust-crate API expression string. This reproduces, byte-for-byte,
@@ -275,6 +282,10 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
         }
         MintValue::TableEmpty { ident } => format!("{ident}::new()"),
         MintValue::IntExtern { ident, value } => format!("{ident}::new_uint({value})"),
+        // `[uint 5, float 1.5]` through the mode-paired ctors. The float head is what the preserve
+        // `widen_float` fidelity class widens; `__AnyCborMint` is the import-glued `AnyCbor` alias
+        // `emit_generated_tests` injects at the test module root.
+        MintValue::Any => "__AnyCborMint::new_array(vec![__AnyCborMint::new_uint(5), __AnyCborMint::new_float(1.5)])".to_owned(),
     }
 }
 
@@ -453,8 +464,25 @@ pub fn emit_generated_tests(
     } else {
         "#[allow(unused_imports)]\n"
     };
+    // CDDL `any` (`AnyCbor`) mint alias: generated members reference `AnyCbor` by the import-glued
+    // FULL path (`for_rust_member_ct`: `crate::generated::any_cbor::AnyCbor`, or the override crate),
+    // never a bare re-export, so the minted `MintValue::Any` constructor calls need that path in
+    // scope. Bind it to a `__`-prefixed alias (never collides with a camel-cased user type) so
+    // `render_rust` can emit CLI-free constructor calls that resolve in BOTH the default and
+    // `--common-import-override` arrangements. `#[allow(unused_imports)]`: `uses_any_cbor()` can be
+    // true while every `any` sits in a position the minter skips (e.g. an `AnyCbor`-keyed table),
+    // leaving the alias unused. Emitted only when the spec uses `any`, so any-free output is
+    // byte-identical.
+    let any_import = if types.uses_any_cbor() {
+        format!(
+            "    #[allow(unused_imports)]\n    use {}::any_cbor::AnyCbor as __AnyCborMint;\n",
+            cli.common_import_rust()
+        )
+    } else {
+        String::new()
+    };
     Some(format!(
-        "#[cfg(test)]\n#[allow(clippy::all)]\n{unused_imports_allow}mod cddl_generated_tests {{\n    use super::*;\n    use super::serialization::*;\n{scope_globs}{conformance_mod}{fidelity_mod}{}\n}}\n",
+        "#[cfg(test)]\n#[allow(clippy::all)]\n{unused_imports_allow}mod cddl_generated_tests {{\n    use super::*;\n    use super::serialization::*;\n{any_import}{scope_globs}{conformance_mod}{fidelity_mod}{}\n}}\n",
         fns.join("\n")
     ))
 }
@@ -1457,6 +1485,10 @@ fn valid_value_at(types: &IntermediateTypes, ty: &RustType, depth: u8) -> Option
         }
         // a field nesting a NAMED generated type: mint an instance of that type recursively
         ConceptualRustType::Rust(ident) => mint_struct(types, ident, depth),
+        // CDDL `any` (`AnyCbor`): a fixed composite carrying a float head (see `MintValue::Any`). The
+        // rendered constructor calls go through the `__AnyCborMint` import-glued alias, so this is
+        // mode-agnostic (both preserve/non-preserve build the same via mode-paired `new_*` ctors).
+        ConceptualRustType::Any => Some(MintValue::Any),
         _ => {
             let bounds = ty.config.bounds.unwrap_or((None, None));
             // A length-measured type (array/map/text/bytes) minted at length 0 never serializes or
