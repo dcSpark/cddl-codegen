@@ -3936,21 +3936,21 @@ fn cargo_manifest_disk_round_trip() {
     );
 
     // Hand-edit: bump the seeded version, tamper the stamp, add a user dep with an inline comment,
-    // prepend a top-of-file comment, and reshape the tool-owned `cbor_event` dep into a table that
-    // adds an `optional = false` field with a still-compatible pin. All but the stamp must survive
+    // prepend a top-of-file comment, and reshape the tool-owned `cbor_event` dep (a git table since
+    // the fork pin) by adding a user-only `optional = false` field. All but the stamp must survive
     // (the reshape exercises the field-level dep merge on a real disk round trip); the stamp must be
     // restored.
     assert!(
-        first.contains("cbor_event = \"3.2.0\""),
-        "expected the plain-string cbor_event dep to reshape:\n{first}"
+        first.contains("cbor_event = { git = "),
+        "expected the git-table cbor_event dep to reshape:\n{first}"
     );
     let edited = format!(
         "# hand-written top comment\n{}\nanyhow = \"1\" # user pin\n",
         first
             .replace("version = \"0.1.0\"", "version = \"9.9.9\"")
             .replace(
-                "cbor_event = \"3.2.0\"",
-                "cbor_event = { version = \"3.2.0\", optional = false }",
+                "cbor_event = { git = ",
+                "cbor_event = { optional = false, git = "
             )
             .replace(
                 &format!("generated-with = \"{tool_version}\""),
@@ -3986,15 +3986,21 @@ fn cargo_manifest_disk_round_trip() {
         second.contains("cbor_event"),
         "tool-owned dep must persist:\n{second}"
     );
-    // the user's reshape (optional field + inline-table shape) survives the field-level dep merge,
-    // and the still-compatible pin is kept rather than flattened back to a bare string.
+    // the user's reshape (the added `optional` field) survives the field-level dep merge, and the
+    // git source assertion stays clean — no version key materializes beside the git source.
     assert!(
         second.contains("optional = false"),
         "user-added dep field must survive the dep merge:\n{second}"
     );
+    let cbor_line = second
+        .lines()
+        .find(|l| l.trim_start().starts_with("cbor_event = "))
+        .expect("cbor_event dep missing");
     assert!(
-        second.contains("version = \"3.2.0\""),
-        "compatible pin must be kept on the merged dep:\n{second}"
+        cbor_line.contains("git = ")
+            && cbor_line.contains("rev = ")
+            && !cbor_line.contains("version"),
+        "the merged git dep must stay version-free:\n{cbor_line}"
     );
 
     // Third run: byte-identical fixed point.
@@ -15616,8 +15622,9 @@ fn comment_preservation_replace_in_descendant_orphans_parent_import() {
 ///   (c) with the flag unset the crate dir is untouched (a pre-existing sentinel file is neither
 ///       read nor clobbered, and no runtime file appears);
 ///   (d) an EXISTING hand-owned Cargo.toml is merged, not clobbered: package identity and hand deps
-///       survive verbatim (seed/pass-through), a stale cbor_event pin is bumped to the version the
-///       exported source requires, and a hand serde pin that satisfies the tool's floor is kept —
+///       survive verbatim (seed/pass-through), a stale cbor_event pin is superseded by the git
+///       source the exported source requires (the merge's source-assertion rule — no stale version
+///       requirement survives beside it), and a hand serde pin that satisfies the tool's floor is kept —
 ///       the exact skew class where source targeting a new cbor_event landed next to a manifest
 ///       still pinning the old one, which this flag's pre-crate-shaped form silently allowed.
 /// `--wasm=false` keeps it to the single rust crate.
@@ -15792,9 +15799,10 @@ fn export_static_crate_writes_composed_runtime_and_manifest() {
     );
 
     // (d) An existing hand-owned Cargo.toml is MERGED: identity + hand deps survive, the stale
-    // cbor_event pin is bumped to what the exported source requires, a satisfying hand serde pin is
-    // kept. This is the regression test for the manifest-skew class the crate-shaped flag exists to
-    // close (exported source targeting a new cbor_event beside a manifest still pinning the old).
+    // cbor_event pin is superseded by the git source the exported source requires, a satisfying
+    // hand serde pin is kept. This is the regression test for the manifest-skew class the
+    // crate-shaped flag exists to close (exported source targeting a new cbor_event beside a
+    // manifest still pinning the old).
     let hand_crate = scratch.join("hand-runtime");
     std::fs::create_dir_all(&hand_crate).unwrap();
     std::fs::write(
@@ -15824,9 +15832,16 @@ fn export_static_crate_writes_composed_runtime_and_manifest() {
         hand_manifest.contains("bech32 = \"0.12.0\""),
         "hand deps the changeset never mentions must pass through:\n{hand_manifest}"
     );
+    let hand_cbor_line = hand_manifest
+        .lines()
+        .find(|l| l.trim_start().starts_with("cbor_event = "))
+        .expect("cbor_event dep missing from the merged hand manifest");
     assert!(
-        hand_manifest.contains("cbor_event = \"3.2.0\"") && !hand_manifest.contains("2.4.0"),
-        "the stale cbor_event pin must be bumped to the version the exported source requires:\n{hand_manifest}"
+        hand_cbor_line.contains("git = ")
+            && hand_cbor_line.contains("rev = ")
+            && !hand_manifest.contains("2.4.0"),
+        "the stale cbor_event pin must be superseded by the git source the exported source \
+         requires (no stale version beside it):\n{hand_manifest}"
     );
     assert!(
         hand_manifest.contains("1.0.152"),

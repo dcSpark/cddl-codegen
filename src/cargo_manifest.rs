@@ -281,6 +281,13 @@ fn parse_padded_version(s: &str) -> Option<semver::Version> {
 ///   not already present appended. A tool spec with no features leaves the user's untouched.
 /// * **every other field the tool sets** (e.g. `path`) overwrites field-wise; **every user-only
 ///   field** (`optional`, `default-features`, a `version` beside our `path`, anything else) survives.
+/// * **source assertion** — a tool spec carrying `git` asserts the dep's SOURCE, not a version
+///   floor: source-axis keys the tool spec does not itself re-specify (`version`, `rev`, `branch`,
+///   `tag`, `path`, `registry`) are dropped from the existing entry. A stale version requirement
+///   would constrain against the wrong source (`^2.4.0` beside a 3.x git checkout fails
+///   resolution), and a leftover ref selector forms pairs cargo rejects outright (`branch` +
+///   `rev`). Version-only tool specs keep floor semantics — a user's own `git`/`path` source
+///   survives them, per the field-survival bullet above.
 /// * **shape** — if the merge leaves only a `version` field and the user's entry was a plain string,
 ///   emit a plain string (no spurious table-ification); otherwise a table on the user's existing shape.
 fn merge_dep_spec(existing: &Item, tool: &Item) -> Item {
@@ -313,6 +320,18 @@ fn merge_dep_spec(existing: &Item, tool: &Item) -> Item {
     let table = base
         .as_table_like_mut()
         .expect("merge base is always a table-like item");
+
+    // Source assertion (see the doc contract): a git-carrying tool spec owns the source axis, so
+    // stale source-axis keys it does not re-specify are dropped before the field-wise overwrite.
+    if let Some(tool_table) = tool.as_table_like()
+        && tool_table.contains_key("git")
+    {
+        for key in ["version", "rev", "branch", "tag", "path", "registry"] {
+            if !tool_table.contains_key(key) {
+                table.remove(key);
+            }
+        }
+    }
 
     // version: only rewrite when it actually changes, so a kept pin retains the user's decor.
     if merged_version != user_version
@@ -990,6 +1009,51 @@ linked-hash-map = \"0.5.6\"
         let line = merged_dep("[dependencies]\nfoo = \"2.0\"\n", "foo", "\"1.0\"");
         assert!(line.contains("1.0"), "tool floor not applied: {line}");
         assert!(!line.contains("2.0"), "newer-major pin survived: {line}");
+    }
+
+    #[test]
+    fn merge_git_source_assertion_drops_stale_version() {
+        // The WP0 skew class: a git-carrying tool spec onto a plain-string pin must NOT leave the
+        // stale version requirement beside the git source (`^2.4.0` fails resolution against a
+        // 3.x checkout).
+        let line = merged_dep(
+            "[dependencies]\nfoo = \"2.4.0\"\n",
+            "foo",
+            "{ git = \"https://example.com/foo\", rev = \"abc123\" }",
+        );
+        assert!(
+            line.contains("git =") && line.contains("rev = \"abc123\""),
+            "git source not asserted: {line}"
+        );
+        assert!(!line.contains("version"), "stale version survived: {line}");
+    }
+
+    #[test]
+    fn merge_git_source_assertion_drops_stale_ref_selector() {
+        // A previous git pin by `branch` must not survive a re-pin by `rev` — cargo rejects the
+        // `branch` + `rev` pair outright.
+        let line = merged_dep(
+            "[dependencies]\nfoo = { git = \"https://example.com/foo\", branch = \"main\" }\n",
+            "foo",
+            "{ git = \"https://example.com/foo\", rev = \"abc123\" }",
+        );
+        assert!(line.contains("rev = \"abc123\""), "rev not applied: {line}");
+        assert!(!line.contains("branch"), "stale branch survived: {line}");
+    }
+
+    #[test]
+    fn merge_git_source_assertion_preserves_user_only_fields() {
+        // Source assertion drops only source-axis keys — `optional` etc. still survive.
+        let line = merged_dep(
+            "[dependencies]\nfoo = { version = \"3.2.0\", optional = false }\n",
+            "foo",
+            "{ git = \"https://example.com/foo\", rev = \"abc123\" }",
+        );
+        assert!(
+            line.contains("optional = false"),
+            "user-only field dropped: {line}"
+        );
+        assert!(!line.contains("3.2.0"), "stale version survived: {line}");
     }
 
     #[test]
