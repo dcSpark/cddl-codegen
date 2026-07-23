@@ -820,7 +820,15 @@ mod non_preserve {
 // runtime, and defines the `any_cbor_recursion_guard!` macro to acquire that guard with a small
 // baked limit — exactly what a generated crate built with `--deserialize-depth-limit=N` produces.
 // Proves the guard-limit-exceeded path is a graceful `DepthLimitExceeded`, never a SIGABRT.
-#[allow(dead_code, clippy::upper_case_acronyms, clippy::wrong_self_convention)]
+// (`missing_const_for_thread_local` on top of the shared shim allows: the raw
+// `serialization_depth_guard.rs` this shim additionally includes carries a thread-local a generated
+// crate's crate-level allows would cover.)
+#[allow(
+    dead_code,
+    clippy::upper_case_acronyms,
+    clippy::wrong_self_convention,
+    clippy::missing_const_for_thread_local
+)]
 mod depth_guard {
     use cbor_event::de::Deserializer;
     use cbor_event::se::Serializer;
