@@ -447,11 +447,11 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "prelude.any"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm crate failed to compile (cargo test exit 1); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
-emission.json.status = "unsupported"
-emission.json.evidence = "probe (emission=json): cddl-codegen rejected at parse/lex (exit 1)"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder); wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
 emission.preserve.status = "supported"
-emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles (no minted round-trip surface)"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
 
 [[support]]
 id = "prelude.b64legacy"
