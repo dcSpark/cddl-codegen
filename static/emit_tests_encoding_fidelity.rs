@@ -10,29 +10,36 @@
 // Pure `std`, no `HashMap`, no randomness — the transforms are structural, so output is a
 // deterministic function of the input bytes (reproducibility invariant).
 //
-// The six classes (see `variants`): `widen_step`, `widen_max` (non-minimal header arguments),
-// `indef_containers` (indefinite array/map framing), `chunk_strings` (indefinite two-chunk
-// strings), `reverse_maps` (reversed map entry order), and `everything` (structure transforms
-// first, then `widen_step` over every head of the resulting tree — chunk headers and heads inside
-// indefinite containers included, break bytes excluded). Major-type-7 heads (bool/null/simple)
-// are copied verbatim: each carries a single wire form. NO float head ever reaches this mutator,
-// because its input is always an emit-tests-MINTED value and neither float-carrying construct is
-// mintable under a preserve profile: native-float members still panic generation under preserve
-// (`preserve_encodings_supports_floats` stub), and an `AnyCbor`-typed (`any`) member — which CAN
-// carry a width-preserving f16/f32/f64 (cbor_event fork `float_sz` API, exercised by
-// `any_cbor_tests`) — is silently skipped by the emit-tests minter until its mint path lands (A3).
-// The delivery that adds that mint path makes floats reachable here and must, in the same commit,
-// add a float-width mutation class (widen f16→f32→f64 on the head; assert byte-exact re-encode)
-// rather than leave the verbatim-copy path silently narrowing them.
+// The seven classes (see `variants`): `widen_step`, `widen_max` (non-minimal header arguments),
+// `widen_float` (widen a major-type-7 float head to the next IEEE width — f16→f32, f32→f64; an f64
+// head is already maximal, so it is left alone), `indef_containers` (indefinite array/map framing),
+// `chunk_strings` (indefinite two-chunk strings), `reverse_maps` (reversed map entry order), and
+// `everything` (structure transforms first, then `widen_step` AND `widen_float` over every head of
+// the resulting tree — chunk headers and heads inside indefinite containers included, break bytes
+// excluded). Non-float major-type-7 heads (bool/null/undefined/simple) each carry a single wire
+// form, so they are copied verbatim.
+//
+// Float heads reach this mutator through the emit-tests mint path for `any` (`AnyCbor`): an
+// `AnyCbor`-typed (`any`) member mints a composite value carrying a width-preserving f16/f32/f64
+// head (cbor_event fork `float_sz` API, exercised by `any_cbor_tests`), which the preserve
+// serializer writes at the value-preserving smallest width. `widen_float` re-encodes that head one
+// IEEE width wider — always value-preserving, since f32 exactly represents every f16 and f64 every
+// f32 — and under preserve, `from_cbor_bytes` records the wider width and re-encodes it
+// byte-identically, so the round-trip loop asserts the widened head survives. Native-float members
+// remain unreachable here (they still panic generation under preserve,
+// `preserve_encodings_supports_floats` stub), so every float head this class exercises arrives
+// through `AnyCbor`.
 //
 // `bytes .cbor T` wrappers are treated as opaque byte strings — the outer string is mutated, the
 // inner CBOR is left untouched (mutating the inner encoding is a deliberate out-of-scope extension).
 //
-// Self-check: `encoding_mutator_self_check` pins each builder against hand-derived RFC 8949 byte
-// fixtures AND pins `variants()` end-to-end on a composite input (int + string + 2-entry map) — the
-// latter is the vacuity guard: a `variants()` that returned empty/all-skipped would turn every
-// emitted loop green while executing nothing, and no source-grep floor could see that. Byte
-// fixtures follow the golden-hex `0x??`-literal authoring convention.
+// Self-check: `encoding_mutator_self_check` pins each builder (including `widen_float` across
+// f16→f32→f64 and the f64/non-float verbatim cases) against hand-derived RFC 8949 byte fixtures AND
+// pins `variants()` end-to-end on two inputs — a composite (int + string + 2-entry map) and a
+// float-carrying `[5, 1.5]` (the shape the `any` mint produces) — the vacuity guard: a `variants()`
+// that returned empty/all-skipped would turn every emitted loop green while executing nothing, and
+// no source-grep floor could see that. Byte fixtures follow the golden-hex `0x??`-literal
+// authoring convention.
 #[allow(dead_code)]
 #[allow(clippy::all)]
 mod cddl_encoding_fidelity {
@@ -184,6 +191,9 @@ mod cddl_encoding_fidelity {
     #[derive(Clone, Copy)]
     struct Cfg {
         widen: Widen,
+        /// widen a major-type-7 float head to the next IEEE width (f16→f32, f32→f64; an f64 head is
+        /// already maximal). Non-float major-7 heads are untouched.
+        widen_float: bool,
         indef: bool,
         chunk: bool,
         /// chunk strings too short to midpoint-split into two non-degenerate chunks anyway, via an
@@ -194,6 +204,7 @@ mod cddl_encoding_fidelity {
 
     const OFF: Cfg = Cfg {
         widen: Widen::None,
+        widen_float: false,
         indef: false,
         chunk: false,
         chunk_fallback: false,
@@ -278,7 +289,73 @@ mod cddl_encoding_fidelity {
                     }
                 }
             }
-            Item::Other(raw) => out.extend_from_slice(raw),
+            Item::Other(raw) => {
+                // A major-7 head. Only float heads (info 25/26/27) are widened, and only under the
+                // `widen_float` class; every other major-7 head (bool/null/undefined/simple) and an
+                // already-maximal f64 head are copied verbatim.
+                match cfg.widen_float.then(|| widen_float_head(raw)).flatten() {
+                    Some(widened) => out.extend_from_slice(&widened),
+                    None => out.extend_from_slice(raw),
+                }
+            }
+        }
+    }
+
+    /// Widen a major-type-7 IEEE float head one width up (f16→f32, f32→f64), returning the new head
+    /// bytes. `None` for a non-float major-7 head (bool/null/undefined/simple/unassigned) or an
+    /// already-maximal f64 head — the caller then copies the input bytes verbatim. Widening is
+    /// value-preserving (f32 exactly represents every f16, f64 every f32), and under preserve the
+    /// deserializer records the widened width and re-encodes it byte-identically.
+    fn widen_float_head(raw: &[u8]) -> Option<Vec<u8>> {
+        match raw[0] {
+            0xf9 => {
+                // f16 -> f32
+                let bits = u16::from_be_bytes([raw[1], raw[2]]);
+                let mut out = vec![0xfa];
+                out.extend_from_slice(&f16_to_f32_bits(bits).to_be_bytes());
+                Some(out)
+            }
+            0xfa => {
+                // f32 -> f64: the widening cast is exact for every f32 (minted floats are finite).
+                let bits = u32::from_be_bytes([raw[1], raw[2], raw[3], raw[4]]);
+                let d = f32::from_bits(bits) as f64;
+                let mut out = vec![0xfb];
+                out.extend_from_slice(&d.to_bits().to_be_bytes());
+                Some(out)
+            }
+            // 0xfb: f64 is already the widest IEEE form; every other major-7 head is non-float.
+            _ => None,
+        }
+    }
+
+    /// IEEE half (f16) bit pattern to the equivalent single (f32) bit pattern — pure integer math
+    /// (std has no `f16`), value-preserving over zero/subnormal/normal/inf/NaN.
+    fn f16_to_f32_bits(h: u16) -> u32 {
+        let sign = ((h & 0x8000) as u32) << 16;
+        let exp = (h >> 10) & 0x1f;
+        let mant = (h & 0x3ff) as u32;
+        match exp {
+            0 => {
+                if mant == 0 {
+                    sign // +/- zero
+                } else {
+                    // subnormal f16 -> normal f32: normalize the mantissa, tracking the shift.
+                    let mut e: i32 = -1;
+                    let mut m = mant;
+                    loop {
+                        e += 1;
+                        m <<= 1;
+                        if m & 0x400 != 0 {
+                            break;
+                        }
+                    }
+                    let exp32 = ((127 - 15 - e) as u32) << 23;
+                    let mant32 = (m & 0x3ff) << 13;
+                    sign | exp32 | mant32
+                }
+            }
+            0x1f => sign | (0xff << 23) | (mant << 13), // inf / NaN (NaN payload widened in place)
+            _ => sign | ((exp as u32 + (127 - 15)) << 23) | (mant << 13),
         }
     }
 
@@ -307,6 +384,15 @@ mod cddl_encoding_fidelity {
             },
         )
     }
+    fn widen_float(b: &[u8]) -> Vec<u8> {
+        re_encode(
+            b,
+            Cfg {
+                widen_float: true,
+                ..OFF
+            },
+        )
+    }
     fn indef_containers(b: &[u8]) -> Vec<u8> {
         re_encode(b, Cfg { indef: true, ..OFF })
     }
@@ -327,6 +413,7 @@ mod cddl_encoding_fidelity {
             b,
             Cfg {
                 widen: Widen::Step,
+                widen_float: true,
                 indef: true,
                 chunk: true,
                 chunk_fallback: true,
@@ -335,7 +422,7 @@ mod cddl_encoding_fidelity {
         )
     }
 
-    /// Six whole-tree irregular re-encodings of `input` (a minted value's canonical bytes), one per
+    /// Seven whole-tree irregular re-encodings of `input` (a minted value's canonical bytes), one per
     /// mutation class. Variants byte-identical to the input (nothing mutatable for that class) are
     /// skipped, so the emitted loop never asserts vacuously on a no-op.
     ///
@@ -343,7 +430,7 @@ mod cddl_encoding_fidelity {
     /// `Cfg`s mirror the `widen_step`/… builders the self-check pins byte-for-byte).
     pub fn variants(input: &[u8]) -> Vec<(&'static str, Vec<u8>)> {
         let (item, _) = parse_item(input, 0);
-        let classes: [(&'static str, Cfg); 6] = [
+        let classes: [(&'static str, Cfg); 7] = [
             (
                 "widen_step",
                 Cfg {
@@ -355,6 +442,13 @@ mod cddl_encoding_fidelity {
                 "widen_max",
                 Cfg {
                     widen: Widen::Max,
+                    ..OFF
+                },
+            ),
+            (
+                "widen_float",
+                Cfg {
+                    widen_float: true,
                     ..OFF
                 },
             ),
@@ -371,6 +465,7 @@ mod cddl_encoding_fidelity {
                 "everything",
                 Cfg {
                     widen: Widen::Step,
+                    widen_float: true,
                     indef: true,
                     chunk: true,
                     chunk_fallback: true,
@@ -422,6 +517,21 @@ mod cddl_encoding_fidelity {
             reverse_maps(&[0xa2, 0x01, 0x02, 0x03, 0x04]),
             vec![0xa2, 0x03, 0x04, 0x01, 0x02]
         );
+        // widen_float: a float head widens one IEEE width. 1.5 is exactly representable at every
+        // width, so f16 0xf9 3e00 -> f32 0xfa 3fc00000 -> f64 0xfb 3ff8000000000000.
+        assert_eq!(
+            widen_float(&[0xf9, 0x3e, 0x00]),
+            vec![0xfa, 0x3f, 0xc0, 0x00, 0x00]
+        );
+        assert_eq!(
+            widen_float(&[0xfa, 0x3f, 0xc0, 0x00, 0x00]),
+            vec![0xfb, 0x3f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+        );
+        // an f64 head is already the widest IEEE form — left alone.
+        let f64_one_and_a_half = vec![0xfb, 0x3f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        assert_eq!(widen_float(&f64_one_and_a_half), f64_one_and_a_half);
+        // a non-float major-7 head (true = 0xf5) is copied verbatim.
+        assert_eq!(widen_float(&[0xf5]), vec![0xf5]);
 
         // ---- end-to-end vacuity pin: variants() on a composite (int + string + 2-entry map) ----
         // input = [1, "ab", {1:2, 3:4}]
@@ -429,7 +539,8 @@ mod cddl_encoding_fidelity {
             0x83, 0x01, 0x62, 0x61, 0x62, 0xa2, 0x01, 0x02, 0x03, 0x04,
         ];
         let vs = variants(&input);
-        // all six classes are non-identity for this input, in builder order.
+        // every class EXCEPT widen_float is non-identity for this float-free input, in builder order
+        // (widen_float touches only major-7 float heads, of which this input has none — so skipped).
         let labels: Vec<&str> = vs.iter().map(|(l, _)| *l).collect();
         assert_eq!(
             labels,
@@ -503,6 +614,37 @@ mod cddl_encoding_fidelity {
                 0xbf, 0x18, 0x03, 0x18, 0x04, 0x18, 0x01, 0x18, 0x02, 0xff, //  {3:4,1:2} widened
                 0xff, // ]
             ]
+        );
+
+        // ---- float-carrying vacuity pin: variants() on [5, 1.5] (an f16 float head) ----
+        // input = [5, 1.5] = array(2) [ uint 5, f16 1.5 ]. This is the shape the `any` emit-tests
+        // mint produces (`new_array([new_uint(5), new_float(1.5)])`), so it exercises `widen_float`
+        // end-to-end. No strings and no maps, so chunk_strings / reverse_maps are identity + skipped.
+        let finput = vec![0x82, 0x05, 0xf9, 0x3e, 0x00];
+        let fvs = variants(&finput);
+        let flabels: Vec<&str> = fvs.iter().map(|(l, _)| *l).collect();
+        assert_eq!(
+            flabels,
+            vec![
+                "widen_step",
+                "widen_max",
+                "widen_float",
+                "indef_containers",
+                "everything",
+            ]
+        );
+        let fby = |name: &str| -> Vec<u8> {
+            fvs.iter().find(|(l, _)| *l == name).unwrap().1.clone()
+        };
+        // widen_float touches ONLY the float head: the array head and the uint stay, f16 -> f32.
+        assert_eq!(
+            fby("widen_float"),
+            vec![0x82, 0x05, 0xfa, 0x3f, 0xc0, 0x00, 0x00]
+        );
+        // everything: indefinite array + widen_step over the uint + widen_float over the float head.
+        assert_eq!(
+            fby("everything"),
+            vec![0x9f, 0x18, 0x05, 0xfa, 0x3f, 0xc0, 0x00, 0x00, 0xff]
         );
     }
 }

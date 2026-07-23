@@ -5974,6 +5974,70 @@ fn emit_tests_execute() {
     );
 }
 
+/// End-to-end proof of the CDDL `any` (`AnyCbor`) emit-tests mint and the `--preserve-encodings`
+/// `widen_float` encoding-fidelity class (loose-CBOR A3 WP4): generate the `any-positions` fixture
+/// with `--preserve-encodings --emit-tests` and `cargo test` the crate. Every `any`-typed member
+/// mints the composite `[uint 5, float 1.5]` (a deliberate float head) through the mode-paired
+/// `new_*` constructors, so the emitted round-trip loop feeds the `widen_float` mutation (the minted
+/// f16 `3e00` head widened to f32) back through `from_cbor_bytes` and asserts the preserve serializer
+/// re-encodes it byte-identically. A uint-only `any` mint would leave `widen_float` dead — the float
+/// head is what exercises it. This is the dedicated float-class proof; `emit_tests_execute` runs the
+/// rich preserve fixture, which uses no `any`, so its mutator only self-checks (never mints a float).
+#[test]
+fn emit_tests_any_float_execute() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let input = std::path::PathBuf::from("tests/any-positions/input.cddl");
+    let root =
+        std::env::temp_dir().join(format!("cddl_codegen_any_float_{:016x}", checkout_hash()));
+    let _ = std::fs::remove_dir_all(&root);
+    let out = root.join("crate");
+    let generate = tool_cmd("cargo")
+        .args(["run", "--"])
+        .arg(format!("--input={}", input.to_str().unwrap()))
+        .arg(format!("--output={}", out.to_str().unwrap()))
+        .arg("--wasm=false")
+        .arg("--preserve-encodings=true")
+        .arg("--emit-tests=true")
+        .output()
+        .unwrap();
+    if !generate.status.success() {
+        eprintln!("{}", String::from_utf8_lossy(&generate.stderr));
+    }
+    assert!(generate.status.success(), "generation failed");
+
+    let src =
+        std::fs::read_to_string(out.join("rust/src/generated/mod.rs")).expect("generated mod.rs");
+    // The `any` mint fires: an `any`-typed member builds the float-carrying composite through the
+    // import-glued `__AnyCborMint` alias, and the fidelity mutator ships the `widen_float` class.
+    assert!(
+        src.contains("__AnyCborMint::new_float(1.5)"),
+        "the `any` emit-tests mint did not build the float-carrying composite"
+    );
+    assert!(
+        src.contains("fn widen_float"),
+        "the encoding-fidelity mutator is missing the widen_float class"
+    );
+
+    // `cargo test` runs the emitted `roundtrip_*` (each any-carrying case exercises `widen_float`
+    // under preserve) plus the mutator's `encoding_mutator_self_check`.
+    let test = tool_cmd("cargo")
+        .arg("test")
+        .current_dir(out.join("rust"))
+        .output()
+        .unwrap();
+    if !test.status.success() {
+        eprintln!("stdout:\n{}", String::from_utf8_lossy(&test.stdout));
+        eprintln!("stderr:\n{}", String::from_utf8_lossy(&test.stderr));
+    }
+    assert!(
+        test.status.success(),
+        "generated any + preserve emit-tests crate failed cargo test"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// Executes the `--emit-tests` generated WASM-test module end-to-end (tests/README.md § "wasm-crate
 /// test module"): generate the rich `core` fixture with `--wasm=true --emit-tests=true`, then
 /// `cargo test` the generated WASM crate so the emitted `wasm_roundtrip_*`/`wasm_reject_*` module runs
@@ -11463,11 +11527,14 @@ fn feature_corpus_roundtrips_nondefault_profiles() {
 include!("../../static/emit_tests_encoding_fidelity.rs");
 
 /// Harness-side companion to the shipped mutator's `encoding_mutator_self_check`: confirm a major-7
-/// FLOAT head (`fa`/`fb` — absent from minted-under-preserve inputs, but present in this gate's foreign
-/// accept vectors) rides through `variants()` byte-for-byte. The `Item::Other` arm copies the whole
-/// head+argument verbatim (`read_arg` sizes info 26/27 = 4/8 bytes), so surrounding structure mutates
-/// while the float bytes stay untouched. Kept here, not in the shipped file, so no generated-crate
-/// snapshot moves (the file ships verbatim via `include_str!`).
+/// FLOAT head (`fa`/`fb`) rides through the NON-`widen_float` classes (here `widen_step` and
+/// `indef_containers`) byte-for-byte. Those classes leave `cfg.widen_float` off, so the `Item::Other`
+/// arm copies the whole head+argument verbatim (`read_arg` sizes info 26/27 = 4/8 bytes) while
+/// surrounding structure mutates. (The dedicated `widen_float` class DOES rewrite these heads — that
+/// direction is pinned f16→f32→f64 by the shipped `encoding_mutator_self_check`.) Float heads now
+/// reach the mutator on minted-under-preserve inputs too, via the `any`/`AnyCbor` mint path. Kept
+/// here, not in the shipped file, so no generated-crate snapshot moves (the file ships verbatim via
+/// `include_str!`).
 #[test]
 fn encoding_variants_copy_float_heads_verbatim() {
     // [ fa 3f800000 ] (array(1) holding f32 1.0): widen_step widens the array head 0x81 -> 0x98 0x01

@@ -1253,19 +1253,6 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   list-wrapper minting machinery, expose the byte-string element through its own wrapper class or a
   `js_sys::Uint8Array`-based ABI instead of a bare `Vec<u8>` element.
 
-- **Fidelity mutator float-width class lands with the `any` emit-tests mint path (A3).**
-  `static/emit_tests_encoding_fidelity.rs` copies major-type-7 heads verbatim because NO float head
-  reaches the mutator: its input is always an emit-tests-minted value, and both float-carrying
-  constructs are unmintable under a preserve profile — native-float members panic generation
-  (`preserve_encodings_supports_floats` stub), and `AnyCbor`-typed (`any`) members (which DO
-  round-trip f16/f32/f64 with width fidelity via the cbor_event fork's `float_sz` API, exercised by
-  `any_cbor_tests`) are silently skipped by the minter until A3 wires their mint path. The A2 comment
-  now records this justification deliberately (re-recorded when `AnyCbor` entered generated crates).
-  Trigger: A3's `any` mint path makes floats reachable here, so that delivery must add a float-width
-  mutation class to the mutator (widen f16→f32→f64 on the head, assert byte-exact re-encode) in the
-  same commit — otherwise the verbatim-copy path silently narrows exactly the encoding axis
-  `AnyCbor` preserves.
-
 ## Operational watches
 
 - **The extern-interface export is a public interchange format.** Once a consumer regenerates
