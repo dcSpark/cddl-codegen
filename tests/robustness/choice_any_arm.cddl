@@ -1,8 +1,8 @@
-; `any` as a TYPE-CHOICE ARM (`any / tstr`) panics generation at an `Option::unwrap()` on `None` in
-; intermediate/rust_type.rs — the choice's variant naming lookup has no entry for the `any` extern. DISTINCT
-; from both the top-level alias `x = any` (generates; compile-class gap pinned by
-; tests/matrix_reject/prelude.any.cddl) and the member-position `[any]` generic_instances assert
-; (tests/robustness/any_member.cddl) — three positions, three failure sites. Shares its normalized
-; panic class with choice_group_array_arm.cddl (different trigger shape, same message). Surfaced by
-; the recombination sweep (src/tests/recombination_tests.rs).
+; `any` as a bare type-choice arm (`any / tstr`) is a GRACEFUL rejection in EVERY profile: `any`
+; overlaps every other CBOR type, so a catch-all union arm needs forced-backtracking dispatch
+; (loose-CBOR phase A3). A2 rejects it with a message naming the supported positions (member /
+; array / table / tagged / top-level). Formerly panicked at an `Option::unwrap()` in
+; intermediate/rust_type.rs. A CONTAINER-of-any arm (`[* any] / tstr`,
+; tests/robustness/choice_array_any_arm.cddl) is supported instead. Surfaced by the recombination
+; sweep (src/tests/recombination_tests.rs).
 a = any / tstr
