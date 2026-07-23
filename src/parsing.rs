@@ -1371,6 +1371,19 @@ fn parse_type(
                         cli,
                     )
                 });
+                // A control operator on `any` (`.size`, `.cbor`, ranges, `.lt`/`.le`/…) is
+                // semantically empty — `any` already accepts every CBOR item — and `any` is not a
+                // primitive, so the range/size machinery below would panic unwrapping
+                // `ident_to_primitive`. Reject it gracefully in v1 (DESIGN §7); allow on demand once
+                // a fixture proves a meaningful semantics.
+                if control.is_some() && cddl_ident.to_string() == "any" {
+                    types.record_rejection(format!(
+                        "a control operator (`.size`/`.cbor`/range/`.lt`…) on `{type_name} = any …` \
+                         is not supported: `any` already accepts every CBOR item, so the constraint \
+                         is empty. Remove it (`{type_name} = any`) or apply it to a concrete type."
+                    ));
+                    return;
+                }
                 match control {
                     Some(control) => {
                         assert!(
@@ -1585,6 +1598,29 @@ fn parse_type(
                                         // wrapper `@newtype` opts into — making `@newtype` redundant (not a
                                         // double wrapper) on a tag rule. The tag rides on `concrete_type`
                                         // (`.tag_if(outer_tag)` above), so the wrapper writes it.
+                                        // `@newtype` on a bare `any` rule is a v1 graceful rejection
+                                        // (DESIGN ruling §10.11): the wrapper is unproven through the
+                                        // surface machinery and cheap to allow later once a fixture
+                                        // proves it. A TAGGED any (`#6.n(any)`, `outer_tag` set) is a
+                                        // supported position whose wrapper the tag forces (@newtype
+                                        // redundant there), so only the newtype-driven untagged case
+                                        // is caught here.
+                                        if rule_metadata.newtype.is_some()
+                                            && outer_tag.is_none()
+                                            && matches!(
+                                                concrete_type.conceptual_type,
+                                                ConceptualRustType::Any
+                                            )
+                                        {
+                                            types.record_rejection(format!(
+                                                "@newtype on `{type_name} = any` is not supported in \
+                                                 this phase: use a transparent alias \
+                                                 (`{type_name} = any`, no @newtype) — `any` lowers to \
+                                                 the AnyCbor runtime type directly. (Newtype-wrapping \
+                                                 `any` is planned once a fixture proves the surface.)"
+                                            ));
+                                            return;
+                                        }
                                         if rule_metadata.newtype.is_some() || outer_tag.is_some() {
                                             types.register_rust_struct(
                                                 parent_visitor,

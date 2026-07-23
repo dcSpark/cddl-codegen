@@ -7,9 +7,10 @@ expression: catalog
 # A NEW panic is a regression: malformed input must error gracefully. A committed PANIC entry
 # is a tracked-known rejection (see the fixture's comments); flipping it to `error (graceful)` is a fix.
 
-any_member                 ok
+any_control_op             error (graceful)
+any_member                 error (graceful)
 choice_any_arm             error (graceful)
-choice_array_any_arm       ok
+choice_array_any_arm       error (graceful)
 choice_cbor_ref_arm        PANIC
 choice_group_array_arm     ok
 duplicate_rule             error (graceful)
@@ -30,6 +31,7 @@ loose_builder_name_claimed_plain error (graceful)
 map_bareword_keyword_key   error (graceful)
 map_entry_no_key           error (graceful)
 map_entry_no_key_single    error (graceful)
+newtype_any                error (graceful)
 non_empty_loose_builder_name_claimed error (graceful)
 non_empty_map_loose_builder_name_claimed error (graceful)
 non_empty_map_wrapper_collision_nested error (graceful)

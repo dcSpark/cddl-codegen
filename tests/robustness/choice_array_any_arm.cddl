@@ -1,10 +1,9 @@
-; An ARRAY-of-`any` as a TYPE-CHOICE ARM (`[* any] / tstr`) panics generation at an
-; `Option::unwrap()` on `None` in generation/serialize.rs (`encoding_var_is_copy` walking the
-; `any` element) under `--wasm=false`; with wasm on it dies earlier at the member-position
-; `generic_instances` assert (the any_member.cddl class). DISTINCT from the bare-`any` arm
-; (`any / tstr`, tests/robustness/choice_any_arm.cddl — unstorable arm, rust_type.rs unwrap):
-; here the arm IS storable (an array wrapper), IR construction succeeds, and the serialize
-; emission for the choice's variant is what dies. Surfaced by the recombination sweep
-; (src/tests/recombination_tests.rs, composition class outer=choice_member inner=occurrence
-; filler=prelude.any).
+; An array-of-`any` type-choice arm (`[* any] / tstr`) is a SUPPORTED rust position under
+; --wasm=false: `[* any]` is a homogeneous array whose CBOR wire type (Array) is distinct from
+; `tstr` (Text), so the ordinary choice machinery dispatches it correctly and it round-trips
+; byte-exact (element lowered to `AnyCbor`, loose-CBOR A2). Under the catalog's default --wasm=true
+; profile an any-using spec gracefully rejects (wasm is A3), so this row is `error (graceful)`, not
+; the panic it formerly produced in generation/serialize.rs. DISTINCT from the bare-`any` arm
+; (`any / tstr`, tests/robustness/choice_any_arm.cddl), which is rejected in EVERY profile because
+; bare `any` overlaps every arm.
 a = [* any] / tstr

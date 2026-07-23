@@ -556,6 +556,30 @@ pub fn with_types<R>(
     crate::wrapper_requests::seed_used_as_key_from_key_requests(&mut types, cli);
     types.finalize(&pv, cli)?;
 
+    // A2 (loose-CBOR) is rust-only: a spec whose finalized IR lowers CDDL `any` to the `AnyCbor`
+    // runtime type has no wasm wrapper class and no serde/schemars impls yet (both are phase A3).
+    // Reject those flag combinations gracefully — naming the workaround — rather than emit code that
+    // references a nonexistent `AnyCbor` wasm wrapper / serde impl and fails to compile. The rust
+    // round-trip verdict is what gates matrix support, so `--wasm=false` (and no JSON flags) is a
+    // complete, supported build for every `any` position this phase delivers.
+    if types.uses_any_cbor() {
+        if cli.wasm {
+            return Err(
+                "`any` (lowered to the AnyCbor runtime type) has no wasm surface yet: regenerate \
+                 with --wasm=false. The wasm AnyCbor wrapper class is planned (loose-CBOR phase A3)."
+                    .into(),
+            );
+        }
+        if cli.json_serde_derives || cli.json_schema_export {
+            return Err(
+                "`any` (lowered to the AnyCbor runtime type) has no JSON surface yet: regenerate \
+                 without the JSON flags (--json-serde-derives / --json-schema-export). The AnyCbor \
+                 serde/schemars impls are planned (loose-CBOR phase A3)."
+                    .into(),
+            );
+        }
+    }
+
     Ok(f(&types, export_raw_bytes_encoding_trait))
 }
 

@@ -3810,6 +3810,51 @@ fn flag_value_rejects_canonical_without_preserve() {
     );
 }
 
+/// A spec whose finalized IR lowers CDDL `any` to the `AnyCbor` runtime type must be gracefully
+/// rejected under `--wasm=true` and under the JSON flags (loose-CBOR A2 is rust-only; the wasm
+/// wrapper and serde/schemars impls are phase A3). Pins the rejection AND its message so the guard
+/// can't silently become a no-op, and confirms the same input with `--wasm=false` and no JSON flags
+/// is accepted — so the rejection is specific to the surface flags, not the `any` input itself.
+#[test]
+fn flag_value_rejects_any_under_wasm_and_json() {
+    // tests/robustness/any_member.cddl is `a = [any]` — its IR contains `Any`. `Cli` isn't `Clone`,
+    // so build a fresh rust-only base per case and flip exactly the surface flag under test.
+    let any_cli = |wasm: bool, serde: bool, schemars: bool| crate::cli::Cli {
+        input: std::path::PathBuf::from("tests/robustness/any_member.cddl"),
+        output: std::path::PathBuf::from("unused"),
+        wasm,
+        json_serde_derives: serde,
+        json_schema_export: schemars,
+        ..Default::default()
+    };
+
+    // --wasm=true → rejected, message names wasm + the AnyCbor surface.
+    let msg = crate::api::with_types(&any_cli(true, false, false), |_, _| ())
+        .expect_err("`any` under --wasm=true should be rejected")
+        .to_string();
+    assert!(
+        msg.contains("wasm") && msg.contains("AnyCbor"),
+        "wasm rejection message should name wasm + AnyCbor, got: {msg}"
+    );
+
+    // JSON flags (serde OR schemars) → rejected, message names JSON.
+    for json_cli in [any_cli(false, true, false), any_cli(false, false, true)] {
+        let msg = crate::api::with_types(&json_cli, |_, _| ())
+            .expect_err("`any` under a JSON flag should be rejected")
+            .to_string();
+        assert!(
+            msg.contains("JSON"),
+            "json rejection message should name JSON, got: {msg}"
+        );
+    }
+
+    // baseline: rust-only (--wasm=false, no JSON flags) accepts the same `any` input.
+    assert!(
+        crate::api::with_types(&any_cli(false, false, false), |_, _| ()).is_ok(),
+        "`any` under --wasm=false with no JSON flags should be accepted"
+    );
+}
+
 /// The manifest merge contract on real disk (the `cargo_manifest` changeset applied through
 /// `export`): a first run scaffolds `rust/Cargo.toml`; a user then hand-edits it (bumps the seeded
 /// `version`, adds their own dep + comments, tampers the version stamp); a regeneration must
