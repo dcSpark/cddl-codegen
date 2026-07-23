@@ -479,12 +479,6 @@ status = "unsupported"
 reason = "the `undefined` simple value is rejected"
 code_anchor = "unsupported cddl prelude type"
 
-[[note]]
-id = "prelude.any"
-status = "unsupported"
-reason = "`x = any` generates `pub type X = Any;` referencing a type defined nowhere — does not compile (caught by the compile-gate; the exit-code-only probe formerly over-credited it). `any` is absent from is_identifier_reserved, so it's treated as an undefined user type."
-code_anchor = "is_identifier_reserved"
-
 # fixed-value simple-value types (true/false/nil) — same standalone Fixed-type gap as `null`/value literals.
 # These REJECT GRACEFULLY (they used to panic; the graceful path landed with the top-level fixed-value
 # reject and is pinned by the tests/matrix_reject/ expect-reject catalog). Fixed values as struct/array
@@ -618,7 +612,7 @@ text = "Sockets aren't really implemented — `$`/`$$` are stripped to plain ide
 text = "Float is fine until `--preserve-encodings` or bounds (the two `unimplemented!` sites). The corpus no longer avoids floats entirely: `tests/corpus/optional_fixed_float.cddl` carries an optional fixed FLOAT member (default/json generate the `bool` presence field; its preserve leg is generation-fail-ledgered in `feature_corpus_compiles`'s `EXPECTED_GENERATION_FAIL`). The residual preserve-only float gap rides the `preserve_encodings_supports_floats` stub class."
 
 [[finding]]
-text = "Methodology — the support probe is COMPILE-GATED (generate + `cargo check`), not exit-code-only. This caught a former false positive: `x = any` exits 0 but emits `pub type X = Any;` (a type defined nowhere) which fails to compile, so `prelude.any` is correctly ➖ (root cause: `any` is absent from `is_identifier_reserved` in src/utils.rs, so it's treated as an undefined user type). The same standalone-compile failure is expected-by-design for the extern/raw-bytes sentinels and @custom_serialize/@custom_deserialize — those are exempt (supported, but compile only with user-provided code; integration-tested)."
+text = "Methodology — the support probe is EXECUTION-GATED (generate + `cargo test` of the emitted round-trip surface), not exit-code-only, so a spec that exits 0 but emits code that does not compile (or does not round-trip) is correctly ➖. A standalone-compile failure is expected-by-design for the extern/raw-bytes sentinels and @custom_serialize/@custom_deserialize — those are exempt (supported, but compile only with user-provided code; integration-tested)."
 
 [[finding]]
 text = "Gap — top-level fixed-value / null TYPES (`answer = 42`, `x = null`) have no standalone type representation, so the generator REJECTS them gracefully (not a panic), pinned by the `tests/matrix_reject/` expect-reject catalog (`tests/matrix_reject/prelude.null.cddl`, `tests/matrix_reject/type2.value.cddl`, `tests/matrix_reject/value.number.cddl`, `tests/matrix_reject/value.text.cddl`) via `robustness_tests::unsupported_construct_reject_catalog`. The same fixed values serialize fine as struct/array MEMBERS (`tests/corpus/fixed_bool_member.cddl`). A singleton-value type that materializes the constant is still a reasonable feature; candidate cddl-codegen fix. (Surfaced by the matrix, not hidden by editing the example.)"
