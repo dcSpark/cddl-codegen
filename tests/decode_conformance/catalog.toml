@@ -5047,6 +5047,64 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "prelude.any"
+axis = "feature"
+example = "x = any"
+spec = "__probe_holder = [0, x]\nx = any"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82006541726b2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200656361766564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200656369746564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82006758656e616b6973"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820067636172626f6e73"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200686c6966746f666673"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820068756e6e6572766564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820069616e617468656d6173"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82006b736865617468696e672773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82006d696e657669746162696c697479"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "prelude.b64legacy"
 axis = "feature"
 example = "x = b64legacy"

@@ -447,7 +447,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "prelude.any"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm crate failed to compile (cargo test exit 1); no committed decode vectors (see catalog); ruby=ok rust=ok"
+evidence = "probe: cddl-codegen exit 0; compiles (no minted round-trip surface); wasm crate failed to compile (cargo test exit 1); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
 emission.json.status = "unsupported"
 emission.json.evidence = "probe (emission=json): cddl-codegen rejected at parse/lex (exit 1)"
 emission.preserve.status = "supported"
