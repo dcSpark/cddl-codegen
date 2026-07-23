@@ -1,0 +1,2 @@
+any = uint
+foo = {1: any}

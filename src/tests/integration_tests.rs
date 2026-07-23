@@ -3855,6 +3855,45 @@ fn flag_value_rejects_any_under_wasm_and_json() {
     );
 }
 
+/// A user rule literally named `any` (`any = uint`) must SHADOW the prelude `any` and behave
+/// exactly as it did before `ConceptualRustType::Any` existed: it registers a user type alias
+/// (`Any = u64`) resolved via `resolve_alias` BEFORE the `new_type` fallback that intercepts the
+/// bare prelude name, so a member typed `any` gets the user's uint, NOT the `AnyCbor` runtime type,
+/// and no `any_cbor` module is pulled in. Pins the interception seam's shadowing guarantee (A2).
+#[test]
+fn user_rule_named_any_shadows_the_prelude() {
+    // tests/any-shadow/input.cddl is `any = uint` + `foo = {1: any}`.
+    let files = crate::api::generated_strings(&crate::cli::Cli {
+        input: std::path::PathBuf::from("tests/any-shadow/input.cddl"),
+        output: std::path::PathBuf::from("unused"),
+        static_dir: std::path::PathBuf::from("static"),
+        wasm: false,
+        ..Default::default()
+    })
+    .expect("shadowed `any` should generate");
+    let all = files.values().cloned().collect::<String>();
+    // The user alias wins: the field is the uint-backed `Any` alias, never the runtime AnyCbor.
+    assert!(
+        !all.contains("AnyCbor") && !all.contains("any_cbor"),
+        "a user `any = uint` rule must not pull in the AnyCbor runtime type"
+    );
+
+    // baseline: WITHOUT the shadowing rule, `{1: any}` (tests/robustness/any_member.cddl's sibling
+    // shape) DOES lower to AnyCbor — so the shadowing above is the cause, not the input.
+    let unshadowed = crate::api::generated_strings(&crate::cli::Cli {
+        input: std::path::PathBuf::from("tests/robustness/any_member.cddl"),
+        output: std::path::PathBuf::from("unused"),
+        static_dir: std::path::PathBuf::from("static"),
+        wasm: false,
+        ..Default::default()
+    })
+    .expect("bare `any` should generate rust-only");
+    assert!(
+        unshadowed.values().any(|c| c.contains("any_cbor::AnyCbor")),
+        "an unshadowed `any` position must lower to the AnyCbor runtime type"
+    );
+}
+
 /// The manifest merge contract on real disk (the `cargo_manifest` changeset applied through
 /// `export`): a first run scaffolds `rust/Cargo.toml`; a user then hand-edits it (bumps the seeded
 /// `version`, adds their own dep + comments, tampers the version stamp); a regeneration must
