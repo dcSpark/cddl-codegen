@@ -1261,6 +1261,37 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   list-wrapper minting machinery, expose the byte-string element through its own wrapper class or a
   `js_sys::Uint8Array`-based ABI instead of a bare `Vec<u8>` element.
 
+- **Opt-in RFC 8949 §6.1-faithful total CBOR→JSON rendering (a `to_json_rfc8949`-style lossy
+  flavor).** §6.1 is self-described "non-normative advice", and its non-injective rows are lossy
+  by its own admission: byte strings become base64url JSON strings indistinguishable from text,
+  tag numbers are ignored, non-finite floats and unknown simples become "a single substitute
+  value, such as a JSON null", and its integer-key stringification carries an acknowledged
+  "danger of key collision". The crate's `any` JSON surfaces refuse silent substitution instead —
+  the tagged `AnyCbor` codec (serde's externally-tagged enum form,
+  `docs/docs/output_format.mdx` § "JSON representation") is total but structural, and the
+  natural-JSON surface (the open-struct-maps workstream) implements §6.1's injective subset and
+  **errors** on the substitute-value rows — because generated JSON feeds a symmetric `from_json`
+  and typed consumers, where a silent substitute is write-back corruption (`NaN` → `null` →
+  a different value re-encoded; bytes → string → re-read as text), not display fuzz. A
+  never-fails *natural* view is still legitimately useful for display/diagnostic consumers; it
+  must simply be opt-in by name so totality-by-substitution is a visible choice. Mechanical
+  layer when a consumer asks: the same recursive walk with §6.1's leaf policy, a never-fails
+  property over the `AnyCbor` fuzz corpus, and vectors pinning each substitution row. Reopening
+  signal: a real consumer needs a total natural-JSON view and neither the tagged codec nor the
+  fallible natural `to_json` fits.
+- **EDN text-notation round-trip (`to_edn` / `from_edn`, draft-ietf-cbor-edn-literals).** EDN is
+  the text notation that *can* be byte-faithful where JSON structurally cannot (encoding
+  indicators, NaN payload bits — JSON's number model collapses both), making it the natural
+  third channel: JSON as the value-level lossy view by charter, CBOR as the authoritative
+  bytes, EDN as the human-readable byte-faithful text form. The maintainer's `cbor_event_edn`
+  library already handles the hard edge cases (NaN payloads included) and is the natural base.
+  Deferred because the EDN spec is an evolving IETF draft — a generated-crate surface built
+  against it now risks churn with every draft revision. Reopening signal: the draft stabilizes
+  (late-stage or RFC) or a real consumer needs byte-faithful text round-trips sooner.
+  Mechanical layer: a property over the `AnyCbor` fuzz corpus asserting
+  `from_edn(to_edn(x))` byte-identity against the existing span oracle
+  (`src/tests/any_cbor_tests.rs`).
+
 ## Operational watches
 
 - **The extern-interface export is a public interchange format.** Once a consumer regenerates
