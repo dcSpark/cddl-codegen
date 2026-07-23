@@ -42,6 +42,9 @@ set = '"0.4.3"'
 # parsing), whose float slot is `Float(f64, Option<Sz>)`. Interim measure — move this back to a
 # crates.io version `set` once the fork upstreams to primetype/cbor_event + releases. (Co-owned
 # manifest: this dep is asserted, never removed.)
+# NOTE for that flip: merge_dep_spec treats a version-only `set` as a floor that PRESERVES an
+# existing git source on already-written manifests — the flip must also clear `git`/`rev` (see
+# the source-assertion contract in src/cargo_manifest.rs).
 [[change]]
 id = 6
 path = "dependencies.cbor_event"
