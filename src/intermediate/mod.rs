@@ -2553,11 +2553,12 @@ impl<'a> IntermediateTypes<'a> {
             hash: false,
             ord: false,
         };
-        // A `@duplicates reject` set's element type is compared with the uniqueness twin's linear
-        // `contains` scan, so it needs `Eq`. Demand the `ord` flavor (`Eq/PartialEq/Ord/PartialOrd`)
-        // — the minimal flavor CONTAINING `Eq` — rather than `bare`, leaving room for a sorted-shadow
-        // implementation later. (`mark_key_demand` marks `Rust(ident)` nodes only; primitive/std
-        // elements carry `Eq` intrinsically, so they need no marking.)
+        // A `@duplicates reject` set's element type goes through the uniqueness twin's
+        // `TryFrom<Vec<T>>` door, whose hybrid `scan_unique` (linear below a small-size threshold,
+        // sorted-index above) is bounded `T: Ord` — so demand the `ord` flavor
+        // (`Eq/PartialEq/Ord/PartialOrd`). (`mark_key_demand` marks `Rust(ident)` nodes only;
+        // primitive/std elements carry `Ord` intrinsically EXCEPT floats, which are rejected
+        // gracefully below like float map keys.)
         let ord = DemandSet {
             bare: false,
             hash: false,
@@ -2606,6 +2607,13 @@ impl<'a> IntermediateTypes<'a> {
                 "rule `{rule}`: table key type contains a float (floats have no total order, so they cannot be map keys) — use an integer/text/bytes key domain instead"
             )
         }
+        // The set-side twin of `float_key_msg`: a set's uniqueness door and always-on comparison
+        // derives need `Ord` on the element, which floats don't have.
+        fn float_set_elem_msg(rule: &RustIdent) -> String {
+            format!(
+                "rule `{rule}`: set element type contains a float (floats have no total order, so set elements cannot be compared for uniqueness) — use a non-float element type, or drop the uniqueness requirement (`@duplicates preserve` on a tag-258 set rule; no directive on a plain array rule)"
+            )
+        }
         // do a recursive check on the ones explicitly tagged as keys using @used_as_key: each tagged
         // root spreads its OWN flavor to every type it (transitively) contains. Iterating the roots map
         // (not the full `key_demand`, which finalize is about to expand) keeps the propagated flavor
@@ -2631,13 +2639,18 @@ impl<'a> IntermediateTypes<'a> {
                     float_key_rejections.insert(float_key_msg(&rule_ident));
                 }
             });
-            // A reject-mode set's element type gets the `ord` (Eq-containing) demand so the twin's
-            // uniqueness scan compiles. The policy lives on the struct config (and its alias).
+            // A reject-mode set's element type gets the `ord` demand so the twin's uniqueness scan
+            // compiles. The policy lives on the struct config (and its alias). A float element can
+            // never satisfy that `Ord` bound, so it is rejected gracefully (the set-side analog of
+            // the float-key rejection above) instead of emitting a non-compiling crate.
             if let RustStructType::Array { element_type, .. } = rust_struct.variant()
                 && rust_struct.config().duplicates
                     == Some(crate::comment_ast::DuplicatesPolicy::Reject)
             {
                 element_type.visit_types(self, &mut |ty| mark_key_demand(ty, &mut key_demand, ord));
+                if key_contains_float(&element_type.conceptual_type, self) {
+                    float_key_rejections.insert(float_set_elem_msg(&rule_ident));
+                }
             }
             // A SET NOMINAL wrapper (Phase 2.2/2.3) derives always-on encodings-ignored
             // `PartialEq/Eq/PartialOrd/Ord/Hash`, and its inner collection (`OrderedSet<Elem>` under
@@ -2652,6 +2665,12 @@ impl<'a> IntermediateTypes<'a> {
                 element_type.visit_types(self, &mut |ty| {
                     mark_key_demand(ty, &mut key_demand, full_set_demand)
                 });
+                // The wrapper's always-on `Ord`/`Hash` derives (and, under reject, the uniqueness
+                // door's `T: Ord`) flow onto the element regardless of policy, so a float element
+                // can never compile — reject gracefully like the reject-array branch above.
+                if key_contains_float(&element_type.conceptual_type, self) {
+                    float_key_rejections.insert(float_set_elem_msg(&rule_ident));
+                }
             }
             if let RustStructType::Table { domain, .. } = rust_struct.variant() {
                 // A `@duplicates preserve` table's key is compared with the pair-map's linear
