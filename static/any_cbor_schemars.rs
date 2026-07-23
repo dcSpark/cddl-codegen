@@ -55,3 +55,26 @@ impl schemars::JsonSchema for AnyCbor {
         false
     }
 }
+
+/// The `#[schemars(schema_with = "…::natural_any_cbor_schema")]` companion to the
+/// `natural_any_cbor` serde adapter (loose-CBOR Phase B, ruling R1): the schema a GENERATED type
+/// puts on an `any`-typed field/arm. It is the permissive "any JSON value" schema (an empty schema
+/// accepts everything) because the natural rendering of an arbitrary CBOR value can be any JSON
+/// value — json2ts turns it into TS `unknown`. This is deliberately DISTINCT from `AnyCbor`'s own
+/// tagged `oneOf` schema above, which describes the tagged value-codec surface (the `AnyCbor` wasm
+/// wrapper's `to_json`), and is unchanged (ruling R2).
+pub fn natural_any_cbor_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({})
+}
+
+/// Companion to `natural_any_cbor_seq` (a `Vec<AnyCbor>` member, `[* any]`): an array whose items
+/// are the permissive "any JSON value" schema.
+pub fn natural_any_cbor_seq_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({ "type": "array", "items": {} })
+}
+
+/// Companion to `natural_any_cbor_btreemap` (a `{* K => any}` table member with a stringifiable
+/// key): an object whose additional-property values are the permissive "any JSON value" schema.
+pub fn natural_any_cbor_map_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({ "type": "object", "additionalProperties": {} })
+}

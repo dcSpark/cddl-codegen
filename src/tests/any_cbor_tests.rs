@@ -1030,6 +1030,174 @@ mod json_non_preserve {
         // nint domain enforced on read (no debug-assert panic on hostile input).
         serde_json::from_str::<AnyCbor>(r#"{"nint":5}"#).unwrap_err();
     }
+
+    // ---- Natural-fallible JSON surface (loose-CBOR Phase B WP1, rulings R3/R4) ----
+    // The tagged tests above pin `AnyCbor`'s OWN serde (the value codec, R2). These pin the
+    // SEPARATE natural walk (`to_natural_json`/`from_natural_json`) that generated types route
+    // through via `#[serde(with = "natural_any_cbor")]`.
+
+    fn n(v: &AnyCbor) -> serde_json::Value {
+        to_natural_json(v).unwrap()
+    }
+
+    /// R3 success rows: every kind with an injective JSON image renders exactly.
+    #[test]
+    fn natural_success_rows() {
+        assert_eq!(n(&AnyCbor::new_uint(5)), serde_json::json!(5));
+        // R5: big uint (> 2^53) stays a JSON number.
+        assert_eq!(
+            n(&AnyCbor::new_uint(u64::MAX)),
+            serde_json::json!(18446744073709551615u64)
+        );
+        assert_eq!(n(&AnyCbor::new_nint(-3)), serde_json::json!(-3));
+        assert_eq!(n(&AnyCbor::new_text("hi".into())), serde_json::json!("hi"));
+        assert_eq!(n(&AnyCbor::new_bool(true)), serde_json::json!(true));
+        assert_eq!(n(&AnyCbor::new_null()), serde_json::Value::Null);
+        assert_eq!(n(&AnyCbor::new_float(1.5)), serde_json::json!(1.5));
+        assert_eq!(
+            n(&AnyCbor::new_array(vec![
+                AnyCbor::new_uint(1),
+                AnyCbor::new_text("x".into())
+            ])),
+            serde_json::json!([1, "x"])
+        );
+        // map with text/uint/nint keys → object (keys stringified: text verbatim, ints decimal).
+        assert_eq!(
+            n(&AnyCbor::new_map(vec![
+                (AnyCbor::new_text("count".into()), AnyCbor::new_uint(3)),
+                (AnyCbor::new_uint(7), AnyCbor::new_bool(false)),
+                (AnyCbor::new_nint(-1), AnyCbor::new_null()),
+            ])),
+            serde_json::json!({"count": 3, "7": false, "-1": null})
+        );
+    }
+
+    /// R3 failure rows: every kind with no injective image strict-fails, the error naming the kind.
+    #[test]
+    fn natural_failure_rows() {
+        let cases: Vec<(AnyCbor, &str)> = vec![
+            (AnyCbor::new_bytes(vec![1, 2]), "bytes"),
+            (AnyCbor::new_tag(11, AnyCbor::new_uint(1)), "tag"),
+            (AnyCbor::new_undefined(), "undefined"),
+            (AnyCbor::new_unassigned(250), "unassigned"),
+            (AnyCbor::new_float(f64::NAN), "non-finite"),
+            (AnyCbor::new_float(f64::INFINITY), "non-finite"),
+            // nint below i64::MIN (its magnitude exceeds serde_json's number model).
+            (AnyCbor::new_nint(-(1i128 << 64)), "below i64::MIN"),
+        ];
+        for (v, needle) in cases {
+            let err = to_natural_json(&v).unwrap_err();
+            assert!(
+                err.0.contains(needle),
+                "error {:?} should name {needle:?}",
+                err.0
+            );
+        }
+        // map key of an unsupported kind (bytes) fails, naming the key kind.
+        let bad_key = AnyCbor::new_map(vec![(AnyCbor::new_bytes(vec![0]), AnyCbor::new_uint(1))]);
+        assert!(to_natural_json(&bad_key).unwrap_err().0.contains("map key"));
+        // stringified-key collision: uint 12 and text "12" both stringify to "12".
+        let collide = AnyCbor::new_map(vec![
+            (AnyCbor::new_uint(12), AnyCbor::new_uint(1)),
+            (AnyCbor::new_text("12".into()), AnyCbor::new_uint(2)),
+        ]);
+        assert!(
+            to_natural_json(&collide)
+                .unwrap_err()
+                .0
+                .contains("stringifies identically")
+        );
+    }
+
+    /// R4 read convention + PROBE-B2: serde_json's number model is lexical — `5` is integral (uint),
+    /// `5.0` is fractional (float). Prefer-numeric object keys; total on every JSON shape.
+    #[test]
+    fn natural_read_convention() {
+        let five: serde_json::Value = serde_json::from_str("5").unwrap();
+        let five_dot: serde_json::Value = serde_json::from_str("5.0").unwrap();
+        assert_eq!(five.is_u64(), true, "PROBE-B2: `5` is integral");
+        assert_eq!(five_dot.is_f64(), true, "PROBE-B2: `5.0` is fractional");
+        assert_eq!(from_natural_json(five), AnyCbor::new_uint(5));
+        assert_eq!(from_natural_json(five_dot), AnyCbor::new_float(5.0));
+        assert_eq!(
+            from_natural_json(serde_json::json!(-5)),
+            AnyCbor::new_nint(-5)
+        );
+        assert_eq!(
+            from_natural_json(serde_json::json!(18446744073709551615u64)),
+            AnyCbor::new_uint(u64::MAX)
+        );
+        // object keys: prefer-numeric for canonical decimal spellings, else text.
+        let obj = from_natural_json(serde_json::json!({
+            "12": 1, "-5": 2, "012": 3, "+7": 4, "5.0": 5, "abc": 6
+        }));
+        let pairs = obj.as_map().unwrap();
+        let key_kinds: std::collections::BTreeMap<String, AnyCborKind> = pairs
+            .iter()
+            .map(|(k, _)| {
+                let s = match k.kind() {
+                    AnyCborKind::Text => k.as_text().unwrap().to_owned(),
+                    AnyCborKind::UInt => k.as_uint().unwrap().to_string(),
+                    AnyCborKind::NInt => k.as_nint().unwrap().to_string(),
+                    _ => unreachable!(),
+                };
+                (s, k.kind())
+            })
+            .collect();
+        assert_eq!(key_kinds["12"], AnyCborKind::UInt);
+        assert_eq!(key_kinds["-5"], AnyCborKind::NInt);
+        assert_eq!(key_kinds["012"], AnyCborKind::Text);
+        assert_eq!(key_kinds["+7"], AnyCborKind::Text);
+        assert_eq!(key_kinds["5.0"], AnyCborKind::Text);
+        assert_eq!(key_kinds["abc"], AnyCborKind::Text);
+    }
+
+    /// The natural round-trip law: `from_natural_json(to_natural_json(x)?)` recovers a value-equal
+    /// `AnyCbor` (non-preserve = value equality), modulo R4's numeric-key reading AND JSON object
+    /// key ordering (a JSON object is unordered — `serde_json::Map` normalizes key order, so the law
+    /// is stated as a JSON fixed point: the recovered value re-renders to the same JSON). Vectors
+    /// avoid text keys that look numeric (those read back as ints, the documented JSON-only
+    /// ambiguity).
+    #[test]
+    fn natural_round_trip_law() {
+        let cases = vec![
+            AnyCbor::new_uint(0),
+            AnyCbor::new_uint(u64::MAX),
+            AnyCbor::new_nint(-1),
+            AnyCbor::new_nint(i64::MIN as i128),
+            AnyCbor::new_text("hello".into()),
+            AnyCbor::new_bool(false),
+            AnyCbor::new_null(),
+            AnyCbor::new_float(0.0),
+            AnyCbor::new_float(-2.5),
+            AnyCbor::new_float(1e300),
+            AnyCbor::new_array(vec![
+                AnyCbor::new_uint(1),
+                AnyCbor::new_map(vec![(
+                    AnyCbor::new_text("k".into()),
+                    AnyCbor::new_array(vec![AnyCbor::new_null(), AnyCbor::new_bool(true)]),
+                )]),
+            ]),
+            AnyCbor::new_map(vec![
+                (AnyCbor::new_text("count".into()), AnyCbor::new_uint(3)),
+                (AnyCbor::new_uint(7), AnyCbor::new_nint(-9)),
+            ]),
+        ];
+        for v in cases {
+            let json = to_natural_json(&v).expect("success vector");
+            let back = from_natural_json(json.clone());
+            // JSON fixed point (value-equal modulo key ordering); for the map-free vectors this is
+            // exactly value equality, which we additionally assert to keep the stronger pin.
+            assert_eq!(
+                to_natural_json(&back).expect("recovered value re-renders"),
+                json,
+                "natural round-trip JSON fixed point"
+            );
+            if !matches!(v.kind(), AnyCborKind::Map | AnyCborKind::Array) {
+                assert_eq!(v, back, "natural round-trip value-equal: {json}");
+            }
+        }
+    }
 }
 
 #[allow(dead_code, clippy::upper_case_acronyms, clippy::wrong_self_convention)]
