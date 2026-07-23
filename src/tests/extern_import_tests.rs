@@ -480,7 +480,10 @@ fn strip_header(export_file: &str) -> String {
 fn extern_interface_v2_header_conditional_on_any() {
     // any-bearing dep → every export file opens with v2.
     let any_export = mint_export("meta = {* uint => any}\n", "anydep", "v2any");
-    assert!(!any_export.is_empty(), "any dep must emit at least one file");
+    assert!(
+        !any_export.is_empty(),
+        "any dep must emit at least one file"
+    );
     for (path, content) in &any_export {
         assert_eq!(
             content.lines().next().unwrap_or(""),

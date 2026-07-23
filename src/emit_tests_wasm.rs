@@ -349,9 +349,9 @@ fn wasm_value(
         ConceptualRustType::Rust(ident) => wasm_named(types, ident, mv, scoped, cli),
         // `any` has no wasm ctor mint path in A2 (silent skip, like Fixed/Alias). Reachable only
         // via the shared type walk — specs using `any` reject under --wasm before emit-tests-wasm.
-        ConceptualRustType::Fixed(_) | ConceptualRustType::Alias(_, _) | ConceptualRustType::Any => {
-            None
-        }
+        ConceptualRustType::Fixed(_)
+        | ConceptualRustType::Alias(_, _)
+        | ConceptualRustType::Any => None,
     }
 }
 
