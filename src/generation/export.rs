@@ -269,6 +269,19 @@ fn composed_runtime_static_files(
             "use super::error::{DeserializeError, DeserializeFailure};\n\
              use super::serialization::*;\n\n",
         );
+        // Depth-guard hook (DESIGN §12 A2): the `read` recursion seam in the fragments calls
+        // `any_cbor_recursion_guard!()`. We define that macro per-flag here — an `acquire` of the
+        // opt-in `DepthGuard` (baked limit, same value the composite deserializers bake and the same
+        // thread-local counter, reached via the `use super::serialization::*` glob) under
+        // `--deserialize-depth-limit`, or a no-op otherwise. Defining it BEFORE the `include`d
+        // fragment content satisfies macro_rules' define-before-use rule.
+        match cli.deserialize_depth_limit {
+            Some(limit) => any_cbor_rs.push_str(&format!(
+                "macro_rules! any_cbor_recursion_guard {{ () => {{ let _depth_guard = DepthGuard::acquire({limit}usize)?; }}; }}\n\n"
+            )),
+            None => any_cbor_rs
+                .push_str("macro_rules! any_cbor_recursion_guard {\n    () => {};\n}\n\n"),
+        }
         if cli.preserve_encodings {
             any_cbor_rs.push_str(&std::fs::read_to_string(
                 cli.static_dir.join("any_cbor_preserve.rs"),

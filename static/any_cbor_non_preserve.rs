@@ -7,10 +7,13 @@
 // VALUE only (floats by `total_cmp`/bit pattern so the relations are total and NaN is
 // self-consistent). The preserve variant (`any_cbor_preserve.rs`) is representational instead.
 //
-// Depth: `deserialize` routes all recursion through the single `read` seam so a depth guard can
-// be threaded there when wired into generated crates (A2 — see the A1 delivery report). Without
-// the flag: bounded allocation, dangling-`Break` rejection, `Err` (never panic) on malformed
-// input — same as the rest of the crate.
+// Depth: `deserialize` routes all recursion through the single `read` seam, whose first line
+// invokes `any_cbor_recursion_guard!()`. The includer supplies that macro: the static assembly in
+// generated crates expands it to `DepthGuard::acquire(<baked limit>)?` under
+// `--deserialize-depth-limit` (and to nothing without the flag, so no-flag crates keep
+// byte-identical output); the property-harness shims supply their own definition to exercise the
+// guard. Without the flag: bounded allocation, dangling-`Break` rejection, `Err` (never panic) on
+// malformed input — same as the rest of the crate.
 #[derive(Clone, Debug)]
 pub enum AnyCbor {
     UInt(u64),
@@ -215,6 +218,11 @@ impl AnyCbor {
 
     /// Recursion seam for deserialize (see the file header re: the depth guard).
     fn read(raw: &mut cbor_event::de::Deserializer) -> Result<Self, DeserializeError> {
+        // Depth-guard hook: expands to a `DepthGuard::acquire(<baked limit>)?` RAII binding when the
+        // generated crate is built with `--deserialize-depth-limit`, or to nothing otherwise. The
+        // macro is supplied by the includer (the static assembly for generated crates; the test
+        // shims for the property harness) so this one file serves every flag combination unsplit.
+        any_cbor_recursion_guard!();
         match raw.cbor_type()? {
             cbor_event::Type::UnsignedInteger => Ok(AnyCbor::UInt(raw.unsigned_integer_sz()?.0)),
             cbor_event::Type::NegativeInteger => Ok(AnyCbor::NInt(raw.negative_integer_sz()?.0)),

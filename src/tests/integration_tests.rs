@@ -11005,6 +11005,102 @@ fn hostile_deep_rejects_without_aborting() {
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
+/// The depth guard reaches through an `any`-typed member (loose-CBOR A2). `AnyCbor`'s own
+/// deserializer is recursive-descent over nested arrays/maps/tags, so a spec with an `any` member
+/// (`holder = [inner: any]`) inherits the same unbounded-recursion SIGABRT class the recursive-type
+/// gate above covers — but the recursion lives in the `AnyCbor::read` seam, not in generated
+/// per-type code. This gate proves `--deserialize-depth-limit` threads into that seam: a hostile
+/// deeply-nested value in the `any` position is rejected with a graceful depth-limit error, the
+/// process stays alive, and a shallow valid value still deserializes. Counterpart at the property
+/// layer: `any_cbor_tests::depth_guard`.
+#[test]
+fn deserialize_depth_limit_guards_any_member() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_depth_limit_any_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    let target_dir = scratch.join("target");
+
+    // A spec whose only member is `any` — the recursion lives entirely in the AnyCbor seam.
+    let out = scratch.join("gen");
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("holder.cddl");
+    std::fs::write(&input, "holder = [inner: any]\n").unwrap();
+
+    let gen_out = tool_cmd("cargo")
+        .args(["run", "--"])
+        .arg(format!("--input={}", input.to_str().unwrap()))
+        .arg(format!("--output={}", out.to_str().unwrap()))
+        .arg("--wasm=false")
+        .arg("--deserialize-depth-limit=64")
+        .output()
+        .unwrap();
+    assert!(
+        gen_out.status.success(),
+        "generation (any + guard) failed\n{}",
+        String::from_utf8_lossy(&gen_out.stderr)
+    );
+
+    // The guard hook must have baked its acquisition INTO the AnyCbor read seam (the any_cbor module,
+    // not just the composite deserializers). This is the seam WP2 added.
+    let any_cbor_rs = std::fs::read_to_string(out.join("rust/src/generated/any_cbor.rs")).unwrap();
+    assert!(
+        any_cbor_rs.contains("DepthGuard::acquire(64usize)?"),
+        "the any_cbor module is missing the depth-guard acquisition — the seam hook emitted nothing"
+    );
+
+    // Hostile 100_000-deep value in the `any` position: `array(1)` (the holder), then 100_000 nested
+    // `array(1)` headers, then a `uint 0` leaf. Overflows the stack with the flag OFF; here it must
+    // return Err naming the depth limit. Plus a shallow valid value (`[0]`) that must still parse.
+    std::fs::create_dir_all(out.join("rust/tests")).unwrap();
+    std::fs::write(
+        out.join("rust/tests/hostile_any_depth.rs"),
+        r#"use cddl_lib::Holder;
+use cddl_lib::serialization::Deserialize;
+
+#[test]
+fn hostile_deep_any_rejects_without_aborting() {
+    let mut bytes = vec![0x81]; // holder: array(1)
+    bytes.extend(std::iter::repeat(0x81u8).take(100_000)); // 100k nested array(1) in the `any`
+    bytes.push(0x00); // leaf uint 0
+    match Holder::from_cbor_bytes(&bytes) {
+        Ok(_) => panic!("hostile deep `any` value should be rejected by the depth guard, got Ok"),
+        Err(e) => {
+            let msg = e.to_string();
+            assert!(msg.contains("depth"), "expected a depth-limit failure, got: {msg}");
+        }
+    }
+}
+
+#[test]
+fn shallow_any_still_parses() {
+    // holder = [ any=uint 0 ]  ==  0x81 0x00
+    Holder::from_cbor_bytes(&[0x81, 0x00]).expect("shallow valid value must deserialize");
+}
+"#,
+    )
+    .unwrap();
+
+    let test = tool_cmd("cargo")
+        .arg("test")
+        .current_dir(out.join("rust"))
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .output()
+        .unwrap();
+    assert!(
+        test.status.success(),
+        "any-member guard crate tests failed (or aborted)\n{}\n{}",
+        String::from_utf8_lossy(&test.stdout),
+        String::from_utf8_lossy(&test.stderr)
+    );
+
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
 /// Breadth companion to `robustness_tests::all_supported_constructs_generate`: run the matrix
 /// supported-catalog generation check under ALL THREE `ALL_PROFILES` (default / preserve / json),
 /// not just default. "Supported" is otherwise silently a default-profile fact — a construct can

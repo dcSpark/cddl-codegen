@@ -17,14 +17,16 @@
 // (The non-preserve variant, `any_cbor_non_preserve.rs`, compares VALUE only.)
 //
 // Depth: `deserialize` recurses for nested arrays/maps/tags. It routes ALL recursion through the
-// single `read` seam below so the opt-in `--deserialize-depth-limit` guard can be threaded there
-// when `AnyCbor` is wired into generated crates. That wiring is NOT part of this file (see the
-// A1 delivery report: the guard runtime is only present under the flag and its limit is a
-// generation-time literal, so an unconditionally-present static file cannot reference it without
-// generator support — an A2 concern). What IS guaranteed here without the flag matches the rest
-// of the crate: bounded allocation (never `Vec::with_capacity` from an attacker-claimed length),
-// a dangling `Break` rejected as a value, and truncated/malformed input returning `Err`, never a
-// panic.
+// single `read` seam below, whose first line invokes `any_cbor_recursion_guard!()`. The includer
+// supplies that macro: the static assembly in generated crates expands it to
+// `DepthGuard::acquire(<baked limit>)?` under `--deserialize-depth-limit` (and to nothing without
+// the flag, so no-flag crates carry no dead runtime code and keep byte-identical output); the
+// property-harness shims supply their own definition to exercise the guard. The guard shares the
+// generated composite deserializers' thread-local depth counter, so the whole nesting — struct
+// and its `any` members alike — is bounded uniformly. What IS guaranteed here without the flag
+// matches the rest of the crate: bounded allocation (never `Vec::with_capacity` from an
+// attacker-claimed length), a dangling `Break` rejected as a value, and truncated/malformed input
+// returning `Err`, never a panic.
 #[derive(Clone, Debug)]
 pub enum AnyCbor {
     UInt(u64, Option<cbor_event::Sz>),
@@ -262,6 +264,11 @@ impl AnyCbor {
     /// Recursion seam for deserialize. All nested reads go through here so a depth guard can be
     /// threaded at one place (see the file header).
     fn read(raw: &mut cbor_event::de::Deserializer) -> Result<Self, DeserializeError> {
+        // Depth-guard hook: expands to a `DepthGuard::acquire(<baked limit>)?` RAII binding when the
+        // generated crate is built with `--deserialize-depth-limit`, or to nothing otherwise. The
+        // macro is supplied by the includer (the static assembly for generated crates; the test
+        // shims for the property harness) so this one file serves every flag combination unsplit.
+        any_cbor_recursion_guard!();
         match raw.cbor_type()? {
             cbor_event::Type::UnsignedInteger => {
                 let (v, sz) = raw.unsigned_integer_sz()?;
