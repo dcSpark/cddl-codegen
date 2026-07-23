@@ -1378,9 +1378,11 @@ the "decode an irregular encoding and preserve it" direction — the whole point
 `--preserve-encodings` — went untested at scale (only the hand-picked `tests/golden_hex_preserve/`
 KATs covered it). When both flags are set, each round-trip case now also runs an **encoding-fidelity**
 block: a self-contained, deterministic CBOR mutator (`static/emit_tests_encoding_fidelity.rs`, spliced
-into the emitted test module via `include_str!`) derives six whole-tree irregular re-encodings of the
-minted value's canonical bytes — `widen_step`/`widen_max` (non-minimal header widths),
-`indef_containers`, `chunk_strings`, `reverse_maps`, and `everything` (all composed) — and asserts each
+into the emitted test module via `include_str!`) derives seven whole-tree irregular re-encodings of the
+minted value's canonical bytes — `widen_step`/`widen_max` (non-minimal header widths), `widen_float`
+(a major-type-7 float head re-encoded one IEEE width up, f16→f32→f64 — reachable since the `any`
+(`AnyCbor`) mint deliberately includes a float head), `indef_containers`, `chunk_strings`,
+`reverse_maps`, and `everything` (all composed) — and asserts each
 decodes and re-encodes byte-identically. Whole-tree (not per-position) because a single dropped
 encoding-capture fails the whole variant anyway; identity variants are skipped so the loop never
 asserts vacuously. With `--canonical-form` also set it adds the canonical **differential** (every
@@ -1388,8 +1390,12 @@ encoding canonicalizes to the same bytes) plus a per-case canonical fixed point 
 spec anchor for *what* the canonical bytes are; this layer buys breadth. Types with user-supplied
 `@custom_serialize`/`@custom_deserialize` are excluded (their wire format isn't the generated
 serializer's). The emitted mutator ships a `#[test] encoding_mutator_self_check` pinning each mutation
-class against hand-derived RFC 8949 bytes *and* pinning `variants()` end-to-end on a composite input
-(the vacuity guard). Executions: `emit_tests_execute` (local, with a fidelity-assertion floor) and
+class against hand-derived RFC 8949 bytes *and* pinning `variants()` end-to-end on two inputs — a
+composite (int + string + map) and a float-carrying `[5, 1.5]`, the shape the `any` mint produces
+(the vacuity guard). Executions: `emit_tests_execute` (local, with a fidelity-assertion floor),
+`emit_tests_any_float_execute` (local — generates `tests/any-positions` under
+`--preserve-encodings --emit-tests` and runs the crate, proving the `any` mint feeds a real float
+head through `widen_float`), and
 `feature_corpus_roundtrips_nondefault_profiles` (full tier, corpus × preserve breadth); the canonical
 differential runs once at whole-program scale via the `canonical` fixture's `--emit-tests`.
 
@@ -1617,7 +1623,12 @@ of fixture coverage. `src/tests/any_cbor_tests.rs` `include!`s the static files 
 module per static assembly (non-preserve / preserve / preserve+force-canonical — the same
 technique the fidelity mutator uses via `include!` in `integration_tests.rs`) and runs under
 plain `cargo test` (`cargo test --bin cddl-codegen any_cbor`; in-tier via the local tier's
-workspace `cargo test`, no nested cargo, no dedicated gate).
+workspace `cargo test`, no nested cargo, no dedicated gate). Two further shims
+(`json_non_preserve` / `json_preserve`) additionally compile the `static/any_cbor_json.rs`
+serde fragment and pin the JSON round-trip laws — the exact rendering table
+(`docs/docs/output_format.mdx` § AnyCbor JSON), `from_json(to_json(x)) == x` for the
+non-preserve variant over finite floats, value-equal-modulo-encodings for preserve, and the
+read-side tolerance/error cases.
 
 The core assertion is a **span oracle**: deserialize one item, recover its true byte extent
 from `Deserializer::position()` diffs, and require `serialize(deserialize(span)) == span`

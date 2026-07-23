@@ -246,9 +246,13 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      directive, so it is a general recursive-table-key gap, not a duplicates-policy one. The
      golden_hex headline keys the recursive metadatum map by `tstr` (recursion in the map VALUE) to
      sidestep it. The tempting one-line route — relax `is_enum`'s assert to a graceful `false` — is
-     BLOCKED: that exact assert (`self.generic_instances.contains_key(ident)`) is a live panic-class
-     key in `src/tests/recombination_tests.rs` for "`any` in member/element position" (pinned by
-     `tests/robustness/any_member.cddl`), so relaxing it globally would break that class. Closing the
+     still WRONG, though its old blocker is gone: the assert
+     (`self.generic_instances.contains_key(ident)`, `src/intermediate/mod.rs`) was once also the
+     "`any` in member/element position" panic class, but the loose-CBOR delivery retired that class
+     by intercepting `any` at `new_type` before it ever reaches the assert
+     (`tests/robustness/any_member.cddl` is now an `ok` fixture). What remains is the assert's own
+     job: it guards genuinely-unregistered generic instances, and a graceful `false` would silently
+     misclassify every such ident instead of failing loudly. Closing the
      recursive-key gap therefore needs the deeper route — defer the keys-list synthesis past the
      recursive registration cycle (so the domain is classifiable when `name_as_wasm_array_ct` runs)
      — which is out of scope for a duplicates-policy packet. That deferral seam now EXISTS:
@@ -256,8 +260,8 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      generic-instance-keyed-map fix) already defers the keys-list mint past `finalize`'s domain
      resolution for GENERIC-INSTANCE domains, naming from the final domain — extending the same
      defer-to-finalize route to recursively-registered union domains is the concrete pickup, with
-     the `any`-member panic-class pin (`tests/robustness/any_member.cddl`) as the boundary that
-     must stay intact. The union-KEYED shape is not the real
+     the positive `any`-member fixture (`tests/robustness/any_member.cddl`, an `ok` row) as the
+     boundary that must stay intact. The union-KEYED shape is not the real
      Cardano driver anyway (metadata keys are int/text/bytes; the recursion is in the VALUE, covered
      by the tstr-keyed headline).
    - **Cross-crate wrapper-request hosting of a preserve table.** `requests.rs` threads
