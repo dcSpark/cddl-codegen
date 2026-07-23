@@ -151,6 +151,34 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
             &["--json-serde-derives=true", "--json-schema-export=true"],
         ),
     ),
+    // loose-CBOR `any` non-choice positions (member / array element / table domain+range /
+    // top-level alias / tagged), lowered to the AnyCbor runtime type. Rust-only (--wasm=false): an
+    // any-using spec rejects under --wasm=true and the JSON flags (loose-CBOR A2 is rust-only; those
+    // surfaces are A3), which is why this is a profile-limited whole_program input rather than an
+    // all-profile feature-corpus entry. Pinned under all three rust modes so the canonical merge and
+    // the preserve encoding-field threading are each captured.
+    (
+        "any_positions_default",
+        "tests/any-positions/input.cddl",
+        ("default", &["--wasm=false"]),
+    ),
+    (
+        "any_positions_preserve",
+        "tests/any-positions/input.cddl",
+        ("preserve", &["--preserve-encodings=true", "--wasm=false"]),
+    ),
+    (
+        "any_positions_canonical",
+        "tests/any-positions/input.cddl",
+        (
+            "canonical",
+            &[
+                "--preserve-encodings=true",
+                "--canonical-form=true",
+                "--wasm=false",
+            ],
+        ),
+    ),
     // directory input — exercises the multi-file scope/module codegen path.
     ("multifile", "tests/multifile/inputs", ("default", &[])),
     // extern (`_CDDL_CODEGEN_EXTERN_TYPE_`) and raw-bytes (`_CDDL_CODEGEN_RAW_BYTES_TYPE_`)
