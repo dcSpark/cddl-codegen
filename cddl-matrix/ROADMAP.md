@@ -332,8 +332,7 @@ are ledgered here (that's what the probe/gate error messages point at).
     ("`any` arm makes later arms unreachable — move it last"). A LAST-position bare `any` arm is
     supported (forced-backtracking dispatch); a tagged `any` arm (`#6.n(any)`) is not a catch-all and
     is allowed in any position. Non-last rejection pinned by `tests/robustness/choice_any_arm.cddl`,
-    last-position support by `tests/robustness/choice_last_any_arm.cddl` (whose default-profile row is
-    `error (graceful)` until the wasm AnyCbor surface lands — loose-CBOR A3 WP3 — then flips to `ok`).
+    last-position support by `tests/robustness/choice_last_any_arm.cddl`.
   - A bare fixed value as a zero-or-more occurrence target (`a = [* 5]`, equally `true`/`"v1"`/`null`)
     reaches `for_rust_member`'s `should not expose Fixed type in member` panic — the
     registration-time graceful rejection that owns the top-level shapes never sees this position.
@@ -747,8 +746,8 @@ reviews. A second such instance in the pinned-cell prose is the trigger to deriv
 from `MULTIFILE_MATRIX_SKIP` itself (a generated span, per this rule) rather than re-auditing.
 
 The wasm-oracle evidence clause names its observation stage, not the failure's actual stage: a
-generation-time REFUSAL on the wasm leg (e.g. an `any`-using spec under `--wasm=true`, gracefully
-rejected until the wasm surface ships) is recorded as `wasm crate failed to compile (cargo test
+generation-time REFUSAL on the wasm leg (a spec whose shape a not-yet-shipped wasm surface gracefully
+rejects at generation) is recorded as `wasm crate failed to compile (cargo test
 exit 1)` — the oracle's generic phrasing for "the wasm pipeline produced no passing crate" — which
 reads as a compile regression to an annotations reader (it nearly misled the A2 delivery review).
 On the next edit to the wasm-oracle evidence composer, distinguish the stages in the clause
