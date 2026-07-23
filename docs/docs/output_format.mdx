@@ -185,9 +185,45 @@ untrusted claimed length, and — under [`--deserialize-depth-limit=N`](command_
 their own recursion through the same depth guard the generated composite deserializers use, so hostile
 deeply-nested CBOR in an `any` position returns a graceful error rather than overflowing the stack.
 
-The wasm wrapper and JSON/schema surfaces for `any` are not yet available; a spec whose types contain
-`any` is [rejected at generation time](current_capacities#the-any-type-loose-cbor) under `--wasm=true`
-or the JSON flags, with a message naming the workaround. Those surfaces arrive in a later phase.
+### Constructors and accessors
+
+`AnyCbor` exposes a mode-independent constructor for each CBOR kind — `new_uint(u64)`,
+`new_nint(i128)`, `new_bytes(Vec<u8>)`, `new_text(String)`, `new_array(Vec<AnyCbor>)`,
+`new_map(Vec<(AnyCbor, AnyCbor)>)`, `new_tag(u64, AnyCbor)`, `new_bool(bool)`, `new_null()`,
+`new_undefined()`, `new_unassigned(u8)`, `new_float(f64)`. The same names and signatures exist in both
+flavors; under `--preserve-encodings` they fill default (minimal-width, definite-length) encodings, so a
+value built by hand serializes canonically. Read back through `kind() -> AnyCborKind` and the
+`as_uint()`/`as_bytes()`/… accessors (each returning `Option<T>`).
+
+### JSON representation (`--json-serde-derives` / `--json-schema-export`)
+
+Under the JSON flags `AnyCbor` derives serde like any other type, but its JSON is a **representation of
+CBOR, not natural JSON**: every value is a single-key object keyed by the snake_case kind name. JSON is
+the deliberately lossy side of the contract — encoding detail never appears, so two preserve values that
+differ only in encoding render identically.
+
+| CBOR | JSON |
+|---|---|
+| uint | `{"uint": 5}` (JSON number, u64 range) |
+| nint | `{"nint": -3}` when it fits `i64`, else `{"nint": "-18446744073709551616"}` (decimal string; the nint domain exceeds `i64`). Read accepts both. |
+| bytes | `{"bytes": "a1b2"}` (lowercase hex) |
+| text | `{"text": "…"}` |
+| array | `{"array": [ … ]}` (recursive) |
+| map | `{"map": [[K, V], …]}` — an array of pairs, so wire order and duplicate/non-string keys survive |
+| tag | `{"tag": [11, V]}` |
+| bool | `{"bool": true}` |
+| null | `{"null": null}` |
+| undefined | `{"undefined": null}` |
+| unassigned | `{"unassigned": 250}` |
+| float | `{"float": 1.5}`; non-finite values as strings `{"float": "NaN" / "Infinity" / "-Infinity"}` (serde_json cannot emit them as numbers). Read accepts both; NaN payload bits are **not** round-tripped. |
+
+`from_json(to_json(x))` recovers `x` exactly for the non-preserve flavor (all finite floats); for the
+preserve flavor it recovers a value-equal item with encodings reset to defaults. A `{ * any => any }`
+table (or any table with a non-string key) cannot serialize to JSON — serde_json requires string map
+keys, so `to_json` errors at runtime, matching how a `{ * bytes => uint }` table already behaves;
+string/uint-keyed `any` ranges (`{ * uint => any }`) are unaffected.
+
+The wasm wrapper for `any` is documented under [wasm differences](wasm_differences#the-any-type-anycbor).
 
 ## Non-empty containers
 

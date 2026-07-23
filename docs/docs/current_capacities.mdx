@@ -125,24 +125,36 @@ A top-level single-type **tag** rule is the exception: it always generates the t
 ## The `any` type (loose CBOR)
 
 CDDL `any` (the prelude type matching any single well-formed CBOR item) is supported in every
-non-choice position: a struct-map member value (`{ 1: any }`), an array-record member (`[any, uint]`),
+position: a struct-map member value (`{ 1: any }`), an array-record member (`[any, uint]`),
 a homogeneous array element (`[* any]`), a table domain and/or range (`{ * any => any }`,
-`{ * uint => any }`, `{ * any => uint }`), a top-level alias (`x = any`), and a tagged rule
-(`t = #6.11(any)`). It lowers to the `AnyCbor` runtime value — see
-[The `any` type](output_format#the-any-type-anycbor-runtime-value) for the runtime type, its
+`{ * uint => any }`, `{ * any => uint }`), a top-level alias (`x = any`), a tagged rule
+(`t = #6.11(any)`), and a **type-choice arm** (see below). It lowers to the `AnyCbor` runtime value
+— see [The `any` type](output_format#the-any-type-anycbor-runtime-value) for the runtime type, its
 value-vs-representational flavors, and self-carried encodings. Because `AnyCbor` has a total order by
 construction, `any` is a legal map-key/table domain in both preserve and non-preserve modes.
 
-Two limits apply today. **Surfaces**: only the Rust surface is generated. A spec whose types contain
-`any` is rejected gracefully at generation time under `--wasm=true` or the JSON flags
-(`--json-serde-derives` / `--json-schema-export`), each with a message naming the workaround
-(`--wasm=false`, or drop the JSON flags); the wasm wrapper and JSON/schema surfaces arrive in a later
-phase. **Type-choice arms**: a bare `any` arm (`a = any / tstr`) is not yet supported and is rejected
-gracefully at generation — a last-position catch-all `any` arm needs forced-backtracking semantics that
-also arrive in the later phase. A *container* of `any` as an arm (`a = [* any] / tstr`) is an ordinary
-supported arm today: `[* any]` is a homogeneous array whose CBOR wire type (Array) is distinct from the
-other arms', so the existing choice machinery dispatches it — only the bare arm, which overlaps every
-other arm, waits on the catch-all semantics. Note the distinct construct `#`
+`any` generates under **every flag combination** — the Rust surface, the
+[wasm `AnyCbor` wrapper](wasm_differences#the-any-type-anycbor), and the JSON/schema surfaces under
+`--json-serde-derives` / `--json-schema-export`. **JSON is the deliberately lossy side**: `any`
+renders as a *JSON representation of CBOR* (single-key tagged objects, encodings dropped, non-finite
+floats and NaN payload bits not round-tripped) rather than natural JSON — see the
+[output-format JSON table](output_format#the-any-type-anycbor-runtime-value). One runtime limitation
+follows the crate-wide non-string-key-table posture: a table keyed by `any` (`{ * any => any }`)
+serializes each key as a JSON object, so `to_json` errors at runtime exactly as a `{ * bytes => uint }`
+table already does — string/uint-keyed `any` ranges (`{ * uint => any }`, the demanded metadata-table
+shape) are unaffected.
+
+**Type-choice arms.** A **bare** `any` arm (`x = a / b / any`) is a catch-all — it matches every CBOR
+item — so it is allowed in **last position only**; a non-last bare `any` arm makes every later arm
+unreachable and is rejected gracefully at generation (`` `any` arm makes later arms unreachable — move
+it last ``). The trailing `any` arm forces the choice deserializer onto its backtracking strategy (try
+each arm in source order, rewinding on failure) rather than CBOR-type dispatch, so a typed arm that
+matches on *type* but fails on *content* falls through to the `any` arm: `x = uint .le 5 / any`
+decoding wire `0x06` (the integer 6, outside the `.le 5` bound) round-trips through the `Any` arm. A
+**tagged** `any` arm (`x = #6.11(any) / tstr`) is *not* a catch-all — its wire type is `Tag`, distinct
+from the other arms' — so it dispatches like any tagged arm and is allowed in **any** position.
+A *container* of `any` as an arm (`x = [* any] / tstr`) is likewise an ordinary supported arm
+(`[* any]`'s wire type is Array). Note the distinct construct `#`
 (`Type2::Any`, a bare `#` matching any item at the *grammar* level) stays unsupported and is a separate
 [Limitations](#unsupported-constructs) row.
 
