@@ -4,6 +4,7 @@
 ; byte-exact (element lowered to `AnyCbor`, loose-CBOR A2). Under the catalog's default --wasm=true
 ; profile an any-using spec gracefully rejects (wasm is A3), so this row is `error (graceful)`, not
 ; the panic it formerly produced in generation/serialize.rs. DISTINCT from the bare-`any` arm
-; (`any / tstr`, tests/robustness/choice_any_arm.cddl), which is rejected in EVERY profile because
-; bare `any` overlaps every arm.
+; (`any / tstr`, tests/robustness/choice_any_arm.cddl), which is rejected in EVERY profile because a
+; non-last bare `any` arm leaves later arms unreachable (a LAST bare `any` arm is supported —
+; tests/robustness/choice_last_any_arm.cddl).
 a = [* any] / tstr

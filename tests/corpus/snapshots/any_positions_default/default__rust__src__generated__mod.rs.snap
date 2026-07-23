@@ -24,6 +24,43 @@ impl From<Tagged> for crate::generated::any_cbor::AnyCbor {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum ChoiceLastAny {
+    U64(u64),
+    Text(String),
+    Any(crate::generated::any_cbor::AnyCbor),
+}
+
+impl ChoiceLastAny {
+    pub fn new_uint(uint: u64) -> Self {
+        Self::U64(uint)
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text(text)
+    }
+
+    pub fn new_any(any: crate::generated::any_cbor::AnyCbor) -> Self {
+        Self::Any(any)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum ChoiceTaggedAny {
+    Any(crate::generated::any_cbor::AnyCbor),
+    Text(String),
+}
+
+impl ChoiceTaggedAny {
+    pub fn new_any(any: crate::generated::any_cbor::AnyCbor) -> Self {
+        Self::Any(any)
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text(text)
+    }
+}
+
 pub type HomogArray = Vec<crate::generated::any_cbor::AnyCbor>;
 
 #[derive(Clone, Debug)]

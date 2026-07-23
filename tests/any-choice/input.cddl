@@ -1,0 +1,7 @@
+; Loose-CBOR A3 (WP1) type-choice with a bare `any` catch-all in LAST position, rust-only.
+; The REQUIRED content-fallthrough vector (DESIGN §3.5): `uint .le 5` matches on wire TYPE but can
+; fail on CONTENT (bounds), so a wire uint > 5 must fall THROUGH the typed arm to the `any` arm
+; rather than erroring inside it. This forces the backtracking deserializer (arms tried in source
+; order, position rewound on error) — the `cbor_type()`-dispatch form would route `6` into the uint
+; arm and reject it, which CDDL says to accept. tests.rs pins the fallthrough + preserve round-trip.
+x = uint .le 5 / any

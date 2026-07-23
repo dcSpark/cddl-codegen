@@ -4,9 +4,10 @@
 ; has a storable representation and generation emits a proper enum with a `Coords` variant that
 ; round-trips. This fixture records `ok` (not PANIC): it pins that this shape stays storable, guarding
 ; against a regression back to the `Option::unwrap()` on `None` panic in intermediate/rust_type.rs (variant
-; naming/representation lookup) that the missing plain-group promotion used to trigger. The `any`-arm
-; sibling (`any / tstr`, tests/robustness/choice_any_arm.cddl) still panics with the SAME message and
-; keeps the recombination sweep's KNOWN_PANIC_CLASSES entry alive. Surfaced by the recombination sweep
+; naming/representation lookup) that the missing plain-group promotion used to trigger. The bare-`any`
+; sibling (`any / tstr`, tests/robustness/choice_any_arm.cddl) instead gracefully rejects (a non-last
+; bare `any` arm leaves later arms unreachable — loose-CBOR A3); the shared `Option::unwrap()` panic
+; class it once triggered was retired in A2. Surfaced by the recombination sweep
 ; (src/tests/recombination_tests.rs).
 coords = (uint, uint)
 a = [coords] / tstr

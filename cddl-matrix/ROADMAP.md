@@ -327,15 +327,13 @@ are ledgered here (that's what the probe/gate error messages point at).
   a group choice as a member/element type, now rejects gracefully with its array sibling —
   `tests/robustness/inline_group_choice_member.cddl` / `inline_array_group_choice_member.cddl`,
   both `error (graceful)` rows — though the matrix-cell coverage gap for those shapes stands):
-  - `any` as a type-choice arm (`a = any / tstr`) is rejected gracefully at generation — a
-    "planned; not yet supported" message. A last-position catch-all `any` arm needs forced
-    backtracking semantics (the arm accepts anything the earlier arms did not), which is a
-    later-phase feature; the non-choice `any` positions and the `AnyCbor` runtime type it lowers to
-    already ship. The contrast for whoever builds that support: an anonymous array-of-plain-group
-    arm (`a = [coords] / tstr`) IS storable — it promotes the plain group to an Array-rep Record
-    struct and generates a proper enum variant (`tests/robustness/choice_group_array_arm.cddl`, an
-    `ok` fixture) — whereas a bare `any` arm has no storable single-type representation. Graceful
-    rejection pinned by `tests/robustness/choice_any_arm.cddl`.
+  - A bare `any` type-choice arm in a NON-LAST position (`a = any / tstr`) is a permanent graceful
+    rejection: a bare `any` accepts every CBOR item, so any arm after it is unreachable dead code
+    ("`any` arm makes later arms unreachable — move it last"). A LAST-position bare `any` arm is
+    supported (forced-backtracking dispatch); a tagged `any` arm (`#6.n(any)`) is not a catch-all and
+    is allowed in any position. Non-last rejection pinned by `tests/robustness/choice_any_arm.cddl`,
+    last-position support by `tests/robustness/choice_last_any_arm.cddl` (whose default-profile row is
+    `error (graceful)` until the wasm AnyCbor surface lands — loose-CBOR A3 WP3 — then flips to `ok`).
   - A bare fixed value as a zero-or-more occurrence target (`a = [* 5]`, equally `true`/`"v1"`/`null`)
     reaches `for_rust_member`'s `should not expose Fixed type in member` panic — the
     registration-time graceful rejection that owns the top-level shapes never sees this position.

@@ -1,7 +1,13 @@
-; Loose-CBOR A2 (WP1) `any` positions, all rust-only (--wasm=false): every non-choice position
-; that lowers CDDL `any` to the AnyCbor static-runtime type. Snapshotted under default / preserve /
-; preserve+canonical by the `whole_program` suite (any-using specs reject under --wasm=true and the
-; JSON flags, which is why this lives here rather than in the all-profile feature corpus).
+; Loose-CBOR `any` positions, all rust-only (--wasm=false): every position that lowers CDDL `any`
+; to the AnyCbor static-runtime type. Snapshotted under default / preserve / preserve+canonical by
+; the `whole_program` suite (any-using specs reject under --wasm=true and the JSON flags, which is
+; why this lives here rather than in the all-profile feature corpus).
+;
+; Non-choice positions (A2): member value, array element, table domain/range, top-level alias, tag.
+; Type-choice-arm positions (A3): a BARE `any` catch-all in LAST position (forced-backtracking
+; dispatch — a typed arm matching on wire type but failing on content falls through to `any`), and a
+; TAGGED `any` arm (`#6.n(any)`, cbor_types = [Tag]) which type-dispatches like any tagged arm and so
+; is allowed in any position.
 member_map = {1: any, ? 2: uint}   ; struct-map member value
 member_array = [any, uint]         ; array-record member value
 homog_array = [* any]              ; homogeneous array element
@@ -10,3 +16,5 @@ table_uint_any = {* uint => any}   ; table range
 table_any_uint = {* any => uint}   ; table domain
 top_alias = any                    ; top-level alias
 tagged = #6.11(any)                ; tagged
+choice_last_any = uint / tstr / any ; type-choice with a bare `any` catch-all arm (last position)
+choice_tagged_any = #6.11(any) / tstr ; tagged-`any` type-choice arm (any position; not a catch-all)

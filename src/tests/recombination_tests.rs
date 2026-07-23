@@ -868,11 +868,14 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // (retired in the loose-CBOR A2 delivery) `any` in member/element position no longer panics —
     // it lowers to the `AnyCbor` runtime type (tests/robustness/any_member.cddl is now an `ok`
     // fixture). The former `self.generic_instances.contains_key(ident)` assertion class is gone.
-    // (retired in the same delivery) the `any` type-choice arm no longer reaches the
-    // `rust_type.rs` `Option::unwrap()` panic — it is now a graceful generation-time rejection
-    // (tests/robustness/choice_any_arm.cddl is an `error (graceful)` fixture; A3 owns real
-    // catch-all-union support). A `[* any]` (container-of-any) arm generates correctly
-    // (tests/robustness/choice_array_any_arm.cddl is now an `ok` fixture).
+    // (retired in the same delivery, narrowed in A3) the `any` type-choice arm no longer reaches the
+    // `rust_type.rs` `Option::unwrap()` panic. A3 WP1 turned the blanket A2 rejection into a
+    // last-position rule: a bare `any` catch-all is SUPPORTED in last position (forced-backtracking
+    // dispatch — a typed arm matching on type but failing on content falls through), and a non-last
+    // bare `any` arm is a graceful rejection ("makes later arms unreachable";
+    // tests/robustness/choice_any_arm.cddl is that `error (graceful)` fixture, the last-position
+    // support is tests/robustness/choice_last_any_arm.cddl). A `[* any]` (container-of-any) arm
+    // generates correctly (tests/robustness/choice_array_any_arm.cddl).
     (
         "should not expose Fixed type",
         "bare fixed value under an occurrence / tagged prelude constant; pinned by tests/robustness/fixed_value_occurrence.cddl and tests/robustness/tagged_prelude_constant.cddl (recombination findings)",
