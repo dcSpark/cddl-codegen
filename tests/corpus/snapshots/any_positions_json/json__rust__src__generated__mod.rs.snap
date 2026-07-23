@@ -110,6 +110,36 @@ impl MemberMap {
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct MemberOptHomog {
+    pub key_1: u64,
+    #[serde(with = "crate::generated::any_cbor::natural_any_cbor_opt_seq")]
+    #[serde(default)]
+    #[schemars(schema_with = "crate::generated::any_cbor::natural_any_cbor_seq_schema")]
+    pub key_2: Option<Vec<crate::generated::any_cbor::AnyCbor>>,
+}
+
+impl MemberOptHomog {
+    pub fn new(key_1: u64) -> Self {
+        Self { key_1, key_2: None }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct MemberOptTable {
+    pub key_1: u64,
+    #[serde(with = "crate::generated::any_cbor::natural_any_cbor_opt_btreemap")]
+    #[serde(default)]
+    #[schemars(schema_with = "crate::generated::any_cbor::natural_any_cbor_map_schema")]
+    pub key_2: Option<BTreeMap<u64, crate::generated::any_cbor::AnyCbor>>,
+}
+
+impl MemberOptTable {
+    pub fn new(key_1: u64) -> Self {
+        Self { key_1, key_2: None }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct MemberTable {
     pub key_1: u64,
     #[serde(with = "crate::generated::any_cbor::natural_any_cbor_btreemap")]

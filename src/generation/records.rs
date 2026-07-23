@@ -1040,31 +1040,33 @@ pub(super) fn codegen_struct(
             // Loose-CBOR Phase B (R1): a member CARRYING `any` renders its JSON NATURALLY (not
             // through `AnyCbor`'s tagged codec). Route the serde/schemars derives on this field
             // through the matching natural adapter. Skipped when the struct owns a custom json impl
-            // (no derives to steer). Positions covered: a bare `any` (`Direct`/`Optional`), a
-            // homogeneous `[* any]` array member (`Seq`), and a non-preserve `{* K => any}` table
-            // member with a stringifiable (non-`any`) key (`Map`). A preserve-mode map member keeps
-            // the tagged element rendering for now (the `OrderedHashMap` adapter is a later item).
+            // (no derives to steer). Positions covered: a bare `any` (`Direct`), a homogeneous
+            // `[* any]` array member (`Seq`), and a `{* K => any}` table member with a stringifiable
+            // (non-`any`) key — `Map` (non-preserve `BTreeMap`) / `OrderedMap` (preserve
+            // `OrderedHashMap`) — plus the optional (`? N: …` → `Option<…>`) counterpart of each.
             if !config.custom_json {
-                use super::NaturalAnyPosition;
+                use super::NaturalAnyPosition as P;
                 let resolves_any = |ty: &crate::intermediate::RustType| {
                     matches!(
                         ty.conceptual_type.resolve_alias_shallow(),
                         ConceptualRustType::Any
                     )
                 };
+                let opt = field.optional;
                 let position = match field.rust_type.conceptual_type.resolve_alias_shallow() {
-                    ConceptualRustType::Any if field.optional => Some(NaturalAnyPosition::Optional),
-                    ConceptualRustType::Any => Some(NaturalAnyPosition::Direct),
-                    ConceptualRustType::Array(inner) if !field.optional && resolves_any(inner) => {
-                        Some(NaturalAnyPosition::Seq)
+                    ConceptualRustType::Any => Some(if opt { P::Optional } else { P::Direct }),
+                    ConceptualRustType::Array(inner) if resolves_any(inner) => {
+                        Some(if opt { P::OptSeq } else { P::Seq })
                     }
-                    ConceptualRustType::Map(k, v)
-                        if !field.optional
-                            && !cli.preserve_encodings
-                            && resolves_any(v)
-                            && !resolves_any(k) =>
-                    {
-                        Some(NaturalAnyPosition::Map)
+                    // An `any`-keyed table stays tagged (its key already errors at runtime, ruling
+                    // R3), so require a non-`any` key. Preserve → `OrderedHashMap`, else `BTreeMap`.
+                    ConceptualRustType::Map(k, v) if resolves_any(v) && !resolves_any(k) => {
+                        Some(match (cli.preserve_encodings, opt) {
+                            (false, false) => P::Map,
+                            (false, true) => P::OptMap,
+                            (true, false) => P::OrderedMap,
+                            (true, true) => P::OptOrderedMap,
+                        })
                     }
                     _ => None,
                 };

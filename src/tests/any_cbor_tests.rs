@@ -1152,6 +1152,24 @@ mod json_non_preserve {
         assert_eq!(key_kinds["abc"], AnyCborKind::Text);
     }
 
+    /// A nint map KEY spans the full CBOR nint domain, not `i64` (keys are strings, so the value-row
+    /// `i64` ceiling does not apply): the domain-minimum key `-(2^64)` writes `"-18446744073709551616"`
+    /// and reads back as a nint, not text. A non-canonical spelling of the same magnitude stays text.
+    #[test]
+    fn natural_big_nint_map_key_round_trips() {
+        let min_nint = -(1i128 << 64);
+        let m = AnyCbor::new_map(vec![(AnyCbor::new_nint(min_nint), AnyCbor::new_uint(1))]);
+        let json = to_natural_json(&m).unwrap();
+        assert_eq!(json, serde_json::json!({ "-18446744073709551616": 1 }));
+        let back = from_natural_json(json);
+        let (key, _) = &back.as_map().unwrap()[0];
+        assert_eq!(key.kind(), AnyCborKind::NInt);
+        assert_eq!(key.as_nint(), Some(min_nint));
+        // a non-canonical spelling of a domain value stays text (round-trip filter).
+        let non_canon = from_natural_json(serde_json::json!({ "-018446744073709551616": 1 }));
+        assert_eq!(non_canon.as_map().unwrap()[0].0.kind(), AnyCborKind::Text);
+    }
+
     /// The natural round-trip law: `from_natural_json(to_natural_json(x)?)` recovers a value-equal
     /// `AnyCbor` (non-preserve = value equality), modulo R4's numeric-key reading AND JSON object
     /// key ordering (a JSON object is unordered — `serde_json::Map` normalizes key order, so the law

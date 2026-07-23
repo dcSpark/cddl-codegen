@@ -192,6 +192,22 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
             ],
         ),
     ),
+    // preserve + json together — the only profile that pins the OrderedHashMap natural-JSON adapters
+    // (`natural_any_cbor_orderedmap` / `_opt_orderedmap`) for a preserve `{* K => any}` member; the
+    // plain `json` profile above is non-preserve (BTreeMap adapters).
+    (
+        "any_positions_preserve_json",
+        "tests/any-positions/input.cddl",
+        (
+            "preserve_json",
+            &[
+                "--preserve-encodings=true",
+                "--json-serde-derives=true",
+                "--json-schema-export=true",
+                "--wasm=false",
+            ],
+        ),
+    ),
     // directory input — exercises the multi-file scope/module codegen path.
     ("multifile", "tests/multifile/inputs", ("default", &[])),
     // extern (`_CDDL_CODEGEN_EXTERN_TYPE_`) and raw-bytes (`_CDDL_CODEGEN_RAW_BYTES_TYPE_`)

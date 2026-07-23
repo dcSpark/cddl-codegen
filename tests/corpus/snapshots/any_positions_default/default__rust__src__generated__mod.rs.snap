@@ -100,6 +100,30 @@ impl MemberMap {
 }
 
 #[derive(Clone, Debug)]
+pub struct MemberOptHomog {
+    pub key_1: u64,
+    pub key_2: Option<Vec<crate::generated::any_cbor::AnyCbor>>,
+}
+
+impl MemberOptHomog {
+    pub fn new(key_1: u64) -> Self {
+        Self { key_1, key_2: None }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MemberOptTable {
+    pub key_1: u64,
+    pub key_2: Option<BTreeMap<u64, crate::generated::any_cbor::AnyCbor>>,
+}
+
+impl MemberOptTable {
+    pub fn new(key_1: u64) -> Self {
+        Self { key_1, key_2: None }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct MemberTable {
     pub key_1: u64,
     pub key_2: BTreeMap<u64, crate::generated::any_cbor::AnyCbor>,
