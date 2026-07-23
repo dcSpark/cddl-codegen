@@ -327,20 +327,15 @@ are ledgered here (that's what the probe/gate error messages point at).
   a group choice as a member/element type, now rejects gracefully with its array sibling —
   `tests/robustness/inline_group_choice_member.cddl` / `inline_array_group_choice_member.cddl`,
   both `error (graceful)` rows — though the matrix-cell coverage gap for those shapes stands):
-  - `any` in member/element position (`a = [any]`, `{ k: any }`) panics intermediate/mod.rs's
-    `generic_instances` assert — distinct from the top-level `x = any` compile-class gap
-    (`tests/matrix_reject/prelude.any.cddl`). Pinned by `tests/robustness/any_member.cddl`.
-    Fact for whoever picks up the `any` panic family (maintainer-ruled 2026-07-23: `any` is now a
-    feature to BUILD, not an exclusion): the runtime half already exists — the self-describing
-    `AnyCbor` value type (`static/any_cbor_preserve.rs` / `any_cbor_non_preserve.rs`,
-    span-oracle property tests in `src/tests/any_cbor_tests.rs`), deliberately not wired into any
-    export list yet — so start from it rather than re-deriving a value-type design.
-  - A type-choice arm with no storable representation panics `Option::unwrap()` on `None`
-    (intermediate/rust_type.rs): `a = any / tstr` (the `any` extern arm). The sibling anonymous
-    array-of-plain-group arm (`a = [coords] / tstr`) is storable — it promotes the plain group
-    to an Array-rep Record struct and generates a proper enum variant (pinned by
-    `tests/robustness/choice_group_array_arm.cddl`, an `ok` fixture). Panic pinned by
-    `tests/robustness/choice_any_arm.cddl`.
+  - `any` as a type-choice arm (`a = any / tstr`) is rejected gracefully at generation — a
+    "planned; not yet supported" message. A last-position catch-all `any` arm needs forced
+    backtracking semantics (the arm accepts anything the earlier arms did not), which is a
+    later-phase feature; the non-choice `any` positions and the `AnyCbor` runtime type it lowers to
+    already ship. The contrast for whoever builds that support: an anonymous array-of-plain-group
+    arm (`a = [coords] / tstr`) IS storable — it promotes the plain group to an Array-rep Record
+    struct and generates a proper enum variant (`tests/robustness/choice_group_array_arm.cddl`, an
+    `ok` fixture) — whereas a bare `any` arm has no storable single-type representation. Graceful
+    rejection pinned by `tests/robustness/choice_any_arm.cddl`.
   - A bare fixed value as a zero-or-more occurrence target (`a = [* 5]`, equally `true`/`"v1"`/`null`)
     reaches `for_rust_member`'s `should not expose Fixed type in member` panic — the
     registration-time graceful rejection that owns the top-level shapes never sees this position.
@@ -349,12 +344,6 @@ are ledgered here (that's what the probe/gate error messages point at).
     inner (`#6.5(5)`, `tests/robustness/tagged_literal.cddl`) is rejected gracefully, but a prelude
     constant resolves through the prelude alias on a path the guard does not classify. Pinned by
     `tests/robustness/tagged_prelude_constant.cddl`.
-  - An ARRAY-of-`any` as a type-choice arm (`a = [* any] / tstr`) panics `Option::unwrap()` on
-    `None` in generation/serialize.rs (`encoding_var_is_copy`) under `--wasm=false`: unlike the
-    bare-`any` arm above, the array arm IS storable, so IR construction succeeds and the variant's
-    serialize emission is what dies walking `any`'s encoding vars (with wasm on it dies earlier at
-    the member-position `generic_instances` assert). Pinned by
-    `tests/robustness/choice_array_any_arm.cddl`.
   - A `.cbor`-over-a-REFERENCE as a type-choice arm (`a = bytes .cbor bar / tstr`) panics "variant
     ctor refers to undefined ident" in intermediate/structs.rs
     (`EnumVariant::group_ctor_record_fields`): the
@@ -467,10 +456,10 @@ are ledgered here (that's what the probe/gate error messages point at).
   2026-07-23: the dcSpark `cbor_event` fork the main crate now pins ships lossless software
   f16/f32↔f64 conversion plus width-carrying endpoints (`float_sz` / `write_float_sz` /
   `smallest_float_sz`, NaN payloads preserved) — already exercised by the `AnyCbor` runtime type's
-  property layer (`src/tests/any_cbor_tests.rs`). The remaining float work is generator-side (the
-  preserve-mode `unimplemented!` stubs in generation/deserialize.rs, the `float16`→`F32` alias
-  folding in parsing) plus the generated-crate template pin (still crates.io 3.2.0, which lacks
-  the `_sz` float endpoints, until generated crates move to a cbor_event carrying them). Under
+  property layer (`src/tests/any_cbor_tests.rs`), and the generated-crate template now git-deps that
+  same fork rev (the `_sz` float endpoints are present in generated crates). The remaining float work
+  is entirely generator-side: the preserve-mode `unimplemented!` stubs in generation/deserialize.rs
+  and the `float16`→`F32` alias folding in parsing. Under
   `--preserve-encodings` the float gap is positional, and the emission axis
   records it honestly: a bare `float`/`float32`/`float64` alias still generates and compiles
   (`emission.preserve = supported`, but compile-only evidence — the synthetic embed holder panics
@@ -492,16 +481,6 @@ are ledgered here (that's what the probe/gate error messages point at).
   `emission.preserve = unsupported`), alongside `prelude.number` / `prelude.time` and the two
   float-range wrapper rows `rangeop.{inclusive,exclusive}.float` (the wrapper wraps an f64 member,
   hitting the same native-float-under-preserve `unimplemented!`).
-- **A CBOR tag wrapping `any` panics generation under `--preserve-encodings`** — `t = #6.11(any)`
-  reaches generation (unlike bare `[any]` / `{ k: any }`, which panic earlier at the shared
-  `generic_instances` assert in intermediate/mod.rs under both profiles) and unwraps `None` in
-  `encoding_fields_impl` (generation/mod.rs) building the tag's encoding field, because `any` carries no
-  encoding metadata to attach one. Default-profile the same spec panics at that earlier
-  `generic_instances` assert (the any-in-member family, pinned by `tests/robustness/any_member.cddl`),
-  so this is a preserve-only divergence surfaced by the recombination fuzzer's preserve layer-2 sweep
-  (held in its `PRESERVE_ONLY_PANIC_CLASSES` ledger citing this entry; the `any` construct is
-  unsupported in these positions regardless). Candidate fix belongs with the broader `any`-support
-  question, not the preserve path specifically.
 - Two float-adjacent **deliberate graceful rejections — boundaries to keep, not gaps to close
   blindly**: `.ne` over a float (the integer min>max exclusion hack has no principled float
   encoding) and a decimal bound on an integer-primitive head (`uint .le 10.5` — silently flooring
