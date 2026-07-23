@@ -898,3 +898,215 @@ mod depth_guard {
         ));
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// JSON surface (A3 WP2). Compiles the shipped `static/any_cbor_json.rs` fragment — the SAME file the
+// static assembly appends under `--json-serde-derives` — into each mode's shim and pins the §4.2
+// rendering table + the two round-trip laws. The fragment is mode-independent (written against
+// `kind()`/`as_*`/`new_*`), so one file serves both shims. `serde`/`serde_json` are harness dev-deps.
+// ---------------------------------------------------------------------------------------------
+#[allow(dead_code, clippy::upper_case_acronyms, clippy::wrong_self_convention)]
+mod json_non_preserve {
+    use cbor_event::de::Deserializer;
+    use cbor_event::se::Serializer;
+
+    include!("../../static/error.rs");
+    include!("../../static/serialization.rs");
+    include!("../../static/serialization_non_preserve.rs");
+    include!("../../static/serialization_non_force_canonical.rs");
+    macro_rules! any_cbor_recursion_guard {
+        () => {};
+    }
+    include!("../../static/any_cbor_non_preserve.rs");
+    include!("../../static/any_cbor_json.rs");
+
+    fn j(v: &AnyCbor) -> String {
+        serde_json::to_string(v).unwrap()
+    }
+
+    /// The §4.2 rendering table, byte-for-byte.
+    #[test]
+    fn rendering_table_exact() {
+        assert_eq!(j(&AnyCbor::new_uint(5)), r#"{"uint":5}"#);
+        assert_eq!(j(&AnyCbor::new_nint(-3)), r#"{"nint":-3}"#);
+        // -2^64 does not fit i64 -> decimal string
+        assert_eq!(
+            j(&AnyCbor::new_nint(-(1i128 << 64))),
+            r#"{"nint":"-18446744073709551616"}"#
+        );
+        assert_eq!(
+            j(&AnyCbor::new_bytes(vec![0xa1, 0xb2])),
+            r#"{"bytes":"a1b2"}"#
+        );
+        assert_eq!(j(&AnyCbor::new_text("hi".into())), r#"{"text":"hi"}"#);
+        assert_eq!(
+            j(&AnyCbor::new_array(vec![
+                AnyCbor::new_uint(1),
+                AnyCbor::new_bool(true)
+            ])),
+            r#"{"array":[{"uint":1},{"bool":true}]}"#
+        );
+        assert_eq!(
+            j(&AnyCbor::new_map(vec![(
+                AnyCbor::new_uint(1),
+                AnyCbor::new_text("v".into())
+            )])),
+            r#"{"map":[[{"uint":1},{"text":"v"}]]}"#
+        );
+        assert_eq!(
+            j(&AnyCbor::new_tag(11, AnyCbor::new_uint(7))),
+            r#"{"tag":[11,{"uint":7}]}"#
+        );
+        assert_eq!(j(&AnyCbor::new_bool(true)), r#"{"bool":true}"#);
+        assert_eq!(j(&AnyCbor::new_null()), r#"{"null":null}"#);
+        assert_eq!(j(&AnyCbor::new_undefined()), r#"{"undefined":null}"#);
+        assert_eq!(j(&AnyCbor::new_unassigned(250)), r#"{"unassigned":250}"#);
+        assert_eq!(j(&AnyCbor::new_float(1.5)), r#"{"float":1.5}"#);
+        assert_eq!(j(&AnyCbor::new_float(f64::NAN)), r#"{"float":"NaN"}"#);
+        assert_eq!(
+            j(&AnyCbor::new_float(f64::INFINITY)),
+            r#"{"float":"Infinity"}"#
+        );
+        assert_eq!(
+            j(&AnyCbor::new_float(f64::NEG_INFINITY)),
+            r#"{"float":"-Infinity"}"#
+        );
+    }
+
+    /// Non-preserve round-trip law: `from_json(to_json(x)) == x` for all finite-float values.
+    #[test]
+    fn round_trip_law_finite() {
+        let cases = vec![
+            AnyCbor::new_uint(0),
+            AnyCbor::new_uint(u64::MAX),
+            AnyCbor::new_nint(-1),
+            AnyCbor::new_nint(-(1i128 << 64)),
+            AnyCbor::new_bytes(vec![]),
+            AnyCbor::new_bytes(vec![0, 255, 16]),
+            AnyCbor::new_text(String::new()),
+            AnyCbor::new_text("héllo".into()),
+            AnyCbor::new_bool(false),
+            AnyCbor::new_null(),
+            AnyCbor::new_undefined(),
+            AnyCbor::new_unassigned(0),
+            AnyCbor::new_unassigned(255),
+            AnyCbor::new_float(0.0),
+            AnyCbor::new_float(-2.5),
+            AnyCbor::new_float(1e300),
+            AnyCbor::new_float(f64::INFINITY),
+            AnyCbor::new_float(f64::NEG_INFINITY),
+            AnyCbor::new_array(vec![
+                AnyCbor::new_uint(1),
+                AnyCbor::new_map(vec![(AnyCbor::new_text("k".into()), AnyCbor::new_null())]),
+            ]),
+            AnyCbor::new_tag(0, AnyCbor::new_array(vec![])),
+        ];
+        for v in cases {
+            let s = serde_json::to_string(&v).unwrap();
+            let back: AnyCbor = serde_json::from_str(&s).unwrap();
+            assert_eq!(v, back, "round-trip: {s}");
+        }
+        // NaN: lossy by charter — value-equality NOT required, but the kind survives.
+        let s = serde_json::to_string(&AnyCbor::new_float(f64::NAN)).unwrap();
+        let back: AnyCbor = serde_json::from_str(&s).unwrap();
+        assert!(back.as_float().unwrap().is_nan());
+    }
+
+    /// Read side accepts both nint/float forms and errors loudly on unknown/multi-key objects.
+    #[test]
+    fn read_side_tolerance_and_errors() {
+        let a: AnyCbor = serde_json::from_str(r#"{"nint":-3}"#).unwrap();
+        let b: AnyCbor = serde_json::from_str(r#"{"nint":"-3"}"#).unwrap();
+        assert_eq!(a, b);
+        assert_eq!(
+            serde_json::from_str::<AnyCbor>(r#"{"float":"NaN"}"#)
+                .unwrap()
+                .as_float()
+                .map(f64::is_nan),
+            Some(true)
+        );
+        serde_json::from_str::<AnyCbor>(r#"{"bogus":1}"#).unwrap_err();
+        serde_json::from_str::<AnyCbor>(r#"{"uint":1,"text":"x"}"#).unwrap_err();
+        // nint domain enforced on read (no debug-assert panic on hostile input).
+        serde_json::from_str::<AnyCbor>(r#"{"nint":5}"#).unwrap_err();
+    }
+}
+
+#[allow(dead_code, clippy::upper_case_acronyms, clippy::wrong_self_convention)]
+mod json_preserve {
+    use cbor_event::de::Deserializer;
+    use cbor_event::se::Serializer;
+
+    include!("../../static/error.rs");
+    include!("../../static/serialization.rs");
+    include!("../../static/serialization_preserve.rs");
+    include!("../../static/serialization_preserve_force_canonical.rs");
+    macro_rules! any_cbor_recursion_guard {
+        () => {};
+    }
+    include!("../../static/any_cbor_preserve.rs");
+    include!("../../static/any_cbor_preserve_force_canonical.rs");
+    include!("../../static/any_cbor_json.rs");
+
+    /// Encodings NEVER appear in JSON: two representationally-UNEQUAL preserve values (`0x01` vs
+    /// `0x1801`, same value, different width) serialize to the SAME JSON.
+    #[test]
+    fn encodings_absent_from_json() {
+        let a = AnyCbor::from_cbor_bytes(&super::hex_to_bytes("01")).unwrap();
+        let b = AnyCbor::from_cbor_bytes(&super::hex_to_bytes("1801")).unwrap();
+        assert_ne!(a, b, "representationally unequal in preserve mode");
+        assert_eq!(
+            serde_json::to_string(&a).unwrap(),
+            serde_json::to_string(&b).unwrap(),
+            "JSON drops encodings"
+        );
+    }
+
+    /// Preserve round-trip law: `from_json(to_json(x))` is value-equal modulo encodings (encodings
+    /// reset to defaults). Pinned via canonical bytes: json-roundtripping a wire value then
+    /// re-encoding canonically yields the same bytes as the original's canonical form.
+    #[test]
+    fn round_trip_value_equal_modulo_encodings() {
+        for h in [
+            "1801",                   // uint 1, non-canonical width
+            "3bffffffffffffffff",     // nint -2^64
+            "5804deadbeef",           // bytes, 1-byte len
+            "9f010203ff",             // indefinite array
+            "a20100180100",           // map with dup diff-encoded keys
+            "c249010000000000000000", // tag 2 bignum
+            "fb3ff0000000000000",     // f64 1.0
+            "f5",                     // true
+            "f820",                   // unassigned 32
+        ] {
+            let bytes = super::hex_to_bytes(h);
+            let v = AnyCbor::from_cbor_bytes(&bytes).unwrap();
+            let s = serde_json::to_string(&v).unwrap();
+            let back: AnyCbor = serde_json::from_str(&s).unwrap();
+            assert_eq!(
+                back.to_canonical_cbor_bytes(),
+                v.to_canonical_cbor_bytes(),
+                "value preserved modulo encodings through JSON: {h}"
+            );
+        }
+    }
+
+    /// Constructor-built preserve values (default encodings) round-trip through JSON exactly.
+    #[test]
+    fn constructor_values_round_trip() {
+        let cases = vec![
+            AnyCbor::new_uint(42),
+            AnyCbor::new_nint(-7),
+            AnyCbor::new_bytes(vec![9, 8, 7]),
+            AnyCbor::new_text("t".into()),
+            AnyCbor::new_array(vec![AnyCbor::new_bool(true), AnyCbor::new_null()]),
+            AnyCbor::new_tag(1, AnyCbor::new_uint(3)),
+            AnyCbor::new_unassigned(200),
+            AnyCbor::new_float(2.5),
+        ];
+        for v in cases {
+            let s = serde_json::to_string(&v).unwrap();
+            let back: AnyCbor = serde_json::from_str(&s).unwrap();
+            assert_eq!(v, back, "constructor value round-trips: {s}");
+        }
+    }
+}

@@ -265,6 +265,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "semver",
+ "serde",
  "serde_json",
  "sha2",
  "syn",

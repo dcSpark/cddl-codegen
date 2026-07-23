@@ -151,12 +151,13 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
             &["--json-serde-derives=true", "--json-schema-export=true"],
         ),
     ),
-    // loose-CBOR `any` non-choice positions (member / array element / table domain+range /
-    // top-level alias / tagged), lowered to the AnyCbor runtime type. Rust-only (--wasm=false): an
-    // any-using spec rejects under --wasm=true and the JSON flags (loose-CBOR A2 is rust-only; those
-    // surfaces are A3), which is why this is a profile-limited whole_program input rather than an
-    // all-profile feature-corpus entry. Pinned under all three rust modes so the canonical merge and
-    // the preserve encoding-field threading are each captured.
+    // loose-CBOR `any` positions (member / array element / table domain+range / top-level alias /
+    // tagged / last-position choice arm), lowered to the AnyCbor runtime type. All legs pass
+    // --wasm=false: an any-using spec still rejects under --wasm=true (the wasm AnyCbor wrapper is
+    // A3 WP3), which is why this is a profile-limited whole_program input rather than an all-profile
+    // feature-corpus entry. Pinned under the three rust modes (canonical merge + preserve
+    // encoding-field threading) plus the json mode (A3 WP2 serde/schemars surface: the AnyCbor
+    // fragments concatenate into the any_cbor module under the JSON flags).
     (
         "any_positions_default",
         "tests/any-positions/input.cddl",
@@ -175,6 +176,18 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
             &[
                 "--preserve-encodings=true",
                 "--canonical-form=true",
+                "--wasm=false",
+            ],
+        ),
+    ),
+    (
+        "any_positions_json",
+        "tests/any-positions/input.cddl",
+        (
+            "json",
+            &[
+                "--json-serde-derives=true",
+                "--json-schema-export=true",
                 "--wasm=false",
             ],
         ),
