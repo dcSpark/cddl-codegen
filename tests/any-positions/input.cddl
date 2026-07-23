@@ -1,0 +1,12 @@
+; Loose-CBOR A2 (WP1) `any` positions, all rust-only (--wasm=false): every non-choice position
+; that lowers CDDL `any` to the AnyCbor static-runtime type. Snapshotted under default / preserve /
+; preserve+canonical by the `whole_program` suite (any-using specs reject under --wasm=true and the
+; JSON flags, which is why this lives here rather than in the all-profile feature corpus).
+member_map = {1: any, ? 2: uint}   ; struct-map member value
+member_array = [any, uint]         ; array-record member value
+homog_array = [* any]              ; homogeneous array element
+table_any_any = {* any => any}     ; table domain AND range
+table_uint_any = {* uint => any}   ; table range
+table_any_uint = {* any => uint}   ; table domain
+top_alias = any                    ; top-level alias
+tagged = #6.11(any)                ; tagged
