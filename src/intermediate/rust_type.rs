@@ -1060,6 +1060,13 @@ impl std::convert::From<ConceptualRustType> for RustType {
 }
 
 /// How a type will be represented in rust outside of a serialization context
+///
+/// Adding a variant: there is no compilable intermediate state — the exhaustive match sites
+/// (~24 across the emitters/IR) error loudly, but this file alone has ~30 wildcard `_ =>` arms
+/// that will silently swallow a new variant with whatever default they encode. Hand-audit every
+/// wildcard method ("is this default right for the new variant?") before trusting a green build,
+/// and plan the first commit at variant + all arms + emission granularity — reachable emitter
+/// arms can't be stubbed without breaking snapshots. (Learned on the A2 `Any` delivery, `7a08a0f`.)
 #[derive(Clone, Debug, PartialEq)]
 pub enum ConceptualRustType {
     Fixed(FixedValue),
