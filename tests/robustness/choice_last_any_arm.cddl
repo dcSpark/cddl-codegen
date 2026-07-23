@@ -1,11 +1,9 @@
 ; A bare `any` type-choice arm in LAST position (`tstr / any`) is a SUPPORTED construct (loose-CBOR
 ; A3): the arm lowers to the AnyCbor runtime type and dispatches via forced backtracking (a typed arm
 ; matching on wire type but failing on content falls through to the `any` catch-all — DESIGN §3.5).
-; Under this catalog's default `--wasm=true` profile it nonetheless records `error (graceful)`,
-; because the wasm AnyCbor surface has not landed yet (loose-CBOR A3 WP3) and the api.rs guard rejects
-; any `any`-using spec under wasm — exactly the posture of `tests/robustness/choice_array_any_arm.cddl`.
-; This row flips to `ok` when WP3 lifts the wasm guard. The rust-only (`--wasm=false`) support is
-; pinned by the `any_positions_*` whole_program snapshots and the `tests/any-choice` content-
-; fallthrough integration fixture. DISTINCT from the NON-LAST rejection
-; (`any / tstr`, tests/robustness/choice_any_arm.cddl).
+; Full-surface since A3 WP3 lifted the wasm guard, so this row is `ok` under this catalog's default
+; `--wasm=true` profile. The rust-only (`--wasm=false`) support is pinned by the `any_positions_*`
+; whole_program snapshots and the `tests/any-choice` content-fallthrough integration fixture; the
+; wasm surface by the `any-choice` corpus row of `wasm_api_parity`. DISTINCT from the NON-LAST
+; rejection (`any / tstr`, tests/robustness/choice_any_arm.cddl).
 a = tstr / any

@@ -3810,15 +3810,16 @@ fn flag_value_rejects_canonical_without_preserve() {
     );
 }
 
-/// A spec whose finalized IR lowers CDDL `any` to the `AnyCbor` runtime type is gracefully rejected
-/// under `--wasm=true` (the wasm wrapper class is phase A3 WP3), but ACCEPTED under the JSON flags
-/// (the serde/schemars impls landed in A3 WP2). Pins the wasm rejection AND its message so the guard
-/// can't silently become a no-op, and pins the json acceptance baseline so a future regression that
-/// re-adds a json guard is caught. (WP3 finishes the retirement, flipping the wasm leg positive.)
+/// A spec whose finalized IR lowers CDDL `any` to the `AnyCbor` runtime type is a FULL-surface
+/// citizen: accepted under `--wasm=true` (the wasm wrapper class landed in A3 WP3), under the JSON
+/// flags (serde/schemars, A3 WP2), and rust-only — including all three at once. Pins that no flag
+/// combination rejects on `any`'s account, so a future regression that re-adds any such guard is
+/// caught. (Predecessor: `flag_value_rejects_any_under_wasm_but_accepts_json`, retired when WP3
+/// lifted the wasm guard.)
 #[test]
-fn flag_value_rejects_any_under_wasm_but_accepts_json() {
+fn flag_value_accepts_any_under_all_surfaces() {
     // tests/robustness/any_member.cddl is `a = [any]` — its IR contains `Any`. `Cli` isn't `Clone`,
-    // so build a fresh base per case and flip exactly the surface flag under test.
+    // so build a fresh base per case and flip exactly the surface flags under test.
     let any_cli = |wasm: bool, serde: bool, schemars: bool| crate::cli::Cli {
         input: std::path::PathBuf::from("tests/robustness/any_member.cddl"),
         output: std::path::PathBuf::from("unused"),
@@ -3828,33 +3829,20 @@ fn flag_value_rejects_any_under_wasm_but_accepts_json() {
         ..Default::default()
     };
 
-    // --wasm=true → rejected, message names wasm + the AnyCbor surface.
-    let msg = crate::api::with_types(&any_cli(true, false, false), |_, _| ())
-        .expect_err("`any` under --wasm=true should be rejected")
-        .to_string();
-    assert!(
-        msg.contains("wasm") && msg.contains("AnyCbor"),
-        "wasm rejection message should name wasm + AnyCbor, got: {msg}"
-    );
-
-    // JSON flags (serde, schemars, or both) → ACCEPTED (WP2 delivered the impls). The static
-    // assembly appends the serde/schemars fragments; the IR build itself must not reject.
-    for json_cli in [
-        any_cli(false, true, false),
-        any_cli(false, false, true),
-        any_cli(false, true, true),
+    // Every surface combination — wasm, each JSON flag, all together, and rust-only — is ACCEPTED.
+    for (wasm, serde, schemars) in [
+        (true, false, false),
+        (false, true, false),
+        (false, false, true),
+        (false, true, true),
+        (true, true, true),
+        (false, false, false),
     ] {
         assert!(
-            crate::api::with_types(&json_cli, |_, _| ()).is_ok(),
-            "`any` under a JSON flag should be accepted (A3 WP2 delivered the serde/schemars surface)"
+            crate::api::with_types(&any_cli(wasm, serde, schemars), |_, _| ()).is_ok(),
+            "`any` should be accepted under wasm={wasm} serde={serde} schemars={schemars}"
         );
     }
-
-    // baseline: rust-only (--wasm=false, no JSON flags) accepts the same `any` input.
-    assert!(
-        crate::api::with_types(&any_cli(false, false, false), |_, _| ()).is_ok(),
-        "`any` under --wasm=false with no JSON flags should be accepted"
-    );
 }
 
 /// A user rule literally named `any` (`any = uint`) must SHADOW the prelude `any` and behave
