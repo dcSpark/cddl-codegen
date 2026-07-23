@@ -13263,7 +13263,8 @@ fn decode_replay_json_wasm_legs(
 /// `expect_err` reason pin; NOT a bare `type_name` contains, which single-letter type names like `T`
 /// would vacuously match against words like "TagMismatch"). Two stale-guarded ledgers cover the honest
 /// exceptions: `HEADER_MUTANT_ACCEPT_SKIP` (a mutant the row's spec genuinely accepts WITHOUT any
-/// accept vector evidencing that major — an `any`-typed row, an unsampled choice arm; EMPTY at HEAD;
+/// accept vector evidencing that major — an `any`-typed row, an unsampled choice arm; one resident
+/// at HEAD, `(prelude.any, wrong_major)` — the `any` rule accepts every major by definition;
 /// `trunc_head` can never be here, asserted) and `HEADER_MUTANT_LOCATION_SKIP` (a rejection carrying
 /// no location — EMPTY at HEAD now that the newtype-wrapper container reads and embedded/plain-group
 /// header scaffolding are annotated; the only known-legitimate locationless resident, the
@@ -13408,11 +13409,23 @@ fn decode_conformance_replay() {
     // row's own accept vectors demonstrate, like type.choice's bstr↔tstr flip — is already skipped at
     // DERIVATION time by `header_mutants`' evidenced-major skip, precisely so this ledger never
     // suppresses (row, label)-wide: a wide entry would also swallow a future genuine over-acceptance
-    // on the row's non-ambiguous vectors.) EMPTY at HEAD. Stale-guarded: a listed entry whose mutant
+    // on the row's non-ambiguous vectors — except on a row like `prelude.any`, where NO vector is
+    // non-ambiguous because the rule accepts every major by definition, so the wide entry is exact.)
+    // Stale-guarded: a listed entry whose mutant
     // no longer decodes Ok fails the gate. `trunc_head` mutants are ill-formed by construction and can
     // NEVER decode Ok — a `trunc_head` entry here is a hard error (asserted below), not a legitimate
     // skip.
-    const HEADER_MUTANT_ACCEPT_SKIP: &[(&str, &str, &str)] = &[];
+    const HEADER_MUTANT_ACCEPT_SKIP: &[(&str, &str, &str)] = &[(
+        "prelude.any",
+        "wrong_major",
+        "the row is `x = any` — the `any` rule accepts every well-formed CBOR data item regardless \
+         of major type (that IS its semantics; it lowers to the AnyCbor runtime type whose \
+         deserializer reads any major), so a wrong_major flip of a payload head yields bytes the \
+         spec genuinely accepts. The committed accept vectors all sample text payloads (the mint's \
+         shape), so the flipped majors are unevidenced by construction, and every vector of this row \
+         is ambiguous in this sense — the (row, label)-wide entry is exact, not a suppression. \
+         Surfaced by the first full-tier run after the A2-era vector mint (A3 close-out).",
+    )];
     // (row id, header-mutant label, reason) pairs whose DEFAULT-leg header-mutant test REJECTS the
     // mutated bytes but the error Display carries NO location naming the decoding type. EMPTY at HEAD:
     // the newtype-wrapper container reads (3a) and embedded/plain-group deserialize() header
