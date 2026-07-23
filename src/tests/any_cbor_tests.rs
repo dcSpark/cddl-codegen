@@ -1115,8 +1115,8 @@ mod json_non_preserve {
     fn natural_read_convention() {
         let five: serde_json::Value = serde_json::from_str("5").unwrap();
         let five_dot: serde_json::Value = serde_json::from_str("5.0").unwrap();
-        assert_eq!(five.is_u64(), true, "PROBE-B2: `5` is integral");
-        assert_eq!(five_dot.is_f64(), true, "PROBE-B2: `5.0` is fractional");
+        assert!(five.is_u64(), "PROBE-B2: `5` is integral");
+        assert!(five_dot.is_f64(), "PROBE-B2: `5.0` is fractional");
         assert_eq!(from_natural_json(five), AnyCbor::new_uint(5));
         assert_eq!(from_natural_json(five_dot), AnyCbor::new_float(5.0));
         assert_eq!(

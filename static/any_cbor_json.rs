@@ -319,17 +319,19 @@ pub fn to_natural_json(value: &AnyCbor) -> Result<serde_json::Value, AnyToNatura
 /// CANONICAL decimal spelling (round-trips through `to_string`), else text. So `"12"` → uint `12`,
 /// `"-5"` → nint `-5`, but `"012"`/`"+5"`/`"5.0"`/`"abc"` → text. Total.
 fn any_cbor_natural_key_from_string(key: &str) -> AnyCbor {
-    if let Ok(u) = key.parse::<u64>() {
-        if u.to_string() == key {
-            return AnyCbor::new_uint(u);
-        }
+    // `.ok().filter(round-trips)` keeps this a single `if let` (no nested-if / no let-chain, so it
+    // stays clippy-clean AND edition-agnostic in the generated crate). A canonical decimal spelling
+    // round-trips through `to_string`; `"012"`/`"+3"`/`"-0"`/non-round-tripping forms fall to text.
+    if let Some(u) = key.parse::<u64>().ok().filter(|u| u.to_string() == key) {
+        return AnyCbor::new_uint(u);
     }
-    if let Ok(i) = key.parse::<i64>() {
-        // i64 negatives all lie inside the CBOR nint domain (-2^64..=-1); require a canonical
-        // negative spelling so `"-0"`/`"+3"`/non-round-tripping forms stay text.
-        if i < 0 && i.to_string() == key {
-            return AnyCbor::new_nint(i as i128);
-        }
+    // i64 negatives all lie inside the CBOR nint domain (-2^64..=-1).
+    if let Some(i) = key
+        .parse::<i64>()
+        .ok()
+        .filter(|i| *i < 0 && i.to_string() == key)
+    {
+        return AnyCbor::new_nint(i as i128);
     }
     AnyCbor::new_text(key.to_owned())
 }
