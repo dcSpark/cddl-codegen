@@ -259,6 +259,9 @@ impl EncodingVarIsCopy for ConceptualRustType {
                     true
                 }
             },
+            // `AnyCbor` is self-carried: it contributes NO owner encoding var (its encodings live
+            // inside the value), so like the Rust `_ => true` "technically no encoding var" case.
+            Self::Any => true,
             Self::Alias(_, ty) => ty.encoding_var_is_copy(types),
         }
     }
@@ -903,6 +906,18 @@ impl GenerationScope {
                             }
                         }
                     }
+                }
+                // `any` serializes via `AnyCbor`'s own `Serialize` impl (self-carried encodings), the
+                // same shape as a plain Rust struct reference — mirror the `Rust(_)` fallthrough
+                // (`.serialize(serializer[, force_canonical])`) minus owner-encoding threading.
+                SerializingRustType::Root(ConceptualRustType::Any, _cfg) => {
+                    body.line(&format!(
+                        "{}.serialize({}{}){}",
+                        config.expr,
+                        serializer_pass,
+                        canonical_param(cli),
+                        line_ender
+                    ));
                 }
                 SerializingRustType::Root(ConceptualRustType::Rust(t), type_cfg) => {
                     match &types.rust_struct(t).unwrap().variant() {

@@ -1,14 +1,15 @@
 ---
 source: src/tests/robustness_tests.rs
+assertion_line: 2744
 expression: catalog
 ---
 # generator outcome per malformed/edge input
 # A NEW panic is a regression: malformed input must error gracefully. A committed PANIC entry
 # is a tracked-known rejection (see the fixture's comments); flipping it to `error (graceful)` is a fix.
 
-any_member                 PANIC
-choice_any_arm             PANIC
-choice_array_any_arm       PANIC
+any_member                 ok
+choice_any_arm             error (graceful)
+choice_array_any_arm       ok
 choice_cbor_ref_arm        PANIC
 choice_group_array_arm     ok
 duplicate_rule             error (graceful)

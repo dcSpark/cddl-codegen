@@ -865,29 +865,30 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
         "failed left: \";\" right: \"\" @ src/generation/deserialize.rs",
         "map-rep group-choice arm with a fixed-value entry; pinned by tests/matrix_panic/contain.group-choice-arm.type2.value.map.cddl",
     ),
-    (
-        "assertion failed: self.generic_instances.contains_key(ident)",
-        "`any` in member/element position; pinned by tests/robustness/any_member.cddl (recombination finding)",
-    ),
-    (
-        "called `Option::unwrap()` on a `None` value @ src/intermediate/rust_type.rs",
-        "type-choice arm with no storable representation (`any` arm); pinned by tests/robustness/choice_any_arm.cddl (recombination finding). The sibling `[group]`-arm shape (`[coords] / tstr`) is now storable — it promotes the plain group to a Record struct and generates a proper enum variant (pinned by tests/robustness/choice_group_array_arm.cddl, now an `ok` fixture)",
-    ),
+    // (retired in the loose-CBOR A2 delivery) `any` in member/element position no longer panics —
+    // it lowers to the `AnyCbor` runtime type (tests/robustness/any_member.cddl is now an `ok`
+    // fixture). The former `self.generic_instances.contains_key(ident)` assertion class is gone.
+    // (retired in the same delivery) the `any` type-choice arm no longer reaches the
+    // `rust_type.rs` `Option::unwrap()` panic — it is now a graceful generation-time rejection
+    // (tests/robustness/choice_any_arm.cddl is an `error (graceful)` fixture; A3 owns real
+    // catch-all-union support). A `[* any]` (container-of-any) arm generates correctly
+    // (tests/robustness/choice_array_any_arm.cddl is now an `ok` fixture).
     (
         "should not expose Fixed type",
         "bare fixed value under an occurrence / tagged prelude constant; pinned by tests/robustness/fixed_value_occurrence.cddl and tests/robustness/tagged_prelude_constant.cddl (recombination findings)",
     ),
 ];
-// NOT in the ledger despite being real, robustness-pinned panic classes (the ledger's stale-pin
-// guard requires sweep observation, and the CURRENT enumeration composes neither shape): the
-// array-of-`any` type-choice arm (tests/robustness/choice_array_any_arm.cddl, serialize.rs
-// `encoding_var_is_copy` unwrap) and the `.cbor`-over-a-reference type-choice arm
-// (tests/robustness/choice_cbor_ref_arm.cddl, "variant ctor refers to undefined ident" — that
-// message was worded lead-constant so a future ledger entry can key on it). Both were surfaced by
-// a TRANSIENT enumeration (a since-skipped vacuous `dsl.rust_name` filler shifted the composition
-// indices), promoted, then the enumeration reverted; the robustness catalog rows keep them
-// exercised. If an enumeration change re-composes either shape, the sweep fails NEW-finding with
-// these fixtures already committed — re-add the entry citing them.
+// NOT in the ledger despite being a real, robustness-pinned panic class (the ledger's stale-pin
+// guard requires sweep observation, and the CURRENT enumeration does not compose the shape): the
+// `.cbor`-over-a-reference type-choice arm (tests/robustness/choice_cbor_ref_arm.cddl, "variant
+// ctor refers to undefined ident" — that message was worded lead-constant so a future ledger entry
+// can key on it). It was surfaced by a TRANSIENT enumeration (a since-skipped vacuous
+// `dsl.rust_name` filler shifted the composition indices), promoted, then the enumeration reverted;
+// the robustness catalog row keeps it exercised. If an enumeration change re-composes the shape, the
+// sweep fails NEW-finding with the fixture already committed — re-add the entry citing it.
+// (The array-of-`any` type-choice arm that used to sit here is gone: `[* any]` is now a supported
+// homogeneous array, so `[* any] / tstr` generates correctly — tests/robustness/choice_array_any_arm.cddl
+// is an `ok` fixture, not a panic class, as of the loose-CBOR A2 delivery.)
 
 // ---- LAYER 1: the generation-classification sweep ---------------------------------------------------
 /// Sweep every composition through in-process generation and classify ok / graceful / PANIC.
@@ -980,10 +981,9 @@ fn recombination_generation_sweep() {
 /// Excluded from batching (vacuity-guarded: each entry must match >= 1 ok composition, so a fixed
 /// class flips loudly).
 const LAYER2_KNOWN_BAD: &[(&str, &str)] = &[
-    (
-        "filler=prelude.any",
-        "`any` generates but does not compile; pinned by tests/matrix_reject/prelude.any.cddl (matrix evidence: generates but does not compile)",
-    ),
+    // (retired in the loose-CBOR A2 delivery) `any` no longer "generates but does not compile" —
+    // it lowers to the `AnyCbor` static-runtime type and the generated crate compiles across plain
+    // / preserve / preserve+canonical. The former `filler=prelude.any` known-bad class is gone.
     // -- non-final `?` optional field in an array record: Deserialize impl not emitted (E0599) ----
     // (optional-LAST array fields compile and round-trip; the gap is the position.)
     (
@@ -1411,13 +1411,11 @@ const PRESERVE_ONLY_PANIC_CLASSES: &[(&str, &str)] = &[
          encoding metadata has no home on the enum; cddl-matrix/ROADMAP.md § findings, \
          `A CBOR tag over a type-choice enum is unimplemented under --preserve-encodings` entry",
     ),
-    (
-        "called `Option::unwrap()` on a `None` value @ src/generation/mod.rs @ fn cddl_codegen::generation::encoding_fields_impl",
-        "a CBOR tag wrapping `any` reaches generation under --preserve-encodings (unlike bare `[any]` / \
-         `{k: any}`, which panic earlier at the shared `generic_instances` assert) and unwraps None \
-         building the tag's encoding field — `any` carries no encoding metadata; cddl-matrix/ROADMAP.md \
-         § findings, `A CBOR tag wrapping any panics generation under --preserve-encodings` entry",
-    ),
+    // (retired in the loose-CBOR A2 delivery) a CBOR tag wrapping `any` (`#6.11(any)`) under
+    // --preserve-encodings no longer panics building the tag's encoding field: `any` lowers to the
+    // self-carried `AnyCbor` runtime type (contributes ZERO owner encoding fields via
+    // `encoding_fields_impl`'s `Root(Any)` arm), so the tag's encoding var mints normally. Verified
+    // byte-exact round-trip through a generated preserve+canonical crate.
 ];
 
 /// Preserve-profile compile/round-trip known-bad classes (generation is ok under preserve, the

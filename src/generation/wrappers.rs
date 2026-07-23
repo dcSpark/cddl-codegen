@@ -371,6 +371,9 @@ pub(super) fn generate_wrapper_struct(
                             Primitive::U64 => "Unsigned(inner)",
                         },
                         ConceptualRustType::Rust(_) => "StructVariant",
+                        // `any`+json rejects at generation, and `any` is never a can_new_fail
+                        // wrapper, so this JSON serde-derive path is unreachable for it.
+                        ConceptualRustType::Any => unreachable!(),
                     };
                     // Unexpected::Str(&inner)/Bytes(&inner) borrow `inner` in the error closure,
                     // but `Self::new(inner)` moves it first (String/Vec aren't Copy) → E0382. Clone

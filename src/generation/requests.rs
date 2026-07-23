@@ -382,6 +382,8 @@ pub(crate) fn render_wrapper_shape(rt: &RustType) -> String {
         }
         ConceptualRustType::Alias(AliasIdent::Reserved(name), _) => name.clone(),
         ConceptualRustType::Primitive(p) => primitive_cddl_name(p).to_owned(),
+        // `any` renders as the CDDL prelude spelling in a cross-crate request shape column.
+        ConceptualRustType::Any => "any".to_owned(),
         // Fixed values carry no CDDL ident and never appear as a real wrapper element; render a
         // placeholder rather than panicking so the advisory hint text stays best-effort.
         ConceptualRustType::Fixed(_) => "_".to_owned(),
