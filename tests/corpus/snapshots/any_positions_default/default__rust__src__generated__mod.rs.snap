@@ -76,6 +76,18 @@ impl MemberArray {
 }
 
 #[derive(Clone, Debug)]
+pub struct MemberHomog {
+    pub key_1: u64,
+    pub key_2: Vec<crate::generated::any_cbor::AnyCbor>,
+}
+
+impl MemberHomog {
+    pub fn new(key_1: u64, key_2: Vec<crate::generated::any_cbor::AnyCbor>) -> Self {
+        Self { key_1, key_2 }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct MemberMap {
     pub key_1: crate::generated::any_cbor::AnyCbor,
     pub key_2: Option<u64>,
@@ -84,6 +96,18 @@ pub struct MemberMap {
 impl MemberMap {
     pub fn new(key_1: crate::generated::any_cbor::AnyCbor) -> Self {
         Self { key_1, key_2: None }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MemberTable {
+    pub key_1: u64,
+    pub key_2: BTreeMap<u64, crate::generated::any_cbor::AnyCbor>,
+}
+
+impl MemberTable {
+    pub fn new(key_1: u64, key_2: BTreeMap<u64, crate::generated::any_cbor::AnyCbor>) -> Self {
+        Self { key_1, key_2 }
     }
 }
 

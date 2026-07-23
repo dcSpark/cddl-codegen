@@ -6,6 +6,7 @@ expression: content
 // https://github.com/dcSpark/cddl-codegen
 
 use crate::generated::serialization::LenEncoding;
+use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Default)]
 pub struct MemberArrayEncoding {
@@ -14,11 +15,32 @@ pub struct MemberArrayEncoding {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct MemberHomogEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub key_1_encoding: Option<cbor_event::Sz>,
+    pub key_1_key_encoding: Option<cbor_event::Sz>,
+    pub key_2_encoding: LenEncoding,
+    pub key_2_key_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct MemberMapEncoding {
     pub len_encoding: LenEncoding,
     pub orig_deser_order: Vec<usize>,
     pub key_1_key_encoding: Option<cbor_event::Sz>,
     pub key_2_encoding: Option<cbor_event::Sz>,
+    pub key_2_key_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct MemberTableEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub key_1_encoding: Option<cbor_event::Sz>,
+    pub key_1_key_encoding: Option<cbor_event::Sz>,
+    pub key_2_encoding: LenEncoding,
+    pub key_2_key_encodings: BTreeMap<u64, Option<cbor_event::Sz>>,
     pub key_2_key_encoding: Option<cbor_event::Sz>,
 }
 

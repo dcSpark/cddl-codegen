@@ -21,7 +21,11 @@ pub mod serialization;
 
 use crate::generated::ordered_hash_map::OrderedHashMap;
 use crate::generated::serialization::StringEncoding;
-use cbor_encodings::{MemberArrayEncoding, MemberMapEncoding, TaggedEncoding};
+use cbor_encodings::{
+    MemberArrayEncoding, MemberHomogEncoding, MemberMapEncoding, MemberTableEncoding,
+    TaggedEncoding,
+};
+use std::collections::BTreeMap;
 
 impl From<Tagged> for crate::generated::any_cbor::AnyCbor {
     fn from(wrapper: Tagged) -> Self {
@@ -110,6 +114,23 @@ impl MemberArray {
 }
 
 #[derive(Clone, Debug)]
+pub struct MemberHomog {
+    pub key_1: u64,
+    pub key_2: Vec<crate::generated::any_cbor::AnyCbor>,
+    pub encodings: Option<MemberHomogEncoding>,
+}
+
+impl MemberHomog {
+    pub fn new(key_1: u64, key_2: Vec<crate::generated::any_cbor::AnyCbor>) -> Self {
+        Self {
+            key_1,
+            key_2,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct MemberMap {
     pub key_1: crate::generated::any_cbor::AnyCbor,
     pub key_2: Option<u64>,
@@ -121,6 +142,26 @@ impl MemberMap {
         Self {
             key_1,
             key_2: None,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MemberTable {
+    pub key_1: u64,
+    pub key_2: OrderedHashMap<u64, crate::generated::any_cbor::AnyCbor>,
+    pub encodings: Option<MemberTableEncoding>,
+}
+
+impl MemberTable {
+    pub fn new(
+        key_1: u64,
+        key_2: OrderedHashMap<u64, crate::generated::any_cbor::AnyCbor>,
+    ) -> Self {
+        Self {
+            key_1,
+            key_2,
             encodings: None,
         }
     }

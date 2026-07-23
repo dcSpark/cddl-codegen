@@ -20,3 +20,12 @@ top_alias = any                    ; top-level alias
 tagged = #6.11(any)                ; tagged
 choice_last_any = uint / tstr / any ; type-choice with a bare `any` catch-all arm (last position)
 choice_tagged_any = #6.11(any) / tstr ; tagged-`any` type-choice arm (any position; not a catch-all)
+;
+; Collection-of-`any` MEMBER positions (loose-CBOR Phase B WP1 natural-JSON flip): a struct field
+; whose value is a homogeneous `[* any]` array (the `Seq` natural adapter) or a `{* K => any}` table
+; with a stringifiable key (the `Map` natural adapter — non-preserve; a preserve-mode map member keeps
+; the tagged element rendering pending the `OrderedHashMap` adapter). Unlike a STANDALONE table/array
+; alias (which has no generated JSON surface of its own), these members DO serialize, so their `any`
+; content must render naturally element-wise.
+member_homog = {1: uint, 2: [* any]}   ; homogeneous-array member value → Seq natural adapter
+member_table = {1: uint, 2: {* uint => any}} ; table-range member value → Map natural adapter

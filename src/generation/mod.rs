@@ -2963,6 +2963,50 @@ fn assertion_roots(types: &IntermediateTypes) -> Vec<(RustIdent, DemandSet)> {
         .collect()
 }
 
+/// The serde/schemars position an `any`-carrying field or arm occupies, selecting which natural
+/// adapter (loose-CBOR Phase B, ruling R1) steers its JSON: a bare `AnyCbor` (`Direct`), an
+/// `Option<AnyCbor>` (`Optional`), a `Vec<AnyCbor>` element (`Seq`), or a `BTreeMap<K, AnyCbor>`
+/// value with a stringifiable key (`Map`).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum NaturalAnyPosition {
+    Direct,
+    Optional,
+    Seq,
+    Map,
+}
+
+/// The `#[serde(with = …)]` / `#[schemars(schema_with = …)]` / `#[serde(default)]` annotation lines
+/// that route a serde field/arm carrying `any` through the NATURAL JSON walk (R1) instead of
+/// `AnyCbor`'s tagged codec (which stays `AnyCbor`'s own serde, ruling R2). Returns empty when
+/// neither json flag is on. The adapter module / schema fn live in the `any_cbor` runtime module,
+/// reached through the same common-import glue as the `AnyCbor` type itself (`common_import_rust`),
+/// so `--common-import-override` split crates spell the shared-core path.
+pub fn natural_any_serde_annotations(cli: &Cli, pos: NaturalAnyPosition) -> Vec<String> {
+    use NaturalAnyPosition::*;
+    let mut out = Vec::new();
+    let base = format!("{}::any_cbor", cli.common_import_rust());
+    let (with_mod, schema_fn) = match pos {
+        Direct => ("natural_any_cbor", "natural_any_cbor_schema"),
+        Optional => ("natural_any_cbor_opt", "natural_any_cbor_schema"),
+        Seq => ("natural_any_cbor_seq", "natural_any_cbor_seq_schema"),
+        Map => ("natural_any_cbor_btreemap", "natural_any_cbor_map_schema"),
+    };
+    if cli.json_serde_derives {
+        out.push(format!("#[serde(with = \"{base}::{with_mod}\")]"));
+        if pos == Optional {
+            // A `#[serde(with)]` field is otherwise required on read; `default` restores the
+            // ordinary "missing optional key ⇒ None" behavior the plain derive gives.
+            out.push("#[serde(default)]".to_owned());
+        }
+    }
+    if cli.json_schema_export {
+        out.push(format!(
+            "#[schemars(schema_with = \"{base}::{schema_fn}\")]"
+        ));
+    }
+    out
+}
+
 fn add_struct_derives<T: DataType>(
     data_type: &mut T,
     key_demand: Option<DemandSet>,

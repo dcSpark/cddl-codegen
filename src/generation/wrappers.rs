@@ -295,6 +295,12 @@ pub(super) fn generate_wrapper_struct(
         field_type.resolve_alias_shallow(),
         ConceptualRustType::Primitive(Primitive::Bytes)
     );
+    // Loose-CBOR Phase B (R1): a newtype wrapping an `any` (e.g. `t = #6.11(any)` → `Tagged(AnyCbor)`)
+    // renders its JSON NATURALLY, not through `AnyCbor`'s tagged codec. The wrapper's manual serde /
+    // schemars route through the `any_cbor` runtime module's natural adapter (the CBOR-only tag is
+    // absent from JSON, so the natural walk of the inner value is the whole JSON surface).
+    let json_natural_any = matches!(field_type.resolve_alias_shallow(), ConceptualRustType::Any);
+    let any_cbor_mod = format!("{}::any_cbor", cli.common_import_rust());
     let json_schema_type = if json_hex_bytes {
         Cow::Borrowed("String")
     } else {
@@ -336,6 +342,16 @@ pub(super) fn generate_wrapper_struct(
                         .line(format!(".map({type_name}::new)"))
                         .line(format!(".map_err(|_e| {err_body})"));
                 }
+            } else if json_natural_any {
+                serde_ser_fn.line(format!(
+                    "{any_cbor_mod}::natural_any_cbor::serialize(&{self_var}, serializer)"
+                ));
+                serde_deser_fn
+                    .line(format!(
+                        "let inner = {any_cbor_mod}::natural_any_cbor::deserialize(deserializer)?;"
+                    ))
+                    // `any` is never a can_new_fail wrapper, so construction is infallible.
+                    .line("Ok(Self::new(inner))");
             } else {
                 serde_ser_fn.line(format!("{self_var}.serialize(serializer)"));
                 serde_deser_fn
@@ -409,18 +425,27 @@ pub(super) fn generate_wrapper_struct(
             let mut json_schema_fn = codegen::Function::new("json_schema");
             json_schema_fn
                 .arg("generator", "&mut schemars::SchemaGenerator")
-                .ret("schemars::Schema")
+                .ret("schemars::Schema");
+            let mut inline_schema = codegen::Function::new("inline_schema");
+            inline_schema.ret("bool");
+            if json_natural_any {
+                // Permissive natural schema (R1), distinct from `AnyCbor`'s own tagged codec schema.
+                json_schema_fn.line(format!(
+                    "{any_cbor_mod}::natural_any_cbor_schema(generator)"
+                ));
+                inline_schema.line("false");
+            } else {
                 // qualified-path form: `json_schema_type` is a type-position spelling, so a generic
                 // backing type (map/array @newtype) needs `<T as Trait>::method`, not `T::method`
                 // (which parses `<` as a comparison in expression position). Matches the
                 // `<{json_schema_type} as serde::de::Deserialize>::deserialize` precedent above.
-                .line(format!(
+                json_schema_fn.line(format!(
                     "<{json_schema_type} as schemars::JsonSchema>::json_schema(generator)"
                 ));
-            let mut inline_schema = codegen::Function::new("inline_schema");
-            inline_schema.ret("bool").line(format!(
-                "<{json_schema_type} as schemars::JsonSchema>::inline_schema()"
-            ));
+                inline_schema.line(format!(
+                    "<{json_schema_type} as schemars::JsonSchema>::inline_schema()"
+                ));
+            }
             json_schema_impl
                 .impl_trait("schemars::JsonSchema")
                 .push_fn(schema_name_fn)

@@ -1076,6 +1076,26 @@ fn generate_enum(
             // we must repurpose annotations since there is no doc support on enum variants
             v.annotation(format!("/// {doc}"));
         }
+        // Loose-CBOR Phase B (R1): an `any`-typed choice arm renders its JSON NATURALLY. A
+        // newtype variant accepts variant-level `#[serde(with = …)]` / `#[schemars(schema_with = …)]`,
+        // which serde/schemars apply to the variant's single field. The CBOR-only tag on a
+        // tagged-`any` arm never appears in JSON, so the same natural routing is correct there too.
+        if !config.custom_json
+            && matches!(
+                &variant.data,
+                EnumVariantData::RustType(ty)
+                    if matches!(
+                        ty.conceptual_type.resolve_alias_shallow(),
+                        ConceptualRustType::Any
+                    )
+            )
+        {
+            for annotation in
+                super::natural_any_serde_annotations(cli, super::NaturalAnyPosition::Direct)
+            {
+                v.annotation(annotation);
+            }
+        }
         e.push_variant(v);
         // new (particularly useful if we have encoding variables)
         let mut new_func = codegen::Function::new(format!("new_{variant_var_name}"));

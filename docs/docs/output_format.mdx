@@ -197,10 +197,60 @@ value built by hand serializes canonically. Read back through `kind() -> AnyCbor
 
 ### JSON representation (`--json-serde-derives` / `--json-schema-export`)
 
-Under the JSON flags `AnyCbor` derives serde like any other type, but its JSON is a **representation of
-CBOR, not natural JSON**: every value is a single-key object keyed by the snake_case kind name. JSON is
-the deliberately lossy side of the contract — encoding detail never appears, so two preserve values that
-differ only in encoding render identically.
+There are two JSON surfaces for `any`, and which one a value uses depends on **where** it sits:
+
+- **Natural JSON — the primary surface, used everywhere a generated type contains an `any`.** A
+  member (`{1: any}`), a homogeneous-array element (`[* any]`), a `{* K => any}` table range (with a
+  stringifiable key), an `any` type-choice arm, and a newtype wrapping an `any` (`#6.11(any)`) all
+  render the CBOR value **as the JSON value it naturally is** — `{"count": 3}`, not
+  `{"map": [[{"text":"count"},{"uint":3}]]}`. This is the only rendering that composes with static
+  typing (a `{* text => any}` member is a TypeScript `{ [k: string]: unknown }`) and the only one a
+  human-authored `from_json` document looks like.
+- **The `AnyCbor` value codec — a total, tagged rendering,** described in the subsection below. It is
+  what a *bare* `AnyCbor` (the `x = any` top-level alias, and the `AnyCbor` wasm wrapper) uses, and
+  the value-level escape hatch when natural `to_json` fails.
+
+#### Natural rendering (RFC 8949 §6.1 injective subset, strict-fail elsewhere)
+
+Natural rendering implements the injective subset of RFC 8949 §6.1 and **fails loudly** on any value
+§6.1 would only represent by substitution — no substitute values are ever emitted, because the output
+feeds a symmetric `from_json` and a silent substitution would be write-back corruption. Consequently
+`to_json` on a type that *contains* an `any` is **fallible on data**: a value in the failure set makes
+it return an error naming the offending node kind. When that happens, reach into the field and use the
+value codec (below) on the `AnyCbor` directly.
+
+| CBOR value | Natural JSON | |
+|---|---|---|
+| uint | number | full `u64` range; values `> 2^53` stay numbers (an I-JSON precision caveat, not a failure) |
+| nint (fits `i64`) | number | |
+| text | string | |
+| bool / null | `true`/`false` / `null` | |
+| finite float | number | |
+| array | array (recurse) | |
+| map | object | **iff** every key is text/uint/nint (stringified: text verbatim, ints decimal) **and** no two keys stringify identically |
+| **bytes** | — | `to_json` **errors** (no injective image) |
+| **tag** (any number) | — | errors |
+| **`undefined`** | — | errors |
+| **unassigned simple** | — | errors |
+| **non-finite float** (NaN/±Inf) | — | errors |
+| **nint below `i64::MIN`** | — | errors (serde_json's number model bottoms out at `i64`) |
+| **complex / colliding map key** | — | errors (a non-text/uint/nint key, or two keys with the same string form — e.g. uint `12` and text `"12"`) |
+
+**Read side (RFC 8949 §6.2).** A lexically-integral JSON number reads back as uint (non-negative) or
+nint (negative); anything with a fraction/exponent, or beyond `i64` magnitude, reads as a float (so `5`
+→ uint, `5.0` → float). Object keys use the `any`-domain prefer-numeric rule: a canonical decimal
+spelling reads as an integer, else as text — so a text key `"12"` JSON-round-trips to uint `12` (the
+documented JSON-only ambiguity; `"012"`/`"+7"`/`"5.0"` stay text). CBOR is authoritative; JSON is the
+lossy side by charter. The round-trip law is `from_natural_json(to_natural_json(x)?)` value-equal
+modulo encodings, object-key ordering, and that numeric-key reading.
+
+#### The `AnyCbor` value codec (tagged)
+
+A *bare* `AnyCbor` derives serde as a **total, tagged representation of CBOR** — every value is a
+single-key object keyed by the snake_case kind name. It round-trips *every* CBOR value (nothing in the
+natural failure set above), which is why it is both the top-level `x = any` alias's surface and the
+escape hatch for a natural `to_json` that failed. Encoding detail never appears, so two preserve values
+differing only in encoding render identically.
 
 | CBOR | JSON |
 |---|---|
@@ -219,9 +269,14 @@ differ only in encoding render identically.
 
 `from_json(to_json(x))` recovers `x` exactly for the non-preserve flavor (all finite floats); for the
 preserve flavor it recovers a value-equal item with encodings reset to defaults. A `{ * any => any }`
-table (or any table with a non-string key) cannot serialize to JSON — serde_json requires string map
-keys, so `to_json` errors at runtime, matching how a `{ * bytes => uint }` table already behaves;
-string/uint-keyed `any` ranges (`{ * uint => any }`) are unaffected.
+table (or any table with a non-string key) cannot serialize to JSON either way — serde_json requires
+string map keys, so `to_json` errors at runtime, matching how a `{ * bytes => uint }` table already
+behaves; string/uint-keyed `any` ranges (`{ * uint => any }`) are unaffected.
+
+The JSON Schema (`--json-schema-export`) mirrors this split: a generated type's `any` content is the
+permissive "any JSON value" schema (json2ts → TS `unknown`, a `{* K => any}` member →
+`{ [k: string]: unknown }`), while a bare `AnyCbor` keeps the tagged `oneOf` schema over the kind
+objects above.
 
 The wasm wrapper for `any` is documented under [wasm differences](wasm_differences#the-any-type-anycbor).
 
