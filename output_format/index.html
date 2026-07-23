@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.1">
 <title data-rh="true">Output format | cddl-codegen</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://dcspark.github.io/cddl-codegen/output_format"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Output format | cddl-codegen"><meta data-rh="true" name="description" content="- Inside of the output directly the tool always produces a rust/ directory (including Cargo.toml, etc)."><meta data-rh="true" property="og:description" content="- Inside of the output directly the tool always produces a rust/ directory (including Cargo.toml, etc)."><link data-rh="true" rel="icon" href="/cddl-codegen/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://dcspark.github.io/cddl-codegen/output_format"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/output_format" hreflang="en"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/output_format" hreflang="x-default"><link rel="stylesheet" href="/cddl-codegen/assets/css/styles.472964ba.css">
-<script src="/cddl-codegen/assets/js/runtime~main.c506fa45.js" defer="defer"></script>
+<script src="/cddl-codegen/assets/js/runtime~main.7d212687.js" defer="defer"></script>
 <script src="/cddl-codegen/assets/js/main.983e6065.js" defer="defer"></script>
 </head>
 <body>
@@ -19,8 +19,9 @@
 <li class="">The <code>wasm/</code> directory is full of wasm_bindgen-annotated wrappers (under <code>wasm/src/generated/</code>) for the corresponding rust-use-only structs in <code>rust/</code> and can be compiled for WASM builds by running <code>wasm-pack build</code> on it. The <code>--target=nodejs</code> output runs unchanged under both Node and <a href="https://bun.sh" target="_blank" rel="noopener noreferrer" class="">Bun</a>. Every wasm crate also carries a <code>wasm/src/generated/collections.rs</code> index: one <code>pub use crate::…::&lt;Wrapper&gt;;</code> re-export per collection wrapper class the crate defines (the <code>FooList</code> / <code>MapKToV</code> and <code>NonEmpty…</code> wrappers minted from <code>[* T]</code> / <code>{* K =&gt; V}</code> shapes), sorted, with no glob. Because it is compiled as part of the crate, a line naming a removed wrapper fails the crate&#x27;s own build, so the index can never silently drift from the classes it inventories.</li>
 </ul>
 <p><strong>Toolchain floor.</strong> Generated crates depend on <code>cbor_event</code> 3.x, whose manifest declares <code>rust-version = &quot;1.81&quot;</code> — building a generated crate needs at least that toolchain.</p>
-<p><strong>Unused collection-type imports are pruned.</strong> A generated file imports the collection helper types (<code>BTreeMap</code>, <code>OrderedHashMap</code>, <code>NonEmptyVec</code>, <code>NonEmptyMap</code>) and, under <code>--preserve-encodings</code>, the encoding enums (<code>LenEncoding</code>, <code>StringEncoding</code>) only when the file — or one of its descendant modules — actually names them: a usage-derived post-pass reads the rendered source and drops any of those six imports the file&#x27;s module family references nowhere, so a module that uses no maps/non-empty collections/encodings carries no unused-import warning for them, independent of what sibling modules use. Descendants count because a child module&#x27;s <code>use super::*;</code> re-exports the parent module&#x27;s private imports — the <code>BTreeMap</code> in a scope&#x27;s <code>mod.rs</code> can be the one its <code>serialization.rs</code> relies on. A descendant keeps a parent&#x27;s copy only when it would genuinely resolve the name through the parent, though: one that carries its own direct import of the same name, or that sits at/under the very module the parent imports it from, resolves the name locally and does not hold the parent&#x27;s import alive — which is what keeps a <code>--preserve-encodings</code> <code>mod.rs</code> free of dead <code>LenEncoding</code>/<code>StringEncoding</code> imports whose only consumers are <code>cbor_encodings.rs</code> (own import) and <code>serialization.rs</code> (the defining module). Only private <code>use</code> items are candidates (<code>pub use</code> re-exports are API surface and never touched). This is scoped to those concrete types by design — trait imports (e.g. <code>cbor_event::se::Serialize</code>, exercised via a method call whose name never mentions <code>Serialize</code>), macro imports, and glob imports (<code>use ...::*;</code>) cannot be proven unused by name and are left as-is, so a few of those may still be broader than strictly needed.</p>
-<p><strong>Re-export-only files carry no import walls at all.</strong> A generated file whose entire body is extern re-export glue — every top-level item a <code>use</code>, with only <code>crate::</code>-anchored <code>pub use</code> re-exports (the <code>mod.rs</code> an extern-only CDDL scope produces) — has <em>all</em> of its private <code>use</code> items dropped, not just the six concrete types above. Such a file&#x27;s shape proves nothing can consume a private import (no local code, and no descendant module whose <code>use super::*;</code> could re-export one), so the wider rule is sound even for globs and trait imports the name-based prune must otherwise keep. The result is a re-export-only <code>mod.rs</code> reduced to its header comment and its <code>pub use crate::…;</code> lines, with zero <code>unused_import</code> warnings.</p>
+<p><strong>Unused imports are pruned.</strong> A usage-derived post-pass reads the rendered source and drops imports a generated file&#x27;s module family references nowhere, so a module carries no unused-import warning for something a sibling module uses. It removes three things. <strong>(1) Concrete-type names</strong> — the collection helpers (<code>BTreeMap</code>, <code>OrderedHashMap</code>, <code>NonEmptyVec</code>, <code>NonEmptyMap</code>, <code>OrderedSet</code>, <code>NonEmptyOrderedSet</code>) and, under <code>--preserve-encodings</code>, the encoding enums (<code>LenEncoding</code>, <code>StringEncoding</code>, <code>TagPresenceEncoding</code>); the wasm prelude names (<code>JsError</code>, <code>JsValue</code>, and the <code>wasm_bindgen</code> attribute macro, kept only where a <code>#[wasm_bindgen]</code> attribute appears); the <code>--wasm-*-macro</code> leaf names (kept only where the macro is actually invoked); and cross-scope generator-minted type idents an over-approximating reference walk imports. (The two <code>OrderedSet</code> twins ride the spec-global <code>@duplicates reject</code> gate — see <a href="#reject-duplicates-containers-uniqueness-twins" class="">Reject-duplicates containers</a> — so a scope with a reject-set rule pushes them into <em>every</em> scope&#x27;s <code>mod.rs</code>, and this pass keeps the scopes that never name them warning-free.) <strong>(2) <code>use super::*;</code></strong> — dropped from a file whose body names nothing bound in its parent module (kept where an encoding struct is keyed by a parent-scope generated type, e.g. <code>BTreeMap&lt;Ikey, StringEncoding&gt;</code>, since it reaches <code>Ikey</code> through the glob). <strong>(3) <code>use &lt;common&gt;::error::*;</code></strong> — dropped from a <code>mod.rs</code> whose family names no error export (kept where a bounds-carrying wrapper&#x27;s <code>TryFrom</code>/<code>new</code> names <code>DeserializeError</code>).</p>
+<p>The consuming set of a file is not &quot;every descendant&quot; but the descendants an unbroken chain of <code>use super::*;</code> edges links back to it — a private import in a scope&#x27;s <code>mod.rs</code> is nameable by that scope&#x27;s <code>serialization.rs</code>/<code>cbor_encodings.rs</code> (which glob <code>super</code>), but NOT by a <em>different</em> scope&#x27;s files, whose own <code>mod.rs</code> does not re-glob upward. A super-reachable descendant keeps a parent&#x27;s copy alive only when it would genuinely resolve the name through the parent: one that carries its own direct import of the same name, that IS the file of the module the parent imports it from (the <code>serialization.rs</code> static prelude that defines <code>LenEncoding</code>), or that globs that same module (<code>use &lt;dep&gt;::serialization::*;</code> under <code>--common-import-override</code>) resolves the name locally and does not. A reference counts only where it could actually resolve through the namespace: an identifier appearing solely as a <code>::</code>-qualified path tail (<code>cml_chain::assets::Coin</code> mentioning <code>assets</code> and <code>Coin</code>) resolves through its preceding path segment, so it keeps neither a named import nor a glob alive — which is why a file built entirely from fully-qualified paths (e.g. the <code>--wrapper-requests</code> <code>requested_collections.rs</code>) sheds its <code>use super::*;</code>. Only private <code>use</code> items are candidates (<code>pub use</code> re-exports are API surface and never touched). Trait imports (e.g. <code>cbor_event::se::Serialize</code>, exercised via a method call whose name never mentions <code>Serialize</code>) cannot be proven unused by name and are left as-is, so a scope that imports but never calls one still carries that single warning. The pass runs again after the edit-preservation overlay applies your <code>cddl-codegen:</code> blocks, so what justifies each import is the <em>final</em> shipped content, not the pristine pre-edit content — a replace block that removes an import&#x27;s last user removes the import too (see <a class="" href="/cddl-codegen/preserving_edits">Preserving edits</a>).</p>
+<p><strong>Re-export-only files carry no import walls at all.</strong> A generated file whose entire body is extern re-export glue — every top-level item a <code>use</code>, with only <code>crate::</code>-anchored <code>pub use</code> re-exports (the <code>mod.rs</code> an extern-only CDDL scope produces) — has <em>all</em> of its private <code>use</code> items dropped, not just the concrete-type names and prunable globs above. Such a file&#x27;s shape proves nothing can consume a private import (no local code, and no descendant module whose <code>use super::*;</code> could re-export one), so the wider rule is sound even for the trait imports the name-based prune must otherwise keep. The result is a re-export-only <code>mod.rs</code> reduced to its header comment and its <code>pub use crate::…;</code> lines, with zero <code>unused_import</code> warnings.</p>
 <p><strong><code>from_cbor_bytes</code> rejects trailing bytes.</strong> The generated/<code>static</code> <code>Deserialize::from_cbor_bytes</code> (and the wasm <code>from_cbor_bytes</code>) decode one complete value and then require the cursor to have consumed the <strong>entire</strong> input; leftover bytes after a complete value return an error (<code>cbor_event::Error::TrailingData</code>) rather than being silently ignored, so a truncated/corrupt or accidentally-concatenated buffer is caught. (Nested/embedded decoding — e.g. <code>bytes .cbor T</code> — is unaffected; only the top-level entry point enforces this.)</p>
 <p><strong>Not every type gets its own (de)serialization in <code>serialization.rs</code>.</strong> Some constructs carry their CBOR framing at the point of <em>use</em> rather than as a standalone impl on the type:</p>
 <ul>
@@ -29,6 +30,16 @@
 </ul>
 <p>So the tag / fixed-value encoding for these is emitted at each use site. A consequence worth knowing: a type of one of these kinds that is a root rule <strong>referenced by nothing else</strong> has no standalone (de)serialization, and can only be (de)serialized as part of a containing type.</p>
 <p><strong>Item ordering within a file is alphabetical by name, not by kind.</strong> Top-level items are emitted sorted <strong>name-primary, kind-secondary</strong>: alphabetically by the type&#x27;s bare name (module path and generics ignored), interleaving structs, enums, impls, type aliases, and modules — so a type&#x27;s <code>struct</code>/<code>enum</code> and its <code>impl</code>s sit together, and <code>type Foo</code> is placed alphabetically among everything rather than grouped with the other aliases. Within a single name the struct/enum definition comes first, then its impls. This canonical ordering is stable across unrelated changes to the input, which keeps diffs of generated code small. (It is independent of run-to-run determinism, which holds regardless.)</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="wasm-feature-gate-for-c-style-enums">Wasm feature gate for c-style enums<a href="#wasm-feature-gate-for-c-style-enums" class="hash-link" aria-label="Direct link to Wasm feature gate for c-style enums" title="Direct link to Wasm feature gate for c-style enums" translate="no">​</a></h2>
+<p>Under <code>--wasm</code>, a c-style enum is the one type kind the tool exposes to wasm <em>directly</em> — the wasm crate <code>pub use</code>-re-exports the rust enum rather than wrapping it — so it is also the only place the <strong>rust</strong> crate itself carries a <code>#[wasm_bindgen]</code> attribute. To keep the rust crate compilable standalone (without pulling in <code>wasm-bindgen</code> for non-wasm consumers), that attribute is gated behind a cargo feature:</p>
+<div class="language-rust codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-rust codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token attribute attr-name" style="color:#00a4db">#[cfg_attr(feature = </span><span class="token attribute attr-name string" style="color:#e3116c">&quot;wasm&quot;</span><span class="token attribute attr-name" style="color:#00a4db">, wasm_bindgen::prelude::wasm_bindgen)]</span><span class="token plain"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain"></span><span class="token keyword" style="color:#00009f">pub</span><span class="token plain"> </span><span class="token keyword" style="color:#00009f">enum</span><span class="token plain"> </span><span class="token type-definition class-name">Language</span><span class="token plain"> </span><span class="token punctuation" style="color:#393A34">{</span><span class="token plain"> </span><span class="token class-name">PlutusV1</span><span class="token punctuation" style="color:#393A34">,</span><span class="token plain"> </span><span class="token class-name">PlutusV2</span><span class="token punctuation" style="color:#393A34">,</span><span class="token plain"> </span><span class="token class-name">PlutusV3</span><span class="token plain"> </span><span class="token punctuation" style="color:#393A34">}</span><br></div></code></pre></div></div>
+<p>The feature name (<code>wasm</code> above) is set by <a class="" href="/cddl-codegen/command_line_flags"><code>--rust-wasm-feature</code></a>. Correspondingly, in <code>rust/Cargo.toml</code>:</p>
+<ul>
+<li class=""><code>wasm-bindgen</code> is an <strong>optional</strong> dependency (<code>{ version = &quot;0.2&quot;, optional = true }</code>), present only when the spec has at least one c-style enum.</li>
+<li class="">the <code>[features]</code> table <strong>always</strong> carries the feature under <code>--wasm</code> — <code>wasm = [&quot;dep:wasm-bindgen&quot;]</code> when a c-style enum exists, otherwise <code>wasm = []</code>. It exists even in the empty case so the wasm crate can reference it unconditionally without knowing whether the spec has a c-style enum. The <code>dep:</code> form means the optional dependency introduces no implicit same-named feature.</li>
+</ul>
+<p>The generated <code>wasm/Cargo.toml</code>&#x27;s path dependency on the rust crate enables the feature — <code>cddl-lib = { path = &quot;../rust&quot;, features = [&quot;wasm&quot;] }</code> — so building the wasm crate compiles the <code>#[wasm_bindgen]</code> attribute in exactly as before; nothing about wasm builds changes.</p>
+<p><strong>Migration.</strong> The feature is transparent to the normal two-crate (rust + wasm) workflow. It only matters for a consumer that compiles the generated <strong>rust</strong> crate directly into its own wasm-bindgen build <em>without</em> going through the generated wasm crate: that build must enable the feature. A manifest that already hand-maintains <code>wasm-bindgen = { optional = true }</code> behind its own feature name (e.g. <code>used_from_wasm</code>) should pass <code>--rust-wasm-feature=used_from_wasm</code> so the tool gates on that same name; on regeneration a stale legacy <code>used_from_wasm = [&quot;wasm-bindgen&quot;]</code> list is rewritten to the <code>[&quot;dep:wasm-bindgen&quot;]</code> form (the <code>dep:</code>-less form would otherwise re-introduce the implicit feature the optional dep no longer creates).</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="optional-fixed-value-members">Optional fixed-value members<a href="#optional-fixed-value-members" class="hash-link" aria-label="Direct link to Optional fixed-value members" title="Direct link to Optional fixed-value members" translate="no">​</a></h2>
 <p>A <strong>mandatory</strong> fixed-value member (<code>[v: true, x: uint]</code>, <code>{k: 5, x: uint}</code>) carries zero
 information — the constant is implied — so it gets no struct field; it only shows up in the
@@ -57,6 +68,117 @@ exact <code>raw.float()? != &lt;lit&gt;</code> compare, the same spellings the m
 or mandatory) aborts generation at the float deserialize stub, the general
 <code>preserve_encodings_supports_floats</code> limitation — tracked by that stub gate and the preserve-side
 float rows in <code>cddl-matrix/ROADMAP.md</code>&#x27;s findings ledger.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="nominal-tag-258-set-types">Nominal tag-258 set types<a href="#nominal-tag-258-set-types" class="hash-link" aria-label="Direct link to Nominal tag-258 set types" title="Direct link to Nominal tag-258 set types" translate="no">​</a></h2>
+<p>A tag-258 set — the two-arm idiom (<code>my_set = #6.258([* a]) / [* a]</code>), the single-arm mandatory-tag
+form (<code>#6.258([* a])</code>), a generic set instantiation (<code>set&lt;a&gt;</code>), or an <strong>inline</strong> <code>#6.258([* a])</code>
+occurrence — is a NOMINAL wrapper struct that OWNS its <code>{tag, len, elem}</code> encodings, not a
+transparent <code>Vec</code>/<code>OrderedSet</code> alias. Named rules take the rule name; generic instantiations are
+instantiation-derived (<code>SetKeyHash</code>); inline occurrences are shape-derived (<code>SetU64</code>,
+<code>SetNonEmptyText</code>), one per deduped shape. See
+<a class="" href="/cddl-codegen/current_capacities">Current capacities</a> § &quot;Duplicates policy — tag 258 defaults to reject&quot; for the
+three naming regimes and the reject default. The wrapper carries the set ergonomics
+(<code>Deref</code>/<code>DerefMut</code> to the inner collection, borrowed + owned <code>IntoIterator</code>, <code>From</code>/<code>TryFrom&lt;Vec&gt;</code>)
+and always-on encodings-ignored <code>PartialEq/Eq/PartialOrd/Ord/Hash</code>; JSON/schemars stay transparent
+(the wrapper serializes as its inner collection).</p>
+<p>Because the wrapper <code>Deref</code>/<code>DerefMut</code>s to the inner uniqueness twin, the std set contract the twin
+carries (<code>insert -&gt; bool</code>, <code>contains</code>, <code>Extend</code>, <code>FromIterator</code>, <code>sort</code> — see
+<a href="#reject-duplicates-containers-uniqueness-twins" class="">Reject-duplicates containers</a>) resolves through
+method-call syntax on the nominal itself: <code>set.insert(x)</code>, <code>set.extend(other)</code>, <code>set.sort()</code> all work
+without unwrapping. The one door that CANNOT ride <code>Deref</code> (it returns the inner type, not the nominal)
+is <strong><code>try_opt_from</code></strong>, so it is emitted <strong>inherently</strong> on every set nominal whose inner is a uniqueness
+twin: <code>Nominal::try_opt_from(Vec&lt;Elem&gt;) -&gt; Result&lt;Option&lt;Self&gt;, DeserializeError&gt;</code> — empty is
+<code>Ok(None)</code>, non-empty routes through the inner door and re-wraps via <code>new</code>.</p>
+<p><strong>LOAD-BEARING uniformity contract.</strong> Every generated set nominal with a fallible inner door — i.e.
+every <code>@duplicates reject</code> set (the tag-258 default) and every non-empty (<code>[+]</code>) set — implements
+<code>TryFrom&lt;Vec&lt;Elem&gt;, Error = DeserializeError&gt;</code>. This signature is <strong>uniform across all such
+instantiations by design</strong>: consumer-side generic helpers depend on it (e.g. an
+<code>opt_nonempty_set&lt;S: TryFrom&lt;Vec&lt;T&gt;, Error = DeserializeError&gt;&gt;(elems) -&gt; Result&lt;Option&lt;S&gt;, _&gt;</code>
+works for every instantiation only because the door&#x27;s error type never varies). Keep it uniform, or
+version it consciously. The single exception is the <code>@duplicates preserve</code> empty-allowed (<code>[*]</code>) case:
+its inner is a plain <code>Vec</code>, so it exposes an <strong>infallible</strong> <code>From&lt;Vec&lt;Elem&gt;&gt;</code> (and hence std&#x27;s blanket
+<code>TryFrom&lt;Vec&lt;Elem&gt;, Error = Infallible&gt;</code>) rather than the fallible <code>DeserializeError</code> door — a
+duplicate-tolerant set has nothing to reject, so there is no fallible door to make uniform.</p>
+<p>The three set operations every consumer of these types reaches for are one-liners on this surface:</p>
+<ul>
+<li class=""><strong>Union</strong> — <code>dst.extend(src)</code> (std set <code>Extend</code>: a duplicate is a keep-first no-op, so extending is
+union; nothing is discarded and no <code>Result</code> is threaded).</li>
+<li class=""><strong>Empty-means-absent</strong> for an optional field — <code>Nominal::try_opt_from(vec)</code> (empty → <code>None</code>;
+non-empty → the checked door in <code>Some</code>; only a duplicate surfaces as <code>Err</code>). Prefer this over
+<code>Vec::try_into().ok()</code>, which silently swallows the duplicate error alongside the empty one.</li>
+<li class=""><strong>Dedup-normalize</strong> a duplicate-tolerant source (legacy eras, loose JSON, JS arrays) — collect
+through <code>FromIterator</code>, which dedups keep-first: <code>vec.into_iter().collect::&lt;OrderedSet&lt;_&gt;&gt;()</code>, and
+for the non-empty twin compose it with the refinement door:
+<code>vec.into_iter().collect::&lt;OrderedSet&lt;_&gt;&gt;().try_into()?</code>.</li>
+</ul>
+<p><strong>Wasm surface (flattened).</strong> The wasm <code>#[wasm_bindgen]</code> class for a set nominal has no <code>Deref</code>, so
+it DELEGATES the collection surface directly rather than forcing a two-layer unwrap: <code>len()</code>,
+indexed <code>get(index) -&gt; Elem</code>, <code>insert(elem) -&gt; bool</code> (the std-set door: <code>false</code> = already present),
+<code>add(elem)</code> (the CHECKED door — a duplicate is refused with an error), <code>contains(elem) -&gt; bool</code>, a
+list-taking <code>try_from(&lt;Elem&gt;List | Vec&lt;Elem&gt;)</code>, and the empty-means-absent
+<code>try_opt_from(...) -&gt; Option&lt;Nominal&gt;</code>. A JS read is <code>set.get(i)</code> — not <code>set.get().get(i)</code> — and the
+wasm surface tells the same story as the rust API above. The companion collection class
+(<code>&lt;Elem&gt;OrderedSet</code>, still the element-crossing boundary for the nominal&#x27;s <code>new(inner)</code>) carries the
+same <code>insert</code>/<code>contains</code>/<code>add</code> doors. A rule-name alias binding a set instantiation
+(<code>required_signers = nonempty_set&lt;key&gt;</code>) produces no wasm class of its own — see the JS re-key note
+in <a class="" href="/cddl-codegen/current_capacities#migrating-a-consumer-across-the-set-changes">Current capacities</a> § &quot;Wasm class
+re-key&quot;.</p>
+<p>Grammar selects the tag record, which lives on the <strong>nominal&#x27;s own</strong> encoding struct (not the
+holder&#x27;s — a set field no longer flattens its encodings onto the containing record): a two-arm
+idiom&#x27;s OPTIONAL tag rides <code>inner_tag_encoding: TagPresenceEncoding</code> — a tri-state
+(<code>Tagged(Option&lt;Sz&gt;)</code> / <code>Untagged</code>, default <code>Tagged(None)</code> = tagged at fit-minimal size) deliberately
+NOT <code>Option&lt;Sz&gt;</code>, which would conflate &quot;untagged&quot; with &quot;tagged, default size&quot; — while the single-arm
+and inline MANDATORY tag rides a plain <code>inner_tag_encoding: Option&lt;Sz&gt;</code>. <code>--canonical-form</code> normalizes
+the tag&#x27;s size, never its presence. A non-258 tag has no set-semantics registry entry, so a non-258
+tagged idiom stays a transparent optionally-tagged alias exactly as before.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-any-type-anycbor-runtime-value">The <code>any</code> type (<code>AnyCbor</code> runtime value)<a href="#the-any-type-anycbor-runtime-value" class="hash-link" aria-label="Direct link to the-any-type-anycbor-runtime-value" title="Direct link to the-any-type-anycbor-runtime-value" translate="no">​</a></h2>
+<p>CDDL <code>any</code> matches any single well-formed CBOR item, so it lowers to a dedicated runtime type,
+<code>AnyCbor</code> — a structured enum over the CBOR data model (unsigned/negative integer, byte/text string,
+array, map, tag, and the major-type-7 specials: bool, null, undefined, unassigned simple, float).
+A crate whose spec uses <code>any</code> in any <a class="" href="/cddl-codegen/current_capacities#the-any-type-loose-cbor">supported position</a>
+carries a generated <code>any_cbor.rs</code> runtime module (emitted only when the finalized types actually
+contain <code>any</code>; specs without it are byte-identical to before). An <code>any</code>-typed member (de)serializes
+through <code>AnyCbor</code> like any other field — it contributes no encoding metadata of its own (it carries
+its own), so the owner&#x27;s length and key machinery is unchanged.</p>
+<p><code>AnyCbor</code> comes in two flavors, matching the crate-wide <code>--preserve-encodings</code> split:</p>
+<ul>
+<li class=""><strong>Non-preserve</strong> (default): value-level. Deserialize accepts any well-formed item; re-serialization
+is canonical-ish (smallest integer widths, definite lengths, floats written <code>f64</code>), exactly as the
+rest of a non-preserve crate behaves. Equality/ordering/hashing compare <strong>value</strong> (floats by bit
+pattern so the relations stay total and NaN is self-consistent).</li>
+<li class=""><strong>Preserve</strong> (<code>--preserve-encodings</code>): representational. Every value additionally carries the
+encoding detail needed to re-emit the <strong>original bytes byte-for-byte</strong> — integer/tag argument
+widths, string chunking, and array/map length encoding. Under <code>--canonical-form</code> the same value
+serializes to RFC 8949 §4.2 deterministic encoding instead. Equality/ordering/hashing are
+<strong>representational</strong> (two values with equal content but different encoding — <code>0x01</code> vs <code>0x1801</code>,
+both the integer 1 — compare unequal), matching the <code>@used_as_key</code> preserve-struct precedent, so an
+<code>AnyCbor</code> map key never silently collides. This total order by construction is why <code>any</code> is a legal
+table domain (<code>{ * any =&gt; v }</code>) under both flavors.</li>
+</ul>
+<p>Both flavors deserialize without panicking on malformed input (truncated data, over-claimed lengths,
+reserved simple values, stray break codes all return a <code>DeserializeError</code>), never allocate from an
+untrusted claimed length, and — under <a class="" href="/cddl-codegen/command_line_flags"><code>--deserialize-depth-limit=N</code></a> — bound
+their own recursion through the same depth guard the generated composite deserializers use, so hostile
+deeply-nested CBOR in an <code>any</code> position returns a graceful error rather than overflowing the stack.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="constructors-and-accessors">Constructors and accessors<a href="#constructors-and-accessors" class="hash-link" aria-label="Direct link to Constructors and accessors" title="Direct link to Constructors and accessors" translate="no">​</a></h3>
+<p><code>AnyCbor</code> exposes a mode-independent constructor for each CBOR kind — <code>new_uint(u64)</code>,
+<code>new_nint(i128)</code>, <code>new_bytes(Vec&lt;u8&gt;)</code>, <code>new_text(String)</code>, <code>new_array(Vec&lt;AnyCbor&gt;)</code>,
+<code>new_map(Vec&lt;(AnyCbor, AnyCbor)&gt;)</code>, <code>new_tag(u64, AnyCbor)</code>, <code>new_bool(bool)</code>, <code>new_null()</code>,
+<code>new_undefined()</code>, <code>new_unassigned(u8)</code>, <code>new_float(f64)</code>. The same names and signatures exist in both
+flavors; under <code>--preserve-encodings</code> they fill default (minimal-width, definite-length) encodings, so a
+value built by hand serializes canonically. Read back through <code>kind() -&gt; AnyCborKind</code> and the
+<code>as_uint()</code>/<code>as_bytes()</code>/… accessors (each returning <code>Option&lt;T&gt;</code>).</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="json-representation---json-serde-derives----json-schema-export">JSON representation (<code>--json-serde-derives</code> / <code>--json-schema-export</code>)<a href="#json-representation---json-serde-derives----json-schema-export" class="hash-link" aria-label="Direct link to json-representation---json-serde-derives----json-schema-export" title="Direct link to json-representation---json-serde-derives----json-schema-export" translate="no">​</a></h3>
+<p>Under the JSON flags <code>AnyCbor</code> derives serde like any other type, but its JSON is a <strong>representation of
+CBOR, not natural JSON</strong>: every value is a single-key object keyed by the snake_case kind name. JSON is
+the deliberately lossy side of the contract — encoding detail never appears, so two preserve values that
+differ only in encoding render identically.</p>
+<table><thead><tr><th>CBOR</th><th>JSON</th></tr></thead><tbody><tr><td>uint</td><td><code>{&quot;uint&quot;: 5}</code> (JSON number, u64 range)</td></tr><tr><td>nint</td><td><code>{&quot;nint&quot;: -3}</code> when it fits <code>i64</code>, else <code>{&quot;nint&quot;: &quot;-18446744073709551616&quot;}</code> (decimal string; the nint domain exceeds <code>i64</code>). Read accepts both.</td></tr><tr><td>bytes</td><td><code>{&quot;bytes&quot;: &quot;a1b2&quot;}</code> (lowercase hex)</td></tr><tr><td>text</td><td><code>{&quot;text&quot;: &quot;…&quot;}</code></td></tr><tr><td>array</td><td><code>{&quot;array&quot;: [ … ]}</code> (recursive)</td></tr><tr><td>map</td><td><code>{&quot;map&quot;: [[K, V], …]}</code> — an array of pairs, so wire order and duplicate/non-string keys survive</td></tr><tr><td>tag</td><td><code>{&quot;tag&quot;: [11, V]}</code></td></tr><tr><td>bool</td><td><code>{&quot;bool&quot;: true}</code></td></tr><tr><td>null</td><td><code>{&quot;null&quot;: null}</code></td></tr><tr><td>undefined</td><td><code>{&quot;undefined&quot;: null}</code></td></tr><tr><td>unassigned</td><td><code>{&quot;unassigned&quot;: 250}</code></td></tr><tr><td>float</td><td><code>{&quot;float&quot;: 1.5}</code>; non-finite values as strings <code>{&quot;float&quot;: &quot;NaN&quot; / &quot;Infinity&quot; / &quot;-Infinity&quot;}</code> (serde_json cannot emit them as numbers). Read accepts both; NaN payload bits are <strong>not</strong> round-tripped.</td></tr></tbody></table>
+<p><code>from_json(to_json(x))</code> recovers <code>x</code> exactly for the non-preserve flavor (all finite floats); for the
+preserve flavor it recovers a value-equal item with encodings reset to defaults. A <code>{ * any =&gt; any }</code>
+table (or any table with a non-string key) cannot serialize to JSON — serde_json requires string map
+keys, so <code>to_json</code> errors at runtime, matching how a <code>{ * bytes =&gt; uint }</code> table already behaves;
+string/uint-keyed <code>any</code> ranges (<code>{ * uint =&gt; any }</code>) are unaffected.</p>
+<p>The wasm wrapper for <code>any</code> is documented under <a class="" href="/cddl-codegen/wasm_differences#the-any-type-anycbor">wasm differences</a>.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="non-empty-containers">Non-empty containers<a href="#non-empty-containers" class="hash-link" aria-label="Direct link to Non-empty containers" title="Direct link to Non-empty containers" translate="no">​</a></h2>
 <p>An occurrence lower bound of exactly one — <code>[+ T]</code> and the equivalent <code>[1* T]</code> on arrays, <code>{+ k =&gt; v}</code>
 / <code>{1* k =&gt; v}</code> on tables — is enforced by the <strong>type</strong>, not by a bypassable check inside <code>new()</code>. The
@@ -94,6 +216,136 @@ the length check moves to a single <code>try_into</code> at the point the loose 
 <p>The type name, the generated doc comment (which quotes the originating CDDL), and the <code>TryFrom</code>
 signature are three redundant signals that a constraint exists. The wasm boundary mirrors this with a
 two-wrapper pattern — see <a class="" href="/cddl-codegen/wasm_differences">Wasm Differences</a>.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="reject-duplicates-containers-uniqueness-twins">Reject-duplicates containers (uniqueness twins)<a href="#reject-duplicates-containers-uniqueness-twins" class="hash-link" aria-label="Direct link to Reject-duplicates containers (uniqueness twins)" title="Direct link to Reject-duplicates containers (uniqueness twins)" translate="no">​</a></h2>
+<p>A <a class="" href="/cddl-codegen/comment_dsl"><code>@duplicates reject</code></a> directive on a plain (non-tag-258) array-shaped collection
+rule — <code>[* T]</code> / <code>[+ T]</code> — swaps the transparent-alias target from the bare <code>Vec</code>/<code>NonEmptyVec</code> to a
+<strong>uniqueness twin</strong> that makes a duplicate element unrepresentable, the same enforcement-by-type move
+the non-empty containers make for the length bound:</p>
+<ul>
+<li class=""><code>[* T]</code> → <strong><code>OrderedSet&lt;T&gt;</code></strong> (<code>signers = [* key] ; @duplicates reject</code> emits
+<code>pub type Signers = OrderedSet&lt;Key&gt;</code>).</li>
+<li class=""><code>[+ T]</code> → <strong><code>NonEmptyOrderedSet&lt;T&gt;</code></strong>, whose door composes BOTH invariants (min-1 <em>and</em> uniqueness).</li>
+</ul>
+<p>A tag-258 set (which defaults to <code>reject</code>) uses the SAME twins for its inner collection, but wraps
+them in a nominal struct that owns its encodings rather than aliasing to them transparently — see
+<a href="#nominal-tag-258-set-types" class="">Nominal tag-258 set types</a> above. The twin conversion contract below
+describes the inner collection either way.</p>
+<p>The default is <code>preserve</code> — today&#x27;s bare <code>Vec</code>/<code>NonEmptyVec</code>, which accept and re-emit duplicates
+byte-exactly for multi-era readers; writing <code>@duplicates preserve</code> explicitly is an accepted,
+self-documenting no-op. Both twins are <strong>order-preserving and NEVER sorted</strong>: <code>reject</code> only narrows
+which inputs are <em>accepted</em>, it never touches the bytes of what is accepted, so a decoded set
+re-emits byte-exactly in its original wire order.</p>
+<p>Each twin provides one conversion contract, parallel to the non-empty one:</p>
+<ul>
+<li class=""><strong><code>TryFrom&lt;Vec&lt;T&gt;&gt;</code> — the single checked door.</strong> The <em>only</em> way to build the value from a loose
+<code>Vec</code>; it scans for the first duplicate and, on finding one, returns a <code>DeserializeError</code> whose
+<code>DuplicateKey(Key::Uint(i))</code> names the <strong>zero-based index <code>i</code></strong> of the offending element —
+deterministic and actionable regardless of the element type (this is the set analogue of the
+table path&#x27;s <code>DuplicateKey</code>, which uses the key value). <code>NonEmptyOrderedSet</code>&#x27;s door composes both
+checks: the same <code>RangeCheck { found: 0, min: Some(1), .. }</code> (<code>0 not at least 1</code>) as <code>NonEmptyVec</code>
+for an empty input, plus the duplicate index for a repeat.</li>
+<li class=""><strong><code>From&lt;OrderedSet&lt;T&gt;&gt; for Vec&lt;T&gt;</code> / <code>into_inner()</code> — the infallible escape hatch.</strong> Unwrap to the
+loose <code>Vec</code>, mutate freely, and <code>try_into()</code> back through the door at the edge. Plus
+<code>as_slice()</code> / <code>AsRef&lt;[T]&gt;</code> / <code>Index</code> / <code>iter()</code> / <code>IntoIterator</code> for read access without a
+round-trip.</li>
+<li class=""><strong>Checked <code>push</code> returns <code>Result</code>.</strong> Appending an element already present is refused with
+<code>DuplicateKey(Key::Uint(index))</code> — in contrast to <code>NonEmptyVec::push</code>, which is <strong>infallible</strong>
+(growing can never break a <em>minimum</em> bound, but it <em>can</em> mint a duplicate, so the set twin&#x27;s <code>push</code>
+must be fallible). The index <code>push</code> reports for a duplicate is the SAME index the <code>TryFrom</code> door
+reports for the identical duplicate (a would-be append position equals a bulk scan&#x27;s first-repeat
+position), so the strict door and the bulk door never disagree. <code>NonEmptyOrderedSet</code> additionally
+gives checked <code>pop</code>/<code>remove</code> (refused at length 1) exactly like <code>NonEmptyVec</code>.</li>
+<li class=""><strong>The std set contract, alongside the strict <code>push</code>.</strong> Both twins also implement the
+<code>HashSet</code>/<code>BTreeSet</code>/<code>IndexSet</code> surface, for callers who treat &quot;already present&quot; as benign rather
+than a bug: <code>insert(T) -&gt; bool</code> (<code>false</code> = already present, set unchanged — so a union is a plain
+<code>insert</code> loop), <code>contains(&amp;T) -&gt; bool</code>, <code>Extend&lt;T&gt;</code> (a duplicate is a keep-first no-op, so
+<code>dst.extend(src)</code> is union), and <code>sort()</code> (the <code>IndexSet::sort</code> precedent — sorting unique elements
+cannot create a duplicate; it DOES change the re-emitted byte order, so the wire-order round-trip
+guarantee applies only to an <em>untouched</em> decoded set). <code>OrderedSet</code> additionally implements
+<code>FromIterator&lt;T&gt;</code> (<code>collect</code> <strong>dedups keep-first</strong>, the <code>IndexSet::from_iter</code> semantics) — there is
+deliberately no <code>FromIterator</code> on <code>NonEmptyOrderedSet</code>, since an empty iterator is unrepresentable
+there; the dedup-nonempty path composes the two:
+<code>vec.into_iter().collect::&lt;OrderedSet&lt;_&gt;&gt;().try_into()?</code>.</li>
+<li class=""><strong><code>try_opt_from(Vec&lt;T&gt;) -&gt; Result&lt;Option&lt;Self&gt;, DeserializeError&gt;</code> — empty-means-absent.</strong> For an
+optional set field: empty input is <code>Ok(None)</code> (the field is absent — the min-1 <code>RangeCheck</code> does NOT
+fire on the non-empty twin), a non-empty input routes through the <code>TryFrom&lt;Vec&lt;T&gt;&gt;</code> door in <code>Some</code>,
+and <em>only</em> a duplicate surfaces as <code>Err</code>. This is the discriminating constructor to reach for
+instead of <code>Vec::try_into().ok()</code>, which silently swallows the duplicate failure along with the
+empty one.</li>
+<li class=""><strong>Refinement doors between the twins.</strong> <code>TryFrom&lt;OrderedSet&lt;T&gt;&gt; for NonEmptyOrderedSet&lt;T&gt;</code> narrows
+(the only check is non-emptiness — elements are already unique — so an empty set fails with the same
+<code>0 not at least 1</code> <code>RangeCheck</code> as every other min-1 door), and <code>From&lt;NonEmptyOrderedSet&lt;T&gt;&gt; for OrderedSet&lt;T&gt;</code> widens infallibly.</li>
+<li class=""><strong>A stricter blocked-mutator set than the non-empty twins.</strong> <code>NonEmptyVec</code> permits value-level
+<code>&amp;mut</code> access (<code>iter_mut</code> / <code>as_mut_slice</code> / <code>IndexMut</code>) because its invariant is only about
+<em>length</em>, which a <code>&amp;mut</code> to an element cannot reach. The ordered-set twins expose <strong>none of those</strong>
+— no <code>IndexMut</code>, no <code>iter_mut</code>, no <code>as_mut_slice</code>, no <code>get_mut</code> — because the uniqueness invariant
+is about element <em>values</em>: an in-place element edit could turn a unique set into a duplicate-bearing
+one past the door. Element mutation therefore always routes through <code>into_inner()</code> → mutate →
+<code>try_into()</code>.</li>
+<li class=""><strong>Deserialize routes through the same <code>TryFrom</code>.</strong> Wire-side and API-side enforcement cannot drift:
+a duplicate in the CBOR array is rejected during decode with the <em>same</em> <code>DuplicateKey(index)</code> error
+the API door raises.</li>
+</ul>
+<p><strong>Migrating a consumer</strong> (<code>Vec&lt;T&gt;</code> field → <code>OrderedSet&lt;T&gt;</code> field). Same mechanical shape as the
+non-empty migration — the fallible <code>new</code> becomes infallible and the check moves to a single
+<code>try_into</code> where the loose collection is built — but the rejectable constraint is uniqueness, not
+length:</p>
+<table><thead><tr><th>Before (bypassable / no check)</th><th>After (uniqueness twin)</th></tr></thead><tbody><tr><td><code>Foo::new(signers: Vec&lt;Key&gt;) -&gt; Foo</code> (duplicates silently accepted)</td><td><code>Foo::new(signers: OrderedSet&lt;Key&gt;) -&gt; Foo</code></td></tr><tr><td><code>let foo = Foo::new(signers);</code> (a later <code>foo.signers.push(dup)</code> cannot even be expressed)</td><td><code>let signers: OrderedSet&lt;Key&gt; = signers.try_into()?; let foo = Foo::new(signers);</code></td></tr><tr><td>in-place element edit via <code>foo.signers[i] = …</code></td><td><code>let mut v = foo.signers.into_inner(); v[i] = …; foo.signers = v.try_into()?;</code></td></tr></tbody></table>
+<p>Three operations every consumer of the new set types needs — none of which the previous <code>Vec</code> field
+required a decision about — have a sanctioned one-liner, so no consumer should hand-roll a
+<code>let _ = push(…)</code> loop:</p>
+<table><thead><tr><th>Need</th><th>Recipe</th></tr></thead><tbody><tr><td><strong>Union</strong> two sets (merge witnesses, accumulate)</td><td><code>dst.extend(src);</code> — the std set <code>Extend</code>; a duplicate is a keep-first no-op, so this <em>is</em> union (no discarded <code>Result</code>)</td></tr><tr><td><strong>Empty-means-absent</strong> for an optional field (<code>? 4 : nonempty_set&lt;…&gt;</code>)</td><td><code>Foo::try_opt_from(vec)?</code> — empty → <code>None</code>, non-empty → the checked door in <code>Some</code>; only a duplicate errors. NOT <code>vec.try_into().ok()</code> (it swallows the duplicate error too)</td></tr><tr><td><strong>Dedup-normalize</strong> a duplicate-tolerant source (pre-Conway eras, loose JSON, JS arrays — where duplicates are legal and dropping the whole field is wrong)</td><td><code>vec.into_iter().collect::&lt;OrderedSet&lt;_&gt;&gt;()</code>, or for the non-empty twin <code>…collect::&lt;OrderedSet&lt;_&gt;&gt;().try_into()?</code> — <code>FromIterator</code> dedups keep-first (a repeated element is semantically redundant)</td></tr></tbody></table>
+<p>The wasm boundary mirrors this with the same two-wrapper pattern as the non-empty case, except the
+restricted wrapper&#x27;s <code>add</code> is <strong>fallible</strong> — see <a class="" href="/cddl-codegen/wasm_differences#reject-duplicates-containers">Wasm Differences</a>.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="preserve-duplicates-tables-pair-map-twins">Preserve-duplicates tables (pair-map twins)<a href="#preserve-duplicates-tables-pair-map-twins" class="hash-link" aria-label="Direct link to Preserve-duplicates tables (pair-map twins)" title="Direct link to Preserve-duplicates tables (pair-map twins)" translate="no">​</a></h2>
+<p>A <a class="" href="/cddl-codegen/comment_dsl"><code>@duplicates preserve</code></a> directive on a <strong>table</strong> rule (<code>{ * k =&gt; v }</code> / <code>{ + k =&gt; v }</code>)
+is the mirror of <code>reject</code> on a set. A table&#x27;s default representation — a <code>BTreeMap</code> / <code>OrderedHashMap</code>
+keyed by key value — is structurally incapable of holding two entries with the same key, so <code>reject</code>
+(collapse duplicates) is a table&#x27;s default and <code>@duplicates reject</code> on a table is an accepted,
+self-documenting no-op. <code>preserve</code> swaps the transparent-alias target to a <strong>pair-map twin</strong> — a
+<code>Vec&lt;(K, V)&gt;</code>-backed map that keeps every entry in wire order, so duplicate keys survive:</p>
+<ul>
+<li class=""><code>{ * k =&gt; v }</code> → <strong><code>PairMap&lt;K, V&gt;</code></strong> (<code>meta = { * uint =&gt; bytes } ; @duplicates preserve</code> emits
+<code>pub type Meta = PairMap&lt;u64, Vec&lt;u8&gt;&gt;</code>).</li>
+<li class=""><code>{ + k =&gt; v }</code> → <strong><code>NonEmptyPairMap&lt;K, V&gt;</code></strong>, whose single <code>TryFrom</code> door composes the min-1 check
+on top of the same vec-of-pairs shape.</li>
+</ul>
+<p>The driver is a duplicate-keyed map that must <strong>round-trip byte-exactly</strong> — pre-Conway Cardano
+<code>transaction_metadata</code>, whose auxiliary-data hash is computed over the ORIGINAL bytes, so a reader that
+collapses or reorders duplicate keys fails hash verification. A <code>BTreeMap</code> cannot do this; the
+vec-of-pairs is the only faithful shape.</p>
+<p>Unlike the ordered-set twins, a <code>PairMap</code> has <strong>no invariant</strong> — any vec of pairs is valid — so its
+conversion contract is unguarded:</p>
+<ul>
+<li class=""><strong><code>From&lt;Vec&lt;(K, V)&gt;&gt;</code> / <code>into_inner() -&gt; Vec&lt;(K, V)&gt;</code> — free both ways.</strong> No checked door on the
+loose flavor (there is nothing to reject). <code>NonEmptyPairMap</code> instead has the single fallible
+<strong><code>TryFrom&lt;Vec&lt;(K, V)&gt;&gt;</code></strong> door (and a <code>TryFrom&lt;PairMap&lt;K, V&gt;&gt;</code> that re-uses it), returning the same
+<code>0 not at least 1</code> <code>RangeCheck</code> as the other non-empty twins for an empty input.</li>
+<li class=""><strong><code>insert(key, value)</code> APPENDS and never replaces.</strong> It always returns <code>None</code> (nothing is displaced,
+because nothing is overwritten) — a replacing insert would silently drop a duplicate, defeating the
+point. The <code>Option&lt;V&gt;</code> return exists only so the read surface matches the loose table&#x27;s.</li>
+<li class=""><strong>A duplicate-honest read surface.</strong> <code>get</code> returns the FIRST match (linear scan), <code>get_all</code> returns
+every match in entry order, and <code>iter</code>/<code>keys</code>/<code>values</code>/<code>as_slice</code> walk in entry order. The key
+domain relaxes from the loose table&#x27;s full key-demand bundle to <code>Ord</code> (a linear-scan lookup needs
+only <code>Eq</code>; <code>Ord</code> is retained for the canonical sort below).</li>
+<li class=""><strong>Deserialize collects positionally.</strong> The <code>--preserve-encodings</code> sidecar for a preserve table is
+<strong>positional</strong> (parallel <code>Vec</code>s indexed per entry, like the array <code>_elem_encodings</code> path), replacing
+the key-value-keyed <code>BTreeMap</code>s that structurally cannot hold two same-key entries. Each entry&#x27;s key
+and value encodings are replayed per-position, so a non-minimal encoding on any entry re-emits
+faithfully.</li>
+</ul>
+<p><strong>Canonical form</strong> (<code>--canonical-form=true</code>): entries stable-sort by encoded key bytes with duplicates
+left <strong>adjacent in first-appearance order</strong>. Duplicate-carrying data has no RFC 8949 canonical form, so
+this is a deterministic best-effort — never a refusal. The sort compares CANONICAL key bytes, not the
+preserved input encodings.</p>
+<p><strong>JSON</strong> (<code>--json-serde-derives</code> / <code>--json-schema-export</code>): a preserve table serializes as an <strong>array
+of <code>[key, value]</code> pairs</strong>, not a JSON object — a JSON object cannot carry duplicate keys any more than
+a <code>BTreeMap</code> can, so the array-of-pairs shape is the faithful one. The generated <code>schemars</code> schema is
+therefore an <strong>array</strong> schema, not an object/<code>additionalProperties</code> one, and the <code>{+}</code> flavor&#x27;s door
+refuses an empty <code>[]</code> on the JSON path with the same min-1 error as the wire path.</p>
+<p>The wasm boundary mirrors the set twins&#x27; two-wrapper pattern, except the loose <code>PairMap</code>&#x27;s <code>insert</code>
+<strong>appends</strong> (returning <code>Option</code>) rather than rejecting — see
+<a class="" href="/cddl-codegen/wasm_differences#preserve-duplicates-tables">Wasm Differences</a>.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="generated-crate-roots-thin-root-seed-once">Generated crate roots (thin root, seed-once)<a href="#generated-crate-roots-thin-root-seed-once" class="hash-link" aria-label="Direct link to Generated crate roots (thin root, seed-once)" title="Direct link to Generated crate roots (thin root, seed-once)" translate="no">​</a></h2>
 <p>Every generated crate — <code>rust/</code>, and (when enabled) <code>wasm/</code> and <code>wasm/json-gen/</code> — splits into two
 halves so your hand edits to the crate root survive regeneration:</p>
@@ -101,7 +353,10 @@ halves so your hand edits to the crate root survive regeneration:</p>
 <li class="">
 <p><strong>Tool-owned: <code>src/generated/**</code> (clobbered every run).</strong> All generated code lives here —
 <code>generated/mod.rs</code> (the type definitions + module decls + generator crate attrs like
-<code>#![allow(clippy::too_many_arguments)]</code> as inner attrs), <code>generated/serialization.rs</code>, per-scope
+<code>#![allow(clippy::too_many_arguments, clippy::large_enum_variant, clippy::result_large_err)]</code> as
+inner attrs — the latter two silence lints intrinsic to the emitted shape: CDDL choices become
+enums with wildly asymmetric variant sizes, and fallible APIs return a <code>Result</code> over the static
+<code>DeserializeError</code>), <code>generated/serialization.rs</code>, per-scope
 submodules, the copied runtime modules (<code>error.rs</code>, <code>ordered_hash_map.rs</code>), and — when any rule
 carries <a class="" href="/cddl-codegen/comment_dsl"><code>@used_as_key</code></a> — <code>key_demand_assertions.rs</code>. (Under
 <a class="" href="/cddl-codegen/command_line_flags"><code>--common-import-override</code></a> the runtime modules are
@@ -117,7 +372,9 @@ which named item they sit in/above) and <strong>tagged code blocks</strong> —
 re-placed becomes a <code>compile_error!</code> block (loud, never a silent drop) so you review it. See
 <a class="" href="/cddl-codegen/preserving_edits">preserving edits</a> for the full syntax, failure modes, and limits; pass
 <code>--no-preserve-comments</code> to turn the whole overlay off and clobber pristine. Two carve-outs:
-trailing (end-of-line) comments are not carried — move them to their own line — and <code>///</code> doc
+trailing (end-of-line) comments are not carried — move them to their own line (a
+<code>// cddl-codegen:</code> tag that <code>rustfmt</code> itself folded into trailing position is the exception:
+the overlay recognizes it there, so a formatted repo needs no hand-unfolding) — and <code>///</code> doc
 text on tool-documented items is tool-owned (it flows from your CDDL/<code>@doc</code>; hand edits to it
 are dropped, so edit the CDDL instead).</p>
 </li>
@@ -160,6 +417,20 @@ unaffected by this glue; they resolve through the dependency&#x27;s import path.
 <p>Because the root is user-owned, the tool never re-clobbers this wiring — the failure mode where a
 regeneration dropped a hand-added <code>pub mod utils;</code> and broke every reference to the extern type is
 gone by construction.</p>
+<p><strong>The tool tells you the exact re-export set to maintain.</strong> Since the required names are known at
+generation time, they are surfaced three ways so a stale hand-written root never leaves you staring
+at a bare unresolved-import error: (1) every run prints the per-crate required crate-root re-export
+list (rust and wasm) in its output; (2) the generated glue in each declaring scope&#x27;s <code>mod.rs</code> carries
+a short <code>//</code> contract comment restating this requirement; and (3) when a <em>seed-once</em> root already
+exists but is missing a required re-export (for instance after a spec change added a new extern), the
+run emits a <code>warning:</code> on stderr naming the missing idents and the exact <code>pub use &lt;your_module&gt;::&lt;Name&gt;;</code>
+fix. The warning is diagnostic-only — it reads the existing root but changes no generated bytes, and
+never fires on the first run that seeds the root. If your root re-exports through a non-<code>generated</code>
+glob (<code>pub use utils::*;</code>) the name scan can&#x27;t see through, the per-name warning is suppressed rather
+than raised as a false positive. It is also suppressed for any name whose glue line you deliberately
+deleted from the generated <code>mod.rs</code> via a <a class="" href="/cddl-codegen/preserving_edits"><code>cddl-codegen:replace</code></a> block: the
+warning is decided from this run&#x27;s <em>written</em> output, so once the <code>pub use crate::&lt;Name&gt;;</code> glue no
+longer survives there the tool no longer requires that re-export and stops nagging for it.</p>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="per-scope-hand-modules-the-facade-pattern">Per-scope hand modules: the facade pattern<a href="#per-scope-hand-modules-the-facade-pattern" class="hash-link" aria-label="Direct link to Per-scope hand modules: the facade pattern" title="Direct link to Per-scope hand modules: the facade pattern" translate="no">​</a></h3>
 <p>To publish hand-written code under a <em>scope&#x27;s</em> public path (e.g. <code>my_crate::assets::utils::…</code>
 merged with the generated <code>my_crate::assets::…</code> namespace), do <strong>not</strong> place hand files inside
@@ -244,9 +515,9 @@ representation-faithful to the dependency&#x27;s spec — the <strong>stub-fidel
 <a class="" href="/cddl-codegen/command_line_flags"><code>--wrapper-requests</code></a>; an unfaithful stub surfaces as a
 dependency-side hard error naming the element and the stub fix. The file is derived output, rebuilt from the consumer&#x27;s spec on every regen; borrowed
 wrappers are never re-exported (they are not the consumer&#x27;s public API). All comments — the column
-legend included — live in the fixed banner, never inside the const body, so the edit-preservation
-overlay anchors them to the file itself and a regen that adds or removes rows never has a comment
-stranded on a deleted row.</p>
+legend included — live in the fixed banner, never inside the const body, per
+<a href="#the-banner-only-comment-contract" class="">the banner-only comment contract</a> shared by every generated
+sidecar/check file.</p>
 <p>A user may hand-add a row via the overlay&#x27;s <code>// cddl-codegen:insert-start/end</code> (or <code>replace</code>) blocks —
 honored like any preserved edit <strong>when the payload conforms</strong> to the fixed row format. A
 <code>compile_error!</code> / <code>cddl-codegen:unpreserved-comment</code> trap block, an unknown line, or a mangled row is
@@ -267,6 +538,19 @@ naming the type) and the machine-read <code>BORROWED_KEY_TYPES</code> table of
 <code>(dep rust-crate name, cddl ident)</code> rows, sorted, which the dependency re-reads via
 <a class="" href="/cddl-codegen/command_line_flags"><code>--key-requests</code></a> and seeds into its key-derive computation before finalize.
 Strictly parsed under the same never-consume-a-drifted-file principle as <code>BORROWED_SHAPES</code>.</p>
+<p>The self-check asserts on the borrowed type at the dependency&#x27;s <strong>real module path</strong> — the exact path
+the consumer already knows it by through the extern-import / extern-deps channel and uses in its own
+generated <code>use</code> lines. When the dependency&#x27;s type lives in a non-root scope, that path is scoped
+(<code>cml_dep::sub::module::Foo</code>); the dependency&#x27;s thin root does not re-export scope contents, so a
+bare <code>cml_dep::Foo</code> would be a &quot;cannot find type&quot; error. The <code>BORROWED_KEY_TYPES</code> <strong>rows</strong> are
+independent of this: each row stays the bare <code>(dep rust-crate name, cddl ident)</code> regardless of scope
+(the first column is the dep crate name = the type&#x27;s first scope component), and the dependency
+resolves it scope-agnostically by cddl ident — so no scope column is ever added and root-only sidecars
+stay byte-identical.</p>
+<p>The one reserved CDDL name that can legally appear as a row ident is <code>int</code> — it names the built-in
+<code>Int</code>, which under <a class="" href="/cddl-codegen/command_line_flags"><code>--common-import-override</code></a> this crate re-exports from the
+common crate rather than minting, so a map keyed on <code>int</code> records <code>(&lt;override&gt;, &quot;int&quot;)</code> and the common
+crate&#x27;s regen key-flavors its shared <code>Int</code>. Every other reserved ident is rejected.</p>
 <div class="language-rust codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-rust codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token comment" style="color:#999988;font-style:italic">// This file records every map-key type this crate borrows from workspace deps.</span><span class="token plain"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain"></span><span class="token comment" style="color:#999988;font-style:italic">// …</span><span class="token plain"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain"></span><span class="token attribute attr-name" style="color:#00a4db">#[allow(dead_code)]</span><span class="token plain"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain"></span><span class="token keyword" style="color:#00009f">fn</span><span class="token plain"> </span><span class="token function-definition function" style="color:#d73a49">_assert_key_traits</span><span class="token operator" style="color:#393A34">&lt;</span><span class="token class-name">K</span><span class="token punctuation" style="color:#393A34">:</span><span class="token plain"> </span><span class="token class-name">Eq</span><span class="token plain"> </span><span class="token operator" style="color:#393A34">+</span><span class="token plain"> </span><span class="token class-name">Ord</span><span class="token plain"> </span><span class="token operator" style="color:#393A34">+</span><span class="token plain"> </span><span class="token class-name">PartialOrd</span><span class="token plain"> </span><span class="token operator" style="color:#393A34">+</span><span class="token plain"> </span><span class="token namespace" style="opacity:0.7">core</span><span class="token namespace punctuation" style="opacity:0.7;color:#393A34">::</span><span class="token namespace" style="opacity:0.7">hash</span><span class="token namespace punctuation" style="opacity:0.7;color:#393A34">::</span><span class="token class-name">Hash</span><span class="token operator" style="color:#393A34">&gt;</span><span class="token punctuation" style="color:#393A34">(</span><span class="token punctuation" style="color:#393A34">)</span><span class="token plain"> </span><span class="token punctuation" style="color:#393A34">{</span><span class="token punctuation" style="color:#393A34">}</span><span class="token plain"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain"></span><span class="token attribute attr-name" style="color:#00a4db">#[allow(dead_code)]</span><span class="token plain"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain"></span><span class="token keyword" style="color:#00009f">fn</span><span class="token plain"> </span><span class="token function-definition function" style="color:#d73a49">_borrowed_key_types_self_check</span><span class="token punctuation" style="color:#393A34">(</span><span class="token punctuation" style="color:#393A34">)</span><span class="token plain"> </span><span class="token punctuation" style="color:#393A34">{</span><span class="token plain"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">    </span><span class="token function" style="color:#d73a49">_assert_key_traits</span><span class="token punctuation" style="color:#393A34">::</span><span class="token operator" style="color:#393A34">&lt;</span><span class="token namespace" style="opacity:0.7">cml_dep</span><span class="token namespace punctuation" style="opacity:0.7;color:#393A34">::</span><span class="token class-name">Foo</span><span class="token operator" style="color:#393A34">&gt;</span><span class="token punctuation" style="color:#393A34">(</span><span class="token punctuation" style="color:#393A34">)</span><span class="token punctuation" style="color:#393A34">;</span><span class="token plain"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain"></span><span class="token punctuation" style="color:#393A34">}</span><span class="token plain"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain"></span><span class="token attribute attr-name" style="color:#00a4db">#[allow(dead_code)]</span><span class="token plain"></span><br></div><div class="token-line" style="color:#393A34"><span class="token plain"></span><span class="token keyword" style="color:#00009f">pub</span><span class="token punctuation" style="color:#393A34">(</span><span class="token keyword" style="color:#00009f">crate</span><span class="token punctuation" style="color:#393A34">)</span><span class="token plain"> </span><span class="token keyword" style="color:#00009f">const</span><span class="token plain"> </span><span class="token constant" style="color:#36acaa">BORROWED_KEY_TYPES</span><span class="token punctuation" style="color:#393A34">:</span><span class="token plain"> </span><span class="token operator" style="color:#393A34">&amp;</span><span class="token punctuation" style="color:#393A34">[</span><span class="token punctuation" style="color:#393A34">(</span><span class="token operator" style="color:#393A34">&amp;</span><span class="token keyword" style="color:#00009f">str</span><span class="token punctuation" style="color:#393A34">,</span><span class="token plain"> </span><span class="token operator" style="color:#393A34">&amp;</span><span class="token keyword" style="color:#00009f">str</span><span class="token punctuation" style="color:#393A34">)</span><span class="token punctuation" style="color:#393A34">]</span><span class="token plain"> </span><span class="token operator" style="color:#393A34">=</span><span class="token plain"> </span><span class="token operator" style="color:#393A34">&amp;</span><span class="token punctuation" style="color:#393A34">[</span><span class="token punctuation" style="color:#393A34">(</span><span class="token string" style="color:#e3116c">&quot;cml_dep&quot;</span><span class="token punctuation" style="color:#393A34">,</span><span class="token plain"> </span><span class="token string" style="color:#e3116c">&quot;foo&quot;</span><span class="token punctuation" style="color:#393A34">)</span><span class="token punctuation" style="color:#393A34">]</span><span class="token punctuation" style="color:#393A34">;</span><br></div></code></pre></div></div>
 <p>When a borrowed key carries a <a class="" href="/cddl-codegen/comment_dsl"><code>@used_as_key</code></a> <strong>flavor</strong> (<code>hash</code>/<code>ord</code>) rather than the
 bare full bundle, each row gains an optional third column naming the flavor, the table type becomes
@@ -289,7 +573,15 @@ preservation. Requested wrappers are indexed in the dependency&#x27;s own <code>
 (<code>pub use crate::generated::requested_collections::&lt;Name&gt;;</code>) exactly like a wrapper the dependency&#x27;s
 own spec produces, so a consumer&#x27;s <code>use &lt;dep_wasm&gt;::collections::&lt;Name&gt;;</code> resolves. A requested
 <code>NonEmpty…</code> wrapper additionally provisions the <code>NonEmptyVec</code>/<code>NonEmptyMap</code> runtime and may emit its
-loose <code>try_from</code> source wrapper as an (unattributed) transitive support type.</p>
+loose <code>try_from</code> source wrapper as an (unattributed) transitive support type. Each hosted wrapper
+also carries explicit imports for the element types its body names — a cross-scope generated
+element from its scope module (<code>crate::generated::&lt;scope&gt;::X</code>), an extern or hand-written element
+through its crate-root re-export glue — so hosting works for elements that live outside the
+generated root rather than relying on the module&#x27;s <code>use super::*;</code> reaching them. A companion
+wrapper hosted in the <strong>same file</strong> gets no import at all: a hosted map&#x27;s <code>keys()</code>-list wrapper is
+normally co-requested by the same consumers (borrowing <code>{* k =&gt; v}</code> borrows <code>[* k]</code> too), minted
+alongside it here, and named bare — importing it from anywhere else would point at a definition
+that doesn&#x27;t exist.</p>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-regeneration-contract">The regeneration contract<a href="#the-regeneration-contract" class="hash-link" aria-label="Direct link to The regeneration contract" title="Direct link to The regeneration contract" translate="no">​</a></h3>
 <ul>
 <li class=""><strong>Holistic regen runs in reverse dependency order, one pass.</strong> Consumers first — each rewrites its
@@ -349,6 +641,20 @@ markers</strong> (<code>_CDDL_CODEGEN_EXTERN_TYPE_</code> / <code>_CDDL_CODEGEN_
 (primitive aliases, c-style value enums, named collections whose rust surface is a <code>pub type</code>) export
 as their <strong>post-DSL truthful CDDL shape</strong>, also pinned — spelling a transparent type opaque would make
 the consumer manufacture calls to impls that don&#x27;t exist.</p>
+<p><strong>Plain groups export as transparent group-body rows.</strong> A plain group is inlined at its use sites, so
+it is not an opaque cross-crate class — the consumer&#x27;s wire format splices the group&#x27;s fields into its
+own arrays/maps. A <em>referenced</em> plain group (one that materializes a struct in the dependency) exports
+as its <strong>truthful post-DSL group body</strong>, pinned:</p>
+<div class="language-cddl codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-cddl codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">stake_registration = (tag: 0, credential: credential) ; @rust_name StakeRegistration</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">protocol_version   = (major: uint, minor: uint)       ; @rust_name ProtocolVersion</span><br></div></code></pre></div></div>
+<p>The consumer re-derives the identical shape and <strong>delegates the wire code</strong> to the dependency&#x27;s own
+class through both surfaces its generated code uses — whole-value <code>Serialize</code>/<code>Deserialize</code> (a
+group-choice arm that splices the group calls <code>.serialize()</code>) and the embedded-group surface (a
+spliced record member delegates through <code>SerializeEmbeddedGroup</code>/<code>DeserializeEmbeddedGroup</code>). Member
+spelling round-trips by construction: an array-position field carries its post-DSL Rust field name as
+the label (so a <code>; @name</code> rename is baked in, no annotation needed), a map-position field carries its
+fixed member key, a <code>T / null</code> renders <code>… / null</code> (an occurrence-optional <code>?</code> field is distinct), and
+a member <code>.default</code> rides in member position. Plain groups that materialize a <em>non</em>-group shape, or
+that are never referenced at all, are excluded-with-record instead — see the exclusion reasons below.</p>
 <p><strong><code>; unexported:</code> records and reference-closure.</strong> The projection runs on <em>every</em> regenerated spec —
 including leaf/test specs that will never be dependencies — so a rule it cannot export faithfully is
 <strong>excluded-with-record</strong> rather than aborting generation. Each excluded rule leaves a sorted comment
@@ -361,7 +667,10 @@ failure then surfaces only at a consumer that actually references an excluded id
 undefined-reference path, whose diagnostic points back at these records (regenerate the dependency, or
 hand-stub that one type). A custom-serialize transparent alias is the canonical exclusion: it has no
 dep-crate class to delegate to, and exporting its plain definition would silently diverge the wire
-format.</p>
+format. Plain groups add two more excluded-with-record cases: a plain group <strong>never referenced</strong> in
+the dependency&#x27;s own spec materializes no shape to project, and one that materializes a <strong>non-group
+shape</strong> (a homogeneous array/table, a <code>@newtype</code> wrapper) has no embedded-group surface — both leave a
+record rather than vanishing.</p>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="rustsrcgeneratedextern_interface_checkrs"><code>rust/src/generated/extern_interface_check.rs</code><a href="#rustsrcgeneratedextern_interface_checkrs" class="hash-link" aria-label="Direct link to rustsrcgeneratedextern_interface_checkrs" title="Direct link to rustsrcgeneratedextern_interface_checkrs" translate="no">​</a></h3>
 <p>Alongside the export, every rust crate gets a compiled self-check module (always-clobbered under
 <code>src/generated/**</code>, wired in every mode like the export it guards). It is derived from the <strong>same
@@ -373,11 +682,32 @@ actually generates a deserializer for (the bound is weakened per type, so a legi
 deserialize-less type does not fail the check);</li>
 <li class=""><strong>raw-bytes rows</strong> must implement <code>RawBytesEncoding</code>;</li>
 <li class=""><strong>transparent rows</strong> (aliases, c-style enums, named collections) must simply exist (a <code>use … as _;</code>
-existence check).</li>
+existence check);</li>
+<li class=""><strong>group-body rows</strong> (plain groups) must implement all four surfaces the consumer delegates through —
+whole-value <code>Serialize</code>/<code>Deserialize</code> and embedded-group <code>SerializeEmbeddedGroup</code>/<code>DeserializeEmbeddedGroup</code>
+(each <code>Deserialize</code> side gated per type on the crate generating one).</li>
 </ul>
 <p>The bound assertions ride bound-carrier fns (<code>_assert_serialize::&lt;T&gt;()</code>, …) instantiated inside a
 never-called <code>_extern_interface_self_check()</code>. Effect: a hand-edited or stale export — or a projection
 bug — fails the <strong>dependency&#x27;s own build</strong>, naming the type, so a drifted export cannot ship silently.</p>
+<h4 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-banner-only-comment-contract">The banner-only comment contract<a href="#the-banner-only-comment-contract" class="hash-link" aria-label="Direct link to The banner-only comment contract" title="Direct link to The banner-only comment contract" translate="no">​</a></h4>
+<p>Every machine-read or compiled sidecar/check file — <code>borrowed_collections.rs</code>,
+<code>borrowed_key_types.rs</code>, <code>extern_interface_check.rs</code>, <code>key_demand_assertions.rs</code> (its
+<code>_demand_&lt;rule&gt;</code> fns, one per <code>@used_as_key</code> tag) — follows one contract: all commentary, column
+legends included, lives in the fixed file banner, never on a row or inside a const/fn body; each
+row&#x27;s type path (or fn name) is its own traceability. A comment on a deletable row is a trap: a
+spec change can delete any row, and the edit-preservation overlay turns a comment stranded on a
+deleted row into a <code>compile_error!</code> sentinel that every later regen carries forward. Its compiled
+companion rule: a self-check names each type at a path that actually resolves in the emitting
+crate — for borrowed dependency types, the dependency&#x27;s real module path (see
+<a href="#borrowed_key_typesrs--the-consumers-map-key-derive-sidecar" class=""><code>borrowed_key_types.rs</code></a> above).</p>
+<blockquote>
+<p><strong>Migrating an older output.</strong> A crate generated by a version that still emitted per-row <code>// &lt;cddl&gt;</code>
+markers may already carry a <code>// cddl-codegen:unpreserved-comment</code> + <code>compile_error!</code> sentinel block in
+<code>extern_interface_check.rs</code> or <code>key_demand_assertions.rs</code> (stranded when you deleted a rule). Regenerating
+does <strong>not</strong> clear it — sentinel blocks are carried forward by design — so delete that one block by hand
+once; every regen afterwards stays clean.</p>
+</blockquote>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="generated-cargotoml-merge-not-clobber">Generated <code>Cargo.toml</code> (merge, not clobber)<a href="#generated-cargotoml-merge-not-clobber" class="hash-link" aria-label="Direct link to generated-cargotoml-merge-not-clobber" title="Direct link to generated-cargotoml-merge-not-clobber" translate="no">​</a></h2>
 <p>The generated manifests — <code>rust/Cargo.toml</code>, and (when enabled) <code>wasm/Cargo.toml</code> and
 <code>wasm/json-gen/Cargo.toml</code> — are <strong>not</strong> overwritten wholesale on regeneration. Each run the tool
@@ -398,13 +728,24 @@ features it requires (unioned into your list, order preserved), and any field it
 <code>path</code> on the wasm crate&#x27;s path dep). Everything else on the entry — <code>optional</code>,
 <code>default-features</code>, extra features, a <code>version</code> you added beside our <code>path</code> for publishing — is
 preserved, and the entry keeps its existing shape (a plain-string dep stays a plain string unless a
-merged field forces a table). This means, e.g., <code>wasm-bindgen = { version = &quot;0.2.126&quot;, optional = true }</code> survives regeneration with its <code>optional</code> intact instead of collapsing to <code>&quot;0.2&quot;</code>. A
+merged field forces a table). This means, e.g., <code>wasm-bindgen = { version = &quot;0.2.126&quot;, optional = true }</code> survives regeneration with its <code>optional</code> intact instead of collapsing to <code>&quot;0.2&quot;</code>.
+One exception to field preservation: a tool spec that pins a <strong>git source</strong> — as the interim
+<code>cbor_event</code> fork pin currently does — asserts the dep&#x27;s <em>source axis</em>, so source-axis keys the
+tool spec does not itself re-specify (<code>version</code>, <code>rev</code>, <code>branch</code>, <code>tag</code>, <code>path</code>, <code>registry</code>) are
+<strong>dropped</strong> from your entry rather than preserved: a stale version requirement would constrain
+against the wrong source (<code>^2.4.0</code> can never match a 3.x git checkout), and a leftover ref
+selector would form pairs cargo rejects outright (<code>branch</code> + <code>rev</code>). Version-only tool specs keep
+the floor semantics above — your own <code>git</code>/<code>path</code> source survives them. A
 conditional dep is emitted when its flag/type condition holds and <em>removed</em> when it doesn&#x27;t, so
 flipping a flag off (e.g. dropping <code>--preserve-encodings</code>) also drops the deps it pulled in, rather
 than stranding them — note the removal deletes the whole entry, including any fields you added to it.
 For the same reason, <strong>regenerate with the same flags every time</strong>: a regen that accidentally omits
 a flag (e.g. forgetting <code>--wasm</code>) reads as &quot;condition off&quot; and removes that flag&#x27;s conditional deps
-from your manifest. Pin the full command in a script or Makefile. Note that <code>package.edition</code> is
+from your manifest. Pin the full command in a script or Makefile. One <code>[features]</code> entry is also
+tool-owned: under <code>--wasm</code> the <a class="" href="/cddl-codegen/command_line_flags"><code>--rust-wasm-feature</code></a> key (default <code>wasm</code>) is
+set at the leaf level to <code>[&quot;dep:wasm-bindgen&quot;]</code> or <code>[]</code> (see <a href="#wasm-feature-gate-for-c-style-enums" class="">the feature gate above</a>),
+and dropping <code>--wasm</code> removes exactly that key. Because the op addresses the single
+<code>features.&lt;name&gt;</code> leaf, your <strong>other</strong> <code>[features]</code> entries are untouched. Note that <code>package.edition</code> is
 pinned to <code>2024</code> on purpose — the generated code relies on <code>TryFrom</code>/<code>TryInto</code> being in the
 edition-2021+ prelude rather than importing them, so a consumer that reverts the manifest to an
 edition <strong>older than 2021</strong> (e.g. <code>git checkout -- Cargo.toml</code> back to a hand-edited <code>edition = &quot;2018&quot;</code>) will turn every <code>u64::try_from(...)</code> in the generated crate into a hard compile error.</li>
@@ -412,7 +753,8 @@ edition <strong>older than 2021</strong> (e.g. <code>git checkout -- Cargo.toml<
 (<code>0.0.1</code> for the json-gen crate) the tool has no opinion — bump it and it stays bumped across
 regenerations.</li>
 <li class=""><strong>Preserved (never touched).</strong> Any key no changeset op mentions: your own dependencies,
-<code>[profile]</code>/<code>[features]</code> tables, workspace inheritance lines, etc.</li>
+<code>[profile]</code> tables, the rest of the <code>[features]</code> table (every entry but the tool-owned
+<code>--rust-wasm-feature</code> key above), workspace inheritance lines, etc.</li>
 </ul>
 <p>The tool also writes a <code>package.metadata.cddl-codegen.generated-with</code> stamp recording the
 cddl-codegen version. It is write-only — the tool never reads it back (reading prior output would
@@ -437,6 +779,6 @@ unused dep) and the fix is to delete the stale line by hand.</p>
 <p><code>--json-schema-export true</code></p>
 <p><img decoding="async" loading="lazy" src="/cddl-codegen/assets/images/output4-0e1dd4ffe08346854c5ab738cc6f3527.png" width="374" height="400" class="img_ev3q"></p>
 <p><code>--package-json true --json-schema-export true</code></p>
-<p><img decoding="async" loading="lazy" src="/cddl-codegen/assets/images/output5-07ada9e131459f69389ca27cc90a5e7d.png" width="372" height="277" class="img_ev3q"></p></div></article><nav class="docusaurus-mt-lg pagination-nav" aria-label="Docs pages"><a class="pagination-nav__link pagination-nav__link--prev" href="/cddl-codegen/current_capacities"><div class="pagination-nav__sublabel">Previous</div><div class="pagination-nav__label">Current capacities</div></a><a class="pagination-nav__link pagination-nav__link--next" href="/cddl-codegen/preserving_edits"><div class="pagination-nav__sublabel">Next</div><div class="pagination-nav__label">Preserving edits to generated code</div></a></nav></div></div><div class="col col--3"><div class="tableOfContents_bqdL thin-scrollbar theme-doc-toc-desktop"><ul class="table-of-contents table-of-contents__left-border"><li><a href="#optional-fixed-value-members" class="table-of-contents__link toc-highlight">Optional fixed-value members</a></li><li><a href="#non-empty-containers" class="table-of-contents__link toc-highlight">Non-empty containers</a></li><li><a href="#generated-crate-roots-thin-root-seed-once" class="table-of-contents__link toc-highlight">Generated crate roots (thin root, seed-once)</a><ul><li><a href="#per-scope-hand-modules-the-facade-pattern" class="table-of-contents__link toc-highlight">Per-scope hand modules: the facade pattern</a></li><li><a href="#generated-wrapper-fields-are-pubcrate" class="table-of-contents__link toc-highlight">Generated wrapper fields are <code>pub(crate)</code></a></li><li><a href="#migrating-from-pre-split-layouts" class="table-of-contents__link toc-highlight">Migrating from pre-split layouts</a></li></ul></li><li><a href="#workspace-mode-borrowed-and-requested-collection-wrappers" class="table-of-contents__link toc-highlight">Workspace mode: borrowed and requested collection wrappers</a><ul><li><a href="#borrowed_collectionsrs--the-consumers-sidecar" class="table-of-contents__link toc-highlight"><code>borrowed_collections.rs</code> — the consumer&#39;s sidecar</a></li><li><a href="#borrowed_key_typesrs--the-consumers-map-key-derive-sidecar" class="table-of-contents__link toc-highlight"><code>borrowed_key_types.rs</code> — the consumer&#39;s map-key-derive sidecar</a></li><li><a href="#requested_collectionsrs--the-dependencys-hosted-wrappers" class="table-of-contents__link toc-highlight"><code>requested_collections.rs</code> — the dependency&#39;s hosted wrappers</a></li><li><a href="#the-regeneration-contract" class="table-of-contents__link toc-highlight">The regeneration contract</a></li></ul></li><li><a href="#extern-interface-export" class="table-of-contents__link toc-highlight">Extern-interface export</a><ul><li><a href="#rustsrcgeneratedextern_interface_checkrs" class="table-of-contents__link toc-highlight"><code>rust/src/generated/extern_interface_check.rs</code></a></li></ul></li><li><a href="#generated-cargotoml-merge-not-clobber" class="table-of-contents__link toc-highlight">Generated <code>Cargo.toml</code> (merge, not clobber)</a></li></ul></div></div></div></div></main></div></div></div><footer class="theme-layout-footer footer footer--dark"><div class="container container-fluid"><div class="footer__bottom text--center"><div class="footer__copyright">Copyright © 2026 dcSpark. Built with Docusaurus.</div></div></div></footer></div>
+<p><img decoding="async" loading="lazy" src="/cddl-codegen/assets/images/output5-07ada9e131459f69389ca27cc90a5e7d.png" width="372" height="277" class="img_ev3q"></p></div></article><nav class="docusaurus-mt-lg pagination-nav" aria-label="Docs pages"><a class="pagination-nav__link pagination-nav__link--prev" href="/cddl-codegen/current_capacities"><div class="pagination-nav__sublabel">Previous</div><div class="pagination-nav__label">Current capacities</div></a><a class="pagination-nav__link pagination-nav__link--next" href="/cddl-codegen/preserving_edits"><div class="pagination-nav__sublabel">Next</div><div class="pagination-nav__label">Preserving edits to generated code</div></a></nav></div></div><div class="col col--3"><div class="tableOfContents_bqdL thin-scrollbar theme-doc-toc-desktop"><ul class="table-of-contents table-of-contents__left-border"><li><a href="#wasm-feature-gate-for-c-style-enums" class="table-of-contents__link toc-highlight">Wasm feature gate for c-style enums</a></li><li><a href="#optional-fixed-value-members" class="table-of-contents__link toc-highlight">Optional fixed-value members</a></li><li><a href="#nominal-tag-258-set-types" class="table-of-contents__link toc-highlight">Nominal tag-258 set types</a></li><li><a href="#the-any-type-anycbor-runtime-value" class="table-of-contents__link toc-highlight">The <code>any</code> type (<code>AnyCbor</code> runtime value)</a><ul><li><a href="#constructors-and-accessors" class="table-of-contents__link toc-highlight">Constructors and accessors</a></li><li><a href="#json-representation---json-serde-derives----json-schema-export" class="table-of-contents__link toc-highlight">JSON representation (<code>--json-serde-derives</code> / <code>--json-schema-export</code>)</a></li></ul></li><li><a href="#non-empty-containers" class="table-of-contents__link toc-highlight">Non-empty containers</a></li><li><a href="#reject-duplicates-containers-uniqueness-twins" class="table-of-contents__link toc-highlight">Reject-duplicates containers (uniqueness twins)</a></li><li><a href="#preserve-duplicates-tables-pair-map-twins" class="table-of-contents__link toc-highlight">Preserve-duplicates tables (pair-map twins)</a></li><li><a href="#generated-crate-roots-thin-root-seed-once" class="table-of-contents__link toc-highlight">Generated crate roots (thin root, seed-once)</a><ul><li><a href="#per-scope-hand-modules-the-facade-pattern" class="table-of-contents__link toc-highlight">Per-scope hand modules: the facade pattern</a></li><li><a href="#generated-wrapper-fields-are-pubcrate" class="table-of-contents__link toc-highlight">Generated wrapper fields are <code>pub(crate)</code></a></li><li><a href="#migrating-from-pre-split-layouts" class="table-of-contents__link toc-highlight">Migrating from pre-split layouts</a></li></ul></li><li><a href="#workspace-mode-borrowed-and-requested-collection-wrappers" class="table-of-contents__link toc-highlight">Workspace mode: borrowed and requested collection wrappers</a><ul><li><a href="#borrowed_collectionsrs--the-consumers-sidecar" class="table-of-contents__link toc-highlight"><code>borrowed_collections.rs</code> — the consumer&#39;s sidecar</a></li><li><a href="#borrowed_key_typesrs--the-consumers-map-key-derive-sidecar" class="table-of-contents__link toc-highlight"><code>borrowed_key_types.rs</code> — the consumer&#39;s map-key-derive sidecar</a></li><li><a href="#requested_collectionsrs--the-dependencys-hosted-wrappers" class="table-of-contents__link toc-highlight"><code>requested_collections.rs</code> — the dependency&#39;s hosted wrappers</a></li><li><a href="#the-regeneration-contract" class="table-of-contents__link toc-highlight">The regeneration contract</a></li></ul></li><li><a href="#extern-interface-export" class="table-of-contents__link toc-highlight">Extern-interface export</a><ul><li><a href="#rustsrcgeneratedextern_interface_checkrs" class="table-of-contents__link toc-highlight"><code>rust/src/generated/extern_interface_check.rs</code></a></li></ul></li><li><a href="#generated-cargotoml-merge-not-clobber" class="table-of-contents__link toc-highlight">Generated <code>Cargo.toml</code> (merge, not clobber)</a></li></ul></div></div></div></div></main></div></div></div><footer class="theme-layout-footer footer footer--dark"><div class="container container-fluid"><div class="footer__bottom text--center"><div class="footer__copyright">Copyright © 2026 dcSpark. Built with Docusaurus.</div></div></div></footer></div>
 </body>
 </html>

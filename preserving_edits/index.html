@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.1">
 <title data-rh="true">Preserving edits to generated code | cddl-codegen</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://dcspark.github.io/cddl-codegen/preserving_edits"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Preserving edits to generated code | cddl-codegen"><meta data-rh="true" name="description" content="Everything under a generated crate&#x27;s src/generated/ is tool-owned and rewritten on every"><meta data-rh="true" property="og:description" content="Everything under a generated crate&#x27;s src/generated/ is tool-owned and rewritten on every"><link data-rh="true" rel="icon" href="/cddl-codegen/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://dcspark.github.io/cddl-codegen/preserving_edits"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/preserving_edits" hreflang="en"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/preserving_edits" hreflang="x-default"><link rel="stylesheet" href="/cddl-codegen/assets/css/styles.472964ba.css">
-<script src="/cddl-codegen/assets/js/runtime~main.c506fa45.js" defer="defer"></script>
+<script src="/cddl-codegen/assets/js/runtime~main.7d212687.js" defer="defer"></script>
 <script src="/cddl-codegen/assets/js/main.983e6065.js" defer="defer"></script>
 </head>
 <body>
@@ -52,6 +52,13 @@ where the tool does <em>not</em> document is preserved like any other comment.</
 the code that follows it, through the same tiers as a comment. The inserted code must be balanced
 (<code>{}</code>/<code>()</code>/<code>[]</code>) and is otherwise arbitrary: statements inside a function, an extra field in a
 struct definition, even a whole new item between two generated ones.</p>
+<p>Write the tags on their own line; you do not have to keep them there. <code>rustfmt</code>&#x27;s canonical form
+folds a marker that trails the closing <code>}</code> of a match&#x27;s <strong>last arm</strong> onto that <code>}</code> as a trailing
+comment (<code>} // cddl-codegen:replaces</code>), and the tool applies <code>rustfmt</code> to its own output — so a
+formatted repo commits the folded shape. Both spellings are recognized: the overlay unfolds a
+trailing <code>cddl-codegen:</code> marker back to its own line before scanning, so a block whose user section
+ends at a match&#x27;s tail arm regenerates cleanly whether the file is in the emitted own-line form or
+the <code>rustfmt</code>-folded form.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="replace-blocks--swapping-code">Replace blocks — swapping code<a href="#replace-blocks--swapping-code" class="hash-link" aria-label="Direct link to Replace blocks — swapping code" title="Direct link to Replace blocks — swapping code" translate="no">​</a></h2>
 <p>A replace block has three sections: your code, the marker <code>replaces</code>, and a <code>//</code>-commented copy
 of the generated code you overrode (the <strong>recorded original</strong>):</p>
@@ -86,10 +93,19 @@ plain comment of yours whose anchor falls inside a span some replace block delet
 move it into the block.</p>
 <p><strong>Imports and your block&#x27;s code.</strong> The generated struct modules import the collection helper types
 (<code>BTreeMap</code>, <code>OrderedHashMap</code>, <code>NonEmptyVec</code>, <code>NonEmptyMap</code>) only when the file — or one of its
-descendant modules — references them (see <a class="" href="/cddl-codegen/output_format">Output format</a>). Your inserted/replaced
-code is not scanned for these — an import is kept iff the <em>generated</em> code names it. So if your
-block references e.g. <code>BTreeMap</code> in a file whose generated code doesn&#x27;t, name it by a fully
-qualified path (<code>std::collections::BTreeMap</code>) rather than relying on a <code>use</code> that won&#x27;t be there.</p>
+descendant modules — references them (see <a class="" href="/cddl-codegen/output_format">Output format</a>). The relationship to
+your block&#x27;s code is asymmetric. Your block cannot make an import <em>appear</em>: the initial import
+derivation runs over the pristine generated content, before your edits are applied, so a file whose
+generated code never justified <code>BTreeMap</code> won&#x27;t gain the <code>use</code> just because your block names it —
+name such types by a fully qualified path (<code>std::collections::BTreeMap</code>) rather than relying on a
+<code>use</code> that won&#x27;t be there. But once your edits are applied, the import set is re-derived from that
+<em>final</em> content — your block&#x27;s code included — so a block that names an import the generated code
+also justified keeps that import alive even if your block replaced the generated reference.</p>
+<p>Conversely, if your replace block removes the <em>last</em> generated reference to an import — say you
+replace <code>pub type Mint = OrderedHashMap&lt;PolicyId, …&gt;</code> with a hand type that names neither — the now
+unused <code>use</code> is pruned for you on the next export. You do <strong>not</strong> need a second replace block to
+delete the orphaned import. This holds even when the reference you removed lived in a different
+file of the module (e.g. a <code>serialization.rs</code> edit orphaning a <code>mod.rs</code> import).</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="when-preservation-fails-the-two-failure-channels">When preservation fails: the two failure channels<a href="#when-preservation-fails-the-two-failure-channels" class="hash-link" aria-label="Direct link to When preservation fails: the two failure channels" title="Direct link to When preservation fails: the two failure channels" translate="no">​</a></h2>
 <p><strong>Malformed tags abort the export</strong> (a hard error naming the file, before anything is written).
 This covers: an unclosed block, an orphaned <code>insert-end</code>/<code>replaces</code>/<code>replace-end</code>, a fragment that
@@ -97,10 +113,12 @@ closes a delimiter it did not open (or, for a replace block, a user section and 
 whose net delimiter deltas differ), an empty or unlexable recorded original, code lines under
 <code>replaces</code> (every line
 there must be <code>//</code>-commented), a recorded original spanning multiple top-level items — and <em>any</em>
-unrecognized own-line comment starting with <code>// cddl-codegen:</code>. That last rule is what keeps the
+unrecognized comment starting with <code>// cddl-codegen:</code>. That last rule is what keeps the
 never-silent contract airtight: a typo&#x27;d tag can never demote your block to plain text and let
-half of it be clobbered. Fix the tag structure (or pass <code>--no-preserve-comments</code> to clobber
-pristine) and re-run.</p>
+half of it be clobbered. It covers the reserved namespace wherever a marker sits, including the
+<code>rustfmt</code>-folded trailing position — so a mistyped <code>} // cddl-codegen:not-a-tag</code> at a match tail is
+a hard error, not a silently-dropped trailing comment. Fix the tag structure (or pass
+<code>--no-preserve-comments</code> to clobber pristine) and re-run.</p>
 <p><strong>Placement failures trap the payload in the output.</strong> When the file regenerates but a comment or
 block can&#x27;t be safely re-placed, the export succeeds and the affected payload lands at the top of
 the file as:</p>
@@ -108,12 +126,16 @@ the file as:</p>
 <p>The generated crate fails to build with your original text in the error message; the block
 carries forward verbatim across further regenerations until you delete it, so nothing is ever
 lost. The reasons you&#x27;ll see, and what they mean:</p>
-<table><thead><tr><th>Reason (abbreviated)</th><th>What happened</th><th>What to do</th></tr></thead><tbody><tr><td><code>…which no longer exists in the regenerated code</code></td><td>the item holding your edit vanished (removed/renamed in the CDDL)</td><td>re-place the edit by hand where it now belongs, or discard it</td></tr><tr><td><code>…the number of same-named items changed</code></td><td>same-keyed items (e.g. two <code>impl Foo</code> blocks) were added/removed, so &quot;the Nth one&quot; is ambiguous</td><td>re-place by hand</td></tr><tr><td><code>…whose generated code changed</code> (comment)</td><td>the statement your comment annotated changed or is no longer unique</td><td>re-place by hand against the new code</td></tr><tr><td><code>The generated code for …changed, so its recorded original no longer appears (drift)</code></td><td>the generator now emits different code where your replace block applied</td><td>re-review: update your replacement for the new behavior, re-record the new original under <code>replaces</code></td></tr><tr><td><code>…recorded original is not unique within …</code> / <code>…appears more than once…</code></td><td>the item <em>also</em> changed (so the item-identity fast path didn&#x27;t apply) and the recorded original then matches zero-or-multiple spots ambiguously</td><td>include more surrounding lines in the recorded original so it&#x27;s unique, or re-place by hand</td></tr><tr><td><code>Its anchor lies inside code replaced by a …replace-start block</code></td><td>a separate comment/insert block pointed into a span your replace block overrides</td><td>move that comment/block inside the replace block</td></tr><tr><td><code>It is a trailing (end-of-line) comment</code></td><td>trailing comments aren&#x27;t carried</td><td>move it to its own line</td></tr></tbody></table>
+<table><thead><tr><th>Reason (abbreviated)</th><th>What happened</th><th>What to do</th></tr></thead><tbody><tr><td><code>…which no longer exists in the regenerated code</code></td><td>the item holding your edit vanished (removed/renamed in the CDDL)</td><td>re-place the edit by hand where it now belongs, or discard it</td></tr><tr><td><code>…the number of same-named items changed</code></td><td>same-keyed items (e.g. two <code>impl Foo</code> blocks) were added/removed, so &quot;the Nth one&quot; is ambiguous</td><td>re-place by hand</td></tr><tr><td><code>…whose generated code changed</code> (comment)</td><td>the statement your comment annotated changed or is no longer unique</td><td>re-place by hand against the new code</td></tr><tr><td><code>The generated code for …changed, so its recorded original no longer appears (drift)</code></td><td>the generator now emits different code where your replace block applied</td><td>re-review: update your replacement for the new behavior, re-record the new original under <code>replaces</code></td></tr><tr><td><code>…recorded original is not unique within …</code> / <code>…appears more than once…</code></td><td>the item <em>also</em> changed (so the item-identity fast path didn&#x27;t apply) and the recorded original then matches zero-or-multiple spots ambiguously</td><td>include more surrounding lines in the recorded original so it&#x27;s unique, or re-place by hand</td></tr><tr><td><code>Its anchor lies inside code replaced by a …replace-start block</code></td><td>a separate comment/insert block pointed into a span your replace block overrides</td><td>move that comment/block inside the replace block</td></tr><tr><td><code>It is a trailing (end-of-line) comment</code></td><td>a plain trailing comment (no <code>cddl-codegen:</code> tag) can&#x27;t be carried</td><td>move it to its own line</td></tr></tbody></table>
+<p>(A trailing comment that <em>is</em> a <code>cddl-codegen:</code> marker is unfolded to its own line before scanning, so a well-formed folded block is recognized and an unknown-tag one hits the hard reserved-namespace error above rather than this row.)</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="guarantees-and-residual-limits">Guarantees and residual limits<a href="#guarantees-and-residual-limits" class="hash-link" aria-label="Direct link to Guarantees and residual limits" title="Direct link to Guarantees and residual limits" translate="no">​</a></h2>
 <p>Running the tool twice equals running it once: re-exporting an unchanged spec reproduces the same
 file byte-for-byte, blocks included. The overlay never touches code tokens outside your tagged
 regions — its only effects are inserting your comments/blocks and removing exactly the span a
-recorded original identifies.</p>
+recorded original identifies. The one downstream consequence is import pruning: a <code>use</code> the
+generated code no longer references — because your replace block removed its last user — is dropped,
+since the import set is always re-derived from the final code (never from prior output), which keeps
+the byte-for-byte reproducibility intact.</p>
 <p>Known residual limits, by design:</p>
 <ul>
 <li class="">A generator-emitted <code>//</code> comment whose text changes between tool versions is indistinguishable

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.1">
 <title data-rh="true">Wasm Differences | cddl-codegen</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://dcspark.github.io/cddl-codegen/wasm_differences"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Wasm Differences | cddl-codegen"><meta data-rh="true" name="description" content="In the wasm crate we can&#x27;t always go one to one with the rust crate. Here are some differences/extra types in the WASM create. AsRef From and Into are implemented to go between the rust and wasm crate types to help."><meta data-rh="true" property="og:description" content="In the wasm crate we can&#x27;t always go one to one with the rust crate. Here are some differences/extra types in the WASM create. AsRef From and Into are implemented to go between the rust and wasm crate types to help."><link data-rh="true" rel="icon" href="/cddl-codegen/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://dcspark.github.io/cddl-codegen/wasm_differences"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/wasm_differences" hreflang="en"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/wasm_differences" hreflang="x-default"><link rel="stylesheet" href="/cddl-codegen/assets/css/styles.472964ba.css">
-<script src="/cddl-codegen/assets/js/runtime~main.c506fa45.js" defer="defer"></script>
+<script src="/cddl-codegen/assets/js/runtime~main.7d212687.js" defer="defer"></script>
 <script src="/cddl-codegen/assets/js/main.983e6065.js" defer="defer"></script>
 </head>
 <body>
@@ -16,6 +16,33 @@
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="heterogeneous-arrays">Heterogeneous Arrays<a href="#heterogeneous-arrays" class="hash-link" aria-label="Direct link to Heterogeneous Arrays" title="Direct link to Heterogeneous Arrays" translate="no">​</a></h2>
 <p>Any array of non-primitives such as <code>[foo]</code> will generate another type called <code>FooList</code> which supports all basic array operations.
 This array wrapper implements <code>len() -&gt; usize</code>, <code>get(usize) -&gt; T</code> and <code>add(T)</code>.</p>
+<p>These lowering rules apply <strong>by spelling, not by construct</strong>: an anonymous <strong>plain</strong> (non-258)
+generic-collection instance (<code>x: xs&lt;foo&gt;</code> for <code>xs&lt;a&gt; = [* a]</code>) crosses the wasm boundary exactly
+as its inline equivalent (<code>x: [* foo]</code>) would — the structural <code>FooList</code> class when the element
+needs a wrapper, or the direct exposure below when it doesn&#x27;t — while a NAMED collection rule
+(<code>foos = [* foo]</code>) exposes a class under its own rule name.</p>
+<p>A <strong>258 set</strong> is instead <strong>nominal</strong> (see <a class="" href="/cddl-codegen/current_capacities">current capacities</a>, tag-set
+section): a generic instance mints one class per instantiation — <code>set&lt;foo&gt;</code> mints its own
+<code>#[wasm_bindgen]</code> class <code>SetFoo</code> (over the rust nominal), distinct from the inline plain <code>[* foo]</code>
+structural <code>FooList</code> — and an <strong>inline</strong> <code>#6.258([* foo])</code> set occurrence (member, element, map
+key/value, generic arg) likewise mints a shape-derived nominal class (<code>SetFoo</code>), deduped one per
+inline shape rather than the transparent <code>FooList</code>. A named binding of an instance
+(<code>named = set&lt;foo&gt;</code>) is a passthrough <code>pub type Named = SetFoo;</code>. The nominal&#x27;s <code>new(inner)</code> still
+uses the structural collection wrapper (<code>FooList</code>, or the <code>&lt;Elem&gt;OrderedSet</code> reject twin) for element
+crossing, so the structural companion class is not eliminated — it is the nominal&#x27;s construction
+boundary. The <strong>read/mutate surface is FLATTENED</strong> onto the nominal class itself: because the wasm
+class has no <code>Deref</code>, it delegates <code>len()</code>, indexed <code>get(index) -&gt; Foo</code>, <code>insert(elem) -&gt; bool</code> (the
+std-set door), <code>add(elem)</code> (the checked door), <code>contains(elem) -&gt; bool</code>, <code>try_from(&lt;Foo&gt;List)</code>, and
+the empty-means-absent <code>try_opt_from(...)</code>. A JS read is <code>set.get(i)</code>, not the two-layer
+<code>set.get().get(i)</code>. <strong>Class re-key note for consumers:</strong> a spec whose generic set instances (or
+inline <code>#6.258</code> occurrences) previously surfaced as structural <code>*List</code> / <code>*OrderedSet</code> passthrough
+aliases now surfaces one nominal class per instantiation/shape; downstream JS/<code>--wrapper-requests</code>
+code that imported the synthesized name as a structural alias should move to the nominal class (the
+structural wrapper name itself is unchanged and still own-produced). A <strong>rule-name binding</strong> of an
+instance (<code>required_signers = nonempty_set&lt;key&gt;</code>) has no wasm class of its own — wasm-bindgen exports
+no type aliases — so JS call sites re-key from the rule name to the nominal class name; the tool
+emits a <code>typescript_custom_section</code> <code>export type RequiredSigners = NonemptySetKey;</code> so TypeScript
+type positions keep compiling (JS value positions still re-key to the nominal class).</p>
 <p>The wrapper exists primarily for <strong>ownership safety</strong>, not just type-support gaps. In <code>wasm_bindgen</code>,
 passing an exported class to a function <strong>by value</strong> transfers ownership: the JavaScript object&#x27;s
 internal pointer is nulled, and any later use of that object throws (<code>null pointer passed to rust</code>) —
@@ -70,6 +97,52 @@ bound), while removal throws at the bound. <code>add</code> therefore mirrors th
 borrow from, and construction is <code>new(first)</code> + <code>add</code> (the reason is in the wrapper&#x27;s generated doc
 comment). See <a class="" href="/cddl-codegen/command_line_flags"><code>--wasm-list-macro</code></a> for the macro-mode posture of these
 restricted wrappers.</p>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="reject-duplicates-containers">Reject-duplicates containers<a href="#reject-duplicates-containers" class="hash-link" aria-label="Direct link to Reject-duplicates containers" title="Direct link to Reject-duplicates containers" translate="no">​</a></h2>
+<p>A collection rule carrying <a class="" href="/cddl-codegen/comment_dsl"><code>@duplicates reject</code></a> — <code>[* T]</code> → <code>OrderedSet&lt;T&gt;</code>,
+<code>[+ T]</code> → <code>NonEmptyOrderedSet&lt;T&gt;</code> (see
+<a class="" href="/cddl-codegen/output_format#reject-duplicates-containers-uniqueness-twins">Output format</a>) — crosses the
+wasm boundary with the <strong>same two-wrapper pattern</strong> as the non-empty case, the restricted wrapper
+wrapping the uniqueness twin core:</p>
+<ul>
+<li class="">A <strong>named</strong> rule surfaces as a class under its own identifier (<code>signers = [* key] ; @duplicates reject</code> → a <code>Signers</code> class); an <strong>anonymous</strong> generic-collection instance uses the structural
+names <strong><code>&lt;Elem&gt;OrderedSet</code></strong> / <strong><code>NonEmpty&lt;Elem&gt;OrderedSet</code></strong> (e.g. <code>U64OrderedSet</code> for an inline
+reject <code>[* uint]</code>, <code>NonEmptyFooOrderedSet</code> for <code>[+ foo]</code>) — the uniqueness analogue of the
+<code>&lt;Elem&gt;List</code> list wrapper.</li>
+<li class="">Construction is via <strong><code>try_from</code></strong>, exactly like the non-empty restricted wrapper:
+<code>try_from(list: &amp;FooList) -&gt; Result&lt;Self, JsError&gt;</code> for a wrapper-needing element (borrows and
+clones, so the loose <code>FooList</code> stays valid), or <code>try_from(elements: Vec&lt;T&gt;)</code> by value when the
+element&#x27;s loose form is directly exposable (<code>[* uint]</code> → <code>Vec&lt;u64&gt;</code>).</li>
+<li class=""><strong>The one JS-visible difference from the non-empty wrappers: <code>add</code> is fallible.</strong> A non-empty
+wrapper&#x27;s <code>add</code> is infallible (a push can never violate a <em>minimum</em> bound), but a reject wrapper&#x27;s
+<code>add</code> returns <strong><code>Result&lt;(), JsError&gt;</code></strong> and <strong>throws when the element is already present</strong> — the
+same duplicate refusal <code>try_from</code> performs, raised at the exact call site of the mistake. Getters
+return a clone of the restricted wrapper, and parent constructors/setters take it by reference, so
+<code>Foo.new</code> is not itself a duplicate-throw site.</li>
+</ul>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="preserve-duplicates-tables">Preserve-duplicates tables<a href="#preserve-duplicates-tables" class="hash-link" aria-label="Direct link to Preserve-duplicates tables" title="Direct link to Preserve-duplicates tables" translate="no">​</a></h2>
+<p>A table rule carrying <a class="" href="/cddl-codegen/comment_dsl"><code>@duplicates preserve</code></a> — <code>{* k =&gt; v}</code> → <code>PairMap&lt;K, V&gt;</code>,
+<code>{+ k =&gt; v}</code> → <code>NonEmptyPairMap&lt;K, V&gt;</code> (see
+<a class="" href="/cddl-codegen/output_format#preserve-duplicates-tables-pair-map-twins">Output format</a>) — crosses the wasm
+boundary as a JS class, and the <code>{+}</code> flavor uses the <strong>same two-wrapper pattern</strong> as the non-empty
+and reject cases (a loose builder plus a restricted <code>try_from</code>-door wrapper):</p>
+<ul>
+<li class="">The <strong>loose <code>{* k =&gt; v}</code> wrapper</strong> exposes exactly the ordinary map-wrapper surface —
+<code>new()</code>, <code>len()</code>, <code>insert(key, value) -&gt; Option&lt;V&gt;</code>, <code>get(key) -&gt; Option&lt;V&gt;</code>, <code>keys() -&gt; Vec&lt;K&gt;</code>.
+A <strong>named</strong> rule surfaces under its own identifier (<code>meta = {* uint =&gt; bytes} ; @duplicates preserve</code> → a <code>Meta</code> class); a sole-owner rule&#x27;s structural <code>Map&lt;K&gt;To&lt;V&gt;</code> name becomes a <code>pub type</code>
+alias to it, so anonymous uses of the shape resolve to the same JS class.</li>
+<li class="">The <strong><code>{+ k =&gt; v}</code> restricted wrapper</strong> wraps the <code>NonEmptyPairMap</code> core and is entered via
+<strong><code>try_from(map: &amp;Map&lt;K&gt;To&lt;V&gt;) -&gt; Result&lt;Self, JsError&gt;</code></strong> (the min-1 door, borrowing and cloning so
+the loose map stays valid) or <code>new(first_key, first_value)</code>. Parent constructors/setters take it by
+reference.</li>
+<li class=""><strong>The JS-visible difference from the reject-set wrappers: <code>insert</code> is <code>add</code>&#x27;s opposite.</strong> A reject
+set&#x27;s <code>add</code> returns <code>Result&lt;(), JsError&gt;</code> and <strong>throws</strong> on a duplicate; a pair-map&#x27;s
+<code>insert(key, value)</code> returns <strong><code>Option&lt;V&gt;</code></strong> and <strong>APPENDS</strong> — it never throws and never rejects,
+because preserving duplicates is the whole point. It always returns <code>None</code> (nothing is displaced,
+since nothing is overwritten); the <code>Option&lt;V&gt;</code> return exists only so the surface matches the loose
+table&#x27;s <code>insert</code>. <code>get</code> returns the FIRST entry for the key.</li>
+</ul>
+<p>Every shape that generates for rust generates for wasm here — the loose <code>{*}</code> PairMap wrapper and the
+<code>{+}</code> NonEmptyPairMap wrapper both cross the boundary.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="enums">Enums<a href="#enums" class="hash-link" aria-label="Direct link to Enums" title="Direct link to Enums" translate="no">​</a></h2>
 <p>Both type/group choices generate rust-style enums. On the wasm side we can&#x27;t do that so we directly wrap the rust type, and then provide a <code>FooKind</code> c-style enum for each rust enum <code>Foo</code> just for checking which variant it is.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="tag-and-newtype-wrappers">Tag and <code>@newtype</code> wrappers<a href="#tag-and-newtype-wrappers" class="hash-link" aria-label="Direct link to tag-and-newtype-wrappers" title="Direct link to tag-and-newtype-wrappers" translate="no">​</a></h2>
@@ -91,6 +164,27 @@ collection, hand it to <code>new</code>, and read it back with <code>get</code>.
 itself — no wrapper is generated, and the struct keeps its normal per-field constructor and getters.
 (A tag over a <em>named</em> struct rule, <code>t = #6.14(foo)</code>, still produces a wrapper with <code>new</code>/<code>get</code>.)</li>
 </ul>
+<h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-any-type-anycbor">The <code>any</code> type (<code>AnyCbor</code>)<a href="#the-any-type-anycbor" class="hash-link" aria-label="Direct link to the-any-type-anycbor" title="Direct link to the-any-type-anycbor" translate="no">​</a></h2>
+<p>CDDL <a class="" href="/cddl-codegen/current_capacities#the-any-type-loose-cbor"><code>any</code></a> lowers to the <code>AnyCbor</code> runtime value, which
+surfaces on the wasm boundary as a <code>#[wasm_bindgen]</code> <code>AnyCbor</code> class wrapping the rust runtime type.
+Its v1 surface is intentionally byte-oriented rather than field-destructuring:</p>
+<ul>
+<li class=""><code>from_cbor_bytes(bytes: &amp;[u8]) -&gt; Result&lt;AnyCbor, JsError&gt;</code> / <code>to_cbor_bytes() -&gt; Vec&lt;u8&gt;</code> — the
+CBOR round-trip door (the same pair every wasm wrapper carries).</li>
+<li class=""><code>kind() -&gt; AnyCborKind</code> — a c-style <code>AnyCborKind</code> enum (variants <code>UInt</code>, <code>NInt</code>, <code>Bytes</code>, <code>Text</code>,
+<code>Array</code>, <code>Map</code>, <code>Tag</code>, <code>Bool</code>, <code>Null</code>, <code>Undefined</code>, <code>Unassigned</code>, <code>Float</code>) for checking which CBOR
+item is held, mirroring the <code>FooKind</code> pattern used for <a href="#enums" class="">enums</a>.</li>
+<li class=""><code>to_json()</code> / <code>from_json(json: &amp;str)</code> — emitted only under <code>--json-serde-derives</code>, rendering the
+<a class="" href="/cddl-codegen/output_format#the-any-type-anycbor-runtime-value">JSON representation of CBOR</a>.</li>
+</ul>
+<p>Value-destructuring accessors (<code>as_uint()</code>, <code>as_bytes()</code>, …) are deliberately <strong>not</strong> on the wasm
+class in v1 (they follow demand): to inspect a value, read <code>kind()</code> and take its bytes or JSON.</p>
+<p>Containers of <code>any</code> surface their ordinary List/Map wrapper classes: <code>[* any]</code> is <code>AnyList</code> (full
+<code>new</code>/<code>add</code>/<code>get</code>/<code>len</code> array API), and a table is <code>MapAnyToAny</code> / <code>MapU64ToAny</code> / <code>MapAnyToU64</code> for
+the <code>{ * any =&gt; any }</code> / <code>{ * uint =&gt; any }</code> / <code>{ * any =&gt; uint }</code> domain-range combinations (the same
+<code>insert</code>/<code>get</code>/<code>keys</code> surface as any other table wrapper). A top-level <code>x = any</code> alias surfaces <strong>no</strong>
+distinct wasm class of its own — the <code>AnyCbor</code> class <em>is</em> its wasm face (the one place <code>any</code> skips the
+rust/wasm type-alias parity, since a bare <code>AnyCbor</code> alias would add nothing).</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="nullable--nested-options">Nullable / nested Options<a href="#nullable--nested-options" class="hash-link" aria-label="Direct link to Nullable / nested Options" title="Direct link to Nullable / nested Options" translate="no">​</a></h2>
 <p><code>wasm_bindgen</code> cannot expose a doubly-nested <code>Option&lt;Option&lt;T&gt;&gt;</code> (<code>Option&lt;T&gt;</code> does not implement <code>OptionIntoWasmAbi</code>), the same way it can&#x27;t expose a nested <code>Vec</code>. This happens when a nullable value (<code>T / null</code> → <code>Option&lt;T&gt;</code>) sits in a position that adds its own presence-<code>Option</code>: a <strong>map value</strong> (<code>get</code>/<code>insert</code> return <code>Option&lt;value&gt;</code>) or an <strong>optional struct field</strong> (its getter returns <code>Option&lt;field&gt;</code>). In those spots the accessor flattens to a single <code>Option&lt;T&gt;</code>, so a read returns <code>None</code> for <strong>both</strong> an absent entry and a present-but-<code>null</code> one (the same convention the c-style enum <code>as_*()</code> getters use). The underlying rust type keeps all three states (absent / present-null / present-value), so CBOR round-trips are unaffected — only the wasm read side conflates absent with null.</p>
 <p>To recover the three states on the <strong>read</strong> side without changing any existing getter signature, additive presence accessors are emitted right beside the flattening getter. Use these read protocols:</p>
@@ -145,6 +239,6 @@ itself — no wrapper is generated, and the struct keeps its normal per-field co
 <li class=""><strong><code>to_json_value()</code> fails loud</strong> — it throws (<code>... can&#x27;t be represented as a JavaScript number</code>) instead of silently returning a rounded <code>number</code>. <code>serde-wasm-bindgen</code>&#x27;s <code>json_compatible</code> mode does not emit <code>BigInt</code> (a <code>BigInt</code> would not survive <code>JSON.stringify</code> and would change the JS type of <em>every</em> integer field), so refusing is the safe behaviour.</li>
 <li class=""><strong><code>JSON.parse(to_json())</code> is lossy</strong> for these values — that is a property of JavaScript&#x27;s native <code>JSON.parse</code>, not of the generated code.</li>
 </ul>
-<p>If you need full precision above <code>2^53</code> on the JS side, take <code>to_json()</code> and parse it with a BigInt-aware JSON parser rather than <code>JSON.parse</code> / <code>to_json_value()</code>.</p></div></article><nav class="docusaurus-mt-lg pagination-nav" aria-label="Docs pages"><a class="pagination-nav__link pagination-nav__link--prev" href="/cddl-codegen/preserving_edits"><div class="pagination-nav__sublabel">Previous</div><div class="pagination-nav__label">Preserving edits to generated code</div></a><a class="pagination-nav__link pagination-nav__link--next" href="/cddl-codegen/comment_dsl"><div class="pagination-nav__sublabel">Next</div><div class="pagination-nav__label">Comment DSL</div></a></nav></div></div><div class="col col--3"><div class="tableOfContents_bqdL thin-scrollbar theme-doc-toc-desktop"><ul class="table-of-contents table-of-contents__left-border"><li><a href="#heterogeneous-arrays" class="table-of-contents__link toc-highlight">Heterogeneous Arrays</a></li><li><a href="#tables" class="table-of-contents__link toc-highlight">Tables</a></li><li><a href="#non-empty-containers-the-two-wrapper-pattern" class="table-of-contents__link toc-highlight">Non-empty containers (the two-wrapper pattern)</a></li><li><a href="#enums" class="table-of-contents__link toc-highlight">Enums</a></li><li><a href="#tag-and-newtype-wrappers" class="table-of-contents__link toc-highlight">Tag and <code>@newtype</code> wrappers</a></li><li><a href="#nullable--nested-options" class="table-of-contents__link toc-highlight">Nullable / nested Options</a><ul><li><a href="#write-side-semantics" class="table-of-contents__link toc-highlight">Write-side semantics</a></li></ul></li><li><a href="#json-and-large-integers" class="table-of-contents__link toc-highlight">JSON and large integers</a></li></ul></div></div></div></div></main></div></div></div><footer class="theme-layout-footer footer footer--dark"><div class="container container-fluid"><div class="footer__bottom text--center"><div class="footer__copyright">Copyright © 2026 dcSpark. Built with Docusaurus.</div></div></div></footer></div>
+<p>If you need full precision above <code>2^53</code> on the JS side, take <code>to_json()</code> and parse it with a BigInt-aware JSON parser rather than <code>JSON.parse</code> / <code>to_json_value()</code>.</p></div></article><nav class="docusaurus-mt-lg pagination-nav" aria-label="Docs pages"><a class="pagination-nav__link pagination-nav__link--prev" href="/cddl-codegen/preserving_edits"><div class="pagination-nav__sublabel">Previous</div><div class="pagination-nav__label">Preserving edits to generated code</div></a><a class="pagination-nav__link pagination-nav__link--next" href="/cddl-codegen/comment_dsl"><div class="pagination-nav__sublabel">Next</div><div class="pagination-nav__label">Comment DSL</div></a></nav></div></div><div class="col col--3"><div class="tableOfContents_bqdL thin-scrollbar theme-doc-toc-desktop"><ul class="table-of-contents table-of-contents__left-border"><li><a href="#heterogeneous-arrays" class="table-of-contents__link toc-highlight">Heterogeneous Arrays</a></li><li><a href="#tables" class="table-of-contents__link toc-highlight">Tables</a></li><li><a href="#non-empty-containers-the-two-wrapper-pattern" class="table-of-contents__link toc-highlight">Non-empty containers (the two-wrapper pattern)</a></li><li><a href="#reject-duplicates-containers" class="table-of-contents__link toc-highlight">Reject-duplicates containers</a></li><li><a href="#preserve-duplicates-tables" class="table-of-contents__link toc-highlight">Preserve-duplicates tables</a></li><li><a href="#enums" class="table-of-contents__link toc-highlight">Enums</a></li><li><a href="#tag-and-newtype-wrappers" class="table-of-contents__link toc-highlight">Tag and <code>@newtype</code> wrappers</a></li><li><a href="#the-any-type-anycbor" class="table-of-contents__link toc-highlight">The <code>any</code> type (<code>AnyCbor</code>)</a></li><li><a href="#nullable--nested-options" class="table-of-contents__link toc-highlight">Nullable / nested Options</a><ul><li><a href="#write-side-semantics" class="table-of-contents__link toc-highlight">Write-side semantics</a></li></ul></li><li><a href="#json-and-large-integers" class="table-of-contents__link toc-highlight">JSON and large integers</a></li></ul></div></div></div></div></main></div></div></div><footer class="theme-layout-footer footer footer--dark"><div class="container container-fluid"><div class="footer__bottom text--center"><div class="footer__copyright">Copyright © 2026 dcSpark. Built with Docusaurus.</div></div></div></footer></div>
 </body>
 </html>
