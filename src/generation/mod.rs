@@ -81,7 +81,7 @@ use enums::{
 
 mod wrappers;
 pub(crate) use wrappers::generate_tag_check;
-use wrappers::{generate_int, generate_wrapper_struct};
+use wrappers::{generate_any_cbor_wasm, generate_int, generate_wrapper_struct};
 
 mod collections;
 use collections::{
@@ -901,6 +901,15 @@ impl GenerationScope {
             self.emit_requested_collections(types, cli);
         }
 
+        // wasm face of the `AnyCbor` runtime type (CDDL `any`). Keyed on `uses_any_cbor()`, not on
+        // an ident reference (`AnyCbor` is a static-runtime type, never a `RustStruct`), so it is a
+        // direct prelude call rather than a `RustStructType::Extern` match arm like `Int`. Placed
+        // after the collection-wrapper walk so a `MapAnyToAny`/`AnyList` wrapper is already minted;
+        // the wrapper fn itself branches on `--common-import-override`.
+        if cli.wasm && types.uses_any_cbor() {
+            generate_any_cbor_wasm(self, types, cli);
+        }
+
         // JSON export crate
         if cli.json_schema_export {
             self.json_lines
@@ -946,6 +955,23 @@ impl GenerationScope {
                     .push(format!(
                         "gen_json_schema!({});",
                         rust_crate_struct_from_wasm(types, rust_ident, cli)
+                    ));
+            }
+            // `AnyCbor` (CDDL `any`) is a static-runtime type, not a `RustStruct`, so the loop above
+            // never emits its schema row — yet a spec that uses `any` references `AnyCbor` in every
+            // dependent schema. Without a dedicated row, `run-json2ts.js`'s
+            // `declareExternallyReferenced: false` leaves the final `.d.ts` REFERENCING `AnyCborJSON`
+            // without DECLARING it. Emit its own row so the schema file is written and `AnyCborJSON`
+            // is declared once. Only in the own-static crate: under `--common-import-override`
+            // `AnyCbor` lives in the common crate, whose own json-gen run exports its schema (the
+            // same "each crate exports only its own schemas" rule the non-export-scope skip enforces).
+            if types.uses_any_cbor() && cli.export_static_files() {
+                main_lines_by_file
+                    .entry((*ROOT_SCOPE).clone())
+                    .or_default()
+                    .push(format!(
+                        "gen_json_schema!({}::any_cbor::AnyCbor);",
+                        cli.lib_name_code()
                     ));
             }
             let multiple_files = main_lines_by_file.len() > 1;

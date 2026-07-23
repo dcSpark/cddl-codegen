@@ -1351,9 +1351,20 @@ impl ConceptualRustType {
             ),
             Self::Primitive(p) => p.to_string(),
             // The static-runtime `AnyCbor`, reached through the same common-import glue as the other
-            // own-module runtime types (`ordered_hash_map::OrderedHashMap`), so
-            // `--export-static-crate` / `--common-import-override` resolve it unchanged.
-            Self::Any => format!("{}::any_cbor::AnyCbor", cli.common_import_rust()),
+            // own-module runtime types (`ordered_hash_map::OrderedHashMap`). `from_wasm` renders the
+            // rust type as seen FROM the wasm crate — the wasm-crate-visible prefix
+            // (`common_import_wasm()`: `<lib>` non-override, the override crate otherwise), never
+            // `common_import_rust()` (`crate::generated`), which in the wasm crate would name the
+            // wasm crate's own — absent — `any_cbor` module. The rust-side path
+            // (`crate::generated::any_cbor::AnyCbor`) is unchanged for in-crate members.
+            Self::Any => {
+                let common = if from_wasm {
+                    cli.common_import_wasm()
+                } else {
+                    cli.common_import_rust().to_owned()
+                };
+                format!("{common}::any_cbor::AnyCbor")
+            }
             Self::Rust(ident) => {
                 if from_wasm && !types.is_enum(ident) {
                     crate::generation::rust_crate_struct_from_wasm(types, ident, cli)
@@ -1484,6 +1495,13 @@ impl ConceptualRustType {
                 ToWasmBoundaryOperations::Code(expr_cloned),
                 ToWasmBoundaryOperations::Into,
             ],
+            // `AnyCbor` is a distinct wasm wrapper (`is_wasm_copy` false, so the clone stays); the
+            // wasm->rust `.into()` reaches the `From<wasm AnyCbor> for rust AnyCbor` conversion
+            // `add_conversion_methods` emits. Same shape as `Rust(_ident)`/`Map`.
+            Self::Any => vec![
+                ToWasmBoundaryOperations::Code(expr_cloned),
+                ToWasmBoundaryOperations::Into,
+            ],
             _ => vec![ToWasmBoundaryOperations::Code(expr.to_owned())],
         };
         if can_fail {
@@ -1505,7 +1523,7 @@ impl ConceptualRustType {
                 vec![ToWasmBoundaryOperations::Code(expr.to_owned())]
             }
             Self::Alias(_ident, ty) => ty.from_wasm_boundary_clone_optional(types, expr, can_fail),
-            Self::Array(..) | Self::Rust(..) | Self::Map(..) => vec![
+            Self::Array(..) | Self::Rust(..) | Self::Map(..) | Self::Any => vec![
                 ToWasmBoundaryOperations::Code(expr.to_owned()),
                 if can_fail {
                     ToWasmBoundaryOperations::MapTryInto
@@ -1564,6 +1582,12 @@ impl ConceptualRustType {
                 }
             }
             Self::Map(_k, _v) => expr.to_owned(),
+            // `AnyCbor` is a by-ref wasm wrapper (not directly exposable): the map-key `get`/`has`
+            // caller appends `.as_ref()`, and the wasm `AnyCbor`'s `AsRef<rust AnyCbor>` (from
+            // `add_conversion_methods`) yields the `&native` the lookup wants — so return `expr`
+            // unchanged, exactly like the non-exposable `Rust(_ident)` arm. The `&{expr}` catch-all
+            // would produce `&key.as_ref()` (`&&rust AnyCbor`, E0308).
+            Self::Any => expr.to_owned(),
             _ => format!("&{expr}"),
         }
     }

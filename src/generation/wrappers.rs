@@ -1187,3 +1187,105 @@ pub(super) fn generate_int(gen_scope: &mut GenerationScope, types: &Intermediate
         .push_impl(ser_impl)
         .push_impl(deser_impl);
 }
+
+/// wasm face of the `AnyCbor` runtime type (CDDL `any`). Sibling of `generate_int`; called from the
+/// generate loop's wasm prelude when `types.uses_any_cbor() && cli.wasm` (keyed on usage, not on an
+/// ident reference — `AnyCbor` is a static-runtime type, never a registered `RustStruct`).
+///
+/// Two paths, exactly as `generate_int`:
+/// - `--common-import-override` (`!export_static_files()`): re-export the common WASM crate's
+///   `AnyCbor`/`AnyCborKind` classes (a forked `#[wasm_bindgen]` class cannot link into one cdylib),
+///   routing the crate key through `--extern-wasm-crate` with the `common_import_wasm()` fallback.
+/// - own-static path: mint a base wrapper around the import-glued rust `AnyCbor`. The base struct
+///   already provides `from_cbor_bytes`/`to_cbor_bytes` (+ `to_json`/`from_json` under the json
+///   flag) against `self.0` — `AnyCbor` impls the local `Serialize`/`Deserialize` traits and, under
+///   the json flag, serde's — so v1's CBOR/JSON surface needs no hand-written method bodies. We add
+///   only `kind()` and a wasm-side `AnyCborKind` c-style enum.
+pub(super) fn generate_any_cbor_wasm(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    cli: &Cli,
+) {
+    assert!(cli.wasm);
+    let ident = RustIdent::new(CDDLIdent::new("AnyCbor"));
+    let kind_ident = RustIdent::new(CDDLIdent::new("AnyCborKind"));
+
+    if !cli.export_static_files() {
+        // Wasm FACE of the common crate's runtime types: route the `--common-import-override` key
+        // through `--extern-wasm-crate` (same rule as `Int` and the deferred collection wrappers),
+        // falling back to `common_import_wasm()` when unmapped (single-crate rust+wasm target).
+        let wasm_common = cli
+            .extern_wasm_crate_map()
+            .get(cli.common_import_rust())
+            .cloned()
+            .unwrap_or_else(|| cli.common_import_wasm());
+        gen_scope
+            .wasm(types, &ident)
+            .raw(format!("pub use {wasm_common}::{{AnyCbor, AnyCborKind}};"));
+        return;
+    }
+
+    // Import-glued inner rust path. The synthetic `AnyCbor` ident has no registered scope
+    // (`types.scope` -> root), so `create_base_wasm_wrapper`'s `default_structure` path would
+    // mis-render it as `<lib>::AnyCbor`, missing the `any_cbor` submodule. Build the base with no
+    // inner field, then push the correct native name by hand. `common_import_wasm()` is the rust
+    // crate as seen from wasm code (its `any_cbor` module is re-exported at the crate root via
+    // `pub use generated::*`).
+    let native_name = format!("{}::any_cbor::AnyCbor", cli.common_import_wasm());
+    let mut wrapper = create_base_wasm_wrapper(gen_scope, types, &ident, false, cli);
+    wrapper.push_inner_field(&native_name);
+    wrapper.add_conversion_methods(&native_name, cli);
+
+    let mut kind_fn = codegen::Function::new("kind");
+    kind_fn
+        .vis("pub")
+        .arg_ref_self()
+        .ret("AnyCborKind")
+        .line("self.0.kind().into()");
+    wrapper.s_impl.push_fn(kind_fn);
+    wrapper.push(gen_scope, types);
+
+    // wasm-exposable `AnyCborKind`: the rust `AnyCborKind` lives in the rust crate without a
+    // `#[wasm_bindgen]` attr, so the wasm face mints its own c-style enum plus a `From` conversion
+    // (the pattern for kind accessors whose enum is not itself feature-gated in the rust crate). The
+    // variant set mirrors `static/any_cbor_*.rs`'s `AnyCborKind` verbatim — a fixed runtime-type
+    // contract; keep in lockstep if that enum ever gains a variant.
+    const ANY_CBOR_KIND_VARIANTS: [&str; 12] = [
+        "UInt",
+        "NInt",
+        "Bytes",
+        "Text",
+        "Array",
+        "Map",
+        "Tag",
+        "Bool",
+        "Null",
+        "Undefined",
+        "Unassigned",
+        "Float",
+    ];
+    let native_kind = format!("{}::any_cbor::AnyCborKind", cli.common_import_wasm());
+    let mut kind_enum = codegen::Enum::new("AnyCborKind");
+    kind_enum
+        .vis("pub")
+        .derive("Copy")
+        .derive("Clone")
+        .attr("wasm_bindgen");
+    for v in ANY_CBOR_KIND_VARIANTS {
+        kind_enum.new_variant(v);
+    }
+    gen_scope.wasm(types, &kind_ident).push_enum(kind_enum);
+
+    let mut kind_from = codegen::Impl::new("AnyCborKind");
+    let mut kind_from_fn = codegen::Function::new("from");
+    kind_from_fn.arg("native", &native_kind).ret("Self");
+    let mut match_block = Block::new("match native");
+    for v in ANY_CBOR_KIND_VARIANTS {
+        match_block.line(format!("{native_kind}::{v} => Self::{v},"));
+    }
+    kind_from_fn.push_block(match_block);
+    kind_from
+        .impl_trait(format!("From<{native_kind}>"))
+        .push_fn(kind_from_fn);
+    gen_scope.wasm(types, &kind_ident).push_impl(kind_from);
+}
