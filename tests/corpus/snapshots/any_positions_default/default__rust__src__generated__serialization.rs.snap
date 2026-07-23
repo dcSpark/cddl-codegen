@@ -10,6 +10,98 @@ use crate::generated::error::*;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
 
+impl cbor_event::se::Serialize for ChoiceLastAny {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            ChoiceLastAny::U64(uint) => serializer.write_unsigned_integer(*uint),
+            ChoiceLastAny::Text(text) => serializer.write_text(text),
+            ChoiceLastAny::Any(any) => any.serialize(serializer),
+        }
+    }
+}
+
+impl Deserialize for ChoiceLastAny {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let initial_position = raw.position();
+            let mut errs = Vec::new();
+            let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                Ok(raw.unsigned_integer()?)
+            })(raw);
+            match deser_variant {
+                Ok(uint) => return Ok(Self::U64(uint)),
+                Err(e) => {
+                    errs.push(e.annotate("U64"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            let deser_variant =
+                (|raw: &mut Deserializer| -> Result<_, DeserializeError> { Ok(raw.text()?) })(raw);
+            match deser_variant {
+                Ok(text) => return Ok(Self::Text(text)),
+                Err(e) => {
+                    errs.push(e.annotate("Text"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            let deser_variant: Result<_, DeserializeError> =
+                crate::generated::any_cbor::AnyCbor::deserialize(raw);
+            match deser_variant {
+                Ok(any) => return Ok(Self::Any(any)),
+                Err(e) => {
+                    errs.push(e.annotate("Any"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
+        })()
+        .map_err(|e| e.annotate("ChoiceLastAny"))
+    }
+}
+
+impl cbor_event::se::Serialize for ChoiceTaggedAny {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            ChoiceTaggedAny::Any(any) => {
+                serializer.write_tag(11u64)?;
+                any.serialize(serializer)
+            }
+            ChoiceTaggedAny::Text(text) => serializer.write_text(text),
+        }
+    }
+}
+
+impl Deserialize for ChoiceTaggedAny {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::Tag => {
+                    let any = match raw.tag()? {
+                        11 => crate::generated::any_cbor::AnyCbor::deserialize(raw)?,
+                        tag => {
+                            return Err(DeserializeFailure::TagMismatch {
+                                found: tag,
+                                expected: 11,
+                            }
+                            .into());
+                        }
+                    };
+                    Ok(Self::Any(any))
+                }
+                cbor_event::Type::Text => Ok(ChoiceTaggedAny::Text(raw.text()?)),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("ChoiceTaggedAny"))
+    }
+}
+
 impl cbor_event::se::Serialize for MemberArray {
     fn serialize<'se>(
         &self,

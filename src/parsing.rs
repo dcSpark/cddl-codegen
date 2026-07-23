@@ -503,27 +503,41 @@ fn parse_type_choices(
         // post-collapse seam (`nominalize_inline_sets`, run in `finalize`) nominalizes them on the
         // registered product, so a discarded arm never mints a spurious nominal.
         let variants = create_variants_from_type_choices(types, parent_visitor, type_choices, cli);
-        // A bare (or tagged) `any` type-choice arm is A2-rejected gracefully: `any` accepts every
-        // CBOR item, so it overlaps every other arm — it can only ever be a LAST catch-all, and even
-        // there the correct dispatch is forced backtracking (a typed arm matching on wire type but
-        // failing on content must fall through to `any`), which is A3 scope (DESIGN §3.5/§10.6). A
-        // CONTAINER-of-any arm (`[* any]` = `Array(Any)`, `{* any => any}` = `Map(..)`) is a normal
-        // distinct-CBOR-type arm and is NOT caught here (its conceptual type is Array/Map, not Any) —
-        // it dispatches correctly through the ordinary choice machinery.
-        if variants.iter().any(|v| {
+        // A BARE `any` type-choice arm (conceptual `Any`, no CBOR encoding operations) accepts every
+        // CBOR item, so it overlaps every other arm and can only ever be a LAST catch-all: any earlier
+        // position leaves the arms after it unreachable (ruling §10.6). We allow it last and reject it
+        // elsewhere. The dispatch is forced backtracking (a typed arm matching on wire type but failing
+        // on *content* — bounds, inner structure — must fall through to `any`); the strategy selector
+        // in generation/enums.rs auto-selects it because `Any::cbor_types` spans all 8 major types, so
+        // the non-overlap analysis can never pick the `cbor_type()`-dispatch form for an `any`-armed
+        // choice (asserted at that site). A TAGGED `any` arm (`#6.n(any)`) is NOT a catch-all — its
+        // `cbor_types()` is `[Tag]`, so it type-dispatches like any other tagged arm and is allowed in
+        // ANY position; it flows through the ordinary machinery below. A CONTAINER-of-any arm
+        // (`[* any]` = `Array(Any)`, `{* any => any}` = `Map(..)`) has conceptual type Array/Map, not
+        // Any, and is not caught here either.
+        let is_bare_any = |v: &EnumVariant| {
             matches!(
                 &v.data,
                 EnumVariantData::RustType(ty)
-                    if matches!(ty.conceptual_type.resolve_alias_shallow(), ConceptualRustType::Any)
+                    if ty.encodings.is_empty()
+                        && matches!(
+                            ty.conceptual_type.resolve_alias_shallow(),
+                            ConceptualRustType::Any
+                        )
             )
-        }) {
+        };
+        if let Some((bad_pos, _)) = variants
+            .iter()
+            .enumerate()
+            .find(|(i, v)| is_bare_any(v) && *i != variants.len() - 1)
+        {
             types.record_rejection(format!(
-                "`any` in a type-choice arm (`{name} = … / any / …`) is not yet supported: `any` \
-                 overlaps every other arm, so a catch-all union arm needs forced-backtracking \
-                 dispatch (planned). For now use `any` in a member (`{{ 1: any }}`), array element \
-                 (`[* any]`), table (`{{ * k => any }}`), tagged (`#6.n(any)`), or top-level \
-                 (`x = any`) position — or wrap it (`[* any]` / `{{ * any => any }}`) as a choice \
-                 arm, which is supported."
+                "`any` arm makes later arms unreachable — move it last (`{name} = … / any`). A bare \
+                 `any` type-choice arm accepts every CBOR item, so it can only be the final \
+                 catch-all; here arm {} of {} is `any` but not the last arm. (A tagged `any` arm — \
+                 `#6.n(any)` — is not a catch-all and may appear in any position.)",
+                bad_pos + 1,
+                variants.len()
             ));
             return;
         }

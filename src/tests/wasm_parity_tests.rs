@@ -282,6 +282,13 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
          named `any` behaves as today; no `any` lowering, and its integration coverage is the \
          `user_rule_named_any_shadows_the_prelude` unit test, not a wasm differential",
     ),
+    (
+        "any-choice",
+        "rust-only loose-CBOR content-fallthrough fixture (`uint .le 5 / any`): a spec whose IR \
+         contains `any` is gracefully rejected under --wasm=true (the AnyCbor wasm wrapper is phase \
+         A3 WP3), so there is no generated wasm surface to differential; its coverage is the \
+         `any_choice_content_fallthrough` integration test",
+    ),
 ];
 
 /// Only these `.rs` basenames may appear under `rust/src/generated/` (default/json profiles); only

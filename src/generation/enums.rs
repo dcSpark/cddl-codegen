@@ -1027,6 +1027,27 @@ fn generate_enum(
             Some((Block::new("match raw.cbor_type()?"), deser_covers_all_types))
         }
     };
+    // A bare `any` type-choice arm (conceptual `Any`, no encoding ops) accepts every CBOR item, so
+    // its `cbor_types()` spans all 8 major types — it overlaps every other arm, forcing
+    // `non_overlapping_types_match = None` above and thus the backtracking emitter. That forcing is
+    // REQUIRED for correctness: the `cbor_type()`-dispatch form routes by wire type first, so a typed
+    // arm that matches on type but fails on *content* (e.g. `uint .le 5` vs wire `6`) would error
+    // inside that arm and never reach the catch-all `any`, violating CDDL (DESIGN §3.5). Assert it
+    // loudly rather than silently miscompile if `Any::cbor_types` ever narrows.
+    debug_assert!(
+        non_overlapping_types_match.is_none()
+            || !variants.iter().any(|v| matches!(
+                &v.data,
+                EnumVariantData::RustType(ty)
+                    if ty.encodings.is_empty()
+                        && matches!(
+                            ty.conceptual_type.resolve_alias_shallow(),
+                            ConceptualRustType::Any
+                        )
+            )),
+        "an `any` choice arm must force the backtracking deserializer (never the \
+         cbor_type()-dispatch form); `Any::cbor_types` must span all major types"
+    );
     if non_overlapping_types_match.is_none() {
         deser_body
             .line("let initial_position = raw.position();")

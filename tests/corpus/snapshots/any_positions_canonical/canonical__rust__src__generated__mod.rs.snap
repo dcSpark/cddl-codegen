@@ -20,11 +20,73 @@ mod extern_interface_check;
 pub mod serialization;
 
 use crate::generated::ordered_hash_map::OrderedHashMap;
+use crate::generated::serialization::StringEncoding;
 use cbor_encodings::{MemberArrayEncoding, MemberMapEncoding, TaggedEncoding};
 
 impl From<Tagged> for crate::generated::any_cbor::AnyCbor {
     fn from(wrapper: Tagged) -> Self {
         wrapper.inner
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum ChoiceLastAny {
+    U64 {
+        uint: u64,
+        uint_encoding: Option<cbor_event::Sz>,
+    },
+    Text {
+        text: String,
+        text_encoding: StringEncoding,
+    },
+    Any(crate::generated::any_cbor::AnyCbor),
+}
+
+impl ChoiceLastAny {
+    pub fn new_uint(uint: u64) -> Self {
+        Self::U64 {
+            uint,
+            uint_encoding: None,
+        }
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text {
+            text,
+            text_encoding: StringEncoding::default(),
+        }
+    }
+
+    pub fn new_any(any: crate::generated::any_cbor::AnyCbor) -> Self {
+        Self::Any(any)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum ChoiceTaggedAny {
+    Any {
+        any: crate::generated::any_cbor::AnyCbor,
+        any_tag_encoding: Option<cbor_event::Sz>,
+    },
+    Text {
+        text: String,
+        text_encoding: StringEncoding,
+    },
+}
+
+impl ChoiceTaggedAny {
+    pub fn new_any(any: crate::generated::any_cbor::AnyCbor) -> Self {
+        Self::Any {
+            any,
+            any_tag_encoding: None,
+        }
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text {
+            text,
+            text_encoding: StringEncoding::default(),
+        }
     }
 }
 

@@ -3862,7 +3862,7 @@ fn flag_value_rejects_any_under_wasm_and_json() {
 /// and no `any_cbor` module is pulled in. Pins the interception seam's shadowing guarantee (A2).
 #[test]
 fn user_rule_named_any_shadows_the_prelude() {
-    // tests/any-shadow/input.cddl is `any = uint` + `foo = {1: any}`.
+    // tests/any-shadow/input.cddl is `any = uint` + `foo = {1: any}` + a choice arm `bar = tstr / any`.
     let files = crate::api::generated_strings(&crate::cli::Cli {
         input: std::path::PathBuf::from("tests/any-shadow/input.cddl"),
         output: std::path::PathBuf::from("unused"),
@@ -3872,10 +3872,19 @@ fn user_rule_named_any_shadows_the_prelude() {
     })
     .expect("shadowed `any` should generate");
     let all = files.values().cloned().collect::<String>();
-    // The user alias wins: the field is the uint-backed `Any` alias, never the runtime AnyCbor.
+    // The user alias wins in EVERY position — member (`foo`) AND type-choice arm (`bar`): the field
+    // and the arm are the uint-backed `Any` alias, never the runtime AnyCbor. A choice arm that
+    // failed to resolve the shadow would either lower to `AnyCbor` or force backtracking dispatch.
     assert!(
         !all.contains("AnyCbor") && !all.contains("any_cbor"),
         "a user `any = uint` rule must not pull in the AnyCbor runtime type"
+    );
+    // `bar = tstr / any` is an ordinary `tstr / uint` choice: the arm resolves to the user's uint
+    // alias, so the enum gains an `Any(Any)` variant carrying the u64-backed user alias — NOT the
+    // catch-all runtime type. (`pub type Any = u64;` is the user rule; the variant reuses its name.)
+    assert!(
+        all.contains("pub enum Bar") && all.contains("Any(Any)") && all.contains("type Any = u64"),
+        "the shadowed `any` choice arm must reuse the user's uint alias, not the runtime type:\n{all}"
     );
 
     // baseline: WITHOUT the shadowing rule, `{1: any}` (tests/robustness/any_member.cddl's sibling
@@ -5476,6 +5485,23 @@ fn golden_hex_canonical() {
             "--preserve-encodings=true",
             "--canonical-form=true",
         ],
+        None,
+        &[],
+        &[],
+        false,
+        &[],
+    );
+}
+
+#[test]
+fn any_choice_content_fallthrough() {
+    // Loose-CBOR A3 WP1: a bare `any` type-choice catch-all in last position. Rust-only (the wasm
+    // AnyCbor surface is A3 WP3). Preserve-encodings so the round-trip asserts byte-exact fidelity
+    // through the `any` arm — including a non-minimal header the typed arm's content bound rejects.
+    // See tests/any-choice/tests.rs for the content-fallthrough vector (DESIGN §3.5).
+    run_test(
+        "any-choice",
+        &["--wasm=false", "--preserve-encodings=true"],
         None,
         &[],
         &[],

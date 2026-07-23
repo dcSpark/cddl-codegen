@@ -1,6 +1,5 @@
 ---
 source: src/tests/robustness_tests.rs
-assertion_line: 2744
 expression: catalog
 ---
 # generator outcome per malformed/edge input
@@ -13,6 +12,7 @@ choice_any_arm             error (graceful)
 choice_array_any_arm       error (graceful)
 choice_cbor_ref_arm        PANIC
 choice_group_array_arm     ok
+choice_last_any_arm        error (graceful)
 duplicate_rule             error (graceful)
 empty                      ok
 empty_array                ok

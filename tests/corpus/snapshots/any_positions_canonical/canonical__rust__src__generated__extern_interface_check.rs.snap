@@ -33,6 +33,10 @@ use crate::generated::TableUintAny as _;
 use crate::generated::TopAlias as _;
 #[allow(dead_code)]
 fn _extern_interface_self_check() {
+    _assert_serialize::<crate::generated::ChoiceLastAny>();
+    _assert_deserialize::<crate::generated::ChoiceLastAny>();
+    _assert_serialize::<crate::generated::ChoiceTaggedAny>();
+    _assert_deserialize::<crate::generated::ChoiceTaggedAny>();
     _assert_serialize::<crate::generated::MemberArray>();
     _assert_deserialize::<crate::generated::MemberArray>();
     _assert_serialize::<crate::generated::MemberMap>();
