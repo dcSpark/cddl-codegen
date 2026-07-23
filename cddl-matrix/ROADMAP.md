@@ -748,6 +748,16 @@ stale, caught only by a dedicated post-delivery doc audit, not by any of the six
 reviews. A second such instance in the pinned-cell prose is the trigger to derive that count/list
 from `MULTIFILE_MATRIX_SKIP` itself (a generated span, per this rule) rather than re-auditing.
 
+The wasm-oracle evidence clause names its observation stage, not the failure's actual stage: a
+generation-time REFUSAL on the wasm leg (e.g. an `any`-using spec under `--wasm=true`, gracefully
+rejected until the wasm surface ships) is recorded as `wasm crate failed to compile (cargo test
+exit 1)` — the oracle's generic phrasing for "the wasm pipeline produced no passing crate" — which
+reads as a compile regression to an annotations reader (it nearly misled the A2 delivery review).
+On the next edit to the wasm-oracle evidence composer, distinguish the stages in the clause
+(generation refused / generated but failed to compile / compiled but tests failed) so a deliberate
+graceful rejection is not mistaken for a build break; until then, cross-check a surprising wasm
+clause against the generator's own exit before treating it as a regression.
+
 `verify.ts`'s hard-fail accounting (the `hard_fail` expression) and its console sections are two
 hand-maintained parallel lists, so a category can join the failure verdict without joining the
 output: `cddl_codegen_gaps` did exactly that — a run failed with "see above" pointing at nothing,

@@ -137,9 +137,12 @@ Two limits apply today. **Surfaces**: only the Rust surface is generated. A spec
 `any` is rejected gracefully at generation time under `--wasm=true` or the JSON flags
 (`--json-serde-derives` / `--json-schema-export`), each with a message naming the workaround
 (`--wasm=false`, or drop the JSON flags); the wasm wrapper and JSON/schema surfaces arrive in a later
-phase. **Type-choice arms**: `any` as a type-choice alternative (`a = any / tstr`, `a = [* any] / tstr`)
-is not yet supported and is rejected gracefully at generation — a last-position `any` arm needs forced
-backtracking semantics that also arrive in the later phase. Note the distinct construct `#`
+phase. **Type-choice arms**: a bare `any` arm (`a = any / tstr`) is not yet supported and is rejected
+gracefully at generation — a last-position catch-all `any` arm needs forced-backtracking semantics that
+also arrive in the later phase. A *container* of `any` as an arm (`a = [* any] / tstr`) is an ordinary
+supported arm today: `[* any]` is a homogeneous array whose CBOR wire type (Array) is distinct from the
+other arms', so the existing choice machinery dispatches it — only the bare arm, which overlaps every
+other arm, waits on the catch-all semantics. Note the distinct construct `#`
 (`Type2::Any`, a bare `#` matching any item at the *grammar* level) stays unsupported and is a separate
 [Limitations](#unsupported-constructs) row.
 

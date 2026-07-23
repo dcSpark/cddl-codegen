@@ -1631,11 +1631,16 @@ malformed/truncated prefixes (must `Err`, never panic), and seeded-PRNG random s
 values for both variants — the seed prints on failure, so a red run reproduces by pasting the
 seed.
 
-Two standing caveats: the static files are NOT yet in any export/copy list (`export.rs`), so
-this layer is currently their only compile and behavior coverage; and the depth corpus stops
-at a stack-safe 64 because the depth guard isn't reachable from unconditionally-present
-static code yet — the guard-exceeded vector is a ledgered deferral
-(`tests/TESTING_ROADMAP.md`, the `AnyCbor` depth entry).
+Since A2, generated crates whose spec uses `any` also compile these files — the usage-gated
+`any_cbor` module assembled in `export.rs` (`--export-static-crate` exports it always, as a
+pure function of flags) — so this layer is no longer their only coverage; it remains the only
+layer that judges the byte-exactness contract itself. The depth guard is wired through the
+single `read` recursion seam via an includer-supplied `any_cbor_recursion_guard!()` macro:
+the three per-assembly shims here define it as a no-op, and a fourth `depth_guard` shim
+includes the guard runtime with a small baked limit and pins the at/under/over-limit vectors
+(over errors `DeserializeFailure::DepthLimitExceeded`, no SIGABRT), with an e2e counterpart
+(`integration_tests::deserialize_depth_limit_guards_any_member`) proving a generated
+`--deserialize-depth-limit` crate rejects a pathologically deep value in an `any` position.
 
 ## wasm-ABI matrix (`tests/matrix_wasm/` + `integration_tests::wasm_matrix_compiles`)
 
