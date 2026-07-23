@@ -920,7 +920,14 @@ Every key falls into one of three categories:
   `default-features`, extra features, a `version` you added beside our `path` for publishing — is
   preserved, and the entry keeps its existing shape (a plain-string dep stays a plain string unless a
   merged field forces a table). This means, e.g., `wasm-bindgen = { version = "0.2.126", optional =
-  true }` survives regeneration with its `optional` intact instead of collapsing to `"0.2"`. A
+  true }` survives regeneration with its `optional` intact instead of collapsing to `"0.2"`.
+  One exception to field preservation: a tool spec that pins a **git source** — as the interim
+  `cbor_event` fork pin currently does — asserts the dep's *source axis*, so source-axis keys the
+  tool spec does not itself re-specify (`version`, `rev`, `branch`, `tag`, `path`, `registry`) are
+  **dropped** from your entry rather than preserved: a stale version requirement would constrain
+  against the wrong source (`^2.4.0` can never match a 3.x git checkout), and a leftover ref
+  selector would form pairs cargo rejects outright (`branch` + `rev`). Version-only tool specs keep
+  the floor semantics above — your own `git`/`path` source survives them. A
   conditional dep is emitted when its flag/type condition holds and *removed* when it doesn't, so
   flipping a flag off (e.g. dropping `--preserve-encodings`) also drops the deps it pulled in, rather
   than stranding them — note the removal deletes the whole entry, including any fields you added to it.
