@@ -24,4 +24,5 @@ pub fn export_schemas() {
     gen_json_schema!(cddl_lib::MemberArray);
     gen_json_schema!(cddl_lib::MemberMap);
     gen_json_schema!(cddl_lib::Tagged);
+    gen_json_schema!(cddl_lib::any_cbor::AnyCbor);
 }
