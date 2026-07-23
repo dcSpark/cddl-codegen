@@ -183,6 +183,30 @@ Two shapes interact with this surface specially:
   itself — no wrapper is generated, and the struct keeps its normal per-field constructor and getters.
   (A tag over a *named* struct rule, `t = #6.14(foo)`, still produces a wrapper with `new`/`get`.)
 
+## The `any` type (`AnyCbor`)
+
+CDDL [`any`](current_capacities#the-any-type-loose-cbor) lowers to the `AnyCbor` runtime value, which
+surfaces on the wasm boundary as a `#[wasm_bindgen]` `AnyCbor` class wrapping the rust runtime type.
+Its v1 surface is intentionally byte-oriented rather than field-destructuring:
+
+- `from_cbor_bytes(bytes: &[u8]) -> Result<AnyCbor, JsError>` / `to_cbor_bytes() -> Vec<u8>` — the
+  CBOR round-trip door (the same pair every wasm wrapper carries).
+- `kind() -> AnyCborKind` — a c-style `AnyCborKind` enum (variants `UInt`, `NInt`, `Bytes`, `Text`,
+  `Array`, `Map`, `Tag`, `Bool`, `Null`, `Undefined`, `Unassigned`, `Float`) for checking which CBOR
+  item is held, mirroring the `FooKind` pattern used for [enums](#enums).
+- `to_json()` / `from_json(json: &str)` — emitted only under `--json-serde-derives`, rendering the
+  [JSON representation of CBOR](output_format#the-any-type-anycbor-runtime-value).
+
+Value-destructuring accessors (`as_uint()`, `as_bytes()`, …) are deliberately **not** on the wasm
+class in v1 (they follow demand): to inspect a value, read `kind()` and take its bytes or JSON.
+
+Containers of `any` surface their ordinary List/Map wrapper classes: `[* any]` is `AnyList` (full
+`new`/`add`/`get`/`len` array API), and a table is `MapAnyToAny` / `MapU64ToAny` / `MapAnyToU64` for
+the `{ * any => any }` / `{ * uint => any }` / `{ * any => uint }` domain-range combinations (the same
+`insert`/`get`/`keys` surface as any other table wrapper). A top-level `x = any` alias surfaces **no**
+distinct wasm class of its own — the `AnyCbor` class *is* its wasm face (the one place `any` skips the
+rust/wasm type-alias parity, since a bare `AnyCbor` alias would add nothing).
+
 ## Nullable / nested Options
 
 `wasm_bindgen` cannot expose a doubly-nested `Option<Option<T>>` (`Option<T>` does not implement `OptionIntoWasmAbi`), the same way it can't expose a nested `Vec`. This happens when a nullable value (`T / null` → `Option<T>`) sits in a position that adds its own presence-`Option`: a **map value** (`get`/`insert` return `Option<value>`) or an **optional struct field** (its getter returns `Option<field>`). In those spots the accessor flattens to a single `Option<T>`, so a read returns `None` for **both** an absent entry and a present-but-`null` one (the same convention the c-style enum `as_*()` getters use). The underlying rust type keeps all three states (absent / present-null / present-value), so CBOR round-trips are unaffected — only the wasm read side conflates absent with null.
