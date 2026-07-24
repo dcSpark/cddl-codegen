@@ -335,6 +335,13 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
          surface is validated by the `open-struct-map` snapshot fixture's parity rows above",
     ),
     (
+        "open-array-e2e",
+        "loose-CBOR open array (rest tail) e2e round-trip fixture: its integration gate generates \
+         --wasm=false (it exercises CBOR round-trip, not the wasm boundary). Open-array capture \
+         presents a closed-struct wasm surface for now (no tail accessor — a later work package adds \
+         the getter), so there is no rest-specific wasm surface to differential here",
+    ),
+    (
         "open-struct-map-preserve-e2e",
         "loose-CBOR open struct-map PRESERVE fidelity e2e fixture: its integration gate generates \
          --preserve-encodings --canonical-form --wasm=false (CBOR fidelity, not the wasm boundary). \

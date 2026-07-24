@@ -1,0 +1,19 @@
+; Open array (loose CBOR "rest tail") end-to-end round-trip vectors. Plain flavor only
+; (--wasm=false, non-preserve): byte-exact per-element tail encodings under --preserve-encodings are
+; a later work package. See tests/open-array-e2e/tests.rs for the value-level vectors.
+cap = [uint, tstr, * uint]          ; typed tail (each trailing element is a uint)
+cap_any = [uint, * any]             ; any tail (captures nested-container elements)
+opt = [uint, ? tstr, * uint]        ; optional member + type-distinct tail (uint vs tstr)
+ign = [
+  uint,
+  * any ; @ignore                   ; tolerate-and-drop tail (drops trailing elements)
+]
+; Stream position (the cip36 skip-arm bug class): an open array is a member of an outer array; the
+; tail loop must stop at the open array's end and leave the sibling for the outer decoder.
+outer = [inner, uint]
+inner = [uint, * uint]
+outer_ign = [inner_ign, uint]
+inner_ign = [
+  uint,
+  * any ; @ignore
+]
