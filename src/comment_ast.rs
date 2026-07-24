@@ -97,6 +97,15 @@ pub struct RuleMetadata {
     /// bound solely on `RawBytesEncoding` compiles today under the plain name, so auto-flavoring
     /// would silently break working output. See `IntermediateTypes::mark_raw_bytes_flavor`.
     pub raw_bytes_flavor: bool,
+    /// `@ignore`: valid ONLY on a recognized open struct-map rest row (`* k => v` after fixed keys).
+    /// Selects the tolerate-and-DROP flavor — unknown map entries are typed-deserialized and then
+    /// discarded (no struct field is emitted, and serialize writes only the declared members), the
+    /// documented-lossy counterpart to the default capture flavor. Bare and argument-less, so it
+    /// OR-merges like the other boolean flags. On any other placement it is a graceful parse-time
+    /// rejection (never silently ignored), and it is rejected together with `--preserve-encodings`
+    /// (a preserve crate's byte-exact round-trip contract cannot hold for a deliberately-lossy type).
+    /// See `parsing::recognize_rest_row`.
+    pub ignore: bool,
     /// `@duplicates preserve|reject`: the per-rule duplicate-handling policy for a set/array/table
     /// collection rule. `None` = no directive (today's per-container defaults apply, unchanged). Only
     /// valid on collection rules; on any other placement it is a graceful parse-time rejection (never
@@ -133,6 +142,7 @@ pub fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
         used_as_elem: r1.used_as_elem || r2.used_as_elem,
         copy: r1.copy || r2.copy,
         raw_bytes_flavor: r1.raw_bytes_flavor || r2.raw_bytes_flavor,
+        ignore: r1.ignore || r2.ignore,
         duplicates: merge_metadata_fields!(r1.duplicates, r2.duplicates, "duplicates"),
         custom_json: r1.custom_json || r2.custom_json,
         custom_serialize: merge_metadata_fields!(
@@ -160,6 +170,7 @@ enum ParseResult {
     UsedAsElem,
     Copy,
     RawBytesFlavor,
+    Ignore,
     Duplicates(DuplicatesPolicy),
     CustomJson,
     CustomSerialize(String),
@@ -210,6 +221,9 @@ impl RuleMetadata {
                 }
                 ParseResult::RawBytesFlavor => {
                     base.raw_bytes_flavor = true;
+                }
+                ParseResult::Ignore => {
+                    base.ignore = true;
                 }
                 ParseResult::Duplicates(policy) => {
                     merge_parse_fields!(base.duplicates, policy, "duplicates")
@@ -332,6 +346,12 @@ fn tag_raw_bytes_flavor(input: &str) -> IResult<&str, ParseResult> {
     Ok((input, ParseResult::RawBytesFlavor))
 }
 
+fn tag_ignore(input: &str) -> IResult<&str, ParseResult> {
+    let (input, _) = tag("@ignore")(input)?;
+
+    Ok((input, ParseResult::Ignore))
+}
+
 fn tag_duplicates(input: &str) -> IResult<&str, ParseResult> {
     let (input, _) = tag("@duplicates")(input)?;
     let (input, _) = take_while(char::is_whitespace)(input)?;
@@ -403,6 +423,7 @@ fn whitespace_then_tag(input: &str) -> IResult<&str, ParseResult> {
         tag_used_as_elem,
         tag_copy,
         tag_raw_bytes_flavor,
+        tag_ignore,
         tag_duplicates,
         tag_custom_json,
         tag_custom_serialize,
@@ -436,6 +457,7 @@ pub const KNOWN_RULE_METADATA_TAGS: &[&str] = &[
     "@used_as_elem",
     "@copy",
     "@raw_bytes_flavor",
+    "@ignore",
     "@duplicates",
     "@custom_json",
     "@custom_serialize",
@@ -477,6 +499,7 @@ fn parse_comment_name() {
                 used_as_elem: false,
                 copy: false,
                 raw_bytes_flavor: false,
+                ignore: false,
                 duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
@@ -502,6 +525,7 @@ fn parse_comment_newtype() {
                 used_as_elem: false,
                 copy: false,
                 raw_bytes_flavor: false,
+                ignore: false,
                 duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
@@ -531,6 +555,7 @@ fn parse_comment_newtype_getter_before() {
                 used_as_elem: false,
                 copy: false,
                 raw_bytes_flavor: false,
+                ignore: false,
                 duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
@@ -560,6 +585,7 @@ fn parse_comment_newtype_getter_after() {
                 used_as_elem: false,
                 copy: false,
                 raw_bytes_flavor: false,
+                ignore: false,
                 duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
@@ -585,6 +611,7 @@ fn parse_comment_newtype_and_name() {
                 used_as_elem: false,
                 copy: false,
                 raw_bytes_flavor: false,
+                ignore: false,
                 duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
@@ -614,6 +641,7 @@ fn parse_comment_newtype_and_name_and_used_as_key() {
                 used_as_elem: false,
                 copy: false,
                 raw_bytes_flavor: false,
+                ignore: false,
                 duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
@@ -643,6 +671,7 @@ fn parse_comment_used_as_key() {
                 used_as_elem: false,
                 copy: false,
                 raw_bytes_flavor: false,
+                ignore: false,
                 duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
@@ -770,6 +799,7 @@ fn parse_comment_used_as_elem() {
                 used_as_elem: true,
                 copy: false,
                 raw_bytes_flavor: false,
+                ignore: false,
                 duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
@@ -800,6 +830,7 @@ fn parse_comment_used_as_elem_and_key() {
                 used_as_elem: true,
                 copy: false,
                 raw_bytes_flavor: false,
+                ignore: false,
                 duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
@@ -829,6 +860,7 @@ fn parse_comment_used_as_key_and_elem_inverse() {
                 used_as_elem: true,
                 copy: false,
                 raw_bytes_flavor: false,
+                ignore: false,
                 duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
@@ -855,6 +887,7 @@ fn parse_comment_newtype_getter_before_used_as_elem() {
                 used_as_elem: true,
                 copy: false,
                 raw_bytes_flavor: false,
+                ignore: false,
                 duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
@@ -880,6 +913,7 @@ fn parse_comment_used_as_elem_before_newtype_getter() {
                 used_as_elem: true,
                 copy: false,
                 raw_bytes_flavor: false,
+                ignore: false,
                 duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
@@ -941,6 +975,38 @@ fn merge_metadata_ors_raw_bytes_flavor() {
 #[test]
 fn parse_comment_copy() {
     assert!(rule_metadata("@copy").unwrap().1.copy);
+}
+
+// `@ignore` is a bare no-arg flag (the open struct-map tolerate-and-drop rest-row flavor).
+#[test]
+fn parse_comment_ignore() {
+    assert!(rule_metadata("@ignore").unwrap().1.ignore);
+}
+
+// `@ignore` is an independent flag that co-occurs with other tags, in either order, without
+// swallowing them (mirrors `@copy`'s ordering coverage). Here it pairs with `@name`, which a rest
+// row also accepts — the two are read together off the same entry-trailing slot.
+#[test]
+fn parse_comment_ignore_and_name() {
+    let md = rule_metadata("@ignore @name foo").unwrap().1;
+    assert!(md.ignore);
+    assert_eq!(md.name, Some("foo".to_string()));
+    let inverse = rule_metadata("@name foo @ignore").unwrap().1;
+    assert!(inverse.ignore);
+    assert_eq!(inverse.name, Some("foo".to_string()));
+}
+
+// Merging two comment lines OR-folds the flag, matching the other boolean tags' merge semantics.
+#[test]
+fn merge_metadata_ors_ignore() {
+    let lhs = RuleMetadata {
+        ignore: true,
+        ..Default::default()
+    };
+    let rhs = RuleMetadata::default();
+    assert!(merge_metadata(&lhs, &rhs).ignore);
+    assert!(merge_metadata(&rhs, &lhs).ignore);
+    assert!(!merge_metadata(&rhs, &rhs).ignore);
 }
 
 // `@copy` is an independent flag that co-occurs with other tags, in either order, without
@@ -1058,6 +1124,7 @@ fn parse_comment_newtype_and_name_inverse() {
                 used_as_elem: false,
                 copy: false,
                 raw_bytes_flavor: false,
+                ignore: false,
                 duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
@@ -1083,6 +1150,7 @@ fn parse_comment_name_noalias() {
                 used_as_elem: false,
                 copy: false,
                 raw_bytes_flavor: false,
+                ignore: false,
                 duplicates: None,
                 custom_json: false,
                 custom_serialize: None,
@@ -1108,6 +1176,7 @@ fn parse_comment_newtype_and_custom_json() {
                 used_as_elem: false,
                 copy: false,
                 raw_bytes_flavor: false,
+                ignore: false,
                 duplicates: None,
                 custom_json: true,
                 custom_serialize: None,
@@ -1139,6 +1208,7 @@ fn parse_comment_custom_serialize_deserialize() {
                 used_as_elem: false,
                 copy: false,
                 raw_bytes_flavor: false,
+                ignore: false,
                 duplicates: None,
                 custom_json: false,
                 custom_serialize: Some("foo".to_string()),
@@ -1171,6 +1241,7 @@ fn parse_comment_all_except_no_alias() {
                 used_as_elem: true,
                 copy: false,
                 raw_bytes_flavor: false,
+                ignore: false,
                 duplicates: None,
                 custom_json: true,
                 custom_serialize: Some("foo".to_string()),
