@@ -1858,18 +1858,13 @@ spec = "__probe_holder = [0, ignored_list]\nignored_list = [\n  uint,\n  * uint 
 mode = "holder"
 type_name = "ProbeHolder"
 
-# Hand-derived accept vectors (the open-array `@ignore` tail is a new construct; ruby-minted vectors
-# arrive with the next `--mint-decode-corpus` run and supplement these). Holder `[0, ignored_list]`:
-# a dropped-tail instance and an empty-tail instance, both verified to decode against the generated
-# ProbeHolder. The tail element type is `uint`, so a nested-container trailing element is a typing
-# error, not a drop — the drop-through is the two-trailing-uints instance.
 [[row.vector]]
-hex = "820083050708"
+hex = "82008105"
 source = "hand"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008105"
+hex = "820083050708"
 source = "hand"
 expect = "accept"
 
