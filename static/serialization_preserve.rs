@@ -138,3 +138,17 @@ impl From<cbor_event::StringLenSz> for StringEncoding {
         }
     }
 }
+
+/// Length-first-then-bytewise comparison of two encoded CBOR map keys — the RFC 7049 §3.9
+/// "canonical CBOR" key ordering (NOT pure RFC 8949 §4.2.1 bytewise). ONE shared runtime helper so
+/// every runtime canonical key sort agrees by construction: the `@duplicates preserve` pair-map
+/// sort, `AnyCbor`'s own canonical map serialization, and generated open struct-maps' runtime
+/// canonical key merge (loose-CBOR Phase B) all call it, and it is the runtime twin of the
+/// codegen-time `RustRecord::canonical_ordering` (pinned to agree by a divergence test vector, e.g.
+/// key `24` = `0x1818` vs `10` = `0x0a`, where the shorter encoding is bytewise-greater).
+pub fn cbor_canonical_key_cmp(lhs: &[u8], rhs: &[u8]) -> std::cmp::Ordering {
+    match lhs.len().cmp(&rhs.len()) {
+        std::cmp::Ordering::Equal => lhs.cmp(rhs),
+        diff_ord => diff_ord,
+    }
+}

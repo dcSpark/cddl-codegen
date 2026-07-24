@@ -1139,19 +1139,16 @@ impl GenerationScope {
                             let mut key_order_if = Block::new("if force_canonical");
                             // `sort_by` is a STABLE sort, so equal-keyed (duplicate) entries keep their
                             // first-appearance order — the property the preserve tuple carries `i` for.
-                            let sort_head = if preserve_pair_map {
-                                "key_order.sort_by(|(lhs_bytes, _, _, _), (rhs_bytes, _, _, _)|"
+                            // The length-first-then-bytewise comparison is the ONE shared runtime helper
+                            // (`cbor_canonical_key_cmp`, static preserve runtime), so this sort agrees
+                            // by construction with `AnyCbor`'s own canonical map sort and generated open
+                            // struct-maps' runtime key merge.
+                            let sort_call = if preserve_pair_map {
+                                "key_order.sort_by(|(lhs_bytes, _, _, _), (rhs_bytes, _, _, _)| cbor_canonical_key_cmp(lhs_bytes, rhs_bytes));"
                             } else {
-                                "key_order.sort_by(|(lhs_bytes, _, _), (rhs_bytes, _, _)|"
+                                "key_order.sort_by(|(lhs_bytes, _, _), (rhs_bytes, _, _)| cbor_canonical_key_cmp(lhs_bytes, rhs_bytes));"
                             };
-                            let mut key_order_sort = Block::new(sort_head);
-                            let mut key_order_sort_match =
-                                Block::new("match lhs_bytes.len().cmp(&rhs_bytes.len())");
-                            key_order_sort_match
-                                .line("std::cmp::Ordering::Equal => lhs_bytes.cmp(rhs_bytes),")
-                                .line("diff_ord => diff_ord,");
-                            key_order_sort.push_block(key_order_sort_match).after(");");
-                            key_order_if.push_block(key_order_sort);
+                            key_order_if.line(sort_call);
                             body.push_block(key_order_if);
                             let key_loop_var = if value_enc_fields.is_empty() {
                                 "_key"
