@@ -69,18 +69,6 @@ pub enum AnyCborKind {
     Float,
 }
 
-/// Length-first-then-bytewise comparison of two encoded CBOR map keys — the RFC 7049 §3.9
-/// "canonical CBOR" key ordering (NOT pure RFC 8949 §4.2.1 bytewise). Shared runtime helper:
-/// `AnyCbor`'s canonical map serialization uses it now, and generated open structs adopt it for
-/// their runtime canonical key merge (loose-CBOR Phase B) so an open struct and its closed
-/// equivalent canonicalize identically.
-pub fn any_cbor_canonical_key_cmp(lhs: &[u8], rhs: &[u8]) -> std::cmp::Ordering {
-    match lhs.len().cmp(&rhs.len()) {
-        std::cmp::Ordering::Equal => lhs.cmp(rhs),
-        diff_ord => diff_ord,
-    }
-}
-
 impl AnyCbor {
     /// The CBOR major-type/special discriminant of this value.
     pub fn kind(&self) -> AnyCborKind {
@@ -308,7 +296,7 @@ impl AnyCbor {
                             Ok((key_buf.finalize(), v))
                         })
                         .collect::<cbor_event::Result<Vec<_>>>()?;
-                    ordered.sort_by(|(lhs, _), (rhs, _)| any_cbor_canonical_key_cmp(lhs, rhs));
+                    ordered.sort_by(|(lhs, _), (rhs, _)| cbor_canonical_key_cmp(lhs, rhs));
                     for (key_bytes, value) in ordered.iter() {
                         serializer.write_raw_bytes(key_bytes)?;
                         value.serialize_ref(serializer, true)?;
