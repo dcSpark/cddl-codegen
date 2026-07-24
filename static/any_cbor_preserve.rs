@@ -245,6 +245,20 @@ impl AnyCbor {
         buf.finalize()
     }
 
+    /// Value-level (encoding-independent) equality — the duplicate-key comparison an `any`-domain
+    /// open struct-map rest row / table needs under `--preserve-encodings`, where the derived `Eq`
+    /// is REPRESENTATIONAL (encoding fields participate, so two equal values with different wire
+    /// widths compare `!=`). Two values are value-equal iff their CANONICAL encodings match:
+    /// canonicalization is the encoding-independent normal form (RFC 7049 §3.9 minimal widths,
+    /// recursively normalized map key order), so `0x01` and `0x1801` (both uint 1) are value-equal
+    /// though representationally distinct. Ruling §10.8: accept/reject of a duplicate wire key must
+    /// be a function of the wire VALUE, not of the key domain's spelling (`* uint => any` and
+    /// `* any => any` reject the same duplicates), so the default-reject dup check compares this,
+    /// separately from the container's representational keying.
+    pub fn value_eq(&self, other: &Self) -> bool {
+        self.to_canonical_cbor_bytes() == other.to_canonical_cbor_bytes()
+    }
+
     /// The (de)serialization workhorse. The mode-appropriate trait impls
     /// (`any_cbor_preserve_non_force_canonical.rs` / `any_cbor_preserve_force_canonical.rs`)
     /// delegate here. Self-contained: computes every `Sz`/`LenSz`/`StringLenSz` from the stored
