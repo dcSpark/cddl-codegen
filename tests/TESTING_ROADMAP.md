@@ -1512,6 +1512,24 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   process-kill activity in the other session before any harness attribution. The standing
   discipline it feeds is in `AGENTS.md` (never pattern-kill by tool-generic substring on a shared
   machine).
+- **Agent-harness background tasks appear to be killed at ~55–65 min wall — the ~75-min full tier
+  cannot complete as ONE background task in an agent session (2026-07-25, two sightings).** Two
+  same-session `check.ts full` background runs from an orchestrating agent were killed by the
+  harness (task "killed", entire process tree gone, self-log stops mid-gate with no RESULT and no
+  error) at ~53 and ~60–65 min, both inside `gate_cache_closure_audit`
+  (`draft/logs/check-full-2026-07-24T18-08-09Z.log`, `…T19-16-08Z.log`); a ~35-min background run
+  completed fine in the same session, and a ~75-min background run completed in a prior session
+  whose harness topology (true main session vs sub-agent) was not recorded — so the ceiling may be
+  sub-agent-session-specific. Signature to distinguish from a hang: process tree GONE + log mtime
+  stale (a hang keeps live processes). Distinguish from cross-session pkill (the entry above): no
+  kill activity in any concurrent session, and exit is a task-kill, not `-15` in the run's own log.
+  Working recovery, proven: let the run die, enumerate completed gates from the self-log
+  (`grep '^--- '`), run the remainder isolated (the audit gate alone ≈16 min:
+  `bun run audit_gate_cache_closure.ts` in `cddl-matrix/`; `corpus_detect.ts` and the fuzz
+  `cargo check` are seconds), and claim the tier green only by COMPLETE gate enumeration. A cheap
+  attribution probe for the next sighting: background a once-a-minute timestamp-append loop and
+  record exactly when writes stop (near-zero resources — also separates a wall-clock ceiling from
+  a resource-based kill).
 
 ## Declined (decided, with the reopening signal)
 
