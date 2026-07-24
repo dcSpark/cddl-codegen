@@ -358,6 +358,64 @@ JSON-side mirror of the CBOR looseness) and dropped, matching the CBOR contract.
 no `rest()` getter (nothing is stored); the class is a closed struct's, and the read-tolerance comes
 for free through the rust deserializer.
 
+## Open arrays (rest tails)
+
+A CDDL array that mixes **fixed members with a trailing `* t` element** — `[uint, tstr, * uint]` — is
+an *open array*: the fixed members deserialize positionally as declared, and every **trailing**
+element is captured into a generated `rest` field instead of ending the decode (a plain closed struct
+would stop at the declared arity). This is the array analog of the [open struct-map](#open-struct-maps-rest-rows)
+rest row — structurally simpler because arrays are positional: there are no keys, so no duplicate
+policy, no key dispatch, and no ordering machinery. The rest tail must be the array's **last**
+element, must occur exactly `*`, and must follow ≥1 fixed member; other spellings (a bounded/`+`
+occurrence, a non-final `*`, a rest tail in a group-choice arm or a plain group, or a fixed-value
+element type like `* 5`) are graceful rejections naming the supported form.
+
+**The `rest` field.** A `pub Vec<T>` named `rest` (rename with `@name` on the tail entry), holding
+the captured trailing elements in wire order. It is **excluded from `new()`** and defaults empty, so
+adding a rest tail to an existing spec is both source-compatible (old `new(..)` calls keep working)
+and wire-compatible (empty tail ≡ the closed struct's bytes — an array of exactly the declared arity).
+Unlike a map rest row, the container is a plain `Vec<T>` in **every** mode (default and preserve
+alike) — per-element encodings live in the owner's encoding struct, not the container.
+
+**Serialize / round-trip.** The array header counts the declared members **plus** every tail element
+(`N + rest.len()`); declared members serialize first, then the captured elements in `Vec` order.
+Typing is enforced: `[uint, tstr, * uint]` errors on a non-uint trailing element (full looseness is
+spelled `* any`, which captures nested-container elements too).
+
+**Preserve / canonical.** Under `--preserve-encodings` each captured element re-serializes byte-exact
+via a **positional per-element encoding sidecar** (`{field}_elem_encodings: Vec<..>` in the owner's
+encoding struct — self-healing on user mutation: a length mismatch degrades to default encodings, it
+never panics); an `any` element is self-carried and contributes no sidecar. Wire order = `Vec` order =
+re-emit order by construction, so there is **no** interleave record or comparator. Under
+`--canonical-form` each element re-serializes recursively-canonically **in position order** (no sort —
+a tail is positional, not keyed).
+
+**JSON (`--json-serde-derives`).** The captured tail renders as an **ordinary field** — a JSON array
+under the field's name (`"rest": [ … ]`), **not** flattened. Array positions are already erased in
+JSON and serde `flatten` has no array analog, so nesting under the field name is the honest symmetric
+rendering. *Write* (`to_json`) **skips the field when the tail is empty**; *read* (`from_json`)
+**defaults it to empty when absent** — so empty tail ≡ closed-struct JSON, mirroring the CBOR
+invariant. An `any`-element tail renders **natural-fallible** (the same
+[injective-subset rules](#natural-rendering-rfc-8949-61-injective-subset-strict-fail-elsewhere) as any
+`[* any]`: a non-injective node like a byte string makes `to_json` error rather than silently
+substitute). The JSON Schema is just the field's ordinary array-typed property.
+
+**wasm.** The rest field is exposed as a **read-only getter named after the field** (`rest()` by
+default) returning the minted list wrapper (no `new()` argument, no setter — it defaults empty);
+see [wasm differences](wasm_differences#open-struct-map-rest-rows).
+
+### The `@ignore` (tolerate-and-drop) flavor
+
+Marking the tail entry [`@ignore`](comment_dsl#ignore) switches from capture to *tolerate-and-drop*:
+trailing elements are still typed-deserialized (so the stream advances past nested containers) but
+then **discarded**. The generated type is a **plain closed struct** — no `rest` field, no `new()`
+change, and `serialize` emits only the declared prefix. This is deliberately lossy: byte round-trips
+do **not** hold for wire data that carried trailing elements (the type and its `serialize` fn carry a
+rustdoc breadcrumb saying so, worded for trailing array elements), which is why it is **rejected under
+`--preserve-encodings`** (a preserve crate's byte-exact contract cannot hold for it) along with
+`@duplicates`/`@name` on the same entry. Its **JSON, schemars, and wasm** surfaces are an ordinary
+closed struct's — trailing elements are tolerated on read and dropped, and there is no `rest()` getter.
+
 ## Non-empty containers
 
 An occurrence lower bound of exactly one — `[+ T]` and the equivalent `[1* T]` on arrays, `{+ k => v}`
