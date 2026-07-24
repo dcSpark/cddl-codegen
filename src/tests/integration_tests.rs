@@ -6100,6 +6100,87 @@ fn emit_tests_any_float_execute() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// End-to-end proof of `--emit-tests` over an OPEN struct-map's rest row (loose-CBOR Phase B WP5,
+/// §8 item 26): generate the `open-struct-map-e2e` fixture (`{ 1: uint, 2: text, * uint => any }`,
+/// `{ ? 3: text, * uint => any }`, `{ 1: uint, * any => any }`) with `--preserve-encodings
+/// --emit-tests` and `cargo test` the crate. `record_roundtrip` now mints ONE captured entry through
+/// the generated `.rest` map API per rest-bearing record, so the round-trip loop actually serializes
+/// and re-reads rest content — and, the rest RANGE being `any`, each rest entry carries the
+/// `MintValue::Any` `[uint 5, float 1.5]` composite, feeding the `--preserve-encodings` encoding-
+/// fidelity mutator's `widen_float` class over rest-position content (the rest-position twin of
+/// `emit_tests_any_float_execute`, which exercises the same class at MEMBER position). The other
+/// fidelity classes (widen_step / indef_containers) mutate the whole serialized map — header + the
+/// captured entry's key/value bytes — so this also proves the header/width classes hold over
+/// captured rest entries.
+///
+/// Conformance-oracle note (DESIGN §4.3, re-verified for CAPTURE rest rows): the oracle needs no
+/// gating — it validates minted bytes against the VERBATIM input spec, whose rule declares the same
+/// `* K => V` row the deserializer accepts, so every minted rest entry conforms by construction (no
+/// over-acceptance mismatch). Unlike the `@ignore` case (Phase C — whose reason 1 leans on cases
+/// carrying NO unknown entries), capture cases DO carry rest entries, yet byte-identity still holds
+/// because capture round-trips symmetrically. This gate runs the round-trip half; conformance stays a
+/// reasoning obligation (no new oracle dep here — matching the `emit_tests_any_float_execute`
+/// precedent, which likewise proves the mint + fidelity path via `cargo test` alone).
+#[test]
+fn emit_tests_open_struct_rest_execute() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let input = std::path::PathBuf::from("tests/open-struct-map-e2e/input.cddl");
+    let root =
+        std::env::temp_dir().join(format!("cddl_codegen_open_rest_{:016x}", checkout_hash()));
+    let _ = std::fs::remove_dir_all(&root);
+    let out = root.join("crate");
+    let generate = tool_cmd("cargo")
+        .args(["run", "--"])
+        .arg(format!("--input={}", input.to_str().unwrap()))
+        .arg(format!("--output={}", out.to_str().unwrap()))
+        .arg("--wasm=false")
+        .arg("--preserve-encodings=true")
+        .arg("--emit-tests=true")
+        .output()
+        .unwrap();
+    if !generate.status.success() {
+        eprintln!("{}", String::from_utf8_lossy(&generate.stderr));
+    }
+    assert!(generate.status.success(), "generation failed");
+
+    let src =
+        std::fs::read_to_string(out.join("rust/src/generated/mod.rs")).expect("generated mod.rs");
+    // The rest mint fires: a captured entry is inserted through the generated `.rest` map API, and
+    // its `any`-typed range carries the float-head composite that the fidelity mutator's
+    // `widen_float` class exercises at rest position.
+    assert!(
+        src.contains("v.rest.insert("),
+        "the rest-row emit-tests mint did not populate `.rest` through the generated map API"
+    );
+    assert!(
+        src.contains("__AnyCborMint::new_float(1.5)"),
+        "the `any` rest range mint did not build the float-carrying composite"
+    );
+    assert!(
+        src.contains("fn widen_float"),
+        "the encoding-fidelity mutator is missing the widen_float class"
+    );
+
+    // `cargo test` runs the emitted `roundtrip_*` (each rest-bearing case exercises the fidelity
+    // classes — incl. `widen_float` — over the captured entry under preserve) + the mutator self-check.
+    let test = tool_cmd("cargo")
+        .arg("test")
+        .current_dir(out.join("rust"))
+        .output()
+        .unwrap();
+    if !test.status.success() {
+        eprintln!("stdout:\n{}", String::from_utf8_lossy(&test.stdout));
+        eprintln!("stderr:\n{}", String::from_utf8_lossy(&test.stderr));
+    }
+    assert!(
+        test.status.success(),
+        "generated open-struct-map rest + preserve emit-tests crate failed cargo test"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// Executes the `--emit-tests` generated WASM-test module end-to-end (tests/README.md § "wasm-crate
 /// test module"): generate the rich `core` fixture with `--wasm=true --emit-tests=true`, then
 /// `cargo test` the generated WASM crate so the emitted `wasm_roundtrip_*`/`wasm_reject_*` module runs
