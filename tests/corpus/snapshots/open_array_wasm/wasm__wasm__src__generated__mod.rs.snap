@@ -1,0 +1,520 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+
+/// Open array with an ignored rest tail: tolerates unknown trailing array elements on deserialize and DROPS them, and re-serializes only the declared members. Byte round-trips do NOT hold for wire data that carried extra trailing elements.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct AllMandatoryIgnore(pub(crate) cddl_lib::AllMandatoryIgnore);
+
+#[wasm_bindgen]
+impl AllMandatoryIgnore {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<AllMandatoryIgnore, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_0(&self) -> u64 {
+        self.0.index_0
+    }
+
+    pub fn index_1(&self) -> String {
+        self.0.index_1.clone()
+    }
+
+    pub fn new(index_0: u64, index_1: String) -> Self {
+        Self(cddl_lib::AllMandatoryIgnore::new(index_0, index_1))
+    }
+}
+
+impl From<cddl_lib::AllMandatoryIgnore> for AllMandatoryIgnore {
+    fn from(native: cddl_lib::AllMandatoryIgnore) -> Self {
+        Self(native)
+    }
+}
+
+impl From<AllMandatoryIgnore> for cddl_lib::AllMandatoryIgnore {
+    fn from(wasm: AllMandatoryIgnore) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::AllMandatoryIgnore> for AllMandatoryIgnore {
+    fn as_ref(&self) -> &cddl_lib::AllMandatoryIgnore {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct AnyCbor(pub(crate) cddl_lib::any_cbor::AnyCbor);
+
+#[wasm_bindgen]
+impl AnyCbor {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<AnyCbor, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn kind(&self) -> AnyCborKind {
+        self.0.kind().into()
+    }
+}
+
+impl From<cddl_lib::any_cbor::AnyCbor> for AnyCbor {
+    fn from(native: cddl_lib::any_cbor::AnyCbor) -> Self {
+        Self(native)
+    }
+}
+
+impl From<AnyCbor> for cddl_lib::any_cbor::AnyCbor {
+    fn from(wasm: AnyCbor) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::any_cbor::AnyCbor> for AnyCbor {
+    fn as_ref(&self) -> &cddl_lib::any_cbor::AnyCbor {
+        &self.0
+    }
+}
+
+#[derive(Copy, Clone)]
+#[wasm_bindgen]
+pub enum AnyCborKind {
+    UInt,
+    NInt,
+    Bytes,
+    Text,
+    Array,
+    Map,
+    Tag,
+    Bool,
+    Null,
+    Undefined,
+    Unassigned,
+    Float,
+}
+
+impl From<cddl_lib::any_cbor::AnyCborKind> for AnyCborKind {
+    fn from(native: cddl_lib::any_cbor::AnyCborKind) -> Self {
+        match native {
+            cddl_lib::any_cbor::AnyCborKind::UInt => Self::UInt,
+            cddl_lib::any_cbor::AnyCborKind::NInt => Self::NInt,
+            cddl_lib::any_cbor::AnyCborKind::Bytes => Self::Bytes,
+            cddl_lib::any_cbor::AnyCborKind::Text => Self::Text,
+            cddl_lib::any_cbor::AnyCborKind::Array => Self::Array,
+            cddl_lib::any_cbor::AnyCborKind::Map => Self::Map,
+            cddl_lib::any_cbor::AnyCborKind::Tag => Self::Tag,
+            cddl_lib::any_cbor::AnyCborKind::Bool => Self::Bool,
+            cddl_lib::any_cbor::AnyCborKind::Null => Self::Null,
+            cddl_lib::any_cbor::AnyCborKind::Undefined => Self::Undefined,
+            cddl_lib::any_cbor::AnyCborKind::Unassigned => Self::Unassigned,
+            cddl_lib::any_cbor::AnyCborKind::Float => Self::Float,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct AnyList(pub(crate) Vec<cddl_lib::any_cbor::AnyCbor>);
+
+#[wasm_bindgen]
+impl AnyList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> AnyCbor {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &AnyCbor) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<cddl_lib::any_cbor::AnyCbor>> for AnyList {
+    fn from(native: Vec<cddl_lib::any_cbor::AnyCbor>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<AnyList> for Vec<cddl_lib::any_cbor::AnyCbor> {
+    fn from(wasm: AnyList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<cddl_lib::any_cbor::AnyCbor>> for AnyList {
+    fn as_ref(&self) -> &Vec<cddl_lib::any_cbor::AnyCbor> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Anytail(pub(crate) cddl_lib::Anytail);
+
+#[wasm_bindgen]
+impl Anytail {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Anytail, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_0(&self) -> u64 {
+        self.0.index_0
+    }
+
+    /// The captured trailing array elements beyond the declared members (CDDL `* t` rest tail), as the wasm list wrapper.
+    pub fn rest(&self) -> AnyList {
+        self.0.rest.clone().into()
+    }
+
+    pub fn new(index_0: u64) -> Self {
+        Self(cddl_lib::Anytail::new(index_0))
+    }
+}
+
+impl From<cddl_lib::Anytail> for Anytail {
+    fn from(native: cddl_lib::Anytail) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Anytail> for cddl_lib::Anytail {
+    fn from(wasm: Anytail) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Anytail> for Anytail {
+    fn as_ref(&self) -> &cddl_lib::Anytail {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct BytesList(pub(crate) Vec<Vec<u8>>);
+
+#[wasm_bindgen]
+impl BytesList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> Vec<u8> {
+        self.0[index].clone()
+    }
+
+    pub fn add(&mut self, elem: Vec<u8>) {
+        self.0.push(elem);
+    }
+}
+
+impl From<Vec<Vec<u8>>> for BytesList {
+    fn from(native: Vec<Vec<u8>>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<BytesList> for Vec<Vec<u8>> {
+    fn from(wasm: BytesList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<Vec<u8>>> for BytesList {
+    fn as_ref(&self) -> &Vec<Vec<u8>> {
+        &self.0
+    }
+}
+
+/// Open array with an ignored rest tail: tolerates unknown trailing array elements on deserialize and DROPS them, and re-serializes only the declared members. Byte round-trips do NOT hold for wire data that carried extra trailing elements.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Ignored(pub(crate) cddl_lib::Ignored);
+
+#[wasm_bindgen]
+impl Ignored {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Ignored, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_0(&self) -> u64 {
+        self.0.index_0
+    }
+
+    pub fn new(index_0: u64) -> Self {
+        Self(cddl_lib::Ignored::new(index_0))
+    }
+}
+
+impl From<cddl_lib::Ignored> for Ignored {
+    fn from(native: cddl_lib::Ignored) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Ignored> for cddl_lib::Ignored {
+    fn from(wasm: Ignored) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Ignored> for Ignored {
+    fn as_ref(&self) -> &cddl_lib::Ignored {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Named(pub(crate) cddl_lib::Named);
+
+#[wasm_bindgen]
+impl Named {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Named, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_0(&self) -> u64 {
+        self.0.index_0
+    }
+
+    pub fn index_1(&self) -> String {
+        self.0.index_1.clone()
+    }
+
+    /// The captured trailing array elements beyond the declared members (CDDL `* t` rest tail), as the wasm list wrapper.
+    pub fn extras(&self) -> BytesList {
+        self.0.extras.clone().into()
+    }
+
+    pub fn new(index_0: u64, index_1: String) -> Self {
+        Self(cddl_lib::Named::new(index_0, index_1))
+    }
+}
+
+impl From<cddl_lib::Named> for Named {
+    fn from(native: cddl_lib::Named) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Named> for cddl_lib::Named {
+    fn from(wasm: Named) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Named> for Named {
+    fn as_ref(&self) -> &cddl_lib::Named {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OptFixedMember(pub(crate) cddl_lib::OptFixedMember);
+
+#[wasm_bindgen]
+impl OptFixedMember {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OptFixedMember, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_0(&self) -> u64 {
+        self.0.index_0
+    }
+
+    pub fn index_1(&self) -> bool {
+        self.0.index_1
+    }
+
+    pub fn set_index_1(&mut self, present: bool) {
+        self.0.index_1 = present
+    }
+
+    /// The captured trailing array elements beyond the declared members (CDDL `* t` rest tail), as the wasm list wrapper.
+    pub fn rest(&self) -> Vec<String> {
+        self.0.rest.clone()
+    }
+
+    pub fn new(index_0: u64) -> Self {
+        Self(cddl_lib::OptFixedMember::new(index_0))
+    }
+}
+
+impl From<cddl_lib::OptFixedMember> for OptFixedMember {
+    fn from(native: cddl_lib::OptFixedMember) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OptFixedMember> for cddl_lib::OptFixedMember {
+    fn from(wasm: OptFixedMember) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::OptFixedMember> for OptFixedMember {
+    fn as_ref(&self) -> &cddl_lib::OptFixedMember {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct SingleFixed(pub(crate) cddl_lib::SingleFixed);
+
+#[wasm_bindgen]
+impl SingleFixed {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<SingleFixed, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_0(&self) -> u64 {
+        self.0.index_0
+    }
+
+    /// The captured trailing array elements beyond the declared members (CDDL `* t` rest tail), as the wasm list wrapper.
+    pub fn rest(&self) -> Vec<u64> {
+        self.0.rest.clone()
+    }
+
+    pub fn new(index_0: u64) -> Self {
+        Self(cddl_lib::SingleFixed::new(index_0))
+    }
+}
+
+impl From<cddl_lib::SingleFixed> for SingleFixed {
+    fn from(native: cddl_lib::SingleFixed) -> Self {
+        Self(native)
+    }
+}
+
+impl From<SingleFixed> for cddl_lib::SingleFixed {
+    fn from(wasm: SingleFixed) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::SingleFixed> for SingleFixed {
+    fn as_ref(&self) -> &cddl_lib::SingleFixed {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Typed(pub(crate) cddl_lib::Typed);
+
+#[wasm_bindgen]
+impl Typed {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Typed, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_0(&self) -> u64 {
+        self.0.index_0
+    }
+
+    pub fn index_1(&self) -> String {
+        self.0.index_1.clone()
+    }
+
+    /// The captured trailing array elements beyond the declared members (CDDL `* t` rest tail), as the wasm list wrapper.
+    pub fn rest(&self) -> Vec<u64> {
+        self.0.rest.clone()
+    }
+
+    pub fn new(index_0: u64, index_1: String) -> Self {
+        Self(cddl_lib::Typed::new(index_0, index_1))
+    }
+}
+
+impl From<cddl_lib::Typed> for Typed {
+    fn from(native: cddl_lib::Typed) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Typed> for cddl_lib::Typed {
+    fn from(wasm: Typed) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Typed> for Typed {
+    fn as_ref(&self) -> &cddl_lib::Typed {
+        &self.0
+    }
+}

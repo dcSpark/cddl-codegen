@@ -5494,6 +5494,51 @@ fn open_array_e2e() {
 }
 
 #[test]
+fn open_array_preserve_e2e() {
+    // Loose-CBOR open ARRAY (rest tail) PRESERVE fidelity round-trip vectors: byte-exact non-canonical
+    // tail-element widths via the positional `{field}_elem_encodings` sidecar, self-carried `any`-tail
+    // encodings, indefinite owner-array + tail, empty-tail ≡ closed bytes, the canonical normalization
+    // of a non-minimal tail element (position order, no sort), and stream position. Generated under
+    // --preserve-encodings --canonical-form (canonical implies preserve). --wasm=false to isolate the
+    // rust surface. See tests/open-array-preserve-e2e/tests.rs.
+    run_test(
+        "open-array-preserve-e2e",
+        &[
+            "--wasm=false",
+            "--preserve-encodings=true",
+            "--canonical-form=true",
+        ],
+        None,
+        &[],
+        &[],
+        false,
+        &[],
+    );
+}
+
+#[test]
+fn open_array_json_e2e() {
+    // Loose-CBOR open ARRAY (rest tail) JSON round-trip vectors: the captured tail renders as an
+    // ordinary JSON array under the field name, an empty tail ≡ closed-struct JSON (skip-if-empty
+    // write, default-on-read), and an `any`-element tail renders natural-fallible (a non-injective
+    // node like a byte string errors loudly). --wasm=false to isolate the json surface. See
+    // tests/open-array-json-e2e/tests.rs.
+    run_test(
+        "open-array-json-e2e",
+        &[
+            "--json-serde-derives=true",
+            "--json-schema-export=true",
+            "--wasm=false",
+        ],
+        None,
+        &[],
+        &[],
+        false,
+        &[],
+    );
+}
+
+#[test]
 fn open_struct_map_ignore_e2e() {
     // Loose-CBOR open struct-map IGNORE flavor (`@ignore` on the rest row) value-level round-trip
     // vectors: unknown entries are typed-deserialized and DROPPED (stream position past nested

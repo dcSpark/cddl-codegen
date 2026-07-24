@@ -269,12 +269,15 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
         ("wasm", &[]),
     ),
     // loose-CBOR open ARRAYS (a final-position `* t` rest tail after ≥1 fixed member → a `pub rest:
-    // Vec<T>` capture, or a dropped `@ignore` tail). Snapshotted under `default` and `json` with
-    // `--wasm=false` to isolate the rust/json surfaces. Byte-exact per-element tail encodings under
-    // --preserve-encodings are a later work package (so no preserve profile). Covers a typed tail, an
-    // `any` tail, a `@name`d tail, an `@ignore` tail, and the degenerate shape combos (all-mandatory
-    // prefix + `@ignore` — the empty-conditional `definite_info` path — single fixed member + tail,
-    // and an optional fixed-value member + a type-distinct tail).
+    // Vec<T>` capture, or a dropped `@ignore` tail). Snapshotted under `default`/`json`/`wasm`; the
+    // `default`/`json` rows pass `--wasm=false` to isolate the rust/json surfaces, and the `wasm` row
+    // pins the emitted `rest()` list-wrapper getter + minted `TList`/`AnyList` wrappers. Covers a typed
+    // tail, an `any` tail, a `@name`d tail, an `@ignore` tail, and the degenerate shape combos
+    // (all-mandatory prefix + `@ignore` — the empty-conditional `definite_info` path — single fixed
+    // member + tail, and an optional fixed-value member + a type-distinct tail). The PRESERVE surface
+    // (byte-exact per-element tail encodings via the positional `{field}_elem_encodings` sidecar) is
+    // pinned separately on a capture-only input, since `@ignore` is rejected under
+    // --preserve-encodings and this fixture mixes capture + ignore rules.
     (
         "open_array_default",
         "tests/open-array/input.cddl",
@@ -291,6 +294,20 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
                 "--wasm=false",
             ],
         ),
+    ),
+    (
+        "open_array_wasm",
+        "tests/open-array/input.cddl",
+        ("wasm", &[]),
+    ),
+    // PRESERVE tail fidelity on a capture-only input (the shared `open-array/input.cddl` mixes
+    // `@ignore` rules, which reject under --preserve-encodings). Pins the positional
+    // `{field}_elem_encodings` sidecar (typed tail), the self-carried `any` tail (no sidecar), and the
+    // canonical per-element normalization.
+    (
+        "open_array_preserve",
+        "tests/open-array-preserve-e2e/input.cddl",
+        ("preserve", &["--preserve-encodings=true", "--wasm=false"]),
     ),
     // directory input — exercises the multi-file scope/module codegen path.
     ("multifile", "tests/multifile/inputs", ("default", &[])),
