@@ -3563,15 +3563,10 @@ fn recognize_rest_row(
     // via `get_comment_after` on the group choice, so the two do not collide — a rest-row directive
     // stays entry-level and a rule directive stays rule-level).
     let rest_metadata = group_entry_rule_metadata(candidate_ge, candidate_comma);
-    // `@duplicates preserve` on a rest row needs the pair-list twin container (WP3); reject in WP2.
-    if rest_metadata.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve) {
-        types.record_rejection(format!(
-            "rule `{src}`: `@duplicates preserve` on an open struct-map rest row needs the \
-             positional pair-list container, which lands in a later work package. Use the default \
-             (reject) for now, or remove the directive."
-        ));
-        return (None, Some(candidate));
-    }
+    // `@duplicates` policy on the rest row: default (reject) uses the loose container (§10.8 value
+    // dup check); `preserve` uses the vec-of-pairs twin (`PairMap`), matching what `@duplicates
+    // preserve` TABLES do — duplicate keys accepted and re-emitted in wire order. `reject` explicit
+    // is the same as default. Carried on the `RestRow` for the emitters to select the container.
     let field_name = rest_metadata
         .name
         .clone()

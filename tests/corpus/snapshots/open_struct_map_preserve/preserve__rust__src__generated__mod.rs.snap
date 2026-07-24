@@ -14,21 +14,24 @@ expression: content
 pub mod any_cbor;
 pub mod error;
 pub mod ordered_hash_map;
+pub mod pair_map;
 extern crate derivative;
 pub mod cbor_encodings;
 mod extern_interface_check;
 pub mod serialization;
 
 use crate::generated::ordered_hash_map::OrderedHashMap;
+use crate::generated::pair_map::PairMap;
 use cbor_encodings::{
-    AnyRestEncoding, OptRestEncoding, RenamedRestEncoding, TypedRestEncoding, UintRestEncoding,
+    AnyRestEncoding, DupRestEncoding, OptRestEncoding, RenamedRestEncoding, TypedRestEncoding,
+    UintRestEncoding,
 };
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
 pub struct AnyRest {
     pub key_1: u64,
-    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty.
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
     pub rest:
         OrderedHashMap<crate::generated::any_cbor::AnyCbor, crate::generated::any_cbor::AnyCbor>,
     pub encodings: Option<AnyRestEncoding>,
@@ -45,9 +48,27 @@ impl AnyRest {
 }
 
 #[derive(Clone, Debug)]
+pub struct DupRest {
+    pub key_7: u64,
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
+    pub rest: PairMap<u64, String>,
+    pub encodings: Option<DupRestEncoding>,
+}
+
+impl DupRest {
+    pub fn new(key_7: u64) -> Self {
+        Self {
+            key_7,
+            rest: PairMap::new(),
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct OptRest {
     pub key_3: Option<String>,
-    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty.
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
     pub rest: OrderedHashMap<u64, crate::generated::any_cbor::AnyCbor>,
     pub encodings: Option<OptRestEncoding>,
 }
@@ -71,7 +92,7 @@ impl Default for OptRest {
 #[derive(Clone, Debug)]
 pub struct RenamedRest {
     pub key_1: u64,
-    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty.
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
     pub extra: OrderedHashMap<u64, crate::generated::any_cbor::AnyCbor>,
     pub encodings: Option<RenamedRestEncoding>,
 }
@@ -89,7 +110,7 @@ impl RenamedRest {
 #[derive(Clone, Debug)]
 pub struct TypedRest {
     pub key_1: u64,
-    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty.
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
     pub rest: OrderedHashMap<u64, u64>,
     pub encodings: Option<TypedRestEncoding>,
 }
@@ -108,7 +129,7 @@ impl TypedRest {
 pub struct UintRest {
     pub key_1: u64,
     pub key_2: String,
-    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty.
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
     pub rest: OrderedHashMap<u64, crate::generated::any_cbor::AnyCbor>,
     pub encodings: Option<UintRestEncoding>,
 }

@@ -397,6 +397,18 @@ impl<'a> IntermediateTypes<'a> {
                     && rs.config().duplicates
                         == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
             })
+            // An open struct-map rest row with `@duplicates preserve` lowers to the `PairMap` twin
+            // (its `Map` type carries the policy only at emit time — `rest.domain`/`range` visited
+            // above are the K/V, not the Map — so check the rest row's policy directly here).
+            || self.rust_structs.values().any(|rs| {
+                matches!(
+                    rs.variant(),
+                    RustStructType::Record(record)
+                        if record.rest.as_ref().is_some_and(|r| {
+                            r.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+                        })
+                )
+            })
     }
 
     pub fn rust_structs(&self) -> &BTreeMap<RustIdent, RustStruct> {

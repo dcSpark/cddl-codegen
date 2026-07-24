@@ -3290,15 +3290,18 @@ fn open_struct_map_rest_row_front_end() {
         );
     }
 
-    // --- guard: @duplicates preserve on a rest row (pair-list twin is a later WP) ---
+    // --- @duplicates preserve on a rest row GENERATES (WP3): the vec-of-pairs twin (`PairMap`),
+    // accepting + re-emitting duplicate keys in wire order, matching @duplicates preserve tables. ---
     let dup_preserve = run(
         "foo = {\n  1: uint,\n  * uint => any ; @duplicates preserve\n}\n",
         "dup_preserve",
     )
-    .expect_err("@duplicates preserve on a rest row rejects in this WP");
+    .expect("@duplicates preserve on a rest row GENERATES the PairMap twin (WP3)");
     assert!(
-        dup_preserve.contains("rule `foo`") && dup_preserve.contains("@duplicates preserve"),
-        "the @duplicates preserve front door must name the directive, got: {dup_preserve}"
+        src(&dup_preserve).contains("pub rest: PairMap<u64, ")
+            && src(&dup_preserve).contains("::any_cbor::AnyCbor>"),
+        "an @duplicates preserve rest row must lower to a `PairMap` (duplicate-permitting), got:\n{}",
+        src(&dup_preserve)
     );
 
     // --- PROBE-B6: entry-level @name on the rest row IS honored (entry-trailing slot) ---

@@ -1,6 +1,5 @@
 ---
 source: src/tests/snapshot_tests.rs
-assertion_line: 109
 expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
@@ -117,6 +116,82 @@ impl Deserialize for AnyRest {
             Ok(Self { key_1, rest })
         })()
         .map_err(|e| e.annotate("AnyRest"))
+    }
+}
+
+impl cbor_event::se::Serialize for DupRest {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map(cbor_event::Len::Len(1 + self.rest.len() as u64))?;
+        serializer.write_unsigned_integer(7u64)?;
+        serializer.write_unsigned_integer(self.key_7)?;
+        for (key, value) in self.rest.iter() {
+            serializer.write_unsigned_integer(*key)?;
+            serializer.write_text(value)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for DupRest {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            let mut key_7 = None;
+            let mut rest = PairMap::new();
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => match raw.unsigned_integer()? {
+                        7 => {
+                            if key_7.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Uint(7)).into());
+                            }
+                            key_7 = Some(
+                                Ok(raw.unsigned_integer()?)
+                                    .map_err(|e: DeserializeError| e.annotate("key_7"))?,
+                            );
+                        }
+                        unknown_key => {
+                            read_len.read_elems(1)?;
+                            let rest_key = unknown_key;
+                            let rest_value = raw.text()?;
+                            rest.insert(rest_key, rest_value);
+                        }
+                    },
+                    cbor_event::Type::Text => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Str(raw.text()?)).into());
+                    }
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                        }
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
+                    }
+                }
+                read += 1;
+            }
+            let key_7 = match key_7 {
+                Some(x) => x,
+                None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Uint(7)).into()),
+            };
+            read_len.finish()?;
+            Ok(Self { key_7, rest })
+        })()
+        .map_err(|e| e.annotate("DupRest"))
     }
 }
 

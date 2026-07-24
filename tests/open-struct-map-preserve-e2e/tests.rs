@@ -87,4 +87,50 @@ mod open_struct_map_preserve {
             "open runtime merge agrees with closed baked order"
         );
     }
+
+    // --- @duplicates preserve: the vec-of-pairs (PairMap) twin ---
+
+    #[test]
+    fn dup_pairlist_keeps_duplicate_keys_byte_exact() {
+        // dup_pair {9: uint, * uint => any @duplicates preserve}: {9: 0, 0x01: "a", 0x1801: "b"} —
+        // TWO rest entries both uint 1 (the DEFAULT-reject container would refuse this pair). The
+        // pair-list keeps BOTH, in wire order, byte-exact incl. the non-minimal 0x1801 key width.
+        let wire = bytes("a3 0900 01 6161 1801 6162");
+        let v = DupPair::from_cbor_bytes(&wire).unwrap();
+        assert_eq!(v.rest.len(), 2, "both duplicate keys survive");
+        assert_eq!(v.to_cbor_bytes(), wire, "byte-exact with duplicate keys present");
+    }
+
+    #[test]
+    fn dup_pairlist_concrete_positional_sidecars_byte_exact() {
+        // dup_pair_concrete {5: uint, * uint => text @duplicates preserve}: dup key 7 (minimal +
+        // two-byte) with concrete text values — the POSITIONAL Vec encoding sidecars keep each
+        // entry's key+value widths aligned (a keyed sidecar would collide on the repeated key).
+        let wire = bytes("a3 0500 07 6161 1807 6162");
+        let v = DupPairConcrete::from_cbor_bytes(&wire).unwrap();
+        assert_eq!(v.rest.len(), 2);
+        assert_eq!(v.to_cbor_bytes(), wire, "byte-exact dup concrete via positional sidecars");
+    }
+
+    #[test]
+    fn dup_pairlist_canonical_stable_sort_keeps_wire_order() {
+        // Canonical re-encodes both key-1 entries minimal, sorts key 1 before key 9, and the STABLE
+        // sort keeps the duplicates in their wire order (a before b) — RFC 8949 has no canonical form
+        // for duplicate keys, so this is the deterministic best-effort the pair-map twin defines.
+        let wire = bytes("a3 0900 01 6161 1801 6162");
+        let v = DupPair::from_cbor_bytes(&wire).unwrap();
+        assert_eq!(
+            v.to_canonical_cbor_bytes(),
+            bytes("a3 01 6161 01 6162 09 00"),
+            "canonical: dup keys minimal, sorted, wire order preserved"
+        );
+    }
+
+    #[test]
+    fn dup_pairlist_empty_equals_closed() {
+        let wire = bytes("a1 0900");
+        let v = DupPair::from_cbor_bytes(&wire).unwrap();
+        assert!(v.rest.is_empty());
+        assert_eq!(v.to_cbor_bytes(), wire, "empty pair-list ≡ closed");
+    }
 }
