@@ -5468,9 +5468,9 @@ fn open_struct_map_ignore_e2e() {
     // Loose-CBOR open struct-map IGNORE flavor (`@ignore` on the rest row) value-level round-trip
     // vectors: unknown entries are typed-deserialized and DROPPED (stream position past nested
     // containers, definite AND indefinite length), typing is still enforced (wrong-domain key errors),
-    // fixed keys win over the rest row (§10.10), duplicate unknown keys are consumed silently while a
+    // fixed keys win over the rest row (the key-dispatch deviation), duplicate unknown keys are consumed silently while a
     // duplicate FIXED key still errors, and a no-unknown map is byte-identical to the closed struct.
-    // `--json-serde-derives=true` also pins C-R6: an ignore struct is a CLOSED serde struct (declared
+    // `--json-serde-derives=true` also pins the JSON posture: an ignore struct is a CLOSED serde struct (declared
     // fields only on write; unknown JSON keys tolerated on read). Non-preserve only — `@ignore` is
     // rejected under --preserve-encodings. --wasm=false. See tests/open-struct-map-ignore-e2e/tests.rs.
     run_test(

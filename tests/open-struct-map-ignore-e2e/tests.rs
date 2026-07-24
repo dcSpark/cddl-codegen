@@ -7,8 +7,10 @@
 //   * a definite-length map with extra unknown entries (one with a NESTED container value) decodes,
 //     the declared fields are correct (stream position), and re-serialize emits declared-only bytes;
 //   * the same for an indefinite-length map;
-//   * a wrong-domain key (`* uint => any` + a text key) still ERRORS (typing enforced, C-R1);
-//   * fixed keys win over the rest row even on a value-type mismatch (§10.10 held);
+//   * a wrong-domain key (`* uint => any` + a text key) still ERRORS (typing enforced — @ignore runs
+//     the same typed deserialization as capture, it just drops the result);
+//   * fixed keys win over the rest row even on a value-type mismatch (the key-dispatch deviation
+//     closed maps already have);
 //   * duplicate UNKNOWN keys are consumed silently (no dup tracking among dropped entries), while a
 //     duplicate FIXED key still errors (existing DuplicateKey machinery, unchanged);
 //   * a map with NO unknown entries is byte-identical to the closed-struct output;
@@ -75,7 +77,8 @@ mod open_struct_map_ignore {
     fn fixed_keys_win_on_content_mismatch() {
         // bar = { ? 3: text, * uint => any ; @ignore }. Wire { 3: 5 } dispatches key 3 to the (text)
         // optional field, whose deserialize fails on the uint value — an ERROR, not a fallthrough to
-        // the rest row (fixed-key dispatch wins even on content mismatch, §10.10, held for ignore).
+        // the rest row (fixed-key dispatch wins even on content mismatch — the deviation closed maps
+        // already have, held for the ignore flavor too).
         assert!(Bar::from_cbor_bytes(&bytes("a1 03 05")).is_err());
         // { 3: "ok" } binds the optional field; serialize re-emits it.
         let b = Bar::from_cbor_bytes(&bytes("a1 03 626f6b")).unwrap();
@@ -108,7 +111,7 @@ mod open_struct_map_ignore {
         assert_eq!(b.to_cbor_bytes(), bytes("a1 01 00"));
     }
 
-    // JSON side (C-R6): an `@ignore` struct is a CLOSED struct — serialize emits declared fields only
+    // JSON side: an `@ignore` struct is a CLOSED struct — serialize emits declared fields only
     // (no flatten machinery), and on read unknown JSON keys are tolerated per serde's default
     // ignore-unknown-fields behavior (the documented JSON-side mirror of the CBOR looseness).
     #[test]
