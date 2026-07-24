@@ -51,3 +51,9 @@ opt_set_holder = [s: opt_set]
 ; first-appearance order, and per-entry header minimization.
 dup_pmap        = { * uint => text } ; @duplicates preserve
 dup_pmap_holder = [p: dup_pmap]
+
+; open struct-map under --canonical-form: the runtime canonical key MERGE minimizes each rest key's
+; header (a non-minimal 0x18 0x07 rest key minimizes to 0x07) and orders the declared key together
+; with the rest keys length-first-then-bytewise. Vectors in tests.rs pin the preserve-identity of the
+; irregular input AND the minimized canonical form.
+open_map = { 1: uint, * uint => uint }

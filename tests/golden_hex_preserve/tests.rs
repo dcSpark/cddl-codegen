@@ -638,4 +638,20 @@ mod golden_hex_preserve {
             .expect("a non-empty duplicate-keyed vec is accepted");
         assert_eq!(ne.len(), 2, "the door keeps duplicate keys");
     }
+
+    // ---- open struct-map (rest row) under --preserve-encodings (loose-CBOR Phase B WP5) ----
+    // A captured rest entry's KEY header argument is data: the rest key 7 written non-minimally in the
+    // 1-byte form (0x18 0x07 instead of the minimal 0x07) must re-emit VERBATIM through the loose
+    // container's per-key encoding sidecar — the declared field 1 stays minimal. Spec bytes
+    // {1: 5, 7: 9} with the rest key at 1-byte width. Independent of the generator (hand-derived from
+    // RFC 8949 §3's 1-byte argument form).
+    kat_preserve!(
+        open_map_nonminimal_rest_key,
+        OpenMap,
+        &[0xa2, 0x01, 0x05, 0x18, 0x07, 0x09],
+        |d: &OpenMap| {
+            assert_eq!(d.key_1, 5, "declared field decoded");
+            assert_eq!(d.rest.get(&7).copied(), Some(9), "rest entry 7 => 9 captured");
+        }
+    );
 }

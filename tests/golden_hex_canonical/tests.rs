@@ -329,4 +329,21 @@ mod golden_hex_canonical {
             );
         }
     );
+
+    // ---- open struct-map (rest row) under --canonical-form (loose-CBOR Phase B WP5) ----
+    // The runtime canonical key merge minimizes each rest key's header and orders the declared key
+    // together with the rest keys. Irregular input {1: 5, 7: 9} with the rest key 7 in the 1-byte
+    // form (0x18 0x07): preserve identity keeps it verbatim, canonical minimizes it to 0x07 (and 1
+    // sorts before 7, so no reordering — the declared field stays first). Hand-derived from
+    // RFC 8949 §4.2.1 (minimal-length arguments), independent of the generator.
+    kat_canonical!(
+        open_map_rest_key_minimized,
+        OpenMap,
+        &[0xa2, 0x01, 0x05, 0x18, 0x07, 0x09],
+        &[0xa2, 0x01, 0x05, 0x07, 0x09],
+        |d: &OpenMap| {
+            assert_eq!(d.key_1, 5, "declared field decoded");
+            assert_eq!(d.rest.get(&7).copied(), Some(9), "rest entry 7 => 9 captured");
+        }
+    );
 }
