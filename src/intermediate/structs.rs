@@ -778,9 +778,11 @@ impl RustStruct {
                                 .visit_types_excluding(types, f, already_visited);
                         }
                         RestKind::ArrayTail { element } => {
-                            element
-                                .conceptual_type
-                                .visit_types_excluding(types, f, already_visited);
+                            element.conceptual_type.visit_types_excluding(
+                                types,
+                                f,
+                                already_visited,
+                            );
                         }
                     }
                 }
@@ -836,6 +838,10 @@ pub enum RestSemantics {
 /// (`domain()`/`range()`/`duplicates()`) is only reached on a `Map`-rep record, so it reads through
 /// this without a rep check; the two rep-agnostic sites (the type visitor / dependency walk) match on
 /// the variant to walk the right inner type(s).
+// The map variant carries two `RustType`s and the array variant one, so the variants differ in size —
+// immaterial here because a `RestRow` is only ever held behind `Option<Box<RestRow>>` on `RustRecord`,
+// so the enum never sits inline in a hot value.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug)]
 pub enum RestKind {
     /// `* K => V` rest row of an open struct-map.
