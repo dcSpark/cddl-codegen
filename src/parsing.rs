@@ -8,8 +8,7 @@ use crate::intermediate::{
     AliasIdent, AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant,
     EnumVariantData, FixedValue, FloatWindow, GenericDef, GenericInstance, IntermediateTypes,
     ModuleScope, PlainGroupInfo, Primitive, Representation, RestKind, RestRow, RestSemantics,
-    RustField,
-    RustIdent, RustRecord, RustStruct, RustStructType, RustType, VariantIdent,
+    RustField, RustIdent, RustRecord, RustStruct, RustStructType, RustType, VariantIdent,
     reserved_pin_rejection,
 };
 use crate::utils::{

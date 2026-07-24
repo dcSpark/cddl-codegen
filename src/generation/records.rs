@@ -149,11 +149,20 @@ pub(super) fn generate_array_struct_serialization(
     // whole point of the tolerate-and-drop flavor) and has no field to iterate. Preserve is rejected
     // for array tails, so this plain element serialize is the only tail-write path.
     if let Some(rest) = record.captured_rest().filter(|r| r.is_array_tail()) {
-        let mut tail_loop = Block::new(format!("for element in {opt_self}{}.iter()", rest.field_name));
+        let mut tail_loop = Block::new(format!(
+            "for element in {opt_self}{}.iter()",
+            rest.field_name
+        ));
         let elem_config = SerializeConfig::new("element", "rest_element")
             .expr_is_ref(true)
             .is_end(false);
-        gen_scope.generate_serialize(types, rest.element().into(), &mut tail_loop, elem_config, cli);
+        gen_scope.generate_serialize(
+            types,
+            rest.element().into(),
+            &mut tail_loop,
+            elem_config,
+            cli,
+        );
         ser_func.push_block(tail_loop);
     }
 }
@@ -594,7 +603,7 @@ pub(super) fn generate_array_struct_deserialization(
                         cli,
                     )
                     .add_to(&mut tail_loop);
-                tail_loop.line(&format!("{}.push(rest_elem);", rest.field_name));
+                tail_loop.line(format!("{}.push(rest_elem);", rest.field_name));
             }
             RestSemantics::Ignore => {
                 gen_scope
@@ -1623,8 +1632,7 @@ pub(super) fn codegen_struct(
         if !wasm_new_comments.is_empty() {
             wasm_new.doc(wasm_new_comments.join("\n"));
         }
-        if let Some(doc) = ignore_aware_doc(config.doc.as_deref(), record.ignored_rest())
-        {
+        if let Some(doc) = ignore_aware_doc(config.doc.as_deref(), record.ignored_rest()) {
             wrapper.s.doc(&doc);
         }
         wrapper.s_impl.push_fn(wasm_new);

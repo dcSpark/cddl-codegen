@@ -2153,8 +2153,9 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
         plus.contains("rule `m`") && (plus.contains("rest tail") || plus.contains("`*`")),
         "the `+`-tail rejection should be actionable and name the rule, got: {plus}"
     );
-    run("m = [uint, 2*3 bytes]\n", "bounded")
-        .expect_err("`2*3` admits 2..=3 repetitions — not a supported rest-tail occurrence (must reject)");
+    run("m = [uint, 2*3 bytes]\n", "bounded").expect_err(
+        "`2*3` admits 2..=3 repetitions — not a supported rest-tail occurrence (must reject)",
+    );
     // A leading/non-final `*` keeps rejecting (the rest tail must be the LAST member).
     let leading = run("m = [* bytes, uint]\n", "leading")
         .expect_err("a non-final `*` narrows identically — must reject (rest tail must be last)");
@@ -2178,8 +2179,10 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
 /// boundary in plain mode (`--wasm=false`).
 #[test]
 fn open_array_front_end() {
-    fn gen_flags(spec: &str, flags: &[&str]) -> Result<std::collections::BTreeMap<String, String>, String>
-    {
+    fn gen_flags(
+        spec: &str,
+        flags: &[&str],
+    ) -> Result<std::collections::BTreeMap<String, String>, String> {
         let path = std::env::temp_dir().join(format!(
             "cddl_codegen_open_array_fe_{}.cddl",
             std::process::id()
@@ -2202,10 +2205,13 @@ fn open_array_front_end() {
     fn run(spec: &str) -> Result<std::collections::BTreeMap<String, String>, String> {
         gen_flags(spec, &[])
     }
-    let src = |out: &std::collections::BTreeMap<String, String>| out.values().cloned().collect::<Vec<_>>().join("\n");
+    let src = |out: &std::collections::BTreeMap<String, String>| {
+        out.values().cloned().collect::<Vec<_>>().join("\n")
+    };
 
     // --- positive: a final `* t` after ≥1 fixed member captures a `Vec<T>` tail ---
-    let cap = run("a = [uint, tstr, * uint]\n").expect("final-position `* t` is an open-array rest tail");
+    let cap =
+        run("a = [uint, tstr, * uint]\n").expect("final-position `* t` is an open-array rest tail");
     assert!(
         src(&cap).contains("pub rest: Vec<u64>"),
         "capture tail is a `Vec<T>` field named `rest`"
@@ -2220,7 +2226,8 @@ fn open_array_front_end() {
     );
 
     // --- @ignore (entry-trailing slot) is HONORED: no field, a closed struct ---
-    let ign = run("a = [\n  uint,\n  * any ; @ignore\n]\n").expect("@ignore on the tail entry is honored");
+    let ign = run("a = [\n  uint,\n  * any ; @ignore\n]\n")
+        .expect("@ignore on the tail entry is honored");
     assert!(
         !src(&ign).contains("pub rest") && src(&ign).contains("struct A"),
         "an @ignore tail emits no field (closed struct)"
@@ -2228,8 +2235,9 @@ fn open_array_front_end() {
 
     // --- slot direction: a RULE-level @ignore on an open-array rule is NOT stolen onto the tail —
     // it is a loud rule-position rejection (the tail's own entry slot is disjoint from the rule slot).
-    let rule_ign = run("a = [uint, * any] ; @ignore\n")
-        .expect_err("a rule-position @ignore on an open-array rule is rejected, not applied to the tail");
+    let rule_ign = run("a = [uint, * any] ; @ignore\n").expect_err(
+        "a rule-position @ignore on an open-array rule is rejected, not applied to the tail",
+    );
     assert!(
         rule_ign.contains("@ignore") && rule_ign.contains("rule `a`"),
         "rule-position @ignore is a loud rejection naming the rule, got: {rule_ign}"
@@ -2253,7 +2261,8 @@ fn open_array_front_end() {
     // `+` / `n*m` on the final entry
     run("a = [uint, + uint]\n").expect_err("`+` is not a supported rest-tail occurrence");
     run("a = [uint, 2*3 uint]\n").expect_err("`n*m` is not a supported rest-tail occurrence");
-    // D-R4: a fixed-value tail element has no Rust representation
+    // a fixed-value tail element has no Rust representation (a `Vec<FixedValue>` is not a type), so it
+    // is rejected before the homogeneous-array fixed-value panic class
     let fixed = run("a = [uint, * 5]\n").expect_err("a fixed-value tail element must reject");
     assert!(
         fixed.contains("fixed value") && fixed.contains("rule `a`"),
@@ -2261,7 +2270,8 @@ fn open_array_front_end() {
     );
     run("a = [uint, * null]\n").expect_err("a `* null` tail must reject (fixed value)");
     // choice-arm placement
-    run("a = [uint, * uint] // [tstr]\n").expect_err("a rest tail in a group-choice arm must reject");
+    run("a = [uint, * uint] // [tstr]\n")
+        .expect_err("a rest tail in a group-choice arm must reject");
     // plain group placement (`g = (a, * t)`, embedded via `[g]`)
     run("a = [g]\ng = (uint, * uint)\n").expect_err("a rest tail inside a plain group must reject");
 

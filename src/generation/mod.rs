@@ -590,7 +590,8 @@ impl GenerationScope {
                             // `map_shape_is_preserve_owned`, so a `@duplicates preserve` rest mints
                             // the PairMap-backed wrapper). An `@ignore` row has no field/getter, so no
                             // wasm map wrapper is minted for it (its wasm class is a closed struct's).
-                            if let Some(rest) = record.captured_rest().filter(|r| !r.is_array_tail())
+                            if let Some(rest) =
+                                record.captured_rest().filter(|r| !r.is_array_tail())
                             {
                                 let rest_map = ConceptualRustType::Map(
                                     Box::new(rest.domain().clone()),
