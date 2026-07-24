@@ -854,8 +854,10 @@ fn record_roundtrip(
     // `MintValue::Any` composite carries (the rest-position twin of `emit_tests_any_float_execute`'s
     // member-position float mint). Both key (domain) and value (range) are minted via `valid_value`;
     // a domain/range not cheaply mintable skips the rest case, leaving the baseline empty-rest case
-    // (which still round-trips: empty rest ≡ closed-struct bytes).
-    if let Some(rest) = &record.rest {
+    // (which still round-trips: empty rest ≡ closed-struct bytes). CAPTURE only: an `@ignore`
+    // (tolerate-and-drop) row exposes no `.rest` field to mint into — the minted value carries only
+    // declared fields, and round-trips trivially (no unknown entries exist in generated-API mint).
+    if let Some(rest) = record.captured_rest() {
         match (
             valid_value(types, &rest.domain),
             valid_value(types, &rest.range),

@@ -10,8 +10,9 @@ use std::process::{Command, Stdio};
 use crate::intermediate::{
     AliasIdent, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant, EnumVariantData,
     FixedValue, IntermediateTypes, ModuleScope, Primitive, ROOT_SCOPE, Representation, RestRow,
-    RustField, RustIdent, RustRecord, RustStructCBORLen, RustStructConfig, RustStructType,
-    RustType, RustTypeSerializeConfig, ToWasmBoundaryOperations, VariantIdent, escape_rust_str,
+    RestSemantics, RustField, RustIdent, RustRecord, RustStructCBORLen, RustStructConfig,
+    RustStructType, RustType, RustTypeSerializeConfig, ToWasmBoundaryOperations, VariantIdent,
+    escape_rust_str,
 };
 use crate::utils::{cbor_type_code_str, convert_to_camel_case, convert_to_snake_case};
 
@@ -581,13 +582,15 @@ impl GenerationScope {
                             for field in &record.fields {
                                 self.ensure_non_empty_wrappers(types, &field.rust_type, cli);
                             }
-                            // Open struct-map rest row: its container is a `Map(domain, range)` the
-                            // conceptual visitor above never sees as a composite (it walks
-                            // domain/range separately). Mint the map's wasm wrapper explicitly — the
-                            // rest field's getter returns it — via the SAME path a map field's
-                            // wrapper takes (policy recovered from `map_shape_is_preserve_owned`, so a
-                            // `@duplicates preserve` rest mints the PairMap-backed wrapper).
-                            if let Some(rest) = &record.rest {
+                            // Open struct-map rest row (CAPTURE only): its container is a
+                            // `Map(domain, range)` the conceptual visitor above never sees as a
+                            // composite (it walks domain/range separately). Mint the map's wasm
+                            // wrapper explicitly — the rest field's getter returns it — via the SAME
+                            // path a map field's wrapper takes (policy recovered from
+                            // `map_shape_is_preserve_owned`, so a `@duplicates preserve` rest mints
+                            // the PairMap-backed wrapper). An `@ignore` row has no field/getter, so no
+                            // wasm map wrapper is minted for it (its wasm class is a closed struct's).
+                            if let Some(rest) = record.captured_rest() {
                                 let rest_map = ConceptualRustType::Map(
                                     Box::new(rest.domain.clone()),
                                     Box::new(rest.range.clone()),

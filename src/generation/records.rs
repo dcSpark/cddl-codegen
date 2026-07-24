@@ -757,6 +757,41 @@ fn append_rest_capture(
     cli: &Cli,
 ) {
     block.line("read_len.read_elems(1)?;");
+    // IGNORE flavor (tolerate-and-drop): consume the entry's key and value to advance the stream, then
+    // store NOTHING (no container, no sidecar, no wire-position — `@ignore` is rejected under
+    // preserve, so none of that machinery is reachable here). `read_len.read_elems(1)?` above still
+    // accounts the entry (the deser loop stays dynamic-length so a definite-length map with extra
+    // entries passes — the same length machinery capture uses). When `key_val_expr` is `Some`, the
+    // arm already read the key bytes (this expr merely RECONSTRUCTS the value for capture), so binding
+    // it to `_` consumes that read; otherwise the key still sits on the wire and must be deserialized.
+    if rest.semantics == RestSemantics::Ignore {
+        match key_val_expr {
+            Some(expr) => {
+                block.line(format!("let _ = {expr};"));
+            }
+            None => {
+                gen_scope
+                    .generate_deserialize(
+                        types,
+                        (&rest.domain).into(),
+                        DeserializeBeforeAfter::new("let _rest_key = ", ";", false),
+                        DeserializeConfig::new("_rest_key"),
+                        cli,
+                    )
+                    .add_to(block);
+            }
+        }
+        gen_scope
+            .generate_deserialize(
+                types,
+                (&rest.range).into(),
+                DeserializeBeforeAfter::new("let _rest_value = ", ";", false),
+                DeserializeConfig::new("_rest_value"),
+                cli,
+            )
+            .add_to(block);
+        return;
+    }
     let domain = RestKeyDomain::of(rest);
     let (key_encs, value_encs) = rest_encoding_fields(types, rest, cli);
     // --- key ---
@@ -1391,12 +1426,13 @@ pub(super) fn codegen_struct(
                 wrapper.s_impl.push_fn(setter);
             }
         }
-        // Open struct-map rest row: a getter returning the captured entries as the wasm map wrapper
-        // (`MapKToV` / the `@duplicates preserve` PairMap-backed twin). Deliberately no `new()` arg
-        // and no setter — the rest defaults empty and rides the map wrapper's own mutation surface
-        // (matching the rust side, where `new()` excludes it). The wrapper class is minted in the
-        // wasm pass (`mint_wasm_wrapper_for_visited_type` for the rest map).
-        if let Some(rest) = &record.rest {
+        // Open struct-map rest row (CAPTURE only): a getter returning the captured entries as the
+        // wasm map wrapper (`MapKToV` / the `@duplicates preserve` PairMap-backed twin). Deliberately
+        // no `new()` arg and no setter — the rest defaults empty and rides the map wrapper's own
+        // mutation surface (matching the rust side, where `new()` excludes it). The wrapper class is
+        // minted in the wasm pass (`mint_wasm_wrapper_for_visited_type` for the rest map). An
+        // `@ignore` row stores nothing, so it has no getter (its wasm class is a closed struct's).
+        if let Some(rest) = record.captured_rest() {
             let rest_ty = rest_member_type(rest);
             let mut getter = codegen::Function::new(&rest.field_name);
             getter
@@ -1581,11 +1617,12 @@ pub(super) fn codegen_struct(
             native_struct.push_field(codegen_field);
         }
     }
-    // Open struct-map rest row (loose CBOR): a `pub` map field holding the captured unknown entries.
-    // Deliberately NOT a constructor argument — `new()` defaults it empty, so adding a rest row to a
-    // spec is source-compatible for existing `new()` callers. The container matches the table switch
-    // (non-preserve `BTreeMap`; `OrderedHashMap` under `--preserve-encodings`).
-    if let Some(rest) = &record.rest {
+    // Open struct-map rest row (CAPTURE only): a `pub` map field holding the captured unknown
+    // entries. Deliberately NOT a constructor argument — `new()` defaults it empty, so adding a rest
+    // row to a spec is source-compatible for existing `new()` callers. The container matches the
+    // table switch (non-preserve `BTreeMap`; `OrderedHashMap` under `--preserve-encodings`). An
+    // `@ignore` row emits NO field (it drops unknown entries), so the struct is a closed struct's.
+    if let Some(rest) = record.captured_rest() {
         let mut rest_field = codegen::Field::new(
             format!("pub {}", rest.field_name),
             rest_member_type(rest).for_rust_member(types, false, cli),
@@ -1666,7 +1703,8 @@ pub(super) fn codegen_struct(
         // `@duplicates preserve` twin's keys repeat, so its sidecars are POSITIONAL (`Vec`, parallel
         // to the pair-list, indexed by entry position) — exactly the loose-table pair-map split. The
         // rest row's OWN map-header length lives in the owner's `len_encoding` (no `_encoding` here).
-        if let Some(rest) = &record.rest {
+        // Capture-only (an `@ignore` row stores nothing, and it is rejected under preserve anyway).
+        if let Some(rest) = record.captured_rest() {
             let key_rust = rest.domain.for_rust_member(types, false, cli);
             let (key_encs, value_encs) = rest_encoding_fields(types, rest, cli);
             let sidecar_type = |elem: String| {
@@ -2123,7 +2161,9 @@ pub(super) fn codegen_struct(
                 // iteration order (by key) drives the order; no encoding sidecars. The PRESERVE
                 // flavor interleaves the rest entries into the `orig_deser_order` replay above (wire
                 // position fidelity + per-entry sidecars), so it does NOT take this appended-loop path.
-                if let Some(rest) = record.rest.as_ref().filter(|_| !cli.preserve_encodings) {
+                // Capture-only: an `@ignore` struct re-serializes ONLY its declared members (the whole
+                // point of the tolerate-and-drop flavor), and it has no `rest` field to iterate.
+                if let Some(rest) = record.captured_rest().filter(|_| !cli.preserve_encodings) {
                     let mut rest_loop = Block::new(format!(
                         "for (key, value) in self.{}.iter()",
                         rest.field_name
@@ -2156,7 +2196,17 @@ pub(super) fn codegen_struct(
                 let rest_index_base = record.fields.len();
                 let rest_domain = record.rest.as_ref().map(|r| RestKeyDomain::of(r));
                 let any_cbor = format!("{}::any_cbor::AnyCbor", cli.common_import_rust());
-                if let Some(rest) = &record.rest {
+                // BOTH flavors run unknown-key arms that account each entry via `read_len.read_elems`
+                // and use `?`, so the loop needs the real (not `_`-prefixed) `read_len` and a
+                // Result-returning closure — mark them used regardless of capture/ignore.
+                if record.rest.is_some() {
+                    deser_code.read_len_used = true;
+                    deser_code.throws = true;
+                }
+                // CAPTURE only: declare the capture container (+ preserve encoding sidecar locals) the
+                // arms insert into. An `@ignore` row deserializes-and-DROPS each unknown entry in
+                // place, so there is no container and nothing to declare here.
+                if let Some(rest) = record.captured_rest() {
                     if cli.preserve_encodings {
                         // Annotate the container type under preserve: for an `any`-domain rest the
                         // value-`Eq` dup scan (`.iter().any(|(k, _)| k.value_eq(..))`) runs BEFORE the
@@ -2198,11 +2248,6 @@ pub(super) fn codegen_struct(
                             ));
                         }
                     }
-                    // The capture arms use `read_len` (account each entry) and `?` — mark them used so
-                    // the embedded-group arg is `read_len` (not `_read_len`) and the closure returns
-                    // Result.
-                    deser_code.read_len_used = true;
-                    deser_code.throws = true;
                 }
                 // needs to be in one line rather than a block because Block::after() only takes a string
                 deser_code.content.line("let mut read = 0;");
@@ -2550,9 +2595,10 @@ pub(super) fn codegen_struct(
                         ctor_block.line(format!("{}: {}_present,", field.name, field.name));
                     }
                 }
-                // Open struct-map rest row: the capture container local (declared before the loop,
-                // named by the rest field) moves into the constructed struct.
-                if let Some(rest) = &record.rest {
+                // Open struct-map rest row (CAPTURE only): the capture container local (declared
+                // before the loop, named by the rest field) moves into the constructed struct. An
+                // `@ignore` row declared no container and adds no field, so nothing moves in.
+                if let Some(rest) = record.captured_rest() {
                     ctor_block.line(format!("{},", rest.field_name));
                 }
                 if cli.preserve_encodings {
@@ -2578,8 +2624,8 @@ pub(super) fn codegen_struct(
                     }
                     // Open struct-map rest row: the per-entry encoding sidecar locals (declared before
                     // the loop and populated at each concrete-domain capture) move into the encoding
-                    // struct. Absent for a fully self-carried `any` rest.
-                    if let Some(rest) = &record.rest {
+                    // struct. Absent for a fully self-carried `any` rest. Capture-only (preserve).
+                    if let Some(rest) = record.captured_rest() {
                         let (key_encs, value_encs) = rest_encoding_fields(types, rest, cli);
                         if !key_encs.is_empty() {
                             encoding_ctor.line(format!("{}_key_encodings,", rest.field_name));
