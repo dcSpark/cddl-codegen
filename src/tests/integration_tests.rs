@@ -6346,6 +6346,80 @@ fn emit_tests_open_struct_ignore_execute() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// Executes `--emit-tests` over the open-ARRAY rest-tail shapes (a final-position `* t` after the fixed
+/// members). All three flavors are covered by one non-preserve generation: a typed tail (`cap`), an
+/// `any` tail (`cap_any`), and a tolerate-and-drop `@ignore` tail (`ign`). It is the array twin of the
+/// open struct-map rest / `@ignore` execute gates, and pins two things the mint promises:
+///   * CAPTURE mints one trailing element through the generated `.rest` `Vec` `push` API (the tail is
+///     excluded from `new()`, so a non-empty tail exercises the deserialize loop / re-serialize path);
+///   * the `@ignore` tail gets the SAME ordinary `roundtrip_<type>` treatment as any closed struct with
+///     NO ignore-specific gating — its minted value goes through `new()` (declared prefix only), so it
+///     carries no unknown trailing elements and byte-identity holds trivially.
+/// Generation is non-preserve because `@ignore` is rejected under `--preserve-encodings`; capture's
+/// preserve fidelity mint is exercised separately by the open struct-map rest execute gate.
+#[test]
+fn emit_tests_open_array_execute() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let input = std::path::PathBuf::from("tests/open-array-e2e/input.cddl");
+    let root =
+        std::env::temp_dir().join(format!("cddl_codegen_open_array_{:016x}", checkout_hash()));
+    let _ = std::fs::remove_dir_all(&root);
+    let out = root.join("crate");
+    let generate = tool_cmd("cargo")
+        .args(["run", "--"])
+        .arg(format!("--input={}", input.to_str().unwrap()))
+        .arg(format!("--output={}", out.to_str().unwrap()))
+        .arg("--wasm=false")
+        .arg("--emit-tests=true")
+        .output()
+        .unwrap();
+    if !generate.status.success() {
+        eprintln!("{}", String::from_utf8_lossy(&generate.stderr));
+    }
+    assert!(
+        generate.status.success(),
+        "generation failed (open-array rest tails must emit tests for all three flavors)"
+    );
+
+    let src =
+        std::fs::read_to_string(out.join("rust/src/generated/mod.rs")).expect("generated mod.rs");
+    // Every shape — typed tail, `any` tail, and the `@ignore` tail — gets an ordinary
+    // `roundtrip_<type>`; the `@ignore` type is minted exactly like a closed struct (no gating).
+    for ty in ["roundtrip_cap", "roundtrip_cap_any", "roundtrip_ign"] {
+        assert!(
+            src.contains(&format!("fn {ty}(")),
+            "emit-tests skipped `{ty}` — an open-array rest-tail type must be minted like any struct"
+        );
+    }
+    // CAPTURE mints one trailing element through the generated `.rest` `Vec` `push` API (arrays push a
+    // positional element, unlike a map rest row's keyed `.rest.insert(`).
+    assert!(
+        src.contains(".rest.push("),
+        "the open-array capture mint did not push a trailing element through the generated `.rest` Vec API"
+    );
+    assert!(
+        !src.contains(".rest.insert("),
+        "an open-array tail is a positional `Vec` (push), never a keyed map `insert`"
+    );
+
+    let test = tool_cmd("cargo")
+        .arg("test")
+        .current_dir(out.join("rust"))
+        .output()
+        .unwrap();
+    if !test.status.success() {
+        eprintln!("stdout:\n{}", String::from_utf8_lossy(&test.stdout));
+        eprintln!("stderr:\n{}", String::from_utf8_lossy(&test.stderr));
+    }
+    assert!(
+        test.status.success(),
+        "generated open-array rest-tail emit-tests crate failed cargo test"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// Executes the `--emit-tests` generated WASM-test module end-to-end (tests/README.md § "wasm-crate
 /// test module"): generate the rich `core` fixture with `--wasm=true --emit-tests=true`, then
 /// `cargo test` the generated WASM crate so the emitted `wasm_roundtrip_*`/`wasm_reject_*` module runs
