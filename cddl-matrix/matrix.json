@@ -164,6 +164,21 @@
       {
         "emission": {
           "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips (closed-struct JSON, unknown keys tolerated on read)",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen rejected at generation (exit 1) — @ignore is rejected under --preserve-encodings (a preserve crate's byte-exact contract can't hold for a lossy type)",
+            "status": "unsupported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips (tolerate-and-drop rest row; validated by tests/open-struct-map-ignore-e2e and the open_struct_map_ignore snapshot); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "id": "dsl.ignore",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
             "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           },
@@ -4311,6 +4326,16 @@
       "profile": "CDDL_CODEGEN",
       "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@newtype; src/comment_ast.rs",
       "title": "@newtype — wrapper struct instead of alias"
+    },
+    {
+      "alt": "@ignore",
+      "desc": "The tolerate-and-drop flavor of an open struct-map rest row (`* k => v` after fixed keys). Unknown map entries are typed-deserialized (key AND value, so the stream advances past nested containers) and then DROPPED: no `rest` field is emitted, serialize re-emits only the declared members, and JSON/schemars/wasm are a closed struct's. This is the documented-lossy counterpart to the default capture flavor (byte round-trips do not hold for wire data carrying unknown entries). Valid ONLY on a recognized `* k => v` rest row — every other placement (rule/alias/union/table/array/field) is a graceful rejection — and rejected together with --preserve-encodings (a preserve crate's byte-exact contract can't hold for a lossy type), with @duplicates (no captured container for a policy to govern), and with @name (no field to name). The directive is bare and argument-less.",
+      "example": "\nlabel_map = {\n  1: uint, 2: text,\n  * uint => any ; @ignore\n}",
+      "id": "dsl.ignore",
+      "production": "comment_dsl",
+      "profile": "CDDL_CODEGEN",
+      "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@ignore; src/comment_ast.rs",
+      "title": "@ignore — tolerate-and-drop open struct-map rest row"
     },
     {
       "alt": "@no_alias",

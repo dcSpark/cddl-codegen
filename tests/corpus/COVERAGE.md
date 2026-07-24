@@ -240,7 +240,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 ## cddl-codegen vendor profile (comment DSL + sentinels — not RFC 8610)
 
-### `comment_dsl` (17)
+### `comment_dsl` (18)
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
@@ -251,6 +251,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `dsl.doc` | ✅ | @doc — rust doc comment | `dsl_doc.cddl` |
 | `dsl.duplicates.preserve` | ✅ | @duplicates preserve — duplicate-preserving pair-map tables | `table_preserve.cddl` |
 | `dsl.duplicates.reject` | ✅ | @duplicates reject — duplicate-free set/array collections | `tag_set_reject.cddl` |
+| `dsl.ignore` | ➕ | @ignore — tolerate-and-drop open struct-map rest row | supported, no corpus fixture (cddl-codegen exit 0); --preserve-encodings unsupported (cddl-codegen rejected at generation (exit 1) — @ignore is rejected under --preserve-encodings (a preserve crate's byte-exact contract can't hold for a lossy type)) |
 | `dsl.name` | ✅ | @name — explicit field/variant name | `dsl_name.cddl` |
 | `dsl.newtype` | ✅ | @newtype — wrapper struct instead of alias | `dsl_newtype.cddl` |
 | `dsl.no_alias` | ✅ | @no_alias — inline the type, emit no alias | `dsl_no_alias.cddl` |
@@ -329,7 +330,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 ## Summary
 
-- Features: **115** — ✅ 64 covered · ➕ 21 supported-untested · ⚠️ 4 partial · ➖ 26 not supported
+- Features: **116** — ✅ 64 covered · ➕ 22 supported-untested · ⚠️ 4 partial · ➖ 26 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
 - Corpus fixtures: 84
 

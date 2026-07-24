@@ -77,6 +77,20 @@ desc = "Turns `foo = uint` from a `type Foo = u64` alias into a `struct Foo(u64)
 example = "protocol_magic = uint ; @newtype"
 
 [[feature]]
+id = "dsl.ignore"
+production = "comment_dsl"
+alt = "@ignore"
+rfc = "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@ignore; src/comment_ast.rs"
+profile = "CDDL_CODEGEN"
+title = "@ignore — tolerate-and-drop open struct-map rest row"
+desc = "The tolerate-and-drop flavor of an open struct-map rest row (`* k => v` after fixed keys). Unknown map entries are typed-deserialized (key AND value, so the stream advances past nested containers) and then DROPPED: no `rest` field is emitted, serialize re-emits only the declared members, and JSON/schemars/wasm are a closed struct's. This is the documented-lossy counterpart to the default capture flavor (byte round-trips do not hold for wire data carrying unknown entries). Valid ONLY on a recognized `* k => v` rest row — every other placement (rule/alias/union/table/array/field) is a graceful rejection — and rejected together with --preserve-encodings (a preserve crate's byte-exact contract can't hold for a lossy type), with @duplicates (no captured container for a policy to govern), and with @name (no field to name). The directive is bare and argument-less."
+example = '''
+label_map = {
+  1: uint, 2: text,
+  * uint => any ; @ignore
+}'''
+
+[[feature]]
 id = "dsl.no_alias"
 production = "comment_dsl"
 alt = "@no_alias"
