@@ -56,3 +56,19 @@ ignore_map = {
   1: uint,
   * uint => uint ; @ignore
 }
+
+; open array (loose CBOR "rest tail"): fixed members `uint, tstr` followed by a trailing `* uint`
+; captures the trailing elements into `.rest`. The array header COUNTS the declared members plus every
+; tail element (2 + rest.len()); the wire is the declared members first, then the tail elements in
+; order. Empty tail ≡ the closed two-element array.
+open_list = [uint, tstr, * uint]
+
+; the `@ignore` (tolerate-and-drop) flavor: trailing elements are typed-deserialized and DROPPED, so
+; re-serialize emits ONLY the declared prefix. Decoding wire that carries trailing elements therefore
+; does NOT round-trip to itself — it round-trips to the declared-prefix bytes (the KATs assert exactly
+; that lossy contract). Non-preserve only. The `; @ignore` sits on its own line before `]` so the
+; comment does not swallow the closing bracket.
+ignore_list = [
+  uint,
+  * uint ; @ignore
+]

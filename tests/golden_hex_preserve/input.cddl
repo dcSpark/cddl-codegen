@@ -98,3 +98,9 @@ md_holder  = [meta: md]
 ; are data. A non-minimal rest KEY head (7 written 0x18 0x07) re-emits verbatim through the loose
 ; container's per-key encoding sidecar. Vectors in tests.rs.
 open_map = { 1: uint, * uint => uint }
+
+; open array under --preserve-encodings: a captured TAIL element's HEADER ARGUMENT is data. A
+; non-minimal tail element head (7 written 0x18 0x07) re-emits verbatim through the positional
+; per-element encoding sidecar (`rest_elem_encodings`); the declared members stay minimal. Vectors in
+; tests.rs.
+open_list = [uint, tstr, * uint]
