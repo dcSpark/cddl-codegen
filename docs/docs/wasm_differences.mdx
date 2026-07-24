@@ -213,6 +213,16 @@ the `{ * any => any }` / `{ * uint => any }` / `{ * any => uint }` domain-range 
 distinct wasm class of its own — the `AnyCbor` class *is* its wasm face (the one place `any` skips the
 rust/wasm type-alias parity, since a bare `AnyCbor` alias would add nothing).
 
+## Open struct-map rest rows
+
+An [open struct-map](output_format#open-struct-maps-rest-rows) (`{ 1: uint, * K => V }`) captures
+unknown entries into a `rest` field. On the wasm boundary that field is a **read-only `rest()` getter**
+returning the minted map wrapper for the row's `K`/`V` shape (`MapU64ToAny`, `MapAnyToAny`, …, or the
+`PairMap`-backed wrapper under `@duplicates preserve`) — the same map-wrapper surface as any table.
+There is **no** `rest` constructor argument and **no setter** (v1): the field defaults empty and is
+mutated through the returned wrapper's own `insert`/`get`/`keys` API. The declared members keep their
+ordinary per-field constructor arguments and getters.
+
 ## Nullable / nested Options
 
 `wasm_bindgen` cannot expose a doubly-nested `Option<Option<T>>` (`Option<T>` does not implement `OptionIntoWasmAbi`), the same way it can't expose a nested `Vec`. This happens when a nullable value (`T / null` → `Option<T>`) sits in a position that adds its own presence-`Option`: a **map value** (`get`/`insert` return `Option<value>`) or an **optional struct field** (its getter returns `Option<field>`). In those spots the accessor flattens to a single `Option<T>`, so a read returns `None` for **both** an absent entry and a present-but-`null` one (the same convention the c-style enum `as_*()` getters use). The underlying rust type keeps all three states (absent / present-null / present-value), so CBOR round-trips are unaffected — only the wasm read side conflates absent with null.

@@ -244,6 +244,11 @@ documented JSON-only ambiguity; `"012"`/`"+7"`/`"5.0"` stay text). CBOR is autho
 lossy side by charter. The round-trip law is `from_natural_json(to_natural_json(x)?)` value-equal
 modulo encodings, object-key ordering, and that numeric-key reading.
 
+**Depth.** JSON *reading* (both natural and the tagged value codec) inherits serde_json's own
+recursion limit, so hostile deeply-nested JSON is a graceful `Err`, never a stack overflow; JSON
+*writing* (`to_json`/`to_natural_json`) carries the crate-wide unbounded-recursion posture — no depth
+guard on the write path (use `--deserialize-depth-limit` to bound the CBOR read side).
+
 #### The `AnyCbor` value codec (tagged)
 
 A *bare* `AnyCbor` derives serde as a **total, tagged representation of CBOR** — every value is a
@@ -279,6 +284,58 @@ permissive "any JSON value" schema (json2ts → TS `unknown`, a `{* K => any}` m
 objects above.
 
 The wasm wrapper for `any` is documented under [wasm differences](wasm_differences#the-any-type-anycbor).
+
+## Open struct-maps (rest rows)
+
+A CDDL map that mixes **fixed members with a trailing `* K => V` entry** — `{ 1: uint, 2: text, * uint
+=> any }` — is an *open struct-map*: the fixed members deserialize as declared, and every **unknown**
+map entry is captured into a generated `rest` field instead of being an error (a plain closed struct
+rejects unknown keys). This is the loose-CBOR "capture" shape for forward-compatible schemas. The rest
+row must be the map's **last** entry, must occur exactly `*`, and must follow ≥1 fixed member; other
+spellings (a bounded/`+` occurrence, a non-final rest row, a rest row in a group-choice arm or a plain
+group) are graceful rejections naming the supported form. Key domains supported today: `uint`, `text`,
+and `any`; the value type is unrestricted (including `any`).
+
+**The `rest` field.** A `pub` map named `rest` (rename with `@name` on the row — see
+[the comment DSL](comment_dsl#name-and-duplicates-on-an-open-map-rest-row)), keyed by `K`, valued `V`.
+It is **excluded from `new()`** and defaults empty, so adding a rest row to an existing spec is both
+source-compatible (old `new(..)` calls keep working) and wire-compatible (empty rest ≡ the closed
+struct's bytes). Its container matches the table switch and the `@duplicates` policy:
+
+| mode | container |
+|---|---|
+| default (non-preserve) | `BTreeMap<K, V>` |
+| `--preserve-encodings` | `OrderedHashMap<K, V>` |
+| `@duplicates preserve` on the row | `PairMap<K, V>` (the byte-exact duplicate-keyed twin) |
+
+**Serialize / round-trip.** The map header counts the declared members **plus** every rest entry
+(`N + rest.len()`); declared members serialize first, then the captured entries. The default
+`@duplicates reject` policy refuses a duplicate captured key (value-equality — a `DuplicateKey` decode
+error); `@duplicates preserve` keeps duplicates via the `PairMap` twin.
+
+**Preserve / canonical.** Under `--preserve-encodings` the original **wire order** (declared and
+captured entries interleaved) is recorded and replayed byte-exact, and each captured entry's key/value
+header widths are preserved — via per-entry encoding sidecars for concrete domains, or self-carried by
+`AnyCbor` for `any` content. Under `--canonical-form` the declared keys and the captured rest keys are
+**merged and ordered together** length-first-then-bytewise (a rest key can sort before a declared key),
+and each captured key's header is minimized.
+
+**JSON (`--json-serde-derives`, ruling R7).** Captured entries render **flattened at the same JSON
+object level as the declared members** (via serde `flatten`), under the natural-JSON key rules above:
+
+- *Write* (`to_json`) errors if a rest key stringifies to a **declared member's JSON name**, if two
+  rest keys stringify identically, or if a rest key/value falls in the natural failure set (a complex
+  `any` key, non-finite float, bytes, …). Values render through the natural walk.
+- *Read* (`from_json`) binds the **declared member names first**; every other key lands in `rest`
+  (loose JSON parsing for free). Typed domains parse deterministically (uint decimal / text verbatim);
+  an `any` domain uses the R4 prefer-numeric key rule.
+- The JSON Schema emits `properties` (the declared members) **plus `additionalProperties`** (the rest
+  range's schema; permissive for an `any` range) — the honest open-map shape (json2ts → a TS interface
+  with an index signature).
+
+**wasm.** The rest field is exposed as a **read-only `rest()` getter** returning the minted map wrapper
+(no `new()` argument, no setter — it defaults empty and is mutated through the wrapper's own surface);
+see [wasm differences](wasm_differences#open-struct-map-rest-rows).
 
 ## Non-empty containers
 

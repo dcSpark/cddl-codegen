@@ -398,6 +398,25 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   predicate). The trigger for a mechanical layer — an extern-projection sweep that enumerates
   every representation-changing config predicate and auto-checks a dep/consumer pair per
   directive — is a SECOND representation-changing surface shipping without its projection.
+- **A preserve and a non-preserve map of the SAME `K`/`V` shape in one spec conflict on the single
+  minted wasm map-wrapper's backing container under `--wasm`.** `name_for_wasm_map` mints ONE wrapper
+  class per `MapKToV` shape, but the preserve (`@duplicates preserve` → `PairMap`) and non-preserve
+  (`BTreeMap`/`OrderedHashMap`) flavors need incompatible inner types, so the same-shape/mixed-policy
+  pair cannot share it. There are now TWO instances of the class: **tables** (pre-existing — the
+  `@duplicates` coexistence note in `docs/docs/comment_dsl.mdx`, "A preserve table and a non-preserve
+  map/table of the identical key/value shape cannot coexist under `--wasm`", is the graceful table-side
+  rejection), and **open-struct-map rest rows** (loose-CBOR Phase B WP4 — a preserve rest row and a
+  non-preserve rest row of the same shape trip it through the SAME `map_shape_is_preserve_owned` seam
+  that mints the rest wrapper; details in the b-spec §6 WP4 outcome header "KNOWN EDGE"). The rest-row
+  instance is currently UNGUARDED (no fixture needs it, and the shape-clean `open-struct-map` snapshot
+  fixture deliberately stays off the wasm-parity axis to avoid it). Standing rule meanwhile: keep the
+  preserve/json open-map e2e fixtures off the wasm-parity sweep. Trigger for the mechanical layer — a
+  real spec that puts a preserve map/table AND a non-preserve one of the identical `K`/`V` shape under
+  `--wasm` (rest-row OR table). The layer is per-container-flavor wrapper minting (a distinct wrapper
+  keyed on the backing-container flavor, so both faces coexist) OR a rest-row-side graceful collision
+  detector — a parallel per-kind sibling of the existing wasm wrapper-name collision detectors (the
+  AGENTS.md "parallel per-kind siblings, not one generic detector" rule), distinctly worded like the
+  table-side coexistence rejection above.
 - **An emission branch whose generated OUTPUT no fixture exercises is invisible to every gate —
   it can rot to uncompilable and hide behavioral bugs in both directions.** Proven instance
   (plan-review-caught during the cbor_event 3.2.0 upgrade, not by any gate): the

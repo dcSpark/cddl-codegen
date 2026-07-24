@@ -213,8 +213,6 @@ are ledgered here (that's what the probe/gate error messages point at).
   `contain.occurrence-target.grpent.member.{zero,plus}_array`. Real support needs decode
   lookahead: a repeated-item run bounded by the following fields' types — middle-position repeats
   (`[uint, * bytes, tstr]`) need peek-type disambiguation.
-- Mixed struct+table maps (`{ a: uint, * k => v }`) unsupported — a map is detected as EITHER a struct or a
-  homogenous table, never both. Inline anonymous nested composites need a name.
 - **Real bounded `?` / `n*m` table cardinality is a candidate feature.** A count-permitting occurrence
   marker on a single non-literal arrow map entry no longer silently widens to an unbounded `*` table
   (the removed bug: the table-detection arm ignored the entry occurrence and `HomogenousMap` — unlike
