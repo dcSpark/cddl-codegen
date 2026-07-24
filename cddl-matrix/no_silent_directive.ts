@@ -92,6 +92,18 @@ const CORPUS: Cell[] = [
     shape: "collapsed two-arm 258 set idiom",
   },
   {
+    // `@ignore` (the open struct-map tolerate-and-drop rest-row flavor) is valid ONLY on a `* k => v`
+    // rest ENTRY, read from that entry's trailing comment slot. This gate's `buildRule` places the
+    // toggled directive at RULE position (`foo = <body> ; @ignore`), where `@ignore` is a
+    // misplacement — so this cell documents the LOUD rule-level rejection (honored-not-silenced),
+    // exactly the legitimate cell shape for a directive whose only valid slot is not rule position.
+    id: "open_struct_rule_position_ignore_rejected",
+    ruleBody: "{ 1: uint, * uint => any }",
+    base: [],
+    toggled: "@ignore",
+    shape: "open struct-map at rule-position @ignore (valid only on the rest entry)",
+  },
+  {
     // Bare `@newtype` on a nominalized 258 set is an ACCEPTED NO-OP: the set already nominalizes into a
     // wrapper, and a bare `@newtype` requests an inherent `get()` that is deliberately suppressed (it
     // would shadow `OrderedSet::get(index)` through `Deref` — E0061). So it is byte-identical with/without

@@ -1,0 +1,4 @@
+label_map = {
+  1: uint, 2: text,
+  * uint => any ; @ignore
+}
