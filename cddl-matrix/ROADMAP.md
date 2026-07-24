@@ -202,17 +202,18 @@ are ledgered here (that's what the probe/gate error messages point at).
   in different scope-marked files) needs an ownership decision before it can generate. On
   implementation: flip the `assignt.extend`/`assigng.extend` reject rows (verify.ts re-probe),
   re-mint their decode rows, and retire the rejection + this entry.
-- **Honor count-permitting occurrences on heterogeneous ARRAY-record fields as `Vec` fields.**
-  Generation rejects them gracefully (`[uint, tstr, * bytes]`, any marker but `?`/`1*1`, any
-  position — the array analogue of the keyed-map zero-permitting guard, in the same parsing.rs
-  field loop; boundaries pinned by `occurrence_on_array_record_field_rejects_gracefully`), to
-  avoid the silent exactly-once narrowing that generated decoders rejecting spec-valid repetition
-  counts — invisible to round-trip tests, surfaced only by spec-derived decode vectors (the
-  `773b723` oracle-masking lesson: the row's candidates died on two-oracle disagreement until the
-  fully-fixed `2c7548e` oracle). The unsupported surface is enumerated by
-  `contain.occurrence-target.grpent.member.{zero,plus}_array`. Real support needs decode
-  lookahead: a repeated-item run bounded by the following fields' types — middle-position repeats
-  (`[uint, * bytes, tstr]`) need peek-type disambiguation.
+- **Honor non-final and `+`/bounded count-permitting occurrences on heterogeneous ARRAY-record
+  fields.** A **final-position** `* t` after ≥1 fixed member is now an open-array rest tail
+  (captured `Vec`, or dropped under `@ignore`; user doc: `docs/docs/output_format.mdx` § "Open
+  arrays"), enumerated supported by `contain.occurrence-target.grpent.member.zero_array`. Still
+  rejected gracefully: a `+` or bounded (`n*m`) final tail —
+  `contain.occurrence-target.grpent.member.plus_array` — and any **non-final / middle** `*` member
+  (`[uint, * bytes, tstr]`); those boundaries are pinned by
+  `occurrence_on_array_record_field_rejects_gracefully`. The rejection avoids the silent
+  exactly-once narrowing that makes a generated decoder reject spec-valid repetition counts —
+  invisible to round-trip tests, surfaced only by spec-derived decode vectors. Real support for the
+  middle-position case needs decode lookahead: a repeated-item run bounded by the following fields'
+  types, i.e. peek-type disambiguation.
 - **Real bounded `?` / `n*m` table cardinality is a candidate feature.** A count-permitting occurrence
   marker on a single non-literal arrow map entry no longer silently widens to an unbounded `*` table
   (the removed bug: the table-detection arm ignored the entry occurrence and `HomogenousMap` — unlike
