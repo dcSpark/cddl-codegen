@@ -5447,6 +5447,23 @@ fn golden_hex() {
 }
 
 #[test]
+fn open_struct_map_e2e() {
+    // Loose-CBOR open struct-map (rest row) value-level round-trip vectors: capture, typing, and
+    // duplicate semantics (see tests/open-struct-map-e2e/tests.rs). Plain flavor only (`--wasm=false`,
+    // non-preserve): the preserve/JSON/wasm surfaces for open structs are later work packages that
+    // reject generation for now.
+    run_test(
+        "open-struct-map-e2e",
+        &["--wasm=false"],
+        None,
+        &[],
+        &[],
+        false,
+        &[],
+    );
+}
+
+#[test]
 fn golden_hex_preserve() {
     // Known-answer preserve-encodings vectors: irregular RFC 8949 §3 encodings (non-minimal
     // header arguments, indefinite/chunked items, map key order) hand-derived as raw hex —

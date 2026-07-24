@@ -311,6 +311,18 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
          instance under the json flags): its integration gate generates with --wasm=false and \
          injects hand-written extern defs, so there is no generated wasm surface to differential",
     ),
+    (
+        "open-struct-map",
+        "loose-CBOR open struct-map (rest row) SNAPSHOT fixture: open structs reject generation \
+         under --wasm in this work package (the wasm rest accessors are a later WP), so there is no \
+         wasm surface to differential — snapshotted --wasm=false via open_struct_map_default",
+    ),
+    (
+        "open-struct-map-e2e",
+        "loose-CBOR open struct-map (rest row) e2e round-trip fixture: its integration gate \
+         generates with --wasm=false (open structs reject under --wasm in this WP), so there is no \
+         generated wasm surface to differential",
+    ),
 ];
 
 /// Only these `.rs` basenames may appear under `rust/src/generated/` (default/json profiles); only

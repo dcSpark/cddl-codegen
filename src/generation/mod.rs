@@ -9,9 +9,9 @@ use std::process::{Command, Stdio};
 
 use crate::intermediate::{
     AliasIdent, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant, EnumVariantData,
-    FixedValue, IntermediateTypes, ModuleScope, Primitive, ROOT_SCOPE, Representation, RustField,
-    RustIdent, RustRecord, RustStructCBORLen, RustStructConfig, RustStructType, RustType,
-    RustTypeSerializeConfig, ToWasmBoundaryOperations, VariantIdent, escape_rust_str,
+    FixedValue, IntermediateTypes, ModuleScope, Primitive, ROOT_SCOPE, Representation, RestRow,
+    RustField, RustIdent, RustRecord, RustStructCBORLen, RustStructConfig, RustStructType,
+    RustType, RustTypeSerializeConfig, ToWasmBoundaryOperations, VariantIdent, escape_rust_str,
 };
 use crate::utils::{cbor_type_code_str, convert_to_camel_case, convert_to_snake_case};
 

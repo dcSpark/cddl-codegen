@@ -756,12 +756,25 @@ impl RustStruct {
                     }),
                 })
             }
-            RustStructType::Record(record) => record.fields.iter().for_each(|field| {
-                field
-                    .rust_type
-                    .conceptual_type
-                    .visit_types_excluding(types, f, already_visited)
-            }),
+            RustStructType::Record(record) => {
+                record.fields.iter().for_each(|field| {
+                    field
+                        .rust_type
+                        .conceptual_type
+                        .visit_types_excluding(types, f, already_visited)
+                });
+                // Open struct-map rest row: its key/value types are real occurrences (they can
+                // reference named rules), so a reference reachable ONLY through the rest domain/range
+                // stays visible to `is_referenced` and friends.
+                if let Some(rest) = &record.rest {
+                    rest.domain
+                        .conceptual_type
+                        .visit_types_excluding(types, f, already_visited);
+                    rest.range
+                        .conceptual_type
+                        .visit_types_excluding(types, f, already_visited);
+                }
+            }
             RustStructType::Table { domain, range, .. } => {
                 domain
                     .conceptual_type
@@ -784,10 +797,47 @@ impl RustStruct {
 pub struct RustRecord {
     pub rep: Representation,
     pub fields: Vec<RustField>,
+    /// The open ("rest") part of an open struct-map (`{ 1: a, ..., * K => V }`) — the trailing
+    /// `* K => V` row captured as a map member alongside the fixed fields, rather than a fake
+    /// `RustField` (fields drive `new()`/JSON/wasm/`orig_deser_order` indices; the rest row does
+    /// not participate in those). `None` for every closed struct — the snapshot corpus enforces
+    /// byte-identical output for those. Only ever `Some` on a `Map`-rep record. `Box`ed to keep
+    /// `RustRecord` (and the `EnumVariantData::Inlined` embedding it) small — `RestRow` holds two
+    /// `RustType`s.
+    pub rest: Option<Box<RestRow>>,
+}
+
+/// The trailing `* K => V` row of an open struct-map. Captured content lands in a `pub` map field
+/// (`rest` by default, `@name`-overridable) whose container matches the table switch
+/// (`BTreeMap`/`OrderedHashMap`). Not a `RustField`: it is excluded from `new()` (defaults empty,
+/// so adding a rest row to a spec is source-compatible) and carries the open-map semantics
+/// explicitly for the emitters.
+#[derive(Clone, Debug)]
+pub struct RestRow {
+    /// The key type (`K`). WP2 supports `uint`, `text`, and `any` key domains.
+    pub domain: RustType,
+    /// The value type (`V`). Any supported type, including `any`.
+    pub range: RustType,
+    /// The captured map field's Rust name (default `rest`, overridable with `@name` on the row).
+    pub field_name: String,
+    /// `@duplicates` policy on the row. In the non-preserve capture flavor the container's `Eq` is
+    /// value equality, so the default (reject) is enforced structurally by `insert().is_some()`;
+    /// `Preserve` (the positional pair-list twin) is rejected at parse until the preserve work
+    /// package reads this to select the container. Carried on the IR now so that lands cleanly.
+    #[allow(dead_code)]
+    pub duplicates: Option<crate::comment_ast::DuplicatesPolicy>,
 }
 
 impl RustRecord {
     pub fn fixed_field_count(&self, types: &IntermediateTypes) -> Option<usize> {
+        // An OPEN struct (rest row present) has a variable number of wire entries, so it is never a
+        // fixed-length map: forcing `None` here routes `cbor_len_info` to the dynamic class (so the
+        // deserialize length check accounts each rest entry via `read_len.read_elems(1)` in the loop
+        // + `read_len.finish()` after, rather than asserting a fixed count up front) and steers
+        // `definite_info` to the additive branch that folds in `rest.len()`.
+        if self.rest.is_some() {
+            return None;
+        }
         let mut count = 0;
         for field in &self.fields {
             if field.optional {
@@ -927,6 +977,24 @@ impl RustRecord {
                             }
                         };
                     }
+                }
+                // Open struct: the map header must count the captured rest entries too. `rest` is a
+                // `pub` map field, so its live entry count is `{self_expr}.rest.len()`. Folding it in
+                // here keeps the serialize header and the deserialize length accounting in agreement
+                // (both go through `definite_info`/the dynamic length class). Empty rest → `+ 0`,
+                // recovering the closed-struct byte count (empty-rest ≡ closed-struct invariant).
+                if let Some(rest) = &self.rest {
+                    // `.len()` is `usize`; the map header (`cbor_event::Len::Len(u64)`) and the
+                    // additive expression it joins are `u64`, so cast (`as` binds tighter than `+`).
+                    let rest_len_expr = if self_expr.is_empty() {
+                        format!("{}.len() as u64", rest.field_name)
+                    } else {
+                        format!("{}.{}.len() as u64", self_expr, rest.field_name)
+                    };
+                    if !conditional_field_expr.is_empty() {
+                        conditional_field_expr.push_str(" + ");
+                    }
+                    conditional_field_expr.push_str(&rest_len_expr);
                 }
                 if conditional_field_expr.is_empty() || fixed_field_count != 0 {
                     format!("{fixed_field_count} + {conditional_field_expr}")

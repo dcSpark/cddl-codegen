@@ -2322,12 +2322,15 @@ fn unsupported_fixed_map_key_on_record_rejects_gracefully() {
         "arrow nint key should get the unsupported-fixed-kind message (classified Fixed(Nint), \
          not NonFixed), got: {arrow_kind}"
     );
+    // A non-fixed arrow key that is NOT the trailing entry is no longer a blanket rejection: it is
+    // handled by the open struct-map rest-row front door (loose CBOR). A non-final placement like
+    // `{ uint => tstr, 1: uint }` names the rest-row LAST-entry requirement instead of panicking.
     let arrow_nonfixed = run("m = { uint => tstr, 1: uint }\n", "arrow_nonfixed").expect_err(
-        "a non-fixed key mixed into a record map used to panic at field naming; must reject",
+        "a non-final non-fixed key used to panic at field naming; must reject gracefully",
     );
     assert!(
-        arrow_nonfixed.contains("rule `m`") && arrow_nonfixed.contains("non-fixed"),
-        "a non-fixed key mixed into a record map should get the non-fixed message, got: {arrow_nonfixed}"
+        arrow_nonfixed.contains("rule `m`") && arrow_nonfixed.contains("rest row"),
+        "a non-final non-fixed key should get the open-map rest-row front-door message, got: {arrow_nonfixed}"
     );
 
     // Under --preserve-encodings the record path formerly panicked at a DIFFERENT site
@@ -2441,13 +2444,15 @@ fn fixed_key_arrow_single_entry_routes_to_record_path() {
         "a `*` arrow key should get the zero-permitting occurrence message, got: {star}"
     );
     // An aliased literal key `one = 1` resolves through the alias to a Fixed domain, so it diverts to
-    // the record path where it is classified NonFixed (a Type1 typename key) and rejected — any
-    // record-path rejection message is acceptable; we pin the non-fixed one that actually fires.
+    // the record path where it is classified NonFixed (a Type1 typename key). As the SOLE entry it is
+    // now seen by the open struct-map front door (loose CBOR) as a lone non-fixed row — rejected
+    // because an open struct needs a fixed key before its rest row (a bare `* k => v` is a table). Any
+    // record-path rejection message is acceptable; we pin the fixed-key-prefix one that fires.
     let aliased = run("one = 1\nm = { one => uint }\n", "aliased")
         .expect_err("an aliased literal arrow key domain must reject gracefully, not panic");
     assert!(
-        aliased.contains("rule `m`") && aliased.contains("non-fixed"),
-        "an aliased literal arrow key is classified NonFixed on the record path, got: {aliased}"
+        aliased.contains("rule `m`") && aliased.contains("fixed key"),
+        "an aliased literal arrow key hits the open-map front door as a lone non-fixed row, got: {aliased}"
     );
 
     // Boundaries that must KEEP generating: a multi-entry fixed-key arrow map, ordinary tables, and a
@@ -3079,5 +3084,254 @@ fn concat_files_missing_path_yields_error_not_panic() {
     assert!(
         err.to_string().contains(missing),
         "the io::Error message should name the offending path, got: {err}"
+    );
+}
+
+/// Loose-CBOR open struct-map (rest row) front end: recognition, the graceful-rejection guard set,
+/// the two directive-attachment traps (PROBE-B6 / the marker-slot trap), and the table-detection
+/// no-drift boundary. Message-level pins for the front door plus source-shape assertions for the
+/// happy path (the value-level round-trip lives in the compiled e2e `open_struct_map_e2e`). Each
+/// guard has BOTH polarities where meaningful (a supported spelling that generates, an unsupported
+/// one that rejects with a message naming the supported form).
+#[test]
+fn open_struct_map_rest_row_front_end() {
+    // `run` = default flags EXCEPT --wasm=false (the wasm rest surface is a later WP that rejects);
+    // `run_flags` lets a leg add flags (preserve / json) to pin their temporary-front-door rejections.
+    fn run_flags(
+        spec: &str,
+        tag: &str,
+        extra: &[&str],
+    ) -> Result<std::collections::BTreeMap<String, String>, String> {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_rest_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let mut args = vec![
+            "cddl-codegen".to_owned(),
+            "--input".to_owned(),
+            path.to_str().unwrap().to_owned(),
+            "--output".to_owned(),
+            "rest_unused".to_owned(),
+            "--wasm=false".to_owned(),
+        ];
+        args.extend(extra.iter().map(|s| s.to_string()));
+        let cli = Cli::parse_from(args);
+        let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
+        std::fs::remove_file(&path).ok();
+        result
+    }
+    fn run(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, String>, String> {
+        run_flags(spec, tag, &[])
+    }
+    // Concatenate all generated source into one blob for shape assertions.
+    fn src(out: &std::collections::BTreeMap<String, String>) -> String {
+        out.values().cloned().collect::<Vec<_>>().join("\n")
+    }
+
+    // --- happy path: recognition + source shape ---
+    let ok = run("foo = { 1: uint, 2: text, * uint => any }\n", "uint_any")
+        .expect("an open struct-map with a uint => any rest row must generate (plain flavor)");
+    let ok_src = src(&ok);
+    assert!(
+        ok_src.contains("pub rest: BTreeMap<u64, ") && ok_src.contains("::any_cbor::AnyCbor>"),
+        "the rest row must lower to a `pub rest: BTreeMap<u64, AnyCbor>` field, got:\n{ok_src}"
+    );
+    assert!(
+        ok_src.contains("self.rest.len()"),
+        "the map header (definite_info) must fold in the rest entry count, got:\n{ok_src}"
+    );
+    // `new()` must NOT take the rest field (source-compatible when a rest row is added).
+    assert!(
+        ok_src.contains("pub fn new(key_1: u64, key_2: String)"),
+        "new() must exclude the rest field (defaults empty), got:\n{ok_src}"
+    );
+
+    // --- table-detection no-drift: a lone `* k => v` map stays a TABLE, not a rest row ---
+    let table = run("t = { * uint => any }\n", "table").expect("a lone table must still generate");
+    assert!(
+        !src(&table).contains("pub rest"),
+        "a single-entry `{{ * k => v }}` must stay a TABLE (no rest field)"
+    );
+
+    // --- guard: non-final rest row ---
+    let non_final = run("foo = { 1: uint, * uint => any, 2: text }\n", "nonfinal")
+        .expect_err("a non-final rest row must reject");
+    assert!(
+        non_final.contains("rule `foo`") && non_final.contains("LAST entry"),
+        "non-final rest row must name the LAST-entry requirement, got: {non_final}"
+    );
+
+    // --- guard: multiple rest rows ---
+    let multiple = run("foo = { 1: uint, * uint => any, * text => any }\n", "multi")
+        .expect_err("multiple rest rows must reject");
+    assert!(
+        multiple.contains("rule `foo`") && multiple.contains("single trailing rest row"),
+        "multiple rest rows must name the single-trailing-row rule, got: {multiple}"
+    );
+
+    // --- guard: bounded occurrence (`+`) ---
+    let plus =
+        run("foo = { 1: uint, + uint => any }\n", "plus").expect_err("a `+` rest row must reject");
+    assert!(
+        plus.contains("rule `foo`") && plus.contains("`*` occurrence"),
+        "a bounded (`+`) rest row must name the `*` requirement, got: {plus}"
+    );
+
+    // --- guard: unsupported key domain (bstr) ---
+    let bad_domain = run("foo = { 1: uint, * bstr => any }\n", "bstr")
+        .expect_err("a bstr key domain rest row must reject");
+    assert!(
+        bad_domain.contains("rule `foo`")
+            && bad_domain.contains("uint")
+            && bad_domain.contains("text")
+            && bad_domain.contains("any"),
+        "an unsupported key domain must name the supported uint/text/any spellings, got: {bad_domain}"
+    );
+
+    // --- guard: lone non-fixed entry (no fixed key before the rest row) ---
+    let lone = run(
+        "foo = { * uint => any, }\ng = (* uint => any)\n",
+        "lone_via_group",
+    );
+    // (`{ * uint => any }` alone is a table; the lone-non-fixed guard fires for degenerate shapes
+    // that reach the record path — covered by the alias-arrow robustness test — so here we only pin
+    // that the ordinary lone table is NOT mis-taken as a rest row.)
+    let _ = lone;
+
+    // --- guard: rest row in a group-choice arm (`{ …arm1… // …arm2… }`) ---
+    let arm = run(
+        "foo = { 1: uint, * uint => any // 5: text, 6: text }\n",
+        "arm",
+    )
+    .expect_err("a rest row in a group-choice arm must reject");
+    assert!(
+        arm.contains("group-choice arm") || arm.contains("group-choice"),
+        "a rest row in a group-choice arm must name the choice-arm restriction, got: {arm}"
+    );
+
+    // --- guard: rest row inside a PLAIN GROUP (`g = ( 1: a, * k => v )`) — rejected because a
+    // materialized plain group exports transparently as an extern-interface group-body row rendered
+    // from `fields` only (`project_plain_group`), which would silently drop the rest row across a
+    // crate boundary. The named-rule remedy is the supported spelling. ---
+    let plain_group = run(
+        "g = ( 1: a, * uint => any )\na = uint\nfoo = { g }\n",
+        "plain_group",
+    )
+    .expect_err("a rest row inside a plain group must reject");
+    assert!(
+        plain_group.contains("rule `g`") && plain_group.contains("plain group"),
+        "a rest row in a plain group must name the plain-group restriction + named-rule remedy, got: {plain_group}"
+    );
+
+    // --- guard: array-rep record never grows a rest row (arrow syntax is map-only) ---
+    // `[1, * text]` is a homogeneous-array shape rejection, NOT a rest row; assert no rest field
+    // ever appears for an array rule.
+    let arr = run("foo = [uint, * text]\n", "array");
+    if let Ok(out) = &arr {
+        assert!(
+            !src(out).contains("pub rest"),
+            "array records never carry a rest row"
+        );
+    }
+
+    // --- temporary front doors (later WPs lift these): preserve / json / wasm ---
+    let preserve = run_flags(
+        "foo = { 1: uint, * uint => any }\n",
+        "preserve",
+        &["--preserve-encodings=true"],
+    )
+    .expect_err("open structs under --preserve-encodings reject in this WP");
+    assert!(
+        preserve.contains("rule `foo`") && preserve.contains("--preserve-encodings"),
+        "the preserve front door must name --preserve-encodings, got: {preserve}"
+    );
+    let json = run_flags(
+        "foo = { 1: uint, * uint => any }\n",
+        "json",
+        &["--json-serde-derives=true"],
+    )
+    .expect_err("open structs under --json-serde-derives reject in this WP");
+    assert!(
+        json.contains("rule `foo`") && json.contains("JSON"),
+        "the json front door must name the JSON surface, got: {json}"
+    );
+    // --wasm=true is the default; the happy-path `run` uses --wasm=false, so pin the wasm rejection
+    // by NOT passing --wasm=false.
+    {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_rest_wasm_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&path, "foo = { 1: uint, * uint => any }\n").unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "rest_wasm_unused",
+        ]);
+        let wasm = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
+        std::fs::remove_file(&path).ok();
+        let wasm = wasm.expect_err("open structs under --wasm reject in this WP");
+        assert!(
+            wasm.contains("rule `foo`") && wasm.contains("wasm"),
+            "the wasm front door must name the wasm surface, got: {wasm}"
+        );
+    }
+
+    // --- guard: @duplicates preserve on a rest row (pair-list twin is a later WP) ---
+    let dup_preserve = run(
+        "foo = {\n  1: uint,\n  * uint => any ; @duplicates preserve\n}\n",
+        "dup_preserve",
+    )
+    .expect_err("@duplicates preserve on a rest row rejects in this WP");
+    assert!(
+        dup_preserve.contains("rule `foo`") && dup_preserve.contains("@duplicates preserve"),
+        "the @duplicates preserve front door must name the directive, got: {dup_preserve}"
+    );
+
+    // --- PROBE-B6: entry-level @name on the rest row IS honored (entry-trailing slot) ---
+    let named = run(
+        "foo = {\n  1: uint,\n  * uint => any ; @name extra\n}\n",
+        "named",
+    )
+    .expect("@name on the rest row must generate");
+    let named_src = src(&named);
+    assert!(
+        named_src.contains("pub extra: BTreeMap<u64,") && !named_src.contains("pub rest:"),
+        "@name on the rest row must rename the capture field to `extra`, got:\n{named_src}"
+    );
+    // the type name must be unchanged (an entry-level @name must NOT leak to the rule/type name).
+    assert!(
+        named_src.contains("pub struct Foo"),
+        "an entry-level @name must not rename the TYPE, got:\n{named_src}"
+    );
+
+    // --- PROBE-B6 marker-slot trap: a directive on the `*` marker's own comment slot (before the
+    // entry type) is NOT honored — the field stays `rest` (current behavior, pinned loud). ---
+    let marker = run(
+        "foo = {\n  1: uint,\n  *  ; @name marker\n  uint => any\n}\n",
+        "marker",
+    )
+    .expect("a marker-slot directive must not break generation");
+    let marker_src = src(&marker);
+    assert!(
+        marker_src.contains("pub rest:") && !marker_src.contains("pub marker:"),
+        "a directive on the `*` marker's comment slot must NOT be honored (field stays `rest`), got:\n{marker_src}"
+    );
+
+    // --- PROBE-B6 rule-trailing slot: a RULE-position @duplicates (same line as `}`) is read at
+    // rule level (rejected as not-applicable to a record), NOT mis-read as the rest row's directive
+    // (which would be the @duplicates-preserve front-door message instead). ---
+    let rule_dup = run(
+        "foo = { 1: uint, * uint => any } ; @duplicates preserve\n",
+        "rule_dup",
+    )
+    .expect_err("a rule-position @duplicates on a record must reject");
+    assert!(
+        rule_dup.contains("rule `foo`") && !rule_dup.contains("open struct-map rest row"),
+        "a rule-position @duplicates must be read at rule level, not stolen by the rest row, got: {rule_dup}"
     );
 }

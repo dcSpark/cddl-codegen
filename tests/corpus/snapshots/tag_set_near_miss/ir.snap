@@ -1,5 +1,6 @@
 ---
 source: src/tests/snapshot_tests.rs
+assertion_line: 109
 expression: ir
 ---
 {
@@ -60,6 +61,7 @@ expression: ir
                         },
                     },
                 ],
+                rest: None,
             },
         ),
     },

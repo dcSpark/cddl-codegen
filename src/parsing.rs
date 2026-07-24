@@ -7,8 +7,8 @@ use crate::comment_ast::{DuplicatesPolicy, RuleMetadata, merge_metadata, metadat
 use crate::intermediate::{
     AliasIdent, AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant,
     EnumVariantData, FixedValue, FloatWindow, GenericDef, GenericInstance, IntermediateTypes,
-    ModuleScope, PlainGroupInfo, Primitive, Representation, RustField, RustIdent, RustRecord,
-    RustStruct, RustStructType, RustType, VariantIdent, reserved_pin_rejection,
+    ModuleScope, PlainGroupInfo, Primitive, Representation, RestRow, RustField, RustIdent,
+    RustRecord, RustStruct, RustStructType, RustType, VariantIdent, reserved_pin_rejection,
 };
 use crate::utils::{
     append_number_if_duplicate, convert_to_camel_case, convert_to_snake_case,
@@ -3082,13 +3082,39 @@ fn parse_record_from_group_choice(
     parent_visitor: &ParentVisitor,
     name: &RustIdent,
     group_choice: &GroupChoice,
+    // Whether this record is one arm of a multi-arm group choice (`{ a } // { b }`). A rest row in
+    // that position is rejected in v1 (collapsing an open map into an enum variant is unspecified),
+    // so recognition is suppressed and the guard fires instead.
+    in_choice_arm: bool,
     cli: &Cli,
 ) -> RustRecord {
     let mut generated_fields = BTreeMap::<String, u32>::new();
-    let fields = flatten_group_entries(&group_choice.group_entries, rep)
+    let flattened = flatten_group_entries(&group_choice.group_entries, rep);
+    let entry_count = flattened.len();
+    // Open struct-map recognition (loose CBOR): a trailing `* K => V` arrow row after ≥1 fixed
+    // entry becomes the record's `rest` capture instead of a rejected mixed non-fixed key. A
+    // single-entry `{ * K => V }` never reaches here — table detection in `parse_group_type`
+    // diverts it — so any non-fixed entry here is part of a multi-entry map. `rest_index` marks the
+    // recognized (or rest-CANDIDATE-then-rejected) row so the field loop skips it.
+    let (rest, rest_index) = recognize_rest_row(
+        types,
+        rep,
+        parent_visitor,
+        name,
+        &flattened,
+        entry_count,
+        in_choice_arm,
+        cli,
+    );
+    let fields = flattened
         .into_iter()
         .enumerate()
         .filter_map(|(index, (group_entry, optional_comma))| {
+            // The rest-row entry (recognized or rejected as a rest candidate) is handled by
+            // `recognize_rest_row`; never build a fixed field for it.
+            if Some(index) == rest_index {
+                return None;
+            }
             // An unflattened `InlineGroup` reaching the record loop is a parenthesized group whose
             // own occurrence marker would be silently narrowed to exactly-once (`[* (int, tstr)]`,
             // `{ * (k: int) }`), or a bare multi-choice group in entry position. All three panic in
@@ -3162,15 +3188,11 @@ fn parse_record_from_group_choice(
                         return None;
                     }
                     MapKeyKind::NonFixed => {
-                        let source_name = types
-                            .source_rule_name(name)
-                            .map(str::to_owned)
-                            .unwrap_or_else(|| name.to_string());
-                        types.record_rejection(format!(
-                            "rule `{source_name}`: a non-fixed key (`k => v`) mixed into a record \
-                             map is unsupported. Use a fixed uint/text key (`k: v`), or a table \
-                             `{{ * k => v }}` in its own rule."
-                        ));
+                        // A non-fixed arrow entry (`* k => v` / `k => v`) in a map record is owned by
+                        // `recognize_rest_row` (run before this loop): a supported trailing `* k => v`
+                        // becomes the record's rest capture, and every unsupported placement/shape
+                        // already recorded a graceful rejection there. Either way the entry never
+                        // becomes a fixed field — skip it here without a second (duplicate) rejection.
                         return None;
                     }
                     // keyless: fall through — the existing "map field has no key" rejection below
@@ -3361,7 +3383,212 @@ fn parse_record_from_group_choice(
             ))
         })
         .collect();
-    RustRecord { rep, fields }
+    RustRecord { rep, fields, rest }
+}
+
+/// Recognize a trailing open-map rest row (`* K => V`) in a map-rep record, or reject an
+/// unsupported placement/shape gracefully. Returns the built `RestRow` (if recognized and every
+/// guard passes) and the flattened index of the rest-CANDIDATE row (so the caller's field loop
+/// skips it — whether recognized or rejected). Non-map reps and maps with no non-fixed entry
+/// return `(None, None)`.
+#[allow(clippy::too_many_arguments)]
+fn recognize_rest_row(
+    types: &mut IntermediateTypes,
+    rep: Representation,
+    parent_visitor: &ParentVisitor,
+    name: &RustIdent,
+    flattened: &[&(GroupEntry, OptionalComma)],
+    entry_count: usize,
+    in_choice_arm: bool,
+    cli: &Cli,
+) -> (Option<Box<RestRow>>, Option<usize>) {
+    // Arrow non-fixed keys only exist in map rep; the array analog (`[a, b, * T]`) is a separate
+    // (rejected) shape handled elsewhere, so array-rep records never carry a rest row.
+    if rep != Representation::Map {
+        return (None, None);
+    }
+    let source_name = || {
+        types
+            .source_rule_name(name)
+            .map(str::to_owned)
+            .unwrap_or_else(|| name.to_string())
+    };
+    let nonfixed_indices: Vec<usize> = flattened
+        .iter()
+        .enumerate()
+        .filter(|(_, (ge, _))| matches!(group_entry_map_key_kind(ge), MapKeyKind::NonFixed))
+        .map(|(i, _)| i)
+        .collect();
+    let Some(&candidate) = nonfixed_indices.last() else {
+        // No non-fixed entry: an ordinary closed struct. Byte-identical to pre-feature output.
+        return (None, None);
+    };
+    let src = source_name();
+    // A rest row cannot be collapsed into an enum variant (it would drop the open-map semantics),
+    // so reject it in a group-choice arm; the row is still skipped so no fixed field is built.
+    if in_choice_arm {
+        types.record_rejection(format!(
+            "rule `{src}`: an open struct-map rest row (`* k => v`) inside a group-choice arm \
+             (`{{ … }} // {{ … }}`) is unsupported. Give the open map its own named rule and \
+             reference it from the arm."
+        ));
+        return (None, Some(candidate));
+    }
+    // A rest row inside a PLAIN GROUP (`g = ( 1: a, * k => v )`, embedded via `{ g }`) is rejected in
+    // v1 (DESIGN §7 "embedded groups"). The rest row is NOT a `RustField`, but a materialized plain
+    // group exports TRANSPARENTLY as an extern-interface group-body row rendered from `fields` only
+    // (`project_plain_group`) — so recognizing a rest here would silently project a CLOSED group
+    // across the crate boundary (the silent-lossy cross-crate class). Reject explicitly instead of
+    // relying on the incidental "map field has no key" embed rejection; point at the named-rule form.
+    if types.is_plain_group(name) {
+        types.record_rejection(format!(
+            "rule `{src}`: an open struct-map rest row (`* k => v`) inside a plain group \
+             (`{src} = ( … * k => v )`, embedded elsewhere) is unsupported. Give the open map its \
+             own named rule (`{src} = {{ … * k => v }}`) and reference it by name."
+        ));
+        return (None, Some(candidate));
+    }
+    // Multiple non-fixed rows: only a single trailing rest row is supported.
+    if nonfixed_indices.len() > 1 {
+        types.record_rejection(format!(
+            "rule `{src}`: an open struct-map supports a single trailing rest row (`* k => v`), but \
+             this map has {}. Keep one `* k => v` row (last), or move the extras into their own \
+             table rules.",
+            nonfixed_indices.len()
+        ));
+        return (None, Some(candidate));
+    }
+    // Non-final placement: the rest row must be the LAST entry (fixed keys are dispatched first).
+    if candidate != entry_count - 1 {
+        types.record_rejection(format!(
+            "rule `{src}`: an open struct-map rest row (`* k => v`) must be the LAST entry of the \
+             map (fixed keys are matched first, then the rest captures the remainder). Move it to \
+             the end."
+        ));
+        return (None, Some(candidate));
+    }
+    // An open struct-map needs ≥1 fixed key before the rest row (a rest row IS the "open" part of an
+    // open MAP). A single `* k => v` entry with nothing before it is a TABLE, which is recognized by
+    // `parse_group_type` before this function ever runs — so a lone non-fixed entry here (e.g. an
+    // alias-to-literal arrow key) is a degenerate shape, not an open struct.
+    if candidate == 0 {
+        types.record_rejection(format!(
+            "rule `{src}`: an open struct-map rest row (`* k => v`) must follow at least one fixed \
+             key (`{{ 1: a, * k => v }}`). A map whose only entry is `* k => v` is a table — give it \
+             its own rule (`t = {{ * k => v }}`)."
+        ));
+        return (None, Some(candidate));
+    }
+    let (candidate_ge, candidate_comma) = flattened[candidate];
+    // Occurrence must be exactly `*` (unbounded capture). `+` / `n*m` / `?` are rejected: "at least
+    // one unknown entry" and other bounded cardinalities on a rest row are ill-specified and would
+    // break the empty-rest ≡ closed-struct byte invariant.
+    let occur = match candidate_ge {
+        GroupEntry::ValueMemberKey { ge, .. } => ge.occur.as_ref().map(|o| &o.occur),
+        _ => None,
+    };
+    if !matches!(occur, Some(Occur::ZeroOrMore { .. })) {
+        types.record_rejection(format!(
+            "rule `{src}`: an open struct-map rest row must use the `*` occurrence (unbounded \
+             capture: `* k => v`). `+`, `n*m`, and `?` are not supported on a rest row."
+        ));
+        return (None, Some(candidate));
+    }
+    // Extract the key (domain) and value (range) types from the arrow entry.
+    let (domain, range) = match candidate_ge {
+        GroupEntry::ValueMemberKey { ge, .. } => {
+            let domain = match &ge.member_key {
+                Some(MemberKey::Type1 { t1, .. }) => {
+                    rust_type_from_type1(types, parent_visitor, t1, cli)
+                }
+                // A non-fixed key that is not a Type1 arrow (`NonMemberKey`) — unreachable for a
+                // classified NonFixed arrow row, but reject rather than panic if it ever appears.
+                _ => {
+                    types.record_rejection(format!(
+                        "rule `{src}`: unsupported rest-row key spelling (expected `* k => v`)."
+                    ));
+                    return (None, Some(candidate));
+                }
+            };
+            let range = rust_type(types, parent_visitor, &ge.entry_type, cli);
+            (domain, range)
+        }
+        _ => {
+            types.record_rejection(format!(
+                "rule `{src}`: unsupported rest-row spelling (expected `* k => v`)."
+            ));
+            return (None, Some(candidate));
+        }
+    };
+    // WP2 supports `uint` (u64), `text`, and `any` key domains. Other concrete key domains
+    // (sized ints, bstr, nint, struct keys, …) are a later work package — reject gracefully,
+    // naming the supported spellings. (The uint capture reconstructs the key from the u64 the
+    // record loop already read, so only the full `uint`/u64 domain is honored here.)
+    let domain_ok = matches!(
+        domain.conceptual_type.resolve_alias_shallow(),
+        ConceptualRustType::Any | ConceptualRustType::Primitive(Primitive::U64 | Primitive::Str)
+    );
+    if !domain_ok {
+        types.record_rejection(format!(
+            "rule `{src}`: an open struct-map rest row currently supports only `uint`, `text`, or \
+             `any` key domains (`* uint => v`, `* text => v`, `* any => v`). Other key types are \
+             not yet supported on a rest row."
+        ));
+        return (None, Some(candidate));
+    }
+    // Temporary front doors (lifted in later work packages), so no half-built surface ships:
+    // preserve/canonical fidelity (WP3) and the JSON/wasm surfaces (WP4) for open structs are not
+    // yet wired. Reject the flag combinations up front with a message that names the supported
+    // (non-preserve, no-JSON, no-wasm) generation and points forward.
+    if cli.preserve_encodings {
+        types.record_rejection(format!(
+            "rule `{src}`: open struct-maps (a `* k => v` rest row after fixed keys) under \
+             --preserve-encodings land in the next work package. Generate without \
+             --preserve-encodings for now (value-level round-trip)."
+        ));
+        return (None, Some(candidate));
+    }
+    if cli.json_serde_derives || cli.json_schema_export {
+        types.record_rejection(format!(
+            "rule `{src}`: the JSON surface for open struct-maps (a `* k => v` rest row) is not yet \
+             wired (flattened rest JSON lands in a later work package). Generate without \
+             --json-serde-derives / --json-schema-export for now."
+        ));
+        return (None, Some(candidate));
+    }
+    if cli.wasm {
+        types.record_rejection(format!(
+            "rule `{src}`: the wasm surface for open struct-maps (a `* k => v` rest row) is not yet \
+             wired (rest accessors land in a later work package). Generate without --wasm for now."
+        ));
+        return (None, Some(candidate));
+    }
+    // Read entry-level directives (`@name`, `@duplicates`) from the rest row's own trailing slot —
+    // NOT rule-position handling (the rest row is by definition the map's last entry, whose slot the
+    // cddl parser also binds a rule's trailing comment to; a map/record rule reads its own metadata
+    // via `get_comment_after` on the group choice, so the two do not collide — a rest-row directive
+    // stays entry-level and a rule directive stays rule-level).
+    let rest_metadata = group_entry_rule_metadata(candidate_ge, candidate_comma);
+    // `@duplicates preserve` on a rest row needs the pair-list twin container (WP3); reject in WP2.
+    if rest_metadata.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve) {
+        types.record_rejection(format!(
+            "rule `{src}`: `@duplicates preserve` on an open struct-map rest row needs the \
+             positional pair-list container, which lands in a later work package. Use the default \
+             (reject) for now, or remove the directive."
+        ));
+        return (None, Some(candidate));
+    }
+    let field_name = rest_metadata
+        .name
+        .clone()
+        .unwrap_or_else(|| "rest".to_owned());
+    let rest_row = RestRow {
+        domain,
+        range,
+        field_name,
+        duplicates: rest_metadata.duplicates,
+    };
+    (Some(Box::new(rest_row)), Some(candidate))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3374,6 +3601,9 @@ fn parse_group_choice(
     tag: Option<usize>,
     generic_params: Option<Vec<RustIdent>>,
     parent_rule_metadata: Option<&RuleMetadata>,
+    // Whether this group choice is one arm of a multi-arm choice (`{ a } // { b }`) — threaded to
+    // rest-row recognition (a rest row is rejected in a choice arm in v1).
+    in_choice_arm: bool,
     cli: &Cli,
 ) {
     let rule_metadata = RuleMetadata::from(
@@ -3546,8 +3776,15 @@ fn parse_group_choice(
                 "Can only use @newtype on primtives + heterogenious arrays/maps"
             );
             // Heterogenous map or array with defined key/value pairs in the cddl like a struct
-            let record =
-                parse_record_from_group_choice(types, rep, parent_visitor, name, group_choice, cli);
+            let record = parse_record_from_group_choice(
+                types,
+                rep,
+                parent_visitor,
+                name,
+                group_choice,
+                in_choice_arm,
+                cli,
+            );
             // We need to store this in IntermediateTypes so we can refer from one struct to another.
             RustStruct::new_record(name.clone(), tag, Some(&rule_metadata), record)
         }
@@ -3581,6 +3818,8 @@ pub fn parse_group(
             tag,
             generic_params,
             Some(parent_rule_metadata),
+            // A single-choice group is not a choice arm — rest rows are recognized here.
+            false,
             cli,
         );
     } else {
@@ -3726,6 +3965,8 @@ pub fn parse_group(
                         None,
                         generic_params.clone(),
                         None,
+                        // This record IS a multi-arm group-choice arm — reject a rest row in it.
+                        true,
                         cli,
                     );
                     let name = VariantIdent::new_rust(variant_name.clone());
