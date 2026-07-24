@@ -405,7 +405,7 @@ impl<'a> IntermediateTypes<'a> {
                     rs.variant(),
                     RustStructType::Record(record)
                         if record.rest.as_ref().is_some_and(|r| {
-                            r.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+                            r.duplicates() == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
                         })
                 )
             })
@@ -527,13 +527,18 @@ impl<'a> IntermediateTypes<'a> {
             match rs.variant() {
                 RustStructType::Record(record) => {
                     record.fields.iter().for_each(|fl| walk(&fl.rust_type, f));
-                    // An open struct-map's rest row carries a key/value RustType pair (loose CBOR)
-                    // that is NOT a `RustField`, so walk it explicitly — else usage detectors
-                    // (`uses_any_cbor`, the collection-twin detectors) miss an `any`/collection type
-                    // that appears only in the rest domain/range.
+                    // An open rest (map `* k => v` row or array `* t` tail) carries RustType(s)
+                    // (loose CBOR) that are NOT a `RustField`, so walk them explicitly — else usage
+                    // detectors (`uses_any_cbor`, the collection-twin detectors) miss an
+                    // `any`/collection type that appears only in the rest inner type(s).
                     if let Some(rest) = &record.rest {
-                        walk(&rest.domain, f);
-                        walk(&rest.range, f);
+                        match &rest.kind {
+                            RestKind::MapEntries { domain, range, .. } => {
+                                walk(domain, f);
+                                walk(range, f);
+                            }
+                            RestKind::ArrayTail { element } => walk(element, f),
+                        }
                     }
                 }
                 RustStructType::Table { domain, range, .. } => {
@@ -716,8 +721,9 @@ impl<'a> IntermediateTypes<'a> {
         || self.rust_structs.values().any(|rs| {
             matches!(rs.variant(), RustStructType::Record(record)
                 if record.rest.as_ref().is_some_and(|r|
-                    r.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
-                    && ConceptualRustType::name_for_wasm_map(&r.domain, &r.range).to_string() == map_ident))
+                    r.duplicates() == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+                    && !r.is_array_tail()
+                    && ConceptualRustType::name_for_wasm_map(r.domain(), r.range()).to_string() == map_ident))
         })
     }
 
@@ -1410,10 +1416,15 @@ impl<'a> IntermediateTypes<'a> {
                             &field.rust_type,
                         )
                     });
-                    // Open struct-map rest row: its key/value types can reference named rules
-                    // (`* uint => metadatum`) that must be marked as dependencies too.
+                    // Open rest (map `* k => v` row or array `* t` tail): its inner types can
+                    // reference named rules (`* uint => metadatum`, `* foo`) that must be marked as
+                    // dependencies too.
                     if let Some(rest) = &record.rest {
-                        for rt in [&rest.domain, &rest.range] {
+                        let rest_inner: Vec<&RustType> = match &rest.kind {
+                            RestKind::MapEntries { domain, range, .. } => vec![domain, range],
+                            RestKind::ArrayTail { element } => vec![element],
+                        };
+                        for rt in rest_inner {
                             mark_refs(
                                 &mut refs,
                                 self,

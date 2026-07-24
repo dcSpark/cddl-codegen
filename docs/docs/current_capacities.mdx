@@ -238,7 +238,7 @@ These constructs work as their own rule but are unsupported in the listed nestin
 |-----------|-------------------|---------|
 | `grpent.groupname` | occurrence-target | `m = { * grp }; grp = (k: int)` |
 | `grpent.inline_group` | group-choice-arm, occurrence-target, occurrence-target, occurrence-target, occurrence-target, occurrence-target | `t = [ (uint, tstr) // bytes ]` |
-| `grpent.member` | occurrence-target, occurrence-target | `a = [uint, + bytes]` |
+| `grpent.member` | occurrence-target | `a = [uint, + bytes]` |
 | `memberkey.bareword` | occurrence-target, occurrence-target | `multi = { a: uint, 0*1 b: uint }` |
 | `memberkey.type1` | group-choice-arm, map-key, map-key, map-key, map-key, map-key, map-key, map-key, occurrence-target, occurrence-target, occurrence-target | `t = { uint => tstr // b: tstr }` |
 | `memberkey.value` | group-choice-arm, group-choice-arm, map-key, map-key, map-key, map-key | `flt = { 1.5: uint // b: tstr }` |

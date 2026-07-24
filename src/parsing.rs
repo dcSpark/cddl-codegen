@@ -7,7 +7,8 @@ use crate::comment_ast::{DuplicatesPolicy, RuleMetadata, merge_metadata, metadat
 use crate::intermediate::{
     AliasIdent, AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant,
     EnumVariantData, FixedValue, FloatWindow, GenericDef, GenericInstance, IntermediateTypes,
-    ModuleScope, PlainGroupInfo, Primitive, Representation, RestRow, RestSemantics, RustField,
+    ModuleScope, PlainGroupInfo, Primitive, Representation, RestKind, RestRow, RestSemantics,
+    RustField,
     RustIdent, RustRecord, RustStruct, RustStructType, RustType, VariantIdent,
     reserved_pin_rejection,
 };
@@ -358,9 +359,10 @@ fn reject_ignore_not_applicable(types: &mut IntermediateTypes, name: &RustIdent)
         .unwrap_or_else(|| name.to_string());
     types.record_rejection(format!(
         "@ignore on rule `{source_name}`: this directive is only valid on an open struct-map rest \
-         row (`{{ 1: a, * k => v }} ; @ignore`), where it selects the tolerate-and-drop flavor. It \
-         does not apply at a rule, alias, union, table, array, or field position. Remove it, or \
-         move it onto the `* k => v` row of an open struct-map."
+         row (`{{ 1: a, * k => v }} ; @ignore`) or an open-array rest tail (`[ a, * t ] ; @ignore`), \
+         where it selects the tolerate-and-drop flavor. It does not apply at a rule, alias, union, \
+         table, whole-array, or field position. Remove it, or move it onto the `* k => v` row / `* t` \
+         tail of an open struct-map / open array."
     ));
 }
 
@@ -3362,8 +3364,9 @@ fn parse_record_from_group_choice(
                         "rule `{source_name}`: array field `{field_name}` has an occurrence \
                          (`*` / `+` / `n*m`), which would be silently narrowed to a single \
                          mandatory item (generated decoders would reject valid CBOR with a \
-                         different repetition count). Use `?` for an optional item, a homogeneous \
-                         array (`[* t]`), or name the repeated part as its own array rule."
+                         different repetition count). Use `?` for an optional item, a final-position \
+                         `* t` rest tail after the fixed members, a homogeneous array (`[* t]`), or \
+                         name the repeated part as its own array rule."
                     ));
                     return None;
                 }
@@ -3455,8 +3458,20 @@ fn recognize_rest_row(
     in_choice_arm: bool,
     cli: &Cli,
 ) -> (Option<Box<RestRow>>, Option<usize>) {
-    // Arrow non-fixed keys only exist in map rep; the array analog (`[a, b, * T]`) is a separate
-    // (rejected) shape handled elsewhere, so array-rep records never carry a rest row.
+    // The array analog of a map rest row is a final-position `* T` tail (`[a, b, * t]`), recognized by
+    // a dedicated sibling (no keys → no key dispatch / duplicate policy / domain typing, so the
+    // key-specific map body does not fit). Everything below is map-only.
+    if rep == Representation::Array {
+        return recognize_array_rest_tail(
+            types,
+            parent_visitor,
+            name,
+            flattened,
+            entry_count,
+            in_choice_arm,
+            cli,
+        );
+    }
     if rep != Representation::Map {
         return (None, None);
     }
@@ -3660,11 +3675,241 @@ fn recognize_rest_row(
         .clone()
         .unwrap_or_else(|| "rest".to_owned());
     let rest_row = RestRow {
-        domain,
-        range,
+        kind: RestKind::MapEntries {
+            domain,
+            range,
+            duplicates: rest_metadata.duplicates,
+        },
         semantics,
         field_name,
-        duplicates: rest_metadata.duplicates,
+    };
+    (Some(Box::new(rest_row)), Some(candidate))
+}
+
+/// The array-rep analog of `recognize_rest_row`: recognize a final-position `* T` tail (`[a, b, * t]`)
+/// after ≥1 fixed member as an open-array rest tail (the positional sibling of the map rest row), or
+/// reject an unsupported placement/shape gracefully. Returns the built `RestRow` (if recognized) and
+/// the flattened index of the tail CANDIDATE (so the caller's field loop skips it — whether recognized
+/// or rejected). Arrays have no keys, so there is no key dispatch / duplicate policy / domain typing:
+/// the genuinely new content is one tail loop in the array deserializer. `(None, None)` when no
+/// count-permitting entry exists (an ordinary closed array).
+#[allow(clippy::too_many_arguments)]
+fn recognize_array_rest_tail(
+    types: &mut IntermediateTypes,
+    parent_visitor: &ParentVisitor,
+    name: &RustIdent,
+    flattened: &[&(GroupEntry, OptionalComma)],
+    entry_count: usize,
+    in_choice_arm: bool,
+    cli: &Cli,
+) -> (Option<Box<RestRow>>, Option<usize>) {
+    let source_name = || {
+        types
+            .source_rule_name(name)
+            .map(str::to_owned)
+            .unwrap_or_else(|| name.to_string())
+    };
+    // Count-permitting occurrences are exactly the markers the field-loop narrowing guard matches:
+    // anything present that is NOT `?` (optional) or the pedantic `1*1` (exactly-once). `*` / `+` /
+    // `n*m` all qualify as tail CANDIDATES here (only `*` is ultimately honored — the rest reject
+    // below naming the supported spelling). Only `ValueMemberKey`/`TypeGroupname` carry `ge.occur`;
+    // an inline group has none (never count-permitting → never a candidate → its later `* (…)`
+    // narrowing rejection in the field loop stands).
+    let count_permits = |ge: &GroupEntry| {
+        let occur = match ge {
+            GroupEntry::ValueMemberKey { ge, .. } => ge.occur.as_ref().map(|o| &o.occur),
+            GroupEntry::TypeGroupname { ge, .. } => ge.occur.as_ref().map(|o| &o.occur),
+            GroupEntry::InlineGroup { .. } => None,
+        };
+        occur
+            .map(|o| {
+                !matches!(
+                    o,
+                    Occur::Optional { .. }
+                        | Occur::Exact {
+                            lower: Some(1),
+                            upper: Some(1),
+                            ..
+                        }
+                )
+            })
+            .unwrap_or(false)
+    };
+    let candidate_indices: Vec<usize> = flattened
+        .iter()
+        .enumerate()
+        .filter(|(_, (ge, _))| count_permits(ge))
+        .map(|(i, _)| i)
+        .collect();
+    let Some(&candidate) = candidate_indices.last() else {
+        // No count-permitting entry: an ordinary closed array. Byte-identical to pre-feature output.
+        return (None, None);
+    };
+    let src = source_name();
+    // A rest tail cannot be collapsed into an enum variant (it would drop the open-array semantics),
+    // so reject it in a group-choice arm; the candidate is still skipped so no fixed field is built.
+    if in_choice_arm {
+        types.record_rejection(format!(
+            "rule `{src}`: an open-array rest tail (`* t`) inside a group-choice arm \
+             (`[ … ] // [ … ]`) is unsupported. Give the open array its own named rule and reference \
+             it from the arm."
+        ));
+        return (None, Some(candidate));
+    }
+    // A rest tail inside a PLAIN GROUP (`g = ( a, * t )`, embedded via `[ g ]`) is rejected: a
+    // materialized plain group exports TRANSPARENTLY as an extern-interface group-body row rendered
+    // from `fields` only, so recognizing a tail here would silently project a CLOSED group across the
+    // crate boundary (the silent-lossy cross-crate class). Point at the named-rule form.
+    if types.is_plain_group(name) {
+        types.record_rejection(format!(
+            "rule `{src}`: an open-array rest tail (`* t`) inside a plain group \
+             (`{src} = ( … * t )`, embedded elsewhere) is unsupported. Give the open array its own \
+             named rule (`{src} = [ … * t ]`) and reference it by name."
+        ));
+        return (None, Some(candidate));
+    }
+    // Multiple count-permitting entries: only a single trailing rest tail is supported. (The
+    // field-loop narrowing guard additionally rejects each earlier one by design — never silent.)
+    if candidate_indices.len() > 1 {
+        types.record_rejection(format!(
+            "rule `{src}`: an open array supports a single trailing rest tail (`* t`), but this array \
+             has {} occurrence-bearing members. Keep one `* t` member (last), use `?` for optional \
+             members, or name the repeated part as its own array rule.",
+            candidate_indices.len()
+        ));
+        return (None, Some(candidate));
+    }
+    // Non-final placement: the rest tail must be the LAST entry (the fixed prefix is read first, then
+    // the tail captures the remainder). A leading/mid `*` keeps rejecting (position-dependent now).
+    if candidate != entry_count - 1 {
+        types.record_rejection(format!(
+            "rule `{src}`: an open-array rest tail (`* t`) must be the LAST member of the array (the \
+             fixed prefix is read first, then the tail captures the remaining elements). Move it to \
+             the end."
+        ));
+        return (None, Some(candidate));
+    }
+    // An open array needs ≥1 fixed member before the rest tail (a `* t` with nothing before it is a
+    // homogeneous array `[* t]`, recognized by `parse_group_type` before this runs and never reaching
+    // the record path). A lone count-permitting entry here is therefore a degenerate shape.
+    if candidate == 0 {
+        types.record_rejection(format!(
+            "rule `{src}`: an open-array rest tail (`* t`) must follow at least one fixed member \
+             (`[ a, * t ]`). An array whose only member is `* t` is a homogeneous array — write it \
+             as `[* t]` (or give it its own rule)."
+        ));
+        return (None, Some(candidate));
+    }
+    let (candidate_ge, candidate_comma) = flattened[candidate];
+    // Occurrence must be exactly `*` (unbounded capture). `+` / `n*m` are rejected: a `+` tail (at
+    // least one unknown element) breaks the empty-tail ≡ closed-struct byte invariant, and bounded
+    // cardinalities on a tail are ill-specified.
+    let candidate_occur = match candidate_ge {
+        GroupEntry::ValueMemberKey { ge, .. } => ge.occur.as_ref().map(|o| &o.occur),
+        GroupEntry::TypeGroupname { ge, .. } => ge.occur.as_ref().map(|o| &o.occur),
+        GroupEntry::InlineGroup { .. } => None,
+    };
+    if !matches!(candidate_occur, Some(Occur::ZeroOrMore { .. })) {
+        types.record_rejection(format!(
+            "rule `{src}`: an open-array rest tail must use the `*` occurrence (unbounded capture: \
+             `* t`). `+` and `n*m` are not supported on a rest tail."
+        ));
+        return (None, Some(candidate));
+    }
+    // A member KEY on the tail entry (`* 1: uint` in array rep) is nonsense — an array tail is
+    // positional. Reject rather than silently dropping the label. (An inline group never reaches here:
+    // it carries no `ge.occur`, so it is never count-permitting → never a candidate.)
+    if let GroupEntry::ValueMemberKey { ge, .. } = candidate_ge
+        && ge.member_key.is_some()
+    {
+        types.record_rejection(format!(
+            "rule `{src}`: an open-array rest tail (`* t`) is positional and cannot carry a member \
+             key. Drop the `key:` label."
+        ));
+        return (None, Some(candidate));
+    }
+    let element_type = group_entry_to_type(types, parent_visitor, candidate_ge, cli);
+    // A fixed-value tail element (`* 5` / `* null` / `* true`) has no Rust representation (a
+    // `Vec<FixedValue>` is not a type). Reject BEFORE the homogeneous-array fixed-value panic class.
+    if element_type.is_fixed_value() {
+        types.record_rejection(format!(
+            "rule `{src}`: an open-array rest tail cannot be a fixed value (`* 5`, `* null`, \
+             `* true`) — there is no Rust representation for a captured tail of fixed values. Use a \
+             typed element (`* uint`, `* t`) or `* any` to capture arbitrary items."
+        ));
+        return (None, Some(candidate));
+    }
+    // Entry-level directives on the tail (`@name`, `@ignore`; `@duplicates` is rejected — no keys),
+    // read from the row's own trailing slot (NOT rule-position handling — the tail is by definition
+    // the array's last entry, whose slot the cddl parser also binds a rule's trailing comment to; the
+    // rule reads its own metadata via `get_comment_after` on the group choice, so the two do not
+    // collide). Placement/shape guards above fire FIRST, so `@ignore` on a rejected placement gets the
+    // placement rejection, not one of these.
+    let tail_metadata = group_entry_rule_metadata(candidate_ge, candidate_comma);
+    // `@duplicates` on an array tail is meaningless — there are no keys for a duplicates policy to
+    // govern (distinct from the map row's `@ignore`+`@duplicates` combination message).
+    if tail_metadata.duplicates.is_some() {
+        types.record_rejection(format!(
+            "rule `{src}`: `@duplicates` does not apply to an open-array rest tail — an array tail \
+             has no keys, so there is no duplicate policy to govern. Remove `@duplicates`."
+        ));
+        return (None, Some(candidate));
+    }
+    if tail_metadata.ignore {
+        // `@ignore` + `--preserve-encodings`: PERMANENTLY rejected (a preserve crate's contract is
+        // byte-exact round-trips, which a deliberately-lossy tolerate-and-drop tail undermines
+        // crate-wide). `--canonical-form` implies preserve (enforced in `api.rs`), so this covers it
+        // transitively. Distinct message naming the array shape (not a reword of the map text).
+        if cli.preserve_encodings {
+            types.record_rejection(format!(
+                "rule `{src}`: `@ignore` (tolerate-and-drop) on an open-array rest tail is not \
+                 supported under --preserve-encodings, because a preserve crate's contract is \
+                 byte-exact round-trips and a silently-lossy type undermines it. Drop the `@ignore` \
+                 to capture the trailing elements (the default), or use `@custom_serialize` / \
+                 `@custom_deserialize` for a genuine view type."
+            ));
+            return (None, Some(candidate));
+        }
+        // `@ignore` + `@name`: `@name` renames the captured field, which an ignore tail does not emit.
+        if tail_metadata.name.is_some() {
+            types.record_rejection(format!(
+                "rule `{src}`: `@ignore` and `@name` cannot both apply to an open-array rest tail — \
+                 `@ignore` emits no field to name. Drop `@name`, or drop `@ignore` to capture the \
+                 elements into the named field."
+            ));
+            return (None, Some(candidate));
+        }
+    }
+    let semantics = if tail_metadata.ignore {
+        RestSemantics::Ignore
+    } else {
+        RestSemantics::Capture
+    };
+    // CAPTURE under `--preserve-encodings` needs per-element encoding sidecars to round-trip
+    // byte-exactly, which land in a later work package; until then a preserve crate's byte-exact
+    // contract would be silently violated (the tail would normalize), so reject the profile up front.
+    // JSON and wasm need no rejection: the captured tail is a plain `Vec<T>` field that renders as an
+    // ordinary JSON array (its own serde) and, in wasm, sits behind a closed-struct surface (no tail
+    // accessor yet — a later work package adds the getter). IGNORE emits no field, so all of its
+    // surfaces are a closed struct's; only its preserve combination is rejected (handled above).
+    if semantics == RestSemantics::Capture && cli.preserve_encodings {
+        types.record_rejection(format!(
+            "rule `{src}`: open arrays (a `* t` rest tail after fixed members) under \
+             --preserve-encodings land in a later work package. Generate without \
+             --preserve-encodings for now (value-level round-trip)."
+        ));
+        return (None, Some(candidate));
+    }
+    let field_name = tail_metadata
+        .name
+        .clone()
+        .unwrap_or_else(|| "rest".to_owned());
+    let rest_row = RestRow {
+        kind: RestKind::ArrayTail {
+            element: element_type,
+        },
+        semantics,
+        field_name,
     };
     (Some(Box::new(rest_row)), Some(candidate))
 }

@@ -2419,6 +2419,12 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "contain.occurrence-target.grpent.member.zero_array"
+axis = "containment"
+example = "a = [uint, * bytes]"
+pinned_reason = "open-array rest tail newly supported; decode-foreign vectors are minted by the scoped mint pass (--mint-decode-foreign --only=contain.occurrence-target.grpent.member.zero_array), pinned in the delivering change per the pin-in-the-same-change rule until that mint runs"
+
+[[row]]
 id = "contain.occurrence-target.memberkey.type1.open_struct"
 axis = "containment"
 example = "m = { 1: uint, * uint => any }"

@@ -858,22 +858,40 @@ fn record_roundtrip(
     // (tolerate-and-drop) row exposes no `.rest` field to mint into — the minted value carries only
     // declared fields, and round-trips trivially (no unknown entries exist in generated-API mint).
     if let Some(rest) = record.captured_rest() {
-        match (
-            valid_value(types, &rest.domain),
-            valid_value(types, &rest.range),
-        ) {
-            (Some(k), Some(v)) => cases.push((
-                format!(
-                    "{{ let mut v = {base}; v.{}.insert({}, {}); v }}",
-                    rest.field_name,
-                    render_rust(&k),
-                    render_rust(&v)
-                ),
-                "rest entry present".to_owned(),
-            )),
-            _ => eprintln!(
-                "cddl-codegen --emit-tests: {name} rest row not cheaply mintable — round-trip covers empty rest only"
-            ),
+        match &rest.kind {
+            // Map `* k => v` rest row: mint one entry via the `.rest` map `insert` API.
+            crate::intermediate::RestKind::MapEntries { domain, range, .. } => {
+                match (valid_value(types, domain), valid_value(types, range)) {
+                    (Some(k), Some(v)) => cases.push((
+                        format!(
+                            "{{ let mut v = {base}; v.{}.insert({}, {}); v }}",
+                            rest.field_name,
+                            render_rust(&k),
+                            render_rust(&v)
+                        ),
+                        "rest entry present".to_owned(),
+                    )),
+                    _ => eprintln!(
+                        "cddl-codegen --emit-tests: {name} rest row not cheaply mintable — round-trip covers empty rest only"
+                    ),
+                }
+            }
+            // Array `* t` rest tail: mint one trailing element via the `.rest` `Vec` `push` API.
+            crate::intermediate::RestKind::ArrayTail { element } => {
+                match valid_value(types, element) {
+                    Some(e) => cases.push((
+                        format!(
+                            "{{ let mut v = {base}; v.{}.push({}); v }}",
+                            rest.field_name,
+                            render_rust(&e)
+                        ),
+                        "rest tail element present".to_owned(),
+                    )),
+                    None => eprintln!(
+                        "cddl-codegen --emit-tests: {name} rest tail not cheaply mintable — round-trip covers empty tail only"
+                    ),
+                }
+            }
         }
     }
     roundtrip_body(name, cases, conf, dump_rule, rt)

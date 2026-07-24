@@ -1,6 +1,6 @@
 use super::*;
 
-/// Rustdoc attached to a generated open struct-map type whose rest row is `@ignore` (tolerate-and-drop)
+/// Rustdoc attached to a generated open struct-MAP type whose rest row is `@ignore` (tolerate-and-drop)
 /// and to its `serialize` fn. The drop is invisible at the API surface (there is no `rest` field), so a
 /// consumer has no other signal that the type is deliberately lossy — state the contract at the point of
 /// use.
@@ -8,14 +8,33 @@ const IGNORE_LOSSINESS_DOC: &str = "Open struct-map with an ignored rest row: to
      them, and re-serializes only the declared fields. Byte round-trips do NOT hold for wire data that \
      carried unknown entries.";
 
+/// The array analog of `IGNORE_LOSSINESS_DOC`: an open ARRAY whose rest tail is `@ignore`. Array-accurate
+/// wording ("unknown trailing array elements", not "map entries") — a parallel const, not a reword of the
+/// map one (whose text ships verbatim in blessed snapshots).
+const IGNORE_LOSSINESS_DOC_ARRAY: &str = "Open array with an ignored rest tail: tolerates unknown trailing array elements on deserialize and \
+     DROPS them, and re-serializes only the declared members. Byte round-trips do NOT hold for wire data \
+     that carried extra trailing elements.";
+
+/// The `@ignore` lossiness breadcrumb text for a rest row/tail, array-worded for an array tail and
+/// map-worded for a map row.
+fn ignore_lossiness_doc(rest: &RestRow) -> &'static str {
+    if rest.is_array_tail() {
+        IGNORE_LOSSINESS_DOC_ARRAY
+    } else {
+        IGNORE_LOSSINESS_DOC
+    }
+}
+
 /// Combine a type's optional CDDL-derived doc with the `@ignore` lossiness breadcrumb (a blank line
-/// between them when both are present), yielding the doc string to attach to the type / its serialize fn.
-fn ignore_aware_doc(base: Option<&str>, is_ignore: bool) -> Option<String> {
-    match (base, is_ignore) {
-        (Some(d), true) => Some(format!("{d}\n\n{IGNORE_LOSSINESS_DOC}")),
-        (Some(d), false) => Some(d.to_owned()),
-        (None, true) => Some(IGNORE_LOSSINESS_DOC.to_owned()),
-        (None, false) => None,
+/// between them when both are present), yielding the doc string to attach to the type / its serialize
+/// fn. `ignored_rest` is the `@ignore` rest row/tail (`None` for capture / closed structs), so the
+/// breadcrumb wording matches the rep (map entries vs trailing array elements).
+fn ignore_aware_doc(base: Option<&str>, ignored_rest: Option<&RestRow>) -> Option<String> {
+    match (base, ignored_rest) {
+        (Some(d), Some(rest)) => Some(format!("{d}\n\n{}", ignore_lossiness_doc(rest))),
+        (Some(d), None) => Some(d.to_owned()),
+        (None, Some(rest)) => Some(ignore_lossiness_doc(rest).to_owned()),
+        (None, None) => None,
     }
 }
 
@@ -123,6 +142,20 @@ pub(super) fn generate_array_struct_serialization(
             gen_scope.generate_serialize(types, (&field.rust_type).into(), ser_func, config, cli);
         }
     }
+    // Open-array rest tail, CAPTURE (plain mode): after the declared members, write each captured
+    // trailing element into the owner's array (the array header already counts them via
+    // `definite_info`'s `+ self.rest.len()` fold). `Vec` order = wire order = re-emit order by
+    // construction (no keys, no canonical merge). IGNORE re-serializes ONLY the declared members (the
+    // whole point of the tolerate-and-drop flavor) and has no field to iterate. Preserve is rejected
+    // for array tails, so this plain element serialize is the only tail-write path.
+    if let Some(rest) = record.captured_rest().filter(|r| r.is_array_tail()) {
+        let mut tail_loop = Block::new(format!("for element in {opt_self}{}.iter()", rest.field_name));
+        let elem_config = SerializeConfig::new("element", "rest_element")
+            .expr_is_ref(true)
+            .is_end(false);
+        gen_scope.generate_serialize(types, rest.element().into(), &mut tail_loop, elem_config, cli);
+        ser_func.push_block(tail_loop);
+    }
 }
 
 #[derive(Default, Debug)]
@@ -202,6 +235,12 @@ pub(super) fn generate_array_struct_deserialization(
             // e.g. [ ? uint, uint, ? (uint, text), ? text]
             let field_cbor_types = field.rust_type.cbor_types(types);
             let mut possibly_last_field = true;
+            // Whether this optional field is adjacent to the open rest tail (no mandatory declared
+            // field sits between it and the tail). The tail joins the ambiguity analysis as a virtual
+            // "field after every field": if the tail is reachable right after this optional and their
+            // CBOR types overlap (`* any` overlaps EVERYTHING), a peek cannot tell "this optional field"
+            // from "the first tail element", so the same `dont_generate_deserialize` refusal fires.
+            let mut reaches_tail = true;
             for i in (field_index + 1)..record.fields.len() {
                 if record.fields[i]
                     .rust_type
@@ -218,11 +257,31 @@ pub(super) fn generate_array_struct_deserialization(
                     );
                 }
                 if !record.fields[i].optional {
+                    reaches_tail = false;
                     if i < record.fields.len() - 1 {
                         possibly_last_field = false;
                     }
                     break;
                 }
+            }
+            if reaches_tail
+                && let Some(rest) = &record.rest
+                && rest
+                    .element()
+                    .cbor_types(types)
+                    .iter()
+                    .any(|ct| field_cbor_types.contains(ct))
+            {
+                gen_scope.dont_generate_deserialize(
+                    name,
+                    format!(
+                        "Array struct optional field {} is ambiguous with the open rest tail element \
+                         (overlapping CBOR types): a peek cannot distinguish the optional field from \
+                         the first tail element. Make their types distinct, drop the optional, or drop \
+                         the tail.",
+                        field.name,
+                    ),
+                );
             }
             // we also need to be careful if we're possibly the last field in the CBOR
             // buffer to avoid raw.cbor_type()? throwing an error for CBOR(NotEnough(0, 0))
@@ -498,6 +557,62 @@ pub(super) fn generate_array_struct_deserialization(
             deser_ctor_fields.push((field.name.clone(), field.name.clone()));
         }
     }
+    // Open-array rest tail (loose CBOR): after the straight-line fixed prefix, read the trailing
+    // elements. CAPTURE pushes each typed element into the `Vec` field; IGNORE typed-deserializes and
+    // DROPS it (both advance the stream past nested containers — the stream-position regression class).
+    // The loop reads until the definite length is exhausted (`read_len.read() < n`, where `read_len`
+    // already accounts the prefix) or, for an indefinite array, the `0xff` break byte is reached — a
+    // NON-consuming peek (`raw.as_slice().first()`), so the break stays on the wire for
+    // `add_deserialize_final_len_check` to consume (it reads the break itself for indefinite arrays).
+    // Only reached in plain (non-preserve) mode: an array rest tail is rejected under
+    // --preserve-encodings (capture: a later work package; ignore: permanently), so no per-element
+    // encoding sidecars are wired here.
+    if let Some(rest) = &record.rest {
+        let element = rest.element();
+        deser_code.read_len_used = true;
+        deser_code.len_used = true;
+        deser_code.throws = true;
+        if rest.semantics == RestSemantics::Capture {
+            deser_code
+                .content
+                .line(&format!("let mut {} = Vec::new();", rest.field_name));
+        }
+        let mut tail_loop = Block::new(format!(
+            "while match len {{ {} => read_len.read() < n, {} => raw.as_slice().first() != Some(&0xff), }}",
+            cbor_event_len_n("n", cli),
+            cbor_event_len_indef(cli)
+        ));
+        tail_loop.line("read_len.read_elems(1)?;");
+        match rest.semantics {
+            RestSemantics::Capture => {
+                gen_scope
+                    .generate_deserialize(
+                        types,
+                        element.into(),
+                        DeserializeBeforeAfter::new("let rest_elem = ", ";", false),
+                        DeserializeConfig::new("rest_elem"),
+                        cli,
+                    )
+                    .add_to(&mut tail_loop);
+                tail_loop.line(&format!("{}.push(rest_elem);", rest.field_name));
+            }
+            RestSemantics::Ignore => {
+                gen_scope
+                    .generate_deserialize(
+                        types,
+                        element.into(),
+                        DeserializeBeforeAfter::new("let _rest_elem = ", ";", false),
+                        DeserializeConfig::new("_rest_elem"),
+                        cli,
+                    )
+                    .add_to(&mut tail_loop);
+            }
+        }
+        deser_code.content.push_block(tail_loop);
+        if rest.semantics == RestSemantics::Capture {
+            deser_ctor_fields.push((rest.field_name.clone(), rest.field_name.clone()));
+        }
+    }
     if cli.preserve_encodings {
         let encoding_vars_output = if vars_in_self {
             &mut encoding_struct_ctor_fields
@@ -551,30 +666,44 @@ enum RestKeyDomain {
 /// loose container (`OrderedHashMap`/`BTreeMap`) with the value-duplicate rejection (accept/reject
 /// keyed on CBOR VALUE equality, not the domain's spelling).
 fn rest_is_pair_map(rest: &RestRow) -> bool {
-    rest.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+    rest.duplicates() == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
 }
 
-/// The rest container CONSTRUCTOR token (`PairMap` / `OrderedHashMap` / `BTreeMap`).
+/// The rest container CONSTRUCTOR token: `Vec` for an array `* t` tail; for a map row
+/// `PairMap` (`@duplicates preserve`) / `OrderedHashMap` / `BTreeMap`.
 fn rest_container_ctor(rest: &RestRow, cli: &Cli) -> &'static str {
-    if rest_is_pair_map(rest) {
+    if rest.is_array_tail() {
+        "Vec"
+    } else if rest_is_pair_map(rest) {
         "PairMap"
     } else {
         table_type(cli)
     }
 }
 
-/// The rest field's member RUST TYPE (`PairMap<K, V>` / `OrderedHashMap<K, V>` / `BTreeMap<K, V>`).
-/// A `@duplicates preserve` policy on the `Map` `RustType` routes `for_rust_member` to the pair-map
-/// twin, reusing the table machinery.
+/// The rest field's member RUST TYPE: `Vec<T>` for an array `* t` tail; for a map row
+/// `PairMap<K, V>` / `OrderedHashMap<K, V>` / `BTreeMap<K, V>` (a `@duplicates preserve` policy on the
+/// `Map` `RustType` routes `for_rust_member` to the pair-map twin, reusing the table machinery).
 fn rest_member_type(rest: &RestRow) -> crate::intermediate::RustType {
-    let ty: crate::intermediate::RustType =
-        ConceptualRustType::Map(Box::new(rest.domain.clone()), Box::new(rest.range.clone())).into();
-    ty.with_duplicates_policy(rest.duplicates)
+    match &rest.kind {
+        RestKind::ArrayTail { element } => {
+            ConceptualRustType::Array(Box::new(element.clone())).into()
+        }
+        RestKind::MapEntries {
+            domain,
+            range,
+            duplicates,
+        } => {
+            let ty: crate::intermediate::RustType =
+                ConceptualRustType::Map(Box::new(domain.clone()), Box::new(range.clone())).into();
+            ty.with_duplicates_policy(*duplicates)
+        }
+    }
 }
 
 impl RestKeyDomain {
     fn of(rest: &RestRow) -> Self {
-        match rest.domain.conceptual_type.resolve_alias_shallow() {
+        match rest.domain().conceptual_type.resolve_alias_shallow() {
             ConceptualRustType::Any => RestKeyDomain::Any,
             ConceptualRustType::Primitive(Primitive::Str) => RestKeyDomain::Text,
             _ => RestKeyDomain::Uint,
@@ -598,14 +727,14 @@ fn rest_encoding_fields(
     let key_encs = encoding_fields(
         types,
         &format!("{}_key", rest.field_name),
-        &rest.domain.clone().resolve_aliases(),
+        &rest.domain().clone().resolve_aliases(),
         false,
         cli,
     );
     let value_encs = encoding_fields(
         types,
         &format!("{}_value", rest.field_name),
-        &rest.range.clone().resolve_aliases(),
+        &rest.range().clone().resolve_aliases(),
         false,
         cli,
     );
@@ -633,13 +762,20 @@ fn emit_rest_flatten_json(
     if !(cli.json_serde_derives || cli.json_schema_export) {
         return Vec::new();
     }
+    // The flattened-rest JSON surface is a MAP-only construct (unknown KEYS at the object's top level).
+    // An array `* t` rest tail has no keys: its captured `Vec<T>` field renders as an ordinary JSON
+    // array under the field name (the honest symmetric rendering — array positions are already erased
+    // in JSON), via the field's own plain serde derive. So emit no flatten steering for an array tail.
+    if rest.is_array_tail() {
+        return Vec::new();
+    }
     // The `any`-domain key/value views live in `any_cbor`; the domain-agnostic flatten helpers live
     // in the `any`-free `open_struct_rest_json` module (so a fully-typed rest row needs no AnyCbor).
     let base = format!("{}::any_cbor", cli.common_import_rust());
     let flatten = format!("{}::open_struct_rest_json", cli.common_import_rust());
     let container_ty = rest_member_type(rest).for_rust_member(types, false, cli);
     let range_is_any = matches!(
-        rest.range.conceptual_type.resolve_alias_shallow(),
+        rest.range().conceptual_type.resolve_alias_shallow(),
         ConceptualRustType::Any
     );
     // snake_case the owner name so the free fns are snake (no `non_snake_case` warning) and unique
@@ -715,7 +851,7 @@ fn emit_rest_flatten_json(
     } else {
         (
             "v".to_owned(),
-            rest.range.for_rust_member(types, false, cli),
+            rest.range().for_rust_member(types, false, cli),
             "v".to_owned(),
         )
     };
@@ -792,7 +928,7 @@ fn append_rest_capture(
                 gen_scope
                     .generate_deserialize(
                         types,
-                        (&rest.domain).into(),
+                        (rest.domain()).into(),
                         DeserializeBeforeAfter::new("let _rest_key = ", ";", false),
                         DeserializeConfig::new("_rest_key"),
                         cli,
@@ -803,7 +939,7 @@ fn append_rest_capture(
         gen_scope
             .generate_deserialize(
                 types,
-                (&rest.range).into(),
+                (rest.range()).into(),
                 DeserializeBeforeAfter::new("let _rest_value = ", ";", false),
                 DeserializeConfig::new("_rest_value"),
                 cli,
@@ -822,7 +958,7 @@ fn append_rest_capture(
             gen_scope
                 .generate_deserialize(
                     types,
-                    (&rest.domain).into(),
+                    (rest.domain()).into(),
                     DeserializeBeforeAfter::new("let rest_key = ", ";", false),
                     DeserializeConfig::new("rest_key"),
                     cli,
@@ -832,11 +968,11 @@ fn append_rest_capture(
     }
     // --- value (with encoding capture under preserve for a concrete range) ---
     if cli.preserve_encodings && !value_encs.is_empty() {
-        let var_names_str = encoding_var_names_str(types, "rest_value", &rest.range, cli);
+        let var_names_str = encoding_var_names_str(types, "rest_value", rest.range(), cli);
         gen_scope
             .generate_deserialize(
                 types,
-                (&rest.range).into(),
+                (rest.range()).into(),
                 DeserializeBeforeAfter::new(&format!("let {var_names_str} = "), ";", false),
                 DeserializeConfig::new("rest_value"),
                 cli,
@@ -846,14 +982,14 @@ fn append_rest_capture(
         gen_scope
             .generate_deserialize(
                 types,
-                (&rest.range).into(),
+                (rest.range()).into(),
                 DeserializeBeforeAfter::new("let rest_value = ", ";", false),
                 DeserializeConfig::new("rest_value"),
                 cli,
             )
             .add_to(block);
     }
-    let key_is_copy = rest.domain.is_copy(types);
+    let key_is_copy = rest.domain().is_copy(types);
     let key_for_sidecar = if key_is_copy {
         "rest_key".to_owned()
     } else {
@@ -1014,7 +1150,7 @@ fn emit_rest_entry_serialize(
         .encoding_var_no_option_struct()
         .encoding_var_is_ref(false)
         .tag_depth(0);
-    gen_scope.generate_serialize(types, (&rest.domain).into(), block, key_config, cli);
+    gen_scope.generate_serialize(types, (rest.domain()).into(), block, key_config, cli);
     if !value_encs.is_empty() {
         block.line(&outer.container_encoding_lookup("value", &value_encs, enc_lookup_var));
     }
@@ -1024,7 +1160,7 @@ fn emit_rest_entry_serialize(
         .encoding_var_no_option_struct()
         .encoding_var_is_ref(false)
         .tag_depth(0);
-    gen_scope.generate_serialize(types, (&rest.range).into(), block, value_config, cli);
+    gen_scope.generate_serialize(types, (rest.range()).into(), block, value_config, cli);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1450,8 +1586,10 @@ pub(super) fn codegen_struct(
         // no `new()` arg and no setter — the rest defaults empty and rides the map wrapper's own
         // mutation surface (matching the rust side, where `new()` excludes it). The wrapper class is
         // minted in the wasm pass (`mint_wasm_wrapper_for_visited_type` for the rest map). An
-        // `@ignore` row stores nothing, so it has no getter (its wasm class is a closed struct's).
-        if let Some(rest) = record.captured_rest() {
+        // `@ignore` row stores nothing, so it has no getter (its wasm class is a closed struct's). An
+        // array `* t` rest tail presents a closed-struct wasm surface for now (no tail accessor — a
+        // later work package mints the `Vec<T>` list-wrapper getter), so it is excluded here too.
+        if let Some(rest) = record.captured_rest().filter(|r| !r.is_array_tail()) {
             let rest_ty = rest_member_type(rest);
             let mut getter = codegen::Function::new(&rest.field_name);
             getter
@@ -1485,7 +1623,7 @@ pub(super) fn codegen_struct(
         if !wasm_new_comments.is_empty() {
             wasm_new.doc(wasm_new_comments.join("\n"));
         }
-        if let Some(doc) = ignore_aware_doc(config.doc.as_deref(), record.ignored_rest().is_some())
+        if let Some(doc) = ignore_aware_doc(config.doc.as_deref(), record.ignored_rest())
         {
             wrapper.s.doc(&doc);
         }
@@ -1499,7 +1637,7 @@ pub(super) fn codegen_struct(
     let (mut native_struct, mut native_impl) =
         create_base_rust_struct(types, name, config.custom_json, None, cli);
     native_struct.vis("pub");
-    if let Some(doc) = ignore_aware_doc(config.doc.as_deref(), record.ignored_rest().is_some()) {
+    if let Some(doc) = ignore_aware_doc(config.doc.as_deref(), record.ignored_rest()) {
         native_struct.doc(&doc);
     }
     let mut native_new = codegen::Function::new("new");
@@ -1637,21 +1775,25 @@ pub(super) fn codegen_struct(
             native_struct.push_field(codegen_field);
         }
     }
-    // Open struct-map rest row (CAPTURE only): a `pub` map field holding the captured unknown
-    // entries. Deliberately NOT a constructor argument — `new()` defaults it empty, so adding a rest
-    // row to a spec is source-compatible for existing `new()` callers. The container matches the
-    // table switch (non-preserve `BTreeMap`; `OrderedHashMap` under `--preserve-encodings`). An
-    // `@ignore` row emits NO field (it drops unknown entries), so the struct is a closed struct's.
+    // Open rest (CAPTURE only): a `pub` field holding the captured content — a map container for a
+    // `* k => v` rest row, a `Vec<T>` for an array `* t` rest tail. Deliberately NOT a constructor
+    // argument — `new()` defaults it empty, so adding a rest row/tail to a spec is source-compatible
+    // for existing `new()` callers. Map containers match the table switch (non-preserve `BTreeMap`;
+    // `OrderedHashMap` under `--preserve-encodings`). An `@ignore` row/tail emits NO field (it drops
+    // unknown entries), so the struct is a closed struct's.
     if let Some(rest) = record.captured_rest() {
         let mut rest_field = codegen::Field::new(
             format!("pub {}", rest.field_name),
             rest_member_type(rest).for_rust_member(types, false, cli),
         );
-        rest_field.doc(
+        rest_field.doc(if rest.is_array_tail() {
+            "Captured trailing array elements beyond the declared members (CDDL `* t` rest tail). \
+             Serialized after the declared members; defaults empty."
+        } else {
             "Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). \
              Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this \
-             a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.",
-        );
+             a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container."
+        });
         // The rest field's FLATTENED JSON surface. Skipped when the
         // struct owns a custom json impl (no derive to steer) — matches the declared-field handling.
         if !config.custom_json {
@@ -1725,7 +1867,7 @@ pub(super) fn codegen_struct(
         // rest row's OWN map-header length lives in the owner's `len_encoding` (no `_encoding` here).
         // Capture-only (an `@ignore` row stores nothing, and it is rejected under preserve anyway).
         if let Some(rest) = record.captured_rest() {
-            let key_rust = rest.domain.for_rust_member(types, false, cli);
+            let key_rust = rest.domain().for_rust_member(types, false, cli);
             let (key_encs, value_encs) = rest_encoding_fields(types, rest, cli);
             let sidecar_type = |elem: String| {
                 if rest_is_pair_map(rest) {
@@ -1790,10 +1932,11 @@ pub(super) fn codegen_struct(
             None => ser_func,
         };
         // Deliberate-lossiness breadcrumb on the public serialize fn of an `@ignore` open struct-map
-        // (a rest row honored here can only sit in a map record, never a plain group, so this is the
-        // real `serialize` — never `serialize_as_embedded_group`).
-        if record.ignored_rest().is_some() {
-            ser_func.doc(IGNORE_LOSSINESS_DOC);
+        // or open array (a rest row/tail honored here can only sit in a map/array record, never a plain
+        // group, so this is the real `serialize` — never `serialize_as_embedded_group`). Array-worded
+        // for an array tail.
+        if let Some(rest) = record.ignored_rest() {
+            ser_func.doc(ignore_lossiness_doc(rest));
         }
         let mut deser_code = DeserializationCode::default();
         let in_embedded = types.is_plain_group(name);
@@ -2042,7 +2185,7 @@ pub(super) fn codegen_struct(
                             // regardless, so the merge's sort key matches the bytes the rest arm writes.
                             gen_scope.generate_serialize(
                                 types,
-                                (&rest.domain).into(),
+                                (rest.domain()).into(),
                                 &mut rest_key_loop,
                                 merge_key_config,
                                 cli,
@@ -2199,7 +2342,7 @@ pub(super) fn codegen_struct(
                         .is_end(false);
                     gen_scope.generate_serialize(
                         types,
-                        (&rest.domain).into(),
+                        (rest.domain()).into(),
                         &mut rest_loop,
                         key_config,
                         cli,
@@ -2209,7 +2352,7 @@ pub(super) fn codegen_struct(
                         .is_end(false);
                     gen_scope.generate_serialize(
                         types,
-                        (&rest.range).into(),
+                        (rest.range()).into(),
                         &mut rest_loop,
                         value_config,
                         cli,
