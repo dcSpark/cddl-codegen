@@ -394,7 +394,9 @@ Use it for view types that must accept forward-compatible data without retaining
   recognized rest row of a map-rep record; anywhere else (a rule, a field, a table/array rule) is a
   loud graceful rejection, never silently dropped. The same **marker-slot trap** applies: a directive
   glued to the `*` occurrence marker's comment slot is silently not honored, so keep it after the
-  whole entry (`* K => V ; @ignore`).
+  whole entry (`* K => V ; @ignore`). Note a CDDL comment runs to the end of the line, so on a
+  single-line rule `; @ignore }` would swallow the closing brace — put the directive line before
+  the `}` (as in the example above).
 - **Deliberate lossiness.** Byte round-trips do **not** hold for wire data carrying unknown entries —
   they are dropped, and re-serialization emits declared members only. The generated type and its
   `serialize` fn carry a rustdoc breadcrumb saying so.

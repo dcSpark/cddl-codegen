@@ -22,7 +22,10 @@ policy below). `local` is "run before considering work done" — the heavy corre
 `cddl-matrix/` once; the runtime stays dependency-free) and the decode-conformance catalog +
 status-header count and doc-citation drift gates (`project_decode_conformance.ts`,
 `project_status_headers.ts`, `lint_doc_citations.ts`) live here, NOT in CI. The doc-citation gate
-checks that gap prose's cited pins still exist, rejects positional roadmap/list citations, and enforces
+checks that gap prose's cited pins still exist, rejects positional roadmap/list citations, bans
+ephemeral plan-internal references (delivery-phase probe/ruling id spellings, spec-file names, the
+plan scratchpad path — matched phase-generically so a new delivery phase's letter is covered by
+construction), and enforces
 blank lines before headings in the hand docs. The conventions it backs: gap-tracking prose names its
 pin by exact identifier ("pinned by/tracked by/gated by `name`"), and a *behavioral* claim ("construct
 X panics/rejects") gets a robustness-catalog row FIRST — the panic/reject catalogs flip loudly on a
@@ -1177,8 +1180,11 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
 
   Finally it regenerates under `--preserve-encodings=true` and asserts accept vectors decode AND
   re-encode **byte-identically** (the preserve contract is itself decode-direction evidence).
-  `PRESERVE_SKIP` (stale-guarded) carries the float class plus the tag-over-a-type-choice preserve
-  gap; anything new there is a finding. It stays a hand list on purpose — it is NOT the matrix
+  `PRESERVE_SKIP` (stale-guarded) carries three entry classes: the float class, the
+  tag-over-a-type-choice preserve gap, and the BY-DESIGN rejection class (`dsl.ignore` — `@ignore`
+  under `--preserve-encodings` is a contract rejection, not a gap, so its stale-entry guard is a
+  regression tripwire: that leg starting to generate is the finding). Anything new there is a
+  finding either way. It stays a hand list on purpose — it is NOT the matrix
   emission axis: the replay specs embed rows as members, so e.g. `prelude.float` skips here while
   its `emission.preserve` verdict (a bare-alias probe) is `supported`.
 - **The drift gate** — `cddl-matrix/project_decode_conformance.ts` (check.ts `local` tier, pure
@@ -1291,8 +1297,11 @@ Two gates mirror the matrix legs:
   own scratch target, its own skip-ledger instances, and vacuity floors pinned from actuals. The corpus carries only plain
   accept vectors at HEAD (the enforcement / over-acceptance axes are matrix-owned), so the
   constraint-reason and over-acceptance machinery stays armed but idle (the over-acceptance
-  completeness `assert_eq` holds at 0 == 0); `PRESERVE_SKIP` holds only the native-float row
-  `homogeneous_array.floats` (`[* float64]`, the `preserve_encodings_supports_floats` gap), the
+  completeness `assert_eq` holds at 0 == 0); `PRESERVE_SKIP` holds the native-float rows
+  (`homogeneous_array.floats`' `[* float64]` plus `optional_fixed_float`'s two fixed-float rows —
+  the `preserve_encodings_supports_floats` gap) and the by-design `dsl_ignore.ignored` row
+  (`@ignore` under `--preserve-encodings` is a contract rejection, so its stale-entry guard is a
+  regression tripwire), the
   json/wasm surface ledgers hold this gate's corpus residents (listed in § "json/wasm surface
   legs"), and every other ledger is empty and stale-guarded.
 
