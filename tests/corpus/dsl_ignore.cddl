@@ -1,0 +1,14 @@
+; Isolates the `@ignore` comment-DSL directive: the open struct-map tolerate-and-drop rest-row
+; flavor. Unknown map entries are typed-deserialized (key AND value, so the stream advances) and
+; then DROPPED — no `rest` field is generated, and serialize re-emits only the declared members.
+; Rejected under --preserve-encodings (a preserve crate's byte-exact contract cannot hold for a
+; deliberately lossy type), so this fixture is generation-skipped under the preserve profile
+; (registered in snapshot_tests::PROFILE_GENERATION_SKIP and feature_corpus_compiles's
+; EXPECTED_GENERATION_FAIL); default/json generate the closed-struct surface.
+;
+; The `; @ignore` must sit on its own line before the closing `}`: a CDDL comment runs to the end of
+; the line, so `; @ignore }` would swallow the brace.
+ignored = {
+  1: uint,
+  * uint => text ; @ignore
+}

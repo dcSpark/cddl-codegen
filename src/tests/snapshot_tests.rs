@@ -57,13 +57,22 @@ fn is_per_feature_noise(path: &str) -> bool {
 /// has no snapshot to pin there (the fixture is still snapshotted under its other profiles). Mirrors
 /// `integration_tests::feature_corpus_compiles`'s `EXPECTED_GENERATION_FAIL`; a listed stem absent
 /// from `tests/corpus` fails as a stale pin (checked in [`feature_corpus`]).
-const PROFILE_GENERATION_SKIP: &[(&str, &str)] = &[(
-    // An optional fixed FLOAT member aborts generation under --preserve-encodings at the float
-    // deserialize stub ("preserve_encodings is not implemented for float" — the
-    // preserve_encodings_supports_floats stub class); default/json snapshot the presence field.
-    "optional_fixed_float",
-    "preserve",
-)];
+const PROFILE_GENERATION_SKIP: &[(&str, &str)] = &[
+    (
+        // An optional fixed FLOAT member aborts generation under --preserve-encodings at the float
+        // deserialize stub ("preserve_encodings is not implemented for float" — the
+        // preserve_encodings_supports_floats stub class); default/json snapshot the presence field.
+        "optional_fixed_float",
+        "preserve",
+    ),
+    (
+        // An `@ignore` open struct-map is rejected under --preserve-encodings (a preserve crate's
+        // byte-exact round-trip contract cannot hold for a type that drops unknown entries); default/
+        // json snapshot the closed-struct surface.
+        "dsl_ignore",
+        "preserve",
+    ),
+];
 
 /// Snapshot the generated source for `input` under each profile (grouped under
 /// `tests/corpus/snapshots/<label>/`). `full` keeps every generated file; otherwise the

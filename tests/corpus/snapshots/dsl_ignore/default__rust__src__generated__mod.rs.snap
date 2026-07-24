@@ -1,0 +1,28 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+pub mod error;
+mod extern_interface_check;
+pub mod serialization;
+
+/// Open struct-map with an ignored rest row: tolerates unknown map entries on deserialize and DROPS them, and re-serializes only the declared fields. Byte round-trips do NOT hold for wire data that carried unknown entries.
+#[derive(Clone, Debug)]
+pub struct Ignored {
+    pub key_1: u64,
+}
+
+impl Ignored {
+    pub fn new(key_1: u64) -> Self {
+        Self { key_1 }
+    }
+}
