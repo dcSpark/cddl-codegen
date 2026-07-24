@@ -734,6 +734,10 @@
       "reason": "DSL comment in root RHS; not a clean reusable expression"
     },
     {
+      "feature": "dsl.ignore",
+      "reason": "DSL comment in root RHS; not a clean reusable expression"
+    },
+    {
       "feature": "dsl.name",
       "reason": "DSL comment in root RHS; not a clean reusable expression"
     },
