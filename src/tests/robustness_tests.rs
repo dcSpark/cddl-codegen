@@ -3424,7 +3424,7 @@ fn open_struct_map_rest_row_front_end() {
         "the @ignore+@name rejection must name both directives, got: {ign_name}"
     );
 
-    // --- PROBE-C6: placement guards fire BEFORE semantics — an `@ignore` on a NON-FINAL rest row
+    // --- placement guards fire BEFORE semantics: an `@ignore` on a NON-FINAL rest row
     // still gets the placement (LAST-entry) rejection, not an ignore-specific message. ---
     let ign_nonfinal = run(
         "foo = {\n  1: uint,\n  * uint => any ; @ignore\n  2: text\n}\n",
@@ -3436,7 +3436,7 @@ fn open_struct_map_rest_row_front_end() {
         "an `@ignore` on a non-final row must get the placement rejection first, got: {ign_nonfinal}"
     );
 
-    // --- never-silent placement (C-R5): `@ignore` on a PLAIN TYPE RULE rejects (not applicable). ---
+    // --- never-silent placement: `@ignore` on a PLAIN TYPE RULE rejects (not applicable). ---
     let ign_type_rule = run("x = uint ; @ignore\n", "ignore_type_rule")
         .expect_err("`@ignore` on a type rule must reject");
     assert!(
@@ -3445,7 +3445,7 @@ fn open_struct_map_rest_row_front_end() {
         "an `@ignore` on a plain type rule must reject naming the one valid placement, got: {ign_type_rule}"
     );
 
-    // --- never-silent placement (C-R5): `@ignore` on a TABLE RULE (`{ * k => v }`, no fixed keys)
+    // --- never-silent placement: `@ignore` on a TABLE RULE (`{ * k => v }`, no fixed keys)
     // rejects — a table is not an open struct-map. ---
     let ign_table = run("t = { * uint => any } ; @ignore\n", "ignore_table")
         .expect_err("`@ignore` on a table rule must reject");
@@ -3455,7 +3455,7 @@ fn open_struct_map_rest_row_front_end() {
         "an `@ignore` on a table rule must reject naming the one valid placement, got: {ign_table}"
     );
 
-    // --- never-silent placement (C-R5): `@ignore` at a FIELD/member position rejects. ---
+    // --- never-silent placement: `@ignore` at a FIELD/member position rejects. ---
     let ign_field = run("foo = {\n  field: uint ; @ignore\n}\n", "ignore_field")
         .expect_err("`@ignore` on a struct field must reject");
     assert!(
@@ -3463,7 +3463,7 @@ fn open_struct_map_rest_row_front_end() {
         "an `@ignore` on a field must reject naming the field position, got: {ign_field}"
     );
 
-    // --- slot direction (PROBE-B6-style): a RULE-position `@ignore` (same line as `}`) is read at
+    // --- slot direction: a RULE-position `@ignore` (same line as `}`) is read at
     // rule level and rejected as not-applicable — it is NOT stolen by the rest ENTRY (which would make
     // the row ignore-flavored and generate a closed struct silently). ---
     let ign_rule_pos = run(
