@@ -32,7 +32,12 @@ load-bearing: some constructs (`#`/`cbor-any`, `float16`, socket plugs, …) are
 name) moved OFF it 2026-07-23 (maintainer-ruled feature). Its `AnyCbor` runtime type plus first-class
 support in every position (member / homogeneous array / table domain-range / top-level alias / tagged /
 last-position type-choice arm) are shipped across the rust, wasm, and JSON/schema surfaces,
-depth-guarded. The permanent exclusions around it stay: `#` (`Type2::Any`), `cbor-any`, `@newtype` and
+depth-guarded. Open struct-maps followed 2026-07-24 (loose-CBOR Phase B): a trailing `* K => V`
+rest row after fixed keys captures unknown entries in every mode (byte-exact under
+`--preserve-encodings` incl. wire-order interleave and the runtime canonical merge; `@duplicates
+preserve` pair-list twin; flattened fallible JSON; wasm `rest()` getter), with the v1 boundaries
+(non-final/multiple/plain-group rest rows, bounded occurrences, non-uint/text/any key domains)
+held as graceful rejections — test map in `tests/README.md` § "Open struct-maps (rest rows)". The permanent exclusions around it stay: `#` (`Type2::Any`), `cbor-any`, `@newtype` and
 control operators on `any`, and non-last bare `any` choice arms (forced-backtracking catch-all unions
 put the catch-all last, so an earlier one is unreachable dead code) — see the `any` type-choice entry
 in `cddl-matrix/ROADMAP.md`. One deferred coverage item remains: the wasm emit-tests minter has no

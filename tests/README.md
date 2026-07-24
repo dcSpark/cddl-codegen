@@ -807,6 +807,42 @@ idiom") is verified across the layers:
   choice-bodied generic-def crash, alias-of-instance chains, inline choices, and the pre-existing
   multi-tag-per-field encoding-var collision).
 
+### Open struct-maps (rest rows) — test map (loose-CBOR Phase B)
+
+The trailing-`* K => V`-after-fixed-keys capture feature (user docs:
+`docs/docs/output_format.mdx` § "Open struct-maps", `docs/docs/comment_dsl.mdx` § rest-row
+directives) is verified across the layers:
+
+- **Front end + guards** — `robustness_tests::open_struct_map_rest_row_front_end`: recognition,
+  every graceful-rejection boundary with polarity fixtures (non-final / multiple / bounded-`+` /
+  plain-group / lone-non-fixed / group-choice-arm rest rows, unsupported key domains), the
+  directive-slot disjointness probes (entry-level `@name`/`@duplicates` vs rule-position reads),
+  the marker-slot trap pinned loud, and the lone-`* K => V`-stays-a-TABLE no-drift assertion.
+- **Value-level e2e** — `tests/open-struct-map-e2e` (compiled, non-preserve): capture round-trip,
+  typed-domain wrong-key errors, duplicate fixed/rest key rejection, the fixed-keys-win-on-content-
+  mismatch ruling, empty-rest ≡ closed-struct bytes.
+- **Preserve/canonical e2e** — `tests/open-struct-map-preserve-e2e` (compiled): byte-exact
+  wire-order interleave at non-minimal widths, concrete key/value encoding sidecars, the
+  `0x01`-vs-`0x1801` value-duplicate rejection under BOTH key domains, empty-rest ≡ closed
+  canonical bytes, the runtime canonical merge, the `24`-vs-`10` codegen↔runtime comparator
+  divergence-agreement vector, and the `@duplicates preserve` pair-list twin (byte-exact with
+  duplicates present, positional sidecars, canonical stable sort keeping wire order).
+- **JSON e2e** — `tests/open-struct-map-json-e2e` (compiled): flatten round-trip, declared-names-
+  bind-first loose read, and the write-error postures (declared-name collision, identical
+  stringifications — which is also how a pair-list holding real duplicates errors — complex `any`
+  keys/values).
+- **Snapshots** — `open_struct_map_default` / `open_struct_map_preserve` profiles over
+  `tests/open-struct-map`, which also rides the wasm-parity sweep (the preserve/json e2e fixtures
+  deliberately stay off that axis — see the same-shape map-wrapper container-conflict residual in
+  `tests/TESTING_ROADMAP.md`).
+- **Wire KATs** — the `open_map` rule in all three `tests/golden_hex*` fixtures (default /
+  preserve verbatim rest-key head / canonical minimized under the merge).
+- **emit-tests** — the `emit_tests_open_struct_rest_execute` gate (see the emit-tests section
+  above): the round-trip mint populates `.rest` through the generated API and the fidelity
+  classes exercise captured entries.
+- **Runtime JSON laws** — the natural-walk shims + corpus biconditional in the static-runtime
+  property layer (below), which the flatten surface composes.
+
 ### Per-rule duplicates policy (`@duplicates`) — test map
 
 The **`@duplicates reject` flavor** (set/array collections — user doc:
@@ -1396,7 +1432,10 @@ composite (int + string + map) and a float-carrying `[5, 1.5]`, the shape the `a
 (the vacuity guard). Executions: `emit_tests_execute` (local, with a fidelity-assertion floor),
 `emit_tests_any_float_execute` (local — generates `tests/any-positions` under
 `--preserve-encodings --emit-tests` and runs the crate, proving the `any` mint feeds a real float
-head through `widen_float`), and
+head through `widen_float`), `emit_tests_open_struct_rest_execute` (local, the open-struct-map
+sibling — generates `tests/open-struct-map-e2e` under `--preserve-encodings --emit-tests` and runs
+the crate, proving the round-trip mint populates `.rest` through the generated API and the fidelity
+classes — `widen_float` included, via the `any`-range composite — exercise captured rest entries), and
 `feature_corpus_roundtrips_nondefault_profiles` (full tier, corpus × preserve breadth); the canonical
 differential runs once at whole-program scale via the `canonical` fixture's `--emit-tests`.
 
@@ -1626,10 +1665,22 @@ technique the fidelity mutator uses via `include!` in `integration_tests.rs`) an
 plain `cargo test` (`cargo test --bin cddl-codegen any_cbor`; in-tier via the local tier's
 workspace `cargo test`, no nested cargo, no dedicated gate). Two further shims
 (`json_non_preserve` / `json_preserve`) additionally compile the `static/any_cbor_json.rs`
-serde fragment and pin the JSON round-trip laws — the exact rendering table
-(`docs/docs/output_format.mdx` § AnyCbor JSON), `from_json(to_json(x)) == x` for the
-non-preserve variant over finite floats, value-equal-modulo-encodings for preserve, and the
-read-side tolerance/error cases.
+serde fragment and pin BOTH JSON surfaces. The **tagged value codec** (`AnyCbor`'s own serde,
+total): the exact rendering table (`docs/docs/output_format.mdx` § "The `AnyCbor` value codec"),
+`from_json(to_json(x)) == x` for the non-preserve variant over finite floats,
+value-equal-modulo-encodings for preserve, and the read-side tolerance/error cases. The
+**natural-fallible walk** (`to_natural_json`/`from_natural_json` — the PRIMARY rendering every
+*generated* type routes an `any`-typed value through): one shim per success row and per
+strict-fail row, the RFC 8949 §6.2 read conventions (lexical numbers, prefer-numeric keys,
+the full-nint-domain key reading), and the round-trip law where `to_natural_json` succeeds.
+At corpus breadth (`well_formed + appendix-A + seeded-random`), `natural_json_law_over_corpus`
+asserts the strong biconditional both directions — Ok ⟹ JSON fixed point + value equality +
+no failure node, Err ⟹ the input contains one — against `contains_r3_failure_node`, an
+INDEPENDENT recursive failure-set oracle written against the inspection API (vacuity-floored
+on both branches); the tagged codec gets matching corpus laws, and
+`hostile_deep_json_read_is_graceful` pins that a 2000-deep JSON read is a graceful serde_json
+`Err`, never a stack abort. The corpus explicitly includes map-as-key, tag-as-key,
+array-as-key, duplicate-key, and near-depth-limit items.
 
 The core assertion is a **span oracle**: deserialize one item, recover its true byte extent
 from `Deserializer::position()` diffs, and require `serialize(deserialize(span)) == span`

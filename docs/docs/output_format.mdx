@@ -329,9 +329,11 @@ object level as the declared members** (via serde `flatten`), under the natural-
 - *Read* (`from_json`) binds the **declared member names first**; every other key lands in `rest`
   (loose JSON parsing for free). Typed domains parse deterministically (uint decimal / text verbatim);
   an `any` domain uses the R4 prefer-numeric key rule.
-- The JSON Schema emits `properties` (the declared members) **plus `additionalProperties`** (the rest
-  range's schema; permissive for an `any` range) — the honest open-map shape (json2ts → a TS interface
-  with an index signature).
+- The JSON Schema emits `properties` (the declared members) **plus the open-region schema**: a
+  uint-keyed rest row renders as schemars' native `patternProperties` (`"^\d+$"` → the range's
+  schema), a text- or `any`-keyed one as `additionalProperties` (the range's schema; permissive
+  `{}` for an `any` range) — the honest open-map shape either way (json2ts → a TS interface with an
+  index signature).
 
 **wasm.** The rest field is exposed as a **read-only `rest()` getter** returning the minted map wrapper
 (no `new()` argument, no setter — it defaults empty and is mutated through the wrapper's own surface);
