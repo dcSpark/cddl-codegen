@@ -2172,6 +2172,130 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
     );
 }
 
+/// Open-array rest tail (`[a, * t]`) front-end: every recognition guard, the directive-slot
+/// direction/trap fixtures, and the `@ignore`/`@duplicates`/preserve combination rejections. The
+/// value-level happy path lives in the compiled e2e `open_array_e2e`; this pins the parse-time
+/// boundary in plain mode (`--wasm=false`).
+#[test]
+fn open_array_front_end() {
+    fn gen_flags(spec: &str, flags: &[&str]) -> Result<std::collections::BTreeMap<String, String>, String>
+    {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_open_array_fe_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let mut args = vec![
+            "cddl-codegen".to_owned(),
+            "--input".to_owned(),
+            path.to_str().unwrap().to_owned(),
+            "--output".to_owned(),
+            "open_array_fe_unused".to_owned(),
+            "--wasm=false".to_owned(),
+        ];
+        args.extend(flags.iter().map(|s| s.to_string()));
+        let cli = Cli::parse_from(args);
+        let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
+        std::fs::remove_file(&path).ok();
+        result
+    }
+    fn run(spec: &str) -> Result<std::collections::BTreeMap<String, String>, String> {
+        gen_flags(spec, &[])
+    }
+    let src = |out: &std::collections::BTreeMap<String, String>| out.values().cloned().collect::<Vec<_>>().join("\n");
+
+    // --- positive: a final `* t` after ≥1 fixed member captures a `Vec<T>` tail ---
+    let cap = run("a = [uint, tstr, * uint]\n").expect("final-position `* t` is an open-array rest tail");
+    assert!(
+        src(&cap).contains("pub rest: Vec<u64>"),
+        "capture tail is a `Vec<T>` field named `rest`"
+    );
+
+    // --- @name renames the captured field (read from the ENTRY-trailing slot) ---
+    let named = run("a = [\n  uint,\n  * uint ; @name extras\n]\n")
+        .expect("@name on the tail entry renames the captured field");
+    assert!(
+        src(&named).contains("pub extras: Vec<u64>") && !src(&named).contains("pub rest:"),
+        "@name on the tail renames `rest` -> `extras`"
+    );
+
+    // --- @ignore (entry-trailing slot) is HONORED: no field, a closed struct ---
+    let ign = run("a = [\n  uint,\n  * any ; @ignore\n]\n").expect("@ignore on the tail entry is honored");
+    assert!(
+        !src(&ign).contains("pub rest") && src(&ign).contains("struct A"),
+        "an @ignore tail emits no field (closed struct)"
+    );
+
+    // --- slot direction: a RULE-level @ignore on an open-array rule is NOT stolen onto the tail —
+    // it is a loud rule-position rejection (the tail's own entry slot is disjoint from the rule slot).
+    let rule_ign = run("a = [uint, * any] ; @ignore\n")
+        .expect_err("a rule-position @ignore on an open-array rule is rejected, not applied to the tail");
+    assert!(
+        rule_ign.contains("@ignore") && rule_ign.contains("rule `a`"),
+        "rule-position @ignore is a loud rejection naming the rule, got: {rule_ign}"
+    );
+
+    // --- marker-slot trap: a directive glued to the `*` marker's OWN comment slot is NOT honored ---
+    // (`*  ; @name x` before the entry type). The tail stays a plain capture named `rest`.
+    let marker = run("a = [\n  uint,\n  * ; @name x\n  uint\n]\n");
+    if let Ok(out) = &marker {
+        assert!(
+            src(out).contains("pub rest:") && !src(out).contains("pub x:"),
+            "a directive on the `*` marker slot is silently NOT honored (field stays `rest`)"
+        );
+    }
+
+    // --- guards, each a graceful rejection ---
+    // non-final `*`
+    run("a = [* uint, tstr]\n").expect_err("a non-final `*` must reject (tail must be last)");
+    // multiple count-permitting members
+    run("a = [uint, * uint, * tstr]\n").expect_err("multiple `*` members must reject");
+    // `+` / `n*m` on the final entry
+    run("a = [uint, + uint]\n").expect_err("`+` is not a supported rest-tail occurrence");
+    run("a = [uint, 2*3 uint]\n").expect_err("`n*m` is not a supported rest-tail occurrence");
+    // D-R4: a fixed-value tail element has no Rust representation
+    let fixed = run("a = [uint, * 5]\n").expect_err("a fixed-value tail element must reject");
+    assert!(
+        fixed.contains("fixed value") && fixed.contains("rule `a`"),
+        "the fixed-value-tail rejection names the rule + cause, got: {fixed}"
+    );
+    run("a = [uint, * null]\n").expect_err("a `* null` tail must reject (fixed value)");
+    // choice-arm placement
+    run("a = [uint, * uint] // [tstr]\n").expect_err("a rest tail in a group-choice arm must reject");
+    // plain group placement (`g = (a, * t)`, embedded via `[g]`)
+    run("a = [g]\ng = (uint, * uint)\n").expect_err("a rest tail inside a plain group must reject");
+
+    // --- directive combination rejections ---
+    run("a = [\n  uint,\n  * uint ; @ignore @name x\n]\n")
+        .expect_err("@ignore + @name on the tail must reject (no field to name)");
+    run("a = [\n  uint,\n  * uint ; @ignore @duplicates preserve\n]\n")
+        .expect_err("@ignore + @duplicates on the tail must reject (no keys)");
+    let dup = run("a = [\n  uint,\n  * uint ; @duplicates preserve\n]\n")
+        .expect_err("@duplicates on an array tail must reject (no keys)");
+    assert!(
+        dup.contains("@duplicates") && dup.contains("no keys"),
+        "the @duplicates-on-array rejection explains there are no keys, got: {dup}"
+    );
+
+    // --- profile rejections: CAPTURE under --preserve-encodings (temporary), @ignore under preserve
+    // (permanent). Both are graceful rejections naming the remedy. ---
+    let cap_pres = gen_flags("a = [uint, * uint]\n", &["--preserve-encodings=true"])
+        .expect_err("open-array capture under --preserve-encodings rejects (later work package)");
+    assert!(
+        cap_pres.contains("preserve-encodings") && cap_pres.contains("rule `a`"),
+        "the capture-preserve rejection names the profile + rule, got: {cap_pres}"
+    );
+    let ign_pres = gen_flags(
+        "a = [\n  uint,\n  * any ; @ignore\n]\n",
+        &["--preserve-encodings=true"],
+    )
+    .expect_err("@ignore under --preserve-encodings rejects (byte-exact contract)");
+    assert!(
+        ign_pres.contains("@ignore") && ign_pres.contains("preserve-encodings"),
+        "the @ignore-preserve rejection names the directive + profile, got: {ign_pres}"
+    );
+}
+
 /// An occurrence marker on an inline (parenthesized) group — `[* (int, tstr)]`, `{ * (k: int) }` —
 /// used to be silently dropped by `flatten_group_entries`, narrowing the group to exactly-once and
 /// generating a decoder that rejects spec-valid CBOR with any other repetition count (invisible to

@@ -268,6 +268,30 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
         "tests/open-struct-map/input.cddl",
         ("wasm", &[]),
     ),
+    // loose-CBOR open ARRAYS (a final-position `* t` rest tail after ≥1 fixed member → a `pub rest:
+    // Vec<T>` capture, or a dropped `@ignore` tail). Snapshotted under `default` and `json` with
+    // `--wasm=false` to isolate the rust/json surfaces. Byte-exact per-element tail encodings under
+    // --preserve-encodings are a later work package (so no preserve profile). Covers a typed tail, an
+    // `any` tail, a `@name`d tail, an `@ignore` tail, and the degenerate shape combos (all-mandatory
+    // prefix + `@ignore` — the empty-conditional `definite_info` path — single fixed member + tail,
+    // and an optional fixed-value member + a type-distinct tail).
+    (
+        "open_array_default",
+        "tests/open-array/input.cddl",
+        ("default", &["--wasm=false"]),
+    ),
+    (
+        "open_array_json",
+        "tests/open-array/input.cddl",
+        (
+            "json",
+            &[
+                "--json-serde-derives=true",
+                "--json-schema-export=true",
+                "--wasm=false",
+            ],
+        ),
+    ),
     // directory input — exercises the multi-file scope/module codegen path.
     ("multifile", "tests/multifile/inputs", ("default", &[])),
     // extern (`_CDDL_CODEGEN_EXTERN_TYPE_`) and raw-bytes (`_CDDL_CODEGEN_RAW_BYTES_TYPE_`)

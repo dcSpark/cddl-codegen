@@ -1,0 +1,355 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for AllMandatoryIgnore {
+    /// Open array with an ignored rest tail: tolerates unknown trailing array elements on deserialize and DROPS them, and re-serializes only the declared members. Byte round-trips do NOT hold for wire data that carried extra trailing elements.
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(2))?;
+        serializer.write_unsigned_integer(self.index_0)?;
+        serializer.write_text(&self.index_1)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for AllMandatoryIgnore {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            let index_0 =
+                Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("index_0"))?;
+            let index_1 = Ok(raw.text()?).map_err(|e: DeserializeError| e.annotate("index_1"))?;
+            while match len {
+                cbor_event::Len::Len(n) => read_len.read() < n,
+                cbor_event::Len::Indefinite => raw.as_slice().first() != Some(&0xff),
+            } {
+                read_len.read_elems(1)?;
+                let _rest_elem = crate::generated::any_cbor::AnyCbor::deserialize(raw)?;
+            }
+            match len {
+                cbor_event::Len::Len(_) => read_len.finish()?,
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(AllMandatoryIgnore { index_0, index_1 })
+        })()
+        .map_err(|e| e.annotate("AllMandatoryIgnore"))
+    }
+}
+
+impl cbor_event::se::Serialize for Anytail {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(1 + self.rest.len() as u64))?;
+        serializer.write_unsigned_integer(self.index_0)?;
+        for element in self.rest.iter() {
+            element.serialize(serializer)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Anytail {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            let index_0 =
+                Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("index_0"))?;
+            let mut rest = Vec::new();
+            while match len {
+                cbor_event::Len::Len(n) => read_len.read() < n,
+                cbor_event::Len::Indefinite => raw.as_slice().first() != Some(&0xff),
+            } {
+                read_len.read_elems(1)?;
+                let rest_elem = crate::generated::any_cbor::AnyCbor::deserialize(raw)?;
+                rest.push(rest_elem);
+            }
+            match len {
+                cbor_event::Len::Len(_) => read_len.finish()?,
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(Anytail { index_0, rest })
+        })()
+        .map_err(|e| e.annotate("Anytail"))
+    }
+}
+
+impl cbor_event::se::Serialize for Ignored {
+    /// Open array with an ignored rest tail: tolerates unknown trailing array elements on deserialize and DROPS them, and re-serializes only the declared members. Byte round-trips do NOT hold for wire data that carried extra trailing elements.
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(1))?;
+        serializer.write_unsigned_integer(self.index_0)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Ignored {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            let index_0 =
+                Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("index_0"))?;
+            while match len {
+                cbor_event::Len::Len(n) => read_len.read() < n,
+                cbor_event::Len::Indefinite => raw.as_slice().first() != Some(&0xff),
+            } {
+                read_len.read_elems(1)?;
+                let _rest_elem = crate::generated::any_cbor::AnyCbor::deserialize(raw)?;
+            }
+            match len {
+                cbor_event::Len::Len(_) => read_len.finish()?,
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(Ignored { index_0 })
+        })()
+        .map_err(|e| e.annotate("Ignored"))
+    }
+}
+
+impl cbor_event::se::Serialize for Named {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(2 + self.extras.len() as u64))?;
+        serializer.write_unsigned_integer(self.index_0)?;
+        serializer.write_text(&self.index_1)?;
+        for element in self.extras.iter() {
+            serializer.write_bytes(element)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Named {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            let index_0 =
+                Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("index_0"))?;
+            let index_1 = Ok(raw.text()?).map_err(|e: DeserializeError| e.annotate("index_1"))?;
+            let mut extras = Vec::new();
+            while match len {
+                cbor_event::Len::Len(n) => read_len.read() < n,
+                cbor_event::Len::Indefinite => raw.as_slice().first() != Some(&0xff),
+            } {
+                read_len.read_elems(1)?;
+                let rest_elem = raw.bytes()?;
+                extras.push(rest_elem);
+            }
+            match len {
+                cbor_event::Len::Len(_) => read_len.finish()?,
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(Named {
+                index_0,
+                index_1,
+                extras,
+            })
+        })()
+        .map_err(|e| e.annotate("Named"))
+    }
+}
+
+impl cbor_event::se::Serialize for OptFixedMember {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(
+            1 + if self.index_1 { 1 } else { 0 } + self.rest.len() as u64,
+        ))?;
+        serializer.write_unsigned_integer(self.index_0)?;
+        if self.index_1 {
+            serializer.write_unsigned_integer(5u64)?;
+        }
+        for element in self.rest.iter() {
+            serializer.write_text(element)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for OptFixedMember {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            let index_0 =
+                Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("index_0"))?;
+            let index_1 = if raw
+                .cbor_type()
+                .map(|ty| ty == cbor_event::Type::UnsignedInteger)
+                .unwrap_or(false)
+            {
+                (|| -> Result<_, DeserializeError> {
+                    read_len.read_elems(1)?;
+                    let index_1_value = raw.unsigned_integer()?;
+                    if index_1_value != 5 {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Uint(index_1_value),
+                            expected: Key::Uint(5),
+                        }
+                        .into());
+                    }
+                    Ok(true)
+                })()
+                .map_err(|e| e.annotate("index_1"))
+            } else {
+                Ok(false)
+            }?;
+            let mut rest = Vec::new();
+            while match len {
+                cbor_event::Len::Len(n) => read_len.read() < n,
+                cbor_event::Len::Indefinite => raw.as_slice().first() != Some(&0xff),
+            } {
+                read_len.read_elems(1)?;
+                let rest_elem = raw.text()?;
+                rest.push(rest_elem);
+            }
+            match len {
+                cbor_event::Len::Len(_) => read_len.finish()?,
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(OptFixedMember {
+                index_0,
+                index_1,
+                rest,
+            })
+        })()
+        .map_err(|e| e.annotate("OptFixedMember"))
+    }
+}
+
+impl cbor_event::se::Serialize for SingleFixed {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(1 + self.rest.len() as u64))?;
+        serializer.write_unsigned_integer(self.index_0)?;
+        for element in self.rest.iter() {
+            serializer.write_unsigned_integer(*element)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for SingleFixed {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            let index_0 =
+                Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("index_0"))?;
+            let mut rest = Vec::new();
+            while match len {
+                cbor_event::Len::Len(n) => read_len.read() < n,
+                cbor_event::Len::Indefinite => raw.as_slice().first() != Some(&0xff),
+            } {
+                read_len.read_elems(1)?;
+                let rest_elem = raw.unsigned_integer()?;
+                rest.push(rest_elem);
+            }
+            match len {
+                cbor_event::Len::Len(_) => read_len.finish()?,
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(SingleFixed { index_0, rest })
+        })()
+        .map_err(|e| e.annotate("SingleFixed"))
+    }
+}
+
+impl cbor_event::se::Serialize for Typed {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(2 + self.rest.len() as u64))?;
+        serializer.write_unsigned_integer(self.index_0)?;
+        serializer.write_text(&self.index_1)?;
+        for element in self.rest.iter() {
+            serializer.write_unsigned_integer(*element)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Typed {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            let index_0 =
+                Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("index_0"))?;
+            let index_1 = Ok(raw.text()?).map_err(|e: DeserializeError| e.annotate("index_1"))?;
+            let mut rest = Vec::new();
+            while match len {
+                cbor_event::Len::Len(n) => read_len.read() < n,
+                cbor_event::Len::Indefinite => raw.as_slice().first() != Some(&0xff),
+            } {
+                read_len.read_elems(1)?;
+                let rest_elem = raw.unsigned_integer()?;
+                rest.push(rest_elem);
+            }
+            match len {
+                cbor_event::Len::Len(_) => read_len.finish()?,
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(Typed {
+                index_0,
+                index_1,
+                rest,
+            })
+        })()
+        .map_err(|e| e.annotate("Typed"))
+    }
+}

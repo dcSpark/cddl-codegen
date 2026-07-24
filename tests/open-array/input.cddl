@@ -1,0 +1,27 @@
+; Open arrays (loose CBOR "rest tail"): a final-position `* t` after ≥1 fixed member captures the
+; trailing elements into a `pub rest: Vec<T>` (default) or drops them (`@ignore`). Snapshotted under
+; the plain (`default`) and json flavors (--wasm=false to isolate the rust/json surfaces). Byte-exact
+; per-element tail encodings under --preserve-encodings are a later work package, so no preserve
+; profile here.
+typed = [uint, tstr, * uint]        ; typed tail
+anytail = [uint, * any]             ; any tail (nested-container elements)
+named = [
+  uint,
+  tstr,
+  * bytes ; @name extras            ; @name renames the captured Vec field
+]
+ignored = [
+  uint,
+  * any ; @ignore                   ; tolerate-and-drop tail
+]
+; Degenerate shape combos (each exercises a distinct length/optional path):
+;  - all-mandatory prefix + @ignore tail (the empty-conditional definite_info path);
+;  - single fixed member + tail;
+;  - optional fixed-value member + type-distinct tail (the bool-presence + rest-fold path).
+all_mandatory_ignore = [
+  uint,
+  tstr,
+  * any ; @ignore
+]
+single_fixed = [uint, * uint]
+opt_fixed_member = [uint, ? 5, * tstr]
