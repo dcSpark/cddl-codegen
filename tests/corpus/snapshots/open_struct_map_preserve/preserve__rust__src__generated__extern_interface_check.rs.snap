@@ -25,6 +25,8 @@ fn _assert_deserialize<T: crate::generated::serialization::Deserialize>() {}
 fn _extern_interface_self_check() {
     _assert_serialize::<crate::generated::AnyRest>();
     _assert_deserialize::<crate::generated::AnyRest>();
+    _assert_serialize::<crate::generated::DupRest>();
+    _assert_deserialize::<crate::generated::DupRest>();
     _assert_serialize::<crate::generated::OptRest>();
     _assert_deserialize::<crate::generated::OptRest>();
     _assert_serialize::<crate::generated::RenamedRest>();

@@ -527,6 +527,31 @@ enum RestKeyDomain {
     Any,
 }
 
+/// `@duplicates preserve` on the rest row → the vec-of-pairs twin (`PairMap`), which accepts AND
+/// re-emits duplicate keys in wire order (matching `@duplicates preserve` TABLES). Otherwise the
+/// loose container (`OrderedHashMap`/`BTreeMap`) with the §10.8 value-duplicate rejection.
+fn rest_is_pair_map(rest: &RestRow) -> bool {
+    rest.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+}
+
+/// The rest container CONSTRUCTOR token (`PairMap` / `OrderedHashMap` / `BTreeMap`).
+fn rest_container_ctor(rest: &RestRow, cli: &Cli) -> &'static str {
+    if rest_is_pair_map(rest) {
+        "PairMap"
+    } else {
+        table_type(cli)
+    }
+}
+
+/// The rest field's member RUST TYPE (`PairMap<K, V>` / `OrderedHashMap<K, V>` / `BTreeMap<K, V>`).
+/// A `@duplicates preserve` policy on the `Map` `RustType` routes `for_rust_member` to the pair-map
+/// twin, reusing the table machinery.
+fn rest_member_type(rest: &RestRow) -> crate::intermediate::RustType {
+    let ty: crate::intermediate::RustType =
+        ConceptualRustType::Map(Box::new(rest.domain.clone()), Box::new(rest.range.clone())).into();
+    ty.with_duplicates_policy(rest.duplicates)
+}
+
 impl RestKeyDomain {
     fn of(rest: &RestRow) -> Self {
         match rest.domain.conceptual_type.resolve_alias_shallow() {
@@ -639,15 +664,21 @@ fn append_rest_capture(
     } else {
         "rest_key.clone()".to_owned()
     };
-    // --- per-entry encoding sidecars (concrete domains, keyed by the key VALUE) ---
+    let is_pair_map = rest_is_pair_map(rest);
+    // --- per-entry encoding sidecars (concrete domains) ---
+    // Loose container: keyed by the key VALUE (`insert`). Pair-map twin: POSITIONAL (`push`, parallel
+    // to the pair-list) — its keys repeat, so a keyed sidecar would collide.
     if cli.preserve_encodings {
         if !value_encs.is_empty() {
-            block.line(format!(
-                "{}_value_encodings.insert({}, {});",
-                rest.field_name,
-                key_for_sidecar,
-                tuple_str(value_encs.iter().map(|e| e.field_name.clone()).collect())
-            ));
+            let val_tuple = tuple_str(value_encs.iter().map(|e| e.field_name.clone()).collect());
+            block.line(if is_pair_map {
+                format!("{}_value_encodings.push({val_tuple});", rest.field_name)
+            } else {
+                format!(
+                    "{}_value_encodings.insert({key_for_sidecar}, {val_tuple});",
+                    rest.field_name
+                )
+            });
         }
         if !key_encs.is_empty() {
             // Concrete uint/text key: the peeked raw encoding (`key_enc_expr`) converted via the
@@ -656,21 +687,40 @@ fn append_rest_capture(
             let raw = key_enc_expr
                 .clone()
                 .expect("concrete-domain rest key peeks its encoding under preserve");
-            block.line(format!(
-                "{}_key_encodings.insert({}, {});",
-                rest.field_name,
-                key_for_sidecar,
-                key_encs[0].enc_conversion(&raw)
-            ));
+            let key_enc_val = key_encs[0].enc_conversion(&raw);
+            block.line(if is_pair_map {
+                format!("{}_key_encodings.push({key_enc_val});", rest.field_name)
+            } else {
+                format!(
+                    "{}_key_encodings.insert({key_for_sidecar}, {key_enc_val});",
+                    rest.field_name
+                )
+            });
         }
         // wire-position index for this entry (records.rs §5.2): declared fields occupy 0..N, the
-        // i-th rest entry occupies N+i. `<container>.len()` before the insert IS i.
+        // i-th rest entry occupies N+i. `<container>.len()` before the insert IS i (and the sidecar
+        // `Vec`s, pushed just above, are already aligned to it).
         block.line(format!(
             "orig_deser_order.push({} + {}.len());",
             rest_index_base, rest.field_name
         ));
     }
-    // --- duplicate check + insert ---
+    // --- duplicate handling + insert ---
+    if is_pair_map {
+        // `@duplicates preserve`: duplicates are the POINT — append every entry (PairMap::insert
+        // pushes, never displaces), no dup check, in wire order (matching @duplicates preserve
+        // tables). §10.8's value-duplicate rejection is the DEFAULT (reject) container's job.
+        let insert_key = if key_is_copy {
+            "rest_key".to_owned()
+        } else {
+            "rest_key.clone()".to_owned()
+        };
+        block.line(format!(
+            "{}.insert({insert_key}, rest_value);",
+            rest.field_name
+        ));
+        return;
+    }
     let dup_key_error = match domain {
         RestKeyDomain::Uint => "Key::Uint(rest_key)".to_owned(),
         RestKeyDomain::Text => "Key::Str(rest_key)".to_owned(),
@@ -745,12 +795,15 @@ fn rest_merge_present_condition(field: &RustField) -> Option<String> {
 /// Emit the key/value serialize of ONE open-struct rest entry into `block`, assuming `key` (`&K`)
 /// and `value` (`&V`) refs and (under preserve) `self.encodings` in scope. Reuses the loose-table
 /// key/value serialize + `container_encoding_lookup` pattern: concrete key/value pull their wire
-/// encoding from the `{restfield}_{key,value}_encodings` sidecar (keyed by the key value);
-/// self-carried `any` content emits its own encodings (no sidecar, empty `*_encs`).
+/// encoding from the `{restfield}_{key,value}_encodings` sidecar via `enc_lookup_var` — the key
+/// VALUE (`"key"`) for the loose `BTreeMap` sidecar, or the positional index (`field_index - N`) for
+/// the `@duplicates preserve` `Vec` sidecar (whose keys repeat). Self-carried `any` content emits
+/// its own encodings (no sidecar, empty `*_encs`).
 fn emit_rest_entry_serialize(
     gen_scope: &mut GenerationScope,
     types: &IntermediateTypes,
     rest: &RestRow,
+    enc_lookup_var: &str,
     block: &mut dyn CodeBlock,
     cli: &Cli,
 ) {
@@ -758,7 +811,7 @@ fn emit_rest_entry_serialize(
     let outer = SerializeConfig::new("key", &rest.field_name)
         .encoding_var_in_option_struct("self.encodings");
     if !key_encs.is_empty() {
-        block.line(&outer.container_encoding_lookup("key", &key_encs, "key"));
+        block.line(&outer.container_encoding_lookup("key", &key_encs, enc_lookup_var));
     }
     let key_config = SerializeConfig::new("key", format!("{}_key", rest.field_name))
         .expr_is_ref(true)
@@ -768,7 +821,7 @@ fn emit_rest_entry_serialize(
         .tag_depth(0);
     gen_scope.generate_serialize(types, (&rest.domain).into(), block, key_config, cli);
     if !value_encs.is_empty() {
-        block.line(&outer.container_encoding_lookup("value", &value_encs, "key"));
+        block.line(&outer.container_encoding_lookup("value", &value_encs, enc_lookup_var));
     }
     let value_config = SerializeConfig::new("value", format!("{}_value", rest.field_name))
         .expr_is_ref(true)
@@ -1369,19 +1422,21 @@ pub(super) fn codegen_struct(
     // spec is source-compatible for existing `new()` callers. The container matches the table switch
     // (non-preserve `BTreeMap` in WP2; the preserve variant is a later work package).
     if let Some(rest) = &record.rest {
-        let rest_map_type: crate::intermediate::RustType =
-            ConceptualRustType::Map(Box::new(rest.domain.clone()), Box::new(rest.range.clone()))
-                .into();
         let mut rest_field = codegen::Field::new(
             format!("pub {}", rest.field_name),
-            rest_map_type.for_rust_member(types, false, cli),
+            rest_member_type(rest).for_rust_member(types, false, cli),
         );
         rest_field.doc(
             "Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). \
-             Serialized after the declared fields; defaults empty.",
+             Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this \
+             a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.",
         );
         native_struct.push_field(rest_field);
-        native_new_block.line(format!("{}: {}::new(),", rest.field_name, table_type(cli)));
+        native_new_block.line(format!(
+            "{}: {}::new(),",
+            rest.field_name,
+            rest_container_ctor(rest, cli)
+        ));
     }
     if !native_new_comments.is_empty() {
         native_new.doc(native_new_comments.join("\n"));
@@ -1434,20 +1489,29 @@ pub(super) fn codegen_struct(
                 );
             }
         }
-        // Open struct-map rest row: per-entry encoding sidecars for CONCRETE key/value domains,
-        // keyed by the key value (`any`-typed content is self-carried and contributes none — see
-        // `rest_encoding_fields`). The rest row's OWN map-header length lives in the owner's
-        // `len_encoding`, so there is no `_encoding` LenEncoding field here.
+        // Open struct-map rest row: per-entry encoding sidecars for CONCRETE key/value domains
+        // (`any`-typed content is self-carried and contributes none — see `rest_encoding_fields`).
+        // The loose (reject/default) container keys the sidecars by the key VALUE (`BTreeMap`); the
+        // `@duplicates preserve` twin's keys repeat, so its sidecars are POSITIONAL (`Vec`, parallel
+        // to the pair-list, indexed by entry position) — exactly the loose-table pair-map split. The
+        // rest row's OWN map-header length lives in the owner's `len_encoding` (no `_encoding` here).
         if let Some(rest) = &record.rest {
             let key_rust = rest.domain.for_rust_member(types, false, cli);
             let (key_encs, value_encs) = rest_encoding_fields(types, rest, cli);
+            let sidecar_type = |elem: String| {
+                if rest_is_pair_map(rest) {
+                    format!("Vec<{elem}>")
+                } else {
+                    format!("BTreeMap<{key_rust}, {elem}>")
+                }
+            };
             if !key_encs.is_empty() {
                 push_encoding_struct_field(
                     &mut encoding_struct,
                     &mut encoding_aliases,
                     name,
                     &format!("{}_key_encodings", rest.field_name),
-                    &format!("BTreeMap<{}, {}>", key_rust, tuple_type_name(&key_encs)),
+                    &sidecar_type(tuple_type_name(&key_encs)),
                 );
             }
             if !value_encs.is_empty() {
@@ -1456,7 +1520,7 @@ pub(super) fn codegen_struct(
                     &mut encoding_aliases,
                     name,
                     &format!("{}_value_encodings", rest.field_name),
-                    &format!("BTreeMap<{}, {}>", key_rust, tuple_type_name(&value_encs)),
+                    &sidecar_type(tuple_type_name(&value_encs)),
                 );
             }
         }
@@ -1831,12 +1895,26 @@ pub(super) fn codegen_struct(
                         // OPEN struct rest arm: index `>= N` selects the (index - N)-th rest entry.
                         // `.get()` returns `Option`, so a stale `orig_deser_order` (a user mutated
                         // `rest` after deserialize, shifting the count) SKIPS rather than panics —
-                        // serialize's never-panic philosophy.
+                        // serialize's never-panic philosophy. `rest_i` is that positional index — the
+                        // `Vec` sidecar lookup key for the `@duplicates preserve` twin (whose keys
+                        // repeat); the loose container keys its sidecar by the key VALUE (`"key"`).
                         let mut rest_arm = Block::new("_ =>");
-                        let mut got = Block::new(format!(
-                            "if let Some(&(key, value)) = rest_entries.get(field_index - {rest_index_base})"
-                        ));
-                        emit_rest_entry_serialize(gen_scope, types, rest, &mut got, cli);
+                        rest_arm.line(format!("let rest_i = field_index - {rest_index_base};"));
+                        let mut got =
+                            Block::new("if let Some(&(key, value)) = rest_entries.get(rest_i)");
+                        let enc_lookup_var = if rest_is_pair_map(rest) {
+                            "rest_i"
+                        } else {
+                            "key"
+                        };
+                        emit_rest_entry_serialize(
+                            gen_scope,
+                            types,
+                            rest,
+                            enc_lookup_var,
+                            &mut got,
+                            cli,
+                        );
                         rest_arm.push_block(got);
                         ser_loop_match.push_block(rest_arm);
                         ser_loop_match.after(";");
@@ -1914,36 +1992,37 @@ pub(super) fn codegen_struct(
                         // first `insert`, so inference has nothing to pin `K`/`V` from otherwise. The
                         // non-preserve path (below) infers from its `insert`-based dup check, so it
                         // keeps the un-annotated form (byte-identical to WP2).
-                        let rest_member_type: crate::intermediate::RustType =
-                            ConceptualRustType::Map(
-                                Box::new(rest.domain.clone()),
-                                Box::new(rest.range.clone()),
-                            )
-                            .into();
                         deser_code.content.line(&format!(
                             "let mut {}: {} = {}::new();",
                             rest.field_name,
-                            rest_member_type.for_rust_member(types, false, cli),
-                            table_type(cli)
+                            rest_member_type(rest).for_rust_member(types, false, cli),
+                            rest_container_ctor(rest, cli)
                         ));
                     } else {
                         deser_code.content.line(&format!(
                             "let mut {} = {}::new();",
                             rest.field_name,
-                            table_type(cli)
+                            rest_container_ctor(rest, cli)
                         ));
                     }
                     if cli.preserve_encodings {
+                        // Sidecar locals mirror the encoding-struct shape: `Vec` for the pair-map
+                        // twin (positional), `BTreeMap` for the loose container (keyed by key value).
+                        let sidecar_ctor = if rest_is_pair_map(rest) {
+                            "Vec::new()"
+                        } else {
+                            "BTreeMap::new()"
+                        };
                         let (key_encs, value_encs) = rest_encoding_fields(types, rest, cli);
                         if !key_encs.is_empty() {
                             deser_code.content.line(&format!(
-                                "let mut {}_key_encodings = BTreeMap::new();",
+                                "let mut {}_key_encodings = {sidecar_ctor};",
                                 rest.field_name
                             ));
                         }
                         if !value_encs.is_empty() {
                             deser_code.content.line(&format!(
-                                "let mut {}_value_encodings = BTreeMap::new();",
+                                "let mut {}_value_encodings = {sidecar_ctor};",
                                 rest.field_name
                             ));
                         }

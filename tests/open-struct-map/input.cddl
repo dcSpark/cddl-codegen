@@ -12,3 +12,7 @@ renamed_rest = {
   1: uint,
   * uint => any ; @name extra
 }
+dup_rest = {                                        ; @duplicates preserve → the PairMap twin
+  7: uint,
+  * uint => text ; @duplicates preserve
+}

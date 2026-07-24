@@ -8,3 +8,11 @@ uint_any = { 3: uint, * uint => any }             ; concrete uint key (sidecar) 
 concrete = { 4: uint, * uint => text }            ; concrete key AND value (both sidecars)
 div_open = { 24: uint, * uint => any }            ; codegen<->runtime canonical merge (24 vs rest 10)
 div_closed = { 10: uint, 24: uint }               ; closed twin: baked canonical order 10-before-24
+dup_pair = {
+  9: uint,
+  * uint => any ; @duplicates preserve
+}
+dup_pair_concrete = {
+  5: uint,
+  * uint => text ; @duplicates preserve
+}

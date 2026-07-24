@@ -17,6 +17,16 @@ pub struct AnyRestEncoding {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct DupRestEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub key_7_encoding: Option<cbor_event::Sz>,
+    pub key_7_key_encoding: Option<cbor_event::Sz>,
+    pub rest_key_encodings: Vec<Option<cbor_event::Sz>>,
+    pub rest_value_encodings: Vec<StringEncoding>,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct OptRestEncoding {
     pub len_encoding: LenEncoding,
     pub orig_deser_order: Vec<usize>,

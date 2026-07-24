@@ -1,6 +1,5 @@
 ---
 source: src/tests/snapshot_tests.rs
-assertion_line: 109
 expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
@@ -15,14 +14,16 @@ expression: content
 pub mod any_cbor;
 pub mod error;
 mod extern_interface_check;
+pub mod pair_map;
 pub mod serialization;
 
+use crate::generated::pair_map::PairMap;
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
 pub struct AnyRest {
     pub key_1: u64,
-    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty.
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
     pub rest: BTreeMap<crate::generated::any_cbor::AnyCbor, crate::generated::any_cbor::AnyCbor>,
 }
 
@@ -36,9 +37,25 @@ impl AnyRest {
 }
 
 #[derive(Clone, Debug)]
+pub struct DupRest {
+    pub key_7: u64,
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
+    pub rest: PairMap<u64, String>,
+}
+
+impl DupRest {
+    pub fn new(key_7: u64) -> Self {
+        Self {
+            key_7,
+            rest: PairMap::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct OptRest {
     pub key_3: Option<String>,
-    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty.
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
     pub rest: BTreeMap<u64, crate::generated::any_cbor::AnyCbor>,
 }
 
@@ -60,7 +77,7 @@ impl Default for OptRest {
 #[derive(Clone, Debug)]
 pub struct RenamedRest {
     pub key_1: u64,
-    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty.
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
     pub extra: BTreeMap<u64, crate::generated::any_cbor::AnyCbor>,
 }
 
@@ -76,7 +93,7 @@ impl RenamedRest {
 #[derive(Clone, Debug)]
 pub struct TypedRest {
     pub key_1: u64,
-    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty.
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
     pub rest: BTreeMap<u64, u64>,
 }
 
@@ -93,7 +110,7 @@ impl TypedRest {
 pub struct UintRest {
     pub key_1: u64,
     pub key_2: String,
-    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty.
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
     pub rest: BTreeMap<u64, crate::generated::any_cbor::AnyCbor>,
 }
 
