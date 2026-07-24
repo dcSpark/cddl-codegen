@@ -624,7 +624,7 @@ fn emit_rest_flatten_json(
     // snake_case the owner name so the free fns are snake (no `non_snake_case` warning) and unique
     // (struct idents are unique; `convert_to_snake_case` is injective enough here as the field name
     // and fixed suffixes disambiguate).
-    let owner_snake = crate::utils::convert_to_snake_case(&name.to_string());
+    let owner_snake = crate::utils::convert_to_snake_case(name.as_ref());
     let ser_fn = format!("{}_{}_flatten_serialize", owner_snake, rest.field_name);
     let deser_fn = format!("{}_{}_flatten_deserialize", owner_snake, rest.field_name);
 
@@ -670,10 +670,9 @@ fn emit_rest_flatten_json(
         // pin it (`Infallible: Display`) so the generic helper's `E: Display` bound resolves.
         RestKeyDomain::Uint => (
             "|k: &u64| Ok::<String, std::convert::Infallible>(k.to_string())".to_owned(),
-            format!(
-                "let k = ks.parse::<u64>().map_err(|_| serde::de::Error::custom(\
-                 format!(\"open struct-map rest key {{ks:?}} is not a valid uint\")))?;"
-            ),
+            "let k = ks.parse::<u64>().map_err(|_| serde::de::Error::custom(\
+             format!(\"open struct-map rest key {ks:?} is not a valid uint\")))?;"
+                .to_owned(),
         ),
         RestKeyDomain::Text => (
             "|k: &String| Ok::<String, std::convert::Infallible>(k.clone())".to_owned(),
