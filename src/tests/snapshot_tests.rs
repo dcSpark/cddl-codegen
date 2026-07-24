@@ -238,6 +238,18 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
             ],
         ),
     ),
+    // The IGNORE flavor (`@ignore` on the rest row): unknown entries are typed-deserialized and
+    // DROPPED — no `rest` field, serialize emits declared members only, and JSON/schemars/wasm are a
+    // closed struct's (none of capture's flatten/getter/sidecar machinery). Snapshotted non-preserve
+    // with `--wasm=false` (`@ignore` is rejected under --preserve-encodings). The generated source
+    // pins that these open structs emit as CLOSED structs while the deserialize loop stays
+    // dynamic-length (so a definite map with extra entries decodes) and consumes+drops each unknown
+    // uint/text/any entry.
+    (
+        "open_struct_map_ignore",
+        "tests/open-struct-map-ignore/input.cddl",
+        ("default", &["--wasm=false"]),
+    ),
     // The wasm rest surface: each open struct's wasm wrapper gains a `rest` getter
     // returning the captured entries as the minted map wrapper (`MapKToV` / the `@duplicates
     // preserve` PairMap-backed twin). `--wasm` is the default, so this profile pins the emitted wasm
