@@ -1035,6 +1035,12 @@ impl GenerationScope {
             if types.uses_any_cbor() {
                 self.rust_lib().raw("pub mod any_cbor;");
             }
+            // only crates with an open struct-map rest row pull in the flatten JSON helpers, and only
+            // under --json-serde-derives (the module is serde-dependent) — keeps every other crate's
+            // output byte-identical.
+            if cli.json_serde_derives && types.uses_open_struct_rest() {
+                self.rust_lib().raw("pub mod open_struct_rest_json;");
+            }
         }
         if cli.preserve_encodings {
             self.rust_lib().raw("extern crate derivative;");

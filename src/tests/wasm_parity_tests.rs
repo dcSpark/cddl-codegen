@@ -329,6 +329,12 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
          with --preserve-encodings --canonical-form --wasm=false (open structs reject under --wasm \
          in this WP), so there is no generated wasm surface to differential",
     ),
+    (
+        "open-struct-map-json-e2e",
+        "loose-CBOR open struct-map FLATTENED-JSON e2e fixture: its integration gate generates with \
+         --json-serde-derives --json-schema-export --wasm=false (open structs reject under --wasm in \
+         this WP), so there is no generated wasm surface to differential",
+    ),
 ];
 
 /// Only these `.rs` basenames may appear under `rust/src/generated/` (default/json profiles); only
