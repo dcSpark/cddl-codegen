@@ -144,13 +144,23 @@ const COMPILE_SKIP: &[&str] = &["dsl_custom", "dsl_copy", "extern_generic_raw_by
 /// `wasm_parity_tests::EXPECTED_GENERATION_FAIL`): a listed pair that now GENERATES fails the gate
 /// as "gap closed — remove the pin"; an unlisted generation failure fails as a normal generation
 /// failure; and a listed stem absent from `tests/corpus` fails as a stale pin.
-const EXPECTED_GENERATION_FAIL: &[(&str, &str, &str)] = &[(
-    "optional_fixed_float",
-    "preserve",
-    "an optional fixed FLOAT member aborts generation under --preserve-encodings at the float \
-     deserialize stub (\"preserve_encodings is not implemented for float\" — the \
-     preserve_encodings_supports_floats stub class); default/json generate the `bool` presence field",
-)];
+const EXPECTED_GENERATION_FAIL: &[(&str, &str, &str)] = &[
+    (
+        "optional_fixed_float",
+        "preserve",
+        "an optional fixed FLOAT member aborts generation under --preserve-encodings at the float \
+         deserialize stub (\"preserve_encodings is not implemented for float\" — the \
+         preserve_encodings_supports_floats stub class); default/json generate the `bool` presence field",
+    ),
+    (
+        "dsl_ignore",
+        "preserve",
+        "an `@ignore` open struct-map is rejected under --preserve-encodings (a preserve crate's \
+         byte-exact round-trip contract cannot hold for a type that drops unknown entries — the \
+         rejection points at capture and at @custom_serialize/@custom_deserialize); default/json \
+         generate the closed-struct surface",
+    ),
+];
 
 /// Wasm-matrix cells that deliberately never compile standalone in this harness. Each entry pairs
 /// with a ledger entry in `cddl-matrix/ROADMAP.md` § findings (which shape/role, the exact `E####`,
@@ -11582,13 +11592,22 @@ fn feature_corpus_roundtrips_nondefault_profiles() {
     // `special_break()` (so a major-type-7 element/key falls through to its deserializer), letting
     // the encoding-fidelity oracle run ALL its variant classes — including the two
     // container-reframing ones (`indef_containers`/`everything`) — on those cells, fully green.
-    const SKIP: &[(&str, &str, &str)] = &[(
+    const SKIP: &[(&str, &str, &str)] = &[
+        (
+        "preserve",
+        "dsl_ignore",
+        "an `@ignore` open struct-map is rejected under --preserve-encodings (a preserve crate's \
+         byte-exact round-trip contract cannot hold for a type that drops unknown entries); the \
+         default/json emitted round-trip surface runs normally",
+    ),
+        (
         "preserve",
         "optional_fixed_float",
         "an optional fixed FLOAT member aborts generation under --preserve-encodings at the float \
          deserialize stub (\"preserve_encodings is not implemented for float\" — the \
          preserve_encodings_supports_floats stub class); the json leg round-trips normally",
-    )];
+    ),
+    ];
 
     // Per-profile floor on how many fixtures emit a generated-test module — anti-vacuity guard
     // mirroring `feature_corpus_compiles`. Discovered empirically (see the assert below).

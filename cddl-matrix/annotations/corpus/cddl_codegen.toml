@@ -325,6 +325,13 @@ fixture = "tag_set_reject.cddl"
 id = "dsl.duplicates.preserve"
 fixture = "table_preserve.cddl"
 
+# `@ignore` — the open struct-map tolerate-and-drop rest-row flavor. Rejected under
+# --preserve-encodings, so the fixture is generation-skipped under the preserve profile
+# (EXPECTED_GENERATION_FAIL); default/json isolate the closed-struct surface it emits.
+[[cover]]
+id = "dsl.ignore"
+fixture = "dsl_ignore.cddl"
+
 [[cover]]
 id = "dsl.custom_json"
 fixture = "dsl_custom.cddl"

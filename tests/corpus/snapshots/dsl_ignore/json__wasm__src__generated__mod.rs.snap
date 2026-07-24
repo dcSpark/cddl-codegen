@@ -1,0 +1,74 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
+
+/// Open struct-map with an ignored rest row: tolerates unknown map entries on deserialize and DROPS them, and re-serializes only the declared fields. Byte round-trips do NOT hold for wire data that carried unknown entries.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Ignored(pub(crate) cddl_lib::Ignored);
+
+#[wasm_bindgen]
+impl Ignored {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Ignored, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<Ignored, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn key_1(&self) -> u64 {
+        self.0.key_1
+    }
+
+    pub fn new(key_1: u64) -> Self {
+        Self(cddl_lib::Ignored::new(key_1))
+    }
+}
+
+impl From<cddl_lib::Ignored> for Ignored {
+    fn from(native: cddl_lib::Ignored) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Ignored> for cddl_lib::Ignored {
+    fn from(wasm: Ignored) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Ignored> for Ignored {
+    fn as_ref(&self) -> &cddl_lib::Ignored {
+        &self.0
+    }
+}
