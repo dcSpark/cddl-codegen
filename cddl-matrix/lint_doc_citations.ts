@@ -18,8 +18,9 @@
  *      dangles, so no existence check can flag it (the "§ 4 lesson" descs pointed at a section
  *      that had been renumbered away). Titles are the stable citation form.
  *   5. Ephemeral-reference ban: durable docs/code/tests must not point at gitignored, plan-internal
- *      material (delivery ruling ids, the WP-backing spec files, per-WP "outcome header" prose,
- *      `PROBE-B<n>` probe ids, the `draft/loose-cbor/` scratchpad home). Such references resolve
+ *      material (delivery ruling ids in either the `ruling R<n>` or the `<letter>-R<n>` phase form,
+ *      the `<letter>-spec` WP-backing spec files, per-WP "outcome header" prose, `PROBE-<letter><n>`
+ *      probe ids, the `draft/loose-cbor/` scratchpad home). Such references resolve
  *      only inside gitignored `draft/` files, so they dangle silently to any future reader — state
  *      the constraint inline with a durable citation instead. See EPHEMERAL_PATTERNS.
  *
@@ -137,21 +138,28 @@ function md022Problems(rel: string, text: string): string[] {
 }
 
 // Ephemeral-reference ban: durable docs/code/tests must not point at gitignored, plan-internal
-// material — delivery ruling ids, work-package numbers' backing spec files, per-WP "outcome header"
-// prose, `PROBE-B<n>` probe ids, and the `draft/loose-cbor/` scratchpad home. Those resolve only
+// material — delivery ruling ids (`ruling R<n>` and the `<letter>-R<n>` phase form), work-package
+// numbers' backing `<letter>-spec` files, per-WP "outcome header" prose, `PROBE-<letter><n>` probe
+// ids, and the `draft/loose-cbor/` scratchpad home. Those resolve only
 // inside gitignored `draft/` files, so to a future reader they dangle silently (no existence check
 // can flag a reference whose target is not tracked). The fix is to state the constraint inline with
 // a durable citation (a docs section by heading, an RFC section, or a test/gate name). Scoped like
 // the positional ban: `draft/` files are historical working notes and exempt as TARGETS. The
 // broader `draft/*.md` upstream-bug repro provenance the matrix hand-docs cite is a separate,
 // pre-existing convention (a different reference class) and is deliberately NOT matched here.
+// Phase-GENERIC by construction: the delivery-plan id spellings roll one letter forward per phase
+// (`PROBE-B<n>` -> `PROBE-C<n>`, `ruling R<n>` -> the `<letter>-R<n>` ruling-id form), so the patterns
+// match every phase's letter rather than the one the current delivery happens to use. A phase-specific
+// spelling (only the launching phase's letter) is exactly how one phase's ids slipped through while
+// another phase's tree stayed clean by luck.
 const EPHEMERAL_PATTERNS: { re: RegExp; canary: string }[] = [
   { re: /draft\/loose-cbor/g, canary: "see draft/loose-cbor/b-spec.md" },
-  { re: /\b[a-c][0-9]*-spec\b/g, canary: "per the b-spec" },
+  { re: /\b[a-z][0-9]*-spec\b/g, canary: "per the b-spec" },
   { re: /ruling R[0-9]/g, canary: "ruling R7 says" },
+  { re: /\b[A-Z]-R[0-9]/g, canary: "C-R8 requires" },
   { re: /ruling §/g, canary: "ruling §10.8" },
   { re: /outcome header/gi, canary: "the WP4 outcome header" },
-  { re: /PROBE-B[0-9]/g, canary: "PROBE-B6 confirmed" },
+  { re: /PROBE-[A-Z][0-9]/g, canary: "PROBE-C1 confirmed" },
 ];
 
 function ephemeralReferenceProblems(file: TrackedFile): string[] {
