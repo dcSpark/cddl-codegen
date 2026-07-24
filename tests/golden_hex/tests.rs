@@ -338,4 +338,79 @@ mod golden_hex {
             "an @ignore struct encodes exactly the closed one-entry map"
         );
     }
+
+    // ---- open array (loose CBOR "rest tail"), default flags ----
+    // Fixed members `uint, tstr` plus a trailing `* uint`: trailing elements land in `.rest`. The array
+    // header COUNTS the declared members plus every tail element (2 + rest.len()); the wire is the two
+    // declared members, then the tail in order. Bytes are hand-derived from the CBOR grammar,
+    // independent of the generator. (The helper keeps the `kat!` value free of a `);` token, which the
+    // coverage extractor uses as the call terminator.)
+    fn open_list_tail(tail: &[u64]) -> OpenList {
+        let mut v = OpenList::new(5, "hi".to_owned());
+        for &e in tail {
+            v.rest.push(e);
+        }
+        v
+    }
+    // Empty tail: exactly the closed two-element array [5, "hi"] — adding a rest tail is wire-compatible.
+    kat!(
+        open_list_empty_tail,
+        OpenList,
+        open_list_tail(&[]),
+        &[0x82, 0x05, 0x62, 0x68, 0x69]
+    );
+    // One tail element [5, "hi", 7] — count 3 (0x83), the trailing 7 after the two declared members.
+    kat!(
+        open_list_one_tail,
+        OpenList,
+        open_list_tail(&[7]),
+        &[0x83, 0x05, 0x62, 0x68, 0x69, 0x07]
+    );
+    // Two tail elements [5, "hi", 7, 8] — count 4 (0x84); the tail emits in Vec order after the
+    // declared members.
+    kat!(
+        open_list_two_tail,
+        OpenList,
+        open_list_tail(&[7, 8]),
+        &[0x84, 0x05, 0x62, 0x68, 0x69, 0x07, 0x08]
+    );
+
+    // ---- open array, @ignore (tolerate-and-drop) flavor, default flags ----
+    // NOT `kat!`s: an `@ignore` tail DROPS trailing elements, so decoding wire that carries them does
+    // not round-trip to itself — it re-emits the declared-prefix bytes. Every byte string is
+    // hand-derived from the CBOR grammar, spec-anchored, independent of the generator.
+    //
+    // decode-with-trailing → re-serialize → declared-prefix golden bytes: the wire [5, 7, 8] (count 3,
+    // declared uint 5 plus two trailing uints) decodes, drops the trailing elements, and re-emits the
+    // one-element array [5] (count 1).
+    #[test]
+    fn ignore_list_drops_trailing_on_reencode() {
+        let wire: &[u8] = &[0x83, 0x05, 0x07, 0x08];
+        let declared_only: &[u8] = &[0x81, 0x05];
+        let decoded =
+            IgnoreList::from_cbor_bytes(wire).expect("wire with trailing elements must decode");
+        assert_eq!(
+            decoded.to_cbor_bytes(),
+            declared_only,
+            "@ignore must DROP trailing array elements and re-emit the declared prefix only"
+        );
+    }
+
+    // empty-tail identity: wire with NO trailing elements is byte-identical to the one-element array on
+    // both directions — decode→re-encode is the input, and constructing declared-only encodes to the
+    // same bytes. Adding an `@ignore` rest tail to a spec stays wire-compatible for clean data.
+    #[test]
+    fn ignore_list_empty_tail_identity() {
+        let closed: &[u8] = &[0x81, 0x05];
+        assert_eq!(
+            IgnoreList::from_cbor_bytes(closed).unwrap().to_cbor_bytes(),
+            closed,
+            "empty-tail @ignore decode must round-trip byte-identically to the closed array"
+        );
+        assert_eq!(
+            IgnoreList::new(5).to_cbor_bytes(),
+            closed,
+            "an @ignore struct encodes exactly the closed one-element array"
+        );
+    }
 }

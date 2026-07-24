@@ -654,4 +654,21 @@ mod golden_hex_preserve {
             assert_eq!(d.rest.get(&7).copied(), Some(9), "rest entry 7 => 9 captured");
         }
     );
+
+    // ---- open array (rest tail) under --preserve-encodings ----
+    // A captured TAIL element's header argument is data: the tail element 7 written non-minimally in
+    // the 1-byte form (0x18 0x07 instead of the minimal 0x07) must re-emit VERBATIM through the
+    // positional per-element encoding sidecar — the declared members (uint 5, tstr "hi") stay minimal.
+    // Spec bytes [5, "hi", 7] with the tail element at 1-byte width. Independent of the generator
+    // (hand-derived from RFC 8949 §3's 1-byte argument form).
+    kat_preserve!(
+        open_list_nonminimal_tail_elem,
+        OpenList,
+        &[0x83, 0x05, 0x62, 0x68, 0x69, 0x18, 0x07],
+        |d: &OpenList| {
+            assert_eq!(d.index_0, 5, "declared uint member decoded");
+            assert_eq!(d.index_1, "hi", "declared tstr member decoded");
+            assert_eq!(d.rest, vec![7u64], "tail element 7 captured");
+        }
+    );
 }
