@@ -261,6 +261,12 @@ fn well_formed_corpus() -> Vec<(String, Vec<u8>)> {
             "map length-first key order divergent (24 vs 10)",
             "a21818000a02",
         ),
+        // Complex map KEYS (natural-JSON R3 key-kind failures): a map/tag/array used AS a key has no
+        // text/uint/nint string image, so `to_natural_json` strict-fails on the key (WP5 §8 27 corpus
+        // inclusions: map-as-key, tag-as-key). The tagged codec round-trips them all byte-exact.
+        ("map with map key {{1:2}:3}", "a1a1010203"),
+        ("map with tag key {1(1):2}", "a1c10102"),
+        ("map with array key {[1]:2}", "a1810102"),
         ("nested uneven", "82018201820180"),
         // 6. tags — nested, width variations, wrapping each class
         ("tag 0 text", "c06a323031332d30332d3231"),
@@ -1237,6 +1243,190 @@ mod json_non_preserve {
             }
         }
     }
+
+    // ---- Corpus-breadth JSON laws (loose-CBOR Phase B WP5, §8 item 27) ----
+    // The hand-vector shims above pin the R3/R4 rows exactly; these run the SAME two law sets
+    // (natural + tagged) over the whole span-oracle corpus (well-formed + RFC 8949 Appendix A +
+    // seeded random), so the laws are asserted at the breadth the runtime actually sees.
+
+    /// Independent oracle of `to_natural_json`'s success/failure (ruling R3): true iff the value
+    /// contains a node with no injective JSON image — the recursive dual of the runtime walk, written
+    /// against the inspection API so it can never share a bug with the impl. Failure nodes: bytes,
+    /// tag, undefined, unassigned, non-finite float, an nint VALUE below `i64::MIN` (a KEY nint has no
+    /// ceiling — keys are strings), a map key whose kind is not text/uint/nint, and two map keys that
+    /// stringify identically (§6.1 collision). Keys are stringified text-verbatim / int-decimal, the
+    /// same rule `any_cbor_natural_key_string` uses.
+    fn contains_r3_failure_node(v: &AnyCbor) -> bool {
+        fn key_string(k: &AnyCbor) -> Option<String> {
+            match k.kind() {
+                AnyCborKind::Text => Some(k.as_text().unwrap().to_owned()),
+                AnyCborKind::UInt => Some(k.as_uint().unwrap().to_string()),
+                AnyCborKind::NInt => Some(k.as_nint().unwrap().to_string()),
+                _ => None, // key kind outside text/uint/nint
+            }
+        }
+        match v.kind() {
+            AnyCborKind::Bytes
+            | AnyCborKind::Tag
+            | AnyCborKind::Undefined
+            | AnyCborKind::Unassigned => true,
+            AnyCborKind::Float => !v.as_float().unwrap().is_finite(),
+            AnyCborKind::NInt => i64::try_from(v.as_nint().unwrap()).is_err(),
+            AnyCborKind::UInt | AnyCborKind::Text | AnyCborKind::Bool | AnyCborKind::Null => false,
+            AnyCborKind::Array => v.as_array().unwrap().iter().any(contains_r3_failure_node),
+            AnyCborKind::Map => {
+                let mut seen = std::collections::BTreeSet::new();
+                for (k, val) in v.as_map().unwrap() {
+                    match key_string(k) {
+                        None => return true, // key kind failure
+                        Some(s) => {
+                            if !seen.insert(s) {
+                                return true; // stringified-key collision
+                            }
+                        }
+                    }
+                    if contains_r3_failure_node(val) {
+                        return true;
+                    }
+                }
+                false
+            }
+        }
+    }
+
+    fn law_corpus() -> Vec<(String, Vec<u8>)> {
+        let mut c = super::well_formed_corpus();
+        c.extend(super::appendix_a_corpus());
+        c.extend(super::random_corpus(0x0B5E_11A5_5EED_1234, 6_000, 4));
+        c
+    }
+
+    /// Natural law, BOTH directions over the corpus (R3/R4): `to_natural_json` Ok ⟹ the value is
+    /// recovered value-equal modulo encodings + R4 numeric-key reading (stated as a JSON fixed point,
+    /// since JSON object-key ordering + the numeric-key reading make strict value-equality too strong;
+    /// scalar values additionally recover strictly equal), AND the value carries no R3 failure node;
+    /// Err ⟹ the value DOES carry an R3 failure node. The independent predicate makes this a strong
+    /// biconditional rather than a one-sided check.
+    #[test]
+    fn natural_json_law_over_corpus() {
+        let mut ok = 0usize;
+        let mut err = 0usize;
+        for (name, bytes) in law_corpus() {
+            let v = AnyCbor::from_cbor_bytes(&bytes).unwrap_or_else(|e| {
+                panic!("well-formed corpus item failed to deserialize ({name}): {e}")
+            });
+            match to_natural_json(&v) {
+                Ok(json) => {
+                    ok += 1;
+                    assert!(
+                        !contains_r3_failure_node(&v),
+                        "to_natural_json succeeded but the value carries an R3 failure node: {name}"
+                    );
+                    let back = from_natural_json(json.clone());
+                    assert_eq!(
+                        to_natural_json(&back).expect("recovered value re-renders"),
+                        json,
+                        "natural round-trip JSON fixed point: {name}"
+                    );
+                    if !matches!(v.kind(), AnyCborKind::Map | AnyCborKind::Array) {
+                        assert_eq!(v, back, "scalar natural round-trip value-equal: {name}");
+                    }
+                }
+                Err(_) => {
+                    err += 1;
+                    assert!(
+                        contains_r3_failure_node(&v),
+                        "to_natural_json failed but no R3 failure node is present: {name}"
+                    );
+                }
+            }
+        }
+        // Vacuity floor: the corpus must exercise BOTH branches (the random + complex-key vectors
+        // guarantee failures; the integer/string/array vectors guarantee successes).
+        assert!(
+            ok > 0 && err > 0,
+            "corpus must exercise both natural branches (ok={ok}, err={err})"
+        );
+    }
+
+    /// True iff the value contains a float node anywhere. The tagged codec renders a float as its
+    /// shortest JSON decimal, which is value-lossy at the ULP/width edge for floats that did not
+    /// originate as f64 (an f16/f32 subnormal decodes to an f64 whose shortest decimal can parse back
+    /// to the ADJACENT f64) — a documented JSON float caveat (R6-adjacent), so the strict fixed-point
+    /// assertion below is scoped to float-free items; float items still ride the no-panic breadth.
+    fn contains_float(v: &AnyCbor) -> bool {
+        match v.kind() {
+            AnyCborKind::Float => true,
+            AnyCborKind::Array => v.as_array().unwrap().iter().any(contains_float),
+            AnyCborKind::Map => v
+                .as_map()
+                .unwrap()
+                .iter()
+                .any(|(k, val)| contains_float(k) || contains_float(val)),
+            AnyCborKind::Tag => contains_float(v.as_tag().unwrap().1),
+            _ => false,
+        }
+    }
+
+    /// Tagged law at corpus breadth (R2, unchanged): the value codec's JSON round-trips over the WHOLE
+    /// corpus without panic (`to_string` then `from_str` always succeeds), and for float-free items is
+    /// an exact fixed point — `to_string(from_str(to_string(v))) == to_string(v)`. The hand vectors
+    /// above pin the value-recovery rows (incl. the finite-float and NaN cases with round-trip-safe
+    /// values); this adds breadth over every well-formed shape.
+    #[test]
+    fn tagged_json_law_over_corpus() {
+        for (name, bytes) in law_corpus() {
+            let v = AnyCbor::from_cbor_bytes(&bytes).unwrap();
+            let s = serde_json::to_string(&v).unwrap();
+            match serde_json::from_str::<AnyCbor>(&s) {
+                Ok(back) => {
+                    if !contains_float(&v) {
+                        assert_eq!(
+                            serde_json::to_string(&back).unwrap(),
+                            s,
+                            "tagged JSON fixed point over corpus: {name}"
+                        );
+                    }
+                }
+                Err(e) => {
+                    // The tagged codec double-nests (`{"array":[…]}`) — two JSON levels per CBOR level
+                    // — so a near-depth-limit CBOR nesting (the corpus depth-64 item) exceeds
+                    // serde_json's recursion limit on READ. That is a GRACEFUL `Err`, never a crash —
+                    // the read-side depth posture (write side is unbounded; see the non-preserve
+                    // `hostile_deep_json_read_is_graceful`).
+                    assert!(
+                        e.to_string().contains("recursion limit"),
+                        "tagged JSON read failed non-gracefully ({name}): {e}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Depth edge (WP5 §8 item 27): the READ side of BOTH JSON surfaces inherits serde_json's own
+    /// recursion limit, so hostile deeply-nested JSON is a GRACEFUL `Err` (no stack overflow / SIGABRT)
+    /// — the parse bottoms out before `from_natural_json` (which takes an already-parsed `Value`, so it
+    /// only ever recurses within that bounded depth) or the tagged `from_str::<AnyCbor>` walk runs. The
+    /// WRITE side (`to_json`/`to_natural_json`) carries the documented crate-wide unbounded posture (no
+    /// guard) — `docs/docs/output_format.mdx` § "JSON representation"; the stack-safe depth-64 write
+    /// round-trips are pinned by `depth_roundtrip_no_crash` above.
+    #[test]
+    fn hostile_deep_json_read_is_graceful() {
+        let n = 2_000; // far past serde_json's default 128-deep recursion limit
+        let deep_array = format!("{}{}", "[".repeat(n), "]".repeat(n));
+        // Plain-value parse (the input `from_natural_json` would receive): graceful Err, never a crash.
+        assert!(
+            serde_json::from_str::<serde_json::Value>(&deep_array).is_err(),
+            "hostile deep JSON must hit serde_json's recursion limit as a graceful Err"
+        );
+        // Tagged `from_json` (`from_str::<AnyCbor>`): the tagged codec's own deep-object form — a
+        // nest of externally-tagged `{"array":[…]}` — also bottoms out gracefully.
+        let deep_tagged = format!("{}{}", r#"{"array":["#.repeat(n), "]}".repeat(n));
+        assert!(
+            serde_json::from_str::<AnyCbor>(&deep_tagged).is_err(),
+            "hostile deep tagged JSON must be a graceful Err, never a stack overflow"
+        );
+    }
 }
 
 #[allow(dead_code, clippy::upper_case_acronyms, clippy::wrong_self_convention)]
@@ -1315,5 +1505,85 @@ mod json_preserve {
             let back: AnyCbor = serde_json::from_str(&s).unwrap();
             assert_eq!(v, back, "constructor value round-trips: {s}");
         }
+    }
+
+    // ---- Corpus-breadth JSON laws under the PRESERVE assembly (loose-CBOR Phase B WP5, §8 item 27) ----
+
+    fn law_corpus() -> Vec<(String, Vec<u8>)> {
+        let mut c = super::well_formed_corpus();
+        c.extend(super::appendix_a_corpus());
+        c.extend(super::random_corpus(0x0B5E_11A5_5EED_9876, 6_000, 4));
+        c
+    }
+
+    /// True iff the value contains a float node anywhere (see the non-preserve twin's doc: the tagged
+    /// JSON float decimal is value-lossy at the ULP/width edge for non-f64-origin floats, so the strict
+    /// modulo-encodings assertion is scoped to float-free items).
+    fn contains_float(v: &AnyCbor) -> bool {
+        match v.kind() {
+            AnyCborKind::Float => true,
+            AnyCborKind::Array => v.as_array().unwrap().iter().any(contains_float),
+            AnyCborKind::Map => v
+                .as_map()
+                .unwrap()
+                .iter()
+                .any(|(k, val)| contains_float(k) || contains_float(val)),
+            AnyCborKind::Tag => contains_float(v.as_tag().unwrap().1),
+            _ => false,
+        }
+    }
+
+    /// Tagged law at corpus breadth, MODULO ENCODINGS (R2, the `round_trip_value_equal_modulo_encodings`
+    /// hand law applied to the whole corpus): a wire value's tagged JSON always re-reads without panic,
+    /// and for float-free items canonicalizes to the SAME bytes as the original — encodings (non-minimal
+    /// widths, indefinite framing) reset to canonical defaults through JSON but the VALUE is preserved.
+    #[test]
+    fn tagged_modulo_encodings_over_corpus() {
+        for (name, bytes) in law_corpus() {
+            let v = AnyCbor::from_cbor_bytes(&bytes).unwrap();
+            let s = serde_json::to_string(&v).unwrap();
+            match serde_json::from_str::<AnyCbor>(&s) {
+                Ok(back) => {
+                    if !contains_float(&v) {
+                        assert_eq!(
+                            back.to_canonical_cbor_bytes(),
+                            v.to_canonical_cbor_bytes(),
+                            "tagged JSON preserves value modulo encodings over corpus: {name}"
+                        );
+                    }
+                }
+                // Graceful read-side recursion-limit Err on the near-depth-limit item (the tagged
+                // codec double-nests) — see the non-preserve twin.
+                Err(e) => assert!(
+                    e.to_string().contains("recursion limit"),
+                    "tagged JSON read failed non-gracefully ({name}): {e}"
+                ),
+            }
+        }
+    }
+
+    /// Natural JSON drops encodings at corpus breadth: for every corpus item whose natural render
+    /// succeeds, the natural JSON of the wire value equals the natural JSON of its canonical re-read —
+    /// the natural walk reads VALUES, never encodings, so a non-minimal width or indefinite framing
+    /// leaves no trace in the JSON (the preserve-assembly counterpart of the non-preserve corpus law).
+    #[test]
+    fn natural_encodings_absent_over_corpus() {
+        let mut checked = 0usize;
+        for (name, bytes) in law_corpus() {
+            let v = AnyCbor::from_cbor_bytes(&bytes).unwrap();
+            if let Ok(json) = to_natural_json(&v) {
+                let canon = AnyCbor::from_cbor_bytes(&v.to_canonical_cbor_bytes()).unwrap();
+                assert_eq!(
+                    to_natural_json(&canon).expect("canonical re-read renders identically"),
+                    json,
+                    "natural JSON is encoding-insensitive over corpus: {name}"
+                );
+                checked += 1;
+            }
+        }
+        assert!(
+            checked > 0,
+            "corpus must exercise the natural-render branch under preserve"
+        );
     }
 }
