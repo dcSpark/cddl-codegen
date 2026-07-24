@@ -209,14 +209,20 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
         ),
     ),
     // loose-CBOR open struct-maps (a trailing `* k => v` rest row after fixed keys → a `pub rest`
-    // capture map). Plain flavor only (`--wasm=false`, no preserve, no JSON): the preserve fidelity
-    // core, the flattened-JSON surface, and the wasm rest accessors are later work packages that
-    // reject generation for now — so, like any-positions, this is a profile-limited whole_program
-    // input rather than an all-profile feature-corpus entry (the corpus default leg is `--wasm=true`).
+    // capture map). Snapshotted under the plain (`default`) AND preserve flavors: the preserve
+    // fidelity core (orig_deser_order interleave, per-entry encoding sidecars, the runtime canonical
+    // key merge) landed in WP3. The flattened-JSON surface and wasm rest accessors are still later
+    // work packages that reject generation, so `--wasm=false` and no JSON — a profile-limited
+    // whole_program input rather than an all-profile feature-corpus entry.
     (
         "open_struct_map_default",
         "tests/open-struct-map/input.cddl",
         ("default", &["--wasm=false"]),
+    ),
+    (
+        "open_struct_map_preserve",
+        "tests/open-struct-map/input.cddl",
+        ("preserve", &["--preserve-encodings=true", "--wasm=false"]),
     ),
     // directory input — exercises the multi-file scope/module codegen path.
     ("multifile", "tests/multifile/inputs", ("default", &[])),

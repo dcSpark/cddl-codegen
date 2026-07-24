@@ -520,7 +520,7 @@ pub(super) fn generate_array_struct_deserialization(
 /// Key domain of an open struct-map rest row, for plain-mode (non-preserve) capture. Recognition
 /// (`recognize_rest_row`) restricts the domain to `uint` (u64) / `text` / `any`, so these three
 /// exhaust it.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum RestKeyDomain {
     Uint,
     Text,
@@ -537,23 +537,64 @@ impl RestKeyDomain {
     }
 }
 
-/// Emit a plain-mode rest capture into `block`: account the entry in `read_len`, bind the key
-/// (`rest_key`) — either from `key_expr` (already read by the record loop's uint/text peek) or by
+/// The encoding sidecars a rest row needs under `--preserve-encodings`: `any`-typed key/value carry
+/// their own encodings (self-carried `AnyCbor`), so they contribute NO sidecar; concrete key/value
+/// types get a `{restfield}_key_encodings` / `{restfield}_value_encodings` `BTreeMap` keyed by the
+/// key VALUE (the owner's map header covers the rest row's own length, so there is no `_encoding`
+/// LenEncoding field). Empty vecs under non-preserve or for self-carried `any`.
+fn rest_encoding_fields(
+    types: &IntermediateTypes,
+    rest: &RestRow,
+    cli: &Cli,
+) -> (Vec<EncodingField>, Vec<EncodingField>) {
+    if !cli.preserve_encodings {
+        return (vec![], vec![]);
+    }
+    let key_encs = encoding_fields(
+        types,
+        &format!("{}_key", rest.field_name),
+        &rest.domain.clone().resolve_aliases(),
+        false,
+        cli,
+    );
+    let value_encs = encoding_fields(
+        types,
+        &format!("{}_value", rest.field_name),
+        &rest.range.clone().resolve_aliases(),
+        false,
+        cli,
+    );
+    (key_encs, value_encs)
+}
+
+/// Emit a rest capture into `block`: account the entry in `read_len`, bind the key (`rest_key`) —
+/// either from `key_val_expr` (already read by the record loop's uint/text peek — for an `any`
+/// domain this is the reconstructed `AnyCbor`, carrying the peeked wire width under preserve) or by
 /// deserializing the domain from `raw` (for `any`-domain other-type / special keys) — bind the
-/// value (`rest_value`) by deserializing the range, then insert into the `rest` container with the
-/// default (reject) duplicate check (the non-preserve container's `Eq` IS value equality — §10.8 —
-/// so `insert().is_some()` is the value-duplicate test, the same pattern the table `@duplicates
-/// reject` path uses).
+/// value (`rest_value`), populate the per-entry encoding sidecars for concrete domains under
+/// preserve, push the wire-position index (`rest_index_base + <container>.len()`) onto
+/// `orig_deser_order`, then insert with the default (reject) duplicate check. §10.8: for a concrete
+/// key the container `Eq` IS value equality (`insert().is_some()`); for an `any`-domain key under
+/// preserve the container `Eq` is REPRESENTATIONAL, so the dup check is a value-normalized
+/// `value_eq` side scan (confined to any-domain containers). `key_enc_expr` is the raw peeked-key
+/// encoding var (a `Sz`/`StringLenSz`) for a concrete uint/text key under preserve — stored in the
+/// key sidecar; `None` for self-carried `any` keys and non-preserve.
+#[allow(clippy::too_many_arguments)]
 fn append_rest_capture(
     gen_scope: &mut GenerationScope,
     types: &IntermediateTypes,
     rest: &RestRow,
-    key_expr: Option<String>,
+    rest_index_base: usize,
+    key_val_expr: Option<String>,
+    key_enc_expr: Option<String>,
     block: &mut Block,
     cli: &Cli,
 ) {
     block.line("read_len.read_elems(1)?;");
-    match key_expr {
+    let domain = RestKeyDomain::of(rest);
+    let (key_encs, value_encs) = rest_encoding_fields(types, rest, cli);
+    // --- key ---
+    match key_val_expr {
         Some(expr) => {
             block.line(format!("let rest_key = {expr};"));
         }
@@ -569,34 +610,173 @@ fn append_rest_capture(
                 .add_to(block);
         }
     }
-    gen_scope
-        .generate_deserialize(
-            types,
-            (&rest.range).into(),
-            DeserializeBeforeAfter::new("let rest_value = ", ";", false),
-            DeserializeConfig::new("rest_value"),
-            cli,
-        )
-        .add_to(block);
-    let insert_key = if rest.domain.is_copy(types) {
+    // --- value (with encoding capture under preserve for a concrete range) ---
+    if cli.preserve_encodings && !value_encs.is_empty() {
+        let var_names_str = encoding_var_names_str(types, "rest_value", &rest.range, cli);
+        gen_scope
+            .generate_deserialize(
+                types,
+                (&rest.range).into(),
+                DeserializeBeforeAfter::new(&format!("let {var_names_str} = "), ";", false),
+                DeserializeConfig::new("rest_value"),
+                cli,
+            )
+            .add_to(block);
+    } else {
+        gen_scope
+            .generate_deserialize(
+                types,
+                (&rest.range).into(),
+                DeserializeBeforeAfter::new("let rest_value = ", ";", false),
+                DeserializeConfig::new("rest_value"),
+                cli,
+            )
+            .add_to(block);
+    }
+    let key_is_copy = rest.domain.is_copy(types);
+    let key_for_sidecar = if key_is_copy {
         "rest_key".to_owned()
     } else {
         "rest_key.clone()".to_owned()
     };
-    let dup_key_error = match RestKeyDomain::of(rest) {
+    // --- per-entry encoding sidecars (concrete domains, keyed by the key VALUE) ---
+    if cli.preserve_encodings {
+        if !value_encs.is_empty() {
+            block.line(format!(
+                "{}_value_encodings.insert({}, {});",
+                rest.field_name,
+                key_for_sidecar,
+                tuple_str(value_encs.iter().map(|e| e.field_name.clone()).collect())
+            ));
+        }
+        if !key_encs.is_empty() {
+            // Concrete uint/text key: the peeked raw encoding (`key_enc_expr`) converted via the
+            // key type's single encoding field. (Composite concrete keys are out of the WP-supported
+            // uint/text/any domain set, so a single key-encoding field is the only shape here.)
+            let raw = key_enc_expr
+                .clone()
+                .expect("concrete-domain rest key peeks its encoding under preserve");
+            block.line(format!(
+                "{}_key_encodings.insert({}, {});",
+                rest.field_name,
+                key_for_sidecar,
+                key_encs[0].enc_conversion(&raw)
+            ));
+        }
+        // wire-position index for this entry (records.rs §5.2): declared fields occupy 0..N, the
+        // i-th rest entry occupies N+i. `<container>.len()` before the insert IS i.
+        block.line(format!(
+            "orig_deser_order.push({} + {}.len());",
+            rest_index_base, rest.field_name
+        ));
+    }
+    // --- duplicate check + insert ---
+    let dup_key_error = match domain {
         RestKeyDomain::Uint => "Key::Uint(rest_key)".to_owned(),
         RestKeyDomain::Text => "Key::Str(rest_key)".to_owned(),
         // AnyCbor keys have no simple `Key` spelling — mirror the table dup path's placeholder.
         RestKeyDomain::Any => "Key::Str(String::from(\"<open-map rest key>\"))".to_owned(),
     };
-    let mut dup_check = Block::new(format!(
-        "if {}.insert({}, rest_value).is_some()",
-        rest.field_name, insert_key
-    ));
-    dup_check.line(format!(
-        "return Err(DeserializeFailure::DuplicateKey({dup_key_error}).into());"
-    ));
-    block.push_block(dup_check);
+    if cli.preserve_encodings && domain == RestKeyDomain::Any {
+        // Representational `Eq` here (encoding widths participate), so `insert` would silently accept
+        // `0x01` and `0x1801` as two entries. §10.8 requires rejecting CBOR VALUE duplicates: scan
+        // for a value-equal existing key first (confined to the any-domain container).
+        let mut dup_check = Block::new(format!(
+            "if {}.iter().any(|(k, _)| k.value_eq(&rest_key))",
+            rest.field_name
+        ));
+        dup_check.line(format!(
+            "return Err(DeserializeFailure::DuplicateKey({dup_key_error}).into());"
+        ));
+        block.push_block(dup_check);
+        block.line(format!("{}.insert(rest_key, rest_value);", rest.field_name));
+    } else {
+        let insert_key = if key_is_copy {
+            "rest_key".to_owned()
+        } else {
+            "rest_key.clone()".to_owned()
+        };
+        let mut dup_check = Block::new(format!(
+            "if {}.insert({}, rest_value).is_some()",
+            rest.field_name, insert_key
+        ));
+        dup_check.line(format!(
+            "return Err(DeserializeFailure::DuplicateKey({dup_key_error}).into());"
+        ));
+        block.push_block(dup_check);
+    }
+}
+
+/// A `vec![0x.., ..]` literal of a fixed key's canonical bytes — the codegen-time contribution of a
+/// declared field to an open struct's runtime canonical key merge, fed to `cbor_canonical_key_cmp`
+/// exactly as `RustRecord::canonical_ordering` sorts the closed-struct baked order (so the two
+/// agree; pinned by the `24`-vs-`10` divergence vector).
+fn byte_vec_literal(bytes: &[u8]) -> String {
+    format!(
+        "vec![{}]",
+        bytes
+            .iter()
+            .map(|b| format!("0x{b:02x}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+}
+
+/// The serialize-time "is this declared field present?" predicate — identical to the replay match
+/// arm's guard, so the canonical key merge counts exactly the fields that will be written. `None`
+/// for a mandatory field (always present).
+fn rest_merge_present_condition(field: &RustField) -> Option<String> {
+    if !field.optional {
+        None
+    } else if field.rust_type.is_fixed_value() {
+        Some(format!("self.{}", field.name))
+    } else if let Some(default_value) = &field.rust_type.config.default {
+        Some(format!(
+            "self.{} != {} || self.encodings.as_ref().map(|encs| encs.{}_default_present).unwrap_or(false)",
+            field.name,
+            default_value.to_primitive_str_compare(),
+            field.name
+        ))
+    } else {
+        Some(format!("self.{}.is_some()", field.name))
+    }
+}
+
+/// Emit the key/value serialize of ONE open-struct rest entry into `block`, assuming `key` (`&K`)
+/// and `value` (`&V`) refs and (under preserve) `self.encodings` in scope. Reuses the loose-table
+/// key/value serialize + `container_encoding_lookup` pattern: concrete key/value pull their wire
+/// encoding from the `{restfield}_{key,value}_encodings` sidecar (keyed by the key value);
+/// self-carried `any` content emits its own encodings (no sidecar, empty `*_encs`).
+fn emit_rest_entry_serialize(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    rest: &RestRow,
+    block: &mut dyn CodeBlock,
+    cli: &Cli,
+) {
+    let (key_encs, value_encs) = rest_encoding_fields(types, rest, cli);
+    let outer = SerializeConfig::new("key", &rest.field_name)
+        .encoding_var_in_option_struct("self.encodings");
+    if !key_encs.is_empty() {
+        block.line(&outer.container_encoding_lookup("key", &key_encs, "key"));
+    }
+    let key_config = SerializeConfig::new("key", format!("{}_key", rest.field_name))
+        .expr_is_ref(true)
+        .is_end(false)
+        .encoding_var_no_option_struct()
+        .encoding_var_is_ref(false)
+        .tag_depth(0);
+    gen_scope.generate_serialize(types, (&rest.domain).into(), block, key_config, cli);
+    if !value_encs.is_empty() {
+        block.line(&outer.container_encoding_lookup("value", &value_encs, "key"));
+    }
+    let value_config = SerializeConfig::new("value", format!("{}_value", rest.field_name))
+        .expr_is_ref(true)
+        .is_end(false)
+        .encoding_var_no_option_struct()
+        .encoding_var_is_ref(false)
+        .tag_depth(0);
+    gen_scope.generate_serialize(types, (&rest.range).into(), block, value_config, cli);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1254,6 +1434,32 @@ pub(super) fn codegen_struct(
                 );
             }
         }
+        // Open struct-map rest row: per-entry encoding sidecars for CONCRETE key/value domains,
+        // keyed by the key value (`any`-typed content is self-carried and contributes none — see
+        // `rest_encoding_fields`). The rest row's OWN map-header length lives in the owner's
+        // `len_encoding`, so there is no `_encoding` LenEncoding field here.
+        if let Some(rest) = &record.rest {
+            let key_rust = rest.domain.for_rust_member(types, false, cli);
+            let (key_encs, value_encs) = rest_encoding_fields(types, rest, cli);
+            if !key_encs.is_empty() {
+                push_encoding_struct_field(
+                    &mut encoding_struct,
+                    &mut encoding_aliases,
+                    name,
+                    &format!("{}_key_encodings", rest.field_name),
+                    &format!("BTreeMap<{}, {}>", key_rust, tuple_type_name(&key_encs)),
+                );
+            }
+            if !value_encs.is_empty() {
+                push_encoding_struct_field(
+                    &mut encoding_struct,
+                    &mut encoding_aliases,
+                    name,
+                    &format!("{}_value_encodings", rest.field_name),
+                    &format!("BTreeMap<{}, {}>", key_rust, tuple_type_name(&value_encs)),
+                );
+            }
+        }
 
         let enc_scope = gen_scope.cbor_encodings(types, name);
         for (alias, target) in encoding_aliases {
@@ -1470,22 +1676,117 @@ pub(super) fn codegen_struct(
                     ser_content.push((field_index, field, map_ser_content));
                 }
                 if cli.preserve_encodings {
-                    let (check_canonical, serialization_order) = if cli.canonical_form {
-                        let indices_str = record
-                            .canonical_ordering()
-                            .iter()
-                            .map(|(i, _)| i.to_string())
-                            .collect::<Vec<String>>()
-                            .join(",");
-                        ("!force_canonical && ", format!("vec![{indices_str}]"))
+                    let rest_index_base = record.fields.len();
+                    if let Some(rest) = &record.rest {
+                        // OPEN struct: the wire-position index space is `0..N` (declared fields) then
+                        // `N + i` (i-th rest entry). The self-heal replay uses `orig_deser_order` when
+                        // its length matches the present-entry count (`definite_info`, which folds
+                        // `rest.len()`), else falls back to declaration order + rest appended. Under
+                        // --canonical an open struct's canonical order depends on RUNTIME rest keys, so
+                        // it cannot be a baked `vec![..]`: build it at runtime by serializing every
+                        // present entry's key canonically and sorting length-first via the shared
+                        // comparator (declared keys' bytes are codegen-time constants).
+                        // `definite_info` is `u64` (the map header wants `u64`, and it folds
+                        // `self.rest.len() as u64`), so cast the `usize` order length to compare.
+                        let orig_or_fallback = format!(
+                            "self.encodings.as_ref().filter(|encs| encs.orig_deser_order.len() as u64 == {}).map(|encs| encs.orig_deser_order.clone()).unwrap_or_else(|| (0..{} + self.{}.len()).collect::<Vec<usize>>())",
+                            record.definite_info("self", false, types, cli),
+                            rest_index_base,
+                            rest.field_name
+                        );
+                        if cli.canonical_form {
+                            let mut merge = Block::new("let deser_order = if force_canonical");
+                            merge.line("let mut key_order: Vec<(Vec<u8>, usize)> = Vec::new();");
+                            for (decl_index, field) in record.fields.iter().enumerate() {
+                                let key_bytes = field.key.as_ref().unwrap().to_bytes();
+                                let push = format!(
+                                    "key_order.push(({}, {}));",
+                                    byte_vec_literal(&key_bytes),
+                                    decl_index
+                                );
+                                match rest_merge_present_condition(field) {
+                                    Some(cond) => {
+                                        let mut b = Block::new(format!("if {cond}"));
+                                        b.line(push);
+                                        merge.push_block(b);
+                                    }
+                                    None => {
+                                        merge.line(push);
+                                    }
+                                }
+                            }
+                            let mut rest_key_loop = Block::new(format!(
+                                "for (i, (rest_key, _)) in self.{}.iter().enumerate()",
+                                rest.field_name
+                            ));
+                            rest_key_loop
+                                .line("let mut buf = cbor_event::se::Serializer::new_vec();");
+                            // A concrete key's serialize references its encoding var; under
+                            // force_canonical the write is minimal regardless, so bind the defaults
+                            // (self-carried `any` keys need none).
+                            let (merge_key_encs, _) = rest_encoding_fields(types, rest, cli);
+                            for enc in &merge_key_encs {
+                                rest_key_loop.line(format!(
+                                    "let {} = {};",
+                                    enc.field_name, enc.default_expr
+                                ));
+                            }
+                            let merge_key_config = SerializeConfig::new(
+                                "rest_key",
+                                format!("{}_key", rest.field_name),
+                            )
+                            .expr_is_ref(true)
+                            .is_end(false)
+                            .serializer_name_overload(("buf", true))
+                            .encoding_var_is_ref(false);
+                            // No sidecar lookup here: under force_canonical the key is written minimal
+                            // regardless, so the merge's sort key matches the bytes the rest arm writes.
+                            gen_scope.generate_serialize(
+                                types,
+                                (&rest.domain).into(),
+                                &mut rest_key_loop,
+                                merge_key_config,
+                                cli,
+                            );
+                            rest_key_loop.line(format!(
+                                "key_order.push((buf.finalize(), {rest_index_base} + i));"
+                            ));
+                            merge.push_block(rest_key_loop);
+                            merge.line(
+                                "key_order.sort_by(|(lhs, _), (rhs, _)| cbor_canonical_key_cmp(lhs, rhs));",
+                            );
+                            merge.line(
+                                "key_order.into_iter().map(|(_, idx)| idx).collect::<Vec<usize>>()",
+                            );
+                            merge.after(format!(" else {{ {orig_or_fallback} }};"));
+                            ser_func.push_block(merge);
+                        } else {
+                            ser_func.line(format!("let deser_order = {orig_or_fallback};"));
+                        }
+                        // `OrderedHashMap`/`PairMap` deref to backing types with no positional `get`,
+                        // so materialize the entries once for the `N + i` index lookup in the replay.
+                        ser_func.line(format!(
+                            "let rest_entries: Vec<_> = self.{}.iter().collect();",
+                            rest.field_name
+                        ));
                     } else {
-                        ("", format!("(0..{}).collect()", ser_content.len()))
-                    };
-                    ser_func.line(format!(
-                    "let deser_order = self.encodings.as_ref().filter(|encs| {}encs.orig_deser_order.len() == {}).map(|encs| encs.orig_deser_order.clone()).unwrap_or_else(|| {});",
-                    check_canonical,
-                    record.definite_info("self", false, types, cli),
-                    serialization_order));
+                        let (check_canonical, serialization_order) = if cli.canonical_form {
+                            let indices_str = record
+                                .canonical_ordering()
+                                .iter()
+                                .map(|(i, _)| i.to_string())
+                                .collect::<Vec<String>>()
+                                .join(",");
+                            ("!force_canonical && ", format!("vec![{indices_str}]"))
+                        } else {
+                            ("", format!("(0..{}).collect()", ser_content.len()))
+                        };
+                        ser_func.line(format!(
+                        "let deser_order = self.encodings.as_ref().filter(|encs| {}encs.orig_deser_order.len() == {}).map(|encs| encs.orig_deser_order.clone()).unwrap_or_else(|| {});",
+                        check_canonical,
+                        record.definite_info("self", false, types, cli),
+                        serialization_order));
+                    }
                     let mut ser_loop = Block::new("for field_index in deser_order");
                     let mut ser_loop_match = Block::new("match field_index");
                     for (field_index, field, content) in ser_content.into_iter() {
@@ -1526,7 +1827,22 @@ pub(super) fn codegen_struct(
                         field_ser_block.push_all(content);
                         ser_loop_match.push_block(field_ser_block);
                     }
-                    ser_loop_match.line("_ => unreachable!()").after(";");
+                    if let Some(rest) = &record.rest {
+                        // OPEN struct rest arm: index `>= N` selects the (index - N)-th rest entry.
+                        // `.get()` returns `Option`, so a stale `orig_deser_order` (a user mutated
+                        // `rest` after deserialize, shifting the count) SKIPS rather than panics —
+                        // serialize's never-panic philosophy.
+                        let mut rest_arm = Block::new("_ =>");
+                        let mut got = Block::new(format!(
+                            "if let Some(&(key, value)) = rest_entries.get(field_index - {rest_index_base})"
+                        ));
+                        emit_rest_entry_serialize(gen_scope, types, rest, &mut got, cli);
+                        rest_arm.push_block(got);
+                        ser_loop_match.push_block(rest_arm);
+                        ser_loop_match.after(";");
+                    } else {
+                        ser_loop_match.line("_ => unreachable!()").after(";");
+                    }
                     ser_loop.push_block(ser_loop_match);
                     ser_func.push_block(ser_loop);
                 } else {
@@ -1552,13 +1868,13 @@ pub(super) fn codegen_struct(
                         }
                     }
                 }
-                // Open struct-map rest row (loose CBOR, non-preserve): after the declared fields,
-                // write each captured entry as a bare key/value pair into the owner's map (the map
-                // header already counted them via `definite_info`'s `+ self.rest.len()`). Container
-                // iteration order (`BTreeMap`: by key) drives the order; no encoding sidecars in the
-                // non-preserve flavor. (Preserve wiring — order fidelity + sidecars — is a later WP,
-                // and open structs under --preserve-encodings are rejected before reaching here.)
-                if let Some(rest) = &record.rest {
+                // Open struct-map rest row, NON-preserve: after the declared fields, write each
+                // captured entry as a bare key/value pair into the owner's map (the map header
+                // already counted them via `definite_info`'s `+ self.rest.len()`). `BTreeMap`
+                // iteration order (by key) drives the order; no encoding sidecars. The PRESERVE
+                // flavor interleaves the rest entries into the `orig_deser_order` replay above (wire
+                // position fidelity + per-entry sidecars), so it does NOT take this appended-loop path.
+                if let Some(rest) = record.rest.as_ref().filter(|_| !cli.preserve_encodings) {
                     let mut rest_loop = Block::new(format!(
                         "for (key, value) in self.{}.iter()",
                         rest.field_name
@@ -1585,17 +1901,53 @@ pub(super) fn codegen_struct(
                     );
                     ser_func.push_block(rest_loop);
                 }
-                // Open struct-map (loose CBOR, non-preserve): declare the rest capture container and
-                // fold the unknown-key match arms into captures below. `record.rest` is `None` for
-                // every closed struct (byte-identical output). Preserve rest is rejected before
-                // generation, so this whole path is non-preserve.
+                // Open struct-map (loose CBOR): declare the rest capture container (+ preserve
+                // encoding sidecars) and fold the unknown-key match arms into captures below.
+                // `record.rest` is `None` for every closed struct (byte-identical output).
+                let rest_index_base = record.fields.len();
                 let rest_domain = record.rest.as_ref().map(|r| RestKeyDomain::of(r));
+                let any_cbor = format!("{}::any_cbor::AnyCbor", cli.common_import_rust());
                 if let Some(rest) = &record.rest {
-                    deser_code.content.line(&format!(
-                        "let mut {} = {}::new();",
-                        rest.field_name,
-                        table_type(cli)
-                    ));
+                    if cli.preserve_encodings {
+                        // Annotate the container type under preserve: for an `any`-domain rest the
+                        // value-`Eq` dup scan (`.iter().any(|(k, _)| k.value_eq(..))`) runs BEFORE the
+                        // first `insert`, so inference has nothing to pin `K`/`V` from otherwise. The
+                        // non-preserve path (below) infers from its `insert`-based dup check, so it
+                        // keeps the un-annotated form (byte-identical to WP2).
+                        let rest_member_type: crate::intermediate::RustType =
+                            ConceptualRustType::Map(
+                                Box::new(rest.domain.clone()),
+                                Box::new(rest.range.clone()),
+                            )
+                            .into();
+                        deser_code.content.line(&format!(
+                            "let mut {}: {} = {}::new();",
+                            rest.field_name,
+                            rest_member_type.for_rust_member(types, false, cli),
+                            table_type(cli)
+                        ));
+                    } else {
+                        deser_code.content.line(&format!(
+                            "let mut {} = {}::new();",
+                            rest.field_name,
+                            table_type(cli)
+                        ));
+                    }
+                    if cli.preserve_encodings {
+                        let (key_encs, value_encs) = rest_encoding_fields(types, rest, cli);
+                        if !key_encs.is_empty() {
+                            deser_code.content.line(&format!(
+                                "let mut {}_key_encodings = BTreeMap::new();",
+                                rest.field_name
+                            ));
+                        }
+                        if !value_encs.is_empty() {
+                            deser_code.content.line(&format!(
+                                "let mut {}_value_encodings = BTreeMap::new();",
+                                rest.field_name
+                            ));
+                        }
+                    }
                     // The capture arms use `read_len` (account each entry) and `?` — mark them used so
                     // the embedded-group arg is `read_len` (not `_read_len`) and the closure returns
                     // Result.
@@ -1610,21 +1962,44 @@ pub(super) fn codegen_struct(
                 let mut deser_loop = make_deser_loop("len", "read", cli);
                 let mut type_match = Block::new("match raw.cbor_type()?");
                 // The uint key the record loop already read (`unknown_key`, a u64) is the capture key
-                // for a `uint`-domain rest (used directly) or reconstructed into `AnyCbor` for an
-                // `any`-domain rest; a `text`-domain rest does not accept a uint key (stays an error).
+                // for a `uint`-domain rest (used directly, its `key_enc` going to the key sidecar) or
+                // reconstructed into `AnyCbor` for an `any`-domain rest — under preserve carrying the
+                // peeked wire width `Sz` so byte-exactness holds. A `text`-domain rest does not accept
+                // a uint key (stays an error).
                 let uint_rest_key: Option<String> = match rest_domain {
                     Some(RestKeyDomain::Uint) => Some("unknown_key".to_owned()),
-                    Some(RestKeyDomain::Any) => Some(format!(
-                        "{}::any_cbor::AnyCbor::new_uint(unknown_key)",
-                        cli.common_import_rust()
-                    )),
+                    Some(RestKeyDomain::Any) if cli.preserve_encodings => {
+                        Some(format!("{any_cbor}::UInt(unknown_key, Some(key_enc))"))
+                    }
+                    Some(RestKeyDomain::Any) => Some(format!("{any_cbor}::new_uint(unknown_key)")),
                     _ => None,
                 };
+                // The concrete uint key's peeked encoding var, threaded to the key sidecar (None for a
+                // self-carried `any` key).
+                let uint_key_enc: Option<String> =
+                    if cli.preserve_encodings && rest_domain == Some(RestKeyDomain::Uint) {
+                        Some("key_enc".to_owned())
+                    } else {
+                        None
+                    };
                 if uint_field_deserializers.is_empty() {
                     if let (Some(rest), Some(key_expr)) = (&record.rest, uint_rest_key.clone()) {
                         let mut arm = Block::new("cbor_event::Type::UnsignedInteger =>");
-                        arm.line("let unknown_key = raw.unsigned_integer()?;");
-                        append_rest_capture(gen_scope, types, rest, Some(key_expr), &mut arm, cli);
+                        if cli.preserve_encodings {
+                            arm.line("let (unknown_key, key_enc) = raw.unsigned_integer_sz()?;");
+                        } else {
+                            arm.line("let unknown_key = raw.unsigned_integer()?;");
+                        }
+                        append_rest_capture(
+                            gen_scope,
+                            types,
+                            rest,
+                            rest_index_base,
+                            Some(key_expr),
+                            uint_key_enc.clone(),
+                            &mut arm,
+                            cli,
+                        );
                         arm.after(",");
                         type_match.push_block(arm);
                     } else {
@@ -1644,8 +2019,22 @@ pub(super) fn codegen_struct(
                         uint_match.push_block(case);
                     }
                     if let (Some(rest), Some(key_expr)) = (&record.rest, uint_rest_key.clone()) {
-                        let mut arm = Block::new("unknown_key =>");
-                        append_rest_capture(gen_scope, types, rest, Some(key_expr), &mut arm, cli);
+                        // Under preserve the scrutinee is `(u64, Sz)`, so bind both; else just the u64.
+                        let mut arm = if cli.preserve_encodings {
+                            Block::new("(unknown_key, key_enc) =>")
+                        } else {
+                            Block::new("unknown_key =>")
+                        };
+                        append_rest_capture(
+                            gen_scope,
+                            types,
+                            rest,
+                            rest_index_base,
+                            Some(key_expr),
+                            uint_key_enc.clone(),
+                            &mut arm,
+                            cli,
+                        );
                         arm.after(",");
                         uint_match.push_block(arm);
                     } else {
@@ -1661,22 +2050,32 @@ pub(super) fn codegen_struct(
                 }
                 // we can't map text_sz() with String::as_str() to match it since that would return a reference to a temporary
                 // so we need to store it in a local and have an extra block to declare it
-                // `text_rest_key_ref`: `unknown_key` is `&str` (the non-empty match-arm form);
-                // `text_rest_key_owned`: `unknown_key` is `String` (the empty-arm `raw.text()?` form).
+                // `text_rest_key_ref`: `unknown_key`/`text_key` is `&str` (the non-empty match-arm form);
+                // `text_rest_key_owned`: `unknown_key` is `String` (the empty-arm form).
+                let text_key_enc: Option<String> =
+                    if cli.preserve_encodings && rest_domain == Some(RestKeyDomain::Text) {
+                        Some("key_enc".to_owned())
+                    } else {
+                        None
+                    };
+                // For the non-empty match arm the matched binding is `&str` — `.to_owned()` it.
                 let text_rest_key_ref: Option<String> = match rest_domain {
                     Some(RestKeyDomain::Text) => Some("unknown_key.to_owned()".to_owned()),
-                    Some(RestKeyDomain::Any) => Some(format!(
-                        "{}::any_cbor::AnyCbor::new_text(unknown_key.to_owned())",
-                        cli.common_import_rust()
+                    Some(RestKeyDomain::Any) if cli.preserve_encodings => Some(format!(
+                        "{any_cbor}::Text(unknown_key.to_owned(), StringEncoding::from(key_enc))"
                     )),
+                    Some(RestKeyDomain::Any) => {
+                        Some(format!("{any_cbor}::new_text(unknown_key.to_owned())"))
+                    }
                     _ => None,
                 };
+                // For the empty arm the binding `unknown_key` is an owned `String`.
                 let text_rest_key_owned: Option<String> = match rest_domain {
                     Some(RestKeyDomain::Text) => Some("unknown_key".to_owned()),
-                    Some(RestKeyDomain::Any) => Some(format!(
-                        "{}::any_cbor::AnyCbor::new_text(unknown_key)",
-                        cli.common_import_rust()
+                    Some(RestKeyDomain::Any) if cli.preserve_encodings => Some(format!(
+                        "{any_cbor}::Text(unknown_key, StringEncoding::from(key_enc))"
                     )),
+                    Some(RestKeyDomain::Any) => Some(format!("{any_cbor}::new_text(unknown_key)")),
                     _ => None,
                 };
                 if text_field_deserializers.is_empty() {
@@ -1684,23 +2083,53 @@ pub(super) fn codegen_struct(
                         (&record.rest, text_rest_key_owned.clone())
                     {
                         let mut arm = Block::new("cbor_event::Type::Text =>");
-                        arm.line("let unknown_key = raw.text()?;");
-                        append_rest_capture(gen_scope, types, rest, Some(key_expr), &mut arm, cli);
+                        if cli.preserve_encodings {
+                            arm.line("let (unknown_key, key_enc) = raw.text_sz()?;");
+                        } else {
+                            arm.line("let unknown_key = raw.text()?;");
+                        }
+                        append_rest_capture(
+                            gen_scope,
+                            types,
+                            rest,
+                            rest_index_base,
+                            Some(key_expr),
+                            text_key_enc.clone(),
+                            &mut arm,
+                            cli,
+                        );
                         arm.after(",");
                         type_match.push_block(arm);
                     } else {
                         type_match.line("cbor_event::Type::Text => return Err(DeserializeFailure::UnknownKey(Key::Str(raw.text()?)).into()),");
                     }
                 } else if cli.preserve_encodings {
-                    // preserve: rest is `None` here (rejected earlier), so this stays the pure
-                    // known-key path.
                     let mut outer_match = Block::new("cbor_event::Type::Text =>");
                     outer_match.line("let (text_key, key_enc) = raw.text_sz()?;");
                     let mut text_match = Block::new("match text_key.as_str()");
                     for case in text_field_deserializers {
                         text_match.push_block(case);
                     }
-                    text_match.line("unknown_key => return Err(DeserializeFailure::UnknownKey(Key::Str(unknown_key.to_owned())).into()),");
+                    if let (Some(rest), Some(key_expr)) = (&record.rest, text_rest_key_ref.clone())
+                    {
+                        // capture arm: `unknown_key` (`&str`) shadows via the match binding; `key_enc`
+                        // and `text_key` (owned) are the outer `text_sz()` reads.
+                        let mut arm = Block::new("unknown_key =>");
+                        append_rest_capture(
+                            gen_scope,
+                            types,
+                            rest,
+                            rest_index_base,
+                            Some(key_expr),
+                            text_key_enc.clone(),
+                            &mut arm,
+                            cli,
+                        );
+                        arm.after(",");
+                        text_match.push_block(arm);
+                    } else {
+                        text_match.line("unknown_key => return Err(DeserializeFailure::UnknownKey(Key::Str(unknown_key.to_owned())).into()),");
+                    }
                     outer_match.after(",");
                     outer_match.push_block(text_match);
                     type_match.push_block(outer_match);
@@ -1713,7 +2142,16 @@ pub(super) fn codegen_struct(
                     if let (Some(rest), Some(key_expr)) = (&record.rest, text_rest_key_ref.clone())
                     {
                         let mut arm = Block::new("unknown_key =>");
-                        append_rest_capture(gen_scope, types, rest, Some(key_expr), &mut arm, cli);
+                        append_rest_capture(
+                            gen_scope,
+                            types,
+                            rest,
+                            rest_index_base,
+                            Some(key_expr),
+                            None,
+                            &mut arm,
+                            cli,
+                        );
                         arm.after(",");
                         text_match.push_block(arm);
                     } else {
@@ -1738,7 +2176,16 @@ pub(super) fn codegen_struct(
                     break_len.line(format!("{} => break,", cbor_event_len_indef(cli)));
                     is_break.push_block(break_len);
                     special_arm.push_block(is_break);
-                    append_rest_capture(gen_scope, types, rest, None, &mut special_arm, cli);
+                    append_rest_capture(
+                        gen_scope,
+                        types,
+                        rest,
+                        rest_index_base,
+                        None,
+                        None,
+                        &mut special_arm,
+                        cli,
+                    );
                     special_arm.after(",");
                     type_match.push_block(special_arm);
                 } else {
@@ -1764,7 +2211,16 @@ pub(super) fn codegen_struct(
                     // any-domain rest: bytes/negative-int/array/map/tag keys land here; deserialize
                     // the key straight from `raw` (uint/text/special are handled by the arms above).
                     let mut arm = Block::new("_ =>");
-                    append_rest_capture(gen_scope, types, rest, None, &mut arm, cli);
+                    append_rest_capture(
+                        gen_scope,
+                        types,
+                        rest,
+                        rest_index_base,
+                        None,
+                        None,
+                        &mut arm,
+                        cli,
+                    );
                     arm.after(",");
                     type_match.push_block(arm);
                 } else {
@@ -1868,6 +2324,18 @@ pub(super) fn codegen_struct(
                             cli,
                         ) {
                             encoding_ctor.line(format!("{},", field_enc.field_name));
+                        }
+                    }
+                    // Open struct-map rest row: the per-entry encoding sidecar locals (declared before
+                    // the loop and populated at each concrete-domain capture) move into the encoding
+                    // struct. Absent for a fully self-carried `any` rest.
+                    if let Some(rest) = &record.rest {
+                        let (key_encs, value_encs) = rest_encoding_fields(types, rest, cli);
+                        if !key_encs.is_empty() {
+                            encoding_ctor.line(format!("{}_key_encodings,", rest.field_name));
+                        }
+                        if !value_encs.is_empty() {
+                            encoding_ctor.line(format!("{}_value_encodings,", rest.field_name));
                         }
                     }
                     encoding_ctor.after("),");

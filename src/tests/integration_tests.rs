@@ -5464,6 +5464,29 @@ fn open_struct_map_e2e() {
 }
 
 #[test]
+fn open_struct_map_preserve_e2e() {
+    // Loose-CBOR open struct-map PRESERVE fidelity round-trip vectors (Phase B WP3): wire-position
+    // interleave, per-entry encoding sidecars, §10.8 value-duplicate rejection under both key
+    // domains, and the runtime canonical key merge with codegen<->runtime comparator agreement.
+    // Generated under --preserve-encodings --canonical-form (canonical implies preserve) so the one
+    // crate exercises both byte-exact round-trip and canonical ordering. --wasm=false (the wasm rest
+    // surface is WP4). See tests/open-struct-map-preserve-e2e/tests.rs.
+    run_test(
+        "open-struct-map-preserve-e2e",
+        &[
+            "--wasm=false",
+            "--preserve-encodings=true",
+            "--canonical-form=true",
+        ],
+        None,
+        &[],
+        &[],
+        false,
+        &[],
+    );
+}
+
+#[test]
 fn golden_hex_preserve() {
     // Known-answer preserve-encodings vectors: irregular RFC 8949 §3 encodings (non-minimal
     // header arguments, indefinite/chunked items, map key order) hand-derived as raw hex —

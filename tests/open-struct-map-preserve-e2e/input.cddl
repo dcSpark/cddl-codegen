@@ -1,0 +1,10 @@
+; Open struct-map (loose CBOR "rest row") PRESERVE fidelity end-to-end vectors (Phase B WP3).
+; Generated under --preserve-encodings --canonical-form (canonical implies preserve): the same crate
+; exercises byte-exact round-trip (to_cbor_bytes, force_canonical=false) AND the runtime canonical
+; key merge (to_canonical_cbor_bytes). See tests.rs. Every `wire` byte string is hand-written from
+; the CBOR grammar.
+open_any = { 1: uint, ? 2: text, * any => any }   ; self-carried any key + value
+uint_any = { 3: uint, * uint => any }             ; concrete uint key (sidecar) + self-carried value
+concrete = { 4: uint, * uint => text }            ; concrete key AND value (both sidecars)
+div_open = { 24: uint, * uint => any }            ; codegen<->runtime canonical merge (24 vs rest 10)
+div_closed = { 10: uint, 24: uint }               ; closed twin: baked canonical order 10-before-24

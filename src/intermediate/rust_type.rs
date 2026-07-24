@@ -49,7 +49,11 @@ impl FixedValue {
         }
     }
 
-    pub(super) fn to_bytes(&self) -> Vec<u8> {
+    // `pub(crate)`: the codegen-time canonical key merge for open struct-maps
+    // (`generation/records.rs`) renders a declared field's canonical key bytes as a `vec![..]`
+    // literal, fed to the same length-first comparator the runtime uses — so an open struct and its
+    // closed equivalent canonicalize identically.
+    pub(crate) fn to_bytes(&self) -> Vec<u8> {
         let mut buf = cbor_event::se::Serializer::new_vec();
         match self {
             FixedValue::Null => buf.write_special(cbor_event::Special::Null),
