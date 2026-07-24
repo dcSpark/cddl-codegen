@@ -7,8 +7,9 @@ use crate::comment_ast::{DuplicatesPolicy, RuleMetadata, merge_metadata, metadat
 use crate::intermediate::{
     AliasIdent, AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant,
     EnumVariantData, FixedValue, FloatWindow, GenericDef, GenericInstance, IntermediateTypes,
-    ModuleScope, PlainGroupInfo, Primitive, Representation, RestRow, RustField, RustIdent,
-    RustRecord, RustStruct, RustStructType, RustType, VariantIdent, reserved_pin_rejection,
+    ModuleScope, PlainGroupInfo, Primitive, Representation, RestRow, RestSemantics, RustField,
+    RustIdent, RustRecord, RustStruct, RustStructType, RustType, VariantIdent,
+    reserved_pin_rejection,
 };
 use crate::utils::{
     append_number_if_duplicate, convert_to_camel_case, convert_to_snake_case,
@@ -345,6 +346,24 @@ fn reject_duplicates_not_applicable(types: &mut IntermediateTypes, name: &RustId
     ));
 }
 
+/// Reject a misplaced `@ignore`. The tolerate-and-drop flavor is valid ONLY on a recognized open
+/// struct-map rest row (`* k => v` after fixed keys), where it is read from the ENTRY-trailing
+/// comment slot — never from a rule's or field's metadata. So any `@ignore` reaching a rule/field
+/// metadata consumer is a misplacement, rejected loudly (never silently dropped), naming the one
+/// valid placement.
+fn reject_ignore_not_applicable(types: &mut IntermediateTypes, name: &RustIdent) {
+    let source_name = types
+        .source_rule_name(name)
+        .map(str::to_owned)
+        .unwrap_or_else(|| name.to_string());
+    types.record_rejection(format!(
+        "@ignore on rule `{source_name}`: this directive is only valid on an open struct-map rest \
+         row (`{{ 1: a, * k => v }} ; @ignore`), where it selects the tolerate-and-drop flavor. It \
+         does not apply at a rule, alias, union, table, array, or field position. Remove it, or \
+         move it onto the `* k => v` row of an open struct-map."
+    ));
+}
+
 /// The well-known-tag semantics registry: THE single place mapping a CBOR tag number to the
 /// duplicate-handling policy its IANA-registered semantics imply, applied wherever the tag directly
 /// wraps a homogeneous occurrence collection (the shape the array/table construction sites already
@@ -450,9 +469,12 @@ fn parse_type_choices(
         };
         let rule_metadata = RuleMetadata::from(inner_type2.comments_after_type.as_ref());
         // A `T / null` rule collapses to an `Option<T>` alias — a non-collection, so `@duplicates`
-        // can never apply here.
+        // can never apply here (and `@ignore` never applies at a rule position).
         if rule_metadata.duplicates.is_some() {
             reject_duplicates_not_applicable(types, name);
+        }
+        if rule_metadata.ignore {
+            reject_ignore_not_applicable(types, name);
         }
         types.register_type_alias(
             name.clone(),
@@ -639,9 +661,12 @@ fn parse_type_choices(
             return;
         }
         // A real multi-arm type choice is a union enum — a non-collection, so `@duplicates` can
-        // never apply (its map arm, if any, must be a named rule).
+        // never apply (its map arm, if any, must be a named rule); `@ignore` never applies here.
         if rule_metadata.duplicates.is_some() {
             reject_duplicates_not_applicable(types, name);
+        }
+        if rule_metadata.ignore {
+            reject_ignore_not_applicable(types, name);
         }
         let rust_struct =
             RustStruct::new_type_choice(name.clone(), tag, Some(&rule_metadata), variants, cli);
@@ -1333,6 +1358,21 @@ fn parse_type(
         )
     {
         reject_duplicates_not_applicable(types, type_name);
+    }
+    // `@ignore` on a leaf non-collection type rule (`x = uint ; @ignore`) is a misplacement — it is
+    // valid only on an open struct-map rest row. Map/Array/Tagged/Paren bodies route to the
+    // group/collection arms (or the heterogenous record arm), which reject a rule-position `@ignore`
+    // there, so exclude them here exactly as `@duplicates` does.
+    if rule_metadata.ignore
+        && !matches!(
+            &type1.type2,
+            Type2::Map { .. }
+                | Type2::Array { .. }
+                | Type2::TaggedData { .. }
+                | Type2::ParenthesizedType { .. }
+        )
+    {
+        reject_ignore_not_applicable(types, type_name);
     }
     handle_rust_name_pin(types, type_name, &rule_metadata);
     match &type1.type2 {
@@ -3270,6 +3310,19 @@ fn parse_record_from_group_choice(
                      @duplicates preserve` is exactly how to opt out.)"
                 ));
             }
+            // `@ignore` is the open struct-map rest-row tolerate-and-drop flavor and never applies at
+            // a field/member position — reject loudly instead of silently ignoring it.
+            if rule_metadata.ignore {
+                let source_name = types
+                    .source_rule_name(name)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| name.to_string());
+                types.record_rejection(format!(
+                    "@ignore on field `{field_name}` of rule `{source_name}`: this directive is only \
+                     valid on an open struct-map rest row (`{{ 1: a, * k => v }} ; @ignore`), not at \
+                     a field/member position. Remove it from this entry."
+                ));
+            }
             // does not exist for fixed values importantly
             let field_type = group_entry_to_type(types, parent_visitor, group_entry, cli);
             if let ConceptualRustType::Rust(ident) = &field_type.conceptual_type {
@@ -3536,22 +3589,72 @@ fn recognize_rest_row(
         ));
         return (None, Some(candidate));
     }
-    // Every generated surface for open struct-maps is now wired: the JSON flattened rest surface
-    // (captured entries render at the same object level as declared fields, with the write-side
-    // collision check and key-coercing read wrapper), the
+    // Both open struct-map flavors are now wired end-to-end. CAPTURE (default) has every generated
+    // surface: the JSON flattened rest surface (captured entries render at the same object level as
+    // declared fields, with the write-side collision check and key-coercing read wrapper), the
     // --preserve-encodings / --canonical-form fidelity path, and the wasm rest accessor (a getter
-    // returning the captured entries as the wasm map wrapper). No front door remains here.
-    // Read entry-level directives (`@name`, `@duplicates`) from the rest row's own trailing slot —
+    // returning the captured entries as the wasm map wrapper). IGNORE (`@ignore` on the row)
+    // tolerate-and-drops: the deserialize arms typed-consume each unknown entry and discard it (no
+    // field, serialize emits declared members only, JSON/schemars/wasm are a closed struct's), and it
+    // is rejected under --preserve-encodings. No front door remains here for either flavor.
+    // Read entry-level directives (`@name`, `@duplicates`, `@ignore`) from the rest row's own trailing
+    // slot —
     // NOT rule-position handling (the rest row is by definition the map's last entry, whose slot the
     // cddl parser also binds a rule's trailing comment to; a map/record rule reads its own metadata
     // via `get_comment_after` on the group choice, so the two do not collide — a rest-row directive
     // stays entry-level and a rule directive stays rule-level).
     let rest_metadata = group_entry_rule_metadata(candidate_ge, candidate_comma);
-    // `@duplicates` policy on the rest row: default (reject) uses the loose container (value-equality
-    // dup check — accept/reject keyed on the wire VALUE, not the domain's spelling); `preserve` uses
-    // the vec-of-pairs twin (`PairMap`), matching what `@duplicates
-    // preserve` TABLES do — duplicate keys accepted and re-emitted in wire order. `reject` explicit
-    // is the same as default. Carried on the `RestRow` for the emitters to select the container.
+    // `@ignore` selects the tolerate-and-DROP flavor: unknown entries are typed-deserialized and
+    // discarded (no field, serialize emits declared members only). It combines with nothing else on
+    // the row, and it is incompatible with `--preserve-encodings`. Each combination is a graceful
+    // rejection naming the remedy (never a silent drop). Placement/domain guards above fire FIRST, so
+    // `@ignore` on an unsupported placement gets the placement rejection, not one of these.
+    if rest_metadata.ignore {
+        // `@ignore` + `--preserve-encodings`: a preserve crate's contract is byte-exact round-trips,
+        // which a deliberately-lossy type undermines crate-wide. `--canonical-form` implies preserve
+        // (enforced in `api.rs`), so this covers it transitively. Point at the default capture flavor
+        // and at `@custom_serialize`/`@custom_deserialize` for genuine view types.
+        if cli.preserve_encodings {
+            types.record_rejection(format!(
+                "rule `{src}`: `@ignore` (tolerate-and-drop) on an open struct-map rest row is not \
+                 supported under --preserve-encodings, because a preserve crate's contract is \
+                 byte-exact round-trips and a silently-lossy type undermines it. Drop the `@ignore` \
+                 to capture the unknown entries (the default), or use `@custom_serialize` / \
+                 `@custom_deserialize` for a genuine view type."
+            ));
+            return (None, Some(candidate));
+        }
+        // `@ignore` + `@duplicates`: a duplicates policy governs a captured container, which `@ignore`
+        // does not create (unknown entries are dropped, and dropped entries have no duplicate story).
+        if rest_metadata.duplicates.is_some() {
+            types.record_rejection(format!(
+                "rule `{src}`: `@ignore` and `@duplicates` cannot both apply to an open struct-map \
+                 rest row — `@ignore` drops unknown entries, so there is no container for a \
+                 duplicates policy to govern. Keep one: `@ignore` to drop, or `@duplicates` (with \
+                 capture) to retain."
+            ));
+            return (None, Some(candidate));
+        }
+        // `@ignore` + `@name`: `@name` renames the captured field, which an ignore row does not emit.
+        if rest_metadata.name.is_some() {
+            types.record_rejection(format!(
+                "rule `{src}`: `@ignore` and `@name` cannot both apply to an open struct-map rest \
+                 row — `@ignore` emits no field to name. Drop `@name`, or drop `@ignore` to capture \
+                 the entries into the named field."
+            ));
+            return (None, Some(candidate));
+        }
+    }
+    let semantics = if rest_metadata.ignore {
+        RestSemantics::Ignore
+    } else {
+        RestSemantics::Capture
+    };
+    // `@duplicates` policy on the rest row (CAPTURE flavor): default (reject) uses the loose container
+    // (value-equality dup check — accept/reject keyed on the wire VALUE, not the domain's spelling);
+    // `preserve` uses the vec-of-pairs twin (`PairMap`), matching what `@duplicates preserve` TABLES do
+    // — duplicate keys accepted and re-emitted in wire order. `reject` explicit is the same as default.
+    // Carried on the `RestRow` for the emitters to select the container. (Rejected above for `@ignore`.)
     let field_name = rest_metadata
         .name
         .clone()
@@ -3559,6 +3662,7 @@ fn recognize_rest_row(
     let rest_row = RestRow {
         domain,
         range,
+        semantics,
         field_name,
         duplicates: rest_metadata.duplicates,
     };
@@ -3599,7 +3703,11 @@ fn parse_group_choice(
         GroupParsingType::HomogenousArray(element_type, bounds) => {
             // Array-shaped collection: `@duplicates reject` is LIVE (rides the alias built in
             // `register_rust_struct`), `preserve` is the default (accepted no-op). Nothing to
-            // reject here.
+            // reject here. `@ignore` never applies to an array collection (it is the open
+            // struct-MAP rest-row flavor) — reject a rule-position `@ignore` loudly.
+            if rule_metadata.ignore {
+                reject_ignore_not_applicable(types, name);
+            }
             // A plain group used as the array element (`pair = (int, tstr)`, `a = [* pair]`) must be
             // registered as a concrete Array-rep rust struct, exactly like the anonymous member-array
             // path (`rust_type_from_type2`'s `Type2::Array` arm) and the record path both do. Without
@@ -3681,6 +3789,11 @@ fn parse_group_choice(
             }
         }
         GroupParsingType::HomogenousMap(key_type, value_type, bounds) => {
+            // `@ignore` is the open struct-map rest-row flavor and does not apply to a TABLE rule
+            // (`{ * k => v }`, no fixed keys) — reject a rule-position `@ignore` loudly.
+            if rule_metadata.ignore {
+                reject_ignore_not_applicable(types, name);
+            }
             // Table collection: `reject` is today's default (accepted no-op) and `preserve` is
             // LIVE — the policy rides the transparent alias built in `register_rust_struct`,
             // swapping the member to the `PairMap`/`NonEmptyPairMap` vec-of-pairs twin. Nothing
@@ -3741,9 +3854,15 @@ fn parse_group_choice(
         }
         GroupParsingType::Heterogenous | GroupParsingType::WrappedBasicGroup(_) => {
             // A heterogenous struct/record (or a single wrapped basic group) is not a collection,
-            // so `@duplicates` can never apply here.
+            // so `@duplicates` can never apply here. A rule-position `@ignore` is a misplacement too:
+            // the valid `@ignore` sits on the `* k => v` ENTRY (read in `recognize_rest_row` off the
+            // entry-trailing slot), NOT on the rule (the two slots are disjoint — a rule directive is
+            // never stolen by the last entry, nor an entry directive by the rule).
             if rule_metadata.duplicates.is_some() {
                 reject_duplicates_not_applicable(types, name);
+            }
+            if rule_metadata.ignore {
+                reject_ignore_not_applicable(types, name);
             }
             assert!(
                 rule_metadata.newtype.is_none(),
@@ -3973,9 +4092,13 @@ pub fn parse_group(
             ),
             parent_rule_metadata,
         );
-        // A group-choice rule generates an enum — a non-collection, so `@duplicates` can never apply.
+        // A group-choice rule generates an enum — a non-collection, so `@duplicates` can never apply
+        // (nor `@ignore`, which is only valid on an open struct-map rest row).
         if rule_metadata.duplicates.is_some() {
             reject_duplicates_not_applicable(types, name);
+        }
+        if rule_metadata.ignore {
+            reject_ignore_not_applicable(types, name);
         }
         types.register_rust_struct(
             parent_visitor,

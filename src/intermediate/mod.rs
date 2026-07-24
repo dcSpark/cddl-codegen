@@ -411,14 +411,16 @@ impl<'a> IntermediateTypes<'a> {
             })
     }
 
-    /// Whether ANY generated record carries an open struct-map rest row (`* k => v` after fixed
-    /// keys). Gates the standalone `open_struct_rest_json` runtime module (the flatten helpers
-    /// `serialize_flattened_rest` / `read_flattened_rest_pairs`) under
+    /// Whether ANY generated record carries a CAPTURING open struct-map rest row (`* k => v` after
+    /// fixed keys, default flavor). Gates the standalone `open_struct_rest_json` runtime module (the
+    /// flatten helpers `serialize_flattened_rest` / `read_flattened_rest_pairs`) under
     /// `--json-serde-derives` — the helpers are `any`-free so they cannot live in `any_cbor.rs` (a
-    /// fully-typed `* uint => text` rest row does not pull in the `AnyCbor` runtime).
+    /// fully-typed `* uint => text` rest row does not pull in the `AnyCbor` runtime). An `@ignore`
+    /// (tolerate-and-drop) row emits no captured field, so its JSON is a closed struct's — it needs
+    /// none of the flatten machinery and does not count here.
     pub fn uses_open_struct_rest(&self) -> bool {
         self.rust_structs.values().any(
-            |rs| matches!(rs.variant(), RustStructType::Record(record) if record.rest.is_some()),
+            |rs| matches!(rs.variant(), RustStructType::Record(record) if record.captured_rest().is_some()),
         )
     }
 

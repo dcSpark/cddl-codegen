@@ -807,18 +807,37 @@ pub struct RustRecord {
     pub rest: Option<Box<RestRow>>,
 }
 
-/// The trailing `* K => V` row of an open struct-map. Captured content lands in a `pub` map field
-/// (`rest` by default, `@name`-overridable) whose container matches the table switch
-/// (`BTreeMap`/`OrderedHashMap`). Not a `RustField`: it is excluded from `new()` (defaults empty,
-/// so adding a rest row to a spec is source-compatible) and carries the open-map semantics
-/// explicitly for the emitters.
+/// Which of the two open struct-map flavors a rest row selects.
+///
+/// - `Capture` (the default): unknown entries are retained in a `pub` map field and round-tripped.
+/// - `Ignore` (`@ignore` on the row): unknown entries are typed-deserialized and then DROPPED — no
+///   struct field, serialize writes only the declared members. Deliberately lossy (documented), so
+///   byte round-trips do not hold for wire data carrying unknown entries.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum RestSemantics {
+    Capture,
+    Ignore,
+}
+
+/// The trailing `* K => V` row of an open struct-map. Under the CAPTURE flavor the content lands in a
+/// `pub` map field (`rest` by default, `@name`-overridable) whose container matches the table switch
+/// (`BTreeMap`/`OrderedHashMap`); under the IGNORE flavor nothing is stored. Not a `RustField`: it is
+/// excluded from `new()` (defaults empty, so adding a rest row to a spec is source-compatible) and
+/// carries the open-map semantics explicitly for the emitters.
 #[derive(Clone, Debug)]
 pub struct RestRow {
     /// The key type (`K`). Supported key domains: `uint`, `text`, and `any`.
     pub domain: RustType,
     /// The value type (`V`). Any supported type, including `any`.
     pub range: RustType,
+    /// Capture (retain + round-trip) vs Ignore (tolerate-and-drop). Selects, at every emitter branch
+    /// point, whether a `pub` field / constructor line / getter / encoding sidecar / serialize-back /
+    /// JSON-flatten surface is emitted at all (capture-only) — while the deserialize arms and the IR
+    /// visitors walk the row for BOTH flavors (both must consume the wire entries and both may pull in
+    /// a runtime type through `domain`/`range`).
+    pub semantics: RestSemantics,
     /// The captured map field's Rust name (default `rest`, overridable with `@name` on the row).
+    /// Only meaningful under `Capture`; `Ignore` emits no field.
     pub field_name: String,
     /// `@duplicates` policy on the row. In the non-preserve capture flavor the container's `Eq` is
     /// value equality, so the default (reject) is enforced structurally by `insert().is_some()`;
@@ -829,6 +848,19 @@ pub struct RestRow {
 }
 
 impl RustRecord {
+    /// The rest row IFF it CAPTURES (a `pub` map field is emitted and re-serialized). `None` for a
+    /// closed struct AND for an `@ignore` (tolerate-and-drop) rest row, which stores nothing. Every
+    /// capture-only emission (struct field, `new()` line, wasm getter, encoding sidecars, serialize
+    /// of rest entries, flattened JSON, `definite_info`'s rest-count fold) keys on THIS, not on
+    /// `rest.is_some()` — an ignore struct has no field to reference. The deserialize arms and the IR
+    /// visitors keep using `rest` directly (both flavors consume the wire and may need a runtime type
+    /// reachable only through `domain`/`range`).
+    pub fn captured_rest(&self) -> Option<&RestRow> {
+        self.rest
+            .as_deref()
+            .filter(|r| r.semantics == RestSemantics::Capture)
+    }
+
     pub fn fixed_field_count(&self, types: &IntermediateTypes) -> Option<usize> {
         // An OPEN struct (rest row present) has a variable number of wire entries, so it is never a
         // fixed-length map: forcing `None` here routes `cbor_len_info` to the dynamic class (so the
@@ -978,12 +1010,16 @@ impl RustRecord {
                         };
                     }
                 }
-                // Open struct: the map header must count the captured rest entries too. `rest` is a
-                // `pub` map field, so its live entry count is `{self_expr}.rest.len()`. Folding it in
-                // here keeps the serialize header and the deserialize length accounting in agreement
-                // (both go through `definite_info`/the dynamic length class). Empty rest → `+ 0`,
-                // recovering the closed-struct byte count (empty-rest ≡ closed-struct invariant).
-                if let Some(rest) = &self.rest {
+                // Open struct (CAPTURE flavor only): the map header must count the captured rest
+                // entries too. `rest` is a `pub` map field, so its live entry count is
+                // `{self_expr}.rest.len()`. Folding it in here keeps the serialize header and the
+                // deserialize length accounting in agreement (both go through `definite_info`/the
+                // dynamic length class). Empty rest → `+ 0`, recovering the closed-struct byte count
+                // (empty-rest ≡ closed-struct invariant). The IGNORE flavor stores and re-serializes
+                // NO rest entries and has no field to reference, so its header is the closed-struct
+                // count — no fold (and `fixed_field_count` still returns `None` for it, so the deser
+                // loop stays dynamic and tolerates the extra wire entries it drops).
+                if let Some(rest) = self.captured_rest() {
                     // `.len()` is `usize`; the map header (`cbor_event::Len::Len(u64)`) and the
                     // additive expression it joins are `u64`, so cast (`as` binds tighter than `+`).
                     let rest_len_expr = if self_expr.is_empty() {
@@ -996,7 +1032,15 @@ impl RustRecord {
                     }
                     conditional_field_expr.push_str(&rest_len_expr);
                 }
-                if conditional_field_expr.is_empty() || fixed_field_count != 0 {
+                if conditional_field_expr.is_empty() {
+                    // No optional field and no captured-rest fold (an `@ignore` open struct with only
+                    // mandatory map fields reaches here via `fixed_field_count == None`): the definite
+                    // length is exactly the mandatory count. Emitting `"{n} + "` would be malformed.
+                    // Existing specs never hit this branch — a closed struct returns `Some(count)`
+                    // early, and a capture open struct always folds a non-empty `rest.len()` term — so
+                    // output for everything that exists today is byte-identical.
+                    fixed_field_count.to_string()
+                } else if fixed_field_count != 0 {
                     format!("{fixed_field_count} + {conditional_field_expr}")
                 } else {
                     conditional_field_expr
