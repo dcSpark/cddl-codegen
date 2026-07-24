@@ -2992,7 +2992,7 @@ fn assertion_roots(types: &IntermediateTypes) -> Vec<(RustIdent, DemandSet)> {
 }
 
 /// The serde/schemars position an `any`-carrying field or arm occupies, selecting which natural
-/// adapter (loose-CBOR Phase B, ruling R1) steers its JSON. Bare `AnyCbor` (`Direct`); a `Vec`
+/// adapter (the natural-rendering JSON surface) steers its JSON. Bare `AnyCbor` (`Direct`); a `Vec`
 /// element (`Seq`); a stringifiable-keyed `BTreeMap` value (`Map`, non-preserve) or `OrderedHashMap`
 /// value (`OrderedMap`, preserve); and the `Option<…>` counterpart of each (paired with
 /// `#[serde(default)]`).
@@ -3009,8 +3009,8 @@ pub enum NaturalAnyPosition {
 }
 
 /// The `#[serde(with = …)]` / `#[schemars(schema_with = …)]` / `#[serde(default)]` annotation lines
-/// that route a serde field/arm carrying `any` through the NATURAL JSON walk (R1) instead of
-/// `AnyCbor`'s tagged codec (which stays `AnyCbor`'s own serde, ruling R2). Returns empty when
+/// that route a serde field/arm carrying `any` through the NATURAL JSON walk instead of
+/// `AnyCbor`'s tagged codec (which stays `AnyCbor`'s own serde). Returns empty when
 /// neither json flag is on. The adapter module / schema fn live in the `any_cbor` runtime module,
 /// reached through the same common-import glue as the `AnyCbor` type itself (`common_import_rust`),
 /// so `--common-import-override` split crates spell the shared-core path.

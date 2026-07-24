@@ -1,4 +1,4 @@
-; Open struct-map (loose CBOR "rest row") PRESERVE fidelity end-to-end vectors (Phase B WP3).
+; Open struct-map (loose CBOR "rest row") PRESERVE fidelity end-to-end vectors.
 ; Generated under --preserve-encodings --canonical-form (canonical implies preserve): the same crate
 ; exercises byte-exact round-trip (to_cbor_bytes, force_canonical=false) AND the runtime canonical
 ; key merge (to_canonical_cbor_bytes). See tests.rs. Every `wire` byte string is hand-written from

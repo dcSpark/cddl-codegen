@@ -1,4 +1,4 @@
-// Open struct-map (loose CBOR "rest row") FLATTENED-JSON end-to-end vectors (Phase B WP4, ruling R7).
+// Open struct-map (loose CBOR "rest row") FLATTENED-JSON end-to-end vectors.
 // The captured rest entries render at the SAME JSON object level as the declared fields (serde
 // `flatten`); to_json is fallible on data (R3: a complex `any` key/value, or a rest key colliding
 // with a declared field's JSON name, errors — never a silent substitute/duplicate); from_json is
@@ -80,7 +80,7 @@ mod open_struct_map_json {
 
     #[test]
     fn bytes_valued_any_rest_errors_on_write() {
-        // A bytes-VALUED any rest entry has no natural JSON image -> to_json errors (R3, WP1 walk).
+        // A bytes-VALUED any rest entry has no natural JSON image -> to_json errors (the natural walk, RFC 8949 §6.1).
         let mut baz = Baz::new(1);
         baz.rest
             .insert(AnyCbor::new_uint(5), AnyCbor::new_bytes(vec![0xde, 0xad]));

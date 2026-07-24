@@ -220,8 +220,8 @@ fn scan_extern_import_seam(
         EXTERN_INTERFACE_HEADER, EXTERN_INTERFACE_HEADER_PREFIX, EXTERN_INTERFACE_HEADER_V2,
     };
     let first = content.lines().next().unwrap_or("").trim_end();
-    // Both v1 and v2 are accepted (ruling §10.7): v2 is the conditional bump for `any`-bearing
-    // exports, and this reader (A2+) understands the `any` spelling. A PRE-A2 reader accepts only v1,
+    // Both v1 and v2 are accepted: v2 is the conditional bump for `any`-bearing exports, and this
+    // reader understands the `any` spelling. A reader predating `any` support accepts only v1,
     // so an `any`-bearing v2 export fails loudly at ITS seam with the version diagnostic below.
     if first != EXTERN_INTERFACE_HEADER && first != EXTERN_INTERFACE_HEADER_V2 {
         let msg = if first
@@ -561,8 +561,8 @@ pub fn with_types<R>(
     types.finalize(&pv, cli)?;
 
     // A spec whose finalized IR lowers CDDL `any` to the `AnyCbor` runtime type is a full-surface
-    // citizen: rust ser/deser, the JSON serde/schemars impls (A3 WP2), and the wasm wrapper class
-    // (`generate_any_cbor_wasm`, A3 WP3). No flag combination is rejected on `any`'s account.
+    // citizen: rust ser/deser, the JSON serde/schemars impls, and the wasm wrapper class
+    // (`generate_any_cbor_wasm`). No flag combination is rejected on `any`'s account.
     Ok(f(&types, export_raw_bytes_encoding_trait))
 }
 

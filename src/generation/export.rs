@@ -137,7 +137,7 @@ fn composed_runtime_static_files(
 ) -> std::io::Result<Vec<(String, String)>> {
     let mut out = Vec::new();
 
-    // open_struct_rest_json.rs (the flatten JSON helpers for open struct-map rest rows, ruling R7).
+    // open_struct_rest_json.rs (the flatten JSON helpers for open struct-map rest rows).
     // JSON-only and `any`-free — a fully-typed `* uint => text` rest row needs it without the AnyCbor
     // runtime, so it is its own module rather than a fragment of `any_cbor.rs`.
     if include_open_struct_rest_json && cli.json_serde_derives {
@@ -281,7 +281,7 @@ fn composed_runtime_static_files(
             "use super::error::{DeserializeError, DeserializeFailure};\n\
              use super::serialization::*;\n\n",
         );
-        // Depth-guard hook (DESIGN §12 A2): the `read` recursion seam in the fragments calls
+        // Depth-guard hook: the `read` recursion seam in the fragments calls
         // `any_cbor_recursion_guard!()`. We define that macro per-flag here — an `acquire` of the
         // opt-in `DepthGuard` (baked limit, same value the composite deserializers bake and the same
         // thread-local counter, reached via the `use super::serialization::*` glob) under

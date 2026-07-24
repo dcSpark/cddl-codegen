@@ -1127,8 +1127,8 @@ impl ConceptualRustType {
         match self {
             Self::Fixed(_) => false,
             Self::Primitive(_) => true,
-            // `AnyCbor` is a static-runtime type with no wasm-bindgen surface in A2 (specs using
-            // `any` reject under --wasm); it is not directly exposable, like a Rust wrapper struct.
+            // `AnyCbor` is a static-runtime type exposed through a wasm wrapper class, not directly
+            // wasm-bindgen-exposable — like a Rust wrapper struct.
             Self::Any => false,
             Self::Rust(ident) => types.is_enum(ident),
             // wasm_bindgen doesn't support nested vecs, even if the inner vec would be supported

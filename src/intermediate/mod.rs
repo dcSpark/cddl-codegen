@@ -413,7 +413,7 @@ impl<'a> IntermediateTypes<'a> {
 
     /// Whether ANY generated record carries an open struct-map rest row (`* k => v` after fixed
     /// keys). Gates the standalone `open_struct_rest_json` runtime module (the flatten helpers
-    /// `serialize_flattened_rest` / `read_flattened_rest_pairs`, ruling R7) under
+    /// `serialize_flattened_rest` / `read_flattened_rest_pairs`) under
     /// `--json-serde-derives` — the helpers are `any`-free so they cannot live in `any_cbor.rs` (a
     /// fully-typed `* uint => text` rest row does not pull in the `AnyCbor` runtime).
     pub fn uses_open_struct_rest(&self) -> bool {

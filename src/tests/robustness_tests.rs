@@ -76,8 +76,8 @@ fn all_supported_constructs_generate() {
     );
 
     // Every matrix-supported construct generates on BOTH the rust (`--wasm=false`) and wasm
-    // (`--wasm=true`) legs. `any` (the `AnyCbor` lowering) is now full-surface — its wasm wrapper
-    // class landed in loose-CBOR phase A3 WP3 — so the former `prelude.any` wasm-graceful-reject
+    // (`--wasm=true`) legs. `any` (the `AnyCbor` lowering) is now full-surface — it has a wasm wrapper
+    // class — so the former `prelude.any` wasm-graceful-reject
     // exemption is gone: both legs expect `Ok(Ok(_))`, and a panic or a graceful rejection is a
     // failure.
     // catch_unwind (without touching the global panic hook, to avoid racing other tests) so we report
@@ -3087,8 +3087,8 @@ fn concat_files_missing_path_yields_error_not_panic() {
     );
 }
 
-/// Loose-CBOR open struct-map (rest row) front end: recognition, the graceful-rejection guard set,
-/// the two directive-attachment traps (PROBE-B6 / the marker-slot trap), and the table-detection
+/// Open struct-map (rest row) front end: recognition, the graceful-rejection guard set,
+/// the two directive-attachment traps (the entry-trailing slot vs the marker-slot trap), and the table-detection
 /// no-drift boundary. Message-level pins for the front door plus source-shape assertions for the
 /// happy path (the value-level round-trip lives in the compiled e2e `open_struct_map_e2e`). Each
 /// guard has BOTH polarities where meaningful (a supported spelling that generates, an unsupported
@@ -3236,16 +3236,16 @@ fn open_struct_map_rest_row_front_end() {
         );
     }
 
-    // --- preserve fidelity core (WP3): open structs GENERATE under --preserve-encodings, lowering
+    // --- preserve fidelity core: open structs GENERATE under --preserve-encodings, lowering
     // the rest field to the insertion-ordered `OrderedHashMap` container with per-entry encoding
     // sidecars for concrete key/value domains (a `* uint => any` gets a uint-key sidecar; the `any`
-    // value is self-carried). The former reject front door is lifted; json/wasm still reject (WP4). ---
+    // value is self-carried). ---
     let preserve = run_flags(
         "foo = { 1: uint, * uint => any }\n",
         "preserve",
         &["--preserve-encodings=true"],
     )
-    .expect("open structs GENERATE under --preserve-encodings (WP3)");
+    .expect("open structs GENERATE under --preserve-encodings");
     let preserve_src = src(&preserve);
     assert!(
         preserve_src.contains("pub rest: OrderedHashMap<u64, ")
@@ -3256,16 +3256,15 @@ fn open_struct_map_rest_row_front_end() {
         preserve_src.contains("rest_key_encodings"),
         "a concrete uint-key rest row must carry a `rest_key_encodings` sidecar under preserve, got:\n{preserve_src}"
     );
-    // --- flattened rest JSON (WP4, R7): open structs GENERATE under --json-serde-derives, wiring
+    // --- flattened rest JSON: open structs GENERATE under --json-serde-derives, wiring
     // the rest field to the FLATTENED serde surface (its captured entries render at the same JSON
-    // object level as the declared fields). The former reject front door is lifted; wasm still
-    // rejects (below). ---
+    // object level as the declared fields). ---
     let json = run_flags(
         "foo = { 1: uint, * uint => any }\n",
         "json",
         &["--json-serde-derives=true"],
     )
-    .expect("open structs GENERATE under --json-serde-derives (WP4)");
+    .expect("open structs GENERATE under --json-serde-derives");
     let json_src = src(&json);
     assert!(
         json_src.contains("#[serde(flatten)]")
@@ -3273,10 +3272,9 @@ fn open_struct_map_rest_row_front_end() {
             && json_src.contains("read_flattened_rest_pairs"),
         "the rest field must wire the flattened-JSON serialize_with/deserialize_with helpers, got:\n{json_src}"
     );
-    // --- wasm rest surface (WP4): open structs GENERATE under --wasm (the default), the wasm wrapper
-    // gaining a `rest` getter that returns the captured entries as the minted map wrapper. The former
-    // reject front door is lifted. --wasm=true is the default, so pin generation by NOT passing
-    // --wasm=false. ---
+    // --- wasm rest surface: open structs GENERATE under --wasm (the default), the wasm wrapper
+    // gaining a `rest` getter that returns the captured entries as the minted map wrapper.
+    // --wasm=true is the default, so pin generation by NOT passing --wasm=false. ---
     {
         let path = std::env::temp_dir().join(format!(
             "cddl_codegen_rest_wasm_{}.cddl",
@@ -3292,7 +3290,7 @@ fn open_struct_map_rest_row_front_end() {
         ]);
         let wasm = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
         std::fs::remove_file(&path).ok();
-        let wasm = wasm.expect("open structs GENERATE under --wasm (WP4)");
+        let wasm = wasm.expect("open structs GENERATE under --wasm");
         let wasm_src = wasm.values().cloned().collect::<Vec<_>>().join("\n");
         assert!(
             wasm_src.contains("pub fn rest(&self) -> MapU64ToAny")
@@ -3301,13 +3299,13 @@ fn open_struct_map_rest_row_front_end() {
         );
     }
 
-    // --- @duplicates preserve on a rest row GENERATES (WP3): the vec-of-pairs twin (`PairMap`),
+    // --- @duplicates preserve on a rest row GENERATES: the vec-of-pairs twin (`PairMap`),
     // accepting + re-emitting duplicate keys in wire order, matching @duplicates preserve tables. ---
     let dup_preserve = run(
         "foo = {\n  1: uint,\n  * uint => any ; @duplicates preserve\n}\n",
         "dup_preserve",
     )
-    .expect("@duplicates preserve on a rest row GENERATES the PairMap twin (WP3)");
+    .expect("@duplicates preserve on a rest row GENERATES the PairMap twin");
     assert!(
         src(&dup_preserve).contains("pub rest: PairMap<u64, ")
             && src(&dup_preserve).contains("::any_cbor::AnyCbor>"),
@@ -3315,7 +3313,7 @@ fn open_struct_map_rest_row_front_end() {
         src(&dup_preserve)
     );
 
-    // --- PROBE-B6: entry-level @name on the rest row IS honored (entry-trailing slot) ---
+    // --- entry-level @name on the rest row IS honored (read from the entry-trailing slot) ---
     let named = run(
         "foo = {\n  1: uint,\n  * uint => any ; @name extra\n}\n",
         "named",
@@ -3332,7 +3330,7 @@ fn open_struct_map_rest_row_front_end() {
         "an entry-level @name must not rename the TYPE, got:\n{named_src}"
     );
 
-    // --- PROBE-B6 marker-slot trap: a directive on the `*` marker's own comment slot (before the
+    // --- marker-slot trap: a directive on the `*` marker's own comment slot (before the
     // entry type) is NOT honored — the field stays `rest` (current behavior, pinned loud). ---
     let marker = run(
         "foo = {\n  1: uint,\n  *  ; @name marker\n  uint => any\n}\n",
@@ -3345,7 +3343,7 @@ fn open_struct_map_rest_row_front_end() {
         "a directive on the `*` marker's comment slot must NOT be honored (field stays `rest`), got:\n{marker_src}"
     );
 
-    // --- PROBE-B6 rule-trailing slot: a RULE-position @duplicates (same line as `}`) is read at
+    // --- rule-trailing slot: a RULE-position @duplicates (same line as `}`) is read at
     // rule level (rejected as not-applicable to a record), NOT mis-read as the rest row's directive
     // (which would be the @duplicates-preserve front-door message instead). ---
     let rule_dup = run(

@@ -3811,11 +3811,11 @@ fn flag_value_rejects_canonical_without_preserve() {
 }
 
 /// A spec whose finalized IR lowers CDDL `any` to the `AnyCbor` runtime type is a FULL-surface
-/// citizen: accepted under `--wasm=true` (the wasm wrapper class landed in A3 WP3), under the JSON
-/// flags (serde/schemars, A3 WP2), and rust-only — including all three at once. Pins that no flag
+/// citizen: accepted under `--wasm=true` (the wasm wrapper class), under the JSON
+/// flags (serde/schemars), and rust-only — including all three at once. Pins that no flag
 /// combination rejects on `any`'s account, so a future regression that re-adds any such guard is
-/// caught. (Predecessor: `flag_value_rejects_any_under_wasm_but_accepts_json`, retired when WP3
-/// lifted the wasm guard.)
+/// caught. (Predecessor: `flag_value_rejects_any_under_wasm_but_accepts_json`, retired when the wasm
+/// guard was lifted.)
 #[test]
 fn flag_value_accepts_any_under_all_surfaces() {
     // tests/robustness/any_member.cddl is `a = [any]` — its IR contains `Any`. `Cli` isn't `Clone`,
@@ -5465,12 +5465,12 @@ fn open_struct_map_e2e() {
 
 #[test]
 fn open_struct_map_preserve_e2e() {
-    // Loose-CBOR open struct-map PRESERVE fidelity round-trip vectors (Phase B WP3): wire-position
-    // interleave, per-entry encoding sidecars, §10.8 value-duplicate rejection under both key
-    // domains, and the runtime canonical key merge with codegen<->runtime comparator agreement.
-    // Generated under --preserve-encodings --canonical-form (canonical implies preserve) so the one
-    // crate exercises both byte-exact round-trip and canonical ordering. --wasm=false (the wasm rest
-    // surface is WP4). See tests/open-struct-map-preserve-e2e/tests.rs.
+    // Loose-CBOR open struct-map PRESERVE fidelity round-trip vectors: wire-position
+    // interleave, per-entry encoding sidecars, value-duplicate rejection (keyed on CBOR VALUE
+    // equality) under both key domains, and the runtime canonical key merge with codegen<->runtime
+    // comparator agreement. Generated under --preserve-encodings --canonical-form (canonical implies
+    // preserve) so the one crate exercises both byte-exact round-trip and canonical ordering.
+    // --wasm=false to isolate the rust surface. See tests/open-struct-map-preserve-e2e/tests.rs.
     run_test(
         "open-struct-map-preserve-e2e",
         &[
@@ -5488,11 +5488,11 @@ fn open_struct_map_preserve_e2e() {
 
 #[test]
 fn open_struct_map_json_e2e() {
-    // Loose-CBOR open struct-map FLATTENED-JSON round-trip vectors (Phase B WP4, ruling R7): rest
+    // Loose-CBOR open struct-map FLATTENED-JSON round-trip vectors: rest
     // entries render at the same JSON object level as the declared fields (serde flatten), to_json is
     // fallible on data (complex any key/value, declared-name collision, PairMap actual duplicates),
-    // and from_json is symmetric (declared bind first, remainder -> rest). --wasm=false (the wasm
-    // rest surface is a later work package). See tests/open-struct-map-json-e2e/tests.rs.
+    // and from_json is symmetric (declared bind first, remainder -> rest). --wasm=false to isolate
+    // the json surface. See tests/open-struct-map-json-e2e/tests.rs.
     run_test(
         "open-struct-map-json-e2e",
         &[
@@ -5547,10 +5547,10 @@ fn golden_hex_canonical() {
 
 #[test]
 fn any_choice_content_fallthrough() {
-    // Loose-CBOR A3 WP1: a bare `any` type-choice catch-all in last position. Rust-only (the wasm
-    // AnyCbor surface is A3 WP3). Preserve-encodings so the round-trip asserts byte-exact fidelity
+    // A bare `any` type-choice catch-all in last position. Rust-only (--wasm=false).
+    // Preserve-encodings so the round-trip asserts byte-exact fidelity
     // through the `any` arm — including a non-minimal header the typed arm's content bound rejects.
-    // See tests/any-choice/tests.rs for the content-fallthrough vector (DESIGN §3.5).
+    // See tests/any-choice/tests.rs for the content-fallthrough vector.
     run_test(
         "any-choice",
         &["--wasm=false", "--preserve-encodings=true"],
@@ -6037,7 +6037,7 @@ fn emit_tests_execute() {
 }
 
 /// End-to-end proof of the CDDL `any` (`AnyCbor`) emit-tests mint and the `--preserve-encodings`
-/// `widen_float` encoding-fidelity class (loose-CBOR A3 WP4): generate the `any-positions` fixture
+/// `widen_float` encoding-fidelity class: generate the `any-positions` fixture
 /// with `--preserve-encodings --emit-tests` and `cargo test` the crate. Every `any`-typed member
 /// mints the composite `[uint 5, float 1.5]` (a deliberate float head) through the mode-paired
 /// `new_*` constructors, so the emitted round-trip loop feeds the `widen_float` mutation (the minted
@@ -6100,8 +6100,8 @@ fn emit_tests_any_float_execute() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// End-to-end proof of `--emit-tests` over an OPEN struct-map's rest row (loose-CBOR Phase B WP5,
-/// §8 item 26): generate the `open-struct-map-e2e` fixture (`{ 1: uint, 2: text, * uint => any }`,
+/// End-to-end proof of `--emit-tests` over an OPEN struct-map's rest row:
+/// generate the `open-struct-map-e2e` fixture (`{ 1: uint, 2: text, * uint => any }`,
 /// `{ ? 3: text, * uint => any }`, `{ 1: uint, * any => any }`) with `--preserve-encodings
 /// --emit-tests` and `cargo test` the crate. `record_roundtrip` now mints ONE captured entry through
 /// the generated `.rest` map API per rest-bearing record, so the round-trip loop actually serializes
@@ -6113,10 +6113,10 @@ fn emit_tests_any_float_execute() {
 /// captured entry's key/value bytes — so this also proves the header/width classes hold over
 /// captured rest entries.
 ///
-/// Conformance-oracle note (DESIGN §4.3, re-verified for CAPTURE rest rows): the oracle needs no
+/// Conformance-oracle note (re-verified for CAPTURE rest rows): the oracle needs no
 /// gating — it validates minted bytes against the VERBATIM input spec, whose rule declares the same
 /// `* K => V` row the deserializer accepts, so every minted rest entry conforms by construction (no
-/// over-acceptance mismatch). Unlike the `@ignore` case (Phase C — whose reason 1 leans on cases
+/// over-acceptance mismatch). Unlike an unknown-key-dropping directive (which would lean on cases
 /// carrying NO unknown entries), capture cases DO carry rest entries, yet byte-identity still holds
 /// because capture round-trips symmetrically. This gate runs the round-trip half; conformance stays a
 /// reasoning obligation (no new oracle dep here — matching the `emit_tests_any_float_execute`
@@ -11228,7 +11228,7 @@ fn hostile_deep_rejects_without_aborting() {
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
-/// The depth guard reaches through an `any`-typed member (loose-CBOR A2). `AnyCbor`'s own
+/// The depth guard reaches through an `any`-typed member. `AnyCbor`'s own
 /// deserializer is recursive-descent over nested arrays/maps/tags, so a spec with an `any` member
 /// (`holder = [inner: any]`) inherits the same unbounded-recursion SIGABRT class the recursive-type
 /// gate above covers — but the recursion lives in the `AnyCbor::read` seam, not in generated
@@ -11269,7 +11269,7 @@ fn deserialize_depth_limit_guards_any_member() {
     );
 
     // The guard hook must have baked its acquisition INTO the AnyCbor read seam (the any_cbor module,
-    // not just the composite deserializers). This is the seam WP2 added.
+    // not just the composite deserializers).
     let any_cbor_rs = std::fs::read_to_string(out.join("rust/src/generated/any_cbor.rs")).unwrap();
     assert!(
         any_cbor_rs.contains("DepthGuard::acquire(64usize)?"),

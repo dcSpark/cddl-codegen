@@ -1,6 +1,6 @@
 ; A control operator on `any` (`any .size 4`; equally ranges / `.lt` / `.cbor`) is a GRACEFUL
 ; rejection at the top-level-rule position: `any` already accepts every CBOR item, so the constraint
 ; is semantically empty, and `any` is not a primitive the size/range machinery can bound (it would
-; otherwise panic unwrapping `ident_to_primitive`). DESIGN §7 / ruling §10.11 — allow on demand once
-; a fixture proves a meaningful semantics. Loose-CBOR A2 delivery.
+; otherwise panic unwrapping `ident_to_primitive`) — allow on demand once
+; a fixture proves a meaningful semantics.
 x = any .size 4

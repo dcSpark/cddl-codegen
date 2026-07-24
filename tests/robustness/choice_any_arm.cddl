@@ -1,11 +1,11 @@
 ; A bare `any` type-choice arm in a NON-LAST position (`any / tstr`) is a GRACEFUL rejection in
 ; EVERY profile, at parse/IR time (wasm-independent): a bare `any` accepts every CBOR item, so any
-; arm after it is unreachable dead code (DESIGN §3.5, ruling §10.6). The rejection message is "`any`
+; arm after it is unreachable dead code. The rejection message is "`any`
 ; arm makes later arms unreachable — move it last". A bare `any` arm IS supported in LAST position
-; (loose-CBOR A3 — `tests/robustness/choice_last_any_arm.cddl`), where the forced-backtracking
+; (`tests/robustness/choice_last_any_arm.cddl`), where the forced-backtracking
 ; dispatch falls a content-mismatched item through to the catch-all. A TAGGED `any` arm (`#6.n(any)`)
 ; is not a catch-all and may appear in any position. Formerly this shape panicked at an
-; `Option::unwrap()` in intermediate/rust_type.rs; A2 replaced that with a blanket choice-arm
-; rejection, which A3 narrowed to this last-position rule. Surfaced by the recombination sweep
+; `Option::unwrap()` in intermediate/rust_type.rs; that was replaced with a blanket choice-arm
+; rejection, later narrowed to this last-position rule. Surfaced by the recombination sweep
 ; (src/tests/recombination_tests.rs).
 a = any / tstr

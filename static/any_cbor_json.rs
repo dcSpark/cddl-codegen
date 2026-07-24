@@ -24,7 +24,7 @@
 //                                          represent them as numbers). NaN payload bits are NOT
 //                                          round-tripped through JSON (the lossy-side charter).
 //
-// Map-key note (matches the crate-wide non-string-key-table posture, verified 2026-07-23): serde_json
+// Map-key note (matches the crate-wide non-string-key-table posture): serde_json
 // requires MAP keys to be strings. A `{* uint => any}` / `{* text => any}` table works (uint keys
 // stringify, text keys verbatim); a `{* any => any}` (or any non-string-keyed) table serializes each
 // key as an OBJECT, so `to_json` errors at runtime with "key must be a string" — exactly as a
@@ -200,10 +200,10 @@ impl<'de> serde::de::Visitor<'de> for AnyCborJsonVisitor {
 }
 
 // =================================================================================================
-// Natural-fallible JSON — the PRIMARY surface every *generated* type uses for an `any`-typed value
-// (loose-CBOR Phase B, ruling R1). This is a SEPARATE surface from the tagged codec above: the
-// tagged impls stay `AnyCbor`'s own `Serialize`/`Deserialize` (R2, the value-level escape hatch and
-// the `AnyCbor` wasm-wrapper codec); generated members / enum arms / newtype wrappers instead route
+// Natural-fallible JSON — the PRIMARY surface every *generated* type uses for an `any`-typed value.
+// This is a SEPARATE surface from the tagged codec above: the tagged impls stay `AnyCbor`'s own
+// `Serialize`/`Deserialize` (the total value-level escape hatch and the `AnyCbor` wasm-wrapper
+// codec); generated members / enum arms / newtype wrappers instead route
 // through `natural_any_cbor` (the `#[serde(with = …)]` adapter below), which renders the CBOR value
 // as the JSON value it *naturally is* — `{ "count": 3 }` rather than `{ "map": [[{"text":"count"},
 // {"uint":3}]] }`. Only natural rendering composes with static typing on the read side and only
@@ -253,8 +253,8 @@ pub fn any_cbor_natural_key_string(key: &AnyCbor) -> Result<String, AnyToNatural
 }
 
 /// Render an [`AnyCbor`] as the [`serde_json::Value`] it naturally is, or error naming the node kind
-/// with no injective JSON image (ruling R3). Big uints (> 2^53) stay JSON numbers (R5, I-JSON
-/// precision caveat documented, not a failure).
+/// with no injective JSON image (RFC 8949 §6.1's strict-fail). Big uints (> 2^53) stay JSON numbers
+/// (the documented I-JSON / RFC 7493 precision caveat, not a failure).
 pub fn to_natural_json(value: &AnyCbor) -> Result<serde_json::Value, AnyToNaturalJsonError> {
     use serde_json::Value;
     match value.kind() {
@@ -274,7 +274,7 @@ pub fn to_natural_json(value: &AnyCbor) -> Result<serde_json::Value, AnyToNatura
         AnyCborKind::Null => Ok(Value::Null),
         AnyCborKind::Float => {
             let f = value.as_float().unwrap();
-            // serde_json cannot hold non-finite numbers; NaN/±Inf strict-fail (R6: JSON is lossy for
+            // serde_json cannot hold non-finite numbers; NaN/±Inf strict-fail (JSON is lossy for
             // NaN payloads anyway; here the whole non-finite value has no number image).
             serde_json::Number::from_f64(f)
                 .map(Value::Number)
@@ -295,7 +295,7 @@ pub fn to_natural_json(value: &AnyCbor) -> Result<serde_json::Value, AnyToNatura
             let mut obj = serde_json::Map::new();
             // Determinism + collision detection: a `BTreeSet` of stringified keys. Two keys that
             // stringify identically (uint `12` + text `"12"`, or two equal keys) are a collision →
-            // strict-fail (§6.1's "danger of key collision"): our JSON feeds a symmetric read.
+            // strict-fail (RFC 8949 §6.1's "danger of key collision"): our JSON feeds a symmetric read.
             let mut seen = std::collections::BTreeSet::new();
             for (key, val) in pairs {
                 let key_string = any_cbor_natural_key_string(key)?;
@@ -315,7 +315,7 @@ pub fn to_natural_json(value: &AnyCbor) -> Result<serde_json::Value, AnyToNatura
     }
 }
 
-/// The `any`-domain reading of a JSON object key (ruling R4): prefer the numeric reading for a
+/// The `any`-domain reading of a JSON object key (RFC 8949 §6.2 read convention): prefer the numeric reading for a
 /// CANONICAL decimal spelling (round-trips through `to_string`), else text. So `"12"` → uint `12`,
 /// `"-5"` → nint `-5`, but `"012"`/`"+5"`/`"5.0"`/`"abc"` → text. Total.
 pub fn any_cbor_natural_key_from_string(key: &str) -> AnyCbor {
@@ -338,7 +338,7 @@ pub fn any_cbor_natural_key_from_string(key: &str) -> AnyCbor {
     AnyCbor::new_text(key.to_owned())
 }
 
-/// The reverse of [`to_natural_json`]: every JSON value has a CBOR home (ruling R4, RFC 8949 §6.2).
+/// The reverse of [`to_natural_json`]: every JSON value has a CBOR home (RFC 8949 §6.2).
 /// TOTAL — never fails. Lexically-integral numbers become uint (non-negative) / nint (negative),
 /// anything else (fractional / out-of-i64-magnitude) becomes a float; object keys use the
 /// `any`-domain prefer-numeric rule.
@@ -372,8 +372,8 @@ pub fn from_natural_json(value: serde_json::Value) -> AnyCbor {
 
 /// `#[serde(with = "…::natural_any_cbor")]` adapter: the serde face a generated type puts on an
 /// `any`-typed field/arm so it renders NATURALLY (not through `AnyCbor`'s tagged codec). Serialize
-/// is fallible-on-data (R3's failure set surfaces as a serde error naming the node kind); deserialize
-/// is total (R4).
+/// is fallible-on-data (RFC 8949 §6.1's failure set surfaces as a serde error naming the node kind);
+/// deserialize is total (RFC 8949 §6.2).
 pub mod natural_any_cbor {
     use super::{from_natural_json, to_natural_json, AnyCbor};
 
@@ -443,7 +443,7 @@ impl<'de> serde::Deserialize<'de> for NaturalAnyCborDe {
 }
 
 /// `#[serde(with = …)]` adapter for a `Vec<AnyCbor>` member (homogeneous `[* any]` array as a
-/// struct field), rendering each element naturally (R1). Rides serde's own seq handling.
+/// struct field), rendering each element naturally. Rides serde's own seq handling.
 pub mod natural_any_cbor_seq {
     use super::{AnyCbor, NaturalAnyCborDe, NaturalAnyCborSer};
 
@@ -465,7 +465,7 @@ pub mod natural_any_cbor_seq {
 
 /// `#[serde(with = …)]` adapter for a `BTreeMap<K, AnyCbor>` member (a `{* K => any}` table with a
 /// stringifiable key as a struct field, non-preserve). The KEY renders through its own serde (the
-/// crate-wide table-key posture — a non-stringifiable `any` key still errors at runtime, ruling R3);
+/// crate-wide table-key posture — a non-stringifiable `any` key still errors at runtime per RFC 8949 §6.1);
 /// only the VALUE flips to natural. Generic over `K` so one module serves every key type.
 pub mod natural_any_cbor_btreemap {
     use super::{AnyCbor, NaturalAnyCborDe, NaturalAnyCborSer};

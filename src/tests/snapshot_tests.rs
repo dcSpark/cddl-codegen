@@ -153,10 +153,10 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
     ),
     // loose-CBOR `any` positions (member / array element / table domain+range / top-level alias /
     // tagged / last-position choice arm), lowered to the AnyCbor runtime type. All legs pass
-    // --wasm=false: an any-using spec still rejects under --wasm=true (the wasm AnyCbor wrapper is
-    // A3 WP3), which is why this is a profile-limited whole_program input rather than an all-profile
-    // feature-corpus entry. Pinned under the three rust modes (canonical merge + preserve
-    // encoding-field threading) plus the json mode (A3 WP2 serde/schemars surface: the AnyCbor
+    // --wasm=false to isolate the rust and json surfaces here (the wasm AnyCbor surface is pinned
+    // by the wasm-parity suite), which is why this is a profile-limited whole_program input rather
+    // than an all-profile feature-corpus entry. Pinned under the three rust modes (canonical merge +
+    // preserve encoding-field threading) plus the json mode (the serde/schemars surface: the AnyCbor
     // fragments concatenate into the any_cbor module under the JSON flags).
     (
         "any_positions_default",
@@ -211,11 +211,11 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
     // loose-CBOR open struct-maps (a trailing `* k => v` rest row after fixed keys → a `pub rest`
     // capture map). Snapshotted under the plain (`default`), preserve, AND json flavors: the preserve
     // fidelity core (orig_deser_order interleave, per-entry encoding sidecars, the runtime canonical
-    // key merge) landed in WP3; the flattened-JSON surface (R7 — the rest field's
+    // key merge) under `preserve`; the flattened-JSON surface (the rest field's
     // `#[serde(flatten)]` + per-struct serialize_with/deserialize_with helpers + additionalProperties
-    // schema) landed in WP4. The wasm rest accessors are still a later work package that rejects, so
-    // `--wasm=false` throughout — a profile-limited whole_program input rather than an all-profile
-    // feature-corpus entry.
+    // schema) under `json`. These profiles pass `--wasm=false` to isolate the rust/json surfaces (the
+    // wasm rest accessor is pinned by the separate `open_struct_map_wasm` profile below) — a
+    // profile-limited whole_program input rather than an all-profile feature-corpus entry.
     (
         "open_struct_map_default",
         "tests/open-struct-map/input.cddl",
@@ -238,7 +238,7 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
             ],
         ),
     ),
-    // The wasm rest surface (Phase B WP4): each open struct's wasm wrapper gains a `rest` getter
+    // The wasm rest surface: each open struct's wasm wrapper gains a `rest` getter
     // returning the captured entries as the minted map wrapper (`MapKToV` / the `@duplicates
     // preserve` PairMap-backed twin). `--wasm` is the default, so this profile pins the emitted wasm
     // getters + minted rest-map wrappers.

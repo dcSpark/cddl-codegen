@@ -1,4 +1,4 @@
-// Content-fallthrough vector for the bare `any` type-choice catch-all (loose-CBOR A3 WP1).
+// Content-fallthrough vector for the bare `any` type-choice catch-all.
 // Generated under --preserve-encodings so the round-trip asserts BYTE-exact fidelity through the
 // `any` arm (AnyCbor is self-carried — it owns its own encodings), including a non-minimal header.
 //

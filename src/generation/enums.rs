@@ -1032,7 +1032,8 @@ fn generate_enum(
     // `non_overlapping_types_match = None` above and thus the backtracking emitter. That forcing is
     // REQUIRED for correctness: the `cbor_type()`-dispatch form routes by wire type first, so a typed
     // arm that matches on type but fails on *content* (e.g. `uint .le 5` vs wire `6`) would error
-    // inside that arm and never reach the catch-all `any`, violating CDDL (DESIGN §3.5). Assert it
+    // inside that arm and never reach the catch-all `any`, violating CDDL's ordered type-choice
+    // semantics (a later arm must be reachable when an earlier arm rejects on content). Assert it
     // loudly rather than silently miscompile if `Any::cbor_types` ever narrows.
     debug_assert!(
         non_overlapping_types_match.is_none()
@@ -1076,7 +1077,8 @@ fn generate_enum(
             // we must repurpose annotations since there is no doc support on enum variants
             v.annotation(format!("/// {doc}"));
         }
-        // Loose-CBOR Phase B (R1): an `any`-typed choice arm renders its JSON NATURALLY. A
+        // An `any`-typed choice arm renders its JSON NATURALLY (as the value it naturally is, not
+        // through `AnyCbor`'s tagged codec; see `output_format.mdx` § "Natural rendering …"). A
         // newtype variant accepts variant-level `#[serde(with = …)]` / `#[schemars(schema_with = …)]`,
         // which serde/schemars apply to the variant's single field. The CBOR-only tag on a
         // tagged-`any` arm never appears in JSON, so the same natural routing is correct there too.

@@ -2,7 +2,7 @@
 // self-referential `oneOf` over the twelve single-key tagged-object forms. Precedent for a manual
 // impl on a runtime type: `ordered_hash_map_schemars.rs`. The schema flows into the json-gen crate
 // and through `run-json2ts.js`; the json2ts acceptance of this self-referential schema is a named
-// pre-ship gate (DESIGN §6).
+// pre-ship gate.
 //
 // Routed through `schemars::json_schema!` (which uses schemars' own bundled serde_json), so this
 // compiles under `--json-schema-export` even when `--json-serde-derives` is off (serde_json is only
@@ -57,12 +57,12 @@ impl schemars::JsonSchema for AnyCbor {
 }
 
 /// The `#[schemars(schema_with = "…::natural_any_cbor_schema")]` companion to the
-/// `natural_any_cbor` serde adapter (loose-CBOR Phase B, ruling R1): the schema a GENERATED type
-/// puts on an `any`-typed field/arm. It is the permissive "any JSON value" schema (an empty schema
-/// accepts everything) because the natural rendering of an arbitrary CBOR value can be any JSON
-/// value — json2ts turns it into TS `unknown`. This is deliberately DISTINCT from `AnyCbor`'s own
-/// tagged `oneOf` schema above, which describes the tagged value-codec surface (the `AnyCbor` wasm
-/// wrapper's `to_json`), and is unchanged (ruling R2).
+/// `natural_any_cbor` serde adapter: the schema a GENERATED type puts on an `any`-typed field/arm
+/// so it describes the NATURAL rendering. It is the permissive "any JSON value" schema (an empty
+/// schema accepts everything) because the natural rendering of an arbitrary CBOR value can be any
+/// JSON value — json2ts turns it into TS `unknown`. This is deliberately DISTINCT from `AnyCbor`'s
+/// own tagged `oneOf` schema above, which describes the tagged value-codec surface (the `AnyCbor`
+/// wasm wrapper's `to_json`), and is left as `AnyCbor`'s own schema.
 pub fn natural_any_cbor_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
     schemars::json_schema!({})
 }

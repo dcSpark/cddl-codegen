@@ -32,7 +32,7 @@ load-bearing: some constructs (`#`/`cbor-any`, `float16`, socket plugs, …) are
 name) moved OFF it 2026-07-23 (maintainer-ruled feature). Its `AnyCbor` runtime type plus first-class
 support in every position (member / homogeneous array / table domain-range / top-level alias / tagged /
 last-position type-choice arm) are shipped across the rust, wasm, and JSON/schema surfaces,
-depth-guarded. Open struct-maps followed 2026-07-24 (loose-CBOR Phase B): a trailing `* K => V`
+depth-guarded. Open struct-maps followed: a trailing `* K => V`
 rest row after fixed keys captures unknown entries in every mode (byte-exact under
 `--preserve-encodings` incl. wire-order interleave and the runtime canonical merge; `@duplicates
 preserve` pair-list twin; flattened fallible JSON; wasm `rest()` getter), with the v1 boundaries
@@ -410,9 +410,9 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   pair cannot share it. There are now TWO instances of the class: **tables** (pre-existing — the
   `@duplicates` coexistence note in `docs/docs/comment_dsl.mdx`, "A preserve table and a non-preserve
   map/table of the identical key/value shape cannot coexist under `--wasm`", is the graceful table-side
-  rejection), and **open-struct-map rest rows** (loose-CBOR Phase B WP4 — a preserve rest row and a
-  non-preserve rest row of the same shape trip it through the SAME `map_shape_is_preserve_owned` seam
-  that mints the rest wrapper; details in the b-spec §6 WP4 outcome header "KNOWN EDGE"). The rest-row
+  rejection), and **open-struct-map rest rows** (a preserve rest row and a
+  non-preserve rest row of the same `K`/`V` shape trip it through the SAME `map_shape_is_preserve_owned`
+  seam that mints the rest wrapper). The rest-row
   instance is currently UNGUARDED (no fixture needs it, and the shape-clean `open-struct-map` snapshot
   fixture deliberately stays off the wasm-parity axis to avoid it). Standing rule meanwhile: keep the
   preserve/json open-map e2e fixtures off the wasm-parity sweep. Trigger for the mechanical layer — a

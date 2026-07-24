@@ -865,11 +865,11 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
         "failed left: \";\" right: \"\" @ src/generation/deserialize.rs",
         "map-rep group-choice arm with a fixed-value entry; pinned by tests/matrix_panic/contain.group-choice-arm.type2.value.map.cddl",
     ),
-    // (retired in the loose-CBOR A2 delivery) `any` in member/element position no longer panics —
+    // (retired when `any` gained runtime support) `any` in member/element position no longer panics —
     // it lowers to the `AnyCbor` runtime type (tests/robustness/any_member.cddl is now an `ok`
     // fixture). The former `self.generic_instances.contains_key(ident)` assertion class is gone.
-    // (retired in the same delivery, narrowed in A3) the `any` type-choice arm no longer reaches the
-    // `rust_type.rs` `Option::unwrap()` panic. A3 WP1 turned the blanket A2 rejection into a
+    // (retired in the same work) the `any` type-choice arm no longer reaches the
+    // `rust_type.rs` `Option::unwrap()` panic. Support narrowed the former blanket rejection into a
     // last-position rule: a bare `any` catch-all is SUPPORTED in last position (forced-backtracking
     // dispatch — a typed arm matching on type but failing on content falls through), and a non-last
     // bare `any` arm is a graceful rejection ("makes later arms unreachable";
@@ -891,7 +891,7 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
 // sweep fails NEW-finding with the fixture already committed — re-add the entry citing it.
 // (The array-of-`any` type-choice arm that used to sit here is gone: `[* any]` is now a supported
 // homogeneous array, so `[* any] / tstr` generates correctly — tests/robustness/choice_array_any_arm.cddl
-// is an `ok` fixture, not a panic class, as of the loose-CBOR A2 delivery.)
+// is an `ok` fixture, not a panic class, since `any` gained runtime support.)
 
 // ---- LAYER 1: the generation-classification sweep ---------------------------------------------------
 /// Sweep every composition through in-process generation and classify ok / graceful / PANIC.
@@ -984,7 +984,7 @@ fn recombination_generation_sweep() {
 /// Excluded from batching (vacuity-guarded: each entry must match >= 1 ok composition, so a fixed
 /// class flips loudly).
 const LAYER2_KNOWN_BAD: &[(&str, &str)] = &[
-    // (retired in the loose-CBOR A2 delivery) `any` no longer "generates but does not compile" —
+    // (retired when `any` gained runtime support) `any` no longer "generates but does not compile" —
     // it lowers to the `AnyCbor` static-runtime type and the generated crate compiles across plain
     // / preserve / preserve+canonical. The former `filler=prelude.any` known-bad class is gone.
     // -- non-final `?` optional field in an array record: Deserialize impl not emitted (E0599) ----
@@ -1414,7 +1414,7 @@ const PRESERVE_ONLY_PANIC_CLASSES: &[(&str, &str)] = &[
          encoding metadata has no home on the enum; cddl-matrix/ROADMAP.md § findings, \
          `A CBOR tag over a type-choice enum is unimplemented under --preserve-encodings` entry",
     ),
-    // (retired in the loose-CBOR A2 delivery) a CBOR tag wrapping `any` (`#6.11(any)`) under
+    // (retired when `any` gained runtime support) a CBOR tag wrapping `any` (`#6.11(any)`) under
     // --preserve-encodings no longer panics building the tag's encoding field: `any` lowers to the
     // self-carried `AnyCbor` runtime type (contributes ZERO owner encoding fields via
     // `encoding_fields_impl`'s `Root(Any)` arm), so the tag's encoding var mints normally. Verified

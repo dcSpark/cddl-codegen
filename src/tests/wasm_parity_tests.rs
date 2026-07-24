@@ -128,7 +128,7 @@ use clap::Parser;
 /// The current entries are the top-level `any`-alias class: a rule `top_alias = any` lowers to a
 /// bare `pub type TopAlias = AnyCbor`, and wasm_bindgen exports no type aliases, so the rule name is
 /// JS-invisible and the value is handled through the generator's `AnyCbor` wrapper class directly.
-/// This is the accepted loose-CBOR v1 posture (DESIGN §6: the `AnyCbor` wrapper IS the JS surface; a
+/// This is the accepted posture (the `AnyCbor` wrapper IS the JS surface; a
 /// distinct per-alias JS class follows demand) and the same alias-only class as any `x = <wrapper>`
 /// top-level alias. Every OTHER `any` position (member, array, table, tagged, choice arm) carries a
 /// real AnyCbor / AnyList / MapAnyTo* / enum-variant wasm counterpart and needs no exemption.
@@ -260,7 +260,7 @@ const CORPUS_PARITY_INPUTS: &[CorpusParityInput] = &[
         "wasm_json",
         &[("json_serde", &["--json-serde-derives=true"])],
     ),
-    // Loose-CBOR `any` fixtures: full-surface citizens since A3 WP3 lifted the wasm guard, so they
+    // Loose-CBOR `any` fixtures: full-surface citizens (the wasm AnyCbor wrapper class), so they
     // join the parity sweep. The differential parses `mod.rs` only (AnyCbor's rich rust-only runtime
     // internals live in the allowed `any_cbor.rs`), and every per-spec type carries its AnyCbor /
     // AnyList / MapAnyTo* wasm counterpart.
@@ -280,7 +280,7 @@ const CORPUS_PARITY_INPUTS: &[CorpusParityInput] = &[
         &[("preserve", &["--preserve-encodings=true"])],
     ),
     ("any-shadow", &[("default", &[])]),
-    // Loose-CBOR open struct-maps: full-surface citizens since Phase B WP4 wired the wasm rest
+    // Loose-CBOR open struct-maps: full-surface citizens via the wasm rest
     // accessor (a getter returning the captured entries as the wasm map wrapper). The differential
     // parses `mod.rs` only and validates that each rest field's rust member carries its
     // `MapKToV`/PairMap-backed wasm counterpart. (This snapshot fixture is shape-clean across

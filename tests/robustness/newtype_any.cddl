@@ -1,6 +1,6 @@
-; `@newtype` on a bare `any` rule is a GRACEFUL rejection in this phase (DESIGN ruling §10.11): the
+; `@newtype` on a bare `any` rule is a GRACEFUL rejection: the
 ; newtype wrapper over `AnyCbor` is unproven through the wasm/JSON surface machinery, and is cheap
 ; to allow later once a fixture proves it. A transparent alias (`x = any`, no `@newtype`) is
 ; supported. A TAGGED any (`#6.n(any)`) is a separate supported position whose wrapper the tag
-; forces. Loose-CBOR A2 delivery.
+; forces.
 x = any ; @newtype
