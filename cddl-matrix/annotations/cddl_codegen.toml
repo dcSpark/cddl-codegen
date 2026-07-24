@@ -1581,6 +1581,20 @@ status = "unsupported"
 evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
 
 [[support]]
+id = "contain.occurrence-target.memberkey.type1.open_struct"
+status = "supported"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
+
+[[support]]
+id = "contain.occurrence-target.memberkey.type1.open_struct_plus"
+status = "unsupported"
+evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
+
+[[support]]
 id = "contain.occurrence-target.memberkey.type1.optional_table"
 status = "unsupported"
 evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
@@ -1593,20 +1607,6 @@ emission.json.status = "supported"
 emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
 emission.preserve.status = "supported"
 emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips when embedded (synthetic record holder)"
-
-[[support]]
-id = "contain.occurrence-target.memberkey.type1.open_struct"
-status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; ruby=ok rust=ok"
-emission.json.status = "supported"
-emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
-emission.preserve.status = "supported"
-emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
-
-[[support]]
-id = "contain.occurrence-target.memberkey.type1.open_struct_plus"
-status = "unsupported"
-evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.occurrence-target.type2.array"
