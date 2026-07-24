@@ -503,7 +503,10 @@ mod preserve {
         let (a, _) = parse(&super::hex_to_bytes("01")); // 1
         let (b, _) = parse(&super::hex_to_bytes("1801")); // 1 (two-byte)
         let (c, _) = parse(&super::hex_to_bytes("1802")); // 2
-        assert!(a.value_eq(&b), "value_eq ignores wire width (0x01 == 0x1801)");
+        assert!(
+            a.value_eq(&b),
+            "value_eq ignores wire width (0x01 == 0x1801)"
+        );
         assert!(!a.value_eq(&c), "value_eq distinguishes distinct values");
         // recursive: {10: 0x1801} value-equals {10: 0x01}
         let (m1, _) = parse(&super::hex_to_bytes("a10a1801")); // {10: 1(two-byte)}
