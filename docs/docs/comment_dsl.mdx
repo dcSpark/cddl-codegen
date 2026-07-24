@@ -372,49 +372,59 @@ rest row's — the two slots are disjoint, so neither steals from the other.
 
 ## @ignore
 
-`@ignore` on an **open struct-map rest row** selects the *tolerate-and-drop* flavor: unknown map
-entries are still typed-deserialized (key **and** value, so the stream advances past nested
-containers) but then **discarded** — no capture field is generated, and serialize re-emits only the
-declared members.
+`@ignore` on an **open struct-map rest row** or an **open-array rest tail** selects the
+*tolerate-and-drop* flavor: unknown trailing data is still typed-deserialized (for a map, key **and**
+value; for an array, each element — so the stream advances past nested containers) but then
+**discarded** — no capture field is generated, and serialize re-emits only the declared members.
 
 ```cddl
 view = {
   1: uint,
   * uint => any ; @ignore
 }
+
+view_list = [
+  uint,
+  * any ; @ignore
+]
 ```
 
 Use it for view types that must accept forward-compatible data without retaining it. The default
-(no `@ignore`) is [capture](output_format#open-struct-maps-rest-rows), which keeps the generated
+(no `@ignore`) is capture ([map rest rows](output_format#open-struct-maps-rest-rows),
+[array rest tails](output_format#open-arrays-rest-tails)), which keeps the generated
 `Serialize`/`Deserialize` honest (nothing dropped, byte round-trips hold).
 
-- **Placement.** `@ignore` is bare (no argument) and reads from the **rest row's own entry-trailing
-  comment slot**, exactly like `@name`/`@duplicates`
+- **Placement.** `@ignore` is bare (no argument) and reads from the trailing entry's **own comment
+  slot**, exactly like `@name`/`@duplicates`
   ([above](comment_dsl#name-and-duplicates-on-an-open-map-rest-row)). It is valid **only** on a
-  recognized rest row of a map-rep record; anywhere else (a rule, a field, a table/array rule) is a
-  loud graceful rejection, never silently dropped. The same **marker-slot trap** applies: a directive
-  glued to the `*` occurrence marker's comment slot is silently not honored, so keep it after the
-  whole entry (`* K => V ; @ignore`). Note a CDDL comment runs to the end of the line, so on a
-  single-line rule `; @ignore }` would swallow the closing brace — put the directive line before
-  the `}` (as in the example above).
-- **Deliberate lossiness.** Byte round-trips do **not** hold for wire data carrying unknown entries —
-  they are dropped, and re-serialization emits declared members only. The generated type and its
-  `serialize` fn carry a rustdoc breadcrumb saying so.
+  recognized rest row of a map-rep record or a rest tail of an array-rep record; anywhere else (a
+  rule, a field, a non-final or bounded occurrence) is a loud graceful rejection, never silently
+  dropped. The same **marker-slot trap** applies: a directive glued to the `*` occurrence marker's
+  comment slot is silently not honored, so keep it after the whole entry (`* K => V ; @ignore`,
+  `* t ; @ignore`).
+- **The end-of-line trap.** A CDDL comment runs to the end of the line, so a directive on the same
+  line as the container's closing token swallows that token: `; @ignore }` eats the map's closing
+  brace and `; @ignore ]` eats the array's closing bracket. Put the directive on its own line
+  **before** the closer, as in both examples above — never `[ uint, * any ; @ignore ]` on one line.
+- **Deliberate lossiness.** Byte round-trips do **not** hold for wire data carrying unknown entries or
+  trailing elements — they are dropped, and re-serialization emits the declared members / prefix only.
+  The generated type and its `serialize` fn carry a rustdoc breadcrumb saying so.
 - **Rejected combinations**, each a graceful generation error naming the remedy:
   - **`--preserve-encodings`** (and `--canonical-form`, which implies it): a preserve crate's contract
     is byte-exact round-trips, which a silently-lossy type would undermine crate-wide. Use capture
     (drop the directive), or `@custom_serialize`/`@custom_deserialize` for a genuine view type.
-  - **`@duplicates`** on the same row: a duplicates policy governs a capture container, which
-    `@ignore` does not create.
-  - **`@name`** on the same row: there is no capture field to rename.
+  - **`@duplicates`** on the same entry: a duplicates policy governs a capture container, which
+    `@ignore` does not create. (On an **array** rest tail `@duplicates` is rejected for *both* flavors
+    — a positional `Vec` tail has no keys for a duplicate policy to govern.)
+  - **`@name`** on the same entry: there is no capture field to rename.
 - **Typing is still enforced.** `* uint => any ; @ignore` still errors on a text key (the spec said
-  uint labels); full key-looseness is spelled `* any => any`. A declared key wins over the rest row,
-  so a fixed key whose wire value mismatches its type errors rather than falling through to the drop
-  arm.
+  uint labels), and `[uint, * text ; @ignore]` still errors on a non-text trailing element; full
+  looseness is spelled `* any => any` / `* any`. For a map, a declared key wins over the rest row, so
+  a fixed key whose wire value mismatches its type errors rather than falling through to the drop arm.
 
 The **JSON** and **wasm** surfaces of an `@ignore` type are a plain **closed struct's** (unknown JSON
-keys are tolerated on read per serde's default and dropped; there is no `rest()` wasm getter, since
-nothing is stored).
+keys / trailing array elements are tolerated on read and dropped; there is no `rest()` wasm getter,
+since nothing is stored).
 
 ## @custom_json
 
