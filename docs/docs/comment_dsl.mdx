@@ -330,6 +330,46 @@ It applies **only to set/array collection rules and table rules**. On any other 
 text/int alias, a struct/group/record rule, a union rule, an extern marker, or a field/member
 position — it is a graceful placement rejection (never silently ignored).
 
+### `@name` and `@duplicates` on an open-map rest row
+
+An **open struct-map** mixes fixed members with a trailing `* K => V` "rest row" that captures every
+unknown map entry (`{ 1: uint, 2: text, * uint => any }`) — see
+[Open struct-maps](output_format#open-struct-maps-rest-rows) for the generated `rest` field and its
+surfaces. Two directives read from the **rest row's own entry-trailing comment slot**:
+
+```cddl
+metadata = {
+  1: uint,
+  * uint => any ; @name extra @duplicates preserve
+}
+```
+
+- **`@name`** renames the generated capture field (default `rest`) — here to `extra`. It renames only
+  the field; the containing type keeps its rule name.
+- **`@duplicates`** selects the rest row's duplicate-key policy, exactly as for a standalone table:
+  the default is `reject` (a repeated captured key is a `DuplicateKey` decode error), and
+  `@duplicates preserve` switches the capture container to the byte-exact `PairMap<K, V>` twin so
+  duplicate captured keys round-trip verbatim.
+
+:::warning Marker-slot trap
+The directives must trail the **whole entry** (after the `V` type), not the `*` occurrence marker's
+own comment slot. A directive glued to the marker —
+
+```cddl
+metadata = {
+  1: uint,
+  *  ; @name extra
+  uint => any
+}
+```
+
+— is **silently not honored** (the field stays `rest`): cddl-codegen ignores the occurrence marker's
+comment slot everywhere, so the rest-row reads only the entry-trailing slot.
+:::
+
+A rule-position directive (on the same line as the closing `}`) is read at **rule** level, not as the
+rest row's — the two slots are disjoint, so neither steals from the other.
+
 ## @custom_json
 
 ```cddl
