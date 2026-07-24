@@ -1129,6 +1129,61 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   adversarial-fixture family enumerating every output-text-scanning decision point (the
   bounded-exception diagnostics list in AGENTS.md is the seed inventory) with one residue fixture
   each, rather than trusting each new scan to remember the rule.
+- **A directive-dependent emitter edge case whose triggering SHAPE is in no hand fixture is
+  invisible to every combinatorial layer — the recombination fuzzer skips ALL `dsl.*` features
+  wholesale ("DSL comment in root RHS; not a clean reusable expression"), so no fuzz composition
+  ever carries a directive.** Proven instance (probe-caught in review, then independently
+  confirmed by reading — never a gate failure): the `definite_info` additive-length combine
+  emitted a malformed `"{n} + "` expression when the conditional expression is EMPTY, a branch
+  reachable only by an all-mandatory-fields open struct-map whose rest row is `@ignore`
+  (tolerate-and-drop: no optionals, no captured-rest term) — no pre-existing spec could reach it,
+  and only the delivery's own hand-enumerated fixtures (`details_map` in the
+  `open_struct_map_ignore` snapshot, `baz` in the compiled e2e) happened to cover the degenerate
+  combination. The standing discipline that catches the SHIPPED form is exactly that
+  hand-enumeration: a new directive's spec must fixture the degenerate shape combos
+  (all-mandatory, zero-field, empty-collection) alongside the happy paths — reviewers should
+  demand the degenerate rows in the fixture list. Mechanical layer on the SECOND
+  fuzzer-invisible directive-emitter instance: a directive AXIS for the recombination fuzzer —
+  instead of skipping `dsl.*` ingredients, mint directive-BEARING variants of the applicable
+  shape templates (rest-row `@ignore`/`@duplicates`/`@name` on map-record templates, rule-level
+  `@duplicates` on collection templates), letting the existing generation sweep + layer-2
+  compile gates see directive × shape products no hand fixture enumerates.
+- **A hand-enumerated ban-pattern list whose AUTHORITY lives in gitignored plan files lags the
+  id scheme it bans — no in-repo lockstep is possible (the tracked side cannot read the
+  authority in CI), so the list drifts one delivery-phase behind by construction.** Proven
+  instance (read-caught in orchestrator review; the tier stayed green): `lint_doc_citations`'s
+  ephemeral-reference patterns were spelled for one phase's ids (`PROBE-B<n>`, `ruling R<n>`) —
+  the next phase's spellings (`PROBE-C<n>`, the `C-R<n>` ruling form) passed the gate, and the
+  tree stayed clean only because an implementing agent self-policed its own citations out in a
+  follow-up commit. Fixed by construction where possible: the patterns are now phase-GENERIC
+  (`PROBE-[A-Z][0-9]`, `[A-Z]-R[0-9]`, `[a-z][0-9]*-spec`), so letter-roll drift is dead.
+  Residual class: a genuinely NEW id FORM introduced by a future plan document (a spelling no
+  current regex family anticipates). Working rule meanwhile: authoring a new plan/spec document
+  that mints an id scheme adds that scheme's spelling to `EPHEMERAL_PATTERNS` (with canary) in
+  the same session, and delegation prompts keep repeating the self-contained-comments rule.
+  Mechanical layer on the SECOND uncaught-form instance: a local-only canary harvest — when the
+  gitignored plan directory EXISTS (developer checkouts; skipped cleanly in CI), scan its
+  `*-spec.md` files for id-like tokens (the probe-index/ruling tables are structured enough to
+  extract) and fail if any harvested id is matched by NO ephemeral pattern — lockstep with the
+  authority exactly where the authority is present.
+- **A catalog row's per-gate ledger obligations are enforced only while the row is ACTIVE, so a
+  pin→activate transition surfaces latent ledger gaps at a DISTANCE from the change that created
+  them.** Proven instance (a real full-tier failure, but far from its cause): the `dsl.ignore`
+  feature row and `dsl_ignore.ignored` corpus row shipped PINNED (decode vectors deferred to the
+  close-out mint), so neither replay gate ever built their specs — the missing
+  `PRESERVE_SKIP` entries (the `@ignore`-under-preserve rejection is BY DESIGN, needing the
+  designed-rejection skip) stayed invisible through both WPs' green local tiers and failed the
+  tier only when the close-out mint activated the rows. The annotation ALREADY encoded the fact
+  the whole time (`emission.preserve.status = "unsupported"` landed with the feature row).
+  Mechanical layer, cheap and one-directional (build on the second instance of any
+  pin-masked-obligation flavor, or fold into the next replay-gate touch): a static cross-check
+  in both replay gates — every catalog row (ACTIVE or PINNED) whose matrix annotation says
+  `emission.preserve.status = "unsupported"` must have a `PRESERVE_SKIP` entry, checked without
+  generating anything, so the gap fires at the WP commit that adds the row, not at activation.
+  (Full derivation of `PRESERVE_SKIP` from the annotation verdict is NOT possible: the float
+  rows' annotations say preserve-SUPPORTED — the matrix probe's bare-alias shape misses the
+  float deserialize stub that the replay's example spec hits — so the hand ledger keeps owning
+  the reasons; the cross-check is subset-direction only.)
 
 ## Deferred features (build when a real consumer needs them)
 
