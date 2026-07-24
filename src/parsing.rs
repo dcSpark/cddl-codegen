@@ -3536,19 +3536,10 @@ fn recognize_rest_row(
         ));
         return (None, Some(candidate));
     }
-    // Temporary front door (lifted when the wasm rest surface lands), so no half-built surface
-    // ships: the wasm surface (WP4) for open structs is not yet wired. Reject that flag up front with
-    // a message that names the supported generation and points forward. (The JSON surface — flattened
-    // rest JSON per ruling R7, with the write-side collision check and key-coercing read wrapper — IS
-    // wired now, so --json-serde-derives / --json-schema-export no longer reject here. The
-    // --preserve-encodings / --canonical-form fidelity path is likewise wired.)
-    if cli.wasm {
-        types.record_rejection(format!(
-            "rule `{src}`: the wasm surface for open struct-maps (a `* k => v` rest row) is not yet \
-             wired (rest accessors land in a later work package). Generate without --wasm for now."
-        ));
-        return (None, Some(candidate));
-    }
+    // Every generated surface for open struct-maps is now wired: the JSON flattened rest surface
+    // (ruling R7, with the write-side collision check and key-coercing read wrapper), the
+    // --preserve-encodings / --canonical-form fidelity path, and the wasm rest accessor (a getter
+    // returning the captured entries as the wasm map wrapper). No front door remains here.
     // Read entry-level directives (`@name`, `@duplicates`) from the rest row's own trailing slot —
     // NOT rule-position handling (the rest row is by definition the map's last entry, whose slot the
     // cddl parser also binds a rule's trailing comment to; a map/record rule reads its own metadata

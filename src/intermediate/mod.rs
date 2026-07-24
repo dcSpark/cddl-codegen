@@ -708,6 +708,15 @@ impl<'a> IntermediateTypes<'a> {
                 if ConceptualRustType::name_for_wasm_map(domain, range).to_string() == map_ident)
                 && rs.config().duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
         })
+        // An `@duplicates preserve` open struct-map rest row lowers its rest field to the `PairMap`
+        // twin (like a preserve TABLE), so its map shape must mint the PairMap-backed wasm wrapper
+        // too — the rest row carries the policy on the RestRow, not on a Table variant.
+        || self.rust_structs.values().any(|rs| {
+            matches!(rs.variant(), RustStructType::Record(record)
+                if record.rest.as_ref().is_some_and(|r|
+                    r.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+                    && ConceptualRustType::name_for_wasm_map(&r.domain, &r.range).to_string() == map_ident))
+        })
     }
 
     /// The wasm wrapper the code emitter (`RustType::for_wasm_member`) names for a collection

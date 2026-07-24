@@ -1389,6 +1389,29 @@ pub(super) fn codegen_struct(
                 wrapper.s_impl.push_fn(setter);
             }
         }
+        // Open struct-map rest row: a getter returning the captured entries as the wasm map wrapper
+        // (`MapKToV` / the `@duplicates preserve` PairMap-backed twin). Deliberately no `new()` arg
+        // and no setter — the rest defaults empty and rides the map wrapper's own mutation surface
+        // (matching the rust side, where `new()` excludes it). The wrapper class is minted in the
+        // wasm pass (`mint_wasm_wrapper_for_visited_type` for the rest map).
+        if let Some(rest) = &record.rest {
+            let rest_ty = rest_member_type(rest);
+            let mut getter = codegen::Function::new(&rest.field_name);
+            getter
+                .arg_ref_self()
+                .ret(rest_ty.for_wasm_return(types))
+                .vis("pub")
+                .doc(
+                    "The captured open-map entries whose keys are not declared fields (CDDL \
+                     `* k => v` rest row), as the wasm map wrapper.",
+                )
+                .line(rest_ty.to_wasm_boundary(
+                    types,
+                    &format!("self.0.{}", rest.field_name),
+                    false,
+                ));
+            wrapper.s_impl.push_fn(getter);
+        }
         if new_can_fail {
             wasm_new.line(format!(
                 "{}::new({}).map(Into::into).map_err(Into::into)",

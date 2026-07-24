@@ -238,6 +238,15 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
             ],
         ),
     ),
+    // The wasm rest surface (Phase B WP4): each open struct's wasm wrapper gains a `rest` getter
+    // returning the captured entries as the minted map wrapper (`MapKToV` / the `@duplicates
+    // preserve` PairMap-backed twin). `--wasm` is the default, so this profile pins the emitted wasm
+    // getters + minted rest-map wrappers.
+    (
+        "open_struct_map_wasm",
+        "tests/open-struct-map/input.cddl",
+        ("wasm", &[]),
+    ),
     // directory input — exercises the multi-file scope/module codegen path.
     ("multifile", "tests/multifile/inputs", ("default", &[])),
     // extern (`_CDDL_CODEGEN_EXTERN_TYPE_`) and raw-bytes (`_CDDL_CODEGEN_RAW_BYTES_TYPE_`)
