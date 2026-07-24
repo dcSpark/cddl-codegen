@@ -6355,6 +6355,7 @@ fn emit_tests_open_struct_ignore_execute() {
 ///   * the `@ignore` tail gets the SAME ordinary `roundtrip_<type>` treatment as any closed struct with
 ///     NO ignore-specific gating — its minted value goes through `new()` (declared prefix only), so it
 ///     carries no unknown trailing elements and byte-identity holds trivially.
+///
 /// Generation is non-preserve because `@ignore` is rejected under `--preserve-encodings`; capture's
 /// preserve fidelity mint is exercised separately by the open struct-map rest execute gate.
 #[test]
