@@ -125,6 +125,22 @@ note = "A bounded occurrence on a type-domain arrow map entry: `{ 2*3 tstr => ui
 example = "m = { 2*3 tstr => uint }"
 
 [[contain]]
+id = "contain.occurrence-target.memberkey.type1.open_struct"
+role = "role.occurrence-target"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "The open struct-map: a `*`-occurrence type-domain arrow entry (`* K => V`) that is the FINAL row of a map with >=1 fixed key before it (`{ 1: uint, * uint => any }`). Home here because the varying axis is the occurrence MARKER on the arrow rest row (the `*` targets `uint => any`); its count-permitting sibling `contain.occurrence-target.memberkey.type1.open_struct_plus` pins the rejected `+` boundary. cddl-codegen recognizes the trailing `* K => V` after fixed keys as a REST ROW and CAPTURES unknown entries into a `rest` field — container by mode: BTreeMap non-preserve, OrderedHashMap under --preserve-encodings (byte-exact incl. wire-order interleave + canonical merge), Vec<(K, V)> PairMap twin under `@duplicates preserve` — instead of table-detecting to a plain table or rejecting the mixed struct+table shape (the old `mixed struct+table maps unsupported` posture is retired). v1 key domains are uint/text/any (the range type is unrestricted); flattened JSON, a read-only wasm `rest()` accessor, and opaque extern projection all land. Distinct from the plain table `{ * K => V }` (feature type2.map, table-style) which carries no fixed keys: the composition (>=1 fixed key + trailing rest row) is what this cell pins, and it FLIPS the plain-table `+` verdict at the sibling (a `+` lone table is a NonEmptyMap; a `+` rest row is rejected). Doc: output_format.mdx section 'Open struct-maps (rest rows)'. RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 '=>'."
+example = "m = { 1: uint, * uint => any }"
+
+[[contain]]
+id = "contain.occurrence-target.memberkey.type1.open_struct_plus"
+role = "role.occurrence-target"
+feature = "memberkey.type1"
+spec = "allowed"
+note = "The count-permitting boundary of the open struct-map: a `+` (one-or-more) occurrence on the type-domain arrow REST row after fixed keys (`{ 1: uint, + uint => any }`). Spec-legal (RFC8610 §3.2 `+`, §3.5.2 admits a type1 key), but cddl-codegen REJECTS it gracefully — open-struct capture is unbounded-`*`-only, so `+`, `n*m`, and `?` on a rest row are refused with a message naming the supported `* k => v` spelling — making this a reject fixture (tests/matrix_reject/), not a decode-catalog row. Contrast the sibling `contain.occurrence-target.memberkey.type1.plus_table` (`{ + tstr => uint }`, no fixed key), where the SAME `+` marker IS supported as a NonEmptyMap: the composition (a `+` REST row after fixed keys vs a `+` on a lone table) flips the verdict — the (feature x context) distinction this matrix exists to record. Pinned loud by `open_struct_map_rest_row_front_end` (robustness_tests.rs). RFC8610 §3.2, §3.5.2; ABNF grpent [occur] ... memberkey type1 '=>'."
+example = "m = { 1: uint, + uint => any }"
+
+[[contain]]
 id = "contain.occurrence-target.grpent.member.zero_array"
 role = "role.occurrence-target"
 feature = "grpent.member"
