@@ -1,0 +1,16 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+[package]
+name = "cddl-lib-json-schema-gen"
+version = "0.0.1"
+edition = "2024"
+
+[package.metadata.cddl-codegen]
+generated-with = "0.1.0"
+
+[dependencies]
+serde_json = "1.0.57"
+schemars = "1.2.1"
+cddl-lib = { path = "../../rust" }

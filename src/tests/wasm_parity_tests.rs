@@ -342,6 +342,13 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
          the getter), so there is no rest-specific wasm surface to differential here",
     ),
     (
+        "open-array",
+        "loose-CBOR open array (rest tail) snapshot fixture: its snapshot profiles generate \
+         --wasm=false (rust + json surfaces). Open-array capture presents a closed-struct wasm \
+         surface for now (no tail accessor — a later work package adds the getter), so there is no \
+         rest-specific wasm surface to differential here",
+    ),
+    (
         "open-struct-map-preserve-e2e",
         "loose-CBOR open struct-map PRESERVE fidelity e2e fixture: its integration gate generates \
          --preserve-encodings --canonical-form --wasm=false (CBOR fidelity, not the wasm boundary). \
