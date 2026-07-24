@@ -494,6 +494,24 @@ mod preserve {
     }
 
     #[test]
+    fn value_eq_ignores_encoding_under_representational_eq() {
+        // The dup-check comparison an `any`-domain rest row / table needs under preserve (§10.8):
+        // representational `Eq` distinguishes wire widths (0x01 != 0x1801, pinned above), but
+        // `value_eq` ignores them (both uint 1 ARE value-equal), so wire keys 0x01 and 0x1801 both
+        // reject as duplicates. Distinct values stay unequal, and it reaches recursively (a map with
+        // a non-minimally-encoded inner key is value-equal to its minimal twin).
+        let (a, _) = parse(&super::hex_to_bytes("01")); // 1
+        let (b, _) = parse(&super::hex_to_bytes("1801")); // 1 (two-byte)
+        let (c, _) = parse(&super::hex_to_bytes("1802")); // 2
+        assert!(a.value_eq(&b), "value_eq ignores wire width (0x01 == 0x1801)");
+        assert!(!a.value_eq(&c), "value_eq distinguishes distinct values");
+        // recursive: {10: 0x1801} value-equals {10: 0x01}
+        let (m1, _) = parse(&super::hex_to_bytes("a10a1801")); // {10: 1(two-byte)}
+        let (m2, _) = parse(&super::hex_to_bytes("a10a01")); // {10: 1}
+        assert!(m1.value_eq(&m2), "value_eq recurses into map values");
+    }
+
+    #[test]
     fn depth_roundtrip_no_crash() {
         // Recursion works at a stack-safe depth, unguarded (the guard-limit-exceeded path is the
         // `depth_guard` shim's job).
