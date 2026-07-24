@@ -418,7 +418,7 @@ Use it for view types that must accept forward-compatible data without retaining
     — a positional `Vec` tail has no keys for a duplicate policy to govern.)
   - **`@name`** on the same entry: there is no capture field to rename.
 - **Typing is still enforced.** `* uint => any ; @ignore` still errors on a text key (the spec said
-  uint labels), and `[uint, * text ; @ignore]` still errors on a non-text trailing element; full
+  uint labels), and an ignored `* text` tail still errors on a non-text trailing element; full
   looseness is spelled `* any => any` / `* any`. For a map, a declared key wins over the rest row, so
   a fixed key whose wire value mismatches its type errors rather than falling through to the drop arm.
 
