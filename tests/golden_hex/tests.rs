@@ -288,4 +288,54 @@ mod golden_hex {
         open_map_rest(&[(7, 9), (8, 10)]),
         &[0xa3, 0x01, 0x05, 0x07, 0x09, 0x08, 0x0a]
     );
+
+    // ---- open struct-map, @ignore (tolerate-and-drop) flavor, default flags ----
+    // These are NOT `kat!`s: the `kat!` macro asserts an identity round-trip, but an `@ignore` type
+    // DROPS unknown entries, so decoding wire that carries them does not round-trip to itself — it
+    // round-trips to the declared-only bytes. Every byte string is hand-derived from the CBOR
+    // grammar, spec-anchored, independent of the generator.
+    //
+    // decode-with-unknowns → re-serialize → declared-only golden bytes: the wire {1: 5, 7: 9}
+    // (count 2, declared key 1 plus one unknown uint entry 7) decodes, drops the unknown entry, and
+    // re-emits the closed one-entry map {1: 5} (count 1).
+    #[test]
+    fn ignore_map_drops_unknown_on_reencode() {
+        let wire: &[u8] = &[0xa2, 0x01, 0x05, 0x07, 0x09];
+        let declared_only: &[u8] = &[0xa1, 0x01, 0x05];
+        let decoded = IgnoreMap::from_cbor_bytes(wire).expect("wire with an unknown entry must decode");
+        assert_eq!(
+            decoded.to_cbor_bytes(),
+            declared_only,
+            "@ignore must DROP unknown entries and re-emit declared-only bytes"
+        );
+    }
+
+    // Two unknown entries {1: 5, 7: 9, 8: 10} all drop → declared-only {1: 5}; the stream advances
+    // correctly across both dropped entries (the typed `uint` range rejects a non-uint value, so the
+    // nested-container drop-through is pinned by the `* uint => any` e2e fixture, not here).
+    #[test]
+    fn ignore_map_drops_multiple_unknown() {
+        let wire: &[u8] = &[0xa3, 0x01, 0x05, 0x07, 0x09, 0x08, 0x0a];
+        let declared_only: &[u8] = &[0xa1, 0x01, 0x05];
+        let decoded = IgnoreMap::from_cbor_bytes(wire).expect("wire with unknown entries must decode");
+        assert_eq!(decoded.to_cbor_bytes(), declared_only);
+    }
+
+    // empty-rest identity: wire with NO unknown entries is byte-identical to the closed one-entry
+    // map on both directions — decode→re-encode is the input, and constructing declared-only encodes
+    // to the same bytes. Adding an `@ignore` rest row to a spec stays wire-compatible for clean data.
+    #[test]
+    fn ignore_map_empty_rest_identity() {
+        let closed: &[u8] = &[0xa1, 0x01, 0x05];
+        assert_eq!(
+            IgnoreMap::from_cbor_bytes(closed).unwrap().to_cbor_bytes(),
+            closed,
+            "empty-rest @ignore decode must round-trip byte-identically to the closed map"
+        );
+        assert_eq!(
+            IgnoreMap::new(5).to_cbor_bytes(),
+            closed,
+            "an @ignore struct encodes exactly the closed one-entry map"
+        );
+    }
 }
