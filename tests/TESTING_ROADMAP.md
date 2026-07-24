@@ -43,7 +43,13 @@ typed-deserialized and dropped, so the type is a closed struct (no `rest` field,
 serialize, closed JSON/wasm surface) with a deliberate-lossiness rustdoc, rejected under
 `--preserve-encodings`; `@ignore` combined with `--preserve-encodings`/`@duplicates`/`@name` or
 placed off a rest row is a graceful rejection — test map in `tests/README.md` § "Open struct-maps —
-the `@ignore` (tolerate-and-drop) flavor". The permanent exclusions around it stay: `#` (`Type2::Any`), `cbor-any`, `@newtype` and
+the `@ignore` (tolerate-and-drop) flavor". Open arrays followed the same shape: a final-position
+`* t` tail after ≥1 fixed member captures the trailing elements into a `rest` `Vec` in every mode
+(byte-exact per-element encoding sidecars under `--preserve-encodings`, canonical position-order
+normalization, an ordinary array-typed JSON field, a wasm list getter), with the `@ignore` drop
+flavor alongside it and the v1 boundaries (`+`/bounded/non-final tails, group-choice-arm/plain-group
+placements, fixed-value tail elements) held as graceful rejections — test map in `tests/README.md`
+§ "Open arrays (rest tails)". The permanent exclusions around it stay: `#` (`Type2::Any`), `cbor-any`, `@newtype` and
 control operators on `any`, and non-last bare `any` choice arms (forced-backtracking catch-all unions
 put the catch-all last, so an earlier one is unreachable dead code) — see the `any` type-choice entry
 in `cddl-matrix/ROADMAP.md`. One deferred coverage item remains: the wasm emit-tests minter has no

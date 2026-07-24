@@ -880,6 +880,45 @@ rejected under `--preserve-encodings`). User docs: `docs/docs/comment_dsl.mdx` �
   `cargo test` runs them green (the mint goes through `new()`, so a minted value carries no unknown
   entries and byte-identity is trivial).
 
+### Open arrays (rest tails) — test map (loose-CBOR Phase D)
+
+The trailing-`* t`-after-fixed-members capture feature (the array analog of the open struct-map rest
+row; user docs: `docs/docs/output_format.mdx` § "Open arrays", `docs/docs/comment_dsl.mdx` §
+"@ignore") is verified across the layers:
+
+- **Front end + guards** — `robustness_tests::open_array_front_end`: recognition of a final-position
+  `* t` as a rest tail, every graceful-rejection boundary (non-final / multiple / bounded / `+` /
+  group-choice-arm / plain-group tails, fixed-value tail elements), the entry-vs-rule slot-direction
+  fixtures (entry-level `@ignore`/`@name` honored, rule-position `@ignore` on an open-array rule
+  rejected), and the marker-slot trap. The supported-vs-rejected polarity flips (star-final flips to
+  Ok; `+`/bounded/leading-`*` stay Err) live in
+  `robustness_tests::occurrence_on_array_record_field_rejects_gracefully`.
+- **Value-level e2e** — `tests/open-array-e2e` (`integration_tests::open_array_e2e`, compiled,
+  non-preserve): definite and indefinite arrays with extra elements (incl. a nested-container
+  element), capture byte/value round-trip, typed-tail wrong-type errors, an optional member + a
+  type-distinct tail, `@ignore` re-serializing the declared prefix only, and stream position (an open
+  array nested in an outer array — the tail loop stops at its end and leaves the sibling).
+- **Preserve/canonical e2e** — `tests/open-array-preserve-e2e`
+  (`integration_tests::open_array_preserve_e2e`, compiled): byte-exact tail elements at non-canonical
+  widths via the positional `{field}_elem_encodings` sidecar, the self-carried `any` tail, empty-tail
+  ≡ closed bytes, canonical per-element normalization in position order, and the nested-stream-position
+  vector.
+- **JSON e2e** — `tests/open-array-json-e2e` (`integration_tests::open_array_json_e2e`, compiled):
+  the tail as an ordinary array-typed field (skip-if-empty write, default-on-read, empty-tail ≡
+  closed JSON), and an `any`-element tail rendering natural-fallible (a non-injective node errors).
+- **Snapshots** — `open_array_default` / `open_array_json` / `open_array_wasm` profiles over
+  `tests/open-array` (typed/any/`@ignore`/`@name`d tails + the degenerate shape combos), plus
+  `open_array_preserve` over `tests/open-array-preserve-e2e` (the capture-only preserve input). The
+  new `tests/*/input.cddl` dirs are registered on the wasm-parity sweep (the getter surface is
+  validated by the `open-array` snapshot rows).
+- **Wire KATs** — the `open_list` (capture) and `ignore_list` (`@ignore`, plain `#[test]`s) rules in
+  `tests/golden_hex` (default flags), and `open_list` in `tests/golden_hex_preserve` (a non-minimal
+  tail element re-emitting verbatim through the positional sidecar).
+- **emit-tests** — the `emit_tests_open_array_execute` gate (see the emit-tests section above): a
+  typed tail, an `any` tail, and an `@ignore` tail each get an ordinary `roundtrip_<type>` (capture
+  pushes a trailing element through the generated `.rest` `Vec` API; the `@ignore` tail with no
+  gating), and `cargo test` runs them green.
+
 ### Per-rule duplicates policy (`@duplicates`) — test map
 
 The **`@duplicates reject` flavor** (set/array collections — user doc:
