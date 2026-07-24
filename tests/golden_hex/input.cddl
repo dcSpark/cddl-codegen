@@ -46,3 +46,13 @@ big_nint = [b: bignint]
 ; `* uint => uint` captures unknown map entries into `.rest`. The wire is the declared field
 ; followed by the captured entries in key order; empty rest ≡ the closed one-entry map.
 open_map = { 1: uint, * uint => uint }
+
+; the `@ignore` (tolerate-and-drop) flavor of the same shape: unknown map entries are typed-
+; deserialized and DROPPED, so re-serialize emits ONLY the declared field. Decoding wire that
+; carries unknown entries therefore does NOT round-trip to itself — it round-trips to the
+; declared-only bytes (the KATs assert exactly that lossy contract). Non-preserve only. The
+; `; @ignore` sits on its own line before `}` so the comment does not swallow the brace.
+ignore_map = {
+  1: uint,
+  * uint => uint ; @ignore
+}
