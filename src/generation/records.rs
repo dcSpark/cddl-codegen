@@ -592,6 +592,145 @@ fn rest_encoding_fields(
     (key_encs, value_encs)
 }
 
+/// Loose-CBOR Phase B WP4 (ruling R7): the rest field's FLATTENED JSON surface. Emits, into the
+/// struct's module, the per-struct `serialize_with`/`deserialize_with` free functions that steer the
+/// rest field's serde derive so its captured entries render at the SAME JSON object level as the
+/// declared fields (serde `flatten`), and reads them back symmetrically. The write-side collision
+/// check needs the DECLARED JSON names — codegen-known but not visible to a generic adapter — so the
+/// serialize fn closes over them as a literal slice and delegates the mechanics to the static
+/// `serialize_flattened_rest` / `read_flattened_rest_pairs` helpers (composition, not a parallel
+/// path: values ride WP1's natural walk via `NaturalAnyCborSer`/`De`). Returns the field-attribute
+/// lines to attach to the rest field; a no-op (empty) when neither json flag is on.
+fn emit_rest_flatten_json(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    name: &RustIdent,
+    record: &RustRecord,
+    rest: &RestRow,
+    cli: &Cli,
+) -> Vec<String> {
+    if !(cli.json_serde_derives || cli.json_schema_export) {
+        return Vec::new();
+    }
+    // The `any`-domain key/value views live in `any_cbor`; the domain-agnostic flatten helpers live
+    // in the `any`-free `open_struct_rest_json` module (so a fully-typed rest row needs no AnyCbor).
+    let base = format!("{}::any_cbor", cli.common_import_rust());
+    let flatten = format!("{}::open_struct_rest_json", cli.common_import_rust());
+    let container_ty = rest_member_type(rest).for_rust_member(types, false, cli);
+    let range_is_any = matches!(
+        rest.range.conceptual_type.resolve_alias_shallow(),
+        ConceptualRustType::Any
+    );
+    // snake_case the owner name so the free fns are snake (no `non_snake_case` warning) and unique
+    // (struct idents are unique; `convert_to_snake_case` is injective enough here as the field name
+    // and fixed suffixes disambiguate).
+    let owner_snake = crate::utils::convert_to_snake_case(&name.to_string());
+    let ser_fn = format!("{}_{}_flatten_serialize", owner_snake, rest.field_name);
+    let deser_fn = format!("{}_{}_flatten_deserialize", owner_snake, rest.field_name);
+
+    let mut annotations = Vec::new();
+    if cli.json_serde_derives {
+        annotations.push("#[serde(flatten)]".to_owned());
+        annotations.push(format!(
+            "#[serde(serialize_with = \"{ser_fn}\", deserialize_with = \"{deser_fn}\")]"
+        ));
+    }
+    if cli.json_schema_export {
+        // The rest field's schema is the honest open-map `additionalProperties` (ruling R7): for an
+        // `any` range it is the permissive "any JSON value" (json2ts → a `{ [k: string]: unknown }`
+        // index signature intersected with the declared `properties`); for a TYPED range schemars'
+        // native flatten-map handling already yields `additionalProperties: <range schema>`, so no
+        // `schema_with` override is emitted there.
+        if range_is_any {
+            annotations.push(format!(
+                "#[schemars(schema_with = \"{base}::natural_any_cbor_map_schema\")]"
+            ));
+        }
+    }
+    // Nothing more to emit unless the serde derives (not just the schema) are on — the
+    // serialize_with/deserialize_with functions only exist under --json-serde-derives.
+    if !cli.json_serde_derives {
+        return annotations;
+    }
+
+    // Declared JSON member names (reserved on the write side): every field that materializes a struct
+    // member — i.e. NOT a mandatory fixed value (which carries zero info and emits no JSON key).
+    let reserved: Vec<String> = record
+        .fields
+        .iter()
+        .filter(|f| !f.rust_type.is_fixed_value() || f.optional)
+        .map(|f| format!("{:?}", f.name.to_string()))
+        .collect();
+    let reserved_lit = format!("&[{}]", reserved.join(", "));
+
+    let field = &rest.field_name;
+    // Per-domain key <-> string (ruling R3 write, R4 read).
+    let (key_closure, key_coerce) = match RestKeyDomain::of(rest) {
+        // A typed-domain key stringify never fails, so the error type is unconstrained by the body —
+        // pin it (`Infallible: Display`) so the generic helper's `E: Display` bound resolves.
+        RestKeyDomain::Uint => (
+            "|k: &u64| Ok::<String, std::convert::Infallible>(k.to_string())".to_owned(),
+            format!(
+                "let k = ks.parse::<u64>().map_err(|_| serde::de::Error::custom(\
+                 format!(\"open struct-map rest key {{ks:?}} is not a valid uint\")))?;"
+            ),
+        ),
+        RestKeyDomain::Text => (
+            "|k: &String| Ok::<String, std::convert::Infallible>(k.clone())".to_owned(),
+            "let k = ks;".to_owned(),
+        ),
+        RestKeyDomain::Any => (
+            format!("{base}::any_cbor_natural_key_string"),
+            format!("let k = {base}::any_cbor_natural_key_from_string(&ks);"),
+        ),
+    };
+    // Per-range value view: an `any` range renders NATURALLY (WP1 walk); a typed range uses its own
+    // serde (which, if it transitively contains `any`, is itself steered by the natural adapters).
+    let (value_wrap, value_de_ty, value_unwrap) = if range_is_any {
+        (
+            format!("{base}::NaturalAnyCborSer(v)"),
+            format!("{base}::NaturalAnyCborDe"),
+            "v.0".to_owned(),
+        )
+    } else {
+        (
+            "v".to_owned(),
+            rest.range.for_rust_member(types, false, cli),
+            "v".to_owned(),
+        )
+    };
+
+    let functions = format!(
+        "fn {ser_fn}<S: serde::Serializer>(\n\
+         \x20   {field}: &{container_ty},\n\
+         \x20   serializer: S,\n\
+         ) -> Result<S::Ok, S::Error> {{\n\
+         \x20   {flatten}::serialize_flattened_rest(\n\
+         \x20       {reserved_lit},\n\
+         \x20       {key_closure},\n\
+         \x20       {field}.iter().map(|(k, v)| (k, {value_wrap})),\n\
+         \x20       serializer,\n\
+         \x20   )\n\
+         }}\n\
+         \n\
+         fn {deser_fn}<'de, D: serde::Deserializer<'de>>(\n\
+         \x20   deserializer: D,\n\
+         ) -> Result<{container_ty}, D::Error> {{\n\
+         \x20   let pairs: Vec<(String, {value_de_ty})> =\n\
+         \x20       {flatten}::read_flattened_rest_pairs(deserializer)?;\n\
+         \x20   pairs\n\
+         \x20       .into_iter()\n\
+         \x20       .map(|(ks, v)| {{\n\
+         \x20           {key_coerce}\n\
+         \x20           Ok((k, {value_unwrap}))\n\
+         \x20       }})\n\
+         \x20       .collect()\n\
+         }}\n"
+    );
+    gen_scope.rust(types, name).raw(&functions);
+    annotations
+}
+
 /// Emit a rest capture into `block`: account the entry in `read_len`, bind the key (`rest_key`) —
 /// either from `key_val_expr` (already read by the record loop's uint/text peek — for an `any`
 /// domain this is the reconstructed `AnyCbor`, carrying the peeked wire width under preserve) or by
@@ -1431,6 +1570,13 @@ pub(super) fn codegen_struct(
              Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this \
              a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.",
         );
+        // Loose-CBOR Phase B WP4 (R7): the rest field's FLATTENED JSON surface. Skipped when the
+        // struct owns a custom json impl (no derive to steer) — matches the declared-field handling.
+        if !config.custom_json {
+            for annotation in emit_rest_flatten_json(gen_scope, types, name, record, rest, cli) {
+                rest_field.annotation(annotation);
+            }
+        }
         native_struct.push_field(rest_field);
         native_new_block.line(format!(
             "{}: {}::new(),",

@@ -3536,20 +3536,12 @@ fn recognize_rest_row(
         ));
         return (None, Some(candidate));
     }
-    // Temporary front doors (lifted in later work packages), so no half-built surface ships:
-    // the JSON/wasm surfaces (WP4) for open structs are not yet wired. Reject those flag
-    // combinations up front with a message that names the supported generation and points forward.
-    // (The --preserve-encodings / --canonical-form fidelity path IS wired — orig_deser_order
-    // interleave, per-entry encoding sidecars for concrete domains, self-carried `any`, and the
-    // runtime canonical key merge — so preserve open structs are no longer rejected here.)
-    if cli.json_serde_derives || cli.json_schema_export {
-        types.record_rejection(format!(
-            "rule `{src}`: the JSON surface for open struct-maps (a `* k => v` rest row) is not yet \
-             wired (flattened rest JSON lands in a later work package). Generate without \
-             --json-serde-derives / --json-schema-export for now."
-        ));
-        return (None, Some(candidate));
-    }
+    // Temporary front door (lifted when the wasm rest surface lands), so no half-built surface
+    // ships: the wasm surface (WP4) for open structs is not yet wired. Reject that flag up front with
+    // a message that names the supported generation and points forward. (The JSON surface — flattened
+    // rest JSON per ruling R7, with the write-side collision check and key-coercing read wrapper — IS
+    // wired now, so --json-serde-derives / --json-schema-export no longer reject here. The
+    // --preserve-encodings / --canonical-form fidelity path is likewise wired.)
     if cli.wasm {
         types.record_rejection(format!(
             "rule `{src}`: the wasm surface for open struct-maps (a `* k => v` rest row) is not yet \

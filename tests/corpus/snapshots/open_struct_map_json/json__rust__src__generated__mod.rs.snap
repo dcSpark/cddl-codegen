@@ -1,0 +1,344 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+pub mod any_cbor;
+pub mod error;
+mod extern_interface_check;
+pub mod open_struct_rest_json;
+pub mod pair_map;
+fn any_rest_rest_flatten_serialize<S: serde::Serializer>(
+    rest: &BTreeMap<crate::generated::any_cbor::AnyCbor, crate::generated::any_cbor::AnyCbor>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    crate::generated::open_struct_rest_json::serialize_flattened_rest(
+        &["key_1"],
+        crate::generated::any_cbor::any_cbor_natural_key_string,
+        rest.iter()
+            .map(|(k, v)| (k, crate::generated::any_cbor::NaturalAnyCborSer(v))),
+        serializer,
+    )
+}
+
+fn any_rest_rest_flatten_deserialize<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<
+    BTreeMap<crate::generated::any_cbor::AnyCbor, crate::generated::any_cbor::AnyCbor>,
+    D::Error,
+> {
+    let pairs: Vec<(String, crate::generated::any_cbor::NaturalAnyCborDe)> =
+        crate::generated::open_struct_rest_json::read_flattened_rest_pairs(deserializer)?;
+    pairs
+        .into_iter()
+        .map(|(ks, v)| {
+            let k = crate::generated::any_cbor::any_cbor_natural_key_from_string(&ks);
+            Ok((k, v.0))
+        })
+        .collect()
+}
+
+fn dup_rest_rest_flatten_serialize<S: serde::Serializer>(
+    rest: &PairMap<u64, String>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    crate::generated::open_struct_rest_json::serialize_flattened_rest(
+        &["key_7"],
+        |k: &u64| Ok::<String, std::convert::Infallible>(k.to_string()),
+        rest.iter().map(|(k, v)| (k, v)),
+        serializer,
+    )
+}
+
+fn dup_rest_rest_flatten_deserialize<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<PairMap<u64, String>, D::Error> {
+    let pairs: Vec<(String, String)> =
+        crate::generated::open_struct_rest_json::read_flattened_rest_pairs(deserializer)?;
+    pairs
+        .into_iter()
+        .map(|(ks, v)| {
+            let k = ks.parse::<u64>().map_err(|_| {
+                serde::de::Error::custom(format!(
+                    "open struct-map rest key {ks:?} is not a valid uint"
+                ))
+            })?;
+            Ok((k, v))
+        })
+        .collect()
+}
+
+fn opt_rest_rest_flatten_serialize<S: serde::Serializer>(
+    rest: &BTreeMap<u64, crate::generated::any_cbor::AnyCbor>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    crate::generated::open_struct_rest_json::serialize_flattened_rest(
+        &["key_3"],
+        |k: &u64| Ok::<String, std::convert::Infallible>(k.to_string()),
+        rest.iter()
+            .map(|(k, v)| (k, crate::generated::any_cbor::NaturalAnyCborSer(v))),
+        serializer,
+    )
+}
+
+fn opt_rest_rest_flatten_deserialize<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<BTreeMap<u64, crate::generated::any_cbor::AnyCbor>, D::Error> {
+    let pairs: Vec<(String, crate::generated::any_cbor::NaturalAnyCborDe)> =
+        crate::generated::open_struct_rest_json::read_flattened_rest_pairs(deserializer)?;
+    pairs
+        .into_iter()
+        .map(|(ks, v)| {
+            let k = ks.parse::<u64>().map_err(|_| {
+                serde::de::Error::custom(format!(
+                    "open struct-map rest key {ks:?} is not a valid uint"
+                ))
+            })?;
+            Ok((k, v.0))
+        })
+        .collect()
+}
+
+fn renamed_rest_extra_flatten_serialize<S: serde::Serializer>(
+    extra: &BTreeMap<u64, crate::generated::any_cbor::AnyCbor>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    crate::generated::open_struct_rest_json::serialize_flattened_rest(
+        &["key_1"],
+        |k: &u64| Ok::<String, std::convert::Infallible>(k.to_string()),
+        extra
+            .iter()
+            .map(|(k, v)| (k, crate::generated::any_cbor::NaturalAnyCborSer(v))),
+        serializer,
+    )
+}
+
+fn renamed_rest_extra_flatten_deserialize<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<BTreeMap<u64, crate::generated::any_cbor::AnyCbor>, D::Error> {
+    let pairs: Vec<(String, crate::generated::any_cbor::NaturalAnyCborDe)> =
+        crate::generated::open_struct_rest_json::read_flattened_rest_pairs(deserializer)?;
+    pairs
+        .into_iter()
+        .map(|(ks, v)| {
+            let k = ks.parse::<u64>().map_err(|_| {
+                serde::de::Error::custom(format!(
+                    "open struct-map rest key {ks:?} is not a valid uint"
+                ))
+            })?;
+            Ok((k, v.0))
+        })
+        .collect()
+}
+
+fn typed_rest_rest_flatten_serialize<S: serde::Serializer>(
+    rest: &BTreeMap<u64, u64>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    crate::generated::open_struct_rest_json::serialize_flattened_rest(
+        &["key_1"],
+        |k: &u64| Ok::<String, std::convert::Infallible>(k.to_string()),
+        rest.iter().map(|(k, v)| (k, v)),
+        serializer,
+    )
+}
+
+fn typed_rest_rest_flatten_deserialize<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<BTreeMap<u64, u64>, D::Error> {
+    let pairs: Vec<(String, u64)> =
+        crate::generated::open_struct_rest_json::read_flattened_rest_pairs(deserializer)?;
+    pairs
+        .into_iter()
+        .map(|(ks, v)| {
+            let k = ks.parse::<u64>().map_err(|_| {
+                serde::de::Error::custom(format!(
+                    "open struct-map rest key {ks:?} is not a valid uint"
+                ))
+            })?;
+            Ok((k, v))
+        })
+        .collect()
+}
+
+fn uint_rest_rest_flatten_serialize<S: serde::Serializer>(
+    rest: &BTreeMap<u64, crate::generated::any_cbor::AnyCbor>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    crate::generated::open_struct_rest_json::serialize_flattened_rest(
+        &["key_1", "key_2"],
+        |k: &u64| Ok::<String, std::convert::Infallible>(k.to_string()),
+        rest.iter()
+            .map(|(k, v)| (k, crate::generated::any_cbor::NaturalAnyCborSer(v))),
+        serializer,
+    )
+}
+
+fn uint_rest_rest_flatten_deserialize<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<BTreeMap<u64, crate::generated::any_cbor::AnyCbor>, D::Error> {
+    let pairs: Vec<(String, crate::generated::any_cbor::NaturalAnyCborDe)> =
+        crate::generated::open_struct_rest_json::read_flattened_rest_pairs(deserializer)?;
+    pairs
+        .into_iter()
+        .map(|(ks, v)| {
+            let k = ks.parse::<u64>().map_err(|_| {
+                serde::de::Error::custom(format!(
+                    "open struct-map rest key {ks:?} is not a valid uint"
+                ))
+            })?;
+            Ok((k, v.0))
+        })
+        .collect()
+}
+
+pub mod serialization;
+
+use crate::generated::pair_map::PairMap;
+use std::collections::BTreeMap;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct AnyRest {
+    pub key_1: u64,
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
+    #[serde(flatten)]
+    #[serde(
+        serialize_with = "any_rest_rest_flatten_serialize",
+        deserialize_with = "any_rest_rest_flatten_deserialize"
+    )]
+    #[schemars(schema_with = "crate::generated::any_cbor::natural_any_cbor_map_schema")]
+    pub rest: BTreeMap<crate::generated::any_cbor::AnyCbor, crate::generated::any_cbor::AnyCbor>,
+}
+
+impl AnyRest {
+    pub fn new(key_1: u64) -> Self {
+        Self {
+            key_1,
+            rest: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct DupRest {
+    pub key_7: u64,
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
+    #[serde(flatten)]
+    #[serde(
+        serialize_with = "dup_rest_rest_flatten_serialize",
+        deserialize_with = "dup_rest_rest_flatten_deserialize"
+    )]
+    pub rest: PairMap<u64, String>,
+}
+
+impl DupRest {
+    pub fn new(key_7: u64) -> Self {
+        Self {
+            key_7,
+            rest: PairMap::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct OptRest {
+    pub key_3: Option<String>,
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
+    #[serde(flatten)]
+    #[serde(
+        serialize_with = "opt_rest_rest_flatten_serialize",
+        deserialize_with = "opt_rest_rest_flatten_deserialize"
+    )]
+    #[schemars(schema_with = "crate::generated::any_cbor::natural_any_cbor_map_schema")]
+    pub rest: BTreeMap<u64, crate::generated::any_cbor::AnyCbor>,
+}
+
+impl OptRest {
+    pub fn new() -> Self {
+        Self {
+            key_3: None,
+            rest: BTreeMap::new(),
+        }
+    }
+}
+
+impl Default for OptRest {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct RenamedRest {
+    pub key_1: u64,
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
+    #[serde(flatten)]
+    #[serde(
+        serialize_with = "renamed_rest_extra_flatten_serialize",
+        deserialize_with = "renamed_rest_extra_flatten_deserialize"
+    )]
+    #[schemars(schema_with = "crate::generated::any_cbor::natural_any_cbor_map_schema")]
+    pub extra: BTreeMap<u64, crate::generated::any_cbor::AnyCbor>,
+}
+
+impl RenamedRest {
+    pub fn new(key_1: u64) -> Self {
+        Self {
+            key_1,
+            extra: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct TypedRest {
+    pub key_1: u64,
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
+    #[serde(flatten)]
+    #[serde(
+        serialize_with = "typed_rest_rest_flatten_serialize",
+        deserialize_with = "typed_rest_rest_flatten_deserialize"
+    )]
+    pub rest: BTreeMap<u64, u64>,
+}
+
+impl TypedRest {
+    pub fn new(key_1: u64) -> Self {
+        Self {
+            key_1,
+            rest: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct UintRest {
+    pub key_1: u64,
+    pub key_2: String,
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.
+    #[serde(flatten)]
+    #[serde(
+        serialize_with = "uint_rest_rest_flatten_serialize",
+        deserialize_with = "uint_rest_rest_flatten_deserialize"
+    )]
+    #[schemars(schema_with = "crate::generated::any_cbor::natural_any_cbor_map_schema")]
+    pub rest: BTreeMap<u64, crate::generated::any_cbor::AnyCbor>,
+}
+
+impl UintRest {
+    pub fn new(key_1: u64, key_2: String) -> Self {
+        Self {
+            key_1,
+            key_2,
+            rest: BTreeMap::new(),
+        }
+    }
+}

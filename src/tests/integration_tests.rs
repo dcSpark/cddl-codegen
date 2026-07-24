@@ -5487,6 +5487,28 @@ fn open_struct_map_preserve_e2e() {
 }
 
 #[test]
+fn open_struct_map_json_e2e() {
+    // Loose-CBOR open struct-map FLATTENED-JSON round-trip vectors (Phase B WP4, ruling R7): rest
+    // entries render at the same JSON object level as the declared fields (serde flatten), to_json is
+    // fallible on data (complex any key/value, declared-name collision, PairMap actual duplicates),
+    // and from_json is symmetric (declared bind first, remainder -> rest). --wasm=false (the wasm
+    // rest surface is a later work package). See tests/open-struct-map-json-e2e/tests.rs.
+    run_test(
+        "open-struct-map-json-e2e",
+        &[
+            "--json-serde-derives=true",
+            "--json-schema-export=true",
+            "--wasm=false",
+        ],
+        None,
+        &[],
+        &[],
+        false,
+        &[],
+    );
+}
+
+#[test]
 fn golden_hex_preserve() {
     // Known-answer preserve-encodings vectors: irregular RFC 8949 §3 encodings (non-minimal
     // header arguments, indefinite/chunked items, map key order) hand-derived as raw hex —

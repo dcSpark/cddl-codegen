@@ -1,0 +1,10 @@
+; Open struct-map (loose CBOR "rest row") FLATTENED-JSON end-to-end vectors (Phase B WP4, ruling R7).
+; The captured rest entries render at the SAME JSON object level as the declared fields (serde
+; flatten), and read back symmetrically (declared field names bind first, every other key -> rest).
+; --json-serde-derives --json-schema-export, --wasm=false (the wasm rest surface is registered
+; separately). See tests/open-struct-map-json-e2e/tests.rs for the value-level vectors.
+foo = { 1: uint, 2: text, * uint => any }   ; uint key domain, any value
+baz = { 1: uint, * any => any }             ; any key domain, complex keys error on to_json
+typed = { 1: uint, * uint => text }         ; fully-typed rest (no any anywhere)
+dupp = { 1: uint, * uint => any ; @duplicates preserve
+}                                           ; PairMap twin: actual duplicate keys error on to_json

@@ -133,8 +133,20 @@ fn composed_runtime_static_files(
     include_ordered_set: bool,
     include_pair_map: bool,
     include_any_cbor: bool,
+    include_open_struct_rest_json: bool,
 ) -> std::io::Result<Vec<(String, String)>> {
     let mut out = Vec::new();
+
+    // open_struct_rest_json.rs (the flatten JSON helpers for open struct-map rest rows, ruling R7).
+    // JSON-only and `any`-free — a fully-typed `* uint => text` rest row needs it without the AnyCbor
+    // runtime, so it is its own module rather than a fragment of `any_cbor.rs`.
+    if include_open_struct_rest_json && cli.json_serde_derives {
+        let content = std::fs::read_to_string(cli.static_dir.join("open_struct_rest_json.rs"))?;
+        out.push((
+            "open_struct_rest_json.rs".to_owned(),
+            rustfmt_generated_string(&content)?.into_owned(),
+        ));
+    }
 
     // error.rs — always, verbatim static/error.rs + rustfmt.
     let error_rs = std::fs::read_to_string(cli.static_dir.join("error.rs"))?;
@@ -854,6 +866,7 @@ impl GenerationScope {
                 types.uses_ordered_set() || self.requested_ordered_set,
                 types.uses_pair_map() || self.requested_pair_map,
                 types.uses_any_cbor(),
+                types.uses_open_struct_rest(),
             )?;
             for (filename, content) in &runtime_files {
                 let rel_path = format!("rust/src/generated/{filename}");
@@ -931,7 +944,8 @@ impl GenerationScope {
         if let Some(export_crate) = &cli.export_static_crate {
             let export_dir = export_crate.join("src");
             std::fs::create_dir_all(&export_dir)?;
-            let runtime_files = composed_runtime_static_files(cli, true, true, true, true, true)?;
+            let runtime_files =
+                composed_runtime_static_files(cli, true, true, true, true, true, true)?;
             for (filename, content) in &runtime_files {
                 let path = export_dir.join(filename);
                 let is_new = !path.exists();

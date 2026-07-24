@@ -1,0 +1,29 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+macro_rules! gen_json_schema {
+    ($name:ty) => {
+        let dest_path =
+            std::path::Path::new(&"schemas").join(&format!("{}.json", stringify!($name)));
+        std::fs::write(
+            &dest_path,
+            serde_json::to_string_pretty(&schemars::schema_for!($name)).unwrap(),
+        )
+        .unwrap();
+    };
+}
+
+pub fn export_schemas() {
+    let schema_path = std::path::Path::new(&"schemas");
+    if !schema_path.exists() {
+        std::fs::create_dir(schema_path).unwrap();
+    }
+    gen_json_schema!(cddl_lib::AnyRest);
+    gen_json_schema!(cddl_lib::DupRest);
+    gen_json_schema!(cddl_lib::OptRest);
+    gen_json_schema!(cddl_lib::RenamedRest);
+    gen_json_schema!(cddl_lib::TypedRest);
+    gen_json_schema!(cddl_lib::UintRest);
+    gen_json_schema!(cddl_lib::any_cbor::AnyCbor);
+}

@@ -3256,15 +3256,22 @@ fn open_struct_map_rest_row_front_end() {
         preserve_src.contains("rest_key_encodings"),
         "a concrete uint-key rest row must carry a `rest_key_encodings` sidecar under preserve, got:\n{preserve_src}"
     );
+    // --- flattened rest JSON (WP4, R7): open structs GENERATE under --json-serde-derives, wiring
+    // the rest field to the FLATTENED serde surface (its captured entries render at the same JSON
+    // object level as the declared fields). The former reject front door is lifted; wasm still
+    // rejects (below). ---
     let json = run_flags(
         "foo = { 1: uint, * uint => any }\n",
         "json",
         &["--json-serde-derives=true"],
     )
-    .expect_err("open structs under --json-serde-derives reject in this WP");
+    .expect("open structs GENERATE under --json-serde-derives (WP4)");
+    let json_src = src(&json);
     assert!(
-        json.contains("rule `foo`") && json.contains("JSON"),
-        "the json front door must name the JSON surface, got: {json}"
+        json_src.contains("#[serde(flatten)]")
+            && json_src.contains("serialize_flattened_rest")
+            && json_src.contains("read_flattened_rest_pairs"),
+        "the rest field must wire the flattened-JSON serialize_with/deserialize_with helpers, got:\n{json_src}"
     );
     // --wasm=true is the default; the happy-path `run` uses --wasm=false, so pin the wasm rejection
     // by NOT passing --wasm=false.

@@ -209,11 +209,13 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
         ),
     ),
     // loose-CBOR open struct-maps (a trailing `* k => v` rest row after fixed keys → a `pub rest`
-    // capture map). Snapshotted under the plain (`default`) AND preserve flavors: the preserve
+    // capture map). Snapshotted under the plain (`default`), preserve, AND json flavors: the preserve
     // fidelity core (orig_deser_order interleave, per-entry encoding sidecars, the runtime canonical
-    // key merge) landed in WP3. The flattened-JSON surface and wasm rest accessors are still later
-    // work packages that reject generation, so `--wasm=false` and no JSON — a profile-limited
-    // whole_program input rather than an all-profile feature-corpus entry.
+    // key merge) landed in WP3; the flattened-JSON surface (R7 — the rest field's
+    // `#[serde(flatten)]` + per-struct serialize_with/deserialize_with helpers + additionalProperties
+    // schema) landed in WP4. The wasm rest accessors are still a later work package that rejects, so
+    // `--wasm=false` throughout — a profile-limited whole_program input rather than an all-profile
+    // feature-corpus entry.
     (
         "open_struct_map_default",
         "tests/open-struct-map/input.cddl",
@@ -223,6 +225,18 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
         "open_struct_map_preserve",
         "tests/open-struct-map/input.cddl",
         ("preserve", &["--preserve-encodings=true", "--wasm=false"]),
+    ),
+    (
+        "open_struct_map_json",
+        "tests/open-struct-map/input.cddl",
+        (
+            "json",
+            &[
+                "--json-serde-derives=true",
+                "--json-schema-export=true",
+                "--wasm=false",
+            ],
+        ),
     ),
     // directory input — exercises the multi-file scope/module codegen path.
     ("multifile", "tests/multifile/inputs", ("default", &[])),

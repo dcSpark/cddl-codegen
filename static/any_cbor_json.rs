@@ -241,7 +241,7 @@ impl std::error::Error for AnyToNaturalJsonError {}
 /// The natural-JSON string form of an `any` MAP KEY (used both for a key's object-property name and
 /// for collision detection): text verbatim, uint/nint in decimal. Any other kind (bytes, array,
 /// map, tag, float, bool, null, undefined, unassigned) has no key image → strict-fail.
-fn any_cbor_natural_key_string(key: &AnyCbor) -> Result<String, AnyToNaturalJsonError> {
+pub fn any_cbor_natural_key_string(key: &AnyCbor) -> Result<String, AnyToNaturalJsonError> {
     match key.kind() {
         AnyCborKind::Text => Ok(key.as_text().unwrap().to_owned()),
         AnyCborKind::UInt => Ok(key.as_uint().unwrap().to_string()),
@@ -318,7 +318,7 @@ pub fn to_natural_json(value: &AnyCbor) -> Result<serde_json::Value, AnyToNatura
 /// The `any`-domain reading of a JSON object key (ruling R4): prefer the numeric reading for a
 /// CANONICAL decimal spelling (round-trips through `to_string`), else text. So `"12"` → uint `12`,
 /// `"-5"` → nint `-5`, but `"012"`/`"+5"`/`"5.0"`/`"abc"` → text. Total.
-fn any_cbor_natural_key_from_string(key: &str) -> AnyCbor {
+pub fn any_cbor_natural_key_from_string(key: &str) -> AnyCbor {
     // `.ok().filter(round-trips)` keeps this a single `if let` (no nested-if / no let-chain, so it
     // stays clippy-clean AND edition-agnostic in the generated crate). A canonical decimal spelling
     // round-trips through `to_string`; `"012"`/`"+3"`/`"-0"`/non-round-tripping forms fall to text.
@@ -426,7 +426,7 @@ pub mod natural_any_cbor_opt {
 // container handling (`Vec`/`BTreeMap`/`OrderedHashMap` serde) walk the collection element-wise —
 // this is serde composition, NOT a parallel JSON path (serde drives the container; the wrapper only
 // swaps the per-element codec from tagged to natural).
-struct NaturalAnyCborSer<'a>(&'a AnyCbor);
+pub struct NaturalAnyCborSer<'a>(pub &'a AnyCbor);
 
 impl serde::Serialize for NaturalAnyCborSer<'_> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -434,7 +434,7 @@ impl serde::Serialize for NaturalAnyCborSer<'_> {
     }
 }
 
-struct NaturalAnyCborDe(AnyCbor);
+pub struct NaturalAnyCborDe(pub AnyCbor);
 
 impl<'de> serde::Deserialize<'de> for NaturalAnyCborDe {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
