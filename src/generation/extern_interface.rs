@@ -1824,7 +1824,11 @@ mod tests {
     }
 
     fn record(rep: Representation, fields: Vec<RustField>) -> RustRecord {
-        RustRecord { rep, fields }
+        RustRecord {
+            rep,
+            fields,
+            rest: None,
+        }
     }
 
     fn rust_ref(rust: &str) -> RustType {

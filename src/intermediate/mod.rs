@@ -501,7 +501,15 @@ impl<'a> IntermediateTypes<'a> {
         for rs in self.rust_structs.values() {
             match rs.variant() {
                 RustStructType::Record(record) => {
-                    record.fields.iter().for_each(|fl| walk(&fl.rust_type, f))
+                    record.fields.iter().for_each(|fl| walk(&fl.rust_type, f));
+                    // An open struct-map's rest row carries a key/value RustType pair (loose CBOR)
+                    // that is NOT a `RustField`, so walk it explicitly — else usage detectors
+                    // (`uses_any_cbor`, the collection-twin detectors) miss an `any`/collection type
+                    // that appears only in the rest domain/range.
+                    if let Some(rest) = &record.rest {
+                        walk(&rest.domain, f);
+                        walk(&rest.range, f);
+                    }
                 }
                 RustStructType::Table { domain, range, .. } => {
                     walk(domain, f);
@@ -1356,17 +1364,34 @@ impl<'a> IntermediateTypes<'a> {
                         }
                     })
                 }
-                RustStructType::Record(record) => record.fields.iter().for_each(|field| {
-                    mark_refs(
-                        &mut refs,
-                        self,
-                        wasm,
-                        &table_shape_sole_owners,
-                        deferred,
-                        current_scope,
-                        &field.rust_type,
-                    )
-                }),
+                RustStructType::Record(record) => {
+                    record.fields.iter().for_each(|field| {
+                        mark_refs(
+                            &mut refs,
+                            self,
+                            wasm,
+                            &table_shape_sole_owners,
+                            deferred,
+                            current_scope,
+                            &field.rust_type,
+                        )
+                    });
+                    // Open struct-map rest row: its key/value types can reference named rules
+                    // (`* uint => metadatum`) that must be marked as dependencies too.
+                    if let Some(rest) = &record.rest {
+                        for rt in [&rest.domain, &rest.range] {
+                            mark_refs(
+                                &mut refs,
+                                self,
+                                wasm,
+                                &table_shape_sole_owners,
+                                deferred,
+                                current_scope,
+                                rt,
+                            );
+                        }
+                    }
+                }
                 RustStructType::Table {
                     domain,
                     range,

@@ -208,6 +208,16 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
             ],
         ),
     ),
+    // loose-CBOR open struct-maps (a trailing `* k => v` rest row after fixed keys → a `pub rest`
+    // capture map). Plain flavor only (`--wasm=false`, no preserve, no JSON): the preserve fidelity
+    // core, the flattened-JSON surface, and the wasm rest accessors are later work packages that
+    // reject generation for now — so, like any-positions, this is a profile-limited whole_program
+    // input rather than an all-profile feature-corpus entry (the corpus default leg is `--wasm=true`).
+    (
+        "open_struct_map_default",
+        "tests/open-struct-map/input.cddl",
+        ("default", &["--wasm=false"]),
+    ),
     // directory input — exercises the multi-file scope/module codegen path.
     ("multifile", "tests/multifile/inputs", ("default", &[])),
     // extern (`_CDDL_CODEGEN_EXTERN_TYPE_`) and raw-bytes (`_CDDL_CODEGEN_RAW_BYTES_TYPE_`)

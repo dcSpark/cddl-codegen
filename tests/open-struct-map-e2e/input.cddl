@@ -1,0 +1,6 @@
+; Open struct-map (loose CBOR "rest row") end-to-end round-trip vectors. Plain flavor only
+; (--wasm=false, non-preserve): the preserve/JSON/wasm surfaces are later work packages that reject
+; generation for now. See tests/open-struct-map-e2e/tests.rs for the value-level vectors.
+foo = { 1: uint, 2: text, * uint => any }   ; uint key domain, any value
+bar = { ? 3: text, * uint => any }          ; optional fixed key, then rest
+baz = { 1: uint, * any => any }             ; any key domain, captures every wire key type
