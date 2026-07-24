@@ -1675,7 +1675,7 @@ strict-fail row, the RFC 8949 §6.2 read conventions (lexical numbers, prefer-nu
 the full-nint-domain key reading), and the round-trip law where `to_natural_json` succeeds.
 At corpus breadth (`well_formed + appendix-A + seeded-random`), `natural_json_law_over_corpus`
 asserts the strong biconditional both directions — Ok ⟹ JSON fixed point + value equality +
-no failure node, Err ⟹ the input contains one — against `contains_r3_failure_node`, an
+no failure node, Err ⟹ the input contains one — against `contains_natural_json_failure_node`, an
 INDEPENDENT recursive failure-set oracle written against the inspection API (vacuity-floored
 on both branches); the tagged codec gets matching corpus laws, and
 `hostile_deep_json_read_is_graceful` pins that a 2000-deep JSON read is a graceful serde_json
