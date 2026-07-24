@@ -3704,6 +3704,12 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "dsl.ignore"
+axis = "feature"
+example = "\nlabel_map = {\n  1: uint, 2: text,\n  * uint => any ; @ignore\n}"
+pinned_reason = "decode-foreign vectors not yet minted — this open struct-map @ignore rule is mintable (a supported tolerate-and-drop rest row), but minting runs the ruby/rust oracles via verify.ts --mint-decode-foreign, deferred to the matrix close-out cycle; the close-out mint replaces this pin"
+
+[[row]]
 id = "dsl.name"
 axis = "feature"
 example = "\nnamed = [\n  bytes, ; @name address\n  uint ; @name checksum\n]"
