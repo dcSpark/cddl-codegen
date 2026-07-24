@@ -608,6 +608,26 @@ impl GenerationScope {
                                 self.ensure_non_empty_wrappers(types, rest.domain(), cli);
                                 self.ensure_non_empty_wrappers(types, rest.range(), cli);
                             }
+                            // Open ARRAY `* t` tail (CAPTURE only): its container is an
+                            // `Array(element)` the conceptual visitor above never sees as a composite
+                            // (it walks only the element). Mint the list's wasm wrapper explicitly —
+                            // the tail field's getter returns it — via the SAME path a list field's
+                            // wrapper takes. An `@ignore` tail has no field/getter, so nothing is minted
+                            // (its wasm class is a closed struct's).
+                            if let Some(rest) = record.captured_rest().filter(|r| r.is_array_tail())
+                            {
+                                let rest_list =
+                                    ConceptualRustType::Array(Box::new(rest.element().clone()));
+                                mint_wasm_wrapper_for_visited_type(
+                                    self,
+                                    types,
+                                    &rest_list,
+                                    &mut wasm_wrappers_generated,
+                                    &table_shape_sole_owner,
+                                    cli,
+                                );
+                                self.ensure_non_empty_wrappers(types, rest.element(), cli);
+                            }
                         }
                         RustStructType::Table { domain, range, .. } => {
                             // the named table's OWN restricted wrapper (`{+ k => v}`) is minted in

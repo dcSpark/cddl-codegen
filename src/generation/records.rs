@@ -142,20 +142,44 @@ pub(super) fn generate_array_struct_serialization(
             gen_scope.generate_serialize(types, (&field.rust_type).into(), ser_func, config, cli);
         }
     }
-    // Open-array rest tail, CAPTURE (plain mode): after the declared members, write each captured
-    // trailing element into the owner's array (the array header already counts them via
-    // `definite_info`'s `+ self.rest.len()` fold). `Vec` order = wire order = re-emit order by
-    // construction (no keys, no canonical merge). IGNORE re-serializes ONLY the declared members (the
-    // whole point of the tolerate-and-drop flavor) and has no field to iterate. Preserve is rejected
-    // for array tails, so this plain element serialize is the only tail-write path.
+    // Open-array rest tail, CAPTURE: after the declared members, write each captured trailing element
+    // into the owner's array (the array header already counts them via `definite_info`'s
+    // `+ self.rest.len()` fold). `Vec` order = wire order = re-emit order by construction (no keys, no
+    // canonical merge — the elements are positional). Under --preserve-encodings each element's
+    // encoding is looked up POSITIONALLY from the `{field}_elem_encodings` sidecar by index (`.get(i)`,
+    // exactly the array-FIELD element scheme) so non-canonical widths re-emit byte-exactly; a
+    // self-carried `any` element carries its own encoding (no sidecar). Under --canonical-form the
+    // per-element serialize normalizes each element recursively-canonically in position order (no sort,
+    // no comparator — arrays are positional). IGNORE re-serializes ONLY the declared members (the whole
+    // point of the tolerate-and-drop flavor) and has no field to iterate.
     if let Some(rest) = record.captured_rest().filter(|r| r.is_array_tail()) {
-        let mut tail_loop = Block::new(format!(
-            "for element in {opt_self}{}.iter()",
-            rest.field_name
-        ));
-        let elem_config = SerializeConfig::new("element", "rest_element")
+        let elem_encs = rest_array_elem_encoding_fields(types, rest, cli);
+        let elem_var_name = format!("{}_elem", rest.field_name);
+        // Outer config carries the sidecar namespace + the container's var name (`{field}`), so the
+        // encoding lookup names `{field}_elem_encodings`.
+        let mut outer = SerializeConfig::new("element", &rest.field_name);
+        if vars_in_self {
+            outer = outer.encoding_var_in_option_struct("self.encodings");
+        }
+        let mut tail_loop = if !elem_encs.is_empty() {
+            let mut block = Block::new(format!(
+                "for (i, element) in {opt_self}{}.iter().enumerate()",
+                rest.field_name
+            ));
+            block.line(outer.container_encoding_lookup("elem", &elem_encs, "i"));
+            block
+        } else {
+            Block::new(format!(
+                "for element in {opt_self}{}.iter()",
+                rest.field_name
+            ))
+        };
+        let elem_config = SerializeConfig::new("element", &elem_var_name)
             .expr_is_ref(true)
-            .is_end(false);
+            .is_end(false)
+            .encoding_var_no_option_struct()
+            .encoding_var_is_ref(false)
+            .tag_depth(0);
         gen_scope.generate_serialize(
             types,
             rest.element().into(),
@@ -573,18 +597,33 @@ pub(super) fn generate_array_struct_deserialization(
     // already accounts the prefix) or, for an indefinite array, the `0xff` break byte is reached — a
     // NON-consuming peek (`raw.as_slice().first()`), so the break stays on the wire for
     // `add_deserialize_final_len_check` to consume (it reads the break itself for indefinite arrays).
-    // Only reached in plain (non-preserve) mode: an array rest tail is rejected under
-    // --preserve-encodings (capture: a later work package; ignore: permanently), so no per-element
-    // encoding sidecars are wired here.
+    // Under --preserve-encodings the CAPTURE flavor additionally records each element's encoding into a
+    // POSITIONAL `{field}_elem_encodings: Vec<..>` sidecar (byte-exact re-emit; a self-carried `any`
+    // element needs none). IGNORE is rejected under --preserve-encodings, so it never captures
+    // encodings.
     if let Some(rest) = &record.rest {
         let element = rest.element();
         deser_code.read_len_used = true;
         deser_code.len_used = true;
         deser_code.throws = true;
+        // Per-element encoding sidecar (preserve + capture + concrete element): mirrors the array-FIELD
+        // `_elem_encodings` scheme. Empty otherwise (non-preserve, ignore, or self-carried `any`).
+        let elem_encs = if rest.semantics == RestSemantics::Capture {
+            rest_array_elem_encoding_fields(types, rest, cli)
+        } else {
+            vec![]
+        };
+        let elem_var_name = format!("{}_elem", rest.field_name);
         if rest.semantics == RestSemantics::Capture {
             deser_code
                 .content
                 .line(&format!("let mut {} = Vec::new();", rest.field_name));
+            if !elem_encs.is_empty() {
+                deser_code.content.line(&format!(
+                    "let mut {}_elem_encodings = Vec::new();",
+                    rest.field_name
+                ));
+            }
         }
         let mut tail_loop = Block::new(format!(
             "while match len {{ {} => read_len.read() < n, {} => raw.as_slice().first() != Some(&0xff), }}",
@@ -594,16 +633,45 @@ pub(super) fn generate_array_struct_deserialization(
         tail_loop.line("read_len.read_elems(1)?;");
         match rest.semantics {
             RestSemantics::Capture => {
-                gen_scope
-                    .generate_deserialize(
-                        types,
-                        element.into(),
-                        DeserializeBeforeAfter::new("let rest_elem = ", ";", false),
-                        DeserializeConfig::new("rest_elem"),
-                        cli,
-                    )
-                    .add_to(&mut tail_loop);
-                tail_loop.line(format!("{}.push(rest_elem);", rest.field_name));
+                if !elem_encs.is_empty() {
+                    // Bind `(value, <enc vars>)` and push each into its parallel `Vec`.
+                    let elem_var_names_str =
+                        encoding_var_names_str(types, &elem_var_name, element, cli);
+                    gen_scope
+                        .generate_deserialize(
+                            types,
+                            element.into(),
+                            DeserializeBeforeAfter::new(
+                                &format!("let {elem_var_names_str} = "),
+                                ";",
+                                false,
+                            ),
+                            DeserializeConfig::new(&elem_var_name),
+                            cli,
+                        )
+                        .add_to(&mut tail_loop);
+                    tail_loop.line(format!("{}.push({elem_var_name});", rest.field_name));
+                    tail_loop.line(format!(
+                        "{}_elem_encodings.push({});",
+                        rest.field_name,
+                        tuple_str(elem_encs.iter().map(|e| e.field_name.clone()).collect())
+                    ));
+                } else {
+                    gen_scope
+                        .generate_deserialize(
+                            types,
+                            element.into(),
+                            DeserializeBeforeAfter::new(
+                                &format!("let {elem_var_name} = "),
+                                ";",
+                                false,
+                            ),
+                            DeserializeConfig::new(&elem_var_name),
+                            cli,
+                        )
+                        .add_to(&mut tail_loop);
+                    tail_loop.line(format!("{}.push({elem_var_name});", rest.field_name));
+                }
             }
             RestSemantics::Ignore => {
                 gen_scope
@@ -620,6 +688,14 @@ pub(super) fn generate_array_struct_deserialization(
         deser_code.content.push_block(tail_loop);
         if rest.semantics == RestSemantics::Capture {
             deser_ctor_fields.push((rest.field_name.clone(), rest.field_name.clone()));
+            if !elem_encs.is_empty() {
+                let sidecar = format!("{}_elem_encodings", rest.field_name);
+                if vars_in_self {
+                    encoding_struct_ctor_fields.push((sidecar.clone(), sidecar));
+                } else {
+                    deser_ctor_fields.push((sidecar.clone(), sidecar));
+                }
+            }
         }
     }
     if cli.preserve_encodings {
@@ -748,6 +824,29 @@ fn rest_encoding_fields(
         cli,
     );
     (key_encs, value_encs)
+}
+
+/// The per-element encoding sidecar an array `* t` rest tail needs under `--preserve-encodings`: the
+/// element type's own encoding fields, named under `{restfield}_elem` — mirroring the array-FIELD
+/// element-encoding scheme (`{field}_elem_encodings: Vec<..>`), since a tail element is re-serialized
+/// exactly like an array element. A self-carried `any` element (`* any`) contributes none (the
+/// `AnyCbor` value carries its own encoding). Empty under non-preserve. The tail's own length lives in
+/// the owner array's `len_encoding` (no `_encoding` LenEncoding field here).
+fn rest_array_elem_encoding_fields(
+    types: &IntermediateTypes,
+    rest: &RestRow,
+    cli: &Cli,
+) -> Vec<EncodingField> {
+    if !cli.preserve_encodings {
+        return vec![];
+    }
+    encoding_fields(
+        types,
+        &format!("{}_elem", rest.field_name),
+        &rest.element().clone().resolve_aliases(),
+        false,
+        cli,
+    )
 }
 
 /// The rest field's FLATTENED JSON surface (`output_format.mdx` § "Open struct-maps (rest rows)").
@@ -1590,25 +1689,27 @@ pub(super) fn codegen_struct(
                 wrapper.s_impl.push_fn(setter);
             }
         }
-        // Open struct-map rest row (CAPTURE only): a getter returning the captured entries as the
-        // wasm map wrapper (`MapKToV` / the `@duplicates preserve` PairMap-backed twin). Deliberately
-        // no `new()` arg and no setter — the rest defaults empty and rides the map wrapper's own
-        // mutation surface (matching the rust side, where `new()` excludes it). The wrapper class is
-        // minted in the wasm pass (`mint_wasm_wrapper_for_visited_type` for the rest map). An
-        // `@ignore` row stores nothing, so it has no getter (its wasm class is a closed struct's). An
-        // array `* t` rest tail presents a closed-struct wasm surface for now (no tail accessor — a
-        // later work package mints the `Vec<T>` list-wrapper getter), so it is excluded here too.
-        if let Some(rest) = record.captured_rest().filter(|r| !r.is_array_tail()) {
+        // Open rest (CAPTURE only): a getter returning the captured content as its minted wasm wrapper
+        // — a map wrapper (`MapKToV` / the `@duplicates preserve` PairMap-backed twin) for a `* k => v`
+        // row, or a list wrapper (`TList` / `AnyList`) for an array `* t` tail. Deliberately no `new()`
+        // arg and no setter — the rest defaults empty and rides the wrapper's own mutation surface
+        // (matching the rust side, where `new()` excludes it). The wrapper class is minted in the wasm
+        // pass (`mint_wasm_wrapper_for_visited_type` for the rest map/list). An `@ignore` row/tail
+        // stores nothing, so it has no getter (its wasm class is a closed struct's).
+        if let Some(rest) = record.captured_rest() {
             let rest_ty = rest_member_type(rest);
             let mut getter = codegen::Function::new(&rest.field_name);
             getter
                 .arg_ref_self()
                 .ret(rest_ty.for_wasm_return(types))
                 .vis("pub")
-                .doc(
+                .doc(if rest.is_array_tail() {
+                    "The captured trailing array elements beyond the declared members (CDDL \
+                     `* t` rest tail), as the wasm list wrapper."
+                } else {
                     "The captured open-map entries whose keys are not declared fields (CDDL \
-                     `* k => v` rest row), as the wasm map wrapper.",
-                )
+                     `* k => v` rest row), as the wasm map wrapper."
+                })
                 .line(rest_ty.to_wasm_boundary(
                     types,
                     &format!("self.0.{}", rest.field_name),
@@ -1802,11 +1903,36 @@ pub(super) fn codegen_struct(
              Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this \
              a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container."
         });
-        // The rest field's FLATTENED JSON surface. Skipped when the
-        // struct owns a custom json impl (no derive to steer) — matches the declared-field handling.
+        // The rest field's JSON surface. Skipped when the struct owns a custom json impl (no derive to
+        // steer) — matches the declared-field handling. A MAP `* k => v` row flattens its entries to
+        // the object's top level (`emit_rest_flatten_json`). An ARRAY `* t` tail renders as an ORDINARY
+        // JSON array under the field name (positions are already erased in JSON, and serde flatten has
+        // no array analog): skip-if-empty on write + default-on-read (so an empty tail ≡ closed-struct
+        // JSON, mirroring the empty-tail ≡ closed-struct CBOR invariant), and — for an `any`-element
+        // tail (`Vec<AnyCbor>`) — the natural-fallible walk reusing the homogeneous `[* any]` member
+        // `Seq` adapter (a typed element uses its own serde).
         if !config.custom_json {
-            for annotation in emit_rest_flatten_json(gen_scope, types, name, record, rest, cli) {
-                rest_field.annotation(annotation);
+            if rest.is_array_tail() {
+                if cli.json_serde_derives {
+                    rest_field
+                        .annotation("#[serde(skip_serializing_if = \"Vec::is_empty\", default)]");
+                }
+                let elem_is_any = matches!(
+                    rest.element().conceptual_type.resolve_alias_shallow(),
+                    ConceptualRustType::Any
+                );
+                if elem_is_any {
+                    for annotation in
+                        super::natural_any_serde_annotations(cli, super::NaturalAnyPosition::Seq)
+                    {
+                        rest_field.annotation(annotation);
+                    }
+                }
+            } else {
+                for annotation in emit_rest_flatten_json(gen_scope, types, name, record, rest, cli)
+                {
+                    rest_field.annotation(annotation);
+                }
             }
         }
         native_struct.push_field(rest_field);
@@ -1867,40 +1993,59 @@ pub(super) fn codegen_struct(
                 );
             }
         }
-        // Open struct-map rest row: per-entry encoding sidecars for CONCRETE key/value domains
-        // (`any`-typed content is self-carried and contributes none — see `rest_encoding_fields`).
-        // The loose (reject/default) container keys the sidecars by the key VALUE (`BTreeMap`); the
-        // `@duplicates preserve` twin's keys repeat, so its sidecars are POSITIONAL (`Vec`, parallel
-        // to the pair-list, indexed by entry position) — exactly the loose-table pair-map split. The
-        // rest row's OWN map-header length lives in the owner's `len_encoding` (no `_encoding` here).
-        // Capture-only (an `@ignore` row stores nothing, and it is rejected under preserve anyway).
+        // Open rest per-entry encoding sidecars (CONCRETE content only — `any`-typed content is
+        // self-carried and contributes none). A map `* k => v` row: `{field}_{key,value}_encodings`,
+        // keyed by the key VALUE (`BTreeMap`) for the loose (reject/default) container, or POSITIONAL
+        // (`Vec`, indexed by entry position) for the `@duplicates preserve` twin whose keys repeat —
+        // exactly the loose-table pair-map split. An array `* t` tail: one POSITIONAL
+        // `{field}_elem_encodings: Vec<..>` (extras are positional by construction — no keys, so no
+        // key map and no `orig_deser_order`). In both reps the rest's OWN header length lives in the
+        // owner's `len_encoding` (no `_encoding` here). Capture-only (an `@ignore` row/tail stores
+        // nothing, and it is rejected under preserve anyway).
         if let Some(rest) = record.captured_rest() {
-            let key_rust = rest.domain().for_rust_member(types, false, cli);
-            let (key_encs, value_encs) = rest_encoding_fields(types, rest, cli);
-            let sidecar_type = |elem: String| {
-                if rest_is_pair_map(rest) {
-                    format!("Vec<{elem}>")
-                } else {
-                    format!("BTreeMap<{key_rust}, {elem}>")
+            if rest.is_array_tail() {
+                // Array `* t` tail: a single POSITIONAL `Vec` sidecar for the element encoding,
+                // indexed by tail position (extras sit strictly after the declared prefix, so wire
+                // order = `Vec` order — no key map, no `orig_deser_order`). A self-carried `any`
+                // element contributes none.
+                let elem_encs = rest_array_elem_encoding_fields(types, rest, cli);
+                if !elem_encs.is_empty() {
+                    push_encoding_struct_field(
+                        &mut encoding_struct,
+                        &mut encoding_aliases,
+                        name,
+                        &format!("{}_elem_encodings", rest.field_name),
+                        &format!("Vec<{}>", tuple_type_name(&elem_encs)),
+                    );
                 }
-            };
-            if !key_encs.is_empty() {
-                push_encoding_struct_field(
-                    &mut encoding_struct,
-                    &mut encoding_aliases,
-                    name,
-                    &format!("{}_key_encodings", rest.field_name),
-                    &sidecar_type(tuple_type_name(&key_encs)),
-                );
-            }
-            if !value_encs.is_empty() {
-                push_encoding_struct_field(
-                    &mut encoding_struct,
-                    &mut encoding_aliases,
-                    name,
-                    &format!("{}_value_encodings", rest.field_name),
-                    &sidecar_type(tuple_type_name(&value_encs)),
-                );
+            } else {
+                let key_rust = rest.domain().for_rust_member(types, false, cli);
+                let (key_encs, value_encs) = rest_encoding_fields(types, rest, cli);
+                let sidecar_type = |elem: String| {
+                    if rest_is_pair_map(rest) {
+                        format!("Vec<{elem}>")
+                    } else {
+                        format!("BTreeMap<{key_rust}, {elem}>")
+                    }
+                };
+                if !key_encs.is_empty() {
+                    push_encoding_struct_field(
+                        &mut encoding_struct,
+                        &mut encoding_aliases,
+                        name,
+                        &format!("{}_key_encodings", rest.field_name),
+                        &sidecar_type(tuple_type_name(&key_encs)),
+                    );
+                }
+                if !value_encs.is_empty() {
+                    push_encoding_struct_field(
+                        &mut encoding_struct,
+                        &mut encoding_aliases,
+                        name,
+                        &format!("{}_value_encodings", rest.field_name),
+                        &sidecar_type(tuple_type_name(&value_encs)),
+                    );
+                }
             }
         }
 
