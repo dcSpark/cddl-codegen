@@ -172,7 +172,7 @@
             "status": "unsupported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips (tolerate-and-drop rest row; validated by tests/open-struct-map-ignore-e2e and the open_struct_map_ignore snapshot); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "dsl.ignore",
         "status": "supported"
       },
