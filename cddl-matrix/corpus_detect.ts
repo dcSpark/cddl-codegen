@@ -180,7 +180,7 @@ type TagParse = (s: string) => { id: string; rest: string } | null;
 // side without the other fails every importer's selfCheck (project_corpus runs in the fast tier).
 const MIRRORED_DIRECTIVES = new Set([
   "@name", "@rust_name", "@newtype", "@no_alias", "@used_as_key", "@used_as_elem",
-  "@copy", "@raw_bytes_flavor", "@duplicates", "@custom_json", "@custom_serialize", "@custom_deserialize", "@doc",
+  "@copy", "@raw_bytes_flavor", "@ignore", "@duplicates", "@custom_json", "@custom_serialize", "@custom_deserialize", "@doc",
 ]);
 const ws = (s: string) => s.replace(/^\s+/, ""); // take_while(char::is_whitespace)
 const argRequired = (id: string, tag: string): TagParse => s => {
@@ -237,6 +237,9 @@ const DSL_TAGS: TagParse[] = [
   noArg("dsl.copy", "@copy"),
   // @raw_bytes_flavor: bare no-arg tag (valid only on a `_CDDL_CODEGEN_EXTERN_TYPE_` generic).
   noArg("dsl.raw_bytes_flavor", "@raw_bytes_flavor"),
+  // @ignore: bare no-arg tag (the open struct-map tolerate-and-drop rest-row flavor — valid only on
+  // a recognized `* k => v` rest row after fixed keys; a graceful rejection anywhere else).
+  noArg("dsl.ignore", "@ignore"),
   // @duplicates: one REQUIRED argument from a strict vocabulary (`preserve`/`reject`), consumed as
   // the arg so a directive after it is still reachable. On a missing/unknown argument comment_ast
   // PANICS (the fixture couldn't have generated), so — like @used_as_key's non-flavor word — the

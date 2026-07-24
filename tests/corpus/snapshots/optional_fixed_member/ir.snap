@@ -1,6 +1,5 @@
 ---
 source: src/tests/snapshot_tests.rs
-assertion_line: 109
 expression: ir
 ---
 {
@@ -70,6 +69,7 @@ expression: ir
                             used_as_elem: false,
                             copy: false,
                             raw_bytes_flavor: false,
+                            ignore: false,
                             duplicates: None,
                             custom_json: false,
                             custom_serialize: None,
@@ -105,6 +105,7 @@ expression: ir
                             used_as_elem: false,
                             copy: false,
                             raw_bytes_flavor: false,
+                            ignore: false,
                             duplicates: None,
                             custom_json: false,
                             custom_serialize: None,
@@ -138,6 +139,7 @@ expression: ir
                             used_as_elem: false,
                             copy: false,
                             raw_bytes_flavor: false,
+                            ignore: false,
                             duplicates: None,
                             custom_json: false,
                             custom_serialize: None,
@@ -197,6 +199,7 @@ expression: ir
                             used_as_elem: false,
                             copy: false,
                             raw_bytes_flavor: false,
+                            ignore: false,
                             duplicates: None,
                             custom_json: false,
                             custom_serialize: None,
@@ -230,6 +233,7 @@ expression: ir
                             used_as_elem: false,
                             copy: false,
                             raw_bytes_flavor: false,
+                            ignore: false,
                             duplicates: None,
                             custom_json: false,
                             custom_serialize: None,
@@ -293,6 +297,7 @@ expression: ir
                             used_as_elem: false,
                             copy: false,
                             raw_bytes_flavor: false,
+                            ignore: false,
                             duplicates: None,
                             custom_json: false,
                             custom_serialize: None,
@@ -332,6 +337,7 @@ expression: ir
                             used_as_elem: false,
                             copy: false,
                             raw_bytes_flavor: false,
+                            ignore: false,
                             duplicates: None,
                             custom_json: false,
                             custom_serialize: None,
@@ -371,6 +377,7 @@ expression: ir
                             used_as_elem: false,
                             copy: false,
                             raw_bytes_flavor: false,
+                            ignore: false,
                             duplicates: None,
                             custom_json: false,
                             custom_serialize: None,
@@ -410,6 +417,7 @@ expression: ir
                             used_as_elem: false,
                             copy: false,
                             raw_bytes_flavor: false,
+                            ignore: false,
                             duplicates: None,
                             custom_json: false,
                             custom_serialize: None,
@@ -449,6 +457,7 @@ expression: ir
                             used_as_elem: false,
                             copy: false,
                             raw_bytes_flavor: false,
+                            ignore: false,
                             duplicates: None,
                             custom_json: false,
                             custom_serialize: None,
