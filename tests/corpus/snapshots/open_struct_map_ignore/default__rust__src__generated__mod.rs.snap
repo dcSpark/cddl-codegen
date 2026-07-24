@@ -16,6 +16,7 @@ pub mod error;
 mod extern_interface_check;
 pub mod serialization;
 
+/// Open struct-map with an ignored rest row: tolerates unknown map entries on deserialize and DROPS them, and re-serializes only the declared fields. Byte round-trips do NOT hold for wire data that carried unknown entries.
 #[derive(Clone, Debug)]
 pub struct DetailsMap {
     pub key_1: u64,
@@ -27,6 +28,7 @@ impl DetailsMap {
     }
 }
 
+/// Open struct-map with an ignored rest row: tolerates unknown map entries on deserialize and DROPS them, and re-serializes only the declared fields. Byte round-trips do NOT hold for wire data that carried unknown entries.
 #[derive(Clone, Debug)]
 pub struct LabelMap {
     pub key_1: u64,
@@ -39,6 +41,7 @@ impl LabelMap {
     }
 }
 
+/// Open struct-map with an ignored rest row: tolerates unknown map entries on deserialize and DROPS them, and re-serializes only the declared fields. Byte round-trips do NOT hold for wire data that carried unknown entries.
 #[derive(Clone, Debug)]
 pub struct TypedIgnore {
     pub key_5: u64,

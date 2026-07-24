@@ -861,6 +861,17 @@ impl RustRecord {
             .filter(|r| r.semantics == RestSemantics::Capture)
     }
 
+    /// The rest row IFF it IGNORES (tolerate-and-drop): unknown entries are typed-deserialized and
+    /// discarded, so nothing is stored and serialize re-emits only the declared members. `None` for a
+    /// closed struct AND for a CAPTURE rest row. Used to attach the deliberate-lossiness rustdoc on
+    /// the generated type and its `serialize` fn — the drop is invisible at the API surface otherwise,
+    /// so a consumer must be told byte round-trips do not hold for wire data carrying unknown entries.
+    pub fn ignored_rest(&self) -> Option<&RestRow> {
+        self.rest
+            .as_deref()
+            .filter(|r| r.semantics == RestSemantics::Ignore)
+    }
+
     pub fn fixed_field_count(&self, types: &IntermediateTypes) -> Option<usize> {
         // An OPEN struct (rest row present) has a variable number of wire entries, so it is never a
         // fixed-length map: forcing `None` here routes `cbor_len_info` to the dynamic class (so the

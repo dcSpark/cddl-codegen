@@ -1,5 +1,25 @@
 use super::*;
 
+/// Rustdoc attached to a generated open struct-map type whose rest row is `@ignore` (tolerate-and-drop)
+/// and to its `serialize` fn. The drop is invisible at the API surface (there is no `rest` field), so a
+/// consumer has no other signal that the type is deliberately lossy — state the contract at the point of
+/// use.
+const IGNORE_LOSSINESS_DOC: &str =
+    "Open struct-map with an ignored rest row: tolerates unknown map entries on deserialize and DROPS \
+     them, and re-serializes only the declared fields. Byte round-trips do NOT hold for wire data that \
+     carried unknown entries.";
+
+/// Combine a type's optional CDDL-derived doc with the `@ignore` lossiness breadcrumb (a blank line
+/// between them when both are present), yielding the doc string to attach to the type / its serialize fn.
+fn ignore_aware_doc(base: Option<&str>, is_ignore: bool) -> Option<String> {
+    match (base, is_ignore) {
+        (Some(d), true) => Some(format!("{d}\n\n{IGNORE_LOSSINESS_DOC}")),
+        (Some(d), false) => Some(d.to_owned()),
+        (None, true) => Some(IGNORE_LOSSINESS_DOC.to_owned()),
+        (None, false) => None,
+    }
+}
+
 // generates serialization code for an array-encoded record into ser_func EXCEPT FOR array length
 pub(super) fn generate_array_struct_serialization(
     gen_scope: &mut GenerationScope,
@@ -1466,8 +1486,10 @@ pub(super) fn codegen_struct(
         if !wasm_new_comments.is_empty() {
             wasm_new.doc(wasm_new_comments.join("\n"));
         }
-        if let Some(doc) = config.doc.as_ref() {
-            wrapper.s.doc(doc);
+        if let Some(doc) =
+            ignore_aware_doc(config.doc.as_deref(), record.ignored_rest().is_some())
+        {
+            wrapper.s.doc(&doc);
         }
         wrapper.s_impl.push_fn(wasm_new);
         wrapper.push(gen_scope, types);
@@ -1479,8 +1501,8 @@ pub(super) fn codegen_struct(
     let (mut native_struct, mut native_impl) =
         create_base_rust_struct(types, name, config.custom_json, None, cli);
     native_struct.vis("pub");
-    if let Some(doc) = config.doc.as_ref() {
-        native_struct.doc(doc);
+    if let Some(doc) = ignore_aware_doc(config.doc.as_deref(), record.ignored_rest().is_some()) {
+        native_struct.doc(&doc);
     }
     let mut native_new = codegen::Function::new("new");
     let (ctor_ret, ctor_before) = if new_can_fail {
@@ -1769,6 +1791,12 @@ pub(super) fn codegen_struct(
             }
             None => ser_func,
         };
+        // Deliberate-lossiness breadcrumb on the public serialize fn of an `@ignore` open struct-map
+        // (a rest row honored here can only sit in a map record, never a plain group, so this is the
+        // real `serialize` — never `serialize_as_embedded_group`).
+        if record.ignored_rest().is_some() {
+            ser_func.doc(IGNORE_LOSSINESS_DOC);
+        }
         let mut deser_code = DeserializationCode::default();
         let in_embedded = types.is_plain_group(name);
         let ctor_block = match record.rep {
