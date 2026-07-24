@@ -1,0 +1,125 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+pub mod any_cbor;
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+pub mod cbor_encodings;
+mod extern_interface_check;
+pub mod serialization;
+
+use crate::generated::ordered_hash_map::OrderedHashMap;
+use cbor_encodings::{
+    AnyRestEncoding, OptRestEncoding, RenamedRestEncoding, TypedRestEncoding, UintRestEncoding,
+};
+use std::collections::BTreeMap;
+
+#[derive(Clone, Debug)]
+pub struct AnyRest {
+    pub key_1: u64,
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty.
+    pub rest:
+        OrderedHashMap<crate::generated::any_cbor::AnyCbor, crate::generated::any_cbor::AnyCbor>,
+    pub encodings: Option<AnyRestEncoding>,
+}
+
+impl AnyRest {
+    pub fn new(key_1: u64) -> Self {
+        Self {
+            key_1,
+            rest: OrderedHashMap::new(),
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct OptRest {
+    pub key_3: Option<String>,
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty.
+    pub rest: OrderedHashMap<u64, crate::generated::any_cbor::AnyCbor>,
+    pub encodings: Option<OptRestEncoding>,
+}
+
+impl OptRest {
+    pub fn new() -> Self {
+        Self {
+            key_3: None,
+            rest: OrderedHashMap::new(),
+            encodings: None,
+        }
+    }
+}
+
+impl Default for OptRest {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct RenamedRest {
+    pub key_1: u64,
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty.
+    pub extra: OrderedHashMap<u64, crate::generated::any_cbor::AnyCbor>,
+    pub encodings: Option<RenamedRestEncoding>,
+}
+
+impl RenamedRest {
+    pub fn new(key_1: u64) -> Self {
+        Self {
+            key_1,
+            extra: OrderedHashMap::new(),
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct TypedRest {
+    pub key_1: u64,
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty.
+    pub rest: OrderedHashMap<u64, u64>,
+    pub encodings: Option<TypedRestEncoding>,
+}
+
+impl TypedRest {
+    pub fn new(key_1: u64) -> Self {
+        Self {
+            key_1,
+            rest: OrderedHashMap::new(),
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct UintRest {
+    pub key_1: u64,
+    pub key_2: String,
+    /// Captured open-map entries whose keys are not declared fields (CDDL `* k => v` rest row). Serialized after the declared fields; defaults empty.
+    pub rest: OrderedHashMap<u64, crate::generated::any_cbor::AnyCbor>,
+    pub encodings: Option<UintRestEncoding>,
+}
+
+impl UintRest {
+    pub fn new(key_1: u64, key_2: String) -> Self {
+        Self {
+            key_1,
+            key_2,
+            rest: OrderedHashMap::new(),
+            encodings: None,
+        }
+    }
+}

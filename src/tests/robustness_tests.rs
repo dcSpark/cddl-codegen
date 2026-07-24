@@ -3236,16 +3236,25 @@ fn open_struct_map_rest_row_front_end() {
         );
     }
 
-    // --- temporary front doors (later WPs lift these): preserve / json / wasm ---
+    // --- preserve fidelity core (WP3): open structs GENERATE under --preserve-encodings, lowering
+    // the rest field to the insertion-ordered `OrderedHashMap` container with per-entry encoding
+    // sidecars for concrete key/value domains (a `* uint => any` gets a uint-key sidecar; the `any`
+    // value is self-carried). The former reject front door is lifted; json/wasm still reject (WP4). ---
     let preserve = run_flags(
         "foo = { 1: uint, * uint => any }\n",
         "preserve",
         &["--preserve-encodings=true"],
     )
-    .expect_err("open structs under --preserve-encodings reject in this WP");
+    .expect("open structs GENERATE under --preserve-encodings (WP3)");
+    let preserve_src = src(&preserve);
     assert!(
-        preserve.contains("rule `foo`") && preserve.contains("--preserve-encodings"),
-        "the preserve front door must name --preserve-encodings, got: {preserve}"
+        preserve_src.contains("pub rest: OrderedHashMap<u64, ")
+            && preserve_src.contains("::any_cbor::AnyCbor>"),
+        "the preserve rest field must lower to an insertion-ordered `OrderedHashMap`, got:\n{preserve_src}"
+    );
+    assert!(
+        preserve_src.contains("rest_key_encodings"),
+        "a concrete uint-key rest row must carry a `rest_key_encodings` sidecar under preserve, got:\n{preserve_src}"
     );
     let json = run_flags(
         "foo = { 1: uint, * uint => any }\n",
