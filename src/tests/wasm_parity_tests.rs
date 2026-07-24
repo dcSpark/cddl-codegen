@@ -350,6 +350,21 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
          wrapper-backing conflict), so it stays off the wasm axis; the `open-struct-map` snapshot \
          fixture's parity rows cover the wasm rest surface",
     ),
+    (
+        "open-struct-map-ignore",
+        "loose-CBOR open struct-map IGNORE flavor (`@ignore`) snapshot fixture: its snapshot profile \
+         generates --wasm=false. The ignore flavor tolerate-and-drops unknown entries, so it emits a \
+         CLOSED struct with NO rest field and NO wasm rest surface (its wasm class is an ordinary \
+         closed struct's) — there is no rest accessor to differential, and closed-struct wasm parity \
+         is covered by the capture `open-struct-map` snapshot fixture's rows above",
+    ),
+    (
+        "open-struct-map-ignore-e2e",
+        "loose-CBOR open struct-map IGNORE flavor (`@ignore`) e2e round-trip fixture: its integration \
+         gate generates --json-serde-derives --wasm=false (it exercises CBOR/JSON round-trip, not the \
+         wasm boundary). The ignore flavor emits a CLOSED struct with no wasm rest surface, so there \
+         is nothing to differential",
+    ),
 ];
 
 /// Only these `.rs` basenames may appear under `rust/src/generated/` (default/json profiles); only
