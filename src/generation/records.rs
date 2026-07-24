@@ -4,8 +4,7 @@ use super::*;
 /// and to its `serialize` fn. The drop is invisible at the API surface (there is no `rest` field), so a
 /// consumer has no other signal that the type is deliberately lossy — state the contract at the point of
 /// use.
-const IGNORE_LOSSINESS_DOC: &str =
-    "Open struct-map with an ignored rest row: tolerates unknown map entries on deserialize and DROPS \
+const IGNORE_LOSSINESS_DOC: &str = "Open struct-map with an ignored rest row: tolerates unknown map entries on deserialize and DROPS \
      them, and re-serializes only the declared fields. Byte round-trips do NOT hold for wire data that \
      carried unknown entries.";
 
@@ -1486,8 +1485,7 @@ pub(super) fn codegen_struct(
         if !wasm_new_comments.is_empty() {
             wasm_new.doc(wasm_new_comments.join("\n"));
         }
-        if let Some(doc) =
-            ignore_aware_doc(config.doc.as_deref(), record.ignored_rest().is_some())
+        if let Some(doc) = ignore_aware_doc(config.doc.as_deref(), record.ignored_rest().is_some())
         {
             wrapper.s.doc(&doc);
         }

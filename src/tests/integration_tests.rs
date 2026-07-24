@@ -11594,19 +11594,19 @@ fn feature_corpus_roundtrips_nondefault_profiles() {
     // container-reframing ones (`indef_containers`/`everything`) — on those cells, fully green.
     const SKIP: &[(&str, &str, &str)] = &[
         (
-        "preserve",
-        "dsl_ignore",
-        "an `@ignore` open struct-map is rejected under --preserve-encodings (a preserve crate's \
+            "preserve",
+            "dsl_ignore",
+            "an `@ignore` open struct-map is rejected under --preserve-encodings (a preserve crate's \
          byte-exact round-trip contract cannot hold for a type that drops unknown entries); the \
          default/json emitted round-trip surface runs normally",
-    ),
+        ),
         (
-        "preserve",
-        "optional_fixed_float",
-        "an optional fixed FLOAT member aborts generation under --preserve-encodings at the float \
+            "preserve",
+            "optional_fixed_float",
+            "an optional fixed FLOAT member aborts generation under --preserve-encodings at the float \
          deserialize stub (\"preserve_encodings is not implemented for float\" — the \
          preserve_encodings_supports_floats stub class); the json leg round-trips normally",
-    ),
+        ),
     ];
 
     // Per-profile floor on how many fixtures emit a generated-test module — anti-vacuity guard
