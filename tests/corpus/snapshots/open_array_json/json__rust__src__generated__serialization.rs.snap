@@ -166,8 +166,8 @@ impl Deserialize for Named {
                 cbor_event::Len::Indefinite => raw.as_slice().first() != Some(&0xff),
             } {
                 read_len.read_elems(1)?;
-                let rest_elem = raw.bytes()?;
-                extras.push(rest_elem);
+                let extras_elem = raw.bytes()?;
+                extras.push(extras_elem);
             }
             match len {
                 cbor_event::Len::Len(_) => read_len.finish()?,

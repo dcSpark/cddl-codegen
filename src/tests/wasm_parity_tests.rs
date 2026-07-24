@@ -297,6 +297,22 @@ const CORPUS_PARITY_INPUTS: &[CorpusParityInput] = &[
             ),
         ],
     ),
+    // loose-CBOR open ARRAYS: each capture rule's rust `pub rest: Vec<T>` field must carry its
+    // `rest()` wasm list-wrapper getter (`TList`/`AnyList`). Swept under `default` and `json` (the two
+    // profiles the snapshot fixture commits): the fixture mixes capture and `@ignore` rules, and
+    // `@ignore` is rejected under --preserve-encodings, so a preserve row can't generate the whole
+    // file — and the getter's wasm surface is profile-invariant (per-element encodings are rust-only),
+    // so default+json fully cover it; preserve byte-fidelity is covered by open-array-preserve-e2e.
+    (
+        "open-array",
+        &[
+            ("default", &[]),
+            (
+                "json",
+                &["--json-serde-derives=true", "--json-schema-export=true"],
+            ),
+        ],
+    ),
 ];
 
 const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
@@ -337,16 +353,20 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
     (
         "open-array-e2e",
         "loose-CBOR open array (rest tail) e2e round-trip fixture: its integration gate generates \
-         --wasm=false (it exercises CBOR round-trip, not the wasm boundary). Open-array capture \
-         presents a closed-struct wasm surface for now (no tail accessor — a later work package adds \
-         the getter), so there is no rest-specific wasm surface to differential here",
+         --wasm=false (it exercises CBOR round-trip, not the wasm boundary); the wasm rest getter is \
+         validated by the `open-array` snapshot fixture's parity rows above",
     ),
     (
-        "open-array",
-        "loose-CBOR open array (rest tail) snapshot fixture: its snapshot profiles generate \
-         --wasm=false (rust + json surfaces). Open-array capture presents a closed-struct wasm \
-         surface for now (no tail accessor — a later work package adds the getter), so there is no \
-         rest-specific wasm surface to differential here",
+        "open-array-preserve-e2e",
+        "loose-CBOR open array (rest tail) PRESERVE fidelity e2e fixture: its integration gate \
+         generates --preserve-encodings --canonical-form --wasm=false (CBOR fidelity, not the wasm \
+         boundary); the wasm rest getter is validated by the `open-array` snapshot fixture's rows",
+    ),
+    (
+        "open-array-json-e2e",
+        "loose-CBOR open array (rest tail) JSON e2e fixture: its integration gate generates \
+         --json-serde-derives --json-schema-export --wasm=false (it exercises the JSON boundary); the \
+         wasm rest getter is validated by the `open-array` snapshot fixture's parity rows",
     ),
     (
         "open-struct-map-preserve-e2e",

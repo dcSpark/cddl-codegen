@@ -1,0 +1,11 @@
+; Open array (loose CBOR "rest tail") PRESERVE fidelity round-trip vectors. Under
+; --preserve-encodings each captured tail element re-serializes byte-exactly via a POSITIONAL
+; `{field}_elem_encodings` sidecar (a self-carried `any` element carries its own encoding); under
+; --canonical-form a non-canonical-width tail element normalizes in position order. Capture-only
+; (`@ignore` is rejected under --preserve-encodings). See tests/open-array-preserve-e2e/tests.rs.
+cap = [uint, tstr, * uint]          ; typed tail — per-element encoding sidecar (`rest_elem_encodings`)
+cap_any = [uint, * any]             ; any tail — self-carried encodings (no sidecar)
+; Stream position (the cip36 skip-arm bug class): an open array is a member of an outer array; the
+; tail loop must stop at the open array's end and leave the sibling for the outer decoder.
+outer = [inner, uint]
+inner = [uint, * uint]

@@ -1,0 +1,95 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+pub mod any_cbor;
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+pub mod cbor_encodings;
+mod extern_interface_check;
+pub mod serialization;
+
+use cbor_encodings::{CapAnyEncoding, CapEncoding, InnerEncoding, OuterEncoding};
+
+#[derive(Clone, Debug)]
+pub struct Cap {
+    pub index_0: u64,
+    pub index_1: String,
+    /// Captured trailing array elements beyond the declared members (CDDL `* t` rest tail). Serialized after the declared members; defaults empty.
+    pub rest: Vec<u64>,
+    pub encodings: Option<CapEncoding>,
+}
+
+impl Cap {
+    pub fn new(index_0: u64, index_1: String) -> Self {
+        Self {
+            index_0,
+            index_1,
+            rest: Vec::new(),
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CapAny {
+    pub index_0: u64,
+    /// Captured trailing array elements beyond the declared members (CDDL `* t` rest tail). Serialized after the declared members; defaults empty.
+    pub rest: Vec<crate::generated::any_cbor::AnyCbor>,
+    pub encodings: Option<CapAnyEncoding>,
+}
+
+impl CapAny {
+    pub fn new(index_0: u64) -> Self {
+        Self {
+            index_0,
+            rest: Vec::new(),
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Inner {
+    pub index_0: u64,
+    /// Captured trailing array elements beyond the declared members (CDDL `* t` rest tail). Serialized after the declared members; defaults empty.
+    pub rest: Vec<u64>,
+    pub encodings: Option<InnerEncoding>,
+}
+
+impl Inner {
+    pub fn new(index_0: u64) -> Self {
+        Self {
+            index_0,
+            rest: Vec::new(),
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Outer {
+    pub inner: Inner,
+    pub index_1: u64,
+    pub encodings: Option<OuterEncoding>,
+}
+
+impl Outer {
+    pub fn new(inner: Inner, index_1: u64) -> Self {
+        Self {
+            inner,
+            index_1,
+            encodings: None,
+        }
+    }
+}
