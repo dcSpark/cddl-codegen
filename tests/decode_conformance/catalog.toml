@@ -3707,7 +3707,59 @@ expect = "accept"
 id = "dsl.ignore"
 axis = "feature"
 example = "\nlabel_map = {\n  1: uint, 2: text,\n  * uint => any ; @ignore\n}"
-pinned_reason = "decode-foreign vectors not yet minted — this open struct-map @ignore rule is mintable (a supported tolerate-and-drop rest row), but minting runs the ruby/rust oracles via verify.ts --mint-decode-foreign, deferred to the matrix close-out cycle; the close-out mint replaces this pin"
+spec = "\nlabel_map = {\n  1: uint, 2: text,\n  * uint => any ; @ignore\n}"
+mode = "standalone"
+type_name = "LabelMap"
+
+[[row.vector]]
+hex = "a20119021602676a697474657279"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a3011905200269636f6d7261646527731904a16a72657074696c69616e73"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a301190e58026663726162277319094d67636c6173706564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a3011910bb0268636f696e61676573190ae268656e657267792773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a4011901c402694865776c6574742773190d4b6a756e6f7274686f646f78190a6e6a736166656e6573732773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a40119073d0265617074657218336762757362792773191151656b65796564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a401190a8002694361726e6174696f6e19015069636f6d6d656e636573190c096b616d656c696f7261746564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a5011909fb0269636f6e6e756269616c19019c6877726974696e677319046c6a7061796d6173746572731908416a6d696d656f6772617068"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a501190d46026873756666757365641911be6547617027731910616a7265696e76656e7465641908d86962696f707379696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a6011902e702696275636b657965277319096467717561686f67731903256961666669726d696e671908066a7375626d697474696e671911686a676172626167656d616e"
+source = "ruby-generate"
+expect = "accept"
 
 [[row]]
 id = "dsl.name"
