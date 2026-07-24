@@ -1789,6 +1789,14 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "dsl_ignore.ignored"
+axis = "corpus"
+example = "ignored = {\n  1: uint,\n  * uint => text ; @ignore\n}"
+fixture = "dsl_ignore"
+rule = "ignored"
+pinned_reason = "decode-corpus vectors not yet minted — this @ignore rule is mintable (clean spec-conforming instances decode; the tolerate-and-drop looseness only shows for unknown entries, which minted vectors do not carry), but minting runs the ruby/rust oracles via verify.ts --mint-decode-corpus, deferred to the matrix close-out cycle; the close-out mint replaces this pin"
+
+[[row]]
 id = "dsl_name.named"
 axis = "corpus"
 example = "named = [\n    bytes, ; @name address\n    uint   ; @name checksum\n]"
