@@ -5474,6 +5474,26 @@ fn open_struct_map_e2e() {
 }
 
 #[test]
+fn open_array_e2e() {
+    // Loose-CBOR open ARRAY (rest tail) value-level round-trip vectors: a final-position `* t` after
+    // the fixed members captures the trailing elements into `pub rest: Vec<T>` (capture) or drops them
+    // (`@ignore`). Pins empty-tail ≡ closed bytes, definite/indefinite arrays with extra elements
+    // (incl. nested-container elements), typed-tail typing enforcement, an optional member + a
+    // type-distinct tail, and the stream-position (sibling-after-open-array) regression class for BOTH
+    // flavors. Plain flavor only (`--wasm=false`, non-preserve): byte-exact per-element tail encodings
+    // under --preserve-encodings are a later work package. See tests/open-array-e2e/tests.rs.
+    run_test(
+        "open-array-e2e",
+        &["--wasm=false"],
+        None,
+        &[],
+        &[],
+        false,
+        &[],
+    );
+}
+
+#[test]
 fn open_struct_map_ignore_e2e() {
     // Loose-CBOR open struct-map IGNORE flavor (`@ignore` on the rest row) value-level round-trip
     // vectors: unknown entries are typed-deserialized and DROPPED (stream position past nested
