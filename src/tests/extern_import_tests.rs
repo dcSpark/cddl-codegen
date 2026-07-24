@@ -786,6 +786,69 @@ fn extern_import_export_with_records_parses_cleanly() {
     );
 }
 
+/// Loose-CBOR Phase B WP4 (§6.2 as rewritten in the WP2 review): an open struct-map rest-bearing
+/// RECORD projects OPAQUE across the crate seam — the ordinary class-backed-types-are-opaque posture
+/// — so it needs NO projected field-model / `* K => V` member rendering. A CONCRETE-typed rest row
+/// with no `any` anywhere (`* uint => text`) exports under the v1 header (opaque marker), which is
+/// v1-compatible and safe NOW, and re-imports cleanly via `--extern-import`; an `any`-containing rest
+/// row exports v2 (the existing whole-IR `uses_any_cbor()` bump). Because the record projects OPAQUE
+/// (no structural rest spelling crosses the seam), the v2 bump condition needs no widening — the one
+/// live obligation §6.2 named is satisfied by this being a pure verification.
+#[test]
+fn extern_import_open_struct_map_rest_row_projects_opaque() {
+    // A concrete-typed rest row: no `any` anywhere -> v1 header, opaque marker.
+    let concrete = mint_export(
+        "concrete_rest = { 1: uint, * uint => text }\n",
+        "dep",
+        "rest_concrete",
+    );
+    let concrete_root = &concrete["extern-interface/dep/mod.cddl"];
+    assert!(
+        concrete_root.contains("; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1"),
+        "a concrete-typed (no-`any`) rest-bearing record must export under the v1 header: {concrete_root}"
+    );
+    assert!(
+        concrete_root.contains("concrete_rest = _CDDL_CODEGEN_EXTERN_TYPE_"),
+        "a rest-bearing record must project OPAQUE (class-backed-types-are-opaque): {concrete_root}"
+    );
+
+    // An `any`-containing rest row: the whole-IR `uses_any_cbor()` bump -> v2 header, still opaque.
+    let any = mint_export("any_rest = { 1: uint, * uint => any }\n", "dep", "rest_any");
+    let any_root = &any["extern-interface/dep/mod.cddl"];
+    assert!(
+        any_root.contains("; _CDDL_CODEGEN_EXTERN_INTERFACE_ v2"),
+        "an `any`-containing rest-bearing record must export under the v2 header: {any_root}"
+    );
+    assert!(
+        any_root.contains("any_rest = _CDDL_CODEGEN_EXTERN_TYPE_"),
+        "the `any`-rest record still projects OPAQUE: {any_root}"
+    );
+
+    // The concrete v1 export re-imports cleanly via --extern-import: a consumer referencing the
+    // rest-bearing extern type generates without error (the consumer sees an opaque extern).
+    let flag_root = scratch("rest_concrete_consumer");
+    write(&flag_root, "lib.cddl", "thing = [r: concrete_rest]\n");
+    let export_dir = scratch("rest_concrete_export");
+    for (path, content) in &concrete {
+        write(&export_dir, path, content);
+    }
+    let import_arg = format!(
+        "dep={}",
+        export_dir.join("extern-interface/dep").to_str().unwrap()
+    );
+    let map = generate(
+        &flag_root.join("lib.cddl"),
+        &["--extern-import", &import_arg],
+    )
+    .expect("a v1 concrete-rest export must re-import cleanly (opaque extern)");
+    let _ = std::fs::remove_dir_all(&flag_root);
+    let _ = std::fs::remove_dir_all(&export_dir);
+    assert!(
+        map.contains_key("rust/src/generated/mod.rs"),
+        "generation must produce the consumer's root module"
+    );
+}
+
 /// Ask 0 — the excluded-with-record contract holds for the plain-group shapes that DON'T export as a
 /// group-body row. A plain group is inlined at its use sites, so it never travels as an opaque class;
 /// rather than vanishing silently, a shape with no embedded-group surface leaves a `; unexported:`
