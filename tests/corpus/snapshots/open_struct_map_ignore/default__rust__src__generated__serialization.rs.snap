@@ -11,6 +11,7 @@ use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
 
 impl cbor_event::se::Serialize for DetailsMap {
+    /// Open struct-map with an ignored rest row: tolerates unknown map entries on deserialize and DROPS them, and re-serializes only the declared fields. Byte round-trips do NOT hold for wire data that carried unknown entries.
     fn serialize<'se>(
         &self,
         serializer: &'se mut Serializer,
@@ -91,6 +92,7 @@ impl Deserialize for DetailsMap {
 }
 
 impl cbor_event::se::Serialize for LabelMap {
+    /// Open struct-map with an ignored rest row: tolerates unknown map entries on deserialize and DROPS them, and re-serializes only the declared fields. Byte round-trips do NOT hold for wire data that carried unknown entries.
     fn serialize<'se>(
         &self,
         serializer: &'se mut Serializer,
@@ -178,6 +180,7 @@ impl Deserialize for LabelMap {
 }
 
 impl cbor_event::se::Serialize for TypedIgnore {
+    /// Open struct-map with an ignored rest row: tolerates unknown map entries on deserialize and DROPS them, and re-serializes only the declared fields. Byte round-trips do NOT hold for wire data that carried unknown entries.
     fn serialize<'se>(
         &self,
         serializer: &'se mut Serializer,
