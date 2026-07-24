@@ -1189,7 +1189,13 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   (Full derivation of `PRESERVE_SKIP` from the annotation verdict is NOT possible: the float
   rows' annotations say preserve-SUPPORTED — the matrix probe's bare-alias shape misses the
   float deserialize stub that the replay's example spec hits — so the hand ledger keeps owning
-  the reasons; the cross-check is subset-direction only.)
+  the reasons; the cross-check is subset-direction only.) Confirmed since: each replay gate's
+  `PRESERVE_SKIP` stale-guard asserts every listed id names an ACTIVE (vectored) row, so a
+  `PRESERVE_SKIP` entry for a still-PINNED row FAILS the gate outright — a designed-rejection skip
+  therefore CANNOT be pre-landed against a pinned row. The static annotation-side cross-check (which
+  reads catalog + annotation without touching the skip ledger) is thus the only shape that fires at
+  pin time; the alternative that keeps the ledger honest same-commit is to land the row ACTIVE with a
+  hand-derived accept vector so its skip entry is immediately valid.
 
 ## Deferred features (build when a real consumer needs them)
 

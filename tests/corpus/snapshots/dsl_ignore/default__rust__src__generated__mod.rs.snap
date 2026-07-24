@@ -26,3 +26,15 @@ impl Ignored {
         Self { key_1 }
     }
 }
+
+/// Open array with an ignored rest tail: tolerates unknown trailing array elements on deserialize and DROPS them, and re-serializes only the declared members. Byte round-trips do NOT hold for wire data that carried extra trailing elements.
+#[derive(Clone, Debug)]
+pub struct IgnoredList {
+    pub index_0: u64,
+}
+
+impl IgnoredList {
+    pub fn new(index_0: u64) -> Self {
+        Self { index_0 }
+    }
+}

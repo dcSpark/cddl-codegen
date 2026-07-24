@@ -14792,6 +14792,17 @@ fn corpus_decode_replay() {
              docs/docs/comment_dsl.mdx § \"@ignore\") — the preserve leg is impossible by contract, \
              not a generator gap; default-profile decode fully replays this row's vectors",
         ),
+        // The open-ARRAY twin of the row above: `@ignore` on a rest TAIL is the same designed
+        // preserve rejection (drops unknown TRAILING ARRAY ELEMENTS instead of map entries). Same
+        // tripwire semantics — this leg starting to generate under preserve is a contract regression.
+        (
+            "dsl_ignore.ignored_list",
+            "`@ignore` on an open-array rest tail is REJECTED under --preserve-encodings by the same \
+             design as the map rest row (a preserve crate's byte-exact round-trip contract cannot hold \
+             for a deliberately-lossy type that DROPS unknown trailing array elements; see \
+             docs/docs/comment_dsl.mdx § \"@ignore\") — the preserve leg is impossible by contract, \
+             not a generator gap; default-profile decode fully replays this row's vectors",
+        ),
     ];
     // Rows that GENERATE + compile under preserve but re-encode a decoded accept vector to different
     // bytes. Empty at HEAD — a newly-appearing byte-identity mismatch is a FINDING to triage.
