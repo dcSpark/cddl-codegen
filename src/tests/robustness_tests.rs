@@ -3273,8 +3273,10 @@ fn open_struct_map_rest_row_front_end() {
             && json_src.contains("read_flattened_rest_pairs"),
         "the rest field must wire the flattened-JSON serialize_with/deserialize_with helpers, got:\n{json_src}"
     );
-    // --wasm=true is the default; the happy-path `run` uses --wasm=false, so pin the wasm rejection
-    // by NOT passing --wasm=false.
+    // --- wasm rest surface (WP4): open structs GENERATE under --wasm (the default), the wasm wrapper
+    // gaining a `rest` getter that returns the captured entries as the minted map wrapper. The former
+    // reject front door is lifted. --wasm=true is the default, so pin generation by NOT passing
+    // --wasm=false. ---
     {
         let path = std::env::temp_dir().join(format!(
             "cddl_codegen_rest_wasm_{}.cddl",
@@ -3290,10 +3292,12 @@ fn open_struct_map_rest_row_front_end() {
         ]);
         let wasm = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
         std::fs::remove_file(&path).ok();
-        let wasm = wasm.expect_err("open structs under --wasm reject in this WP");
+        let wasm = wasm.expect("open structs GENERATE under --wasm (WP4)");
+        let wasm_src = wasm.values().cloned().collect::<Vec<_>>().join("\n");
         assert!(
-            wasm.contains("rule `foo`") && wasm.contains("wasm"),
-            "the wasm front door must name the wasm surface, got: {wasm}"
+            wasm_src.contains("pub fn rest(&self) -> MapU64ToAny")
+                && wasm_src.contains("pub struct MapU64ToAny"),
+            "the wasm wrapper must expose a `rest` getter returning the minted map wrapper, got:\n{wasm_src}"
         );
     }
 

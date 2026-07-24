@@ -581,6 +581,28 @@ impl GenerationScope {
                             for field in &record.fields {
                                 self.ensure_non_empty_wrappers(types, &field.rust_type, cli);
                             }
+                            // Open struct-map rest row: its container is a `Map(domain, range)` the
+                            // conceptual visitor above never sees as a composite (it walks
+                            // domain/range separately). Mint the map's wasm wrapper explicitly — the
+                            // rest field's getter returns it — via the SAME path a map field's
+                            // wrapper takes (policy recovered from `map_shape_is_preserve_owned`, so a
+                            // `@duplicates preserve` rest mints the PairMap-backed wrapper).
+                            if let Some(rest) = &record.rest {
+                                let rest_map = ConceptualRustType::Map(
+                                    Box::new(rest.domain.clone()),
+                                    Box::new(rest.range.clone()),
+                                );
+                                mint_wasm_wrapper_for_visited_type(
+                                    self,
+                                    types,
+                                    &rest_map,
+                                    &mut wasm_wrappers_generated,
+                                    &table_shape_sole_owner,
+                                    cli,
+                                );
+                                self.ensure_non_empty_wrappers(types, &rest.domain, cli);
+                                self.ensure_non_empty_wrappers(types, &rest.range, cli);
+                            }
                         }
                         RustStructType::Table { domain, range, .. } => {
                             // the named table's OWN restricted wrapper (`{+ k => v}`) is minted in
