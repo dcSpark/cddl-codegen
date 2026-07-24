@@ -845,6 +845,35 @@ fn record_roundtrip(
             break;
         }
     }
+    // Open struct-map (rest row): mint ONE captured entry through the generated `.rest` map API
+    // (`insert`, uniform across the BTreeMap / OrderedHashMap / PairMap flavors) so the round-trip
+    // loop actually serializes and re-reads rest content — the rest row is excluded from `new()`
+    // (defaults empty), so this is the only path that populates it. Under `--preserve-encodings` the
+    // encoding-fidelity mutator then exercises the header/width classes over the captured entry's
+    // bytes, and — when the rest RANGE is `any` — the `widen_float` class over the float head the
+    // `MintValue::Any` composite carries (the rest-position twin of `emit_tests_any_float_execute`'s
+    // member-position float mint). Both key (domain) and value (range) are minted via `valid_value`;
+    // a domain/range not cheaply mintable skips the rest case, leaving the baseline empty-rest case
+    // (which still round-trips: empty rest ≡ closed-struct bytes).
+    if let Some(rest) = &record.rest {
+        match (
+            valid_value(types, &rest.domain),
+            valid_value(types, &rest.range),
+        ) {
+            (Some(k), Some(v)) => cases.push((
+                format!(
+                    "{{ let mut v = {base}; v.{}.insert({}, {}); v }}",
+                    rest.field_name,
+                    render_rust(&k),
+                    render_rust(&v)
+                ),
+                "rest entry present".to_owned(),
+            )),
+            _ => eprintln!(
+                "cddl-codegen --emit-tests: {name} rest row not cheaply mintable — round-trip covers empty rest only"
+            ),
+        }
+    }
     roundtrip_body(name, cases, conf, dump_rule, rt)
 }
 
