@@ -3355,4 +3355,138 @@ fn open_struct_map_rest_row_front_end() {
         rule_dup.contains("rule `foo`") && !rule_dup.contains("open struct-map rest row"),
         "a rule-position @duplicates must be read at rule level, not stolen by the rest row, got: {rule_dup}"
     );
+
+    // ===== IGNORE flavor (`@ignore` on the rest row): tolerate-and-drop =====
+
+    // --- happy path: `@ignore` on an entry-trailing rest row GENERATES a CLOSED struct (no `rest`
+    // field, no flatten machinery), while the deserialize loop still consumes+drops each unknown
+    // entry (dynamic length so a definite map with extra entries decodes). ---
+    let ign = run(
+        "foo = {\n  1: uint, 2: text,\n  * uint => any ; @ignore\n}\n",
+        "ignore_ok",
+    )
+    .expect("an `@ignore` rest row must generate (tolerate-and-drop, plain flavor)");
+    let ign_src = src(&ign);
+    assert!(
+        !ign_src.contains("pub rest"),
+        "an `@ignore` rest row must emit NO `rest` field (closed struct), got:\n{ign_src}"
+    );
+    // `new()` matches the closed struct's — the two declared fields, no rest arg.
+    assert!(
+        ign_src.contains("pub fn new(key_1: u64, key_2: String)"),
+        "an `@ignore` struct's new() takes only the declared fields, got:\n{ign_src}"
+    );
+    // The value is still typed-deserialized then dropped: the drop binding proves the arm runs.
+    assert!(
+        ign_src.contains("let _rest_value ="),
+        "an `@ignore` rest row must typed-deserialize-and-DROP the value, got:\n{ign_src}"
+    );
+
+    // --- combination guard: `@ignore` + `--preserve-encodings` REJECTS (a preserve crate's
+    // byte-exact round-trip contract can't hold for a deliberately-lossy type). ---
+    let ign_preserve = run_flags(
+        "foo = {\n  1: uint,\n  * uint => any ; @ignore\n}\n",
+        "ignore_preserve",
+        &["--preserve-encodings=true"],
+    )
+    .expect_err("`@ignore` under --preserve-encodings must reject");
+    assert!(
+        ign_preserve.contains("rule `foo`")
+            && ign_preserve.contains("--preserve-encodings")
+            && ign_preserve.contains("@custom_serialize"),
+        "the preserve rejection must name --preserve-encodings + the custom_serialize remedy, got: {ign_preserve}"
+    );
+
+    // --- combination guard: `@ignore` + `@duplicates` REJECTS (a duplicates policy governs a
+    // captured container, which `@ignore` does not create). ---
+    let ign_dup = run(
+        "foo = {\n  1: uint,\n  * uint => any ; @ignore @duplicates preserve\n}\n",
+        "ignore_dup",
+    )
+    .expect_err("`@ignore` + `@duplicates` on a rest row must reject");
+    assert!(
+        ign_dup.contains("rule `foo`")
+            && ign_dup.contains("@ignore")
+            && ign_dup.contains("@duplicates"),
+        "the @ignore+@duplicates rejection must name both directives, got: {ign_dup}"
+    );
+
+    // --- combination guard: `@ignore` + `@name` REJECTS (`@ignore` emits no field to name). ---
+    let ign_name = run(
+        "foo = {\n  1: uint,\n  * uint => any ; @ignore @name extra\n}\n",
+        "ignore_name",
+    )
+    .expect_err("`@ignore` + `@name` on a rest row must reject");
+    assert!(
+        ign_name.contains("rule `foo`")
+            && ign_name.contains("@ignore")
+            && ign_name.contains("@name"),
+        "the @ignore+@name rejection must name both directives, got: {ign_name}"
+    );
+
+    // --- PROBE-C6: placement guards fire BEFORE semantics — an `@ignore` on a NON-FINAL rest row
+    // still gets the placement (LAST-entry) rejection, not an ignore-specific message. ---
+    let ign_nonfinal = run(
+        "foo = {\n  1: uint,\n  * uint => any ; @ignore\n  2: text\n}\n",
+        "ignore_nonfinal",
+    )
+    .expect_err("a non-final `@ignore` rest row must reject on placement");
+    assert!(
+        ign_nonfinal.contains("rule `foo`") && ign_nonfinal.contains("LAST entry"),
+        "an `@ignore` on a non-final row must get the placement rejection first, got: {ign_nonfinal}"
+    );
+
+    // --- never-silent placement (C-R5): `@ignore` on a PLAIN TYPE RULE rejects (not applicable). ---
+    let ign_type_rule = run("x = uint ; @ignore\n", "ignore_type_rule")
+        .expect_err("`@ignore` on a type rule must reject");
+    assert!(
+        ign_type_rule.contains("@ignore")
+            && ign_type_rule.contains("only valid on an open struct-map rest row"),
+        "an `@ignore` on a plain type rule must reject naming the one valid placement, got: {ign_type_rule}"
+    );
+
+    // --- never-silent placement (C-R5): `@ignore` on a TABLE RULE (`{ * k => v }`, no fixed keys)
+    // rejects — a table is not an open struct-map. ---
+    let ign_table = run("t = { * uint => any } ; @ignore\n", "ignore_table")
+        .expect_err("`@ignore` on a table rule must reject");
+    assert!(
+        ign_table.contains("@ignore")
+            && ign_table.contains("only valid on an open struct-map rest row"),
+        "an `@ignore` on a table rule must reject naming the one valid placement, got: {ign_table}"
+    );
+
+    // --- never-silent placement (C-R5): `@ignore` at a FIELD/member position rejects. ---
+    let ign_field = run("foo = {\n  field: uint ; @ignore\n}\n", "ignore_field")
+        .expect_err("`@ignore` on a struct field must reject");
+    assert!(
+        ign_field.contains("@ignore") && ign_field.contains("field"),
+        "an `@ignore` on a field must reject naming the field position, got: {ign_field}"
+    );
+
+    // --- slot direction (PROBE-B6-style): a RULE-position `@ignore` (same line as `}`) is read at
+    // rule level and rejected as not-applicable — it is NOT stolen by the rest ENTRY (which would make
+    // the row ignore-flavored and generate a closed struct silently). ---
+    let ign_rule_pos = run(
+        "foo = { 1: uint, * uint => any } ; @ignore\n",
+        "ignore_rule_pos",
+    )
+    .expect_err("a rule-position `@ignore` on an open struct must reject");
+    assert!(
+        ign_rule_pos.contains("@ignore")
+            && ign_rule_pos.contains("only valid on an open struct-map rest row"),
+        "a rule-position `@ignore` must be read at rule level, not stolen by the entry, got: {ign_rule_pos}"
+    );
+
+    // --- marker-slot trap: an `@ignore` on the `*` marker's own comment slot (before the entry
+    // type) is NOT honored — the row stays CAPTURE (a `pub rest` field appears), pinned loud. ---
+    let ign_marker = run(
+        "foo = {\n  1: uint,\n  *  ; @ignore\n  uint => any\n}\n",
+        "ignore_marker",
+    )
+    .expect("a marker-slot `@ignore` must not break generation");
+    assert!(
+        src(&ign_marker).contains("pub rest:"),
+        "an `@ignore` on the `*` marker's comment slot must NOT be honored (row stays capture, `pub rest` present), got:\n{}",
+        src(&ign_marker)
+    );
 }

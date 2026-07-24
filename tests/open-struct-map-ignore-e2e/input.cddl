@@ -1,0 +1,20 @@
+; Open struct-map IGNORE flavor (`@ignore` on the rest row) end-to-end round-trip vectors. `@ignore`
+; tolerate-and-DROPS unknown map entries: each is typed-deserialized (key AND value, so the stream
+; advances correctly) and then discarded — no `rest` field, and serialize re-emits ONLY the declared
+; members. Non-preserve only (`@ignore` is rejected under --preserve-encodings). The `any` value
+; range still exercises the AnyCbor skip primitive (drop-through of arbitrary CBOR). Every `wire`
+; byte string in tests.rs is hand-written from the CBOR grammar, not copied from generator output.
+; (The `; @ignore` comment must precede the closing `}` on its own line — a CDDL comment runs to the
+; end of the line, so `; @ignore }` would swallow the brace.)
+foo = {
+  1: uint, 2: text,
+  * uint => any ; @ignore
+}
+bar = {
+  ? 3: text,
+  * uint => any ; @ignore
+}
+baz = {
+  1: uint,
+  * any => any ; @ignore
+}

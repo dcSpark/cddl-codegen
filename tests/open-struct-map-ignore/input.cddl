@@ -1,0 +1,20 @@
+; Open struct-map IGNORE flavor (`@ignore` on the rest row): unknown map entries are
+; typed-deserialized and then DROPPED — no `rest` field is emitted, serialize writes ONLY the
+; declared members, and JSON/schemars/wasm are a closed struct's. This is the documented-lossy
+; counterpart to the default capture flavor. Mirrors cip25's shape: a top-level map that skips unknown
+; uint labels, plus a details map that skips every unknown key. Snapshotted non-preserve
+; (`--wasm=false`); `@ignore` is rejected under --preserve-encodings, so there is no preserve profile.
+; (The `; @ignore` comment sits on its own line before the closing `}` — a CDDL comment runs to the
+; end of the line, so `; @ignore }` would swallow the brace.)
+label_map = {
+  1: uint, 2: text,
+  * uint => any ; @ignore
+}
+details_map = {
+  1: uint,
+  * any => any ; @ignore
+}
+typed_ignore = {
+  5: uint,
+  * uint => text ; @ignore
+}
