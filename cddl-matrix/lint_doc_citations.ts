@@ -17,6 +17,11 @@
  *      citations, which silently retarget when sections are pruned/renumbered — the rot never
  *      dangles, so no existence check can flag it (the "§ 4 lesson" descs pointed at a section
  *      that had been renumbered away). Titles are the stable citation form.
+ *   5. Ephemeral-reference ban: durable docs/code/tests must not point at gitignored, plan-internal
+ *      material (delivery ruling ids, the WP-backing spec files, per-WP "outcome header" prose,
+ *      `PROBE-B<n>` probe ids, the `draft/loose-cbor/` scratchpad home). Such references resolve
+ *      only inside gitignored `draft/` files, so they dangle silently to any future reader — state
+ *      the constraint inline with a durable citation instead. See EPHEMERAL_PATTERNS.
  *
  * Run from cddl-matrix/:
  *   bun run lint_doc_citations.ts
@@ -131,6 +136,37 @@ function md022Problems(rel: string, text: string): string[] {
   return problems;
 }
 
+// Ephemeral-reference ban: durable docs/code/tests must not point at gitignored, plan-internal
+// material — delivery ruling ids, work-package numbers' backing spec files, per-WP "outcome header"
+// prose, `PROBE-B<n>` probe ids, and the `draft/loose-cbor/` scratchpad home. Those resolve only
+// inside gitignored `draft/` files, so to a future reader they dangle silently (no existence check
+// can flag a reference whose target is not tracked). The fix is to state the constraint inline with
+// a durable citation (a docs section by heading, an RFC section, or a test/gate name). Scoped like
+// the positional ban: `draft/` files are historical working notes and exempt as TARGETS. The
+// broader `draft/*.md` upstream-bug repro provenance the matrix hand-docs cite is a separate,
+// pre-existing convention (a different reference class) and is deliberately NOT matched here.
+const EPHEMERAL_PATTERNS: { re: RegExp; canary: string }[] = [
+  { re: /draft\/loose-cbor/g, canary: "see draft/loose-cbor/b-spec.md" },
+  { re: /\b[a-c][0-9]*-spec\b/g, canary: "per the b-spec" },
+  { re: /ruling R[0-9]/g, canary: "ruling R7 says" },
+  { re: /ruling §/g, canary: "ruling §10.8" },
+  { re: /outcome header/gi, canary: "the WP4 outcome header" },
+  { re: /PROBE-B[0-9]/g, canary: "PROBE-B6 confirmed" },
+];
+
+function ephemeralReferenceProblems(file: TrackedFile): string[] {
+  if (file.rel.startsWith("draft/")) return [];
+  // The ruleset file necessarily spells the banned patterns; exempt it from its own scan.
+  if (file.rel === "cddl-matrix/lint_doc_citations.ts") return [];
+  const problems: string[] = [];
+  for (const { re } of EPHEMERAL_PATTERNS) {
+    for (const m of file.text.matchAll(re)) {
+      problems.push(`${file.rel}:${lineOf(file.text, m.index ?? 0)}: ephemeral reference '${m[0]}' points at gitignored/plan-internal material that dangles to future readers; state the constraint inline with a durable citation (a docs section by heading, an RFC section, or a test/gate name)`);
+    }
+  }
+  return problems;
+}
+
 function positionalCitationProblems(file: TrackedFile): string[] {
   if (file.rel.startsWith("draft/")) return [];
   const problems: string[] = [];
@@ -207,6 +243,15 @@ for (const doc of handDocFiles) {
 }
 
 for (const f of allFiles) problems.push(...positionalCitationProblems(f));
+for (const f of allFiles) problems.push(...ephemeralReferenceProblems(f));
+
+// Self-check: each ephemeral pattern must still match its canary (guards against a regex silently
+// going vacuous — e.g. an errant edit that never fires and lets dangling references back in).
+for (const { re, canary } of EPHEMERAL_PATTERNS) {
+  re.lastIndex = 0;
+  if (!re.test(canary)) problems.push(`ephemeral-reference self-check: pattern ${re} no longer matches its canary '${canary}' — the ban is vacuous`);
+  re.lastIndex = 0;
+}
 
 if (handDocFiles.length < 4) problems.push(`only ${handDocFiles.length} shipped hand doc(s) scanned (expected >= 4) — doc scope looks broken`);
 if (identifierCitationCount < 10)
@@ -221,5 +266,5 @@ if (problems.length) {
 console.log(
   `doc-citation lint OK — ${identifierCitationCount} citation token(s) across ${handDocFiles.length} hand doc(s) ` +
     `(${handDocs.map(rel => `${rel}=${perDocCitationCounts.get(rel) ?? 0}`).join(", ")}) · ` +
-    `positional citation ban scanned ${allFiles.filter(f => !f.rel.startsWith("draft/")).length} tracked text file(s) · MD022 headings clean`,
+    `positional + ephemeral-reference bans scanned ${allFiles.filter(f => !f.rel.startsWith("draft/")).length} tracked text file(s) · MD022 headings clean`,
 );
