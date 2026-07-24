@@ -13611,6 +13611,21 @@ fn decode_conformance_replay() {
              with a standing `TODO: how to even store these?`) — a pre-existing generator gap, not a \
              decoder issue; the default-profile decode of this row still replays",
         ),
+        // NOT a gap — a DESIGNED rejection. `@ignore` (the tolerate-and-drop open struct-map rest
+        // row flavor) is refused under --preserve-encodings by contract: a preserve crate promises
+        // byte-exact round-trips, which a deliberately-lossy type undermines crate-wide (see
+        // docs/docs/comment_dsl.mdx § "@ignore"; the rejection message points at capture and at
+        // @custom_serialize/@custom_deserialize). The default-profile decode of this row fully
+        // replays its foreign vectors — only the by-design-impossible preserve leg is skipped. The
+        // stale-entry guard doubles as a tripwire: if @ignore ever starts generating under
+        // preserve, that is a contract regression to investigate, not a gap closing.
+        (
+            "dsl.ignore",
+            "`@ignore` is REJECTED under --preserve-encodings by design (a preserve crate's \
+             byte-exact round-trip contract cannot hold for a deliberately-lossy type; see \
+             docs/docs/comment_dsl.mdx § \"@ignore\") — the preserve leg is impossible by contract, \
+             not a generator gap; default-profile decode fully replays this row's vectors",
+        ),
     ];
     // Rows that GENERATE + compile under preserve but re-encode a decoded accept vector to different
     // bytes (decodes Ok, `to_cbor_bytes()` != input). Empty at HEAD — no row exhibits this. A newly-
@@ -14626,6 +14641,16 @@ fn corpus_decode_replay() {
             "optional fixed FLOAT map values (`? amount: 1.5`, `? rate: 2.5`) hit the same native-float \
              `unimplemented!` under --preserve-encodings (generation/deserialize.rs float arm; see the \
              preserve_encodings_supports_floats stub) — default-profile decode still replays its accept vectors",
+        ),
+        // NOT a gap — a DESIGNED rejection (the corpus twin of the matrix replay's `dsl.ignore`
+        // entry; same tripwire semantics: this leg starting to generate under preserve is a
+        // contract regression, not a gap closing).
+        (
+            "dsl_ignore.ignored",
+            "`@ignore` is REJECTED under --preserve-encodings by design (a preserve crate's \
+             byte-exact round-trip contract cannot hold for a deliberately-lossy type; see \
+             docs/docs/comment_dsl.mdx § \"@ignore\") — the preserve leg is impossible by contract, \
+             not a generator gap; default-profile decode fully replays this row's vectors",
         ),
     ];
     // Rows that GENERATE + compile under preserve but re-encode a decoded accept vector to different
