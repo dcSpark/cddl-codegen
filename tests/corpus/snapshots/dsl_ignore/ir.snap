@@ -65,35 +65,37 @@ expression: ir
                 ],
                 rest: Some(
                     RestRow {
-                        domain: RustType {
-                            conceptual_type: Primitive(
-                                U64,
-                            ),
-                            encodings: [],
-                            config: RustTypeSerializeConfig {
-                                default: None,
-                                bounds: None,
-                                duplicates: None,
-                                float_bounds: None,
-                                basic_override: false,
+                        kind: MapEntries {
+                            domain: RustType {
+                                conceptual_type: Primitive(
+                                    U64,
+                                ),
+                                encodings: [],
+                                config: RustTypeSerializeConfig {
+                                    default: None,
+                                    bounds: None,
+                                    duplicates: None,
+                                    float_bounds: None,
+                                    basic_override: false,
+                                },
                             },
-                        },
-                        range: RustType {
-                            conceptual_type: Primitive(
-                                Str,
-                            ),
-                            encodings: [],
-                            config: RustTypeSerializeConfig {
-                                default: None,
-                                bounds: None,
-                                duplicates: None,
-                                float_bounds: None,
-                                basic_override: false,
+                            range: RustType {
+                                conceptual_type: Primitive(
+                                    Str,
+                                ),
+                                encodings: [],
+                                config: RustTypeSerializeConfig {
+                                    default: None,
+                                    bounds: None,
+                                    duplicates: None,
+                                    float_bounds: None,
+                                    basic_override: false,
+                                },
                             },
+                            duplicates: None,
                         },
                         semantics: Ignore,
                         field_name: "rest",
-                        duplicates: None,
                     },
                 ),
             },

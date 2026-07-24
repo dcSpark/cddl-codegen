@@ -2122,32 +2122,46 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
             std::process::id()
         ));
         std::fs::write(&path, spec).unwrap();
+        // `--wasm=false`: the open-array CAPTURE wasm surface (the tail accessor) is a later work
+        // package, gated behind a front-door rejection under `--wasm` (which defaults on). This test
+        // exercises the RECOGNITION/narrowing boundary in plain mode — the wasm-gate polarity lives in
+        // the dedicated open-array front-end fixture.
         let cli = Cli::parse_from([
             "cddl-codegen",
             "--input",
             path.to_str().unwrap(),
             "--output",
             "array_occur_unused",
+            "--wasm=false",
         ]);
         let result = crate::api::generated_strings(&cli).map_err(|e| e.to_string());
         std::fs::remove_file(&path).ok();
         result
     }
 
-    let msg = run("m = [uint, tstr, * bytes]\n", "star").expect_err(
-        "`*` on an array-record field must be a graceful Err (silent narrowing to one item is wrong)",
-    );
-    assert!(
-        msg.contains("array field") && msg.contains("rule `m`"),
-        "rejection message should be actionable and name the rule, got: {msg}"
+    // A FINAL-position `*` after ≥1 fixed member is now recognized as an open-array rest tail
+    // (captured `Vec<T>`), not narrowed — it must GENERATE. (Phase D — open arrays.)
+    run("m = [uint, tstr, * bytes]\n", "star").expect(
+        "a final-position `* t` after fixed members is an open-array rest tail (captured Vec) — must generate",
     );
 
-    run("m = [uint, + bytes]\n", "plus")
-        .expect_err("`+` admits >1 repetitions, which a single field cannot decode — must reject");
+    // `+` / `n*m` on a final tail entry stay rejected: only `*` (unbounded capture) is honored on a
+    // rest tail (a `+` tail breaks the empty-tail ≡ closed-struct byte invariant).
+    let plus = run("m = [uint, + bytes]\n", "plus")
+        .expect_err("`+` on the final entry is not a supported rest-tail occurrence — must reject");
+    assert!(
+        plus.contains("rule `m`") && (plus.contains("rest tail") || plus.contains("`*`")),
+        "the `+`-tail rejection should be actionable and name the rule, got: {plus}"
+    );
     run("m = [uint, 2*3 bytes]\n", "bounded")
-        .expect_err("`2*3` admits 2..=3 repetitions — must reject (a lone item decoded green below the lower bound)");
-    run("m = [* bytes, uint]\n", "leading")
-        .expect_err("position-independent: a leading `*` narrows identically");
+        .expect_err("`2*3` admits 2..=3 repetitions — not a supported rest-tail occurrence (must reject)");
+    // A leading/non-final `*` keeps rejecting (the rest tail must be the LAST member).
+    let leading = run("m = [* bytes, uint]\n", "leading")
+        .expect_err("a non-final `*` narrows identically — must reject (rest tail must be last)");
+    assert!(
+        leading.contains("rule `m`"),
+        "the non-final `*` rejection should name the rule, got: {leading}"
+    );
 
     run("m = [uint, 1*1 bytes]\n", "exactly_once")
         .expect("`1*1` is exactly-once — mandatory IS the honored semantics");
@@ -3225,16 +3239,17 @@ fn open_struct_map_rest_row_front_end() {
         "a rest row in a plain group must name the plain-group restriction + named-rule remedy, got: {plain_group}"
     );
 
-    // --- guard: array-rep record never grows a rest row (arrow syntax is map-only) ---
-    // `[1, * text]` is a homogeneous-array shape rejection, NOT a rest row; assert no rest field
-    // ever appears for an array rule.
-    let arr = run("foo = [uint, * text]\n", "array");
-    if let Ok(out) = &arr {
-        assert!(
-            !src(out).contains("pub rest"),
-            "array records never carry a rest row"
-        );
-    }
+    // --- guard: the MAP `* k => v` arrow rest ROW is map-only. Its array analog is the `* t` rest
+    // TAIL — a separate feature whose full guard/polarity matrix lives in `open_array_front_end`. Here
+    // just confirm the two do not cross-contaminate: a final-position `* t` in an array (`[uint,
+    // * text]`) is recognized as an open-array rest tail and its captured field is a `Vec`, NOT a map
+    // container. ---
+    let arr = run("foo = [uint, * text]\n", "array")
+        .expect("a final-position `* t` after fixed members is an open-array rest tail");
+    assert!(
+        src(&arr).contains("pub rest: Vec<"),
+        "an open-array rest tail captures into a `Vec`, not a `* k => v` map container"
+    );
 
     // --- preserve fidelity core: open structs GENERATE under --preserve-encodings, lowering
     // the rest field to the insertion-ordered `OrderedHashMap` container with per-entry encoding

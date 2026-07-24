@@ -763,16 +763,26 @@ impl RustStruct {
                         .conceptual_type
                         .visit_types_excluding(types, f, already_visited)
                 });
-                // Open struct-map rest row: its key/value types are real occurrences (they can
-                // reference named rules), so a reference reachable ONLY through the rest domain/range
-                // stays visible to `is_referenced` and friends.
+                // Open rest (map `* k => v` row or array `* t` tail): the inner type(s) are real
+                // occurrences (they can reference named rules), so a reference reachable ONLY through
+                // the rest stays visible to `is_referenced` and friends. Walk the map K/V pair or the
+                // array element per the rest kind.
                 if let Some(rest) = &record.rest {
-                    rest.domain
-                        .conceptual_type
-                        .visit_types_excluding(types, f, already_visited);
-                    rest.range
-                        .conceptual_type
-                        .visit_types_excluding(types, f, already_visited);
+                    match &rest.kind {
+                        RestKind::MapEntries { domain, range, .. } => {
+                            domain
+                                .conceptual_type
+                                .visit_types_excluding(types, f, already_visited);
+                            range
+                                .conceptual_type
+                                .visit_types_excluding(types, f, already_visited);
+                        }
+                        RestKind::ArrayTail { element } => {
+                            element
+                                .conceptual_type
+                                .visit_types_excluding(types, f, already_visited);
+                        }
+                    }
                 }
             }
             RustStructType::Table { domain, range, .. } => {
@@ -797,13 +807,13 @@ impl RustStruct {
 pub struct RustRecord {
     pub rep: Representation,
     pub fields: Vec<RustField>,
-    /// The open ("rest") part of an open struct-map (`{ 1: a, ..., * K => V }`) — the trailing
-    /// `* K => V` row captured as a map member alongside the fixed fields, rather than a fake
-    /// `RustField` (fields drive `new()`/JSON/wasm/`orig_deser_order` indices; the rest row does
-    /// not participate in those). `None` for every closed struct — the snapshot corpus enforces
-    /// byte-identical output for those. Only ever `Some` on a `Map`-rep record. `Box`ed to keep
-    /// `RustRecord` (and the `EnumVariantData::Inlined` embedding it) small — `RestRow` holds two
-    /// `RustType`s.
+    /// The open ("rest") part of an open struct-map (`{ 1: a, ..., * K => V }`) or an open array
+    /// (`[ a, ..., * T ]`) — the trailing `* K => V` row / `* T` tail captured alongside the fixed
+    /// fields, rather than a fake `RustField` (fields drive `new()`/JSON/wasm/`orig_deser_order`
+    /// indices; the rest row does not participate in those). `None` for every closed struct — the
+    /// snapshot corpus enforces byte-identical output for those. `Some` on a `Map`-rep record (rest
+    /// row) or an `Array`-rep record (rest tail). `Box`ed to keep `RustRecord` (and the
+    /// `EnumVariantData::Inlined` embedding it) small — `RestRow` holds one or two `RustType`s.
     pub rest: Option<Box<RestRow>>,
 }
 
@@ -819,32 +829,96 @@ pub enum RestSemantics {
     Ignore,
 }
 
-/// The trailing `* K => V` row of an open struct-map. Under the CAPTURE flavor the content lands in a
-/// `pub` map field (`rest` by default, `@name`-overridable) whose container matches the table switch
-/// (`BTreeMap`/`OrderedHashMap`); under the IGNORE flavor nothing is stored. Not a `RustField`: it is
-/// excluded from `new()` (defaults empty, so adding a rest row to a spec is source-compatible) and
-/// carries the open-map semantics explicitly for the emitters.
+/// The rep-specific shape of a rest row: the map-only `* K => V` data (domain/range/duplicates) vs
+/// the array-only `* T` tail element. Keeping them in separate variants makes the map-only fields
+/// STRUCTURALLY UNREPRESENTABLE for an array tail (there is no `domain`/`duplicates` to mis-populate),
+/// while `RestRow`'s shared `semantics`/`field_name` serve both. Every map-path accessor
+/// (`domain()`/`range()`/`duplicates()`) is only reached on a `Map`-rep record, so it reads through
+/// this without a rep check; the two rep-agnostic sites (the type visitor / dependency walk) match on
+/// the variant to walk the right inner type(s).
+#[derive(Clone, Debug)]
+pub enum RestKind {
+    /// `* K => V` rest row of an open struct-map.
+    MapEntries {
+        /// The key type (`K`). Supported key domains: `uint`, `text`, and `any`.
+        domain: RustType,
+        /// The value type (`V`). Any supported type, including `any`.
+        range: RustType,
+        /// `@duplicates` policy on the row. In the non-preserve capture flavor the container's `Eq`
+        /// is value equality, so the default (reject) is enforced structurally by
+        /// `insert().is_some()`; `Preserve` (the positional pair-list twin) selects the `PairMap`
+        /// container.
+        duplicates: Option<crate::comment_ast::DuplicatesPolicy>,
+    },
+    /// `* T` final-position rest tail of an open array (a positional analog of the map rest row: no
+    /// keys, so no key dispatch, no duplicate policy, no canonical key merge — extras sit strictly
+    /// after the declared prefix by construction).
+    ArrayTail {
+        /// The tail element type (`T`). Any supported type, including `any`. Fixed-value elements
+        /// (`* 5`) are rejected at recognition (a `Vec<FixedValue>` has no Rust representation).
+        element: RustType,
+    },
+}
+
+/// The trailing open ("rest") part of an open struct-map (`* K => V`) or an open array (`* T` tail).
+/// Under the CAPTURE flavor the content lands in a `pub` field (`rest` by default, `@name`-overridable)
+/// — a map container (`BTreeMap`/`OrderedHashMap`) for a map rest, a `Vec<T>` for an array tail; under
+/// the IGNORE flavor nothing is stored. Not a `RustField`: it is excluded from `new()` (defaults empty,
+/// so adding a rest row/tail to a spec is source-compatible) and carries the open semantics explicitly
+/// for the emitters.
 #[derive(Clone, Debug)]
 pub struct RestRow {
-    /// The key type (`K`). Supported key domains: `uint`, `text`, and `any`.
-    pub domain: RustType,
-    /// The value type (`V`). Any supported type, including `any`.
-    pub range: RustType,
+    /// The rep-specific inner shape (map `* K => V` vs array `* T`).
+    pub kind: RestKind,
     /// Capture (retain + round-trip) vs Ignore (tolerate-and-drop). Selects, at every emitter branch
     /// point, whether a `pub` field / constructor line / getter / encoding sidecar / serialize-back /
-    /// JSON-flatten surface is emitted at all (capture-only) — while the deserialize arms and the IR
-    /// visitors walk the row for BOTH flavors (both must consume the wire entries and both may pull in
-    /// a runtime type through `domain`/`range`).
+    /// JSON surface is emitted at all (capture-only) — while the deserialize arms and the IR visitors
+    /// walk the row for BOTH flavors (both must consume the wire entries and both may pull in a runtime
+    /// type through the inner type(s)).
     pub semantics: RestSemantics,
-    /// The captured map field's Rust name (default `rest`, overridable with `@name` on the row).
+    /// The captured field's Rust name (default `rest`, overridable with `@name` on the row/tail).
     /// Only meaningful under `Capture`; `Ignore` emits no field.
     pub field_name: String,
-    /// `@duplicates` policy on the row. In the non-preserve capture flavor the container's `Eq` is
-    /// value equality, so the default (reject) is enforced structurally by `insert().is_some()`;
-    /// `Preserve` (the positional pair-list twin) is rejected at parse until the preserve work
-    /// package reads this to select the container. Carried on the IR now so that lands cleanly.
-    #[allow(dead_code)]
-    pub duplicates: Option<crate::comment_ast::DuplicatesPolicy>,
+}
+
+impl RestRow {
+    /// The key type (`K`) of a map rest row. Only reached on a `Map`-rep record's rest row.
+    pub fn domain(&self) -> &RustType {
+        match &self.kind {
+            RestKind::MapEntries { domain, .. } => domain,
+            RestKind::ArrayTail { .. } => unreachable!("domain() on an array rest tail"),
+        }
+    }
+
+    /// The value type (`V`) of a map rest row. Only reached on a `Map`-rep record's rest row.
+    pub fn range(&self) -> &RustType {
+        match &self.kind {
+            RestKind::MapEntries { range, .. } => range,
+            RestKind::ArrayTail { .. } => unreachable!("range() on an array rest tail"),
+        }
+    }
+
+    /// The `@duplicates` policy of a map rest row; `None` for an array tail (no keys → no duplicate
+    /// policy, so an array tail is never a `PairMap`).
+    pub fn duplicates(&self) -> Option<crate::comment_ast::DuplicatesPolicy> {
+        match &self.kind {
+            RestKind::MapEntries { duplicates, .. } => *duplicates,
+            RestKind::ArrayTail { .. } => None,
+        }
+    }
+
+    /// The element type (`T`) of an array rest tail. Only reached on an `Array`-rep record's tail.
+    pub fn element(&self) -> &RustType {
+        match &self.kind {
+            RestKind::ArrayTail { element } => element,
+            RestKind::MapEntries { .. } => unreachable!("element() on a map rest row"),
+        }
+    }
+
+    /// Whether this rest is an array `* T` tail (vs a map `* K => V` row).
+    pub fn is_array_tail(&self) -> bool {
+        matches!(self.kind, RestKind::ArrayTail { .. })
+    }
 }
 
 impl RustRecord {
@@ -1021,15 +1095,18 @@ impl RustRecord {
                         };
                     }
                 }
-                // Open struct (CAPTURE flavor only): the map header must count the captured rest
-                // entries too. `rest` is a `pub` map field, so its live entry count is
-                // `{self_expr}.rest.len()`. Folding it in here keeps the serialize header and the
-                // deserialize length accounting in agreement (both go through `definite_info`/the
-                // dynamic length class). Empty rest → `+ 0`, recovering the closed-struct byte count
-                // (empty-rest ≡ closed-struct invariant). The IGNORE flavor stores and re-serializes
-                // NO rest entries and has no field to reference, so its header is the closed-struct
-                // count — no fold (and `fixed_field_count` still returns `None` for it, so the deser
-                // loop stays dynamic and tolerates the extra wire entries it drops).
+                // Open struct/array (CAPTURE flavor only): the map/array header must count the captured
+                // rest entries too. `rest` is a `pub` map/`Vec` field, so its live entry count is
+                // `{self_expr}.rest.len()` (each map entry / trailing array element is one wire item).
+                // Folding it in here keeps the serialize header and the deserialize length accounting in
+                // agreement (both go through `definite_info`/the dynamic length class). Empty rest → `+
+                // 0`, recovering the closed-struct byte count (empty-rest ≡ closed-struct invariant). The
+                // IGNORE flavor stores and re-serializes NO rest entries and has no field to reference,
+                // so its header is the closed-struct count — no fold (and `fixed_field_count` still
+                // returns `None` for it, so the deser loop stays dynamic and tolerates+drops the extras).
+                // The all-mandatory-prefix + ignore-tail combo reaches the `conditional_field_expr.
+                // is_empty()` branch below (no optional field, no fold) → the plain mandatory count, not
+                // a malformed `"{n} + "`.
                 if let Some(rest) = self.captured_rest() {
                     // `.len()` is `usize`; the map header (`cbor_event::Len::Len(u64)`) and the
                     // additive expression it joins are `u64`, so cast (`as` binds tighter than `+`).

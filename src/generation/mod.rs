@@ -9,8 +9,8 @@ use std::process::{Command, Stdio};
 
 use crate::intermediate::{
     AliasIdent, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant, EnumVariantData,
-    FixedValue, IntermediateTypes, ModuleScope, Primitive, ROOT_SCOPE, Representation, RestRow,
-    RestSemantics, RustField, RustIdent, RustRecord, RustStructCBORLen, RustStructConfig,
+    FixedValue, IntermediateTypes, ModuleScope, Primitive, ROOT_SCOPE, Representation, RestKind,
+    RestRow, RestSemantics, RustField, RustIdent, RustRecord, RustStructCBORLen, RustStructConfig,
     RustStructType, RustType, RustTypeSerializeConfig, ToWasmBoundaryOperations, VariantIdent,
     escape_rust_str,
 };
@@ -590,10 +590,11 @@ impl GenerationScope {
                             // `map_shape_is_preserve_owned`, so a `@duplicates preserve` rest mints
                             // the PairMap-backed wrapper). An `@ignore` row has no field/getter, so no
                             // wasm map wrapper is minted for it (its wasm class is a closed struct's).
-                            if let Some(rest) = record.captured_rest() {
+                            if let Some(rest) = record.captured_rest().filter(|r| !r.is_array_tail())
+                            {
                                 let rest_map = ConceptualRustType::Map(
-                                    Box::new(rest.domain.clone()),
-                                    Box::new(rest.range.clone()),
+                                    Box::new(rest.domain().clone()),
+                                    Box::new(rest.range().clone()),
                                 );
                                 mint_wasm_wrapper_for_visited_type(
                                     self,
@@ -603,8 +604,8 @@ impl GenerationScope {
                                     &table_shape_sole_owner,
                                     cli,
                                 );
-                                self.ensure_non_empty_wrappers(types, &rest.domain, cli);
-                                self.ensure_non_empty_wrappers(types, &rest.range, cli);
+                                self.ensure_non_empty_wrappers(types, rest.domain(), cli);
+                                self.ensure_non_empty_wrappers(types, rest.range(), cli);
                             }
                         }
                         RustStructType::Table { domain, range, .. } => {

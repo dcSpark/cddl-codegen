@@ -2322,9 +2322,19 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips (captured tail renders as an ordinary JSON array field)",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 1 (byte-exact per-element tail encodings land in a later work package)",
+            "status": "unsupported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok (open-array rest tail, value-level); ruby=ok rust=ok; no committed decode vectors (see catalog)",
         "id": "contain.occurrence-target.grpent.member.zero_array",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
@@ -3408,7 +3418,7 @@
       "example": "a = [uint, * bytes]",
       "feature": "grpent.member",
       "id": "contain.occurrence-target.grpent.member.zero_array",
-      "note": "A zero-or-more occurrence on a bare-type entry in a HETEROGENEOUS array admits any repetition count of that item. The generator rejects gracefully rather than silently narrowing it to a single mandatory item (the array analogue of the keyed-map cells above). Single-entry forms (`[* bytes]`) take the homogeneous Vec path and are supported. RFC8610 §3.2, §3.4.",
+      "note": "A FINAL-position zero-or-more occurrence on a bare-type entry in a HETEROGENEOUS array is an open-array rest tail: the fixed prefix is read positionally, then the `* t` tail captures the remaining elements into a `Vec<T>` (the array analogue of the open struct-map rest row). Non-final `*`, `+`/`n*m`, and fixed-value tails stay rejected gracefully. Single-entry forms (`[* bytes]`) take the homogeneous Vec path. Byte-exact per-element tail encodings under --preserve-encodings are a later work package. RFC8610 §3.2, §3.4.",
       "role": "role.occurrence-target",
       "spec": "allowed"
     },
@@ -4329,7 +4339,7 @@
     },
     {
       "alt": "@ignore",
-      "desc": "The tolerate-and-drop flavor of an open struct-map rest row (`* k => v` after fixed keys). Unknown map entries are typed-deserialized (key AND value, so the stream advances past nested containers) and then DROPPED: no `rest` field is emitted, serialize re-emits only the declared members, and JSON/schemars/wasm are a closed struct's. This is the documented-lossy counterpart to the default capture flavor (byte round-trips do not hold for wire data carrying unknown entries). Valid ONLY on a recognized `* k => v` rest row — every other placement (rule/alias/union/table/array/field) is a graceful rejection — and rejected together with --preserve-encodings (a preserve crate's byte-exact contract can't hold for a lossy type), with @duplicates (no captured container for a policy to govern), and with @name (no field to name). The directive is bare and argument-less.",
+      "desc": "The tolerate-and-drop flavor of an open struct-map rest row (`* k => v` after fixed keys) or an open-array rest tail (`* t` after fixed members). Unknown map entries / trailing array elements are typed-deserialized (for maps, key AND value, so the stream advances past nested containers) and then DROPPED: no `rest` field is emitted, serialize re-emits only the declared members, and JSON/schemars/wasm are a closed struct's. This is the documented-lossy counterpart to the default capture flavor (byte round-trips do not hold for wire data carrying unknown entries / extra trailing elements). Valid ONLY on a recognized `* k => v` rest row or `* t` rest tail — every other placement (rule/alias/union/table/whole-array/field) is a graceful rejection — and rejected together with --preserve-encodings (a preserve crate's byte-exact contract can't hold for a lossy type), with @duplicates (no captured container / no keys for a policy to govern), and with @name (no field to name). The directive is bare and argument-less.",
       "example": "\nlabel_map = {\n  1: uint, 2: text,\n  * uint => any ; @ignore\n}",
       "id": "dsl.ignore",
       "production": "comment_dsl",

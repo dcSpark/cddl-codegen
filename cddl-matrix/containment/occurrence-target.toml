@@ -145,7 +145,7 @@ id = "contain.occurrence-target.grpent.member.zero_array"
 role = "role.occurrence-target"
 feature = "grpent.member"
 spec = "allowed"
-note = "A zero-or-more occurrence on a bare-type entry in a HETEROGENEOUS array admits any repetition count of that item. The generator rejects gracefully rather than silently narrowing it to a single mandatory item (the array analogue of the keyed-map cells above). Single-entry forms (`[* bytes]`) take the homogeneous Vec path and are supported. RFC8610 §3.2, §3.4."
+note = "A FINAL-position zero-or-more occurrence on a bare-type entry in a HETEROGENEOUS array is an open-array rest tail: the fixed prefix is read positionally, then the `* t` tail captures the remaining elements into a `Vec<T>` (the array analogue of the open struct-map rest row). Non-final `*`, `+`/`n*m`, and fixed-value tails stay rejected gracefully. Single-entry forms (`[* bytes]`) take the homogeneous Vec path. Byte-exact per-element tail encodings under --preserve-encodings are a later work package. RFC8610 §3.2, §3.4."
 example = "a = [uint, * bytes]"
 
 [[contain]]
