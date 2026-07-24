@@ -6202,6 +6202,75 @@ fn emit_tests_open_struct_rest_execute() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// Executes `--emit-tests` over the `@ignore` (tolerate-and-drop) open struct-map flavor, EXECUTING the
+/// "emit-tests needs no ignore-specific gating" claim rather than only arguing it. Generation is
+/// non-preserve (`@ignore` is rejected under `--preserve-encodings`), so no fidelity-variant block is
+/// reachable, and — the structural reason the claim holds — round-trip values are minted exclusively
+/// through the generated `new()` API, which excludes the rest row, so a minted `@ignore` value carries
+/// NO unknown entries and byte-identity holds trivially. Evidence of no gating: the ignore types get the
+/// SAME `roundtrip_<type>` treatment as any closed struct (asserted present, per type), and `cargo test`
+/// runs them green. The conformance oracle likewise needs no gating — it validates minted bytes against
+/// the verbatim input spec, whose rule declares the same `* K => V` row the deserializer accepts.
+#[test]
+fn emit_tests_open_struct_ignore_execute() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let input = std::path::PathBuf::from("tests/open-struct-map-ignore-e2e/input.cddl");
+    let root =
+        std::env::temp_dir().join(format!("cddl_codegen_ignore_rest_{:016x}", checkout_hash()));
+    let _ = std::fs::remove_dir_all(&root);
+    let out = root.join("crate");
+    let generate = tool_cmd("cargo")
+        .args(["run", "--"])
+        .arg(format!("--input={}", input.to_str().unwrap()))
+        .arg(format!("--output={}", out.to_str().unwrap()))
+        .arg("--wasm=false")
+        .arg("--emit-tests=true")
+        .output()
+        .unwrap();
+    if !generate.status.success() {
+        eprintln!("{}", String::from_utf8_lossy(&generate.stderr));
+    }
+    assert!(
+        generate.status.success(),
+        "generation failed (an `@ignore` open struct-map must emit tests with no ignore-specific gating)"
+    );
+
+    let src =
+        std::fs::read_to_string(out.join("rust/src/generated/mod.rs")).expect("generated mod.rs");
+    // No ignore-specific gating: each `@ignore` type (`foo`/`bar`/`baz`) gets an ordinary
+    // `roundtrip_<type>` emitted exactly as for a closed struct — the mint goes through `new()`
+    // (declared fields only), so no unknown entries exist and byte-identity is trivial.
+    for ty in ["roundtrip_foo", "roundtrip_bar", "roundtrip_baz"] {
+        assert!(
+            src.contains(&format!("fn {ty}(")),
+            "emit-tests skipped `{ty}` — an `@ignore` type must be minted like any closed struct"
+        );
+    }
+    // An ignore type stores nothing, so its mint never populates a `.rest` map (that surface is
+    // capture-only) — this is the reverse floor of the capture gate's `v.rest.insert(` assert.
+    assert!(
+        !src.contains(".rest.insert("),
+        "an `@ignore` type must not mint into a `.rest` map — it captures no unknown entries"
+    );
+
+    let test = tool_cmd("cargo")
+        .arg("test")
+        .current_dir(out.join("rust"))
+        .output()
+        .unwrap();
+    if !test.status.success() {
+        eprintln!("stdout:\n{}", String::from_utf8_lossy(&test.stdout));
+        eprintln!("stderr:\n{}", String::from_utf8_lossy(&test.stderr));
+    }
+    assert!(
+        test.status.success(),
+        "generated open-struct-map `@ignore` emit-tests crate failed cargo test"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// Executes the `--emit-tests` generated WASM-test module end-to-end (tests/README.md § "wasm-crate
 /// test module"): generate the rich `core` fixture with `--wasm=true --emit-tests=true`, then
 /// `cargo test` the generated WASM crate so the emitted `wasm_roundtrip_*`/`wasm_reject_*` module runs
