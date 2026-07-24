@@ -37,7 +37,13 @@ rest row after fixed keys captures unknown entries in every mode (byte-exact und
 `--preserve-encodings` incl. wire-order interleave and the runtime canonical merge; `@duplicates
 preserve` pair-list twin; flattened fallible JSON; wasm `rest()` getter), with the v1 boundaries
 (non-final/multiple/plain-group rest rows, bounded occurrences, non-uint/text/any key domains)
-held as graceful rejections — test map in `tests/README.md` § "Open struct-maps (rest rows)". The permanent exclusions around it stay: `#` (`Type2::Any`), `cbor-any`, `@newtype` and
+held as graceful rejections — test map in `tests/README.md` § "Open struct-maps (rest rows)". The
+`@ignore` (tolerate-and-drop) flavor of the same row ships alongside it: unknown entries are
+typed-deserialized and dropped, so the type is a closed struct (no `rest` field, declared-only
+serialize, closed JSON/wasm surface) with a deliberate-lossiness rustdoc, rejected under
+`--preserve-encodings`; `@ignore` combined with `--preserve-encodings`/`@duplicates`/`@name` or
+placed off a rest row is a graceful rejection — test map in `tests/README.md` § "Open struct-maps —
+the `@ignore` (tolerate-and-drop) flavor". The permanent exclusions around it stay: `#` (`Type2::Any`), `cbor-any`, `@newtype` and
 control operators on `any`, and non-last bare `any` choice arms (forced-backtracking catch-all unions
 put the catch-all last, so an earlier one is unreachable dead code) — see the `any` type-choice entry
 in `cddl-matrix/ROADMAP.md`. One deferred coverage item remains: the wasm emit-tests minter has no

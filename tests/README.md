@@ -843,6 +843,40 @@ directives) is verified across the layers:
 - **Runtime JSON laws** — the natural-walk shims + corpus biconditional in the static-runtime
   property layer (below), which the flatten surface composes.
 
+### Open struct-maps — the `@ignore` (tolerate-and-drop) flavor — test map
+
+The [`@ignore`](../docs/docs/comment_dsl.mdx) rest-row directive drops unknown entries instead of
+capturing them (no `rest` field; serialize emits declared members only; deliberately lossy;
+rejected under `--preserve-encodings`). User docs: `docs/docs/comment_dsl.mdx` § "@ignore",
+`docs/docs/output_format.mdx` § "The @ignore (tolerate-and-drop) flavor". Verified across the layers:
+
+- **Front end + guards** — `robustness_tests::open_struct_map_rest_row_front_end` (the `@ignore`
+  legs): the happy path (closed struct, drop binding present), the three combination rejections
+  (`--preserve-encodings` / `@duplicates` / `@name`), placement-before-semantics ordering (a
+  non-final `@ignore` gets the LAST-entry rejection), the never-silent misplacements (plain type
+  rule, table rule, struct field, rule-position on an open struct), and the marker-slot trap (an
+  `@ignore` on the `*` marker's own comment slot is NOT honored — the row stays capture, pinned loud).
+- **Value-level e2e** — `tests/open-struct-map-ignore-e2e` (compiled, non-preserve,
+  `--json-serde-derives`): definite and indefinite maps with extra unknown entries (incl. a
+  nested-container value) decode + re-serialize declared-only, wrong-domain key errors, fixed-keys-
+  win-on-content-mismatch, duplicate-unknown consumed silently while duplicate-fixed errors,
+  no-unknown ≡ closed-struct bytes, and the closed-serde-struct JSON posture (declared-only write,
+  unknown-key tolerance on read).
+- **Snapshot** — `open_struct_map_ignore` (whole-program, non-preserve): the cip25 pair plus a
+  fully-typed ignore row emit as CLOSED structs (no `rest` field, `write_map(Len::Len(N))` with the
+  declared count) while deserialize stays dynamic-length and drops each unknown entry; also pins the
+  deliberate-lossiness rustdoc on the type and its `serialize` fn.
+- **Corpus** — `tests/corpus/dsl_ignore.cddl` isolates the directive, registered as the `dsl.ignore`
+  `[[cover]]` (default/json profiles; the preserve profile is generation-skipped via
+  `EXPECTED_GENERATION_FAIL` / `PROFILE_GENERATION_SKIP`).
+- **Wire KATs** — the `ignore_map` rule in `tests/golden_hex` (default flags): decode-with-unknowns →
+  declared-only golden bytes, the multi-unknown drop, and empty-rest identity (plain `#[test]`s, not
+  `kat!`s — the drop breaks the macro's identity round-trip).
+- **emit-tests** — the `emit_tests_open_struct_ignore_execute` gate (see the emit-tests section
+  above): each ignore type gets an ordinary `roundtrip_<type>` with no ignore-specific gating, and
+  `cargo test` runs them green (the mint goes through `new()`, so a minted value carries no unknown
+  entries and byte-identity is trivial).
+
 ### Per-rule duplicates policy (`@duplicates`) — test map
 
 The **`@duplicates reject` flavor** (set/array collections — user doc:
@@ -1435,7 +1469,11 @@ composite (int + string + map) and a float-carrying `[5, 1.5]`, the shape the `a
 head through `widen_float`), `emit_tests_open_struct_rest_execute` (local, the open-struct-map
 sibling — generates `tests/open-struct-map-e2e` under `--preserve-encodings --emit-tests` and runs
 the crate, proving the round-trip mint populates `.rest` through the generated API and the fidelity
-classes — `widen_float` included, via the `any`-range composite — exercise captured rest entries), and
+classes — `widen_float` included, via the `any`-range composite — exercise captured rest entries),
+`emit_tests_open_struct_ignore_execute` (local, the tolerate-and-drop twin — generates
+`tests/open-struct-map-ignore-e2e` under `--emit-tests` non-preserve and runs the crate, proving each
+`@ignore` type gets an ordinary `roundtrip_<type>` with no ignore-specific gating and mints into no
+`.rest` map), and
 `feature_corpus_roundtrips_nondefault_profiles` (full tier, corpus × preserve breadth); the canonical
 differential runs once at whole-program scale via the `canonical` fixture's `--emit-tests`.
 

@@ -223,6 +223,10 @@ There is **no** `rest` constructor argument and **no setter** (v1): the field de
 mutated through the returned wrapper's own `insert`/`get`/`keys` API. The declared members keep their
 ordinary per-field constructor arguments and getters.
 
+An [`@ignore`](comment_dsl#ignore) rest row stores nothing, so its wasm class has **no `rest()`
+getter** — it is a plain closed struct's wasm surface. The read-tolerance (unknown entries decode and
+are dropped) comes for free through the rust deserializer, so the wasm boundary adds nothing new.
+
 ## Nullable / nested Options
 
 `wasm_bindgen` cannot expose a doubly-nested `Option<Option<T>>` (`Option<T>` does not implement `OptionIntoWasmAbi`), the same way it can't expose a nested `Vec`. This happens when a nullable value (`T / null` → `Option<T>`) sits in a position that adds its own presence-`Option`: a **map value** (`get`/`insert` return `Option<value>`) or an **optional struct field** (its getter returns `Option<field>`). In those spots the accessor flattens to a single `Option<T>`, so a read returns `None` for **both** an absent entry and a present-but-`null` one (the same convention the c-style enum `as_*()` getters use). The underlying rust type keeps all three states (absent / present-null / present-value), so CBOR round-trips are unaffected — only the wasm read side conflates absent with null.
