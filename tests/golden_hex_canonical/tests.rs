@@ -330,7 +330,7 @@ mod golden_hex_canonical {
         }
     );
 
-    // ---- open struct-map (rest row) under --canonical-form (loose-CBOR Phase B WP5) ----
+    // ---- open struct-map (rest row) under --canonical-form ----
     // The runtime canonical key merge minimizes each rest key's header and orders the declared key
     // together with the rest keys. Irregular input {1: 5, 7: 9} with the rest key 7 in the 1-byte
     // form (0x18 0x07): preserve identity keeps it verbatim, canonical minimizes it to 0x07 (and 1

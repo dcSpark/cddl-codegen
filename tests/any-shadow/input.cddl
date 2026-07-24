@@ -2,5 +2,5 @@ any = uint
 foo = {1: any}
 ; A type-choice arm referencing the shadowed `any` must ALSO resolve to the user's uint, not the
 ; AnyCbor catch-all — so `bar` is an ordinary `tstr / uint` choice (no forced backtracking, no
-; runtime type). Guards that the shadow interception covers choice-arm position too (A3 WP1).
+; runtime type). Guards that the shadow interception covers choice-arm position too.
 bar = tstr / any

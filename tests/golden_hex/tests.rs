@@ -258,7 +258,7 @@ mod golden_hex {
         &[0x81, 0xfb, 0x7f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
     );
 
-    // ---- open struct-map (loose CBOR "rest row"), default flags (loose-CBOR Phase B WP5) ----
+    // ---- open struct-map (loose CBOR "rest row"), default flags ----
     // A fixed key `1: uint` plus a trailing `* uint => uint`: unknown entries land in `.rest`. The
     // map header COUNTS the declared field plus every rest entry (1 + rest.len()); the wire is the
     // declared field first, then rest entries in ascending key order (BTreeMap). Bytes are hand-

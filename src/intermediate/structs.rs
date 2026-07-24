@@ -814,7 +814,7 @@ pub struct RustRecord {
 /// explicitly for the emitters.
 #[derive(Clone, Debug)]
 pub struct RestRow {
-    /// The key type (`K`). WP2 supports `uint`, `text`, and `any` key domains.
+    /// The key type (`K`). Supported key domains: `uint`, `text`, and `any`.
     pub domain: RustType,
     /// The value type (`V`). Any supported type, including `any`.
     pub range: RustType,

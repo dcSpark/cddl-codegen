@@ -1,7 +1,7 @@
 ; An array-of-`any` type-choice arm (`[* any] / tstr`) is a SUPPORTED position: `[* any]` is a
 ; homogeneous array whose CBOR wire type (Array) is distinct from `tstr` (Text), so the ordinary
 ; choice machinery dispatches it correctly and it round-trips byte-exact (element lowered to
-; `AnyCbor`, loose-CBOR A2). Full-surface since A3 WP3 lifted the wasm guard, so this row is `ok`
+; `AnyCbor`). Full-surface (the wasm AnyCbor wrapper exists), so this row is `ok`
 ; under the catalog's default --wasm=true profile (formerly `error (graceful)`, and before that the
 ; panic it produced in generation/serialize.rs). DISTINCT from the bare-`any` arm (`any / tstr`,
 ; tests/robustness/choice_any_arm.cddl), which is rejected in EVERY profile because a non-last bare

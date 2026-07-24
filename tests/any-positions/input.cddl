@@ -1,12 +1,12 @@
 ; Loose-CBOR `any` positions: every position that lowers CDDL `any` to the AnyCbor static-runtime
 ; type. Snapshotted under default / preserve / preserve+canonical / json by the `whole_program`
 ; suite (all `--wasm=false`, since a wasm crate is not a source snapshot). `any` is a full-surface
-; citizen — the wasm AnyCbor wrapper landed in loose-CBOR phase A3 WP3, so the `--wasm=true` leg is
+; citizen — the wasm AnyCbor wrapper means the `--wasm=true` leg is
 ; swept by the corpus axis of `wasm_api_parity`, and the JSON flags by the `any_positions_json`
 ; snapshot leg.
 ;
-; Non-choice positions (A2): member value, array element, table domain/range, top-level alias, tag.
-; Type-choice-arm positions (A3): a BARE `any` catch-all in LAST position (forced-backtracking
+; Non-choice positions: member value, array element, table domain/range, top-level alias, tag.
+; Type-choice-arm positions: a BARE `any` catch-all in LAST position (forced-backtracking
 ; dispatch — a typed arm matching on wire type but failing on content falls through to `any`), and a
 ; TAGGED `any` arm (`#6.n(any)`, cbor_types = [Tag]) which type-dispatches like any tagged arm and so
 ; is allowed in any position.
@@ -21,7 +21,7 @@ tagged = #6.11(any)                ; tagged
 choice_last_any = uint / tstr / any ; type-choice with a bare `any` catch-all arm (last position)
 choice_tagged_any = #6.11(any) / tstr ; tagged-`any` type-choice arm (any position; not a catch-all)
 ;
-; Collection-of-`any` MEMBER positions (loose-CBOR Phase B WP1 natural-JSON flip): a struct field
+; Collection-of-`any` MEMBER positions (natural-JSON rendering): a struct field
 ; whose value is a homogeneous `[* any]` array (the `Seq` natural adapter) or a `{* K => any}` table
 ; with a stringifiable key (the `Map` natural adapter — non-preserve; a preserve-mode map member keeps
 ; the tagged element rendering pending the `OrderedHashMap` adapter). Unlike a STANDALONE table/array

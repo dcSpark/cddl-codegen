@@ -1,10 +1,11 @@
 // Open struct-map (loose CBOR "rest row") value-level end-to-end vectors. A trailing `* k => v` after
 // fixed keys captures unknown map entries into a `pub rest` map instead of erroring. These pin the
-// plain-mode (non-preserve) capture semantics of Phase B WP2:
+// plain-mode (non-preserve) capture semantics:
 //   * empty rest ≡ closed-struct bytes (adding a rest row is backward compatible on the wire);
 //   * unknown uint/text keys captured (per the key domain), wrong-type keys rejected (typing enforced);
 //   * duplicate fixed key and duplicate rest key both rejected;
-//   * fixed keys win even on a value-type mismatch (ruling §10.10);
+//   * fixed keys win even on a value-type mismatch (a declared key dispatches to its field even on a
+//     content mismatch, rather than falling through to the rest row);
 //   * an `any` key domain captures every wire key type (uint/text/bytes/bool/…).
 // Every `wire` byte string is hand-written from the CBOR grammar, not copied from generator output.
 #[cfg(test)]
@@ -71,7 +72,7 @@ mod open_struct_map {
     fn fixed_keys_win_on_content_mismatch() {
         // bar = { ? 3: text, * uint => any }. Wire { 3: 5 } dispatches key 3 to the (text) optional
         // field, whose deserialize fails on the uint value — an ERROR, not a fallthrough to the rest
-        // row (ruling §10.10: fixed-key dispatch wins even on content mismatch).
+        // row (fixed-key dispatch wins even on content mismatch).
         assert!(Bar::from_cbor_bytes(&bytes("a1 03 05")).is_err());
         // { 3: "ok" } binds the optional field; rest stays empty.
         let b = Bar::from_cbor_bytes(&bytes("a1 03 626f6b")).unwrap();

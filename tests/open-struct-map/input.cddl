@@ -1,9 +1,8 @@
 ; Open struct-maps (loose CBOR "rest row"): a trailing `* k => v` after fixed keys captures unknown
-; map entries into a `pub rest` map field instead of erroring. Snapshotted in the plain AND preserve
-; flavors (--wasm=false): the preserve fidelity core (orig_deser_order interleave, per-entry encoding
-; sidecars, runtime canonical key merge) landed in WP3. The flattened-JSON surface and wasm
-; accessors for open structs are later work packages, so generation is still gracefully rejected
-; under --json-* / --wasm (temporary front doors those WPs lift).
+; map entries into a `pub rest` map field instead of erroring. Snapshotted in the plain, preserve,
+; json, and wasm flavors: the preserve fidelity core (orig_deser_order interleave, per-entry
+; encoding sidecars, runtime canonical key merge), the flattened-JSON surface, and the wasm rest
+; accessor.
 uint_rest = { 1: uint, 2: text, * uint => any }   ; uint key domain, any value
 opt_rest = { ? 3: text, * uint => any }           ; only an optional fixed key before the rest row
 any_rest = { 1: uint, * any => any }              ; any key domain (captures every wire key type)

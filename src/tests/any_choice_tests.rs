@@ -1,8 +1,8 @@
-//! Type-choice arms of `any` (loose-CBOR A3 WP1).
+//! Type-choice arms of `any`.
 //!
 //! A BARE `any` type-choice arm (conceptual `Any`, no encoding ops) accepts every CBOR item, so it
 //! overlaps every other arm and is only legal as the LAST catch-all — any earlier position leaves
-//! the arms after it unreachable (DESIGN §3.5, ruling §10.6). Its dispatch is FORCED backtracking:
+//! the arms after it unreachable. Its dispatch is FORCED backtracking:
 //! a typed arm that matches on wire type but fails on content must fall through to `any`, which the
 //! `cbor_type()`-dispatch strategy would never do. The strategy selector auto-forces backtracking
 //! because `Any::cbor_types` spans all 8 major types; these tests pin that the emitter never picks

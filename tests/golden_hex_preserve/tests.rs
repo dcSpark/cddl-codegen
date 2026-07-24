@@ -639,7 +639,7 @@ mod golden_hex_preserve {
         assert_eq!(ne.len(), 2, "the door keeps duplicate keys");
     }
 
-    // ---- open struct-map (rest row) under --preserve-encodings (loose-CBOR Phase B WP5) ----
+    // ---- open struct-map (rest row) under --preserve-encodings ----
     // A captured rest entry's KEY header argument is data: the rest key 7 written non-minimally in the
     // 1-byte form (0x18 0x07 instead of the minimal 0x07) must re-emit VERBATIM through the loose
     // container's per-key encoding sidecar — the declared field 1 stays minimal. Spec bytes

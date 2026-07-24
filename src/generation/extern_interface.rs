@@ -610,10 +610,11 @@ fn render_f64(f: f64) -> String {
 pub(crate) const EXTERN_INTERFACE_HEADER: &str = "; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1";
 
 /// The `v2` seam header, emitted CONDITIONALLY — only for an export that actually contains the
-/// loose-CBOR `any` spelling (DESIGN ruling §10.7). An export with no `any` stays `v1`, so
-/// unaffected dep/consumer pairs keep working; an `any`-bearing export a PRE-A2 consumer reads fails
-/// loudly at the version seam (`api::scan_extern_import_seam`) with the "regenerate the dependency"
-/// message rather than confusingly downstream. A current (A2+) reader accepts both.
+/// `any` spelling. An export with no `any` stays `v1`, so
+/// unaffected dep/consumer pairs keep working; an `any`-bearing export read by a consumer predating
+/// `any` support fails loudly at the version seam (`api::scan_extern_import_seam`) with the
+/// "regenerate the dependency" message rather than confusingly downstream. A reader that understands
+/// `any` accepts both.
 pub(crate) const EXTERN_INTERFACE_HEADER_V2: &str = "; _CDDL_CODEGEN_EXTERN_INTERFACE_ v2";
 
 /// The version-agnostic prefix of the seam header (everything before the ` v1` version token). A
@@ -692,9 +693,9 @@ pub(crate) fn extern_interface_files(
     cli: &Cli,
 ) -> BTreeMap<String, String> {
     let (dep_key, included, excluded) = project_extern_interface(types, cli);
-    // Conditional v2 header (ruling §10.7): bump the whole export to v2 exactly when its IR contains
+    // Conditional v2 header: bump the whole export to v2 exactly when its IR contains
     // CDDL `any` (the new spelling). Whole-export granularity — an `any`-bearing dep's every file
-    // carries v2, so a pre-A2 consumer fails at the seam regardless of which file it imports.
+    // carries v2, so a consumer predating `any` support fails at the seam regardless of which file it imports.
     render_export_files(&dep_key, &included, &excluded, types.uses_any_cbor())
 }
 

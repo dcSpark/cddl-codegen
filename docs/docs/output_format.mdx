@@ -320,7 +320,7 @@ header widths are preserved — via per-entry encoding sidecars for concrete dom
 **merged and ordered together** length-first-then-bytewise (a rest key can sort before a declared key),
 and each captured key's header is minimized.
 
-**JSON (`--json-serde-derives`, ruling R7).** Captured entries render **flattened at the same JSON
+**JSON (`--json-serde-derives`).** Captured entries render **flattened at the same JSON
 object level as the declared members** (via serde `flatten`), under the natural-JSON key rules above:
 
 - *Write* (`to_json`) errors if a rest key stringifies to a **declared member's JSON name**, if two
@@ -328,7 +328,8 @@ object level as the declared members** (via serde `flatten`), under the natural-
   `any` key, non-finite float, bytes, …). Values render through the natural walk.
 - *Read* (`from_json`) binds the **declared member names first**; every other key lands in `rest`
   (loose JSON parsing for free). Typed domains parse deterministically (uint decimal / text verbatim);
-  an `any` domain uses the R4 prefer-numeric key rule.
+  an `any` domain uses the prefer-numeric key rule (a canonical decimal spelling reads back as an
+  integer, else text).
 - The JSON Schema emits `properties` (the declared members) **plus the open-region schema**: a
   uint-keyed rest row renders as schemars' native `patternProperties` (`"^\d+$"` → the range's
   schema), a text- or `any`-keyed one as `additionalProperties` (the range's schema; permissive

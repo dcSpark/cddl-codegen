@@ -1,7 +1,6 @@
-; `any` as an array element (`[any]`; equally `{ k: any }` map values) is a SUPPORTED rust position
-; under --wasm=false: it lowers to the `AnyCbor` static-runtime type (loose-CBOR A2, rust-only). The
-; robustness catalog runs the DEFAULT profile (--wasm=true), where an any-using spec is gracefully
-; rejected (the wasm AnyCbor wrapper is phase A3) — so this row is `error (graceful)`, NOT a panic
-; (it formerly panicked at the `generic_instances` assert, before `any` had an IR representation).
-; The position's rust support is proven by the --wasm=false snapshot/e2e fixtures.
+; `any` as an array element (`[any]`; equally `{ k: any }` map values) is a SUPPORTED position: it
+; lowers to the `AnyCbor` static-runtime type, which has both a rust and a wasm wrapper, so this row
+; is `ok` under the default (--wasm=true) profile — NOT a panic (it formerly panicked at the
+; `generic_instances` assert, before `any` had an IR representation).
+; The position's support is proven by the snapshot/e2e fixtures.
 a = [any]

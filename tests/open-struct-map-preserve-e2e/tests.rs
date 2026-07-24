@@ -1,6 +1,6 @@
-// Open struct-map (loose CBOR "rest row") PRESERVE fidelity vectors (Phase B WP3). These pin the
+// Open struct-map (loose CBOR "rest row") PRESERVE fidelity vectors. These pin the
 // preserve/canonical core: wire-position (interleave) fidelity, per-entry encoding sidecars for
-// concrete key/value domains, the §10.8 value-duplicate rejection under both key domains, and the
+// concrete key/value domains, the value-duplicate rejection (keyed on CBOR VALUE equality) under both key domains, and the
 // runtime canonical key merge (with codegen<->runtime comparator agreement). Every `wire` byte
 // string is hand-written from the CBOR grammar, not copied from generator output.
 #[cfg(test)]
@@ -48,7 +48,7 @@ mod open_struct_map_preserve {
     fn dup_rejected_any_domain() {
         // * any => any: rest uint keys 0x05 and 0x1805 both decode to uint 5 -> DuplicateKey via the
         // value_eq side scan (the preserve AnyCbor container's Eq is REPRESENTATIONAL, so a plain
-        // insert would accept both). §10.8: reject is a function of the wire value, not the domain.
+        // insert would accept both). Reject is a function of the wire value, not the domain's spelling.
         let wire = bytes("a3 0100 05 6161 1805 6162");
         assert!(OpenAny::from_cbor_bytes(&wire).is_err(), "0x05 vs 0x1805 dup under * any => any");
     }

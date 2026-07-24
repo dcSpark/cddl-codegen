@@ -251,7 +251,7 @@ impl AnyCbor {
     /// widths compare `!=`). Two values are value-equal iff their CANONICAL encodings match:
     /// canonicalization is the encoding-independent normal form (RFC 7049 §3.9 minimal widths,
     /// recursively normalized map key order), so `0x01` and `0x1801` (both uint 1) are value-equal
-    /// though representationally distinct. Ruling §10.8: accept/reject of a duplicate wire key must
+    /// though representationally distinct. Accept/reject of a duplicate wire key must
     /// be a function of the wire VALUE, not of the key domain's spelling (`* uint => any` and
     /// `* any => any` reject the same duplicates), so the default-reject dup check compares this,
     /// separately from the container's representational keying.

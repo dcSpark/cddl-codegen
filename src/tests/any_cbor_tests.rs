@@ -1,4 +1,4 @@
-//! Span-oracle property layer for the `AnyCbor` runtime type (loose-CBOR Phase A1).
+//! Span-oracle property layer for the `AnyCbor` runtime type.
 //!
 //! The one genuinely new load-bearing artifact of the loose-CBOR feature is the hand-written
 //! recursive `AnyCbor` codec whose contract is "byte-identical over ALL well-formed CBOR"
@@ -261,9 +261,9 @@ fn well_formed_corpus() -> Vec<(String, Vec<u8>)> {
             "map length-first key order divergent (24 vs 10)",
             "a21818000a02",
         ),
-        // Complex map KEYS (natural-JSON R3 key-kind failures): a map/tag/array used AS a key has no
-        // text/uint/nint string image, so `to_natural_json` strict-fails on the key (WP5 §8 27 corpus
-        // inclusions: map-as-key, tag-as-key). The tagged codec round-trips them all byte-exact.
+        // Complex map KEYS (natural-JSON key-kind failures, RFC 8949 §6.1): a map/tag/array used AS a
+        // key has no text/uint/nint string image, so `to_natural_json` strict-fails on the key
+        // (map-as-key, tag-as-key). The tagged codec round-trips them all byte-exact.
         ("map with map key {{1:2}:3}", "a1a1010203"),
         ("map with tag key {1(1):2}", "a1c10102"),
         ("map with array key {[1]:2}", "a1810102"),
@@ -501,7 +501,8 @@ mod preserve {
 
     #[test]
     fn value_eq_ignores_encoding_under_representational_eq() {
-        // The dup-check comparison an `any`-domain rest row / table needs under preserve (§10.8):
+        // The dup-check comparison an `any`-domain rest row / table needs under preserve (accept/
+        // reject keyed on CBOR VALUE equality, not the representation):
         // representational `Eq` distinguishes wire widths (0x01 != 0x1801, pinned above), but
         // `value_eq` ignores them (both uint 1 ARE value-equal), so wire keys 0x01 and 0x1801 both
         // reject as duplicates. Distinct values stay unequal, and it reaches recursively (a map with
@@ -927,8 +928,8 @@ mod depth_guard {
 }
 
 // ---------------------------------------------------------------------------------------------
-// JSON surface (A3 WP2). Compiles the shipped `static/any_cbor_json.rs` fragment — the SAME file the
-// static assembly appends under `--json-serde-derives` — into each mode's shim and pins the §4.2
+// JSON surface. Compiles the shipped `static/any_cbor_json.rs` fragment — the SAME file the
+// static assembly appends under `--json-serde-derives` — into each mode's shim and pins the tagged
 // rendering table + the two round-trip laws. The fragment is mode-independent (written against
 // `kind()`/`as_*`/`new_*`), so one file serves both shims. `serde`/`serde_json` are harness dev-deps.
 // ---------------------------------------------------------------------------------------------
@@ -951,7 +952,7 @@ mod json_non_preserve {
         serde_json::to_string(v).unwrap()
     }
 
-    /// The §4.2 rendering table, byte-for-byte.
+    /// The tagged rendering table, byte-for-byte.
     #[test]
     fn rendering_table_exact() {
         assert_eq!(j(&AnyCbor::new_uint(5)), r#"{"uint":5}"#);
@@ -1058,20 +1059,22 @@ mod json_non_preserve {
         serde_json::from_str::<AnyCbor>(r#"{"nint":5}"#).unwrap_err();
     }
 
-    // ---- Natural-fallible JSON surface (loose-CBOR Phase B WP1, rulings R3/R4) ----
-    // The tagged tests above pin `AnyCbor`'s OWN serde (the value codec, R2). These pin the
+    // ---- Natural-fallible JSON surface ----
+    // The tagged tests above pin `AnyCbor`'s OWN serde (the total value codec). These pin the
     // SEPARATE natural walk (`to_natural_json`/`from_natural_json`) that generated types route
-    // through via `#[serde(with = "natural_any_cbor")]`.
+    // through via `#[serde(with = "natural_any_cbor")]`. Write follows RFC 8949 §6.1's injective
+    // subset (strict-fail elsewhere); read follows RFC 8949 §6.2 (lexically-integral numbers →
+    // uint/nint, else float; any-domain keys prefer the numeric reading).
 
     fn n(v: &AnyCbor) -> serde_json::Value {
         to_natural_json(v).unwrap()
     }
 
-    /// R3 success rows: every kind with an injective JSON image renders exactly.
+    /// Success rows (RFC 8949 §6.1): every kind with an injective JSON image renders exactly.
     #[test]
     fn natural_success_rows() {
         assert_eq!(n(&AnyCbor::new_uint(5)), serde_json::json!(5));
-        // R5: big uint (> 2^53) stays a JSON number.
+        // Big uint (> 2^53) stays a JSON number (the I-JSON / RFC 7493 precision caveat).
         assert_eq!(
             n(&AnyCbor::new_uint(u64::MAX)),
             serde_json::json!(18446744073709551615u64)
@@ -1099,7 +1102,7 @@ mod json_non_preserve {
         );
     }
 
-    /// R3 failure rows: every kind with no injective image strict-fails, the error naming the kind.
+    /// Failure rows (RFC 8949 §6.1): every kind with no injective image strict-fails, the error naming the kind.
     #[test]
     fn natural_failure_rows() {
         let cases: Vec<(AnyCbor, &str)> = vec![
@@ -1136,14 +1139,14 @@ mod json_non_preserve {
         );
     }
 
-    /// R4 read convention + PROBE-B2: serde_json's number model is lexical — `5` is integral (uint),
+    /// Read convention (RFC 8949 §6.2): serde_json's number model is lexical — `5` is integral (uint),
     /// `5.0` is fractional (float). Prefer-numeric object keys; total on every JSON shape.
     #[test]
     fn natural_read_convention() {
         let five: serde_json::Value = serde_json::from_str("5").unwrap();
         let five_dot: serde_json::Value = serde_json::from_str("5.0").unwrap();
-        assert!(five.is_u64(), "PROBE-B2: `5` is integral");
-        assert!(five_dot.is_f64(), "PROBE-B2: `5.0` is fractional");
+        assert!(five.is_u64(), "`5` is integral");
+        assert!(five_dot.is_f64(), "`5.0` is fractional");
         assert_eq!(from_natural_json(five), AnyCbor::new_uint(5));
         assert_eq!(from_natural_json(five_dot), AnyCbor::new_float(5.0));
         assert_eq!(
@@ -1198,7 +1201,7 @@ mod json_non_preserve {
     }
 
     /// The natural round-trip law: `from_natural_json(to_natural_json(x)?)` recovers a value-equal
-    /// `AnyCbor` (non-preserve = value equality), modulo R4's numeric-key reading AND JSON object
+    /// `AnyCbor` (non-preserve = value equality), modulo the prefer-numeric key reading AND JSON object
     /// key ordering (a JSON object is unordered — `serde_json::Map` normalizes key order, so the law
     /// is stated as a JSON fixed point: the recovered value re-renders to the same JSON). Vectors
     /// avoid text keys that look numeric (those read back as ints, the documented JSON-only
@@ -1244,19 +1247,20 @@ mod json_non_preserve {
         }
     }
 
-    // ---- Corpus-breadth JSON laws (loose-CBOR Phase B WP5, §8 item 27) ----
-    // The hand-vector shims above pin the R3/R4 rows exactly; these run the SAME two law sets
-    // (natural + tagged) over the whole span-oracle corpus (well-formed + RFC 8949 Appendix A +
-    // seeded random), so the laws are asserted at the breadth the runtime actually sees.
+    // ---- Corpus-breadth JSON laws ----
+    // The hand-vector shims above pin the natural success/failure and read rows exactly; these run
+    // the SAME two law sets (natural + tagged) over the whole span-oracle corpus (well-formed +
+    // RFC 8949 Appendix A + seeded random), so the laws are asserted at the breadth the runtime
+    // actually sees.
 
-    /// Independent oracle of `to_natural_json`'s success/failure (ruling R3): true iff the value
+    /// Independent oracle of `to_natural_json`'s success/failure (RFC 8949 §6.1): true iff the value
     /// contains a node with no injective JSON image — the recursive dual of the runtime walk, written
     /// against the inspection API so it can never share a bug with the impl. Failure nodes: bytes,
     /// tag, undefined, unassigned, non-finite float, an nint VALUE below `i64::MIN` (a KEY nint has no
     /// ceiling — keys are strings), a map key whose kind is not text/uint/nint, and two map keys that
-    /// stringify identically (§6.1 collision). Keys are stringified text-verbatim / int-decimal, the
+    /// stringify identically (RFC 8949 §6.1 collision). Keys are stringified text-verbatim / int-decimal, the
     /// same rule `any_cbor_natural_key_string` uses.
-    fn contains_r3_failure_node(v: &AnyCbor) -> bool {
+    fn contains_natural_json_failure_node(v: &AnyCbor) -> bool {
         fn key_string(k: &AnyCbor) -> Option<String> {
             match k.kind() {
                 AnyCborKind::Text => Some(k.as_text().unwrap().to_owned()),
@@ -1273,7 +1277,11 @@ mod json_non_preserve {
             AnyCborKind::Float => !v.as_float().unwrap().is_finite(),
             AnyCborKind::NInt => i64::try_from(v.as_nint().unwrap()).is_err(),
             AnyCborKind::UInt | AnyCborKind::Text | AnyCborKind::Bool | AnyCborKind::Null => false,
-            AnyCborKind::Array => v.as_array().unwrap().iter().any(contains_r3_failure_node),
+            AnyCborKind::Array => v
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(contains_natural_json_failure_node),
             AnyCborKind::Map => {
                 let mut seen = std::collections::BTreeSet::new();
                 for (k, val) in v.as_map().unwrap() {
@@ -1285,7 +1293,7 @@ mod json_non_preserve {
                             }
                         }
                     }
-                    if contains_r3_failure_node(val) {
+                    if contains_natural_json_failure_node(val) {
                         return true;
                     }
                 }
@@ -1301,12 +1309,12 @@ mod json_non_preserve {
         c
     }
 
-    /// Natural law, BOTH directions over the corpus (R3/R4): `to_natural_json` Ok ⟹ the value is
-    /// recovered value-equal modulo encodings + R4 numeric-key reading (stated as a JSON fixed point,
-    /// since JSON object-key ordering + the numeric-key reading make strict value-equality too strong;
-    /// scalar values additionally recover strictly equal), AND the value carries no R3 failure node;
-    /// Err ⟹ the value DOES carry an R3 failure node. The independent predicate makes this a strong
-    /// biconditional rather than a one-sided check.
+    /// Natural law, BOTH directions over the corpus: `to_natural_json` Ok ⟹ the value is
+    /// recovered value-equal modulo encodings + the prefer-numeric key reading (stated as a JSON fixed
+    /// point, since JSON object-key ordering + the numeric-key reading make strict value-equality too
+    /// strong; scalar values additionally recover strictly equal), AND the value carries no
+    /// natural-rendering failure node; Err ⟹ the value DOES carry one. The independent predicate makes
+    /// this a strong biconditional rather than a one-sided check.
     #[test]
     fn natural_json_law_over_corpus() {
         let mut ok = 0usize;
@@ -1319,8 +1327,8 @@ mod json_non_preserve {
                 Ok(json) => {
                     ok += 1;
                     assert!(
-                        !contains_r3_failure_node(&v),
-                        "to_natural_json succeeded but the value carries an R3 failure node: {name}"
+                        !contains_natural_json_failure_node(&v),
+                        "to_natural_json succeeded but the value carries a natural-rendering failure node: {name}"
                     );
                     let back = from_natural_json(json.clone());
                     assert_eq!(
@@ -1335,8 +1343,8 @@ mod json_non_preserve {
                 Err(_) => {
                     err += 1;
                     assert!(
-                        contains_r3_failure_node(&v),
-                        "to_natural_json failed but no R3 failure node is present: {name}"
+                        contains_natural_json_failure_node(&v),
+                        "to_natural_json failed but no natural-rendering failure node is present: {name}"
                     );
                 }
             }
@@ -1352,7 +1360,7 @@ mod json_non_preserve {
     /// True iff the value contains a float node anywhere. The tagged codec renders a float as its
     /// shortest JSON decimal, which is value-lossy at the ULP/width edge for floats that did not
     /// originate as f64 (an f16/f32 subnormal decodes to an f64 whose shortest decimal can parse back
-    /// to the ADJACENT f64) — a documented JSON float caveat (R6-adjacent), so the strict fixed-point
+    /// to the ADJACENT f64) — a documented JSON float lossiness caveat, so the strict fixed-point
     /// assertion below is scoped to float-free items; float items still ride the no-panic breadth.
     fn contains_float(v: &AnyCbor) -> bool {
         match v.kind() {
@@ -1368,7 +1376,7 @@ mod json_non_preserve {
         }
     }
 
-    /// Tagged law at corpus breadth (R2, unchanged): the value codec's JSON round-trips over the WHOLE
+    /// Tagged law at corpus breadth: the value codec's JSON round-trips over the WHOLE
     /// corpus without panic (`to_string` then `from_str` always succeeds), and for float-free items is
     /// an exact fixed point — `to_string(from_str(to_string(v))) == to_string(v)`. The hand vectors
     /// above pin the value-recovery rows (incl. the finite-float and NaN cases with round-trip-safe
@@ -1403,7 +1411,7 @@ mod json_non_preserve {
         }
     }
 
-    /// Depth edge (WP5 §8 item 27): the READ side of BOTH JSON surfaces inherits serde_json's own
+    /// Depth edge: the READ side of BOTH JSON surfaces inherits serde_json's own
     /// recursion limit, so hostile deeply-nested JSON is a GRACEFUL `Err` (no stack overflow / SIGABRT)
     /// — the parse bottoms out before `from_natural_json` (which takes an already-parsed `Value`, so it
     /// only ever recurses within that bounded depth) or the tagged `from_str::<AnyCbor>` walk runs. The
@@ -1507,7 +1515,7 @@ mod json_preserve {
         }
     }
 
-    // ---- Corpus-breadth JSON laws under the PRESERVE assembly (loose-CBOR Phase B WP5, §8 item 27) ----
+    // ---- Corpus-breadth JSON laws under the PRESERVE assembly ----
 
     fn law_corpus() -> Vec<(String, Vec<u8>)> {
         let mut c = super::well_formed_corpus();
@@ -1533,7 +1541,7 @@ mod json_preserve {
         }
     }
 
-    /// Tagged law at corpus breadth, MODULO ENCODINGS (R2, the `round_trip_value_equal_modulo_encodings`
+    /// Tagged law at corpus breadth, MODULO ENCODINGS (the `round_trip_value_equal_modulo_encodings`
     /// hand law applied to the whole corpus): a wire value's tagged JSON always re-reads without panic,
     /// and for float-free items canonicalizes to the SAME bytes as the original — encodings (non-minimal
     /// widths, indefinite framing) reset to canonical defaults through JSON but the VALUE is preserved.

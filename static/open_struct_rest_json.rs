@@ -1,4 +1,4 @@
-// Open struct-map rest FLATTEN helpers (loose-CBOR Phase B WP4, ruling R7). An open struct's
+// Open struct-map rest FLATTEN helpers. An open struct's
 // captured unknown entries render at the SAME JSON object level as the declared fields (serde
 // `flatten` merges the rest map into the parent object), and read back symmetrically (declared field
 // names bind first, every other key lands in rest). The struct keeps its derive; the rest field
@@ -12,7 +12,7 @@
 // views from `any_cbor.rs`; the typed-domain wrappers supply plain closures / the value's own serde.
 
 /// Serialize an open struct-map's rest entries FLATTENED. `reserved` is the declared fields' JSON
-/// names. Errors (no silent duplicate/shadow — R3): a rest key equal to a declared name (would shadow
+/// names. Errors (no silent duplicate/shadow, per RFC 8949 §6.1's strict-fail): a rest key equal to a declared name (would shadow
 /// it, and most JSON parsers are last-wins); two rest keys that stringify identically (this is how a
 /// `@duplicates preserve` PairMap rest holding ACTUAL duplicate keys makes `to_json` fail —
 /// duplicates stringify identically by definition); a key whose string form does not exist (a complex
@@ -57,9 +57,9 @@ where
 }
 
 /// Read the flattened rest entries serde's `flatten` buffering hands back as a MAP of string keys (it
-/// never applies serde_json's numeric-key coercion, verified against current serde — DESIGN §6 /
-/// PROBE-B9). Returns the raw `(String, value)` pairs; the GENERATED wrapper then coerces each key to
-/// the domain type per ruling R4 (typed domains parse per the domain type; `any` domains prefer the
+/// never applies serde_json's numeric-key coercion, verified against current serde). Returns the raw
+/// `(String, value)` pairs; the GENERATED wrapper then coerces each key to
+/// the domain type per RFC 8949 §6.2 (typed domains parse per the domain type; `any` domains prefer the
 /// numeric reading) and unwraps the value view. A duplicate declared field name in the input is
 /// already rejected loudly upstream by serde's own flatten machinery (the read-side collision guard).
 pub fn read_flattened_rest_pairs<'de, D, VDe>(

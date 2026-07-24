@@ -1,7 +1,7 @@
-; A bare `any` type-choice arm in LAST position (`tstr / any`) is a SUPPORTED construct (loose-CBOR
-; A3): the arm lowers to the AnyCbor runtime type and dispatches via forced backtracking (a typed arm
-; matching on wire type but failing on content falls through to the `any` catch-all — DESIGN §3.5).
-; Full-surface since A3 WP3 lifted the wasm guard, so this row is `ok` under this catalog's default
+; A bare `any` type-choice arm in LAST position (`tstr / any`) is a SUPPORTED construct: the arm
+; lowers to the AnyCbor runtime type and dispatches via forced backtracking (a typed arm
+; matching on wire type but failing on content falls through to the `any` catch-all).
+; Full-surface (the wasm AnyCbor wrapper exists), so this row is `ok` under this catalog's default
 ; `--wasm=true` profile. The rust-only (`--wasm=false`) support is pinned by the `any_positions_*`
 ; whole_program snapshots and the `tests/any-choice` content-fallthrough integration fixture; the
 ; wasm surface by the `any-choice` corpus row of `wasm_api_parity`. DISTINCT from the NON-LAST

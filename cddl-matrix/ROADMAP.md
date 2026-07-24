@@ -747,7 +747,7 @@ The wasm-oracle evidence clause names its observation stage, not the failure's a
 generation-time REFUSAL on the wasm leg (a spec whose shape a not-yet-shipped wasm surface gracefully
 rejects at generation) is recorded as `wasm crate failed to compile (cargo test
 exit 1)` — the oracle's generic phrasing for "the wasm pipeline produced no passing crate" — which
-reads as a compile regression to an annotations reader (it nearly misled the A2 delivery review).
+reads as a compile regression to an annotations reader (it nearly misled a wasm-support review).
 On the next edit to the wasm-oracle evidence composer, distinguish the stages in the clause
 (generation refused / generated but failed to compile / compiled but tests failed) so a deliberate
 graceful rejection is not mistaken for a build break; until then, cross-check a surprising wasm

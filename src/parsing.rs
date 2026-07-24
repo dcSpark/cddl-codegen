@@ -505,7 +505,7 @@ fn parse_type_choices(
         let variants = create_variants_from_type_choices(types, parent_visitor, type_choices, cli);
         // A BARE `any` type-choice arm (conceptual `Any`, no CBOR encoding operations) accepts every
         // CBOR item, so it overlaps every other arm and can only ever be a LAST catch-all: any earlier
-        // position leaves the arms after it unreachable (ruling §10.6). We allow it last and reject it
+        // position leaves the arms after it unreachable. We allow it last and reject it
         // elsewhere. The dispatch is forced backtracking (a typed arm matching on wire type but failing
         // on *content* — bounds, inner structure — must fall through to `any`); the strategy selector
         // in generation/enums.rs auto-selects it because `Any::cbor_types` spans all 8 major types, so
@@ -1387,7 +1387,7 @@ fn parse_type(
                 // A control operator on `any` (`.size`, `.cbor`, ranges, `.lt`/`.le`/…) is
                 // semantically empty — `any` already accepts every CBOR item — and `any` is not a
                 // primitive, so the range/size machinery below would panic unwrapping
-                // `ident_to_primitive`. Reject it gracefully in v1 (DESIGN §7); allow on demand once
+                // `ident_to_primitive`. Reject it gracefully; allow on demand once
                 // a fixture proves a meaningful semantics.
                 if control.is_some() && cddl_ident.to_string() == "any" {
                     types.record_rejection(format!(
@@ -1611,8 +1611,8 @@ fn parse_type(
                                         // wrapper `@newtype` opts into — making `@newtype` redundant (not a
                                         // double wrapper) on a tag rule. The tag rides on `concrete_type`
                                         // (`.tag_if(outer_tag)` above), so the wrapper writes it.
-                                        // `@newtype` on a bare `any` rule is a v1 graceful rejection
-                                        // (DESIGN ruling §10.11): the wrapper is unproven through the
+                                        // `@newtype` on a bare `any` rule is a graceful rejection:
+                                        // the wrapper is unproven through the
                                         // surface machinery and cheap to allow later once a fixture
                                         // proves it. A TAGGED any (`#6.n(any)`, `outer_tag` set) is a
                                         // supported position whose wrapper the tag forces (@newtype
@@ -3434,8 +3434,8 @@ fn recognize_rest_row(
         ));
         return (None, Some(candidate));
     }
-    // A rest row inside a PLAIN GROUP (`g = ( 1: a, * k => v )`, embedded via `{ g }`) is rejected in
-    // v1 (DESIGN §7 "embedded groups"). The rest row is NOT a `RustField`, but a materialized plain
+    // A rest row inside a PLAIN GROUP (`g = ( 1: a, * k => v )`, embedded via `{ g }`) is rejected.
+    // The rest row is NOT a `RustField`, but a materialized plain
     // group exports TRANSPARENTLY as an extern-interface group-body row rendered from `fields` only
     // (`project_plain_group`) — so recognizing a rest here would silently project a CLOSED group
     // across the crate boundary (the silent-lossy cross-crate class). Reject explicitly instead of
@@ -3520,8 +3520,8 @@ fn recognize_rest_row(
             return (None, Some(candidate));
         }
     };
-    // WP2 supports `uint` (u64), `text`, and `any` key domains. Other concrete key domains
-    // (sized ints, bstr, nint, struct keys, …) are a later work package — reject gracefully,
+    // Only `uint` (u64), `text`, and `any` key domains are supported. Other concrete key domains
+    // (sized ints, bstr, nint, struct keys, …) reject gracefully,
     // naming the supported spellings. (The uint capture reconstructs the key from the u64 the
     // record loop already read, so only the full `uint`/u64 domain is honored here.)
     let domain_ok = matches!(
@@ -3537,7 +3537,8 @@ fn recognize_rest_row(
         return (None, Some(candidate));
     }
     // Every generated surface for open struct-maps is now wired: the JSON flattened rest surface
-    // (ruling R7, with the write-side collision check and key-coercing read wrapper), the
+    // (captured entries render at the same object level as declared fields, with the write-side
+    // collision check and key-coercing read wrapper), the
     // --preserve-encodings / --canonical-form fidelity path, and the wasm rest accessor (a getter
     // returning the captured entries as the wasm map wrapper). No front door remains here.
     // Read entry-level directives (`@name`, `@duplicates`) from the rest row's own trailing slot —
@@ -3546,8 +3547,9 @@ fn recognize_rest_row(
     // via `get_comment_after` on the group choice, so the two do not collide — a rest-row directive
     // stays entry-level and a rule directive stays rule-level).
     let rest_metadata = group_entry_rule_metadata(candidate_ge, candidate_comma);
-    // `@duplicates` policy on the rest row: default (reject) uses the loose container (§10.8 value
-    // dup check); `preserve` uses the vec-of-pairs twin (`PairMap`), matching what `@duplicates
+    // `@duplicates` policy on the rest row: default (reject) uses the loose container (value-equality
+    // dup check — accept/reject keyed on the wire VALUE, not the domain's spelling); `preserve` uses
+    // the vec-of-pairs twin (`PairMap`), matching what `@duplicates
     // preserve` TABLES do — duplicate keys accepted and re-emitted in wire order. `reject` explicit
     // is the same as default. Carried on the `RestRow` for the emitters to select the container.
     let field_name = rest_metadata

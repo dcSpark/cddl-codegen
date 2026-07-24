@@ -529,7 +529,8 @@ enum RestKeyDomain {
 
 /// `@duplicates preserve` on the rest row → the vec-of-pairs twin (`PairMap`), which accepts AND
 /// re-emits duplicate keys in wire order (matching `@duplicates preserve` TABLES). Otherwise the
-/// loose container (`OrderedHashMap`/`BTreeMap`) with the §10.8 value-duplicate rejection.
+/// loose container (`OrderedHashMap`/`BTreeMap`) with the value-duplicate rejection (accept/reject
+/// keyed on CBOR VALUE equality, not the domain's spelling).
 fn rest_is_pair_map(rest: &RestRow) -> bool {
     rest.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
 }
@@ -592,14 +593,15 @@ fn rest_encoding_fields(
     (key_encs, value_encs)
 }
 
-/// Loose-CBOR Phase B WP4 (ruling R7): the rest field's FLATTENED JSON surface. Emits, into the
+/// The rest field's FLATTENED JSON surface (`output_format.mdx` § "Open struct-maps (rest rows)").
+/// Emits, into the
 /// struct's module, the per-struct `serialize_with`/`deserialize_with` free functions that steer the
 /// rest field's serde derive so its captured entries render at the SAME JSON object level as the
 /// declared fields (serde `flatten`), and reads them back symmetrically. The write-side collision
 /// check needs the DECLARED JSON names — codegen-known but not visible to a generic adapter — so the
 /// serialize fn closes over them as a literal slice and delegates the mechanics to the static
 /// `serialize_flattened_rest` / `read_flattened_rest_pairs` helpers (composition, not a parallel
-/// path: values ride WP1's natural walk via `NaturalAnyCborSer`/`De`). Returns the field-attribute
+/// path: values ride the natural walk via `NaturalAnyCborSer`/`De`). Returns the field-attribute
 /// lines to attach to the rest field; a no-op (empty) when neither json flag is on.
 fn emit_rest_flatten_json(
     gen_scope: &mut GenerationScope,
@@ -636,7 +638,7 @@ fn emit_rest_flatten_json(
         ));
     }
     if cli.json_schema_export {
-        // The rest field's schema is the honest open-map `additionalProperties` (ruling R7): for an
+        // The rest field's schema is the honest open-map `additionalProperties`: for an
         // `any` range it is the permissive "any JSON value" (json2ts → a `{ [k: string]: unknown }`
         // index signature intersected with the declared `properties`); for a TYPED range schemars'
         // native flatten-map handling already yields `additionalProperties: <range schema>`, so no
@@ -664,7 +666,7 @@ fn emit_rest_flatten_json(
     let reserved_lit = format!("&[{}]", reserved.join(", "));
 
     let field = &rest.field_name;
-    // Per-domain key <-> string (ruling R3 write, R4 read).
+    // Per-domain key <-> string (RFC 8949 §6.1 write, §6.2 read).
     let (key_closure, key_coerce) = match RestKeyDomain::of(rest) {
         // A typed-domain key stringify never fails, so the error type is unconstrained by the body —
         // pin it (`Infallible: Display`) so the generic helper's `E: Display` bound resolves.
@@ -683,7 +685,7 @@ fn emit_rest_flatten_json(
             format!("let k = {base}::any_cbor_natural_key_from_string(&ks);"),
         ),
     };
-    // Per-range value view: an `any` range renders NATURALLY (WP1 walk); a typed range uses its own
+    // Per-range value view: an `any` range renders NATURALLY (the natural walk); a typed range uses its own
     // serde (which, if it transitively contains `any`, is itself steered by the natural adapters).
     let (value_wrap, value_de_ty, value_unwrap) = if range_is_any {
         (
@@ -736,7 +738,8 @@ fn emit_rest_flatten_json(
 /// deserializing the domain from `raw` (for `any`-domain other-type / special keys) — bind the
 /// value (`rest_value`), populate the per-entry encoding sidecars for concrete domains under
 /// preserve, push the wire-position index (`rest_index_base + <container>.len()`) onto
-/// `orig_deser_order`, then insert with the default (reject) duplicate check. §10.8: for a concrete
+/// `orig_deser_order`, then insert with the default (reject) duplicate check. Duplicate detection
+/// is keyed on CBOR VALUE equality (not the domain's spelling): for a concrete
 /// key the container `Eq` IS value equality (`insert().is_some()`); for an `any`-domain key under
 /// preserve the container `Eq` is REPRESENTATIONAL, so the dup check is a value-normalized
 /// `value_eq` side scan (confined to any-domain containers). `key_enc_expr` is the raw peeked-key
@@ -835,7 +838,7 @@ fn append_rest_capture(
                 )
             });
         }
-        // wire-position index for this entry (records.rs §5.2): declared fields occupy 0..N, the
+        // wire-position index for this entry: declared fields occupy 0..N, the
         // i-th rest entry occupies N+i. `<container>.len()` before the insert IS i (and the sidecar
         // `Vec`s, pushed just above, are already aligned to it).
         block.line(format!(
@@ -847,7 +850,7 @@ fn append_rest_capture(
     if is_pair_map {
         // `@duplicates preserve`: duplicates are the POINT — append every entry (PairMap::insert
         // pushes, never displaces), no dup check, in wire order (matching @duplicates preserve
-        // tables). §10.8's value-duplicate rejection is the DEFAULT (reject) container's job.
+        // tables). Value-duplicate rejection is the DEFAULT (reject) container's job.
         let insert_key = if key_is_copy {
             "rest_key".to_owned()
         } else {
@@ -867,7 +870,7 @@ fn append_rest_capture(
     };
     if cli.preserve_encodings && domain == RestKeyDomain::Any {
         // Representational `Eq` here (encoding widths participate), so `insert` would silently accept
-        // `0x01` and `0x1801` as two entries. §10.8 requires rejecting CBOR VALUE duplicates: scan
+        // `0x01` and `0x1801` as two entries. Rejecting a duplicate must key on CBOR VALUE equality: scan
         // for a value-equal existing key first (confined to the any-domain container).
         let mut dup_check = Block::new(format!(
             "if {}.iter().any(|(k, _)| k.value_eq(&rest_key))",
@@ -1513,7 +1516,7 @@ pub(super) fn codegen_struct(
             if let Some(comment) = &field.rule_metadata.comment {
                 codegen_field.doc(comment);
             }
-            // Loose-CBOR Phase B (R1): a member CARRYING `any` renders its JSON NATURALLY (not
+            // A member CARRYING `any` renders its JSON NATURALLY (not
             // through `AnyCbor`'s tagged codec). Route the serde/schemars derives on this field
             // through the matching natural adapter. Skipped when the struct owns a custom json impl
             // (no derives to steer). Positions covered: a bare `any` (`Direct`), a homogeneous
@@ -1534,8 +1537,8 @@ pub(super) fn codegen_struct(
                     ConceptualRustType::Array(inner) if resolves_any(inner) => {
                         Some(if opt { P::OptSeq } else { P::Seq })
                     }
-                    // An `any`-keyed table stays tagged (its key already errors at runtime, ruling
-                    // R3), so require a non-`any` key. Preserve → `OrderedHashMap`, else `BTreeMap`.
+                    // An `any`-keyed table stays tagged (its key already errors at runtime per
+                    // RFC 8949 §6.1), so require a non-`any` key. Preserve → `OrderedHashMap`, else `BTreeMap`.
                     ConceptualRustType::Map(k, v) if resolves_any(v) && !resolves_any(k) => {
                         Some(match (cli.preserve_encodings, opt) {
                             (false, false) => P::Map,
@@ -1581,7 +1584,7 @@ pub(super) fn codegen_struct(
     // Open struct-map rest row (loose CBOR): a `pub` map field holding the captured unknown entries.
     // Deliberately NOT a constructor argument — `new()` defaults it empty, so adding a rest row to a
     // spec is source-compatible for existing `new()` callers. The container matches the table switch
-    // (non-preserve `BTreeMap` in WP2; the preserve variant is a later work package).
+    // (non-preserve `BTreeMap`; `OrderedHashMap` under `--preserve-encodings`).
     if let Some(rest) = &record.rest {
         let mut rest_field = codegen::Field::new(
             format!("pub {}", rest.field_name),
@@ -1592,7 +1595,7 @@ pub(super) fn codegen_struct(
              Serialized after the declared fields; defaults empty. `@duplicates preserve` makes this \
              a `PairMap` (duplicate keys kept, in wire order); otherwise the loose table container.",
         );
-        // Loose-CBOR Phase B WP4 (R7): the rest field's FLATTENED JSON surface. Skipped when the
+        // The rest field's FLATTENED JSON surface. Skipped when the
         // struct owns a custom json impl (no derive to steer) — matches the declared-field handling.
         if !config.custom_json {
             for annotation in emit_rest_flatten_json(gen_scope, types, name, record, rest, cli) {
@@ -2159,7 +2162,7 @@ pub(super) fn codegen_struct(
                         // value-`Eq` dup scan (`.iter().any(|(k, _)| k.value_eq(..))`) runs BEFORE the
                         // first `insert`, so inference has nothing to pin `K`/`V` from otherwise. The
                         // non-preserve path (below) infers from its `insert`-based dup check, so it
-                        // keeps the un-annotated form (byte-identical to WP2).
+                        // keeps the un-annotated form (byte-identical to the non-preserve output).
                         deser_code.content.line(&format!(
                             "let mut {}: {} = {}::new();",
                             rest.field_name,

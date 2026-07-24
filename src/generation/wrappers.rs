@@ -295,7 +295,7 @@ pub(super) fn generate_wrapper_struct(
         field_type.resolve_alias_shallow(),
         ConceptualRustType::Primitive(Primitive::Bytes)
     );
-    // Loose-CBOR Phase B (R1): a newtype wrapping an `any` (e.g. `t = #6.11(any)` → `Tagged(AnyCbor)`)
+    // A newtype wrapping an `any` (e.g. `t = #6.11(any)` → `Tagged(AnyCbor)`)
     // renders its JSON NATURALLY, not through `AnyCbor`'s tagged codec. The wrapper's manual serde /
     // schemars route through the `any_cbor` runtime module's natural adapter (the CBOR-only tag is
     // absent from JSON, so the natural walk of the inner value is the whole JSON surface).
@@ -429,7 +429,7 @@ pub(super) fn generate_wrapper_struct(
             let mut inline_schema = codegen::Function::new("inline_schema");
             inline_schema.ret("bool");
             if json_natural_any {
-                // Permissive natural schema (R1), distinct from `AnyCbor`'s own tagged codec schema.
+                // Permissive natural-rendering schema, distinct from `AnyCbor`'s own tagged codec schema.
                 json_schema_fn.line(format!(
                     "{any_cbor_mod}::natural_any_cbor_schema(generator)"
                 ));

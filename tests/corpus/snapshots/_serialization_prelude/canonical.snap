@@ -174,7 +174,7 @@ impl From<cbor_event::StringLenSz> for StringEncoding {
 /// "canonical CBOR" key ordering (NOT pure RFC 8949 §4.2.1 bytewise). ONE shared runtime helper so
 /// every runtime canonical key sort agrees by construction: the `@duplicates preserve` pair-map
 /// sort, `AnyCbor`'s own canonical map serialization, and generated open struct-maps' runtime
-/// canonical key merge (loose-CBOR Phase B) all call it, and it is the runtime twin of the
+/// canonical key merge all call it, and it is the runtime twin of the
 /// codegen-time `RustRecord::canonical_ordering` (pinned to agree by a divergence test vector, e.g.
 /// key `24` = `0x1818` vs `10` = `0x0a`, where the shorter encoding is bytewise-greater).
 pub fn cbor_canonical_key_cmp(lhs: &[u8], rhs: &[u8]) -> std::cmp::Ordering {

@@ -471,11 +471,11 @@ fn strip_header(export_file: &str) -> String {
     format!("{rest}\n")
 }
 
-/// The conditional `v2` seam header (ruling §10.7): an extern-interface export whose finalized IR
+/// The conditional `v2` seam header: an extern-interface export whose finalized IR
 /// contains CDDL `any` bumps EVERY file to `v2`; an export with no `any` stays `v1`, so unaffected
-/// dep/consumer pairs keep working and an `any`-bearing export a PRE-A2 consumer reads fails loudly
-/// at its own version seam (a current A2+ reader accepts both — the reader edit in
-/// `api::scan_extern_import_seam`).
+/// dep/consumer pairs keep working and an `any`-bearing export read by a consumer predating `any`
+/// support fails loudly at its own version seam (a reader that understands `any` accepts both — the
+/// reader edit in `api::scan_extern_import_seam`).
 #[test]
 fn extern_interface_v2_header_conditional_on_any() {
     // any-bearing dep → every export file opens with v2.
@@ -786,14 +786,14 @@ fn extern_import_export_with_records_parses_cleanly() {
     );
 }
 
-/// Loose-CBOR Phase B WP4 (§6.2 as rewritten in the WP2 review): an open struct-map rest-bearing
+/// An open struct-map rest-bearing
 /// RECORD projects OPAQUE across the crate seam — the ordinary class-backed-types-are-opaque posture
 /// — so it needs NO projected field-model / `* K => V` member rendering. A CONCRETE-typed rest row
 /// with no `any` anywhere (`* uint => text`) exports under the v1 header (opaque marker), which is
-/// v1-compatible and safe NOW, and re-imports cleanly via `--extern-import`; an `any`-containing rest
+/// v1-compatible and safe, and re-imports cleanly via `--extern-import`; an `any`-containing rest
 /// row exports v2 (the existing whole-IR `uses_any_cbor()` bump). Because the record projects OPAQUE
-/// (no structural rest spelling crosses the seam), the v2 bump condition needs no widening — the one
-/// live obligation §6.2 named is satisfied by this being a pure verification.
+/// (no structural rest spelling crosses the seam), the v2 bump condition needs no widening — this is
+/// a pure verification that the opaque projection round-trips.
 #[test]
 fn extern_import_open_struct_map_rest_row_projects_opaque() {
     // A concrete-typed rest row: no `any` anywhere -> v1 header, opaque marker.
