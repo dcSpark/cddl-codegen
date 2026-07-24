@@ -93,3 +93,8 @@ pmap_holder = [m: pmap]
 md         = mdmap / [* md] / int / bytes / tstr
 mdmap      = { * tstr => md } ; @duplicates preserve
 md_holder  = [meta: md]
+
+; open struct-map under --preserve-encodings: a captured rest entry's key/value HEADER ARGUMENTS
+; are data. A non-minimal rest KEY head (7 written 0x18 0x07) re-emits verbatim through the loose
+; container's per-key encoding sidecar. Vectors in tests.rs.
+open_map = { 1: uint, * uint => uint }

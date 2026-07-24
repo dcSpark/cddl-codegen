@@ -41,3 +41,8 @@ map_holder = [m: uint_map]
 ; bignum — RFC 8949 tags 2 (unsigned) and 3 (negative), via the biguint/bignint prelude types
 big_uint = [b: biguint]
 big_nint = [b: bignint]
+
+; open struct-map (loose CBOR "rest row"): a fixed key `1: uint` followed by a trailing
+; `* uint => uint` captures unknown map entries into `.rest`. The wire is the declared field
+; followed by the captured entries in key order; empty rest ≡ the closed one-entry map.
+open_map = { 1: uint, * uint => uint }

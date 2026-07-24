@@ -257,4 +257,35 @@ mod golden_hex {
         OneFloat::new(f64::NAN),
         &[0x81, 0xfb, 0x7f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
     );
+
+    // ---- open struct-map (loose CBOR "rest row"), default flags (loose-CBOR Phase B WP5) ----
+    // A fixed key `1: uint` plus a trailing `* uint => uint`: unknown entries land in `.rest`. The
+    // map header COUNTS the declared field plus every rest entry (1 + rest.len()); the wire is the
+    // declared field first, then rest entries in ascending key order (BTreeMap). Bytes are hand-
+    // derived from the CBOR grammar, independent of the generator. (Helper builders keep the `kat!`
+    // value argument free of a `);` token, which the coverage extractor uses as the call terminator.)
+    fn open_map_rest(entries: &[(u64, u64)]) -> OpenMap {
+        let mut v = OpenMap::new(5);
+        for &(k, val) in entries {
+            v.rest.insert(k, val);
+        }
+        v
+    }
+    // Empty rest: exactly the closed one-entry map {1: 5} — adding a rest row is wire-compatible.
+    kat!(open_map_empty_rest, OpenMap, open_map_rest(&[]), &[0xa1, 0x01, 0x05]);
+    // One captured entry {1: 5, 7: 9} — count 2 (0xa2), rest key 7 after the declared key 1.
+    kat!(
+        open_map_one_rest,
+        OpenMap,
+        open_map_rest(&[(7, 9)]),
+        &[0xa2, 0x01, 0x05, 0x07, 0x09]
+    );
+    // Two captured entries {1: 5, 7: 9, 8: 10} — count 3 (0xa3); rest keys emit in ascending order
+    // (7 before 8), after the declared field.
+    kat!(
+        open_map_two_rest_ordered,
+        OpenMap,
+        open_map_rest(&[(7, 9), (8, 10)]),
+        &[0xa3, 0x01, 0x05, 0x07, 0x09, 0x08, 0x0a]
+    );
 }

@@ -33,7 +33,7 @@ primitive encoding regardless of the `0x81` framing.
 - Legal **leaf** cells: **45** — 18 covered, 27 unexercised:
   - 8 **never emitted** under default flags (indefinite-length, float16/32, extended-simple, break)
   - 19 **emittable but no Appendix A vector lands here** (e.g. wide-argument length/count heads) — not a generator gap, just outside the App-A example set
-- Golden tests: 39 default-flags · sibling sets: 39 preserve + 17 canonical (below)
+- Golden tests: 42 default-flags · sibling sets: 40 preserve + 18 canonical (below)
 
 **Sibling golden sets (not in this grid):** the encodings the default-flags set can never
 exercise — the ➖ `.indef` cells and non-minimal header arguments — have their own spec-anchored
@@ -49,8 +49,8 @@ redundant or has no canonical RFC vector.
 | RFC bytes | decoded | | test / note |
 |-----------|---------|---|-------------|
 | `00` | 0 | ✅ | `triple_boundary_23_24` (+5) |
-| `01` | 1 | ✅ | `triple_inline` (+7) |
-| `0a` | 10 | ✅ | `array_25_count_header` (+1) |
+| `01` | 1 | ✅ | `triple_inline` (+10) |
+| `0a` | 10 | ✅ | `array_25_count_header` (+2) |
 | `17` | 23 | ✅ | `triple_boundary_23_24` (+1) |
 | `1818` | 24 | ✅ | `triple_boundary_23_24` (+1) |
 | `1819` | 25 | ✅ | `array_25_count_header` |
