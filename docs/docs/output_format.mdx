@@ -340,6 +340,24 @@ object level as the declared members** (via serde `flatten`), under the natural-
 (no `new()` argument, no setter — it defaults empty and is mutated through the wrapper's own surface);
 see [wasm differences](wasm_differences#open-struct-map-rest-rows).
 
+### The `@ignore` (tolerate-and-drop) flavor
+
+Marking the rest row [`@ignore`](comment_dsl#ignore) switches from capture to *tolerate-and-drop*:
+unknown entries are still typed-deserialized (key **and** value, so the stream advances) but then
+**discarded**. The generated type is a **plain closed struct** — no `rest` field, no `new()` change,
+and `serialize` emits only the declared members. This is deliberately lossy: byte round-trips do
+**not** hold for wire data that carried unknown entries (the type and its `serialize` fn carry a
+rustdoc breadcrumb saying so), which is why it is **rejected under `--preserve-encodings`** (a
+preserve crate's byte-exact contract cannot hold for it) along with `@duplicates`/`@name` on the same
+row.
+
+Because the type is a closed struct, its **JSON and schemars** surfaces are an ordinary closed
+struct's — the plain derive, no `flatten`, no `additionalProperties`/`patternProperties` open-map
+schema. Unknown JSON keys are tolerated on read (serde's default ignore-unknown-fields behavior, the
+JSON-side mirror of the CBOR looseness) and dropped, matching the CBOR contract. On **wasm** there is
+no `rest()` getter (nothing is stored); the class is a closed struct's, and the read-tolerance comes
+for free through the rust deserializer.
+
 ## Non-empty containers
 
 An occurrence lower bound of exactly one — `[+ T]` and the equivalent `[1* T]` on arrays, `{+ k => v}`
