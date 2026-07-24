@@ -25,4 +25,6 @@ fn _assert_deserialize<T: crate::generated::serialization::Deserialize>() {}
 fn _extern_interface_self_check() {
     _assert_serialize::<crate::generated::Ignored>();
     _assert_deserialize::<crate::generated::Ignored>();
+    _assert_serialize::<crate::generated::IgnoredList>();
+    _assert_deserialize::<crate::generated::IgnoredList>();
 }

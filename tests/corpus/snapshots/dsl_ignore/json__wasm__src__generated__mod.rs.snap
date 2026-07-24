@@ -72,3 +72,62 @@ impl AsRef<cddl_lib::Ignored> for Ignored {
         &self.0
     }
 }
+
+/// Open array with an ignored rest tail: tolerates unknown trailing array elements on deserialize and DROPS them, and re-serializes only the declared members. Byte round-trips do NOT hold for wire data that carried extra trailing elements.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct IgnoredList(pub(crate) cddl_lib::IgnoredList);
+
+#[wasm_bindgen]
+impl IgnoredList {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<IgnoredList, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_js_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<IgnoredList, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn index_0(&self) -> u64 {
+        self.0.index_0
+    }
+
+    pub fn new(index_0: u64) -> Self {
+        Self(cddl_lib::IgnoredList::new(index_0))
+    }
+}
+
+impl From<cddl_lib::IgnoredList> for IgnoredList {
+    fn from(native: cddl_lib::IgnoredList) -> Self {
+        Self(native)
+    }
+}
+
+impl From<IgnoredList> for cddl_lib::IgnoredList {
+    fn from(wasm: IgnoredList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::IgnoredList> for IgnoredList {
+    fn as_ref(&self) -> &cddl_lib::IgnoredList {
+        &self.0
+    }
+}

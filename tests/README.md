@@ -918,6 +918,14 @@ row; user docs: `docs/docs/output_format.mdx` § "Open arrays", `docs/docs/comme
   typed tail, an `any` tail, and an `@ignore` tail each get an ordinary `roundtrip_<type>` (capture
   pushes a trailing element through the generated `.rest` `Vec` API; the `@ignore` tail with no
   gating), and `cargo test` runs them green.
+- **Corpus** — `tests/corpus/dsl_ignore.cddl` isolates the `@ignore` directive in both container
+  reps: the map rest row (`ignored`) and the array rest tail (`ignored_list`), under the `dsl.ignore`
+  `[[cover]]` (default/json profiles; preserve is generation-skipped via `EXPECTED_GENERATION_FAIL` /
+  `PROFILE_GENERATION_SKIP`). The `dsl_ignore.ignored_list` decode-conformance catalog row carries
+  hand-derived accept vectors (a dropped-tail and an empty-tail holder instance) replayed by
+  `corpus_decode_replay`, with the by-design preserve rejection ledgered in that gate's
+  `PRESERVE_SKIP`. Capture's decode conformance rides the foreign
+  `contain.occurrence-target.grpent.member.zero_array` catalog row.
 
 ### Per-rule duplicates policy (`@duplicates`) — test map
 
