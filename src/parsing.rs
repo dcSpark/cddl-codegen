@@ -3884,21 +3884,6 @@ fn recognize_array_rest_tail(
     } else {
         RestSemantics::Capture
     };
-    // CAPTURE under `--preserve-encodings` needs per-element encoding sidecars to round-trip
-    // byte-exactly, which land in a later work package; until then a preserve crate's byte-exact
-    // contract would be silently violated (the tail would normalize), so reject the profile up front.
-    // JSON and wasm need no rejection: the captured tail is a plain `Vec<T>` field that renders as an
-    // ordinary JSON array (its own serde) and, in wasm, sits behind a closed-struct surface (no tail
-    // accessor yet — a later work package adds the getter). IGNORE emits no field, so all of its
-    // surfaces are a closed struct's; only its preserve combination is rejected (handled above).
-    if semantics == RestSemantics::Capture && cli.preserve_encodings {
-        types.record_rejection(format!(
-            "rule `{src}`: open arrays (a `* t` rest tail after fixed members) under \
-             --preserve-encodings land in a later work package. Generate without \
-             --preserve-encodings for now (value-level round-trip)."
-        ));
-        return (None, Some(candidate));
-    }
     let field_name = tail_metadata
         .name
         .clone()

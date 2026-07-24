@@ -2287,14 +2287,12 @@ fn open_array_front_end() {
         "the @duplicates-on-array rejection explains there are no keys, got: {dup}"
     );
 
-    // --- profile rejections: CAPTURE under --preserve-encodings (temporary), @ignore under preserve
-    // (permanent). Both are graceful rejections naming the remedy. ---
-    let cap_pres = gen_flags("a = [uint, * uint]\n", &["--preserve-encodings=true"])
-        .expect_err("open-array capture under --preserve-encodings rejects (later work package)");
-    assert!(
-        cap_pres.contains("preserve-encodings") && cap_pres.contains("rule `a`"),
-        "the capture-preserve rejection names the profile + rule, got: {cap_pres}"
-    );
+    // --- profiles: CAPTURE under --preserve-encodings GENERATES (byte-exact per-element tail
+    // encodings ride a positional `{field}_elem_encodings` sidecar); @ignore under preserve is a
+    // PERMANENT graceful rejection (a deliberately-lossy tolerate-and-drop tail undermines a preserve
+    // crate's byte-exact contract). ---
+    gen_flags("a = [uint, * uint]\n", &["--preserve-encodings=true"])
+        .expect("open-array capture generates under --preserve-encodings");
     let ign_pres = gen_flags(
         "a = [\n  uint,\n  * any ; @ignore\n]\n",
         &["--preserve-encodings=true"],
