@@ -154,11 +154,11 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "dsl.ignore"
 status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
 emission.json.status = "supported"
-emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips (closed-struct JSON, unknown keys tolerated on read)"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
 emission.preserve.status = "unsupported"
-emission.preserve.evidence = "probe (emission=preserve): cddl-codegen rejected at generation (exit 1) — @ignore is rejected under --preserve-encodings (a preserve crate's byte-exact contract can't hold for a lossy type)"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen rejected at parse/lex (exit 1)"
 
 [[support]]
 id = "dsl.name"
