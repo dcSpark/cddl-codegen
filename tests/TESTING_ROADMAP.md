@@ -1225,15 +1225,19 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   rejection.
 
 - **A group rule's trailing comment is DISCARDED by the CDDL parser in two spellings, so every
-  rule-position directive on a plain group is silently dropped there.** `cddl` 0.10.2 leaves every
+  rule-position directive on a plain group is silently dropped there.** The parser leaves every
   AST comment slot `None` (verified by dumping the AST) when a group rule's closing paren is on its
   own line (`grp = (\n a: uint\n) ; @x`), and when the last group entry's own trailing slot is
   already occupied by a field-position `@name` — the two positions share that slot, and only one
   comment survives. Affects `@rust_name` and `@no_json_schema_export` identically; no extraction in
   `parsing.rs` can recover what the parser never recorded. Owned meanwhile by
   `group_rule_pin_metadata`'s doc comment and the `@no_json_schema_export` docs section, both of
-  which name the single-line spelling as the supported one. The fix is upstream (a parser that binds
-  the comment to `Rule::Group`'s `comments_after_rule`); build a local workaround only if a consumer
+  which name the single-line spelling as the supported one. The fix is upstream — and upstream here
+  is the **dcSpark fork** of `cddl` pinned by git rev in `Cargo.toml` (version 0.10.6 at that rev),
+  not the crates.io crate, so the patch lands in a repo we control. It would have the parser bind the
+  comment to `Rule::Group`'s `comments_after_rule`, which today has exactly two construction sites
+  (`pest_bridge.rs`) and both hardcode `None` — which is why reading that field from `parsing.rs` is
+  dead code rather than a workaround. Build a local workaround only if a consumer
   spec cannot use the single-line form — a pre-parse source scan that attributes a trailing comment
   to the group rule by line position would be a second, drift-prone comment parser, so it needs a
   real consumer to justify it.
