@@ -465,8 +465,8 @@ constr_plutus_data = _CDDL_CODEGEN_EXTERN_TYPE_ ; @no_json_schema_export
 ```
 
 Declares that a type is **not part of the published JSON-schema surface**. Its only effect: under
-`--json-schema-export` the json-gen crate emits no `gen_json_schema!` row for the type, so no
-`schemas/<Type>.json` is written for it.
+`--json-schema-export` the json-gen crate's `add_schemas` emits no registration row for the type, so
+the type is not one of the crate's declared schema roots.
 
 This exists because a type having a *derivable* JSON schema is not evidence that the derived shape
 is that type's *published* encoding. A `serde`/`schemars` derive can exist as an artifact while the
@@ -479,7 +479,9 @@ The boundary is deliberately narrow. `@no_json_schema_export` does **not**:
 
 - remove the `serde::Serialize`/`serde::Deserialize` or `schemars::JsonSchema` **derives** on a
   generated type. A parent that embeds the type still needs `JsonSchema` on it, and the type still
-  appears inside its parents' `$defs`. Removing the derives is [`@custom_json`](#custom_json), which
+  appears in the crate's `$defs` (and so in the emitted TypeScript) whenever a published type
+  references it — dropping the row drops the *root declaration*, not the definition. Removing the
+  derives is [`@custom_json`](#custom_json), which
   is orthogonal — combining the two on one rule is legal and meaningful ("I supply the JSON impls,
   *and* this type is not a published schema root");
 - change CBOR serialization, the wasm surface, the extern-interface export, or the extern
@@ -666,7 +668,7 @@ bar = [
 ```
 This will treat `Foo` as a type that will exist and that has implemented the `Serialize` and `Deserialize` traits, so the (de)serialization logic in `Bar` here will call `Foo::serialize()` and `Foo::deserialize()`.
 
-Under `--json-serde-derives` the type must additionally implement `serde::Serialize`/`serde::Deserialize`, and under `--json-schema-export` also `schemars::JsonSchema`, since the generated code delegates its JSON representation to the user type (and `--json-schema-export` emits a `gen_json_schema!` schema row for each such extern). Whenever the extern is embedded in a generated struct, that struct's `derive(JsonSchema)` already forces the impl, so this is no new burden in the common case. The generic BASE of an extern generic (`Foo` in `foo<T>`) gets **no** schema row — a bare `Foo` names no concrete type — while each concrete instance (`FooU64` from `foo<uint>`) and every plain extern does.
+Under `--json-serde-derives` the type must additionally implement `serde::Serialize`/`serde::Deserialize`, and under `--json-schema-export` also `schemars::JsonSchema`, since the generated code delegates its JSON representation to the user type (and `--json-schema-export` emits a schema-registration row for each such extern). Whenever the extern is embedded in a generated struct, that struct's `derive(JsonSchema)` already forces the impl, so this is no new burden in the common case. The generic BASE of an extern generic (`Foo` in `foo<T>`) gets **no** schema row — a bare `Foo` names no concrete type — while each concrete instance (`FooU64` from `foo<uint>`) and every plain extern does.
 This can also be useful when you have a spec that is either very awkward to use (so you hand-write or hand-modify after generation) in some type so you don't generate those types and instead manually merge those hand-written/hand-modified structs back in to the code afterwards. This saves you from having to manually remove all code that is generated regarding `Foo` first before merging in your own.
 
 This can also be useful when you have a spec that is either very awkward to use (so you hand-write or hand-modify after generation) in some type so you don't generate those types and instead manually merge those hand-written/hand-modified structs back in to the code afterwards. This saves you from having to manually remove all code that is generated regarding `Foo` first before merging in your own.

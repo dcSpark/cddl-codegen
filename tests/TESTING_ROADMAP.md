@@ -983,8 +983,8 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   stay unprobed: (a) `wasm-pack`/bindgen-CLI packaging — `cargo build`/`cargo test` cannot see
   duplicate exported JS class names when the dep wasm crate and the consumer both export a
   like-named wrapper (the generate-locally policy makes this reachable); no gate runs bindgen-CLI
-  over the extern fixture. (b) json-gen against extern-dep types — `gen_json_schema!` SKIPS
-  dep-owned rows (a dep type's schema is owned by the dep's own json-gen run, and this crate's
+  over the extern fixture. (b) json-gen against extern-dep types — `add_schemas` SKIPS
+  dep-owned rows (a dep type's schema root is owned by the dep's own json-gen run, and this crate's
   json-gen manifest depends only on the own rust crate), pinned in-memory by
   `snapshot_tests::json_gen_extern_schema_rows`. COMPILING emitted json-gen crates at breadth is
   owned by `cddl-matrix/ROADMAP.md`'s extern-compile-breadth entry; the residual owned HERE is
@@ -996,8 +996,8 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   `generic_extern_bases` record populated at parse time (which flips both the extern-interface
   `ExternCheckKind::None` decision and the json-gen schema-row skip) covers ONLY the EXTERN marker;
   the `RAW_BYTES_MARKER` parse branch drops its generic params the same way but is not recorded, so a
-  generic raw-bytes base still emits `_assert_raw_bytes::<crate::generated::Foo>()` and
-  `gen_json_schema!(cddl_lib::Foo)` naming the bare `Foo` (E0107 if the user's hand type is
+  generic raw-bytes base still emits `_assert_raw_bytes::<crate::generated::Foo>()` and a
+  schema-registration row naming the bare `cddl_lib::Foo` (E0107 if the user's hand type is
   `Foo<T>`). Repro: `foo<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_` + any second rule, generate with
   `--json-schema-export=true --wasm=false`. Whether a generic raw-bytes type is meaningful at all
   (raw bytes carry no element type) is the open question — the honest fix is likely to REJECT the
@@ -1211,7 +1211,7 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   twice: `parse_rule`'s `Rule::Group` arm reaches neither `parse_type` nor `parse_type_choices`, so
   `@rust_name` was silently dropped on plain groups until a marking site was added there, and
   `@no_json_schema_export` shipped inheriting exactly the same hole (a SPLICED plain group does
-  register a rust struct and therefore does get a `gen_json_schema!` row, so the directive was live
+  register a rust struct and therefore does get a schema-registration row, so the directive was live
   and dead at once). Caught only by an orchestrator hand-probing a shape no fixture contained.
   `cddl-matrix/no_silent_directive.ts` cannot see this class for a JSON-surface directive: it
   generates rust-only, where the suppressed artifact does not exist, so every cell is byte-identical
@@ -1490,16 +1490,6 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   TypeScript must be ≥ 5.2 with `--target esnext`, because wasm-bindgen emits `Symbol.dispose`
   members that earlier targets do not know. Reopening signal: a shipped `.d.ts` breaks a consumer's
   build in a way the substring asserts could not see.
-- **Referenced-but-never-declared types inside `json-types.d.ts` itself.** Under
-  `run-json2ts.js`'s `declareExternallyReferenced: false`, a type is declared by its own per-type
-  schema file and only *referenced* elsewhere — so a type that is referenced by some schema but has
-  no schema file of its own (e.g. one whose rule carries `@no_json_schema_export`) is referenced and
-  never declared. This is a property of the per-file compilation model, not of the scripts' path or
-  failure handling, and it dissolves under a merged single-document artifact (one compile over one
-  document, where a referenced type is either present or a hard `$ref` failure) rather than being
-  patchable in the current scripts. Build it with that structural change, not before. Reopening
-  signal: a consumer reports a `TS2304` originating inside `json-types.d.ts` rather than in the
-  merged bindings.
 
 ## Operational watches
 
