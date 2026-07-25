@@ -488,9 +488,28 @@ The boundary is deliberately narrow. `@no_json_schema_export` does **not**:
   spec can be generated under several flag sets without editing.
 
 It is valid on any rule that produces a rust type — an extern, a record, a sum type, a `@newtype`
-wrapper, a collection typedef. On a rule that registers **no** rust type (a plain transparent alias
-like `foo = uint`, or a `@no_alias` alias) there is no row to suppress, so the directive would be
-silently dead and generation is rejected with an error naming the rule.
+wrapper, a collection typedef, a generic instantiation, and a plain group that some rule splices:
+
+```cddl
+grp = (a: uint, b: uint) ; @no_json_schema_export
+```
+
+On a rule that registers **no** rust type there is no row to suppress, so the directive would be
+silently dead and generation is rejected with an error naming the rule. That covers a plain
+transparent alias (`foo = uint`), a `@no_alias` alias, a named binding to a generic instantiation, a
+plain group nothing splices, and a **generic definition** — only its instantiations are types, and
+they do not inherit the directive, so annotate the instance:
+
+```cddl
+gset<T> = [* T]
+inst = gset<uint> ; @no_json_schema_export   ; correct — the instance is the type
+```
+
+On a plain group, write the directive on the same line as the closing paren
+(`grp = (a: uint) ; @no_json_schema_export`). Two other spellings put a group rule's trailing comment
+where the CDDL parser discards it entirely — a closing paren on its own line, and a last entry whose
+own trailing comment is already a field-position `@name` — so the directive (like `@rust_name`) is
+silently dropped there.
 
 ## @custom_serialize / @custom_deserialize
 
