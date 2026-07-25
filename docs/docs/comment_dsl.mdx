@@ -477,6 +477,11 @@ to keep a type out of the surface entirely is to stop published types from refer
 is not a policy choice: a reference that survives into the document has to resolve, or the shipped
 `.d.ts` names a type nothing declares.
 
+A suppressed type also still *claims* its `schema_name()` in the document — at whatever point a
+published type first reaches it. If a later registration row publishes the same name, that row is the
+one the json-gen run rejects (`… but the document assigned it "<name>2" …`), so a suppressed type's
+name must be unique within the crate exactly like a published one's.
+
 This exists because a type having a *derivable* JSON schema is not evidence that the derived shape
 is that type's *published* encoding. A `serde`/`schemars` derive can exist as an artifact while the
 real encoding is produced by a parent type's hand-written impl; a `JsonSchema` impl can be a
@@ -676,6 +681,19 @@ bar = [
 This will treat `Foo` as a type that will exist and that has implemented the `Serialize` and `Deserialize` traits, so the (de)serialization logic in `Bar` here will call `Foo::serialize()` and `Foo::deserialize()`.
 
 Under `--json-serde-derives` the type must additionally implement `serde::Serialize`/`serde::Deserialize`, and under `--json-schema-export` also `schemars::JsonSchema`, since the generated code delegates its JSON representation to the user type (and `--json-schema-export` emits a schema-registration row for each such extern). Whenever the extern is embedded in a generated struct, that struct's `derive(JsonSchema)` already forces the impl, so this is no new burden in the common case. The generic BASE of an extern generic (`Foo` in `foo<T>`) gets **no** schema row — a bare `Foo` names no concrete type — while each concrete instance (`FooU64` from `foo<uint>`) and every plain extern does.
+
+That impl's `schema_name()` must be **unique within the crate**, and for a GENERIC extern it must vary with the parameters:
+
+```rust
+impl<T: schemars::JsonSchema> schemars::JsonSchema for Foo<T> {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        format!("Foo_{}", T::schema_name()).into()
+    }
+    // …
+}
+```
+
+The reason is that `schema_id()` **defaults to `schema_name()`**, and `schemars` keys its whole identity decision on the id: a hand-written impl returning a constant name makes `Foo<u64>` and `Foo<String>` the same type, so the document emits one definition and every reference to the other instantiation silently resolves to it. The minimal correct impl — implement the two required members and nothing else — is exactly the spelling that hits this. Violating it is a **hard failure of the json-gen run** (`cddl-codegen --json-schema-export: two distinct Rust types both publish the JSON schema name "Foo": …`), naming both offenders; see [`--json-schema-export`](./command_line_flags) for the second message, which fires when a registered type is pushed onto an order-dependent `<name>2` by a type that has no row of its own.
 This can also be useful when you have a spec that is either very awkward to use (so you hand-write or hand-modify after generation) in some type so you don't generate those types and instead manually merge those hand-written/hand-modified structs back in to the code afterwards. This saves you from having to manually remove all code that is generated regarding `Foo` first before merging in your own.
 
 This can also be useful when you have a spec that is either very awkward to use (so you hand-write or hand-modify after generation) in some type so you don't generate those types and instead manually merge those hand-written/hand-modified structs back in to the code afterwards. This saves you from having to manually remove all code that is generated regarding `Foo` first before merging in your own.
@@ -726,7 +744,7 @@ bar = [
 ]
 ```
 This will treat `foo` as some external type called `Foo`. This type must implement the exported (in `serialization.rs`) trait `RawBytesEncoding`.
-The contract under the json flags is the same as `_CDDL_CODEGEN_EXTERN_TYPE_`'s above: `serde::Serialize`/`serde::Deserialize` under `--json-serde-derives`, plus `schemars::JsonSchema` under `--json-schema-export`, since the generated code delegates its JSON representation to the user type — if that contract ever changes, both sections change together.
+The contract under the json flags is the same as `_CDDL_CODEGEN_EXTERN_TYPE_`'s above: `serde::Serialize`/`serde::Deserialize` under `--json-serde-derives`, plus `schemars::JsonSchema` under `--json-schema-export`, since the generated code delegates its JSON representation to the user type — including the obligation that the impl's `schema_name()` be **unique within the crate**, and that a GENERIC raw-bytes type's impl vary the name with its parameters (`schema_id()` defaults to `schema_name()`, so a constant name silently merges every instantiation into one published definition; the json-gen run fails naming both offenders). If that contract ever changes, both sections change together.
 This can be useful for example when working with cryptographic primitives e.g. a hash or pubkey, as it allows users to have those crypto structs be from a crypto library then they only need to implement the trait for them and they will be able to be directly used without needing any useless generated wrapper struct for the in between.
 
 Placement follows the same contract as `_CDDL_CODEGEN_EXTERN_TYPE_`: define the type in a hand-written module and re-export it at the crate root — the tool emits `pub use crate::Foo;` glue into the declaring scope's generated module (this matters especially when the rule is referenced only through `pub type` aliases, which have no other way to resolve). The wasm crate mirrors this: define the `#[wasm_bindgen]` wrapper in a hand-written wasm-crate module and re-export it at the wasm crate root. See [Output format § Generated crate roots](./output_format#generated-crate-roots-thin-root-seed-once).
