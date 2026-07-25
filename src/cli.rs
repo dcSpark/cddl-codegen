@@ -120,6 +120,17 @@ pub struct Cli {
     #[clap(long, value_parser, action = clap::ArgAction::Set, default_value_t = false)]
     pub package_json: bool,
 
+    /// Copies the shipped JSON-schema -> TypeScript scripts (`run-json2ts.js`, `json-ts-types.js`)
+    /// into `<output>/scripts/` WITHOUT writing a `package.json`. `--package-json
+    /// --json-schema-export` already copies them alongside its own manifest; this flag is the
+    /// opt-in for a consumer that hand-maintains its npm manifests and only wants the canonical
+    /// scripts. The scripts resolve their own paths from their location (`<root>/scripts/*.js`), so
+    /// they work in both the `--package-json` layout (wasm crate at `<root>/rust/wasm`) and the bare
+    /// one (wasm crate at `<root>/wasm`); `--root=`/`--wasm-dir=`/`--dts=`/`--method=` override.
+    /// Requires `--json-schema-export` (the scripts read the schemas the json-gen crate writes).
+    #[clap(long, value_parser, action = clap::ArgAction::Set, default_value_t = false)]
+    pub json_schema_scripts: bool,
+
     /// Location override for default common types (error, serialization, etc)
     /// This is useful for integrating into an exisitng project that is based on
     /// these types.

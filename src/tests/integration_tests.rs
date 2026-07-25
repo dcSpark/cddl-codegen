@@ -7525,6 +7525,11 @@ fn wasm_json_roundtrip() {
 /// coverage of that script + dependency — a bump there is otherwise invisible to CI, since the rest of
 /// the suite only `cargo build`s the json-gen crate and never runs the JS. See `tests/json2ts/README.md`
 /// and `tests/README.md` § "JSON-schema → TypeScript JS-side pipeline".
+///
+/// A second phase pins the failure direction: a schema that does not compile fails the RUN (non-zero
+/// exit) and leaves the last-good `json-types.d.ts` on disk. Dropping the type and exiting 0 would
+/// leave the merged `.d.ts` referencing a name nothing declares, with nothing in the build output
+/// saying so.
 #[test]
 fn js_schema_to_ts() {
     use std::str::FromStr;
@@ -7543,8 +7548,9 @@ fn js_schema_to_ts() {
         return;
     }
 
-    // Lay out what run-json2ts.js expects relative to its cwd: scripts/, package.json (the shipped
-    // one, so npm installs the pinned json2ts), and rust/wasm/json-gen/schemas/*.json.
+    // Lay out the shipped `--package-json` shape the script resolves its own paths from: the script
+    // at `<root>/scripts/`, a package.json (the shipped one, so npm installs the pinned json2ts),
+    // and the schemas at `<root>/rust/wasm/json-gen/schemas/*.json`.
     let _ = std::fs::remove_dir_all(&work);
     let schemas_out = work.join("rust/wasm/json-gen/schemas");
     std::fs::create_dir_all(work.join("scripts")).unwrap();
@@ -7607,14 +7613,55 @@ fn js_schema_to_ts() {
     assert!(!foo_block.contains("[k: string]"), "{foo_block}");
     assert!(dts.contains("export interface TableJSON"), "{dts}");
     assert!(dts.contains("[k: string]: number"), "{dts}");
+
+    // Failure direction: add a schema json2ts cannot compile (a `$ref` to a pointer the document
+    // doesn't define) and re-run over the same, now-populated, output.
+    std::fs::write(
+        schemas_out.join("Broken.json"),
+        "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \
+         \"title\": \"Broken\",\n  \"type\": \"object\",\n  \
+         \"properties\": { \"b\": { \"$ref\": \"#/$defs/DoesNotExist\" } }\n}\n",
+    )
+    .unwrap();
+    let broken = std::process::Command::new("node")
+        .arg("scripts/run-json2ts.js")
+        .current_dir(&work)
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&broken.stderr);
+    println!("broken-schema run stderr:\n{stderr}");
+    assert!(
+        !broken.status.success(),
+        "a schema that fails to compile must fail the run, not be silently dropped"
+    );
+    // The error is reported in full, naming the offending file...
+    assert!(stderr.contains("Broken.json"), "{stderr}");
+    // ...and the last-good output was not overwritten.
+    assert_eq!(
+        std::fs::read_to_string(work.join("rust/wasm/json-gen/output/json-types.d.ts")).unwrap(),
+        dts,
+        "a failed run must not overwrite the last-good json-types.d.ts"
+    );
 }
 
 /// Covers the shipped `static/json-ts-types.js` (`tests/README.md` § "JSON-schema → TypeScript
-/// JS-side pipeline"), which `--package-json`
-/// runs after `run-json2ts.js` to (a) type each wasm class's `to_json_value()` with its emitted JSON
-/// interface and (b) append those interfaces to the wasm-pack `.d.ts`. It's pure string-munging over
-/// two files, so it's exercised in isolation here (no wasm-pack/json2ts needed) with hand-written
-/// fixtures. The script hardcodes the default `cddl_lib_wasm` lib name, so that's what we lay out.
+/// JS-side pipeline"), which `--package-json` / `--json-schema-scripts` run after `run-json2ts.js`
+/// to (a) type each wasm class's `to_json_value()` with its emitted JSON interface and (b) append
+/// those interfaces to the wasm-pack `.d.ts`. It's pure string-munging over two files, so it's
+/// exercised in isolation here (no wasm-pack/json2ts needed) with hand-written fixtures laid out in
+/// the shipped `<root>/scripts/*.js` shape the script resolves its own paths from.
+///
+/// Five cases, one per failure mode the script must not have:
+/// 1. the happy path (specialize + append);
+/// 2. a class with NO emitted JSON type keeps `any` — a rename there would be a TS2304 dangling
+///    reference, which is strictly worse than the lossy-but-valid `any`;
+/// 3. running twice is byte-identical (the appended block is marker-delimited and truncated each
+///    run, so a second run without an intervening `rimraf ./pkg` can't duplicate every declaration);
+/// 4. a method name the script can't find (the `--wasm-cbor-json-api-macro` case, where the macro
+///    body names the methods) is a non-zero exit naming the method and the `--method=` override,
+///    with the `.d.ts` left untouched — not 111 silently-untyped methods;
+/// 5. a non-default `.d.ts` basename (the `--lib-name` case) is still found, because the script
+///    scans `pkg/` for the single non-`_bg` `.d.ts` instead of hardcoding `cddl_lib_wasm`.
 #[test]
 fn js_d_ts_merge() {
     use std::str::FromStr;
@@ -7631,44 +7678,182 @@ fn js_d_ts_merge() {
     // the two can run concurrently.
     let work = std::path::PathBuf::from_str("tests/json2ts/export_dts").unwrap();
     let _ = std::fs::remove_dir_all(&work);
-    let pkg = work.join("rust/wasm/pkg");
-    let out = work.join("rust/wasm/json-gen/output");
-    std::fs::create_dir_all(&pkg).unwrap();
-    std::fs::create_dir_all(&out).unwrap();
-    std::fs::copy(
-        static_dir.join("json-ts-types.js"),
-        work.join("json-ts-types.js"),
-    )
-    .unwrap();
-    // The wasm-pack-shaped .d.ts the script reads: a class whose to_json_value() returns `any`.
-    std::fs::write(
-        pkg.join("cddl_lib_wasm.d.ts"),
-        "export class Foo {\n  free(): void;\n  to_json(): string;\n  to_json_value(): any;\n}\n",
-    )
-    .unwrap();
-    // The json-types.d.ts run-json2ts.js would have emitted.
-    std::fs::write(
-        out.join("json-types.d.ts"),
-        "export interface FooJSON {\n  x: number;\n}\n",
-    )
-    .unwrap();
 
-    let node = std::process::Command::new("node")
-        .arg("json-ts-types.js")
-        .current_dir(&work)
-        .output()
+    // Lay out one case dir in the shipped shape (`<root>/scripts/json-ts-types.js`, wasm crate at
+    // `<root>/rust/wasm`) and return the `.d.ts` path. `dts_stem` is the wasm-pack crate name, so a
+    // non-default value stands in for `--lib-name`; the `_bg.wasm.d.ts` sidecar is always written
+    // because wasm-pack always emits it and the script must exclude it when picking the bindings.
+    let lay_out = |case: &str, dts_stem: &str, dts: &str, defs: &str| -> std::path::PathBuf {
+        let root = work.join(case);
+        let pkg = root.join("rust/wasm/pkg");
+        let out = root.join("rust/wasm/json-gen/output");
+        std::fs::create_dir_all(root.join("scripts")).unwrap();
+        std::fs::create_dir_all(&pkg).unwrap();
+        std::fs::create_dir_all(&out).unwrap();
+        std::fs::copy(
+            static_dir.join("json-ts-types.js"),
+            root.join("scripts/json-ts-types.js"),
+        )
         .unwrap();
-    if !node.status.success() {
-        eprintln!("node stderr:\n{}", String::from_utf8_lossy(&node.stderr));
-    }
-    assert!(node.status.success());
+        std::fs::write(pkg.join(format!("{dts_stem}.d.ts")), dts).unwrap();
+        std::fs::write(
+            pkg.join(format!("{dts_stem}_bg.wasm.d.ts")),
+            "/* tslint:disable */\nexport const memory: WebAssembly.Memory;\n",
+        )
+        .unwrap();
+        std::fs::write(out.join("json-types.d.ts"), defs).unwrap();
+        pkg.join(format!("{dts_stem}.d.ts"))
+    };
+    // Run the script from the case root with the given extra `--flag=value` args.
+    let run = |case: &str, args: &[&str]| -> std::process::Output {
+        let out = std::process::Command::new("node")
+            .arg("scripts/json-ts-types.js")
+            .args(args)
+            .current_dir(work.join(case))
+            .output()
+            .unwrap();
+        println!(
+            "[{case} {args:?}] status={:?}\nstdout:\n{}\nstderr:\n{}",
+            out.status.code(),
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        out
+    };
 
-    let merged = std::fs::read_to_string(pkg.join("cddl_lib_wasm.d.ts")).unwrap();
-    println!("merged d.ts:\n{merged}");
+    // A wasm-pack-shaped `.d.ts`: `Foo` has an emitted JSON type, `Loose` deliberately does not.
+    const DTS: &str = "export class Foo {\n  free(): void;\n  to_json(): string;\n  \
+                       to_json_value(): any;\n}\n\nexport class Loose {\n  free(): void;\n  \
+                       to_json_value(): any;\n}\n";
+    const DEFS: &str = "export interface FooJSON {\n  x: number;\n}\n";
+
+    // 1 + 2: the happy path, and the undeclared class keeping `any`.
+    let dts_path = lay_out("basic", "cddl_lib_wasm", DTS, DEFS);
+    assert!(run("basic", &[]).status.success());
+    let merged = std::fs::read_to_string(&dts_path).unwrap();
     // to_json_value()'s `any` return was specialized to the class's JSON interface...
     assert!(merged.contains("to_json_value(): FooJSON;"), "{merged}");
     // ...and the JSON type defs were appended.
     assert!(merged.contains("export interface FooJSON"), "{merged}");
+    // `Loose` has no emitted JSON type, so it keeps `any` rather than gaining a dangling `LooseJSON`.
+    assert!(!merged.contains("LooseJSON"), "{merged}");
+    let loose = &merged[merged.find("export class Loose").unwrap()..];
+    assert!(loose.contains("to_json_value(): any;"), "{loose}");
+
+    // 3: idempotency. A second run over the already-merged file is byte-identical.
+    assert!(run("basic", &[]).status.success());
+    let twice = std::fs::read_to_string(&dts_path).unwrap();
+    assert_eq!(merged, twice, "second run was not a fixed point");
+    assert_eq!(
+        twice.matches("export interface FooJSON").count(),
+        1,
+        "declaration duplicated by the second run:\n{twice}"
+    );
+
+    // 4: the method name the script looks for is not the one the bindings declare.
+    let macro_dts = DTS.replace("to_json_value()", "to_json_val()");
+    let macro_path = lay_out("macro_named", "cddl_lib_wasm", &macro_dts, DEFS);
+    let failed = run("macro_named", &[]);
+    assert!(
+        !failed.status.success(),
+        "a method name the script cannot find must fail the run, not silently leave every class `any`"
+    );
+    let stderr = String::from_utf8_lossy(&failed.stderr);
+    assert!(stderr.contains("to_json_value"), "{stderr}");
+    assert!(stderr.contains("--method="), "{stderr}");
+    assert!(stderr.contains("Foo"), "{stderr}");
+    assert_eq!(
+        std::fs::read_to_string(&macro_path).unwrap(),
+        macro_dts,
+        "a failed run must leave the .d.ts untouched"
+    );
+    // ...and the documented override makes the same layout succeed.
+    assert!(
+        run("macro_named", &["--method=to_json_val"])
+            .status
+            .success()
+    );
+    let overridden = std::fs::read_to_string(&macro_path).unwrap();
+    assert!(
+        overridden.contains("to_json_val(): FooJSON;"),
+        "{overridden}"
+    );
+
+    // 5: a non-default wasm-pack crate name (i.e. `--lib-name`) is discovered, not hardcoded.
+    let renamed_path = lay_out("lib_name", "my_lib_wasm", DTS, DEFS);
+    assert!(run("lib_name", &[]).status.success());
+    let renamed = std::fs::read_to_string(&renamed_path).unwrap();
+    assert!(renamed.contains("to_json_value(): FooJSON;"), "{renamed}");
+    assert!(renamed.contains("export interface FooJSON"), "{renamed}");
+}
+
+/// `--json-schema-scripts` copies the two JSON-schema → TypeScript scripts on its own, so a consumer
+/// that hand-maintains its npm manifests can adopt the canonical scripts instead of forking them.
+/// Pins the three halves of that contract: the scripts land in `<output>/scripts/`, NO `package.json`
+/// is written (the coupling `--package-json` has), and the flag without `--json-schema-export` is
+/// rejected up front (the scripts would have no schemas to read). Mirrors
+/// `flag_value_rejects_canonical_without_preserve` for the rejection half.
+#[test]
+fn json_schema_scripts_without_package_json() {
+    use std::str::FromStr;
+    // gitignored (tests/*/export*/); regenerated each run.
+    let export = std::path::PathBuf::from_str("tests/package-json/export_scripts_only").unwrap();
+    let _ = std::fs::remove_dir_all(&export);
+
+    let generate = tool_cmd("cargo")
+        .arg("run")
+        .arg("--")
+        .arg("--input=tests/package-json/input.cddl")
+        .arg(format!("--output={}", export.display()))
+        .arg("--wasm=true")
+        .arg("--json-serde-derives=true")
+        .arg("--json-schema-export=true")
+        .arg("--json-schema-scripts=true")
+        .output()
+        .unwrap();
+    if !generate.status.success() {
+        eprintln!(
+            "generate stderr:\n{}",
+            String::from_utf8_lossy(&generate.stderr)
+        );
+    }
+    assert!(generate.status.success());
+
+    assert!(
+        export.join("scripts/run-json2ts.js").exists(),
+        "--json-schema-scripts did not copy run-json2ts.js"
+    );
+    assert!(
+        export.join("scripts/json-ts-types.js").exists(),
+        "--json-schema-scripts did not copy json-ts-types.js"
+    );
+    assert!(
+        !export.join("package.json").exists(),
+        "--json-schema-scripts must not write a package.json"
+    );
+    // The bare layout the scripts' second wasm-dir candidate exists for: `<output>/wasm`, not
+    // `<output>/rust/wasm` (see `static/run-json2ts.js`'s `resolveWasmDir`).
+    assert!(
+        export.join("wasm/json-gen").is_dir() && !export.join("rust/wasm").exists(),
+        "expected the bare (non-package-json) layout with the wasm crate at <output>/wasm"
+    );
+
+    // Without `--json-schema-export` there are no schemas for the scripts to read, so the
+    // combination is rejected before anything is written.
+    let cli = crate::cli::Cli {
+        input: std::path::PathBuf::from("tests/package-json/input.cddl"),
+        output: std::path::PathBuf::from("unused"),
+        json_schema_scripts: true,
+        json_schema_export: false,
+        ..Default::default()
+    };
+    let err = crate::api::with_types(&cli, |_, _| ())
+        .expect_err("--json-schema-scripts without --json-schema-export should be rejected");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("--json-schema-scripts") && msg.contains("--json-schema-export=true"),
+        "rejection message should name both flags, got: {msg}"
+    );
 }
 
 /// End-to-end validation of the shipped `--package-json --json-schema-export` consumer pipeline

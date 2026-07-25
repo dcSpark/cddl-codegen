@@ -1433,6 +1433,28 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   Mechanical layer: a property over the `AnyCbor` fuzz corpus asserting
   `from_edn(to_edn(x))` byte-identity against the existing span oracle
   (`src/tests/any_cbor_tests.rs`).
+- **Type-check the merged `.d.ts` with `tsc --noEmit`.** The JS-side pipeline
+  (`js_schema_to_ts` / `js_d_ts_merge` / `package_json_pipeline`) asserts on *substrings* of the
+  emitted TypeScript, so it can only catch the wrongness it was told to look for; a real
+  type-checker over the merged file is the oracle that catches the class as a class (dangling
+  names, duplicate declarations, malformed unions). Deferred on cost, not on value: it adds a
+  TypeScript dependency and its install weight to `package_json_pipeline`, already the heaviest
+  JS-side gate. Two traps to build it with, so the follow-up does not rediscover them: (1)
+  `--skipLibCheck` makes the check VACUOUS here, because the file under test *is* a `.d.ts` —
+  the flag must stay off, which also means every type the file references must resolve; and (2)
+  TypeScript must be ≥ 5.2 with `--target esnext`, because wasm-bindgen emits `Symbol.dispose`
+  members that earlier targets do not know. Reopening signal: a shipped `.d.ts` breaks a consumer's
+  build in a way the substring asserts could not see.
+- **Referenced-but-never-declared types inside `json-types.d.ts` itself.** Under
+  `run-json2ts.js`'s `declareExternallyReferenced: false`, a type is declared by its own per-type
+  schema file and only *referenced* elsewhere — so a type that is referenced by some schema but has
+  no schema file of its own (e.g. one whose rule carries `@no_json_schema_export`) is referenced and
+  never declared. This is a property of the per-file compilation model, not of the scripts' path or
+  failure handling, and it dissolves under a merged single-document artifact (one compile over one
+  document, where a referenced type is either present or a hard `$ref` failure) rather than being
+  patchable in the current scripts. Build it with that structural change, not before. Reopening
+  signal: a consumer reports a `TS2304` originating inside `json-types.d.ts` rather than in the
+  merged bindings.
 
 ## Operational watches
 

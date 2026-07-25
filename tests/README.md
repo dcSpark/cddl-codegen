@@ -1426,19 +1426,40 @@ user-supplied macro; flag-gated, unexercised by these catalogs). The wasm reject
 `JsError`-panic class). And json laxness (serde derives don't re-enforce CDDL bounds — an
 enforcement-axis question for a future item, not this accept-direction leg).
 
-### JSON-schema → TypeScript JS-side pipeline (`js_schema_to_ts`, `js_d_ts_merge`, `package_json_pipeline`)
+### JSON-schema → TypeScript JS-side pipeline (`js_schema_to_ts`, `js_d_ts_merge`, `package_json_pipeline`, `json_schema_scripts_without_package_json`)
 
 `--json-schema-export` ships a JS toolchain that turns the exported schemas into TypeScript and
-merges them into the wasm-pack `.d.ts` (`static/run-json2ts.js` + `static/json-ts-types.js`, wired by
-the `--package-json` `package.json`). Three tests cover it, cheapest-in-isolation first:
+merges them into the wasm-pack `.d.ts` (`static/run-json2ts.js` + `static/json-ts-types.js`, copied
+by `--package-json --json-schema-export` or by `--json-schema-scripts` on its own).
+
+These two scripts are *tool-owned shipped artifacts*, not test scaffolding: they are where the
+product value of `--json-schema-export` is realized, and every way they can be wrong is invisible
+from the Rust side. So each failure mode gets its own vector, and the three that are silent get one
+that pins the LOUD behaviour (a non-zero exit) rather than just the happy path — a silently-wrong
+script produces a `.d.ts` that looks plausible and a build that exits 0. Four tests cover it,
+cheapest-in-isolation first:
 
 - **`js_schema_to_ts`** runs the shipped `run-json2ts.js` over committed schema fixtures
   (`tests/json2ts/schemas`) using the pinned `json-schema-to-typescript`, asserting the emitted
   `.d.ts` (JSON-suffixed identifiers, resolved cross-refs, enum → union, the `additionalProperties`
-  guard on both a struct and a map type).
+  guard on both a struct and a map type). A second phase adds a schema that cannot compile and pins
+  the failure direction: non-zero exit, the error named, and the last-good `json-types.d.ts` left on
+  disk. (Dropping the type and exiting 0 leaves the merged `.d.ts` referencing a name nothing
+  declares, with nothing in the build output saying so.)
 - **`js_d_ts_merge`** runs `json-ts-types.js` in isolation over hand-written fixtures — no
-  wasm-pack/json2ts needed — asserting it specializes `to_json_value(): any` to the class's JSON
-  interface and appends the interface defs.
+  wasm-pack/json2ts needed — laid out in the shipped `<root>/scripts/*.js` shape the script resolves
+  its own paths from. Five cases, one per failure mode: the happy path (specialize + append); a class
+  with no emitted JSON type keeping `any` rather than gaining a `TS2304` dangling name; a second run
+  being byte-identical (the appended block is marker-delimited and truncated each run, so re-running
+  without an intervening `rimraf ./pkg` can't duplicate every declaration); a method name the script
+  cannot find exiting non-zero with the `--method=` override named and the `.d.ts` untouched (the
+  `--wasm-cbor-json-api-macro` case, where the macro body names the methods); and a non-default
+  wasm-pack crate name (i.e. `--lib-name`) still being found, because `pkg/` is scanned for its single
+  non-`_bg` `.d.ts`.
+- **`json_schema_scripts_without_package_json`** pins `--json-schema-scripts`: the two scripts land in
+  `<output>/scripts/`, no `package.json` is written, the bare layout puts the wasm crate at
+  `<output>/wasm` (the second candidate the scripts' wasm-dir detection exists for), and the flag
+  without `--json-schema-export` is rejected up front.
 - **`package_json_pipeline`** is the end-to-end gate: it generates a small extern-free fixture
   (`tests/package-json/input.cddl`) with `--wasm --package-json --json-serde-derives
   --json-schema-export` and runs the SHIPPED `npm run rust:build-nodejs` script VERBATIM — `wasm-pack
