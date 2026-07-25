@@ -196,6 +196,26 @@ Two public functions build it. `export_schemas()` writes the document; `add_sche
 
 A row is a declaration that a type is part of the published surface; it is **not** the list of definitions. `$defs` additionally holds every type reached from a row'd type, so a type with no row of its own is still declared whenever something published references it. Nothing downstream distinguishes the two — the emitted TypeScript declares every `$defs` entry either way.
 
+**Published names must be injective, and the json-gen run enforces it.** A `$defs` key is a published API name — `run-json2ts.js` suffixes it with `JSON` and json2ts emits that as the TypeScript type name — so `add_schemas` fails the run, naming both offenders, when either of these holds:
+
+- two distinct Rust types publish one `schemars::JsonSchema::schema_name()`, or
+- a registered type does not keep its own name in the document (another type claimed it first, so this one is published as `<name>2`).
+
+```
+cddl-codegen --json-schema-export: two distinct Rust types both publish the JSON schema name
+"ExtSet":
+  cddl_lib::ExtSet<u64>
+  cddl_lib::ExtSet<alloc::string::String>
+…
+```
+
+```
+cddl-codegen --json-schema-export: cddl_lib::generated::Shared publishes the JSON schema name
+"Shared", but the document assigned it "Shared2" — another type claimed "Shared" first. …
+```
+
+Both are otherwise silent: `schemars::JsonSchema::schema_id()` **defaults to `schema_name()`**, so two types sharing a hand-written constant name are one type to `schemars` — one definition is emitted and every reference to the other resolves to its shape. When the ids do differ, both are emitted but which one gets the bare name (and which gets `<name>2`) follows first-encounter order, so an unrelated spec edit can silently rename a published TypeScript type. **A spec that ships such a name today will start failing its json-gen run**: give one of the types a `schema_name()` unique within the crate (for a generic extern, vary it with the parameters — see [Comment DSL § `_CDDL_CODEGEN_EXTERN_TYPE_`](./comment_dsl#_cddl_codegen_extern_type_)). One bound: the ledger is a local of `add_schemas`, so a collision between two *different* crates' `add_schemas` calls threaded into one generator is not covered by the first check — the second still catches it whenever the losing type is a row of the crate being checked.
+
 `export_schemas()` never deletes anything (`schemas/` may hold files you own), so a `schemas/` directory carrying per-type `*.json` files from an older generator version keeps them; `run-json2ts.js` fails naming them rather than compiling a stale surface.
 
 The spec author can drop a further row with [`@no_json_schema_export`](./comment_dsl#no_json_schema_export) on the rule. That is the escape hatch for the case the tool cannot decide: a type whose derived schema is not its published encoding (the real one comes from a parent's hand-written impl, or its `JsonSchema` impl is a deliberate stub), and — the hard blocker — an own-spec extern whose hand-written rust type has no `schemars::JsonSchema` impl, whose row would otherwise be an `E0277` inside a generated file. It removes the row only: the derives, the CBOR/wasm surfaces, and the extern-interface export are untouched, and it is inert when this flag is off. Note that dropping the row is not on its own enough for an extern with no `JsonSchema` impl: any generated type embedding it still derives `JsonSchema` over that field, so those parents need `@custom_json` too — see the worked example under [Comment DSL § `@no_json_schema_export`](./comment_dsl#no_json_schema_export).

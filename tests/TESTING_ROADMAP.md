@@ -1287,36 +1287,43 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   to the group rule by line position would be a second, drift-prone comment parser, so it needs a
   real consumer to justify it.
 
-- **A RUNTIME-produced artifact can lose most of its content while still generating, compiling and
-  type-checking — the schema document's conservation and closure are asserted only in our harness,
-  and only by proxy.** The json-gen crate's `schemas/<lib>.schema.json` is written by a program we
-  emit, so its content is a property of the RUN, not of the emitted source: every verdict the suite
-  can reach cheaply ("generates", "compiles", "the `.d.ts` type-checks") is satisfied by a document
-  missing most of its definitions. Two proven ways to lose content, both silent, both found by
-  hand-probing rather than by a gate: a registration row whose type has
-  `JsonSchema::inline_schema() == true` registers NOTHING through `subschema_for` (every `@newtype`
-  wrapper over a primitive emits such an impl — the naive one-row-one-`subschema_for` spelling put 2
-  of 17 rows in the document on the smallest json fixture), and two hand-written extern impls
-  returning the same `schema_name()` are silently merged into one definition carrying whichever
-  type registered first (`schemars`' `schema_id` defaults to `schema_name`, so the generator treats
-  them as one type — reproduced in `draft/schemars-schema-name-collision-hazards.md`, and reachable
-  from any generic extern whose hand impl returns a constant name). Owned meanwhile by
-  `integration_tests::run_test`'s `$defs.len() >= <row count>` inequality, which was written for the
-  first cause and catches the second by side effect — a counting proxy for a per-item property, and
-  one that runs in OUR suite only, so a consumer's own `cargo run` of its generated json-gen crate
-  has no equivalent and hits both silently. Two mechanical layers, in this order because the first
-  is the one that reaches consumers: (1) emit the conservation check INTO the generated crate —
-  `--emit-tests` already owns "emit a test into the output crate", and asserting that every
-  registered type's `schema_name()` is a `$defs` key turns both causes into a failing `cargo test`
-  in the consumer's own build, where the row list and the artifact are both in scope (they are not
-  in ours: a row names a rust ident, a definition names a `schema_name()`, and for an extern those
-  differ by design — which is why the harness assertion is an inequality and not an identity);
-  (2) assert the document's reference CLOSURE — every `$ref` target resolves to a `$defs` key —
-  which converts "which types can dangle?" from an argument into a check. That question was
-  answered wrongly during the single-document delivery (array/table typedefs were predicted to
-  dangle; they cannot, because they lower to rust type aliases that `schemars` never names), and the
-  closure assertion is what makes the answer mechanical rather than a premise to re-derive. Trigger:
-  a third silent-content-loss cause, or the first consumer report of a wrong-bodied published schema.
+- **The schema document's name injectivity is enforced ROW-side, so the residue is everything the row
+  set cannot see.** The json-gen crate's `schemas/<lib>.schema.json` is written by a program we emit,
+  so its content is a property of the RUN, not of the emitted source, and every cheap verdict
+  ("generates", "compiles", "the `.d.ts` type-checks") is satisfied by a document publishing one
+  type's shape under another type's name. The emitted `add_schema` helper's name ledger, its
+  kept-its-own-name check and its inline-branch conflict check close that for every collision with a
+  row on the losing side, in the consumer's own `cargo run` (message wording and wiring pinned by
+  `snapshot_tests::json_gen_extern_schema_rows`,
+  `integration_tests::json_schema_name_merge_fails` and `..._stolen_fails`). Three holes remain, each
+  needing its own mechanism:
+  - **A collision whose LOSER has no row and whose `schema_id`s match** is a silent merge nothing can
+    see: the ledger only holds rows, and the merge makes both returned refs equal the shared name, so
+    the kept-its-own-name check reads clean. Reaching it needs a way to enumerate what a row pulls in
+    transitively — a post-pass over the finished document comparing `$defs` cardinality against the
+    reachable type set, or an upstream `schemars` setting that rejects two `TypeId`s resolving to one
+    `schema_id`. The upstream lever is report-and-wait (`schemars` is a crates.io dependency, not a
+    fork we pin like the `cddl` parser), so the document post-pass is the schedulable one.
+  - **A cross-crate collision** — two crates' `add_schemas` threaded into one `SchemaGenerator` —
+    escapes the ledger, which is a local of one crate's `add_schemas`. Widening it means either a
+    published ledger type in the static runtime (a new cross-crate API surface) or making
+    `add_schemas` take the ledger, which would break the composition-point signature a consumer was
+    told to call. Neither is worth doing before a consumer actually composes two documents; the
+    kept-its-own-name check still fires whenever the loser is a row of the crate being checked.
+  - **A `schema_name()` that `schemars` percent-encodes into its `$ref`** (anything outside
+    `[A-Za-z0-9_]`, e.g. the static runtime's `OrderedHashMap<K, V>`) skips the kept-its-own-name
+    check entirely: `schemars`' `encode_ref_name` is private, so reconstructing the expected ref means
+    duplicating an upstream encoder — a false panic in a consumer's build is worse than a missed
+    check. Closing it needs the encoder exposed upstream, or a decode step in the emitted helper
+    validated against a vector per escape class.
+
+  The document's reference CLOSURE — every `$ref` resolving to a `$defs` key of the same document —
+  is asserted for every `--json-schema-export` fixture by `integration_tests::run_test`, which is OUR
+  suite only: a consumer's own run still has no closure check, and the shape that needs one is a
+  hand-written impl returning a bare `Schema::new_ref("SomeType")` (the `@json_schema = "<file>"`
+  ask). Emitting the closure walk into the generated `export_schemas()` is the layer that would reach
+  them. Trigger: a consumer report of a wrong-bodied published schema, a document composed from two
+  crates, or the hand-authored-schema ask landing.
 
 - **A directive's documented sentence can stay true while its consumer-visible MEANING changes
   underneath it, because the artifact it controls changed shape.** `@no_json_schema_export` shipped
