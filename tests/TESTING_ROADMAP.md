@@ -1207,6 +1207,32 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   rule-position directive across the product, asserting each cell is one of {effect visible,
   loudly rejected}, never {accepted and inert}. The shape list is the expensive part and it is
   already written down: the sweep table in the `@no_json_schema_export` delivery's review thread.
+  Four design points, each the answer to a way the obvious build would inherit the blindness it
+  exists to remove:
+  - **Each directive needs a WITNESS PROFILE — the minimal flag set under which its surface
+    exists — and the sweep must generate under it, not under one fixed profile.** This is the whole
+    reason `no_silent_directive` could not have caught the motivating bug: it hardcodes
+    `--wasm=false` and nothing else, so a directive whose only surface is the json-gen crate is
+    invisible to it no matter which cells its corpus holds. A per-directive profile is one small
+    datum (`@no_json_schema_export` -> `--json-schema-export`; `@rust_name` -> the default; the
+    `@duplicates` flavors -> the default) and it is what makes the verdict meaningful.
+  - **Derive the directive axis from `KNOWN_RULE_METADATA_TAGS`, not from a hand list.** That
+    constant is already the authoritative vocabulary and already carries a lockstep tripwire with
+    `corpus_detect.ts`'s `MIRRORED_DIRECTIVES`. Deriving from it makes a NEW directive appear in the
+    product automatically and demand classification — the forcing function a hand-picked corpus
+    cannot provide, and the actual root cause of this class surviving two instances. The shape axis
+    stays hand-enumerated; shapes change far more slowly than directives.
+  - **Invalid (directive, shape) pairs need no validity matrix — they self-classify.**
+    `@raw_bytes_flavor` on a record is already a loud rejection, which is a PASSING verdict under
+    the three-way rule. So the product can be swept whole, and the only hand-curated artifact is the
+    allowlist of legitimately inert cells, which doubles as the honest inventory exactly as
+    `no_silent_directive`'s does today.
+  - **Cost is generation-only.** Roughly (directives × shapes) × 2 one-rule generations, no nested
+    cargo — the axis sizes put that near 300 generator invocations, so it belongs in `local`/`full`
+    and should reuse `no_silent_directive`'s scratch-dir and byte-compare scaffolding rather than
+    growing a second copy of it. The cleanest shape is to generalize that gate in place: it already
+    owns the {byte-identical, acknowledged, allowlisted} verdict logic, and it is the file whose
+    blindness this item is about.
 
 - **The `T / null` -> `Option<T>` collapse reads a different metadata slot from every other
   type-rule path, so a rule-position directive written on such a rule is silently dropped.**

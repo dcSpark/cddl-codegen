@@ -2487,8 +2487,8 @@ composition — do it deliberately and re-triage.
 
 ## Design rules (review-owned; each with a shipped exemplar)
 
-Two rules govern how guards and graceful-rejection refactors are written. Review is their current
-owner; the conditional mechanical layers (built only if a class recurs) are a
+Three rules govern how guards, graceful-rejection refactors, and directive-effect pins are written.
+Review is their current owner; the conditional mechanical layers (built only if a class recurs) are a
 `tests/TESTING_ROADMAP.md` item.
 
 - **Invariant-softening refactors keep impossible states loud.** When a panic/assert is converted
@@ -2510,6 +2510,18 @@ owner; the conditional mechanical layers (built only if a class recurs) are a
   past `finalize`'s drains — a post-drain record site would otherwise be silently swallowed with
   the tool exiting 0; mutation-proven by injecting a post-drain record and observing the snapshot
   suite go red).
+- **A directive's effect is pinned as a TWIN PAIR — the annotated rule beside an unannotated control
+  of the SAME rule shape, generated under the flags where the effect is visible.** A directive that
+  suppresses something is asserted with a negative (`the row is absent`), and a bare negative passes
+  for every reason including the ones the test exists to exclude: the shape never produced the
+  artifact, the flag profile never emitted the surface, or the directive never reached that parse
+  path at all. Pairing it with a same-shape control that MUST still show the artifact converts the
+  vacuous pass into a failure. The shape half matters as much as the flag half: rule-position
+  directives reach only the shapes whose parse path carries a marking site, so each shape a
+  directive claims to support needs its own pair rather than one pair standing in for all of them.
+  Shipped exemplar: `snapshot_tests::json_gen_extern_schema_rows`'s `quiet_group`/`loud_group` and
+  `quiet_extern`/`my_extern` pairs — added after `@no_json_schema_export` shipped silently inert on
+  plain group rules, a drop that a control-free negative assertion would have reported as green.
 
 ## Coverage
 
