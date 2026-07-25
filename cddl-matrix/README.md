@@ -17,8 +17,8 @@ bidirectional lint as spec features — so "not pure RFC" does not mean "unancho
 > **Entry points (in order):** *this README* (the model + current state, incl. the gotchas and
 > upstream-oracle-gap state) → [`ROADMAP.md`](ROADMAP.md)
 > (what's left: remaining work + the open-findings ledger) → [`QUERIES.md`](QUERIES.md) (the
-> consumer-query contract). The matrix is **fully scaled and gate-green**: <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:readme-counts -->116 features and 98 containment cells<!-- /gen:sh:readme-counts -->
-> across all axes (incl. the `CDDL_CODEGEN` vendor profile), with <!-- gen:sh:readme-annotations -->248 cddl-codegen support annotations<!-- /gen:sh:readme-annotations -->,
+> consumer-query contract). The matrix is **fully scaled and gate-green**: <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:readme-counts -->117 features and 98 containment cells<!-- /gen:sh:readme-counts -->
+> across all axes (incl. the `CDDL_CODEGEN` vendor profile), with <!-- gen:sh:readme-annotations -->249 cddl-codegen support annotations<!-- /gen:sh:readme-annotations -->,
 > **execution-gated** support **per-feature, per-cell (role × feature), AND per-control-op**
 > (<!-- gen:sh:readme-ops -->all 37 IANA ops probed<!-- /gen:sh:readme-ops -->) — "supported" means the
 > generated crate's emitted round-trip tests *pass* (`--emit-tests` + `cargo test`), not merely that
@@ -533,14 +533,19 @@ tripwire also fires until the mirror (plus selfCheck vectors for any new grammar
 or better, move the dsl channel onto the AST floor instead (`tests/TESTING_ROADMAP.md`, the
 twin-implementation drift entry).
 
-The mirror and the feature registry are **independent**, and extending the mirror does not imply a
-feature row exists. `MIRRORED_DIRECTIVES` is a set-equality tripwire against `comment_ast.rs`'s tag
-vocabulary, so it must be extended in the same commit as the directive itself; a `features/*.toml`
-row needs a verdict mint, which needs the external ruby/rust CDDL tooling and is therefore batched.
-A directive can consequently sit in the mirror with no row for a while — `@no_json_schema_export`
-does today — and while it does, its `dsl.*` id has no universe entry, so `project_corpus`'s check D
-can never demand a corpus cover for it and the directive's coverage is invisible to the rendered
-tables. The pending mints are listed in `ROADMAP.md`.
+The mirror and the feature registry are **independent mechanisms with different triggers**, so
+extending one never implies the other — but both are due in the SAME cycle as the directive, for
+different reasons. `MIRRORED_DIRECTIVES` is a set-equality tripwire against `comment_ast.rs`'s tag
+vocabulary, so it fires the moment the directive exists. The `features/*.toml` row is gated by
+*documentation* instead: `verify.ts`'s forward completeness lint treats a directive documented in
+`docs/docs/comment_dsl.mdx` as surveyed surface and HARD-FAILS
+(`missing_cddl_codegen_feature`) while it has no row. A documented directive therefore cannot sit
+in the mirror with no row, even though the row costs a multi-minute verdict mint against the
+external ruby/rust oracles — deferring just the mint leaves the `verify` gate red, and since
+`verify` is full-tier while CI runs `fast` only, nothing else reports it. The corpus FIXTURE is the
+one genuinely optional piece: with a row but no fixture the id renders ➕ supported-untested, which
+`project_corpus`'s check D accepts (it demands a cover only for an id the corpus actually
+exercises).
 
 A FLAVORED sibling row — a multi-token `alt` (`@used_as_key hash`: an existing directive plus
 argument words) — engages two more recognition surfaces without tripping `MIRRORED_DIRECTIVES`

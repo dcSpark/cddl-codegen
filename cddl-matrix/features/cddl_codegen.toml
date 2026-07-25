@@ -203,6 +203,16 @@ desc = "Avoids generating/deriving JSON-related traits, on the assumption the us
 example = "cj = uint ; @newtype @custom_json"
 
 [[feature]]
+id = "dsl.no_json_schema_export"
+production = "comment_dsl"
+alt = "@no_json_schema_export"
+rfc = "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@no_json_schema_export; src/comment_ast.rs"
+profile = "CDDL_CODEGEN"
+title = "@no_json_schema_export — off the published JSON-schema surface"
+desc = "Declares that a rule's rust type is not part of the published JSON-schema surface: under --json-schema-export the json-gen crate emits no `gen_json_schema!` row for it, so no `schemas/<Type>.json` is written. Deliberately narrow — the serde/schemars DERIVES stay (a parent embedding the type still needs them, and the type still appears in its parents' `$defs`; dropping the derives is the orthogonal, legally combinable @custom_json), and CBOR/wasm/extern-interface output is untouched. Inert when --json-schema-export is off, so one spec generates unedited under several flag sets. Valid on any rule that registers a rust type; on one that registers none (a transparent alias, a generic DEFINITION — only its instantiations are types) there is no row to suppress and generation is rejected by name rather than silently dead."
+example = "njse = [a: uint, b: text] ; @no_json_schema_export"
+
+[[feature]]
 id = "dsl.custom_serialize"
 production = "comment_dsl"
 alt = "@custom_serialize"

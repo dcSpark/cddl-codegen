@@ -224,6 +224,21 @@
       {
         "emission": {
           "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "id": "dsl.no_json_schema_export",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
             "evidence": "probe (emission=json): cddl-codegen exit 0; standalone-compile N/A (references user-provided extern wrapper flavors; integration-tested in tests/extern-generic-raw-bytes)",
             "status": "supported"
           },
@@ -4456,6 +4471,16 @@
       "profile": "CDDL_CODEGEN",
       "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@custom_json; src/comment_ast.rs",
       "title": "@custom_json — suppress generated JSON traits"
+    },
+    {
+      "alt": "@no_json_schema_export",
+      "desc": "Declares that a rule's rust type is not part of the published JSON-schema surface: under --json-schema-export the json-gen crate emits no `gen_json_schema!` row for it, so no `schemas/<Type>.json` is written. Deliberately narrow — the serde/schemars DERIVES stay (a parent embedding the type still needs them, and the type still appears in its parents' `$defs`; dropping the derives is the orthogonal, legally combinable @custom_json), and CBOR/wasm/extern-interface output is untouched. Inert when --json-schema-export is off, so one spec generates unedited under several flag sets. Valid on any rule that registers a rust type; on one that registers none (a transparent alias, a generic DEFINITION — only its instantiations are types) there is no row to suppress and generation is rejected by name rather than silently dead.",
+      "example": "njse = [a: uint, b: text] ; @no_json_schema_export",
+      "id": "dsl.no_json_schema_export",
+      "production": "comment_dsl",
+      "profile": "CDDL_CODEGEN",
+      "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@no_json_schema_export; src/comment_ast.rs",
+      "title": "@no_json_schema_export — off the published JSON-schema surface"
     },
     {
       "alt": "@custom_serialize",
