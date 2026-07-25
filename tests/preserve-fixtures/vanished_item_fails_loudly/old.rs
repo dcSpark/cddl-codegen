@@ -2,6 +2,7 @@
 // https://github.com/dcSpark/cddl-codegen
 
 pub struct Gone {
+    // cddl-codegen:keep
     // rip
     pub a: u64,
 }

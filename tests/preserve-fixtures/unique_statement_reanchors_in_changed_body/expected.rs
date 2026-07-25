@@ -4,6 +4,7 @@
 impl Foo {
     fn go(&self) {
         write_tag(self.t);
+        // cddl-codegen:keep
         // the length write
         write_len(self.a);
     }

@@ -4,6 +4,7 @@
 #![allow(clippy::too_many_arguments)]
 
 pub struct Gone {
+    // cddl-codegen:keep
     // rip
     pub a: u64,
 }

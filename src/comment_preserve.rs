@@ -30,22 +30,36 @@
 //!   silently re-attach to the survivor), so the comment re-attaches above it;
 //! * otherwise the comment fails loudly.
 //!
-//! The generator itself emits comments into these trees — the header banner, the static prelude
-//! merged into `serialization.rs`, `.doc()`-rendered `///` blocks, the wasm redefine notes — so
-//! "old comment absent from new at the aligned anchor" does NOT imply "user comment". The rules that
-//! keep tool text from being resurrected, duplicated, or spammed as errors: positional self-cancel
-//! (an old comment `new` carries at the same anchor is the generator's), insertion-point dedup (a
-//! comment re-anchoring to where `new` already carries the identical text is a shifted generator
-//! comment — skip), and doc ownership (an anchor `new` documents is tool-owned: an old `///`/`//!`
-//! block there is stale tool output — and an UNPLACEABLE doc block drops the same way, so deleting
-//! a documented type never traps the tool's own docs in compile_error blocks; the user channel for
-//! doc text is the CDDL/`@doc` DSL). Two residuals: a generator `//` comment whose TEXT changes
-//! between tool versions is indistinguishable from user text and fails loudly — noisy-but-safe,
-//! once per upgrade; and positional self-cancel compares anchor indices even across divergent token
-//! streams, so a user comment textually identical to a generator comment at a coincidentally equal
-//! index is skipped — contrived, and the text still exists in the file. (The CRLF trailing-`\r`
-//! strip covers line comments only; a multi-line `/* */` interior keeps its `\r` bytes — cosmetic
-//! for user text, unreachable for tool text since the generator emits no block comments.)
+//! **Ownership: outside a user block, a comment is tool-owned.** This is the load-bearing rule, and
+//! it follows from what the overlay is. A two-way merge has `ours` (the file on disk) and `theirs`
+//! (this run's fresh output) but no `base` — what the tool emitted on the PREVIOUS run — and "is
+//! this on-disk comment user-owned?" is answerable only from `base`. Any rule that answers it
+//! without `base` is a substitute for `base`, and every such substitute fails the same way: it
+//! cannot distinguish "the tool reworded its own comment" from "the user wrote this". Guessing
+//! "user" there does not merely duplicate text, it CORRUPTS prose — a reworded tool comment
+//! re-anchors below the new one, and a reflowed paragraph leaves exactly the lines whose wrap
+//! changed spliced into the middle of maintained documentation.
+//!
+//! Ownership ambiguity is symmetric, so the fix is to mark one side, and the RARE side is the user's:
+//! the generator emits comments into these trees constantly (the header banner, the static prelude
+//! merged into `serialization.rs`, `.doc()`-rendered `///` blocks, the wasm redefine notes), while
+//! genuine hand-written comments in a generated tree number in the single digits even in a large
+//! consumer. So a user comment DECLARES itself with a `// cddl-codegen:keep` marker (see
+//! [`KEEP`]), and anything that is neither this run's output nor marked is UNCLASSIFIED: it is
+//! trapped in a `compile_error!` naming both possibilities, never re-anchored on a guess.
+//!
+//! What remains of the old ownership heuristics survives only as SUPPRESSION, never as insertion,
+//! so each can now fail in the loud direction only: positional self-cancel (an old comment `new`
+//! carries at the same anchor is the generator's), insertion-point dedup (a comment re-anchoring to
+//! where `new` already carries the identical text is a shifted generator comment — skip), and doc
+//! ownership (an anchor `new` documents is tool-owned: an old `///`/`//!` block there is stale tool
+//! output — and an UNPLACEABLE doc block drops the same way, so deleting a documented type never
+//! traps the tool's own docs in compile_error blocks; the user channel for doc text is the
+//! CDDL/`@doc` DSL). A heuristic that wrongly fires suppresses a comment that would otherwise have
+//! been reported; a heuristic that wrongly does NOT fire produces a spurious unclassified error. The
+//! silent-mangle direction is closed. (The CRLF trailing-`\r` strip covers line comments only; a
+//! multi-line `/* */` interior keeps its `\r` bytes — cosmetic for user text, unreachable for tool
+//! text since the generator emits no block comments.)
 //!
 //! v1 scope is own-line comments (only whitespace before them on their line). A user-added trailing
 //! (end-of-line) comment is detected but not re-placed — it fails loudly with a hint to move it to
@@ -67,6 +81,18 @@
 //! defense-in-depth: if the generator ever regrows a trailing comment, it must not spam compile
 //! errors. (The `// <cddl>` lines in some `--emit-tests` fixtures live in harness-appended
 //! hand-written test modules outside the overlay-covered trees, not in tool-owned generated code.)
+//!
+//! A user comment is declared with the reserved `// cddl-codegen:keep` marker, in one of two forms.
+//! INLINE — `// cddl-codegen:keep <text>` — makes the whole line the comment; it travels verbatim,
+//! marker included, because an unmarked copy would be unclassified on the next run. BARE — a
+//! `// cddl-codegen:keep` line on its own — claims the contiguous own-line comment run directly
+//! below it (same anchor, each line immediately after the last, stopping at a blank line, a reserved
+//! tag, or a code token), and is the only form that can carry `///`/`//!` doc comments, since the
+//! inline form's text is necessarily a `//` comment. Either form is represented as an [`InsertBlock`]
+//! with an EMPTY interior (`code_start == code_end`) — it wraps comment text, never code — so it
+//! removes nothing from the virtual pristine stream and anchors on the following code token through
+//! the same tiers as everything else. A bare marker with nothing to claim is a hard [`PreserveError`],
+//! and `keep-<anything>` stays an unknown tag rather than degrading to `keep`.
 //!
 //! Beyond comments, a user can keep hand-written CODE across a regen with an
 //! `// cddl-codegen:insert-start` … `// cddl-codegen:insert-end` own-line comment pair. The whole
@@ -121,13 +147,15 @@
 //! `file:line:` prefix editors turn into a clickable jump (one on-disk file can hold many blocks). An
 //! empty user section is a (undocumented) deletion — allowed, pinned by
 //! a fixture. Every fail-loudly `compile_error!` names its payload correctly — "a user comment" for a
-//! comment, "a user code block" for an insert/replace block.
+//! `keep` block or a trailing comment, "a user code block" for an insert/replace block — and an
+//! unclassified comment gets a headline that makes NO ownership claim at all, since that is exactly
+//! what is unknown about it.
 //!
 //! Namespace reservation makes never-silent hold in the presence of tags: any own-line comment
 //! beginning `// cddl-codegen:` that is not part of a well-formed known structure — a valid
-//! `unpreserved-comment` fail-loudly block, a well-formed insert block, or a well-formed replace
-//! block — is a hard [`PreserveError`] naming the offending line, NEVER a silent demotion to user
-//! text. This closes the gap where a stray tag inside a block would terminate it early and clobber
+//! `unpreserved-comment` fail-loudly block, a well-formed insert block, a well-formed replace block,
+//! or a well-formed `keep` marker — is a hard [`PreserveError`] naming the offending line, NEVER a
+//! silent demotion to user text. This closes the gap where a stray tag inside a block would terminate it early and clobber
 //! the trailing user lines as untagged code: premature termination always leaves an orphaned tag,
 //! which errors instead of truncating. So a bare `unpreserved-comment` marker NOT backed by the
 //! `compile_error!` shape is a hard error too (it is a malformed fail-loudly block, not a user
@@ -183,6 +211,9 @@ const INSERT_END: &str = "insert-end";
 const REPLACE_START: &str = "replace-start";
 const REPLACES: &str = "replaces";
 const REPLACE_END: &str = "replace-end";
+/// User-comment marker: `// cddl-codegen:keep <text>` (the line IS the comment) or a bare
+/// `// cddl-codegen:keep` claiming the contiguous own-line comment run immediately below it.
+const KEEP: &str = "keep";
 
 /// The merged content plus whether any comment was inserted. `changed == false` means `content`
 /// equals the pristine input byte-for-byte, so the caller can skip the extra rustfmt pass.
@@ -841,15 +872,77 @@ pub(crate) fn escape_for_rust_string(s: &str) -> String {
 /// Build a fail-loudly block: a recognizable sentinel comment line plus a `compile_error!` carrying
 /// the full original payload, so the crate fails to build with it in the message. `noun` names the
 /// payload — `"comment"` for a user comment, `"code block"` for an insert/replace block — so a
-/// trapped block does not misreport itself as "a user comment".
-fn sentinel_block(reason: &str, original: &str, noun: &str) -> String {
-    let message = format!(
-        "cddl-codegen could not preserve a user {noun} across regeneration.\n{reason}\nOriginal {noun}:\n{original}"
-    );
+/// trapped block does not misreport itself as "a user comment". `headline` is the first line: it
+/// must NOT presuppose ownership for the unclassified-comment case (whose whole point is that
+/// ownership is unknown), so it is a per-case parameter rather than a hardcoded sentence.
+fn sentinel_block(headline: &str, reason: &str, original: &str, noun: &str) -> String {
+    let message = format!("{headline}\n{reason}\nOriginal {noun}:\n{original}");
     format!(
         "{SENTINEL_MARKER} (delete this block after review)\ncompile_error!(\"{}\");",
         escape_for_rust_string(&message)
     )
+}
+
+/// The headline for a payload the overlay OWNS but could not re-place (an insert/replace/`keep`
+/// block). Ownership is known here — the payload carries a `cddl-codegen:` marker.
+fn could_not_preserve_headline(noun: &str) -> String {
+    format!("cddl-codegen could not preserve a user {noun} across regeneration.")
+}
+
+/// The headline for an own-line comment that is neither this run's output nor `keep`-marked.
+/// Deliberately makes no ownership claim: the whole point of the unclassified class is that the
+/// overlay cannot tell a reworded tool comment from user text, and must not guess.
+const UNCLASSIFIED_HEADLINE: &str = "cddl-codegen found a comment it cannot classify.";
+
+/// A pending fail-loudly block: the payload plus the wording that frames it.
+struct Unplaceable {
+    headline: String,
+    reason: String,
+    original: String,
+    /// `"comment"` or `"code block"` — names the payload in both the headline and the
+    /// `Original …:` label.
+    noun: &'static str,
+}
+
+impl Unplaceable {
+    /// An owned payload (insert/replace/`keep` block, or a trailing comment) that could not be placed.
+    fn not_preserved(reason: String, original: String, noun: &'static str) -> Self {
+        Self {
+            headline: could_not_preserve_headline(noun),
+            reason,
+            original,
+            noun,
+        }
+    }
+}
+
+/// The reason text for an UNCLASSIFIED own-line comment: the discovery mechanism for the `keep`
+/// notation, printed next to the user's own text in their build output. `hint` is the text this run
+/// emits at the same resolved position, when there is one.
+///
+/// The hint is GUIDANCE ONLY. Deciding ownership from it would be a fifth base-substitute and would
+/// fail exactly like the four it replaced — "this run emits a comment here" cannot distinguish a
+/// reworded tool comment from a user comment the tool happens to sit beside.
+fn unclassified_reason(hint: Option<&str>) -> String {
+    let mut reason = String::from(
+        "Outside a `cddl-codegen:` block every comment in a generated file is tool-owned, and this \
+         one is neither emitted by this run nor marked as yours. It is one of two things:\n\
+         (1) stale tool output whose text changed or was removed upstream — delete this whole \
+         block;\n\
+         (2) your own comment — delete this whole block and re-add the comment with a marker:\n\
+         // cddl-codegen:keep <your text>\n\
+         or, for a run of comment lines (the only form that can carry `///`/`//!` doc comments), a \
+         bare marker directly above the run:\n\
+         // cddl-codegen:keep\n\
+         /// <your text>",
+    );
+    if let Some(h) = hint {
+        reason.push_str(&format!(
+            "\nThis run emits a comment at the same position, so this is most likely a tool comment \
+             whose text changed upstream — compare against: {h}"
+        ));
+    }
+    reason
 }
 
 fn line_start(src: &str, pos: usize) -> usize {
@@ -924,19 +1017,24 @@ fn recognize_sentinels(lexed: &Lexed) -> SentinelScan {
     }
 }
 
-/// A recognized `// cddl-codegen:insert-start` … `// cddl-codegen:insert-end` block in `old`. The
-/// whole block travels as one opaque verbatim unit; only its placement anchor and its interior span
-/// are needed here.
+/// A recognized verbatim-travelling block in `old`: an
+/// `// cddl-codegen:insert-start` … `// cddl-codegen:insert-end` pair, or a `// cddl-codegen:keep`
+/// marker (whose "interior" is empty — it wraps comment text only). The whole block travels as one
+/// opaque verbatim unit; only its placement anchor and its interior span are needed here.
 struct InsertBlock {
-    /// Byte range of the verbatim block text in `old`: from the start of the insert-start line
-    /// through the end of the insert-end comment (trailing newline excluded).
+    /// Byte range of the verbatim block text in `old`: from the start of the insert-start (or
+    /// `keep`) line through the end of the closing comment (trailing newline excluded).
     byte_start: usize,
     byte_end: usize,
     /// Interior code-token range `[code_start, code_end)` in the ORIGINAL old stream (empty when the
-    /// block wraps no code). `code_end` is also the placement anchor — the code token the block sits
-    /// above.
+    /// block wraps no code — always so for a `keep` block). `code_end` is also the placement anchor
+    /// — the code token the block sits above.
     code_start: usize,
     code_end: usize,
+    /// What a failed placement should call this payload: `"code block"` for an insert block,
+    /// `"comment"` for a `keep` block. Without it a trapped `keep` block would report itself as "a
+    /// user code block", which is wrong and would be blessed into fixtures.
+    noun: &'static str,
 }
 
 /// A recognized `// cddl-codegen:replace-start` … `:replaces` … `:replace-end` block in `old`. The
@@ -971,11 +1069,33 @@ struct BlockScan {
 }
 
 /// The reserved tag on an own-line comment, if any: the text after `// cddl-codegen:`.
+///
+/// Returns `None` for `///`/`//!` lines: `strip_prefix("//")` leaves a leading `/` that `trim_start`
+/// does not remove, so the namespace prefix cannot match. A doc comment is therefore never itself a
+/// reserved tag — which is what lets a `keep` block claim a run of `///` lines.
 fn cddl_tag(comment_text: &str) -> Option<&str> {
     comment_text
         .strip_prefix("//")?
         .trim_start()
         .strip_prefix(CDDL_NAMESPACE)
+}
+
+/// Split a reserved tag's remainder into its first word and the rest, both trimmed. The first word
+/// is what selects a branch, so `keep-something` stays an UNKNOWN tag (hard error) rather than being
+/// read as `keep` with a `-something` payload; the rest is the inline `keep` form's comment text.
+fn split_tag(remainder: &str) -> (&str, &str) {
+    let r = remainder.trim_start();
+    match r.find(char::is_whitespace) {
+        Some(i) => (&r[..i], r[i..].trim()),
+        None => (r, ""),
+    }
+}
+
+/// The branch-selecting first word of a reserved tag's remainder — [`split_tag`]'s head, exposed so
+/// the cross-crate sidecar scanner (`wrapper_requests::flatten_overlay_blocks`) classifies a tag the
+/// same way this module does rather than re-deriving the split.
+pub(crate) fn tag_head(remainder: &str) -> &str {
+    split_tag(remainder).0
 }
 
 /// Uncomment one recorded-original line: strip the leading `//` and one optional following space,
@@ -1058,13 +1178,16 @@ fn scan_blocks(
             p += 1;
             continue;
         }
-        let tag = match cddl_tag(comments[ci].text) {
+        let remainder = match cddl_tag(comments[ci].text) {
             None => {
                 p += 1;
                 continue;
             }
-            Some(t) => t.trim(),
+            Some(t) => t,
         };
+        let tag = remainder.trim();
+        // First word only, so a `keep`-prefixed unknown tag (`keep-this`) is not read as `keep`.
+        let (head, inline_text) = split_tag(remainder);
         if tag == REPLACE_START {
             // Phase 1: from the user section, scan to `replaces`. Ordinary interior comments are
             // allowed; any OTHER reserved tag before `replaces` is a malformed structure.
@@ -1253,8 +1376,67 @@ fn scan_blocks(
                 byte_end,
                 code_start,
                 code_end,
+                noun: "code block",
             });
             p = q + 1;
+        } else if head == KEEP {
+            // A `keep` block wraps COMMENT TEXT only — it never contains code, so its interior code
+            // range is empty (`code_start == code_end`): nothing is removed from the virtual pristine
+            // stream, `delimiters_balanced` on the empty slice is vacuously true, and it anchors on
+            // `code_end` through the normal tiers exactly like an insert block above the same token.
+            let marker = &comments[ci];
+            let anchor = marker.anchor;
+            let (byte_end, last_p) = if !inline_text.is_empty() {
+                // Inline form: the whole marker line IS the user comment. It travels verbatim,
+                // marker included — an unmarked copy would be unclassified on the next run.
+                (marker.end, p)
+            } else {
+                // Claim-the-run form: take own-line comments below the marker while each is not a
+                // reserved tag (which covers a sentinel marker line — `cddl_tag` matches it),
+                // shares the marker's anchor, and starts on the line immediately after the previous
+                // claimed line. A blank line therefore terminates the run.
+                let mut claimed_end: Option<usize> = None;
+                let mut last = p;
+                let mut prev_end = marker.end;
+                let mut q = p + 1;
+                while q < own.len() {
+                    let cm = &comments[own[q]];
+                    if cddl_tag(cm.text).is_some() || cm.anchor != anchor {
+                        break;
+                    }
+                    // Exactly one newline of whitespace between the previous claimed line and this
+                    // one (CRLF included — `\r\n` carries a single `\n`).
+                    let gap = &lexed.src[prev_end..cm.start];
+                    if !gap.trim().is_empty() || gap.bytes().filter(|&b| b == b'\n').count() != 1 {
+                        break;
+                    }
+                    claimed_end = Some(cm.end);
+                    prev_end = cm.end;
+                    last = q;
+                    q += 1;
+                }
+                match claimed_end {
+                    Some(e) => (e, last),
+                    None => {
+                        return err_at(
+                            line_of(lexed.src, marker.start),
+                            "A bare `// cddl-codegen:keep` marker claims the comment run directly \
+                             below it, but the next line is not a comment. Put the comment text on \
+                             the marker line itself (`// cddl-codegen:keep <text>`), or move the \
+                             comment run directly under the marker with no blank line between them."
+                                .to_owned(),
+                        );
+                    }
+                }
+            };
+            blocks.push(InsertBlock {
+                byte_start: line_start(lexed.src, marker.start),
+                byte_end,
+                code_start: anchor,
+                code_end: anchor,
+                noun: "comment",
+            });
+            p = last_p + 1;
         } else if tag == INSERT_END {
             return err_at(
                 line_of(lexed.src, comments[ci].start),
@@ -1550,11 +1732,15 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
     // Trailing comments whose text `new` also carries somewhere cancel silently. INVARIANT: the
     // generator must emit NO trailing (end-of-line) comment on any row a spec change can delete —
     // such a comment would be stranded on the deleted row and re-injected here as a
-    // `cddl-codegen:unpreserved-comment` compile_error trap that every further regen carries forward
-    // (a self-perpetuating trap the user can only escape by hand-deleting the sentinel). Violating
-    // it recreates that trap class. It DID regress once: `extern_interface_check.rs` and
-    // `key_demand_assertions.rs` carried per-row `// <cddl>` markers; both were made banner-only,
-    // pinned by `extern_interface_check_regen_over_deletion_no_trap` and
+    // `cddl-codegen:unpreserved-comment` compile_error trap. What the `keep` rule DOES relax is the
+    // self-perpetuating half: the trap block's payload is a bare trailing comment, so re-injecting
+    // it on the next regen no longer requires the user to hand-delete a sentinel that keeps
+    // regrowing from an unmarked own-line copy. What it does NOT relax is the trap itself — a
+    // stranded trailing tool comment still fails the crate's build once per deleted row, and the
+    // trailing path has no `keep` form (the marker is own-line only). So the invariant STANDS as a
+    // generator-side rule; the two pinned generated files that once carried per-row `// <cddl>`
+    // markers (`extern_interface_check.rs`, `key_demand_assertions.rs`) stay banner-only, pinned by
+    // `extern_interface_check_regen_over_deletion_no_trap` and
     // `extern_interface_check_has_no_trailing_row_comments`. This cancellation is therefore
     // defense-in-depth; it matches by exact text, not position, because trailing anchors shift with
     // any edit. Residual: a user trailing comment textually identical to one in `new` is skipped
@@ -1573,11 +1759,33 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
         .filter(|c| c.own_line && is_doc_comment(c.text))
         .map(|c| c.anchor)
         .collect();
+    // Anchor -> the own-line comment texts `new` carries there. Feeds the unclassified message's
+    // HINT only ("this run emits a comment at the same position"); see `unclassified_reason`.
+    // Texts `old` ALSO carries verbatim at the same anchor are filtered out: they matched exactly,
+    // so they are not candidates for "the reworded twin" — a set difference over already-matched
+    // pairs, not an ownership inference. Without it, every hint at a file's top anchor would recite
+    // the header banner and the whole unchanged remainder of a paragraph.
+    let old_comment_keys: BTreeSet<(usize, &str)> = old_lex
+        .comments
+        .iter()
+        .filter(|c| c.own_line)
+        .map(|c| (remap[c.anchor], c.text))
+        .collect();
+    let mut new_comment_at: BTreeMap<usize, Vec<&str>> = BTreeMap::new();
+    for c in new_lex.comments.iter().filter(|c| c.own_line) {
+        if old_comment_keys.contains(&(c.anchor, c.text)) {
+            continue;
+        }
+        new_comment_at.entry(c.anchor).or_default().push(c.text);
+    }
 
-    // Split old comments into: trailing (fail loudly unless generator-owned) and own-line user
-    // comments (candidates).
+    // Split old comments into: trailing (fail loudly unless generator-owned) and own-line comments
+    // that are neither consumed by a block nor carried by `new` at the same anchor. The latter are
+    // UNCLASSIFIED, not "user comments": outside a `cddl-codegen:` block every comment in a
+    // generated file is tool-owned, and a user comment declares itself with a `keep` marker (which
+    // routes through `Placeable::Block`, not here). So nothing in this vector is ever inserted.
     let mut trailing: Vec<&str> = Vec::new();
-    let mut user_comments: Vec<Comment> = Vec::new();
+    let mut unclassified: Vec<Comment> = Vec::new();
     for (ci, cm) in old_lex.comments.iter().enumerate() {
         if sentinel_comment.contains(&ci) || block_scan.consumed.contains(&ci) {
             continue;
@@ -1592,15 +1800,13 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
         if new_comment_keys.contains(&(anchor, cm.text)) {
             continue; // generator comment — already present in new at the same position
         }
-        user_comments.push(Comment { anchor, ..*cm });
+        unclassified.push(Comment { anchor, ..*cm });
     }
 
     // 2. Place each user comment. Insertions target byte offsets in `new`; unplaceable comments and
     //    the verbatim carried blocks become fail-loudly blocks at the top (after the header).
     let mut insertions: Vec<Insertion> = Vec::new();
-    // (reason, original payload text, noun): the noun ("comment"/"code block") names what a
-    // fail-loudly `compile_error!` traps, so a block does not misreport itself as a comment.
-    let mut unplaceable: Vec<(String, String, &'static str)> = Vec::new();
+    let mut unplaceable: Vec<Unplaceable> = Vec::new();
     let mut order = 0usize;
 
     let identity = code_eq(&old_code, &new_lex.code);
@@ -1668,7 +1874,7 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
         Block(usize),
     }
     let mut placeables: Vec<(usize, Placeable)> = Vec::new();
-    for cm in &user_comments {
+    for cm in &unclassified {
         placeables.push((cm.start, Placeable::Comment(cm)));
     }
     for (bi, b) in block_scan.blocks.iter().enumerate() {
@@ -1742,7 +1948,7 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
                 }
                 splices.push((delete_start, last.end, text));
             }
-            Err(reason) => unplaceable.push((
+            Err(reason) => unplaceable.push(Unplaceable::not_preserved(
                 reason,
                 old[rb.byte_start..rb.byte_end].to_owned(),
                 "code block",
@@ -1758,12 +1964,17 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
     for (_, p) in placeables {
         match p {
             Placeable::Comment(cm) => {
+                // An unclassified comment is never inserted, so the tier machinery runs here ONLY to
+                // compute `t` for the two suppression checks below (and for the message hint). Both
+                // checks can only SUPPRESS a comment, never cause one to be emitted, so their
+                // failure mode is a spurious loud error — never a silent re-anchor of tool prose
+                // into maintained text, which is the corruption this classification exists to stop.
                 match place(cm.anchor) {
                     Ok(t) => {
                         let t = t.unwrap_or(new_lex.code.len());
                         // Insertion-point dedup: a generator comment whose anchor shifted (any edit
                         // earlier in the file) re-anchors to exactly where `new` already carries the
-                        // identical comment — inserting would duplicate it.
+                        // identical comment — it is this run's own output, so drop it.
                         if new_comment_keys.contains(&(t, cm.text)) {
                             order += 1;
                             continue;
@@ -1774,38 +1985,28 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
                             order += 1;
                             continue;
                         }
-                        let (offset, indent) = if t >= new_lex.code.len() {
-                            (new.len(), "")
-                        } else {
-                            let start = new_lex.code[t].start;
-                            (line_start(new, start), line_indent(new, start))
-                        };
-                        // Op-composition conflict: this comment's referent is inside a span a replace
-                        // block deletes. Fail loudly — the user must move it into the replace block.
-                        if inside_delete(offset) {
-                            unplaceable.push((
-                                "Its anchor lies inside code replaced by a \
-                                 `// cddl-codegen:replace-start` block; move it into that block."
-                                    .to_owned(),
-                                cm.text.to_owned(),
-                                "comment",
-                            ));
-                            order += 1;
-                            continue;
-                        }
-                        insertions.push(Insertion {
-                            offset,
-                            order,
-                            text: format!("{indent}{}\n", cm.text),
+                        let hint = new_comment_at.get(&t).map(|texts| texts.join(" / "));
+                        unplaceable.push(Unplaceable {
+                            headline: UNCLASSIFIED_HEADLINE.to_owned(),
+                            reason: unclassified_reason(hint.as_deref()),
+                            original: cm.text.to_owned(),
+                            noun: "comment",
                         });
                     }
                     // Doc ownership extends to UNPLACEABLE doc comments: deleting a documented type
                     // must not trap the tool's own `///` lines (which anchor to the vanished item) in
                     // compile_error blocks — doc text's channel is the CDDL/`@doc` DSL, so doc blocks
                     // drop rather than fail loudly (the same trade as documented anchors; a user doc
-                    // on a vanished item drops with them).
+                    // on a vanished item drops with them). A `keep`-marked doc run is a Block, so it
+                    // is unaffected by this drop.
                     Err(_) if is_doc_comment(cm.text) => {}
-                    Err(reason) => unplaceable.push((reason, cm.text.to_owned(), "comment")),
+                    Err(_) => unplaceable.push(Unplaceable {
+                        headline: UNCLASSIFIED_HEADLINE.to_owned(),
+                        // No resolved target, so no hint: the tiers could not place it at all.
+                        reason: unclassified_reason(None),
+                        original: cm.text.to_owned(),
+                        noun: "comment",
+                    }),
                 }
             }
             Placeable::Block(bi) => {
@@ -1823,12 +2024,12 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
                         // Same op-composition conflict rule as for comments (an insert block whose
                         // following anchor is inside a replaced span fails loudly).
                         if inside_delete(offset) {
-                            unplaceable.push((
+                            unplaceable.push(Unplaceable::not_preserved(
                                 "Its anchor lies inside code replaced by a \
                                  `// cddl-codegen:replace-start` block; move it into that block."
                                     .to_owned(),
                                 old[b.byte_start..b.byte_end].to_owned(),
-                                "code block",
+                                b.noun,
                             ));
                             order += 1;
                             continue;
@@ -1842,10 +2043,10 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
                     // An unplaceable block is NOT left in place (its user tokens would count as a
                     // user edit on the next regen). Its ENTIRE text goes into the standard
                     // fail-loudly payload, so it carries forward verbatim like an unplaceable comment.
-                    Err(reason) => unplaceable.push((
+                    Err(reason) => unplaceable.push(Unplaceable::not_preserved(
                         reason,
                         old[b.byte_start..b.byte_end].to_owned(),
-                        "code block",
+                        b.noun,
                     )),
                 }
             }
@@ -1853,7 +2054,7 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
         order += 1;
     }
     for t in trailing {
-        unplaceable.push((
+        unplaceable.push(Unplaceable::not_preserved(
             "It is a trailing (end-of-line) comment; move it to its own line above the code to \
              preserve it."
                 .to_owned(),
@@ -1906,13 +2107,16 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
         all.push((top_offset, top_offset, 0, top_order, format!("{block}\n")));
         top_order += 1;
     }
-    for (reason, original, noun) in &unplaceable {
+    for u in &unplaceable {
         all.push((
             top_offset,
             top_offset,
             0,
             top_order,
-            format!("{}\n", sentinel_block(reason, original, noun)),
+            format!(
+                "{}\n",
+                sentinel_block(&u.headline, &u.reason, &u.original, u.noun)
+            ),
         ));
         top_order += 1;
     }

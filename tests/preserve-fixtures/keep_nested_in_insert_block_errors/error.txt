@@ -1,0 +1,1 @@
+old.rs:6: An `// cddl-codegen:insert-start` block contains an unexpected reserved tag before its `// cddl-codegen:insert-end` (line: `// cddl-codegen:keep why the extra call is needed`).

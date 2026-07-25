@@ -3,6 +3,7 @@
 
 impl Foo {
     fn go(&self) {
+        // cddl-codegen:keep
         // the length write
         write_len(self.a);
     }

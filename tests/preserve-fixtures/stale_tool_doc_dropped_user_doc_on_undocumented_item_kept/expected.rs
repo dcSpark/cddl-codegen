@@ -6,6 +6,7 @@ pub struct A {
     pub a: u64,
 }
 
+// cddl-codegen:keep
 /// my own note
 pub struct B {
     pub b: u64,

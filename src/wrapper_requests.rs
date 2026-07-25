@@ -232,6 +232,14 @@ fn flatten_overlay_blocks(contents: &str, file: &str, flag: &str) -> Vec<String>
                     in_replaces_original = true;
                     continue;
                 }
+                // A `keep` marker declares USER COMMENT TEXT, not payload. It is deliberately NOT
+                // dropped as scaffolding: this sidecar's grammar rejects every comment outside
+                // `KNOWN_COMMENTS`, so letting the marker line fall through gives a `keep` comment
+                // exactly the treatment the same comment gets unmarked — the "unexpected comment"
+                // hard error, naming the offending line verbatim. Both `keep` forms land there
+                // (the bare form on its own marker line, the inline form on its text), so a user
+                // comment can never silently vanish from a machine-read sidecar.
+                t if crate::comment_preserve::tag_head(t) == "keep" => {}
                 "unpreserved-comment" => {
                     panic!(
                         "{flag} {file}: the sidecar contains a \
@@ -1240,6 +1248,56 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
 ];
 "#;
         parse_sidecar(trapped, "borrowed_collections.rs");
+    }
+
+    /// A `// cddl-codegen:keep` marker is a REGISTERED tag (it must not hit the unknown-tag panic),
+    /// but this sidecar's frozen grammar admits no comment outside `KNOWN_COMMENTS` — so a `keep`
+    /// comment gets exactly the treatment the same comment gets unmarked: the "unexpected comment"
+    /// hard error naming the line. Both `keep` forms land there, so user prose can never silently
+    /// vanish from a machine-read sidecar. Pinned in both forms below.
+    #[test]
+    #[should_panic(expected = "unexpected comment")]
+    fn rejects_inline_keep_comment() {
+        let with_keep = r#"// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+// cddl-codegen:keep this row is load-bearing
+#[allow(dead_code)]
+pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
+];
+"#;
+        parse_sidecar(with_keep, "borrowed_collections.rs");
+    }
+
+    #[test]
+    #[should_panic(expected = "unexpected comment")]
+    fn rejects_bare_keep_comment_run() {
+        let with_keep = r#"// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+// cddl-codegen:keep
+// this row is load-bearing
+#[allow(dead_code)]
+pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
+];
+"#;
+        parse_sidecar(with_keep, "borrowed_collections.rs");
+    }
+
+    /// `keep-<anything>` is NOT `keep`: it stays an unknown reserved tag, so the sidecar scanner
+    /// rejects it with the unexpected-reserved-comment panic rather than the comment path.
+    #[test]
+    #[should_panic(expected = "unexpected reserved comment")]
+    fn rejects_keep_suffixed_unknown_tag() {
+        let bad = r#"// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+// cddl-codegen:keep-this
+#[allow(dead_code)]
+pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
+];
+"#;
+        parse_sidecar(bad, "borrowed_collections.rs");
     }
 
     #[test]
