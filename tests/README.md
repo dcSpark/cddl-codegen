@@ -25,7 +25,10 @@ status-header count and doc-citation drift gates (`project_decode_conformance.ts
 checks that gap prose's cited pins still exist, rejects positional roadmap/list citations, bans
 ephemeral plan-internal references (delivery-phase probe/ruling id spellings, spec-file names, the
 plan scratchpad path — matched phase-generically so a new delivery phase's letter is covered by
-construction), and enforces
+construction), bans user-doc examples that put a `; @<directive>` comment on the same line as the
+container's closing `}`/`]` (a CDDL comment runs to end of line and swallows the closer, so such an
+illustration parses differently than the doc describes; the warning bullet's deliberate
+counterexamples are allowlisted by exact span text), and enforces
 blank lines before headings in the hand docs. The conventions it backs: gap-tracking prose names its
 pin by exact identifier ("pinned by/tracked by/gated by `name`"), and a *behavioral* claim ("construct
 X panics/rejects") gets a robustness-catalog row FIRST — the panic/reject catalogs flip loudly on a
