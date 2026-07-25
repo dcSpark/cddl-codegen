@@ -950,15 +950,19 @@ fn emit_rest_flatten_json(
     };
     // Per-range value view: an `any` range renders NATURALLY (the natural walk); a typed range uses its own
     // serde (which, if it transitively contains `any`, is itself steered by the natural adapters).
-    let (value_wrap, value_de_ty, value_unwrap) = if range_is_any {
+    // A typed range therefore needs NO write-side value view at all: its `(&K, &V)` pairs already match
+    // the helper's `Item = (&K, W)`, so the entries expression is the bare `.iter()` — emitting the
+    // `any` shape's `.map(|(k, v)| (k, v))` there would be an identity map (`clippy::map_identity` in
+    // the generated crate, which consumers build lint-clean).
+    let (entries_expr, value_de_ty, value_unwrap) = if range_is_any {
         (
-            format!("{base}::NaturalAnyCborSer(v)"),
+            format!("{field}.iter().map(|(k, v)| (k, {base}::NaturalAnyCborSer(v)))"),
             format!("{base}::NaturalAnyCborDe"),
             "v.0".to_owned(),
         )
     } else {
         (
-            "v".to_owned(),
+            format!("{field}.iter()"),
             rest.range().for_rust_member(types, false, cli),
             "v".to_owned(),
         )
@@ -972,7 +976,7 @@ fn emit_rest_flatten_json(
          \x20   {flatten}::serialize_flattened_rest(\n\
          \x20       {reserved_lit},\n\
          \x20       {key_closure},\n\
-         \x20       {field}.iter().map(|(k, v)| (k, {value_wrap})),\n\
+         \x20       {entries_expr},\n\
          \x20       serializer,\n\
          \x20   )\n\
          }}\n\
