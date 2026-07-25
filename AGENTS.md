@@ -292,6 +292,19 @@ For sessions that spawn their own sub-agents (an orchestrating session, or a sub
   registration (neither existed — caught by the implementing agent probing before coding, which
   deleted a planned dead-code work item). Both premises had survived plan review; one even
   originated in a misleading code comment at the site itself.
+- **A probe has a SCOPE, and a premise is only evidence within it — so state the scope in the claim.**
+  The failure this guards is not a skipped probe but a correct one silently generalized: "no gate
+  demands this" established against a `fast`-tier gate says nothing about a `full`-tier gate, and
+  "the directive works" established on the rule shapes in a fixture says nothing about a shape whose
+  parse path the fixture never touched. Proven twice in one cycle (2026-07-25,
+  `@no_json_schema_export`): a matrix-registration deferral was probed against `project_corpus`
+  (where it genuinely holds) and was false for `cddl-matrix/verify.ts`'s completeness lint, leaving
+  the FULL tier red for five commits; and the directive shipped silently inert on plain group rules,
+  a parse path no fixture covered. Both were caught by orchestrator code-reading, not by any run.
+  Working rule: **write premises as "probed against X (tier T); not probed against Y"** so the
+  unprobed remainder is visible in the claim instead of implied — and remember CI runs `fast` only,
+  so a `full`-tier gate is where such a premise survives longest. Corollary for reviewers: when a
+  premise's scope is narrower than the conclusion drawn from it, that gap is the finding.
 
 
 
