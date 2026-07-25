@@ -633,15 +633,18 @@ halves so your hand edits to the crate root survive regeneration:
   [`--export-static-crate`](./command_line_flags) is the supported path for keeping
   that copy current.) This subtree is
   overwritten wholesale on every export — untagged hand edits to the *code* are clobbered. What
-  DOES survive regeneration: **own-line comments** (carried automatically by symbol identity —
-  which named item they sit in/above) and **tagged code blocks** —
+  DOES survive regeneration: **`// cddl-codegen:keep`-marked own-line comments** (re-anchored by
+  symbol identity — which named item they sit in/above) and **tagged code blocks** —
   `// cddl-codegen:insert-start`/`insert-end` for added lines, and
   `// cddl-codegen:replace-start`/`replaces`/`replace-end` for swapped code (your version plus a
   `//`-commented record of the generated code it overrides). Anything that cannot be safely
   re-placed becomes a `compile_error!` block (loud, never a silent drop) so you review it. See
   [preserving edits](preserving_edits.mdx) for the full syntax, failure modes, and limits; pass
-  `--no-preserve-comments` to turn the whole overlay off and clobber pristine. Two carve-outs:
-  trailing (end-of-line) comments are not carried — move them to their own line (a
+  `--no-preserve-comments` to turn the whole overlay off and clobber pristine. Three carve-outs:
+  outside a `cddl-codegen:` block every comment here is tool-owned, so an UNMARKED own-line comment
+  is trapped in a `compile_error!` rather than re-anchored on a guess (delete the block, and re-add
+  the text with a `keep` marker if it was yours); trailing (end-of-line) comments are not carried —
+  move them to their own line (a
   `// cddl-codegen:` tag that `rustfmt` itself folded into trailing position is the exception:
   the overlay recognizes it there, so a formatted repo needs no hand-unfolding) — and `///` doc
   text on tool-documented items is tool-owned (it flows from your CDDL/`@doc`; hand edits to it

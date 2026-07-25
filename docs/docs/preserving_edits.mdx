@@ -7,13 +7,15 @@ sidebar_position: 5
 Everything under a generated crate's `src/generated/**` is tool-owned and rewritten on every
 export. Three kinds of hand edits survive a regeneration anyway:
 
-- **comments** you add on their own line — carried automatically, no markup needed;
+- **comments** you add on their own line, marked with a `// cddl-codegen:keep` marker;
 - **inserted code**, wrapped in an `insert` block — added lines the generator never emits;
 - **replaced code**, wrapped in a `replace` block — your version swapped in over a recorded copy
   of the generated code it overrides.
 
-Anything else — an untagged code edit — is clobbered by the next export, exactly as before. The
-tags are the opt-in: explicit, reviewable in diffs, and impossible to lose silently.
+Anything else — an untagged code edit — is clobbered by the next export, exactly as before. An
+untagged *comment* is not clobbered but is not carried either: it cannot be classified, so it is
+trapped in a `compile_error!` for you to review (see [Unclassified comments](#unclassified-comments)).
+The tags are the opt-in: explicit, reviewable in diffs, and impossible to lose silently.
 
 The whole feature follows one contract, **never silent**: every preserved comment or block either
 lands back in the regenerated file, or is trapped in a `compile_error!` block so the generated
@@ -25,7 +27,8 @@ disables the entire overlay (comments and code blocks alike; see
 
 | You want to… | Use |
 |---|---|
-| annotate generated code | a plain own-line `//` comment — no markup |
+| annotate generated code | an own-line comment with a `// cddl-codegen:keep` marker |
+| annotate generated code with `///` docs | a bare `// cddl-codegen:keep` marker above the doc lines |
 | swap one generated line | a `replace` block (one-line recorded original) |
 | swap a run of lines (e.g. most of a function body) | a `replace` block |
 | replace a whole function or `impl` | a `replace` block whose recorded original is the whole item |
@@ -34,21 +37,81 @@ disables the entire overlay (comments and code blocks alike; see
 
 ## Comments
 
-Add a `//`, `///`, or `/* */` comment **on its own line** anywhere under `src/generated/**` and
-regenerate: the comment is re-anchored onto the fresh output by symbol identity (which named item
-it sits in or above) and token equality — never a textual diff, so `rustfmt` reflow can't break
-it. A comment on an unchanged item transfers; a comment above a still-present item re-attaches
-above it; a comment on a statement inside a changed body re-attaches if that exact statement
-still appears exactly once on both sides.
+**Mark your comments with `// cddl-codegen:keep`.** A generated file is full of comments the tool
+wrote — the header banner, `///` docs rendered from your CDDL, notes inside the serialization
+runtime — and on regeneration the tool has no record of what it emitted *last* time. So it cannot
+tell "I reworded my own comment" from "the user wrote this", and guessing wrong does not merely
+duplicate a line: a reworded tool comment re-anchors below the new one, and a re-wrapped paragraph
+leaves exactly the lines whose wrap changed spliced into the middle of maintained prose. The rule
+that removes the guess is: **outside a `cddl-codegen:` block, every comment in a generated file is
+tool-owned.** Yours declares itself.
+
+There are two forms. **Inline** — the whole line is your comment:
+
+```rust
+// cddl-codegen:keep this is why the bound is checked here
+```
+
+**Bare marker** — claims the contiguous run of comment lines directly below it, as one unit. One
+extra line no matter how long the run, and it is the only form that can carry `///`/`//!` doc
+comments (an inline marker's text is necessarily a `//` comment):
+
+```rust
+// cddl-codegen:keep
+/// from-bytes using the exact CBOR format
+/// this type was serialized with.
+```
+
+The run ends at the first line that is not a comment on the immediately following line — so a blank
+line, or a line of code, terminates it. The marker travels with your text: it is part of what gets
+carried, and removing it on a later regeneration makes the comment unclassified again.
+
+Marked comments are re-anchored onto the fresh output by symbol identity (which named item they sit
+in or above) and token equality — never a textual diff, so `rustfmt` reflow can't break them. A
+comment on an unchanged item transfers; a comment above a still-present item re-attaches above it; a
+comment on a statement inside a changed body re-attaches if that exact statement still appears
+exactly once on both sides.
+
+### Unclassified comments
+
+An own-line comment that is neither part of this run's output nor `keep`-marked is **unclassified**,
+and lands in the same `compile_error!` trap a failed block does — with a headline that claims
+nothing about who wrote it:
+
+```rust
+// cddl-codegen:unpreserved-comment (delete this block after review)
+compile_error!("cddl-codegen found a comment it cannot classify.
+Outside a `cddl-codegen:` block every comment in a generated file is tool-owned, and this one is
+neither emitted by this run nor marked as yours. It is one of two things:
+(1) stale tool output whose text changed or was removed upstream — delete this whole block;
+(2) your own comment — delete this whole block and re-add the comment with a marker:
+// cddl-codegen:keep <your text>
+…
+Original comment:
+// the text you wrote");
+```
+
+Your text is always in the message, so nothing is lost — you delete the block and either drop the
+comment (it was stale tool output) or re-add it with a marker (it was yours). When this run emits a
+comment at the same position, the message names it too, as a hint that you are most likely looking
+at a tool comment whose wording changed upstream. The hint is guidance for you; it never changes the
+tool's decision.
+
+:::caution Behavior change
+If you have free-floating comments in a generated tree from before this rule, the first regeneration
+after upgrading traps each of them. That is a one-time review pass: for each block, delete it and —
+if the text is yours — re-add it with a `// cddl-codegen:keep` marker. Nothing is silently lost, and
+after that pass regeneration is quiet again.
+:::
 
 Scope notes:
 
-- **Trailing (end-of-line) comments are not carried** — one fails loudly with a hint to move it
-  to its own line.
+- **Trailing (end-of-line) comments are not carried** — the `keep` marker is own-line only, so a
+  trailing comment fails loudly with a hint to move it to its own line.
 - **Doc text on tool-documented items is tool-owned**: `///` flows from your CDDL and the
   [`@doc` comment DSL](comment_dsl.mdx), so edit it there. A hand edit to a tool-emitted doc
-  block is dropped on regeneration (the one deliberate silent-drop class); a doc comment you add
-  where the tool does *not* document is preserved like any other comment.
+  block is dropped on regeneration (the one deliberate silent-drop class). To add doc text where
+  the tool does *not* document, use a bare `keep` marker above the `///` lines.
 
 ## Insert blocks — adding code
 
@@ -141,8 +204,10 @@ This covers: an unclosed block, an orphaned `insert-end`/`replaces`/`replace-end
 closes a delimiter it did not open (or, for a replace block, a user section and recorded original
 whose net delimiter deltas differ), an empty or unlexable recorded original, code lines under
 `replaces` (every line
-there must be `//`-commented), a recorded original spanning multiple top-level items — and *any*
-unrecognized comment starting with `// cddl-codegen:`. That last rule is what keeps the
+there must be `//`-commented), a recorded original spanning multiple top-level items, a bare
+`// cddl-codegen:keep` marker with no comment on the line below it — and *any*
+unrecognized comment starting with `// cddl-codegen:` (including a near miss like
+`// cddl-codegen:keep-this`, which is an unknown tag, not `keep`). That last rule is what keeps the
 never-silent contract airtight: a typo'd tag can never demote your block to plain text and let
 half of it be clobbered. It covers the reserved namespace wherever a marker sits, including the
 `rustfmt`-folded trailing position — so a mistyped `} // cddl-codegen:not-a-tag` at a match tail is
@@ -170,7 +235,8 @@ lost. The reasons you'll see, and what they mean:
 | `The generated code for …changed, so its recorded original no longer appears (drift)` | the generator now emits different code where your replace block applied | re-review: update your replacement for the new behavior, re-record the new original under `replaces` |
 | `…recorded original is not unique within …` / `…appears more than once…` | the item *also* changed (so the item-identity fast path didn't apply) and the recorded original then matches zero-or-multiple spots ambiguously | include more surrounding lines in the recorded original so it's unique, or re-place by hand |
 | `Its anchor lies inside code replaced by a …replace-start block` | a separate comment/insert block pointed into a span your replace block overrides | move that comment/block inside the replace block |
-| `It is a trailing (end-of-line) comment` | a plain trailing comment (no `cddl-codegen:` tag) can't be carried | move it to its own line |
+| `It is a trailing (end-of-line) comment` | a plain trailing comment (no `cddl-codegen:` tag) can't be carried | move it to its own line, with a `keep` marker |
+| `cddl-codegen found a comment it cannot classify` | an own-line comment that is neither this run's output nor `keep`-marked | delete the block; if the text is yours, re-add it with a `// cddl-codegen:keep` marker |
 
 (A trailing comment that *is* a `cddl-codegen:` marker is unfolded to its own line before scanning, so a well-formed folded block is recognized and an unknown-tag one hits the hard reserved-namespace error above rather than this row.)
 
@@ -186,8 +252,10 @@ the byte-for-byte reproducibility intact.
 
 Known residual limits, by design:
 
-- A generator-emitted `//` comment whose text changes between tool versions is indistinguishable
-  from a user comment and fails loudly once per upgrade — noisy but safe.
+- A generator-emitted `//` comment whose text changes between tool versions cannot be told apart
+  from a user comment, so it surfaces as an unclassified comment rather than being re-anchored on a
+  guess. This is the specified behavior, not a residual: the only silent outcome would be a wrong
+  one.
 - Preservation input must be lexable Rust: if a hand edit leaves an unterminated string/comment,
   the export is a hard error naming the file rather than a silent clobber.
 - A file that stops being generated (a removed/renamed type or scope) is orphaned on disk with a
