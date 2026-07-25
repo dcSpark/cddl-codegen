@@ -180,6 +180,8 @@ Tags types with JsonSchema derives and generates a crate (in wasm/json-gen) to e
 
 The generated `export_schemas()` emits one `gen_json_schema!` row per exported type. Each `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_` extern therefore must implement `schemars::JsonSchema` (part of the extern contract under these flags — see [Comment DSL § `_CDDL_CODEGEN_EXTERN_TYPE_`](./comment_dsl#_cddl_codegen_extern_type_)). Two row classes are deliberately **not** emitted, as neither could compile here: the bare BASE of an extern generic (`Foo` in `foo<T>` — it names no concrete type; the concrete instances still get rows), and any type owned by a workspace dependency (an extern-deps-dir / `--extern-import` type) — in workspace mode each crate's own json-gen run exports its own schemas, and this crate's json-gen manifest depends only on the own rust crate.
 
+The spec author can drop a further row with [`@no_json_schema_export`](./comment_dsl#no_json_schema_export) on the rule. That is the escape hatch for the case the tool cannot decide: a type whose derived schema is not its published encoding (the real one comes from a parent's hand-written impl, or its `JsonSchema` impl is a deliberate stub), and — the hard blocker — an own-spec extern whose hand-written rust type has no `schemars::JsonSchema` impl, whose row would otherwise be an `E0277` inside a generated file. It removes the row only: the derives, the CBOR/wasm surfaces, and the extern-interface export are untouched, and it is inert when this flag is off.
+
 **Possible values:**  true, false<br></br>
 **Default:** true
 

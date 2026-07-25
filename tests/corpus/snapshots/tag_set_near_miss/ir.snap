@@ -55,6 +55,7 @@ expression: ir
                             ignore: false,
                             duplicates: None,
                             custom_json: false,
+                            no_json_schema_export: false,
                             custom_serialize: None,
                             custom_deserialize: None,
                             comment: None,

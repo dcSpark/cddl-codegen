@@ -477,6 +477,16 @@ fn parse_type_choices(
         if rule_metadata.ignore {
             reject_ignore_not_applicable(types, name);
         }
+        // Recorded (not rejected) here: the `T / null` collapse registers a transparent
+        // `Option<T>` ALIAS and no rust struct, so finalize's registered-nothing check is what turns
+        // this placement into a loud rejection — one site for every struct-less rule shape.
+        // Defensive: this metadata slot is the INNER type1's own comment, which a rule-TRAILING
+        // comment does not reach (`@duplicates`/`@ignore` above read the same slot and are silently
+        // dropped for the same spelling), so in practice the mark fires only if a future AST change
+        // routes the rule comment here.
+        if rule_metadata.no_json_schema_export {
+            types.mark_no_json_schema_export(name.clone());
+        }
         types.register_type_alias(
             name.clone(),
             AliasInfo::new_from_metadata(final_type, rule_metadata),
@@ -499,6 +509,12 @@ fn parse_type_choices(
         }
         if rule_metadata.used_as_elem {
             types.mark_used_as_elem(name.clone());
+        }
+        // Same unconditional record as the single-choice path: a multi-choice rule normally
+        // registers an enum, but the tag-258 collapse can instead register a transparent alias, which
+        // finalize's registered-nothing check rejects.
+        if rule_metadata.no_json_schema_export {
+            types.mark_no_json_schema_export(name.clone());
         }
         // A multi-choice type rule can never be an extern marker, so `@raw_bytes_flavor` cannot
         // apply here — reject loudly rather than silently ignore it.
@@ -1315,6 +1331,14 @@ fn parse_type(
     }
     if rule_metadata.used_as_elem {
         types.mark_used_as_elem(type_name.clone());
+    }
+    // `@no_json_schema_export` is valid on any rule that registers a rust type, whatever its shape
+    // (extern, record, enum, wrapper, collection typedef), so it is recorded unconditionally here.
+    // The "registers no rust struct at all" misplacement cannot be decided from the rule BODY — a
+    // generic instance (`my_foo = foo<uint>`) only materializes its struct during finalize's generic
+    // resolution — so that rejection is deferred to `IntermediateTypes::finalize`.
+    if rule_metadata.no_json_schema_export {
+        types.mark_no_json_schema_export(type_name.clone());
     }
     // `@raw_bytes_flavor` is valid ONLY on a `_CDDL_CODEGEN_EXTERN_TYPE_` rule (the extern-marker
     // branch below marks it). Anywhere else it would silently do nothing, so reject loudly here in

@@ -197,6 +197,17 @@ pub struct IntermediateTypes<'a> {
     // `Copy` assertion for each (see `export.rs`), and the tag rides the extern-interface seam like
     // `@raw_bytes_flavor` so `--extern-import` consumers inherit it. See `RuleMetadata::copy`.
     copy_externs: BTreeSet<RustIdent>,
+    // Idents of rules tagged `@no_json_schema_export`: the json-gen crate emits no
+    // `gen_json_schema!` row for them (see the row loop in `generation/mod.rs`). Carried as a
+    // per-ident marker set rather than a `RustStructConfig` field because `RustStruct::new_extern` /
+    // `new_raw_bytes` build with `RustStructConfig::default()` — they drop rule metadata entirely, so
+    // a config field would be silently dead on extern rules, which are the directive's primary
+    // customer (an own-spec extern whose hand-written rust type has no `schemars::JsonSchema` impl).
+    // The marker set covers extern and ordinary rules through ONE mechanism. Deliberately does NOT
+    // ride the extern-interface seam (unlike `@copy`): a dep-owned type's row is already skipped by
+    // the non-export-scope rule, so a consumer has nothing to inherit. Determinism: `BTreeSet`.
+    // See `RuleMetadata::no_json_schema_export`.
+    no_json_schema_export: BTreeSet<RustIdent>,
     // Base generic extern idents tagged `@raw_bytes_flavor`: an instance of one whose argument
     // resolves to a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` aliases the `<Base>RawBytes` wrapper flavor
     // instead of the plain `<Base>`. Opt-in only — see `RuleMetadata::raw_bytes_flavor`.
@@ -261,6 +272,7 @@ impl<'a> IntermediateTypes<'a> {
             key_demand_roots: BTreeMap::new(),
             used_as_elem: BTreeSet::new(),
             copy_externs: BTreeSet::new(),
+            no_json_schema_export: BTreeSet::new(),
             raw_bytes_flavor: BTreeSet::new(),
             raw_bytes_flavor_emitted: BTreeSet::new(),
             rust_name_pins: BTreeMap::new(),
@@ -2823,6 +2835,32 @@ impl<'a> IntermediateTypes<'a> {
                 self.record_rejection(msg);
             }
         }
+        // `@no_json_schema_export` suppresses a rule's `gen_json_schema!` row. A rule that registers
+        // NO `RustStruct` at all — a transparent alias (`x = uint`), a `@no_alias` alias, a named
+        // binding to a set nominal — has no row for the directive to
+        // suppress, so it would be silently dead: reject it in the house style of the other
+        // directive-misplacement rejections. Deliberately NOT rejected on a rule that registers a
+        // struct the row loop skips for other reasons (an `Array`/`Table` typedef, a generic-extern
+        // base): those are redundant-but-honest annotations, and keeping the rule "valid wherever a
+        // rust type is produced" keeps it simple and flag-independent. Deferred to here rather than
+        // the parse walk because a generic INSTANCE (`my_foo = foo<uint>`) only registers its struct
+        // during the generic resolution above. Flag-independent (outside the `cli.wasm` block above):
+        // the directive means the same thing under every flag set. Determinism: `BTreeSet` iteration.
+        let struct_less_no_json_schema_export = self
+            .no_json_schema_export
+            .iter()
+            .filter(|ident| !self.rust_structs.contains_key(ident))
+            .cloned()
+            .collect::<Vec<_>>();
+        for ident in struct_less_no_json_schema_export {
+            self.record_rejection(format!(
+                "@no_json_schema_export on `{ident}`: this rule registers no rust struct (it is a \
+                 transparent alias — e.g. a plain type alias `{ident} = uint`, or a `@no_alias` \
+                 alias), so there is no `gen_json_schema!` row to suppress and the directive would \
+                 silently do nothing. Remove it from this rule (or move it to the rule that actually \
+                 produces the type)."
+            ));
+        }
         // Surface any rejection recorded DURING finalize (e.g. the float-key check above, which can
         // only run post-generic-resolution). Without this the entry-point check at the top of
         // finalize would silently swallow anything recorded here.
@@ -3622,6 +3660,17 @@ impl<'a> IntermediateTypes<'a> {
 
     pub fn mark_copy_extern(&mut self, name: RustIdent) {
         self.copy_externs.insert(name);
+    }
+
+    /// Whether the rule `ident` was declared `@no_json_schema_export` — the spec author's statement
+    /// that this type is not part of the published JSON-schema surface. The json-gen row loop skips
+    /// it; nothing else consults this.
+    pub fn is_no_json_schema_export(&self, ident: &RustIdent) -> bool {
+        self.no_json_schema_export.contains(ident)
+    }
+
+    pub fn mark_no_json_schema_export(&mut self, name: RustIdent) {
+        self.no_json_schema_export.insert(name);
     }
 
     /// The base generic extern idents for which a flavored (`<Base>RawBytes`) instance was actually

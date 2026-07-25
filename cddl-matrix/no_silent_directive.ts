@@ -104,6 +104,19 @@ const CORPUS: Cell[] = [
     shape: "open struct-map at rule-position @ignore (valid only on the rest entry)",
   },
   {
+    // `@no_json_schema_export` suppresses a `gen_json_schema!` row in the json-gen crate. This gate
+    // generates RUST-ONLY, where no such row exists — so the directive is legitimately byte-identical
+    // here, and the allowlist entry below is the honest record of that (the row-level effect is pinned
+    // by `snapshot_tests::json_gen_extern_schema_rows` and `integration_tests::json_extern`). The cell
+    // still earns its place: it proves the directive is ACCEPTED (not rejected) on a struct-registering
+    // rule, which is the half of §"misuse rejection" a rejection test cannot assert.
+    id: "record_no_json_schema_export_rust_only",
+    ruleBody: "[x: uint]",
+    base: [],
+    toggled: "@no_json_schema_export",
+    shape: "record rule, rust-only generation (the row it suppresses is json-gen-only)",
+  },
+  {
     // Bare `@newtype` on a nominalized 258 set is an ACCEPTED NO-OP: the set already nominalizes into a
     // wrapper, and a bare `@newtype` requests an inherent `get()` that is deliberately suppressed (it
     // would shadow `OrderedSet::get(index)` through `Deref` — E0061). So it is byte-identical with/without
@@ -134,6 +147,11 @@ const ALLOWLIST: Record<string, string> = {
   // `Deref`), so it adds nothing. A custom `@newtype <name>` getter IS honored (see the positive cell).
   two_arm_258_idiom_bare_newtype_noop:
     "bare @newtype on a nominalized 258 set = no getter (suppressed to avoid the Deref shadow); byte-identical no-op",
+  // `@no_json_schema_export` only removes a `gen_json_schema!` row from the json-gen crate, which
+  // rust-only generation never emits — so it is byte-identical HERE by construction (and inert under
+  // any flag set without `--json-schema-export`, by design: one spec, many flag sets).
+  record_no_json_schema_export_rust_only:
+    "@no_json_schema_export suppresses a json-gen row only; rust-only generation emits no rows, so byte-identical no-op",
 };
 
 /** The `@`-prefixed directive token used to detect an acknowledging notice/rejection

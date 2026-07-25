@@ -446,7 +446,8 @@ fn whole_program() {
 /// Content pin for the json-gen extern schema-row fix (feature request 05). Drives the generator
 /// in-process (no compile) over `tests/json-extern-rows/inputs` — a directory fixture combining a
 /// plain extern, a generic extern + concrete instance, a dep-owned (extern-deps-dir) extern, and an
-/// in-crate SCOPED type — and pins exactly which `gen_json_schema!` rows the json-gen crate emits.
+/// in-crate SCOPED type, plus a `@no_json_schema_export`-annotated extern and ordinary rule — and
+/// pins exactly which `gen_json_schema!` rows the json-gen crate emits.
 /// The full compile proof (that the KEPT rows build against hand-written `schemars::JsonSchema`
 /// impls, and the generic-base row's removal fixes an E0107) lives in
 /// `integration_tests::json_extern` and `integration_tests::multifile_json_preserve`; this is the
@@ -498,6 +499,19 @@ fn json_gen_extern_schema_rows() {
         !mod_rs.contains("dep_crate"),
         "dep-owned (non-export scope) rows must be skipped:\n{mod_rs}"
     );
+
+    // SKIPPED: `@no_json_schema_export` — the spec author's declaration that a type is not part of
+    // the published JSON surface. Pinned on BOTH rule kinds because they reach the flag by different
+    // routes: an EXTERN rule (`RustStruct::new_extern` drops rule metadata into
+    // `RustStructConfig::default()`, so only the `IntermediateTypes` marker set carries it) and an
+    // ORDINARY generated record. Their unannotated twins above (`MyExtern`, `BigThing`) are asserted
+    // KEPT, so this cannot pass by suppressing everything.
+    for suppressed in ["QuietExtern", "QuietThing"] {
+        assert!(
+            !mod_rs.contains(suppressed),
+            "@no_json_schema_export row for `{suppressed}` must be skipped:\n{mod_rs}"
+        );
+    }
 }
 
 /// Regression pin for feature request 07 (commit `08bc1d9` "scope_references walks type_aliases"):

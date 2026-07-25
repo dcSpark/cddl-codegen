@@ -3,7 +3,19 @@
 ; names no concrete type — E0107), while KEEPING the plain extern (`MyExtern`) and the concrete
 ; generic INSTANCE (`MySet = ExtSet<u64>`) rows, which compile because the user's hand-written
 ; externs implement `schemars::JsonSchema` (the documented `--json-schema-export` extern contract).
+;
+; `@no_json_schema_export` compile proof (the `no_schema_extern` / `hand_json_parent` pair). An
+; own-spec extern whose hand-written rust type deliberately has NO `schemars::JsonSchema` impl —
+; because its published JSON encoding is produced by its PARENT's hand-written impl, not by a
+; derive on itself. Without the directive its `gen_json_schema!` row is an `E0277` INSIDE a
+; generated file (the one file class a consumer is told never to hand-edit); with it, the json-gen
+; crate this fixture builds compiles. The parent carries `@custom_json @no_json_schema_export`
+; together — the legal, meaningful combination ("I supply the JSON impls, and this type is not a
+; published schema root") — which is also what keeps the parent from deriving `schemars::JsonSchema`
+; over a field type that has none.
 my_extern = _CDDL_CODEGEN_EXTERN_TYPE_
 ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_
 my_set = ext_set<uint>
+no_schema_extern = _CDDL_CODEGEN_EXTERN_TYPE_ ; @no_json_schema_export
+hand_json_parent = [n: no_schema_extern] ; @custom_json @no_json_schema_export
 big_thing = [e: my_extern, s: my_set]

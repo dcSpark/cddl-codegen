@@ -35,6 +35,41 @@ impl serialization::Deserialize for MyExtern {
     }
 }
 
+// `no_schema_extern` (`@no_json_schema_export`): serialization impls and serde derives, but
+// deliberately NO `schemars::JsonSchema` impl — its published JSON encoding is produced by
+// `HandJsonParent`'s hand-written impl, so a derived schema for it would be a contradictory
+// artifact. The directive is what keeps the json-gen crate free of a `gen_json_schema!` row that
+// would be an `E0277` here. Do not add a `JsonSchema` impl: its absence IS the assertion.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct NoSchemaExtern {
+    pub value: u64,
+}
+
+impl NoSchemaExtern {
+    pub fn new(value: u64) -> Self {
+        Self { value }
+    }
+}
+
+impl cbor_event::se::Serialize for NoSchemaExtern {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut cbor_event::se::Serializer,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+        serializer.write_unsigned_integer(self.value)
+    }
+}
+
+impl serialization::Deserialize for NoSchemaExtern {
+    fn deserialize(
+        raw: &mut cbor_event::de::Deserializer,
+    ) -> Result<Self, error::DeserializeError> {
+        Ok(Self {
+            value: raw.unsigned_integer()?,
+        })
+    }
+}
+
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct ExtSet<T>(pub Vec<T>);
 

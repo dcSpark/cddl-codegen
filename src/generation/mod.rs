@@ -996,6 +996,19 @@ impl GenerationScope {
                 if !types.scope(rust_ident).export() {
                     continue;
                 }
+                // Skip a rule the SPEC AUTHOR declared out of the published JSON surface
+                // (`@no_json_schema_export`). Unlike the four skips above — each a property the tool
+                // derives from the IR — this one is not derivable: a type having a derivable JSON
+                // schema is not evidence that the derived shape is that type's published encoding. A
+                // `serde`/`schemars` derive can exist as an artifact while the real encoding is
+                // produced by a PARENT's hand-written impl (the row would then publish a
+                // contradictory shape), the type's `JsonSchema` impl can be a deliberate stub (a junk
+                // row), or — for an own-spec extern — the hand-written rust type may have no
+                // `JsonSchema` impl at all, making the row an `E0277` inside a generated file. The
+                // tool cannot tell those apart from a genuine schema root; the spec author can.
+                if types.is_no_json_schema_export(rust_ident) {
+                    continue;
+                }
                 main_lines_by_file
                     .entry(types.scope(rust_ident).clone())
                     .or_default()
