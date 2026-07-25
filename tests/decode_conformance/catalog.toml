@@ -2422,7 +2422,59 @@ expect = "accept"
 id = "contain.occurrence-target.grpent.member.zero_array"
 axis = "containment"
 example = "a = [uint, * bytes]"
-pinned_reason = "open-array rest tail newly supported; decode-foreign vectors are minted by the scoped mint pass (--mint-decode-foreign --only=contain.occurrence-target.grpent.member.zero_array), pinned in the delivering change per the pin-in-the-same-change rule until that mint runs"
+spec = "a = [uint, * bytes]"
+mode = "standalone"
+type_name = "A"
+
+[[row.vector]]
+hex = "811909c7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8219016c4c63686f72656f677261706873"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "821901f64b7072656a75646963696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82191158457061722773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8219120d4a616c7465726174696f6e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8419039144436c656f4a48617468617761792773486c6974746c652773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "84190aeb43626f614970696c6c626f7865734761637574652773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8518754a636f6e76657273656c79494e61697061756c277348776f727269657273495a616d626f6e692773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "851903a24944656c69626573277348496e6772616d277349616363657074696e6747726f756e646572"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "85190e8b48656d697373696f6e49416c656a616e647261474261676769657346466f72626573"
+source = "ruby-generate"
+expect = "accept"
 
 [[row]]
 id = "contain.occurrence-target.memberkey.type1.open_struct"
