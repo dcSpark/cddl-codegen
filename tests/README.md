@@ -1439,13 +1439,17 @@ that pins the LOUD behaviour (a non-zero exit) rather than just the happy path �
 script produces a `.d.ts` that looks plausible and a build that exits 0. Four tests cover it,
 cheapest-in-isolation first:
 
-- **`js_schema_to_ts`** runs the shipped `run-json2ts.js` over committed schema fixtures
+- **`js_schema_to_ts`** runs the shipped `run-json2ts.js` over the committed schema document
   (`tests/json2ts/schemas`) using the pinned `json-schema-to-typescript`, asserting the emitted
-  `.d.ts` (JSON-suffixed identifiers, resolved cross-refs, enum → union, the `additionalProperties`
-  guard on both a struct and a map type). A second phase adds a schema that cannot compile and pins
-  the failure direction: non-zero exit, the error named, and the last-good `json-types.d.ts` left on
-  disk. (Dropping the type and exiting 0 leaves the merged `.d.ts` referencing a name nothing
-  declares, with nothing in the build output saying so.)
+  `.d.ts`: every definition declared exactly once and JSON-suffixed (including one nothing but
+  another definition references — the type a per-file design left referenced-but-undeclared),
+  resolved refs, enum → union, the `additionalProperties` guard on both a struct and a map
+  definition, a definition whose own `title` does not become its emitted name, no near-duplicate
+  `FooJSON1` from a `$ref` with a sibling annotation, and no synthetic root. Four further phases pin
+  the failure directions, each a non-zero exit that leaves the last-good `json-types.d.ts` on disk: a
+  document that cannot compile, a stale per-type schema beside the document, two documents, and a
+  document with no definitions. (Any of them exiting 0 ships a `.d.ts` that silently drops part of
+  the JSON surface, with nothing in the build output saying so.)
 - **`js_d_ts_merge`** runs `json-ts-types.js` in isolation over hand-written fixtures — no
   wasm-pack/json2ts needed — laid out in the shipped `<root>/scripts/*.js` shape the script resolves
   its own paths from. Five cases, one per failure mode: the happy path (specialize + append); a class
@@ -1468,9 +1472,13 @@ cheapest-in-isolation first:
   `cargo +stable`) is the point; replicating the steps in Rust would let the script rot. This is the
   ONLY layer that exercises `#[wasm_bindgen]` macro-expansion → a real wasm-pack `.d.ts` → the JS-side
   merge end-to-end — the systematic wasm gates `cargo check` on the host target and can't see any of
-  it. Asserts pin each stage: the layout copy block, a wasm-pack `.d.ts`, a nonempty json-gen
-  `schemas/`, `to_json_value(): FooJSON;` + `export interface FooJSON` in the merged `.d.ts` (proving
-  the merge ran on real output, not a fixture), and a `.tgz` from `wasm-pack pack`. It builds the
+  it. Asserts pin each stage: the layout copy block, a wasm-pack `.d.ts`, a json-gen `schemas/` holding
+  exactly one `<lib>.schema.json`, `to_json_value(): FooJSON;` + `export interface FooJSON` in the
+  merged `.d.ts` (proving the merge ran on real output, not a fixture), and a `.tgz` from `wasm-pack
+  pack`. It also carries the end-to-end dangling-type pin: the fixture's `inner_no_row` gets no
+  registration row (`@no_json_schema_export`) but IS referenced by `foo`, so the document must carry
+  it in `$defs` and the merged `.d.ts` must DECLARE it — under a file-per-row design that type is a
+  `TS2304` in the shipped package that no Rust-side gate can see. It builds the
   generated crate with the user's `+stable` toolchain (faithful to the shipped consumer experience),
   so a `+stable` failure here is a real finding about shipped output, not a test bug. Needs
   node+npm+wasm-pack + a rustup `stable` toolchain; skips locally when absent (asserts their presence

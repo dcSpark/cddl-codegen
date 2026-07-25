@@ -104,7 +104,7 @@ const CORPUS: Cell[] = [
     shape: "open struct-map at rule-position @ignore (valid only on the rest entry)",
   },
   {
-    // `@no_json_schema_export` suppresses a `gen_json_schema!` row in the json-gen crate. This gate
+    // `@no_json_schema_export` suppresses a schema-registration row in the json-gen crate. This gate
     // generates RUST-ONLY, where no such row exists — so the directive is legitimately byte-identical
     // here, and the allowlist entry below is the honest record of that (the row-level effect is pinned
     // by `snapshot_tests::json_gen_extern_schema_rows` and `integration_tests::json_extern`). The cell
@@ -120,7 +120,7 @@ const CORPUS: Cell[] = [
     // The PLAIN GROUP arm of `parse_rule` reaches neither `parse_type` nor `parse_type_choices`, so
     // it needs its own directive-marking site — and shipped without one, silently dropping
     // `@no_json_schema_export` on a spliced group (which does get a row). Note what this gate can and
-    // cannot see: rust-only generation emits no `gen_json_schema!` rows at all, so the cell is
+    // cannot see: rust-only generation emits no schema-registration rows at all, so the cell is
     // byte-identical whether or not the arm marks, and it is ALLOWLISTED rather than a catch. It
     // earns its place as the inventory record for the arm, and it flips to a loud PASS-by-rejection
     // if this shape is ever wrongly moved onto the struct-less rejection path. The systematic catch
@@ -163,7 +163,7 @@ const ALLOWLIST: Record<string, string> = {
   // `Deref`), so it adds nothing. A custom `@newtype <name>` getter IS honored (see the positive cell).
   two_arm_258_idiom_bare_newtype_noop:
     "bare @newtype on a nominalized 258 set = no getter (suppressed to avoid the Deref shadow); byte-identical no-op",
-  // `@no_json_schema_export` only removes a `gen_json_schema!` row from the json-gen crate, which
+  // `@no_json_schema_export` only removes a schema-registration row from the json-gen crate, which
   // rust-only generation never emits — so it is byte-identical HERE by construction (and inert under
   // any flag set without `--json-schema-export`, by design: one spec, many flag sets).
   record_no_json_schema_export_rust_only:

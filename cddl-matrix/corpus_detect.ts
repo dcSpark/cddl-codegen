@@ -257,7 +257,7 @@ const DSL_TAGS: TagParse[] = [
     return { id: `dsl.duplicates.${m[0]}`, rest: after.slice(m[0].length) };
   },
   noArg("dsl.custom_json", "@custom_json"),
-  // @no_json_schema_export: bare no-arg tag (suppresses the rule's `gen_json_schema!` row in the
+  // @no_json_schema_export: bare no-arg tag (suppresses the rule's schema-registration row in the
   // json-gen crate under `--json-schema-export`, and nothing else). No prefix relation with
   // `@no_alias` (they diverge at `a` vs `j`), so the two are order-free in the alt.
   noArg("dsl.no_json_schema_export", "@no_json_schema_export"),
