@@ -16,12 +16,22 @@
 ; the published JSON surface" declaration), on BOTH rule kinds the directive must reach:
 ;   - `quiet_extern` : annotated EXTERN   -> row SKIPPED (its unannotated twin `my_extern` is kept)
 ;   - `quiet_thing`  : annotated ORDINARY -> row SKIPPED (its unannotated twin `big_thing` is kept)
-; The extern case is the one a `RustStructConfig` field would silently miss — `RustStruct::new_extern`
-; builds with `RustStructConfig::default()` and drops rule metadata — so it is pinned explicitly.
+;   - `quiet_group`  : annotated PLAIN GROUP -> row SKIPPED (its unannotated twin `loud_group` is kept)
+; Each annotated rule is paired with an unannotated twin of the SAME shape, so the pin cannot pass by
+; suppressing everything. The three shapes are here because they reach the flag by three DIFFERENT
+; routes through `parsing.rs`, and a route that is missed is a SILENT drop (the exact failure class
+; this directive exists to prevent):
+;   - an extern rule's metadata never reaches `RustStructConfig` (`RustStruct::new_extern` builds with
+;     `RustStructConfig::default()`), so only the `IntermediateTypes` marker set can carry it;
+;   - an ordinary type rule flows through `parse_type` / `parse_type_choices`;
+;   - a PLAIN GROUP rule is handled by `parse_rule`'s own `Rule::Group` arm, which never reaches
+;     either of those — it needs its own marking site.
 my_extern = _CDDL_CODEGEN_EXTERN_TYPE_
 quiet_extern = _CDDL_CODEGEN_EXTERN_TYPE_ ; @no_json_schema_export
 ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_
 ext_unused<T> = _CDDL_CODEGEN_EXTERN_TYPE_
 my_set = ext_set<uint>
 quiet_thing = [q: uint] ; @no_json_schema_export
-big_thing = [e: my_extern, s: my_set, d: dep_thing, sc: scoped_thing]
+loud_group = (lg: uint)
+quiet_group = (qg: uint) ; @no_json_schema_export
+big_thing = [e: my_extern, s: my_set, d: dep_thing, sc: scoped_thing, loud_group, quiet_group]

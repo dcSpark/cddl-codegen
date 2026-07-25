@@ -1186,6 +1186,58 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   pin time; the alternative that keeps the ledger honest same-commit is to land the row ACTIVE with a
   hand-derived accept vector so its skip entry is immediately valid.
 
+- **A rule-position directive reaches only the rule SHAPES whose parse path happens to carry a
+  marking site, and a shape that bypasses every site is a SILENT drop — no gate covers the
+  directive×rule-shape reachability product.** Two proven instances at the same seam, one of them
+  twice: `parse_rule`'s `Rule::Group` arm reaches neither `parse_type` nor `parse_type_choices`, so
+  `@rust_name` was silently dropped on plain groups until a marking site was added there, and
+  `@no_json_schema_export` shipped inheriting exactly the same hole (a SPLICED plain group does
+  register a rust struct and therefore does get a `gen_json_schema!` row, so the directive was live
+  and dead at once). Caught only by an orchestrator hand-probing a shape no fixture contained.
+  `cddl-matrix/no_silent_directive.ts` cannot see this class for a JSON-surface directive: it
+  generates rust-only, where the suppressed artifact does not exist, so every cell is byte-identical
+  and allowlisted regardless of whether the marking site fires. Owned meanwhile by the
+  twin-pair convention in `snapshot_tests::json_gen_extern_schema_rows` (each annotated rule paired
+  with an unannotated same-shape control, under the flags where the effect is visible) plus the
+  accepted/rejected shape table in
+  `robustness_tests::no_json_schema_export_misuse_rejects_gracefully`. Mechanical layer, on the
+  THIRD instance (or the next directive whose valid placement spans more than one parse path):
+  enumerate the rule shapes once — type rule (single-choice, multi-choice, tagged, parenthesized),
+  plain group, generic definition, generic instance, extern, raw-bytes — and drive every
+  rule-position directive across the product, asserting each cell is one of {effect visible,
+  loudly rejected}, never {accepted and inert}. The shape list is the expensive part and it is
+  already written down: the sweep table in the `@no_json_schema_export` delivery's review thread.
+
+- **The `T / null` -> `Option<T>` collapse reads a different metadata slot from every other
+  type-rule path, so a rule-position directive written on such a rule is silently dropped.**
+  `parse_type_choices`' optional-inner branch builds its `RuleMetadata` from the INNER type1's own
+  `comments_after_type`, while its sibling branch (and `parse_type`) merge the rule-position slots a
+  trailing `; @x` actually lands in. So `opt = null / uint ; @duplicates reject` generates exit-0
+  with the directive dropped — confirmed empirically as the CURRENT behaviour for `@duplicates`, and
+  the same for `@ignore` and `@no_json_schema_export`, all three of which have a rejection at that
+  site that therefore never fires. Unlike the group-rule parser entry above this one IS fixable
+  here: the comment is present in the AST, just read from the wrong slot. Owned meanwhile by
+  nothing — the drop is invisible. The fix is to merge the same rule-position slots the non-optional
+  branch merges before the branch splits, which turns each of the three directives into the loud
+  rejection its site already spells; do it behind a vector per directive, since a spec relying on
+  today's silence would start failing (correctly) at generation. Trigger: any consumer report of a
+  directive "doing nothing" on a nullable rule, or the next directive added with a rule-position
+  rejection.
+
+- **A group rule's trailing comment is DISCARDED by the CDDL parser in two spellings, so every
+  rule-position directive on a plain group is silently dropped there.** `cddl` 0.10.2 leaves every
+  AST comment slot `None` (verified by dumping the AST) when a group rule's closing paren is on its
+  own line (`grp = (\n a: uint\n) ; @x`), and when the last group entry's own trailing slot is
+  already occupied by a field-position `@name` — the two positions share that slot, and only one
+  comment survives. Affects `@rust_name` and `@no_json_schema_export` identically; no extraction in
+  `parsing.rs` can recover what the parser never recorded. Owned meanwhile by
+  `group_rule_pin_metadata`'s doc comment and the `@no_json_schema_export` docs section, both of
+  which name the single-line spelling as the supported one. The fix is upstream (a parser that binds
+  the comment to `Rule::Group`'s `comments_after_rule`); build a local workaround only if a consumer
+  spec cannot use the single-line form — a pre-parse source scan that attributes a trailing comment
+  to the group rule by line position would be a second, drift-prone comment parser, so it needs a
+  real consumer to justify it.
+
 ## Deferred features (build when a real consumer needs them)
 
 - **Consumer-side auto-deferral of reject-set wrappers (`--wrapper-requests`).** The dep-side

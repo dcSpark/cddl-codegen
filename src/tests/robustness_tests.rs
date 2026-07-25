@@ -592,6 +592,22 @@ fn no_json_schema_export_misuse_rejects_gracefully() {
             "@no_alias alias",
             "foo = uint ; @no_alias @no_json_schema_export\nroot = [a: foo]\n",
         ),
+        // A generic DEFINITION is not itself a type — only its instantiations are, and they do not
+        // inherit the directive, so annotating the base is dead. Annotate the instance instead.
+        (
+            "generic definition",
+            "foo<T> = [a: T] ; @no_json_schema_export\ninst = foo<uint>\nroot = [a: inst]\n",
+        ),
+        // A named binding to a set nominal is a transparent `pub type Foo = SetU64;` alias.
+        (
+            "named binding to a set nominal",
+            "gset<T> = #6.258([* T]) / [* T]\nfoo = gset<uint> ; @no_json_schema_export\nroot = [a: foo]\n",
+        ),
+        // A plain group nobody splices materializes no struct, so there is no row to suppress.
+        (
+            "unspliced plain group",
+            "foo = (a: uint, b: uint) ; @no_json_schema_export\nroot = [z: uint]\n",
+        ),
     ];
     let accepted = [
         (
@@ -623,6 +639,19 @@ fn no_json_schema_export_misuse_rejects_gracefully() {
         (
             "generic-extern base",
             "foo<T> = _CDDL_CODEGEN_EXTERN_TYPE_ ; @no_json_schema_export\ninst = foo<uint>\nroot = [a: inst]\n",
+        ),
+        // A SPLICED plain group registers a struct (and gets a row), so the directive is live —
+        // `parse_rule`'s `Rule::Group` arm reaches neither `parse_type` nor `parse_type_choices`, so
+        // this shape shipped silently dropping the directive until it was pinned.
+        (
+            "spliced plain group",
+            "foo = (a: uint, b: uint) ; @no_json_schema_export\nroot = [foo]\n",
+        ),
+        // A generic INSTANCE registers its struct only during finalize's generic resolution — the
+        // reason the struct-less check runs at the END of finalize rather than in the parse walk.
+        (
+            "generic instance",
+            "base<T> = [a: T]\nfoo = base<uint> ; @no_json_schema_export\nroot = [a: foo]\n",
         ),
     ];
     let run = |seam: &str, cddl: &str, json: bool| {

@@ -470,6 +470,9 @@ fn json_gen_extern_schema_rows() {
         "gen_json_schema!(cddl_lib::MySet);",
         "gen_json_schema!(cddl_lib::BigThing);",
         "gen_json_schema!(cddl_lib::sub::module::ScopedThing);",
+        // A spliced PLAIN GROUP rule does get a row — the unannotated control for `QuietGroup`
+        // below, without which "no `QuietGroup` row" would be vacuously true.
+        "gen_json_schema!(cddl_lib::LoudGroup);",
     ] {
         assert!(
             mod_rs.contains(kept),
@@ -501,12 +504,17 @@ fn json_gen_extern_schema_rows() {
     );
 
     // SKIPPED: `@no_json_schema_export` — the spec author's declaration that a type is not part of
-    // the published JSON surface. Pinned on BOTH rule kinds because they reach the flag by different
-    // routes: an EXTERN rule (`RustStruct::new_extern` drops rule metadata into
-    // `RustStructConfig::default()`, so only the `IntermediateTypes` marker set carries it) and an
-    // ORDINARY generated record. Their unannotated twins above (`MyExtern`, `BigThing`) are asserted
-    // KEPT, so this cannot pass by suppressing everything.
-    for suppressed in ["QuietExtern", "QuietThing"] {
+    // the published JSON surface. Pinned on all THREE rule kinds, because they reach the flag by
+    // three different routes through `parsing.rs` and a missed route is a SILENT drop: an EXTERN
+    // rule (`RustStruct::new_extern` drops rule metadata into `RustStructConfig::default()`, so only
+    // the `IntermediateTypes` marker set can carry it), an ORDINARY type rule (`parse_type` /
+    // `parse_type_choices`), and a PLAIN GROUP rule (`parse_rule`'s own `Rule::Group` arm, which
+    // reaches neither of those and therefore needs its own marking site — it shipped silently
+    // dropping the directive until this vector caught it). Each has an unannotated same-shape twin
+    // asserted KEPT above (`MyExtern`, `BigThing`, `LoudGroup`), so this cannot pass by suppressing
+    // everything. Keep the shapes paired: a new rule kind that reaches the directive by a new route
+    // belongs here as a twin pair, not as a lone negative.
+    for suppressed in ["QuietExtern", "QuietThing", "QuietGroup"] {
         assert!(
             !mod_rs.contains(suppressed),
             "@no_json_schema_export row for `{suppressed}` must be skipped:\n{mod_rs}"

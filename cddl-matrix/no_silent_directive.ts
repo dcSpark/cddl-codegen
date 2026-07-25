@@ -117,6 +117,22 @@ const CORPUS: Cell[] = [
     shape: "record rule, rust-only generation (the row it suppresses is json-gen-only)",
   },
   {
+    // The PLAIN GROUP arm of `parse_rule` reaches neither `parse_type` nor `parse_type_choices`, so
+    // it needs its own directive-marking site — and shipped without one, silently dropping
+    // `@no_json_schema_export` on a spliced group (which does get a row). Note what this gate can and
+    // cannot see: rust-only generation emits no `gen_json_schema!` rows at all, so the cell is
+    // byte-identical whether or not the arm marks, and it is ALLOWLISTED rather than a catch. It
+    // earns its place as the inventory record for the arm, and it flips to a loud PASS-by-rejection
+    // if this shape is ever wrongly moved onto the struct-less rejection path. The systematic catch
+    // for the row-level drop is `snapshot_tests::json_gen_extern_schema_rows`, which pins the group
+    // shape against an unannotated twin under the json flags.
+    id: "plain_group_no_json_schema_export_rust_only",
+    ruleBody: "(a: uint, b: uint)",
+    base: [],
+    toggled: "@no_json_schema_export",
+    shape: "plain group rule (parse_rule's Rule::Group arm), rust-only generation",
+  },
+  {
     // Bare `@newtype` on a nominalized 258 set is an ACCEPTED NO-OP: the set already nominalizes into a
     // wrapper, and a bare `@newtype` requests an inherent `get()` that is deliberately suppressed (it
     // would shadow `OrderedSet::get(index)` through `Deref` — E0061). So it is byte-identical with/without
@@ -152,6 +168,10 @@ const ALLOWLIST: Record<string, string> = {
   // any flag set without `--json-schema-export`, by design: one spec, many flag sets).
   record_no_json_schema_export_rust_only:
     "@no_json_schema_export suppresses a json-gen row only; rust-only generation emits no rows, so byte-identical no-op",
+  // Same reason as the record cell — the shape differs (parse_rule's Rule::Group arm), not the
+  // rust-only invisibility.
+  plain_group_no_json_schema_export_rust_only:
+    "@no_json_schema_export on a plain group suppresses a json-gen row only; rust-only generation emits no rows, so byte-identical no-op",
 };
 
 /** The `@`-prefixed directive token used to detect an acknowledging notice/rejection

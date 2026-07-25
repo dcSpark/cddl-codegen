@@ -2837,7 +2837,8 @@ impl<'a> IntermediateTypes<'a> {
         }
         // `@no_json_schema_export` suppresses a rule's `gen_json_schema!` row. A rule that registers
         // NO `RustStruct` at all — a transparent alias (`x = uint`), a `@no_alias` alias, a named
-        // binding to a set nominal — has no row for the directive to
+        // binding to a set nominal, a generic DEFINITION (only its instantiations are types), a
+        // plain group no rule splices — has no row for the directive to
         // suppress, so it would be silently dead: reject it in the house style of the other
         // directive-misplacement rejections. Deliberately NOT rejected on a rule that registers a
         // struct the row loop skips for other reasons (an `Array`/`Table` typedef, a generic-extern
@@ -2854,11 +2855,14 @@ impl<'a> IntermediateTypes<'a> {
             .collect::<Vec<_>>();
         for ident in struct_less_no_json_schema_export {
             self.record_rejection(format!(
-                "@no_json_schema_export on `{ident}`: this rule registers no rust struct (it is a \
-                 transparent alias — e.g. a plain type alias `{ident} = uint`, or a `@no_alias` \
-                 alias), so there is no `gen_json_schema!` row to suppress and the directive would \
-                 silently do nothing. Remove it from this rule (or move it to the rule that actually \
-                 produces the type)."
+                "@no_json_schema_export on `{ident}`: this rule registers no rust struct, so there \
+                 is no `gen_json_schema!` row to suppress and the directive would silently do \
+                 nothing. Either it is a transparent alias (a plain type alias `{ident} = uint`, a \
+                 `@no_alias` alias, or a named binding to a generic instantiation), or it is a \
+                 generic DEFINITION whose instantiations own the types (annotate the instance — \
+                 `inst = {ident}<uint> ; @no_json_schema_export` — not the definition), or it is a \
+                 plain group no rule splices. Remove it from this rule, or move it to the rule that \
+                 actually produces the type."
             ));
         }
         // Surface any rejection recorded DURING finalize (e.g. the float-key check above, which can

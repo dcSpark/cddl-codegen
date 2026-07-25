@@ -122,11 +122,14 @@ pub fn parse_rule(
                 rule.name
             );
             // Freely defined group - the group body itself is already handled in `api::with_types`
-            // (`mark_plain_group`); the only per-rule work here is honoring a rule-position
-            // `@rust_name` pin, so a consumer reads the dependency's final Rust name across the crate
-            // boundary (the extern-interface export appends this pin to every exported group-body
-            // row). It was never called on the group-rule path before, so a pin on a plain group was
-            // silently dropped — the type-rule paths already call `handle_rust_name_pin`.
+            // (`mark_plain_group`). This arm reaches NEITHER `parse_type` nor `parse_type_choices`,
+            // so every rule-position directive a plain group is meant to honor needs its own site
+            // here or it is SILENTLY dropped — `@rust_name` was dropped that way once, and
+            // `@no_json_schema_export` inherited the same hole (a spliced plain group DOES register a
+            // rust struct, so it does get a `gen_json_schema!` row to suppress). Both are read off
+            // the one `group_rule_pin_metadata` extraction, which knows where cddl actually binds a
+            // group rule's trailing comment. A directive added to this list must be one with NO
+            // field-position meaning — see that fn's doc comment.
             match &rule.entry {
                 cddl::ast::GroupEntry::InlineGroup {
                     group,
@@ -137,6 +140,9 @@ pub fn parse_rule(
                     let pin_metadata =
                         group_rule_pin_metadata(group, comments_after_group.as_ref());
                     handle_rust_name_pin(types, &rust_ident, &pin_metadata);
+                    if pin_metadata.no_json_schema_export {
+                        types.mark_no_json_schema_export(rust_ident);
+                    }
                 }
                 x => panic!("Group rule with non-inline group? {:?}", x),
             }
@@ -1268,16 +1274,28 @@ fn handle_rust_name_pin(
     }
 }
 
-/// The rule-position `@rust_name` metadata for a plain GROUP rule. cddl binds a group rule's TRAILING
-/// comment (`grp = (a: uint) ; @rust_name X`) to the LAST group entry's trailing comment slot, not
+/// The rule-position metadata for a plain GROUP rule. cddl binds a group rule's TRAILING comment
+/// (`grp = (a: uint) ; @rust_name X`) to the LAST group entry's trailing comment slot, not
 /// `comments_after_group` (empirically verified — that slot is `None` for a single-line group rule),
-/// the same slot `group_entry_to_field_name` reads for a field-position `@name`. So read the pin from
-/// there, falling back to `comments_after_group` for robustness. ONLY `.rust_name` is lifted onto the
-/// rule: a field-position `@name` sharing the last entry's slot legitimately renames that field and is
-/// left to the field-naming site, so it must not leak onto the rule here.
+/// the same slot `group_entry_to_field_name` reads for a field-position `@name`. So read from there,
+/// falling back to `comments_after_group` for robustness.
+///
+/// Only directives with **no field-position meaning** may be lifted onto the rule, because that
+/// shared slot makes the two positions indistinguishable here. `@rust_name` (pins the rule's Rust
+/// type name) and `@no_json_schema_export` (suppresses the rule's `gen_json_schema!` row) both
+/// qualify — neither has any effect at a field. A field-position `@name` sharing the slot
+/// legitimately renames that field and is left to the field-naming site, so it must NOT leak onto
+/// the rule; the same bar applies to any directive added here later.
+///
+/// Two spellings put a group rule's trailing comment beyond ANY slot: a closing paren on its own
+/// line (`grp = (\n a: uint\n) ; @x`), and a last entry whose slot is already occupied by a
+/// field-position `@name`. In both, cddl 0.10.2 discards the comment during parsing — every AST
+/// comment slot is `None` (verified by dumping the AST), so no extraction here can recover it. Both
+/// directives are silently dropped in those spellings; use the single-line form. Lifting this
+/// restriction needs an upstream parser fix and is tracked in `tests/TESTING_ROADMAP.md`.
 fn group_rule_pin_metadata(group: &Group, comments_after_group: Option<&Comments>) -> RuleMetadata {
     let mut metadata = RuleMetadata::from(comments_after_group);
-    if metadata.rust_name.is_some() {
+    if metadata.rust_name.is_some() && metadata.no_json_schema_export {
         return metadata;
     }
     if let Some((entry, optional_comma)) = group
@@ -1298,7 +1316,16 @@ fn group_rule_pin_metadata(group: &Group, comments_after_group: Option<&Comments
             GroupEntry::InlineGroup { .. } => &empty,
         };
         let combined = combine_comments(entry_trailing, &optional_comma.trailing_comments);
-        metadata.rust_name = metadata_from_comments(&combined.unwrap_or_default()).rust_name;
+        let trailing = metadata_from_comments(&combined.unwrap_or_default());
+        // Per-field fill-in rather than a wholesale overwrite: `comments_after_group` and the
+        // last-entry slot are two spellings of the same rule position, and a directive found in
+        // either one counts. `@rust_name` takes the first spelling that carries it (it is a value,
+        // and merging two would be the "specified twice" panic); the boolean ORs, like every other
+        // flag in `merge_metadata`.
+        if metadata.rust_name.is_none() {
+            metadata.rust_name = trailing.rust_name;
+        }
+        metadata.no_json_schema_export |= trailing.no_json_schema_export;
     }
     metadata
 }
