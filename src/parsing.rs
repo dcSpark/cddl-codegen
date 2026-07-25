@@ -1289,10 +1289,14 @@ fn handle_rust_name_pin(
 ///
 /// Two spellings put a group rule's trailing comment beyond ANY slot: a closing paren on its own
 /// line (`grp = (\n a: uint\n) ; @x`), and a last entry whose slot is already occupied by a
-/// field-position `@name`. In both, cddl 0.10.2 discards the comment during parsing — every AST
-/// comment slot is `None` (verified by dumping the AST), so no extraction here can recover it. Both
-/// directives are silently dropped in those spellings; use the single-line form. Lifting this
-/// restriction needs an upstream parser fix and is tracked in `tests/TESTING_ROADMAP.md`.
+/// field-position `@name`. In both, the parser discards the comment — every AST comment slot is
+/// `None` (verified by dumping the AST), so no extraction here can recover it. `Rule::Group`'s own
+/// `comments_after_rule` is not an escape hatch either: the parser we pin has exactly two
+/// construction sites for it (`pest_bridge.rs`) and BOTH hardcode `None`, so reading it would be
+/// dead code. Both directives are silently dropped in those spellings; use the single-line form.
+/// Lifting this restriction needs an upstream parser fix — upstream here is the **dcSpark fork** of
+/// `cddl` pinned by git rev in `Cargo.toml` (version 0.10.6 at the pinned rev), not the crates.io
+/// crate. Tracked in `tests/TESTING_ROADMAP.md`.
 fn group_rule_pin_metadata(group: &Group, comments_after_group: Option<&Comments>) -> RuleMetadata {
     let mut metadata = RuleMetadata::from(comments_after_group);
     if metadata.rust_name.is_some() && metadata.no_json_schema_export {
