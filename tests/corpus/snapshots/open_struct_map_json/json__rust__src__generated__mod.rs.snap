@@ -53,7 +53,7 @@ fn dup_rest_rest_flatten_serialize<S: serde::Serializer>(
     crate::generated::open_struct_rest_json::serialize_flattened_rest(
         &["key_7"],
         |k: &u64| Ok::<String, std::convert::Infallible>(k.to_string()),
-        rest.iter().map(|(k, v)| (k, v)),
+        rest.iter(),
         serializer,
     )
 }
@@ -146,7 +146,7 @@ fn typed_rest_rest_flatten_serialize<S: serde::Serializer>(
     crate::generated::open_struct_rest_json::serialize_flattened_rest(
         &["key_1"],
         |k: &u64| Ok::<String, std::convert::Infallible>(k.to_string()),
-        rest.iter().map(|(k, v)| (k, v)),
+        rest.iter(),
         serializer,
     )
 }

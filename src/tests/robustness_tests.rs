@@ -3419,6 +3419,31 @@ fn open_struct_map_rest_row_front_end() {
             && json_src.contains("read_flattened_rest_pairs"),
         "the rest field must wire the flattened-JSON serialize_with/deserialize_with helpers, got:\n{json_src}"
     );
+    // An `any` range needs the natural-walk value view, so its entries expression maps each value
+    // into `NaturalAnyCborSer`.
+    assert!(
+        json_src.contains("NaturalAnyCborSer(v)"),
+        "an `any`-range rest row must render values through the natural walk, got:\n{json_src}"
+    );
+    // A TYPED range uses the value's own serde, so it needs NO value view at all: its `(&K, &V)`
+    // pairs already match the helper's item type and the entries expression is the bare `.iter()`.
+    // Wrapping them in the `any` shape's `.map(|(k, v)| (k, v))` would be an identity map, which
+    // `clippy::map_identity` (warn-by-default) flags in every consumer that builds lint-clean.
+    let typed = run_flags(
+        "foo = { 1: uint, * uint => text }\n",
+        "json_typed",
+        &["--json-serde-derives=true"],
+    )
+    .expect("a fully-typed rest row GENERATES under --json-serde-derives");
+    let typed_src = src(&typed);
+    assert!(
+        typed_src.contains("serialize_flattened_rest") && typed_src.contains("rest.iter(),"),
+        "a typed-range rest row must pass `rest.iter()` straight to the helper, got:\n{typed_src}"
+    );
+    assert!(
+        !typed_src.contains("map(|(k, v)| (k, v))"),
+        "a typed-range rest row must not emit an identity map (clippy::map_identity), got:\n{typed_src}"
+    );
     // --- wasm rest surface: open structs GENERATE under --wasm (the default), the wasm wrapper
     // gaining a `rest` getter that returns the captured entries as the minted map wrapper.
     // --wasm=true is the default, so pin generation by NOT passing --wasm=false. ---
