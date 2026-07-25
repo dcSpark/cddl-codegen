@@ -1222,3 +1222,12 @@ The output format can change slightly depending on certain command line flags:
 `--package-json true --json-schema-export true`
 
 ![](/img/output5.png)
+
+That layout nests the crates one level deeper (`rust/rust`, `rust/wasm`) and adds `package.json` plus
+a `scripts/` directory holding the two shipped JSON-schema → TypeScript scripts, `run-json2ts.js` and
+`json-ts-types.js`. `--json-schema-scripts true` writes that same `scripts/` directory *without* a
+`package.json`, leaving the crates in their usual `rust/` and `wasm/` places — for a project that
+hand-maintains its own npm manifests. The scripts resolve their inputs relative to their own location
+and work under either layout; see
+[Command line flags § `--json-schema-scripts`](./command_line_flags) for their arguments and their
+failure behaviour.

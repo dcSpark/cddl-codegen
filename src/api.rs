@@ -349,6 +349,18 @@ pub fn with_types<R>(
                 .into(),
         );
     }
+    // The copied scripts compile the per-type JSON Schemas the `--json-schema-export` json-gen crate
+    // writes; without that flag nothing ever writes a `schemas/` dir, so the scripts would be shipped
+    // as a toolchain that cannot run (and whose first action is to abort). Reject the combination up
+    // front rather than copy dead files (mirrors the two rules above).
+    if cli.json_schema_scripts && !cli.json_schema_export {
+        return Err(
+            "--json-schema-scripts=true requires --json-schema-export=true: the copied scripts read \
+             the per-type schemas the json-gen crate exports, so without them there is nothing to \
+             compile to TypeScript"
+                .into(),
+        );
+    }
     // Pre-processing files for multi-file support
     let input_files = if cli.input.is_dir() {
         let mut cddl_paths_buf = Vec::new();

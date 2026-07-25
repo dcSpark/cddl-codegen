@@ -14,6 +14,10 @@ also gets `additionalProperties: false` injected (→ no `[k: string]`). `Bar.js
 union). `Table.json` is a map whose existing `additionalProperties` object is *kept*, not clobbered
 (→ `[k: string]: number`).
 
+The failure direction — a schema that does not compile must fail the run rather than be dropped from
+the output — is covered by the same test with a deliberately-broken schema written into the work dir
+at runtime, so it is not one of the committed fixtures here.
+
 Not covered (deliberately): the dedup *skip* path — in practice `declareExternallyReferenced: false`
 plus unique titles means duplicate declarations never arise, so the pass runs but never skips. And
 `json-ts-types.js` (the wasm-pack `.d.ts` merge step) — out of scope here, gated by its own

@@ -197,10 +197,35 @@ cddl-codegen --input=example --output=export --json-schema-export true
 :::info `--package-json`
 Generates a npm package.json along with build scripts (some of these scripts require `--json-serde-derives`/`--json-schema-export` to work).
 
+With `--json-schema-export` it also copies the two JSON-schema → TypeScript scripts into `<output>/scripts/` (see `--json-schema-scripts` below for what they do, and for how to take them without the manifest).
+
 **Possible values:** true, false<br></br>
 **Default:** false
 ```bash
 cddl-codegen --input=example --output=export --package-json true --json-schema-export true
+```
+:::
+
+<br/><br/>
+
+:::info `--json-schema-scripts`
+Copies the shipped JSON-schema → TypeScript scripts — `run-json2ts.js` and `json-ts-types.js` — into `<output>/scripts/` **without writing a `package.json`**. `--package-json --json-schema-export` copies the same two scripts alongside its own manifest; this flag is the opt-in for a project that hand-maintains its npm manifests and wants the canonical scripts rather than a fork of them. Passing both flags copies once, and `--package-json`'s behaviour is unchanged.
+
+Requires `--json-schema-export`: the scripts compile the per-type schemas the `wasm/json-gen` crate writes, so without them there is nothing to read (the combination is rejected up front).
+
+What the scripts do, in order:
+
+1. `run-json2ts.js` compiles every `wasm/json-gen/schemas/*.json` to TypeScript, de-duplicates the declarations, `JSON`-suffixes every identifier so they can't collide with the wasm-bindgen types, and writes `wasm/json-gen/output/json-types.d.ts`. A schema that fails to compile **fails the run** (non-zero exit, the error printed in full) and leaves the previous output untouched.
+2. `json-ts-types.js` rewrites the wasm-pack `.d.ts` in place: it retypes each class's `to_json_value(): any` to that class's `<Class>JSON` type and appends the emitted declarations under a marker line. A class with no emitted JSON type keeps its `any` (a name nothing declares would be a `TS2304`), and the appended block is truncated and rewritten on every run, so re-running without a `rimraf ./pkg` is a fixed point rather than a duplicate-declaration error.
+
+Both scripts locate everything relative to their own directory (`<root>/scripts/*.js`), so they work in either layout — the wasm crate at `<root>/rust/wasm` under `--package-json`, or at `<root>/wasm` without it — and do not depend on the caller's working directory. Each accepts `--name=value` overrides for a non-standard layout: `--root=<dir>` and `--wasm-dir=<dir>` on both, plus `--dts=<path>` and `--method=<name>` on `json-ts-types.js`. An unrecognized argument is an error, never a silent fallback.
+
+`--dts` exists because the wasm-pack `.d.ts` is named after the crate, so it tracks `--lib-name`; by default the script picks the single non-`_bg` `.d.ts` in `pkg/`. `--method` exists because under `--wasm-cbor-json-api-macro` the JSON methods are named by *your* macro body, not by cddl-codegen: if the script finds a class that has an emitted JSON type and still declares a zero-argument method returning `any`, but nothing it could specialize, it exits non-zero naming the method it looked for rather than leaving every method untyped.
+
+**Possible values:** true, false<br></br>
+**Default:** false
+```bash
+cddl-codegen --input=example --output=export --json-schema-export true --json-schema-scripts true
 ```
 :::
 

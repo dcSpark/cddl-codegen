@@ -610,17 +610,26 @@ impl GenerationScope {
         assert!(std::path::Path::exists(&cli.static_dir));
 
         // package.json / scripts
+        //
+        // The two JSON-schema -> TypeScript scripts are copied independently of the npm manifest, so
+        // a consumer that hand-maintains its own `package.json` can still opt into the canonical
+        // scripts (`--json-schema-scripts`) instead of forking them. `--package-json
+        // --json-schema-export` keeps copying them exactly as before, so passing both flags copies
+        // once rather than twice. The scripts resolve their own paths from `<root>/scripts/*.js`, so
+        // they work under either layout (see `static/run-json2ts.js`'s `resolveWasmDir`).
+        if cli.json_schema_scripts || (cli.package_json && cli.json_schema_export) {
+            std::fs::create_dir_all(cli.output.join("scripts"))?;
+            std::fs::copy(
+                cli.static_dir.join("run-json2ts.js"),
+                cli.output.join("scripts/run-json2ts.js"),
+            )?;
+            std::fs::copy(
+                cli.static_dir.join("json-ts-types.js"),
+                cli.output.join("scripts/json-ts-types.js"),
+            )?;
+        }
         let rust_dir = if cli.package_json {
             if cli.json_schema_export {
-                std::fs::create_dir_all(cli.output.join("scripts"))?;
-                std::fs::copy(
-                    cli.static_dir.join("run-json2ts.js"),
-                    cli.output.join("scripts/run-json2ts.js"),
-                )?;
-                std::fs::copy(
-                    cli.static_dir.join("json-ts-types.js"),
-                    cli.output.join("scripts/json-ts-types.js"),
-                )?;
                 std::fs::copy(
                     cli.static_dir.join("package_json_schemas.json"),
                     cli.output.join("package.json"),
