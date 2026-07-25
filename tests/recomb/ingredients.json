@@ -750,6 +750,10 @@
       "reason": "DSL comment in an auxiliary rule (may reference user-supplied code); not self-contained"
     },
     {
+      "feature": "dsl.no_json_schema_export",
+      "reason": "DSL comment in root RHS; not a clean reusable expression"
+    },
+    {
       "feature": "dsl.raw_bytes_flavor",
       "reason": "generic-parameterized root; RHS is not a standalone expression"
     },
