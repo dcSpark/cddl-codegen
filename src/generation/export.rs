@@ -13,6 +13,87 @@ mod generated;
 pub use generated::*;
 ";
 
+/// The `add_schema` row helper emitted into `wasm/json-gen/src/generated/mod.rs` above the generated
+/// `add_schemas`. Besides routing an inline-schema row into `$defs` (see the emission site), it
+/// carries the schema document's NAME-INJECTIVITY guard: every registered type must appear in `$defs`
+/// under exactly its own `schemars::JsonSchema::schema_name()`, and no two distinct Rust types may
+/// claim one name. The guard lives HERE — in the consumer's own `cargo run` of their json-gen crate —
+/// rather than in this tool's suite, because the consumer is the party that writes the hand-written
+/// `JsonSchema` impls it bites and the party whose published TypeScript names it protects.
+///
+/// The three panics' wording is load-bearing: `snapshot_tests` pins the wiring, the
+/// `json-schema-name-*` fixtures assert on message fragments, and `docs/docs/command_line_flags.mdx`
+/// / `docs/docs/comment_dsl.mdx` quote them.
+const ADD_SCHEMA_HELPER: &str = r##"fn add_schema<T: schemars::JsonSchema>(
+    generator: &mut schemars::SchemaGenerator,
+    claimed: &mut std::collections::BTreeMap<String, &'static str>,
+) {
+    let name = <T as schemars::JsonSchema>::schema_name().into_owned();
+    let rust = std::any::type_name::<T>();
+    // A — the name ledger. Two rows claiming one published name is a silent MERGE when their
+    // `schema_id`s also match (the id DEFAULTS to the name, so schemars sees one type, emits one
+    // definition, and every reference to the loser resolves to the winner's shape) and an
+    // order-dependent RENAME when the ids differ (schemars' `{base}{i}` suffix loop). The ledger is
+    // the only check that can see the merge, since there both returned refs equal the shared name.
+    // Keyed on `type_name` rather than on mere presence: two CDDL rules that alias the SAME rust
+    // type (`a = ext<uint>` and `b = ext<uint>` both lower to a `pub type … = Ext<u64>;` alias) are
+    // two rows for one type and must not trip the guard.
+    if let Some(previous) = claimed
+        .insert(name.clone(), rust)
+        .filter(|previous| *previous != rust)
+    {
+        panic!("cddl-codegen --json-schema-export: two distinct Rust types both publish the JSON schema name\n\"{name}\":\n  {previous}\n  {rust}\nA schema document can define only one type per name, so one of these is published under the other's name or under an order-dependent \"{name}2\" — decided by registration order, not by your spec. Give each type a `schemars::JsonSchema::schema_name()` that is unique within this crate; for a generic, vary it with the parameters (e.g. `format!(\"Base_{{}}\", T::schema_name())`). Note `schema_id()` DEFAULTS to `schema_name()`, so a hand-written impl that returns a constant name makes every instantiation the same type as far as `schemars` is concerned.");
+    }
+    let schema = generator.subschema_for::<T>();
+    if <T as schemars::JsonSchema>::inline_schema() {
+        // C — an inline-schema type registers nothing, so the row publishes the returned schema under
+        // its own name. Inserting only when vacant would silently keep a DIFFERENT type's body that
+        // already claimed the name (reachable when the claimant is a non-row, non-inline type).
+        let value = schema.to_value();
+        let existing = generator.definitions().get(name.as_str()).cloned();
+        if let Some(existing) = existing {
+            if existing != value {
+                panic!("cddl-codegen --json-schema-export: {rust} publishes the inline JSON schema name \"{name}\", but the document already defines \"{name}\" with a different body. Give one of them a `schemars::JsonSchema::schema_name()` that is unique within this crate.");
+            }
+        } else {
+            generator.definitions_mut().insert(name.clone(), value);
+        }
+    } else if let Some(reference) = schema.get("$ref").and_then(|r| r.as_str()) {
+        // B — the row kept its OWN name. `subschema_for` returns `<definitions_path>/<assigned>`,
+        // where `assigned` is this type's `schema_name()` unless another type claimed it first, in
+        // which case schemars hands out `<name>2`. This is what sees a collision whose WINNER has no
+        // row of its own (a type reached only through another row's schema), which the ledger cannot.
+        // A returned schema with no `$ref` at all is not a naming decision, so it is skipped.
+        let definitions_path = generator.settings().definitions_path.to_string();
+        let definitions_path = definitions_path
+            .strip_prefix('#')
+            .unwrap_or(definitions_path.as_str());
+        let definitions_path = definitions_path
+            .strip_suffix('/')
+            .unwrap_or(definitions_path);
+        let prefix = format!("#{definitions_path}/");
+        // schemars percent-/JSON-pointer-encodes a name whose bytes are not safe inside a URI
+        // fragment (`OrderedHashMap<K, V>` becomes `OrderedHashMap%3CK,%20V%3E`) with an encoder that
+        // is not part of its public API. Comparing only names no encoder can touch keeps this guard
+        // from ever failing a build over a difference it merely cannot decode — the ledger above
+        // still covers every collision between two ROWS whatever the spelling.
+        let ref_safe_name = name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
+        // `None` when the ref carries some other prefix (nothing to compare), when the name is one
+        // the encoder may have touched, or when the row kept its own name.
+        let stolen = reference
+            .strip_prefix(prefix.as_str())
+            .filter(|assigned| ref_safe_name && *assigned != name);
+        if let Some(assigned) = stolen {
+            panic!("cddl-codegen --json-schema-export: {rust} publishes the JSON schema name \"{name}\", but the document assigned it \"{assigned}\" — another type claimed \"{name}\" first. The published name is then decided by registration order, so an unrelated spec edit can silently swap the two. Give one of them a `schemars::JsonSchema::schema_name()` that is unique within this crate.");
+        }
+    }
+}"##;
+
+/// The `add_schemas` body's first line when the spec registers at least one row: the name ledger
+/// `add_schema` threads through every row. A local (not a parameter) because `add_schemas` keeps its
+/// exact published signature — cycle 2 shipped it as the cross-crate composition point.
+const ADD_SCHEMA_LEDGER_DECL: &str = "let mut claimed: std::collections::BTreeMap<String, &'static str> = std::collections::BTreeMap::new();";
+
 /// The code-generation provenance banner stamped at the top of every generated `.rs` file in the
 /// tool-owned generated trees. Ends with a newline so it prepends cleanly onto rustfmt'd content.
 /// `pub(crate)` so the `generated_files_start_with_header` gate asserts against the same banner
@@ -1762,18 +1843,20 @@ impl GenerationScope {
             // nothing (every `@newtype` wrapper over a primitive emits exactly such an impl, since its
             // JSON form IS the primitive's). Publishing the returned schema under the type's own
             // schema name in that case is what keeps EVERY exported row a `$defs` entry.
+            //
+            // The helper also carries the document's NAME-INJECTIVITY guard, which runs in the
+            // CONSUMER's own `cargo run` of their json-gen crate rather than in our suite: a `$defs`
+            // key is the published API name (`run-json2ts.js` suffixes it with `JSON` and json2ts
+            // emits it as the TypeScript type name), so two Rust types claiming one
+            // `schemars::JsonSchema::schema_name()` either publish one type's shape under the
+            // other's name (identical `schema_id`s — the default makes `schema_name` do double duty
+            // as an identity, so schemars sees ONE type and emits ONE definition) or publish an
+            // order-dependent `<name>2` (distinct ids — schemars' `{base}{i}` suffix loop). Both are
+            // silent, and both make a published name a function of registration order rather than of
+            // the spec.
             if !self.json_lines.is_empty() {
-                lib_str.push_str(
-                    "fn add_schema<T: schemars::JsonSchema>(generator: &mut schemars::SchemaGenerator) {\n\
-                     let schema = generator.subschema_for::<T>();\n\
-                     if <T as schemars::JsonSchema>::inline_schema() {\n\
-                     generator\n\
-                     .definitions_mut()\n\
-                     .entry(<T as schemars::JsonSchema>::schema_name().into_owned())\n\
-                     .or_insert_with(|| schema.to_value());\n\
-                     }\n\
-                     }\n\n",
-                );
+                lib_str.push_str(ADD_SCHEMA_HELPER);
+                lib_str.push_str("\n\n");
             }
             let mut lib_scope = codegen::Scope::new();
             // `add_schemas` is public on purpose: it is the composition point a consumer needs to
@@ -1785,8 +1868,11 @@ impl GenerationScope {
             if self.json_lines.is_empty() {
                 // A spec whose every rule is skipped (array/table typedefs only, say) registers
                 // nothing, and the parameter would then be an unused-variable warning in generated
-                // code the consumer is told never to hand-edit.
+                // code the consumer is told never to hand-edit. An unused `claimed` local would be a
+                // NEW warning of the same class, so the ledger is emitted only when there are rows.
                 lib_add_fn.attr("allow(unused_variables)");
+            } else {
+                lib_add_fn.line(ADD_SCHEMA_LEDGER_DECL);
             }
             lib_add_fn.push_all(self.json_lines.clone());
             lib_scope.push_fn(lib_add_fn);

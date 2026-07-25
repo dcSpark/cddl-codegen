@@ -1,0 +1,47 @@
+// User-supplied definition for the `json-schema-name-stolen` fixture's extern.
+//
+// `HiddenExt` carries `@no_json_schema_export`, so it gets no registration row — it enters the
+// document only transitively, through `AlphaParent`'s derived schema. Its hand-written `JsonSchema`
+// impl claims the name `Shared`, which is also the derived `schema_name()` of the rule `shared`.
+// Do NOT rename it: claiming a name that a LATER row also claims, from a type the ledger cannot see,
+// IS the assertion.
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct HiddenExt {
+    pub value: u64,
+}
+
+impl HiddenExt {
+    pub fn new(value: u64) -> Self {
+        Self { value }
+    }
+}
+
+impl schemars::JsonSchema for HiddenExt {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Shared")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <u64 as schemars::JsonSchema>::json_schema(generator)
+    }
+}
+
+impl cbor_event::se::Serialize for HiddenExt {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut cbor_event::se::Serializer,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+        serializer.write_unsigned_integer(self.value)
+    }
+}
+
+impl serialization::Deserialize for HiddenExt {
+    fn deserialize(
+        raw: &mut cbor_event::de::Deserializer,
+    ) -> Result<Self, error::DeserializeError> {
+        Ok(Self {
+            value: raw.unsigned_integer()?,
+        })
+    }
+}

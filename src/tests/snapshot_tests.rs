@@ -466,13 +466,13 @@ fn json_gen_extern_schema_rows() {
     // KEPT rows: plain extern, concrete generic instance, in-crate root type, and the scoped
     // in-crate type at its REAL module path (the thin root's `pub use generated::*` makes it valid).
     for kept in [
-        "add_schema::<cddl_lib::MyExtern>(generator);",
-        "add_schema::<cddl_lib::MySet>(generator);",
-        "add_schema::<cddl_lib::BigThing>(generator);",
-        "add_schema::<cddl_lib::sub::module::ScopedThing>(generator);",
+        "add_schema::<cddl_lib::MyExtern>(generator, &mut claimed);",
+        "add_schema::<cddl_lib::MySet>(generator, &mut claimed);",
+        "add_schema::<cddl_lib::BigThing>(generator, &mut claimed);",
+        "add_schema::<cddl_lib::sub::module::ScopedThing>(generator, &mut claimed);",
         // A spliced PLAIN GROUP rule does get a row — the unannotated control for `QuietGroup`
         // below, without which "no `QuietGroup` row" would be vacuously true.
-        "add_schema::<cddl_lib::LoudGroup>(generator);",
+        "add_schema::<cddl_lib::LoudGroup>(generator, &mut claimed);",
     ] {
         assert!(
             mod_rs.contains(kept),
@@ -518,6 +518,23 @@ fn json_gen_extern_schema_rows() {
         assert!(
             !mod_rs.contains(suppressed),
             "@no_json_schema_export row for `{suppressed}` must be skipped:\n{mod_rs}"
+        );
+    }
+
+    // The name-injectivity guard's WIRING (the checks themselves are proven end to end by
+    // `integration_tests::json_schema_name_merge_fails` / `..._stolen_fails`, which run a json-gen
+    // crate and assert it panics — a local-tier cost). A guard that silently stops being threaded
+    // through the rows would leave both those fixtures failing for a DIFFERENT reason, so pin the
+    // three pieces that carry it here, in the fast tier: the ledger local, the helper's parameter,
+    // and the two-argument row call (asserted above with the KEPT rows).
+    for wiring in [
+        "let mut claimed: std::collections::BTreeMap<String, &'static str> =",
+        "claimed: &mut std::collections::BTreeMap<String, &'static str>,",
+        ".insert(name.clone(), rust)",
+    ] {
+        assert!(
+            mod_rs.contains(wiring),
+            "schema-name guard wiring `{wiring}` missing from the emitted json-gen crate:\n{mod_rs}"
         );
     }
 }

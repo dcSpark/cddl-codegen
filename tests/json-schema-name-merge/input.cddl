@@ -1,0 +1,14 @@
+; Negative fixture: the schema document's names must be injective, and the guard must fail the
+; CONSUMER's own json-gen run. This spec is deliberately UNBUILDABLE at the json-gen `cargo run`
+; step — `integration_tests::json_schema_name_merge_fails` asserts the run fails and names the
+; check-A message.
+;
+; The MERGE case. A generic extern reached at two instantiations resolves to ONE hand-written
+; `schemars::JsonSchema` impl; the minimal correct spelling of that impl (implement the two required
+; members and nothing else) leaves `schema_id()` defaulted to `schema_name()`, so `schemars` treats
+; `ExtSet<u64>` and `ExtSet<String>` as the SAME type: one `$defs` entry, and every reference to the
+; loser silently resolves to the winner's shape. Both returned refs equal the shared name, so no
+; "did this row keep its own name?" check can see it — only the `add_schema` name ledger can.
+ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_
+set_a = ext_set<uint>
+set_b = ext_set<text>

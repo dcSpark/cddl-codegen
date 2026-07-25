@@ -1,0 +1,62 @@
+// User-supplied definitions for the `json-schema-name-merge` fixture's generic extern.
+//
+// The `JsonSchema` impl is HAND-WRITTEN and returns a CONSTANT name — the obvious minimal spelling,
+// and the one the extern contract's silent failure mode is about. Because `schema_id()` defaults to
+// `schema_name()`, `ExtSet<u64>` and `ExtSet<String>` are one type as far as `schemars` is
+// concerned, so the document would publish one shape under a name both instantiations claim. Do NOT
+// "fix" this impl (e.g. `format!("ExtSet_{}", T::schema_name())`): its constant name IS the
+// assertion, and the fixture's whole point is that the emitted `add_schema` guard fails the run.
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct ExtSet<T>(pub Vec<T>);
+
+impl<T> ExtSet<T> {
+    pub fn new(elems: Vec<T>) -> Self {
+        Self(elems)
+    }
+}
+
+impl<T: schemars::JsonSchema> schemars::JsonSchema for ExtSet<T> {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("ExtSet")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <Vec<T> as schemars::JsonSchema>::json_schema(generator)
+    }
+}
+
+impl<T: cbor_event::se::Serialize> cbor_event::se::Serialize for ExtSet<T> {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut cbor_event::se::Serializer,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+        serializer.write_array(cbor_event::Len::Len(self.0.len() as u64))?;
+        for elem in &self.0 {
+            elem.serialize(serializer)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl<T: serialization::Deserialize> serialization::Deserialize for ExtSet<T> {
+    fn deserialize(
+        raw: &mut cbor_event::de::Deserializer,
+    ) -> Result<Self, error::DeserializeError> {
+        let mut elems = Vec::new();
+        let len = raw.array()?;
+        while match len {
+            cbor_event::Len::Len(n) => (elems.len() as u64) < n,
+            cbor_event::Len::Indefinite => true,
+        } {
+            if let cbor_event::Len::Indefinite = len {
+                if raw.cbor_type()? == cbor_event::Type::Special {
+                    assert_eq!(raw.special()?, cbor_event::Special::Break);
+                    break;
+                }
+            }
+            elems.push(T::deserialize(raw)?);
+        }
+        Ok(Self(elems))
+    }
+}
