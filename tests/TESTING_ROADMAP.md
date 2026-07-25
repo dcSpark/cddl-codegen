@@ -1561,7 +1561,19 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   a real class with its own standing system: the directive × attachment-position sweep
   `src/tests/dsl_position_tests.rs`, hard-asserted against `comment_dsl.mdx`'s claims. (The `example/`-half of this
   decision — gating the getting-started command — was accepted and shipped as
-  `integration_tests::getting_started_example`.)
+  `integration_tests::getting_started_example`.) A SECOND carve-out (2026-07-25): SYNTACTICALLY
+  INVALID directive illustrations are not prose-semantics drift either, and review's "actual
+  rate" proved one delivery late for them — the open-arrays doc pass shipped an inline example in
+  the one-line directive-before-closing-bracket spelling (the CDDL comment swallows the `]`) two
+  bullets BELOW the doc's own warning against exactly that spelling; caught in orchestrator
+  review, one delivery after the same trap class was first documented for the map-brace flavor.
+  The proven spelling class is now mechanically banned: `lint_doc_citations` scans
+  `docs/docs/*.mdx` inline spans and fenced examples for a `; @<directive>` comment sharing its
+  line with a closing `}`/`]` (self-checked canary; the warning bullet's deliberate
+  counterexamples are allowlisted by exact span text). What STAYS declined is the general
+  snippet-extraction harness; its reopening signal is now concrete: a docs example invalid for a
+  reason the narrow spelling ban cannot see (any non-directive syntax error class recurring in an
+  illustration).
 - **Full `2^N` flag powerset / PICT pairwise** — the curated named profiles cover the flag
   *combinations* worth testing, so the full powerset stays out of scope. Escaped interactions earn
   their own standing cells rather than the whole powerset — four so far (the Fourth is recorded
