@@ -12,8 +12,16 @@
 ;                                            depends on the dep)
 ;   - `scoped_thing`: in-crate scoped type -> row KEPT with its real module path
 ;                                            (`cddl_lib::sub::module::ScopedThing`)
+; It also pins the `@no_json_schema_export` suppression (the spec author's "this type is not part of
+; the published JSON surface" declaration), on BOTH rule kinds the directive must reach:
+;   - `quiet_extern` : annotated EXTERN   -> row SKIPPED (its unannotated twin `my_extern` is kept)
+;   - `quiet_thing`  : annotated ORDINARY -> row SKIPPED (its unannotated twin `big_thing` is kept)
+; The extern case is the one a `RustStructConfig` field would silently miss — `RustStruct::new_extern`
+; builds with `RustStructConfig::default()` and drops rule metadata — so it is pinned explicitly.
 my_extern = _CDDL_CODEGEN_EXTERN_TYPE_
+quiet_extern = _CDDL_CODEGEN_EXTERN_TYPE_ ; @no_json_schema_export
 ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_
 ext_unused<T> = _CDDL_CODEGEN_EXTERN_TYPE_
 my_set = ext_set<uint>
+quiet_thing = [q: uint] ; @no_json_schema_export
 big_thing = [e: my_extern, s: my_set, d: dep_thing, sc: scoped_thing]

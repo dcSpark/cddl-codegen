@@ -7459,6 +7459,13 @@ fn json() {
 /// because the hand-written externs implement `schemars::JsonSchema` (the `--json-schema-export`
 /// extern contract). Rust-only (`--wasm=false`): the extern wasm wrapper is user-owned and out of
 /// scope here, while the json-gen crate builds from the rust crate regardless of `--wasm`.
+///
+/// Also the compile proof for `@no_json_schema_export`: `no_schema_extern` is an own-spec extern
+/// whose hand-written rust type deliberately has NO `schemars::JsonSchema` impl (its published JSON
+/// encoding comes from its parent's hand-written impl), so without the directive its row would be an
+/// `E0277` inside a generated file — the one file class a consumer is told never to hand-edit. Its
+/// parent `hand_json_parent` carries `@custom_json @no_json_schema_export` together, pinning that the
+/// two are legally combinable. The json-gen `cargo run` the harness performs IS the assertion.
 #[test]
 fn json_extern() {
     use std::str::FromStr;

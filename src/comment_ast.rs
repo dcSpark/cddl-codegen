@@ -112,6 +112,16 @@ pub struct RuleMetadata {
     /// silently ignored). See [`DuplicatesPolicy`].
     pub duplicates: Option<DuplicatesPolicy>,
     pub custom_json: bool,
+    /// `@no_json_schema_export`: suppress this rule's `gen_json_schema!` row in the json-gen crate
+    /// (`--json-schema-export`) — and NOTHING else. The `serde`/`schemars` derives stay (a parent
+    /// that embeds the type still needs `JsonSchema` on it), CBOR serialization / the wasm surface /
+    /// the extern-interface export and self-check are untouched, and with `--json-schema-export` off
+    /// the directive is simply inert (one spec, many flag sets). Orthogonal to — and legally
+    /// combinable with — `@custom_json` ("I supply the JSON impls, and this type is not a published
+    /// schema root"). Bare and argument-less, so it OR-merges like the other boolean flags. On a rule
+    /// that registers no rust struct at all it is a graceful rejection (never silently ignored). See
+    /// `IntermediateTypes::is_no_json_schema_export`.
+    pub no_json_schema_export: bool,
     pub custom_serialize: Option<String>,
     pub custom_deserialize: Option<String>,
     pub comment: Option<String>,
@@ -145,6 +155,7 @@ pub fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
         ignore: r1.ignore || r2.ignore,
         duplicates: merge_metadata_fields!(r1.duplicates, r2.duplicates, "duplicates"),
         custom_json: r1.custom_json || r2.custom_json,
+        no_json_schema_export: r1.no_json_schema_export || r2.no_json_schema_export,
         custom_serialize: merge_metadata_fields!(
             r1.custom_serialize,
             r2.custom_serialize,
@@ -173,6 +184,7 @@ enum ParseResult {
     Ignore,
     Duplicates(DuplicatesPolicy),
     CustomJson,
+    NoJsonSchemaExport,
     CustomSerialize(String),
     CustomDeserialize(String),
     Comment(String),
@@ -230,6 +242,9 @@ impl RuleMetadata {
                 }
                 ParseResult::CustomJson => {
                     base.custom_json = true;
+                }
+                ParseResult::NoJsonSchemaExport => {
+                    base.no_json_schema_export = true;
                 }
                 ParseResult::CustomSerialize(custom_serialize) => {
                     merge_parse_fields!(base.custom_serialize, custom_serialize, "custom_serialize")
@@ -383,6 +398,12 @@ fn tag_custom_json(input: &str) -> IResult<&str, ParseResult> {
     Ok((input, ParseResult::CustomJson))
 }
 
+fn tag_no_json_schema_export(input: &str) -> IResult<&str, ParseResult> {
+    let (input, _) = tag("@no_json_schema_export")(input)?;
+
+    Ok((input, ParseResult::NoJsonSchemaExport))
+}
+
 fn tag_custom_serialize(input: &str) -> IResult<&str, ParseResult> {
     let (input, _) = tag("@custom_serialize")(input)?;
     let (input, _) = take_while(char::is_whitespace)(input)?;
@@ -426,6 +447,10 @@ fn whitespace_then_tag(input: &str) -> IResult<&str, ParseResult> {
         tag_ignore,
         tag_duplicates,
         tag_custom_json,
+        // No prefix relation with any sibling tag (nom `tag` = prefix match): `@no_alias` is not a
+        // prefix of `@no_json_schema_export` (they diverge at `a` vs `j`) and vice versa, so the
+        // `alt` order between the two is free.
+        tag_no_json_schema_export,
         tag_custom_serialize,
         tag_custom_deserialize,
         tag_comment,
@@ -460,6 +485,7 @@ pub const KNOWN_RULE_METADATA_TAGS: &[&str] = &[
     "@ignore",
     "@duplicates",
     "@custom_json",
+    "@no_json_schema_export",
     "@custom_serialize",
     "@custom_deserialize",
     "@doc",
@@ -502,6 +528,7 @@ fn parse_comment_name() {
                 ignore: false,
                 duplicates: None,
                 custom_json: false,
+                no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
                 comment: None,
@@ -528,6 +555,7 @@ fn parse_comment_newtype() {
                 ignore: false,
                 duplicates: None,
                 custom_json: false,
+                no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
                 comment: None,
@@ -558,6 +586,7 @@ fn parse_comment_newtype_getter_before() {
                 ignore: false,
                 duplicates: None,
                 custom_json: false,
+                no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
                 comment: None,
@@ -588,6 +617,7 @@ fn parse_comment_newtype_getter_after() {
                 ignore: false,
                 duplicates: None,
                 custom_json: false,
+                no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
                 comment: None,
@@ -614,6 +644,7 @@ fn parse_comment_newtype_and_name() {
                 ignore: false,
                 duplicates: None,
                 custom_json: false,
+                no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
                 comment: None,
@@ -644,6 +675,7 @@ fn parse_comment_newtype_and_name_and_used_as_key() {
                 ignore: false,
                 duplicates: None,
                 custom_json: false,
+                no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
                 comment: None,
@@ -674,6 +706,7 @@ fn parse_comment_used_as_key() {
                 ignore: false,
                 duplicates: None,
                 custom_json: false,
+                no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
                 comment: None,
@@ -802,6 +835,7 @@ fn parse_comment_used_as_elem() {
                 ignore: false,
                 duplicates: None,
                 custom_json: false,
+                no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
                 comment: None,
@@ -833,6 +867,7 @@ fn parse_comment_used_as_elem_and_key() {
                 ignore: false,
                 duplicates: None,
                 custom_json: false,
+                no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
                 comment: None,
@@ -863,6 +898,7 @@ fn parse_comment_used_as_key_and_elem_inverse() {
                 ignore: false,
                 duplicates: None,
                 custom_json: false,
+                no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
                 comment: None,
@@ -890,6 +926,7 @@ fn parse_comment_newtype_getter_before_used_as_elem() {
                 ignore: false,
                 duplicates: None,
                 custom_json: false,
+                no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
                 comment: None,
@@ -916,6 +953,7 @@ fn parse_comment_used_as_elem_before_newtype_getter() {
                 ignore: false,
                 duplicates: None,
                 custom_json: false,
+                no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
                 comment: None,
@@ -1127,6 +1165,7 @@ fn parse_comment_newtype_and_name_inverse() {
                 ignore: false,
                 duplicates: None,
                 custom_json: false,
+                no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
                 comment: None,
@@ -1153,6 +1192,7 @@ fn parse_comment_name_noalias() {
                 ignore: false,
                 duplicates: None,
                 custom_json: false,
+                no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
                 comment: None,
@@ -1179,6 +1219,7 @@ fn parse_comment_newtype_and_custom_json() {
                 ignore: false,
                 duplicates: None,
                 custom_json: true,
+                no_json_schema_export: false,
                 custom_serialize: None,
                 custom_deserialize: None,
                 comment: None,
@@ -1211,6 +1252,7 @@ fn parse_comment_custom_serialize_deserialize() {
                 ignore: false,
                 duplicates: None,
                 custom_json: false,
+                no_json_schema_export: false,
                 custom_serialize: Some("foo".to_string()),
                 custom_deserialize: Some("bar".to_string()),
                 comment: None,
@@ -1244,6 +1286,7 @@ fn parse_comment_all_except_no_alias() {
                 ignore: false,
                 duplicates: None,
                 custom_json: true,
+                no_json_schema_export: false,
                 custom_serialize: Some("foo".to_string()),
                 custom_deserialize: Some("bar".to_string()),
                 comment: Some("this is a doc comment".to_string()),
@@ -1298,4 +1341,72 @@ fn merge_metadata_rust_name_twice_panics() {
         ..Default::default()
     };
     let _ = merge_metadata(&a, &b);
+}
+
+// `@no_json_schema_export`: the bare no-arg directive parses standalone, and — because it is
+// argument-less — a neighbouring directive on the same line is still reachable in BOTH orders (the
+// prefix-match `alt` has no sibling that shadows it). `@custom_json` is the deliberate neighbour:
+// the two are orthogonal and legally combinable ("I supply the JSON impls, and this type is not a
+// published schema root"), so the pair must parse to both flags rather than conflict.
+#[test]
+fn parse_comment_no_json_schema_export() {
+    assert_eq!(
+        rule_metadata("@no_json_schema_export"),
+        Ok((
+            "",
+            RuleMetadata {
+                no_json_schema_export: true,
+                ..Default::default()
+            }
+        ))
+    );
+    assert_eq!(
+        rule_metadata("@custom_json @no_json_schema_export"),
+        Ok((
+            "",
+            RuleMetadata {
+                custom_json: true,
+                no_json_schema_export: true,
+                ..Default::default()
+            }
+        ))
+    );
+    assert_eq!(
+        rule_metadata("@no_json_schema_export @custom_json"),
+        Ok((
+            "",
+            RuleMetadata {
+                custom_json: true,
+                no_json_schema_export: true,
+                ..Default::default()
+            }
+        ))
+    );
+    // `@no_alias` shares the `@no` prefix but is not a prefix OF this tag (nor vice versa), so
+    // neither shadows the other in the `alt` regardless of their relative order.
+    assert_eq!(
+        rule_metadata("@no_alias @no_json_schema_export"),
+        Ok((
+            "",
+            RuleMetadata {
+                no_alias: true,
+                no_json_schema_export: true,
+                ..Default::default()
+            }
+        ))
+    );
+}
+
+// Boolean flags OR-merge across comment LINES too (the `metadata_from_comments` path), like
+// `@copy`/`@used_as_elem`.
+#[test]
+fn merge_metadata_ors_no_json_schema_export() {
+    let lhs = RuleMetadata {
+        no_json_schema_export: true,
+        ..Default::default()
+    };
+    let rhs = RuleMetadata::default();
+    assert!(merge_metadata(&lhs, &rhs).no_json_schema_export);
+    assert!(merge_metadata(&rhs, &lhs).no_json_schema_export);
+    assert!(merge_metadata(&lhs, &lhs).no_json_schema_export);
 }

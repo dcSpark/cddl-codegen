@@ -570,6 +570,110 @@ fn copy_misuse_rejects_gracefully() {
     }
 }
 
+/// `@no_json_schema_export` suppresses a rule's `gen_json_schema!` row. On a rule that registers no
+/// rust struct AT ALL there is no row to suppress, so the directive would be silently dead — the
+/// house style rejects that loudly (`@raw_bytes_flavor`, `@copy`, `@duplicates`, `@ignore` all do).
+///
+/// Two halves, both asserted here so the bar can't drift in either direction:
+/// - REJECTED: the struct-less alias shapes (a plain transparent alias, a `@no_alias` alias).
+/// - ACCEPTED: rules that DO register a struct, including the ones the row loop skips for other
+///   reasons (an `Array` typedef, a generic-extern base) — those are redundant-but-honest
+///   annotations, and the rule "valid wherever a rust type is produced" must stay simple and
+///   flag-independent. Accepted WITHOUT the json flags too: a spec is generated under several flag
+///   sets and must not have to change between them.
+#[test]
+fn no_json_schema_export_misuse_rejects_gracefully() {
+    let rejected = [
+        (
+            "plain transparent alias",
+            "foo = uint ; @no_json_schema_export\nroot = [a: foo]\n",
+        ),
+        (
+            "@no_alias alias",
+            "foo = uint ; @no_alias @no_json_schema_export\nroot = [a: foo]\n",
+        ),
+    ];
+    let accepted = [
+        (
+            "extern rule",
+            "foo = _CDDL_CODEGEN_EXTERN_TYPE_ ; @no_json_schema_export\nroot = [a: foo]\n",
+        ),
+        (
+            "record rule",
+            "foo = [x: uint] ; @no_json_schema_export\nroot = [a: foo]\n",
+        ),
+        (
+            "enum rule",
+            "foo = uint / text ; @no_json_schema_export\nroot = [a: foo]\n",
+        ),
+        (
+            "@newtype wrapper",
+            "foo = uint ; @newtype @no_json_schema_export\nroot = [a: foo]\n",
+        ),
+        (
+            "with @custom_json (orthogonal, legally combinable)",
+            "foo = [x: uint] ; @custom_json @no_json_schema_export\nroot = [a: foo]\n",
+        ),
+        // Registers an `Array` typedef struct the row loop already skips — redundant but honest.
+        (
+            "array typedef",
+            "foo = [* uint] ; @no_json_schema_export\nroot = [a: foo]\n",
+        ),
+        // Registers a generic-extern BASE struct the row loop already skips — likewise.
+        (
+            "generic-extern base",
+            "foo<T> = _CDDL_CODEGEN_EXTERN_TYPE_ ; @no_json_schema_export\ninst = foo<uint>\nroot = [a: inst]\n",
+        ),
+    ];
+    let run = |seam: &str, cddl: &str, json: bool| {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_no_json_schema_export_{}_{}_{json}.cddl",
+            std::process::id(),
+            seam.len()
+        ));
+        std::fs::write(&path, cddl).unwrap();
+        let mut args = vec![
+            "cddl-codegen".to_owned(),
+            "--input".to_owned(),
+            path.to_str().unwrap().to_owned(),
+            "--output".to_owned(),
+            "no_json_schema_export_misuse_unused".to_owned(),
+        ];
+        if json {
+            args.push("--json-serde-derives=true".to_owned());
+            args.push("--json-schema-export=true".to_owned());
+        }
+        let cli = Cli::parse_from(args);
+        let result = crate::api::generated_strings(&cli);
+        std::fs::remove_file(&path).ok();
+        result
+    };
+    for (seam, cddl) in rejected {
+        for json in [false, true] {
+            let err = run(seam, cddl, json).err().unwrap_or_else(|| {
+                panic!(
+                    "@no_json_schema_export on a {seam} must be a graceful Err, not Ok (json={json})"
+                )
+            });
+            let msg = err.to_string();
+            assert!(
+                msg.contains("@no_json_schema_export")
+                    && msg.contains("registers no rust struct")
+                    && msg.contains("silently do nothing"),
+                "rejection for {seam} should name the tag and the struct-less cause, got: {msg}"
+            );
+        }
+    }
+    for (seam, cddl) in accepted {
+        for json in [false, true] {
+            assert!(
+                run(seam, cddl, json).is_ok(),
+                "@no_json_schema_export on a {seam} must be accepted (json={json})"
+            );
+        }
+    }
+}
+
 /// `@duplicates` rejection classes that remain after phase 2 made table `preserve` fully live on
 /// BOTH boundaries (`{* …}` -> `PairMap`, `{+ …}` -> `NonEmptyPairMap`, wasm included). What survives
 /// is only the PERMANENT placement rejection: `@duplicates` on a non-collection rule (aliases,

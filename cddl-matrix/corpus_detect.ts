@@ -167,7 +167,8 @@ export const NO_DETECTOR = new Set(["grpchoice.sequence", "grpent.groupname", "g
 // order; arg grammars mirror each tag_* fn:
 //   @name / @custom_serialize / @custom_deserialize : ws* then take_while1(!ws) — arg REQUIRED (fails if absent)
 //   @newtype                                         : OPTIONAL ws* then take_while1(!ws && !@)
-//   @no_alias / @used_as_elem / @custom_json         : none
+//   @no_alias / @used_as_elem / @custom_json
+//     / @no_json_schema_export                       : none
 //   @used_as_key                                     : optional flavor words `hash`/`ord` up to the next `@`/EOL
 //                                                      (comment_ast PANICS on any other word, so a fixture with
 //                                                      prose there cannot generate — the mirror credits nothing)
@@ -180,7 +181,8 @@ type TagParse = (s: string) => { id: string; rest: string } | null;
 // side without the other fails every importer's selfCheck (project_corpus runs in the fast tier).
 const MIRRORED_DIRECTIVES = new Set([
   "@name", "@rust_name", "@newtype", "@no_alias", "@used_as_key", "@used_as_elem",
-  "@copy", "@raw_bytes_flavor", "@ignore", "@duplicates", "@custom_json", "@custom_serialize", "@custom_deserialize", "@doc",
+  "@copy", "@raw_bytes_flavor", "@ignore", "@duplicates", "@custom_json", "@no_json_schema_export",
+  "@custom_serialize", "@custom_deserialize", "@doc",
 ]);
 const ws = (s: string) => s.replace(/^\s+/, ""); // take_while(char::is_whitespace)
 const argRequired = (id: string, tag: string): TagParse => s => {
@@ -255,6 +257,10 @@ const DSL_TAGS: TagParse[] = [
     return { id: `dsl.duplicates.${m[0]}`, rest: after.slice(m[0].length) };
   },
   noArg("dsl.custom_json", "@custom_json"),
+  // @no_json_schema_export: bare no-arg tag (suppresses the rule's `gen_json_schema!` row in the
+  // json-gen crate under `--json-schema-export`, and nothing else). No prefix relation with
+  // `@no_alias` (they diverge at `a` vs `j`), so the two are order-free in the alt.
+  noArg("dsl.no_json_schema_export", "@no_json_schema_export"),
   argRequired("dsl.custom_serialize", "@custom_serialize"),
   argRequired("dsl.custom_deserialize", "@custom_deserialize"),
   // @doc: take_while1(c != '@') — prose (incl. leading ws) runs to the next `@` or EOL; fails if the
@@ -464,6 +470,14 @@ function selfCheck() {
   {
     const r = featuresIn("x = uint ; @used_as_elem @newtype").dsl;
     if (!r.has("dsl.used_as_elem") || !r.has("dsl.newtype")) throw new Error("selfCheck: @used_as_elem (+ chained directive) must be credited");
+  }
+  {
+    // @no_json_schema_export: no-arg, so a chained directive after it is still reachable, and the
+    // shared `@no` prefix with @no_alias must not make either shadow the other in the alt.
+    const r = featuresIn("x = [a: uint] ; @custom_json @no_json_schema_export").dsl;
+    if (!r.has("dsl.no_json_schema_export") || !r.has("dsl.custom_json")) throw new Error("selfCheck: @custom_json @no_json_schema_export must credit BOTH (orthogonal, legally combinable)");
+    const n = featuresIn("x = uint ; @no_json_schema_export @no_alias").dsl;
+    if (!n.has("dsl.no_json_schema_export") || !n.has("dsl.no_alias")) throw new Error("selfCheck: @no_json_schema_export must not shadow (or be shadowed by) the @no_alias prefix sibling");
   }
   // LOCKSTEP tripwire (directive-SET drift): DSL_TAGS is a hand mirror of comment_ast.rs's
   // directive grammar, and its `@used_as_elem` gap shipped invisibly because nothing compared the

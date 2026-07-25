@@ -457,6 +457,41 @@ my_sum =
 With `--preserve-encodings`, the type's serde/schemars derives and the `#[serde(skip)]`
 attributes on its encoding fields are omitted together (either alone would not compile).
 
+## @no_json_schema_export
+
+```cddl
+plutus_map         = _CDDL_CODEGEN_EXTERN_TYPE_ ; @no_json_schema_export
+constr_plutus_data = _CDDL_CODEGEN_EXTERN_TYPE_ ; @no_json_schema_export
+```
+
+Declares that a type is **not part of the published JSON-schema surface**. Its only effect: under
+`--json-schema-export` the json-gen crate emits no `gen_json_schema!` row for the type, so no
+`schemas/<Type>.json` is written for it.
+
+This exists because a type having a *derivable* JSON schema is not evidence that the derived shape
+is that type's *published* encoding. A `serde`/`schemars` derive can exist as an artifact while the
+real encoding is produced by a parent type's hand-written impl; a `JsonSchema` impl can be a
+deliberate stub; and a hand-written `_CDDL_CODEGEN_EXTERN_TYPE_` may have no `schemars::JsonSchema`
+impl at all — in which case its row is an `E0277` inside a generated file. The tool cannot tell
+those apart from a genuine schema root. The spec author can, so this is the spec author's say-so.
+
+The boundary is deliberately narrow. `@no_json_schema_export` does **not**:
+
+- remove the `serde::Serialize`/`serde::Deserialize` or `schemars::JsonSchema` **derives** on a
+  generated type. A parent that embeds the type still needs `JsonSchema` on it, and the type still
+  appears inside its parents' `$defs`. Removing the derives is [`@custom_json`](#custom_json), which
+  is orthogonal — combining the two on one rule is legal and meaningful ("I supply the JSON impls,
+  *and* this type is not a published schema root");
+- change CBOR serialization, the wasm surface, the extern-interface export, or the extern
+  self-check;
+- do anything at all when `--json-schema-export` is off. The directive is then simply inert, so one
+  spec can be generated under several flag sets without editing.
+
+It is valid on any rule that produces a rust type — an extern, a record, a sum type, a `@newtype`
+wrapper, a collection typedef. On a rule that registers **no** rust type (a plain transparent alias
+like `foo = uint`, or a `@no_alias` alias) there is no row to suppress, so the directive would be
+silently dead and generation is rejected with an error naming the rule.
+
 ## @custom_serialize / @custom_deserialize
 
 ```cddl
