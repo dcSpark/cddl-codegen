@@ -464,9 +464,18 @@ plutus_map         = _CDDL_CODEGEN_EXTERN_TYPE_ ; @no_json_schema_export
 constr_plutus_data = _CDDL_CODEGEN_EXTERN_TYPE_ ; @no_json_schema_export
 ```
 
-Declares that a type is **not part of the published JSON-schema surface**. Its only effect: under
+Declares that a type is **not a published JSON-schema root**. Its only effect: under
 `--json-schema-export` the json-gen crate's `add_schemas` emits no registration row for the type, so
 the type is not one of the crate's declared schema roots.
+
+**A root, not a definition — this is the part to read twice.** The crate emits one schema document
+whose `$defs` holds every type reached from a registration row, so dropping a type's row removes it
+from the *declared roots* and nothing else. A type you suppress that a **published type still
+references** stays in `$defs`, and therefore still appears in the emitted TypeScript. The only way
+to keep a type out of the surface entirely is to stop published types from referencing it — which is
+[`@custom_json`](#custom_json) on the parent, the same pairing the sharp edge below describes. This
+is not a policy choice: a reference that survives into the document has to resolve, or the shipped
+`.d.ts` names a type nothing declares.
 
 This exists because a type having a *derivable* JSON schema is not evidence that the derived shape
 is that type's *published* encoding. A `serde`/`schemars` derive can exist as an artifact while the
@@ -478,11 +487,9 @@ those apart from a genuine schema root. The spec author can, so this is the spec
 The boundary is deliberately narrow. `@no_json_schema_export` does **not**:
 
 - remove the `serde::Serialize`/`serde::Deserialize` or `schemars::JsonSchema` **derives** on a
-  generated type. A parent that embeds the type still needs `JsonSchema` on it, and the type still
-  appears in the crate's `$defs` (and so in the emitted TypeScript) whenever a published type
-  references it — dropping the row drops the *root declaration*, not the definition. Removing the
-  derives is [`@custom_json`](#custom_json), which
-  is orthogonal — combining the two on one rule is legal and meaningful ("I supply the JSON impls,
+  generated type. A parent that embeds the type still needs `JsonSchema` on it (and that reference
+  is what keeps the type in `$defs`, per above). Removing the derives is
+  [`@custom_json`](#custom_json), which is orthogonal — combining the two on one rule is legal and meaningful ("I supply the JSON impls,
   *and* this type is not a published schema root");
 - change CBOR serialization, the wasm surface, the extern-interface export, or the extern
   self-check;

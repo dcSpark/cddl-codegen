@@ -1287,6 +1287,64 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   to the group rule by line position would be a second, drift-prone comment parser, so it needs a
   real consumer to justify it.
 
+- **A RUNTIME-produced artifact can lose most of its content while still generating, compiling and
+  type-checking — the schema document's conservation and closure are asserted only in our harness,
+  and only by proxy.** The json-gen crate's `schemas/<lib>.schema.json` is written by a program we
+  emit, so its content is a property of the RUN, not of the emitted source: every verdict the suite
+  can reach cheaply ("generates", "compiles", "the `.d.ts` type-checks") is satisfied by a document
+  missing most of its definitions. Two proven ways to lose content, both silent, both found by
+  hand-probing rather than by a gate: a registration row whose type has
+  `JsonSchema::inline_schema() == true` registers NOTHING through `subschema_for` (every `@newtype`
+  wrapper over a primitive emits such an impl — the naive one-row-one-`subschema_for` spelling put 2
+  of 17 rows in the document on the smallest json fixture), and two hand-written extern impls
+  returning the same `schema_name()` are silently merged into one definition carrying whichever
+  type registered first (`schemars`' `schema_id` defaults to `schema_name`, so the generator treats
+  them as one type — reproduced in `draft/schemars-schema-name-collision-hazards.md`, and reachable
+  from any generic extern whose hand impl returns a constant name). Owned meanwhile by
+  `integration_tests::run_test`'s `$defs.len() >= <row count>` inequality, which was written for the
+  first cause and catches the second by side effect — a counting proxy for a per-item property, and
+  one that runs in OUR suite only, so a consumer's own `cargo run` of its generated json-gen crate
+  has no equivalent and hits both silently. Two mechanical layers, in this order because the first
+  is the one that reaches consumers: (1) emit the conservation check INTO the generated crate —
+  `--emit-tests` already owns "emit a test into the output crate", and asserting that every
+  registered type's `schema_name()` is a `$defs` key turns both causes into a failing `cargo test`
+  in the consumer's own build, where the row list and the artifact are both in scope (they are not
+  in ours: a row names a rust ident, a definition names a `schema_name()`, and for an extern those
+  differ by design — which is why the harness assertion is an inequality and not an identity);
+  (2) assert the document's reference CLOSURE — every `$ref` target resolves to a `$defs` key —
+  which converts "which types can dangle?" from an argument into a check. That question was
+  answered wrongly during the single-document delivery (array/table typedefs were predicted to
+  dangle; they cannot, because they lower to rust type aliases that `schemars` never names), and the
+  closure assertion is what makes the answer mechanical rather than a premise to re-derive. Trigger:
+  a third silent-content-loss cause, or the first consumer report of a wrong-bodied published schema.
+
+- **A directive's documented sentence can stay true while its consumer-visible MEANING changes
+  underneath it, because the artifact it controls changed shape.** `@no_json_schema_export` shipped
+  meaning "no registration row for this type", pinned at the row level by
+  `snapshot_tests::json_gen_extern_schema_rows` and the accepted/rejected table in
+  `robustness_tests::no_json_schema_export_misuse_rejects_gracefully`. Both pins still pass verbatim
+  after the JSON surface became one document per crate — and yet the directive now means something
+  materially different to a consumer: it drops the ROOT DECLARATION, not the definition, so a
+  suppressed type that a published type references is now DECLARED in the shipped `.d.ts` where it
+  was previously a dangling `TS2304`. Nothing could have caught that, because every pin was on the
+  emitted intermediate and none was on the surface the directive's own documentation names ("not
+  part of the published JSON-schema surface"). The gap generalizes past this directive and past
+  JSON: a pin on generated source answers "did the emitter branch", never "does the shipped artifact
+  say what the directive promises". Note this is a DIFFERENT class from the
+  directive×rule-shape reachability product entry, whose verdict is {effect visible, loudly
+  rejected} on a byte-compare of generated source — that sweep reads "effect visible" for this
+  directive both before and after the change. Owned meanwhile by the end-to-end pin in
+  `integration_tests::package_json_pipeline` (a `@no_json_schema_export` rule that a row'd type
+  embeds, asserted `$defs`-present and `.d.ts`-declared), which exists precisely so the directive's
+  promise is checked where a consumer reads it. Mechanical layer, on the second instance: for each
+  directive that names a SHIPPED artifact in its documentation, require one pin on that artifact
+  rather than on the emitted source — the directive inventory already exists
+  (`KNOWN_RULE_METADATA_TAGS`, mirrored by `corpus_detect.ts`), so the addition is a per-directive
+  datum naming its shipped surface, alongside the witness-profile datum the reachability sweep
+  needs. Trigger: a second directive whose meaning shifts under an artifact-shape change, or a
+  consumer reporting that a directive did not do what its documentation says while every gate stayed
+  green.
+
 ## Deferred features (build when a real consumer needs them)
 
 - **Consumer-side auto-deferral of reject-set wrappers (`--wrapper-requests`).** The dep-side
