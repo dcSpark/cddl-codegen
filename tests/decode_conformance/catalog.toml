@@ -3994,6 +3994,64 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "dsl.no_json_schema_export"
+axis = "feature"
+example = "njse = [a: uint, b: text] ; @no_json_schema_export"
+spec = "njse = [a: uint, b: text] ; @no_json_schema_export"
+mode = "standalone"
+type_name = "Njse"
+
+[[row.vector]]
+hex = "82190211686569676874696573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8219031c6863726f6368657473"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8219038c646f78656e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "821903c665456c656e61"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "821904986b6d69736265676f7474656e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "821906006d73756d6d6572686f7573652773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "821909ae657475636b73"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82190a2a6773756c66757273"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82190c556a5068696c697070696e65"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82190e4e666c6971756964"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "dsl.raw_bytes_flavor"
 axis = "feature"
 example = "ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_ ; @raw_bytes_flavor"

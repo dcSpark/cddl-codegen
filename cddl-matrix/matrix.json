@@ -232,7 +232,7 @@
             "status": "supported"
           }
         },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)",
         "id": "dsl.no_json_schema_export",
         "status": "supported"
       },
