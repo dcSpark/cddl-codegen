@@ -16603,9 +16603,14 @@ fn export_static_crate_warns_on_new_files_only() {
             && stderr1.contains("declare `pub mod ordered_set;`"),
         "first export must warn that ordered_set.rs needs a `pub mod ordered_set;` declaration:\n{stderr1}"
     );
+    // Both unresolved-name codes must appear: generated code IMPORTS the type-bearing runtime
+    // modules (`use …::ordered_set::OrderedSet;` → E0432) but reaches the function-bearing helper
+    // modules by INLINE path (`…::open_struct_rest_json::serialize_flattened_rest(…)` → E0433).
+    // A consumer greps for the code they actually saw, so naming only one strands the other half.
     assert!(
-        stderr1.contains("E0432") && stderr1.contains("E0119"),
-        "the notice must name the E0432→E0119 cascade signature so a consumer recognizes it:\n{stderr1}"
+        stderr1.contains("E0432") && stderr1.contains("E0433") && stderr1.contains("E0119"),
+        "the notice must name BOTH unresolved-name codes (E0432 import, E0433 inline path) and the \
+         E0119 cascade signature so a consumer recognizes it:\n{stderr1}"
     );
 
     // 2. Idempotent re-export: nothing is new, so the notice is silent (determinism for stderr too).

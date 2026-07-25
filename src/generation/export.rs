@@ -97,9 +97,14 @@ fn write_rs_with_preserve(
 /// tree it clobbers). So a static runtime file that did NOT already exist — the incremental case a
 /// version bump introduces (`ordered_set.rs` when set nominalization shipped) as well as every file
 /// on a first export — needs a matching `pub mod <module>;` line the user must add BY HAND, or the
-/// module sits dead in-tree: a consumer's `use <crate>::<module>::…` fails E0432, and that one
-/// unresolved import cascades into a swarm of spurious E0119 "conflicting implementations" errors in
-/// generated code (error-type unification against std's blanket `impl<T, U> TryFrom<U> for T`),
+/// module sits dead in-tree. Generated code reaches these runtime modules TWO ways, and the notice
+/// names both error codes because a reader greps for the one they actually saw: a type-bearing
+/// module (`ordered_set`, `pair_map`, `non_empty*`) is imported — `use <crate>::<module>::Type;` —
+/// so its absence is E0432; a function-bearing helper module (`open_struct_rest_json`, `any_cbor`)
+/// is referenced by INLINE path — `<crate>::<module>::helper(…)` — so its absence is E0433 instead.
+/// Either unresolved name cascades into a swarm of spurious E0119 "conflicting implementations"
+/// errors in generated code (error-type unification against std's blanket
+/// `impl<T, U> TryFrom<U> for T`),
 /// pointing a reviewer at phantom problems before the one-line real cause. This is a diagnostic-only
 /// prior-output read (an existence check; it changes no output byte) — the notice is printed AFTER
 /// the write so the file state it reports is the pre-write one. See AGENTS.md's determinism
@@ -119,10 +124,10 @@ pub(crate) fn new_static_file_notice(filename: &str) -> String {
     format!(
         "warning: NEW static file {filename} written to the --export-static-crate target — \
          declare `pub mod {module};` in the target crate root (its hand-owned `lib.rs`/`mod.rs` \
-         is not tool-managed, so the module is otherwise dead in-tree: a consumer's \
-         `use …::{module}::…` fails E0432, cascading into spurious E0119 conflicting-\
-         implementation errors across generated code). See the consumer-migration notes in \
-         docs/current_capacities."
+         is not tool-managed, so the module is otherwise dead in-tree: generated code referencing \
+         it fails to resolve — `use …::{module}::…` as E0432, an inline `…::{module}::…` path as \
+         E0433 — cascading into spurious E0119 conflicting-implementation errors across generated \
+         code). See the consumer-migration notes in docs/current_capacities."
     )
 }
 
