@@ -533,6 +533,15 @@ tripwire also fires until the mirror (plus selfCheck vectors for any new grammar
 or better, move the dsl channel onto the AST floor instead (`tests/TESTING_ROADMAP.md`, the
 twin-implementation drift entry).
 
+The mirror and the feature registry are **independent**, and extending the mirror does not imply a
+feature row exists. `MIRRORED_DIRECTIVES` is a set-equality tripwire against `comment_ast.rs`'s tag
+vocabulary, so it must be extended in the same commit as the directive itself; a `features/*.toml`
+row needs a verdict mint, which needs the external ruby/rust CDDL tooling and is therefore batched.
+A directive can consequently sit in the mirror with no row for a while — `@no_json_schema_export`
+does today — and while it does, its `dsl.*` id has no universe entry, so `project_corpus`'s check D
+can never demand a corpus cover for it and the directive's coverage is invisible to the rendered
+tables. The pending mints are listed in `ROADMAP.md`.
+
 A FLAVORED sibling row — a multi-token `alt` (`@used_as_key hash`: an existing directive plus
 argument words) — engages two more recognition surfaces without tripping `MIRRORED_DIRECTIVES`
 (the directive set is unchanged), walked empirically for the `dsl.used_as_key.{hash,ord,hash_ord}`

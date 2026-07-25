@@ -487,6 +487,27 @@ The boundary is deliberately narrow. `@no_json_schema_export` does **not**:
 - do anything at all when `--json-schema-export` is off. The directive is then simply inert, so one
   spec can be generated under several flag sets without editing.
 
+### An extern with no `JsonSchema` impl also needs `@custom_json` on the types that embed it
+
+This is the one sharp edge, and the error it produces does not point at it. `@no_json_schema_export`
+removes the extern's own row, but a **generated** type that embeds the extern still derives
+`schemars::JsonSchema` over that field — so the missing impl resurfaces as an `E0277` on the
+*parent*, in a different file, naming a type you did not annotate:
+
+```cddl
+quiet_ext      = _CDDL_CODEGEN_EXTERN_TYPE_ ; @no_json_schema_export
+plain_parent   = [n: quiet_ext]                            ; E0277 — derives JsonSchema over quiet_ext
+guarded_parent = [n: quiet_ext] ; @custom_json             ; compiles — derives nothing JSON-related
+```
+
+The rule: **`@no_json_schema_export` on the extern, plus `@custom_json` on every generated type that
+embeds it** (and hand-written JSON impls for those parents, which is what `@custom_json` promises).
+That pairing is the normal shape for this case anyway — a type whose published JSON is produced by a
+hand-written parent impl is exactly the situation the directive exists for.
+
+If instead the extern *does* implement `schemars::JsonSchema` and you only want it off the published
+surface, no parent annotation is needed.
+
 It is valid on any rule that produces a rust type — an extern, a record, a sum type, a `@newtype`
 wrapper, a collection typedef, a generic instantiation, and a plain group that some rule splices:
 
