@@ -222,7 +222,7 @@ Rules:
 
 ## Which AI model to use
 
-Fable 5 is the session orchestrator. The following should be inline in the main session:
+Opus is the session orchestrator. The following should be inline in the main session:
 - session orchestration
 - implementation plan creation
 - review of implementation/plan
@@ -233,11 +233,12 @@ Fable 5 is the session orchestrator. The following should be inline in the main 
 
 - Never use Haiku
 - Do not choose Sonnet 5 manually (only when Claude Code itself selects it or, or is used by tool)
-- Opus 4.8 for implementing anything with a clear implementation plan
+- Use Opus for implementing anything with a clear implementation plan
+- Use Fable for a review whenever you are not sure even with an Opus review of an idea, and more expensive model is worth a review for a different world view
 
 For workflows:
-- Always pass an explicit `model:` in normal `agent()` calls to avoid auto-inheriting Fable as the model.
-- Never fan out multiple Fable agents without explicit user permission. A single Fable workflow agent also needs separate permission. If Fable is really needed, prefer using it inline.
+- Always pass an explicit `model:` in normal `agent()` calls to avoid auto-inheriting the model.
+- Given the cost, never fan out multiple Fable agents without explicit user permission.
 - Generally avoid running tests in parallel agents unless explicitly intended, since this can happen accidentally when using multiple parallel high-capability agents for implementation.
 
 For sessions that spawn their own sub-agents (an orchestrating session, or a subagent delegating to Opus):
