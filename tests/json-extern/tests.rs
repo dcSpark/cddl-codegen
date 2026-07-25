@@ -11,7 +11,7 @@ mod tests {
     // `schemars::JsonSchema` impls.
     // `@no_json_schema_export` compile proof. `NoSchemaExtern` has no `schemars::JsonSchema` impl,
     // so the json-gen crate (built + run by the harness) only compiles because the directive
-    // suppressed its `gen_json_schema!` row — and `HandJsonParent`'s row is suppressed too, which is
+    // suppressed its schema-registration row — and `HandJsonParent`'s row is suppressed too, which is
     // what lets `@custom_json` drop the derives over a field type that has no schema. The assertion
     // is the harness's json-gen build; this round-trip pins that the CBOR side is untouched by the
     // directive.

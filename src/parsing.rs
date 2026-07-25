@@ -126,7 +126,7 @@ pub fn parse_rule(
             // so every rule-position directive a plain group is meant to honor needs its own site
             // here or it is SILENTLY dropped — `@rust_name` was dropped that way once, and
             // `@no_json_schema_export` inherited the same hole (a spliced plain group DOES register a
-            // rust struct, so it does get a `gen_json_schema!` row to suppress). Both are read off
+            // rust struct, so it does get a schema-registration row to suppress). Both are read off
             // the one `group_rule_pin_metadata` extraction, which knows where cddl actually binds a
             // group rule's trailing comment. A directive added to this list must be one with NO
             // field-position meaning — see that fn's doc comment.
@@ -1282,7 +1282,7 @@ fn handle_rust_name_pin(
 ///
 /// Only directives with **no field-position meaning** may be lifted onto the rule, because that
 /// shared slot makes the two positions indistinguishable here. `@rust_name` (pins the rule's Rust
-/// type name) and `@no_json_schema_export` (suppresses the rule's `gen_json_schema!` row) both
+/// type name) and `@no_json_schema_export` (suppresses the rule's schema-registration row) both
 /// qualify — neither has any effect at a field. A field-position `@name` sharing the slot
 /// legitimately renames that field and is left to the field-naming site, so it must NOT leak onto
 /// the rule; the same bar applies to any directive added here later.

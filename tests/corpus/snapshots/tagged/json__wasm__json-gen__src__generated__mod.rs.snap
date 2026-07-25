@@ -2,24 +2,39 @@
 source: src/tests/snapshot_tests.rs
 expression: content
 ---
-macro_rules! gen_json_schema {
-    ($name:ty) => {
-        let dest_path =
-            std::path::Path::new(&"schemas").join(&format!("{}.json", stringify!($name)));
-        std::fs::write(
-            &dest_path,
-            serde_json::to_string_pretty(&schemars::schema_for!($name)).unwrap(),
-        )
-        .unwrap();
-    };
+fn add_schema<T: schemars::JsonSchema>(generator: &mut schemars::SchemaGenerator) {
+    let schema = generator.subschema_for::<T>();
+    if <T as schemars::JsonSchema>::inline_schema() {
+        generator
+            .definitions_mut()
+            .entry(<T as schemars::JsonSchema>::schema_name().into_owned())
+            .or_insert_with(|| schema.to_value());
+    }
+}
+
+pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
+    add_schema::<cddl_lib::Holder>(generator);
+    add_schema::<cddl_lib::Tagged>(generator);
+    add_schema::<cddl_lib::TaggedNewtype>(generator);
 }
 
 pub fn export_schemas() {
-    let schema_path = std::path::Path::new(&"schemas");
+    let schema_path = std::path::Path::new("schemas");
     if !schema_path.exists() {
         std::fs::create_dir(schema_path).unwrap();
     }
-    gen_json_schema!(cddl_lib::Holder);
-    gen_json_schema!(cddl_lib::Tagged);
-    gen_json_schema!(cddl_lib::TaggedNewtype);
+    let mut generator = schemars::SchemaGenerator::default();
+    add_schemas(&mut generator);
+    let meta_schema = generator.settings().meta_schema.clone();
+    let mut document = serde_json::Map::new();
+    if let Some(meta_schema) = meta_schema {
+        document.insert("$schema".to_owned(), meta_schema.into_owned().into());
+    }
+    document.insert("title".to_owned(), "cddl_lib".into());
+    document.insert("$defs".to_owned(), generator.take_definitions(true).into());
+    std::fs::write(
+        schema_path.join("cddl_lib.schema.json"),
+        serde_json::to_string_pretty(&serde_json::Value::Object(document)).unwrap(),
+    )
+    .unwrap();
 }

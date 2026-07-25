@@ -198,7 +198,7 @@ pub struct IntermediateTypes<'a> {
     // `@raw_bytes_flavor` so `--extern-import` consumers inherit it. See `RuleMetadata::copy`.
     copy_externs: BTreeSet<RustIdent>,
     // Idents of rules tagged `@no_json_schema_export`: the json-gen crate emits no
-    // `gen_json_schema!` row for them (see the row loop in `generation/mod.rs`). Carried as a
+    // schema-registration row for them (see the row loop in `generation/mod.rs`). Carried as a
     // per-ident marker set rather than a `RustStructConfig` field because `RustStruct::new_extern` /
     // `new_raw_bytes` build with `RustStructConfig::default()` — they drop rule metadata entirely, so
     // a config field would be silently dead on extern rules, which are the directive's primary
@@ -2835,7 +2835,7 @@ impl<'a> IntermediateTypes<'a> {
                 self.record_rejection(msg);
             }
         }
-        // `@no_json_schema_export` suppresses a rule's `gen_json_schema!` row. A rule that registers
+        // `@no_json_schema_export` suppresses a rule's schema-registration row. A rule that registers
         // NO `RustStruct` at all — a transparent alias (`x = uint`), a `@no_alias` alias, a named
         // binding to a set nominal, a generic DEFINITION (only its instantiations are types), a
         // plain group no rule splices — has no row for the directive to
@@ -2856,7 +2856,7 @@ impl<'a> IntermediateTypes<'a> {
         for ident in struct_less_no_json_schema_export {
             self.record_rejection(format!(
                 "@no_json_schema_export on `{ident}`: this rule registers no rust struct, so there \
-                 is no `gen_json_schema!` row to suppress and the directive would silently do \
+                 is no schema-registration row to suppress and the directive would silently do \
                  nothing. Either it is a transparent alias (a plain type alias `{ident} = uint`, a \
                  `@no_alias` alias, or a named binding to a generic instantiation), or it is a \
                  generic DEFINITION whose instantiations own the types (annotate the instance — \

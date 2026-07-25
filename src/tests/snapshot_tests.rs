@@ -447,7 +447,7 @@ fn whole_program() {
 /// in-process (no compile) over `tests/json-extern-rows/inputs` — a directory fixture combining a
 /// plain extern, a generic extern + concrete instance, a dep-owned (extern-deps-dir) extern, and an
 /// in-crate SCOPED type, plus a `@no_json_schema_export`-annotated extern and ordinary rule — and
-/// pins exactly which `gen_json_schema!` rows the json-gen crate emits.
+/// pins exactly which registration rows the json-gen crate's `add_schemas` emits.
 /// The full compile proof (that the KEPT rows build against hand-written `schemars::JsonSchema`
 /// impls, and the generic-base row's removal fixes an E0107) lives in
 /// `integration_tests::json_extern` and `integration_tests::multifile_json_preserve`; this is the
@@ -466,13 +466,13 @@ fn json_gen_extern_schema_rows() {
     // KEPT rows: plain extern, concrete generic instance, in-crate root type, and the scoped
     // in-crate type at its REAL module path (the thin root's `pub use generated::*` makes it valid).
     for kept in [
-        "gen_json_schema!(cddl_lib::MyExtern);",
-        "gen_json_schema!(cddl_lib::MySet);",
-        "gen_json_schema!(cddl_lib::BigThing);",
-        "gen_json_schema!(cddl_lib::sub::module::ScopedThing);",
+        "add_schema::<cddl_lib::MyExtern>(generator);",
+        "add_schema::<cddl_lib::MySet>(generator);",
+        "add_schema::<cddl_lib::BigThing>(generator);",
+        "add_schema::<cddl_lib::sub::module::ScopedThing>(generator);",
         // A spliced PLAIN GROUP rule does get a row — the unannotated control for `QuietGroup`
         // below, without which "no `QuietGroup` row" would be vacuously true.
-        "gen_json_schema!(cddl_lib::LoudGroup);",
+        "add_schema::<cddl_lib::LoudGroup>(generator);",
     ] {
         assert!(
             mod_rs.contains(kept),
@@ -483,7 +483,7 @@ fn json_gen_extern_schema_rows() {
     // SKIPPED: the generic-extern BASE (`ExtSet` names no concrete type — E0107 no matter what the
     // user writes).
     assert!(
-        !mod_rs.contains("gen_json_schema!(cddl_lib::ExtSet)"),
+        !mod_rs.contains("add_schema::<cddl_lib::ExtSet>"),
         "generic-extern base row must be skipped:\n{mod_rs}"
     );
 
@@ -520,6 +520,28 @@ fn json_gen_extern_schema_rows() {
             "@no_json_schema_export row for `{suppressed}` must be skipped:\n{mod_rs}"
         );
     }
+}
+
+/// Byte-stability of the json-gen crate root across regenerations. The schema document is built by
+/// threading ONE `schemars::SchemaGenerator` through the rows in the order `add_schemas` emits them,
+/// and schemars assigns its collision suffixes (`{base}{i}`) from a per-generator name set in
+/// first-encounter order — so the row order is now load-bearing for the CONTENT of the shipped
+/// document, not just for the diff of the file. A `HashMap` anywhere on the path from the IR to the
+/// rows would make two runs of the same spec publish two different documents.
+#[test]
+fn json_gen_rows_are_byte_stable() {
+    let cli = cli_for(
+        std::path::Path::new("tests/json-extern-rows/inputs"),
+        &["--json-serde-derives=true", "--json-schema-export=true"],
+    );
+    let path = "wasm/json-gen/src/generated/mod.rs";
+    let first = crate::api::generated_strings(&cli).expect("generation must succeed");
+    let second = crate::api::generated_strings(&cli).expect("generation must succeed");
+    assert_eq!(
+        first.get(path),
+        second.get(path),
+        "two generations of the same spec must emit a byte-identical {path}"
+    );
 }
 
 /// Regression pin for feature request 07 (commit `08bc1d9` "scope_references walks type_aliases"):

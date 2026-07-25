@@ -356,7 +356,7 @@ pub fn with_types<R>(
     if cli.json_schema_scripts && !cli.json_schema_export {
         return Err(
             "--json-schema-scripts=true requires --json-schema-export=true: the copied scripts read \
-             the per-type schemas the json-gen crate exports, so without them there is nothing to \
+             the schema document the json-gen crate exports, so without it there is nothing to \
              compile to TypeScript"
                 .into(),
         );

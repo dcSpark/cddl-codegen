@@ -1747,23 +1747,82 @@ impl GenerationScope {
                 .map_err(std::io::Error::other)?,
             );
 
-            let mut gen_json_schema = Block::new("macro_rules! gen_json_schema");
-            let mut macro_match = Block::new("($name:ty) => ");
-            macro_match
-                .line("let dest_path = std::path::Path::new(&\"schemas\").join(&format!(\"{}.json\", stringify!($name)));")
-                .line("std::fs::write(&dest_path, serde_json::to_string_pretty(&schemars::schema_for!($name)).unwrap()).unwrap();");
-            gen_json_schema.push_block(macro_match);
+            // The json-gen crate writes ONE document per crate — `schemas/<lib>.schema.json`, a pure
+            // `$defs` bundle — built by threading a single `schemars::SchemaGenerator` through every
+            // exported type. One generator per document is what makes every referenced type a
+            // DECLARED entry (a type reached only through another type's schema has no row of its
+            // own, and under a per-type-file design ended up referenced-but-never-declared in the
+            // shipped `.d.ts`), and what makes schemars' collision suffixes (`{base}{i}`, assigned
+            // from a per-generator name set) assigned once from one deterministic row order.
+            let lib_name_code = cli.lib_name_code();
             let mut lib_str = String::new();
-            gen_json_schema
-                .fmt(&mut codegen::Formatter::new(&mut lib_str))
-                .unwrap();
-            lib_str.push('\n');
+            // Row helper. `subschema_for::<T>()` registers T — and everything T references — into the
+            // generator's shared `$defs` and returns a `$ref`, EXCEPT for a type whose
+            // `JsonSchema::inline_schema()` is true, where it returns the schema itself and registers
+            // nothing (every `@newtype` wrapper over a primitive emits exactly such an impl, since its
+            // JSON form IS the primitive's). Publishing the returned schema under the type's own
+            // schema name in that case is what keeps EVERY exported row a `$defs` entry.
+            if !self.json_lines.is_empty() {
+                lib_str.push_str(
+                    "fn add_schema<T: schemars::JsonSchema>(generator: &mut schemars::SchemaGenerator) {\n\
+                     let schema = generator.subschema_for::<T>();\n\
+                     if <T as schemars::JsonSchema>::inline_schema() {\n\
+                     generator\n\
+                     .definitions_mut()\n\
+                     .entry(<T as schemars::JsonSchema>::schema_name().into_owned())\n\
+                     .or_insert_with(|| schema.to_value());\n\
+                     }\n\
+                     }\n\n",
+                );
+            }
             let mut lib_scope = codegen::Scope::new();
+            // `add_schemas` is public on purpose: it is the composition point a consumer needs to
+            // thread another generated crate's types into one document.
+            let mut lib_add_fn = codegen::Function::new("add_schemas");
+            lib_add_fn
+                .vis("pub")
+                .arg("generator", "&mut schemars::SchemaGenerator");
+            if self.json_lines.is_empty() {
+                // A spec whose every rule is skipped (array/table typedefs only, say) registers
+                // nothing, and the parameter would then be an unused-variable warning in generated
+                // code the consumer is told never to hand-edit.
+                lib_add_fn.attr("allow(unused_variables)");
+            }
+            lib_add_fn.push_all(self.json_lines.clone());
+            lib_scope.push_fn(lib_add_fn);
             let mut lib_export_fn = codegen::Function::new("export_schemas");
-            lib_export_fn.vis("pub").push_all(self.json_lines.clone());
+            lib_export_fn
+                .vis("pub")
+                .line("let schema_path = std::path::Path::new(\"schemas\");");
+            let mut path_exists = Block::new("if !schema_path.exists()");
+            path_exists.line("std::fs::create_dir(schema_path).unwrap();");
+            lib_export_fn
+                .push_block(path_exists)
+                .line("let mut generator = schemars::SchemaGenerator::default();")
+                .line("add_schemas(&mut generator);")
+                // The meta-schema is read off the generator's own settings rather than hardcoded, so
+                // the document always declares the draft schemars actually emitted.
+                .line("let meta_schema = generator.settings().meta_schema.clone();")
+                .line("let mut document = serde_json::Map::new();");
+            let mut meta_present = Block::new("if let Some(meta_schema) = meta_schema");
+            meta_present
+                .line("document.insert(\"$schema\".to_owned(), meta_schema.into_owned().into());");
+            lib_export_fn
+                .push_block(meta_present)
+                .line(format!(
+                    "document.insert(\"title\".to_owned(), \"{lib_name_code}\".into());"
+                ))
+                // `take_definitions(true)` applies the generator's transforms, matching what
+                // schemars' own root-schema builders do.
+                .line(
+                    "document.insert(\"$defs\".to_owned(), generator.take_definitions(true).into());",
+                )
+                .line(format!(
+                    "std::fs::write(schema_path.join(\"{lib_name_code}.schema.json\"), serde_json::to_string_pretty(&serde_json::Value::Object(document)).unwrap()).unwrap();"
+                ));
             lib_scope.push_fn(lib_export_fn);
             lib_str.push_str(&lib_scope.to_string());
-            // Same split as the other crate roots: the generated `macro_rules!` + `export_schemas`
+            // Same split as the other crate roots: the generated `add_schemas` + `export_schemas`
             // live under `wasm/json-gen/src/generated/mod.rs`, exposed through the seed-once thin
             // root's glob re-export (so `<lib>_json_schema_gen::export_schemas()` in main.rs still
             // resolves). `main.rs` stays fully tool-owned and unchanged.

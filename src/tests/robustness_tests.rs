@@ -570,7 +570,7 @@ fn copy_misuse_rejects_gracefully() {
     }
 }
 
-/// `@no_json_schema_export` suppresses a rule's `gen_json_schema!` row. On a rule that registers no
+/// `@no_json_schema_export` suppresses a rule's schema-registration row. On a rule that registers no
 /// rust struct AT ALL there is no row to suppress, so the directive would be silently dead — the
 /// house style rejects that loudly (`@raw_bytes_flavor`, `@copy`, `@duplicates`, `@ignore` all do).
 ///
