@@ -195,6 +195,52 @@ function positionalCitationProblems(file: TrackedFile): string[] {
   return problems;
 }
 
+// Directive-swallows-closer ban (user docs): a CDDL comment runs to the end of the line, so an
+// illustration that puts a `; @<directive>` comment on the same line/span as the container's
+// closing `}`/`]` models a spelling that silently swallows the closer — a reader who copies it
+// gets a different parse than the doc describes. Proven around the tolerate-and-drop directive:
+// the trap class was identified and documented in one delivery (the comment_dsl warning bullet +
+// fixture pins on the safe spelling), and one delivery later the SAME doc's new section shipped
+// an illustration in exactly the banned one-line spelling, two bullets BELOW the warning —
+// caught only in review. Scope: docs/docs/*.mdx (where user-facing illustrations live). The
+// warning bullet's deliberate counterexamples are allowlisted by exact span text, so editing
+// them or adding a NEW unsafe illustration fires loudly.
+const DIRECTIVE_SWALLOW_RE = /;\s*@[a-z_]+[^`\n]*[}\]]/;
+const DIRECTIVE_SWALLOW_ALLOWED_SPANS = new Set([
+  "; @ignore }",
+  "; @ignore ]",
+  "[ uint, * any ; @ignore ]",
+]);
+function directiveSwallowedCloserProblems(file: TrackedFile): string[] {
+  if (!/^docs\/docs\/[^/]+\.mdx$/.test(file.rel)) return [];
+  const problems: string[] = [];
+  const lines = file.text.split("\n");
+  let inFence = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) {
+      if (DIRECTIVE_SWALLOW_RE.test(line))
+        problems.push(
+          `${file.rel}:${i + 1}: fenced example puts a \`; @<directive>\` comment on the same line as a closing }/] — the CDDL comment runs to the end of the line and swallows the closer; move the directive to its own line before the closer`,
+        );
+      continue;
+    }
+    for (const m of line.matchAll(/`([^`]+)`/g)) {
+      const span = m[1]!;
+      if (DIRECTIVE_SWALLOW_ALLOWED_SPANS.has(span)) continue;
+      if (DIRECTIVE_SWALLOW_RE.test(span))
+        problems.push(
+          `${file.rel}:${i + 1}: inline example \`${span}\` puts a \`; @<directive>\` comment on the same line as a closing }/] — the CDDL comment runs to the end of the line and swallows the closer; reword or split the example (a deliberate counterexample belongs in DIRECTIVE_SWALLOW_ALLOWED_SPANS)`,
+        );
+    }
+  }
+  return problems;
+}
+
 const trackedRels = gitLsFiles();
 const allFiles: TrackedFile[] = [];
 for (const rel of trackedRels) {
@@ -252,6 +298,7 @@ for (const doc of handDocFiles) {
 
 for (const f of allFiles) problems.push(...positionalCitationProblems(f));
 for (const f of allFiles) problems.push(...ephemeralReferenceProblems(f));
+for (const f of allFiles) problems.push(...directiveSwallowedCloserProblems(f));
 
 // Self-check: each ephemeral pattern must still match its canary (guards against a regex silently
 // going vacuous — e.g. an errant edit that never fires and lets dangling references back in).
@@ -259,6 +306,15 @@ for (const { re, canary } of EPHEMERAL_PATTERNS) {
   re.lastIndex = 0;
   if (!re.test(canary)) problems.push(`ephemeral-reference self-check: pattern ${re} no longer matches its canary '${canary}' — the ban is vacuous`);
   re.lastIndex = 0;
+}
+// Same vacuity guard for the directive-swallow ban: the pattern must match the trap spelling and
+// every allowlisted counterexample (an allowlist entry the pattern no longer matches is dead
+// weight hiding a drifted regex).
+if (!DIRECTIVE_SWALLOW_RE.test("* uint => any ; @ignore }"))
+  problems.push("directive-swallow self-check: pattern no longer matches the map-brace trap spelling — the ban is vacuous");
+for (const span of DIRECTIVE_SWALLOW_ALLOWED_SPANS) {
+  if (!DIRECTIVE_SWALLOW_RE.test(span))
+    problems.push(`directive-swallow self-check: allowlisted span '${span}' is not matched by the pattern — dead allowlist entry (drifted regex or stale counterexample)`);
 }
 
 if (handDocFiles.length < 4) problems.push(`only ${handDocFiles.length} shipped hand doc(s) scanned (expected >= 4) — doc scope looks broken`);
@@ -274,5 +330,5 @@ if (problems.length) {
 console.log(
   `doc-citation lint OK — ${identifierCitationCount} citation token(s) across ${handDocFiles.length} hand doc(s) ` +
     `(${handDocs.map(rel => `${rel}=${perDocCitationCounts.get(rel) ?? 0}`).join(", ")}) · ` +
-    `positional + ephemeral-reference bans scanned ${allFiles.filter(f => !f.rel.startsWith("draft/")).length} tracked text file(s) · MD022 headings clean`,
+    `positional + ephemeral-reference bans scanned ${allFiles.filter(f => !f.rel.startsWith("draft/")).length} tracked text file(s) · directive-swallow ban over docs/docs/*.mdx · MD022 headings clean`,
 );
