@@ -29,27 +29,16 @@ failure as one of two things — a construct we deliberately don't support (docu
 bug to fix — closing the loop until coverage is complete and self-checking. "Worth supporting" is
 load-bearing: some constructs (`#`/`cbor-any`, `float16`, socket plugs, …) are design decisions to
 *exclude*, not holes to grind toward 100% — and the exclude list is revisable: `any` (the prelude
-name) moved OFF it 2026-07-23 (maintainer-ruled feature). Its `AnyCbor` runtime type plus first-class
-support in every position (member / homogeneous array / table domain-range / top-level alias / tagged /
-last-position type-choice arm) are shipped across the rust, wasm, and JSON/schema surfaces,
-depth-guarded. Open struct-maps followed: a trailing `* K => V`
-rest row after fixed keys captures unknown entries in every mode (byte-exact under
-`--preserve-encodings` incl. wire-order interleave and the runtime canonical merge; `@duplicates
-preserve` pair-list twin; flattened fallible JSON; wasm `rest()` getter), with the v1 boundaries
-(non-final/multiple/plain-group rest rows, bounded occurrences, non-uint/text/any key domains)
-held as graceful rejections — test map in `tests/README.md` § "Open struct-maps (rest rows)". The
-`@ignore` (tolerate-and-drop) flavor of the same row ships alongside it: unknown entries are
-typed-deserialized and dropped, so the type is a closed struct (no `rest` field, declared-only
-serialize, closed JSON/wasm surface) with a deliberate-lossiness rustdoc, rejected under
-`--preserve-encodings`; `@ignore` combined with `--preserve-encodings`/`@duplicates`/`@name` or
-placed off a rest row is a graceful rejection — test map in `tests/README.md` § "Open struct-maps —
-the `@ignore` (tolerate-and-drop) flavor". Open arrays followed the same shape: a final-position
-`* t` tail after ≥1 fixed member captures the trailing elements into a `rest` `Vec` in every mode
-(byte-exact per-element encoding sidecars under `--preserve-encodings`, canonical position-order
-normalization, an ordinary array-typed JSON field, a wasm list getter), with the `@ignore` drop
-flavor alongside it and the v1 boundaries (`+`/bounded/non-final tails, group-choice-arm/plain-group
-placements, fixed-value tail elements) held as graceful rejections — test map in `tests/README.md`
-§ "Open arrays (rest tails)". The permanent exclusions around it stay: `#` (`Type2::Any`), `cbor-any`, `@newtype` and
+name) moved OFF it 2026-07-23 (maintainer-ruled feature), and the loose-CBOR family that followed
+it is shipped CURRENT STATE, not roadmap — first-class `any` on every surface, open struct-maps
+(trailing `* K => V` rest rows, capture and `@ignore` tolerate-and-drop flavors), and open arrays
+(final-position `* t` rest tails, both flavors). Per-layer test maps: `tests/README.md` § "Open
+struct-maps (rest rows)", § "Open struct-maps — the `@ignore` (tolerate-and-drop) flavor", and
+§ "Open arrays (rest tails)"; user-facing contracts: `docs/docs/current_capacities.mdx` /
+`output_format.mdx` / `comment_dsl.mdx` / `wasm_differences.mdx`. The family's v1 boundaries
+(non-final/multiple/plain-group rest rows, `+`/bounded occurrences, non-uint/text/any key domains)
+are graceful rejections whose candidate-feature entries live in `cddl-matrix/ROADMAP.md`
+§ findings, not here. The permanent exclusions around it stay: `#` (`Type2::Any`), `cbor-any`, `@newtype` and
 control operators on `any`, and non-last bare `any` choice arms (forced-backtracking catch-all unions
 put the catch-all last, so an earlier one is unreachable dead code) — see the `any` type-choice entry
 in `cddl-matrix/ROADMAP.md`. One deferred coverage item remains: the wasm emit-tests minter has no
