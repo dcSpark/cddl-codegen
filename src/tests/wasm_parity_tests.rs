@@ -345,6 +345,19 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
          injects hand-written extern defs, so there is no generated wasm surface to differential",
     ),
     (
+        "json-schema-name-merge",
+        "rust-only NEGATIVE json-gen fixture (a generic extern whose hand-written `JsonSchema` impl \
+         returns a constant name, instantiated twice): its integration gate generates --wasm=false \
+         and asserts the json-gen run FAILS on the schema-name ledger, so there is no wasm surface \
+         to differential and the crate is intended NOT to produce a document",
+    ),
+    (
+        "json-schema-name-stolen",
+        "rust-only NEGATIVE json-gen fixture (a row-less extern claiming a later row's schema name): \
+         its integration gate generates --wasm=false and asserts the json-gen run FAILS on the \
+         kept-its-own-name check, so there is no wasm surface to differential",
+    ),
+    (
         "open-struct-map-e2e",
         "loose-CBOR open struct-map (rest row) e2e round-trip fixture: its integration gate \
          generates --wasm=false (it exercises CBOR round-trip, not the wasm boundary); the wasm rest \

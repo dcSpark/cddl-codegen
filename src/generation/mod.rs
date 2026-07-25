@@ -1010,7 +1010,7 @@ impl GenerationScope {
                     .entry(types.scope(rust_ident).clone())
                     .or_default()
                     .push(format!(
-                        "add_schema::<{}>(generator);",
+                        "add_schema::<{}>(generator, &mut claimed);",
                         rust_crate_struct_from_wasm(types, rust_ident, cli)
                     ));
             }
@@ -1028,7 +1028,7 @@ impl GenerationScope {
                     .entry((*ROOT_SCOPE).clone())
                     .or_default()
                     .push(format!(
-                        "add_schema::<{}::any_cbor::AnyCbor>(generator);",
+                        "add_schema::<{}::any_cbor::AnyCbor>(generator, &mut claimed);",
                         cli.lib_name_code()
                     ));
             }

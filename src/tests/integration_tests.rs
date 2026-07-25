@@ -850,6 +850,56 @@ fn append_manifest_deps(manifest: &std::path::Path, dep_snippets: &[&str]) {
     std::fs::write(manifest, patched).unwrap();
 }
 
+/// Every `$ref` string anywhere in a JSON value, in document order. A schema keyword is the only
+/// thing that can hold a `$ref`, and its value is always a string there — an object-valued `"$ref"`
+/// key is a user property literally named `$ref`, which is not a reference and is skipped.
+fn collect_schema_refs(value: &serde_json::Value, out: &mut Vec<String>) {
+    match value {
+        serde_json::Value::Object(map) => {
+            for (key, child) in map {
+                if key == "$ref"
+                    && let Some(reference) = child.as_str()
+                {
+                    out.push(reference.to_owned());
+                }
+                collect_schema_refs(child, out);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                collect_schema_refs(item, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Inverse of `schemars`' (private) `encode_ref_name`: percent-decode, then undo the JSON-Pointer
+/// `~1`/`~0` escapes, so a `$defs` key containing `/`, `<`, `>` or a space (e.g. the static runtime's
+/// `OrderedHashMap<K, V>`) is matched against the map by its REAL key rather than by its encoded
+/// spelling. Percent escapes and tilde escapes cannot alias: the encoder emits `~0`/`~1` for `~`/`/`
+/// and percent-escapes everything else, so no `%XX` ever decodes to `~` or `/`.
+fn decode_schema_ref_name(encoded: &str) -> String {
+    let bytes = encoded.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let Ok(byte) = u8::from_str_radix(&encoded[i + 1..i + 3], 16)
+        {
+            decoded.push(byte);
+            i += 3;
+            continue;
+        }
+        decoded.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&decoded)
+        .replace("~1", "/")
+        .replace("~0", "~")
+}
+
 fn run_test(
     dir: &str,
     options: &[&str],
@@ -1280,6 +1330,31 @@ fn run_test(
             written[0],
             defs.len()
         );
+        // Reference closure: the document is self-contained. Every `$ref` in it must be an INTERNAL
+        // pointer at one of its own `$defs` keys, so "which types can dangle?" is a check rather than
+        // an argument. A dangling ref ships as a `.d.ts` that references a type it never declares
+        // (`TS2304`), and it is what a hand-written `JsonSchema` impl returning a bare
+        // `Schema::new_ref("SomeType")` produces.
+        let mut refs = Vec::new();
+        collect_schema_refs(&document, &mut refs);
+        for reference in &refs {
+            let key = reference
+                .strip_prefix("#/$defs/")
+                .map(decode_schema_ref_name)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "fixture {dir}: json-gen document {:?} holds the non-internal reference \
+                         `{reference}` — every `$ref` must be `#/$defs/<key>` into this same document",
+                        written[0]
+                    )
+                });
+            assert!(
+                defs.contains_key(&key),
+                "fixture {dir}: json-gen document {:?} references `{reference}`, but `{key}` is not \
+                 a `$defs` key — the shipped `.d.ts` would reference a type it never declares",
+                written[0]
+            );
+        }
         // The document is a published artifact a consumer diffs across regenerations, and it is
         // built by walking a live `SchemaGenerator` rather than by printing a sorted list — so
         // "same inputs, same bytes" is a property of the RUNTIME here, not only of the emitter.
@@ -7539,6 +7614,125 @@ fn json_extern() {
         &[],
         false,
         &[],
+    );
+}
+
+/// Harness for a json-gen crate that must FAIL to run. `run_test` asserts the json-gen `cargo run`
+/// SUCCEEDS, so the schema-name guard's vectors cannot go through it: the whole point is a spec whose
+/// document would publish an order-dependent or merged name, which the emitted `add_schema` guard now
+/// turns into a panic in the CONSUMER's own run.
+///
+/// Mirrors `run_test`'s shape for everything that is not the verdict: the same export-dir reset (the
+/// three merged manifests and the three seed-once `lib.rs` roots — both are load-bearing for a REUSED
+/// export dir, since generation merges manifests and never clobbers a crate root), the same
+/// `--no-preserve-comments` regeneration, and the same `external_rust_defs*` routing (hand-written
+/// extern definitions belong in the user-owned thin `rust/src/lib.rs`, never in the clobbered
+/// `generated/**`). Asserts on a message FRAGMENT, not merely on a non-zero exit, so a fixture that
+/// starts failing for an unrelated reason (a compile error, say) fails this test too.
+fn run_json_gen_failure_test(dir: &str, extern_rust_defs: &str, expected_fragment: &str) {
+    use std::str::FromStr;
+    let test_path = std::path::PathBuf::from_str("tests").unwrap().join(dir);
+    let export_path = test_path.join("export");
+    println!("--------- running json-gen failure test: {dir} ---------");
+    for manifest in [
+        "rust/Cargo.toml",
+        "wasm/Cargo.toml",
+        "wasm/json-gen/Cargo.toml",
+    ] {
+        let _ = std::fs::remove_file(export_path.join(manifest));
+    }
+    for root in [
+        "rust/src/lib.rs",
+        "wasm/src/lib.rs",
+        "wasm/json-gen/src/lib.rs",
+    ] {
+        let _ = std::fs::remove_file(export_path.join(root));
+    }
+    let generate = tool_cmd("cargo")
+        .arg("run")
+        .arg("--")
+        .arg(format!("--output={}", export_path.to_str().unwrap()))
+        .arg(format!(
+            "--input={}",
+            test_path.join("input.cddl").to_str().unwrap()
+        ))
+        .arg("--no-preserve-comments")
+        .arg("--json-schema-export=true")
+        .arg("--json-serde-derives=true")
+        .arg("--wasm=false")
+        .output()
+        .unwrap();
+    if !generate.status.success() {
+        eprintln!("{}", String::from_utf8_lossy(&generate.stderr));
+    }
+    assert!(
+        generate.status.success(),
+        "generation itself must succeed for {dir} — the guard is a RUNTIME check in the emitted \
+         json-gen crate, not a generation-time reject"
+    );
+    let mut root_lib_rs = std::fs::OpenOptions::new()
+        .append(true)
+        .open(export_path.join("rust/src/lib.rs"))
+        .unwrap();
+    root_lib_rs
+        .write_all("\nuse serialization::*;\n\n".as_bytes())
+        .unwrap();
+    root_lib_rs
+        .write_all(
+            std::fs::read_to_string(test_path.join(extern_rust_defs))
+                .unwrap()
+                .as_bytes(),
+        )
+        .unwrap();
+    std::mem::drop(root_lib_rs);
+    let json_export_dir = export_path.join("wasm/json-gen");
+    assert!(
+        json_export_dir.exists(),
+        "no json-gen crate at {json_export_dir:?} — generation stopped emitting it"
+    );
+    let run = tool_cmd("cargo")
+        .arg("run")
+        .current_dir(&json_export_dir)
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&run.stderr).into_owned();
+    println!("json-gen run stderr:\n{stderr}");
+    assert!(
+        !run.status.success(),
+        "the json-gen run for {dir} must FAIL — the emitted schema-name guard did not fire"
+    );
+    assert!(
+        stderr.contains(expected_fragment),
+        "the json-gen run for {dir} failed, but not for the expected reason: no `{expected_fragment}` \
+         in\n{stderr}"
+    );
+}
+
+/// The MERGE half of the schema document's name-injectivity guard (check A, the name ledger). A
+/// generic extern instantiated twice reaches ONE hand-written `JsonSchema` impl whose `schema_name()`
+/// is constant, and `schema_id()` DEFAULTS to `schema_name()` — so `schemars` sees one type, emits one
+/// definition, and every reference to the loser silently resolves to the winner's shape. Both returned
+/// refs equal the shared name there, so only a name ledger can see it.
+#[test]
+fn json_schema_name_merge_fails() {
+    run_json_gen_failure_test(
+        "json-schema-name-merge",
+        "external_rust_defs_merge",
+        "two distinct Rust types both publish the JSON schema name",
+    );
+}
+
+/// The STOLEN-NAME half of the guard (check B, "the row kept its own name"), and the reason the
+/// ledger alone is not enough: the type that claims the name first (`HiddenExt`, carrying
+/// `@no_json_schema_export`) has no registration row, so it never enters the ledger. `AlphaParent`
+/// sorts before `Shared` in the row order and pulls it in transitively; the later `Shared` row is then
+/// published as `Shared2` — a name decided by registration order rather than by the spec.
+#[test]
+fn json_schema_name_stolen_fails() {
+    run_json_gen_failure_test(
+        "json-schema-name-stolen",
+        "external_rust_defs_stolen",
+        "but the document assigned it \"Shared2\"",
     );
 }
 
