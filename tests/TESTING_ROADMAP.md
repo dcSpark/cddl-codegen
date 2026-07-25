@@ -559,6 +559,25 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   search returns its own fixed endpoint), plus the specific-error-keyed verdict shape and the
   cheaper reproduce-at-parent/pickaxe-first alternatives — live in
   `draft/bisect-verdict-discipline.md`.
+- **A "no gate demands this" premise probed against ONE gate is not evidence about a gate in
+  another TIER — and a full-tier gate is where such a premise survives longest, because CI runs
+  `fast` only.** Proven instance: the `@no_json_schema_export` delivery deferred its cddl-matrix
+  feature row on a premise probed against `project_corpus` (fast tier), where it genuinely holds —
+  check D demands a cover only for an id the corpus actually exercises, and an unregistered id has
+  no universe entry at all, so it cannot be demanded. The same premise is FALSE for
+  `cddl-matrix/verify.ts`'s forward completeness lint, which treats any directive documented in
+  `docs/docs/comment_dsl.mdx` as surveyed surface and hard-fails (`missing_cddl_codegen_feature`)
+  while it carries no `features/cddl_codegen.toml` row. `verify` is full-tier; no tier run that
+  cycle reached it, so the directive shipped over a red gate from the commit that introduced it
+  (`9ae0e552` — tag and docs both present, row absent) through four successors, surfaced by
+  orchestrator code-read rather than by any run. The standing system that owns this already exists
+  and was simply not run (AGENTS.md § "Build & verify": `check.ts full` before shipping a feature);
+  what is missing is the AUTHORING half. Working rule meanwhile: **a "no gate covers X" premise
+  names the gates it was probed against AND their tiers**, so the unprobed remainder is visible in
+  the claim itself instead of implied — the same scope-the-claim-to-its-evidence discipline the
+  point-in-time-inventory-claim entry in this section prescribes. Mechanical layer, on a SECOND
+  instance: a `check.ts` listing mode that prints the gates a given tier does NOT run, so a
+  deferral rationale can enumerate what it is not evidence about instead of asserting a universal.
 - **Observed-baseline comments beside gate floors rot silently — TWO instances, two homes, two
   distinct rot modes; the floors/consts stay the enforced artifact.** These comments are
   informational and review-maintained by design (replacing them with exact gate-asserted counts

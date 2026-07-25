@@ -240,7 +240,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 ## cddl-codegen vendor profile (comment DSL + sentinels — not RFC 8610)
 
-### `comment_dsl` (18)
+### `comment_dsl` (19)
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
@@ -255,6 +255,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `dsl.name` | ✅ | @name — explicit field/variant name | `dsl_name.cddl` |
 | `dsl.newtype` | ✅ | @newtype — wrapper struct instead of alias | `dsl_newtype.cddl` |
 | `dsl.no_alias` | ✅ | @no_alias — inline the type, emit no alias | `dsl_no_alias.cddl` |
+| `dsl.no_json_schema_export` | ➕ | @no_json_schema_export — off the published JSON-schema surface | supported, no corpus fixture (cddl-codegen exit 0) |
 | `dsl.raw_bytes_flavor` | ✅ | @raw_bytes_flavor — extern generic raw-bytes wrapper flavor | `extern_generic_raw_bytes.cddl` |
 | `dsl.rust_name` | ➕ | @rust_name — dependency-pinned Rust type name | supported; pins a dependency-crate type name, so the generated `use extern_dep::…` cannot compile standalone; integration-tested in src/tests/rust_name_tests.rs and the extern_import byte-identity pair |
 | `dsl.used_as_elem` | ✅ | @used_as_elem — mint the canonical loose-list wasm wrapper | `dsl_used_as_elem.cddl` |
@@ -330,7 +331,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 ## Summary
 
-- Features: **116** — ✅ 65 covered · ➕ 21 supported-untested · ⚠️ 4 partial · ➖ 26 not supported
+- Features: **117** — ✅ 65 covered · ➕ 22 supported-untested · ⚠️ 4 partial · ➖ 26 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
 - Corpus fixtures: 85
 

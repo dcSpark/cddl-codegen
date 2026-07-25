@@ -8,7 +8,7 @@ Running the gates is not a roadmap concern either: `check.ts` at the repo root i
 gate registry + entry point, `tests/README.md` § "Running everything" is the prose overview, each
 script's header docstring is the per-gate detail, and `QUERIES.md` documents the Q1–Q6 query scripts.
 
-**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->116 features (95 RFC8610 + 1 RFC9682 + 20 `CDDL_CODEGEN` vendor profile), 98 containment cells, and 248 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
+**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->117 features (95 RFC8610 + 1 RFC9682 + 21 `CDDL_CODEGEN` vendor profile), 98 containment cells, and 249 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
 execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (<!-- gen:sh:roadmap-ops -->all 37 IANA ops probed<!-- /gen:sh:roadmap-ops -->):
 "supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
@@ -46,14 +46,6 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
   supports it; wire it into `project_corpus.ts` if a consumer wants the complete matrix view.
-- **Matrix cell for `@no_json_schema_export`.** The directive is mirrored in `corpus_detect.ts`
-  (`MIRRORED_DIRECTIVES` + a `dsl.no_json_schema_export` `DSL_TAGS` entry), which is what the
-  `project_corpus` lockstep tripwire enforces — but it has no `features/cddl_codegen.toml` row, no
-  `tests/corpus/*.cddl` fixture, and therefore no `verify.ts` verdict. Minting the verdict needs the
-  external ruby/rust CDDL tooling and is a multi-minute run whose failure mode is a half-minted
-  verdict set, so it belongs in a batch with the other pending mints rather than alone. Until the row
-  exists, `dsl.no_json_schema_export` is a detector id with no universe entry: check D can never
-  demand a cover for it, so the directive's corpus coverage is invisible to the coverage doc.
 - **Extern-interface seam sentinels — decide whether they're matrix surface.** `--extern-import`
   input files carry vendor constructs beyond the two `ext.*` sentinels: the
   `; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1` header and `; unexported:` records (strictly parsed at

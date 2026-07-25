@@ -1,0 +1,1 @@
+njse = [a: uint, b: text] ; @no_json_schema_export
