@@ -473,6 +473,14 @@ fn rule_metadata(input: &str) -> IResult<&str, RuleMetadata> {
 /// `@namefoo` credits `@name` in both places. Keep in lockstep with the `tag_*` fns above (and
 /// `cddl-matrix/corpus_detect.ts`'s `MIRRORED_DIRECTIVES` mirror). Not `tag("@…")`-wrapped, so it does
 /// NOT feed corpus_detect's `tag("@…")`-literal drift tripwire.
+///
+/// Adding a directive here is the START of a checklist, not the whole of it: once the directive is
+/// also DOCUMENTED in `docs/docs/comment_dsl.mdx`, `cddl-matrix/verify.ts`'s forward completeness
+/// lint hard-fails until it has a `features/cddl_codegen.toml` row and a minted verdict, and that
+/// lint is FULL-tier — so a local/fast tier stays green while the full tier is red. The whole chain
+/// (feature row, decode-catalog row, ingredients, the vendor-count pin) is written down in
+/// `cddl-matrix/README.md` § "Registering a new vendor (CDDL_CODEGEN) feature row"; read it before
+/// deferring any part of it.
 pub const KNOWN_RULE_METADATA_TAGS: &[&str] = &[
     "@name",
     "@rust_name",
