@@ -1,0 +1,1 @@
+old.rs:5: A bare `// cddl-codegen:keep` marker claims the comment run directly below it, but the next line is not a comment.

@@ -4,6 +4,7 @@
 impl Foo {
     fn de(&self) {
         read_elems(1);
+        // cddl-codegen:keep
         // about y
         read_elems(1);
     }

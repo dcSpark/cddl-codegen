@@ -10,9 +10,30 @@ harness module docs for the byte-for-byte assertion and the three cross-cutting 
 
 `.gitattributes` pins `* -text` so the CRLF cases keep their `\r\n` bytes across checkouts.
 
+Ownership note: outside a `cddl-codegen:` block every comment is tool-owned, so a fixture whose
+INTENT is "a user comment" marks it with a `// cddl-codegen:keep` marker (the bare form, so the
+original comment text stays verbatim in `old.rs`/`expected.rs`); a fixture whose intent is "a tool
+comment" leaves it unmarked and asserts it is dropped, self-cancelled, or trapped.
+
+## `keep` cases — declaring a user comment
+
+- `keep_inline_transfers` — `// cddl-codegen:keep <text>`: the whole line is the comment and travels verbatim, marker included (an unmarked copy would be unclassified next run).
+- `keep_run_claims_contiguous_comments` — a bare marker claims the 3-line `//` run directly below it as one unit.
+- `keep_run_claims_doc_comments` — the bare form over `///` lines: the only form that can carry doc comments.
+- `keep_run_stops_at_blank_line` — a blank line ends the claimed run, so the comment below it is unclassified and trapped.
+- `keep_rustfmt_folded_tail_marker` — an inline marker `rustfmt` folded onto a match tail arm's `}`; the entry unfold moves it own-line and it still places.
+- `keep_inside_replaced_span_conflict_fails_loudly` — a `keep` block whose anchor lands strictly inside a replaced byte span (op-composition conflict); the replace still splices, the `keep` block fails loudly as "a user comment", not "a user code block".
+
+## Unclassified-comment cases (the ownership rule)
+
+- `reworded_tool_comment_fails_loudly_with_hint` — a tool comment whose text changed upstream (one word, same anchor — the real `ponytail:` → `careful:` regression's shape): the new wording appears once, the old only inside the `compile_error!`, and the hint names the new text.
+- `deleted_tool_comment_fails_loudly` — a tool comment removed upstream is trapped, not kept forever as a phantom.
+- `reflowed_tool_paragraph_fails_loudly` — a re-wrapped tool paragraph: the two lines whose wrap changed surface as loud residue, nothing is spliced mid-paragraph, and the hint lists exactly those two new lines.
+- `unmarked_user_comment_teaches_keep` — an unmarked hand-written comment: the message names `// cddl-codegen:keep` so the notation is discoverable from the build output.
+
 ## Comment cases (migrated from `comment_preserve.rs`'s inline suite; name = old test name)
 
-- `identity_transfers_own_line_comment` — file tokens unchanged, comment transfers at same index.
+- `identity_transfers_own_line_comment` — file tokens unchanged, `keep`-marked comment transfers at same index.
 - `header_self_cancels_no_duplicate` — comment-free regen is a byte-identical no-op.
 - `trailing_comment_fails_loudly_with_hint` — a trailing (end-of-line) comment can't be re-placed.
 - `per_item_transfer_with_unrelated_item_changed` — comment in an unchanged item survives an edit elsewhere.
@@ -26,7 +47,7 @@ harness module docs for the byte-for-byte assertion and the three cross-cutting 
 - `deleted_duplicate_statement_fails_loudly_not_retargets` — a deleted duplicate's comment must not re-attach to the survivor.
 - `generator_trailing_comment_cancels_by_text` — a generator trailing comment self-cancels by text.
 - `shifted_generator_comment_not_duplicated` — a generator comment whose anchor shifted isn't duplicated.
-- `stale_tool_doc_dropped_user_doc_on_undocumented_item_kept` — stale tool `///` drops; a user `///` on an undocumented item stays.
+- `stale_tool_doc_dropped_user_doc_on_undocumented_item_kept` — both halves in one case: an unmarked stale tool `///` drops, while a `keep`-marked user `///` on an undocumented item stays. Kept as one fixture because the value is the CONTRAST — the two docs sit in the same file and the marker is the only thing telling them apart.
 - `same_key_count_change_fails_loudly` — same-keyed item count changed → occurrence match unsound.
 - `preceding_comment_on_reordered_same_key_items_fails_loudly` — two changed same-key items → ordering untrustworthy.
 - `comma_terminated_statement_reanchors` — a struct-literal field comment re-anchors at its `,`.
@@ -83,13 +104,15 @@ the harness's fixed-point property (`preserve(expected, new) == expected`) exerc
 - `replace_deleted_duplicate_fails_loudly` — the needle is non-unique in the virtual old item (a deleted duplicate); which occurrence it replaces is ambiguous, so it fails loudly rather than re-attaching to a survivor.
 - `replace_vanished_item_fails_loudly` — the enclosing item was deleted.
 - `replace_same_key_count_change_fails_loudly` — the same-keyed item count changed, so occurrence matching is unsound.
-- `replace_comment_inside_replaced_span_conflict_fails_loudly` — a plain user comment whose anchor lands strictly inside a replaced byte span (op-composition conflict); the replace still splices, the comment fails loudly.
 - `replace_positional_blocked_by_in_item_drift_fails_loudly` — a duplicated-fragment block whose item ALSO changed (unrelated in-item drift), so the item-identity fast path does not apply and the non-unique needle is trapped in a `compile_error!`.
 - `replace_rustfmt_folded_tail_drift_fails_loudly` — the `rustfmt`-folded tail-arm shape, but the generator's tail arm changed so the recorded original no longer matches; the unfolded block is trapped in a `compile_error!` (folding must not weaken drift detection).
 
 ## Hard-error cases (`error.txt`)
 
 - `insert_quoted_tag_line_errors` — a reserved tag inside a block (namespace reservation).
+- `keep_bare_with_no_run_errors` — a bare `keep` marker with no comment on the line below it.
+- `keep_unknown_suffix_tag_errors` — `// cddl-codegen:keep-this` is an unknown tag, not `keep` with a suffix.
+- `keep_nested_in_insert_block_errors` — a `keep` marker inside an insert block hits the existing "unexpected reserved tag" branch.
 - `insert_unbalanced_delimiters_errors` — the user section has unbalanced `{}`/`()`/`[]`.
 - `insert_orphaned_end_errors` — `insert-end` with no matching `insert-start`.
 - `insert_unclosed_errors` — `insert-start` with no matching `insert-end`.

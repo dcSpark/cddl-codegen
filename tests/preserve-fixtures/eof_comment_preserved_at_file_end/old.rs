@@ -4,4 +4,5 @@
 pub struct Foo {
     pub a: u64,
 }
+// cddl-codegen:keep
 // end note

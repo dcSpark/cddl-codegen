@@ -4,6 +4,7 @@
 impl A {
     fn f() -> Self {
         Self {
+            // cddl-codegen:keep
             // picked for x
             x: compute_x(),
             y: 1,

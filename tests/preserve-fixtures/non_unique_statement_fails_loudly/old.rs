@@ -3,6 +3,7 @@
 
 impl Foo {
     fn go(&self) {
+        // cddl-codegen:keep
         // which one
         push(x);
     }

@@ -9,6 +9,7 @@ impl Foo {
         //   a();
         //   b();
         // cddl-codegen:replace-end
+        // cddl-codegen:keep
         // MOVE ME
         c();
     }

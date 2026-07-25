@@ -15870,22 +15870,30 @@ fn comment_preservation_disk_round_trip() {
         "unexpected output:\n{content}"
     );
 
-    // Inject own-line comments across the trees: one on the stable `Bar` type and one above the
-    // `Self { … }` literal inside `impl Foo`'s constructor (a statement the spec change below will
-    // rewrite) in the rust tree; one in the wasm tree; one in the statically-sourced `error.rs`
-    // (which takes a different write path in `export` and must be covered by the same overlay).
-    content = content.replace("pub struct Bar", "// KEEP BAR\npub struct Bar");
+    // Inject `keep`-marked own-line comments across the trees: one on the stable `Bar` type and one
+    // above the `Self { … }` literal inside `impl Foo`'s constructor (a statement the spec change
+    // below will rewrite) in the rust tree; one in the wasm tree; one in the statically-sourced
+    // `error.rs` (which takes a different write path in `export` and must be covered by the same
+    // overlay). Each uses the BARE marker form so the asserted comment text stays verbatim.
+    content = content.replace(
+        "pub struct Bar",
+        "// cddl-codegen:keep\n// KEEP BAR\npub struct Bar",
+    );
     let foo_pos = content.find("impl Foo {").expect("impl Foo missing");
     let self_rel = content[foo_pos..]
         .find("Self {")
         .expect("Self literal missing");
     let self_abs = foo_pos + self_rel;
     let line = content[..self_abs].rfind('\n').unwrap() + 1;
-    content.insert_str(line, "        // FOO NEW NOTE\n");
+    content.insert_str(
+        line,
+        "        // cddl-codegen:keep\n        // FOO NEW NOTE\n",
+    );
     std::fs::write(&mod_rs, &content).unwrap();
-    let wasm_content = std::fs::read_to_string(&wasm_mod_rs)
-        .unwrap()
-        .replace("pub struct Bar", "// KEEP WASM BAR\npub struct Bar");
+    let wasm_content = std::fs::read_to_string(&wasm_mod_rs).unwrap().replace(
+        "pub struct Bar",
+        "// cddl-codegen:keep\n// KEEP WASM BAR\npub struct Bar",
+    );
     assert!(
         wasm_content.contains("// KEEP WASM BAR"),
         "wasm wrapper for Bar missing:\n{wasm_content}"
@@ -15899,7 +15907,10 @@ fn comment_preservation_disk_round_trip() {
         .find("DeserializeFailure::DefiniteLenMismatch(found")
         .expect("DefiniteLenMismatch match arm missing from error.rs");
     let arm_line = error_content[..arm].rfind('\n').unwrap() + 1;
-    error_content.insert_str(arm_line, "            // KEEP ERROR NOTE\n");
+    error_content.insert_str(
+        arm_line,
+        "            // cddl-codegen:keep\n            // KEEP ERROR NOTE\n",
+    );
     std::fs::write(&error_rs, &error_content).unwrap();
 
     // Inject the CODE-preservation counterparts into `Bar`'s serialize impl in serialization.rs: a
@@ -16032,6 +16043,71 @@ fn comment_preservation_disk_round_trip() {
     assert_eq!(
         changed, changed_again,
         "the fail-loudly block must reach a byte-identical fixed point"
+    );
+
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+/// The ownership rule over the REAL disk export path: an own-line comment in a generated tree that
+/// carries no `// cddl-codegen:keep` marker is UNCLASSIFIED, so a regen traps it in a
+/// `compile_error!` rather than re-anchoring it on a guess — and the message teaches the marker.
+/// The pure fixture harness covers the classification itself; this pins that `export`'s write path
+/// (rustfmt pass included) reaches the same outcome and then holds it as a fixed point, which is
+/// where a real user meets the rule.
+#[test]
+fn comment_preservation_unmarked_comment_trapped_on_disk() {
+    use clap::Parser;
+    let scratch =
+        std::env::temp_dir().join(format!("cddl_codegen_unmarked_cm_{:016x}", checkout_hash()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    std::fs::write(&input, "bar = [z: uint]\n").unwrap();
+    let out = scratch.join("crate");
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+        "--wasm=false",
+    ]);
+    let mod_rs = out.join("rust/src/generated/mod.rs");
+
+    crate::api::generate_to_disk(&cli).unwrap();
+    let content = std::fs::read_to_string(&mod_rs)
+        .unwrap()
+        .replace("pub struct Bar", "// UNMARKED NOTE\npub struct Bar");
+    assert!(content.contains("// UNMARKED NOTE"), "injection failed");
+    std::fs::write(&mod_rs, &content).unwrap();
+
+    crate::api::generate_to_disk(&cli).unwrap();
+    let trapped = std::fs::read_to_string(&mod_rs).unwrap();
+    assert!(
+        trapped.contains("cddl-codegen:unpreserved-comment") && trapped.contains("cannot classify"),
+        "an unmarked own-line comment must be trapped as unclassified:\n{trapped}"
+    );
+    assert!(
+        trapped.contains("UNMARKED NOTE"),
+        "the trapped comment's text must be in the message (never-silent):\n{trapped}"
+    );
+    assert!(
+        trapped.contains("cddl-codegen:keep"),
+        "the message must teach the `keep` marker — it is the discovery mechanism:\n{trapped}"
+    );
+    // The comment is NOT left in place as live code: its only remaining copy is the escaped payload
+    // inside the `compile_error!` string, so no LINE of the file is that comment.
+    assert!(
+        !trapped.lines().any(|l| l.trim() == "// UNMARKED NOTE"),
+        "the unclassified comment must not also be re-anchored as a live comment:\n{trapped}"
+    );
+
+    // The trap carries forward byte-identically (it is a recognized sentinel block, not a fresh edit).
+    crate::api::generate_to_disk(&cli).unwrap();
+    let again = std::fs::read_to_string(&mod_rs).unwrap();
+    assert_eq!(
+        trapped, again,
+        "the unclassified-comment trap must reach a byte-identical fixed point"
     );
 
     let _ = std::fs::remove_dir_all(&scratch);

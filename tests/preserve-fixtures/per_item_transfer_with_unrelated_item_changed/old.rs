@@ -2,6 +2,7 @@
 // https://github.com/dcSpark/cddl-codegen
 
 pub struct A {
+    // cddl-codegen:keep
     // annotate a
     pub a: u64,
 }
