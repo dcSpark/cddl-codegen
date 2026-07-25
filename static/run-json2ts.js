@@ -60,98 +60,140 @@ const args = parseArgs(SCRIPT, process.argv.slice(2), ['root', 'wasm-dir']);
 const root = resolveRoot(args.root);
 const wasmDir = resolveWasmDir(SCRIPT, root, args['wasm-dir']);
 
-const schemasDir = path.join(wasmDir, 'json-gen', 'schemas');
-if (!fs.existsSync(schemasDir)) {
-  console.error(
-    `${SCRIPT}: no schema directory at ${schemasDir}. Run the json-gen crate ` +
-    `(\`cd ${path.join(wasmDir, 'json-gen')} && cargo run\`) first, which writes the schemas this ` +
-    `script compiles.`);
+// Fail loudly and leave the last-good output alone; never write a partial `.d.ts`.
+function fail(message) {
+  console.error(`${SCRIPT}: ${message}`);
   process.exit(1);
 }
+
+const schemasDir = path.join(wasmDir, 'json-gen', 'schemas');
+if (!fs.existsSync(schemasDir)) {
+  fail(
+    `no schema directory at ${schemasDir}. Run the json-gen crate ` +
+    `(\`cd ${path.join(wasmDir, 'json-gen')} && cargo run\`) first, which writes the schema ` +
+    `document this script compiles.`);
+}
 const outputFile = path.join(wasmDir, 'json-gen', 'output', 'json-types.d.ts');
-const schemaFiles = fs.readdirSync(schemasDir).filter(file => path.extname(file) === '.json');
 
-// Each schema is self-contained: schemars emits every referenced type inline under the file's own
-// `$defs`, so json2ts resolves all `#/$defs/...` refs locally — no cross-file `$ref` rewriting is
-// needed. With `declareExternallyReferenced: false` (below), a referenced type is declared once by
-// its own per-type schema file and only *referenced* in others; the dedup pass after compile
-// collapses any duplicate declarations before the JSON-suffix rename.
+// The json-gen crate writes exactly ONE document per crate — `<crate>.schema.json`, a pure `$defs`
+// bundle threaded through a single schemars generator — so every type any other type references is
+// a definition in the same file. That is what makes one `compile()` call correct: each definition
+// becomes a top-level declaration, and the declared set cannot diverge from the referenced set.
+const jsonFiles = fs.readdirSync(schemasDir).filter(file => path.extname(file) === '.json');
+const documents = jsonFiles.filter(file => file.endsWith('.schema.json'));
+const strays = jsonFiles.filter(file => !file.endsWith('.schema.json'));
 
-// A schema that fails to compile is a hard failure of the whole run, never a silently-dropped type:
-// a dropped type leaves the merged `.d.ts` referencing a name nothing declares, and the run would
-// still have overwritten the last-good output on its way out.
-const failures = [];
+if (documents.length !== 1) {
+  fail(
+    `expected exactly one *.schema.json document in ${schemasDir}, found ${documents.length}` +
+    (documents.length > 0 ? `:\n  ${documents.join('\n  ')}` : '') +
+    `\nAll .json files present:${jsonFiles.length > 0 ? `\n  ${jsonFiles.join('\n  ')}` : ' (none)'}`);
+}
+if (strays.length > 0) {
+  // A leftover per-type schema from a pre-merge generator run. Ignoring it would keep a deleted
+  // type shipping, so it is fatal and the fix is named.
+  fail(
+    `${strays.length} stale per-type schema file(s) in ${schemasDir}:\n  ${strays.join('\n  ')}\n` +
+    `The json-gen crate writes one ${documents[0]} document and never deletes anything, so these ` +
+    `are left over from an older generator run. Delete them and re-run the json-gen crate.`);
+}
 
-Promise.all(schemaFiles.map(schemaFile => {
-  const completeName = path.join(schemasDir, schemaFile);
-  const originalFile = fs.readFileSync(completeName, 'utf8');
-  let schemaObj = JSON.parse(originalFile);
+const documentFile = documents[0];
+const document = JSON.parse(fs.readFileSync(path.join(schemasDir, documentFile), 'utf8'));
+const sourceDefs = document.$defs || document.definitions;
+if (sourceDefs == null || Object.keys(sourceDefs).length === 0) {
+  // An empty JSON surface must not produce a green build: the wasm classes' `to_json_value()` would
+  // silently stay `any` and nothing would say why.
+  fail(`${documentFile} has no definitions ($defs). Refusing to write an empty ${outputFile}.`);
+}
 
-  // this gets rid of [k: string]: unknown in generated .ts
-  // but we shouldn't do this if it already exists in the case
-  // of map types
-  if (typeof schemaObj.additionalProperties !== 'object') {
-    schemaObj.additionalProperties = false;
-  }
-  return json2ts.compile(schemaObj, schemaFile, {
-    declareExternallyReferenced: false,
-    cwd: schemasDir,
-    bannerComment: ''
-  }).catch(e => {
-    failures.push(`  ${schemaFile}: ${e && e.stack ? e.stack : e}`);
-    return null;
-  });
+// `JSON` suffix so these names cannot collide with the wasm classes they describe. Applied to the
+// `$defs` KEYS (and titles) BEFORE compiling, so json2ts emits the final names itself — renaming
+// identifiers in its output afterwards also rewrites matching words inside doc comments and string
+// literal unions.
+const suffixed = (name) => `${name}JSON`;
 
-})).then(tsDefs => {
-  if (failures.length > 0) {
-    console.error(
-      `${SCRIPT}: ${failures.length} of ${schemaFiles.length} schema file(s) failed to compile ` +
-      `(schemas dir: ${schemasDir}). ${outputFile} was left untouched.`);
-    for (const failure of failures) {
-      console.error(failure);
-    }
-    process.exitCode = 1;
+// The document needs a root that references every definition, or json2ts prunes the ones nothing
+// else points at (a schema root that no other type embeds — a large fraction of a real corpus).
+// Stripped from the output again below.
+const ROOT_TITLE = '__AllSchemas';
+
+// Annotations sitting beside a `$ref` are legal in 2020-12, but json2ts reads the combination as a
+// schema distinct from its target and emits a near-duplicate type (`FooJSON1`). They are pure
+// documentation, so drop them and keep the reference bare.
+const ANNOTATION_KEYWORDS =
+  ['description', 'title', 'default', 'examples', 'deprecated', 'readOnly', 'writeOnly'];
+
+const knownNames = new Set(Object.keys(sourceDefs));
+const rewriteRefs = (node) => {
+  if (Array.isArray(node)) {
+    node.forEach(rewriteRefs);
     return;
   }
-  const defs = tsDefs.join('').split(/\r?\n/);
-  let dedupedDefs = [];
-  let start = null;
-  let added = new Set();
-  const addDef = (cur) => {
-    if (start != null) {
-      let defName = defs[start].match(/export\s+(type|interface)\s+(\w+).*/);
-      let defKey = null;
-      if (defName != null && defName.length > 2) {
-        defKey = defName[2];
-      } else {
-        console.error(`${SCRIPT} could not find name for de-dup(${defName != null}): "${defs[start]}"`);
-      }
-      if (defKey == null || !added.has(defKey)) {
-        for (let j = start; j < cur; ++j) {
-          dedupedDefs.push(defs[j]);
-        }
-        if (defKey != null) {
-          added.add(defKey);
-        }
-      }
+  if (node === null || typeof node !== 'object') return;
+  if (typeof node.$ref === 'string') {
+    const bare = node.$ref.replace(/^#\/(?:\$defs|definitions)\//, '');
+    if (knownNames.has(bare)) {
+      node.$ref = `#/$defs/${suffixed(bare)}`;
     }
-    start = cur;
-  };
-  for (let i = 0; i < defs.length; ++i) {
-    if (defs[i].startsWith('export')) {
-      addDef(i);
-    }
+    for (const keyword of ANNOTATION_KEYWORDS) delete node[keyword];
   }
-  addDef(defs.length);
-  // prepend 'JSON' to all identifiers here so they don't conflict with main .ts types
-  for (let i = 0; i < dedupedDefs.length; ++i) {
-    for (let id of added) {
-      dedupedDefs[i] = dedupedDefs[i].replace(new RegExp(`\\b${id}\\b`), id + 'JSON');
-    }
+  for (const [key, value] of Object.entries(node)) {
+    if (key !== '$ref') rewriteRefs(value);
   }
-  fs.mkdirSync(path.dirname(outputFile), { recursive: true });
-  fs.writeFileSync(outputFile, dedupedDefs.join('\n'));
-}).catch(e => {
-  console.error(`${SCRIPT}: ${e && e.stack ? e.stack : e}`);
-  process.exitCode = 1;
-});
+};
+// Ref rewriting runs BEFORE the per-definition title is written, so the annotation strip above can
+// never delete the suffixed title this script is about to set.
+rewriteRefs(sourceDefs);
+
+const defs = Object.create(null);
+for (const [name, body] of Object.entries(sourceDefs)) {
+  // json2ts names a type from its `title` in preference to its `$defs` key, so the title has to
+  // carry the suffix too — otherwise a definition that arrived with a title (from a Rust doc
+  // comment, say) emits an unsuffixed name that merges with the wasm class of the same name.
+  const def = { ...body, title: suffixed(name) };
+  // Suppresses `[k: string]: unknown` on the emitted type, unless the definition really is a map.
+  // Per-definition, because every definition becomes a top-level declaration here.
+  if (typeof def.additionalProperties !== 'object') def.additionalProperties = false;
+  defs[suffixed(name)] = def;
+}
+
+const merged = {
+  $schema: document.$schema || 'https://json-schema.org/draft/2020-12/schema',
+  title: ROOT_TITLE,
+  type: 'object',
+  additionalProperties: false,
+  properties: Object.fromEntries(
+    Object.keys(defs).map((name) => [name, { $ref: `#/$defs/${name}` }])
+  ),
+  $defs: defs,
+};
+
+json2ts
+  .compile(merged, ROOT_TITLE, { bannerComment: '', cwd: schemasDir })
+  .then((ts) => {
+    // Drop the synthetic root, keeping every real declaration.
+    const withoutRoot = ts.replace(
+      new RegExp(`^export interface ${ROOT_TITLE} \\{[\\s\\S]*?\\n\\}\\n?`, 'm'),
+      ''
+    );
+    if (withoutRoot.includes(ROOT_TITLE)) {
+      throw new Error(`${ROOT_TITLE} survived into the output; refusing to write it`);
+    }
+    const declared = (withoutRoot.match(/^export (?:type|interface) /gm) || []).length;
+    if (declared === 0) {
+      throw new Error(`no types produced from ${Object.keys(defs).length} definitions`);
+    }
+    fs.mkdirSync(path.dirname(outputFile), { recursive: true });
+    fs.writeFileSync(outputFile, withoutRoot);
+    console.log(`${SCRIPT}: ${declared} types from ${Object.keys(defs).length} definitions`);
+  })
+  .catch((e) => {
+    // A document that fails to compile is a hard failure of the whole run, never a silently-dropped
+    // type: the last-good `.d.ts` stays on disk and the build goes red.
+    console.error(
+      `${SCRIPT}: ${documentFile} failed to compile (schemas dir: ${schemasDir}). ` +
+      `${outputFile} was left untouched.`);
+    console.error(`  ${e && e.stack ? e.stack : e}`);
+    process.exitCode = 1;
+  });

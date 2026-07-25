@@ -1204,9 +1204,9 @@ fn run_test(
         }
     }
     // Run (not just build) the JSON schema export crate so its `main()` -> `export_schemas()`
-    // actually executes: it creates the `schemas/` dir and writes a `<Type>.json` per root type.
-    // `cargo build` only typechecked that code; nothing ever ran it, so a runtime panic in the
-    // generated schema-export body (e.g. a bad path or `schemars` call) was invisible to CI.
+    // actually executes: it creates the `schemas/` dir and writes the one `<lib>.schema.json`
+    // document. `cargo build` only typechecked that code; nothing ever ran it, so a runtime panic in
+    // the generated schema-export body (e.g. a bad path or `schemars` call) was invisible to CI.
     let json_export_dir = test_path.join(format!("{export_path}/wasm/json-gen"));
     if options.contains(&"--json-schema-export=true") {
         assert!(
@@ -1215,9 +1215,9 @@ fn run_test(
         );
     }
     if json_export_dir.exists() {
-        // Stale schemas from a previous local run would satisfy the `schema_count > 0` assertion
-        // below even if the current export writes nothing; start from a clean dir (CI is a fresh
-        // checkout, so this only matters for the local signal).
+        // Stale schemas from a previous local run would satisfy the assertions below even if the
+        // current export writes nothing; start from a clean dir (CI is a fresh checkout, so this
+        // only matters for the local signal).
         let schemas_dir = json_export_dir.join("schemas");
         let _ = std::fs::remove_dir_all(&schemas_dir);
         let cargo_run_json = tool_cmd("cargo")
@@ -1233,16 +1233,70 @@ fn run_test(
         }
         assert!(cargo_run_json.status.success());
         // `export_schemas()` succeeding isn't enough: a no-op body would also exit 0. Assert it
-        // actually wrote at least one `<Type>.json` into `schemas/`, so an empty/missing dir
-        // (export silently producing nothing) fails loudly instead of passing.
-        let schema_count = std::fs::read_dir(&schemas_dir)
+        // wrote exactly ONE `*.schema.json` document and nothing else — `run-json2ts.js` rejects a
+        // schemas dir holding anything but the single document, so a stray file here would be a
+        // green Rust run that reddens the JS step.
+        let written: Vec<String> = std::fs::read_dir(&schemas_dir)
             .unwrap_or_else(|e| panic!("json-gen wrote no schemas dir {schemas_dir:?}: {e}"))
             .filter_map(Result::ok)
-            .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("json"))
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.ends_with(".json"))
+            .collect();
+        assert_eq!(
+            written.len(),
+            1,
+            "json-gen must write exactly one schema document in {schemas_dir:?}, got {written:?}"
+        );
+        assert!(
+            written[0].ends_with(".schema.json"),
+            "json-gen's schema document must be named `<lib>.schema.json`, got {written:?}"
+        );
+        let document: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(schemas_dir.join(&written[0])).unwrap())
+                .unwrap_or_else(|e| panic!("{:?} is not valid JSON: {e}", written[0]));
+        let defs = document
+            .get("$defs")
+            .and_then(|d| d.as_object())
+            .unwrap_or_else(|| panic!("{:?} has no `$defs` object:\n{document:#}", written[0]));
+        assert!(
+            !defs.is_empty(),
+            "json-gen produced an empty `$defs` in {:?}",
+            written[0]
+        );
+        // Row-set sanity: every `add_schema::<T>` row lands in `$defs` by construction (the emitted
+        // helper publishes an inline-schema type under its own name rather than letting
+        // `subschema_for` drop it), and `$defs` additionally holds every type reached transitively.
+        // So `$defs` is never SMALLER than the row set. The only way it could be is two rows whose
+        // `schema_name()` collide — no fixture has that, and a new one that does should be looked at
+        // rather than accommodated here.
+        let rows = std::fs::read_to_string(json_export_dir.join("src/generated/mod.rs"))
+            .unwrap()
+            .matches("add_schema::<")
             .count();
         assert!(
-            schema_count > 0,
-            "json-gen produced no schema files in {schemas_dir:?}"
+            defs.len() >= rows,
+            "json-gen document {:?} has {} `$defs` entries for {rows} registration rows — a row's \
+             type silently failed to land in the document",
+            written[0],
+            defs.len()
+        );
+        // The document is a published artifact a consumer diffs across regenerations, and it is
+        // built by walking a live `SchemaGenerator` rather than by printing a sorted list — so
+        // "same inputs, same bytes" is a property of the RUNTIME here, not only of the emitter.
+        // Re-run the same binary and compare (the emitter's own byte-stability is pinned in the fast
+        // tier by `snapshot_tests::json_gen_rows_are_byte_stable`).
+        let first_document = std::fs::read(schemas_dir.join(&written[0])).unwrap();
+        let rerun = tool_cmd("cargo")
+            .arg("run")
+            .current_dir(&json_export_dir)
+            .output()
+            .unwrap();
+        assert!(rerun.status.success());
+        assert_eq!(
+            first_document,
+            std::fs::read(schemas_dir.join(&written[0])).unwrap(),
+            "two runs of export_schemas() must write a byte-identical {:?}",
+            written[0]
         );
     }
 }
@@ -7450,11 +7504,11 @@ fn json() {
     );
 }
 
-/// Regression for feature request 05: json-gen must not emit uncompilable `gen_json_schema!` rows
+/// Regression for feature request 05: json-gen must not emit uncompilable schema-registration rows
 /// for extern types. `ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_` instantiated as `my_set =
 /// ext_set<uint>` makes generation see BOTH the generic-extern BASE (`ExtSet`, bare — names no
 /// concrete type, E0107) and the concrete instance (`MySet = ExtSet<u64>`). Before the fix the base
-/// row (`gen_json_schema!(cddl_lib::ExtSet)`) failed the json-gen `cargo run`; the fix skips the
+/// row (naming the bare `cddl_lib::ExtSet`) failed the json-gen `cargo run`; the fix skips the
 /// base while keeping the plain extern (`MyExtern`) and the instance (`MySet`), which compile
 /// because the hand-written externs implement `schemars::JsonSchema` (the `--json-schema-export`
 /// extern contract). Rust-only (`--wasm=false`): the extern wasm wrapper is user-owned and out of
@@ -7519,17 +7573,18 @@ fn wasm_json_roundtrip() {
     );
 }
 
-/// Smoke-tests the schema → `.d.ts` step: runs the shipped `static/run-json2ts.js` over committed
-/// schema fixtures using the pinned `json-schema-to-typescript` from `static/package_json_schemas.json`
+/// Smoke-tests the schema → `.d.ts` step: runs the shipped `static/run-json2ts.js` over the committed
+/// schema document using the pinned `json-schema-to-typescript` from `static/package_json_schemas.json`
 /// (installed via `npm install` of that exact file), then asserts the emitted types. This is the only
 /// coverage of that script + dependency — a bump there is otherwise invisible to CI, since the rest of
 /// the suite only `cargo build`s the json-gen crate and never runs the JS. See `tests/json2ts/README.md`
 /// and `tests/README.md` § "JSON-schema → TypeScript JS-side pipeline".
 ///
-/// A second phase pins the failure direction: a schema that does not compile fails the RUN (non-zero
-/// exit) and leaves the last-good `json-types.d.ts` on disk. Dropping the type and exiting 0 would
-/// leave the merged `.d.ts` referencing a name nothing declares, with nothing in the build output
-/// saying so.
+/// Further phases pin the failure directions, all four of which must be non-zero exits that leave the
+/// last-good `json-types.d.ts` on disk: a document that does not compile, a stale per-type schema file
+/// beside the document, more than one document, and a document with no definitions. Any of them
+/// exiting 0 would ship a `.d.ts` that silently drops (or never declares) part of the JSON surface,
+/// with nothing in the build output saying so.
 #[test]
 fn js_schema_to_ts() {
     use std::str::FromStr;
@@ -7550,7 +7605,7 @@ fn js_schema_to_ts() {
 
     // Lay out the shipped `--package-json` shape the script resolves its own paths from: the script
     // at `<root>/scripts/`, a package.json (the shipped one, so npm installs the pinned json2ts),
-    // and the schemas at `<root>/rust/wasm/json-gen/schemas/*.json`.
+    // and the schema document at `<root>/rust/wasm/json-gen/schemas/<lib>.schema.json`.
     let _ = std::fs::remove_dir_all(&work);
     let schemas_out = work.join("rust/wasm/json-gen/schemas");
     std::fs::create_dir_all(work.join("scripts")).unwrap();
@@ -7595,53 +7650,110 @@ fn js_schema_to_ts() {
     }
     assert!(node.status.success());
 
-    let dts =
-        std::fs::read_to_string(work.join("rust/wasm/json-gen/output/json-types.d.ts")).unwrap();
+    let output_path = work.join("rust/wasm/json-gen/output/json-types.d.ts");
+    let dts = std::fs::read_to_string(&output_path).unwrap();
     println!("generated json-types.d.ts:\n{dts}");
-    // Identifiers are JSON-suffixed; the cross-file ref resolved (bar -> BarJSON); the enum became a
-    // union.
-    assert!(dts.contains("export interface FooJSON"), "{dts}");
-    assert!(dts.contains("export type BarJSON"), "{dts}");
+    // Every definition in the document is DECLARED, exactly once, JSON-suffixed — including
+    // `Nested`, which nothing but another definition points at. Under a per-type-file design that
+    // one was referenced-but-never-declared (a hard TS2304 for the consumer); one document plus one
+    // compile call is what makes the declared set and the referenced set the same set.
+    for declaration in [
+        "export interface FooJSON",
+        "export type BarJSON",
+        "export interface NestedJSON",
+        "export interface TableJSON",
+        "export interface TitledJSON",
+    ] {
+        assert_eq!(
+            dts.matches(declaration).count(),
+            1,
+            "expected exactly one `{declaration}`:\n{dts}"
+        );
+    }
+    // Refs were repointed at the suffixed keys; the enum became a union.
     assert!(dts.contains("bar: BarJSON"), "{dts}");
+    assert!(dts.contains("nested: NestedJSON"), "{dts}");
+    assert!(dts.contains("titled: TitledJSON"), "{dts}");
     assert!(dts.contains("\"x\" | \"y\""), "{dts}");
+    // A definition's `title` (schemars writes one whenever the Rust doc comment opens with a
+    // markdown heading) must NOT become the emitted name — json2ts prefers `title` over the `$defs`
+    // key, and an unsuffixed name merges with the wasm class of the same name (TS2300 on every
+    // shared member). The script overwrites every title with the suffixed key for exactly this.
+    assert!(!dts.contains("RenamedByDocComment"), "{dts}");
+    // A `$ref` carrying a sibling `description` (schemars emits that for a documented field, and
+    // draft-2020-12 keeps ref siblings) must not read as a schema distinct from its target, or
+    // json2ts emits a near-duplicate `NestedJSON1`.
+    assert!(!dts.contains("JSON1"), "{dts}");
+    // The synthetic all-referencing root exists only to stop json2ts pruning; it must not ship.
+    assert!(!dts.contains("__AllSchemas"), "{dts}");
     // additionalProperties guard, both sides: injected `false` on the struct dropped its index
-    // signature, but the map type's existing `additionalProperties` object was kept (Table.json).
+    // signature, but the map definition's existing `additionalProperties` object was kept.
     let foo_block = {
         let start = dts.find("export interface FooJSON").unwrap();
         &dts[start..start + dts[start..].find('}').unwrap()]
     };
     assert!(!foo_block.contains("[k: string]"), "{foo_block}");
-    assert!(dts.contains("export interface TableJSON"), "{dts}");
     assert!(dts.contains("[k: string]: number"), "{dts}");
 
-    // Failure direction: add a schema json2ts cannot compile (a `$ref` to a pointer the document
-    // doesn't define) and re-run over the same, now-populated, output.
+    // Failure directions. Each re-runs over the same, now-populated, output and must exit non-zero
+    // without touching it.
+    let document = schemas_out.join("cddl_lib.schema.json");
+    let good_document = std::fs::read_to_string(&document).unwrap();
+    let run_and_expect_failure = |label: &str, expect_in_stderr: &[&str]| {
+        let run = std::process::Command::new("node")
+            .arg("scripts/run-json2ts.js")
+            .current_dir(&work)
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&run.stderr);
+        println!("{label} run stderr:\n{stderr}");
+        assert!(
+            !run.status.success(),
+            "{label}: must fail the run, not be silently accepted"
+        );
+        for needle in expect_in_stderr {
+            assert!(stderr.contains(needle), "{label}: {stderr}");
+        }
+        assert_eq!(
+            std::fs::read_to_string(&output_path).unwrap(),
+            dts,
+            "{label}: a failed run must not overwrite the last-good json-types.d.ts"
+        );
+    };
+
+    // 1) A document json2ts cannot compile (a `$ref` to a pointer the document doesn't define).
     std::fs::write(
-        schemas_out.join("Broken.json"),
+        &document,
         "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \
-         \"title\": \"Broken\",\n  \"type\": \"object\",\n  \
-         \"properties\": { \"b\": { \"$ref\": \"#/$defs/DoesNotExist\" } }\n}\n",
+         \"title\": \"cddl_lib\",\n  \"$defs\": {\n    \"Broken\": { \"type\": \"object\",\n      \
+         \"properties\": { \"b\": { \"$ref\": \"#/$defs/DoesNotExist\" } } }\n  }\n}\n",
     )
     .unwrap();
-    let broken = std::process::Command::new("node")
-        .arg("scripts/run-json2ts.js")
-        .current_dir(&work)
-        .output()
-        .unwrap();
-    let stderr = String::from_utf8_lossy(&broken.stderr);
-    println!("broken-schema run stderr:\n{stderr}");
-    assert!(
-        !broken.status.success(),
-        "a schema that fails to compile must fail the run, not be silently dropped"
-    );
-    // The error is reported in full, naming the offending file...
-    assert!(stderr.contains("Broken.json"), "{stderr}");
-    // ...and the last-good output was not overwritten.
-    assert_eq!(
-        std::fs::read_to_string(work.join("rust/wasm/json-gen/output/json-types.d.ts")).unwrap(),
-        dts,
-        "a failed run must not overwrite the last-good json-types.d.ts"
-    );
+    run_and_expect_failure("uncompilable document", &["cddl_lib.schema.json"]);
+    std::fs::write(&document, &good_document).unwrap();
+
+    // 2) A stale per-type schema left behind by a pre-merge generator run. `export_schemas()`
+    // deliberately deletes nothing (the dir may hold user files), so the JS is the layer that must
+    // refuse — ignoring it keeps a deleted type shipping.
+    let stale = schemas_out.join("cddl_lib::Foo.json");
+    std::fs::write(&stale, "{}\n").unwrap();
+    run_and_expect_failure("stale per-type schema", &["cddl_lib::Foo.json", "stale"]);
+    std::fs::remove_file(&stale).unwrap();
+
+    // 3) Two documents — ambiguous, so neither is silently picked.
+    let second = schemas_out.join("other_lib.schema.json");
+    std::fs::write(&second, &good_document).unwrap();
+    run_and_expect_failure("two documents", &["other_lib.schema.json"]);
+    std::fs::remove_file(&second).unwrap();
+
+    // 4) A document with no definitions must not produce a green build with an empty JSON surface.
+    std::fs::write(
+        &document,
+        "{\n  \"title\": \"cddl_lib\",\n  \"$defs\": {}\n}\n",
+    )
+    .unwrap();
+    run_and_expect_failure("empty $defs", &["$defs"]);
+    std::fs::write(&document, &good_document).unwrap();
 }
 
 /// Covers the shipped `static/json-ts-types.js` (`tests/README.md` § "JSON-schema → TypeScript
@@ -7972,23 +8084,48 @@ fn package_json_pipeline() {
     // `cddl_lib_wasm` since we pass no --lib-name).
     let dts_path = export.join("rust/wasm/pkg/cddl_lib_wasm.d.ts");
     assert!(dts_path.exists(), "no wasm-pack .d.ts at {dts_path:?}");
-    // json-gen `cargo +stable run` wrote schemas.
+    // json-gen `cargo +stable run` wrote the one schema document.
     let schemas_dir = export.join("rust/wasm/json-gen/schemas");
-    let schema_count = std::fs::read_dir(&schemas_dir)
+    let written: Vec<String> = std::fs::read_dir(&schemas_dir)
         .unwrap_or_else(|e| panic!("json-gen wrote no schemas dir {schemas_dir:?}: {e}"))
         .filter_map(Result::ok)
-        .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("json"))
-        .count();
-    assert!(
-        schema_count > 0,
-        "json-gen produced no schema files in {schemas_dir:?}"
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.ends_with(".json"))
+        .collect();
+    assert_eq!(
+        written,
+        vec!["cddl_lib.schema.json".to_owned()],
+        "json-gen must write exactly one `<lib>.schema.json` document in {schemas_dir:?}"
     );
+    // THE dangling-type pin, end to end. `inner_no_row` carries `@no_json_schema_export`, so it gets
+    // no registration row — yet `foo` embeds it, so it IS reached. The document must carry it as a
+    // `$defs` entry (one generator per document is what guarantees that) and the emitted `.d.ts` must
+    // DECLARE it. A design that writes one file per row leaves this type referenced-but-undeclared:
+    // a hard TS2304 in the shipped package, invisible to every Rust-side gate.
+    let document: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(schemas_dir.join(&written[0])).unwrap())
+            .unwrap();
+    let defs = document.get("$defs").and_then(|d| d.as_object()).unwrap();
+    for key in ["Foo", "FixedEnum", "InnerNoRow"] {
+        assert!(
+            defs.contains_key(key),
+            "`{key}` missing from the document's $defs:\n{document:#}"
+        );
+    }
     // run-json2ts.js + json-ts-types.js merged the REAL wasm-pack output (not a hand-written fixture):
     // to_json_value()'s `any` got specialized AND the JSON interface got appended.
     let dts = std::fs::read_to_string(&dts_path).unwrap();
     println!("merged wasm-pack d.ts:\n{dts}");
     assert!(dts.contains("to_json_value(): FooJSON;"), "{dts}");
     assert!(dts.contains("export interface FooJSON"), "{dts}");
+    // ...and the row-less-but-referenced type is declared, under its `$defs` KEY. `inner_no_row`'s
+    // `@doc` heading gives its schema a `title` of `RenamedByDocComment`; json2ts prefers `title`
+    // over the key, so an emitted `RenamedByDocCommentJSON` would be a type name unrelated to
+    // anything the consumer can reach. (The heading itself survives as JSDoc on the wasm class —
+    // that's wasm-bindgen carrying the Rust doc comment, not a type name.)
+    assert!(dts.contains("export interface InnerNoRowJSON"), "{dts}");
+    assert!(dts.contains("inner: InnerNoRowJSON"), "{dts}");
+    assert!(!dts.contains("RenamedByDocCommentJSON"), "{dts}");
     // wasm-pack pack ran.
     let has_tgz = std::fs::read_dir(export.join("rust/wasm/pkg"))
         .unwrap()

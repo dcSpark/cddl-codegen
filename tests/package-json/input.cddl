@@ -1,16 +1,26 @@
 ; End-to-end fixture for the shipped `--package-json --json-schema-export` consumer pipeline
 ; (`package_json_pipeline`). Small and extern-free so the npm `rust:build-nodejs` script runs it
-; verbatim. The three rules each pin one stage of the `.d.ts` merge:
+; verbatim. The four rules each pin one stage of the `.d.ts` merge:
 ;   - foo (record)      -> a wasm class with `to_json_value(): FooJSON;` (json-ts-types.js merge)
 ;   - my_table (table)  -> `additionalProperties` object in the schema (run-json2ts.js path)
 ;   - fixed_enum        -> a c-style enum -> union type in the emitted `.d.ts`
+;   - inner_no_row      -> a type with NO schema row that `foo` nonetheless references. The schema
+;                          document must still carry it as a `$defs` entry and the emitted `.d.ts`
+;                          must DECLARE it, or a consumer gets a referenced-but-undeclared TS2304.
+;                          Its `@doc` heading also gives the schema a `title` that differs from its
+;                          `$defs` key, so the emitted name must come from the KEY
+;                          (`InnerNoRowJSON`) — a title-derived name would merge with the
+;                          wasm class of that name.
 foo = {
   entries: my_table,
   values: [* uint],
   kind: fixed_enum,
   flag: bool,
+  inner: inner_no_row,
 }
 
 my_table = { * text => uint }
 
 fixed_enum = 0 / 1 / 2
+
+inner_no_row = { n: uint } ; @no_json_schema_export @doc # RenamedByDocComment

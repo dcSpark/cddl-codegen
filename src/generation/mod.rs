@@ -957,16 +957,13 @@ impl GenerationScope {
             generate_any_cbor_wasm(self, types, cli);
         }
 
-        // JSON export crate
+        // JSON export crate. `json_lines` is the BODY of the emitted `add_schemas(generator)` — one
+        // registration row per exported type. The surrounding `export_schemas()` (which owns the
+        // `schemas/` dir and writes the single document) is built in `generation/export.rs`.
         if cli.json_schema_export {
-            self.json_lines
-                .line("let schema_path = std::path::Path::new(&\"schemas\");");
-            let mut path_exists = Block::new("if !schema_path.exists()");
-            path_exists.line("std::fs::create_dir(schema_path).unwrap();");
-            self.json_lines.push_block(path_exists);
             let mut main_lines_by_file: BTreeMap<ModuleScope, Vec<String>> = BTreeMap::new();
             // A generic-extern BASE (`ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_`) names no concrete
-            // type, so `gen_json_schema!(cddl_lib::ExtSet)` is E0107 no matter what the user writes —
+            // type, so a row naming the bare `ExtSet` is E0107 no matter what the user writes —
             // the same class the extern-interface self-check skips (`ExternCheckKind::None`). Its
             // concrete instances (`my_set = ext_set<uint>` -> `MySet`) get their own rows and are
             // kept. Keyed on `generic_extern_base_idents()` (the union of the parse-time record and
@@ -1013,24 +1010,25 @@ impl GenerationScope {
                     .entry(types.scope(rust_ident).clone())
                     .or_default()
                     .push(format!(
-                        "gen_json_schema!({});",
+                        "add_schema::<{}>(generator);",
                         rust_crate_struct_from_wasm(types, rust_ident, cli)
                     ));
             }
             // `AnyCbor` (CDDL `any`) is a static-runtime type, not a `RustStruct`, so the loop above
-            // never emits its schema row — yet a spec that uses `any` references `AnyCbor` in every
-            // dependent schema. Without a dedicated row, `run-json2ts.js`'s
-            // `declareExternallyReferenced: false` leaves the final `.d.ts` REFERENCING `AnyCborJSON`
-            // without DECLARING it. Emit its own row so the schema file is written and `AnyCborJSON`
-            // is declared once. Only in the own-static crate: under `--common-import-override`
-            // `AnyCbor` lives in the common crate, whose own json-gen run exports its schema (the
-            // same "each crate exports only its own schemas" rule the non-export-scope skip enforces).
+            // never emits its registration row. Nothing else reaches it either: a GENERATED type
+            // describes an `any`-typed member with the NATURAL rendering's permissive schema
+            // (`#[schemars(schema_with = "…::natural_any_cbor_schema")]`), which never names
+            // `AnyCbor`. So `AnyCbor`'s own tagged-`oneOf` schema — the one describing the `AnyCbor`
+            // wasm wrapper's `to_json` surface — enters the document ONLY through this row. Only in
+            // the own-static crate: under `--common-import-override` `AnyCbor` lives in the common
+            // crate, whose own json-gen run exports its schema (the same "each crate exports only its
+            // own schemas" rule the non-export-scope skip enforces).
             if types.uses_any_cbor() && cli.export_static_files() {
                 main_lines_by_file
                     .entry((*ROOT_SCOPE).clone())
                     .or_default()
                     .push(format!(
-                        "gen_json_schema!({}::any_cbor::AnyCbor);",
+                        "add_schema::<{}::any_cbor::AnyCbor>(generator);",
                         cli.lib_name_code()
                     ));
             }
@@ -1954,6 +1952,10 @@ enum BlockOrLine {
 pub(crate) struct BlocksOrLines(Vec<BlockOrLine>);
 
 impl BlocksOrLines {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     fn as_single_line(&self) -> Option<&str> {
         match self.0.len() {
             1 => match &self.0[0] {

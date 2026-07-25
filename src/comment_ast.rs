@@ -112,7 +112,7 @@ pub struct RuleMetadata {
     /// silently ignored). See [`DuplicatesPolicy`].
     pub duplicates: Option<DuplicatesPolicy>,
     pub custom_json: bool,
-    /// `@no_json_schema_export`: suppress this rule's `gen_json_schema!` row in the json-gen crate
+    /// `@no_json_schema_export`: suppress this rule's schema-registration row in the json-gen crate
     /// (`--json-schema-export`) — and NOTHING else. The `serde`/`schemars` derives stay (a parent
     /// that embeds the type still needs `JsonSchema` on it), CBOR serialization / the wasm surface /
     /// the extern-interface export and self-check are untouched, and with `--json-schema-export` off

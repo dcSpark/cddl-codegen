@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "cddl_lib",
+  "$defs": {
+    "Bar": { "type": "string", "enum": ["x", "y"] },
+    "Foo": {
+      "type": "object",
+      "required": ["bar", "count", "nested", "titled"],
+      "properties": {
+        "bar": { "$ref": "#/$defs/Bar" },
+        "count": { "type": "integer" },
+        "nested": { "$ref": "#/$defs/Nested", "description": "a documented field" },
+        "titled": { "$ref": "#/$defs/Titled" }
+      }
+    },
+    "Nested": {
+      "type": "object",
+      "required": ["n"],
+      "properties": { "n": { "type": "integer", "format": "uint64", "minimum": 0 } }
+    },
+    "Table": {
+      "type": "object",
+      "additionalProperties": { "type": "integer" }
+    },
+    "Titled": {
+      "title": "RenamedByDocComment",
+      "type": "object",
+      "required": ["t"],
+      "properties": { "t": { "type": "string" } }
+    }
+  }
+}
