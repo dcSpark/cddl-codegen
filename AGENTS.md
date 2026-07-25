@@ -59,8 +59,8 @@ changing the *runtime behaviour* of generated code usually means editing `static
     (3) the comment/code-preservation overlay
     (`comment_preserve.rs`) — `export()` reads a prior generated `src/generated/**` `.rs` whose only
     effects on fresh content are (a) inserting comment bytes and tagged regions
-    (`cddl-codegen:unpreserved-comment` compile_error blocks and `cddl-codegen:replace`/`insert` user
-    blocks), and (b) removing exactly the token span that a replace block's recorded original
+    (`cddl-codegen:unpreserved-comment` compile_error blocks and `cddl-codegen:replace`/`insert`/`keep`
+    user blocks), and (b) removing exactly the token span that a replace block's recorded original
     identifies — never any other code token, in either direction. The overlay is applied to the
     in-memory file map before the write loop, then the usage-derived import prune (`import_prune.rs`)
     reruns once over the post-overlay map: a `use` import whose last user a replace block removed is
