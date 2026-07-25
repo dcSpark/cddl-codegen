@@ -1572,11 +1572,11 @@ evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
 [[support]]
 id = "contain.occurrence-target.grpent.member.zero_array"
 status = "supported"
-evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok (open-array rest tail, value-level); ruby=ok rust=ok; no committed decode vectors (see catalog)"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
 emission.json.status = "supported"
-emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips (captured tail renders as an ordinary JSON array field)"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
 emission.preserve.status = "supported"
-emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips byte-exact (each captured tail element re-serializes via a positional per-element encoding sidecar; --canonical-form normalizes a non-minimal width in position order)"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
 [[support]]
 id = "contain.occurrence-target.memberkey.bareword.zero_bounded_map"

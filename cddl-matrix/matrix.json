@@ -2324,15 +2324,15 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips (captured tail renders as an ordinary JSON array field)",
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           },
           "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips byte-exact (each captured tail element re-serializes via a positional per-element encoding sidecar; --canonical-form normalizes a non-minimal width in position order)",
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
             "status": "supported"
           }
         },
-        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok (open-array rest tail, value-level); ruby=ok rust=ok; no committed decode vectors (see catalog)",
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.occurrence-target.grpent.member.zero_array",
         "status": "supported"
       },
