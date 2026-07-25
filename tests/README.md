@@ -1088,7 +1088,12 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
   `expect = "reject"` pin and the mint exits 1**; the drift gate stays red until a human triages it
   into `class = "bug"` (ledger it in `cddl-matrix/ROADMAP.md` § findings) or
   `class = "limitation"` (cite `current_capacities.mdx` / the overlay note). `source = "hand"`
-  supplement vectors survive re-mints and are re-validated like any candidate.
+  supplement vectors survive re-mints and are re-validated like any candidate. The catalogs are
+  **writer-canonical** (machine-rewritten wholesale: no in-row `#` comments, each row's vectors in
+  ascending hex order) — a hand-authored corpus row in any other form fails the
+  `project_decode_conformance.ts` drift gate, and a hand comment in either file is dropped by the
+  next mint's rewrite — so put per-vector rationale in the surrounding docs/test map, not in the
+  TOML, and let vector order fall where the sort puts it.
 - **Reject vectors split by class** — two opposite spec-validity claims live under `expect="reject"`:
   - `class = "bug" | "limitation"` — spec-VALID CBOR the decoder WRONGLY rejects (the wrong-rejection
     pins above). Re-validated **spec-VALID** (both oracles accept) at each mint; PRUNED when the gap
