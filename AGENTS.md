@@ -167,11 +167,10 @@ Rules:
 - **The `full` tier can NEVER complete when launched from a SUB-AGENT's turn — this is structural,
   not a risk to manage. The main session runs it; delegating it is a guaranteed loss.** Proven
   2026-07-25 by four sub-agent-launched `check.ts full` background runs dying mid-gate with no
-  tier-level `RESULT` line (60 min and ~68 min inside `verify`:
-  `draft/logs/check-full-2026-07-25T17-53-25Z.log`, `…T22-34-27Z.log`; ~53 and ~60–65 min inside
+  tier-level `RESULT` line (60 min and ~68 min inside `verify`; ~53 and ~60–65 min inside
   `gate_cache_closure_audit` the day before) against the SAME tier run from the MAIN session
-  completing in 74 min with `RESULT: PASS — all in-tier gates green`
-  (`draft/logs/check-full-2026-07-25T20-12-44Z.log`). The run's own wall time (~75 min) exceeds what
+  completing in 74 min with `RESULT: PASS — all in-tier gates green`. The run's own wall time
+  (~75 min) exceeds what
   a sub-agent turn can hold open, so no amount of polling, re-launching, or foregrounding inside the
   sub-agent changes the outcome. Working rule for a delegating session: a sub-agent may run gates
   that fit a foreground tool timeout (up to 10 min) and must REPORT the remaining tier back for the
