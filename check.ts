@@ -53,7 +53,7 @@ import { existsSync, readFileSync, readdirSync, statSync, unlinkSync } from "nod
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import {
-  compactDur, readDigest, readLedger, tierWindow, type Digest, type Row,
+  compactDur, parseLog, readDigest, readLedger, tierWindow, type Digest, type Row,
 } from "./cddl-matrix/project_timings.ts";
 
 const ROOT = import.meta.dir;
@@ -595,6 +595,8 @@ export interface Retention {
   bytes: number;
   kept: number;
   citedKept: string[];
+  /** Expired but held back because the ledger has no rows recovered from them. */
+  unscrapedKept: string[];
 }
 
 /**
@@ -612,6 +614,22 @@ export interface Retention {
  * asserting anything. Only once deletion is actually on the table must (a) the citation scan have
  * succeeded and (b) `draft/timings.jsonl` exist and be non-empty — the logs are the only copy of
  * the duration history until they have been scraped into it.
+ *
+ * That second interlock is necessary but NOT sufficient, so a third one is per-FILE: a non-empty
+ * ledger proves some history was scraped, not that THIS log's was. Nothing otherwise connects the
+ * file being unlinked to the rows meant to preserve it, and the gap is not hypothetical — until
+ * structured emission lands, the ledger only grows when someone runs `--backfill` by hand, so every
+ * run from here produces a log that reaches position 11 and is deleted with its durations never
+ * captured. It does not close after emission lands either: if emission breaks, or a run dies before
+ * writing its rows, a non-empty ledger still authorises deleting a log nothing captured. So an
+ * expiry candidate absent from the ledger is KEPT — the failure direction is logs accumulating,
+ * never history vanishing — and once emission makes scraping automatic the guard costs nothing.
+ *
+ * One escape hatch, or unscraped logs leak forever: a run that died before its first gate finished
+ * yields NO rows at all, so it can never appear in the ledger. Such a log is deletable, and the
+ * question "does this log carry any timings?" is asked of the parser that would have scraped it
+ * rather than of a filename heuristic — the parser is the definition of what a row is, so the two
+ * cannot drift apart. It is only asked of expiry candidates, which is ~1 per run in steady state.
  */
 export const KEEP_LOGS_PER_TIER = 10;
 
@@ -624,8 +642,8 @@ export function retainLogs(o: {
 }): Retention {
   const keep = o.keepPerTier ?? KEEP_LOGS_PER_TIER;
   const skip = (reason: string): Retention =>
-    ({ status: "skipped", reason, deleted: [], bytes: 0, kept: 0, citedKept: [] });
-  if (!existsSync(o.logsDir)) return { status: "ran", deleted: [], bytes: 0, kept: 0, citedKept: [] };
+    ({ status: "skipped", reason, deleted: [], bytes: 0, kept: 0, citedKept: [], unscrapedKept: [] });
+  if (!existsSync(o.logsDir)) return { status: "ran", deleted: [], bytes: 0, kept: 0, citedKept: [], unscrapedKept: [] };
 
   const RE = /^check-(fast|local|full)-.+\.log$/;
   const byTier = new Map<Tier, { f: string; mtime: number; size: number }[]>();
@@ -648,7 +666,7 @@ export function retainLogs(o: {
     kept += list.length - cut;
     expired.push(...list.slice(0, cut));
   }
-  if (expired.length === 0) return { status: "ran", deleted: [], bytes: 0, kept, citedKept: [] };
+  if (expired.length === 0) return { status: "ran", deleted: [], bytes: 0, kept, citedKept: [], unscrapedKept: [] };
 
   const cited = o.cited();
   if (cited === null)
@@ -659,18 +677,30 @@ export function retainLogs(o: {
       "run `bun run project_timings.ts --backfill` in cddl-matrix/ before anything is deleted",
     );
 
+  const scraped = new Set(readLedger(o.ledger).map(r => r.log).filter((s): s is string => !!s));
+  /** Does this log carry timings the ledger should hold? Asked of the parser that would scrape it. */
+  const carriesTimings = (f: string): boolean => {
+    try {
+      return (parseLog(readFileSync(join(o.logsDir, f), "utf8"), f)?.gates.length ?? 0) > 0;
+    } catch {
+      return true; // unreadable: assume it has something to lose, and keep it
+    }
+  };
+
   const deleted: string[] = [];
   const citedKept: string[] = [];
+  const unscrapedKept: string[] = [];
   let bytes = 0;
   for (const e of expired) {
     // A committed doc citing a gitignored path is dangling-by-construction and cannot fail loudly,
     // so deleting the referent would make the citation wrong everywhere and detectably wrong nowhere.
     if (cited.has(e.f)) { citedKept.push(e.f); kept++; continue; }
+    if (!scraped.has(e.f) && carriesTimings(e.f)) { unscrapedKept.push(e.f); kept++; continue; }
     if (!o.dryRun) unlinkSync(join(o.logsDir, e.f));
     deleted.push(e.f);
     bytes += e.size;
   }
-  return { status: "ran", deleted, bytes, kept, citedKept };
+  return { status: "ran", deleted, bytes, kept, citedKept, unscrapedKept };
 }
 
 function fmtBytes(b: number): string {
@@ -689,6 +719,13 @@ function printRetention(): void {
     console.log(
       `  retention: WARNING — kept ${r.citedKept.length} expired log(s) cited by a committed file ` +
       `(${r.citedKept.join(", ")}); the fact belongs in the doc, not the path`,
+    );
+  // Not a warning — keeping is the correct outcome. It is printed because the backlog is the visible
+  // cost of scraping being a manual step, and it should shrink to nothing once emission is automatic.
+  if (r.unscrapedKept.length)
+    console.log(
+      `  retention: kept ${r.unscrapedKept.length} expired log(s) whose timings are not in the ledger yet ` +
+      `— run \`bun run project_timings.ts --backfill\` in cddl-matrix/ to release them`,
     );
   if (r.deleted.length)
     console.log(`  retention: deleted ${r.deleted.length} check-*.log (${fmtBytes(r.bytes)} reclaimed), kept ${r.kept} (last ${KEEP_LOGS_PER_TIER} per tier)`);

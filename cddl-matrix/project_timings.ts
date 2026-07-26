@@ -749,16 +749,23 @@ export function selfTests(): TestResult[] {
   {
     const seq = (prefix: string, n: number, t0 = 1_700_000_000): [string, number][] =>
       Array.from({ length: n }, (_, i) => [`${prefix}${String(i).padStart(3, "0")}.log`, t0 + i]);
-    const mk = (files: [string, number][]) => {
+    // Default body carries NO `--- <gate>: …` line, so it parses to zero gate rows — the shape a run
+    // that died before its first gate leaves behind, and the one case retention may delete unscraped.
+    const mk = (files: [string, number][], body = "x".repeat(1000)) => {
       const dir = mkdtempSync(join(tmpdir(), "cddl-retention-"));
       const logs = join(dir, "logs");
       mkdirSync(logs);
       for (const [f, mtime] of files) {
-        writeFileSync(join(logs, f), "x".repeat(1000));
+        writeFileSync(join(logs, f), body);
         utimesSync(join(logs, f), mtime, mtime); // distinct ascending mtimes: retention orders by mtime
       }
       return { dir, logs, ledger: join(dir, "timings.jsonl") };
     };
+    const ledgerFor = (names: string[]): string =>
+      names.map(log => JSON.stringify({
+        v: 1, kind: "gate", run: log, tier: "fast", gate: "fmt", status: "pass", ms: 700,
+        gate_cache_enabled: true, machine: "m0", log, src: "backfill",
+      })).join("\n") + "\n";
 
     // AC: blocked on the backfill having run. The logs are the ONLY copy of the duration history
     // until they have been scraped, so an absent-or-empty ledger must stop the delete, not warn past
@@ -813,6 +820,47 @@ export function selfTests(): TestResult[] {
         left.has("check-optional_fixed_float-crates-20260718T141505Z.log") &&
         left.has("verify-rustname-registration-2026-07-18T22-48-50Z.log"),
         JSON.stringify({ deleted: r.deleted, bytes: r.bytes, citedKept: r.citedKept, left: [...left].sort() }));
+      rmSync(dir, { recursive: true });
+    }
+
+    // The ledger interlock is PER-FILE, not global. A non-empty ledger proves some history was
+    // scraped, not that THIS log's was — and until check.ts emits rows itself the ledger only grows
+    // when someone runs `--backfill` by hand, so every run leaves a log that reaches the end of the
+    // window with its durations never captured. Absent from the ledger => kept, so the failure
+    // direction is logs accumulating rather than history vanishing.
+    {
+      const body = "=== [fast] fmt — rustfmt check ===\n--- fmt: PASS  [753ms]\n";
+      const { dir, logs, ledger } = mk(seq("check-fast-", 15), body);
+      writeFileSync(ledger, ledgerFor(["check-fast-000.log", "check-fast-001.log"]));
+      const r = retainLogs({ logsDir: logs, ledger, cited: () => new Set() });
+      const left = new Set(readdirSync(logs));
+      // 5 expired (000..004); only 000/001 are in the ledger, and only they may go.
+      const held = ["check-fast-002.log", "check-fast-003.log", "check-fast-004.log"];
+      ok("retention_keeps_an_expired_log_absent_from_the_ledger",
+        r.deleted.length === 2 && r.deleted.every(f => ["check-fast-000.log", "check-fast-001.log"].includes(f)) &&
+        r.unscrapedKept.length === 3 && held.every(f => left.has(f)) && r.kept === 13,
+        JSON.stringify({ deleted: r.deleted, unscrapedKept: r.unscrapedKept, kept: r.kept }));
+
+      // ...and the SAME candidate becomes deletable the moment a row naming it appears. This is the
+      // half that proves the guard is a gate on the data, not a permanent refusal.
+      writeFileSync(ledger, ledgerFor(["check-fast-002.log", "check-fast-003.log", "check-fast-004.log"]));
+      const r2 = retainLogs({ logsDir: logs, ledger, cited: () => new Set() });
+      ok("retention_releases_a_log_once_the_ledger_holds_its_rows",
+        r2.deleted.length === 3 && r2.unscrapedKept.length === 0 &&
+        held.every(f => !existsSync(join(logs, f))), JSON.stringify(r2));
+      rmSync(dir, { recursive: true });
+    }
+
+    // The escape hatch, or an unscrapeable log leaks forever: a run that died before its first gate
+    // finished yields NO rows, so it can never appear in the ledger. "Does this log carry timings?"
+    // is asked of the PARSER that would have scraped it — the parser defines what a row is, so the
+    // two cannot drift apart the way a filename or size heuristic would.
+    {
+      const { dir, logs, ledger } = mk(seq("check-fast-", 15)); // default body: no gate lines at all
+      writeFileSync(ledger, ledgerFor(["unrelated.log"]));
+      const r = retainLogs({ logsDir: logs, ledger, cited: () => new Set() });
+      ok("retention_still_deletes_a_log_that_never_had_rows_to_scrape",
+        r.deleted.length === 5 && r.unscrapedKept.length === 0, JSON.stringify(r));
       rmSync(dir, { recursive: true });
     }
 

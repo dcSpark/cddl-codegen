@@ -117,12 +117,20 @@ seeded prints `no baseline yet for tier=<t>` rather than a fabricated number.
 **Old logs are deleted at run start.** The last 10 `check-<tier>-*.log` per tier survive and the
 rest go, with one line naming the count and the bytes reclaimed — bounded and predictable, which a
 time window is not (a quiet fortnight followed by a busy day should not change how much history
-survives). Two interlocks guard the irreversibility: nothing is deleted unless `draft/timings.jsonl`
-exists and is non-empty, because the logs are the only copy of the duration history until they have
-been scraped into it; and a log whose basename any committed file cites is kept and named in a
-warning, so that guard's own workload stays visible rather than becoming a bridge nobody removes.
-Only `check-<tier>-<stamp>.log` is a candidate — the hand-written ad-hoc logs in `draft/logs/`,
-including the `check-`-prefixed ones that name no real tier, are left alone.
+survives). Three interlocks guard the irreversibility, and the important one is **per-file**: a log
+is deleted only once `draft/timings.jsonl` actually holds rows recovered *from that log*. A
+non-empty ledger proves some history was scraped, not that this log's was — and while scraping is a
+manual `--backfill` step, every run leaves a log that would otherwise reach the end of the window
+with its durations never captured. So an expired log absent from the ledger is kept and counted in a
+line pointing at `--backfill`: the failure direction is logs accumulating, never history vanishing.
+The one exception is a log carrying no timings at all (a run that died before its first gate
+finished, which can never appear in the ledger); "does this log carry timings?" is asked of the
+parser that would have scraped it, so the two cannot drift apart. On top of that, `draft/timings.jsonl`
+must exist and be non-empty at all, a failed citation scan fails closed, and a log whose basename any
+committed file cites is kept and named in a warning — so that guard's own workload stays visible
+rather than becoming a bridge nobody removes. Only `check-<tier>-<stamp>.log` is a candidate; the
+hand-written ad-hoc logs in `draft/logs/`, including the `check-`-prefixed ones that name no real
+tier, are left alone.
 
 **A warm gate cache does not make `full` cheap** — the run-start line says so from measurement
 rather than memory, naming the most cache-heavy `full` run on record and how long it still took. As
