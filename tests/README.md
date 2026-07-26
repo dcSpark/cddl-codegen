@@ -11,9 +11,13 @@ It's a dependency-free Bun script built around a gate **registry** — one entry
 
 | Tier | Command | What it runs | Wall time (warm) |
 |------|---------|--------------|------------------|
-| `fast` | `bun run check.ts fast` | what CI runs: fmt + clippy + snapshot tests + the drift gates | ~15s |
-| `local` (default) | `bun run check.ts` | `fast` + workspace build + the full `cargo test` suite | ~4 min |
-| `full` | `bun run check.ts full` | `local` + every manual-only gate | ~30 min |
+| `fast` | `bun run check.ts fast` | what CI runs: fmt + clippy + snapshot tests + the drift gates | ~55s |
+| `local` (default) | `bun run check.ts` | `fast` + workspace build + the full `cargo test` suite | ~5.5 min |
+| `full` | `bun run check.ts full` | `local` + every manual-only gate | ~70 min |
+
+Those three are **medians of the last 20 runs on the dev machine**, read off `tests/timings.json` —
+not estimates. See "Measured gate durations" below for where that file comes from and why a warm
+gate cache does not make `full` cheap.
 
 `fast` is exactly what CI runs (`build.yml` is a thin `bun run check.ts fast` invoker — see the CI
 policy below). `local` is "run before considering work done" — the heavy correctness gates (full
@@ -68,10 +72,46 @@ CI can neither drift away from the fast tier nor grow work that bypasses the reg
 systematic catch for the disease the runner cures — a gate that exists but is in nobody's habit — so
 a new manual gate or IOU stub is a conscious registry edit, not a silent omission.
 
-Wall times above are warm-cache, measured on the dev machine, and assume NO gate-cache hits (the
-uncached worst case — a touch-everything change); after a run on unchanged trees the heavy gates
-mostly skip (see the next section). A cold build adds the one-time dependency + test-binary
-compile.
+### Measured gate durations (`tests/timings.json`)
+
+Wall times in this document are **measured, not estimated**, and they refresh themselves. Three
+artifacts, three lifetimes:
+
+- `draft/logs/check-*.log` — the prose each run tees. Gitignored, and deleted on a retention window.
+  Never cite one as evidence of record: because the directory is gitignored, such a citation is
+  dangling-by-construction and cannot fail loudly. The conclusion and its numbers belong in the
+  message/commit/doc; the log is a working artifact for the session that produced it.
+- `draft/timings.jsonl` — the local ledger, one JSON object per gate-run. Gitignored.
+- `tests/timings.json` — the committed digest, one row per registry gate plus one per tier. It is
+  committed so a fresh checkout has real numbers on its FIRST run, before any local ledger exists.
+
+`cddl-matrix/project_timings.ts` maintains them: `--backfill` recovers history from the prose logs
+(it parses the incremental `--- <gate>: <STATUS>  [<dur>]` lines, so a run that was KILLED before
+its summary still contributes every gate it finished), and `--update` recomputes the digest.
+
+**A digest value is rewritten only when the median of a sliding 20-run window moves past
+`max(2s, 20% of stored)`.** The median is the anti-flap mechanism — roughly half the window has to
+shift before it moves, so one loaded-machine outlier cannot move it at all, and a write takes
+several runs of sustained change. Comparing against the *stored* value rather than the previous run
+is what lets slow monotonic creep accumulate until it trips instead of staying invisible forever.
+When it does write, it prints one attributable line naming the gate, the old and new values, and
+that `tests/timings.json` now needs committing.
+
+The `timings_digest_check` gate (`local`) asserts **structure only** — a digest row per non-stub
+registry gate, and no orphan rows — plus the update rule's pure-function pins. **No gate anywhere
+asserts a duration value**: durations are nondeterministic (machine load, cross-session gate
+contention), so a drift gate on the numbers would add a flaky gate to the suite this measurement
+exists to make cheaper. `warm_ms` and `cold_ms` are separate fields and never merge; `cold_ms` stays
+absent until a `GATE_CACHE=0` run supplies one, because absent is honest and a synthesized number is
+not.
+
+**A warm gate cache does not make `full` cheap.** The 74m33s reference run took 785 cache hits and
+still ran for 74 minutes: the cache removes nested-cargo *cells*, not the four gates that dominate
+the tier. As of the seeding measurement those four — `gate_cache_closure_audit` (15m37s),
+`corpus_decode_replay` (10m36s), `wasm_matrix_roundtrips` (7m24s) and `decode_conformance_replay`
+(7m7s) — are 40 of the tier's 70 minutes between them, and everything below the `test` gate (3m37s)
+is noise by comparison. Run `bun run project_timings.ts` from `cddl-matrix/` for the current
+ranking. A cold build adds the one-time dependency + test-binary compile on top of all of it.
 
 ### Offline-after-warmup (nested cargo never touches the network)
 
