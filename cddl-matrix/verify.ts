@@ -62,8 +62,25 @@ const formatElapsed = (ms: number): string => {
   if (seconds > 0) return `${seconds}.${millis.toString().padStart(3, "0")}s`;
   return `${millis}ms`;
 };
-process.on("exit", () => {
+// Scratch this run created under tmpdir(), removed by the exit handler below so a run cannot leak
+// multi-GB cargo targets. Registered at creation (not hardcoded) because the early-exit guards above
+// the creation sites — oracle-resolution, ALL_PROFILES extraction, the disk-headroom preflight — exit
+// before any of it exists, and an exit handler must never reference a not-yet-initialised binding.
+// The two CARGO_TARGET_DIRs are BUILD artifacts: nothing triages from them, and they are what the
+// 2 GiB `diskHeadroomPreflight` floor is measured against, so they go unconditionally. `probeDir`
+// holds the generated crate a HARNESS FAILURE names for triage (e.g. the `replay cargo test timed out
+// twice (<dir>)` message), so it survives a non-zero exit and is announced — deleting it would leave
+// those messages pointing at nothing. It is keep-last-1 (cleanOut/nextForeignOut delete the previous
+// generation), so what survives a red run is one crate, not a run's worth.
+const scratchTargets: string[] = [];
+let scratchProbeDir = "";
+process.on("exit", (code) => {
   console.log(`elapsed time        : ${formatElapsed(Date.now() - verifyStartedAt)}`);
+  for (const d of scratchTargets) rmSync(d, { recursive: true, force: true });
+  if (scratchProbeDir) {
+    if (code === 0) rmSync(scratchProbeDir, { recursive: true, force: true });
+    else console.log(`probe scratch kept for triage: ${scratchProbeDir}`);
+  }
 });
 
 // --- oracle locations (env-overridable; defaults assume the sibling-repo layout) ------------------
@@ -555,6 +572,7 @@ function diskHeadroomPreflight(context: string): void {
 // 3. PROBE each feature's example through the three oracles.
 // ==================================================================================================
 const probeDir = mkdtempSync(join(tmpdir(), "cddl_verify_"));
+scratchProbeDir = probeDir;
 const probeFile = join(probeDir, "probe.cddl");
 // Oracle-identity fingerprint runs FIRST (before the shared-target warm-up), on every path — a wrong
 // RUST_CDDL fails in under a second instead of minting mixed-oracle evidence minutes in.
@@ -577,6 +595,7 @@ const ccWarmOut = join(probeDir, "cc_warm_out");
 // Shared cargo target for the compile-gate so the generated crate's deps (cbor_event, …) build ONCE and
 // every subsequent `cargo check` is incremental (fits PROBE_TIMEOUT). Warmed before the probe loops.
 const COMPILE_TARGET = mkdtempSync(join(tmpdir(), "cddl_verify_target_"));
+scratchTargets.push(COMPILE_TARGET);
 const COMPILE_WARM_TIMEOUT = 600; // first build (all deps) can exceed the per-probe timeout
 
 // DEFAULT-ON wasm probe (opt out with `--no-wasm` argv or VERIFY_WASM=0 env): additionally generate
@@ -591,6 +610,7 @@ const WASM_PROBE =
 let ccOutWasm = join(probeDir, `cc_out_wasm_${outSeq++}`);
 const ccWarmOutWasm = join(probeDir, "cc_warm_out_wasm");
 const WASM_TARGET = WASM_PROBE ? mkdtempSync(join(tmpdir(), "cddl_verify_wasm_target_")) : "";
+if (WASM_TARGET) scratchTargets.push(WASM_TARGET);
 
 // DEFAULT-ON decode-foreign oracle (D4; opt out with `--no-decode-foreign` argv or
 // VERIFY_DECODE_FOREIGN=0 env): for each SUPPORTED probe row whose committed catalog entry still matches

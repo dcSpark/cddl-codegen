@@ -497,7 +497,13 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   generations fail identically instead of loudly. `verify.ts` runs `diskHeadroomPreflight` at startup
   (the oracle-fingerprint's sibling) — a 2 GiB `df` floor on the scratch volume, hard-failing with the
   stale-scratch cleanup (`rm -rf $TMPDIR/cddl_codegen_* $TMPDIR/cddl_verify_*`) named — so the
-  low-headroom case fails fast on every probe/mint path. The triage lesson still generalizes: before
+  low-headroom case fails fast on every probe/mint path. It also stops contributing to the problem: a
+  process-exit handler deletes the two `mkdtemp` `CARGO_TARGET_DIR`s (`cddl_verify_target_*`,
+  `cddl_verify_wasm_target_*` — the multi-GB ones) on every path including the early guards, and
+  deletes the probe dir too on a clean exit, keeping it and printing its path on a non-zero exit so the
+  `HARNESS FAILURE` messages that name a generated crate still point at one. Consequence for triage:
+  leftover `$TMPDIR/cddl_verify_*` now means a run that was KILLED (a signal skips exit handlers) or a
+  red run's one kept probe dir — not the normal case. The triage lesson still generalizes: before
   trusting (or hand-reverting) a wide evidence diff, check `df` and clear stale scratch.
 
 ## Registering a new vendor (CDDL_CODEGEN) feature row
