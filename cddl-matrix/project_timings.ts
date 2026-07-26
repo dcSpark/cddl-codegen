@@ -43,13 +43,13 @@
  *     forms check.ts itself prints are the verdict.
  */
 import {
-  existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, utimesSync,
-  writeFileSync,
+  appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync,
+  utimesSync, writeFileSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { cpus, hostname, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { REGISTRY, etaLines, retainLogs } from "../check.ts";
+import { REGISTRY, etaLines, gateRow, retainLogs, runRow, type RunContext } from "../check.ts";
 
 const HERE = import.meta.dir;
 const ROOT = resolve(HERE, "..");
@@ -113,6 +113,13 @@ export interface RunRow {
   machine: string;
   log?: string;
   src: "backfill" | "run";
+  // Run-scoped provenance, present only on LIVE rows: the prose parser cannot recover any of it from
+  // a log, so a backfilled run row simply omits them. They live on the run row rather than being
+  // repeated on every gate row because they are facts about the run, not about a gate.
+  commit?: string;
+  dirty?: boolean;
+  rustc?: string;
+  gate_cache_enabled?: boolean;
 }
 export type Row = GateRow | RunRow;
 
@@ -161,6 +168,20 @@ export function upsert(existing: Row[], incoming: Row[]): Row[] {
 export function writeLedger(rows: Row[], path = LEDGER): void {
   mkdirSync(join(path, ".."), { recursive: true });
   writeFileSync(path, rows.map(r => JSON.stringify(r)).join("\n") + (rows.length ? "\n" : ""));
+}
+
+/**
+ * Append rows as they happen. A live run emits one row per gate AT the moment that gate finishes,
+ * which is the whole reason this is an append rather than a write-at-end: a run killed at gate 30 of
+ * 42 keeps 30 measurements, exactly as the prose parser recovers 37 of 42 from a killed log.
+ *
+ * One `appendFileSync` per call, and each row is a single line, so a torn write can cost at most the
+ * row being written — `readLedger` already skips an unparseable line.
+ */
+export function appendRows(rows: Row[], path = LEDGER): void {
+  if (!rows.length) return;
+  mkdirSync(join(path, ".."), { recursive: true });
+  appendFileSync(path, rows.map(r => JSON.stringify(r)).join("\n") + "\n");
 }
 
 /** Short STABLE machine id. Not the raw hostname: `tests/timings.json` is committed. */
@@ -849,6 +870,67 @@ export function selfTests(): TestResult[] {
         r2.deleted.length === 3 && r2.unscrapedKept.length === 0 &&
         held.every(f => !existsSync(join(logs, f))), JSON.stringify(r2));
       rmSync(dir, { recursive: true });
+    }
+
+    // ---- the W5 <-> retention coupling, end to end -----------------------------------------------
+    // check.ts emits its rows through `runRow`/`gateRow`; retention releases an expired log only when
+    // the ledger holds a row whose `log` names it. Those two facts meet at ONE field, and if they
+    // ever stop meeting NOTHING fails: retention just classifies every log as unscraped and holds it
+    // forever — the growth problem, back, silently, with every gate still green. So this calls the
+    // REAL emitters (never a local copy of their shape, which would pin the copy instead) and asserts
+    // the log they produce is the log retention then deletes.
+    {
+      const c = (log: string): RunContext => ({
+        log, run: log.replace(/^check-fast-|\.log$/g, ""), tier: "fast", machine: "m0",
+        commit: "abc1234", dirty: false, rustc: "1.96.1", gate_cache_enabled: true,
+      });
+      const body = "=== [fast] fmt — rustfmt check ===\n--- fmt: PASS  [753ms]\n";
+      const { dir, logs, ledger } = mk(seq("check-fast-", 15), body);
+      // Exactly what a run appends: the wall-less start row, a gate row, then the completed run row.
+      const expiring = ["check-fast-000.log", "check-fast-001.log", "check-fast-002.log",
+        "check-fast-003.log", "check-fast-004.log"];
+      const emitted: Row[] = [];
+      for (const log of expiring) {
+        emitted.push(runRow(c(log)));
+        emitted.push(gateRow(c(log), "fmt", "pass", 753));
+        emitted.push(runRow(c(log), { wall_ms: 54_000, verdict: "pass" }));
+      }
+      writeFileSync(ledger, emitted.map(r => JSON.stringify(r)).join("\n") + "\n");
+      const r = retainLogs({ logsDir: logs, ledger, cited: () => new Set() });
+      // EVERY row, not merely one per run. Retention would be satisfied by a single naming row, so
+      // asserting only its outcome would let a gate row silently lose the field — and `log` is also
+      // half the upsert key, so a gate row without it re-scrapes to a DIFFERENT key and the ledger
+      // grows a duplicate of every gate on the next `--backfill`. Both canaries (dropping `log` from
+      // gate rows, then from run rows) were run against the retention assertion alone and PASSED;
+      // this line is what makes them red.
+      const orphan = emitted.filter(x => x.log === undefined || !expiring.includes(x.log));
+      ok("emitted_rows_release_their_own_log_from_retention",
+        orphan.length === 0 && r.deleted.length === 5 && r.unscrapedKept.length === 0 &&
+        expiring.every(f => !existsSync(join(logs, f))),
+        JSON.stringify({ orphan, deleted: r.deleted, unscrapedKept: r.unscrapedKept }));
+      rmSync(dir, { recursive: true });
+
+      // The start row and the end row are ONE row, not two. `rowKey` keys a run row on
+      // (log, "#run"), so the completed row lands on the started one; a mis-keyed pair would double
+      // every run in the ledger and, worse, leave a wall-less row that reads as a killed run.
+      const one = upsert([runRow(c("check-fast-000.log"))],
+        [runRow(c("check-fast-000.log"), { wall_ms: 54_000, verdict: "pass" })]);
+      ok("a_runs_start_and_end_rows_converge_on_one_ledger_row",
+        one.length === 1 && (one[0] as RunRow).wall_ms === 54_000 && (one[0] as RunRow).verdict === "pass",
+        JSON.stringify(one));
+
+      // AC: `--update` consumes emitted rows with no branch for their provenance. The windows are the
+      // whole consumer surface, so if a live row's field names or types drifted from the backfilled
+      // ones this is where it shows up — as an empty window, which reads as "gate never ran".
+      const live: Row[] = [
+        runRow(c("check-fast-000.log"), { wall_ms: 54_000, verdict: "pass" }),
+        gateRow(c("check-fast-000.log"), "fmt", "pass", 753),
+      ];
+      ok("emitted_rows_feed_the_update_rule_without_a_branch",
+        JSON.stringify(windowFor(live, "fmt", "warm")) === "[753]" &&
+        JSON.stringify(windowFor(live, "fmt", "cold")) === "[]" &&
+        JSON.stringify(tierWindow(live, "fast")) === "[54000]",
+        JSON.stringify({ warm: windowFor(live, "fmt", "warm"), tier: tierWindow(live, "fast") }));
     }
 
     // The escape hatch, or an unscrapeable log leaks forever: a run that died before its first gate

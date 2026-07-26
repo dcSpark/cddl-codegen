@@ -51,9 +51,10 @@
  */
 import { existsSync, readFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import {
-  compactDur, parseLog, readDigest, readLedger, tierWindow, type Digest, type Row,
+  appendRows, compactDur, machineId, parseLog, readDigest, readLedger, splitLogName, tierWindow,
+  upsert, writeLedger, type Digest, type GateRow, type Row, type RunRow,
 } from "./cddl-matrix/project_timings.ts";
 
 const ROOT = import.meta.dir;
@@ -731,6 +732,132 @@ function printRetention(): void {
     console.log(`  retention: deleted ${r.deleted.length} check-*.log (${fmtBytes(r.bytes)} reclaimed), kept ${r.kept} (last ${KEEP_LOGS_PER_TIER} per tier)`);
 }
 
+// ---- structured emission ------------------------------------------------------------------------
+// A run writes its own measurements to `draft/timings.jsonl` as it goes, so future runs never depend
+// on re-parsing prose. The prose parser (`project_timings.ts`) STAYS as the fallback — it is what
+// recovers a gate added without emission, or a run that died mid-line — but it is no longer the
+// primary path, and none of the output below is visible in the log: prose is unchanged by design.
+//
+// THE COUPLING THAT MAKES THIS LOAD-BEARING: retention deletes an expired log only once the ledger
+// holds a row naming THAT log (`retainLogs`, the per-file interlock). So every row emitted here
+// carries `log` = the basename of the run's own log file, spelled exactly as the backfill parser
+// spells it. Get that wrong and nothing fails — retention simply classifies every log as unscraped
+// and holds it forever, which is the growth problem this feature exists to end, returning silently.
+
+/**
+ * The run's own log basename, or null when there is no self-log.
+ *
+ * `runSelfLogged` re-execs check.ts with `CHECK_SELF_LOG` set, and `main()` only ever runs in that
+ * child — with one exception: `--help` runs `main()` directly with the variable unset (it prints and
+ * exits before anything measurable). A direct `CHECK_SELF_LOG=… bun run check.ts` is honoured as-is.
+ * Null means "emit nothing": a row that cannot name its log cannot release it from retention, and a
+ * silently mis-keyed row is worse than an absent one.
+ */
+export function selfLogBasename(): string | null {
+  const p = process.env.CHECK_SELF_LOG;
+  return p ? basename(p) : null;
+}
+
+/** Run-scoped facts, resolved once at run start and stamped onto every row this run emits. */
+export interface RunContext {
+  log: string;
+  run: string;
+  tier: Tier;
+  machine: string;
+  commit?: string;
+  dirty?: boolean;
+  rustc?: string;
+  gate_cache_enabled: boolean;
+}
+
+/** Mirrors `gate_cache.rs`'s `CacheConfig::from_env` — the cache class the rows are bucketed by. */
+function gateCacheEnabled(): boolean {
+  const v = (process.env.GATE_CACHE ?? "").toLowerCase();
+  return v !== "0" && v !== "false";
+}
+
+/** Best-effort provenance: a missing git or rustc leaves the field absent, never a fabricated value. */
+function gitFacts(): { commit?: string; dirty?: boolean } {
+  try {
+    const c = Bun.spawnSync(["git", "rev-parse", "--short", "HEAD"], { cwd: ROOT, stdout: "pipe", stderr: "ignore" });
+    const s = Bun.spawnSync(["git", "status", "--porcelain"], { cwd: ROOT, stdout: "pipe", stderr: "ignore" });
+    if ((c.exitCode ?? 1) !== 0 || (s.exitCode ?? 1) !== 0) return {};
+    return { commit: c.stdout.toString().trim(), dirty: s.stdout.toString().trim().length > 0 };
+  } catch { return {}; }
+}
+
+function rustcVersion(): string | undefined {
+  try {
+    const r = Bun.spawnSync(["rustc", "-V"], { stdout: "pipe", stderr: "ignore" });
+    if ((r.exitCode ?? 1) !== 0) return undefined;
+    return r.stdout.toString().trim().split(/\s+/)[1];
+  } catch { return undefined; }
+}
+
+/**
+ * `tier`/`run` are taken from the LOG NAME, not from argv, so a live row and a row the parser would
+ * later recover from the same log agree by construction rather than by two code paths staying in
+ * sync. The argv tier is only the fallback for a hand-set `CHECK_SELF_LOG` that names no tier.
+ */
+function runContext(tier: Tier): RunContext | null {
+  const log = selfLogBasename();
+  if (!log) return null;
+  const named = splitLogName(log);
+  return {
+    log,
+    run: named?.run ?? log.replace(/\.log$/, ""),
+    tier: named?.tier ?? tier,
+    machine: machineId(),
+    ...gitFacts(),
+    rustc: rustcVersion(),
+    gate_cache_enabled: gateCacheEnabled(),
+  };
+}
+
+/**
+ * The run row is written TWICE — once at run start with neither `wall_ms` nor `verdict`, once at the
+ * end with both — and the two converge on ONE ledger row because `rowKey` keys a run row on
+ * `(log, "#run")`. The start write is what makes a killed run declare what it was (tier, commit,
+ * dirty tree) instead of leaving only orphan gate rows; the end write is what gives the tier its
+ * wall. A run that never reaches the end keeps the wall-less row, which every consumer already
+ * treats as "no wall" — the same shape a killed run's backfilled row has.
+ */
+export function runRow(c: RunContext, done?: { wall_ms: number; verdict: "pass" | "fail" }): RunRow {
+  return {
+    v: 1, kind: "run", run: c.run, tier: c.tier, machine: c.machine, log: c.log, src: "run",
+    ...(done ? { wall_ms: Math.round(done.wall_ms), verdict: done.verdict } : {}),
+    commit: c.commit, dirty: c.dirty, rustc: c.rustc, gate_cache_enabled: c.gate_cache_enabled,
+  };
+}
+
+/** Field-for-field the backfill parser's gate row, so `--update` consumes both without a branch. */
+export function gateRow(
+  c: RunContext, gate: string, status: "pass" | "fail" | "skipped", ms: number,
+): GateRow {
+  return {
+    v: 1, kind: "gate", run: c.run, tier: c.tier, gate, status, ms: Math.round(ms),
+    gate_cache_enabled: c.gate_cache_enabled, machine: c.machine, log: c.log, src: "run",
+  };
+}
+
+/** Emission is never fatal: a full disk must not turn a green run red over a measurement. */
+function emit(rows: Row[]): void {
+  try { appendRows(rows, LEDGER); } catch { /* measurements are not a gate */ }
+}
+
+/**
+ * Collapse the run's start row onto its completed one. This is the only place check.ts rewrites the
+ * ledger rather than appending to it, and the failure direction if a concurrent run appends during
+ * the read-modify-write is that run's LAST few gate rows going missing — which retention's per-file
+ * interlock then reads as "not scraped" and keeps the log for. Logs accumulating, never history
+ * vanishing, is the same direction every other interlock here fails in.
+ */
+function finalizeRun(c: RunContext, wallMs: number, verdict: "pass" | "fail"): void {
+  try {
+    writeLedger(upsert(readLedger(LEDGER), [runRow(c, { wall_ms: wallMs, verdict })]), LEDGER);
+  } catch { /* measurements are not a gate */ }
+}
+
 function main() {
   const argv = process.argv.slice(2);
   const flags = new Set(argv.filter(a => a.startsWith("--")));
@@ -762,6 +889,14 @@ function main() {
   printEta(tier);
   printRetention();
 
+  // Deliberately AFTER retention. Emission creates the ledger if it is absent, and retention's global
+  // interlock ("refuse to delete until a backfill has run") reads exactly that absence — so emitting
+  // first would let check.ts bootstrap a one-row ledger and quietly weaken the guard on a checkout
+  // whose logs have never been scraped. Still before the warm-up, which is where a run is most
+  // likely to be interrupted.
+  const ctx = runContext(tier);
+  if (ctx) emit([runRow(ctx)]);
+
   warmupThenOffline(tier);
 
   const results = new Map<string, { out: Outcome; ms: number }>();
@@ -790,6 +925,10 @@ function main() {
     const ms = performance.now() - t0;
     results.set(g.id, { out, ms });
     console.log(`--- ${g.id}: ${out.status}${out.reason ? ` (${out.reason})` : ""}  [${fmtDur(ms)}]`);
+    // Emitted HERE, beside the prose line, and for the same reason it is printed here: a run killed
+    // at gate 30 of 42 keeps 30 measurements. Only PASS/FAIL/SKIPPED reach this point — stub and
+    // not-in-tier gates never execute and never print a line, so the row set matches the prose set.
+    if (ctx) emit([gateRow(ctx, g.id, out.status === "PASS" ? "pass" : out.status === "FAIL" ? "fail" : "skipped", ms)]);
     if (out.status === "FAIL") { anyFail = true; if (!keepGoing) aborted = true; }
   }
 
@@ -811,6 +950,12 @@ function main() {
   }
   console.log(line);
 
+  const fails = REGISTRY.filter(g => results.get(g.id)!.out.status === "FAIL").map(g => g.id);
+
+  // Before the digest refresh, never after: `--update` reads the ledger, and this run's own wall is
+  // the newest point in the tier window it is about to take a median over.
+  if (ctx) finalizeRun(ctx, wall, fails.length ? "fail" : "pass");
+
   // ---- refresh the measured-duration digest ---------------------------------------------------
   // Runs on EVERY invocation, including a failing one: the rule is a median over a few thousand
   // local rows, so it costs sub-millisecond and there is no reason to defer it behind a bless step
@@ -819,7 +964,6 @@ function main() {
   if (sh(["bun", "run", "project_timings.ts", "--update"], MATRIX) !== 0)
     console.log("check.ts: timings digest refresh failed (non-fatal — durations are never a gate)");
 
-  const fails = REGISTRY.filter(g => results.get(g.id)!.out.status === "FAIL").map(g => g.id);
   if (fails.length) {
     console.log(`RESULT: FAIL — ${fails.length} gate(s) failed: ${fails.join(", ")}`);
     process.exit(1);
