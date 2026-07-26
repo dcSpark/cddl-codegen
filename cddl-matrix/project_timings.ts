@@ -55,6 +55,7 @@ const HERE = import.meta.dir;
 const ROOT = resolve(HERE, "..");
 const LOGS_DIR = join(ROOT, "draft", "logs");
 const LEDGER = join(ROOT, "draft", "timings.jsonl");
+const CELLS = join(ROOT, "draft", "timing-cells.jsonl");
 const DIGEST = join(ROOT, "tests", "timings.json");
 
 const TIERS = ["fast", "local", "full"] as const;
@@ -148,6 +149,62 @@ export function readLedger(path = LEDGER): Row[] {
   return out;
 }
 
+/**
+ * One row per CELL — the drill-down beneath a gate row (`src/tests/timing_cells.rs` emits these).
+ *
+ * `emitter` and `gate` are deliberately different fields. Three of the labels the gate cache is
+ * called with (`feature_corpus_compiles`, `wasm_matrix_compiles`, `multifile_matrix_compiles`) are
+ * cells inside the `test` gate, not registry gates — the same trap the prose parser avoids by
+ * attributing roll-ups to the section header rather than to their label. `gate` is what check.ts said
+ * it was running and is ABSENT for a hand-invoked suite; `emitter` is who wrote the row.
+ */
+export interface CellRow {
+  v: 1;
+  kind: "cell";
+  log?: string;
+  gate?: string;
+  emitter: string;
+  cell: string;
+  outcome: "hit" | "run_pass" | "run_fail" | "ran";
+  ms: number;
+  ts: number;
+}
+
+export function readCells(path = CELLS): CellRow[] {
+  if (!existsSync(path)) return [];
+  const out: CellRow[] = [];
+  for (const line of readFileSync(path, "utf8").split("\n")) {
+    if (!line.trim()) continue;
+    try { out.push(JSON.parse(line) as CellRow); } catch { /* torn line from a killed cell: skip */ }
+  }
+  return out;
+}
+
+/**
+ * `cells_run`/`cells_cached` per REGISTRY GATE for one run — the join that puts a live gate row on
+ * equal footing with a backfilled one.
+ *
+ * It matters that this exists at all: `cacheCounterExample` sums these off GATE rows to decide
+ * whether the ETA may claim a warm cache does not shortcut a tier. Live rows carried no counts, so
+ * every run from here would have contributed nothing to that claim and it would have gone quiet as
+ * the backfilled history aged out — with no gate noticing.
+ *
+ * Only CACHE-CLASSIFIED outcomes count. A replay gate's `ran` row is uncached work, not a cache miss;
+ * counting it would make "how warm was this run" mean two different things depending on which gates
+ * ran, and would diverge from the backfill parser, which sees only gate-cache roll-ups.
+ */
+export function cellCountsFor(cells: CellRow[], log: string): Map<string, { run: number; cached: number }> {
+  const out = new Map<string, { run: number; cached: number }>();
+  for (const c of cells) {
+    if (c.log !== log || !c.gate || c.outcome === "ran") continue;
+    const a = out.get(c.gate) ?? { run: 0, cached: 0 };
+    if (c.outcome === "hit") a.cached++;
+    else a.run++;
+    out.set(c.gate, a);
+  }
+  return out;
+}
+
 /** Idempotent upsert on (log, gate). Existing keys keep their POSITION so a re-scrape is byte-stable. */
 export function upsert(existing: Row[], incoming: Row[]): Row[] {
   const order: string[] = [];
@@ -163,6 +220,92 @@ export function upsert(existing: Row[], incoming: Row[]): Row[] {
     byKey.set(k, r);
   }
   return order.map(k => byKey.get(k)!);
+}
+
+/**
+ * Upsert, except that a row a RUN wrote is never replaced by one the prose parser recovered.
+ *
+ * The two sources key identically on `(log, gate)`, so a plain upsert lets a re-scrape overwrite a
+ * live row — and this is not hypothetical: retention's own skip message tells the user to run
+ * `--backfill`, so it will happen on any checkout with an unscraped backlog. A live row wins on every
+ * axis (exact milliseconds instead of prose rounded to whole seconds above a minute, plus commit,
+ * dirty and rustc, plus cell counts joined from the cell file), so the prose row has nothing left to
+ * contribute. Rows the run never covered — a gate that finished after the run's last write, or any
+ * log no run emitted for — still merge normally.
+ */
+export function mergeBackfill(existing: Row[], incoming: Row[]): Row[] {
+  const live = new Set(existing.filter(r => r.src === "run").map(rowKey));
+  return upsert(existing, incoming.filter(r => !live.has(rowKey(r))));
+}
+
+/**
+ * How much history the local ledger keeps. The digest's windows are 20 runs deep, so 200 is ten times
+ * what any consumer reads — kept because the raw rows are the only place a later analysis can bucket
+ * more finely than the digest does.
+ */
+export const KEEP_RUNS_IN_LEDGER = 200;
+/**
+ * Cells are trimmed harder than gate rows, and on purpose: they are a drill-down for the
+ * investigation at hand (~650 rows for a `local` run, ~2500 for a `full` one), while the long-range
+ * series lives in the ledger. Trimming them can never strand a log, because retention reads the
+ * LEDGER to decide what it may delete and never looks at this file.
+ */
+export const KEEP_RUNS_IN_CELLS = 50;
+
+/** Run identity in ledger order, which is chronological order (see the note on `rowKey`). */
+export function runKeysInOrder(rows: Row[]): string[] {
+  const seen = new Set<string>();
+  const order: string[] = [];
+  for (const r of rows) {
+    const k = r.log ?? r.run;
+    if (!seen.has(k)) { seen.add(k); order.push(k); }
+  }
+  return order;
+}
+
+/**
+ * Which runs survive a trim. Two rules, and the second is the load-bearing one.
+ *
+ * 1. Keep the most recent `keepRuns`. Unbounded growth in `draft/` is the class the user rejected
+ *    when they refused to merely COMPRESS the log hoard, and a feature about measurement has no
+ *    business reintroducing it in its own data.
+ * 2. Keep EVERY run whose log is still on disk, however old. Retention deletes an expired log only
+ *    once the ledger holds a row naming it, so trimming that row out would strand the log forever —
+ *    the two mechanisms would deadlock, each waiting on the other, and the symptom would be logs
+ *    quietly accumulating with every gate green. Rule 2 is what makes them compose instead. It costs
+ *    nothing in steady state: retention keeps 10 logs per tier, far inside the window.
+ */
+export function keptRunKeys(
+  rows: Row[], o: { keepRuns?: number; logsOnDisk: Set<string> },
+): Set<string> {
+  const order = runKeysInOrder(rows);
+  const kept = new Set(order.slice(-(o.keepRuns ?? KEEP_RUNS_IN_LEDGER)));
+  for (const k of order) if (o.logsOnDisk.has(k)) kept.add(k);
+  return kept;
+}
+
+export function trimRows(rows: Row[], kept: Set<string>): Row[] {
+  return rows.filter(r => kept.has(r.log ?? r.run));
+}
+
+/**
+ * Cell rows for runs outside the window, dropped. A row with NO `log` is kept: it came from a suite
+ * someone ran by hand with `CDDL_TIMING_CELLS` set, and check.ts deleting another session's
+ * deliberately-collected data would be the same failure class as deleting an unscraped log. That is
+ * bounded rather than open-ended — such rows exist only where a human opted in per invocation — and
+ * the bound is the tail below.
+ */
+export function trimCellLines(lines: string[], kept: Set<string>, keepUnattributed = 5_000): string[] {
+  const out: string[] = [];
+  const unattributed: string[] = [];
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    let c: CellRow;
+    try { c = JSON.parse(line) as CellRow; } catch { continue; } // torn line: not worth carrying
+    if (c.log === undefined) unattributed.push(line);
+    else if (kept.has(c.log)) out.push(line);
+  }
+  return [...unattributed.slice(-keepUnattributed), ...out];
 }
 
 export function writeLedger(rows: Row[], path = LEDGER): void {
@@ -919,6 +1062,137 @@ export function selfTests(): TestResult[] {
         one.length === 1 && (one[0] as RunRow).wall_ms === 54_000 && (one[0] as RunRow).verdict === "pass",
         JSON.stringify(one));
 
+      // The cell join, which is what keeps a live gate row from being strictly WORSE than a
+      // backfilled one. `cacheCounterExample` reads `cells_cached` off GATE rows to decide whether
+      // the ETA may say a warm cache does not shortcut a tier; live rows carried no counts, so every
+      // run from here would have contributed nothing to it and the sentence would have gone quiet as
+      // the backfilled history aged out, with no gate noticing.
+      {
+        const log = "check-full-2026-07-26T00-00-00Z.log";
+        const cell = (over: Partial<CellRow>): CellRow => ({
+          v: 1, kind: "cell", log, gate: "test", emitter: "feature_corpus_compiles",
+          cell: "x/default", outcome: "hit", ms: 200, ts: 1, ...over,
+        });
+        const cells: CellRow[] = [
+          cell({}), cell({}), cell({ outcome: "run_pass" }), cell({ outcome: "run_fail" }),
+          // A replay gate's uncached work: real time, but NOT a cache miss. Counting it would make
+          // "how warm was this run" mean something different depending on which gates ran, and would
+          // diverge from the backfill parser, which only ever sees gate-cache roll-ups.
+          cell({ gate: "corpus_decode_replay", emitter: "corpus_decode_replay", outcome: "ran" }),
+          // Another run's rows, and an unattributed hand-run row: neither belongs to this run.
+          cell({ log: "check-full-OTHER.log" }),
+          cell({ log: undefined }),
+        ];
+        const counts = cellCountsFor(cells, log);
+        const c2: RunContext = {
+          log, run: "2026-07-26T00-00-00Z", tier: "full", machine: "m0", gate_cache_enabled: true,
+        };
+        const row = gateRow(c2, "test", "pass", 223_000, counts.get("test"));
+        ok("cell_rows_join_back_onto_the_gate_row_that_owns_them",
+          counts.get("test")?.cached === 2 && counts.get("test")?.run === 2 &&
+          counts.get("corpus_decode_replay") === undefined &&
+          row.cells_cached === 2 && row.cells_run === 2 &&
+          // ...and the field order still matches the backfill parser's rows exactly.
+          Object.keys(row).join(",") ===
+            "v,kind,run,tier,gate,status,ms,gate_cache_enabled,cells_run,cells_cached,machine,log,src",
+          JSON.stringify({ counts: [...counts], row }));
+      }
+
+      // Finding 3: `--backfill` must not undo a live row. Retention's own skip message tells the user
+      // to run it, so a checkout with an unscraped backlog WILL re-scrape logs that live emission
+      // already covered — and the prose row is lossy where the live one is exact (whole seconds above
+      // a minute) and carries no commit/dirty/rustc.
+      {
+        const log = "check-fast-000.log";
+        const c3: RunContext = {
+          log, run: "000", tier: "fast", machine: "m0", commit: "abc1234", dirty: false,
+          rustc: "1.96.1", gate_cache_enabled: true,
+        };
+        const live: Row[] = [runRow(c3, { wall_ms: 54_321, verdict: "pass" }), gateRow(c3, "fmt", "pass", 757)];
+        const prose: Row[] = [
+          { v: 1, kind: "run", run: "000", tier: "fast", machine: "m0", log, src: "backfill", wall_ms: 54_000, verdict: "pass" },
+          { v: 1, kind: "gate", run: "000", tier: "fast", gate: "fmt", status: "pass", ms: 757, gate_cache_enabled: true, machine: "m0", log, src: "backfill" },
+          // A gate the run never emitted for (it died first) still merges — the parser is the fallback.
+          { v: 1, kind: "gate", run: "000", tier: "fast", gate: "clippy", status: "pass", ms: 147, gate_cache_enabled: true, machine: "m0", log, src: "backfill" },
+        ];
+        const merged = mergeBackfill(live, prose);
+        const runRowAfter = merged.find(r => r.kind === "run") as RunRow;
+        ok("backfill_never_overwrites_a_row_a_run_wrote",
+          merged.length === 3 &&
+          merged.every(r => (r.kind === "gate" && r.gate === "clippy") ? r.src === "backfill" : r.src === "run") &&
+          runRowAfter.wall_ms === 54_321 && runRowAfter.commit === "abc1234" &&
+          merged.some(r => r.kind === "gate" && r.gate === "clippy"),
+          JSON.stringify(merged));
+      }
+
+      // ---- Finding 4: trimming, and the interlock that stops it deadlocking with retention --------
+      {
+        const mkRun = (n: number): Row[] => {
+          const log = `check-fast-${String(n).padStart(3, "0")}.log`;
+          return [
+            { v: 1, kind: "run", run: String(n), tier: "fast", machine: "m0", log, src: "run", wall_ms: 54_000, verdict: "pass" },
+            { v: 1, kind: "gate", run: String(n), tier: "fast", gate: "fmt", status: "pass", ms: 757, gate_cache_enabled: true, machine: "m0", log, src: "run" },
+          ];
+        };
+        const rows: Row[] = Array.from({ length: 250 }, (_, i) => mkRun(i)).flat();
+
+        // Newest survive, oldest go, and the count is exactly the window.
+        {
+          const kept = keptRunKeys(rows, { keepRuns: 200, logsOnDisk: new Set() });
+          const out = trimRows(rows, kept);
+          ok("trimming_keeps_the_newest_runs_and_drops_the_oldest",
+            kept.size === 200 && out.length === 400 &&
+            kept.has("check-fast-249.log") && kept.has("check-fast-050.log") &&
+            !kept.has("check-fast-049.log") && !kept.has("check-fast-000.log"),
+            JSON.stringify({ kept: kept.size, rows: out.length }));
+        }
+
+        // THE risky interaction. Retention deletes an expired log only once the ledger holds a row
+        // naming it; trimming that row out would leave the log unreleasable forever and the two
+        // mechanisms would deadlock, each waiting on the other, with every gate green throughout.
+        // So a run whose log is STILL ON DISK survives however far outside the window it is.
+        // Asserted END TO END rather than as a precondition: trim the ledger against what is really
+        // on disk, then hand the trimmed ledger to retention and require it to actually DELETE the
+        // out-of-window logs. A pin that only checked "the row survived" would still pass if
+        // retention later stopped keying on that row.
+        {
+          const body = "=== [fast] fmt — rustfmt check ===\n--- fmt: PASS  [757ms]\n";
+          // 15 logs on disk, named for runs 000-014 — i.e. all far OUTSIDE the 200-run window that
+          // ends at 249. Retention expires the oldest 5 and needs their ledger rows to release them.
+          const files = Array.from({ length: 15 }, (_, i): [string, number] =>
+            [`check-fast-${String(i).padStart(3, "0")}.log`, 1_700_000_000 + i]);
+          const { dir, logs, ledger } = mk(files, body);
+          const onDisk = new Set(files.map(([f]) => f));
+          const kept = keptRunKeys(rows, { keepRuns: 200, logsOnDisk: onDisk });
+          const trimmed = trimRows(rows, kept);
+          writeFileSync(ledger, trimmed.map(r => JSON.stringify(r)).join("\n") + "\n");
+          const r = retainLogs({ logsDir: logs, ledger, cited: () => new Set() });
+          ok("trimming_never_strands_a_log_retention_has_not_released",
+            // Without the on-disk rule these 15 runs are trimmed away, retention sees no rows naming
+            // them, and every one is held as unscraped forever — logs accumulating with all gates green.
+            kept.size === 215 && r.deleted.length === 5 && r.unscrapedKept.length === 0 &&
+            r.deleted.every(f => onDisk.has(f)),
+            JSON.stringify({ kept: kept.size, deleted: r.deleted, unscrapedKept: r.unscrapedKept }));
+          rmSync(dir, { recursive: true });
+        }
+
+        // Cells follow the ledger's kept runs, and an unattributed row — a suite someone ran by hand
+        // with CDDL_TIMING_CELLS set — is never destroyed by a check.ts run that knows nothing of it.
+        {
+          const line = (log: string | undefined) => JSON.stringify({
+            v: 1, kind: "cell", ...(log ? { log } : {}), gate: "test",
+            emitter: "feature_corpus_compiles", cell: "x", outcome: "hit", ms: 1, ts: 1,
+          });
+          const lines = [line("check-fast-249.log"), line("check-fast-000.log"), line(undefined), "{not json", ""];
+          const out = trimCellLines(lines, new Set(["check-fast-249.log"]));
+          ok("cell_trimming_follows_the_ledger_and_spares_hand_run_rows",
+            out.length === 2 && out.some(l => l.includes("249")) &&
+            out.some(l => !l.includes("\"log\"")) && !out.some(l => l.includes("000")) &&
+            !out.some(l => l.includes("not json")),
+            JSON.stringify(out));
+        }
+      }
+
       // AC: `--update` consumes emitted rows with no branch for their provenance. The windows are the
       // whole consumer surface, so if a live row's field names or types drifted from the backfilled
       // ones this is where it shows up — as an empty window, which reads as "gate never ran".
@@ -980,8 +1254,12 @@ function main(): void {
 
   if (mode === "--backfill") {
     const r = backfill();
-    const merged = upsert(readLedger(), r.rows);
+    const before = readLedger();
+    const merged = mergeBackfill(before, r.rows);
     writeLedger(merged);
+    const liveHeld = new Set(before.filter(x => x.src === "run").map(x => x.log).filter(Boolean));
+    if (liveHeld.size)
+      console.log(`backfill: left ${liveHeld.size} run(s) already recorded live untouched (a live row beats a re-parsed one)`);
     const gateRows = merged.filter(x => x.kind === "gate").length;
     console.log(`backfill: parsed ${r.parsed} log(s) -> ${gateRows} gate row(s) + ${merged.length - gateRows} run row(s) in draft/timings.jsonl`);
     console.log(`backfill: skipped ${r.skipped.length} log(s)`);
