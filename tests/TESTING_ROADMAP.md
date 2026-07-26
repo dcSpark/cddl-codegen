@@ -645,8 +645,8 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   only `Extern` wrappers while the fixture appended the wasm raw-bytes def into
   `wasm/src/generated/mod.rs` (the same no-real-user-contract residence), proven by a
   cip36-shaped scratch repro — rust crate compiled via the landed rust glue, wasm crate failed 3×
-  E0425 `PubKey` (`draft/logs/wasm-rawbytes-glue-repro-2026-07-19.log`; the consumer's rust
-  E0412 had masked the wasm failure, since the regen never got past the rust crate). Both halves
+  E0425 `PubKey` (the consumer's rust E0412 had masked the wasm failure, since the regen never got
+  past the rust crate). Both halves
   are now standing coverage: glue covers `Extern | RawBytesType` in BOTH crates, both def
   routings model the real crate-root contract (thin `lib.rs`), and regression to the masked
   residence collides E0255 with the glue's own re-export in either crate. The formerly-latent alias-walk sibling
@@ -1768,9 +1768,8 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   proven load-bearing: pipe every `check.ts` run to a FILE from the FIRST invocation — a
   deadline-outliving recurrence is a real kernel/std finding and needs its full log.
 - **`verify.ts` warm-up `cargo test exit -15` (2026-07-19): ATTRIBUTED on the first sighting — not
-  a flake, do not watch for it.** One session's `verify.ts` run
-  (`draft/logs/verify-rustname-registration-2026-07-18T22-48-50Z.log`, json warm-up, "generate
-  exit 0, cargo test exit -15, minted=true") died because a CONCURRENT session ran
+  a flake, do not watch for it.** One session's `verify.ts` run (json warm-up; logged signature
+  "generate exit 0, cargo test exit -15, minted=true") died because a CONCURRENT session ran
   `pkill -f cddl_verify` to clean up what it believed were its own killed run's orphans — but its
   killed `check.ts full` had died in `corpus_decode_replay`, BEFORE its verify gate ever ran, so
   the `/tmp/cddl_verify_*` nested-cargo processes it pattern-matched belonged to the other
@@ -1784,11 +1783,9 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   rule is in `AGENTS.md`.** Four 2026-07-24/25 sightings, all from orchestrating sub-agents, all the
   same signature (task "killed", entire process tree gone, self-log stops mid-gate with no
   tier-level `RESULT` line and no error): ~53 min and ~60–65 min inside `gate_cache_closure_audit`
-  (`draft/logs/check-full-2026-07-24T18-08-09Z.log`, `…T19-16-08Z.log`), then 60 min and ~68 min
-  inside `verify` (`draft/logs/check-full-2026-07-25T17-53-25Z.log`,
-  `…T22-34-27Z.log`). What settles it: the SAME tier on the same machine, launched from the MAIN
-  session, ran 74 min to a clean `RESULT: PASS — all in-tier gates green`
-  (`draft/logs/check-full-2026-07-25T20-12-44Z.log`), and a shorter (~35 min) sub-agent background
+  (two runs, 2026-07-24), then 60 min and ~68 min inside `verify` (two runs, 2026-07-25). What
+  settles it: the SAME tier on the same machine, launched from the MAIN session, ran 74 min to a
+  clean `RESULT: PASS — all in-tier gates green`, and a shorter (~35 min) sub-agent background
   run completed fine — so the constraint is the sub-agent turn's lifetime, not a resource or
   wall-clock limit on the run itself. Consequence: a ~75-min full tier can NEVER complete from a
   sub-agent's turn, and delegating one is a guaranteed loss of a multi-minute run. Signature to
