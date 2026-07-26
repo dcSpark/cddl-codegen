@@ -26,6 +26,7 @@ pub(crate) mod recombination_tests;
 pub(crate) mod robustness_tests;
 pub(crate) mod rust_name_tests;
 pub(crate) mod snapshot_tests;
+pub(crate) mod timing_cells;
 pub(crate) mod wasm_parity_tests;
 
 pub(crate) type Profile = (&'static str, &'static [&'static str]);

@@ -38,7 +38,38 @@ pub(crate) fn enabled() -> bool {
 
 /// Memoize a generated-crate cargo verdict. The lockfile is generated before hashing so dependency
 /// resolution is part of the consumed tree.
+///
+/// Timed as ONE bracket around everything below, which is what a cell actually costs the gate: even
+/// a HIT pays for the `cargo generate-lockfile` preflight, so timing only the `build()` closure would
+/// report a cached cell as free when it is not. `timing_cells::emit` is inert unless check.ts asked
+/// for rows, and can never fail the cell — see that module's header.
 pub(crate) fn run_cached(
+    gate: &str,
+    cell: &str,
+    generated_root: &Path,
+    manifest_subpaths: &[PathBuf],
+    argv_for_key: &[String],
+    build: impl FnOnce() -> bool,
+) -> GateCacheOutcome {
+    let started = std::time::Instant::now();
+    let outcome = run_cached_timed(
+        gate,
+        cell,
+        generated_root,
+        manifest_subpaths,
+        argv_for_key,
+        build,
+    );
+    let label = match outcome {
+        GateCacheOutcome::Hit => "hit",
+        GateCacheOutcome::RanPass => "run_pass",
+        GateCacheOutcome::RanFail => "run_fail",
+    };
+    super::timing_cells::emit(gate, cell, label, started.elapsed().as_millis());
+    outcome
+}
+
+fn run_cached_timed(
     gate: &str,
     cell: &str,
     generated_root: &Path,
