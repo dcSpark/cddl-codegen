@@ -1041,6 +1041,29 @@ impl GenerationScope {
                     self.json_lines.line(&line);
                 }
             }
+            // `--json-schema-root` extra roots: a published type the CDDL never describes (a
+            // hand-written address/key type, or one owned by a crate with no spec at all). The value
+            // is a user-supplied RUST path emitted verbatim — the flag consults no IR whatsoever, so
+            // a path naming a type whose rule carries `@no_json_schema_export` re-registers it, and
+            // an unresolvable path is an E0433/E0412 in the consumer's json-gen build rather than a
+            // generation-time reject (cddl-codegen does not typecheck Rust).
+            //
+            // AFTER every spec-derived row: registration order decides which side of a published-name
+            // collision the injectivity guard names, so with the CLI roots last a spec-derived row
+            // keeps its own name and the guard blames the CLI-supplied path — the one the user can
+            // change without touching their spec.
+            //
+            // FLAG ORDER, never sorted: the flag list is an input, so preserving it keeps "same
+            // inputs -> same bytes" while staying readable; sorting would reorder registration, which
+            // is observable through the guard's messages.
+            //
+            // No banner comment above the block: this file is inside the comment-preservation
+            // overlay's tree, and a comment above rows that all vanish when the flag is dropped is
+            // the stranded-comment/`unpreserved-comment` trap class. The rows carry their own meaning.
+            for root in &cli.json_schema_root {
+                self.json_lines
+                    .line(&format!("add_schema::<{root}>(generator, &mut claimed);"));
+            }
         }
 
         // imports / module declarations

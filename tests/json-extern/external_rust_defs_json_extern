@@ -113,3 +113,14 @@ impl<T: serialization::Deserialize> serialization::Deserialize for ExtSet<T> {
         Ok(Self(elems))
     }
 }
+
+// `--json-schema-root` (extra JSON-schema root): a published type described by NO CDDL rule at all.
+// This is the real shape of the ask — hand-written machinery whose JSON form is API while its bytes
+// are not a CDDL rule — so it deliberately has NO cbor_event/Deserialize impls and is reachable from
+// the generated code by nothing. Its only route into the schema document is the flag's registration
+// row, which `run_test` asserts landed in `$defs`. Do not add a CDDL rule for it: its absence from
+// the spec IS the assertion.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+pub struct HandWrittenJsonRoot {
+    pub label: String,
+}

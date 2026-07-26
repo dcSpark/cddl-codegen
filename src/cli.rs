@@ -20,6 +20,32 @@ fn parse_rust_wasm_feature(s: &str) -> Result<String, String> {
     Ok(s.to_owned())
 }
 
+/// clap value parser for `--json-schema-root`: the value is emitted **verbatim** into generated Rust
+/// inside a turbofish (`add_schema::<VALUE>(generator, &mut claimed);`), so this whitelist is what
+/// keeps a flag value from being able to introduce a comment, a statement separator, or a string
+/// literal into a generated file. The accepted set is exactly what a rust path with generic
+/// arguments needs: `[A-Za-z0-9_]`, `:`, `<`, `>`, `,` and space.
+///
+/// It deliberately does NOT check that the path RESOLVES: cddl-codegen does not typecheck Rust, so
+/// an unresolvable path is an `E0433`/`E0412` in the consumer's own json-gen build, never a
+/// generation-time reject — and a stricter grammar would reject legitimate spellings (a leading
+/// `::`, generic arguments, a fully-qualified `<T as Trait>`-free path with spaces after commas).
+fn parse_json_schema_root(s: &str) -> Result<String, String> {
+    if s.is_empty() {
+        return Err("must be a non-empty rust path".to_owned());
+    }
+    if let Some(c) = s.chars().find(
+        |c| !matches!(c, 'A'..='Z' | 'a'..='z' | '0'..='9' | '_' | ':' | '<' | '>' | ',' | ' '),
+    ) {
+        return Err(format!(
+            "invalid character {c:?}; a --json-schema-root value is emitted verbatim into generated \
+             rust as `add_schema::<PATH>(…)`, so it accepts only [A-Za-z0-9_], `:`, `<`, `>`, `,` \
+             and spaces"
+        ));
+    }
+    Ok(s.to_owned())
+}
+
 #[derive(Debug, Default, Parser)]
 #[clap()]
 pub struct Cli {
@@ -130,6 +156,29 @@ pub struct Cli {
     /// Requires `--json-schema-export` (the scripts read the schemas the json-gen crate writes).
     #[clap(long, value_parser, action = clap::ArgAction::Set, default_value_t = false)]
     pub json_schema_scripts: bool,
+
+    /// Register an ADDITIONAL type as a JSON-schema root: one extra
+    /// `add_schema::<RUST_PATH>(generator, &mut claimed);` row in the json-gen crate's
+    /// `add_schemas`, for a type that is part of the published surface but that the CDDL never
+    /// describes (a hand-written address/key type whose JSON form is API while its bytes are not a
+    /// CDDL rule). The value is a RUST path rooted anywhere the json-gen crate can reach — the own
+    /// rust crate (`cddl_lib::byron::ByronAddress`) or another crate the consumer adds to the
+    /// generated `wasm/json-gen/Cargo.toml` by hand (that manifest is MERGED, never clobbered, so
+    /// the added dependency survives regeneration). Emitted VERBATIM, so the value's charset is
+    /// restricted to `[A-Za-z0-9_]`, `:`, `<`, `>`, `,` and space; cddl-codegen does not typecheck
+    /// Rust, so a path that does not resolve is an `E0433`/`E0412` in the consumer's json-gen build,
+    /// never a generation-time reject. Extra roots are emitted AFTER every spec-derived row, in flag
+    /// order (never sorted), and go through the same `add_schema` helper — so they are subject to the
+    /// same published-name injectivity guard as any other row. A path naming a type whose CDDL rule
+    /// carries `@no_json_schema_export` re-registers it (the flag consults no IR at all). Repeatable;
+    /// two identical values are a hard error. Requires `--json-schema-export` (without it there is no
+    /// json-gen crate and no `add_schemas` for the row to land in).
+    #[clap(
+        long = "json-schema-root",
+        value_parser = parse_json_schema_root,
+        value_name = "RUST_PATH"
+    )]
+    pub json_schema_root: Vec<String>,
 
     /// Location override for default common types (error, serialization, etc)
     /// This is useful for integrating into an exisitng project that is based on

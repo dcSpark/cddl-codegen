@@ -1420,6 +1420,32 @@ fn run_test(
             written[0],
             defs.len()
         );
+        // `--json-schema-root` extra roots: a type named by NO CDDL rule must still reach the
+        // document, since the flag's registration row is its ONLY route in. The expected `$defs` key
+        // is derived from the flag value (last `::` segment, generic arguments stripped), which is
+        // exactly what `schema_name()` returns for a `#[derive(schemars::JsonSchema)]` type — true of
+        // every fixture root today. A future fixture whose extra root has a hand-written
+        // `schema_name()` that differs from its type name needs this lifted to an explicit per-fixture
+        // expectation, not relaxed here.
+        for root in options
+            .iter()
+            .filter_map(|arg| arg.split_once("--json-schema-root=").map(|(_, v)| v))
+        {
+            let expected = root
+                .split('<')
+                .next()
+                .unwrap()
+                .rsplit("::")
+                .next()
+                .unwrap()
+                .trim();
+            assert!(
+                defs.contains_key(expected),
+                "fixture {dir}: --json-schema-root={root} produced no `{expected}` entry in the \
+                 json-gen document {:?} — an extra root named by no CDDL rule never reached `$defs`",
+                written[0]
+            );
+        }
         // Reference closure: the document is self-contained. Every `$ref` in it must be an INTERNAL
         // pointer at one of its own `$defs` keys, so "which types can dangle?" is a check rather than
         // an argument. A dangling ref ships as a `.d.ts` that references a type it never declares
@@ -7654,6 +7680,13 @@ fn json() {
 /// `E0277` inside a generated file — the one file class a consumer is told never to hand-edit. Its
 /// parent `hand_json_parent` carries `@custom_json @no_json_schema_export` together, pinning that the
 /// two are legally combinable. The json-gen `cargo run` the harness performs IS the assertion.
+///
+/// Also the end-to-end proof for `--json-schema-root` (feature request 12, Ask A): the extra root
+/// `cddl_lib::HandWrittenJsonRoot` is a hand-written type described by NO CDDL rule, so the flag's
+/// registration row is its only route into the document — `run_test` asserts the resulting `$defs`
+/// key is present. It rides on this fixture rather than a new one because a nested-cargo cell is a
+/// real cost and this fixture already appends hand-written rust defs to the crate root, already runs
+/// the json-gen crate, and is rust-only.
 #[test]
 fn json_extern() {
     use std::str::FromStr;
@@ -7666,6 +7699,7 @@ fn json_extern() {
         &[
             "--json-serde-derives=true",
             "--json-schema-export=true",
+            "--json-schema-root=cddl_lib::HandWrittenJsonRoot",
             "--wasm=false",
         ],
         None,
@@ -8214,6 +8248,108 @@ fn json_schema_scripts_without_package_json() {
     assert!(
         msg.contains("--json-schema-scripts") && msg.contains("--json-schema-export=true"),
         "rejection message should name both flags, got: {msg}"
+    );
+}
+
+/// The three cheap (no nested cargo) halves of `--json-schema-root`'s input contract. The
+/// success direction — an extra root actually reaching the document's `$defs` — is the nested-cargo
+/// `json_extern`; this pins what must be rejected, and rejected BEFORE anything is written.
+///
+/// 1. Without `--json-schema-export` there is no json-gen crate and no `add_schemas` for the row to
+///    land in, so the flag would silently do nothing (mirrors
+///    `json_schema_scripts_without_package_json`'s rejection half).
+/// 2. A repeated value is a user mistake with no meaning: the emitted rows are byte-identical and the
+///    second is a no-op, because the emitted `add_schema` ledger keys on `std::any::type_name` and
+///    only fires when a name is claimed by a DIFFERENT rust type. Exact-string dedup only.
+/// 3. The value is emitted VERBATIM inside a turbofish, so the clap value parser's charset whitelist
+///    is what keeps a flag value from introducing a comment, a statement separator, or a string
+///    literal into a generated file. The rejected vector here is a statement separator.
+#[test]
+fn json_schema_root_input_contract() {
+    use clap::Parser;
+
+    let base = || crate::cli::Cli {
+        input: std::path::PathBuf::from("tests/json-extern/input.cddl"),
+        output: std::path::PathBuf::from("unused"),
+        json_serde_derives: true,
+        json_schema_export: true,
+        wasm: false,
+        ..Default::default()
+    };
+
+    // 1. requires --json-schema-export
+    let cli = crate::cli::Cli {
+        json_schema_export: false,
+        json_schema_root: vec!["cddl_lib::HandWrittenJsonRoot".to_owned()],
+        ..base()
+    };
+    let err = crate::api::with_types(&cli, |_, _| ())
+        .expect_err("--json-schema-root without --json-schema-export should be rejected");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("--json-schema-root") && msg.contains("--json-schema-export=true"),
+        "rejection message should name both flags, got: {msg}"
+    );
+
+    // 2. a duplicate value is rejected, and the message names the repeated value
+    let cli = crate::cli::Cli {
+        json_schema_root: vec![
+            "cddl_lib::HandWrittenJsonRoot".to_owned(),
+            "cddl_lib::MyExtern".to_owned(),
+            "cddl_lib::HandWrittenJsonRoot".to_owned(),
+        ],
+        ..base()
+    };
+    let err = crate::api::with_types(&cli, |_, _| ())
+        .expect_err("a repeated --json-schema-root value should be rejected");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("--json-schema-root=cddl_lib::HandWrittenJsonRoot"),
+        "rejection message should name the repeated value, got: {msg}"
+    );
+
+    // baseline: the same two DISTINCT roots are accepted, so it is the repetition that is rejected
+    // and not the flag itself.
+    let cli = crate::cli::Cli {
+        json_schema_root: vec![
+            "cddl_lib::HandWrittenJsonRoot".to_owned(),
+            "cddl_lib::MyExtern".to_owned(),
+        ],
+        ..base()
+    };
+    assert!(
+        crate::api::with_types(&cli, |_, _| ()).is_ok(),
+        "distinct --json-schema-root values should be accepted"
+    );
+
+    // 3. the value parser's charset whitelist. Accepts a rust path with generic arguments; rejects a
+    // value that could inject rust tokens into the generated file.
+    let parse = |value: &str| {
+        crate::cli::Cli::try_parse_from([
+            "cddl-codegen",
+            "--input=tests/json-extern/input.cddl",
+            "--output=unused",
+            "--json-schema-export=true",
+            value,
+        ])
+    };
+    assert!(
+        parse("--json-schema-root=::cddl_lib::sub::Ext<u64, alloc::string::String>").is_ok(),
+        "a rust path with generic arguments, spaces and a leading `::` must be accepted verbatim"
+    );
+    let err = parse("--json-schema-root=cddl_lib::A; std::process::exit(1)")
+        .expect_err("a value carrying a statement separator must be rejected")
+        .to_string();
+    assert!(
+        err.contains("invalid character ';'"),
+        "the charset rejection should name the offending character, got: {err}"
+    );
+    let err = parse("--json-schema-root=")
+        .expect_err("an empty value must be rejected")
+        .to_string();
+    assert!(
+        err.contains("non-empty"),
+        "the empty-value rejection should say so, got: {err}"
     );
 }
 

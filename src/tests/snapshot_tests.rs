@@ -537,6 +537,42 @@ fn json_gen_extern_schema_rows() {
             "schema-name guard wiring `{wiring}` missing from the emitted json-gen crate:\n{mod_rs}"
         );
     }
+
+    // `--json-schema-root` extra roots (feature request 12, Ask A): the same fixture regenerated with
+    // two extra roots, pinning the emitted SHAPE the compile proof (`integration_tests::json_extern`)
+    // cannot see — that a root is emitted VERBATIM (generic arguments and all), that the roots come
+    // AFTER every spec-derived row (registration order decides which side of a published-name
+    // collision the injectivity guard names, and blaming the CLI-supplied path is the actionable
+    // one), and that FLAG ORDER is preserved rather than sorted (`Zeta` before `Alpha`).
+    let with_roots = cli_for(
+        std::path::Path::new("tests/json-extern-rows/inputs"),
+        &[
+            "--json-serde-derives=true",
+            "--json-schema-export=true",
+            "--json-schema-root=other_crate::Zeta",
+            "--json-schema-root=cddl_lib::Alpha<u64>",
+        ],
+    );
+    let root_mod_rs = crate::api::generated_strings(&with_roots)
+        .expect("generation must succeed")
+        .get("wasm/json-gen/src/generated/mod.rs")
+        .expect("json-gen generated/mod.rs must be emitted under --json-schema-export")
+        .clone();
+    let zeta = root_mod_rs
+        .find("add_schema::<other_crate::Zeta>(generator, &mut claimed);")
+        .unwrap_or_else(|| panic!("extra root row missing verbatim:\n{root_mod_rs}"));
+    let alpha = root_mod_rs
+        .find("add_schema::<cddl_lib::Alpha<u64>>(generator, &mut claimed);")
+        .unwrap_or_else(|| {
+            panic!("extra root row with generic arguments missing verbatim:\n{root_mod_rs}")
+        });
+    let last_spec_row = root_mod_rs
+        .find("add_schema::<cddl_lib::sub::module::ScopedThing>(generator, &mut claimed);")
+        .unwrap_or_else(|| panic!("spec-derived rows missing:\n{root_mod_rs}"));
+    assert!(
+        last_spec_row < zeta && zeta < alpha,
+        "extra roots must follow every spec-derived row, in flag order (never sorted):\n{root_mod_rs}"
+    );
 }
 
 /// Byte-stability of the json-gen crate root across regenerations. The schema document is built by

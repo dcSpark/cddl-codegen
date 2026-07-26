@@ -1315,8 +1315,12 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   kept-its-own-name check and its inline-branch conflict check close that for every collision with a
   row on the losing side, in the consumer's own `cargo run` (message wording and wiring pinned by
   `snapshot_tests::json_gen_extern_schema_rows`,
-  `integration_tests::json_schema_name_merge_fails` and `..._stolen_fails`). Three holes remain, each
-  needing its own mechanism:
+  `integration_tests::json_schema_name_merge_fails` and `..._stolen_fails`). A `--json-schema-root`
+  extra root is emitted as an ordinary row through the same helper, so it inherits all three checks
+  by construction; that inheritance is asserted by reading the emitter, not by a fixture with an
+  extra root on the LOSING side of a collision, which would cost another nested-cargo failure cell —
+  mint one if a consumer reports a collision they introduced through the flag. Three holes remain,
+  each needing its own mechanism:
   - **A collision whose LOSER has no row and whose `schema_id`s match** is a silent merge nothing can
     see: the ledger only holds rows, and the merge makes both returned refs equal the shared name, so
     the kept-its-own-name check reads clean. Reaching it needs a way to enumerate what a row pulls in
@@ -1585,25 +1589,13 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   TypeScript must be ≥ 5.2 with `--target esnext`, because wasm-bindgen emits `Symbol.dispose`
   members that earlier targets do not know. Reopening signal: a shipped `.d.ts` breaks a consumer's
   build in a way the substring asserts could not see.
-- **Extra JSON-schema roots for published types that have no CBOR contract.** A consumer's
-  published TypeScript surface can include a Rust type its CDDL never describes — a hand-written
-  address or key type whose JSON form is API while its bytes are not a CDDL rule — and today there
-  is no way to give such a type a registration row. Build it as a **CLI list of Rust paths**, not a
-  new CDDL declaration kind: a rule that describes no CBOR, and may name a type another crate owns,
-  is a category error, and it is the rule spelling — not the ask — that forces the two expensive
-  parts (crate-qualified idents in an IR whose idents are crate-local by construction, and a story
-  for excluding such a declaration from the extern-interface export so a consumer cannot inherit a
-  wire contract that does not exist). Two facts make the path spelling cheap: a registration row is
-  already emitted as a path rooted at the rust crate (`add_schema::<cddl_lib::Foo>(…)`), so an extra
-  root is that same emission with a user-supplied path; and the json-gen `Cargo.toml` is a merged
-  manifest, so a dependency the consumer adds by hand to reach another crate's type survives
-  regeneration. An extra root goes through the same emitted helper, so it inherits the published-name
-  injectivity guard for free. A path that does not resolve is an `E0433` in the consumer's json-gen
-  build — the tool does not typecheck Rust, so a generation-time reject is not available and must
-  not be promised. Blocked on two answers from whoever asks for it: a repeatable flag versus a file
-  listing the paths, and confirmation that every listed path is reachable from the json-gen crate.
-  Mechanical layer: a fixture whose extra root is named by no CDDL rule, asserted present in the
-  document's `$defs` and subject to the same injectivity failure as any other row.
+- **A file listing `--json-schema-root` values, instead of one flag per root.** The repeatable flag
+  is what shipped, on the grounds that it matches every other repeatable flag and that the asking
+  consumer's eight entries do not justify a new file format. A file-listing variant stays purely
+  additive (same emission, a different way to spell the list), so it is a cost question a real
+  consumer settles: build it when someone's root list is large enough that a command line stops being
+  the right place for it. Note what such a file must NOT become — the paths are Rust, not CDDL, and
+  routing them through the spec is the category error the flag exists to avoid.
 - **Assert a hand-authored JSON schema against the type's actual serialization.** Supplying a
   schema body by hand needs no new spec syntax: `@custom_json` suppresses the `serde`/`schemars`
   derives while the type still gets a registration row, so a hand-written
@@ -1638,11 +1630,14 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   against a layout convention the tool would have to invent. What unblocks it, all workspace-layout
   facts rather than design choices: how a consumer's json-gen crate should FIND a dep's json-gen
   crate (a flag carrying `<dep-rust-crate>=<dep-json-gen-crate-name>@<path>`, or a convention plus
-  an opt-in flag), and whether a dependency with no json-gen crate is a hard error or a skip. Note
-  what it is worth once one document per crate ships: only a dependency's UNREFERENCED roots, since
-  anything a consumer's own types reference is already in the consumer's document through the
-  closure — so the extra-roots entry above may cover the residue more cheaply. `add_schemas` is
-  emitted `pub` precisely so this stays additive.
+  an opt-in flag), and whether a dependency with no json-gen crate is a hard error or a skip. What
+  it is worth is now narrower than when it was asked: with one document per crate, anything a
+  consumer's own types reference is already in the consumer's document through the closure, so the
+  residue is only a dependency's UNREFERENCED roots — and those are already expressible as
+  `--json-schema-root=<dep_crate>::<Type>` plus a hand-added dependency in the merged
+  `wasm/json-gen/Cargo.toml`. The entry stays because that route makes the consumer restate each root
+  by hand, where threading would import the dependency's own list; it remains blocked on the same
+  workspace-layout facts. `add_schemas` is emitted `pub` precisely so this stays additive.
 
 ## Operational watches
 
