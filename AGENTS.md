@@ -202,20 +202,32 @@ Rules:
   runs saturating it is the ENOSPC ledger entry in `tests/TESTING_ROADMAP.md`.
 - **Evidence preservation: every multi-minute run leaves its FULL output in a file under
   `draft/logs/`.** `check.ts` does this ITSELF — every run tees its complete output to a
-  timestamped `draft/logs/check-<tier>-<stamp>.log` and prints the path at start and end; cite
-  that path, never re-pipe the run. For everything ELSE that runs minutes (an isolated
-  `cargo test --bin cddl-codegen <gate>` confirm, a standalone `bun run verify.ts`, corpus
-  mints), redirect full output to a `draft/logs/` file yourself from the FIRST run. Rationale,
-  learned expensively: piping through `tail` truncates the failure detail and masks the exit code
-  (the pipeline reports `tail`'s); a one-line summary of a failed run is unactionable, and a
-  transient failure whose only sighting went through `tail`/`grep` is evidence burned — reruns
-  come back green and the flake stays unattributed. Proven end to end by the
-  `acquire_scratch_lock_serializes` watch in `tests/TESTING_ROADMAP.md`: four unattributed
-  sightings (three lost to `tail`/`grep`/truncation), then the fifth — full-logged under this
-  rule — attributed and retired the flake in the same session.
-- `draft/logs/` is PER-CHECKOUT and a WORKTREE's copy dies with the worktree: removing a worktree
-  deletes every log its runs wrote. Before removing a worktree whose runs produced evidence worth keeping,
-  copy those logs into the MAIN checkout's `draft/logs/` first.
+  timestamped `draft/logs/check-<tier>-<stamp>.log` and prints the path at start and end. For
+  everything ELSE that runs minutes (an isolated `cargo test --bin cddl-codegen <gate>` confirm, a
+  standalone `bun run verify.ts`, corpus mints), redirect full output to a `draft/logs/` file
+  yourself from the FIRST run. Rationale, learned expensively: piping through `tail` truncates the
+  failure detail and masks the exit code (the pipeline reports `tail`'s); a one-line summary of a
+  failed run is unactionable, and a transient failure whose only sighting went through
+  `tail`/`grep` is evidence burned — reruns come back green and the flake stays unattributed.
+  Proven end to end by the `acquire_scratch_lock_serializes` watch in
+  `tests/TESTING_ROADMAP.md`: four unattributed sightings (three lost to `tail`/`grep`/truncation),
+  then the fifth — full-logged under this rule — attributed and retired the flake in the same
+  session.
+- **A log is a working artifact for the session that produced it, never evidence of record.**
+  Within your own turn, read it freely and cite its path to the user. But when a finding lands in a
+  message, a commit, or a doc, it carries **the conclusion and the numbers** — the wall time, the
+  exit signature, the tier verdict — never a bare path standing in for them. Two independent
+  reasons the path cannot be the evidence: `/draft/` is gitignored, so the citation dangles by
+  construction in every other checkout and CANNOT fail loudly (no existence check can see it); and
+  `check.ts` now deletes all but the last 10 `check-<tier>-*.log` per tier at run start, so a cited
+  log is typically gone within ten runs. A committed doc citing a path that no longer exists, in a
+  directory nobody else has, is worse than no citation — it reads as evidence while being
+  unverifiable. Retention holds back any log a committed file still names and warns about it, so if
+  that warning fires, the fix is to move the fact into the doc, not to keep the log.
+- **What survives is `tests/timings.json`** (committed, one measured row per gate; see
+  `tests/README.md` § "Measured gate durations"). Durations belong there rather than in prose,
+  because it re-measures itself and prose rots. `draft/timings.jsonl` and `draft/timing-cells.jsonl`
+  are the local ledgers behind it — gitignored, trimmed, and disposable like the logs.
 - **A fail-fast FAIL plus a single-gate retry is NOT a tier pass.** Fail-fast SKIPS every gate
   after the failure point, so "the failed gate passed on isolated retry" leaves the rest unrun —
   re-run the tier before claiming it green (the gate cache keeps already-passed cells cheap). A
