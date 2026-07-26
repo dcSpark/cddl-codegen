@@ -14629,6 +14629,11 @@ fn decode_conformance_replay() {
         .count();
 
     for row in &rows {
+        // This gate memoizes nothing, so its minutes decompose into nothing unless something times
+        // the unit of work. NAMED binding, dropped at end of iteration — `let _ = …` would drop
+        // immediately and time nothing, and an emission after the body would miss every row that
+        // `continue`s. Inert unless check.ts asked for cell rows (`src/tests/timing_cells.rs`).
+        let _cell = super::timing_cells::CellTimer::start("decode_conformance_replay", &row.id);
         // ---- default profile: accept => Ok, reject pin => Err ----
         // Precompute the encoding-variant re-encodings of every accept vector (mint guarantees
         // definite-length minimal input, so `variants()` never panics — but wrap it in `catch_unwind`
@@ -15692,6 +15697,9 @@ fn corpus_decode_replay() {
         .count();
 
     for row in &rows {
+        // Same as the sibling gate above: uncached work, timed per catalog row, dropped at end of
+        // iteration so a `continue` still records the row.
+        let _cell = super::timing_cells::CellTimer::start("corpus_decode_replay", &row.id);
         // ---- default profile: accept => Ok, reject pin => Err ----
         let mut variant_specs: Vec<(usize, String, Vec<u8>)> = Vec::new();
         for (i, vector) in row.vectors.iter().enumerate() {

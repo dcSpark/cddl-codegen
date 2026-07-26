@@ -61,6 +61,7 @@ const ROOT = import.meta.dir;
 const MATRIX = join(ROOT, "cddl-matrix");
 const LOGS_DIR = join(ROOT, "draft", "logs");
 const LEDGER = join(ROOT, "draft", "timings.jsonl");
+const CELLS = join(ROOT, "draft", "timing-cells.jsonl");
 
 // ---- tiers ---------------------------------------------------------------------------------------
 const TIERS = ["fast", "local", "full"] as const;
@@ -244,8 +245,19 @@ function runClosureAudit(): Outcome {
     console.log("  strace not found on PATH — install strace to run the gate-cache input-closure audit.");
     return { status: "SKIPPED", reason: "strace absent" };
   }
-  const exit = sh(["bun", "run", "audit_gate_cache_closure.ts"], MATRIX);
-  return exit === 0 ? { status: "PASS" } : { status: "FAIL", reason: `audit_gate_cache_closure.ts exit ${exit}` };
+  // The ONE gate that asks for no cell rows. `strace -f` inflates every duration inside the traced
+  // subtree, so rows produced here would measure strace rather than the gate — the same reason a
+  // killed run's gate sum is not recorded as a wall time. Unsetting it also means the audit's traced
+  // process makes no syscall this feature added, which keeps the audit's own closure argument
+  // independent of anything argued here.
+  const cells = process.env.CDDL_TIMING_CELLS;
+  delete process.env.CDDL_TIMING_CELLS;
+  try {
+    const exit = sh(["bun", "run", "audit_gate_cache_closure.ts"], MATRIX);
+    return exit === 0 ? { status: "PASS" } : { status: "FAIL", reason: `audit_gate_cache_closure.ts exit ${exit}` };
+  } finally {
+    if (cells !== undefined) process.env.CDDL_TIMING_CELLS = cells;
+  }
 }
 
 // ---- cache-transparency gate: flag-gated; oracle preflight mirrors runVerify, then run the diff ---
@@ -895,7 +907,14 @@ function main() {
   // whose logs have never been scraped. Still before the warm-up, which is where a run is most
   // likely to be interrupted.
   const ctx = runContext(tier);
-  if (ctx) emit([runRow(ctx)]);
+  if (ctx) {
+    emit([runRow(ctx)]);
+    // Cell rows: the drill-down under a gate row. Plumbed by env var because the Rust side emits
+    // from inside libtest, where a printed marker is captured and discarded (see
+    // `src/tests/timing_cells.rs`). Set only when this run is already emitting, so a suite run by
+    // hand — and CI, and `--help` — stays byte-for-byte what it was.
+    process.env.CDDL_TIMING_CELLS = CELLS;
+  }
 
   warmupThenOffline(tier);
 
