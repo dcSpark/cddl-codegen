@@ -42,11 +42,14 @@
  *     (`RESULT: PASS (editorial mapping holds mechanically)` and four others). Only the two long
  *     forms check.ts itself prints are the verdict.
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { createHash } from "node:crypto";
-import { cpus, hostname } from "node:os";
+import { cpus, hostname, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { REGISTRY } from "../check.ts";
+import { REGISTRY, etaLines, retainLogs } from "../check.ts";
 
 const HERE = import.meta.dir;
 const ROOT = resolve(HERE, "..");
@@ -714,6 +717,116 @@ export function selfTests(): TestResult[] {
       parseDur("3m 37s") === 217_000 && parseDur("1m 2s") === 62_000 && parseDur("0ms") === 0 &&
       parseDur("later") === null);
   }
+
+  // The start-of-run ETA never fabricates a number. Below the seeding floor — a fresh checkout whose
+  // digest has not been blessed for this tier — the honest output is that there is no baseline, and
+  // it must not depend on a local ledger, because a fresh checkout has none.
+  {
+    const rows: Row[] = [];
+    const noRow: Digest = { ...emptyDigest(), tiers: [] };
+    const belowFloor: Digest = { ...emptyDigest(), tiers: [{ tier: "full", wall_ms: 100, n: 2 }] };
+    const noWall: Digest = { ...emptyDigest(), tiers: [{ tier: "full", n: 40 }] };
+    const want = "  no baseline yet for tier=full";
+    ok("eta_says_no_baseline_rather_than_fabricating_one",
+      etaLines(noRow, rows, "full").join("|") === want &&
+      etaLines(belowFloor, rows, "full").join("|") === want &&
+      etaLines(noWall, rows, "full").join("|") === want,
+      JSON.stringify([etaLines(noRow, rows, "full"), etaLines(belowFloor, rows, "full"), etaLines(noWall, rows, "full")]));
+  }
+  // A seeded row yields exactly one estimate line, sourced from the RUN-LEVEL wall — never a sum of
+  // per-gate medians, which omits inter-gate overhead and is unavailable for killed runs.
+  {
+    const d: Digest = { ...emptyDigest(), tiers: [{ tier: "fast", wall_ms: 54_000, n: 20 }] };
+    const lines = etaLines(d, [], "fast");
+    ok("eta_reports_the_blessed_run_level_median",
+      lines.length === 1 && lines[0]!.includes("~54s") && lines[0]!.includes("median of 20 passing fast runs"),
+      JSON.stringify(lines));
+  }
+
+  // ---- retention: the interlocks on an IRREVERSIBLE operation ------------------------------------
+  // Every one of these pins a way `check.ts` could delete the only copy of something. They run
+  // against a temp directory, never `draft/logs/`.
+  {
+    const seq = (prefix: string, n: number, t0 = 1_700_000_000): [string, number][] =>
+      Array.from({ length: n }, (_, i) => [`${prefix}${String(i).padStart(3, "0")}.log`, t0 + i]);
+    const mk = (files: [string, number][]) => {
+      const dir = mkdtempSync(join(tmpdir(), "cddl-retention-"));
+      const logs = join(dir, "logs");
+      mkdirSync(logs);
+      for (const [f, mtime] of files) {
+        writeFileSync(join(logs, f), "x".repeat(1000));
+        utimesSync(join(logs, f), mtime, mtime); // distinct ascending mtimes: retention orders by mtime
+      }
+      return { dir, logs, ledger: join(dir, "timings.jsonl") };
+    };
+
+    // AC: blocked on the backfill having run. The logs are the ONLY copy of the duration history
+    // until they have been scraped, so an absent-or-empty ledger must stop the delete, not warn past
+    // it. An empty file is treated exactly like a missing one — `touch` is not a backfill.
+    {
+      const { dir, logs, ledger } = mk(seq("check-fast-", 15));
+      const noLedger = retainLogs({ logsDir: logs, ledger, cited: () => new Set() });
+      writeFileSync(ledger, "");
+      const emptyLedger = retainLogs({ logsDir: logs, ledger, cited: () => new Set() });
+      ok("retention_refuses_to_delete_without_a_backfilled_ledger",
+        noLedger.status === "skipped" && emptyLedger.status === "skipped" &&
+        readdirSync(logs).length === 15 && /timings\.jsonl is missing or empty/.test(noLedger.reason ?? ""),
+        JSON.stringify({ noLedger, emptyLedger, onDisk: readdirSync(logs).length }));
+      rmSync(dir, { recursive: true });
+    }
+
+    // The citation guard FAILS CLOSED. An empty result set and a broken scan are indistinguishable
+    // at the call site, and the difference between them is deleted evidence.
+    {
+      const { dir, logs, ledger } = mk(seq("check-fast-", 15));
+      writeFileSync(ledger, '{"v":1}\n');
+      const r = retainLogs({ logsDir: logs, ledger, cited: () => null });
+      ok("retention_fails_closed_when_the_citation_scan_fails",
+        r.status === "skipped" && readdirSync(logs).length === 15 && /citation scan failed/.test(r.reason ?? ""),
+        JSON.stringify(r));
+      rmSync(dir, { recursive: true });
+    }
+
+    // Keep the last 10 per tier; a cited log survives past its window and is NAMED, so the guard's
+    // own workload stays visible rather than becoming a silent bridge nobody removes. Ad-hoc logs —
+    // including `check-`-prefixed ones whose tier field is not a real tier — are never candidates.
+    {
+      const files: [string, number][] = [
+        ...seq("check-fast-", 15), ...seq("check-local-", 12), ...seq("check-full-", 3),
+        ["check-optional_fixed_float-crates-20260718T141505Z.log", 1_600_000_000],
+        ["verify-rustname-registration-2026-07-18T22-48-50Z.log", 1_600_000_001],
+        ["check-local-item23.log", 1_600_000_002],
+      ];
+      const { dir, logs, ledger } = mk(files);
+      writeFileSync(ledger, '{"v":1}\n');
+      const cited = new Set(["check-fast-000.log", "check-local-item23.log"]);
+      const r = retainLogs({ logsDir: logs, ledger, cited: () => cited });
+      const left = new Set(readdirSync(logs));
+      const newestSurvive = (p: string, from: number) =>
+        Array.from({ length: 10 }, (_, i) => `${p}${String(from + i).padStart(3, "0")}.log`).every(f => left.has(f));
+      ok("retention_keeps_the_last_10_per_tier_and_every_cited_log",
+        // fast: 15 -> 5 expired, 1 cited -> 4 deleted. local: 13 (12 + the older item23) -> 3
+        // expired, item23 cited -> 2 deleted. full: 3 -> none expired.
+        r.status === "ran" && r.deleted.length === 6 && r.bytes === 6000 &&
+        r.citedKept.length === 2 && left.has("check-fast-000.log") && left.has("check-local-item23.log") &&
+        newestSurvive("check-fast-", 5) && newestSurvive("check-local-", 2) &&
+        left.has("check-optional_fixed_float-crates-20260718T141505Z.log") &&
+        left.has("verify-rustname-registration-2026-07-18T22-48-50Z.log"),
+        JSON.stringify({ deleted: r.deleted, bytes: r.bytes, citedKept: r.citedKept, left: [...left].sort() }));
+      rmSync(dir, { recursive: true });
+    }
+
+    // Nothing expired -> silent success, and the interlocks are never even consulted. This is what
+    // keeps CI and a fresh checkout quiet: neither has a ledger, and neither has anything to delete.
+    {
+      const { dir, logs, ledger } = mk(seq("check-fast-", 4));
+      let consulted = false;
+      const r = retainLogs({ logsDir: logs, ledger, cited: () => { consulted = true; return new Set(); } });
+      ok("retention_is_silent_and_asserts_nothing_when_nothing_expired",
+        r.status === "ran" && r.deleted.length === 0 && r.kept === 4 && !consulted, JSON.stringify(r));
+      rmSync(dir, { recursive: true });
+    }
+  }
   return t;
 }
 
@@ -760,7 +873,15 @@ function main(): void {
   }
 
   if (mode === "--check") {
-    const results = selfTests();
+    // A check that THROWS is still a red gate, but a bare stack trace names no check. Catching here
+    // costs nothing and keeps the failure attributable to the suite rather than to bun.
+    let results: TestResult[];
+    try {
+      results = selfTests();
+    } catch (e) {
+      console.log(`RESULT: FAIL — a timings check threw before reporting: ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
+      process.exit(1);
+    }
     for (const r of results) console.log(`  ${r.ok ? "ok  " : "FAIL"} ${r.name}${r.ok || !r.detail ? "" : ` — ${r.detail}`}`);
     const bad = results.filter(r => !r.ok);
     if (bad.length) {

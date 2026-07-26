@@ -510,7 +510,17 @@
       ]
     },
     {
-      "gate": "timings_digest_check"
+      "gate": "timings_digest_check",
+      "warm_ms": 26,
+      "n": 3,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 26
+        }
+      ]
     },
     {
       "gate": "verify",
