@@ -1,0 +1,586 @@
+{
+  "v": 1,
+  "note": "Measured gate durations, maintained by cddl-matrix/project_timings.ts. A row exists for every non-stub check.ts registry gate (structural, gate-enforced); its warm_ms appears once the local ledger has enough runs, and is rewritten only when the sliding-window median moves past max(2s, 20%). cold_ms is absent until a GATE_CACHE=0 run supplies one. No test asserts any value here.",
+  "gates": [
+    {
+      "gate": "all_supported_constructs_generate_all_profiles",
+      "warm_ms": 133000,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 133000
+        }
+      ]
+    },
+    {
+      "gate": "build",
+      "warm_ms": 106,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 106
+        }
+      ]
+    },
+    {
+      "gate": "build_matrix_check",
+      "warm_ms": 32,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 32
+        }
+      ]
+    },
+    {
+      "gate": "clippy",
+      "warm_ms": 233,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 233
+        }
+      ]
+    },
+    {
+      "gate": "corpus_decode_replay",
+      "warm_ms": 636000,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 636000
+        }
+      ]
+    },
+    {
+      "gate": "corpus_detect",
+      "warm_ms": 377,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 377
+        }
+      ]
+    },
+    {
+      "gate": "coverage_md_diff",
+      "warm_ms": 9,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 9
+        }
+      ]
+    },
+    {
+      "gate": "decode_conformance_replay",
+      "warm_ms": 427000,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 427000
+        }
+      ]
+    },
+    {
+      "gate": "feature_corpus_roundtrips_nondefault_profiles",
+      "warm_ms": 319000,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 319000
+        }
+      ]
+    },
+    {
+      "gate": "fmt",
+      "warm_ms": 744,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 744
+        }
+      ]
+    },
+    {
+      "gate": "fuzz_compile_rot",
+      "warm_ms": 100,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 100
+        }
+      ]
+    },
+    {
+      "gate": "gate_cache_closure_audit",
+      "warm_ms": 937000,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 937000
+        }
+      ]
+    },
+    {
+      "gate": "identifier_hazard_crates_compile",
+      "warm_ms": 16000,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 16000
+        }
+      ]
+    },
+    {
+      "gate": "insta_orphan",
+      "warm_ms": 59000,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 59000
+        }
+      ]
+    },
+    {
+      "gate": "ir_conformance_corpus",
+      "warm_ms": 136000,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 136000
+        }
+      ]
+    },
+    {
+      "gate": "lint_doc_citations",
+      "warm_ms": 398,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 398
+        }
+      ]
+    },
+    {
+      "gate": "matrix_typecheck",
+      "warm_ms": 1000,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 1000
+        }
+      ]
+    },
+    {
+      "gate": "multifile_matrix_roundtrips",
+      "warm_ms": 396000,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 396000
+        }
+      ]
+    },
+    {
+      "gate": "no_silent_directive",
+      "warm_ms": 5000,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 5000
+        }
+      ]
+    },
+    {
+      "gate": "project_corpus",
+      "warm_ms": 194,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 194
+        }
+      ]
+    },
+    {
+      "gate": "project_decode_conformance",
+      "warm_ms": 75,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 75
+        }
+      ]
+    },
+    {
+      "gate": "project_golden_hex_check",
+      "warm_ms": 30,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 30
+        }
+      ]
+    },
+    {
+      "gate": "project_multifile_matrix_check",
+      "warm_ms": 28,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 28
+        }
+      ]
+    },
+    {
+      "gate": "project_recombination_check",
+      "warm_ms": 26,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 26
+        }
+      ]
+    },
+    {
+      "gate": "project_robustness_check",
+      "warm_ms": 28,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 28
+        }
+      ]
+    },
+    {
+      "gate": "project_status_headers",
+      "warm_ms": 26,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 26
+        }
+      ]
+    },
+    {
+      "gate": "project_wasm_matrix_check",
+      "warm_ms": 25,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 25
+        }
+      ]
+    },
+    {
+      "gate": "query_q1_gaps",
+      "warm_ms": 26,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 26
+        }
+      ]
+    },
+    {
+      "gate": "query_q4_directional",
+      "warm_ms": 29,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 29
+        }
+      ]
+    },
+    {
+      "gate": "query_q5_completeness",
+      "warm_ms": 27,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 27
+        }
+      ]
+    },
+    {
+      "gate": "query_q6_diff",
+      "warm_ms": 22,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 22
+        }
+      ]
+    },
+    {
+      "gate": "recombination_crates_execute",
+      "warm_ms": 45000,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 45000
+        }
+      ]
+    },
+    {
+      "gate": "recombination_json_crates_execute",
+      "warm_ms": 63000,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 63000
+        }
+      ]
+    },
+    {
+      "gate": "recombination_preserve_crates_execute",
+      "warm_ms": 61000,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 61000
+        }
+      ]
+    },
+    {
+      "gate": "recombination_wasm_crates_check",
+      "warm_ms": 59000,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 59000
+        }
+      ]
+    },
+    {
+      "gate": "rust_oracle_fingerprint",
+      "warm_ms": 10000,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 10000
+        }
+      ]
+    },
+    {
+      "gate": "self_checks",
+      "warm_ms": 152,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 152
+        }
+      ]
+    },
+    {
+      "gate": "snapshot_quick",
+      "warm_ms": 58000,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 58000
+        }
+      ]
+    },
+    {
+      "gate": "test",
+      "warm_ms": 217000,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 217000
+        }
+      ]
+    },
+    {
+      "gate": "timings_digest_check"
+    },
+    {
+      "gate": "verify",
+      "warm_ms": 405000,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 405000
+        }
+      ]
+    },
+    {
+      "gate": "verify_cache_transparency"
+    },
+    {
+      "gate": "wasm_matrix_roundtrips",
+      "warm_ms": 444000,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 444000
+        }
+      ]
+    }
+  ],
+  "tiers": [
+    {
+      "tier": "fast",
+      "wall_ms": 54000,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 54000
+        }
+      ]
+    },
+    {
+      "tier": "local",
+      "wall_ms": 332000,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 332000
+        }
+      ]
+    },
+    {
+      "tier": "full",
+      "wall_ms": 4205000,
+      "n": 20,
+      "measured": "2026-07-26",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-26",
+          "warm_ms": 4205000
+        }
+      ]
+    }
+  ]
+}

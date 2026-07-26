@@ -373,6 +373,13 @@ export const REGISTRY: Gate[] = [
     cmd: ["bun", "run", "project_status_headers.ts", "--check"], cwd: MATRIX,
     script: "project_status_headers.ts",
     desc: "status-header count spans drift gate (matrix.json + catalog.toml + check.ts registry → ROADMAP/README/tests-README, no cargo)" },
+  // STRUCTURE only — this gate never asserts a duration. Gate durations are nondeterministic
+  // (machine load, cross-session contention), so a drift gate on the numbers would add a flaky gate
+  // to the very suite the measurement work exists to make cheaper.
+  { id: "timings_digest_check", tier: "local", kind: "cmd",
+    cmd: ["bun", "run", "project_timings.ts", "--check"], cwd: MATRIX,
+    script: "project_timings.ts",
+    desc: "tests/timings.json structural gate (a row per registry gate, no orphan rows) + the digest update rule's pure-function pins" },
 
   // --- full tier: the manual-only gates (run by memory today; the whole point of this runner) ---
   { id: "wasm_matrix_roundtrips", tier: "full", kind: "cmd",
