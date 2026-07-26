@@ -1426,10 +1426,56 @@ user-supplied macro; flag-gated, unexercised by these catalogs). The wasm reject
 `JsError`-panic class). And json laxness (serde derives don't re-enforce CDDL bounds — an
 enforcement-axis question for a future item, not this accept-direction leg).
 
+### JSON-schema document — Rust-side coverage (`run_test`'s per-fixture assertions + the emitted name guard)
+
+`--json-schema-export` is covered in three layers, and this is the first two. The document
+(`wasm/json-gen/schemas/<lib>.schema.json`) is written by a *program the tool emits*, so its content
+is a property of a RUN, not of the emitted source — every cheap verdict ("generates", "compiles",
+"the `.d.ts` type-checks") is satisfied by a document that publishes one type's shape under another
+type's name. So the layers are: our suite runs the json-gen crate and asserts the document; the
+emitted crate carries a guard that fires in a *consumer's* own run; the JS pipeline (next section)
+turns the document into the shipped `.d.ts`.
+
+**Per-fixture, in `integration_tests::run_test`.** Every fixture passing `--json-schema-export=true`
+gets its json-gen crate built and `cargo run`, not merely built — a broken `export_schemas()` body
+exits the build green. `schemas/` is deleted first, so a previous local run's output cannot satisfy
+the asserts. Then: exactly one file in `schemas/`, named `<lib>.schema.json`; a non-empty `$defs`;
+`$defs.len()` at least the `add_schema::<` row count (a row's type silently failing to land is the
+counting proxy — `$defs` is never smaller, since the emitted helper publishes an inline-schema type
+under its own name rather than letting `subschema_for` drop it); **reference closure** — every
+`$ref` anywhere in the document is an internal `#/$defs/<key>` naming a key of that same document
+(`decode_schema_ref_name` inverts schemars' percent/JSON-pointer ref encoding), which turns "which
+types can dangle?" from an argument into a check and is what catches a hand-written impl returning a
+bare `Schema::new_ref("SomeType")`; and **byte-identity across two runs** of the same binary, because
+the document is built by walking a live `SchemaGenerator` rather than by printing a sorted list, so
+determinism is a runtime property here, not only an emitter one (the emitter's own byte-stability is
+pinned in the fast tier by `snapshot_tests::json_gen_rows_are_byte_stable`).
+
+**The emitted guard, which runs where the consumer runs.** A `$defs` key is a published API name
+(json2ts emits it, suffixed, as the TypeScript type name), so the emitted `add_schema` helper enforces
+that the document's published names are injective, panicking with both offenders named. It carries
+three checks: a **name ledger** keyed on `std::any::type_name` — the only thing that can see a
+*merge*, where two hand-written impls return one name and `schema_id()`'s default makes them one type
+to `schemars`, so both returned refs equal the shared name; a **kept-its-own-name** comparison against
+the ref `subschema_for` returned — which sees an order-dependent `<name>2` even when the type that
+claimed the name has no row of its own; and a **conflict check** on the inline branch's `definitions`
+insert. Pinned by `snapshot_tests::json_gen_extern_schema_rows` (fast tier: the emitted wiring, plus
+the twin pairs under "Design rules" below) and executed by two integration vectors,
+`json_schema_name_merge_fails` and `json_schema_name_stolen_fails`. Those two need their own fixtures
+and their own harness (`run_json_gen_failure_test`) rather than riding `run_test`, because `run_test`
+asserts the json-gen run SUCCEEDS and the whole point of these is a spec whose run must fail; the
+harness mirrors `run_test` in every respect but the verdict, and asserts on a message FRAGMENT so a
+fixture that starts failing for an unrelated reason still fails the test.
+
+What these layers cannot see — a collision whose loser has no row and whose `schema_id`s match, a
+cross-crate collision between two `add_schemas` calls, a name schemars percent-encodes, and the fact
+that the closure assertion is ours and not a consumer's — is enumerated in
+`tests/TESTING_ROADMAP.md`.
+
 ### JSON-schema → TypeScript JS-side pipeline (`js_schema_to_ts`, `js_d_ts_merge`, `package_json_pipeline`, `json_schema_scripts_without_package_json`)
 
-`--json-schema-export` ships a JS toolchain that turns the exported schemas into TypeScript and
-merges them into the wasm-pack `.d.ts` (`static/run-json2ts.js` + `static/json-ts-types.js`, copied
+`--json-schema-export` ships a JS toolchain that turns the exported schema document into TypeScript
+and merges the result into the wasm-pack `.d.ts` (`static/run-json2ts.js` + `static/json-ts-types.js`, copied
 by `--package-json --json-schema-export` or by `--json-schema-scripts` on its own).
 
 These two scripts are *tool-owned shipped artifacts*, not test scaffolding: they are where the
@@ -1441,9 +1487,9 @@ cheapest-in-isolation first:
 
 - **`js_schema_to_ts`** runs the shipped `run-json2ts.js` over the committed schema document
   (`tests/json2ts/schemas`) using the pinned `json-schema-to-typescript`, asserting the emitted
-  `.d.ts`: every definition declared exactly once and JSON-suffixed (including one nothing but
-  another definition references — the type a per-file design left referenced-but-undeclared),
-  resolved refs, enum → union, the `additionalProperties` guard on both a struct and a map
+  `.d.ts`: every definition declared exactly once and JSON-suffixed (including one that nothing but
+  another definition references — the shape that ships as an undeclared `TS2304` unless the whole
+  document is compiled as one unit), resolved refs, enum → union, the `additionalProperties` guard on both a struct and a map
   definition, a definition whose own `title` does not become its emitted name, no near-duplicate
   `FooJSON1` from a `$ref` with a sibling annotation, and no synthetic root. Four further phases pin
   the failure directions, each a non-zero exit that leaves the last-good `json-types.d.ts` on disk: a
@@ -1477,8 +1523,9 @@ cheapest-in-isolation first:
   merged `.d.ts` (proving the merge ran on real output, not a fixture), and a `.tgz` from `wasm-pack
   pack`. It also carries the end-to-end dangling-type pin: the fixture's `inner_no_row` gets no
   registration row (`@no_json_schema_export`) but IS referenced by `foo`, so the document must carry
-  it in `$defs` and the merged `.d.ts` must DECLARE it — under a file-per-row design that type is a
-  `TS2304` in the shipped package that no Rust-side gate can see. It builds the
+  it in `$defs` and the merged `.d.ts` must DECLARE it — the pin exists because a suppressed-but-
+  referenced type reaching the shipped package as a `TS2304` is invisible to every Rust-side gate.
+  It builds the
   generated crate with the user's `+stable` toolchain (faithful to the shipped consumer experience),
   so a `+stable` failure here is a real finding about shipped output, not a test bug. Needs
   node+npm+wasm-pack + a rustup `stable` toolchain; skips locally when absent (asserts their presence
