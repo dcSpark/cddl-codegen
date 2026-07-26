@@ -49,12 +49,17 @@
  *   - adding a direct `run: cargo test` step to build.yml -> meta-check 3 FAILED (bypasses registry)
  *   canaries reverted after confirming red.
  */
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import {
+  compactDur, readDigest, readLedger, tierWindow, type Digest, type Row,
+} from "./cddl-matrix/project_timings.ts";
 
 const ROOT = import.meta.dir;
 const MATRIX = join(ROOT, "cddl-matrix");
+const LOGS_DIR = join(ROOT, "draft", "logs");
+const LEDGER = join(ROOT, "draft", "timings.jsonl");
 
 // ---- tiers ---------------------------------------------------------------------------------------
 const TIERS = ["fast", "local", "full"] as const;
@@ -474,6 +479,221 @@ function statusCell(o: Outcome): string {
   }
 }
 
+// ---- start-of-run ETA ----------------------------------------------------------------------------
+// The one number an agent needs BEFORE committing to a run, and the reason the digest is committed
+// at all: it has to be right in a fresh checkout on the first run, before any local ledger exists.
+//
+// The estimate is a RUN-LEVEL wall median, never a sum of per-gate medians. A sum omits inter-gate
+// overhead, and it is unavailable for the runs that matter most — a killed run carries per-gate
+// timings but no wall (deliberately: a killed run's gate sum is not a wall time), so summing gates
+// would quietly build an estimate out of runs that never finished.
+
+/** Coarse, ETA-shaped: `54s`, `5m32s`, `70m`. Deliberately blunter than fmtDur — this is a forecast. */
+function fmtEta(ms: number): string {
+  const s = Math.round(ms / 1000);
+  if (s < 90) return `${s}s`;
+  if (s < 600) return `${Math.floor(s / 60)}m${s % 60}s`;
+  return `${Math.round(s / 60)}m`;
+}
+
+/**
+ * The strongest cache-warmth counter-example this tier's OWN measurements support, or null.
+ *
+ * The claim being evidenced is "a warm cache does not shortcut this tier", and it is only printed
+ * where the data shows it — never hardcoded, because a hardcoded pair rots exactly like the
+ * hand-written wall times this feature exists to replace. `cells_run`/`cells_cached` live on GATE
+ * rows, so a run's cache warmth is the sum over its gates; the wall comes from its RUN row.
+ *
+ * Three filters, each of which the claim needs: the run must have COMPLETED and passed (a killed run
+ * has no wall), it must be cache-DOMINATED (more hits than misses — otherwise "warm" is a
+ * misdescription), and, having picked the most cache-heavy such run, that run must have been no
+ * faster than the tier's median. If the warmest run WAS fast, the claim is false for this tier and
+ * nothing is printed. Selecting the warmest run first and testing it second is what keeps this
+ * honest: picking the warmest run *among the slow ones* would be cherry-picking.
+ */
+function cacheCounterExample(rows: Row[], tier: Tier, etaMs: number): string | null {
+  interface Agg { cached: number; misses: number; wall?: number; pass: boolean }
+  const byRun = new Map<string, Agg>();
+  for (const r of rows) {
+    if (r.tier !== tier) continue;
+    const k = r.log ?? r.run;
+    const a = byRun.get(k) ?? { cached: 0, misses: 0, pass: false };
+    if (r.kind === "gate") { a.cached += r.cells_cached ?? 0; a.misses += r.cells_run ?? 0; }
+    else { a.wall = r.wall_ms; a.pass = r.verdict === "pass"; }
+    byRun.set(k, a);
+  }
+  let warmest: Agg | null = null;
+  for (const a of byRun.values()) {
+    if (!a.pass || a.wall === undefined) continue;
+    if (a.cached === 0 || a.cached <= a.misses) continue;
+    if (!warmest || a.cached > warmest.cached) warmest = a;
+  }
+  if (!warmest || warmest.wall! < etaMs) return null;
+  return `the most cache-heavy ${tier} run on record hit ${warmest.cached} cached cells ` +
+    `(${warmest.misses} run) and still took ${compactDur(warmest.wall!)}`;
+}
+
+/**
+ * Pure, so the no-baseline branch is pinned by a test rather than reached only in a fresh checkout.
+ * The committed digest gates the estimate — it is the number a first run has — while the local
+ * ledger, when there is one, contributes the observed SPREAD, which the digest does not store. Both
+ * sources are named in the line, because they can legitimately disagree: the digest only moves when
+ * the deadband trips, so a spread that no longer brackets the median is the deadband working.
+ */
+export function etaLines(digest: Digest, rows: Row[], tier: Tier): string[] {
+  const row = digest.tiers.find(t => t.tier === tier);
+  // Never a fabricated estimate: below the seeding floor the honest output is that there isn't one.
+  if (!row || row.wall_ms === undefined || (row.n ?? 0) < 3) return [`  no baseline yet for tier=${tier}`];
+  const w = tierWindow(rows, tier);
+  const spread = w.length >= 3
+    ? `; local ledger's last ${w.length} span ${compactDur(Math.min(...w))}-${compactDur(Math.max(...w))}`
+    : "";
+  const out = [`  expected ~${fmtEta(row.wall_ms)} (median of ${row.n} passing ${tier} runs, tests/timings.json${spread})`];
+  const ce = cacheCounterExample(rows, tier, row.wall_ms);
+  if (ce) out.push(`  a warm cache does NOT make this fast: ${ce}`);
+  return out;
+}
+
+/** Never fatal: a malformed digest or a torn ledger must not turn a green run red. */
+function printEta(tier: Tier): void {
+  try {
+    for (const l of etaLines(readDigest(), readLedger(), tier)) console.log(l);
+  } catch (e) {
+    console.log(`  no duration baseline available (${e instanceof Error ? e.message : String(e)})`);
+  }
+}
+
+// ---- log retention -------------------------------------------------------------------------------
+// `draft/logs/` grows ~11 MB/day and nobody reads a log twice. Compression was measured (gzip -9:
+// 35.6x, zstd -19: 53.9x) and rejected: it preserves a hoard nobody reads. What is worth keeping is
+// the DURATIONS, and those are scraped into `draft/timings.jsonl` — which is why the interlock below
+// is not a formality.
+
+/**
+ * Basenames of `check-*.log` files cited by a COMMITTED file, or null if the scan itself failed.
+ *
+ * Anchored on the literal `check-` prefix for a measured reason: the natural unanchored form
+ * `[A-Za-z0-9._-]+\.log` backtracks across the ~3900 tracked corpus files and takes ~51s, blowing
+ * the "retention adds < 1s" budget by two orders of magnitude. With the prefix it is one pass in
+ * ~0.16s. `draft/` is gitignored, so `git grep` never sees the logs themselves — only citations.
+ *
+ * Returns null (rather than an empty set) when git fails, so the caller FAILS CLOSED. An empty set
+ * and a broken scan are indistinguishable at the call site, and the difference is deleted evidence.
+ */
+function citedLogBasenames(): Set<string> | null {
+  const r = Bun.spawnSync(["git", "grep", "-hoE", "check-[A-Za-z0-9._-]+\\.log"], {
+    cwd: ROOT, stdout: "pipe", stderr: "pipe",
+  });
+  if ((r.exitCode ?? 1) > 1) return null; // 1 == "no matches", which is a legitimate empty answer
+  return new Set(new TextDecoder().decode(r.stdout).split("\n").map(s => s.trim()).filter(Boolean));
+}
+
+export interface Retention {
+  status: "ran" | "skipped";
+  reason?: string;
+  deleted: string[];
+  bytes: number;
+  kept: number;
+  citedKept: string[];
+}
+
+/**
+ * Keep the last `keepPerTier` `check-<tier>-*.log` per tier; delete the rest. Bounded and
+ * predictable, which a time window is not: a quiet fortnight followed by a busy day should not
+ * change how much history survives.
+ *
+ * Scope is deliberately narrow — only names matching `check-(fast|local|full)-*.log`. `draft/logs/`
+ * also holds hand-written ad-hoc logs, some of which begin with `check-` but do not name a real tier
+ * (`check-optional_fixed_float-crates-….log`); they were written under other conventions and are
+ * left alone.
+ *
+ * Two fail-closed interlocks, in the order that keeps the quiet case quiet: expiry candidates are
+ * computed FIRST, and a run with nothing to expire (CI, a fresh checkout) returns silently without
+ * asserting anything. Only once deletion is actually on the table must (a) the citation scan have
+ * succeeded and (b) `draft/timings.jsonl` exist and be non-empty — the logs are the only copy of
+ * the duration history until they have been scraped into it.
+ */
+export const KEEP_LOGS_PER_TIER = 10;
+
+export function retainLogs(o: {
+  logsDir: string;
+  ledger: string;
+  cited: () => Set<string> | null;
+  keepPerTier?: number;
+  dryRun?: boolean;
+}): Retention {
+  const keep = o.keepPerTier ?? KEEP_LOGS_PER_TIER;
+  const skip = (reason: string): Retention =>
+    ({ status: "skipped", reason, deleted: [], bytes: 0, kept: 0, citedKept: [] });
+  if (!existsSync(o.logsDir)) return { status: "ran", deleted: [], bytes: 0, kept: 0, citedKept: [] };
+
+  const RE = /^check-(fast|local|full)-.+\.log$/;
+  const byTier = new Map<Tier, { f: string; mtime: number; size: number }[]>();
+  for (const f of readdirSync(o.logsDir)) {
+    const m = RE.exec(f);
+    if (!m) continue;
+    const st = statSync(join(o.logsDir, f));
+    const list = byTier.get(m[1] as Tier) ?? [];
+    list.push({ f, mtime: st.mtimeMs, size: st.size });
+    byTier.set(m[1] as Tier, list);
+  }
+
+  let kept = 0;
+  const expired: { f: string; size: number }[] = [];
+  for (const list of byTier.values()) {
+    // mtime order, filename as a stable tiebreak: 21 of the logs on disk are hand-named and carry
+    // no parseable stamp, so ordering by filename alone would rank them arbitrarily against the rest.
+    list.sort((a, b) => a.mtime - b.mtime || (a.f < b.f ? -1 : 1));
+    const cut = Math.max(0, list.length - keep);
+    kept += list.length - cut;
+    expired.push(...list.slice(0, cut));
+  }
+  if (expired.length === 0) return { status: "ran", deleted: [], bytes: 0, kept, citedKept: [] };
+
+  const cited = o.cited();
+  if (cited === null)
+    return skip("the `git grep` citation scan failed — refusing to delete logs without the guard");
+  if (!existsSync(o.ledger) || statSync(o.ledger).size === 0)
+    return skip(
+      "draft/timings.jsonl is missing or empty — these logs are the only copy of that history; " +
+      "run `bun run project_timings.ts --backfill` in cddl-matrix/ before anything is deleted",
+    );
+
+  const deleted: string[] = [];
+  const citedKept: string[] = [];
+  let bytes = 0;
+  for (const e of expired) {
+    // A committed doc citing a gitignored path is dangling-by-construction and cannot fail loudly,
+    // so deleting the referent would make the citation wrong everywhere and detectably wrong nowhere.
+    if (cited.has(e.f)) { citedKept.push(e.f); kept++; continue; }
+    if (!o.dryRun) unlinkSync(join(o.logsDir, e.f));
+    deleted.push(e.f);
+    bytes += e.size;
+  }
+  return { status: "ran", deleted, bytes, kept, citedKept };
+}
+
+function fmtBytes(b: number): string {
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 ** 2) return `${(b / 1024).toFixed(1)} KB`;
+  if (b < 1024 ** 3) return `${(b / 1024 ** 2).toFixed(1)} MB`;
+  return `${(b / 1024 ** 3).toFixed(2)} GB`;
+}
+
+function printRetention(): void {
+  const r = retainLogs({ logsDir: LOGS_DIR, ledger: LEDGER, cited: citedLogBasenames });
+  if (r.status === "skipped") { console.log(`  retention: SKIPPED — ${r.reason}`); return; }
+  // Naming the kept-because-cited logs keeps the guard's own workload visible: the guard is a bridge
+  // for citations that should not exist, and a silent bridge is one nobody ever removes.
+  if (r.citedKept.length)
+    console.log(
+      `  retention: WARNING — kept ${r.citedKept.length} expired log(s) cited by a committed file ` +
+      `(${r.citedKept.join(", ")}); the fact belongs in the doc, not the path`,
+    );
+  if (r.deleted.length)
+    console.log(`  retention: deleted ${r.deleted.length} check-*.log (${fmtBytes(r.bytes)} reclaimed), kept ${r.kept} (last ${KEEP_LOGS_PER_TIER} per tier)`);
+}
+
 function main() {
   const argv = process.argv.slice(2);
   const flags = new Set(argv.filter(a => a.startsWith("--")));
@@ -498,6 +718,12 @@ function main() {
   const opts: Opts = { skipMissing: flags.has("--skip-missing"), refreshFuzz: flags.has("--refresh-fuzz"), cacheTransparency: flags.has("--cache-transparency") };
 
   console.log(`\ncheck.ts — tier=${tier}${keepGoing ? " --keep-going" : ""}${opts.skipMissing ? " --skip-missing" : ""}${opts.refreshFuzz ? " --refresh-fuzz" : ""}${opts.cacheTransparency ? " --cache-transparency" : ""}`);
+
+  // Both of these run BEFORE the warm-up fetch, and that ordering is the point of the ETA: the
+  // warm-up can hang on a bad network for minutes and is the most likely place a run is interrupted,
+  // so an estimate printed after it is an estimate the interrupted agent never saw.
+  printEta(tier);
+  printRetention();
 
   warmupThenOffline(tier);
 

@@ -105,8 +105,28 @@ exists to make cheaper. `warm_ms` and `cold_ms` are separate fields and never me
 absent until a `GATE_CACHE=0` run supplies one, because absent is honest and a synthesized number is
 not.
 
-**A warm gate cache does not make `full` cheap.** The 74m33s reference run took 785 cache hits and
-still ran for 74 minutes: the cache removes nested-cargo *cells*, not the four gates that dominate
+**Every run prints its expected duration before doing anything expensive.** The estimate is a median
+of the digest's run-level *wall* times for the tier — never a sum of per-gate medians, which omits
+inter-gate overhead and is unavailable for the runs that matter most (a killed run carries gate
+timings but deliberately no wall) — followed by the spread of the local ledger's recent runs, and,
+for a tier whose own measurements support it, the cache-warmth counter-example below. It prints
+before the `cargo fetch` warm-up deliberately: the warm-up is where a run is most likely to hang, so
+an estimate printed after it is one the interrupted agent never saw. A tier the digest has not yet
+seeded prints `no baseline yet for tier=<t>` rather than a fabricated number.
+
+**Old logs are deleted at run start.** The last 10 `check-<tier>-*.log` per tier survive and the
+rest go, with one line naming the count and the bytes reclaimed — bounded and predictable, which a
+time window is not (a quiet fortnight followed by a busy day should not change how much history
+survives). Two interlocks guard the irreversibility: nothing is deleted unless `draft/timings.jsonl`
+exists and is non-empty, because the logs are the only copy of the duration history until they have
+been scraped into it; and a log whose basename any committed file cites is kept and named in a
+warning, so that guard's own workload stays visible rather than becoming a bridge nobody removes.
+Only `check-<tier>-<stamp>.log` is a candidate — the hand-written ad-hoc logs in `draft/logs/`,
+including the `check-`-prefixed ones that name no real tier, are left alone.
+
+**A warm gate cache does not make `full` cheap** — the run-start line says so from measurement
+rather than memory, naming the most cache-heavy `full` run on record and how long it still took. As
+of this writing that is 866 cached cells and 72m20s: the cache removes nested-cargo *cells*, not the four gates that dominate
 the tier. As of the seeding measurement those four — `gate_cache_closure_audit` (15m37s),
 `corpus_decode_replay` (10m36s), `wasm_matrix_roundtrips` (7m24s) and `decode_conformance_replay`
 (7m7s) — are 40 of the tier's 70 minutes between them, and everything below the `test` gate (3m37s)
