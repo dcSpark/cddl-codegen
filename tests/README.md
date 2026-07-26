@@ -265,7 +265,13 @@ read pattern); `CLOSURE_AUDIT_GATE=<test name>` extends coverage to the other ca
 configuration, not code. It prints a visible `SKIPPED` when `strace` is absent, refuses to pass a
 trace with zero nested-cargo subtrees (vacuity floor), and statically asserts the repo carries no
 `.cargo/config` (an unhashed input for the TS-side sites whose nested cargo runs with cwd = the
-repo). `verify_cache_transparency` (`cddl-matrix/cache_transparency.ts`, flag-gated by
+repo). Two nested cargos are deliberately NOT audited, both builds of the TOOL UNDER TEST rather
+than of a generated crate, and neither work any cell's verdict can be skipped on: the traced root
+(itself a `cargo test`, whose subtree legitimately compiles the harness) and the once-per-process
+generator freshness build (`isOwnGeneratorFreshnessBuild` — `cargo build --bin cddl-codegen` into
+this checkout's own target dir, keyed that tightly and pinned by the `--self-test` fixtures; the
+generator's identity still reaches the key through the generated crate tree hash). Anything else
+that reads the repo checkout still FAILs. `verify_cache_transparency` (`cddl-matrix/cache_transparency.ts`, flag-gated by
 `--cache-transparency`) protects the OUTPUT side: it asserts `verify.ts`'s
 `annotations/cddl_codegen.toml` and `verify_report.json` are byte-identical between a cached run
 (≥1 hit required — vacuity floor) and a `GATE_CACHE=0` run, the direct check that the hit path's
