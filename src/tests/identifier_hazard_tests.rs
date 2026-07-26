@@ -33,6 +33,10 @@
 
 use crate::cli::Cli;
 use crate::parsing::RUST_KEYWORDS;
+// `tool_cmd` insulates a nested *generated-crate* cargo build from the workspace's `-D warnings`
+// (generated code legitimately over-imports traits/globs — see its doc comment); `codegen_cmd`
+// spawns the generator binary directly, so no generation call takes the repo `target/` build lock.
+use crate::tests::integration_tests::{codegen_cmd, tool_cmd};
 use crate::tests::robustness_tests::with_thread_silenced_panics;
 use clap::Parser;
 
@@ -252,15 +256,6 @@ fn identifier_hazard_robustness_catalog() {
 
 // ---- layer 2: the standalone compile gate ---------------------------------------------------------
 
-/// Spawn cargo for a *generated* crate, insulated from the workspace's `-D warnings` (generated code
-/// legitimately over-imports traits/globs — see `integration_tests::tool_cmd`'s doc comment). Local
-/// copy of `integration_tests::tool_cmd` to keep that module's visibility unchanged.
-fn tool_cmd(program: &str) -> std::process::Command {
-    let mut c = std::process::Command::new(program);
-    c.env_remove("RUSTFLAGS");
-    c
-}
-
 /// Per-checkout scratch discriminator (concurrent runs from different checkouts must not share a path).
 fn checkout_hash() -> u64 {
     use std::hash::{Hash, Hasher};
@@ -292,8 +287,7 @@ fn gen_and_check(
     let spec_path = out.with_extension("cddl");
     std::fs::create_dir_all(out.parent().unwrap()).ok();
     std::fs::write(&spec_path, spec).map_err(|e| e.to_string())?;
-    let gen_out = tool_cmd("cargo")
-        .args(["run", "--"])
+    let gen_out = codegen_cmd()
         .arg(format!("--input={}", spec_path.to_str().unwrap()))
         .arg(format!("--output={}", out.to_str().unwrap()))
         .arg("--wasm=false")
