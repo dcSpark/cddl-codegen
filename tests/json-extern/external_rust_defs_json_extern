@@ -124,3 +124,47 @@ impl<T: serialization::Deserialize> serialization::Deserialize for ExtSet<T> {
 pub struct HandWrittenJsonRoot {
     pub label: String,
 }
+
+// The encoded-`$ref` vector (see `encoded_name` in input.cddl). Do NOT simplify this name: each of
+// its three escape classes — `<`/`>` (percent), `/` (`~1`), `~` (`~0`) — is a separate branch of the
+// decode the emitted closure check performs, and a decode that gets any of them wrong reports this
+// document's own reference as dangling and fails the json-gen run.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct EncodedName {
+    pub value: u64,
+}
+
+impl EncodedName {
+    pub fn new(value: u64) -> Self {
+        Self { value }
+    }
+}
+
+impl schemars::JsonSchema for EncodedName {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Odd<K>/~name")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <u64 as schemars::JsonSchema>::json_schema(generator)
+    }
+}
+
+impl cbor_event::se::Serialize for EncodedName {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut cbor_event::se::Serializer,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+        serializer.write_unsigned_integer(self.value)
+    }
+}
+
+impl serialization::Deserialize for EncodedName {
+    fn deserialize(
+        raw: &mut cbor_event::de::Deserializer,
+    ) -> Result<Self, error::DeserializeError> {
+        Ok(Self {
+            value: raw.unsigned_integer()?,
+        })
+    }
+}

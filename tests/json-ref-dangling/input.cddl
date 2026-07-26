@@ -1,0 +1,18 @@
+; Negative fixture: the exported schema document must resolve its own references, and the check must
+; fail the CONSUMER's own json-gen run. This spec is deliberately UNBUILDABLE at the json-gen
+; `cargo run` step — `integration_tests::json_schema_ref_dangling_fails` asserts the run fails and
+; names the dangling reference.
+;
+; The reported consumer shape: an own-spec extern whose hand-written `schemars::JsonSchema` impl
+; returns a bare `Schema::new_ref("PlutusData")` instead of a schema body. Nothing in the document
+; defines `PlutusData`, so the definition of `StubRef` is a reference into nowhere and every type
+; that embeds it inherits the hole. Generation, the rust build and the json-gen build are all green
+; — the document is only wrong once it exists, which is why the check runs where the document is
+; written.
+;
+; `gone_ref` is the second class: an internal `#/$defs/<key>` pointer at a key nothing defines, the
+; shape left behind when the type a hand-written impl points at loses its registration row. Both in
+; one document also exercise the sorted multi-offender report.
+stub_ref = _CDDL_CODEGEN_EXTERN_TYPE_
+gone_ref = _CDDL_CODEGEN_EXTERN_TYPE_
+holder = [s: stub_ref, g: gone_ref]

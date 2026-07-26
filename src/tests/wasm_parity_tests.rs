@@ -358,6 +358,13 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
          kept-its-own-name check, so there is no wasm surface to differential",
     ),
     (
+        "json-ref-dangling",
+        "rust-only NEGATIVE json-gen fixture (externs whose hand-written `JsonSchema` impls return \
+         references the document does not define): its integration gate generates --wasm=false and \
+         asserts the json-gen run FAILS on the document's reference-closure check, so there is no \
+         wasm surface to differential and the crate is intended NOT to produce a document",
+    ),
+    (
         "open-struct-map-e2e",
         "loose-CBOR open struct-map (rest row) e2e round-trip fixture: its integration gate \
          generates --wasm=false (it exercises CBOR round-trip, not the wasm boundary); the wasm rest \
