@@ -278,13 +278,13 @@ The value is a **Rust path**, not a CDDL identifier, and it is emitted **verbati
 
 - The path must resolve **from the json-gen crate**. `cddl-codegen` does not typecheck Rust, so a path that does not resolve is an `E0433`/`E0412` in your own json-gen build — never a generation-time reject. Confirming reachability is yours, not the tool's.
 - Reaching another crate's type works because the generated `wasm/json-gen/Cargo.toml` is a **merged** manifest: keys the tool does not manage pass through untouched, so a dependency you add there by hand survives regeneration. That is a hand edit in a hand-owned manifest, not an `insert` block in generated code. Re-exporting the type through your own rust crate is the other route.
-- Because the value lands inside a turbofish in a generated file, its charset is restricted to `[A-Za-z0-9_]`, `:`, `<`, `>`, `,` and space — enough for a scoped path with generic arguments (`cddl_lib::sub::Ext<u64, String>`), not enough to introduce a comment, a statement separator or a string literal. Any other character is rejected naming the offending character.
+- What the flag takes is a **type path** — a name, optionally with generic arguments — and *not* an arbitrary type expression. `cddl_lib::sub::Ext<u64, String>` and `<Foo as Trait>::Assoc` are expressible; an array (`[u8; 32]`), a tuple (`(A, B)`) and a reference (`&T`) are not. That boundary is forced rather than incidental: the value lands verbatim inside a turbofish in a generated file, so the accepted characters are exactly `[A-Za-z0-9_]`, `:`, `<`, `>`, `,` and space — everything else could introduce a comment, a statement separator or a string literal into that file, and `;` (the separator array syntax needs) is the clearest case of a character the guard cannot admit. Anything else is rejected naming the offending character. Give such a type a named alias in your own crate and register that.
 
 Repeatable. Extra roots are emitted **after every spec-derived row**, in **flag order** (never sorted): registration order decides which side of a published-name collision the injectivity guard names, and with the CLI roots last a spec-derived row keeps its own name and the guard blames the CLI-supplied path — the one you can change without touching your spec.
 
 An extra root goes through the same `add_schema` helper as every other row, so it is subject to the **same published-name injectivity guard** documented under `--json-schema-export` above (and, like any row, its type must implement `schemars::JsonSchema`).
 
-Two further behaviours worth stating outright:
+Three further behaviours worth stating outright:
 
 - Requires `--json-schema-export`; without it there is no json-gen crate and no `add_schemas` for the row to land in, so the combination is rejected up front.
 - Passing the same value twice is a hard error naming the repeated value. This is exact-string dedup only: two spellings of one type (`crate::Foo` and `cddl_lib::Foo`) are not detected, and are harmless — the guard's ledger keys on the Rust type, so registering one type twice is a no-op rather than a collision.

@@ -20,27 +20,36 @@ fn parse_rust_wasm_feature(s: &str) -> Result<String, String> {
     Ok(s.to_owned())
 }
 
-/// clap value parser for `--json-schema-root`: the value is emitted **verbatim** into generated Rust
-/// inside a turbofish (`add_schema::<VALUE>(generator, &mut claimed);`), so this whitelist is what
-/// keeps a flag value from being able to introduce a comment, a statement separator, or a string
-/// literal into a generated file. The accepted set is exactly what a rust path with generic
-/// arguments needs: `[A-Za-z0-9_]`, `:`, `<`, `>`, `,` and space.
+/// clap value parser for `--json-schema-root`. What the flag takes is a rust TYPE PATH — a name,
+/// optionally with generic arguments — and not an arbitrary type expression. That boundary is forced
+/// by the emission: the value goes VERBATIM into generated rust inside a turbofish
+/// (`add_schema::<VALUE>(generator, &mut claimed);`), so the accepted characters are the ones a type
+/// path needs and nothing that could introduce a comment, a statement separator, or a string literal
+/// into a generated file. `[A-Za-z0-9_]`, `:`, `<`, `>`, `,` and space cover a scoped path with
+/// nested generics and a qualified `<Foo as Trait>::Assoc`; they cannot express an array
+/// (`[u8; 32]`), a tuple, or a reference — and the array case is the clearest reason the two goals
+/// are not jointly satisfiable, since `;` IS the statement separator the guard exists to exclude. A
+/// user who needs one of those spells it as a named alias in their own crate and registers that.
 ///
 /// It deliberately does NOT check that the path RESOLVES: cddl-codegen does not typecheck Rust, so
 /// an unresolvable path is an `E0433`/`E0412` in the consumer's own json-gen build, never a
 /// generation-time reject — and a stricter grammar would reject legitimate spellings (a leading
-/// `::`, generic arguments, a fully-qualified `<T as Trait>`-free path with spaces after commas).
+/// `::`, generic arguments, spaces after commas).
 fn parse_json_schema_root(s: &str) -> Result<String, String> {
     if s.is_empty() {
-        return Err("must be a non-empty rust path".to_owned());
+        return Err("must be a non-empty rust type path".to_owned());
     }
     if let Some(c) = s.chars().find(
         |c| !matches!(c, 'A'..='Z' | 'a'..='z' | '0'..='9' | '_' | ':' | '<' | '>' | ',' | ' '),
     ) {
         return Err(format!(
-            "invalid character {c:?}; a --json-schema-root value is emitted verbatim into generated \
-             rust as `add_schema::<PATH>(…)`, so it accepts only [A-Za-z0-9_], `:`, `<`, `>`, `,` \
-             and spaces"
+            "invalid character {c:?}; --json-schema-root takes a rust TYPE PATH (generic arguments \
+             allowed, e.g. `my_crate::sub::Ext<u64, String>`), not an arbitrary type expression: the \
+             value is emitted verbatim into generated rust as `add_schema::<PATH>(…)`, so only \
+             [A-Za-z0-9_], `:`, `<`, `>`, `,` and spaces can be accepted — every other character \
+             could introduce a comment, a statement separator, or a string literal into a generated \
+             file. For an array/tuple/reference type, give it a named alias in your crate and \
+             register that"
         ));
     }
     Ok(s.to_owned())
