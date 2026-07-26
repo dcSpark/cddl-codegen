@@ -23,6 +23,15 @@
  *   --cache-transparency  enable the flag-gated `verify_cache_transparency` full-tier gate (two verify
  *                   runs — cached vs GATE_CACHE=0 — asserted byte-identical; otherwise SKIPPED).
  *
+ * CONCURRENCY: gates run one at a time UNLESS the registry says otherwise. A gate may declare a
+ * `concurrent` group; gates in the same group, contiguous in the registry, run as one batch with at
+ * most `CHECK_JOBS` (default 4) in flight, slowest-measured first. Everything else is a barrier, so
+ * registry order still means what it says and the fmt→clippy→build→test chain stays strictly ordered.
+ * Today exactly one group exists: the `#[ignore]`d manual-only heavy gates. A batched gate's output
+ * is BUFFERED and emitted as one block on completion — interleaved cargo output is unreadable and
+ * would mis-attribute the per-gate cache rollups the timings parser reads. Bound is memory, not
+ * cores: `CHECK_JOBS=1` restores fully sequential execution.
+ *
  * LOGGING: every run tees its FULL output to a timestamped `draft/logs/check-<tier>-<stamp>.log`
  * (path printed at start and end) — evidence preservation is the tool's job, not a piping habit.
  * Never pipe a run through `tail`/`grep` as its only capture; cite the printed log path instead.
@@ -83,6 +92,20 @@ export interface Gate {
   run?: (o: Opts) => Outcome;// kind === "fn"
   ignoredTest?: string;      // maps this gate to a `#[ignore]` test (meta-check 1)
   script?: string;           // cddl-matrix/*.ts this gate drives (meta-check 2)
+  /**
+   * OPT-IN gate-level concurrency: this gate may run concurrently with the OTHER gates naming the
+   * same group. Absent (the default for every gate) means sequential — today's behaviour, byte for
+   * byte, including inherited stdout. The registry is the encoding of what verifies this repo, so
+   * concurrency is declared here and is as visible as tier membership; nothing infers it.
+   *
+   * `cmd` gates only, and group members must be CONSECUTIVE in the registry (both enforced by
+   * meta-check 4). Consecutiveness is what keeps registry order meaningful: an ungrouped gate is a
+   * BARRIER, so `verify` still finishes before `verify_cache_transparency` starts and the
+   * fmt→clippy→build→test chain stays strictly ordered. A member separated from its group by a
+   * barrier would run alone — a declaration that silently does nothing, which is the failure class
+   * meta-check 4 exists to make impossible.
+   */
+  concurrent?: string;
 }
 
 // ---- process helpers -----------------------------------------------------------------------------
@@ -95,6 +118,158 @@ function sh(cmd: string[], cwd = ROOT, env?: Record<string, string>): number {
     stdin: "inherit",
   });
   return r.exitCode ?? 1;
+}
+
+// ==================================================================================================
+// GATE-LEVEL CONCURRENCY
+// ==================================================================================================
+// Why: measured, the heavy gates leave ~89 % of a 32-core box idle. Each is a single `#[test]`
+// looping serially over catalog rows, spawning nested cargo; solo, the tier's second-largest gate
+// runs at 16.1 % CPU — 5.1 of 32 cores. A controlled same-session A/B over
+// `multifile_matrix_roundtrips` + `wasm_matrix_roundtrips` measured 603 s serial against 338 s
+// 2-way parallel — 1.78×, 89 % of the 2× ideal, with only +6 % per-gate inflation.
+//
+// What bounds the win, and therefore the design: under perfect parallelism a tier's wall is bounded
+// by its LONGEST gate, and this set is badly skewed (~636 s down to ~10 s). "Sum ÷ jobs" is not
+// achievable, so the pool dispatches LONGEST-FIRST — a short gate scheduled ahead of the longest one
+// adds its whole duration to the tail.
+//
+// What bounds the DEGREE is memory, not cores: concurrent `rustc` is the memory-hungry part and only
+// ~6 of 32 GiB is free on the development box in practice. Hence a small default, overridable.
+const DEFAULT_JOBS = 4;
+
+/** `CHECK_JOBS=1` restores fully sequential execution — the pool with degree 1 IS the old loop. */
+export function parseJobs(raw: string | undefined): { jobs: number; warning?: string } {
+  if (raw === undefined || raw.trim() === "") return { jobs: DEFAULT_JOBS };
+  const n = Number(raw.trim());
+  if (!Number.isInteger(n) || n < 1)
+    return { jobs: DEFAULT_JOBS, warning: `CHECK_JOBS='${raw}' is not a positive integer — using ${DEFAULT_JOBS}` };
+  return { jobs: n };
+}
+
+/**
+ * Runaway-hang guard on the JOIN, not a duration assertion on any gate.
+ *
+ * Nothing here may fail a gate on a number — durations are nondeterministic and this delivery adds
+ * no test that fails on one. What this bounds is the pool's own liveness: if the join ever fails to
+ * settle after its work is done, the runner must say so loudly and RETURN rather than hang. That
+ * failure mode is not hypothetical — two ad-hoc probe scripts written while gathering the evidence
+ * for this feature backgrounded a sampler alongside their gates and then used a bare `wait`, which
+ * waits for EVERY background job including the never-exiting sampler. Both ran to completion
+ * internally — every gate exit-0, every verdict on disk — and then hung without emitting a summary;
+ * one went unnoticed for ~5 hours. The default is ~5× the slowest gate on record, so it cannot fire
+ * on slowness; if it fires, the runner has a bug and the diagnostic names the gates still in flight.
+ */
+const DEFAULT_JOIN_TIMEOUT_MS = 3 * 60 * 60 * 1000;
+
+export function parseJoinTimeoutMs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return DEFAULT_JOIN_TIMEOUT_MS;
+  const n = Number(raw.trim());
+  return Number.isFinite(n) && n > 0 ? n * 1000 : DEFAULT_JOIN_TIMEOUT_MS;
+}
+
+/** One unit of parallel work plus the handle the timeout guard would need to reclaim it. */
+export interface PoolItem { id: string }
+
+/**
+ * Bounded-concurrency pool. **The join awaits exactly the worker promises and nothing else.**
+ *
+ * `degree` workers pull from one cursor over `items`, so the pool is bounded by construction rather
+ * than by counting live promises. `stopAfter` stops the pull WITHOUT cancelling anything already in
+ * flight: that is fail-fast's meaning here — no NEW gate starts after a failure, gates already
+ * running finish and report their real verdicts, and everything never started is reported as
+ * never-run. Cancelling in-flight gates was rejected: it throws away minutes of completed work, and
+ * killing a nested cargo/rustc tree is the operation this repo has already been bitten by
+ * (a pattern-matched `pkill` took out a concurrent session's live run).
+ *
+ * The timeout races the join against a TIMER — a promise that cannot itself fail to settle — and the
+ * timer is always cleared, because an outstanding `setTimeout` keeps Bun's event loop alive and
+ * would reproduce the hang-after-success mode through a different door. `onTimeout` gets the items
+ * still in flight so the caller can reclaim them by their OWN handles (never by name pattern).
+ */
+export async function runPool<T extends PoolItem, R>(
+  items: T[],
+  degree: number,
+  work: (item: T) => Promise<R>,
+  o: { timeoutMs?: number; stopAfter?: (r: R, item: T) => boolean; onTimeout?: (inFlight: T[]) => void } = {},
+): Promise<Map<string, R>> {
+  const results = new Map<string, R>();
+  const inFlight = new Set<T>();
+  let next = 0;
+  let stopped = false;
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      if (stopped || next >= items.length) return;
+      const item = items[next++]!;
+      inFlight.add(item);
+      try {
+        const r = await work(item);
+        results.set(item.id, r);
+        if (o.stopAfter?.(r, item)) stopped = true;
+      } finally {
+        inFlight.delete(item);
+      }
+    }
+  };
+  const width = Math.max(1, Math.min(degree, items.length));
+  const joined = Promise.all(Array.from({ length: width }, () => worker())).then(() => "done" as const);
+  if (!o.timeoutMs) { await joined; return results; }
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const guard = new Promise<"timeout">(res => { timer = setTimeout(() => res("timeout"), o.timeoutMs); });
+  try {
+    if (await Promise.race([joined, guard]) === "timeout") {
+      stopped = true;
+      o.onTimeout?.([...inFlight]);
+    }
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+  return results;
+}
+
+/**
+ * Registry order, grouped into units of execution: a `concurrent` gate joins the batch immediately
+ * before it when that batch carries the same group, and everything else is a batch of one.
+ *
+ * Pure, and takes the already-tier-filtered non-stub gate list, so the batching rule is pinned by a
+ * test rather than observed only in a full-tier run.
+ */
+export interface Batch { group?: string; gates: Gate[] }
+
+export function planBatches(gates: Gate[]): Batch[] {
+  const out: Batch[] = [];
+  for (const g of gates) {
+    const prev = out[out.length - 1];
+    if (g.concurrent !== undefined && prev !== undefined && prev.group === g.concurrent) prev.gates.push(g);
+    else out.push({ ...(g.concurrent !== undefined ? { group: g.concurrent } : {}), gates: [g] });
+  }
+  return out;
+}
+
+/**
+ * Dispatch order within a batch: slowest measured gate first, registry order as the tiebreak.
+ *
+ * A HINT, never an assertion — `tests/timings.json` rows are contended and re-baselining, and a gate
+ * with no measurement yet simply sorts last. Getting the order wrong costs wall time and nothing
+ * else. It matters because the tail is what a skewed batch is bounded by: dispatching the ~636 s
+ * gate last would add nearly its whole duration after everything else had drained.
+ */
+export function longestFirst(gates: Gate[], hint: (id: string) => number | undefined): Gate[] {
+  return gates
+    .map((g, i) => ({ g, i }))
+    .sort((a, b) => (hint(b.g.id) ?? 0) - (hint(a.g.id) ?? 0) || a.i - b.i)
+    .map(x => x.g);
+}
+
+/** Measured warm durations from the committed digest, as the scheduler's ordering hint. */
+function digestHint(): (id: string) => number | undefined {
+  try {
+    const byId = new Map(readDigest().gates.map(g => [g.gate, g.warm_ms]));
+    return id => byId.get(id);
+  } catch {
+    return () => undefined; // no digest: registry order, which is what the sort falls back to
+  }
 }
 
 // ---- registry warm-up: fetch once online, then force every gate offline (local/full only) --------
@@ -207,14 +382,37 @@ function runSelfChecks(): Outcome {
     if (!isFastInvocation(s))
       problems.push(`meta-3: build.yml has a run step besides \`check.ts fast\` ('${s.trim()}') — CI work must flow through the registry's fast tier (maintainer decision)`);
 
+  // 4. concurrency declarations are well-formed. Both halves guard against a declaration that
+  //    silently does nothing — the failure mode a registry-encoded opt-in exists to prevent.
+  //    (a) `cmd` only: the buffered-output and per-child-env path is implemented for spawned
+  //        commands; an `fn` gate writes straight to the shared stdout and mutates process state, so
+  //        declaring one concurrent would interleave output and mislabel cell rows.
+  //    (b) consecutive: an ungrouped gate is a barrier, so a member cut off from its group by one
+  //        would run alone while claiming otherwise.
+  for (const g of REGISTRY)
+    if (g.concurrent !== undefined && g.kind !== "cmd")
+      problems.push(`meta-4: gate '${g.id}' declares concurrent='${g.concurrent}' but is kind='${g.kind}' — only \`cmd\` gates can be batched (buffered output + per-child env)`);
+  {
+    const seen = new Set<string>();
+    let prev: string | undefined;
+    for (const g of REGISTRY) {
+      if (g.concurrent !== undefined && g.concurrent !== prev && seen.has(g.concurrent))
+        problems.push(`meta-4: concurrency group '${g.concurrent}' is not contiguous in the registry — gate '${g.id}' is separated from the rest of its group by a barrier gate, so it would run ALONE while declaring otherwise`);
+      if (g.concurrent !== undefined) seen.add(g.concurrent);
+      prev = g.concurrent;
+    }
+  }
+
   for (const w of warnings) console.log("  WARN " + w);
   if (problems.length) {
     for (const p of problems) console.log("  FAIL " + p);
     return { status: "FAIL", reason: `${problems.length} self-completeness problem(s)` };
   }
+  const groups = new Set(REGISTRY.map(g => g.concurrent).filter(Boolean) as string[]);
   console.log(
     `  OK — ${ignored.size} #[ignore] test(s) classified (${manual.size} manual gate(s), ${stubs.size} stub(s)), ` +
-      `${scripts.length} matrix script(s) covered, CI runs the fast tier only`,
+      `${scripts.length} matrix script(s) covered, CI runs the fast tier only, ` +
+      `${groups.size} concurrency group(s) well-formed`,
   );
   return { status: "PASS" };
 }
@@ -325,6 +523,12 @@ function runMatrixTypecheck(): Outcome {
 //   - `snapshot_quick` is the fast-tier inner loop; in local/full it is subsumed by the full
 //     `cargo test` but stays cheap (~5s) so tier-supersetting holds by construction.
 // ==================================================================================================
+/**
+ * The one concurrency group there is: the `#[ignore]`d, manual-only heavy gates. Named once so the
+ * membership is greppable and a typo cannot silently create a second group of one.
+ */
+const MANUAL_HEAVY = "manual_heavy";
+
 export const REGISTRY: Gate[] = [
   { id: "self_checks", tier: "fast", kind: "fn", run: runSelfChecks,
     desc: "self-completeness meta-checks (ignored-test + matrix-script coverage + CI-is-fast-tier)" },
@@ -401,55 +605,67 @@ export const REGISTRY: Gate[] = [
     desc: "tests/timings.json structural gate (a row per registry gate, no orphan rows) + the digest update rule's pure-function pins" },
 
   // --- full tier: the manual-only gates (run by memory today; the whole point of this runner) ---
-  { id: "wasm_matrix_roundtrips", tier: "full", kind: "cmd",
+  // Every gate in the run below is `#[ignore]`d, `cmd`-shaped, and owns a scratch root nothing else
+  // touches, so they are declared mutually concurrent. The audit behind that (each gate's
+  // `temp_dir()` root name, the `acquire_scratch_lock` flock on the ones that share a root across
+  // repeat runs, the atomic tmp-write+rename gate cache, cargo's own build-directory lock, and
+  // `oracle_fingerprint.json` being read-only in both of its consumers) is what makes the
+  // declaration a claim rather than a hope. Two members deliberately excluded, each for its own
+  // reason, both of them BARRIERS that end the batch: `verify_cache_transparency` must observe a
+  // cache `verify` already warmed, and `gate_cache_closure_audit` is an strace input-closure audit —
+  // ambient concurrent file activity is exactly what it must not see.
+  //
+  // The batch is CONTIGUOUS on purpose (meta-check 4 enforces it): the first ungrouped gate below
+  // (`verify`) ends it, so registry order still means what it says.
+  { id: "wasm_matrix_roundtrips", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "wasm_matrix_roundtrips", "--", "--ignored"],
     ignoredTest: "wasm_matrix_roundtrips", desc: "wasm-ABI matrix round-trip gate (manual, #[ignore]d)" },
-  { id: "multifile_matrix_roundtrips", tier: "full", kind: "cmd",
+  { id: "multifile_matrix_roundtrips", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "multifile_matrix_roundtrips", "--", "--ignored"],
     ignoredTest: "multifile_matrix_roundtrips", desc: "multifile placement matrix round-trip gate — both generated subcrates, all profiles (manual, #[ignore]d)" },
-  { id: "identifier_hazard_crates_compile", tier: "full", kind: "cmd",
+  { id: "identifier_hazard_crates_compile", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "identifier_hazard_crates_compile", "--", "--ignored"],
     ignoredTest: "identifier_hazard_crates_compile", desc: "identifier-hazard sweep standalone compile gate (manual, #[ignore]d)" },
-  { id: "recombination_crates_execute", tier: "full", kind: "cmd",
+  { id: "recombination_crates_execute", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
     // Full module path + `--exact`: the sibling `recombination_preserve_crates_execute` gate must not
     // cross-select under cargo's default substring matching (and vice versa).
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "tests::recombination_tests::recombination_crates_execute", "--", "--exact", "--ignored", "--nocapture"],
     ignoredTest: "recombination_crates_execute",
     desc: "recombination fuzzer layer 2 (default profile): batched --emit-tests execution of the ok compositions (manual, #[ignore]d)" },
-  { id: "recombination_preserve_crates_execute", tier: "full", kind: "cmd",
+  { id: "recombination_preserve_crates_execute", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "tests::recombination_tests::recombination_preserve_crates_execute", "--", "--exact", "--ignored", "--nocapture"],
     ignoredTest: "recombination_preserve_crates_execute",
     desc: "recombination fuzzer layer 2 (preserve profile): --preserve-encodings escalation of the ok compositions (manual, #[ignore]d)" },
-  { id: "recombination_json_crates_execute", tier: "full", kind: "cmd",
+  { id: "recombination_json_crates_execute", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "tests::recombination_tests::recombination_json_crates_execute", "--", "--exact", "--ignored", "--nocapture"],
     ignoredTest: "recombination_json_crates_execute",
     desc: "recombination fuzzer layer 2 (json profile): serde/schemars escalation of the ok compositions (manual, #[ignore]d)" },
-  { id: "recombination_wasm_crates_check", tier: "full", kind: "cmd",
+  { id: "recombination_wasm_crates_check", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "tests::recombination_tests::recombination_wasm_crates_check", "--", "--exact", "--ignored", "--nocapture"],
     ignoredTest: "recombination_wasm_crates_check",
     desc: "recombination fuzzer layer 2 (wasm profile): batched --wasm=true cargo check of generated wasm crates (manual, #[ignore]d)" },
-  { id: "ir_conformance_corpus", tier: "full", kind: "cmd",
+  { id: "ir_conformance_corpus", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "ir_conformance_corpus", "--", "--ignored", "--nocapture"],
     ignoredTest: "ir_conformance_corpus", desc: "IR-bug conformance oracle at corpus breadth + decorrelated ruby `cddl` gem sweep (gem REQUIRED — FAILS if absent unless CDDL_RUBY_ORACLE=skip; manual, #[ignore]d)" },
-  { id: "rust_oracle_fingerprint", tier: "full", kind: "cmd",
+  { id: "rust_oracle_fingerprint", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "rust_oracle_fingerprint", "--", "--ignored", "--nocapture"],
     ignoredTest: "rust_oracle_fingerprint", desc: "rust CDDL_ORACLE_DEP behavioral fingerprint preflight (shared oracle_fingerprint.json; manual, #[ignore]d)" },
-  { id: "decode_conformance_replay", tier: "full", kind: "cmd",
+  { id: "decode_conformance_replay", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "decode_conformance_replay", "--", "--ignored", "--nocapture"],
     ignoredTest: "decode_conformance_replay",
     desc: "decode-conformance replay: committed catalog vectors decode (+ preserve byte-identity + json/wasm decode-surface legs), oracle-free (manual, #[ignore]d)" },
   // Name is NOT a superstring of `decode_conformance_replay` — the sibling gate above filters by
   // SUBSTRING, so a `corpus_decode_conformance_replay` would be swept into it. `corpus_decode_replay`
   // substring-matches no other test name and no other cargo-test filter here, so it runs alone.
-  { id: "corpus_decode_replay", tier: "full", kind: "cmd",
+  { id: "corpus_decode_replay", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "corpus_decode_replay", "--", "--ignored", "--nocapture"],
     ignoredTest: "corpus_decode_replay",
     desc: "corpus (composition-depth) decode-conformance replay: committed corpus_catalog.toml vectors decode (+ preserve byte-identity + json/wasm decode-surface legs), oracle-free (manual, #[ignore]d)" },
-  { id: "all_supported_constructs_generate_all_profiles", tier: "full", kind: "cmd",
+  { id: "all_supported_constructs_generate_all_profiles", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "all_supported_constructs_generate_all_profiles", "--", "--ignored"],
     ignoredTest: "all_supported_constructs_generate_all_profiles",
     desc: "supported catalog generates under all 3 profiles (manual, #[ignore]d)" },
-  { id: "feature_corpus_roundtrips_nondefault_profiles", tier: "full", kind: "cmd",
+  { id: "feature_corpus_roundtrips_nondefault_profiles", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "feature_corpus_roundtrips_nondefault_profiles", "--", "--ignored"],
     ignoredTest: "feature_corpus_roundtrips_nondefault_profiles",
     desc: "corpus emit-tests round-trip under preserve/json (manual, #[ignore]d)" },
@@ -491,6 +707,184 @@ function statusCell(o: Outcome): string {
     case "STUB": return "STUB (tracked failing)";
     case "NOT_IN_TIER": return "not-in-tier";
   }
+}
+
+// ---- gate execution ------------------------------------------------------------------------------
+export interface GateOutcome { gate: string; out: Outcome; ms: number }
+
+/**
+ * A gate on its own, exactly as every gate ran before this feature: output INHERITED straight to the
+ * shared stdout, `CDDL_TIMING_GATE` set on this process. Unchanged byte for byte, because a gate that
+ * declares no concurrency group must keep today's behaviour — the default is sequential.
+ */
+function runGateSequential(g: Gate, opts: Opts, timingCells: boolean): GateOutcome {
+  console.log(`\n=== [${g.tier}] ${g.id} — ${g.desc} ===`);
+  // The REGISTRY gate a cell belongs to — knowable only here. The emitter labels the Rust side
+  // has (`feature_corpus_compiles`, …) are three-quarters cell names inside the `test` gate, so a
+  // cell row must not present one as a gate id; it carries both, and this is the half that is true.
+  if (timingCells) process.env.CDDL_TIMING_GATE = g.id;
+  const t0 = performance.now();
+  let out: Outcome;
+  if (g.kind === "cmd") {
+    const e = sh(g.cmd!, g.cwd ?? ROOT);
+    out = e === 0 ? { status: "PASS" } : { status: "FAIL", reason: `exit ${e}` };
+  } else {
+    out = g.run!(opts);
+  }
+  const ms = performance.now() - t0;
+  console.log(`--- ${g.id}: ${out.status}${out.reason ? ` (${out.reason})` : ""}  [${fmtDur(ms)}]`);
+  return { gate: g.id, out, ms };
+}
+
+/**
+ * A batched gate: output CAPTURED and emitted as one block when it finishes.
+ *
+ * Buffering is not cosmetic. Interleaved output from concurrent cargo processes is unreadable, and it
+ * would break the log as a data source: `project_timings.ts`'s parser attributes each
+ * `<n> run, <m> cached` rollup to the `=== [tier] <gate> — …` section it appears under, so a rollup
+ * line landing under a different gate's header would be a wrong measurement rather than a missing
+ * one. One atomic block per gate keeps every rollup inside its own section whatever order the gates
+ * finish in.
+ *
+ * `CDDL_TIMING_GATE` goes to the CHILD's environment, never `process.env`: the Rust emitter reads it
+ * per row, so one mutable copy on the parent would label every concurrent gate's cells with whichever
+ * gate started last.
+ *
+ * Both pipes are drained CONCURRENTLY with the exit wait. Awaiting `exited` first deadlocks the
+ * instant a gate outgrows the pipe buffer — and these gates emit megabytes — which is the same
+ * hang-after-the-work-succeeded shape the join guard exists for, reached through the child instead.
+ * Chunks from the two streams append to one buffer, so a gate's stderr stays roughly in place
+ * relative to its stdout instead of being appended wholesale after it.
+ */
+async function runGateBuffered(
+  g: Gate, timingCells: boolean, live: Map<string, Bun.Subprocess>,
+): Promise<GateOutcome & { text: string }> {
+  const t0 = performance.now();
+  const child = Bun.spawn(g.cmd!, {
+    cwd: g.cwd ?? ROOT,
+    env: { ...process.env, ...(timingCells ? { CDDL_TIMING_GATE: g.id } : {}) },
+    stdout: "pipe",
+    stderr: "pipe",
+    // Never `inherit`: several concurrent children sharing one stdin is a race over a resource none
+    // of these gates reads.
+    stdin: "ignore",
+  });
+  live.set(g.id, child);
+  const chunks: Uint8Array[] = [];
+  const pump = async (s: ReadableStream<Uint8Array>): Promise<void> => {
+    for await (const c of s) chunks.push(c);
+  };
+  try {
+    const [, , code] = await Promise.all([pump(child.stdout), pump(child.stderr), child.exited]);
+    const ms = performance.now() - t0;
+    let n = 0;
+    for (const c of chunks) n += c.length;
+    const buf = new Uint8Array(n);
+    let at = 0;
+    for (const c of chunks) { buf.set(c, at); at += c.length; }
+    let text = new TextDecoder().decode(buf);
+    if (text.length && !text.endsWith("\n")) text += "\n";
+    return {
+      gate: g.id,
+      out: code === 0 ? { status: "PASS" } : { status: "FAIL", reason: `exit ${code}` },
+      ms,
+      text,
+    };
+  } finally {
+    live.delete(g.id);
+  }
+}
+
+/**
+ * Execute an already-tier-filtered, non-stub gate list in registry order, overlapping only the gates
+ * that declared they may overlap.
+ *
+ * Exported as the single execution path so nothing can measure or exercise a *different* runner than
+ * the one a tier uses.
+ *
+ * FAIL-FAST WITH GATES IN FLIGHT, decided here and visible in the returned statuses: a failure stops
+ * the pool from starting anything NEW, gates already running finish and report their real verdicts
+ * (a PASS earned under load is a PASS, and discarding minutes of finished work to report it as
+ * nothing would be strictly less honest), and every gate that never started comes back
+ * `SKIPPED (earlier failure; fail-fast)` — so "ran and failed", "ran and passed", and "never ran"
+ * remain three distinguishable things in the summary table, which is the whole contract of the
+ * always-printed registry summary.
+ */
+export async function runGates(o: {
+  gates: Gate[];
+  opts: Opts;
+  keepGoing: boolean;
+  jobs: number;
+  joinTimeoutMs?: number;
+  hint?: (id: string) => number | undefined;
+  timingCells?: boolean;
+  /** Called as each gate finishes, in COMPLETION order — a run killed mid-batch keeps its rows. */
+  onDone?: (r: GateOutcome) => void;
+}): Promise<GateOutcome[]> {
+  const hint = o.hint ?? digestHint();
+  const joinTimeoutMs = o.joinTimeoutMs ?? parseJoinTimeoutMs(process.env.CHECK_JOIN_TIMEOUT_S);
+  const timingCells = o.timingCells ?? false;
+  const done = new Map<string, GateOutcome>();
+  const record = (r: GateOutcome): void => { done.set(r.gate, r); o.onDone?.(r); };
+  let aborted = false;
+
+  for (const batch of planBatches(o.gates)) {
+    if (aborted) break;
+
+    if (batch.gates.length === 1) {
+      const r = runGateSequential(batch.gates[0]!, o.opts, timingCells);
+      record(r);
+      if (r.out.status === "FAIL" && !o.keepGoing) aborted = true;
+      continue;
+    }
+
+    const order = longestFirst(batch.gates, hint);
+    const jobs = Math.max(1, Math.min(o.jobs, order.length));
+    console.log(
+      `\n>>> parallel batch: ${order.length} gate(s) in group '${batch.group}', jobs=${jobs}` +
+      ` (dispatch order, slowest measured first: ${order.map(g => g.id).join(", ")})`,
+    );
+    const live = new Map<string, Bun.Subprocess>();
+    await runPool(
+      order.map(g => ({ id: g.id, g })),
+      jobs,
+      async item => {
+        console.log(`>>> ${item.id}: started`);
+        const r = await runGateBuffered(item.g, timingCells, live);
+        // ONE write: header, the gate's whole output, footer — nothing from another gate between.
+        process.stdout.write(
+          `\n=== [${item.g.tier}] ${item.g.id} — ${item.g.desc} ===\n${r.text}` +
+          `--- ${item.g.id}: ${r.out.status}${r.out.reason ? ` (${r.out.reason})` : ""}  [${fmtDur(r.ms)}]\n`,
+        );
+        record({ gate: r.gate, out: r.out, ms: r.ms });
+        return r;
+      },
+      {
+        timeoutMs: joinTimeoutMs,
+        stopAfter: r => r.out.status === "FAIL" && !o.keepGoing,
+        // Reclaim by the handles this pool owns — never by a name pattern, which matches another
+        // session's live cargo run as readily as this one's.
+        onTimeout: pending => {
+          console.log(
+            `\n>>> check.ts BUG: the parallel join did not settle within ${fmtDur(joinTimeoutMs)} — ` +
+            `still in flight: ${pending.map(p => p.id).join(", ") || "(none)"}. Killing them and ` +
+            `continuing to the summary rather than hanging. Raise CHECK_JOIN_TIMEOUT_S if this was ` +
+            `a genuinely slow run, and treat it as a runner defect otherwise.`,
+          );
+          for (const p of pending) live.get(p.id)?.kill();
+        },
+      },
+    );
+    // A never-started gate is left OUT of `done` deliberately: the sequential runner has always
+    // reported a fail-fast skip without emitting a measurement row for it, and a 0 ms row would be a
+    // measurement of nothing. The registry-order pass at the end of this function fills them in.
+    if (batch.gates.some(g => !done.has(g.id) || done.get(g.id)!.out.status === "FAIL") && !o.keepGoing)
+      aborted = true;
+  }
+
+  // Registry order out, with everything the abort never reached reported as never-run.
+  return o.gates.map(g =>
+    done.get(g.id) ?? { gate: g.id, out: { status: "SKIPPED", reason: "earlier failure; fail-fast" }, ms: 0 });
 }
 
 // ---- start-of-run ETA ----------------------------------------------------------------------------
@@ -905,7 +1299,7 @@ function finalizeRun(
   } catch { /* measurements are not a gate */ }
 }
 
-function main() {
+async function main() {
   const argv = process.argv.slice(2);
   const flags = new Set(argv.filter(a => a.startsWith("--")));
   const positional = argv.filter(a => !a.startsWith("--"));
@@ -915,6 +1309,8 @@ function main() {
   if (flags.has("--help")) {
     console.log("usage: bun run check.ts [fast|local|full] [--keep-going] [--skip-missing] [--refresh-fuzz] [--cache-transparency]");
     console.log("  bare invocation runs the `local` tier; CI runs `fast`. See the header of check.ts for details.");
+    console.log(`  env: CHECK_JOBS=<n>  gates in flight within a concurrency batch (default ${DEFAULT_JOBS}; 1 = fully sequential)`);
+    console.log("       CHECK_JOIN_TIMEOUT_S=<n>  runaway-hang guard on the parallel join (never a duration assertion)");
     process.exit(0);
   }
   let tier: Tier = "local";
@@ -927,8 +1323,10 @@ function main() {
   }
   const keepGoing = flags.has("--keep-going");
   const opts: Opts = { skipMissing: flags.has("--skip-missing"), refreshFuzz: flags.has("--refresh-fuzz"), cacheTransparency: flags.has("--cache-transparency") };
+  const { jobs, warning: jobsWarning } = parseJobs(process.env.CHECK_JOBS);
+  if (jobsWarning) console.log(`check.ts: ${jobsWarning}`);
 
-  console.log(`\ncheck.ts — tier=${tier}${keepGoing ? " --keep-going" : ""}${opts.skipMissing ? " --skip-missing" : ""}${opts.refreshFuzz ? " --refresh-fuzz" : ""}${opts.cacheTransparency ? " --cache-transparency" : ""}`);
+  console.log(`\ncheck.ts — tier=${tier}  jobs=${jobs}${keepGoing ? " --keep-going" : ""}${opts.skipMissing ? " --skip-missing" : ""}${opts.refreshFuzz ? " --refresh-fuzz" : ""}${opts.cacheTransparency ? " --cache-transparency" : ""}`);
 
   // Both of these run BEFORE the warm-up fetch, and that ordering is the point of the ETA: the
   // warm-up can hang on a bad network for minutes and is the most likely place a run is interrupted,
@@ -962,45 +1360,31 @@ function main() {
   // re-emits with cell counts joined on. Not derivable from `results`, which also holds the stub and
   // not-in-tier gates that never printed a line and never emitted anything.
   const emitted: { gate: string; status: "pass" | "fail" | "skipped"; ms: number }[] = [];
-  let anyFail = false;
-  let aborted = false;
   const wall0 = performance.now();
 
-  // sequential v1 — one gate at a time so per-gate durations are honest and a failure's
-  // output isn't interleaved. If wall-time ever bites, the independent read-only drift checks
-  // (build_matrix / project_* --check, coverage_md_diff) can run in parallel beside the `test` gate;
-  // keep the fmt→clippy→build→test cargo chain sequential (later gates depend on the build).
+  const inTier: Gate[] = [];
   for (const g of REGISTRY) {
     if (g.kind === "stub") { results.set(g.id, { out: { status: "STUB" }, ms: 0 }); continue; }
     if (rank(g.tier) > rank(tier)) { results.set(g.id, { out: { status: "NOT_IN_TIER" }, ms: 0 }); continue; }
-    if (aborted) { results.set(g.id, { out: { status: "SKIPPED", reason: "earlier failure; fail-fast" }, ms: 0 }); continue; }
-
-    console.log(`\n=== [${g.tier}] ${g.id} — ${g.desc} ===`);
-    // The REGISTRY gate a cell belongs to — knowable only here. The emitter labels the Rust side
-    // has (`feature_corpus_compiles`, …) are three-quarters cell names inside the `test` gate, so a
-    // cell row must not present one as a gate id; it carries both, and this is the half that is true.
-    if (ctx) process.env.CDDL_TIMING_GATE = g.id;
-    const t0 = performance.now();
-    let out: Outcome;
-    if (g.kind === "cmd") {
-      const e = sh(g.cmd!, g.cwd ?? ROOT);
-      out = e === 0 ? { status: "PASS" } : { status: "FAIL", reason: `exit ${e}` };
-    } else {
-      out = g.run!(opts);
-    }
-    const ms = performance.now() - t0;
-    results.set(g.id, { out, ms });
-    console.log(`--- ${g.id}: ${out.status}${out.reason ? ` (${out.reason})` : ""}  [${fmtDur(ms)}]`);
-    // Emitted HERE, beside the prose line, and for the same reason it is printed here: a run killed
-    // at gate 30 of 42 keeps 30 measurements. Only PASS/FAIL/SKIPPED reach this point — stub and
-    // not-in-tier gates never execute and never print a line, so the row set matches the prose set.
-    if (ctx) {
-      const status = out.status === "PASS" ? "pass" : out.status === "FAIL" ? "fail" : "skipped";
-      emitted.push({ gate: g.id, status, ms });
-      emit([gateRow(ctx, g.id, status, ms)]);
-    }
-    if (out.status === "FAIL") { anyFail = true; if (!keepGoing) aborted = true; }
+    inTier.push(g);
   }
+
+  for (const r of await runGates({
+    gates: inTier,
+    opts,
+    keepGoing,
+    jobs,
+    timingCells: ctx !== null,
+    // Emitted as each gate finishes, beside its prose line, and for the same reason it is printed
+    // there: a run killed at gate 30 of 42 keeps 30 measurements. Fail-fast skips are excluded — a
+    // gate that never ran has no duration to record, and a 0 ms row would be a measurement of nothing.
+    onDone: r => {
+      if (!ctx) return;
+      const status = r.out.status === "PASS" ? "pass" : r.out.status === "FAIL" ? "fail" : "skipped";
+      emitted.push({ gate: r.gate, status, ms: r.ms });
+      emit([gateRow(ctx, r.gate, status, r.ms)]);
+    },
+  })) results.set(r.gate, { out: r.out, ms: r.ms });
 
   // ---- always-printed full-registry summary --------------------------------------------------
   const wall = performance.now() - wall0;
@@ -1080,6 +1464,6 @@ async function runSelfLogged(): Promise<never> {
 
 if (import.meta.main) {
   // --help prints and exits; no evidence to preserve, so no log file for it.
-  if (process.env.CHECK_SELF_LOG || process.argv.includes("--help")) main();
+  if (process.env.CHECK_SELF_LOG || process.argv.includes("--help")) await main();
   else await runSelfLogged();
 }

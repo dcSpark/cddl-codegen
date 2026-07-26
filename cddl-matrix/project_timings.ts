@@ -49,7 +49,10 @@ import {
 import { createHash } from "node:crypto";
 import { cpus, hostname, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { REGISTRY, etaLines, gateRow, retainLogs, runRow, type RunContext } from "../check.ts";
+import {
+  REGISTRY, etaLines, gateRow, longestFirst, parseJobs, parseJoinTimeoutMs, planBatches, retainLogs,
+  runPool, runRow, type Gate, type RunContext,
+} from "../check.ts";
 
 const HERE = import.meta.dir;
 const ROOT = resolve(HERE, "..");
@@ -741,7 +744,7 @@ function replay(series: number[], seed: number, machine = "m0"): number[] {
   return writes;
 }
 
-export function selfTests(): TestResult[] {
+export async function selfTests(): Promise<TestResult[]> {
   const t: TestResult[] = [];
   const ok = (name: string, cond: boolean, detail?: string) => t.push({ name, ok: cond, detail });
 
@@ -1231,6 +1234,119 @@ export function selfTests(): TestResult[] {
       rmSync(dir, { recursive: true });
     }
   }
+
+  // ---- check.ts's gate scheduler --------------------------------------------------------------
+  // These live here for the same reason `retainLogs`/`etaLines` do: this is the one gate that runs
+  // pure self-tests over check.ts's exported helpers, and a scheduler defect is exactly the class
+  // that a full-tier run would surface hours later, or not at all (the pool's own liveness cannot be
+  // observed from a tier that never fails).
+  {
+    const g = (id: string, concurrent?: string): Gate =>
+      ({ id, tier: "full", kind: "cmd", desc: id, ...(concurrent !== undefined ? { concurrent } : {}) });
+
+    // Default-sequential, and an UNGROUPED gate is a barrier. Both halves matter: the barrier is what
+    // keeps `verify` before `verify_cache_transparency` and the fmt→clippy→build→test chain ordered,
+    // and it is why a group must be contiguous to mean anything.
+    {
+      const plan = planBatches([g("a"), g("b", "grp"), g("c", "grp"), g("d"), g("e", "grp")]);
+      ok("batches_group_only_contiguous_declared_gates",
+        plan.length === 4 &&
+        plan[0]!.gates.map(x => x.id).join() === "a" && plan[0]!.group === undefined &&
+        plan[1]!.gates.map(x => x.id).join() === "b,c" && plan[1]!.group === "grp" &&
+        plan[2]!.gates.map(x => x.id).join() === "d" &&
+        plan[3]!.gates.map(x => x.id).join() === "e",
+        JSON.stringify(plan.map(b => ({ group: b.group, gates: b.gates.map(x => x.id) }))));
+    }
+    {
+      const plan = planBatches([g("a"), g("b"), g("c")]);
+      ok("an_undeclared_registry_is_entirely_sequential",
+        plan.length === 3 && plan.every(b => b.gates.length === 1 && b.group === undefined),
+        JSON.stringify(plan.map(b => b.gates.map(x => x.id))));
+    }
+
+    // Longest-first, because a skewed batch's wall is its tail: dispatching the longest gate last
+    // adds nearly its whole duration after everything else has drained. An UNMEASURED gate sorts
+    // last and ties fall back to registry order — the hint is an optimisation, never a correctness
+    // input, so a missing row must degrade to "run it in the order it was written".
+    {
+      const hint = (id: string) => ({ big: 600_000, mid: 300_000, tie1: 100_000, tie2: 100_000 } as Record<string, number>)[id];
+      const order = longestFirst([g("tie1"), g("new"), g("mid"), g("tie2"), g("big")], hint).map(x => x.id);
+      ok("dispatch_is_longest_first_with_registry_order_as_the_tiebreak",
+        order.join() === "big,mid,tie1,tie2,new", order.join());
+    }
+
+    // The degree bound is what makes this safe on a box with ~6 GiB free, so it is asserted as an
+    // observed maximum rather than trusted from the pool's shape.
+    {
+      const items = Array.from({ length: 12 }, (_, i) => ({ id: `g${i}` }));
+      let live = 0;
+      let peak = 0;
+      const r = await runPool(items, 3, async () => {
+        peak = Math.max(peak, ++live);
+        await new Promise(res => setTimeout(res, 1));
+        live--;
+        return "PASS";
+      });
+      ok("pool_never_exceeds_its_degree_and_runs_everything",
+        peak === 3 && r.size === 12, `peak=${peak} results=${r.size}`);
+    }
+
+    // Fail-fast with gates in flight: nothing NEW starts, and what was already running is kept. The
+    // summary contract depends on the difference — "ran and failed", "ran and passed under load", and
+    // "never ran" have to stay three distinguishable things.
+    {
+      const items = Array.from({ length: 8 }, (_, i) => ({ id: `g${i}` }));
+      const started: string[] = [];
+      const r = await runPool(items, 2, async item => {
+        started.push(item.id);
+        await new Promise(res => setTimeout(res, 5));
+        return item.id === "g0" ? "FAIL" : "PASS";
+      }, { stopAfter: res => res === "FAIL" });
+      ok("fail_fast_stops_dispatch_but_keeps_in_flight_results",
+        started.length < items.length && r.get("g0") === "FAIL" && r.get("g1") === "PASS" &&
+        [...r.keys()].every(k => started.includes(k)),
+        `started=${JSON.stringify(started)} results=${JSON.stringify([...r])}`);
+    }
+
+    // THE HANG PIN. Two ad-hoc probe scripts written while measuring this feature backgrounded a
+    // sampler beside their gates and then used a bare `wait`, which waits for EVERY background job:
+    // both finished all their work, wrote every verdict, and then hung without a summary — one for
+    // ~5 hours. So the join must await its OWN handles and nothing else, and must still return when
+    // a timeout is armed. The never-settling promise and the live interval are exactly the two
+    // shapes that would keep an over-broad join (or an uncleared timer) alive.
+    {
+      const interval = setInterval(() => {}, 1_000);
+      const neverSettles = new Promise<void>(() => {});
+      void neverSettles;
+      const r = await runPool([{ id: "x" }, { id: "y" }], 2, async item => item.id, { timeoutMs: 60_000 });
+      clearInterval(interval);
+      ok("the_join_awaits_only_its_own_handles", r.size === 2 && r.get("x") === "x" && r.get("y") === "y",
+        JSON.stringify([...r]));
+    }
+
+    // A join that DOES time out reports the still-in-flight items and returns, rather than hanging
+    // forever. This is the guard's whole purpose: a runner bug must be loud and terminating.
+    {
+      const pending: string[] = [];
+      // The abandoned work's own timer is kept SHORT on purpose: it outlives the pool by definition,
+      // and bun will not exit while it is pending — which is the event-loop half of the same
+      // hang-after-success hazard, seen from the other side.
+      const r = await runPool([{ id: "slow" }], 1, async () => {
+        await new Promise(res => setTimeout(res, 200));
+        return "PASS";
+      }, { timeoutMs: 25, onTimeout: inFlight => pending.push(...inFlight.map(i => i.id)) });
+      ok("a_stuck_join_names_what_is_in_flight_and_returns",
+        pending.join() === "slow" && r.size === 0, `pending=${JSON.stringify(pending)} results=${r.size}`);
+    }
+
+    ok("jobs_and_join_timeout_fall_back_to_their_defaults",
+      parseJobs(undefined).jobs === 4 && parseJobs("  ").jobs === 4 && parseJobs("1").jobs === 1 &&
+      parseJobs("8").jobs === 8 && parseJobs("0").warning !== undefined &&
+      parseJobs("nope").jobs === 4 && parseJobs("nope").warning !== undefined &&
+      parseJoinTimeoutMs(undefined) === 3 * 60 * 60 * 1000 && parseJoinTimeoutMs("30") === 30_000 &&
+      parseJoinTimeoutMs("-1") === 3 * 60 * 60 * 1000,
+      JSON.stringify([parseJobs("0"), parseJobs("nope"), parseJoinTimeoutMs("30")]));
+  }
   return t;
 }
 
@@ -1248,7 +1364,7 @@ function report(): void {
     console.log(`tier=${t.tier.padEnd(5)} wall ${t.wall_ms !== undefined ? compactDur(t.wall_ms) : "(not yet measured)"}${t.n ? `  (n=${t.n})` : ""}`);
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const mode = argv.find(a => a.startsWith("--")) ?? "";
 
@@ -1285,7 +1401,7 @@ function main(): void {
     // costs nothing and keeps the failure attributable to the suite rather than to bun.
     let results: TestResult[];
     try {
-      results = selfTests();
+      results = await selfTests();
     } catch (e) {
       console.log(`RESULT: FAIL — a timings check threw before reporting: ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
       process.exit(1);
@@ -1304,4 +1420,4 @@ function main(): void {
   report();
 }
 
-if (import.meta.main) main();
+if (import.meta.main) await main();

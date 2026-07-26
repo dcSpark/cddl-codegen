@@ -46,6 +46,46 @@ every in-tier gate first). Every run also tees its FULL output to a timestamped
 the tool's job, so never pipe a run through `tail`/`grep` as its only capture; cite the printed
 path.
 
+### Gate-level concurrency (registry-declared, opt-in)
+
+Gates run **one at a time unless the registry says otherwise**. A gate may declare a `concurrent`
+group; the gates of one group, contiguous in the registry, form a batch that runs with at most
+`CHECK_JOBS` gates in flight (default 4, `CHECK_JOBS=1` restores fully sequential execution). Any gate
+that declares nothing is a **barrier**, so registry order still means what it says — the
+`fmt → clippy → build → test` chain stays strictly ordered, and `verify` still finishes before
+`verify_cache_transparency` observes the cache it warmed.
+
+Exactly one group exists: the thirteen `#[ignore]`d manual-only heavy gates, which are `cmd`-shaped
+and each own a `temp_dir()` scratch root nothing else touches. `gate_cache_closure_audit` is
+deliberately outside it — it is an strace input-closure audit, and ambient concurrent file activity is
+precisely what it must not observe. `self_checks`' meta-check 4 rejects a group declared on an `fn`
+gate (their output would interleave and their cell rows would be mislabelled) and a group whose
+members are not contiguous (such a member would run alone while declaring otherwise).
+
+Why it pays, and what bounds it. The heavy gates are internally serial loops over catalog rows, so
+solo they leave most of a many-core box idle — measured at 16.1 % CPU, 5.1 of 32 cores, for the
+tier's second-largest gate. A controlled same-session A/B over four of the batch's gates
+(`ir_conformance_corpus`, `all_supported_constructs_generate_all_profiles`,
+`recombination_json_crates_execute`, `recombination_wasm_crates_check`) measured **412 s at
+`CHECK_JOBS=1` against 167 s at `CHECK_JOBS=4` — 2.46×**, with per-gate inflation of +12 % on the two
+long gates and +28 % on the two short ones. The ceiling is not "sum ÷ jobs": under perfect
+parallelism a batch's wall is its **longest** gate, and this batch is badly skewed, so 2.77× was the
+achievable ideal for that subset and 2.46× is 89 % of it. That is why dispatch is **longest-measured
+first**, ordered by `tests/timings.json` as a hint (a gate with no row sorts last; getting the order
+wrong costs wall time and nothing else).
+
+The bound is memory, not cores — concurrent `rustc` is the hungry part. Each batched gate's output is
+**buffered** and emitted as one block on completion: interleaved cargo output is unreadable, and the
+log is a data source (`project_timings.ts` attributes each `<n> run, <m> cached` rollup to the
+`=== [tier] <gate> — …` section above it, so a rollup landing under another gate's header would be a
+wrong measurement rather than a missing one).
+
+Fail-fast with gates in flight means: nothing **new** starts, gates already running finish and report
+their real verdicts, and everything never started is reported `SKIPPED (earlier failure; fail-fast)`
+— so "ran and failed", "ran and passed under load", and "never ran" stay three distinguishable things
+in the summary table. Per-gate durations recorded during a batch are **contended**, by accepted
+design; the timings digest absorbs them and re-baselines, and no gate asserts a duration.
+
 `verify.ts` needs two oracles (ruby `cddl`, rust `cddl`); the runner preflights them and prints
 install one-liners on failure (`--skip-missing` downgrades a missing oracle to `SKIPPED`). It is the
 slowest single gate but not prohibitive: ~170 examples × generate + `cargo test` × 2 crates —
