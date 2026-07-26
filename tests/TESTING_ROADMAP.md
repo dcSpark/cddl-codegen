@@ -147,10 +147,10 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
 - **A gate-SELECTION flag for check.ts (`--only <gate>[,<gate>]`), and the policy fence it has to
   ship with.** Today the only selection axis is the tier, so a tree on which all but a handful of
   gates are already established green has exactly one way to cover the handful: re-run the whole
-  tier. That case is real and recurring — a session ended with 37 of 39 registry gates green on its
-  HEAD and four (`verify`, `gate_cache_closure_audit`, `corpus_detect`, `fuzz_compile_rot`) unrun,
-  and the gate cache does not help, because the tier's wall time is dominated by exactly the
-  uncached cells. Why it is a maintainer call rather than an ergonomic patch: check.ts's design
+  tier. That case is real and recurring — a session ended with 37 registry gates PASS on its HEAD
+  and exactly four (`verify`, `gate_cache_closure_audit`, `corpus_detect`, `fuzz_compile_rot`)
+  never run, and the gate cache does not help, because the tier's wall time is dominated by exactly
+  those uncached cells. Why it is a maintainer call rather than an ergonomic patch: check.ts's design
   premise is that a gate which did not run is VISIBLY not-run, and a selection flag is the obvious
   way to manufacture a "tier green" claim out of a partial run — the same falsified-claim class the
   fail-fast rule in `AGENTS.md` already exists to prevent. So it should ship only with the fence
