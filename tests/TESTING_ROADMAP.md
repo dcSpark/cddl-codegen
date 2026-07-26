@@ -452,6 +452,27 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   mechanical layer on a second instance: a generator branch-coverage sweep — e.g. llvm-cov over
   the corpus + suite generation runs, red on emission arms no fixture executes — the only layer
   that catches the class without knowing each branch by name.
+- **Logic the tool EMITS as source text is outside every layer that reasons about the tool's own
+  code, so its only oracle is a hand vector chosen to DISTINGUISH a wrong implementation — and a
+  vector that merely EXERCISES the logic certifies nothing.** Proven instance (orchestrator review,
+  not any gate): the emitted schema-document closure check carries a `decode_schema_ref_name` whose
+  comment justifies unescaping `~1` before `~0` — the order matters only for a name holding a
+  LITERAL `~1`, which encodes to `~01` — while its green-path vector was a schema name
+  (`Odd<K>/~name`) that decodes correctly under BOTH orders. So the comment's whole justification
+  was unwitnessed: the three escape classes were covered, the ordering they were cited to protect
+  was not. Confirmed by simulating `schemars`' `encode_ref_name` against both orders, then closed by
+  making the name carry a literal `~1` (`Odd<K>/~1name` → `Odd%3CK%3E~1~01name`, which the wrong
+  order decodes to `Odd<K>//name`), which costs no new nested-cargo cell. Why no standing layer sees
+  the class: the `cargo-mutants` sweep (§ "Pending maintainer action") is scoped to the tool's own
+  functions, and logic living inside an emitted string constant is not a function it can mutate —
+  so mutation scoring structurally cannot measure emitted-runtime behaviour, and the emitted surface
+  is growing (the three name-injectivity panics, the closure walk, the decode). Working rule
+  meanwhile: a hand vector for emitted logic states which WRONG implementation it distinguishes, and
+  a comment that justifies an ordering or precedence choice names the vector that would fail without
+  it. Mechanical layer on a SECOND instance: mutation testing for the emitted runtime — perturb each
+  emitted-source constant textually (swap adjacent `.replace` calls, invert a comparison, drop a
+  branch), regenerate one fixture per mutant, and require some gate to go red; expensive enough
+  (a nested cargo run per mutant) that it earns its cost only once the class has recurred.
 - **Value-anchor rot on field addition: a delivery that grows an existing type's fields leaves the
   type's existing hand-vector sweeps decoding the new data but asserting nothing about it — the
   EXECUTED-but-unasserted sibling of the never-executed emission-branch class above.** Proven
@@ -1373,9 +1394,14 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   keeping in view. The emitted check resolves the definitions map through the generator's
   `definitions_path` setting and SKIPS if that resolves to nothing, so a schemars default whose
   reference namespace stops matching the emitted document shape turns the check off rather than
-  reddening every consumer build — silent, and only detectable by a vector that pins the emitted
-  document against a bumped schemars. And closure is not injectivity: a document can resolve every
-  reference and still publish one type's shape under another's name.
+  reddening every consumer build. It is silent IN A CONSUMER'S run, but not undetectable here: the
+  emitter writes the `$defs` key literally while `run_test`'s own closure assertion matches
+  `#/$defs/` literally too, so the same schemars change that trips the skip reddens our suite's
+  assertion first, at local tier. What no layer covers is the window between an upstream release and
+  our next local run — a vector pinning the emitted document against a bumped schemars is what would
+  close that, and it is the same missing system as the dependency version-RANGE entry below. And
+  closure is not injectivity: a document can resolve every reference and still publish one type's
+  shape under another's name.
 
 - **A directive's documented sentence can stay true while its consumer-visible MEANING changes
   underneath it, because the artifact it controls changed shape.** `@no_json_schema_export` shipped
@@ -1403,6 +1429,17 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   needs. Trigger: a second directive whose meaning shifts under an artifact-shape change, or a
   consumer reporting that a directive did not do what its documentation says while every gate stayed
   green.
+  **Scope note, from a near-miss in a different flavor:** this entry and its mechanical layer are
+  DIRECTIVE-scoped, and the same "documented promise nobody pins" class reaches CLI flags and the
+  emitted runtime too, where no equivalent inventory exists to hang a per-item datum on. The
+  near-miss (review-caught before shipping, so no instance is on record): the `--json-schema-export`
+  docs stated that a document failing the closure check "never reaches `schemas/`", which is true of
+  the failing document and false about the directory — `export_schemas()` creates `schemas/` before
+  the check and, on failure, writes nothing, so an EARLIER export's document stays on disk and a
+  pipeline ignoring the non-zero exit compiles it. Fixed in the prose rather than by a pin, because
+  a filesystem-effect claim has no artifact inventory to enumerate. If a flag-level instance actually
+  ships, the layer to build is the same shape one rung out: a per-flag datum naming the artifact its
+  documentation makes claims about.
 
 ## Deferred features (build when a real consumer needs them)
 
