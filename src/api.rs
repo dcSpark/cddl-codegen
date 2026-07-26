@@ -349,7 +349,7 @@ pub fn with_types<R>(
                 .into(),
         );
     }
-    // The copied scripts compile the per-type JSON Schemas the `--json-schema-export` json-gen crate
+    // The copied scripts compile the schema document the `--json-schema-export` json-gen crate
     // writes; without that flag nothing ever writes a `schemas/` dir, so the scripts would be shipped
     // as a toolchain that cannot run (and whose first action is to abort). Reject the combination up
     // front rather than copy dead files (mirrors the two rules above).

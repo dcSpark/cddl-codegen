@@ -120,7 +120,8 @@ const ROOT_TITLE = '__AllSchemas';
 
 // Annotations sitting beside a `$ref` are legal in 2020-12, but json2ts reads the combination as a
 // schema distinct from its target and emits a near-duplicate type (`FooJSON1`). They are pure
-// documentation, so drop them and keep the reference bare.
+// documentation, so drop them and keep the reference bare. Known cost, accepted deliberately: a
+// field-level doc comment on a `$ref`-typed field does not reach the emitted TypeScript.
 const ANNOTATION_KEYWORDS =
   ['description', 'title', 'default', 'examples', 'deprecated', 'readOnly', 'writeOnly'];
 

@@ -144,6 +144,20 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
   door). Heavy-tier when reopened: coordinate the run (`/tmp` scratch and disk contention —
   see the ENOSPC entry — so get an explicit go-ahead while another session is active).
 
+- **A gate-SELECTION flag for check.ts (`--only <gate>[,<gate>]`), and the policy fence it has to
+  ship with.** Today the only selection axis is the tier, so a tree on which all but a handful of
+  gates are already established green has exactly one way to cover the handful: re-run the whole
+  tier. That case is real and recurring — a session ended with 37 of 39 registry gates green on its
+  HEAD and four (`verify`, `gate_cache_closure_audit`, `corpus_detect`, `fuzz_compile_rot`) unrun,
+  and the gate cache does not help, because the tier's wall time is dominated by exactly the
+  uncached cells. Why it is a maintainer call rather than an ergonomic patch: check.ts's design
+  premise is that a gate which did not run is VISIBLY not-run, and a selection flag is the obvious
+  way to manufacture a "tier green" claim out of a partial run — the same falsified-claim class the
+  fail-fast rule in `AGENTS.md` already exists to prevent. So it should ship only with the fence
+  built in: a selected run still prints the FULL registry with every unselected gate marked not-run,
+  and its final line must NOT be the tier verdict (`RESULT: PASS — all in-tier gates green`), which
+  stays reserved for a complete tier.
+
 ## Next work items, in priority order
 
 1. **Grammar-fuzzer escalations.** The lazy-first shape-recombination fuzzer is shipped
@@ -1282,7 +1296,13 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   not the crates.io crate, so the patch lands in a repo we control. It would have the parser bind the
   comment to `Rule::Group`'s `comments_after_rule`, which today has exactly two construction sites
   (`pest_bridge.rs`) and both hardcode `None` — which is why reading that field from `parsing.rs` is
-  dead code rather than a workaround. Build a local workaround only if a consumer
+  dead code rather than a workaround. Design constraint the fix must respect, so it is not
+  rediscovered: for the SUPPORTED single-line spelling the comment already binds to the last group
+  entry's trailing slot, so populating `comments_after_rule` must be ADDITIVE — only for the
+  spellings nothing else captures — or `group_rule_pin_metadata` double-counts and a field-position
+  `@name` on the last entry stops renaming its field. Adopting the bump also needs a vector per
+  affected directive, since a spec relying on today's silence starts behaving differently
+  (correctly) after it. Build a local workaround only if a consumer
   spec cannot use the single-line form — a pre-parse source scan that attributes a trailing comment
   to the group rule by line position would be a second, drift-prone comment parser, so it needs a
   real consumer to justify it.
@@ -1316,6 +1336,16 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
     duplicating an upstream encoder — a false panic in a consumer's build is worse than a missed
     check. Closing it needs the encoder exposed upstream, or a decode step in the emitted helper
     validated against a vector per escape class.
+  - **A collision between two types that BOTH lack rows** — each reached only transitively from some
+    row'd type — is seen by neither check: the ledger holds rows, and "kept its own name" is asked
+    only of a registered type. With distinct `schema_id`s both are emitted and one takes `<name>2`
+    by first-encounter order, so an unrelated spec edit (a rule that sorts earlier, a reordered
+    struct field) can silently SWAP which published TypeScript name belongs to which type. The
+    byte-identity assertion cannot see it — it compares two runs of ONE spec, never two versions of
+    a spec. Same closing mechanism as the no-row-loser hole above (a post-pass over the finished
+    document); making the ordering irrelevant rather than merely loud would mean a published-name
+    scheme that does not depend on traversal order at all — a breaking rename of published names in
+    its own right, so it needs a consumer asking for name stability across spec edits.
 
   The document's reference CLOSURE — every `$ref` resolving to a `$defs` key of the same document —
   is asserted for every `--json-schema-export` fixture by `integration_tests::run_test`, which is OUR
@@ -1555,6 +1585,64 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   TypeScript must be ≥ 5.2 with `--target esnext`, because wasm-bindgen emits `Symbol.dispose`
   members that earlier targets do not know. Reopening signal: a shipped `.d.ts` breaks a consumer's
   build in a way the substring asserts could not see.
+- **Extra JSON-schema roots for published types that have no CBOR contract.** A consumer's
+  published TypeScript surface can include a Rust type its CDDL never describes — a hand-written
+  address or key type whose JSON form is API while its bytes are not a CDDL rule — and today there
+  is no way to give such a type a registration row. Build it as a **CLI list of Rust paths**, not a
+  new CDDL declaration kind: a rule that describes no CBOR, and may name a type another crate owns,
+  is a category error, and it is the rule spelling — not the ask — that forces the two expensive
+  parts (crate-qualified idents in an IR whose idents are crate-local by construction, and a story
+  for excluding such a declaration from the extern-interface export so a consumer cannot inherit a
+  wire contract that does not exist). Two facts make the path spelling cheap: a registration row is
+  already emitted as a path rooted at the rust crate (`add_schema::<cddl_lib::Foo>(…)`), so an extra
+  root is that same emission with a user-supplied path; and the json-gen `Cargo.toml` is a merged
+  manifest, so a dependency the consumer adds by hand to reach another crate's type survives
+  regeneration. An extra root goes through the same emitted helper, so it inherits the published-name
+  injectivity guard for free. A path that does not resolve is an `E0433` in the consumer's json-gen
+  build — the tool does not typecheck Rust, so a generation-time reject is not available and must
+  not be promised. Blocked on two answers from whoever asks for it: a repeatable flag versus a file
+  listing the paths, and confirmation that every listed path is reachable from the json-gen crate.
+  Mechanical layer: a fixture whose extra root is named by no CDDL rule, asserted present in the
+  document's `$defs` and subject to the same injectivity failure as any other row.
+- **Assert a hand-authored JSON schema against the type's actual serialization.** Supplying a
+  schema body by hand needs no new spec syntax: `@custom_json` suppresses the `serde`/`schemars`
+  derives while the type still gets a registration row, so a hand-written
+  `JsonSchema::json_schema` returning the real body (e.g.
+  `serde_json::from_str(include_str!("…"))`) lands in the document as an ordinary local `$defs`
+  entry through the normal route. The missing half is the one with the value: a hand-written schema
+  drifts from the serialization it claims to describe and nothing notices — the reported consumer
+  failure is a hand-maintained schema that had been wrong in two places for years. The assertion
+  SHAPE already exists, hand-authored per fixture: `tests/json/tests.rs`'s
+  `schemas_validate_serialization` validates a concrete value of every exported type against
+  `schema_for!(T)`, with `schemas_reject_wrong_shapes` as the over-permissive counterpart (a
+  degenerate always-true schema passes every positive check). What it needs in order to generalize
+  into a consumer's crate is per-type sample values MINTED rather than hand-listed — the
+  `--emit-tests` IR-derived value minting is the candidate. A spec-level `@json_schema = "<file>"`
+  spelling is the cosmetic half and should not ship first: without the assertion it relocates the
+  hazard instead of removing it. Reopening signal: the sample-value minting gets reused for this, or
+  a consumer reports a shipped schema that contradicted its own serialization.
+- **Composing registration rows across generation passes that share one output crate.** Two
+  cddl-codegen passes targeting one output directory each own the json-gen crate's row set
+  outright, so there is no supported way to have one json-gen crate publish both passes' types.
+  Lowest value of the JSON-schema asks by the asking consumer's own ranking: a committed-`.d.ts`
+  CI diff covers the requirement they actually have, and the emitted `add_schemas` is already `pub`,
+  so a hand-written `export_schemas()` in the crate root can call both passes' registrars today.
+  (Scope: this records the ask as understood from the delivery's response notes; the requester's own
+  statement of it is not in-tree.) Reopening signal: a consumer whose layout genuinely forces two
+  passes into one json-gen crate and for whom the hand-written composition is not enough.
+- **Threading a dependency's `add_schemas` into a consumer's document.** Genuinely blocked on the
+  requester, not on design: the tool does not know a dependency's *json-gen crate name or path*.
+  `--extern-wasm-crate` / `--workspace-dep` establish the rust and wasm crate identities; the
+  json-gen crate is a third artifact whose existence is not implied (a dependency may have none at
+  all), and wiring it would need a new dependency edge in the consumer's json-gen manifest written
+  against a layout convention the tool would have to invent. What unblocks it, all workspace-layout
+  facts rather than design choices: how a consumer's json-gen crate should FIND a dep's json-gen
+  crate (a flag carrying `<dep-rust-crate>=<dep-json-gen-crate-name>@<path>`, or a convention plus
+  an opt-in flag), and whether a dependency with no json-gen crate is a hard error or a skip. Note
+  what it is worth once one document per crate ships: only a dependency's UNREFERENCED roots, since
+  anything a consumer's own types reference is already in the consumer's document through the
+  closure — so the extra-roots entry above may cover the residue more cheaply. `add_schemas` is
+  emitted `pub` precisely so this stays additive.
 
 ## Operational watches
 
@@ -1691,24 +1779,26 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   process-kill activity in the other session before any harness attribution. The standing
   discipline it feeds is in `AGENTS.md` (never pattern-kill by tool-generic substring on a shared
   machine).
-- **Agent-harness background tasks appear to be killed at ~55–65 min wall — the ~75-min full tier
-  cannot complete as ONE background task in an agent session (2026-07-25, two sightings).** Two
-  same-session `check.ts full` background runs from an orchestrating agent were killed by the
-  harness (task "killed", entire process tree gone, self-log stops mid-gate with no RESULT and no
-  error) at ~53 and ~60–65 min, both inside `gate_cache_closure_audit`
-  (`draft/logs/check-full-2026-07-24T18-08-09Z.log`, `…T19-16-08Z.log`); a ~35-min background run
-  completed fine in the same session, and a ~75-min background run completed in a prior session
-  whose harness topology (true main session vs sub-agent) was not recorded — so the ceiling may be
-  sub-agent-session-specific. Signature to distinguish from a hang: process tree GONE + log mtime
-  stale (a hang keeps live processes). Distinguish from cross-session pkill (the entry above): no
-  kill activity in any concurrent session, and exit is a task-kill, not `-15` in the run's own log.
-  Working recovery, proven: let the run die, enumerate completed gates from the self-log
-  (`grep '^--- '`), run the remainder isolated (the audit gate alone ≈16 min:
-  `bun run audit_gate_cache_closure.ts` in `cddl-matrix/`; `corpus_detect.ts` and the fuzz
-  `cargo check` are seconds), and claim the tier green only by COMPLETE gate enumeration. A cheap
-  attribution probe for the next sighting: background a once-a-minute timestamp-append loop and
-  record exactly when writes stop (near-zero resources — also separates a wall-clock ceiling from
-  a resource-based kill).
+- **A backgrounded `check.ts full` launched from a SUB-AGENT's turn dies before it can finish —
+  ATTRIBUTED to the launching topology, not a wall-clock ceiling. Do not watch for it; the standing
+  rule is in `AGENTS.md`.** Four 2026-07-24/25 sightings, all from orchestrating sub-agents, all the
+  same signature (task "killed", entire process tree gone, self-log stops mid-gate with no
+  tier-level `RESULT` line and no error): ~53 min and ~60–65 min inside `gate_cache_closure_audit`
+  (`draft/logs/check-full-2026-07-24T18-08-09Z.log`, `…T19-16-08Z.log`), then 60 min and ~68 min
+  inside `verify` (`draft/logs/check-full-2026-07-25T17-53-25Z.log`,
+  `…T22-34-27Z.log`). What settles it: the SAME tier on the same machine, launched from the MAIN
+  session, ran 74 min to a clean `RESULT: PASS — all in-tier gates green`
+  (`draft/logs/check-full-2026-07-25T20-12-44Z.log`), and a shorter (~35 min) sub-agent background
+  run completed fine — so the constraint is the sub-agent turn's lifetime, not a resource or
+  wall-clock limit on the run itself. Consequence: a ~75-min full tier can NEVER complete from a
+  sub-agent's turn, and delegating one is a guaranteed loss of a multi-minute run. Signature to
+  distinguish from a hang: process tree GONE + log mtime stale (a hang keeps live processes).
+  Distinguish from cross-session pkill (the entry above): no kill activity in any concurrent
+  session, and exit is a task-kill, not `-15` in the run's own log. Recovery when one has already
+  died: enumerate completed gates from the self-log (`grep '^--- '`), run the remainder isolated
+  (the audit gate alone ≈16 min: `bun run audit_gate_cache_closure.ts` in `cddl-matrix/`;
+  `corpus_detect.ts` and the fuzz `cargo check` are seconds), and claim the tier green only by
+  COMPLETE gate enumeration — never from the partial log.
 
 ## Declined (decided, with the reopening signal)
 

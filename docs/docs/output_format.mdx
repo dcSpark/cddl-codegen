@@ -1218,6 +1218,19 @@ The output format can change slightly depending on certain command line flags:
 
 ![](/img/output4.png)
 
+That adds a third generated crate, `wasm/json-gen/`, whose only job is to *run*: its `main()` calls
+the `export_schemas()` it exports, and that writes **one JSON Schema document for the whole crate**
+at `wasm/json-gen/schemas/<lib_name>.schema.json` — a pure `$defs` bundle keyed by
+`schemars::JsonSchema::schema_name()`, byte-stable across regenerations of the same spec. So the
+schema artifact appears only once you have built and run that crate; generation alone writes the
+crate, not the document. `export_schemas()` never deletes anything in `schemas/`, so the directory
+can also hold files you own. The other public function, `add_schemas(&mut
+schemars::SchemaGenerator)`, is the composition point for registering this crate's types into a
+generator you own. Which types get a registration row, what a row means (a declared root — `$defs`
+also holds everything a row'd type reaches), and the uniqueness the published `$defs` keys must
+satisfy are in
+[Command line flags § `--json-schema-export`](./command_line_flags).
+
 
 `--package-json true --json-schema-export true`
 
