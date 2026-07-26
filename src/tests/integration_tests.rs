@@ -1,4 +1,5 @@
-//! End-to-end integration tests: each generates a crate via the CLI (`cargo run`), then compiles
+//! End-to-end integration tests: each generates a crate by spawning the generator binary
+//! (`codegen_cmd`), then compiles
 //! and CBOR round-trip-tests it (plus wasm build and json-schema build). This is the correctness
 //! gate. Golden snapshots of the generated *source* live in `snapshot_tests.rs`.
 
@@ -410,6 +411,95 @@ fn tool_exists(bin: &str) -> bool {
 /// dedicated Build/clippy steps; only these nested generated-crate builds must be insulated.
 pub(crate) fn tool_cmd(program: &str) -> std::process::Command {
     let mut c = std::process::Command::new(program);
+    c.env_remove("RUSTFLAGS");
+    c
+}
+
+/// The generator binary the generation call sites spawn, built exactly ONCE per test process.
+///
+/// Generation used to shell out to `tool_cmd("cargo").args(["run", "--"])`. That paid a cargo
+/// freshness check on every generation — measured 0.11 s for a warm no-op, against 0.00 s for the
+/// binary invoked directly — and, more importantly, took the repo `target/` build-directory lock
+/// each time. A tier makes thousands of these calls (`decode_conformance_replay` alone ~411), so
+/// serially the lock is invisible but it is the hard ceiling on any gate-level parallelism.
+///
+/// What `cargo run` bought that a bare path does NOT is the guarantee that the generator under test
+/// is CURRENT: a hardcoded path silently tests a stale generator, a wrong-results failure mode far
+/// worse than a slow one. So that guarantee is kept and merely relocated — one
+/// `cargo build --bin cddl-codegen` per process behind this `OnceLock`, before the first spawn,
+/// instead of one freshness check per spawn.
+///
+/// The path is derived from the RUNNING test executable rather than a literal `target/debug/`, so a
+/// custom `CARGO_TARGET_DIR` (or a `--release` outer run) still resolves: libtest's harness lives at
+/// `<target>/<profile>/deps/cddl_codegen-<hash>`, so the plain bin sits one directory up. The build
+/// is load-bearing rather than defensive — `cargo test --bin cddl-codegen` (how every `#[ignore]`d
+/// gate is invoked) builds only the test harness and does NOT uplift `<target>/<profile>/cddl-codegen`.
+static GENERATOR_BIN: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+
+fn generator_bin() -> &'static std::path::Path {
+    GENERATOR_BIN
+        .get_or_init(|| {
+            let exe = std::env::current_exe().expect(
+                "the running test executable must have a resolvable path — the generator binary is \
+                 located relative to it so a custom CARGO_TARGET_DIR still works",
+            );
+            let dir = exe
+                .parent()
+                .unwrap_or_else(|| panic!("test executable {exe:?} has no parent directory"))
+                .to_path_buf();
+            // `<target>/<profile>/deps/<harness>` for a libtest harness; tolerate an already-uplifted
+            // `<target>/<profile>/<harness>` layout rather than assuming `deps`.
+            let profile_dir = if dir.file_name() == Some(std::ffi::OsStr::new("deps")) {
+                dir.parent()
+                    .unwrap_or_else(|| panic!("{dir:?} has no parent directory"))
+                    .to_path_buf()
+            } else {
+                dir
+            };
+            let target_root = profile_dir.parent().unwrap_or_else(|| {
+                panic!("profile directory {profile_dir:?} has no parent target directory")
+            });
+            let bin = profile_dir.join(format!("cddl-codegen{}", std::env::consts::EXE_SUFFIX));
+            // Same `RUSTFLAGS` strip as `tool_cmd`: the `cargo run` form this replaces went through
+            // `tool_cmd`, so the generator was already built (and spawned) without CI's injected
+            // `-D warnings`. Keeping it makes the swap behaviour-preserving.
+            let mut build = tool_cmd("cargo");
+            build.args(["build", "--bin", "cddl-codegen"]);
+            if profile_dir.file_name() == Some(std::ffi::OsStr::new("release")) {
+                build.arg("--release");
+            }
+            // Pin the inner build to the SAME target dir the harness was built into, so the path
+            // derived above is the path the build writes.
+            build.arg("--target-dir").arg(target_root);
+            let out = build
+                .output()
+                .expect("`cargo build --bin cddl-codegen` must be spawnable from the test process");
+            assert!(
+                out.status.success(),
+                "the one-per-process `cargo build --bin cddl-codegen` FAILED (status {:?}) — every \
+                 generation call site depends on it, and skipping it would silently test a stale \
+                 generator\nstdout:\n{}\nstderr:\n{}",
+                out.status.code(),
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            );
+            assert!(
+                bin.is_file(),
+                "`cargo build --bin cddl-codegen` succeeded but no generator binary exists at \
+                 {bin:?} (derived from test executable {exe:?}) — refusing to fall back to a \
+                 guessed path, which could run a stale binary"
+            );
+            bin
+        })
+        .as_path()
+}
+
+/// A `Command` that runs this repo's generator binary directly — the replacement for
+/// `tool_cmd("cargo").args(["run", "--"])` at every generation call site. Freshness is handled once
+/// per process by `generator_bin`; `RUSTFLAGS` is stripped for the same reason `tool_cmd` strips it,
+/// so the spawned environment matches what the `cargo run` form produced.
+pub(crate) fn codegen_cmd() -> std::process::Command {
+    let mut c = std::process::Command::new(generator_bin());
     c.env_remove("RUSTFLAGS");
     c
 }
@@ -943,9 +1033,9 @@ fn run_test(
     ] {
         let _ = std::fs::remove_file(test_path.join(format!("{export_path}/{root}")));
     }
-    // build and run to generate code
-    let mut cargo_run = tool_cmd("cargo");
-    cargo_run.arg("run").arg("--").arg(format!(
+    // generate the code by spawning the generator binary
+    let mut gen_cmd = codegen_cmd();
+    gen_cmd.arg(format!(
         "--output={}",
         test_path.join(&export_path).to_str().unwrap()
     ));
@@ -955,27 +1045,27 @@ fn run_test(
     // regenerate with comment preservation OFF: default-on would (correctly) read those hand-written
     // comments as edits on now-vanished items and trap them in `compile_error!` blocks. The
     // preservation contract itself is covered by `comment_preservation_disk_round_trip`.
-    cargo_run.arg("--no-preserve-comments");
+    gen_cmd.arg("--no-preserve-comments");
     if input_is_dir {
-        cargo_run.arg(format!(
+        gen_cmd.arg(format!(
             "--input={}",
             test_path.join("inputs").to_str().unwrap()
         ));
     } else {
-        cargo_run.arg(format!(
+        gen_cmd.arg(format!(
             "--input={}",
             test_path.join("input.cddl").to_str().unwrap()
         ));
     }
     for option in options {
-        cargo_run.arg(option);
+        gen_cmd.arg(option);
     }
     println!("   ------ building ------");
-    let cargo_run_result = cargo_run.output().unwrap();
-    if !cargo_run_result.status.success() {
-        eprintln!("{}", String::from_utf8(cargo_run_result.stderr).unwrap());
+    let gen_result = gen_cmd.output().unwrap();
+    if !gen_result.status.success() {
+        eprintln!("{}", String::from_utf8(gen_result.stderr).unwrap());
     }
-    assert!(cargo_run_result.status.success());
+    assert!(gen_result.status.success());
     // Copy tests into generated code. The generated root scope (with the cross-module `use` imports
     // the appended tests' `use super::*;` relies on) now lives in `generated/mod.rs`, not the thin
     // seed-once `lib.rs`; append the tests there so they see exactly the imports they did when the old
@@ -1561,8 +1651,7 @@ fn feature_corpus_compiles() {
             let out = root.join(format!("{stem}__{profile}"));
             let emit_tests = *profile == "default";
             // generate rust + wasm so both crates are compile-gated
-            let gen_out = tool_cmd("cargo")
-                .args(["run", "--"])
+            let gen_out = codegen_cmd()
                 .arg(format!("--input={}", input.to_str().unwrap()))
                 .arg(format!("--output={}", out.to_str().unwrap()))
                 .arg("--wasm=true")
@@ -2023,8 +2112,7 @@ fn synthesized_name_interaction_sweep() {
     std::fs::create_dir_all(&root).unwrap();
     std::fs::write(&spec, &ok_batch).unwrap();
 
-    let gen_out = tool_cmd("cargo")
-        .args(["run", "--"])
+    let gen_out = codegen_cmd()
         .arg(format!("--input={}", spec.to_str().unwrap()))
         .arg(format!("--output={}", out.to_str().unwrap()))
         .arg("--wasm=true")
@@ -2116,8 +2204,7 @@ fn getting_started_example() {
     let target_dir = root.join("target");
 
     // The documented command, verbatim.
-    let gen_out = tool_cmd("cargo")
-        .args(["run", "--"])
+    let gen_out = codegen_cmd()
         .arg(format!("--input={}", input.to_str().unwrap()))
         .arg(format!("--output={}", out.to_str().unwrap()))
         .output()
@@ -2176,8 +2263,7 @@ fn extern_interface_check_compiles() {
     let _ = std::fs::remove_dir_all(&root);
     let out = root.join("gen");
 
-    let gen_out = tool_cmd("cargo")
-        .args(["run", "--"])
+    let gen_out = codegen_cmd()
         .arg(format!("--input={}", input.to_str().unwrap()))
         .arg(format!("--output={}", out.to_str().unwrap()))
         .arg("--wasm=false")
@@ -2225,8 +2311,7 @@ fn extern_interface_check_mutation_fails_build() {
     let _ = std::fs::remove_dir_all(&root);
     let out = root.join("gen");
 
-    let gen_out = tool_cmd("cargo")
-        .args(["run", "--"])
+    let gen_out = codegen_cmd()
         .arg(format!("--input={}", input.to_str().unwrap()))
         .arg(format!("--output={}", out.to_str().unwrap()))
         .arg("--wasm=false")
@@ -2456,8 +2541,7 @@ fn wasm_matrix_compiles() {
         let stem = input.file_stem().unwrap().to_str().unwrap();
         let skipped = WASM_MATRIX_SKIP.contains(&stem);
         let out = root.join(stem);
-        let gen_out = tool_cmd("cargo")
-            .args(["run", "--"])
+        let gen_out = codegen_cmd()
             .arg(format!("--input={}", input.to_str().unwrap()))
             .arg(format!("--output={}", out.to_str().unwrap()))
             .arg("--wasm=true")
@@ -2625,8 +2709,7 @@ fn multifile_matrix_compiles() {
         let pin = MULTIFILE_MATRIX_SKIP.iter().find(|(s, _, _)| *s == stem);
         let skipped = pin.is_some();
         let out = root.join(stem);
-        let gen_out = tool_cmd("cargo")
-            .args(["run", "--"])
+        let gen_out = codegen_cmd()
             .arg(format!("--input={}", input.to_str().unwrap()))
             .arg(format!("--output={}", out.to_str().unwrap()))
             .arg("--wasm=true")
@@ -2963,8 +3046,7 @@ fn wasm_matrix_roundtrips() {
                     .iter()
                     .any(|(p, s, _)| p == profile && s == &stem);
             let out = root.join(format!("{stem}__{profile}"));
-            let gen_out = tool_cmd("cargo")
-                .args(["run", "--"])
+            let gen_out = codegen_cmd()
                 .arg(format!("--input={}", input.to_str().unwrap()))
                 .arg(format!("--output={}", out.to_str().unwrap()))
                 .arg("--wasm=true")
@@ -3177,8 +3259,7 @@ fn multifile_matrix_roundtrips() {
                     .iter()
                     .any(|(p, s, _)| p == profile && s == &stem);
             let out = root.join(format!("{stem}__{profile}"));
-            let gen_out = tool_cmd("cargo")
-                .args(["run", "--"])
+            let gen_out = codegen_cmd()
                 .arg(format!("--input={}", input.to_str().unwrap()))
                 .arg(format!("--output={}", out.to_str().unwrap()))
                 .arg("--wasm=true")
@@ -3345,8 +3426,7 @@ fn wasm_list_macro_compiles() {
     for (label, options) in cases {
         let out = test_path.join(format!("export_{label}"));
         let _ = std::fs::remove_dir_all(&out);
-        let gen_out = tool_cmd("cargo")
-            .args(["run", "--"])
+        let gen_out = codegen_cmd()
             .arg(format!(
                 "--input={}",
                 test_path.join("input.cddl").to_str().unwrap()
@@ -3445,8 +3525,7 @@ fn flag_value_smoke() {
     for (label, options) in cases {
         let out = scratch.join(label);
         let _ = std::fs::remove_dir_all(&out);
-        let gen_out = tool_cmd("cargo")
-            .args(["run", "--"])
+        let gen_out = codegen_cmd()
             .arg(format!("--input={}", input.to_str().unwrap()))
             .arg(format!("--output={}", out.to_str().unwrap()))
             .arg("--wasm=false")
@@ -3508,8 +3587,7 @@ fn preserve_no_annotate_fixed_members_generate() {
         let input = std::path::PathBuf::from_str(input).unwrap();
         let out = scratch.join(label);
         let _ = std::fs::remove_dir_all(&out);
-        let gen_out = tool_cmd("cargo")
-            .args(["run", "--"])
+        let gen_out = codegen_cmd()
             .arg(format!("--input={}", input.to_str().unwrap()))
             .arg(format!("--output={}", out.to_str().unwrap()))
             .arg("--wasm=false")
@@ -3571,8 +3649,7 @@ fn no_synthesized_rust_collection_aliases_suppresses_only_synthesized() {
     )
     .unwrap();
     let out = scratch.join("out");
-    let gen_out = tool_cmd("cargo")
-        .args(["run", "--"])
+    let gen_out = codegen_cmd()
         .arg(format!("--input={}", input.to_str().unwrap()))
         .arg(format!("--output={}", out.to_str().unwrap()))
         .arg("--wasm=true")
@@ -3643,8 +3720,7 @@ fn rust_wasm_bindgen_feature_gated_crate_compiles_standalone() {
     // a c-style enum is the one rust-crate construct that carries `#[wasm_bindgen]`
     std::fs::write(&input, "fixed_enum = 0 / 1 / 2\n").unwrap();
     let out = scratch.join("out");
-    let gen_out = tool_cmd("cargo")
-        .args(["run", "--"])
+    let gen_out = codegen_cmd()
         .arg(format!("--input={}", input.to_str().unwrap()))
         .arg(format!("--output={}", out.to_str().unwrap()))
         .arg("--wasm=true")
@@ -3742,8 +3818,7 @@ fn wasm_collections_index_lists_every_minted_wrapper() {
     .unwrap();
 
     let out = scratch.join("out");
-    let gen_out = tool_cmd("cargo")
-        .args(["run", "--"])
+    let gen_out = codegen_cmd()
         .arg(format!("--input={}", inputs.to_str().unwrap()))
         .arg(format!("--output={}", out.to_str().unwrap()))
         .arg("--wasm=true")
@@ -3860,8 +3935,7 @@ fn generated_code_clippy_clean() {
     for (label, options) in cases {
         let out = scratch.join(label);
         let _ = std::fs::remove_dir_all(&out);
-        let gen_out = tool_cmd("cargo")
-            .args(["run", "--"])
+        let gen_out = codegen_cmd()
             .arg(format!("--input={}", input.to_str().unwrap()))
             .arg(format!("--output={}", out.to_str().unwrap()))
             .arg("--wasm=true")
@@ -4618,8 +4692,8 @@ fn thin_root_in_crate_extern_type_compiles() {
 ///       lacks a required name, naming the missing idents and the exact fix.
 ///
 /// The required sets are collected at EXACTLY the glue-emission sites (single source of truth), so
-/// the surfaced list can never drift from the glue. This gate drives a real `cargo run` (the only way
-/// to observe stdout/stderr) into a scratch dir repeatedly and pins every layer: the fresh seed is
+/// the surfaced list can never drift from the glue. This gate drives a real generator SUBPROCESS (the
+/// only way to observe stdout/stderr) into a scratch dir repeatedly and pins every layer: the fresh seed is
 /// SILENT (no diagnostic — the seed path never `exist`s), the stale seed WARNS, a satisfied root and
 /// a foreign glob re-exporter are both silent, the diagnostic changes ZERO generated bytes
 /// (run-twice-equals-run-once), and a `@raw_bytes_flavor` spec surfaces its `<Base>RawBytes` name.
@@ -4659,8 +4733,7 @@ fn extern_reexport_contract_surfaced() {
     }
 
     fn run_gen(input: &std::path::Path, out: &std::path::Path) -> (String, String) {
-        let run = tool_cmd("cargo")
-            .args(["run", "--"])
+        let run = codegen_cmd()
             .arg(format!("--input={}", input.to_str().unwrap()))
             .arg(format!("--output={}", out.to_str().unwrap()))
             .arg("--wasm=true")
@@ -4808,8 +4881,7 @@ fn extern_reexport_diagnostic_skips_replace_deleted_glue() {
     }
 
     fn run_gen(input: &std::path::Path, out: &std::path::Path) -> String {
-        let run = tool_cmd("cargo")
-            .args(["run", "--"])
+        let run = codegen_cmd()
             .arg(format!("--input={}", input.to_str().unwrap()))
             .arg(format!("--output={}", out.to_str().unwrap()))
             .arg("--wasm=true")
@@ -4934,7 +5006,7 @@ fn extern_reexport_diagnostic_skips_replace_deleted_glue() {
 /// `addr_impl.rs` extern definition), and `cargo check`s the result. `cargo`-guarded so the
 /// string-level self-diagnosing assertions still run on a toolchain-less box. Shared
 /// `CARGO_TARGET_DIR` under `temp_dir()` keyed by `checkout_hash()`, like the sibling generate+check
-/// gates. Generation is in-process (`generate_to_disk`) rather than a nested `cargo run` — the same
+/// gates. Generation is in-process (`generate_to_disk`) rather than a spawned generator — the same
 /// code path, cheaper, and matching `thin_root_in_crate_extern_type_compiles`.
 #[test]
 fn facade_composition_compiles() {
@@ -5074,7 +5146,7 @@ fn migration_legacy_root_fails_loudly() {
 /// The legacy-shape stderr warning (diagnostics only — output bytes are unchanged): when a crate-root
 /// `lib.rs` already exists and does NOT declare `mod generated`, `export()` prints a one-time-migration
 /// warning naming the remedy; a thin root (which does declare it) draws no warning. Captured via a real
-/// CLI run (`cargo run`) because the warning is an `eprintln!` on the tool's process stderr.
+/// CLI subprocess because the warning is an `eprintln!` on the tool's process stderr.
 #[test]
 fn legacy_root_warning_fires_only_for_legacy_shape() {
     if !tool_exists("cargo") {
@@ -5090,8 +5162,7 @@ fn legacy_root_warning_fires_only_for_legacy_shape() {
     let lib_rs = out.join("rust/src/lib.rs");
 
     let run = || {
-        tool_cmd("cargo")
-            .args(["run", "--"])
+        codegen_cmd()
             .arg(format!("--input={}", input.to_str().unwrap()))
             .arg(format!("--output={}", out.to_str().unwrap()))
             .arg("--wasm=false")
@@ -5221,8 +5292,7 @@ fn wasm_cbor_json_api_macro_compiles() {
     let test_path = std::path::PathBuf::from_str("tests/canonical").unwrap();
     let out = test_path.join("export_cbor_json_api_macro");
     let _ = std::fs::remove_dir_all(&out);
-    let gen_out = tool_cmd("cargo")
-        .args(["run", "--"])
+    let gen_out = codegen_cmd()
         .arg(format!(
             "--input={}",
             test_path.join("input.cddl").to_str().unwrap()
@@ -5819,9 +5889,7 @@ fn used_as_elem_mints_loose_list_wrapper() {
     let run = |input: &str, output: &str| -> std::process::Output {
         let out_dir = base.join(output);
         let _ = std::fs::remove_dir_all(&out_dir);
-        tool_cmd("cargo")
-            .arg("run")
-            .arg("--")
+        codegen_cmd()
             .arg(format!("--input=tests/used-as-elem/{input}"))
             .arg(format!("--output=tests/used-as-elem/{output}"))
             .arg("--wasm=true")
@@ -5904,9 +5972,7 @@ fn used_as_key_ord_flavor_assertion_fails_on_missing_supply() {
     let base = std::path::PathBuf::from_str("tests/used-as-key-flavor").unwrap();
     let out_dir = base.join("export");
     let _ = std::fs::remove_dir_all(&out_dir);
-    let gen_out = tool_cmd("cargo")
-        .arg("run")
-        .arg("--")
+    let gen_out = codegen_cmd()
         .arg("--input=tests/used-as-key-flavor/input.cddl")
         .arg("--output=tests/used-as-key-flavor/export")
         .arg("--wasm=false")
@@ -6280,8 +6346,7 @@ fn emit_tests_any_float_execute() {
         std::env::temp_dir().join(format!("cddl_codegen_any_float_{:016x}", checkout_hash()));
     let _ = std::fs::remove_dir_all(&root);
     let out = root.join("crate");
-    let generate = tool_cmd("cargo")
-        .args(["run", "--"])
+    let generate = codegen_cmd()
         .arg(format!("--input={}", input.to_str().unwrap()))
         .arg(format!("--output={}", out.to_str().unwrap()))
         .arg("--wasm=false")
@@ -6356,8 +6421,7 @@ fn emit_tests_open_struct_rest_execute() {
         std::env::temp_dir().join(format!("cddl_codegen_open_rest_{:016x}", checkout_hash()));
     let _ = std::fs::remove_dir_all(&root);
     let out = root.join("crate");
-    let generate = tool_cmd("cargo")
-        .args(["run", "--"])
+    let generate = codegen_cmd()
         .arg(format!("--input={}", input.to_str().unwrap()))
         .arg(format!("--output={}", out.to_str().unwrap()))
         .arg("--wasm=false")
@@ -6425,8 +6489,7 @@ fn emit_tests_open_struct_ignore_execute() {
         std::env::temp_dir().join(format!("cddl_codegen_ignore_rest_{:016x}", checkout_hash()));
     let _ = std::fs::remove_dir_all(&root);
     let out = root.join("crate");
-    let generate = tool_cmd("cargo")
-        .args(["run", "--"])
+    let generate = codegen_cmd()
         .arg(format!("--input={}", input.to_str().unwrap()))
         .arg(format!("--output={}", out.to_str().unwrap()))
         .arg("--wasm=false")
@@ -6497,8 +6560,7 @@ fn emit_tests_open_array_execute() {
         std::env::temp_dir().join(format!("cddl_codegen_open_array_{:016x}", checkout_hash()));
     let _ = std::fs::remove_dir_all(&root);
     let out = root.join("crate");
-    let generate = tool_cmd("cargo")
-        .args(["run", "--"])
+    let generate = codegen_cmd()
         .arg(format!("--input={}", input.to_str().unwrap()))
         .arg(format!("--output={}", out.to_str().unwrap()))
         .arg("--wasm=false")
@@ -6583,9 +6645,7 @@ fn emit_wasm_tests_execute() {
     let _ = std::fs::remove_file(export_path.join("wasm/src/lib.rs"));
 
     // generate the crate(s)
-    let generate = tool_cmd("cargo")
-        .arg("run")
-        .arg("--")
+    let generate = codegen_cmd()
         .arg(format!("--output={}", export_path.to_str().unwrap()))
         .arg(format!(
             "--input={}",
@@ -7012,8 +7072,7 @@ fn ir_conformance_corpus() {
              the rust conformance oracle to fail for the right reason"
         );
         let out = root.join(stem);
-        let gen_out = tool_cmd("cargo")
-            .args(["run", "--"])
+        let gen_out = codegen_cmd()
             .arg(format!("--input={}", input.to_str().unwrap()))
             .arg(format!("--output={}", out.to_str().unwrap()))
             .arg("--wasm=false")
@@ -7648,9 +7707,7 @@ fn run_json_gen_failure_test(dir: &str, extern_rust_defs: &str, expected_fragmen
     ] {
         let _ = std::fs::remove_file(export_path.join(root));
     }
-    let generate = tool_cmd("cargo")
-        .arg("run")
-        .arg("--")
+    let generate = codegen_cmd()
         .arg(format!("--output={}", export_path.to_str().unwrap()))
         .arg(format!(
             "--input={}",
@@ -8106,9 +8163,7 @@ fn json_schema_scripts_without_package_json() {
     let export = std::path::PathBuf::from_str("tests/package-json/export_scripts_only").unwrap();
     let _ = std::fs::remove_dir_all(&export);
 
-    let generate = tool_cmd("cargo")
-        .arg("run")
-        .arg("--")
+    let generate = codegen_cmd()
         .arg("--input=tests/package-json/input.cddl")
         .arg(format!("--output={}", export.display()))
         .arg("--wasm=true")
@@ -8206,9 +8261,7 @@ fn package_json_pipeline() {
     // Generate the shipped layout: everything under `export/rust/{rust,wasm}`, plus `export/package.json`
     // and `export/scripts/`.
     let _ = std::fs::remove_dir_all(&export);
-    let generate = tool_cmd("cargo")
-        .arg("run")
-        .arg("--")
+    let generate = codegen_cmd()
         .arg("--input=tests/package-json/input.cddl")
         .arg("--output=tests/package-json/export")
         .arg("--wasm=true")
@@ -8489,9 +8542,7 @@ fn common_override_wasm_int() {
 #[test]
 fn extern_deps_wasm_unknown_dep_errors() {
     let out = std::env::temp_dir().join("cddl_codegen_extern_wasm_bad_dep");
-    let run = tool_cmd("cargo")
-        .arg("run")
-        .arg("--")
+    let run = codegen_cmd()
         .arg("--input=tests/extern-deps-wasm/inputs")
         .arg(format!("--output={}", out.to_str().unwrap()))
         .arg("--wasm=true")
@@ -8531,9 +8582,7 @@ fn dep_owned_named_collection_no_local_structural_import() {
         checkout_hash()
     ));
     let _ = std::fs::remove_dir_all(&out);
-    let run = tool_cmd("cargo")
-        .arg("run")
-        .arg("--")
+    let run = codegen_cmd()
         .arg("--input=tests/dep-owned-named-collections/inputs")
         .arg(format!("--output={}", out.to_str().unwrap()))
         .arg("--wasm=true")
@@ -8702,9 +8751,7 @@ fn extern_wrapper_index_defers_to_dep() {
     // Generate the consumer into `export/` (gitignored) with the deferral flag; capture stderr.
     let export = test_path.join("export");
     let _ = std::fs::remove_dir_all(&export);
-    let generate = tool_cmd("cargo")
-        .arg("run")
-        .arg("--")
+    let generate = codegen_cmd()
         .arg("--input=tests/extern-deps-wasm-index/inputs")
         .arg("--output=tests/extern-deps-wasm-index/export")
         .arg("--wasm=true")
@@ -8915,9 +8962,7 @@ fn extern_wrapper_index_defers_to_dep() {
     // RED: same spec, deferral OFF -> local re-mints -> duplicate-symbol link failure.
     let red_export = test_path.join("export_nodefer");
     let _ = std::fs::remove_dir_all(&red_export);
-    let generate_red = tool_cmd("cargo")
-        .arg("run")
-        .arg("--")
+    let generate_red = codegen_cmd()
         .arg("--input=tests/extern-deps-wasm-index/inputs")
         .arg("--output=tests/extern-deps-wasm-index/export_nodefer")
         .arg("--wasm=true")
@@ -8965,10 +9010,8 @@ fn workspace_dep_defers_to_dep() {
     let run_gen = |input: &str, output: &str, extra: &[&str]| -> std::process::Output {
         let out_dir = base.join(output);
         let _ = std::fs::remove_dir_all(&out_dir);
-        let mut cmd = tool_cmd("cargo");
-        cmd.arg("run")
-            .arg("--")
-            .arg(format!("--input=tests/workspace-dep-wasm/{input}"))
+        let mut cmd = codegen_cmd();
+        cmd.arg(format!("--input=tests/workspace-dep-wasm/{input}"))
             .arg(format!("--output=tests/workspace-dep-wasm/{output}"))
             .arg("--wasm=true")
             .arg("--preserve-encodings=true")
@@ -9292,9 +9335,7 @@ fn workspace_dep_named_table_deferred_keys_list() {
     let base = std::path::PathBuf::from_str("tests/workspace-dep-wasm").unwrap();
     let out = base.join("export_named_table");
     let _ = std::fs::remove_dir_all(&out);
-    let o = tool_cmd("cargo")
-        .arg("run")
-        .arg("--")
+    let o = codegen_cmd()
         .arg("--input=tests/workspace-dep-wasm/inputs_named_table")
         .arg("--output=tests/workspace-dep-wasm/export_named_table")
         .arg("--wasm=true")
@@ -9469,9 +9510,7 @@ fn workspace_requests_hosts_borrowed_wrappers() {
     let gen_consumer = |output: &str| -> std::process::Output {
         let out_dir = base.join(output);
         let _ = std::fs::remove_dir_all(&out_dir);
-        tool_cmd("cargo")
-            .arg("run")
-            .arg("--")
+        codegen_cmd()
             .arg("--input=tests/workspace-requests/consumer_inputs")
             .arg(format!("--output=tests/workspace-requests/{output}"))
             .arg("--wasm=true")
@@ -9495,10 +9534,8 @@ fn workspace_requests_hosts_borrowed_wrappers() {
      -> std::process::Output {
         let out_dir = base.join(output);
         let _ = std::fs::remove_dir_all(&out_dir);
-        let mut cmd = tool_cmd("cargo");
-        cmd.arg("run")
-            .arg("--")
-            .arg(format!("--input=tests/workspace-requests/{input}"))
+        let mut cmd = codegen_cmd();
+        cmd.arg(format!("--input=tests/workspace-requests/{input}"))
             .arg(format!("--output=tests/workspace-requests/{output}"))
             .arg("--lib-name=wr-dep")
             .arg("--wasm=true")
@@ -9810,9 +9847,7 @@ fn used_as_elem_satisfies_wrapper_request_from_own_spec() {
     let zeta_sidecar = "tests/workspace-requests/sidecars/zeta_borrowed_collections.rs";
     let out_dir = base.join("export_dep_used_as_elem");
     let _ = std::fs::remove_dir_all(&out_dir);
-    let d = tool_cmd("cargo")
-        .arg("run")
-        .arg("--")
+    let d = codegen_cmd()
         .arg("--input=tests/workspace-requests/dep_inputs_used_as_elem")
         .arg("--output=tests/workspace-requests/export_dep_used_as_elem")
         .arg("--lib-name=wr-dep")
@@ -9903,9 +9938,7 @@ fn workspace_requests_hard_errors() {
     let run = |dep_input: &str, out: &str, sidecar: &str| -> String {
         let out_dir = base.join(out);
         let _ = std::fs::remove_dir_all(&out_dir);
-        let o = tool_cmd("cargo")
-            .arg("run")
-            .arg("--")
+        let o = codegen_cmd()
             .arg(format!("--input=tests/workspace-requests/{dep_input}"))
             .arg(format!("--output=tests/workspace-requests/{out}"))
             .arg("--lib-name=wr-dep")
@@ -10062,9 +10095,7 @@ fn workspace_requests_anonymous_collapsed_set_satisfies_from_own_spec() {
     let run = |dep_input: &str, out: &str, sidecar: &str| -> std::process::Output {
         let out_dir = base.join(out);
         let _ = std::fs::remove_dir_all(&out_dir);
-        tool_cmd("cargo")
-            .arg("run")
-            .arg("--")
+        codegen_cmd()
             .arg(format!("--input=tests/workspace-requests/{dep_input}"))
             .arg(format!("--output=tests/workspace-requests/{out}"))
             .arg("--lib-name=wr-dep")
@@ -10204,9 +10235,7 @@ fn workspace_key_requests_derive_effect_and_hard_errors() {
     let run = |out: &str, sidecar: &str| -> std::process::Output {
         let out_dir = base.join(out);
         let _ = std::fs::remove_dir_all(&out_dir);
-        tool_cmd("cargo")
-            .arg("run")
-            .arg("--")
+        codegen_cmd()
             .arg("--input=tests/workspace-requests/dep_inputs")
             .arg(format!("--output=tests/workspace-requests/{out}"))
             .arg("--lib-name=wr-dep")
@@ -10354,8 +10383,7 @@ fn int_key_via_common_import_override_sidecar() {
     let pos_spec = root.join("pos_spec");
     write_spec(&pos_spec, "extern_dep_crate");
     let pos_out = root.join("pos");
-    let gen_pos = tool_cmd("cargo")
-        .args(["run", "--"])
+    let gen_pos = codegen_cmd()
         .arg(format!("--input={}", pos_spec.to_str().unwrap()))
         .arg(format!("--output={}", pos_out.to_str().unwrap()))
         .arg("--wasm=false")
@@ -10422,8 +10450,7 @@ fn int_key_via_common_import_override_sidecar() {
     )
     .unwrap();
     let neg_out = root.join("neg");
-    let gen_neg = tool_cmd("cargo")
-        .args(["run", "--"])
+    let gen_neg = codegen_cmd()
         .arg(format!("--input={}", neg_spec.to_str().unwrap()))
         .arg(format!("--output={}", neg_out.to_str().unwrap()))
         .arg("--wasm=false")
@@ -10529,9 +10556,7 @@ fn workspace_key_requests_flavored_contract() {
     // the `--wasm=false` sidecar is byte-identical). `--workspace-dep` requires the dep's
     // `--extern-wasm-crate` mapping in EITHER mode. The wasm crate is generated but never built.
     let consumer_out = base.join("export_flavored_consumer");
-    let c = tool_cmd("cargo")
-        .arg("run")
-        .arg("--")
+    let c = codegen_cmd()
         .arg("--input=tests/workspace-requests/consumer_inputs_flavored")
         .arg("--output=tests/workspace-requests/export_flavored_consumer")
         .arg("--lib-name=flavored-consumer")
@@ -10584,9 +10609,7 @@ fn workspace_key_requests_flavored_contract() {
     // emitted. This pins the fix for the "silently ignored under --wasm=false" gap: pre-fix this leg
     // emitted no sidecar (and no `mod borrowed_key_types;` decl) at all.
     let consumer_rustonly_out = base.join("export_flavored_consumer_rustonly");
-    let cr = tool_cmd("cargo")
-        .arg("run")
-        .arg("--")
+    let cr = codegen_cmd()
         .arg("--input=tests/workspace-requests/consumer_inputs_flavored")
         .arg("--output=tests/workspace-requests/export_flavored_consumer_rustonly")
         .arg("--lib-name=flavored-consumer")
@@ -10624,9 +10647,7 @@ fn workspace_key_requests_flavored_contract() {
     let gen_dep = |out: &str, key_sidecar: &std::path::Path| -> std::process::Output {
         let out_dir = base.join(out);
         let _ = std::fs::remove_dir_all(&out_dir);
-        tool_cmd("cargo")
-            .arg("run")
-            .arg("--")
+        codegen_cmd()
             .arg("--input=tests/workspace-requests/dep_inputs_flavored")
             .arg(format!("--output=tests/workspace-requests/{out}"))
             .arg("--lib-name=wr-dep")
@@ -10793,9 +10814,7 @@ fn workspace_key_requests_scoped_contract() {
     // the locally-minted `BTreeMap<ScopedKey, _>` deserializes the dep type (the scoped-borrow analog
     // of the flavored contract's override); it does NOT affect the scoped self-check path.
     let consumer_out = base.join("export_scoped_consumer");
-    let c = tool_cmd("cargo")
-        .arg("run")
-        .arg("--")
+    let c = codegen_cmd()
         .arg("--input=tests/workspace-requests/consumer_inputs_scoped")
         .arg("--output=tests/workspace-requests/export_scoped_consumer")
         .arg("--lib-name=scoped-consumer")
@@ -10838,9 +10857,7 @@ fn workspace_key_requests_scoped_contract() {
     // ===== Leg (b): DEP DERIVE — --key-requests resolves the bare `scoped_key` against the SCOPED rule.
     let sidecar_abs = consumer_out.join(sidecar_rel).canonicalize().unwrap();
     let dep_out = base.join("export_scoped_dep");
-    let d = tool_cmd("cargo")
-        .arg("run")
-        .arg("--")
+    let d = codegen_cmd()
         .arg("--input=tests/workspace-requests/dep_inputs_scoped")
         .arg("--output=tests/workspace-requests/export_scoped_dep")
         .arg("--lib-name=wr-dep")
@@ -10904,9 +10921,7 @@ fn workspace_dep_unknown_is_rejected_under_wasm_false() {
     }
     let out = "tests/workspace-requests/export_wsdep_reject_scratch";
     let _ = std::fs::remove_dir_all(out);
-    let o = tool_cmd("cargo")
-        .arg("run")
-        .arg("--")
+    let o = codegen_cmd()
         .arg("--input=tests/workspace-requests/consumer_inputs_flavored")
         .arg(format!("--output={out}"))
         .arg("--lib-name=flavored-consumer")
@@ -10941,9 +10956,7 @@ fn extern_wrapper_index_is_validated_under_wasm_false() {
     // without `--wasm`.
     let unknown_out = "tests/workspace-requests/export_ewi_unknown_scratch";
     let _ = std::fs::remove_dir_all(unknown_out);
-    let o = tool_cmd("cargo")
-        .arg("run")
-        .arg("--")
+    let o = codegen_cmd()
         .arg("--input=tests/workspace-requests/consumer_inputs_flavored")
         .arg(format!("--output={unknown_out}"))
         .arg("--lib-name=flavored-consumer")
@@ -10971,9 +10984,7 @@ fn extern_wrapper_index_is_validated_under_wasm_false() {
     std::fs::write(&idx_file, "struct NotAReExport;\n").unwrap();
     let malformed_out = "tests/workspace-requests/export_ewi_malformed_scratch";
     let _ = std::fs::remove_dir_all(malformed_out);
-    let o = tool_cmd("cargo")
-        .arg("run")
-        .arg("--")
+    let o = codegen_cmd()
         .arg("--input=tests/workspace-requests/consumer_inputs_flavored")
         .arg(format!("--output={malformed_out}"))
         .arg("--lib-name=flavored-consumer")
@@ -11030,9 +11041,7 @@ fn workspace_requests_alias_elements_host() {
     .unwrap();
     let out = base.join("export_aliases");
     let _ = std::fs::remove_dir_all(&out);
-    let o = tool_cmd("cargo")
-        .arg("run")
-        .arg("--")
+    let o = codegen_cmd()
         .arg("--input=tests/workspace-requests/dep_inputs_aliases")
         .arg("--output=tests/workspace-requests/export_aliases")
         .arg("--lib-name=wr-dep")
@@ -11114,9 +11123,7 @@ fn workspace_requests_hosts_cross_scope_elements() {
     };
     let gen_dep = |input: &str, output: &str, sidecar: &std::path::Path| -> std::process::Output {
         let _ = std::fs::remove_dir_all(base.join(output));
-        tool_cmd("cargo")
-            .arg("run")
-            .arg("--")
+        codegen_cmd()
             .arg(format!("--input=tests/workspace-requests/{input}"))
             .arg(format!("--output=tests/workspace-requests/{output}"))
             .arg("--lib-name=wr-dep")
@@ -11250,9 +11257,7 @@ fn workspace_requests_cohosted_keys_list_no_self_import() {
     .unwrap();
     let out = base.join("export_cohosted_keys");
     let _ = std::fs::remove_dir_all(&out);
-    let o = tool_cmd("cargo")
-        .arg("run")
-        .arg("--")
+    let o = codegen_cmd()
         .arg("--input=tests/workspace-requests/dep_inputs_cohosted_keys")
         .arg("--output=tests/workspace-requests/export_cohosted_keys")
         .arg("--lib-name=wr-dep")
@@ -11345,9 +11350,7 @@ fn workspace_requests_two_shapes_one_name_is_a_hard_error() {
     .unwrap();
     let out = base.join("export_e4_unit");
     let _ = std::fs::remove_dir_all(&out);
-    let o = tool_cmd("cargo")
-        .arg("run")
-        .arg("--")
+    let o = codegen_cmd()
         .arg(format!("--input={}", scratch.to_str().unwrap()))
         .arg(format!("--output={}", out.to_str().unwrap()))
         .arg("--lib-name=wr-dep")
@@ -11471,10 +11474,8 @@ fn workspace_regen_two_consumer_contract() {
         if wipe {
             let _ = std::fs::remove_dir_all(&out_dir);
         }
-        let mut cmd = tool_cmd("cargo");
-        cmd.arg("run")
-            .arg("--")
-            .arg(format!("--input=tests/workspace-regen/{input}"))
+        let mut cmd = codegen_cmd();
+        cmd.arg(format!("--input=tests/workspace-regen/{input}"))
             .arg(format!("--output=tests/workspace-regen/{output}"))
             .arg(format!("--lib-name={lib_name}"))
             .arg("--wasm=true")
@@ -11491,10 +11492,8 @@ fn workspace_regen_two_consumer_contract() {
         if wipe {
             let _ = std::fs::remove_dir_all(&out_dir);
         }
-        let mut cmd = tool_cmd("cargo");
-        cmd.arg("run")
-            .arg("--")
-            .arg("--input=tests/workspace-regen/dep_inputs")
+        let mut cmd = codegen_cmd();
+        cmd.arg("--input=tests/workspace-regen/dep_inputs")
             .arg(format!("--output=tests/workspace-regen/{output}"))
             .arg("--lib-name=regen-dep")
             .arg("--wasm=true")
@@ -11896,8 +11895,7 @@ fn deserialize_depth_limit_guards_recursion() {
 
     // (a) generate WITH the guard + emitted tests
     let out_on = scratch.join("on");
-    let gen_on = tool_cmd("cargo")
-        .args(["run", "--"])
+    let gen_on = codegen_cmd()
         .arg(format!("--input={}", input.to_str().unwrap()))
         .arg(format!("--output={}", out_on.to_str().unwrap()))
         .arg("--wasm=false")
@@ -11969,8 +11967,7 @@ fn hostile_deep_rejects_without_aborting() {
 
     // (d) default-off must not emit the guard anywhere — the cheap byte-identical-default check.
     let out_off = scratch.join("off");
-    let gen_off = tool_cmd("cargo")
-        .args(["run", "--"])
+    let gen_off = codegen_cmd()
         .arg(format!("--input={}", input.to_str().unwrap()))
         .arg(format!("--output={}", out_off.to_str().unwrap()))
         .arg("--wasm=false")
@@ -12017,8 +12014,7 @@ fn deserialize_depth_limit_guards_any_member() {
     let input = scratch.join("holder.cddl");
     std::fs::write(&input, "holder = [inner: any]\n").unwrap();
 
-    let gen_out = tool_cmd("cargo")
-        .args(["run", "--"])
+    let gen_out = codegen_cmd()
         .arg(format!("--input={}", input.to_str().unwrap()))
         .arg(format!("--output={}", out.to_str().unwrap()))
         .arg("--wasm=false")
@@ -12344,8 +12340,7 @@ fn feature_corpus_roundtrips_nondefault_profiles() {
             let label = format!("{stem}/{profile}");
             let skipped = SKIP.iter().any(|(p, s, _)| p == profile && s == &stem);
             let out = root.join(format!("{stem}__{profile}"));
-            let gen_out = tool_cmd("cargo")
-                .args(["run", "--"])
+            let gen_out = codegen_cmd()
                 .arg(format!("--input={}", input.to_str().unwrap()))
                 .arg(format!("--output={}", out.to_str().unwrap()))
                 .arg("--wasm=true")
@@ -12821,7 +12816,7 @@ fn header_mutants_pin_hand_derived_bytes() {
 
 /// Generate a crate from `spec` into `out` (default flags unless `extra` adds e.g.
 /// `--preserve-encodings=true`), no `--wasm`, no `--emit-tests` — replay needs only the lib. Returns
-/// the `cargo run` result so the caller can tell a generation abort (float `unimplemented!` under
+/// the generator's `Output` so the caller can tell a generation abort (float `unimplemented!` under
 /// preserve) from a later compile/decode outcome. The generator uses the repo's warm `./target`
 /// exactly like `feature_corpus_compiles`; only the generated crate's own `cargo test` is redirected
 /// to the shared scratch target.
@@ -12834,8 +12829,7 @@ fn decode_replay_generate(
     std::fs::create_dir_all(out).unwrap();
     let spec_file = out.join("__spec.cddl");
     std::fs::write(&spec_file, format!("{}\n", spec.trim_end_matches('\n'))).unwrap();
-    tool_cmd("cargo")
-        .args(["run", "--"])
+    codegen_cmd()
         .arg(format!("--input={}", spec_file.to_str().unwrap()))
         .arg(format!("--output={}", out.join("crate").to_str().unwrap()))
         .arg("--wasm=false")
@@ -13702,15 +13696,14 @@ fn decode_replay_run(
 /// `--json-schema-export`, NO preserve). This produces BOTH `out/crate/rust` (with serde derives on the
 /// rust types) and `out/crate/wasm` (the thin `#[wasm_bindgen]` wrapper crate, path-dep on `../rust`).
 /// The default lib name (`cddl-lib` / code `cddl_lib`) is unchanged — the wasm test module references
-/// the rust crate as `cddl_lib`. Sibling of `decode_replay_generate`; returns `cargo run`'s Output so a
+/// the rust crate as `cddl_lib`. Sibling of `decode_replay_generate`; returns the generator's Output so a
 /// generation abort is distinguishable from a later compile/decode outcome.
 fn decode_replay_generate_json_wasm(spec: &str, out: &std::path::Path) -> std::process::Output {
     let _ = std::fs::remove_dir_all(out);
     std::fs::create_dir_all(out).unwrap();
     let spec_file = out.join("__spec.cddl");
     std::fs::write(&spec_file, format!("{}\n", spec.trim_end_matches('\n'))).unwrap();
-    tool_cmd("cargo")
-        .args(["run", "--"])
+    codegen_cmd()
         .arg(format!("--input={}", spec_file.to_str().unwrap()))
         .arg(format!("--output={}", out.join("crate").to_str().unwrap()))
         .arg("--wasm=true")
@@ -17108,8 +17101,7 @@ fn export_static_crate_warns_on_new_files_only() {
     let runtime_crate = root.join("exported-runtime");
 
     let export = || -> String {
-        let run = tool_cmd("cargo")
-            .args(["run", "--"])
+        let run = codegen_cmd()
             .arg(format!("--input={}", input.to_str().unwrap()))
             .arg(format!("--output={}", out.to_str().unwrap()))
             .arg("--wasm=false")
