@@ -548,6 +548,14 @@ function main() {
   }
   console.log(line);
 
+  // ---- refresh the measured-duration digest ---------------------------------------------------
+  // Runs on EVERY invocation, including a failing one: the rule is a median over a few thousand
+  // local rows, so it costs sub-millisecond and there is no reason to defer it behind a bless step
+  // that would rot. It is silent unless a deadband tripped, and it can never turn a green run red —
+  // durations are nondeterministic, and a failure to write a number is not a failure of the repo.
+  if (sh(["bun", "run", "project_timings.ts", "--update"], MATRIX) !== 0)
+    console.log("check.ts: timings digest refresh failed (non-fatal — durations are never a gate)");
+
   const fails = REGISTRY.filter(g => results.get(g.id)!.out.status === "FAIL").map(g => g.id);
   if (fails.length) {
     console.log(`RESULT: FAIL — ${fails.length} gate(s) failed: ${fails.join(", ")}`);
