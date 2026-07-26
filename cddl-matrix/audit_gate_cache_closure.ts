@@ -59,12 +59,18 @@
  * Mechanics: the trace forces every cell to MISS (fresh `GATE_CACHE_DIR` mkdtemp) so the nested work
  * — incl. the lockfile preflight — actually RUNS and is auditable, without touching the real
  * `.gate-cache/`. Membership: a pid is in a nested-cargo subtree iff its NEAREST ancestor-or-self
- * that execve'd a qualifying cargo (subcommand in {test, check, build, generate-lockfile}) is NOT
- * the traced ROOT command. The root is itself a `cargo test`, so it is excluded by construction; the
- * generator's `cargo run` is not qualifying, so the generator's repo reads (static/, fixtures) are
- * excluded via the same nearest-ancestor rule; rustc/test-binary children inherit their subtree
- * root's membership. Deliberately, the nested `cargo test`'s generated TEST BINARY is INSIDE a
- * nested subtree — an emitted test that reads an external file at runtime is exactly a finding.
+ * that execve'd an AUDITED cargo (a qualifying subcommand in {test, check, build, generate-lockfile},
+ * minus the two harness-setup exclusions below) is NOT the traced ROOT command. The root is itself a
+ * `cargo test`, so it is excluded by construction; the generator's `cargo run` is not qualifying, so
+ * the generator's repo reads (static/, fixtures) are excluded via the same nearest-ancestor rule;
+ * rustc/test-binary children inherit their subtree root's membership. Deliberately, the nested
+ * `cargo test`'s generated TEST BINARY is INSIDE a nested subtree — an emitted test that reads an
+ * external file at runtime is exactly a finding.
+ *
+ * The second harness-setup exclusion is the generator FRESHNESS BUILD — `isOwnGeneratorFreshnessBuild`
+ * below; soundness argument at that function. Both exclusions are the same category as excluding the
+ * root: a build of the TOOL UNDER TEST, not of a generated crate, and not work any cell's verdict can
+ * be skipped on.
  *
  * Scope caveats (documented, not silent): only successful reads with an fd >= 0 and a `-y` path
  * annotation are counted; `O_DIRECTORY`/`O_PATH` opens are excluded (not file-content reads); a
@@ -150,21 +156,81 @@ export function isContentRead(flags: string): boolean {
   return flags.includes("O_RDONLY") || flags.includes("O_RDWR");
 }
 
+// A path is under one of the given boundary prefixes (`/a` matches `/a` and `/a/b`, never `/ab`).
+// Declared here because the nested-cargo membership rule below needs it as well as `classifyPath`.
+const underAny = (path: string, prefixes: string[]): boolean =>
+  prefixes.some(p => p !== "" && (path === p || path.startsWith(p.endsWith("/") ? p : p + "/")));
+
 export function isQualifyingCargo(argv: string[] | undefined): boolean {
   if (!argv || argv.length < 2) return false;
   if (argv[0] !== "cargo" && basename(argv[0]) !== "cargo") return false;
   return QUALIFYING_SUBCOMMANDS.has(argv[1]);
 }
 
-// The nested-cargo subtree root a pid belongs to: nearest ancestor-or-self that execve'd a qualifying
+// The value of a cargo option, accepting both `--opt value` and `--opt=value`. Scans only the OPTION
+// region: a bare `--` ends it (everything after belongs to the built/run binary, so a `--bin` there is
+// not cargo's).
+export function cargoOptValue(argv: string[], opt: string): string | null {
+  for (let i = 1; i < argv.length; i++) {
+    if (argv[i] === "--") return null;
+    if (argv[i] === opt) return argv[i + 1] ?? null;
+    if (argv[i].startsWith(`${opt}=`)) return argv[i].slice(opt.length + 1);
+  }
+  return null;
+}
+
+// The generator FRESHNESS BUILD: `cargo build --bin cddl-codegen --target-dir <this repo>/target`,
+// run ONCE per test process behind the `GENERATOR_BIN` OnceLock in `src/tests/integration_tests.rs`
+// (`generator_bin`) so the generation call sites can spawn the binary directly instead of paying a
+// `cargo run` freshness check — and the repo `target/` build lock — per generation.
+//
+// It is a genuine nested cargo inside the traced subtree and it does read the repo checkout
+// (`Cargo.toml`, `Cargo.lock`, `target/.rustc_info.json`, ~300 `target/debug/.fingerprint/**`), none
+// of it hashed into any cell's key. It is nonetheless NOT a cached site, and excluding it does not
+// weaken the audit:
+//   - It is a build of the TOOL UNDER TEST, not of a generated crate — the same category as the
+//     traced root (itself a `cargo test`) and the generator's own `cargo run`, both already excluded.
+//   - No cell's verdict can be skipped on it. `run_cached` is handed an ALREADY-GENERATED tree
+//     (it hashes `generated_root` to compute the key), so generation — and therefore this build —
+//     happens unconditionally BEFORE the cache is consulted, on the hit path as well as the miss
+//     path. Every one of `run_cached`'s six `build` closures spawns cargo in a GENERATED crate
+//     directory with `CARGO_TARGET_DIR` pointed at a scratch target; none can match this argv.
+//   - The generator's identity still reaches the key — through the generated crate TREE hash, which
+//     the key already covers. A generator change that alters output changes the tree, hence the key;
+//     a change that does not alter output cannot change a verdict.
+// Keyed tightly on purpose: this repo's own bin target (`--bin cddl-codegen`) built into a target dir
+// INSIDE this checkout. Not a blanket `cargo build` exemption, not `--bin` alone, and not a target dir
+// elsewhere — a target dir outside the checkout stays audited and FAILs loudly rather than being
+// silently exempted (the safe direction: the caller passes both the literal and realpath'd repo
+// prefixes, so only an unrecognised layout, not a symlinked one, lands there).
+export function isOwnGeneratorFreshnessBuild(argv: string[] | undefined, repoPrefixes: string[]): boolean {
+  if (!argv || argv.length < 2) return false;
+  if (argv[0] !== "cargo" && basename(argv[0]) !== "cargo") return false;
+  if (argv[1] !== "build") return false;
+  if (cargoOptValue(argv, "--bin") !== "cddl-codegen") return false;
+  const targetDir = cargoOptValue(argv, "--target-dir");
+  if (targetDir === null || targetDir === "") return false;
+  return underAny(resolve(targetDir), repoPrefixes);
+}
+
+// A nested cargo whose reads the audit scrutinizes: qualifying, minus the harness-setup builds of the
+// tool under test that no cached verdict depends on.
+export function isAuditedNestedCargo(argv: string[] | undefined, repoPrefixes: string[]): boolean {
+  return isQualifyingCargo(argv) && !isOwnGeneratorFreshnessBuild(argv, repoPrefixes);
+}
+
+// The nested-cargo subtree root a pid belongs to: nearest ancestor-or-self that execve'd an AUDITED
 // cargo, EXCLUDING the traced root pid (itself a `cargo test`, whose subtree legitimately reads the
 // whole repo compiling the harness). null => the pid is not inside any nested-cargo subtree.
-export function owningNestedCargo(pid: number, m: ProcModel): number | null {
+// A non-audited cargo is SKIPPED, not terminal: the climb continues past it, so a freshness-build-
+// shaped cargo nested inside a real nested cargo would still have its reads attributed to that
+// enclosing subtree.
+export function owningNestedCargo(pid: number, m: ProcModel, repoPrefixes: string[]): number | null {
   let cur: number | undefined = pid;
   const seen = new Set<number>();
   while (cur !== undefined && !seen.has(cur)) {
     seen.add(cur);
-    if (cur !== m.rootPid && isQualifyingCargo(m.argv.get(cur))) return cur;
+    if (cur !== m.rootPid && isAuditedNestedCargo(m.argv.get(cur), repoPrefixes)) return cur;
     cur = m.parent.get(cur);
   }
   return null;
@@ -189,9 +255,6 @@ export interface Boundaries {
 // by the hashed lockfile). No repo checkout or user content lives there (user Windows drives mount
 // under /mnt/<drive-letter>, which stays unclassified).
 const SYSTEM_PREFIXES = ["/usr", "/lib", "/lib64", "/lib32", "/etc", "/proc", "/sys", "/dev", "/opt", "/run", "/bin", "/sbin", "/mnt/wsl"];
-
-const underAny = (path: string, prefixes: string[]): boolean =>
-  prefixes.some(p => p !== "" && (path === p || path.startsWith(p.endsWith("/") ? p : p + "/")));
 
 // Order matters: tmp/cargo/rustup/user-git-config are checked before `repo`/`home` (they may live
 // under $HOME); `repo` before the system + home-generic classes so a repo path never masquerades as
@@ -247,10 +310,47 @@ function selfTest(): void {
   if (isQualifyingCargo(["cargo", "run", "--", "--input=x"])) fail("cargo run does NOT qualify");
   if (isQualifyingCargo(["rustc", "--edition=2018"])) fail("rustc does not qualify");
 
-  // membership: root cargo test excluded; nested check included; generator cargo run excluded.
+  // cargo option-value extraction (both spellings; the `--` boundary ends the option region)
+  eq(cargoOptValue(["cargo", "build", "--bin", "cddl-codegen"], "--bin"), "cddl-codegen", "--opt value");
+  eq(cargoOptValue(["cargo", "build", "--bin=cddl-codegen"], "--bin"), "cddl-codegen", "--opt=value");
+  eq(cargoOptValue(["cargo", "build"], "--bin"), null, "absent option");
+  eq(cargoOptValue(["cargo", "build", "--bin"], "--bin"), null, "option with no value");
+  eq(cargoOptValue(["cargo", "run", "--", "--bin", "x"], "--bin"), null, "option region ends at bare --");
+  eq(cargoOptValue(["cargo", "build", "--bin", "cddl-codegen"], "--bins"), null, "prefix is not a match");
+
+  // the generator freshness build (`generator_bin`) — the ONE exempted nested cargo. Tightly keyed:
+  // this repo's own bin target, built into a target dir inside this checkout. Everything else stays
+  // audited, and the exemption never widens to a blanket `cargo build`.
+  const REPO = ["/home/u/git/cddl-codegen"];
+  const freshness = ["/home/u/.rustup/toolchains/1.96.1-x86_64-unknown-linux-gnu/bin/cargo", "build",
+                     "--bin", "cddl-codegen", "--target-dir", "/home/u/git/cddl-codegen/target"];
+  if (!isOwnGeneratorFreshnessBuild(freshness, REPO)) fail("the observed generator freshness-build argv is exempt");
+  if (!isOwnGeneratorFreshnessBuild(["cargo", "build", "--bin=cddl-codegen", "--target-dir=/home/u/git/cddl-codegen/target"], REPO))
+    fail("freshness build in --opt=value spelling is exempt");
+  if (!isOwnGeneratorFreshnessBuild(["cargo", "build", "--bin", "cddl-codegen", "--release", "--target-dir", "/home/u/git/cddl-codegen/target"], REPO))
+    fail("the --release freshness build is exempt");
+  if (isOwnGeneratorFreshnessBuild(["cargo", "build", "--target-dir", "/home/u/git/cddl-codegen/target"], REPO))
+    fail("NOT a blanket `cargo build` exemption (no --bin)");
+  if (isOwnGeneratorFreshnessBuild(["cargo", "build", "--bin", "cddl-codegen"], REPO))
+    fail("NOT exempt without an explicit --target-dir");
+  if (isOwnGeneratorFreshnessBuild(["cargo", "build", "--bin", "cddl-codegen", "--target-dir", "/tmp/cddl_codegen_x/target"], REPO))
+    fail("NOT exempt for a target dir outside the checkout");
+  if (isOwnGeneratorFreshnessBuild(["cargo", "build", "--bin", "some-generated-bin", "--target-dir", "/home/u/git/cddl-codegen/target"], REPO))
+    fail("NOT exempt for another bin target");
+  if (isOwnGeneratorFreshnessBuild(["cargo", "check", "--bin", "cddl-codegen", "--target-dir", "/home/u/git/cddl-codegen/target"], REPO))
+    fail("NOT exempt for a subcommand other than `build`");
+  if (isOwnGeneratorFreshnessBuild(["cargo", "build", "--target-dir", "/home/u/git/cddl-codegen/target", "--", "--bin", "cddl-codegen"], REPO))
+    fail("a --bin after the bare -- does not earn the exemption");
+  // A generated crate's own cargo stays audited even when it shares the build subcommand.
+  if (!isAuditedNestedCargo(["cargo", "build", "--target-dir", "/tmp/cddl_codegen_x/target"], REPO))
+    fail("a generated-crate cargo build stays audited");
+  if (isAuditedNestedCargo(freshness, REPO)) fail("the freshness build is not an audited nested cargo");
+
+  // membership: root cargo test excluded; nested check included; generator cargo run excluded; the
+  // generator freshness build excluded along with its rustc children.
   const model: ProcModel = {
     rootPid: 1,
-    parent: new Map([[2, 1], [3, 2], [4, 2], [5, 4], [6, 3]]),
+    parent: new Map([[2, 1], [3, 2], [4, 2], [5, 4], [6, 3], [7, 2], [8, 7], [9, 4], [10, 9]]),
     argv: new Map<number, string[]>([
       [1, ["cargo", "test", "--bin", "cddl-codegen", GATE]], // root (excluded even though `test`)
       [2, ["cddl-codegen", "--test-binary"]],                // the test binary
@@ -258,14 +358,22 @@ function selfTest(): void {
       [4, ["cargo", "check"]],                               // nested check — qualifies
       [5, ["rustc", "x"]],                                   // child of nested check — inherits
       [6, ["rustc", "x"]],                                   // child of generator — excluded
+      [7, freshness],                                        // generator freshness build — exempt
+      [8, ["rustc", "x"]],                                   // child of the freshness build — excluded
+      [9, freshness],                                        // freshness-shaped, but INSIDE pid 4
+      [10, ["rustc", "x"]],                                  // its child — still owned by pid 4
     ]),
   };
-  eq(owningNestedCargo(1, model), null, "root excluded");
-  eq(owningNestedCargo(2, model), null, "test binary not nested");
-  eq(owningNestedCargo(3, model), null, "generator cargo run excluded");
-  eq(owningNestedCargo(6, model), null, "rustc under generator excluded");
-  eq(owningNestedCargo(4, model), 4, "nested check is its own root");
-  eq(owningNestedCargo(5, model), 4, "rustc under nested check inherits");
+  eq(owningNestedCargo(1, model, REPO), null, "root excluded");
+  eq(owningNestedCargo(2, model, REPO), null, "test binary not nested");
+  eq(owningNestedCargo(3, model, REPO), null, "generator cargo run excluded");
+  eq(owningNestedCargo(6, model, REPO), null, "rustc under generator excluded");
+  eq(owningNestedCargo(4, model, REPO), 4, "nested check is its own root");
+  eq(owningNestedCargo(5, model, REPO), 4, "rustc under nested check inherits");
+  eq(owningNestedCargo(7, model, REPO), null, "generator freshness build excluded");
+  eq(owningNestedCargo(8, model, REPO), null, "rustc under the freshness build excluded");
+  eq(owningNestedCargo(9, model, REPO), 4, "an exempt cargo is skipped, not terminal — the climb continues");
+  eq(owningNestedCargo(10, model, REPO), 4, "a read under it is still attributed to the enclosing nested cargo");
 
   // classification (allowed vs FAIL classes)
   const b: Boundaries = {
@@ -424,15 +532,9 @@ async function main(): Promise<void> {
     if (cl && !model.parent.has(cl.child)) model.parent.set(cl.child, cl.parent);
   });
 
-  // Vacuity floor: at least one nested-cargo subtree (a qualifying cargo pid other than the root).
-  const nestedRoots = new Set<number>();
-  for (const [pid, argv] of model.argv)
-    if (pid !== model.rootPid && isQualifyingCargo(argv)) nestedRoots.add(pid);
-  if (nestedRoots.size === 0) {
-    console.error(`HARNESS FAILURE: traced gate '${GATE}' spawned ZERO nested-cargo subtrees (qualifying subcommands: ${[...QUALIFYING_SUBCOMMANDS].sort().join(", ")}). The audit refuses to pass on a vacuous trace — point CLOSURE_AUDIT_GATE at a gate that runs nested cargo.`);
-    process.exit(2);
-  }
-
+  // Boundaries are needed before the vacuity floor: the generator-freshness-build exemption is keyed
+  // on this checkout's own target dir, and an exempt cargo must not count as an audited subtree either
+  // (a trace whose ONLY nested cargo were the freshness build is vacuous for this audit's purposes).
   const b: Boundaries = {
     tmp: boundaryPrefixes(process.env.TMPDIR || tmpdir()),
     cargoHome: boundaryPrefixes(process.env.CARGO_HOME || join(homedir(), ".cargo")),
@@ -448,6 +550,15 @@ async function main(): Promise<void> {
   // std::env::temp_dir()); include it so a differing TMPDIR doesn't spuriously flag /tmp scratch.
   b.tmp = [...new Set([...b.tmp, ...boundaryPrefixes("/tmp")])];
 
+  // Vacuity floor: at least one nested-cargo subtree (an audited cargo pid other than the root).
+  const nestedRoots = new Set<number>();
+  for (const [pid, argv] of model.argv)
+    if (pid !== model.rootPid && isAuditedNestedCargo(argv, b.repo)) nestedRoots.add(pid);
+  if (nestedRoots.size === 0) {
+    console.error(`HARNESS FAILURE: traced gate '${GATE}' spawned ZERO nested-cargo subtrees (qualifying subcommands: ${[...QUALIFYING_SUBCOMMANDS].sort().join(", ")}). The audit refuses to pass on a vacuous trace — point CLOSURE_AUDIT_GATE at a gate that runs nested cargo.`);
+    process.exit(2);
+  }
+
   // Pass 2: classify every content read made from inside a nested-cargo subtree.
   const classCounts = new Map<string, number>();
   const uniquePaths = new Map<string, Set<string>>();
@@ -457,7 +568,7 @@ async function main(): Promise<void> {
   await forEachLine(straceLog, (line) => {
     const rd = parseRead(line);
     if (!rd || !isContentRead(rd.flags)) return;
-    const owner = owningNestedCargo(rd.pid, model);
+    const owner = owningNestedCargo(rd.pid, model, b.repo);
     if (owner === null) return; // not inside a nested-cargo subtree
     nestedReads++;
     const cls = classifyPath(rd.path, b);
