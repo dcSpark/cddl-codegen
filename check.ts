@@ -49,12 +49,13 @@
  *   - adding a direct `run: cargo test` step to build.yml -> meta-check 3 FAILED (bypasses registry)
  *   canaries reverted after confirming red.
  */
-import { existsSync, readFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import {
-  appendRows, compactDur, machineId, parseLog, readDigest, readLedger, splitLogName, tierWindow,
-  upsert, writeLedger, type Digest, type GateRow, type Row, type RunRow,
+  appendRows, cellCountsFor, compactDur, keptRunKeys, machineId, parseLog, readCells, readDigest,
+  readLedger, runKeysInOrder, splitLogName, tierWindow, trimCellLines, trimRows, upsert, writeLedger,
+  KEEP_RUNS_IN_CELLS, type Digest, type GateRow, type Row, type RunRow,
 } from "./cddl-matrix/project_timings.ts";
 
 const ROOT = import.meta.dir;
@@ -842,13 +843,24 @@ export function runRow(c: RunContext, done?: { wall_ms: number; verdict: "pass" 
   };
 }
 
-/** Field-for-field the backfill parser's gate row, so `--update` consumes both without a branch. */
+/**
+ * Field-for-field the backfill parser's gate row, so `--update` consumes both without a branch.
+ *
+ * `cells` arrives only at end of run, joined from the cell file by `(log, gate)` — the counts cannot
+ * be known while the gate is still running. It is what keeps a live row from being strictly WORSE
+ * than a backfilled one: `cacheCounterExample` reads `cells_cached` off gate rows, so without this
+ * the ETA's warm-cache sentence could only ever be fed by pre-emission history and would fall silent
+ * as that aged out.
+ */
 export function gateRow(
   c: RunContext, gate: string, status: "pass" | "fail" | "skipped", ms: number,
+  cells?: { run: number; cached: number },
 ): GateRow {
   return {
     v: 1, kind: "gate", run: c.run, tier: c.tier, gate, status, ms: Math.round(ms),
-    gate_cache_enabled: c.gate_cache_enabled, machine: c.machine, log: c.log, src: "run",
+    gate_cache_enabled: c.gate_cache_enabled,
+    ...(cells ? { cells_run: cells.run, cells_cached: cells.cached } : {}),
+    machine: c.machine, log: c.log, src: "run",
   };
 }
 
@@ -858,15 +870,38 @@ function emit(rows: Row[]): void {
 }
 
 /**
- * Collapse the run's start row onto its completed one. This is the only place check.ts rewrites the
- * ledger rather than appending to it, and the failure direction if a concurrent run appends during
- * the read-modify-write is that run's LAST few gate rows going missing — which retention's per-file
- * interlock then reads as "not scraped" and keeps the log for. Logs accumulating, never history
- * vanishing, is the same direction every other interlock here fails in.
+ * End of run: collapse the run row, join the cell counts onto the gate rows, and trim both files.
+ *
+ * This is the only place check.ts rewrites the ledger rather than appending to it, and the failure
+ * direction if a concurrent run appends during the read-modify-write is that run's LAST few gate rows
+ * going missing — which retention's per-file interlock then reads as "not scraped" and keeps the log
+ * for. Logs accumulating, never history vanishing, is the direction every interlock here fails in.
+ *
+ * Trimming lives HERE, in the path every run takes, rather than behind a `--trim` mode someone has to
+ * remember: a maintenance step that depends on being remembered is the same rot the self-updating
+ * digest exists to avoid. The interlock that makes it safe is in `keptRunKeys` — a run whose log is
+ * still on disk is never trimmed out, because retention needs that row to release that log.
  */
-function finalizeRun(c: RunContext, wallMs: number, verdict: "pass" | "fail"): void {
+function finalizeRun(
+  c: RunContext, wallMs: number, verdict: "pass" | "fail",
+  gates: { gate: string; status: "pass" | "fail" | "skipped"; ms: number }[],
+): void {
   try {
-    writeLedger(upsert(readLedger(LEDGER), [runRow(c, { wall_ms: wallMs, verdict })]), LEDGER);
+    const counts = cellCountsFor(readCells(CELLS), c.log);
+    const merged = upsert(readLedger(LEDGER), [
+      runRow(c, { wall_ms: wallMs, verdict }),
+      // Re-emitting every gate row the run already appended: same `(log, gate)` key, so each lands on
+      // its own earlier row and gains the counts. A killed run keeps the count-less rows it appended.
+      ...gates.map(g => gateRow(c, g.gate, g.status, g.ms, counts.get(g.gate))),
+    ]);
+    const logsOnDisk = new Set(existsSync(LOGS_DIR) ? readdirSync(LOGS_DIR) : []);
+    const trimmed = trimRows(merged, keptRunKeys(merged, { logsOnDisk }));
+    writeLedger(trimmed, LEDGER);
+    if (existsSync(CELLS)) {
+      const keepCells = new Set(runKeysInOrder(trimmed).slice(-KEEP_RUNS_IN_CELLS));
+      const kept = trimCellLines(readFileSync(CELLS, "utf8").split("\n"), keepCells);
+      writeFileSync(CELLS, kept.length ? kept.join("\n") + "\n" : "");
+    }
   } catch { /* measurements are not a gate */ }
 }
 
@@ -914,11 +949,19 @@ function main() {
     // `src/tests/timing_cells.rs`). Set only when this run is already emitting, so a suite run by
     // hand — and CI, and `--help` — stays byte-for-byte what it was.
     process.env.CDDL_TIMING_CELLS = CELLS;
+    // The run scoping a cell row cannot know for itself. Without the log basename its rows can be
+    // tied back to this run only by guessing at timestamp windows, and the end-of-run join that
+    // feeds `cells_cached` onto the gate rows has nothing to key on.
+    process.env.CDDL_TIMING_LOG = ctx.log;
   }
 
   warmupThenOffline(tier);
 
   const results = new Map<string, { out: Outcome; ms: number }>();
+  // The gates that actually executed and appended a row, in order — the exact set finalizeRun
+  // re-emits with cell counts joined on. Not derivable from `results`, which also holds the stub and
+  // not-in-tier gates that never printed a line and never emitted anything.
+  const emitted: { gate: string; status: "pass" | "fail" | "skipped"; ms: number }[] = [];
   let anyFail = false;
   let aborted = false;
   const wall0 = performance.now();
@@ -933,6 +976,10 @@ function main() {
     if (aborted) { results.set(g.id, { out: { status: "SKIPPED", reason: "earlier failure; fail-fast" }, ms: 0 }); continue; }
 
     console.log(`\n=== [${g.tier}] ${g.id} — ${g.desc} ===`);
+    // The REGISTRY gate a cell belongs to — knowable only here. The emitter labels the Rust side
+    // has (`feature_corpus_compiles`, …) are three-quarters cell names inside the `test` gate, so a
+    // cell row must not present one as a gate id; it carries both, and this is the half that is true.
+    if (ctx) process.env.CDDL_TIMING_GATE = g.id;
     const t0 = performance.now();
     let out: Outcome;
     if (g.kind === "cmd") {
@@ -947,7 +994,11 @@ function main() {
     // Emitted HERE, beside the prose line, and for the same reason it is printed here: a run killed
     // at gate 30 of 42 keeps 30 measurements. Only PASS/FAIL/SKIPPED reach this point — stub and
     // not-in-tier gates never execute and never print a line, so the row set matches the prose set.
-    if (ctx) emit([gateRow(ctx, g.id, out.status === "PASS" ? "pass" : out.status === "FAIL" ? "fail" : "skipped", ms)]);
+    if (ctx) {
+      const status = out.status === "PASS" ? "pass" : out.status === "FAIL" ? "fail" : "skipped";
+      emitted.push({ gate: g.id, status, ms });
+      emit([gateRow(ctx, g.id, status, ms)]);
+    }
     if (out.status === "FAIL") { anyFail = true; if (!keepGoing) aborted = true; }
   }
 
@@ -973,7 +1024,7 @@ function main() {
 
   // Before the digest refresh, never after: `--update` reads the ledger, and this run's own wall is
   // the newest point in the tier window it is about to take a median over.
-  if (ctx) finalizeRun(ctx, wall, fails.length ? "fail" : "pass");
+  if (ctx) finalizeRun(ctx, wall, fails.length ? "fail" : "pass", emitted);
 
   // ---- refresh the measured-duration digest ---------------------------------------------------
   // Runs on EVERY invocation, including a failing one: the rule is a median over a few thousand
