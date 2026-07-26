@@ -48,7 +48,7 @@
 use crate::cli::Cli;
 use crate::tests::gate_cache;
 use crate::tests::identifier_hazard_tests::hazards;
-use crate::tests::integration_tests::{checkout_hash, tool_cmd};
+use crate::tests::integration_tests::{checkout_hash, codegen_cmd, tool_cmd};
 use crate::tests::robustness_tests::with_thread_silenced_panics;
 use clap::Parser;
 use std::collections::{BTreeMap, BTreeSet};
@@ -1120,8 +1120,7 @@ fn gen_and_exec(
     let spec_path = out.with_extension("cddl");
     std::fs::create_dir_all(out.parent().unwrap()).ok();
     std::fs::write(&spec_path, spec).map_err(|e| e.to_string())?;
-    let gen_out = tool_cmd("cargo")
-        .args(["run", "--"])
+    let gen_out = codegen_cmd()
         .arg(format!("--input={}", spec_path.to_str().unwrap()))
         .arg(format!("--output={}", out.to_str().unwrap()))
         .args(profile_args)
