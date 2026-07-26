@@ -374,11 +374,27 @@ async function main(): Promise<void> {
   const gateCacheDir = mkdtempSync(join(tmpdir(), "gate_cache_audit_cachedir_")); // forces MISS everywhere
 
   const cargoArgs = ["cargo", "test", "--bin", "cddl-codegen", GATE, "--", ...(isIgnored ? ["--ignored"] : [])];
+  // `--seccomp-bpf` filters in-kernel, so a tracee stops only for the syscalls in `-e trace=` rather
+  // than on every syscall — roughly halving this gate's wall (it is the largest line item in the full
+  // tier; the measured row lives in `tests/timings.json`, never in prose here) while recording the
+  // SAME events. This is the alternative to the cheaper-looking move of running the audit LESS often,
+  // which would trade the cache's soundness argument for wall time; making it cheap costs nothing.
+  // Soundness, established by A/B rather than assumed: over a nested-cargo gate traced twice without
+  // the flag and once with, every traced syscall's total was identical across all three runs
+  // (openat/open/execve/clone/clone3/vfork/exit/exit_group/wait4), and the real gate's class census
+  // under the flag reproduces three committed no-flag runs' per-class UNIQUE-PATH counts exactly. The
+  // flag only changes HOW a stop is taken, never WHICH: it is a documented no-op without `-f` (which
+  // is why it belongs beside it), and strace falls back to full ptrace stops when the filter cannot be
+  // installed, so a kernel that refuses it loses the speed, never the coverage. Its one observable
+  // effect is more `<unfinished ...>`/`<... resumed>` line splits, which `parseRead`/`parseExec`/
+  // `parseClone` already accept and `isContentRead("")` already counts conservatively — so the flag
+  // can only make the audit see MORE than it did, never less. Re-establish the A/B, do not weaken it,
+  // if the trace filter or the parser ever changes.
   const straceArgs = [
-    strace, "-f", "-e", "trace=%process,openat,openat2,open", "-y", "-s", "4096",
+    strace, "-f", "--seccomp-bpf", "-e", "trace=%process,openat,openat2,open", "-y", "-s", "4096",
     "-o", straceLog, "--", ...cargoArgs,
   ];
-  console.log(`tracing gate '${GATE}'${isIgnored ? " (#[ignore]d -> --ignored)" : ""} under strace -f ...`);
+  console.log(`tracing gate '${GATE}'${isIgnored ? " (#[ignore]d -> --ignored)" : ""} under strace -f --seccomp-bpf ...`);
   console.log(`  ${cargoArgs.join(" ")}`);
   console.log(`  GATE_CACHE_DIR=${gateCacheDir} (fresh -> forces every cell to MISS)`);
   const run = Bun.spawnSync(straceArgs, {
