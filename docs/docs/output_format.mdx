@@ -1234,6 +1234,12 @@ spec plus, when passed, the Rust paths of
 [`--json-schema-root`](./command_line_flags) — extra roots for published types the CDDL never
 describes, emitted after every spec-derived row.
 
+`export_schemas()` also validates the document before writing it, so two of the ways a schema
+surface goes wrong surface as a panic in *your* run rather than as a broken `.d.ts` downstream: two
+types publishing one `schema_name()`, and a `$ref` that does not resolve inside the document. Both
+messages, and what to do about each, are under
+[Command line flags § `--json-schema-export`](./command_line_flags).
+
 
 `--package-json true --json-schema-export true`
 

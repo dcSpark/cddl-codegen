@@ -1560,7 +1560,11 @@ under its own name rather than letting `subschema_for` drop it); **reference clo
 `$ref` anywhere in the document is an internal `#/$defs/<key>` naming a key of that same document
 (`decode_schema_ref_name` inverts schemars' percent/JSON-pointer ref encoding), which turns "which
 types can dangle?" from an argument into a check and is what catches a hand-written impl returning a
-bare `Schema::new_ref("SomeType")`; and **byte-identity across two runs** of the same binary, because
+bare `Schema::new_ref("SomeType")`; **extra roots** — for each `--json-schema-root` the fixture
+passes, the named type's `$defs` key must be present, since a type no CDDL rule describes has the
+flag's registration row as its only route into the document (the expected key is derived from the
+path, which holds while every fixture root derives its `schema_name()`; a root with a hand-written
+`schema_name()` needs a per-fixture expectation instead); and **byte-identity across two runs** of the same binary, because
 the document is built by walking a live `SchemaGenerator` rather than by printing a sorted list, so
 determinism is a runtime property here, not only an emitter one (the emitter's own byte-stability is
 pinned in the fast tier by `snapshot_tests::json_gen_rows_are_byte_stable`).
@@ -1581,9 +1585,26 @@ asserts the json-gen run SUCCEEDS and the whole point of these is a spec whose r
 harness mirrors `run_test` in every respect but the verdict, and asserts on a message FRAGMENT so a
 fixture that starts failing for an unrelated reason still fails the test.
 
+The emitted crate carries the **reference closure** too, not only the name guard: `export_schemas()`
+walks the finished document and panics — listing every offender, sorted — when a `$ref` is not an
+internal pointer at one of that document's own definitions, *before* it writes, so a failing run
+never emits a broken document (it also writes nothing, leaving any earlier export in place). Both
+failure classes are executed by `json_schema_ref_dangling_fails` over `tests/json-ref-dangling` (a
+bare `Schema::new_ref("SomeType")`, and an internal pointer at an undefined key). Its green
+direction — the ref DECODE, which must invert schemars' percent + JSON-pointer encoding — is a
+vector inside `tests/json-extern`: a hand-written `schema_name()` of `Odd<K>/~1name`, chosen because
+it exercises all three escape classes *and* distinguishes the unescape ORDER (the literal `~1`
+encodes to `~01`, which the wrong order decodes to `Odd<K>//name`). Do not simplify that name — a
+simpler one passes under both orders and certifies nothing.
+
+`--json-schema-root`'s input contract is pinned separately and without cargo by
+`json_schema_root_input_contract`: the flag requires `--json-schema-export`, a repeated value is a
+hard error, and the value parser accepts a rust type path (generics included) while rejecting
+anything that could inject tokens into the generated file.
+
 What these layers cannot see — a collision whose loser has no row and whose `schema_id`s match, a
-cross-crate collision between two `add_schemas` calls, a name schemars percent-encodes, and the fact
-that the closure assertion is ours and not a consumer's — is enumerated in
+cross-crate collision between two `add_schemas` calls, a name schemars percent-encodes, and the
+conditions under which the emitted closure check silently skips — is enumerated in
 `tests/TESTING_ROADMAP.md`.
 
 ### JSON-schema → TypeScript JS-side pipeline (`js_schema_to_ts`, `js_d_ts_merge`, `package_json_pipeline`, `json_schema_scripts_without_package_json`)
