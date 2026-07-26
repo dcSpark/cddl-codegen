@@ -208,7 +208,7 @@ production = "comment_dsl"
 alt = "@no_json_schema_export"
 rfc = "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@no_json_schema_export; src/comment_ast.rs"
 profile = "CDDL_CODEGEN"
-title = "@no_json_schema_export — off the published JSON-schema surface"
+title = "@no_json_schema_export — not a published JSON-schema root"
 desc = "Declares that a rule's rust type is not part of the published JSON-schema surface: under --json-schema-export the json-gen crate's `add_schemas` emits no registration row for it, so it is not one of the crate's declared schema roots. Deliberately narrow — the serde/schemars DERIVES stay (a parent embedding the type still needs them, and the type still appears in the crate's `$defs` whenever a published type references it — the row is the ROOT declaration, not the definition; dropping the derives is the orthogonal, legally combinable @custom_json), and CBOR/wasm/extern-interface output is untouched. Inert when --json-schema-export is off, so one spec generates unedited under several flag sets. Valid on any rule that registers a rust type; on one that registers none (a transparent alias, a generic DEFINITION — only its instantiations are types) there is no row to suppress and generation is rejected by name rather than silently dead."
 example = "njse = [a: uint, b: text] ; @no_json_schema_export"
 

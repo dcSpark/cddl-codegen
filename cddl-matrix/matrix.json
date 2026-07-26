@@ -4480,7 +4480,7 @@
       "production": "comment_dsl",
       "profile": "CDDL_CODEGEN",
       "rfc": "cddl-codegen comment DSL; docs/docs/comment_dsl.mdx §@no_json_schema_export; src/comment_ast.rs",
-      "title": "@no_json_schema_export — off the published JSON-schema surface"
+      "title": "@no_json_schema_export — not a published JSON-schema root"
     },
     {
       "alt": "@custom_serialize",

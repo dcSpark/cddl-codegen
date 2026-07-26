@@ -255,7 +255,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `dsl.name` | ✅ | @name — explicit field/variant name | `dsl_name.cddl` |
 | `dsl.newtype` | ✅ | @newtype — wrapper struct instead of alias | `dsl_newtype.cddl` |
 | `dsl.no_alias` | ✅ | @no_alias — inline the type, emit no alias | `dsl_no_alias.cddl` |
-| `dsl.no_json_schema_export` | ➕ | @no_json_schema_export — off the published JSON-schema surface | supported, no corpus fixture (cddl-codegen exit 0) |
+| `dsl.no_json_schema_export` | ➕ | @no_json_schema_export — not a published JSON-schema root | supported, no corpus fixture (cddl-codegen exit 0) |
 | `dsl.raw_bytes_flavor` | ✅ | @raw_bytes_flavor — extern generic raw-bytes wrapper flavor | `extern_generic_raw_bytes.cddl` |
 | `dsl.rust_name` | ➕ | @rust_name — dependency-pinned Rust type name | supported; pins a dependency-crate type name, so the generated `use extern_dep::…` cannot compile standalone; integration-tested in src/tests/rust_name_tests.rs and the extern_import byte-identity pair |
 | `dsl.used_as_elem` | ✅ | @used_as_elem — mint the canonical loose-list wasm wrapper | `dsl_used_as_elem.cddl` |
