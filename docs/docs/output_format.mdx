@@ -1229,7 +1229,10 @@ schemars::SchemaGenerator)`, is the composition point for registering this crate
 generator you own. Which types get a registration row, what a row means (a declared root — `$defs`
 also holds everything a row'd type reaches), and the uniqueness the published `$defs` keys must
 satisfy are in
-[Command line flags § `--json-schema-export`](./command_line_flags).
+[Command line flags § `--json-schema-export`](./command_line_flags). The row set is derived from the
+spec plus, when passed, the Rust paths of
+[`--json-schema-root`](./command_line_flags) — extra roots for published types the CDDL never
+describes, emitted after every spec-derived row.
 
 
 `--package-json true --json-schema-export true`

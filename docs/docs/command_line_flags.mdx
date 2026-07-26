@@ -271,6 +271,35 @@ cddl-codegen --input=example --output=export --json-schema-export true --json-sc
 
 <br/><br/>
 
+:::info `--json-schema-root`
+Registers an **additional** JSON-schema root: one extra `add_schema::<RUST_PATH>(generator, &mut claimed);` row in the json-gen crate's `add_schemas`, for a type that is part of your published surface but that your CDDL never describes. The motivating case is hand-written machinery whose **JSON form is API while its bytes are not a CDDL rule** — a Byron address type, a key type — including one owned by a crate that has no spec and no json-gen crate of its own. `rust_structs()` cannot see such a type and no closure over the document can invent it, because nothing in the spec points at it.
+
+The value is a **Rust path**, not a CDDL identifier, and it is emitted **verbatim**. So:
+
+- The path must resolve **from the json-gen crate**. `cddl-codegen` does not typecheck Rust, so a path that does not resolve is an `E0433`/`E0412` in your own json-gen build — never a generation-time reject. Confirming reachability is yours, not the tool's.
+- Reaching another crate's type works because the generated `wasm/json-gen/Cargo.toml` is a **merged** manifest: keys the tool does not manage pass through untouched, so a dependency you add there by hand survives regeneration. That is a hand edit in a hand-owned manifest, not an `insert` block in generated code. Re-exporting the type through your own rust crate is the other route.
+- Because the value lands inside a turbofish in a generated file, its charset is restricted to `[A-Za-z0-9_]`, `:`, `<`, `>`, `,` and space — enough for a scoped path with generic arguments (`cddl_lib::sub::Ext<u64, String>`), not enough to introduce a comment, a statement separator or a string literal. Any other character is rejected naming the offending character.
+
+Repeatable. Extra roots are emitted **after every spec-derived row**, in **flag order** (never sorted): registration order decides which side of a published-name collision the injectivity guard names, and with the CLI roots last a spec-derived row keeps its own name and the guard blames the CLI-supplied path — the one you can change without touching your spec.
+
+An extra root goes through the same `add_schema` helper as every other row, so it is subject to the **same published-name injectivity guard** documented under `--json-schema-export` above (and, like any row, its type must implement `schemars::JsonSchema`).
+
+Two further behaviours worth stating outright:
+
+- Requires `--json-schema-export`; without it there is no json-gen crate and no `add_schemas` for the row to land in, so the combination is rejected up front.
+- Passing the same value twice is a hard error naming the repeated value. This is exact-string dedup only: two spellings of one type (`crate::Foo` and `cddl_lib::Foo`) are not detected, and are harmless — the guard's ledger keys on the Rust type, so registering one type twice is a no-op rather than a collision.
+- The flag consults no IR at all, so naming a type whose CDDL rule carries [`@no_json_schema_export`](./comment_dsl#no_json_schema_export) **re-registers it**. That is the intended escape hatch direction, not a conflict.
+
+```bash
+cddl-codegen --input=cml_chain.cddl --output=export --lib-name=cml-chain \
+  --json-serde-derives=true --json-schema-export=true \
+  --json-schema-root=cml_chain::byron::ByronAddress \
+  --json-schema-root=cml_crypto::Bip32PublicKey
+```
+:::
+
+<br/><br/>
+
 :::info `--common-import-override`
 Overrides the location of the static exports (e.g. error.rs, serialization.rs, etc).
 

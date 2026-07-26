@@ -361,6 +361,36 @@ pub fn with_types<R>(
                 .into(),
         );
     }
+    // An extra schema root is an additional registration row in the json-gen crate's `add_schemas`;
+    // without --json-schema-export there is no json-gen crate and no `add_schemas` for the row to
+    // land in, so the flag would silently do nothing. Reject the combination up front (mirrors the
+    // three rules above).
+    if !cli.json_schema_root.is_empty() && !cli.json_schema_export {
+        return Err(
+            "--json-schema-root requires --json-schema-export=true: the extra root is emitted as a \
+             registration row in the json-gen crate's `add_schemas`, so without it there is no \
+             crate for the row to land in"
+                .into(),
+        );
+    }
+    // Two identical --json-schema-root values are a user mistake with no meaning: the emitted rows
+    // are byte-identical, and the second is a silent no-op (the injectivity ledger in the emitted
+    // `add_schema` keys on `std::any::type_name` and only fires when a name is claimed by a
+    // DIFFERENT rust type, so re-registering ONE type never trips it). This is exact-string dedup
+    // only — two spellings of one type (`crate::Foo` vs `cddl_lib::Foo`) cannot be detected here,
+    // and are harmless for that same reason.
+    let mut seen_roots = std::collections::BTreeSet::new();
+    for root in &cli.json_schema_root {
+        if !seen_roots.insert(root.as_str()) {
+            return Err(format!(
+                "--json-schema-root={root} was passed more than once: each extra JSON-schema root is \
+                 registered exactly once, so a repeated value is a no-op rather than anything the \
+                 tool could act on (this compares the value verbatim — two spellings of one type are \
+                 not detected, and are harmless)"
+            )
+            .into());
+        }
+    }
     // Pre-processing files for multi-file support
     let input_files = if cli.input.is_dir() {
         let mut cddl_paths_buf = Vec::new();
