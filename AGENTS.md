@@ -197,9 +197,22 @@ Rules:
   session whose CWD is a different checkout silently generates with THAT checkout's runtime
   (proven 2026-07-20: a worktree e2e check picked up master's pre-feature `static/` and failed on
   a type the feature had just added, masquerading as a real bug).
+- **Check `free` as well as `df` before launching a tier, and treat PEAK RESOURCE as the thing to
+  bound — not gate count.** The quantity a tier must keep under the machine's memory is the product
+  `(gates in flight) × (rustc per gate) × (per-rustc resident set)`, and **no factor of it may scale
+  with `nproc`** — core count is unrelated to a memory cap. A 32-core WSL2 box with a 32 GiB cap went
+  unresponsive for ~10 minutes under a full tier and was power-cycled, because gate-level concurrency
+  bounded the first factor while the second was still cargo's `-j $(nproc)` default. `check.ts` now
+  hands each *batched* gate a memory-derived `CARGO_BUILD_JOBS` and preflights free memory and free
+  scratch (degrade-to-sequential and refuse floors) — details and the measured before/after in
+  `tests/README.md` § "Gate-level concurrency (registry-declared, opt-in)". The failure class is
+  sharper than the disk one it sits beside: a full disk fails a gate, an overcommitted memory cap
+  takes the whole machine and everything running on it.
 - **Heavy tiers contend across sessions — coordinate before launching one while another session's
-  gates run.** Concurrent multi-minute tiers share `/tmp` scratch and disk headroom; two same-day
-  runs saturating it is the ENOSPC ledger entry in `tests/TESTING_ROADMAP.md`.
+  gates run.** Concurrent multi-minute tiers share `/tmp` scratch, disk headroom **and the memory
+  cap**, and the preflight above measures only what is free at *its* start — a second tier launched
+  into a machine the first has already committed sees a floor that was clear a minute ago. Two
+  same-day runs saturating the disk is the ENOSPC ledger entry in `tests/TESTING_ROADMAP.md`.
 - **Evidence preservation: every multi-minute run leaves its FULL output in a file under
   `draft/logs/`.** `check.ts` does this ITSELF — every run tees its complete output to a
   timestamped `draft/logs/check-<tier>-<stamp>.log` and prints the path at start and end. For

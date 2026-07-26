@@ -74,7 +74,56 @@ achievable ideal for that subset and 2.46× is 89 % of it. That is why dispatch 
 first**, ordered by `tests/timings.json` as a hint (a gate with no row sorts last; getting the order
 wrong costs wall time and nothing else).
 
-The bound is memory, not cores — concurrent `rustc` is the hungry part. Each batched gate's output is
+**What must stay bounded is the PRODUCT, not the gate count.** `CHECK_JOBS` bounds how many gates
+overlap; it says nothing about how many `rustc` each one spawns, and a nested cargo defaults to
+`-j $(nproc)`. The quantity that consumes memory is
+
+```
+(gates in flight) × (rustc per gate) × (per-rustc resident set)
+```
+
+and its second factor must never scale with core count, because core count is unrelated to the
+machine's memory — a 32-core box with a 32 GiB cap went unresponsive for ~10 minutes under a full
+tier and had to be power-cycled. So each **batched** gate is handed a memory-derived
+`CARGO_BUILD_JOBS`: `round(MemTotal × 0.5 ÷ 2 GiB per rustc) ÷ gates in flight`, which is `-j2` at
+the default 4 gates on a 32 GiB machine. `CHECK_CARGO_JOBS=<n>` overrides it (a bigger machine should
+raise it); an inherited `CARGO_BUILD_JOBS` can only hold it *down*. The **sequential path is
+untouched** — one cargo at `-j nproc` is the historical shape and is not what overcommitted anything.
+
+The bound is close to free, measured on a 4-gate batch in one warm regime, sampled at 1 s:
+
+| `CARGO_BUILD_JOBS` | peak concurrent `rustc` | peak Σ `rustc` RSS | batch wall |
+|---|---|---|---|
+| 32 (unbounded) | 27 | 2.25 GiB | 63.6 s |
+| **2 (the default)** | **3** | **0.53 GiB** | **60.3 s** |
+| 1 | 2 | 0.37 GiB | 60.0 s |
+
+That the wall barely moves is the same fact as the win above: these gates are internally serial loops
+over catalog rows, so the throughput came from overlapping **gates**, never from cargo's own `-j`.
+Only a gate that is a single large crate compile pays (`rust_oracle_fingerprint`: 17.4 s → 34.0 s),
+and it is not the batch's tail. Process count is in any case the wrong thing to reason about alone:
+the largest single `rustc` resident set observed across that batch and a whole `local` tier was
+**455 MiB**, so a count-based bound would still admit a very different peak from a gate that compiles
+one big crate rather than many small ones. Hence the memory derivation, with a deliberate ~4× margin
+over what was measured.
+
+**Resource preflight (`local`/`full` only).** A tier commits to its peak in its first seconds and
+cannot discover a memory cap mid-run; the failure mode is not a red gate but a machine that stops
+responding. So a run checks two floors up front and says which it saw:
+
+- **MemAvailable below 8 GiB → degrades to `jobs=1`**, loudly. A slow tier beats no tier.
+- **MemAvailable below 2 GiB → refuses**, because even one cargo would swap.
+- **Free scratch below 10 GiB → refuses**, naming the largest `/tmp/cddl*` offenders and the cleanup
+  command. Going sequential creates no space, and every nested-cargo gate downstream would die on
+  ENOSPC tens of minutes in.
+
+An *unmeasurable* machine proceeds — a preflight that refused whenever it could not read
+`/proc/meminfo` would be unusable exactly where the measurement is what is missing. `fast` (what CI
+runs) is never gated: it spawns no batch, mints no scratch, and must not acquire a way to refuse to
+start on a runner whose disk this tool cannot reason about. `CHECK_SKIP_PREFLIGHT=1` bypasses both
+floors.
+
+Each batched gate's output is
 **buffered** and emitted as one block on completion: interleaved cargo output is unreadable, and the
 log is a data source (`project_timings.ts` attributes each `<n> run, <m> cached` rollup to the
 `=== [tier] <gate> — …` section above it, so a rollup landing under another gate's header would be a

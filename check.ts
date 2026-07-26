@@ -32,6 +32,14 @@
  * would mis-attribute the per-gate cache rollups the timings parser reads. Bound is memory, not
  * cores: `CHECK_JOBS=1` restores fully sequential execution.
  *
+ * PEAK RESOURCE: what has to stay bounded is not the gate count but the PRODUCT
+ * `(gates in flight) × (rustc per gate) × (per-rustc resident set)` — so each batched gate is handed
+ * a memory-derived `CARGO_BUILD_JOBS` (`CHECK_CARGO_JOBS` overrides), and neither factor scales with
+ * `nproc`. The sequential path is untouched. A `local`/`full` run also preflights free memory and
+ * free scratch space up front: below the memory floor it degrades to sequential, below the disk floor
+ * it refuses, because a tier commits to its peak in its first seconds and cannot discover a cap
+ * mid-run. `CHECK_SKIP_PREFLIGHT=1` bypasses both floors; `fast` (CI) is untouched.
+ *
  * LOGGING: every run tees its FULL output to a timestamped `draft/logs/check-<tier>-<stamp>.log`
  * (path printed at start and end) — evidence preservation is the tool's job, not a piping habit.
  * Never pipe a run through `tail`/`grep` as its only capture; cite the printed log path instead.
@@ -59,7 +67,7 @@
  *   canaries reverted after confirming red.
  */
 import { existsSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import {
   appendRows, cellCountsFor, compactDur, keptRunKeys, machineId, parseLog, readCells, readDigest,
@@ -145,6 +153,122 @@ export function parseJobs(raw: string | undefined): { jobs: number; warning?: st
   if (!Number.isInteger(n) || n < 1)
     return { jobs: DEFAULT_JOBS, warning: `CHECK_JOBS='${raw}' is not a positive integer — using ${DEFAULT_JOBS}` };
   return { jobs: n };
+}
+
+// ---- the SECOND factor: cargo's own `-j` inside each batched gate --------------------------------
+// `CHECK_JOBS` bounds how many GATES overlap. It does not bound how many `rustc` each one spawns, and
+// a nested cargo defaults to `-j $(nproc)`. So the quantity that actually consumes memory —
+//
+//     (gates in flight) × (rustc per gate) × (per-rustc resident set)
+//
+// — was bounded by nothing, and its second factor scaled with CORE COUNT, which is unrelated to the
+// machine's memory. That is the defect this bound closes: a WSL2 box with a 32 GiB cap and 32 cores
+// went unresponsive for ~10 minutes under a full tier and had to be power-cycled.
+//
+// Hence a bound derived from MEMORY, not cores, written into each batched child's `CARGO_BUILD_JOBS`:
+//
+//     product      = round(MemTotal × RUSTC_MEM_FRACTION ÷ ASSUMED_PEAK_RUSTC_GIB)
+//     per-gate -j  = max(1, floor(product ÷ gates in flight))
+//
+// On a 32 GiB machine that is 8 rustc across the whole batch — `-j2` at the default 4 gates in
+// flight — so 8 × 2 GiB = 16 GiB worst case against a 32 GiB cap. The half-of-MemTotal fraction is
+// the headroom the arithmetic ignores: page cache (a tier writes tens of GiB of scratch), the parent
+// `bun`/`cargo test` processes, an editor's rust-analyzer, and a concurrent session's own gates.
+// `round`, not `floor`, because MemTotal reads a little under the machine's nominal cap (31.3 GiB on
+// a 32 GiB WSL2 box — the kernel reserves the rest) and flooring would make a 32 GiB machine behave
+// like a 28 GiB one; the assumed footprint below carries a 4× margin, so a rounding step at the
+// boundary is inside the estimate's own error bar.
+//
+// Measured on this box (32 GiB cap, `nproc` 32, sampled at 1 s over a 4-gate batch of
+// `recombination_wasm_crates_check` + `recombination_crates_execute` +
+// `identifier_hazard_crates_compile` + `rust_oracle_fingerprint`, one warm regime):
+//
+//     CARGO_BUILD_JOBS |  peak rustc | peak Σ rustc RSS | batch wall
+//     -----------------+-------------+------------------+-----------
+//     32 (unbounded)   |          27 |         2.25 GiB |    63.6 s
+//      2 (the default) |           3 |         0.53 GiB |    60.3 s
+//      1               |           2 |         0.37 GiB |    60.0 s
+//
+// Two things that table settles. The bound is close to FREE at the batch level: these gates are
+// internally serial loops over catalog rows, so the win came from overlapping GATES, never from
+// cargo's own `-j` — only `rust_oracle_fingerprint`, the one member that is a single crate compile,
+// slows (17.4 s → 34.0 s at `-j2`), and it is not the batch's tail. And process count is the wrong
+// thing to reason about anyway: the largest single rustc resident set seen anywhere — across this
+// batch and a whole `local` tier — was **455 MiB**, so bounding COUNT alone would still admit a very
+// different peak if a gate ever compiles one large crate instead of many small ones.
+/**
+ * Assumed worst-case resident set of ONE `rustc`, in GiB.
+ *
+ * Deliberately ~4× the 455 MiB largest actually observed. The margin is the point: the full tier's
+ * emitted-test crates (thousands of `#[test]` functions each) were NOT sampled, and a single large
+ * rustc is exactly the shape a count-based bound cannot see coming.
+ */
+const ASSUMED_PEAK_RUSTC_GIB = 2;
+/** Fraction of MemTotal the batch may commit to concurrent `rustc`; the rest is the headroom above. */
+const RUSTC_MEM_FRACTION = 0.5;
+/** Product used when MemTotal is unreadable (non-Linux): the value this machine's memory derives. */
+const FALLBACK_RUSTC_PRODUCT = 8;
+
+/** MemTotal in GiB, or `undefined` where `/proc/meminfo` does not exist. Injectable for tests. */
+export function memTotalGiB(meminfo?: string): number | undefined {
+  try {
+    const txt = meminfo ?? readFileSync("/proc/meminfo", "utf8");
+    const m = txt.match(/^MemTotal:\s+(\d+)\s*kB$/m);
+    return m ? Number(m[1]) / 1024 / 1024 : undefined;
+  } catch { return undefined; }
+}
+
+/**
+ * `CARGO_BUILD_JOBS` for one batched gate, given how many gates share the machine with it.
+ *
+ * Pure, so the arithmetic is pinned by a test rather than observed only in a full-tier run.
+ *
+ * Precedence, and why each rung is where it is:
+ *  1. `CHECK_CARGO_JOBS` — an explicit operator override wins outright. A 128 GiB box should be able
+ *     to raise this, and a sequential-minded operator should be able to pin it to 1.
+ *  2. otherwise the memory-derived product above, and then
+ *  3. **never above an inherited `CARGO_BUILD_JOBS`** — a `min`, not a replace. Someone who exported
+ *     `CARGO_BUILD_JOBS=2` to be gentle to their machine said something the runner must not undo;
+ *     someone who exported `CARGO_BUILD_JOBS=32` did not know about the batch, so the bound applies.
+ */
+export function cargoJobsForBatch(o: {
+  gatesInFlight: number;
+  memTotalGiB?: number;
+  override?: string;   // CHECK_CARGO_JOBS
+  inherited?: string;  // CARGO_BUILD_JOBS already present in the environment
+}): { jobs: number; why: string; warning?: string } {
+  let warning: string | undefined;
+  const asPositiveInt = (raw: string | undefined, name: string): number | undefined => {
+    if (raw === undefined || raw.trim() === "") return undefined;
+    const n = Number(raw.trim());
+    if (Number.isInteger(n) && n >= 1) return n;
+    warning = `${name}='${raw}' is not a positive integer — ignoring it`;
+    return undefined;
+  };
+  const override = asPositiveInt(o.override, "CHECK_CARGO_JOBS");
+  if (override !== undefined)
+    return { jobs: override, why: `CHECK_CARGO_JOBS=${override} (operator override)`, ...(warning ? { warning } : {}) };
+
+  const product = o.memTotalGiB === undefined
+    ? FALLBACK_RUSTC_PRODUCT
+    : Math.max(1, Math.round((o.memTotalGiB * RUSTC_MEM_FRACTION) / ASSUMED_PEAK_RUSTC_GIB));
+  const derived = Math.max(1, Math.floor(product / Math.max(1, o.gatesInFlight)));
+  const memWhy = o.memTotalGiB === undefined
+    ? `MemTotal unreadable — fallback product ${product}`
+    : `${o.memTotalGiB.toFixed(1)} GiB MemTotal × ${RUSTC_MEM_FRACTION} ÷ ${ASSUMED_PEAK_RUSTC_GIB} GiB/rustc = ${product} rustc`;
+
+  const inherited = asPositiveInt(o.inherited, "CARGO_BUILD_JOBS");
+  if (inherited !== undefined && inherited < derived)
+    return {
+      jobs: inherited,
+      why: `${memWhy} ÷ ${o.gatesInFlight} gates = -j${derived}, held down to the inherited CARGO_BUILD_JOBS=${inherited}`,
+      ...(warning ? { warning } : {}),
+    };
+  return {
+    jobs: derived,
+    why: `${memWhy} ÷ ${o.gatesInFlight} gates = -j${derived}`,
+    ...(warning ? { warning } : {}),
+  };
 }
 
 /**
@@ -311,6 +435,104 @@ function warmupThenOffline(tier: Tier) {
   }
   process.env.CARGO_NET_OFFLINE = "true";
   console.log("warm-up: fetched — CARGO_NET_OFFLINE=true for all gates");
+}
+
+// ---- resource preflight: a memory cap cannot be discovered mid-run ------------------------------
+// A tier runs for tens of minutes and commits to its peak in the first seconds. When it overcommits,
+// the machine does not fail a gate — it swaps, and the developer power-cycles it, which destroys the
+// run AND everything else on the box. So the floors are checked ONCE, up front, loudly, in the same
+// shape `verify.ts`'s `diskHeadroomPreflight` established (hard floor, named cleanup command).
+//
+// Memory DEGRADES rather than refuses: a sequential tier is slow but correct, and a slow tier beats
+// no tier. Only a floor at which even one cargo would thrash refuses outright. Disk REFUSES, because
+// going sequential does not create free space and every nested-cargo gate downstream would die on
+// ENOSPC tens of minutes in — the ENOSPC entry in `tests/TESTING_ROADMAP.md` is that failure already
+// paid for once.
+//
+// `fast` (what CI runs) is deliberately untouched: it spawns no batch, mints no scratch, and must not
+// acquire a way to refuse to start on a runner whose disk this tool cannot reason about.
+const MEM_DEGRADE_FLOOR_GIB = 8;   // below this, run the batch sequentially
+const MEM_REFUSE_FLOOR_GIB = 2;    // below this, one cargo alone would thrash
+const DISK_FLOOR_GIB = 10;         // the scratch a full tier mints is measured in tens of GiB
+
+function availGiB(kind: "mem" | "disk"): number | undefined {
+  if (kind === "mem") {
+    try {
+      const m = readFileSync("/proc/meminfo", "utf8").match(/^MemAvailable:\s+(\d+)\s*kB$/m);
+      return m ? Number(m[1]) / 1024 / 1024 : undefined;
+    } catch { return undefined; }
+  }
+  const r = Bun.spawnSync(["df", "-k", "--output=avail", tmpdir()], { stdout: "pipe", stderr: "ignore" });
+  const kib = parseInt((r.stdout?.toString() ?? "").trim().split(/\r?\n/).pop() ?? "", 10);
+  return r.exitCode === 0 && Number.isFinite(kib) ? kib / 1024 / 1024 : undefined;
+}
+
+/** The biggest `cddl*` scratch entries, largest first — a bare number is not actionable, a name is. */
+function scratchOffenders(n = 5): string[] {
+  const r = Bun.spawnSync(["sh", "-c", `du -sk ${tmpdir()}/cddl* 2>/dev/null | sort -rn | head -${n}`],
+    { stdout: "pipe", stderr: "ignore" });
+  return (r.stdout?.toString() ?? "").trim().split("\n").filter(Boolean).map(l => {
+    const [kib, ...rest] = l.split(/\s+/);
+    return `${(Number(kib) / 1024 / 1024).toFixed(1)} GiB  ${rest.join(" ")}`;
+  });
+}
+
+/**
+ * The floor decision, as a pure function of the four measurements — so the refuse and degrade
+ * branches are pinned by a test instead of only ever reachable by running a machine out of memory.
+ * `undefined` for a measurement means "could not read it", which must never itself refuse a run.
+ */
+export type PreflightAction = "proceed" | "degrade" | "refuse";
+export function preflightDecision(o: {
+  tier: Tier; jobs: number; skip: boolean; memAvailGiB?: number; diskAvailGiB?: number;
+}): { action: PreflightAction; jobs: number; reason: string } {
+  if (rank(o.tier) < rank("local"))
+    return { action: "proceed", jobs: o.jobs, reason: `tier=${o.tier} spawns no batch and mints no scratch — floors not applicable` };
+  if (o.skip)
+    return { action: "proceed", jobs: o.jobs, reason: "CHECK_SKIP_PREFLIGHT=1 — memory/disk floors not checked" };
+  if (o.diskAvailGiB !== undefined && o.diskAvailGiB < DISK_FLOOR_GIB)
+    return { action: "refuse", jobs: o.jobs, reason: `${o.diskAvailGiB.toFixed(1)} GiB free scratch is under the ${DISK_FLOOR_GIB} GiB floor` };
+  if (o.memAvailGiB !== undefined && o.memAvailGiB < MEM_REFUSE_FLOOR_GIB)
+    return { action: "refuse", jobs: o.jobs, reason: `${o.memAvailGiB.toFixed(1)} GiB MemAvailable is under the ${MEM_REFUSE_FLOOR_GIB} GiB hard floor` };
+  if (o.memAvailGiB !== undefined && o.memAvailGiB < MEM_DEGRADE_FLOOR_GIB && o.jobs > 1)
+    return { action: "degrade", jobs: 1, reason: `${o.memAvailGiB.toFixed(1)} GiB MemAvailable is under the ${MEM_DEGRADE_FLOOR_GIB} GiB parallel floor` };
+  const seen = [
+    o.memAvailGiB !== undefined ? `${o.memAvailGiB.toFixed(1)} GiB MemAvailable` : "MemAvailable unreadable",
+    o.diskAvailGiB !== undefined ? `${o.diskAvailGiB.toFixed(1)} GiB free scratch` : "free scratch unmeasurable",
+  ].join(", ");
+  return { action: "proceed", jobs: o.jobs, reason: `${seen} — floors clear` };
+}
+
+/** Measures, applies `preflightDecision`, and either returns the (possibly degraded) jobs or exits 2. */
+function resourcePreflight(tier: Tier, jobs: number): number {
+  const mem = rank(tier) < rank("local") ? undefined : availGiB("mem");
+  const disk = rank(tier) < rank("local") ? undefined : availGiB("disk");
+  const d = preflightDecision({
+    tier, jobs, skip: process.env.CHECK_SKIP_PREFLIGHT === "1", memAvailGiB: mem, diskAvailGiB: disk,
+  });
+  if (d.action === "refuse") {
+    const isDisk = disk !== undefined && disk < DISK_FLOOR_GIB;
+    console.error(
+      `HARNESS FAILURE: ${d.reason} — refusing to start a ${tier} tier.\n` +
+      (isDisk
+        ? `A ${tier} tier mints tens of GiB of nested-cargo scratch, so starting here buys a mid-run ENOSPC ` +
+          `death tens of minutes from now instead of a message today. Largest scratch entries:\n` +
+          (scratchOffenders().map(s => `  ${s}`).join("\n") || "  (none — the space is used by something else)") +
+          `\nClear stale scratch — e.g. \`rm -rf ${tmpdir()}/cddl_codegen_* ${tmpdir()}/cddl_verify_*\` — then re-run.`
+        : `Even one cargo would swap, and a machine that swaps under a tier stops responding rather than ` +
+          `failing a gate. Close what is holding the memory (an editor's rust-analyzer, another session's ` +
+          `gates) and re-run.`) +
+      `\nCHECK_SKIP_PREFLIGHT=1 overrides this check.`,
+    );
+    process.exit(2);
+  }
+  if (d.action === "degrade")
+    console.log(
+      `preflight: ${d.reason} — DEGRADING to jobs=1 (sequential). A slow tier beats a locked-up machine; ` +
+      `the requested CHECK_JOBS=${jobs} is overridden, and CHECK_SKIP_PREFLIGHT=1 keeps it.`,
+    );
+  else if (rank(tier) >= rank("local")) console.log(`preflight: ${d.reason}`);
+  return d.jobs;
 }
 
 // ---- oracle resolution (mirrors cddl-matrix/verify.ts so the preflight can't disagree with it) ---
@@ -746,9 +968,11 @@ function runGateSequential(g: Gate, opts: Opts, timingCells: boolean): GateOutco
  * one. One atomic block per gate keeps every rollup inside its own section whatever order the gates
  * finish in.
  *
- * `CDDL_TIMING_GATE` goes to the CHILD's environment, never `process.env`: the Rust emitter reads it
- * per row, so one mutable copy on the parent would label every concurrent gate's cells with whichever
- * gate started last.
+ * `CDDL_TIMING_GATE` and `CARGO_BUILD_JOBS` go to the CHILD's environment, never `process.env`: the
+ * Rust emitter reads the former per row, so one mutable copy on the parent would label every
+ * concurrent gate's cells with whichever gate started last — and the latter must not reach the
+ * SEQUENTIAL path, which stays byte-identical to its pre-concurrency behaviour (one cargo at
+ * `-j nproc` is the historical shape and is not what overcommitted the machine).
  *
  * Both pipes are drained CONCURRENTLY with the exit wait. Awaiting `exited` first deadlocks the
  * instant a gate outgrows the pipe buffer — and these gates emit megabytes — which is the same
@@ -757,12 +981,19 @@ function runGateSequential(g: Gate, opts: Opts, timingCells: boolean): GateOutco
  * relative to its stdout instead of being appended wholesale after it.
  */
 async function runGateBuffered(
-  g: Gate, timingCells: boolean, live: Map<string, Bun.Subprocess>,
+  g: Gate, timingCells: boolean, live: Map<string, Bun.Subprocess>, cargoJobs: number,
 ): Promise<GateOutcome & { text: string }> {
   const t0 = performance.now();
   const child = Bun.spawn(g.cmd!, {
     cwd: g.cwd ?? ROOT,
-    env: { ...process.env, ...(timingCells ? { CDDL_TIMING_GATE: g.id } : {}) },
+    env: {
+      ...process.env,
+      // The bound propagates by INHERITANCE to every cargo this gate spawns, nested ones included:
+      // the gate is a `cargo test` whose test body spawns a fresh `cargo` per generated crate, and
+      // that grandchild reads the same environment.
+      CARGO_BUILD_JOBS: String(cargoJobs),
+      ...(timingCells ? { CDDL_TIMING_GATE: g.id } : {}),
+    },
     stdout: "pipe",
     stderr: "pipe",
     // Never `inherit`: several concurrent children sharing one stdin is a race over a resource none
@@ -840,8 +1071,18 @@ export async function runGates(o: {
 
     const order = longestFirst(batch.gates, hint);
     const jobs = Math.max(1, Math.min(o.jobs, order.length));
+    // Computed per batch, from the gates ACTUALLY in flight — a batch of two overlapping gates may
+    // spend more `-j` each than a batch of four, because the product is what must stay bounded.
+    const cargo = cargoJobsForBatch({
+      gatesInFlight: jobs,
+      memTotalGiB: memTotalGiB(),
+      override: process.env.CHECK_CARGO_JOBS,
+      inherited: process.env.CARGO_BUILD_JOBS,
+    });
+    if (cargo.warning) console.log(`>>> check.ts: ${cargo.warning}`);
     console.log(
       `\n>>> parallel batch: ${order.length} gate(s) in group '${batch.group}', jobs=${jobs}` +
+      `, CARGO_BUILD_JOBS=${cargo.jobs} per gate [${cargo.why}]` +
       ` (dispatch order, slowest measured first: ${order.map(g => g.id).join(", ")})`,
     );
     const live = new Map<string, Bun.Subprocess>();
@@ -850,7 +1091,7 @@ export async function runGates(o: {
       jobs,
       async item => {
         console.log(`>>> ${item.id}: started`);
-        const r = await runGateBuffered(item.g, timingCells, live);
+        const r = await runGateBuffered(item.g, timingCells, live, cargo.jobs);
         // ONE write: header, the gate's whole output, footer — nothing from another gate between.
         process.stdout.write(
           `\n=== [${item.g.tier}] ${item.g.id} — ${item.g.desc} ===\n${r.text}` +
@@ -1310,6 +1551,8 @@ async function main() {
     console.log("usage: bun run check.ts [fast|local|full] [--keep-going] [--skip-missing] [--refresh-fuzz] [--cache-transparency]");
     console.log("  bare invocation runs the `local` tier; CI runs `fast`. See the header of check.ts for details.");
     console.log(`  env: CHECK_JOBS=<n>  gates in flight within a concurrency batch (default ${DEFAULT_JOBS}; 1 = fully sequential)`);
+    console.log("       CHECK_CARGO_JOBS=<n>  CARGO_BUILD_JOBS given to each BATCHED gate (default: memory-derived, see check.ts)");
+    console.log(`       CHECK_SKIP_PREFLIGHT=1  skip the memory (${MEM_DEGRADE_FLOOR_GIB}/${MEM_REFUSE_FLOOR_GIB} GiB) and disk (${DISK_FLOOR_GIB} GiB) floors`);
     console.log("       CHECK_JOIN_TIMEOUT_S=<n>  runaway-hang guard on the parallel join (never a duration assertion)");
     process.exit(0);
   }
@@ -1323,8 +1566,11 @@ async function main() {
   }
   const keepGoing = flags.has("--keep-going");
   const opts: Opts = { skipMissing: flags.has("--skip-missing"), refreshFuzz: flags.has("--refresh-fuzz"), cacheTransparency: flags.has("--cache-transparency") };
-  const { jobs, warning: jobsWarning } = parseJobs(process.env.CHECK_JOBS);
+  const { jobs: requestedJobs, warning: jobsWarning } = parseJobs(process.env.CHECK_JOBS);
   if (jobsWarning) console.log(`check.ts: ${jobsWarning}`);
+  // Before anything expensive: a tier commits to its peak resource in its first seconds and cannot
+  // discover a memory cap mid-run.
+  const jobs = resourcePreflight(tier, requestedJobs);
 
   console.log(`\ncheck.ts — tier=${tier}  jobs=${jobs}${keepGoing ? " --keep-going" : ""}${opts.skipMissing ? " --skip-missing" : ""}${opts.refreshFuzz ? " --refresh-fuzz" : ""}${opts.cacheTransparency ? " --cache-transparency" : ""}`);
 

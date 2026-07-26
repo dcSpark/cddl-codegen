@@ -50,8 +50,9 @@ import { createHash } from "node:crypto";
 import { cpus, hostname, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
-  REGISTRY, etaLines, gateRow, longestFirst, parseJobs, parseJoinTimeoutMs, planBatches, retainLogs,
-  runPool, runRow, type Gate, type RunContext,
+  REGISTRY, cargoJobsForBatch, etaLines, gateRow, longestFirst, memTotalGiB, parseJobs,
+  parseJoinTimeoutMs, planBatches, preflightDecision, retainLogs, runPool, runRow,
+  type Gate, type RunContext,
 } from "../check.ts";
 
 const HERE = import.meta.dir;
@@ -1346,6 +1347,107 @@ export async function selfTests(): Promise<TestResult[]> {
       parseJoinTimeoutMs(undefined) === 3 * 60 * 60 * 1000 && parseJoinTimeoutMs("30") === 30_000 &&
       parseJoinTimeoutMs("-1") === 3 * 60 * 60 * 1000,
       JSON.stringify([parseJobs("0"), parseJobs("nope"), parseJoinTimeoutMs("30")]));
+
+    // ---- the PEAK-RESOURCE bound ---------------------------------------------------------------
+    // `CHECK_JOBS` bounds the gate count; what overcommits a machine is the PRODUCT of gate count,
+    // rustc-per-gate and per-rustc footprint. These pin the arithmetic that keeps the product from
+    // scaling with `nproc` — the defect that made a 32-core / 32 GiB box unresponsive under a full
+    // tier. Pure inputs, because the alternative is discovering a regression from a locked-up
+    // machine.
+    {
+      // Derived from MEMORY, never cores: the same core count against half the RAM must halve it.
+      const at = (gib: number, gates: number) => cargoJobsForBatch({ gatesInFlight: gates, memTotalGiB: gib }).jobs;
+      ok("cargo_jobs_derive_from_memory_and_shrink_as_gates_overlap",
+        at(32, 4) === 2 && at(32, 1) === 8 && at(32, 8) === 1 && at(16, 4) === 1 && at(128, 4) === 8,
+        JSON.stringify({ g32x4: at(32, 4), g32x1: at(32, 1), g32x8: at(32, 8), g16x4: at(16, 4), g128x4: at(128, 4) }));
+
+      // The product is the invariant, so assert it directly rather than trusting the divisions above.
+      // Above `gatesInFlight = budget` the floor of one job per gate takes over — a gate handed
+      // `-j0` would build nothing — so the bound there is the gate count itself, which `CHECK_JOBS`
+      // already governs. What must never happen is the product tracking `nproc`.
+      const productAt = (gib: number, gates: number) => at(gib, gates) * gates;
+      ok("the_bounded_product_never_exceeds_the_memory_budget",
+        [1, 2, 3, 4, 8].every(g => productAt(32, g) <= 8) &&
+        [1, 2, 4, 8, 16].every(g => productAt(64, g) <= 16) &&
+        [16, 32].every(g => productAt(32, g) === g),
+        JSON.stringify([1, 2, 3, 4, 8, 16, 32].map(g => productAt(32, g))));
+
+      // A tiny machine still runs: floor of 1, never 0, or the batch would spawn a cargo that
+      // refuses to build.
+      ok("cargo_jobs_never_reach_zero",
+        at(1, 16) === 1 && at(0.5, 1) === 1, JSON.stringify([at(1, 16), at(0.5, 1)]));
+
+      // Overrides. An operator's explicit `CHECK_CARGO_JOBS` wins outright (a big box must be able to
+      // raise it); an inherited `CARGO_BUILD_JOBS` can only hold the derived value DOWN — someone
+      // being gentle to their machine said something the runner must not undo, while someone who
+      // exported 32 for an unrelated reason never knew about the batch.
+      const ov = cargoJobsForBatch({ gatesInFlight: 4, memTotalGiB: 32, override: "12" });
+      const low = cargoJobsForBatch({ gatesInFlight: 4, memTotalGiB: 32, inherited: "1" });
+      const high = cargoJobsForBatch({ gatesInFlight: 4, memTotalGiB: 32, inherited: "32" });
+      const bad = cargoJobsForBatch({ gatesInFlight: 4, memTotalGiB: 32, override: "nope" });
+      ok("explicit_override_wins_and_an_inherited_setting_only_holds_it_down",
+        ov.jobs === 12 && low.jobs === 1 && high.jobs === 2 && bad.jobs === 2 && bad.warning !== undefined,
+        JSON.stringify({ ov: ov.jobs, low: low.jobs, high: high.jobs, bad }));
+
+      // An unreadable MemTotal must not mean "unbounded" — that is exactly the pre-fix behaviour.
+      const blind = cargoJobsForBatch({ gatesInFlight: 4, memTotalGiB: undefined });
+      ok("an_unmeasurable_machine_still_gets_a_bound", blind.jobs === 2, JSON.stringify(blind));
+
+      // And the real reading is sane on whatever box this runs on (or absent on a non-Linux one).
+      const real = memTotalGiB();
+      ok("mem_total_reads_as_a_plausible_size_or_not_at_all",
+        real === undefined || (real > 0.5 && real < 4096), String(real));
+      ok("mem_total_parser_reads_the_kb_unit",
+        memTotalGiB("MemTotal:       33886140 kB\nMemFree: 1 kB\n")! > 32 &&
+        memTotalGiB("MemTotal:       33886140 kB\nMemFree: 1 kB\n")! < 33,
+        String(memTotalGiB("MemTotal:       33886140 kB\n")));
+    }
+
+    // ---- the resource preflight ------------------------------------------------------------------
+    // A tier commits to its peak resource in its first seconds and cannot discover a memory cap
+    // mid-run; the alternative to checking up front is a machine that stops responding and gets
+    // power-cycled, which destroys the run and everything else on the box. These pin the branches,
+    // because the only other way to reach them is to genuinely run a machine out of memory.
+    {
+      const p = (o: Partial<Parameters<typeof preflightDecision>[0]>) =>
+        preflightDecision({ tier: "full", jobs: 4, skip: false, memAvailGiB: 20, diskAvailGiB: 200, ...o });
+
+      // `fast` is what CI runs: it spawns no batch and mints no scratch, and must NOT acquire a way
+      // to refuse to start on a runner whose disk this tool cannot reason about.
+      ok("the_fast_tier_is_never_gated_on_a_floor",
+        p({ tier: "fast", memAvailGiB: 0.1, diskAvailGiB: 0.1 }).action === "proceed",
+        JSON.stringify(p({ tier: "fast", memAvailGiB: 0.1, diskAvailGiB: 0.1 })));
+
+      // Memory DEGRADES: a slow tier beats no tier. Disk REFUSES: going sequential creates no space,
+      // and every nested-cargo gate downstream would die on ENOSPC tens of minutes in.
+      ok("a_low_memory_machine_degrades_to_sequential_rather_than_refusing",
+        p({ memAvailGiB: 5 }).action === "degrade" && p({ memAvailGiB: 5 }).jobs === 1,
+        JSON.stringify(p({ memAvailGiB: 5 })));
+      ok("a_full_scratch_volume_refuses_before_the_tier_starts",
+        p({ diskAvailGiB: 3 }).action === "refuse", JSON.stringify(p({ diskAvailGiB: 3 })));
+      ok("memory_so_low_that_even_one_cargo_would_thrash_refuses",
+        p({ memAvailGiB: 1 }).action === "refuse", JSON.stringify(p({ memAvailGiB: 1 })));
+
+      // An UNMEASURABLE machine proceeds. A preflight that refused whenever it could not read
+      // `/proc/meminfo` would make the runner unusable wherever the measurement is the thing missing.
+      ok("an_unmeasurable_machine_proceeds_rather_than_refusing",
+        p({ memAvailGiB: undefined, diskAvailGiB: undefined }).action === "proceed",
+        JSON.stringify(p({ memAvailGiB: undefined, diskAvailGiB: undefined })));
+
+      // Degrading an ALREADY sequential run is a no-op, not a second announcement.
+      ok("an_already_sequential_run_is_not_degraded_again",
+        p({ memAvailGiB: 5, jobs: 1 }).action === "proceed", JSON.stringify(p({ memAvailGiB: 5, jobs: 1 })));
+
+      // The override is a real escape hatch — it must survive both floors, or a machine the tool
+      // measures wrongly has no way to run at all.
+      ok("skip_preflight_overrides_both_floors",
+        p({ skip: true, memAvailGiB: 0.1, diskAvailGiB: 0.1 }).action === "proceed" &&
+        p({ skip: true, memAvailGiB: 0.1, diskAvailGiB: 0.1 }).jobs === 4,
+        JSON.stringify(p({ skip: true, memAvailGiB: 0.1, diskAvailGiB: 0.1 })));
+
+      ok("a_healthy_machine_proceeds_with_the_requested_jobs",
+        p({}).action === "proceed" && p({}).jobs === 4, JSON.stringify(p({})));
+    }
   }
   return t;
 }

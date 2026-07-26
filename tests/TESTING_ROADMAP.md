@@ -1730,6 +1730,24 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   but consistent with a full `/tmp`), and a local-tier run failing three nested-cargo gates on
   os error 28 mid-saturation (all green on the post-remediation rerun; its full log was then
   destroyed with its worktree — the per-checkout `draft/logs/` lifetime note in AGENTS.md).
+- **A tier's PEAK MEMORY is bounded by arithmetic, not by observation — nothing measures the real
+  peak.** The sibling of the disk entry above, and the sharper class: a full disk fails a gate,
+  an overcommitted memory cap takes the whole machine (a 32-core / 32 GiB WSL2 box went unresponsive
+  for ~10 minutes under a full tier and was power-cycled, destroying the run). The bound that ships
+  is a memory-derived `CARGO_BUILD_JOBS` per *batched* gate plus an up-front memory/disk preflight
+  (`tests/README.md` § "Gate-level concurrency (registry-declared, opt-in)"), pinned by the pure
+  helpers `cargoJobsForBatch` and `preflightDecision` in the `timings_digest_check` gate. What those
+  pins CANNOT see is the quantity that actually matters: no gate samples concurrent `rustc` or
+  MemAvailable during a real run, so a future gate that spawns cargo by a path the batched child
+  environment does not reach would regress the bound silently. The missing system is a sampler the
+  runner owns — peak concurrent `rustc`, peak Σ RSS and the MemAvailable floor recorded per run
+  beside the durations, reported and never asserted (durations and peaks are both nondeterministic;
+  a gate that fails on a number would be flaky by construction). Two unestablished premises it would
+  also settle, both currently assumptions: the assumed 2 GiB worst-case per-`rustc` footprint carries
+  a ~4× margin over the 455 MiB largest ever *observed*, but the full tier's heaviest emitted-test
+  crates were never sampled; and the incident itself was never reproduced — the environment that
+  produced it also had a 95 %-full disk and 34 GB of `/tmp` scratch, so how much of the lockup was
+  memory and how much was writeback against a full volume is unknown.
 - **Gate-cache residual costs.** The nested-cargo gates (`feature_corpus_compiles`,
   `wasm_matrix_compiles`, `multifile_matrix_compiles`, the layer-2 recombination sweeps, and
   `verify.ts`) memoize per generated-tree content hash (the gate cache), so re-run wall-clock is a
