@@ -501,6 +501,12 @@ The boundary is deliberately narrow. `@no_json_schema_export` does **not**:
 - do anything at all when `--json-schema-export` is off. The directive is then simply inert, so one
   spec can be generated under several flag sets without editing.
 
+The opposite direction — *adding* a row for a published type the CDDL never describes — is the
+[`--json-schema-root`](./command_line_flags) flag, which takes a Rust type path rather than a rule
+name. It consults no IR, so naming a type whose rule carries this directive re-registers it. The
+three ways to adjust the document's contents, and which to reach for, are listed under
+[Command line flags § `--json-schema-export`](./command_line_flags).
+
 ### An extern with no `JsonSchema` impl also needs `@custom_json` on the types that embed it
 
 This is the one sharp edge, and the error it produces does not point at it. `@no_json_schema_export`
