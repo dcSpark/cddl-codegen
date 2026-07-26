@@ -7827,6 +7827,30 @@ fn json_schema_name_stolen_fails() {
     );
 }
 
+/// The document's REFERENCE-CLOSURE check, emitted into `export_schemas()`. Sibling of the two
+/// name-injectivity fixtures above and the same shape of assertion: the property is one our own suite
+/// has asserted over its own fixtures since the one-document-per-crate change
+/// (`run_test`'s `$ref` walk), which says nothing about a CONSUMER's document — and cycle 3 told the
+/// consumer to supply hand-authored schema bodies by writing a `JsonSchema::json_schema` impl, i.e.
+/// recommended precisely the route this check protects. So it now runs where the document is written.
+///
+/// The first vector is the consumer's own reported shape: an own-spec extern whose hand-written impl
+/// returns a bare `Schema::new_ref("PlutusData")`. Generation, the rust build and the json-gen build
+/// are all green; only running `export_schemas()` can see it, which is why this costs a nested cargo
+/// run rather than a snapshot assert. The fixture carries a second extern for the OTHER dangling
+/// class — an internal `#/$defs/<key>` pointer at a key nothing defines — so both branches of the
+/// check and its sorted multi-offender report are exercised by the one cell. The document is never
+/// written when the check fires (the panic precedes `fs::write`), so a broken document cannot reach
+/// the `schemas/` dir at all.
+#[test]
+fn json_schema_ref_dangling_fails() {
+    run_json_gen_failure_test(
+        "json-ref-dangling",
+        "external_rust_defs_dangling",
+        "\"PlutusData\" — not an internal",
+    );
+}
+
 /// Float JSON serde/schema, split from `json` because that fixture also runs under
 /// `json_preserve` and preserve-encodings is unimplemented for floats.
 #[test]
@@ -8336,6 +8360,13 @@ fn json_schema_root_input_contract() {
     assert!(
         parse("--json-schema-root=::cddl_lib::sub::Ext<u64, alloc::string::String>").is_ok(),
         "a rust path with generic arguments, spaces and a leading `::` must be accepted verbatim"
+    );
+    // A qualified path is inside the promised surface (the docs say so), and it does survive the
+    // turbofish emission — `add_schema::<<Foo as Trait>::Assoc>(…)` parses, the leading `::<<` and
+    // all.
+    assert!(
+        parse("--json-schema-root=<cddl_lib::Foo as cddl_lib::Trait>::Assoc").is_ok(),
+        "a qualified `<Foo as Trait>::Assoc` path must be accepted"
     );
     let err = parse("--json-schema-root=cddl_lib::A; std::process::exit(1)")
         .expect_err("a value carrying a statement separator must be rejected")

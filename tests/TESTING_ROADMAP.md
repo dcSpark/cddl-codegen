@@ -1319,7 +1319,7 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   extra root is emitted as an ordinary row through the same helper, so it inherits all three checks
   by construction; that inheritance is asserted by reading the emitter, not by a fixture with an
   extra root on the LOSING side of a collision, which would cost another nested-cargo failure cell —
-  mint one if a consumer reports a collision they introduced through the flag. Three holes remain,
+  mint one if a consumer reports a collision they introduced through the flag. Four holes remain,
   each needing its own mechanism:
   - **A collision whose LOSER has no row and whose `schema_id`s match** is a silent merge nothing can
     see: the ledger only holds rows, and the merge makes both returned refs equal the shared name, so
@@ -1336,10 +1336,15 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
     kept-its-own-name check still fires whenever the loser is a row of the crate being checked.
   - **A `schema_name()` that `schemars` percent-encodes into its `$ref`** (anything outside
     `[A-Za-z0-9_]`, e.g. the static runtime's `OrderedHashMap<K, V>`) skips the kept-its-own-name
-    check entirely: `schemars`' `encode_ref_name` is private, so reconstructing the expected ref means
-    duplicating an upstream encoder — a false panic in a consumer's build is worse than a missed
-    check. Closing it needs the encoder exposed upstream, or a decode step in the emitted helper
-    validated against a vector per escape class.
+    check entirely: `schemars`' `encode_ref_name` lives in a private module (`mod encoding` in
+    `schemars-1.2.1/src/lib.rs`, its items `pub fn` but unreachable), so reconstructing the expected
+    ref means duplicating an upstream encoder — a false panic in a consumer's build is worse than a
+    missed check. The closing mechanism is now half-built rather than hypothetical: the emitted
+    closure check carries a `decode_schema_ref_name` (percent-decode, then the JSON-Pointer escapes),
+    so the kept-its-own-name check could compare `decode(assigned)` against the name instead of
+    skipping. What it still needs before it can be trusted to panic is a vector per escape class
+    (`~`, `/`, a percent-escaped byte, a multi-byte UTF-8 name), since decoding a name the encoder
+    spelled differently than assumed would fail a build that is fine.
   - **A collision between two types that BOTH lack rows** — each reached only transitively from some
     row'd type — is seen by neither check: the ledger holds rows, and "kept its own name" is asked
     only of a registered type. With distinct `schema_id`s both are emitted and one takes `<name>2`
@@ -1349,15 +1354,28 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
     a spec. Same closing mechanism as the no-row-loser hole above (a post-pass over the finished
     document); making the ordering irrelevant rather than merely loud would mean a published-name
     scheme that does not depend on traversal order at all — a breaking rename of published names in
-    its own right, so it needs a consumer asking for name stability across spec edits.
+    its own right, so it needs a consumer asking for name stability across spec edits. A cheaper
+    *tell* is worth recording beside that post-pass, as a candidate rather than a commitment, because
+    the post-pass is not implementable from inside the emitted crate at all (nothing there can
+    enumerate the reachable type set): schemars assigns a collision suffix by walking `for i in 2..`
+    over the names it has already used (`schemars-1.2.1/src/generate.rs`, the `find_ref` name
+    assignment — verified at that pinned version, which `static/Cargo_json_gen.toml` is what pins),
+    so a document holding both `<base>` and `<base>2` where no registered row publishes `<base>2` is
+    the observable signature of the collision. It carries a real false-positive class — a genuine
+    Rust type named `Foo2` — so it would need an opt-out, which is most of why it is not obviously
+    worth shipping.
 
-  The document's reference CLOSURE — every `$ref` resolving to a `$defs` key of the same document —
-  is asserted for every `--json-schema-export` fixture by `integration_tests::run_test`, which is OUR
-  suite only: a consumer's own run still has no closure check, and the shape that needs one is a
-  hand-written impl returning a bare `Schema::new_ref("SomeType")` (the `@json_schema = "<file>"`
-  ask). Emitting the closure walk into the generated `export_schemas()` is the layer that would reach
-  them. Trigger: a consumer report of a wrong-bodied published schema, a document composed from two
-  crates, or the hand-authored-schema ask landing.
+  The document's reference CLOSURE is checked in two places now, and neither closes the holes above:
+  `integration_tests::run_test` asserts it over every `--json-schema-export` fixture of ours, and the
+  emitted `export_schemas()` asserts it over the CONSUMER's own document before writing it
+  (`integration_tests::json_schema_ref_dangling_fails` covers both classes — a bare
+  `Schema::new_ref("SomeType")` and an internal pointer at an undefined key). Two bounds worth
+  keeping in view. The emitted check resolves the definitions map through the generator's
+  `definitions_path` setting and SKIPS if that resolves to nothing, so a schemars default whose
+  reference namespace stops matching the emitted document shape turns the check off rather than
+  reddening every consumer build — silent, and only detectable by a vector that pins the emitted
+  document against a bumped schemars. And closure is not injectivity: a document can resolve every
+  reference and still publish one type's shape under another's name.
 
 - **A directive's documented sentence can stay true while its consumer-visible MEANING changes
   underneath it, because the artifact it controls changed shape.** `@no_json_schema_export` shipped

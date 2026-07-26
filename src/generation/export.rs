@@ -89,6 +89,118 @@ const ADD_SCHEMA_HELPER: &str = r##"fn add_schema<T: schemars::JsonSchema>(
     }
 }"##;
 
+/// The document's REFERENCE-CLOSURE check, emitted into the json-gen crate and run by
+/// `export_schemas()` before the document is written. Every `$ref` in the finished document must be
+/// an internal pointer at one of that same document's definitions; anything else — a bare relative
+/// name (`Schema::new_ref("PlutusData")`, the shape a hand-written `JsonSchema` stub produces), a
+/// bare `"#"`, an `http(s)://` URL, another document's path, or an internal pointer at a key nothing
+/// defined — ships as a `.d.ts` that references a type it never declares (`TS2304`).
+///
+/// This lives in the CONSUMER's own `cargo run` for the same reason the name-injectivity guard does:
+/// we are the party that requires the hand-written `JsonSchema` impls it bites, and cddl-codegen's
+/// own suite asserting the property over its own fixtures says nothing about a consumer's document.
+///
+/// The panic's wording is load-bearing: `integration_tests::json_schema_ref_dangling_fails` asserts a
+/// message fragment and `docs/docs/command_line_flags.mdx` quotes it.
+const CLOSURE_CHECK_HELPER: &str = r##"fn collect_schema_refs(value: &serde_json::Value, out: &mut std::collections::BTreeSet<String>) {
+    match value {
+        serde_json::Value::Object(map) => {
+            for (key, child) in map {
+                if key == "$ref" {
+                    if let Some(reference) = child.as_str() {
+                        out.insert(reference.to_owned());
+                    }
+                }
+                collect_schema_refs(child, out);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                collect_schema_refs(item, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn decode_schema_ref_name(encoded: &str) -> String {
+    // Inverse of schemars' `encode_ref_name`, which is `pub fn` inside a PRIVATE `mod encoding` — not
+    // reachable from here, so the decode is written out. Two layers, undone in the order the encoder
+    // applied them: percent-decode the URI-fragment layer first (RFC 3986), then the JSON-Pointer
+    // escapes (RFC 6901), `~1` before `~0` — a name holding a literal `~1` encodes to `~01` and
+    // decodes wrong in the other order.
+    //
+    // DEcoding is safe here even though the add_schema helper deliberately refuses to ENcode: that
+    // guard skips names it cannot reconstruct because reproducing a private encoder risks a false
+    // panic on a schemars bump. Decoding is a well-defined standard operation independent of which
+    // characters the encoder chose to escape, so it carries no such risk. Do not "fix" the asymmetry.
+    let bytes = encoded.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let mut escaped = false;
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(byte) = u8::from_str_radix(&encoded[i + 1..i + 3], 16) {
+                decoded.push(byte);
+                i += 3;
+                escaped = true;
+            }
+        }
+        if !escaped {
+            decoded.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8_lossy(&decoded)
+        .replace("~1", "/")
+        .replace("~0", "~")
+}
+
+fn check_schema_ref_closure(document: &serde_json::Value, definitions_path: &str) {
+    // The reference namespace is read off the generator's own settings, never hardcoded (the same
+    // normalisation the add_schema helper does).
+    let definitions_path = definitions_path
+        .strip_prefix('#')
+        .unwrap_or(definitions_path);
+    let definitions_path = definitions_path
+        .strip_suffix('/')
+        .unwrap_or(definitions_path);
+    let prefix = format!("#{definitions_path}/");
+    // The definitions MAP is resolved through that same setting (as a JSON pointer into the finished
+    // document) rather than assumed to be `$defs`, so the two halves of every comparison come from
+    // one source. If it resolves to nothing, the reference namespace and the emitted document shape
+    // have diverged — a schemars default change — and every reference would be a false positive.
+    // Skipping is much cheaper than panicking in a build that is fine.
+    let defs = match document.pointer(definitions_path).and_then(|d| d.as_object()) {
+        Some(defs) => defs,
+        None => return,
+    };
+    let mut references = std::collections::BTreeSet::new();
+    collect_schema_refs(document, &mut references);
+    // Sorted and deduplicated by the BTreeSet, so the same document always produces the same verdict
+    // and the same message.
+    let mut dangling = Vec::new();
+    for reference in &references {
+        match reference.strip_prefix(prefix.as_str()) {
+            None => dangling.push(format!(
+                "  {reference:?} — not an internal \"{prefix}<key>\" reference"
+            )),
+            Some(encoded) => {
+                let key = decode_schema_ref_name(encoded);
+                if !defs.contains_key(key.as_str()) {
+                    dangling.push(format!(
+                        "  {reference:?} — {key:?} is not defined in this document"
+                    ));
+                }
+            }
+        }
+    }
+    if !dangling.is_empty() {
+        let dangling = dangling.join("\n");
+        panic!("cddl-codegen --json-schema-export: the exported JSON schema document holds references that do not resolve inside it:\n{dangling}\nThe document is self-contained by contract — `run-json2ts.js` compiles it in one pass with no external resolution — so each of these ships as a `.d.ts` that references a type it never declares (TS2304). A reference like this comes from a hand-written `schemars::JsonSchema` impl that returned a REFERENCE where a schema body was expected: return the real body, or give the referenced type a registration row of its own (a CDDL rule, or `--json-schema-root`) so this document defines it.");
+    }
+}"##;
+
 /// The `add_schemas` body's first line when the spec registers at least one row: the name ledger
 /// `add_schema` threads through every row. A local (not a parameter) because `add_schemas` keeps its
 /// exact published signature — cycle 2 shipped it as the cross-crate composition point.
@@ -1858,6 +1970,13 @@ impl GenerationScope {
                 lib_str.push_str(ADD_SCHEMA_HELPER);
                 lib_str.push_str("\n\n");
             }
+            // The closure check is emitted UNCONDITIONALLY, unlike the row helper above: it belongs to
+            // `export_schemas`, which is emitted for every `--json-schema-export` run, and a spec that
+            // registers no rows writes a document too. (With no rows the walk finds no references and
+            // the check is vacuous — the cost of that is nothing, and the alternative is a check that
+            // can be silently absent.)
+            lib_str.push_str(CLOSURE_CHECK_HELPER);
+            lib_str.push_str("\n\n");
             let mut lib_scope = codegen::Scope::new();
             // `add_schemas` is public on purpose: it is the composition point a consumer needs to
             // thread another generated crate's types into one document.
@@ -1889,6 +2008,10 @@ impl GenerationScope {
                 // The meta-schema is read off the generator's own settings rather than hardcoded, so
                 // the document always declares the draft schemars actually emitted.
                 .line("let meta_schema = generator.settings().meta_schema.clone();")
+                // Captured alongside the meta-schema, and for the same reason: the closure check
+                // below compares against the namespace schemars ACTUALLY used, never a hardcoded
+                // `#/$defs/`.
+                .line("let definitions_path = generator.settings().definitions_path.to_string();")
                 .line("let mut document = serde_json::Map::new();");
             let mut meta_present = Block::new("if let Some(meta_schema) = meta_schema");
             meta_present
@@ -1903,8 +2026,14 @@ impl GenerationScope {
                 .line(
                     "document.insert(\"$defs\".to_owned(), generator.take_definitions(true).into());",
                 )
+                .line("let document = serde_json::Value::Object(document);")
+                // After `$defs` is materialised and BEFORE anything is written: a document that
+                // cannot resolve its own references must never reach disk, since every cheap
+                // downstream verdict ("it generated", "it compiled", "the `.d.ts` type-checks")
+                // is satisfied by one.
+                .line("check_schema_ref_closure(&document, &definitions_path);")
                 .line(format!(
-                    "std::fs::write(schema_path.join(\"{lib_name_code}.schema.json\"), serde_json::to_string_pretty(&serde_json::Value::Object(document)).unwrap()).unwrap();"
+                    "std::fs::write(schema_path.join(\"{lib_name_code}.schema.json\"), serde_json::to_string_pretty(&document).unwrap()).unwrap();"
                 ));
             lib_scope.push_fn(lib_export_fn);
             lib_str.push_str(&lib_scope.to_string());

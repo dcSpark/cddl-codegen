@@ -19,3 +19,13 @@ my_set = ext_set<uint>
 no_schema_extern = _CDDL_CODEGEN_EXTERN_TYPE_ ; @no_json_schema_export
 hand_json_parent = [n: no_schema_extern] ; @custom_json @no_json_schema_export
 big_thing = [e: my_extern, s: my_set]
+
+; Green-direction vector for the emitted document's reference-CLOSURE check, whose helper must DECODE
+; a `$ref` before matching it against a `$defs` key. `EncodedName`'s hand-written `schema_name()` is
+; `Odd<K>/~name`, which schemars spells in a `$ref` as `Odd%3CK%3E~1~0name` — one name covering all
+; three escape classes at once (percent, JSON-Pointer `~1` for `/`, `~0` for `~`). `encoded_holder`
+; exists so something REFERENCES it: a root's own ref is discarded, so without a referrer no encoded
+; `$ref` would appear in the document at all. A decode that is wrong in any of the three classes
+; fails this fixture's json-gen run, which is the only place the decode is load-bearing.
+encoded_name = _CDDL_CODEGEN_EXTERN_TYPE_
+encoded_holder = [e: encoded_name]
