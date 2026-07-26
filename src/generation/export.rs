@@ -1930,6 +1930,11 @@ impl GenerationScope {
 
         // json-gen crate for exporting JSON schemas
         if cli.json_schema_export {
+            // The `None` here is the FRESH form only — same two-phase model as `rust/Cargo.toml`
+            // above: `export` re-applies these ops onto the on-disk manifest so user edits survive.
+            // Called out because this file reads as "clobbered" in isolation while a documented
+            // promise rests on the opposite: `--json-schema-root` tells users that a dependency they
+            // add here by hand (to reach another crate's type) survives regeneration.
             out.insert(
                 "wasm/json-gen/Cargo.toml".to_owned(),
                 crate::cargo_manifest::apply(
