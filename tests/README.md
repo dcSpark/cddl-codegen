@@ -3041,16 +3041,33 @@ positive key, so both directions of that inversion are pinned.
 
 **A key that exists on one side only.** `config_keys_match_cli_fields` reads `struct Cli` and
 `struct Settings` from SOURCE with `syn` and asserts a bijection modulo a documented exclusion list
-(the three per-crate keys, which live on the crate entry; `profiles`, which is the config's own
-structure). A flag added without a config key fails it, and so does a key invented with no flag.
+(the three per-crate keys, which live on the crate entry; `profiles` and the three graph keys, which
+are the config's own structure). A flag added without a config key fails it, and so does a key
+invented with no flag.
+
+**A derived value that names something that is not there.** The cross-crate sugar (`deps`,
+`wasm-reexports`, `json-schema-deps`, `[runtime]`) turns one declaration into flag values pointing at
+another crate's files, so each derivation is asserted against the flag values a hand-written
+invocation spells — and the derived paths are then walked on real disk, because a path that is
+well-formed and wrong looks identical in an argv assertion. The JSON-threading derivation
+(`--json-schema-dep` + `--json-gen-dep` from `deps ∪ wasm-reexports`) additionally pins that the
+derived cargo path dependency is RELATIVE under all four `package-json` layouts: it is the one
+derived path written into a *committed* manifest, where an absolute value would make the same config
+produce different bytes in a different clone.
 
 The acceptance test is `config_expansion_generates_byte_identical_output_to_the_flag_invocation`:
 one corpus fixture generated twice through `api::generated_strings`, once from a config and once
 from the equivalent flags, asserted file-set-equal and content-equal. That is what pins "config =
 flag expansion, nothing more" at the level of emitted source rather than at the `Cli` struct.
 
-Everything here runs under plain `cargo test` (`cargo test --bin cddl-codegen config_tests`;
-in-tier via the local tier's workspace `cargo test`, no nested cargo, no dedicated gate).
+Everything here runs under plain `cargo test` (`cargo test --bin cddl-codegen config_tests`; in-tier
+via the local tier's workspace `cargo test`, no dedicated gate). Three cells nest a cargo run inside
+that, each for a verdict no generation-time assertion can reach: a two-crate `deps` config whose
+consumer really imports its dependency's type; a `[runtime]` export compiled against BOTH flavors
+that import it (with a mutation leg proving the accepted gap is real); and
+`a_derived_thread_links_and_a_collision_blames_the_consumer`, which builds and RUNS a consumer's
+json-gen crate so the derived thread's two halves are shown to agree, then makes both crates publish
+one schema name and asserts the injectivity guard names the consumer's row.
 
 ## Design rules (review-owned; each with a shipped exemplar)
 

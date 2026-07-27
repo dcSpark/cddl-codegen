@@ -834,10 +834,11 @@ fn config_expansion_generates_byte_identical_output_to_the_flag_invocation() {
 /// - `input` / `output` / `lib-name` are `Cli` fields but live on the per-crate entry rather than on
 ///   `Settings`, because a shared value for any of them would point every crate at one spec, one
 ///   directory, or one library. They are checked as present-on-the-crate-entry instead.
-/// - `profiles` and `deps` are config keys with no `Cli` field: one selects which shared layers a
-///   crate applies, the other declares an edge to another crate. Both are the config's own
-///   structure — they have no flag equivalent by construction, and neither is on `Settings`, so
-///   neither reaches `config_keys` in the first place.
+/// - `profiles`, `deps`, `wasm-reexports` and `json-schema-deps` are config keys with no `Cli`
+///   field: the first selects which shared layers a crate applies, the other three declare edges to
+///   other crates (a rust/extern one, a packaging one, and an override of what those two derive for
+///   the schema document). All four are the config's own structure — they have no flag equivalent
+///   by construction, and none is on `Settings`, so none reaches `config_keys` in the first place.
 /// - `--config` itself is on `ConfigCli`, not `Cli`, so it needs no exclusion — it is not a
 ///   generation flag and cannot be set from inside a config file.
 #[test]
@@ -903,7 +904,15 @@ fn config_keys_match_cli_fields() {
 fn per_crate_keys_are_absent_from_the_shared_settings_struct() {
     let settings = Settings::default();
     let rendered = format!("{settings:?}");
-    for key in ["input", "output", "lib_name", "profiles", "deps"] {
+    for key in [
+        "input",
+        "output",
+        "lib_name",
+        "profiles",
+        "deps",
+        "wasm_reexports",
+        "json_schema_deps",
+    ] {
         assert!(
             !rendered.contains(&format!("{key}:")),
             "`{key}` must not be a `Settings` field — it would become settable in [defaults]"
@@ -2108,6 +2117,492 @@ fn a_runtime_table_exports_a_runtime_the_other_flavor_compiles_against() {
         String::from_utf8_lossy(&mutated.stderr).contains("NonEmptyMap"),
         "the failure must be the one the statement names, got:\n{}",
         String::from_utf8_lossy(&mutated.stderr)
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ---------------------------------------------------------------------------------------------
+// The published JSON surface — `wasm-reexports` and the threading derivation
+// ---------------------------------------------------------------------------------------------
+
+/// CML's own shape, which is what the derivation was designed against: a crate whose spec references
+/// one generated crate (`deps`) and whose npm package additionally ships two others
+/// (`wasm-reexports`), plus crates with no edges at all.
+const CML_SHAPED_SURFACE: &str = "\
+[defaults]
+json-schema-export = true
+
+[crates.chain]
+input = \"specs/chain.cddl\"
+output = \"gen/chain\"
+
+[crates.cip25]
+input = \"specs/cip25.cddl\"
+output = \"gen/cip25\"
+
+[crates.cip36]
+input = \"specs/cip36.cddl\"
+output = \"gen/cip36\"
+
+[crates.multi-era]
+input = \"specs/multi-era.cddl\"
+output = \"gen/multi-era\"
+deps = [\"chain\"]
+wasm-reexports = [\"cip25\", \"cip36\"]
+";
+
+/// The derivation itself: `deps ∪ wasm-reexports`, in `deps`-then-`wasm-reexports` order, each entry
+/// expanding to BOTH flags — the registrar call and the manifest entry that makes it link. A crate
+/// with neither edge threads nothing.
+///
+/// Order is asserted rather than membership, because it is the input the flag consumes: registration
+/// order decides which crate a published-name collision blames.
+#[test]
+fn threading_derives_from_deps_then_wasm_reexports() {
+    let by_name = expand_all(CML_SHAPED_SURFACE);
+    assert_eq!(
+        by_name["multi-era"].json_schema_dep,
+        vec![
+            "chain=chain_json_schema_gen",
+            "cip25=cip25_json_schema_gen",
+            "cip36=cip36_json_schema_gen",
+        ],
+        "the registrar calls must derive in deps-then-wasm-reexports order"
+    );
+    assert_eq!(
+        by_name["multi-era"].json_gen_dep,
+        vec![
+            "chain-json-schema-gen=../../../chain/wasm/json-gen",
+            "cip25-json-schema-gen=../../../cip25/wasm/json-gen",
+            "cip36-json-schema-gen=../../../cip36/wasm/json-gen",
+        ],
+        "each thread must also derive the [dependencies] entry that lets its call link"
+    );
+    for lonely in ["chain", "cip25", "cip36"] {
+        assert!(
+            by_name[lonely].json_schema_dep.is_empty() && by_name[lonely].json_gen_dep.is_empty(),
+            "`{lonely}` has no edge, so it must thread nothing"
+        );
+    }
+}
+
+/// The two derived spellings are opposite by design and both are read off the generator rather than
+/// restated: the registrar call takes the rust LIB path (dashes normalised to underscores, plus
+/// `_json_schema_gen`), the manifest entry takes the cargo PACKAGE name (the `lib-name` verbatim,
+/// plus `-json-schema-gen`). Writing either the other way round is the mistake whose error names
+/// neither cause — a cargo resolution failure, or an `E0433` on a crate whose name looks right.
+#[test]
+fn the_two_derived_thread_spellings_are_the_lib_path_and_the_package_name() {
+    let by_name = expand_all(
+        "[defaults]\njson-schema-export = true\n\
+         [crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\nlib-name = \"cml-chain\"\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\ndeps = [\"core\"]\n",
+    );
+    assert_eq!(
+        by_name["ledger"].json_schema_dep,
+        vec!["cml_chain=cml_chain_json_schema_gen"]
+    );
+    assert_eq!(
+        by_name["ledger"].json_gen_dep,
+        vec!["cml-chain-json-schema-gen=../../../core/wasm/json-gen"]
+    );
+}
+
+/// **The derived `--json-gen-dep` path is RELATIVE**, under every combination of the two crates'
+/// `package-json` settings.
+///
+/// This is the one derived path in the whole config that is WRITTEN into a committed file rather than
+/// read at generation time: it becomes a cargo path dependency in `wasm/json-gen/Cargo.toml`. An
+/// absolute value there would bake the checkout location into a file the project commits, so the same
+/// config would produce different bytes in a different clone — "same inputs -> same bytes" broken in
+/// the most visible way there is. Both endpoints move with their own crate's `package-json`, so all
+/// four combinations are counted rather than one.
+#[test]
+fn the_derived_json_gen_dep_path_is_relative_in_every_layout() {
+    for (dep_npm, consumer_npm, expected) in [
+        (false, false, "../../../core/wasm/json-gen"),
+        (true, false, "../../../core/rust/wasm/json-gen"),
+        (false, true, "../../../../core/wasm/json-gen"),
+        (true, true, "../../../../core/rust/wasm/json-gen"),
+    ] {
+        let by_name = expand_all(&format!(
+            "[defaults]\njson-schema-export = true\n\
+             [crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\npackage-json = {dep_npm}\n\
+             [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\n\
+             package-json = {consumer_npm}\ndeps = [\"core\"]\n"
+        ));
+        let derived = &by_name["ledger"].json_gen_dep;
+        assert_eq!(
+            derived,
+            &vec![format!("core-json-schema-gen={expected}")],
+            "dep package-json={dep_npm}, consumer package-json={consumer_npm}"
+        );
+        let path = derived[0]
+            .split_once('=')
+            .expect("the flag is <package>=<path>")
+            .1;
+        assert!(
+            std::path::Path::new(path).is_relative(),
+            "a cargo path dependency is resolved against the manifest holding it, and an absolute \
+             value would make the committed manifest machine-specific; got {path}"
+        );
+    }
+}
+
+/// The same, for the case a lexical join cannot answer on its own: one crate's `output` is absolute
+/// while the other's is relative, so the two live in different frames until the process directory
+/// supplies the missing one. The value must still come out relative — that property does not depend
+/// on how the endpoints were spelled.
+#[test]
+fn the_derived_path_stays_relative_across_a_mixed_absolute_and_relative_output() {
+    let absolute = std::env::temp_dir().join("cddl_config_absolute_core");
+    let by_name = expand_all(&format!(
+        "[defaults]\njson-schema-export = true\n\
+         [crates.core]\ninput = \"c.cddl\"\noutput = \"{}\"\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\ndeps = [\"core\"]\n",
+        absolute.display()
+    ));
+    let derived = &by_name["ledger"].json_gen_dep;
+    assert_eq!(derived.len(), 1, "one edge derives one entry");
+    let path = derived[0]
+        .split_once('=')
+        .expect("the flag is <package>=<path>")
+        .1;
+    assert!(
+        std::path::Path::new(path).is_relative(),
+        "the derived cargo path dependency must be relative however the outputs were spelled, got \
+         {path}"
+    );
+    assert!(
+        path.ends_with("cddl_config_absolute_core/wasm/json-gen"),
+        "and it must still reach the dependency's json-gen crate, got {path}"
+    );
+}
+
+/// A dependency that publishes no schema document contributes NOTHING, silently. That silence is
+/// what filters hand-written crates out of the intersection in the first place, and it is what lets
+/// one config hold both kinds of crate: a rust/extern edge onto a crate with no JSON surface is an
+/// ordinary thing to have, not a mistake to report.
+///
+/// The consumer side is the same rule: a crate with no document of its own derives no thread, because
+/// there is nowhere for the rows to land.
+#[test]
+fn a_crate_without_a_schema_document_neither_threads_nor_is_threaded() {
+    let by_name = expand_all(
+        "[crates.plain]\ninput = \"p.cddl\"\noutput = \"gen/plain\"\n\
+         [crates.published]\ninput = \"s.cddl\"\noutput = \"gen/published\"\n\
+         json-schema-export = true\ndeps = [\"plain\"]\n\
+         [crates.consumer]\ninput = \"c.cddl\"\noutput = \"gen/consumer\"\ndeps = [\"published\"]\n",
+    );
+    assert!(
+        by_name["published"].json_schema_dep.is_empty()
+            && by_name["published"].json_gen_dep.is_empty(),
+        "a dependency with no json-gen crate has no `add_schemas` to call"
+    );
+    assert!(
+        by_name["consumer"].json_schema_dep.is_empty()
+            && by_name["consumer"].json_gen_dep.is_empty(),
+        "a consumer with no document of its own has nowhere for a threaded row to land"
+    );
+}
+
+/// `json-schema-deps` REPLACES the derivation for that crate rather than adding to it, so a crate
+/// whose package composition and dependency list genuinely diverge can state the whole list — and
+/// `[]` is how it says "thread nothing" while keeping its edges.
+#[test]
+fn json_schema_deps_replaces_the_derivation_including_the_empty_list() {
+    let fixture = |threading: &str| {
+        format!(
+            "[defaults]\njson-schema-export = true\n\
+             [crates.chain]\ninput = \"c.cddl\"\noutput = \"gen/chain\"\n\
+             [crates.cip25]\ninput = \"m.cddl\"\noutput = \"gen/cip25\"\n\
+             [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\n\
+             deps = [\"chain\"]\nwasm-reexports = [\"cip25\"]\n{threading}"
+        )
+    };
+    let replaced = expand_all(&fixture("json-schema-deps = [\"cip25\"]\n"));
+    assert_eq!(
+        replaced["ledger"].json_schema_dep,
+        vec!["cip25=cip25_json_schema_gen"],
+        "the override replaces the derivation rather than adding to it"
+    );
+    assert_eq!(
+        replaced["ledger"].json_gen_dep,
+        vec!["cip25-json-schema-gen=../../../cip25/wasm/json-gen"]
+    );
+
+    let nothing = expand_all(&fixture("json-schema-deps = []\n"));
+    assert!(
+        nothing["ledger"].json_schema_dep.is_empty() && nothing["ledger"].json_gen_dep.is_empty(),
+        "an empty list threads nothing"
+    );
+    assert_eq!(
+        nothing["ledger"].workspace_dep,
+        vec!["chain"],
+        "and it must not disturb the rust/extern edge `deps` carries"
+    );
+}
+
+/// The raw sub-tables stay the only way to thread a crate that is not in this config, and they union
+/// on top of whatever the derivation produced — with the DERIVED entries emitted first.
+///
+/// Order is the point of the assertion. `--json-schema-dep` is order-significant, and a TOML
+/// sub-table is unordered (it deserializes into a `BTreeMap`), so raw entries emit in NAME order:
+/// deterministic, but not the author's. The arrays are the ordered forms, so they go first.
+#[test]
+fn a_raw_sub_table_entry_unions_on_top_of_the_derived_ones() {
+    let by_name = expand_all(
+        "[defaults]\njson-schema-export = true\n\
+         [crates.zed]\ninput = \"z.cddl\"\noutput = \"gen/zed\"\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\ndeps = [\"zed\"]\n\n\
+         [crates.ledger.json-schema-dep]\nalien = \"alien_json_schema_gen\"\n",
+    );
+    assert_eq!(
+        by_name["ledger"].json_schema_dep,
+        vec!["zed=zed_json_schema_gen", "alien=alien_json_schema_gen"],
+        "the derived thread comes first even though `alien` sorts before `zed`"
+    );
+}
+
+/// A raw entry for a label the derivation would also produce WINS, silently and per half — the same
+/// rule the `deps` edge follows, for the same reason: an explicit value is the user covering a case
+/// the sugar does not (a vendored copy of a dependency's registrar, say). Emitting both would be the
+/// flag's own duplicate-label rejection instead of an override.
+#[test]
+fn a_raw_entry_overrides_the_derived_half_it_names() {
+    let by_name = expand_all(
+        "[defaults]\njson-schema-export = true\n\
+         [crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\ndeps = [\"core\"]\n\n\
+         [crates.ledger.json-schema-dep]\ncore = \"vendored::core_schemas\"\n",
+    );
+    assert_eq!(
+        by_name["ledger"].json_schema_dep,
+        vec!["core=vendored::core_schemas"]
+    );
+    assert_eq!(
+        by_name["ledger"].json_gen_dep,
+        vec!["core-json-schema-gen=../../../core/wasm/json-gen"],
+        "overriding the call must not drop the manifest entry the rest of the edge still needs"
+    );
+}
+
+/// Every refusal the threading keys carry, each on a fixture that isolates it.
+///
+/// The parse-time half is the shape of the arrays themselves; the two export-false refusals need
+/// each crate's finished `Cli` (the flavor is a merged value, and re-deriving clap's default for it
+/// here is exactly the drift the expansion exists to prevent), so they land during expansion — still
+/// before any crate generates, which is the property that matters.
+#[test]
+fn the_threading_keys_refuse_every_edge_that_cannot_mean_anything() {
+    let with = |extra: &str| {
+        format!(
+            "[defaults]\njson-schema-export = true\n\
+             [crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n\
+             [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\n{extra}"
+        )
+    };
+
+    // an unknown crate, in either key
+    for key in ["wasm-reexports", "json-schema-deps"] {
+        let err = error(&with(&format!("{key} = [\"nope\"]\n")));
+        assert!(
+            err.contains(&format!("[crates.ledger].{key}"))
+                && err.contains("`nope`")
+                && err.contains("`core`"),
+            "{key} naming an unknown crate must name it and list the configured crates, got: {err}"
+        );
+    }
+
+    // a crate naming itself
+    for key in ["wasm-reexports", "json-schema-deps"] {
+        let err = error(&with(&format!("{key} = [\"ledger\"]\n")));
+        assert!(
+            err.contains("itself"),
+            "{key} naming its own crate must say so, got: {err}"
+        );
+    }
+
+    // a name listed twice
+    for key in ["wasm-reexports", "json-schema-deps"] {
+        let err = error(&with(&format!("{key} = [\"core\", \"core\"]\n")));
+        assert!(
+            err.contains("twice"),
+            "a repeated {key} entry must be rejected, got: {err}"
+        );
+    }
+
+    // one crate reached through both edges
+    let err = error(&with("deps = [\"core\"]\nwasm-reexports = [\"core\"]\n"));
+    assert!(
+        err.contains("both `deps` and `wasm-reexports`"),
+        "one crate in both edges must be rejected naming both keys, got: {err}"
+    );
+
+    // the graph keys are per-crate, so a shared layer cannot hold them
+    for layer in ["[defaults]", "[profiles.shared]"] {
+        for key in ["wasm-reexports", "json-schema-deps"] {
+            let err = error(&format!(
+                "{layer}\n{key} = [\"core\"]\n\
+                 [crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n"
+            ));
+            assert!(
+                err.contains(&format!("`{key}` is a per-crate key"))
+                    && err.contains("itself included"),
+                "{key} in {layer} must be rejected as a shared EDGE, got: {err}"
+            );
+        }
+    }
+
+    // an EXPLICIT thread onto a crate that publishes no document — the derived one is silent, this
+    // one is a request that could never link
+    let err = expand_error(
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\n\
+         json-schema-export = true\njson-schema-deps = [\"core\"]\n",
+    );
+    assert!(
+        err.contains("[crates.ledger].json-schema-deps")
+            && err.contains("`core`")
+            && err.contains("json-schema-export = false"),
+        "an explicit thread onto a document-less crate must name both crates, got: {err}"
+    );
+
+    // and a crate that threads while publishing no document of its own
+    let err = expand_error(
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\njson-schema-export = true\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\n\
+         json-schema-deps = [\"core\"]\n",
+    );
+    assert!(
+        err.contains("[crates.ledger].json-schema-deps") && err.contains("no document"),
+        "threading into a crate with no document must say there is nowhere for the rows to land, \
+         got: {err}"
+    );
+
+    // `json-schema-deps = []` on such a crate is not a request at all, so it stays legal
+    let by_name = expand_all(
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\njson-schema-export = true\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\njson-schema-deps = []\n",
+    );
+    assert!(by_name["ledger"].json_schema_dep.is_empty());
+}
+
+/// The two things no generation-time assertion can reach, on real disk: a derived thread **links**,
+/// and when it collides the guard blames the **consumer**.
+///
+/// Leg 1 — linking. The unit tests above pin the flag values; what they cannot see is whether the
+/// derived `[dependencies]` path actually resolves and whether the derived registrar call actually
+/// composes. Both halves have to be right at once — a correct call with a wrong path is an `E0433`,
+/// a correct path with a wrong lib name is the same — and the observable is the exported document
+/// holding a row the consumer's spec never mentions, which can only have arrived through the thread.
+/// `wasm-reexports` carries the edge here rather than `deps`, so the fixture holds nothing but the
+/// threading edge: no extern import, no workspace dependency, no shared type. The consumer's spec
+/// references nothing of the dependency's, so the ref closure cannot supply the row either.
+///
+/// Leg 2 — the collision. Registration order decides which of two crates publishing one schema name
+/// keeps it, and the tool emits dep calls FIRST precisely so the loser is the CONSUMER's row: a
+/// dependency's names are already shipped in the dependency's own package, so the consumer's is the
+/// one whose owner can rename it. Mutating the consumer's spec to publish a name the dependency
+/// already registered must therefore fail the consumer's own `cargo run`, naming the consumer's
+/// type — not the dependency's. Until this leg existed that was reasoning from the single-crate
+/// mechanism (`integration_tests::json_schema_name_stolen_fails`) rather than a measurement.
+#[test]
+fn a_derived_thread_links_and_a_collision_blames_the_consumer() {
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_config_thread_e2e_{:016x}",
+        crate::tests::integration_tests::checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("specs")).unwrap();
+    std::fs::write(dir.join("specs/dep.cddl"), "dep_thing = [x: uint]\n").unwrap();
+    std::fs::write(dir.join("specs/user.cddl"), "own_thing = [y: text]\n").unwrap();
+
+    let config_path = dir.join("codegen.toml");
+    std::fs::write(
+        &config_path,
+        format!(
+            "[defaults]\nstatic-dir = \"{}/static\"\nwasm = false\n\
+             json-serde-derives = true\njson-schema-export = true\n\n\
+             [crates.depcrate]\ninput = \"specs/dep.cddl\"\noutput = \"gen/dep\"\n\n\
+             [crates.usercrate]\ninput = \"specs/user.cddl\"\noutput = \"gen/user\"\n\
+             wasm-reexports = [\"depcrate\"]\n",
+            env!("CARGO_MANIFEST_DIR")
+        ),
+    )
+    .unwrap();
+
+    config::generate(&config_path, &[])
+        .unwrap_or_else(|e| panic!("a cold config run must generate: {e}"));
+
+    let json_gen_dir = dir.join("gen/user/wasm/json-gen");
+    let manifest = std::fs::read_to_string(json_gen_dir.join("Cargo.toml")).expect("manifest");
+    assert!(
+        manifest.contains("depcrate-json-schema-gen = { path = \"../../../dep/wasm/json-gen\" }"),
+        "the derived entry must be the relative path a cargo path dependency means:\n{manifest}"
+    );
+
+    let run = crate::tests::integration_tests::tool_cmd("cargo")
+        .arg("run")
+        .current_dir(&json_gen_dir)
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "the consumer's json-gen crate must build and run — the derived call and the derived \
+         manifest entry have to agree:\n{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+
+    let document: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(json_gen_dir.join("schemas/usercrate.schema.json"))
+            .expect("the json-gen run must write its document"),
+    )
+    .expect("the exported document must be valid JSON");
+    let defs = document
+        .get("$defs")
+        .and_then(|d| d.as_object())
+        .expect("the exported document must hold a `$defs` object");
+    assert!(
+        defs.contains_key("DepThing"),
+        "the threaded dependency's row can only reach `$defs` through the derived thread; got {:?}",
+        defs.keys().collect::<Vec<_>>()
+    );
+    assert!(
+        defs.contains_key("OwnThing"),
+        "the consumer's own row must still reach `$defs`; got {:?}",
+        defs.keys().collect::<Vec<_>>()
+    );
+
+    // Leg 2: the consumer now publishes a name the dependency already registered.
+    std::fs::write(dir.join("specs/user.cddl"), "dep_thing = [z: text]\n").unwrap();
+    config::generate(&config_path, &["usercrate".to_owned()])
+        .expect("the collision is a RUN-time verdict — generation must still succeed");
+    let collided = crate::tests::integration_tests::tool_cmd("cargo")
+        .arg("run")
+        .current_dir(&json_gen_dir)
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&collided.stderr).into_owned();
+    assert!(
+        !collided.status.success(),
+        "two crates publishing one schema name must not produce a document silently:\n{stderr}"
+    );
+    let blame = stderr
+        .lines()
+        .find(|line| line.contains("publishes the JSON schema name"))
+        .unwrap_or_else(|| {
+            panic!("the injectivity guard must be what fails the run, got:\n{stderr}")
+        });
+    assert!(
+        blame.contains("\"DepThing2\""),
+        "the guard sees the collision through the name schemars handed the loser, got: {blame}"
+    );
+    assert!(
+        blame.contains("usercrate::") && !blame.contains("depcrate::"),
+        "dep calls are emitted first so the CONSUMER's row is the blamed one — the side whose owner \
+         can rename it; got: {blame}"
     );
 
     let _ = std::fs::remove_dir_all(&dir);

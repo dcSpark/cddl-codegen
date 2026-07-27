@@ -247,7 +247,7 @@ All three are otherwise silent: `schemars::JsonSchema::schema_id()` **defaults t
 
 Two bounds are worth stating, because both are about what the checks cannot see rather than what they do.
 
-**Cross-crate collisions.** The ledger belongs to the `Registrar` one crate's `add_schemas` opens, so it never sees two *different* crates' registrations. Under `--json-schema-dep` the tool now emits that composition itself, and it emits the dependency's call **first** — so the consumer's colliding row is the one that gets `<name>2` from `subschema_for` and the kept-its-own-name check fires on it, naming the side whose owner can change it. What that leaves uncovered is the collision whose `schema_id`s *match*: there `schemars` sees one type, both returned refs equal the shared name, and only a ledger spanning both crates could see it. (This cross-crate reasoning follows from the mechanism the single-crate `<name>2` check is built on; it is not measured by a cross-crate vector.)
+**Cross-crate collisions.** The ledger belongs to the `Registrar` one crate's `add_schemas` opens, so it never sees two *different* crates' registrations. Under `--json-schema-dep` the tool now emits that composition itself, and it emits the dependency's call **first** — so the consumer's colliding row is the one that gets `<name>2` from `subschema_for` and the kept-its-own-name check fires on it, naming the side whose owner can change it. What that leaves uncovered is the collision whose `schema_id`s *match*: there `schemars` sees one type, both returned refs equal the shared name, and only a ledger spanning both crates could see it. (The blame direction is measured by a two-crate vector, not merely inferred from the single-crate `<name>2` check.)
 
 **Collisions where *neither* type has a row.** Both checks are row-side — the ledger holds rows, and "kept its own name" is asked only of a registered type — so two types reached only *through* other types' schemas can collide invisibly. The common shape is a generic instantiated twice with a constant `schema_name()`, referenced from fields rather than published in its own right. You can make the guard see it: give each instantiation a row with `--json-schema-root` (`--json-schema-root=my_crate::AssetBundle<u64>`, `…<i64>`). Registering both turns it into two rows publishing one name with different `std::any::type_name`s, which the ledger reports; registering just the one that lost the bare name makes the kept-its-own-name check report the `<name>2` it was assigned. (Reasoned from the emitted helper and the flag's accepted charset — generic arguments are inside it — rather than from a fixture.)
 
@@ -393,6 +393,8 @@ cddl-codegen --input=cml_multi_era.cddl --output=export --lib-name=cml-multi-era
   --json-schema-dep=cml_chain=cml_chain_json_schema_gen \
   --json-gen-dep=cml-chain-json-schema-gen=../../../chain/wasm/json-gen
 ```
+
+**In a config file you do not write this flag at all** for a dependency the config contains. Both halves — this call and the `--json-gen-dep` entry that lets it link — are derived from the crate's `deps` and `wasm-reexports` lists, in that order, so a forgotten thread stops being possible. See [Config file § The published JSON surface](./config_file#the-published-json-surface).
 :::
 
 <br/><br/>
@@ -428,6 +430,8 @@ cddl-codegen --input=cml_multi_era.cddl --output=export --lib-name=cml-multi-era
   --json-schema-dep=cml_chain=cml_chain_json_schema_gen \
   --json-gen-dep=cml-chain-json-schema-gen=../../../chain/wasm/json-gen
 ```
+
+**In a config file this is derived**, for a dependency the config contains, alongside the `--json-schema-dep` call it exists to support — including the relative path, counted from the consumer's json-gen directory to the dependency's and following each crate's own `package-json` layout. See [Config file § The published JSON surface](./config_file#the-published-json-surface). Writing the sub-table by hand stays the way to name a crate the config does **not** contain.
 :::
 
 <br/><br/>
