@@ -522,7 +522,13 @@ pub struct Cli {
     /// values at the exporting crate's limit), while json-serde-derives and json-schema-export
     /// genuinely nest (a runtime carrying them serves a crate that does not). The config file's
     /// `[runtime]` table derives the exporting crate from exactly those rules — see
-    /// docs/config_file. No
+    /// docs/config_file. EXACTLY ONE invocation may export into a given dir: two at differing
+    /// flavors ACCUMULATE rather than overwrite, and the run stops being idempotent (the other
+    /// flavor's files linger outside the stale-file scan, the manifest merge accumulates both
+    /// flavors' deps, and the preservation overlay cannot classify the other flavor's file so it
+    /// injects a fresh compile_error! block every run — measured: 62 -> 143 -> 224 -> 305 blocks
+    /// over four runs of one unchanged command pair, exit 0 each time). A hand invocation cannot
+    /// see the other one; a config file can, and refuses the shape. No
     /// mod.rs/lib.rs is written — the target crate owns its module declarations; static files
     /// reference siblings via `super::…`. Files pass through the same comment-preservation overlay
     /// as in-crate output. The crate is OUTSIDE the output crate and is not part of the stale-file

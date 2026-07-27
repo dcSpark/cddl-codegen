@@ -601,6 +601,18 @@ cannot leave the first crate's output half-migrated on disk.
   disagree on, or the crate each missing key comes from. Selecting a subset does not soften it:
   which crate can carry the shared runtime is a property of the config, so
   `cddl-codegen --config c.toml one-crate` rejects exactly what a full run rejects.
+- **`export-static-crate` may reach at most one crate**, from whichever layer it comes and whether
+  or not there is a `[runtime]` table. It is an ordinary shared key, so one `[defaults]` line is a
+  single layer and one export site *per crate* — and two crates exporting into one directory is not
+  two writes of the same bytes. At differing flavors the second export does not replace the first:
+  the exported crate is outside the stale-file bookkeeping so the first flavor's files linger, the
+  manifest merge accumulates both flavors' dependencies, and the comment-preservation overlay
+  cannot classify the previous flavor's output, so it injects a fresh `compile_error!` block every
+  run. Measured on a two-crate config differing only in `preserve-encodings`: the exported
+  `any_cbor.rs` grew 62 → 143 → 224 → 305 `compile_error!` blocks over four runs of one unchanged
+  config, exit 0 each time. Put the key on the one crate whose flavor the runtime should have, or
+  hoist it to `[runtime].export-static-crate` and let the config
+  [derive the carrier](#one-shared-runtime-crate).
 
 ## `--config` cannot be mixed with generation flags
 

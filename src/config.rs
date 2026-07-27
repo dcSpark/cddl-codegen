@@ -740,6 +740,10 @@ impl Config {
         }
 
         self.validate_runtime()?;
+        // Separate from `validate_runtime` because it must run when there is no `[runtime]` table at
+        // all: `export-static-crate` is an ordinary `Settings` key, so `[defaults]` alone reaches
+        // every crate.
+        self.validate_one_export_site()?;
 
         self.generation_order().map(|_| ())
     }
@@ -782,8 +786,9 @@ impl Config {
         Ok(())
     }
 
-    /// The `[runtime]` checks that need no expanded `Cli` — an empty table, an unknown
-    /// `flavor-from`, and a second `export-static-crate` somewhere in the layer stack.
+    /// The `[runtime]` checks that need no expanded `Cli` — an empty table and an unknown
+    /// `flavor-from`. The one-export-site rule is [`Self::validate_one_export_site`], which is NOT
+    /// here because it must also run when there is no `[runtime]` table.
     ///
     /// The flavor derivation itself is NOT here: it reads each crate's finished `Cli`, so it lives
     /// in [`Self::runtime_carrier`] and runs during expansion — still before any crate generates.
@@ -820,11 +825,39 @@ impl Config {
             }
         }
 
-        // A second `export-static-crate` anywhere in the layer stack. Rejected rather than resolved
-        // by precedence: two static-runtime exports in one config is a mistake, and letting one win
-        // would make WHICH runtime survives depend on generation order — the property this table
-        // exists to take out of the user's hands.
-        if runtime.export_static_crate.is_some() {
+        Ok(())
+    }
+
+    /// At most ONE crate in this config writes the shared static runtime.
+    ///
+    /// Two export sites over one directory is not two writes of the same bytes. At differing
+    /// flavors the second export does not REPLACE the first: the flavor-specific files the first
+    /// wrote sit outside the stale-file scan and linger, the exported manifest accumulates the union
+    /// of both flavors' dependencies, and the comment-preservation overlay reads the previous
+    /// flavor's output, cannot classify it, and injects a fresh `compile_error!` block — every run.
+    /// Measured on a two-crate config differing only in `preserve-encodings`: the exported
+    /// `any_cbor.rs` grew 62 → 143 → 224 → 305 `compile_error!` blocks over four runs of one
+    /// unchanged config (103 K → 509 K bytes), exit 0 each time. That is `run twice = run once =
+    /// clean run` broken, so it is refused before anything is written.
+    ///
+    /// Refused whatever the two flavors are: at equal flavors the second export is a redundant
+    /// rewrite of the first, and the flavor is not knowable here anyway — it is read off an
+    /// expanded `Cli`, which parse-time validation does not have.
+    ///
+    /// The two shapes are counted differently on purpose. When `[runtime]` writes the runtime,
+    /// exactly one crate carries the flag, so a SECOND site is any layer that also sets the key and
+    /// the layer is what the message names. Without `[runtime]`, `export-static-crate` is an
+    /// ordinary [`Settings`] key: one `[defaults]` line is a single layer and as many export sites
+    /// as there are crates, so the count is over CRATES.
+    fn validate_one_export_site(&self) -> Result<(), String> {
+        // Rejected rather than resolved by precedence: two static-runtime exports in one config is a
+        // mistake, and letting one win would make WHICH runtime survives depend on generation order
+        // — the property the `[runtime]` table exists to take out of the user's hands.
+        if self
+            .runtime
+            .as_ref()
+            .is_some_and(|runtime| runtime.export_static_crate.is_some())
+        {
             let mut layers: Vec<(String, &Settings)> =
                 vec![("[defaults]".to_owned(), &self.defaults)];
             for (name, settings) in &self.profiles {
@@ -846,9 +879,52 @@ impl Config {
                      key by hand."
                 ));
             }
+            return Ok(());
         }
 
+        let sites: Vec<String> = self
+            .crates
+            .iter()
+            .filter_map(|(name, entry)| {
+                self.export_layer(name, entry)
+                    .map(|label| format!("`{name}` (from `{label}`)"))
+            })
+            .collect();
+        if sites.len() > 1 {
+            return Err(format!(
+                "`export-static-crate` reaches {} crates: {}. One config writes one shared runtime, \
+                 and two crates exporting into one directory is not two writes of the same bytes: \
+                 whichever runs second overwrites the first at ITS flavor, so the run stops being \
+                 idempotent — the first flavor's files sit outside the stale-file scan and linger, \
+                 the exported manifest accumulates both flavors' dependencies, and the \
+                 comment-preservation overlay cannot classify the previous flavor's output, so it \
+                 injects a fresh `compile_error!` block on every run and the exported files grow \
+                 without bound. Keep the key on the ONE crate whose flavor the runtime should have, \
+                 or lift it to `[runtime].export-static-crate` and let the config derive the carrier.",
+                sites.len(),
+                sites.join(", "),
+            ));
+        }
         Ok(())
+    }
+
+    /// Which layer supplies a crate's `export-static-crate` — the line a user would delete. Follows
+    /// merge precedence, so the answer is the layer that actually WINS: the crate's own table, else
+    /// the last of its listed profiles to set it, else `[defaults]`.
+    fn export_layer(&self, name: &str, entry: &CrateEntry) -> Option<String> {
+        if entry.settings.export_static_crate.is_some() {
+            return Some(format!("[crates.{name}]"));
+        }
+        for profile in entry.profiles.iter().rev() {
+            // Validated by `validate()` to name a configured profile.
+            if self.profiles[profile].export_static_crate.is_some() {
+                return Some(format!("[profiles.{profile}]"));
+            }
+        }
+        self.defaults
+            .export_static_crate
+            .is_some()
+            .then(|| "[defaults]".to_owned())
     }
 
     /// The order the crates generate in: a topological sort over `deps`, dependencies FIRST, ties
