@@ -1752,7 +1752,12 @@ cheapest-in-isolation first:
 - **`js_d_ts_merge`** runs `json-ts-types.js` in isolation over hand-written fixtures — no
   wasm-pack/json2ts needed — laid out in the shipped `<root>/scripts/*.js` shape the script resolves
   its own paths from. Five cases, one per failure mode: the happy path (specialize + append); a class
-  with no emitted JSON type keeping `any` rather than gaining a `TS2304` dangling name; a second run
+  with no emitted JSON type exiting non-zero — naming the class and the `--allow-untyped=` escape,
+  with the `.d.ts` untouched — rather than silently shipping `any`, plus the escape's two halves (an
+  allowed class keeps `any` rather than gaining a `TS2304` dangling name, and a stale escape is
+  itself an error so the list cannot rot) and the near-miss diagnostic (a class whose declaration
+  differs from `<Class>JSON` only by json2ts's identifier normalization is named with both spellings
+  and excluded from the suggested escape, because its type is published already); a second run
   being byte-identical (the appended block is marker-delimited and truncated each run, so re-running
   without an intervening `rimraf ./pkg` can't duplicate every declaration); a method name the script
   cannot find exiting non-zero with the `--method=` override named and the `.d.ts` untouched (the
