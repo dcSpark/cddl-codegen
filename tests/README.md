@@ -626,6 +626,20 @@ any ungated `#[wasm_bindgen…]` (the c-style-enum `cfg_attr` form is the only s
 appearance) — per-fixture here; the corpus-wide placement half is the
 `rust_tree_wasm_bindgen_only_feature_gated` invariant gate (snapshot suite, fast tier).
 
+`json_arbitrary_precision` covers a dimension no other fixture varies: a cargo **feature on a
+dependency** of the generated crate, which can change what emitted code MEANS without any spec or
+manifest change of the consumer's own. `serde_json/arbitrary_precision` makes `serde_json::Number`'s
+`Serialize` emit a private token struct that only serde_json's own serializer collapses, so an impl
+routing through a `serde_json::Value` ships that token to every other serializer. The feature arrives
+by cargo feature UNIFICATION from the one-line [`tests/arbitrary-precision-crate`](arbitrary-precision-crate)
+path dep — a second `serde_json` key spliced into the generated manifest would be a TOML duplicate-key
+error, since the tool owns that key — and both the rust and the wasm crate assert the feature actually
+arrived, because a silently-off feature would make every other assertion in the fixture pass
+vacuously. Its Rust oracle is the only place the suite runs a generated `Serialize` through a
+NON-serde_json serializer (`ciborium`); that is the whole point, since serde_json is precisely the
+serializer that cannot observe this class of dishonesty. The `roundtrip.mjs` half adds the JS view
+and pins that a `> 2^53` integer still reaches `to_json_value()`'s loud refusal.
+
 The three external-macro flags (`--wasm-list-macro`/`--wasm-conversions-macro` and
 `--wasm-cbor-json-api-macro`) emit invocations of a *user-supplied* macro, so the output can't
 compile standalone and a source snapshot can't judge invocation semantics; `wasm_list_macro_compiles`
