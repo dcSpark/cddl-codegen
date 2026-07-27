@@ -159,6 +159,30 @@ for (const [name, body] of Object.entries(sourceDefs)) {
   defs[suffixed(name)] = def;
 }
 
+// TypeScript requires every named property to be assignable to the type's index signature, which
+// is what json2ts renders `patternProperties` as. A schema declaring BOTH — named keys beside a
+// pattern catch-all, the shape a CDDL open-map rest row (`* k => v`) flattened into a record
+// produces — is valid JSON Schema, since the two key spaces are disjoint, but has no exact
+// TypeScript equivalent: json2ts emits the named properties beside the index signature and every
+// one of them fails TS2411 against it. Widen each catch-all to also accept the named property
+// types: the emitted declaration is legal and loses only the disjointness. Recursive, because the
+// combination is just as expressible (and just as uncompilable) on a nested object schema.
+const widenPatternCatchAlls = (node) => {
+  if (Array.isArray(node)) {
+    node.forEach(widenPatternCatchAlls);
+    return;
+  }
+  if (node === null || typeof node !== 'object') return;
+  const named = Object.values(node.properties || {});
+  if (named.length > 0 && node.patternProperties != null) {
+    for (const [pattern, patternSchema] of Object.entries(node.patternProperties)) {
+      node.patternProperties[pattern] = { anyOf: [patternSchema, ...named] };
+    }
+  }
+  Object.values(node).forEach(widenPatternCatchAlls);
+};
+widenPatternCatchAlls(defs);
+
 const merged = {
   $schema: document.$schema || 'https://json-schema.org/draft/2020-12/schema',
   title: ROOT_TITLE,
