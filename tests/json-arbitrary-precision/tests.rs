@@ -72,6 +72,29 @@ mod tests {
         }
     }
 
+    /// A CBOR float in an `any` member becomes a `serde_json::Number` built by `Number::from_f64`,
+    /// whose spelling under `arbitrary_precision` is exactly serde_json's own print of that `f64` —
+    /// so it has a lossless serde image and must reach a non-serde_json serializer as a FLOAT, not a
+    /// token. Without the float arm of the ladder this is the one number kind that still ships the
+    /// token, which would make `to_json_value()` on any float-carrying `any` unusable.
+    #[test]
+    fn any_member_floats_are_floats() {
+        for f in [0.0f64, 1.5, -0.25, 1e300, f64::MIN_POSITIVE] {
+            let holder = AnyHolder::new(any_cbor::AnyCbor::new_float(f));
+            match through_ciborium(&holder) {
+                ciborium::Value::Map(entries) => {
+                    let (_, payload) = entries.into_iter().next().expect("one member");
+                    assert!(
+                        matches!(payload, ciborium::Value::Float(_)),
+                        "any member holding float {f} reached a non-serde_json serializer as \
+                         {payload:?}, not a float"
+                    );
+                }
+                other => panic!("AnyHolder must be a map, got {other:?}"),
+            }
+        }
+    }
+
     /// The consumer-shaped half: a `@custom_json` newtype whose hand-written `Serialize` builds a
     /// `serde_json::Value` and routes it through the shipped helper.
     #[test]
