@@ -318,6 +318,108 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `.size` | ✅ | `bounded_bytes.cddl` |
 | `.within` | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
 
+## Role × feature containment grid
+
+> Every construct the corpus exercises in ≥1 role, or the containment relation models in ≥1 role.
+> Columns are the `role` axis in **grammar order** (`cddl-matrix/roles.toml`, mirrored into
+> `matrix.json` `roles`) — top-level outward through the nesting positions. That order is derived, not
+> alphabetical; do not "fix" it to a sort.
+
+| mark | meaning |
+|------|---------|
+| ✅ | the matrix models this cell and every probed shape in it is **supported** |
+| ➖ | the matrix models this cell and every probed shape in it is **not supported** |
+| ◐ | the matrix models this cell and the probed shapes **disagree** — a support boundary *inside* the cell |
+| ? | the matrix models this cell but a spec-allowed row has **no support verdict yet** (awaiting a `verify.ts` grounding run) |
+| ✗ | the matrix models this cell only as **spec-disallowed** — the grammar forbids the nesting, so it is never support-probed |
+| · | **the corpus exercises this cell and the matrix models nothing here** — no row, so no verdict |
+| _(blank)_ | neither modelled nor exercised |
+
+The grid's denominator is "cells the matrix models, plus cells this corpus exercises". A blank cell is
+**not** a claim that the nesting is illegal or unsupported — it is a claim that nothing here has an
+opinion about it.
+
+**Do not read a `·` next to a `➖` sibling as a contradiction, and do not cross-check the two axes.**
+The floor is FEATURE-granular ("an array appears in array-element role"); a containment row is
+SHAPE-granular (`contain.array-element.type2.array`'s example is `a = [[int]]`, an *anonymous inline*
+array, which is `unsupported`). The corpus exercises `type2.array` as an array element in 5 fixtures and
+every corpus fixture compiles under all three profiles (`integration_tests::feature_corpus_compiles`) —
+because those fixtures use a *named rule reference*, a different shape. A cell being exercised by the
+corpus and marked unsupported by the matrix is therefore two different shapes, never a contradiction.
+
+| construct | Top-level rule body `top-level` | Array element `array-element` | Map member value `map-value` | Map member key `map-key` | Tag content `tag-content` | Choice alternative `choice-member` | Group-choice arm `group-choice-arm` | Occurrence target `occurrence-target` | .cbor / .cborseq payload `cbor-payload` | Generic argument `generic-arg` |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `ctl.cbor` | · |  |  |  |  |  |  |  |  |  |
+| `ctl.default` |  |  | · |  | · |  |  | · |  |  |
+| `ctl.eq` |  | · |  |  |  |  |  |  |  |  |
+| `ctl.ge` | · | · |  |  |  |  |  |  |  |  |
+| `ctl.gt` |  | · |  |  |  |  |  |  |  |  |
+| `ctl.le` |  | · | · |  | · |  |  |  |  |  |
+| `ctl.lt` |  | · |  |  |  |  |  |  |  |  |
+| `ctl.ne` |  | · |  |  | · |  |  |  | · |  |
+| `ctl.size` | · | · |  |  |  |  |  |  |  |  |
+| `ext.extern` | · |  |  |  |  |  |  |  |  |  |
+| `ext.raw_bytes` | · |  |  |  |  |  |  |  |  |  |
+| `genericarg.type` | · | · |  |  |  |  |  |  |  |  |
+| `genericparm.type` | · |  |  |  |  |  |  |  |  |  |
+| `group.choice` | · |  |  |  |  |  |  |  |  |  |
+| `grpchoice.sequence` |  |  |  |  |  |  | ✅ |  |  |  |
+| `grpent.groupname` |  | ✅ |  |  |  |  | ✅ | ◐ |  |  |
+| `grpent.inline_group` | · | ✅ |  |  |  |  | ➖ | ◐ |  |  |
+| `grpent.member` |  |  |  |  |  |  | ✅ | ◐ |  |  |
+| `memberkey.bareword` |  |  |  | · |  |  | ✅ | ➖ |  |  |
+| `memberkey.type1` |  |  |  | ◐ |  |  | ➖ | ◐ |  |  |
+| `memberkey.value` |  |  |  | ◐ |  |  | ◐ |  |  |  |
+| `occur.bounded` |  | · |  |  |  |  |  |  |  |  |
+| `occur.one_or_more` |  | · | · |  |  |  |  |  |  |  |
+| `occur.optional` |  | · | · |  |  |  |  |  |  |  |
+| `occur.zero_or_more` |  | · | · |  |  |  |  |  |  |  |
+| `prelude.b64legacy` |  | · |  |  |  |  |  |  |  |  |
+| `prelude.b64url` |  | · |  |  |  |  |  |  |  |  |
+| `prelude.bigfloat` |  | · |  |  |  |  |  |  |  |  |
+| `prelude.bigint` |  | · |  |  |  |  |  |  |  |  |
+| `prelude.bignint` |  | · |  | · |  |  |  |  |  |  |
+| `prelude.biguint` |  | · |  |  |  |  |  |  |  |  |
+| `prelude.bool` |  | · |  | · |  | · |  | · |  |  |
+| `prelude.bstr` |  | · |  |  |  |  |  |  |  |  |
+| `prelude.bytes` | · | · |  | · |  | · |  |  |  |  |
+| `prelude.decfrac` |  | · |  |  |  |  |  |  |  |  |
+| `prelude.encoded-cbor` |  | · |  |  |  |  |  |  |  |  |
+| `prelude.false` |  |  | ✅ |  |  |  |  | · |  |  |
+| `prelude.float64` |  | · |  |  |  |  |  | · |  |  |
+| `prelude.int` | · | · | · | · | · | · |  | · | · |  |
+| `prelude.integer` |  | · |  |  |  |  |  |  |  |  |
+| `prelude.mime-message` |  | · |  |  |  |  |  |  |  |  |
+| `prelude.nint` | · | · |  |  |  | · |  |  |  |  |
+| `prelude.null` |  | ✅ |  |  | · | ✅ |  | · |  |  |
+| `prelude.regexp` |  | · |  |  |  |  |  |  |  |  |
+| `prelude.tdate` |  | · |  |  |  |  |  |  |  |  |
+| `prelude.text` | · | · | · | · | · | · |  | · |  | · |
+| `prelude.true` |  | ✅ |  |  | · |  |  | · |  |  |
+| `prelude.tstr` |  | · | · | · |  | · |  | · |  | · |
+| `prelude.uint` | · | · | · | · | · | · |  | · |  | · |
+| `prelude.unsigned` |  | · |  |  |  |  |  |  |  |  |
+| `prelude.uri` |  | · |  |  |  |  |  |  |  |  |
+| `rangeop.exclusive` |  | · |  |  | · |  |  |  |  |  |
+| `rangeop.inclusive` | · | · |  |  | · |  |  |  |  | · |
+| `type.choice` | · | ✅ | ✅ | ✗ | ✅ |  |  |  | ✅ | ✗ |
+| `type.enum` | · |  |  |  |  |  |  |  |  |  |
+| `type1.ctlop` | · | · | · |  | · |  |  | · | · |  |
+| `type2.array` | · | ➖ | ➖ | ➖ | ✅ | ➖ |  | ➖ | ➖ |  |
+| `type2.map` | · | ➖ | ➖ | · | ✅ | ➖ | ➖ | ➖ | ➖ | ➖ |
+| `type2.parenthesized` | · | · |  |  |  |  |  |  | · |  |
+| `type2.tag` | · | ✅ | ✅ | ✅ | ➖ | ✅ |  | · | ✅ |  |
+| `type2.typename` | · | · | · | · | · | · |  | · | · | · |
+| `type2.unwrap` | ➖ | ➖ | ➖ |  |  |  |  |  |  |  |
+| `type2.value` | · | ✅ | · | · | · | · | ✅ | · | · | · |
+| `value.number` | · | ✅ | · | · | · | · |  | · | · | · |
+| `value.text` |  | ✅ | · | · |  |  |  | · |  |  |
+
+- Modelled `(role × feature)` cells: **54** (over 98 shape-granular containment rows).
+- Exercised by the corpus **and** modelled: **24**.
+- Exercised by the corpus, modelled by **nothing**: **146** (the `·` cells).
+- Modelled but not exercised by any corpus fixture: **30**.
+
 ## Notable findings
 
 1. Unsupported constructs `panic!` instead of erroring gracefully — valid CDDL using an unsupported construct crashes the generator (the two catch-all arms + the control-op panic). A graceful 'unsupported construct X' error would be friendlier (relates to tests/robustness).
@@ -341,5 +443,6 @@ coverage is keyed on the (role × feature) cell, derived from a real `cddl`-crat
 ➖ standalone type still surfaces its supported member/choice role (e.g. `prelude.null` ➖ as a top-level
 type, ✅ as a choice-member). **4 such cells** are mapped (appended as "also ✅ @role" on the
 rows above); constructs whose support doesn't vary by role stay feature-axis (the role is unremarkably
-top-level). A full role × feature coverage grid for *every* construct is future work — the floor data
-(`rolesIn`) already supports it.
+top-level). The full role × feature picture — every construct the corpus exercises or the containment
+relation models, in every role — is rendered above in **§ Role × feature containment grid**, joined from
+the whole-corpus floor; that is where a cell nothing models shows up.

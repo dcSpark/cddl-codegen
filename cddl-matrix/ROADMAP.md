@@ -42,19 +42,19 @@ Q1–Q6 is answered by a standing script** (`QUERIES.md` § "Definition of done"
 
 The matrix exists to feed **many** consumers; corpus was just the hard flagship. What's left:
 
-- **Full role × feature coverage grid.** The corpus projection keys coverage on `(role × feature)` only for
-  the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
-  construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
-  supports it; wire it into `project_corpus.ts`.
-  The gap costs correctness, not presentation: two generation PANICs on valid CDDL lived in cells
-  the matrix has no row for, and both were found only by hand-probing around a neighbouring
-  fixture. A bare fixed value as a table's VALUE domain (`{ * uint => 5 }`) aborted while its array
-  sibling `[* 5]` was already pinned; and `.cbor` over a reference aborted while
-  `containment/cbor-payload.toml` carries `type2.map` / `type2.tag` / `type.choice` cells but no
-  `type2.typename` — so a capability `docs/docs/current_capacities.mdx` lists as supported
-  (`foo_bytes = bytes .cbor foo`) held for a struct target and aborted for an alias one, with
-  nothing to notice the disagreement. A grid names the unprobed cell instead of leaving it to
-  whoever happens to look next to it.
+- **Grammar-derived legality denominator for the role × feature grid.** The grid rendered in
+  `tests/corpus/COVERAGE.md` § "Role × feature containment grid" takes its denominator from two
+  *observed* sets — the cells the containment relation models, plus the cells the snapshot corpus
+  exercises — so a cell that neither touches renders blank and is invisible *as a cell*. Derive the
+  denominator instead from the grammar (a `role → admitted-production` relation over RFC 8610's ABNF,
+  the same source each `roles.toml` entry already cites), so that "nothing has an opinion about this
+  legal nesting" becomes a rendered state rather than the absence of one, and the corpus stops being
+  the thing that decides which cells exist.
+  **Reopening signal:** a generation defect (panic, refusal, or miscompile) on valid CDDL reported
+  against a `(role × feature)` cell the grid renders BLANK — measurable by the reporter, who holds the
+  spec that broke and can look its cell up in the published grid. The two panics that motivated the
+  grid itself do not meet this signal: both sat in cells the corpus exercises and nothing models,
+  which the grid now names `·`.
 - **Extern-interface seam sentinels — decide whether they're matrix surface.** `--extern-import`
   input files carry vendor constructs beyond the two `ext.*` sentinels: the
   `; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1` header and `; unexported:` records (strictly parsed at
