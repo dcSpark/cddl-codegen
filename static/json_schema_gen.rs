@@ -1,8 +1,12 @@
 // The `--json-schema-export` runtime helpers a generated `wasm/json-gen` crate imports from here:
-// the row registrar `add_schema` and the document's reference-closure check
-// `check_schema_ref_closure`. They live in the common runtime crate — ONE copy per workspace —
-// and every json-gen crate pointed at that crate `use`s them, instead of each carrying its own
-// emitted copy. The crate hosting this module never calls either one itself.
+// the row `Registrar` (which owns the published-name ledger and delegates each row to `add_schema`)
+// and the document's reference-closure check `check_schema_ref_closure`. They live in the common
+// runtime crate — ONE copy per workspace — and every json-gen crate pointed at that crate `use`s
+// them, instead of each carrying its own emitted copy. The crate hosting this module never calls
+// any of them itself.
+//
+// `add_schema` stays public beside the registrar: it is the one implementation of the guard, and a
+// consumer whose layout the flags do not cover may have hand-written a row against it.
 //
 // Both checks live in the CONSUMER's own `cargo run` of their json-gen crate rather than in
 // cddl-codegen's suite, for the same reason: we are the party that requires the hand-written
@@ -14,7 +18,7 @@
 // on message fragments, and `docs/docs/command_line_flags.mdx` / `docs/docs/comment_dsl.mdx` quote
 // them. Reword nothing.
 
-/// The row helper every registration row in a generated `add_schemas` threads through.
+/// The row helper every registration row reaches, through `Registrar::add` below.
 /// `subschema_for::<T>()` registers T — and everything T references — into the generator's shared
 /// `$defs` and returns a `$ref`, EXCEPT for a type whose `JsonSchema::inline_schema()` is true, where
 /// it returns the schema itself and registers nothing (every `@newtype` wrapper over a primitive
@@ -95,6 +99,45 @@ pub fn add_schema<T: schemars::JsonSchema>(
         if let Some(assigned) = stolen {
             panic!("cddl-codegen --json-schema-export: {rust} publishes the JSON schema name \"{name}\", but the document assigned it \"{assigned}\" — another type claimed \"{name}\" first. The published name is then decided by registration order, so an unrelated spec edit can silently swap the two. Give one of them a `schemars::JsonSchema::schema_name()` that is unique within this crate.");
         }
+    }
+}
+
+/// The registrar a generated `add_schemas` drives: `Registrar::new(generator)` then one
+/// `reg.add::<T>();` per row. It OWNS the published-name ledger, so the row shape carries only the
+/// type being registered — the bookkeeping the guard needs is the registrar's business, not
+/// something a reader of a generated file (or of a migration diff) has to recognise as such.
+///
+/// It is a LOCAL of `add_schemas`, never that function's parameter, because
+/// `pub fn add_schemas(generator: &mut schemars::SchemaGenerator)` is a published signature: the
+/// tool emits `{lib}::add_schemas(generator);` calls into OTHER crates' json-gen crates
+/// (`--json-schema-dep`), consumers hand-write one to compose crates the flag does not cover, and
+/// the docs quote it. A registrar in the signature would break every one of those.
+///
+/// Consequence for the emitted body, and the reason the ordering is not incidental: the registrar
+/// borrows the generator mutably for its whole life, so every `--json-schema-dep` call — which
+/// passes the same `&mut` on to the dependency's own `add_schemas` — must be emitted BEFORE the
+/// registrar is constructed.
+///
+/// The ledger is scoped to ONE `add_schemas`, i.e. to one crate's own rows; a dep's rows are
+/// threaded through the dep's own registrar with a ledger of its own. That is the same scope the
+/// ledger has always had — see `add_schema` above, which this delegates to so there stays exactly
+/// one implementation of the guard.
+pub struct Registrar<'a> {
+    generator: &'a mut schemars::SchemaGenerator,
+    claimed: std::collections::BTreeMap<String, &'static str>,
+}
+
+impl<'a> Registrar<'a> {
+    pub fn new(generator: &'a mut schemars::SchemaGenerator) -> Self {
+        Self {
+            generator,
+            claimed: std::collections::BTreeMap::new(),
+        }
+    }
+
+    /// Register `T` as a published root, subject to the name-injectivity guard.
+    pub fn add<T: schemars::JsonSchema>(&mut self) {
+        add_schema::<T>(self.generator, &mut self.claimed);
     }
 }
 

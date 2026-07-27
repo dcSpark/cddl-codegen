@@ -2,19 +2,18 @@
 source: src/tests/snapshot_tests.rs
 expression: content
 ---
-use cddl_lib::json_schema_gen::add_schema;
+use cddl_lib::json_schema_gen::Registrar;
 use cddl_lib::json_schema_gen::check_schema_ref_closure;
 
 pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
-    let mut claimed: std::collections::BTreeMap<String, &'static str> =
-        std::collections::BTreeMap::new();
-    add_schema::<cddl_lib::AnyRest>(generator, &mut claimed);
-    add_schema::<cddl_lib::DupRest>(generator, &mut claimed);
-    add_schema::<cddl_lib::OptRest>(generator, &mut claimed);
-    add_schema::<cddl_lib::RenamedRest>(generator, &mut claimed);
-    add_schema::<cddl_lib::TypedRest>(generator, &mut claimed);
-    add_schema::<cddl_lib::UintRest>(generator, &mut claimed);
-    add_schema::<cddl_lib::any_cbor::AnyCbor>(generator, &mut claimed);
+    let mut reg = Registrar::new(generator);
+    reg.add::<cddl_lib::AnyRest>();
+    reg.add::<cddl_lib::DupRest>();
+    reg.add::<cddl_lib::OptRest>();
+    reg.add::<cddl_lib::RenamedRest>();
+    reg.add::<cddl_lib::TypedRest>();
+    reg.add::<cddl_lib::UintRest>();
+    reg.add::<cddl_lib::any_cbor::AnyCbor>();
 }
 
 pub fn export_schemas() {

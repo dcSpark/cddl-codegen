@@ -2,19 +2,18 @@
 source: src/tests/snapshot_tests.rs
 expression: content
 ---
-use cddl_lib::json_schema_gen::add_schema;
+use cddl_lib::json_schema_gen::Registrar;
 use cddl_lib::json_schema_gen::check_schema_ref_closure;
 
 pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
-    let mut claimed: std::collections::BTreeMap<String, &'static str> =
-        std::collections::BTreeMap::new();
-    add_schema::<cddl_lib::Garm>(generator, &mut claimed);
-    add_schema::<cddl_lib::Holder>(generator, &mut claimed);
-    add_schema::<cddl_lib::TaggedCtlNe>(generator, &mut claimed);
-    add_schema::<cddl_lib::TaggedRangeExcl>(generator, &mut claimed);
-    add_schema::<cddl_lib::TaggedRangeIncl>(generator, &mut claimed);
-    add_schema::<cddl_lib::TaggedRangeNint>(generator, &mut claimed);
-    add_schema::<cddl_lib::TaggedRangeUint>(generator, &mut claimed);
+    let mut reg = Registrar::new(generator);
+    reg.add::<cddl_lib::Garm>();
+    reg.add::<cddl_lib::Holder>();
+    reg.add::<cddl_lib::TaggedCtlNe>();
+    reg.add::<cddl_lib::TaggedRangeExcl>();
+    reg.add::<cddl_lib::TaggedRangeIncl>();
+    reg.add::<cddl_lib::TaggedRangeNint>();
+    reg.add::<cddl_lib::TaggedRangeUint>();
 }
 
 pub fn export_schemas() {

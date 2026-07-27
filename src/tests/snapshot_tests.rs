@@ -515,13 +515,13 @@ fn json_gen_extern_schema_rows() {
     // KEPT rows: plain extern, concrete generic instance, in-crate root type, and the scoped
     // in-crate type at its REAL module path (the thin root's `pub use generated::*` makes it valid).
     for kept in [
-        "add_schema::<cddl_lib::MyExtern>(generator, &mut claimed);",
-        "add_schema::<cddl_lib::MySet>(generator, &mut claimed);",
-        "add_schema::<cddl_lib::BigThing>(generator, &mut claimed);",
-        "add_schema::<cddl_lib::sub::module::ScopedThing>(generator, &mut claimed);",
+        "reg.add::<cddl_lib::MyExtern>();",
+        "reg.add::<cddl_lib::MySet>();",
+        "reg.add::<cddl_lib::BigThing>();",
+        "reg.add::<cddl_lib::sub::module::ScopedThing>();",
         // A spliced PLAIN GROUP rule does get a row — the unannotated control for `QuietGroup`
         // below, without which "no `QuietGroup` row" would be vacuously true.
-        "add_schema::<cddl_lib::LoudGroup>(generator, &mut claimed);",
+        "reg.add::<cddl_lib::LoudGroup>();",
     ] {
         assert!(
             mod_rs.contains(kept),
@@ -532,7 +532,7 @@ fn json_gen_extern_schema_rows() {
     // SKIPPED: the generic-extern BASE (`ExtSet` names no concrete type — E0107 no matter what the
     // user writes).
     assert!(
-        !mod_rs.contains("add_schema::<cddl_lib::ExtSet>"),
+        !mod_rs.contains("reg.add::<cddl_lib::ExtSet>"),
         "generic-extern base row must be skipped:\n{mod_rs}"
     );
 
@@ -574,14 +574,15 @@ fn json_gen_extern_schema_rows() {
     // `integration_tests::json_schema_name_merge_fails` / `..._stolen_fails`, which run a json-gen
     // crate and assert it panics — a local-tier cost). A guard that silently stops being threaded
     // through the rows would leave both those fixtures failing for a DIFFERENT reason, so pin the
-    // three pieces that carry it here, in the fast tier: the ledger local, the IMPORT of the helper
-    // from the common runtime crate, and the two-argument row call (asserted above with the KEPT
-    // rows). The helper's BODY no longer lives in this file — it is `static/json_schema_gen.rs`,
-    // hosted once per common crate and compiled/unit-tested in-crate by `json_schema_gen_tests` — so
-    // the import is what proves the rows still reach it.
+    // three pieces that carry it here, in the fast tier: the registrar local (which OWNS the
+    // published-name ledger), the IMPORT of the registrar from the common runtime crate, and the
+    // `reg.add::<T>()` row call (asserted above with the KEPT rows). The guard's BODY no longer
+    // lives in this file — it is `static/json_schema_gen.rs`, hosted once per common crate and
+    // compiled/unit-tested in-crate by `json_schema_gen_tests` — so the import is what proves the
+    // rows still reach it.
     for wiring in [
-        "let mut claimed: std::collections::BTreeMap<String, &'static str> =",
-        "use cddl_lib::json_schema_gen::add_schema;",
+        "let mut reg = Registrar::new(generator);",
+        "use cddl_lib::json_schema_gen::Registrar;",
         "use cddl_lib::json_schema_gen::check_schema_ref_closure;",
     ] {
         assert!(
@@ -593,6 +594,7 @@ fn json_gen_extern_schema_rows() {
     // point, so an inlined copy is the regression. One fragment unique to each body stands in for it.
     for inlined in [
         "fn add_schema<T: schemars::JsonSchema>(",
+        "struct Registrar<",
         "fn collect_schema_refs(",
     ] {
         assert!(
@@ -623,15 +625,15 @@ fn json_gen_extern_schema_rows() {
         .expect("json-gen generated/mod.rs must be emitted under --json-schema-export")
         .clone();
     let zeta = root_mod_rs
-        .find("add_schema::<other_crate::Zeta>(generator, &mut claimed);")
+        .find("reg.add::<other_crate::Zeta>();")
         .unwrap_or_else(|| panic!("extra root row missing verbatim:\n{root_mod_rs}"));
     let alpha = root_mod_rs
-        .find("add_schema::<cddl_lib::Alpha<u64>>(generator, &mut claimed);")
+        .find("reg.add::<cddl_lib::Alpha<u64>>();")
         .unwrap_or_else(|| {
             panic!("extra root row with generic arguments missing verbatim:\n{root_mod_rs}")
         });
     let last_spec_row = root_mod_rs
-        .find("add_schema::<cddl_lib::sub::module::ScopedThing>(generator, &mut claimed);")
+        .find("reg.add::<cddl_lib::sub::module::ScopedThing>();")
         .unwrap_or_else(|| panic!("spec-derived rows missing:\n{root_mod_rs}"));
     assert!(
         last_spec_row < zeta && zeta < alpha,
@@ -670,22 +672,24 @@ fn json_gen_extern_schema_rows() {
         .unwrap_or_else(|| {
             panic!("dep registrar call with a dashed cargo package name must be normalised to underscores:\n{dep_mod_rs}")
         });
-    // The ledger local, which opens `add_schemas` whenever this crate has rows of its own.
-    let ledger = dep_mod_rs
-        .find("let mut claimed: std::collections::BTreeMap<String, &'static str> =")
-        .unwrap_or_else(|| panic!("the name ledger local is missing:\n{dep_mod_rs}"));
-    // The first spec-derived row. `add_schema::<` cannot match the `use …::add_schema;` import
-    // above it (no turbofish there), so the position is genuinely the first ROW.
+    // The registrar local, which opens `add_schemas` whenever this crate has rows of its own. Its
+    // position is doubly load-bearing now: `Registrar::new` takes the generator's `&mut` borrow, so
+    // a dep call emitted after it would not compile.
+    let registrar = dep_mod_rs
+        .find("let mut reg = Registrar::new(generator);")
+        .unwrap_or_else(|| panic!("the registrar local is missing:\n{dep_mod_rs}"));
+    // The first spec-derived row. `reg.add::<` cannot match the `use …::Registrar;` import above it,
+    // so the position is genuinely the first ROW.
     let first_row = dep_mod_rs
-        .find("add_schema::<")
+        .find("reg.add::<")
         .unwrap_or_else(|| panic!("spec-derived rows missing:\n{dep_mod_rs}"));
     assert!(
         zeta_dep < alpha_dep,
         "dep registrar calls must be emitted in flag order (never sorted):\n{dep_mod_rs}"
     );
     assert!(
-        alpha_dep < ledger && alpha_dep < first_row,
-        "dep registrar calls must precede the ledger local and every row of this crate's own:\n{dep_mod_rs}"
+        alpha_dep < registrar && alpha_dep < first_row,
+        "dep registrar calls must precede the registrar local and every row of this crate's own:\n{dep_mod_rs}"
     );
 }
 

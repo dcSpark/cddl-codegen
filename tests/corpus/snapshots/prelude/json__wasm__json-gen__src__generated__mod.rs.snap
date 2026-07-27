@@ -2,28 +2,27 @@
 source: src/tests/snapshot_tests.rs
 expression: content
 ---
-use cddl_lib::json_schema_gen::add_schema;
+use cddl_lib::json_schema_gen::Registrar;
 use cddl_lib::json_schema_gen::check_schema_ref_closure;
 
 pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
-    let mut claimed: std::collections::BTreeMap<String, &'static str> =
-        std::collections::BTreeMap::new();
-    add_schema::<cddl_lib::Int>(generator, &mut claimed);
-    add_schema::<cddl_lib::Prelude>(generator, &mut claimed);
-    add_schema::<cddl_lib::PreludeB64legacy>(generator, &mut claimed);
-    add_schema::<cddl_lib::PreludeB64url>(generator, &mut claimed);
-    add_schema::<cddl_lib::PreludeBigfloat>(generator, &mut claimed);
-    add_schema::<cddl_lib::PreludeBigint>(generator, &mut claimed);
-    add_schema::<cddl_lib::PreludeBignint>(generator, &mut claimed);
-    add_schema::<cddl_lib::PreludeBiguint>(generator, &mut claimed);
-    add_schema::<cddl_lib::PreludeDecfrac>(generator, &mut claimed);
-    add_schema::<cddl_lib::PreludeEncodedCbor>(generator, &mut claimed);
-    add_schema::<cddl_lib::PreludeInteger>(generator, &mut claimed);
-    add_schema::<cddl_lib::PreludeMimeMessage>(generator, &mut claimed);
-    add_schema::<cddl_lib::PreludeRegexp>(generator, &mut claimed);
-    add_schema::<cddl_lib::PreludeTdate>(generator, &mut claimed);
-    add_schema::<cddl_lib::PreludeUnsigned>(generator, &mut claimed);
-    add_schema::<cddl_lib::PreludeUri>(generator, &mut claimed);
+    let mut reg = Registrar::new(generator);
+    reg.add::<cddl_lib::Int>();
+    reg.add::<cddl_lib::Prelude>();
+    reg.add::<cddl_lib::PreludeB64legacy>();
+    reg.add::<cddl_lib::PreludeB64url>();
+    reg.add::<cddl_lib::PreludeBigfloat>();
+    reg.add::<cddl_lib::PreludeBigint>();
+    reg.add::<cddl_lib::PreludeBignint>();
+    reg.add::<cddl_lib::PreludeBiguint>();
+    reg.add::<cddl_lib::PreludeDecfrac>();
+    reg.add::<cddl_lib::PreludeEncodedCbor>();
+    reg.add::<cddl_lib::PreludeInteger>();
+    reg.add::<cddl_lib::PreludeMimeMessage>();
+    reg.add::<cddl_lib::PreludeRegexp>();
+    reg.add::<cddl_lib::PreludeTdate>();
+    reg.add::<cddl_lib::PreludeUnsigned>();
+    reg.add::<cddl_lib::PreludeUri>();
 }
 
 pub fn export_schemas() {

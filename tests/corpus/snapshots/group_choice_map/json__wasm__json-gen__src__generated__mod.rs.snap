@@ -2,21 +2,20 @@
 source: src/tests/snapshot_tests.rs
 expression: content
 ---
-use cddl_lib::json_schema_gen::add_schema;
+use cddl_lib::json_schema_gen::Registrar;
 use cddl_lib::json_schema_gen::check_schema_ref_closure;
 
 pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
-    let mut claimed: std::collections::BTreeMap<String, &'static str> =
-        std::collections::BTreeMap::new();
-    add_schema::<cddl_lib::FixedValueArm>(generator, &mut claimed);
-    add_schema::<cddl_lib::FixedValueArm0>(generator, &mut claimed);
-    add_schema::<cddl_lib::MixedKeyTypes>(generator, &mut claimed);
-    add_schema::<cddl_lib::MultiFieldArm>(generator, &mut claimed);
-    add_schema::<cddl_lib::MultiFieldArm0>(generator, &mut claimed);
-    add_schema::<cddl_lib::NonemptyArm>(generator, &mut claimed);
-    add_schema::<cddl_lib::NonemptyArm0>(generator, &mut claimed);
-    add_schema::<cddl_lib::TextKeyed>(generator, &mut claimed);
-    add_schema::<cddl_lib::UintKeyed>(generator, &mut claimed);
+    let mut reg = Registrar::new(generator);
+    reg.add::<cddl_lib::FixedValueArm>();
+    reg.add::<cddl_lib::FixedValueArm0>();
+    reg.add::<cddl_lib::MixedKeyTypes>();
+    reg.add::<cddl_lib::MultiFieldArm>();
+    reg.add::<cddl_lib::MultiFieldArm0>();
+    reg.add::<cddl_lib::NonemptyArm>();
+    reg.add::<cddl_lib::NonemptyArm0>();
+    reg.add::<cddl_lib::TextKeyed>();
+    reg.add::<cddl_lib::UintKeyed>();
 }
 
 pub fn export_schemas() {

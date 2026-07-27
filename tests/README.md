@@ -1645,8 +1645,8 @@ turns the document into the shipped `.d.ts`.
 gets its json-gen crate built and `cargo run`, not merely built — a broken `export_schemas()` body
 exits the build green. `schemas/` is deleted first, so a previous local run's output cannot satisfy
 the asserts. Then: exactly one file in `schemas/`, named `<lib>.schema.json`; a non-empty `$defs`;
-`$defs.len()` at least the `add_schema::<` row count (a row's type silently failing to land is the
-counting proxy — `$defs` is never smaller, since the emitted helper publishes an inline-schema type
+`$defs.len()` at least the `reg.add::<` row count (a row's type silently failing to land is the
+counting proxy — `$defs` is never smaller, since the runtime helper publishes an inline-schema type
 under its own name rather than letting `subschema_for` drop it); **reference closure** — every
 `$ref` anywhere in the document is an internal `#/$defs/<key>` naming a key of that same document
 (`decode_schema_ref_name` inverts schemars' percent/JSON-pointer ref encoding), which turns "which
@@ -1660,9 +1660,10 @@ the document is built by walking a live `SchemaGenerator` rather than by printin
 determinism is a runtime property here, not only an emitter one (the emitter's own byte-stability is
 pinned in the fast tier by `snapshot_tests::json_gen_rows_are_byte_stable`).
 
-**The emitted guard, which runs where the consumer runs.** A `$defs` key is a published API name
-(json2ts emits it, suffixed, as the TypeScript type name), so the emitted `add_schema` helper enforces
-that the document's published names are injective, panicking with both offenders named. It carries
+**The runtime guard, which runs where the consumer runs.** A `$defs` key is a published API name
+(json2ts emits it, suffixed, as the TypeScript type name), so the common crate's `add_schema` helper
+— which every emitted `reg.add::<T>()` row reaches through the `Registrar` that owns its ledger —
+enforces that the document's published names are injective, panicking with both offenders named. It carries
 three checks: a **name ledger** keyed on `std::any::type_name` — the only thing that can see a
 *merge*, where two hand-written impls return one name and `schema_id()`'s default makes them one type
 to `schemars`, so both returned refs equal the shared name; a **kept-its-own-name** comparison against
@@ -2161,11 +2162,13 @@ includes the guard runtime with a small baked limit and pins the at/under/over-l
 
 ## json-gen helper runtime (`src/tests/json_schema_gen_tests.rs`)
 
-`static/json_schema_gen.rs` holds the two helpers a generated `wasm/json-gen` crate imports from the
-rust runtime crate: `add_schema` (the registration-row registrar carrying the published-name
-injectivity guard) and `check_schema_ref_closure` (the document's reference-closure check). Both run
-in a *consumer's* `cargo run` of their json-gen crate, so without this layer their only compile proof
-is a nested-cargo run — a local-tier cost to catch a syntax error, and no lint sees them at all.
+`static/json_schema_gen.rs` holds what a generated `wasm/json-gen` crate imports from the rust
+runtime crate: `Registrar` (the row registrar — one `reg.add::<T>();` per row, owning the
+published-name ledger and delegating each row to the `add_schema` helper beside it, which stays
+public for a hand-written row) and `check_schema_ref_closure` (the document's reference-closure
+check). All of it runs in a *consumer's* `cargo run` of their json-gen crate, so without this layer
+its only compile proof is a nested-cargo run — a local-tier cost to catch a syntax error, and no lint
+sees it at all.
 
 `src/tests/json_schema_gen_tests.rs` `include!`s the file into one shim module, the same technique
 `any_cbor_tests` / `ordered_set_runtime_tests` use. That buys two things:
@@ -2174,6 +2177,13 @@ is a nested-cargo run — a local-tier cost to catch a syntax error, and no lint
   --all-targets` reaches the bin crate's test binary, so the shipped helper is linted like any other
   code. (`schemars` is a `[dev-dependencies]` entry of cddl-codegen for exactly this shim; it is
   never a dependency of the tool itself.)
+- **`Registrar` proven to be a pure re-spelling of the row.** Every emitted row goes through it, so
+  the vectors assert what actually ships: that a registrar-driven registration builds the same
+  `$defs` map a direct `add_schema` call with a hand-threaded ledger does, that the ledger still
+  fires through `reg.add` (a `Registrar::add` that reimplemented the row without the guard would pass
+  every other vector here), and that a second registrar starts with a fresh ledger — the same scope
+  the ledger had as a local of one crate's `add_schemas`, and what keeps a cross-crate collision its
+  blind spot rather than a new false positive.
 - **Real unit vectors for `decode_schema_ref_name`**, the inverse of a schemars-private encoder,
   which is reachable no other way. The vectors cover both escape layers (percent / JSON-Pointer),
   the truncated- and non-hex-escape passthroughs, and — the case the code's own comment calls out

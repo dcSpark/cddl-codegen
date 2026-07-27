@@ -2,17 +2,16 @@
 source: src/tests/snapshot_tests.rs
 expression: content
 ---
-use cddl_lib::json_schema_gen::add_schema;
+use cddl_lib::json_schema_gen::Registrar;
 use cddl_lib::json_schema_gen::check_schema_ref_closure;
 
 pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
-    let mut claimed: std::collections::BTreeMap<String, &'static str> =
-        std::collections::BTreeMap::new();
-    add_schema::<cddl_lib::Holder>(generator, &mut claimed);
-    add_schema::<cddl_lib::IntNeset>(generator, &mut claimed);
-    add_schema::<cddl_lib::IntSet>(generator, &mut claimed);
-    add_schema::<cddl_lib::OsetU64>(generator, &mut claimed);
-    add_schema::<cddl_lib::TextSet>(generator, &mut claimed);
+    let mut reg = Registrar::new(generator);
+    reg.add::<cddl_lib::Holder>();
+    reg.add::<cddl_lib::IntNeset>();
+    reg.add::<cddl_lib::IntSet>();
+    reg.add::<cddl_lib::OsetU64>();
+    reg.add::<cddl_lib::TextSet>();
 }
 
 pub fn export_schemas() {

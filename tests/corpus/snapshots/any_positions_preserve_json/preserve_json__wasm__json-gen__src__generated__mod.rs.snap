@@ -2,22 +2,21 @@
 source: src/tests/snapshot_tests.rs
 expression: content
 ---
-use cddl_lib::json_schema_gen::add_schema;
+use cddl_lib::json_schema_gen::Registrar;
 use cddl_lib::json_schema_gen::check_schema_ref_closure;
 
 pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
-    let mut claimed: std::collections::BTreeMap<String, &'static str> =
-        std::collections::BTreeMap::new();
-    add_schema::<cddl_lib::ChoiceLastAny>(generator, &mut claimed);
-    add_schema::<cddl_lib::ChoiceTaggedAny>(generator, &mut claimed);
-    add_schema::<cddl_lib::MemberArray>(generator, &mut claimed);
-    add_schema::<cddl_lib::MemberHomog>(generator, &mut claimed);
-    add_schema::<cddl_lib::MemberMap>(generator, &mut claimed);
-    add_schema::<cddl_lib::MemberOptHomog>(generator, &mut claimed);
-    add_schema::<cddl_lib::MemberOptTable>(generator, &mut claimed);
-    add_schema::<cddl_lib::MemberTable>(generator, &mut claimed);
-    add_schema::<cddl_lib::Tagged>(generator, &mut claimed);
-    add_schema::<cddl_lib::any_cbor::AnyCbor>(generator, &mut claimed);
+    let mut reg = Registrar::new(generator);
+    reg.add::<cddl_lib::ChoiceLastAny>();
+    reg.add::<cddl_lib::ChoiceTaggedAny>();
+    reg.add::<cddl_lib::MemberArray>();
+    reg.add::<cddl_lib::MemberHomog>();
+    reg.add::<cddl_lib::MemberMap>();
+    reg.add::<cddl_lib::MemberOptHomog>();
+    reg.add::<cddl_lib::MemberOptTable>();
+    reg.add::<cddl_lib::MemberTable>();
+    reg.add::<cddl_lib::Tagged>();
+    reg.add::<cddl_lib::any_cbor::AnyCbor>();
 }
 
 pub fn export_schemas() {

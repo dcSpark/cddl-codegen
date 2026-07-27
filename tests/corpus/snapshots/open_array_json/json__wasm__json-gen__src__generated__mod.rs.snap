@@ -2,20 +2,19 @@
 source: src/tests/snapshot_tests.rs
 expression: content
 ---
-use cddl_lib::json_schema_gen::add_schema;
+use cddl_lib::json_schema_gen::Registrar;
 use cddl_lib::json_schema_gen::check_schema_ref_closure;
 
 pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
-    let mut claimed: std::collections::BTreeMap<String, &'static str> =
-        std::collections::BTreeMap::new();
-    add_schema::<cddl_lib::AllMandatoryIgnore>(generator, &mut claimed);
-    add_schema::<cddl_lib::Anytail>(generator, &mut claimed);
-    add_schema::<cddl_lib::Ignored>(generator, &mut claimed);
-    add_schema::<cddl_lib::Named>(generator, &mut claimed);
-    add_schema::<cddl_lib::OptFixedMember>(generator, &mut claimed);
-    add_schema::<cddl_lib::SingleFixed>(generator, &mut claimed);
-    add_schema::<cddl_lib::Typed>(generator, &mut claimed);
-    add_schema::<cddl_lib::any_cbor::AnyCbor>(generator, &mut claimed);
+    let mut reg = Registrar::new(generator);
+    reg.add::<cddl_lib::AllMandatoryIgnore>();
+    reg.add::<cddl_lib::Anytail>();
+    reg.add::<cddl_lib::Ignored>();
+    reg.add::<cddl_lib::Named>();
+    reg.add::<cddl_lib::OptFixedMember>();
+    reg.add::<cddl_lib::SingleFixed>();
+    reg.add::<cddl_lib::Typed>();
+    reg.add::<cddl_lib::any_cbor::AnyCbor>();
 }
 
 pub fn export_schemas() {

@@ -1243,9 +1243,12 @@ messages, and what to do about each, are under
 
 Neither check is *emitted* into this crate. `wasm/json-gen/src/generated/mod.rs` opens with imports
 of them from the rust runtime crate's `json_schema_gen` module — `use <lib>::json_schema_gen::
-check_schema_ref_closure;` always, and `use <lib>::json_schema_gen::add_schema;` when this crate has
+check_schema_ref_closure;` always, and `use <lib>::json_schema_gen::Registrar;` when this crate has
 registration rows of its own — so a workspace of several generated packages shares one
-implementation rather than one copy per json-gen crate. The module is `rust/src/generated/
+implementation rather than one copy per json-gen crate. A row is `reg.add::<T>();` against a
+`Registrar` the body opens with `let mut reg = Registrar::new(generator);`, which owns the
+published-name ledger the injectivity guard keeps; the guard itself is the module's `add_schema`,
+which the registrar delegates to and which stays public for a row you write by hand. The module is `rust/src/generated/
 json_schema_gen.rs` in-crate; under `--common-import-override` it is the common crate's, written
 there by [`--export-static-crate`](./command_line_flags) and declared by hand in that crate's root.
 

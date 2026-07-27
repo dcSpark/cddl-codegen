@@ -374,8 +374,8 @@ pub fn with_types<R>(
         );
     }
     // Two identical --json-schema-root values are a user mistake with no meaning: the emitted rows
-    // are byte-identical, and the second is a silent no-op (the injectivity ledger in the emitted
-    // `add_schema` keys on `std::any::type_name` and only fires when a name is claimed by a
+    // are byte-identical, and the second is a silent no-op (the injectivity ledger the runtime
+    // `add_schema` keeps is keyed on `std::any::type_name` and only fires when a name is claimed by a
     // DIFFERENT rust type, so re-registering ONE type never trips it). This is exact-string dedup
     // only — two spellings of one type (`crate::Foo` vs `cddl_lib::Foo`) cannot be detected here,
     // and are harmless for that same reason.
