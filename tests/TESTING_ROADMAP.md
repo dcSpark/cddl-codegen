@@ -2020,6 +2020,30 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
 
 ## Deferred features (build when a real consumer needs them)
 
+- **Finish the cross-flavor accommodation in the shared static runtime.** A runtime written by
+  `--export-static-crate` is meant to serve crates at REDUCED flavors — the preludes carry
+  deliberate `From<cbor_event::Len> for CBORReadLen` accommodations for exactly that, and the
+  config file's `[runtime]` carrier derivation (`docs/docs/config_file.mdx` § "One shared runtime
+  crate") is shaped by how far they reach. Two gaps stop them short of `--preserve-encodings`, both
+  measured by exporting a runtime at one flavor and `cargo check`ing a consumer at another:
+  (1) under `--preserve-encodings` the exported `non_empty_map.rs` substitutes `OrderedHashMap` for
+  the inner `BTreeMap`, so a non-preserve consumer whose spec holds a `{+ K => V}` emits
+  `NonEmptyMap::try_from(<BTreeMap>)` against a runtime implementing only
+  `TryFrom<OrderedHashMap>` (E0277); (2) under `--canonical-form` the runtime's `AnyCbor` implements
+  only the two-argument `Serialize`, so a non-preserve consumer using CDDL `any` finds no
+  one-argument `serialize` (E0599). What to build: a `TryFrom<BTreeMap>` bridge on the
+  preserve-flavored `NonEmptyMap` and a non-preserve `AnyCbor::serialize` shim under canonical, each
+  pinned as a leg of the existing cross-flavor compile gate
+  (`config_tests::a_runtime_table_exports_a_runtime_the_other_flavor_compiles_against`, whose
+  mutation leg asserts the first gap is currently real and is the assertion to invert). Closing both
+  makes `preserve-encodings` a genuine MAXIMUM axis, so a CML-shaped config — one full-flavor crate
+  and one reduced — derives its carrier with no `flavor-from` declaration at all. `canonical-form`
+  stays an equality axis regardless: the `fit_sz` / `to_len_sz` / `SerializeEmbeddedGroup` arity
+  differences are a different calling convention, not a missing accommodation. Reopening signal
+  (magnitude, consumer-side — the cost grows WITHIN one consumer as its reduced-flavor crates'
+  specs grow, not across consumers): a reduced-flavor crate in a shared-runtime workspace acquires
+  a `{+ K => V}` or an `any` in its spec, which is the point at which a `flavor-from` declaration
+  that compiles today stops compiling.
 - **Consumer-side auto-deferral of reject-set wrappers (`--wrapper-requests`).** The dep-side
   hosting leg is complete: a `@duplicates reject` array shape in a committed
   `borrowed_collections.rs` sidecar round-trips the request grammar and emits the

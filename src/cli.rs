@@ -430,7 +430,18 @@ pub struct Cli {
     /// non_empty/non_empty_map/raw_bytes on spec usage), the export ALWAYS includes non_empty.rs,
     /// non_empty_map.rs, and raw_bytes_encoding — a shared runtime crate serves many specs, so
     /// which spec was run must not change the output. Flavor selection (preserve-encodings /
-    /// canonical / json / schemars / depth-guard) is identical to the in-crate composer. No
+    /// canonical / json / schemars / depth-guard) is identical to the in-crate composer. Which
+    /// OTHER crates that runtime can COMPILE is not symmetric across those flags, so a workspace
+    /// sharing one runtime must pick the exporting flag set deliberately: preserve-encodings /
+    /// canonical-form / deserialize-depth-limit must MATCH (the canonical and non-canonical
+    /// preludes differ in the arity of fit_sz/to_len_sz/SerializeEmbeddedGroup and in which crate
+    /// defines Serialize; the preserve accommodation stops at `{+ K => V}`'s OrderedHashMap-backed
+    /// NonEmptyMap and at canonical `AnyCbor::serialize`; the depth limit is baked BY VALUE into
+    /// the exported AnyCbor guard, so a mismatch compiles while silently guarding one crate's `any`
+    /// values at the exporting crate's limit), while json-serde-derives and json-schema-export
+    /// genuinely nest (a runtime carrying them serves a crate that does not). The config file's
+    /// `[runtime]` table derives the exporting crate from exactly those rules — see
+    /// docs/config_file. No
     /// mod.rs/lib.rs is written — the target crate owns its module declarations; static files
     /// reference siblings via `super::…`. Files pass through the same comment-preservation overlay
     /// as in-crate output. The crate is OUTSIDE the output crate and is not part of the stale-file

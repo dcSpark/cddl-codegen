@@ -285,6 +285,98 @@ cross-crate flags already document; the selected crate still carries the full de
 what makes that committed output reachable. If it was never generated, the flags' own error names the
 missing path.
 
+## One shared runtime crate
+
+Many generated crates in one workspace usually want **one** copy of the static rust runtime
+(`error.rs`, the `serialization.rs` prelude, `ordered_hash_map.rs`, the `NonEmpty*` types, …) rather
+than one each. On the command line that is two flags — `--export-static-crate` writes the runtime,
+`--common-import-override` points crates at it (both in
+[Command line flags](./command_line_flags)) — and the first belongs on exactly one invocation. The
+`[runtime]` table states it once:
+
+```toml
+[runtime]
+export-static-crate = "crates/cddl-runtime"   # where the shared runtime is written
+common-import = "cddl_runtime"                # applied to every crate
+```
+
+- `common-import` expands to `--common-import-override <value>` on **every** crate. It is the
+  lowest layer in the merge, so an explicit `common-import-override` in `[defaults]`, a profile, or
+  a crate table wins for the crates it reaches — that is one crate importing a different runtime,
+  which is legitimate rather than a conflict.
+- `export-static-crate` is carried by exactly **one** crate's invocation, chosen by the derivation
+  below, and resolves against the config file's directory like every other path key.
+- A second `export-static-crate` in any layer alongside `[runtime].export-static-crate` is a hard
+  error. Two exports would race for one role, and letting either win would make which runtime
+  survives depend on generation order.
+
+### Which crate carries the export, and why it is derived
+
+`--export-static-crate` exports **the exporting crate's flavor**. Choose the wrong crate and the
+runtime cannot serve the others — so the choice is not a preference, it is whichever crate's flag
+set the shared runtime must have. A config already knows every crate's flavor, so it derives the
+carrier rather than asking you to get it right.
+
+Five keys change a byte of what is exported, in two groups that behave differently. The compiler
+errors behind each rule are spelled out under `--export-static-crate` in
+[Command line flags](./command_line_flags):
+
+| key | rule | why |
+|---|---|---|
+| `preserve-encodings` | must be **identical** in every crate | the preserve runtime's `NonEmptyMap` is backed by `OrderedHashMap`, so a non-preserve crate holding a `{+ K => V}` cannot build against it |
+| `canonical-form` | must be **identical** in every crate | the canonical and non-canonical preludes differ in the arity of `fit_sz` / `to_len_sz` / `SerializeEmbeddedGroup`, and in which crate defines `Serialize` |
+| `deserialize-depth-limit` | must be **identical**, and *unset* counts as a value | the limit is baked **by value** into the exported `AnyCbor` guard, so a mismatch compiles cleanly while guarding one crate's `any` values at another crate's limit |
+| `json-serde-derives` | the **maximum** wins | the serde companions are appended to the runtime types, so a runtime carrying them serves a crate that does not |
+| `json-schema-export` | the **maximum** wins | likewise for the schemars companions |
+
+The carrier is the first crate whose flavor is that join. Any crate matching it writes byte-identical
+files, so which one is picked cannot be observed in the output — but the run says which it was:
+
+```
+[runtime] `chain` carries --export-static-crate: its flavor is the join of every crate's, so the
+runtime it writes serves all of them.
+```
+
+Two configurations have no carrier, and both are hard errors rather than a silently inadequate
+runtime:
+
+- **The crates disagree on an identical-value key.** The error names each such key and which crates
+  hold which value.
+- **No single crate has the join** — one crate sets `json-serde-derives`, another sets
+  `json-schema-export`, and neither sets both. `--export-static-crate` exports the flag set of one
+  invocation, so a runtime nobody's flags describe cannot be written at all; the error names which
+  crate supplies each key.
+
+### `flavor-from`, when you know
+
+A workspace can legitimately want one runtime for crates that do not all agree — a reduced-flavor
+crate whose spec happens to use none of the constructs that would break. Naming the carrier by hand
+accepts that:
+
+```toml
+[runtime]
+export-static-crate = "crates/cddl-runtime"
+common-import = "cml_core"
+flavor-from = "chain"
+```
+
+`flavor-from` must name a crate in this config, and requires `export-static-crate` (there is
+otherwise nothing to carry). It fires no per-run warning — you have declared this, and a warning
+that repeats on every run trains people to ignore warnings — but the run **states once** what was
+accepted:
+
+```
+[runtime] `chain` carries --export-static-crate, declared by `flavor-from`.
+[runtime] Generated at a flavor the shared runtime does not match: `cip25`. They compile against it
+only while their specs hold no `{+ K => V}` (whose `NonEmptyMap` is backed by `OrderedHashMap` under
+--preserve-encodings) and no `any` (whose `AnyCbor` serialize arity follows --canonical-form), and a
+crate whose --deserialize-depth-limit differs has its `any` values guarded at `chain`'s limit rather
+than its own.
+```
+
+That is the substantive difference from placing the flag by hand: the same single declaration, plus
+a named hazard the run repeats back to you.
+
 ## Paths resolve against the config file
 
 Every path-valued key — `input`, `output`, `static-dir`, `export-static-crate`, and the right-hand
@@ -329,6 +421,10 @@ cannot leave the first crate's output half-migrated on disk.
   are pointed at the TOML line you wrote rather than at a flag you never typed.
 - **An unknown crate name on the command line is a hard error** listing the configured crates,
   rather than a run that generates nothing and exits successfully.
+- **A `[runtime]` no single static runtime can serve is a hard error** naming the keys the crates
+  disagree on, or the crate each missing key comes from. Selecting a subset does not soften it:
+  which crate can carry the shared runtime is a property of the config, so
+  `cddl-codegen --config c.toml one-crate` rejects exactly what a full run rejects.
 
 ## `--config` cannot be mixed with generation flags
 
