@@ -358,12 +358,19 @@ into a file your project commits, so the same config would produce different byt
 clone. It is counted from the consumer's json-gen directory to the dependency's, and both endpoints
 follow their own crate's `package-json` setting.
 
-One caveat follows from that. Both endpoints are the crates' `output` values, so they are both
-relative or both absolute in the ordinary case — whichever the config file's own path was. If you
-write an **absolute** `output` for one crate and a relative one for another, the relative path
-between them is only defined against the current directory, so the value written into the manifest
-becomes CWD-dependent even though it is still relative. Keep the `output` values in one config the
-same kind, which is what happens by default if you never write an absolute one.
+**How the two endpoints are spelled does not reach the manifest.** `.` and `..` are resolved before
+the paths are diffed, so `./gen/core` and `gen/sub/../core` derive exactly what `gen/core` derives —
+that resolution is lexical, since these directories need not exist yet, and so it assumes a component
+a `..` cancels is not a symlink. When the two endpoints do not share a frame — one `output` absolute
+and the other relative, or a relative one climbing above the config file's own directory — the
+process directory supplies the missing frame. That is not a CWD dependence in the derived value: it
+reconstructs the location the relative `output` already denoted, so writing the same two directories
+out as absolute paths, or running the same config from anywhere else, gives a byte-identical manifest
+entry. The only requirement is that the process directory be readable.
+
+An absolute `output` still costs you something, just not this. It bakes a machine path into **the
+config file**, which the manifest entry no longer inherits — so it is the config, not the generated
+crate, that stops being portable.
 
 A crate with `json-schema-export = false` on **either** end of a derived edge contributes nothing,
 silently: a dependency with no json-gen crate has no `add_schemas` to call, and a consumer with no
