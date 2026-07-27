@@ -46,6 +46,36 @@ every in-tier gate first). Every run also tees its FULL output to a timestamped
 the tool's job, so never pipe a run through `tail`/`grep` as its only capture; cite the printed
 path.
 
+### Sharded sweeps (inside the `test` gate)
+
+The five fixture sweeps that used to set the `test` gate's wall — `feature_corpus_compiles`,
+`wasm_matrix_compiles`, `multifile_matrix_compiles`, `snapshot_tests::feature_corpus` and
+`wasm_api_parity` — are each split into `<name>_shard_NN` `#[test]`s over a round-robin slice of the
+sweep's sorted fixture list, so libtest's own 32-thread pool runs the cells instead of one test
+walking them. The shard names CONTAIN the original name, so `cargo test <name>` and
+`CLOSURE_AUDIT_GATE=<name>` still select the whole sweep.
+
+Two things a shard structurally cannot do, and where they live instead:
+
+- **Whole-axis assertions.** Every "this skip-list entry names a fixture that no longer exists" guard
+  is only decidable by a test that sees EVERY fixture — a shard cannot tell a deleted fixture from
+  one another shard owns. Each sweep therefore keeps a `<name>_pins_are_live` test (`wasm_api_parity`:
+  `wasm_api_parity_axes_and_pins_are_live`) holding those guards plus the sweep's vacuity counts. They
+  read a fixture directory and nothing else, so they cost milliseconds. **Add a new whole-axis
+  assertion there, never in a shard**, or it silently becomes vacuous while the suite stays green.
+- **The shared scratch root.** The compile sweeps wipe their root on entry (generation is only
+  hermetic against a clean tree) and on exit (the root holds a crate per cell plus the shared
+  `CARGO_TARGET_DIR`). `SharedScratch` keys both wipes on occupancy — first shard in wipes, last shard
+  out wipes — so the shards keep one target dir rather than paying the dependency build each.
+
+Shard counts are sized against **measured** scaling, not core count. The three gate-cache sweeps run
+`cargo generate-lockfile` per cell, which serializes on cargo's process-wide
+`$CARGO_HOME/.package-cache` lock, so they stop scaling early (6 shards each measured the same tier
+wall as 4; 12 each was markedly worse). The two in-process sweeps take no such lock and scale freely.
+That same lock is why a hand-run `cargo test` is much slower than the `test` gate: check.ts forces
+`CARGO_NET_OFFLINE=true`, which cuts the preflight's cost about fivefold — always set it when timing
+this gate by hand, or you are measuring a different machine.
+
 ### Gate-level concurrency (registry-declared, opt-in)
 
 Gates run **one at a time unless the registry says otherwise**. A gate may declare a `concurrent`
