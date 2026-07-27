@@ -269,6 +269,76 @@ impl RuleMetadata {
             panic!("cannot use both @newtype and @no_alias on the same alias");
         }
     }
+
+    /// The `@`-spellings of every rule-level directive set on this metadata, EXCLUDING the two a
+    /// type-choice VARIANT position legitimately consumes (`@name` names the variant, `@doc`
+    /// documents it — see `parsing::create_variants_from_type_choices`, which reads exactly those
+    /// two fields and discards the rest).
+    ///
+    /// Exists for one caller: the non-last-arm rejection in `parsing::parse_type_choices`. The
+    /// exhaustive destructuring below is load-bearing — a new `RuleMetadata` field fails to compile
+    /// here until its author decides whether it is rule-level (add it) or variant-legal (bind it to
+    /// `_`), which is the forcing function a hand-maintained list cannot provide.
+    pub fn non_variant_directives(&self) -> Vec<&'static str> {
+        let Self {
+            name: _,
+            comment: _,
+            rust_name,
+            newtype,
+            no_alias,
+            key_demand,
+            used_as_elem,
+            copy,
+            raw_bytes_flavor,
+            ignore,
+            duplicates,
+            custom_json,
+            no_json_schema_export,
+            custom_serialize,
+            custom_deserialize,
+        } = self;
+        let mut found = Vec::new();
+        if rust_name.is_some() {
+            found.push("@rust_name");
+        }
+        if newtype.is_some() {
+            found.push("@newtype");
+        }
+        if *no_alias {
+            found.push("@no_alias");
+        }
+        if key_demand.is_some() {
+            found.push("@used_as_key");
+        }
+        if *used_as_elem {
+            found.push("@used_as_elem");
+        }
+        if *copy {
+            found.push("@copy");
+        }
+        if *raw_bytes_flavor {
+            found.push("@raw_bytes_flavor");
+        }
+        if *ignore {
+            found.push("@ignore");
+        }
+        if duplicates.is_some() {
+            found.push("@duplicates");
+        }
+        if *custom_json {
+            found.push("@custom_json");
+        }
+        if *no_json_schema_export {
+            found.push("@no_json_schema_export");
+        }
+        if custom_serialize.is_some() {
+            found.push("@custom_serialize");
+        }
+        if custom_deserialize.is_some() {
+            found.push("@custom_deserialize");
+        }
+        found
+    }
 }
 
 fn tag_name(input: &str) -> IResult<&str, ParseResult> {

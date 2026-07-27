@@ -1328,23 +1328,22 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   to the group rule by line position would be a second, drift-prone comment parser, so it needs a
   real consumer to justify it.
 
-- **A type choice's LAST arm's trailing comment IS the rule-position slot, so reordering arms can
-  silently switch a rule-level directive off.** `parse_type_choices` reads rule metadata from
-  `type_choices.last()` only, and `create_variants_from_type_choices` consumes just `.name` and
-  `.comment` per choice — so a rule-level directive on any other arm is read as that variant's own
-  metadata, where it means nothing, and is dropped without a word. The concrete consumer exposure,
-  reported by CML: `plutus_data`'s `@custom_json` sits on its `bytes` arm, which is last today;
-  reordering the arms would silently restore `serde` + `schemars::JsonSchema` derives on a type whose
-  JSON impls are hand-written, and the collision surfaces as a compile error far from the spec edit
-  that caused it. This is the general "rule-level directive at a non-rule position" class that
-  `dsl_position_tests.rs`'s own header rules out fixing opportunistically, so no rejection was added.
-  Owned meanwhile by the `@custom_json` docs section, which now states the reordering hazard
-  outright, and by `dsl_position_tests`' `type-choice-rule` / `type-choice-rule-schemars` cells,
-  which pin that the LAST-arm placement works (the placement control any rejection would need). The
-  fix, when a trigger arrives: reject a rule-level directive found on a non-last arm, behind a vector
-  per directive — a spec relying on today's silence starts failing (correctly) at generation.
-  Trigger: a consumer report of a directive that stopped applying after a spec edit that only
-  reordered arms, or a second directive in this class.
+- **The arm-position axis of the directive×shape sweep is covered by two cells, not by enumeration.**
+  A rule-level directive on a non-last arm of a multi-choice type rule is now rejected at parse
+  (`parsing::parse_type_choices`, keyed on `comment_ast::RuleMetadata::non_variant_directives`), and
+  the rejection is pinned by `dsl_position_tests`' `type-choice-non-last-arm` cell with
+  `type-choice-non-last-arm-allowed` pinning the `@name`/`@doc` exclusion, plus
+  `no_silent_directive`'s `type_choice_non_last_arm_used_as_key` cell and its last-arm placement
+  control. What is NOT enumerated is the directive axis at that position: one directive stands in
+  for thirteen, and the exclusion set is asserted through the classifier's exhaustive destructuring
+  (a new `RuleMetadata` field fails to compile until classified) rather than through a cell per
+  directive. Note this axis is orthogonal to the shape sweep planned above: that sweep treats
+  "multi-choice type rule" as ONE shape and would place the directive at rule position, where it
+  works — so it can never see this. Fold the arm axis in when that sweep is built; until then the
+  classifier's compile-time forcing function is the load-bearing part, and losing it (e.g. replacing
+  the destructuring with a hand list) is the regression to watch for.
+  Reopening signal for building the enumeration early: a directive whose rejection at this position
+  turns out to be wrong for its own reasons, or a third arm-position drop found by hand.
 
 - **The schema document's name injectivity is enforced ROW-side, so the residue is everything the row
   set cannot see.** The json-gen crate's `schemas/<lib>.schema.json` is written by a program we emit,
