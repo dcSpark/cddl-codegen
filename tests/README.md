@@ -3055,10 +3055,35 @@ derived cargo path dependency is RELATIVE under all four `package-json` layouts:
 derived path written into a *committed* manifest, where an absolute value would make the same config
 produce different bytes in a different clone.
 
-The acceptance test is `config_expansion_generates_byte_identical_output_to_the_flag_invocation`:
-one corpus fixture generated twice through `api::generated_strings`, once from a config and once
-from the equivalent flags, asserted file-set-equal and content-equal. That is what pins "config =
-flag expansion, nothing more" at the level of emitted source rather than at the `Cli` struct.
+**The acceptance proof.** Two tests pin "config = flag expansion, nothing more" at the level of
+emitted bytes rather than at the `Cli` struct.
+`config_expansion_generates_byte_identical_output_to_the_flag_invocation` does it for ONE crate
+through `api::generated_strings` (no disk), which keeps a cheap version of the claim in the suite.
+`a_whole_config_generates_what_the_hand_written_flags_generate` does it for a whole PROJECT on
+disk — four crates, `[defaults]` plus a profile three of them apply, a `deps` edge, a
+`wasm-reexports` edge, a `json-schema-root`, a `[runtime]` whose carrier is derived, and a crate at a
+different runtime flavor than the rest — generated once from a config and once from a hand-written
+flag list into two different scratch roots, then compared file for file. The compared set spans the
+`extern-interface/` exports, both borrowed sidecars, the json-gen manifests, and the exported shared
+runtime, which lives outside the output directories.
+
+**If you add a config key that DERIVES a flag, add it to the hand-written side of that fixture**
+(`acceptance_hand_invocations`). This is the only thing protecting the test from quietly weakening:
+a derived flag the hand list forgets still produces identical trees whenever this fixture's specs do
+not reach that flag's output effect, and the byte comparison then passes while covering nothing.
+Measured, not argued — dropping `--extern-wrapper-index` from the hand list leaves the two trees
+byte-identical. What catches it is the test's FIRST assertion, which compares the whole expanded
+`Cli` (every field, each run's own root erased) against `Cli::parse_from` of the hand argv and names
+the field that moved. Keep both assertions: the struct comparison is what makes the hand list
+provably complete, the byte comparison is what proves nothing in the emitted output depends on where
+the run happened.
+
+`a_config_run_converges_and_then_repeats_byte_for_byte` covers idempotence across a multi-crate run,
+where crates read each other's output. It deliberately does not assert "run 1 equals run 2": a cold
+workspace cannot converge in one run, because generation order resolves the two edge directions in
+the dependency's favour, so the dependency reads a sidecar the consumer writes afterwards. The shape
+asserted is run 1 warns, run 2 does not, run 3 is byte-identical to run 2 — plus that run 2 differs
+from run 1, so the fixture cannot silently stop exercising the cross-crate read.
 
 Everything here runs under plain `cargo test` (`cargo test --bin cddl-codegen config_tests`; in-tier
 via the local tier's workspace `cargo test`, no dedicated gate). Three cells nest a cargo run inside

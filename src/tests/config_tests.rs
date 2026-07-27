@@ -2607,3 +2607,522 @@ fn a_derived_thread_links_and_a_collision_blames_the_consumer() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Acceptance — the whole feature, over a whole project
+// ---------------------------------------------------------------------------------------------
+
+/// The specs the acceptance fixture generates from, written identically into both roots.
+///
+/// `ledger` both names a `core` type directly and builds a collection over it: the first is what
+/// `--extern-import` resolves, the second is what makes `--workspace-dep` emit the sidecar the
+/// reverse edges read.
+fn write_acceptance_specs(root: &Path) {
+    std::fs::create_dir_all(root.join("specs")).unwrap();
+    std::fs::write(root.join("specs/basic.cddl"), "basic_thing = [n: uint]\n").unwrap();
+    std::fs::write(
+        root.join("specs/core.cddl"),
+        "core_thing = [a: uint, b: text]\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("specs/extras.cddl"), "extra_thing = [z: text]\n").unwrap();
+    std::fs::write(
+        root.join("specs/ledger.cddl"),
+        "ledger_rec = [t: core_thing, l: [* core_thing]]\n",
+    )
+    .unwrap();
+}
+
+/// Every layer of the feature in one file: `[defaults]`, a `[profiles.*]` three of the four crates
+/// apply, `[runtime]`, a `deps` edge, a `wasm-reexports` edge, a `json-schema-root`, and one crate
+/// (`basic`) that applies no profile and so deviates from the others' runtime flavor on both max
+/// axes.
+///
+/// `basic` sorts FIRST by name and is deliberately not the runtime carrier: the carrier is derived
+/// as the first crate whose flavor is the join, which is `core`, so a derivation that had simply
+/// taken the alphabetically-first crate would fail the comparison below.
+fn acceptance_config_text() -> String {
+    format!(
+        "[defaults]\n\
+         static-dir = \"{static_dir}\"\n\
+         preserve-encodings = true\n\
+         canonical-form = true\n\
+         \n\
+         [profiles.published]\n\
+         json-serde-derives = true\n\
+         json-schema-export = true\n\
+         \n\
+         [runtime]\n\
+         export-static-crate = \"runtime\"\n\
+         common-import = \"shared_runtime\"\n\
+         \n\
+         [crates.basic]\n\
+         input = \"specs/basic.cddl\"\n\
+         output = \"gen/basic\"\n\
+         lib-name = \"basic-lib\"\n\
+         \n\
+         [crates.core]\n\
+         input = \"specs/core.cddl\"\n\
+         output = \"gen/core\"\n\
+         lib-name = \"core-lib\"\n\
+         profiles = [\"published\"]\n\
+         \n\
+         [crates.extras]\n\
+         input = \"specs/extras.cddl\"\n\
+         output = \"gen/extras\"\n\
+         lib-name = \"extras-lib\"\n\
+         profiles = [\"published\"]\n\
+         \n\
+         [crates.ledger]\n\
+         input = \"specs/ledger.cddl\"\n\
+         output = \"gen/ledger\"\n\
+         lib-name = \"ledger-lib\"\n\
+         profiles = [\"published\"]\n\
+         deps = [\"core\"]\n\
+         wasm-reexports = [\"extras\"]\n\
+         json-schema-root = [\"ledger_lib::HandWritten\"]\n",
+        static_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/static"),
+    )
+}
+
+/// The same four invocations spelled as a shell script would spell them, in generation order.
+///
+/// # How this list is known to be complete
+///
+/// It is not known by inspection, and it must not be — a hand list that quietly forgot a derived
+/// flag would still produce identical trees whenever that flag's effect is unreachable in this
+/// fixture, and the acceptance test would pass while proving nothing about it. So the completeness
+/// check is mechanical: [`a_whole_config_generates_what_the_hand_written_flags_generate`] compares
+/// the ENTIRE expanded `Cli` — every field, derived or not — against `Cli::parse_from` of these
+/// argv vectors. A derived flag missing here is a differing struct field, named in the failure,
+/// whether or not it changes a single emitted byte.
+///
+/// What that leaves for a reader is the reverse direction: a flag written here that the config never
+/// derives also fails, so this list cannot drift ahead of the config either.
+///
+/// The derivations it spells, for orientation (all read off `src/config.rs`, not off the docs):
+/// `apply_graph_edges` forward (`--extern-import`, `--extern-wasm-crate`, `--extern-wrapper-index`,
+/// `--workspace-dep`) and reverse (`--wrapper-requests`, `--key-requests`); `apply_runtime`
+/// (`--common-import-override` on every crate, `--export-static-crate` on the derived carrier); and
+/// `threading` (`--json-schema-dep` + `--json-gen-dep` per edge).
+fn acceptance_hand_invocations(root: &Path) -> Vec<(&'static str, Vec<String>)> {
+    let p = |rel: &str| root.join(rel).to_string_lossy().into_owned();
+    let static_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/static").to_owned();
+    let shared: Vec<String> = vec![
+        "--static-dir".to_owned(),
+        static_dir,
+        "--preserve-encodings".to_owned(),
+        "true".to_owned(),
+        "--canonical-form".to_owned(),
+        "true".to_owned(),
+    ];
+    let published: Vec<String> = vec![
+        "--json-serde-derives".to_owned(),
+        "true".to_owned(),
+        "--json-schema-export".to_owned(),
+        "true".to_owned(),
+    ];
+    let runtime: Vec<String> = vec![
+        "--common-import-override".to_owned(),
+        "shared_runtime".to_owned(),
+    ];
+    let invocation = |per_crate: Vec<String>, profiled: bool, extra: Vec<String>| {
+        let mut argv = vec!["cddl-codegen".to_owned()];
+        argv.extend(per_crate);
+        argv.extend(shared.iter().cloned());
+        if profiled {
+            argv.extend(published.iter().cloned());
+        }
+        argv.extend(runtime.iter().cloned());
+        argv.extend(extra);
+        argv
+    };
+
+    vec![
+        (
+            "basic",
+            invocation(
+                vec![
+                    "--input".to_owned(),
+                    p("specs/basic.cddl"),
+                    "--output".to_owned(),
+                    p("gen/basic"),
+                    "--lib-name".to_owned(),
+                    "basic-lib".to_owned(),
+                ],
+                false,
+                vec![],
+            ),
+        ),
+        (
+            "core",
+            invocation(
+                vec![
+                    "--input".to_owned(),
+                    p("specs/core.cddl"),
+                    "--output".to_owned(),
+                    p("gen/core"),
+                    "--lib-name".to_owned(),
+                    "core-lib".to_owned(),
+                ],
+                true,
+                vec![
+                    // `[runtime]`: the carrier's invocation is the one that carries the export.
+                    "--export-static-crate".to_owned(),
+                    p("runtime"),
+                    // The reverse edges: `ledger` is the only consumer of `core`.
+                    "--wrapper-requests".to_owned(),
+                    format!(
+                        "ledger_lib={}",
+                        p("gen/ledger/wasm/src/generated/borrowed_collections.rs")
+                    ),
+                    "--key-requests".to_owned(),
+                    format!(
+                        "ledger_lib={}",
+                        p("gen/ledger/rust/src/generated/borrowed_key_types.rs")
+                    ),
+                ],
+            ),
+        ),
+        (
+            "extras",
+            invocation(
+                vec![
+                    "--input".to_owned(),
+                    p("specs/extras.cddl"),
+                    "--output".to_owned(),
+                    p("gen/extras"),
+                    "--lib-name".to_owned(),
+                    "extras-lib".to_owned(),
+                ],
+                true,
+                vec![],
+            ),
+        ),
+        (
+            "ledger",
+            invocation(
+                vec![
+                    "--input".to_owned(),
+                    p("specs/ledger.cddl"),
+                    "--output".to_owned(),
+                    p("gen/ledger"),
+                    "--lib-name".to_owned(),
+                    "ledger-lib".to_owned(),
+                ],
+                true,
+                vec![
+                    "--json-schema-root".to_owned(),
+                    "ledger_lib::HandWritten".to_owned(),
+                    // The four forward edges of `deps = ["core"]`.
+                    "--workspace-dep".to_owned(),
+                    "core_lib".to_owned(),
+                    "--extern-import".to_owned(),
+                    format!("core_lib={}", p("gen/core/extern-interface/core_lib")),
+                    "--extern-wrapper-index".to_owned(),
+                    format!(
+                        "core_lib={}",
+                        p("gen/core/wasm/src/generated/collections.rs")
+                    ),
+                    "--extern-wasm-crate".to_owned(),
+                    "core_lib=core_lib_wasm".to_owned(),
+                    // The threading derivation: `deps` first, then `wasm-reexports`, each edge
+                    // spelling both the registrar call and the manifest entry that links it.
+                    "--json-schema-dep".to_owned(),
+                    "core_lib=core_lib_json_schema_gen".to_owned(),
+                    "--json-schema-dep".to_owned(),
+                    "extras_lib=extras_lib_json_schema_gen".to_owned(),
+                    "--json-gen-dep".to_owned(),
+                    "core-lib-json-schema-gen=../../../core/wasm/json-gen".to_owned(),
+                    "--json-gen-dep".to_owned(),
+                    "extras-lib-json-schema-gen=../../../extras/wasm/json-gen".to_owned(),
+                ],
+            ),
+        ),
+    ]
+}
+
+/// Every file under `subtrees` of `root`, keyed by its path relative to `root`.
+fn tree_bytes(root: &Path, subtrees: &[&str]) -> std::collections::BTreeMap<String, Vec<u8>> {
+    fn walk(dir: &Path, prefix: &str, out: &mut std::collections::BTreeMap<String, Vec<u8>>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries {
+            let entry = entry.unwrap();
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let rel = format!("{prefix}/{name}");
+            if entry.file_type().unwrap().is_dir() {
+                walk(&entry.path(), &rel, out);
+            } else {
+                out.insert(rel, std::fs::read(entry.path()).unwrap());
+            }
+        }
+    }
+    let mut out = std::collections::BTreeMap::new();
+    for subtree in subtrees {
+        walk(&root.join(subtree), subtree, &mut out);
+    }
+    out
+}
+
+/// The first way two generated trees differ, rendered so the answer to "which derivation drifted"
+/// is in the failure itself: a file-set difference names the file, a content difference names the
+/// file AND the first differing line on both sides.
+fn first_tree_difference(
+    left_label: &str,
+    left: &std::collections::BTreeMap<String, Vec<u8>>,
+    right_label: &str,
+    right: &std::collections::BTreeMap<String, Vec<u8>>,
+) -> Option<String> {
+    if let Some(only_left) = left.keys().find(|path| !right.contains_key(*path)) {
+        return Some(format!(
+            "`{only_left}` was written by the {left_label} run and not by the {right_label} one"
+        ));
+    }
+    if let Some(only_right) = right.keys().find(|path| !left.contains_key(*path)) {
+        return Some(format!(
+            "`{only_right}` was written by the {right_label} run and not by the {left_label} one"
+        ));
+    }
+    let (path, left_bytes) = left.iter().find(|(path, bytes)| &right[*path] != *bytes)?;
+    let right_bytes = &right[path];
+    let left_text = String::from_utf8_lossy(left_bytes);
+    let right_text = String::from_utf8_lossy(right_bytes);
+    let mut report = format!("`{path}` differs:\n");
+    let mut lines = left_text.lines().zip(right_text.lines()).enumerate();
+    match lines.find(|(_, (l, r))| l != r) {
+        Some((n, (l, r))) => report.push_str(&format!(
+            "  line {}:\n  - {left_label}: {l}\n  + {right_label}: {r}\n",
+            n + 1
+        )),
+        None => report.push_str(&format!(
+            "  the shared prefix agrees; the files differ in length ({} vs {} lines)\n",
+            left_text.lines().count(),
+            right_text.lines().count()
+        )),
+    }
+    Some(report)
+}
+
+/// **The load-bearing test of the config feature**: a whole multi-crate project generated once from
+/// a config file and once from the flag invocations it claims to be shorthand for, byte for byte the
+/// same.
+///
+/// Every phase of this feature has asserted "a config key IS its flag, and nothing more" — it is why
+/// `Cli` values are produced through clap rather than constructed, why a drift gate keeps the key set
+/// in bijection with `Cli`'s fields, and why no phase had to reason about codegen semantics. Until
+/// here that claim was tested one derivation at a time, on argv values. This runs the whole thing:
+/// four crates, two shared layers, a `deps` edge, a `wasm-reexports` edge, a shared runtime whose
+/// carrier is DERIVED, and a crate at a different flavor than the rest — all at once, onto disk.
+///
+/// Two assertions, and the order matters.
+///
+/// 1. **The expanded `Cli`s are the hand-written ones.** This is what makes the hand-written side
+///    provably complete: it compares every field, so a derived flag the hand list forgot fails here
+///    even when its effect is unreachable in this fixture. Without it, an acceptance test that
+///    compared only bytes would silently stop covering any derivation whose output effect this
+///    particular spec does not reach.
+/// 2. **The two trees are byte-identical, file set included.** This is what (1) cannot see: that
+///    nothing in the generated bytes depends on WHERE the run happened. The two runs use different
+///    absolute roots for every path the tool reads or writes, so any emitted absolute path, any
+///    directory name leaking into content, would show up here — which is also why the `--json-gen-dep`
+///    value is derived relative rather than absolute.
+///
+/// Both roots are COLD, so neither run reads prior output: the comment-preservation overlay, the
+/// manifest merge, and the `--export-static-crate` new-file notice all see an empty target.
+#[test]
+fn a_whole_config_generates_what_the_hand_written_flags_generate() {
+    use clap::Parser;
+
+    let root = std::env::temp_dir().join(format!(
+        "cddl_config_acceptance_{:016x}",
+        crate::tests::integration_tests::checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let config_root = root.join("from-config");
+    let flags_root = root.join("from-flags");
+    write_acceptance_specs(&config_root);
+    write_acceptance_specs(&flags_root);
+    let config_path = config_root.join("cddl-codegen.toml");
+    std::fs::write(&config_path, acceptance_config_text()).unwrap();
+
+    let expanded = config::load(&config_path)
+        .expect("the acceptance config must load")
+        .expand(&[])
+        .expect("the acceptance config must expand");
+    let hand = acceptance_hand_invocations(&flags_root);
+
+    // The order is part of what the config decides: dependencies first, ties by crate name.
+    assert_eq!(
+        expanded.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+        hand.iter().map(|(n, _)| *n).collect::<Vec<_>>(),
+        "the config's generation order must be the order the hand script runs in"
+    );
+
+    // (1) Completeness: every field of every crate's `Cli`, with each run's own root erased so the
+    // only thing that can differ is a flag. Reported line by line rather than through `assert_eq!`,
+    // because a `Cli`'s pretty-printed debug is forty fields and the escaped one-line rendering of
+    // two of them buries the single field that moved.
+    for ((name, config_cli), (_, argv)) in expanded.iter().zip(hand.iter()) {
+        let hand_cli = Cli::parse_from(argv);
+        let erase = |cli: &Cli, at: &Path| {
+            format!("{cli:#?}").replace(&at.to_string_lossy().into_owned(), "<ROOT>")
+        };
+        let from_config = erase(config_cli, &config_root);
+        let from_flags = erase(&hand_cli, &flags_root);
+        if from_config != from_flags {
+            let context = from_config
+                .lines()
+                .zip(from_flags.lines())
+                .find(|(c, f)| c != f)
+                .map(|(c, f)| format!("  - config: {}\n  + flags:  {}", c.trim(), f.trim()))
+                .unwrap_or_else(|| {
+                    format!(
+                        "  one invocation carries {} more lines than the other",
+                        from_config
+                            .lines()
+                            .count()
+                            .abs_diff(from_flags.lines().count())
+                    )
+                });
+            panic!(
+                "`{name}`: the config expanded to a different invocation than the hand-written flag \
+                 list.\n{context}\nEither a derivation changed, or the hand-written side in \
+                 `acceptance_hand_invocations` is missing the flag the config now derives — add it \
+                 there, or this acceptance test stops covering it."
+            );
+        }
+    }
+
+    config::generate(&config_path, &[]).expect("the config run must generate");
+    for (name, argv) in &hand {
+        crate::api::generate_to_disk(&Cli::parse_from(argv)).unwrap_or_else(|e| {
+            panic!("the hand-written invocation for `{name}` must generate: {e}")
+        });
+    }
+
+    // (2) The bytes. `runtime/` is compared alongside `gen/` because `[runtime]` writes OUTSIDE the
+    // output directories, and a shared runtime exported at the wrong crate's flavor is exactly the
+    // failure that table exists to prevent.
+    let from_config = tree_bytes(&config_root, &["gen", "runtime"]);
+    let from_flags = tree_bytes(&flags_root, &["gen", "runtime"]);
+    assert!(
+        from_config.len() > 40,
+        "the fixture must generate a whole project, got {} files",
+        from_config.len()
+    );
+    if let Some(difference) = first_tree_difference("config", &from_config, "flags", &from_flags) {
+        panic!(
+            "a config run and the flag invocations it expands to must produce the same bytes, but \
+             {difference}"
+        );
+    }
+
+    // The carrier derivation, made observable. `basic` sorts first and would export a runtime with
+    // neither companion; `core`'s flavor is the join, so the runtime carries both. Asserted on the
+    // runtime's own manifest so the fixture cannot quietly stop distinguishing the two.
+    let runtime_manifest =
+        String::from_utf8(from_config["runtime/Cargo.toml"].clone()).expect("utf-8 manifest");
+    for companion in ["serde", "schemars"] {
+        assert!(
+            runtime_manifest.contains(companion),
+            "the shared runtime must be exported at the JOIN of every crate's flavor, not at the \
+             alphabetically first crate's — `{companion}` is missing from:\n{runtime_manifest}"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Idempotence across a multi-crate run: once converged, running the same config again over the same
+/// output directory changes nothing.
+///
+/// The single-crate "run twice = run once" contract is long established. What is new here is that a
+/// config run INTERLEAVES crates that read each other's output — the dependency reads the sidecars
+/// its consumers emit — so this is where a cross-crate feedback path would show up, and the
+/// assertion has to be stated at the right run.
+///
+/// It is deliberately NOT "run 1 equals run 2". A cold workspace cannot converge in one run and is
+/// not supposed to: generation order resolves the two edge directions in the DEPENDENCY's favour, so
+/// on run 1 `core` reads a `borrowed_collections.rs` that does not exist yet and `ledger` writes it
+/// afterwards. That is the documented one-run-stale case, and the convergence check is what reports
+/// it rather than something to engineer away. So the shape asserted is: run 1 warns, run 2 does not,
+/// and run 3 is byte-identical to run 2. A feedback path that genuinely did not converge would fail
+/// at the second or third of those.
+#[test]
+fn a_config_run_converges_and_then_repeats_byte_for_byte() {
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_config_idempotence_{:016x}",
+        crate::tests::integration_tests::checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("specs")).unwrap();
+    std::fs::write(
+        dir.join("specs/core.cddl"),
+        "core_thing = [a: uint, b: text]\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("specs/ledger.cddl"),
+        "ledger_rec = [t: core_thing, l: [* core_thing]]\n",
+    )
+    .unwrap();
+    let config_path = dir.join("cddl-codegen.toml");
+    std::fs::write(
+        &config_path,
+        format!(
+            "[defaults]\nstatic-dir = \"{}\"\n\n\
+             [crates.core]\ninput = \"specs/core.cddl\"\noutput = \"gen/core\"\n\
+             lib-name = \"core-lib\"\n\n\
+             [crates.ledger]\ninput = \"specs/ledger.cddl\"\noutput = \"gen/ledger\"\n\
+             lib-name = \"ledger-lib\"\ndeps = [\"core\"]\n",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/static"),
+        ),
+    )
+    .unwrap();
+    let expanded = config::load(&config_path).unwrap().expand(&[]).unwrap();
+
+    // Run 1, cold: `core` reads a sidecar `ledger` has not written yet, so the run is one behind and
+    // says so.
+    let cold = config::Convergence::capture(&expanded);
+    config::generate(&config_path, &[]).expect("the cold run must generate");
+    assert_eq!(
+        cold.stale_crates(),
+        ["core".to_owned()].into_iter().collect(),
+        "a cold workspace cannot converge in one run: the dependency read a sidecar this run then \
+         wrote, and the convergence check is what tells the user to run again"
+    );
+    let after_cold = tree_bytes(&dir, &["gen"]);
+
+    // Run 2: every sidecar is in place before anything reads it.
+    let warm = config::Convergence::capture(&expanded);
+    config::generate(&config_path, &[]).expect("the warm run must generate");
+    assert!(
+        warm.stale_crates().is_empty(),
+        "the second run must converge — a sidecar still changing here means the cross-crate edges \
+         feed back into each other, which no number of re-runs would settle. Stale: {:?}",
+        warm.stale_crates()
+    );
+    let after_warm = tree_bytes(&dir, &["gen"]);
+    assert_ne!(
+        after_cold, after_warm,
+        "the fixture must actually exercise the cross-crate read: if the converged tree equals the \
+         cold one, nothing was borrowed and this test is asserting idempotence over an edge that \
+         carries no payload"
+    );
+
+    // Run 3: the converged state is a fixed point.
+    config::generate(&config_path, &[]).expect("the repeat run must generate");
+    let after_repeat = tree_bytes(&dir, &["gen"]);
+    if let Some(difference) =
+        first_tree_difference("converged", &after_warm, "repeat", &after_repeat)
+    {
+        panic!(
+            "a converged config run must be a fixed point — run it twice, get the same bytes, but \
+             {difference}"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
