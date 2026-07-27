@@ -829,20 +829,21 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 /// remaining collapse boundary is per-(message, file, function): two bare sites in the SAME
 /// function share one key (`codegen_struct` / `generate_wrapper_struct` each host two).
 const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
-    // The two anonymous-composite classes split by the composite's BRACKET, not by the role, and a
-    // citation naming the wrong one sends a reader to a fixture that produces the other class. Each
-    // citation below was confirmed by running the named fixture through the generator.
-    (
-        "Anonymous groups not allowed",
-        "anonymous nested ARRAY (`a = [[int]]`); pinned by tests/matrix_panic/contain.array-element.type2.array.cddl (and role siblings)",
-    ),
-    // (retired when the anonymous nested MAP and the group-choice-arm inline group became graceful
-    // rejections) Two classes lived here. `"TODO: non-table types as types"`: an anonymous nested
-    // map in a position requiring a TYPE now records a rejection naming the map's supported named
-    // form, so every `…type2.map` role sibling (array-element, map-value, cbor-payload,
-    // choice-member, generic-arg, occurrence-target, group-choice-arm) rejects gracefully under both
-    // the default and the `--preserve-encodings` profile. `"inline group entries are not
-    // implemented"`: an inline group as a group-choice arm's sole entry now rejects the same way
+    // (retired when the two anonymous-composite families and the group-choice-arm inline group
+    // became graceful rejections) Three classes lived here, and they split by the composite's
+    // BRACKET rather than by the role — which is what made a citation naming the wrong one send a
+    // reader to the wrong parse site. `"Anonymous groups not allowed"`: an anonymous nested ARRAY
+    // in a position requiring a TYPE (`a = [[int]]`) now records a rejection carrying the same two
+    // remedies the panic advertised, so its whole `…type2.array` role-sibling family
+    // (array-element, cbor-payload, choice-member, map-key, map-value, occurrence-target) rejects
+    // gracefully under both profiles; the `@name` naming door beside it still mints the struct where
+    // the comment can reach it, which the `anon-group-choice-member` cell of the comment-DSL
+    // position sweep holds. `"TODO: non-table types as types"`: the MAP-bracket sibling of the same
+    // family now records a rejection naming the map's supported named form, so every `…type2.map`
+    // role sibling (array-element, map-value, cbor-payload, choice-member, generic-arg,
+    // occurrence-target, group-choice-arm) rejects gracefully under both profiles too.
+    // `"inline group entries are not implemented"`: an inline group as a group-choice arm's sole
+    // entry now rejects the same way
     // (message pinned by `inline_group_choice_arm_rejects_gracefully`), in both the array and map
     // reps. Its second site (`group_entry_optional`) was left an abort because the record path
     // rejects every inline group before optionality is read, so no input reaches it; the follow-on

@@ -426,9 +426,9 @@ are ledgered here (that's what the probe/gate error messages point at).
   (held in its `KNOWN_SILENT_DROP` pin list — pinned, not fixed; the pins flip loudly when a fix
   lands): (1) `@name` at a MEMBER-position anonymous inline group never reaches the naming site
   (`get_comment_after(type2)` ascends only through Type1/TypeChoice), so the "Anonymous groups not
-  allowed" panic fires despite its message advertising `@name` as the remedy — the remedy DOES work
-  in choice-member position; either make the member-position comment reachable or scope the panic
-  message's advertised remedy. (2) `@doc` on a fixed-value (dataless C-style enum) type-choice
+  allowed" rejection fires despite its message advertising `@name` as the remedy — the remedy DOES
+  work in choice-member position; either make the member-position comment reachable or scope the
+  rejection message's advertised remedy to the positions that can honor it. (2) `@doc` on a fixed-value (dataless C-style enum) type-choice
   variant is captured into the IR but never emitted — data-carrying variants render the `///` fine.
   (3) `@raw_bytes_flavor` on a NON-generic `_CDDL_CODEGEN_EXTERN_TYPE_` rule is silently accepted
   as a no-op — the extern-only validity gate rejects only non-extern rules while the docs scope the
