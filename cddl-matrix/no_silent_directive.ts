@@ -44,6 +44,12 @@ interface Cell {
   toggled: string;
   /** human shape description for the FAIL message */
   shape: string;
+  /** When present, the rule body is rendered as a MULTI-LINE type choice over `arms`, and the
+   *  toggled directive is placed on `arms[toggledArm]` instead of at rule position. The arm-position
+   *  axis is invisible to the default rule-position rendering, and it is where the silent drop with
+   *  the worst blast radius lives: the rule slot is the LAST arm's trailing comment, so a directive
+   *  on any earlier arm is built and discarded. `ruleBody` is ignored when this is set. */
+  armPlacement?: { arms: string[]; toggledArm: number };
 }
 
 // The corpus. The first two cells reproduce shipped wrapper-seam gaps (each byte-identical
@@ -143,6 +149,32 @@ const CORPUS: Cell[] = [
     toggled: "@newtype",
     shape: "collapsed two-arm 258 set idiom (bare @newtype, no getter)",
   },
+  {
+    // The rule slot of a multi-choice type rule is the LAST arm's trailing comment. A rule-level
+    // directive on an earlier arm is parsed as that variant's own metadata, where only `@name` and
+    // `@doc` mean anything, and is discarded — historically byte-identical to omitting it, which is
+    // this gate's FAIL condition. It now exits nonzero (loudly rejected), which is a PASS.
+    // `@used_as_key` because its effect is visible under this gate's rust-only generation.
+    id: "type_choice_non_last_arm_used_as_key",
+    ruleBody: "",
+    armPlacement: { arms: ["uint", "tstr", "bytes"], toggledArm: 0 },
+    base: [],
+    toggled: "@used_as_key",
+    shape: "multi-choice type rule, directive on a NON-LAST arm",
+  },
+  {
+    // Placement control for the cell above: the SAME directive on the SAME rule shape, at the LAST
+    // arm (the rule slot), where it takes effect and changes bytes. Isolates arm position as the
+    // variable, so the cell above cannot pass for the wrong reason. Three arms rather than two,
+    // deliberately: a two-arm choice risks colliding with the `T / null` collapse and the two-arm
+    // 258-set idiom, both of which take different paths.
+    id: "type_choice_last_arm_used_as_key",
+    ruleBody: "",
+    armPlacement: { arms: ["uint", "tstr", "bytes"], toggledArm: 2 },
+    base: [],
+    toggled: "@used_as_key",
+    shape: "multi-choice type rule, directive on the LAST arm (the rule slot)",
+  },
 ];
 
 // Legitimate byte-identical accepted no-ops: `<cellId>` => one-line justification. A cell on this list
@@ -186,6 +218,17 @@ function directiveKeyword(directive: string): string {
 
 function buildRule(cell: Cell, extra: string[]): string {
   const directives = [...cell.base, ...extra];
+  if (cell.armPlacement) {
+    // Multi-line type choice. Base directives stay at the rule slot (the LAST arm), so only the
+    // toggled directive's POSITION varies between a cell's two runs.
+    const { arms, toggledArm } = cell.armPlacement;
+    const lines = arms.map((arm, i) => {
+      const own = [...(i === arms.length - 1 ? cell.base : []), ...(i === toggledArm ? extra : [])];
+      const c = own.length ? ` ; ${own.join(" ")}` : "";
+      return `${i === 0 ? "foo = " : "  / "}${arm}${c}`;
+    });
+    return `${lines.join("\n")}\nholder = [f: foo]\n`;
+  }
   const comment = directives.length ? ` ; ${directives.join(" ")}` : "";
   // A holder embedding the rule exercises member position too (the transparent-alias flatten seam).
   return `foo = ${cell.ruleBody}${comment}\nholder = [f: foo]\n`;
