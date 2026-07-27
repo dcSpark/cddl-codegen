@@ -1581,21 +1581,32 @@ fn crate_relative(cli: &Cli, output: &str, tail: &str) -> String {
 /// the value MEANS: cargo resolves a path dependency against the manifest holding it.
 ///
 /// Both endpoints are already resolved against the config file's directory, so they normally share a
-/// frame and the diff is a pure lexical answer. One input shape has no lexical answer — one side
-/// absolute and the other relative, which a config mixing absolute and relative `output` values
-/// produces — and `pathdiff` reports it by handing back an ABSOLUTE path (or `None`) rather than by
-/// failing, so the result is checked rather than the inputs. There the relative side's location
-/// genuinely is only known through the process CWD, so that is what the fallback uses. (The output
-/// tree's own location depends on the CWD in that configuration too, so this adds no dependence the
-/// run did not already have.)
+/// frame and the diff is a pure lexical answer. `pathdiff` is purely lexical too, which is why both
+/// endpoints are NORMALIZED first ([`lexically_normalized`]): an `output` of `./gen/core` otherwise
+/// diffs to a correct-but-mangled `../../../.././gen/core/wasm/json-gen`, which is the value that
+/// lands in the committed manifest, and a `..` component past the common prefix makes the diff
+/// unanswerable outright.
+///
+/// One input shape still has no lexical answer even normalized: one side absolute and the other
+/// relative, which a config mixing absolute and relative `output` values produces — as does a
+/// relative `output` whose leading `..` climbs out of the config directory, since the name of the
+/// directory it climbs out of is not in either string. `pathdiff` reports both by handing back an
+/// ABSOLUTE path (or `None`) rather than by failing, so the result is checked rather than the
+/// inputs, and the fallback supplies the missing frame from the process CWD. That reconstructs
+/// exactly the location the relative side already denoted, so the derived value is the same one an
+/// absolute `--config` path would have produced — the join is normalized too, which is what makes
+/// the `..` resolvable there.
 fn json_gen_relative_path(from_dir: &Path, to_dir: &Path) -> Result<String, String> {
-    if let Some(relative) = pathdiff::diff_paths(to_dir, from_dir).filter(|p| p.is_relative()) {
+    let from_dir = lexically_normalized(from_dir);
+    let to_dir = lexically_normalized(to_dir);
+    if let Some(relative) = pathdiff::diff_paths(&to_dir, &from_dir).filter(|p| p.is_relative()) {
         return Ok(relative.to_string_lossy().into_owned());
     }
     let cwd = std::env::current_dir().map_err(|e| {
         format!(
-            "`{}` and `{}` are one absolute path and one relative one, so the relative path \
-             between them is only defined against the current directory, which cannot be read: {e}",
+            "`{}` and `{}` do not share a frame — one is absolute and the other relative, or one \
+             climbs above the config directory — so the relative path between them is only defined \
+             against the current directory, which cannot be read: {e}",
             to_dir.display(),
             from_dir.display()
         )
@@ -1604,10 +1615,10 @@ fn json_gen_relative_path(from_dir: &Path, to_dir: &Path) -> Result<String, Stri
         if path.is_absolute() {
             path.to_path_buf()
         } else {
-            cwd.join(path)
+            lexically_normalized(&cwd.join(path))
         }
     };
-    pathdiff::diff_paths(absolute(to_dir), absolute(from_dir))
+    pathdiff::diff_paths(absolute(&to_dir), absolute(&from_dir))
         .filter(|p| p.is_relative())
         .map(|relative| relative.to_string_lossy().into_owned())
         .ok_or_else(|| {
@@ -1617,6 +1628,38 @@ fn json_gen_relative_path(from_dir: &Path, to_dir: &Path) -> Result<String, Stri
                 to_dir.display()
             )
         })
+}
+
+/// Resolve `.` and `..` components WITHOUT touching the filesystem.
+///
+/// Purely lexical because the directories involved routinely do not exist yet — an `output` names
+/// where a crate WILL be generated, so `Path::canonicalize` would fail on exactly the inputs this is
+/// for. The lexical answer differs from the filesystem one only when a component that a `..` cancels
+/// is a symlink, which a generated-output directory is not.
+///
+/// A leading `..` that nothing precedes is KEPT: there is no name in the string for it to cancel.
+/// `/..` is dropped instead, since the root is its own parent. An empty result is `.` rather than the
+/// empty string, so the value stays a path a join can be built on.
+fn lexically_normalized(path: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out: Vec<Component> = Vec::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => match out.last() {
+                Some(Component::Normal(_)) => {
+                    out.pop();
+                }
+                Some(Component::RootDir | Component::Prefix(_)) => {}
+                _ => out.push(component),
+            },
+            other => out.push(other),
+        }
+    }
+    if out.is_empty() {
+        return PathBuf::from(".");
+    }
+    out.iter().collect()
 }
 
 /// `` `a`, `b` `` — a comma-joined, backticked name list for a diagnostic.

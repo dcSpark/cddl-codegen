@@ -2373,6 +2373,82 @@ fn the_derived_path_stays_relative_across_a_mixed_absolute_and_relative_output()
         path.ends_with("cddl_config_absolute_core/wasm/json-gen"),
         "and it must still reach the dependency's json-gen crate, got {path}"
     );
+
+    // And it is not CWD-DEPENDENT, which the mixed spelling is easily assumed to make it: the
+    // process directory only supplies the frame the relative side already denoted, so spelling that
+    // side out absolutely — the value a run from any other directory reconstructs — derives exactly
+    // the same entry.
+    let spelled_out = expand_all(&format!(
+        "[defaults]\njson-schema-export = true\n\
+         [crates.core]\ninput = \"c.cddl\"\noutput = \"{}\"\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"{}/gen/ledger\"\ndeps = [\"core\"]\n",
+        absolute.display(),
+        std::env::current_dir().unwrap().display()
+    ));
+    assert_eq!(
+        &spelled_out["ledger"].json_gen_dep, derived,
+        "the derived entry must not depend on which of the two directories was spelled relatively"
+    );
+}
+
+/// `.` and `..` in an `output` are ordinary spellings of an ordinary directory, and the derived
+/// manifest entry must not be able to tell. `pathdiff` is purely lexical, so without normalization a
+/// leading `./` produces a correct-but-mangled value that is WRITTEN INTO A COMMITTED FILE
+/// (`../../../.././gen/core/wasm/json-gen`), and a `..` past the common prefix has no lexical answer
+/// at all — a hard error saying no relative path leads there. Both spellings must derive exactly what
+/// the plainly-spelled equivalent derives.
+#[test]
+fn a_dot_or_dot_dot_in_an_output_derives_the_same_path_the_plain_spelling_does() {
+    let derived = |core: &str, ledger: &str| {
+        expand_all(&format!(
+            "[defaults]\njson-schema-export = true\n\
+             [crates.core]\ninput = \"c.cddl\"\noutput = \"{core}\"\n\
+             [crates.ledger]\ninput = \"l.cddl\"\noutput = \"{ledger}\"\ndeps = [\"core\"]\n"
+        ))["ledger"]
+            .json_gen_dep
+            .clone()
+    };
+
+    let plain = derived("gen/core", "gen/ledger");
+    assert_eq!(
+        plain,
+        vec!["core-json-schema-gen=../../../core/wasm/json-gen".to_owned()],
+        "the baseline the two spellings below must match"
+    );
+    assert_eq!(
+        derived("./gen/core", "gen/ledger"),
+        plain,
+        "a leading `./` must not reach the committed manifest"
+    );
+    assert_eq!(
+        derived("gen/sub/../core", "./gen/./ledger"),
+        plain,
+        "`.` and `..` anywhere in either endpoint resolve before the diff"
+    );
+
+    // A `..` that climbs ABOVE the config directory has no lexical answer — the name of the
+    // directory it climbs out of is in neither string — so it is answered through the process CWD
+    // like the mixed absolute/relative case, rather than refused. The answer must be the one the
+    // fully-absolute spelling of the SAME two directories gives.
+    let cwd = std::env::current_dir().unwrap();
+    let climbing = derived(&format!("{}/gen/core", cwd.display()), "../apps/ledger");
+    let spelled_out = derived(
+        &format!("{}/gen/core", cwd.display()),
+        &format!("{}/apps/ledger", cwd.parent().unwrap().display()),
+    );
+    assert_eq!(
+        climbing, spelled_out,
+        "a relative `output` climbing out of the config directory denotes the same directory an \
+         absolute one does, so it must derive the same manifest entry"
+    );
+    let path = climbing[0]
+        .split_once('=')
+        .expect("the flag is <package>=<path>")
+        .1;
+    assert!(
+        std::path::Path::new(path).is_relative() && path.ends_with("gen/core/wasm/json-gen"),
+        "and it must still be a relative path reaching the dependency's json-gen crate, got {path}"
+    );
 }
 
 /// A dependency that publishes no schema document contributes NOTHING, silently. That silence is
