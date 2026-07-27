@@ -313,6 +313,18 @@ const CORPUS_PARITY_INPUTS: &[CorpusParityInput] = &[
             ),
         ],
     ),
+    // NOMINAL references to a collection typedef (a rule cycle entered at the collection rule). Its
+    // two integration gates pass `--wasm=false` — they assert wire vectors, not a wasm build — so
+    // this axis is where the wasm side of those references gets differentialled at all. Both
+    // committed profiles are swept: the preserve one is the only place the encoding-sidecar path
+    // exists, and that path is per-member, so it can move the wasm surface independently.
+    (
+        "recursive-collection-ref",
+        &[
+            ("default", &[]),
+            ("preserve", &["--preserve-encodings=true"]),
+        ],
+    ),
 ];
 
 const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[

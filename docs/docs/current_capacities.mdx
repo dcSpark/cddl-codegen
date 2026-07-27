@@ -162,7 +162,9 @@ A *container* of `any` as an arm (`x = [* any] / tstr`) is likewise an ordinary 
 
 ## Recursive types
 
-Terminable recursive types are supported — a rule may reference itself through an occurrence that can terminate, e.g. `tree = [value: uint, children: [* tree]]` (an empty `children` ends the recursion). These generate and round-trip normally.
+Terminable recursive types are supported — a rule may reference itself through an occurrence that can terminate, e.g. `tree = [value: uint, children: [* tree]]` (an empty `children` ends the recursion). These generate and round-trip normally. Which rule of a cycle the generator reaches first does not change the result: `h = [mdmap]` and `h = [md]`, over the same `md = mdmap / int` and `mdmap = { * text => md }`, produce equivalent code.
+
+A cycle that can **not** terminate — every path back to the rule closes through a mandatory, non-collection member, e.g. `md = mdrec / int` with `mdrec = { a: md }` — has infinite size in Rust. The generator prints a `Recursive type: …` notice on stderr but still writes the crate, and that crate does not compile: the cycle-closing member needs a `Box` added by hand. Restructure the spec so the cycle closes through a collection or an optional member instead.
 
 The generated deserializer is recursive-descent, so by default it has **no depth bound**: maliciously deep CBOR recurses until the thread's stack overflows and the process **aborts (SIGABRT)** — this is a process abort, not a returnable error, so it cannot be caught with `catch_unwind`. There is deliberately no default limit, because any fixed cap would reject spec-valid documents that happen to nest deeper.
 

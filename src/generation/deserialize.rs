@@ -1479,6 +1479,41 @@ impl GenerationScope {
                                     ));
                                 }
                             }
+                            // The decode twin of serialize's collection-typedef arms: a named
+                            // table/array rule has no `deserialize` of its own (it is a bare rust
+                            // typedef onto a collection), so recurse into the collection's
+                            // STRUCTURAL conceptual type — the same code the resolved-alias
+                            // reference path emits. Reached only from a NOMINAL reference, which
+                            // parse-order makes possible when a rule cycle is entered at the
+                            // collection rule. `nominal_collection_cfg` reads the per-rule policy
+                            // (`@duplicates`, occurrence bounds) back off the struct, which a
+                            // nominal reference does not carry.
+                            RustStructType::Table { domain, range, .. } => {
+                                let structural = ConceptualRustType::Map(
+                                    Box::new(domain.clone()),
+                                    Box::new(range.clone()),
+                                );
+                                let cfg = nominal_collection_cfg(types, ident, &type_cfg);
+                                return self.generate_deserialize(
+                                    types,
+                                    SerializingRustType::Root(&structural, cfg),
+                                    before_after,
+                                    config,
+                                    cli,
+                                );
+                            }
+                            RustStructType::Array { element_type, .. } => {
+                                let structural =
+                                    ConceptualRustType::Array(Box::new(element_type.clone()));
+                                let cfg = nominal_collection_cfg(types, ident, &type_cfg);
+                                return self.generate_deserialize(
+                                    types,
+                                    SerializingRustType::Root(&structural, cfg),
+                                    before_after,
+                                    config,
+                                    cli,
+                                );
+                            }
                             _ => {
                                 if types.is_plain_group(ident) && !type_cfg.basic_override {
                                     // This would mess up with length checks otherwise and is probably not a likely situation if this is even valid in CDDL.

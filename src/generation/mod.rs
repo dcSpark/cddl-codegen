@@ -66,8 +66,8 @@ use deserialize::{
 };
 use serialize::{
     EncodingVarIsCopy, SerializeConfig, SerializingRustType, create_serialize_impls, end_len,
-    make_serialization_function, make_serialization_impl, start_len, write_string_sz,
-    write_using_sz,
+    make_serialization_function, make_serialization_impl, nominal_collection_cfg, start_len,
+    write_string_sz, write_using_sz,
 };
 
 mod records;
@@ -2682,6 +2682,37 @@ fn encoding_fields_impl(
                     cli,
                     tag_depth,
                 ),
+                // a named table/array rule is a bare rust typedef onto a collection — there is no
+                // struct for the encodings to live inside, so they must be pushed OUT to the
+                // referring member exactly as the CStyleEnum/RawBytesType cases above do. Reached
+                // only from a NOMINAL reference to such a rule (parse-order makes one when a rule
+                // cycle is entered at the collection rule); the resolved-alias reference path
+                // reaches the `Alias` arm and lands on the same `Map`/`Array` arms. Without this
+                // the referrer mints no `{name}_encoding` sidecar while serialize (which DOES
+                // recurse into the collection) reads one — E0425 on generated code.
+                RustStructType::Table { domain, range, .. } => {
+                    let structural =
+                        ConceptualRustType::Map(Box::new(domain.clone()), Box::new(range.clone()));
+                    let cfg = nominal_collection_cfg(types, rust_ident, &_cfg);
+                    encoding_fields_impl(
+                        types,
+                        name,
+                        SerializingRustType::Root(&structural, cfg),
+                        cli,
+                        tag_depth,
+                    )
+                }
+                RustStructType::Array { element_type, .. } => {
+                    let structural = ConceptualRustType::Array(Box::new(element_type.clone()));
+                    let cfg = nominal_collection_cfg(types, rust_ident, &_cfg);
+                    encoding_fields_impl(
+                        types,
+                        name,
+                        SerializingRustType::Root(&structural, cfg),
+                        cli,
+                        tag_depth,
+                    )
+                }
                 // no encodings here. they're contained inside the struct
                 _ => vec![],
             }

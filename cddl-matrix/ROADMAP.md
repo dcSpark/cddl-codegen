@@ -283,17 +283,21 @@ are ledgered here (that's what the probe/gate error messages point at).
   `a = [* pair]`). Real `Vec<Synthesized>` / `Option`-style support for zero-permitting markers is a
   candidate feature; flipping a row to `ok` must not decay back to silent narrowing (unsupported
   rows carry no decode-conformance row; `project_decode_conformance.ts` enforces that boundary).
-- **A RECURSIVE-union-valued table referenced from a record field panics generation** — a bare
-  `panic!()` in `cbor_types`' RustStructType classification (src/intermediate/rust_type.rs, the
-  `_ => panic!()` arm): `h = [mdmap]` with `md = mdmap / int` and `mdmap = { * text => md }` dies
-  at exit 101; the recursion is the required ingredient (a NON-recursive union value generates
-  fine), the fixed-value head is not, and the `@duplicates` policy is irrelevant (repro'd
-  directive-free). Surfaced by the corpus decode mint's holder synthesis for
-  `table_preserve.mdmap` — its `pinned_reason` row in `tests/decode_conformance/corpus_catalog.toml`
-  is the committed, stale-guarded tell (a fix flips it at the next `--mint-decode-corpus`). Note
-  the fixture's own `holder` DOES generate (the same table reached through more context), so the
-  panic is order/paths-sensitive; pickup: classify the unhandled variant at the panic arm, add a
-  `tests/robustness/` PANIC pin for the minimized shape, then re-mint the corpus row.
+- **Give a NON-TERMINABLE recursive type a boundary instead of an advisory notice.** A cycle whose
+  every path back to itself closes through a mandatory, non-collection member has infinite size in
+  Rust: `mdmap = { * text => mdmap }` (the self-reference is the map VALUE, so the emitted typedef is
+  `pub type Mdmap = BTreeMap<String, Mdmap>`) and `md = mdrec / int` with `mdrec = { a: md }` both
+  generate at exit 0 and then fail `cargo check`. Terminable recursion is supported and unaffected
+  (`current_capacities.mdx` § "Recursive types"). The generator already detects the cycle — dep_graph
+  prints `Recursive type: … code will possibly need to be edited by hand to use Box/etc` — so what is
+  missing is not detection but a boundary: an advisory notice leaves a spec that needs hand-editing
+  indistinguishable at the CLI from one that does not, and the hand edit lands in `src/generated/**`,
+  which every regeneration clobbers. Deliverable shape: box the cycle-closing member automatically,
+  or promote the notice to a rejection naming that member. Reopening signal: a consumer's committed
+  spec contains one such cycle — i.e. the count of cycle-closing members they must re-Box after each
+  regeneration reaches 1. Today that count is 0 in every consumer spec; the two repros above are
+  synthetic probes minted while fixing an unrelated defect, and a synthetic probe costs nobody a
+  re-edit.
 - **Give the map-rep group-choice arm's fixed-value entry a graceful refusal or real support.**
   `contain.group-choice-arm.type2.value.map` (`t = { a: 0 // b: tstr }`) is valid CDDL that aborts
   generation at exit 101, at the `assert_eq!(";" vs "")` site in `generate_deserialize`

@@ -193,6 +193,39 @@ pub(super) enum SerializingRustType<'a> {
     Root(&'a ConceptualRustType, Cow<'a, RustTypeSerializeConfig>),
 }
 
+/// The serialize config to recurse a NOMINAL reference to a collection-typedef rule
+/// (`RustStructType::Table` / `Array`) into its structural conceptual type with.
+///
+/// A resolved-alias reference carries the rule's per-rule policy on its own `RustType` config —
+/// `@duplicates` (which selects the positional pair-map path) and the occurrence bounds (which
+/// select the `NonEmpty*` twin). A nominal `Rust(ident)` reference carries neither, because the
+/// policy lives on the referenced STRUCT. Read it back off the struct so both reference paths emit
+/// the same code for the same rule. An explicit config on the reference wins (nothing sets one
+/// today; this only keeps the merge from silently outranking a caller).
+pub(super) fn nominal_collection_cfg<'a>(
+    types: &IntermediateTypes,
+    ident: &RustIdent,
+    incoming: &Cow<'a, RustTypeSerializeConfig>,
+) -> Cow<'a, RustTypeSerializeConfig> {
+    let rust_struct = types.rust_struct(ident).unwrap();
+    let bounds = match rust_struct.variant() {
+        RustStructType::Table { bounds, .. } | RustStructType::Array { bounds, .. } => *bounds,
+        _ => None,
+    };
+    let duplicates = rust_struct.config().duplicates;
+    if incoming.duplicates == duplicates && incoming.bounds == bounds {
+        return incoming.clone();
+    }
+    let mut cfg = incoming.as_ref().clone();
+    if cfg.duplicates.is_none() {
+        cfg.duplicates = duplicates;
+    }
+    if cfg.bounds.is_none() {
+        cfg.bounds = bounds;
+    }
+    Cow::Owned(cfg)
+}
+
 pub(super) trait EncodingVarIsCopy {
     fn encoding_var_is_copy(&self, types: &IntermediateTypes) -> bool;
 }
@@ -952,6 +985,45 @@ impl GenerationScope {
                                 true,
                                 line_ender,
                                 &config.encoding_var(None, false),
+                                cli,
+                            );
+                        }
+                        // A named table/array rule emits NO impls of its own — it is a bare rust
+                        // typedef onto a collection (`pub type Mdmap = BTreeMap<..>`), so the
+                        // `.serialize()` the fallback below emits names a method the target type
+                        // does not have. Recurse into the collection's STRUCTURAL conceptual type
+                        // instead: that is the same code the resolved-alias reference path emits,
+                        // and it is the only code that exists for these shapes. Reached only from a
+                        // NOMINAL reference to such a rule, which parse-order makes possible when a
+                        // rule cycle is entered at the collection rule (its referrer is handled
+                        // first, so the reference never resolves through the alias table).
+                        // The struct's OWN per-rule config carries the policy the reference cannot
+                        // (`@duplicates`) — thread it in exactly as the Alias arm keeps its outer
+                        // config for the same reason, so a `preserve` table still picks the
+                        // positional pair-map path.
+                        RustStructType::Table { domain, range, .. } => {
+                            let structural = ConceptualRustType::Map(
+                                Box::new(domain.clone()),
+                                Box::new(range.clone()),
+                            );
+                            let cfg = nominal_collection_cfg(types, t, &type_cfg);
+                            self.generate_serialize(
+                                types,
+                                SerializingRustType::Root(&structural, cfg),
+                                body,
+                                config,
+                                cli,
+                            );
+                        }
+                        RustStructType::Array { element_type, .. } => {
+                            let structural =
+                                ConceptualRustType::Array(Box::new(element_type.clone()));
+                            let cfg = nominal_collection_cfg(types, t, &type_cfg);
+                            self.generate_serialize(
+                                types,
+                                SerializingRustType::Root(&structural, cfg),
+                                body,
+                                config,
                                 cli,
                             );
                         }

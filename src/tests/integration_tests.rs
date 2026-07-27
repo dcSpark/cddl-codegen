@@ -6186,6 +6186,44 @@ fn any_choice_content_fallthrough() {
     );
 }
 
+/// A rule cycle ENTERED AT the collection rule: the referring rule is parsed before the collection
+/// registers its alias, so its reference stays a NOMINAL `Rust(ident)` naming a
+/// `RustStructType::Table`/`Array`. Those structs emit no impls — they are bare rust typedefs onto a
+/// collection — so every generation site dispatching on a struct reference must answer for them as
+/// the collection. `tests/recursive-collection-ref/input.cddl` pairs each nominal spelling with the
+/// resolved-alias CONTROL (same rules, rooted at the union), and the vectors assert both emit the
+/// same bytes for the same wire input.
+#[test]
+fn recursive_collection_ref() {
+    run_test(
+        "recursive-collection-ref",
+        &["--wasm=false"],
+        None,
+        &[],
+        &[],
+        false,
+        &[],
+    );
+}
+
+/// The preserve-encodings half of `recursive_collection_ref`. Separate export dir (the two profiles
+/// emit different collection types for the same rules). Under preserve a nominal collection
+/// reference must also push the collection's encoding sidecar OUT to the referring member, since
+/// there is no struct for it to live inside; without that the member mints no `_encoding` var while
+/// serialize — which does recurse into the collection — reads one.
+#[test]
+fn recursive_collection_ref_preserve() {
+    run_test(
+        "recursive-collection-ref",
+        &["--wasm=false", "--preserve-encodings=true"],
+        Some("preserve"),
+        &[],
+        &[],
+        false,
+        &[],
+    );
+}
+
 #[test]
 fn comment_dsl() {
     run_test(

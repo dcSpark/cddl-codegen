@@ -1,0 +1,42 @@
+; A rule cycle whose ENTRY POINT is the collection rule leaves the referring rule holding a NOMINAL
+; `Rust(ident)` reference to a `RustStructType::Table`/`Array` — a struct that emits no impls of its
+; own, only a rust typedef onto the collection. Every generation site that dispatches on a struct
+; reference must therefore treat it as the collection; the ones that did not aborted generation
+; (`cbor_types`) or emitted `.serialize()`/`::deserialize()` on a `BTreeMap`/`Vec`.
+;
+; Rule order is what decides which reference path a spec takes, so each block below fixes it by
+; naming its root: `<x>_holder` names the COLLECTION for the nominal blocks and names the UNION for
+; the control. Both spellings must generate the same working code.
+
+; --- nominal reference (cycle entered at the collection rule) ---
+; Plain table. `nom_val` is parsed before `nom_map` registers its alias, so the arm is `Rust(NomMap)`.
+nom_holder = [nom_map]
+nom_val = nom_map / int
+nom_map = { * text => nom_val }
+
+; Array flavor — the same class through `RustStructType::Array` (`pub type ArrList = Vec<ArrVal>`).
+arr_holder = [arr_list]
+arr_val = arr_list / int
+arr_list = [* arr_val]
+
+; `@duplicates preserve` — the per-rule policy lives on the STRUCT, and a nominal reference carries
+; none of it, so the emission has to read it back off the struct or the pair-map twin
+; (`PairMap<String, PresVal>`) is emitted with loose-table code. This is the shape the corpus
+; `table_preserve.mdmap` row exercises (pre-Conway `transaction_metadata`).
+pres_holder = [pres_map]
+pres_val = pres_map / int
+pres_map = { * text => pres_val } ; @duplicates preserve
+
+; `{+ }` — same argument for the occurrence bounds, which select the `NonEmptyMap` twin.
+nem_holder = [nem_map]
+nem_val = nem_map / int
+nem_map = { + text => nem_val }
+
+; --- resolved-alias reference (cycle entered at the union rule) — the CONTROL ---
+; Identical rules to the `nom_` block but rooted at the union, which orders `res_map` first. This
+; spelling generated and compiled before any of the above was fixed; it is the byte-level target for
+; what the nominal path should emit, and it is here so a future change that re-resolves or
+; un-nominalizes references cannot silently break it.
+res_holder = [res_val]
+res_val = res_map / int
+res_map = { * text => res_val }
