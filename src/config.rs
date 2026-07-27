@@ -1059,6 +1059,17 @@ impl Config {
                 self.apply_runtime(&name, &mut settings, runtime_choice.as_ref());
                 let threads = self.threading(&name, entry, &settings, &ungraphed)?;
                 let cli = build_cli(&name, entry, &settings, &self.base_dir, &threads)?;
+                // The generator's own cross-flag rules, run HERE rather than where the generator
+                // reaches them. They are a pure function of the `Cli`, and every one of them is
+                // reachable from a shared key — `[defaults].json-schema-scripts = true` with one
+                // crate lacking `json-schema-export`, say. Left inside the generation loop, such a
+                // key regenerates every earlier crate in full before failing, and fails with a bare
+                // flag message naming neither the crate nor the TOML line: exactly the shape the
+                // key-attribution replay above exists to prevent. Attributed to the crate rather
+                // than to a key because a COMBINATION spans two of them, and the message already
+                // names both flags.
+                crate::api::validate_flag_combinations(&cli)
+                    .map_err(|e| format!("[crates.{name}]: {e}"))?;
                 Ok((name, cli))
             })
             .collect()
@@ -2053,8 +2064,9 @@ impl Convergence {
 /// Run everything a config file describes: expand it, generate each crate in order, then report
 /// whether the run converged.
 ///
-/// Expansion happens up front, so every value is validated before ANY crate generates — a typo in the
-/// last crate's table must not leave the first crate's output half-migrated on disk.
+/// Expansion happens up front, so every value AND every flag combination is validated before ANY
+/// crate generates — a typo in the last crate's table must not leave the first crate's output
+/// half-migrated on disk.
 pub fn generate(config_path: &Path, selected: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let config = load(config_path)?;
     let expanded = config.expand(selected)?;

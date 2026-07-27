@@ -594,6 +594,11 @@ cannot leave the first crate's output half-migrated on disk.
   `[profiles.*]`, and the top-level tables. This is the config-file equivalent of a misspelled flag,
   which is already rejected; letting a typo fall back to a default would ship a crate built with the
   wrong flag set and no diagnostic at all.
+- **A flag COMBINATION the generator refuses is rejected up front too**, against the crate whose
+  merged settings produced it. These are the generator's own rules — `json-schema-scripts` without
+  `json-schema-export`, `canonical-form` without `preserve-encodings`, a `json-gen-dep` package named
+  twice — and every one of them is reachable from a shared key, where the crate that trips it is
+  usually not the crate you wrote the key in.
 - **A value the flag itself rejects is reported against the config key that produced it**, so you
   are pointed at the TOML line you wrote rather than at a flag you never typed.
 - **An unknown crate name on the command line is a hard error** listing the configured crates,
