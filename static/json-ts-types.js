@@ -96,7 +96,7 @@ function resolveDts(script, wasmDir, override) {
   return path.join(pkgDir, candidates[0]);
 }
 
-const args = parseArgs(SCRIPT, process.argv.slice(2), ['root', 'wasm-dir', 'dts', 'method']);
+const args = parseArgs(SCRIPT, process.argv.slice(2), ['root', 'wasm-dir', 'dts', 'method', 'allow-untyped']);
 const root = resolveRoot(args.root);
 const wasmDir = resolveWasmDir(SCRIPT, root, args['wasm-dir']);
 const dtsFile = resolveDts(SCRIPT, wasmDir, args.dts);
@@ -137,6 +137,7 @@ const anyMethodRegex = /^\s*(?:static\s+)?[A-Za-z_$][\w$]*\(\)\s*:\s*any\s*;/;
 let currentClass = null;
 const specialized = new Set();
 const anyMethods = new Map();
+const untypedClasses = new Map();
 for (let i = 0; i < lines.length; ++i) {
   const line = lines[i];
   const classDef = /export class(.*){/.exec(line);
@@ -161,6 +162,12 @@ for (let i = 0; i < lines.length; ++i) {
   }
   const jsonType = `${currentClass}JSON`;
   if (!declared.has(jsonType)) {
+    // The bindings declare the JSON method but the document published no type for this class:
+    // the splice has nothing to write, so without the check below the method would ship `any`
+    // with nothing said. Recorded here, judged after the loop.
+    if (methodRegex.test(line)) {
+      untypedClasses.set(currentClass, line.trim());
+    }
     continue;
   }
   let next = line.replace(methodRegex, `$1${jsonType}$3`);
@@ -189,6 +196,35 @@ if (unspecialized.length > 0) {
       `  ${cls} (${cls}JSON is declared): ${anyMethods.get(cls).join(' ')}`).join('\n') +
     `\n${dtsFile} was left untouched. If your JSON methods are named by a ` +
     `--wasm-cbor-json-api-macro body rather than by cddl-codegen, re-run with --method=<name>.`);
+  process.exit(1);
+}
+
+// A class whose JSON method ships `any` because the schema document published no type for it
+// is the silent-publication mode this pipeline exists to close: nothing fails, nothing warns,
+// and the consumer just never gets the type. The fix belongs at the DOCUMENT — a CDDL rule, a
+// `--json-schema-root` for a hand-written type, or a `--json-schema-dep` for a dependency's
+// classes shipped in this package. A deliberate exception must be spelled out per class with
+// `--allow-untyped=<Class>[,<Class>...]`, and a stale exception (the class is typed now, or
+// gone) is itself an error so the list cannot rot.
+const allowUntyped = new Set((args['allow-untyped'] || '').split(',').filter(Boolean));
+const staleAllows = [...allowUntyped].filter(cls => !untypedClasses.has(cls)).sort();
+if (staleAllows.length > 0) {
+  console.error(
+    `${SCRIPT}: --allow-untyped names ${staleAllows.length} class(es) that are not untyped ` +
+    `(typed now, renamed, or removed):\n  ${staleAllows.join('\n  ')}\n` +
+    `Remove them from the flag. ${dtsFile} was left untouched.`);
+  process.exit(1);
+}
+const untyped = [...untypedClasses.keys()].filter(cls => !allowUntyped.has(cls)).sort();
+if (untyped.length > 0) {
+  console.error(
+    `${SCRIPT}: ${untyped.length} class(es) declare \`${method}(): any\` but the schema ` +
+    `document publishes no type for them, so they would silently ship untyped:\n` +
+    untyped.map(cls => `  ${cls}: ${untypedClasses.get(cls)}`).join('\n') +
+    `\n${dtsFile} was left untouched. Publish a type for each (a CDDL rule, ` +
+    `--json-schema-root for a hand-written type, or --json-schema-dep for a dependency whose ` +
+    `classes ship in this package), or record a deliberate exception with ` +
+    `--allow-untyped=${untyped.join(',')}.`);
   process.exit(1);
 }
 
