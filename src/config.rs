@@ -46,8 +46,30 @@ use std::path::{Path, PathBuf};
 /// `input`/`output`/`lib-name` are per-crate by nature — a default for them would make every crate
 /// read the same spec or write the same directory, which is never what a multi-crate config means.
 /// `profiles` is the reference INTO the layer system, so a profile listing profiles would be the
-/// nesting the flat design deliberately excludes.
-const PER_CRATE_ONLY_KEYS: &[&str] = &["input", "output", "lib-name", "profiles"];
+/// nesting the flat design deliberately excludes. `deps` is an EDGE, and an edge shared by every
+/// crate is not a graph: it would make every crate depend on every other one, itself included.
+const PER_CRATE_ONLY_KEYS: &[&str] = &["input", "output", "lib-name", "profiles", "deps"];
+
+/// Why a given [`PER_CRATE_ONLY_KEYS`] entry cannot be shared, in the rejection message. Each key
+/// gets its own sentence because the reasons are genuinely different — one is "this names a single
+/// thing", the other "this names a relation" — and a user reading a generic message has to guess
+/// which applies.
+fn per_crate_key_reason(key: &str) -> &'static str {
+    match key {
+        "deps" => {
+            "`deps` declares an EDGE from one crate to another. A shared edge is not a graph: every \
+             crate would depend on every crate named, itself included."
+        }
+        "profiles" => {
+            "`profiles` selects which shared layers ONE crate applies, so a shared value for it \
+             would be a layer selecting layers — the nesting the flat profile design excludes."
+        }
+        _ => {
+            "`input`, `output` and `lib-name` name ONE crate's spec, directory and library, so a \
+             shared value for any of them would point every crate at the same thing."
+        }
+    }
+}
 
 /// The tables the document may hold at top level. Anything else is a typo or a feature this version
 /// does not have; either way the user must hear about it rather than have the table ignored.
@@ -222,6 +244,11 @@ pub struct CrateEntry {
     /// where `--lib-name` defaults to `cddl-lib` and so realistically always needs passing.
     pub lib_name: String,
     pub profiles: Vec<String>,
+    /// Names of other `[crates.*]` entries this crate's spec depends on. The single piece of
+    /// cross-crate sugar: each entry expands to the `<name>=<path>` flag pairs a hand-written
+    /// invocation spells on BOTH sides of the edge, and the set of edges is the generation order.
+    /// Author order is preserved — it is the order the derived `--workspace-dep` occurrences take.
+    pub deps: Vec<String>,
     pub settings: Settings,
 }
 
@@ -312,6 +339,10 @@ pub fn parse_str(text: &str, base_dir: &Path) -> Result<Config, String> {
             Some(v) => string_array(v, &format!("{label}.profiles"))?,
             None => Vec::new(),
         };
+        let deps = match table.get("deps") {
+            Some(v) => string_array(v, &format!("{label}.deps"))?,
+            None => Vec::new(),
+        };
         crates.insert(
             name.clone(),
             CrateEntry {
@@ -319,6 +350,7 @@ pub fn parse_str(text: &str, base_dir: &Path) -> Result<Config, String> {
                 output,
                 lib_name,
                 profiles,
+                deps,
                 settings,
             },
         );
@@ -380,11 +412,9 @@ fn settings_from_table(
                 continue;
             }
             return Err(format!(
-                "`{key}` is a per-crate key and cannot appear in {label}: `input`, `output` and \
-                 `lib-name` name ONE crate's spec, directory and library, and `profiles` selects \
-                 which shared layers that crate applies — a shared value for any of them would \
-                 point every crate at the same thing. Move it into the `[crates.<name>]` table it \
-                 belongs to."
+                "`{key}` is a per-crate key and cannot appear in {label}: {} Move it into the \
+                 `[crates.<name>]` table it belongs to.",
+                per_crate_key_reason(key)
             ));
         }
         rest.insert(key.clone(), value.clone());
@@ -394,7 +424,11 @@ fn settings_from_table(
 }
 
 impl Config {
-    /// Cross-table checks serde cannot express: profile references resolve, and a profile is flat.
+    /// Cross-table checks serde cannot express: profile references resolve, a profile is flat, and
+    /// the `deps` graph is one a generation order exists for.
+    ///
+    /// All of it runs at PARSE time, before any crate generates — a graph mistake in the last crate's
+    /// table must not be discovered after the first crate's output is already rewritten.
     fn validate(&self) -> Result<(), String> {
         for (name, entry) in &self.crates {
             let mut seen = BTreeSet::new();
@@ -413,8 +447,126 @@ impl Config {
                     ));
                 }
             }
+
+            let mut seen = BTreeSet::new();
+            for dep in &entry.deps {
+                if dep == name {
+                    return Err(format!(
+                        "[crates.{name}].deps lists `{name}` itself. A crate's own types are already \
+                         in its spec; a self-edge would derive an --extern-import pointing the crate \
+                         at its own committed export."
+                    ));
+                }
+                if !self.crates.contains_key(dep) {
+                    return Err(format!(
+                        "[crates.{name}].deps names `{dep}`, which has no `[crates.{dep}]` table. \
+                         Every derived flag value comes from the dependency's OWN entry (its \
+                         `output` and `lib-name`), so a dependency outside this config cannot be \
+                         sugar — spell it with the raw `[crates.{name}.extern-import]` sub-table \
+                         instead. Configured crates: {}",
+                        list_or_none(self.crates.keys())
+                    ));
+                }
+                if !seen.insert(dep.clone()) {
+                    return Err(format!(
+                        "[crates.{name}].deps lists `{dep}` twice; one edge is one dependency, and \
+                         the second mention would derive the same flag values a second time"
+                    ));
+                }
+            }
         }
-        Ok(())
+
+        // Two crates with one library name would collide on every derived value at once: one
+        // `extern-interface/<lib>` directory, one `<lib>_wasm` crate, one `--wrapper-requests`
+        // label. Rejected whether or not a `deps` edge exists today, since the two crates could not
+        // live in one cargo workspace either.
+        let mut by_lib: BTreeMap<String, &String> = BTreeMap::new();
+        for (name, entry) in &self.crates {
+            let lib = normalized(&entry.lib_name);
+            if let Some(first) = by_lib.insert(lib.clone(), name) {
+                return Err(format!(
+                    "[crates.{first}] and [crates.{name}] both have the library name `{lib}`. Every \
+                     cross-crate value is derived from it — the `extern-interface/{lib}` export \
+                     directory, the `{lib}_wasm` binding crate, the request labels — so two crates \
+                     sharing one is ambiguous, and a cargo workspace could not hold both anyway. \
+                     Give one of them its own `lib-name`."
+                ));
+            }
+        }
+
+        self.generation_order().map(|_| ())
+    }
+
+    /// The order the crates generate in: a topological sort over `deps`, dependencies FIRST, ties
+    /// broken by crate name.
+    ///
+    /// Dependencies first is what makes the forward edges work within a single run — a consumer's
+    /// `--extern-import` and `--extern-wrapper-index` read files the dependency wrote moments
+    /// earlier. The reverse edges (`--wrapper-requests`, `--key-requests`) want the opposite order
+    /// and do NOT get it: they read the consumer's *committed* sidecar, exactly as their own
+    /// documentation specifies, and a run that changes one leaves its dependency one run stale. The
+    /// convergence check ([`Convergence`]) is what makes that visible rather than silent.
+    ///
+    /// The tie-break is what makes the order TOTAL: without it two independent crates would order by
+    /// whatever the traversal happened to reach first, and the run's progress output (and any
+    /// generation-order-sensitive diagnostic) would differ between two runs of one config.
+    pub fn generation_order(&self) -> Result<Vec<String>, String> {
+        let mut remaining: BTreeSet<&String> = self.crates.keys().collect();
+        let mut done: BTreeSet<&String> = BTreeSet::new();
+        let mut order: Vec<String> = Vec::with_capacity(self.crates.len());
+        while !remaining.is_empty() {
+            // `remaining` is a BTreeSet, so `find` walks it in name order: among the crates whose
+            // dependencies are all placed, the alphabetically first one goes next.
+            let next = remaining
+                .iter()
+                .find(|name| {
+                    self.crates[**name]
+                        .deps
+                        .iter()
+                        .all(|dep| done.contains(dep))
+                })
+                .copied();
+            let Some(next) = next else {
+                return Err(self.cycle_error(&remaining));
+            };
+            remaining.remove(next);
+            done.insert(next);
+            order.push(next.clone());
+        }
+        Ok(order)
+    }
+
+    /// Render the cycle inside `remaining` as `a → b → c → a`.
+    ///
+    /// Reporting that a cycle EXISTS leaves the user to find it by hand across a config where every
+    /// crate looks locally fine; the edges are right here, so the message names them. Walking from
+    /// the alphabetically first blocked crate along each entry's first still-blocked dependency
+    /// reaches a repeat in at most `remaining.len()` steps, and the slice from that repeat IS the
+    /// cycle — the walk may start on a crate that merely depends on one, which is why the prefix
+    /// before the repeat is dropped rather than printed.
+    fn cycle_error(&self, remaining: &BTreeSet<&String>) -> String {
+        let start = *remaining.iter().next().expect("a cycle needs a member");
+        let mut path: Vec<&String> = Vec::new();
+        let mut at = start;
+        let repeat = loop {
+            if let Some(pos) = path.iter().position(|seen| *seen == at) {
+                break pos;
+            }
+            path.push(at);
+            at = self.crates[at]
+                .deps
+                .iter()
+                .find(|dep| remaining.contains(dep))
+                .expect("a blocked crate has a blocked dependency");
+        };
+        let mut cycle: Vec<&str> = path[repeat..].iter().map(|n| n.as_str()).collect();
+        cycle.push(cycle[0]);
+        format!(
+            "`deps` form a cycle: {}. Generation order is a topological sort over `deps`, and a \
+             cycle has none — break the edge, or invert it: a dependency's spec cannot reference \
+             its consumer's types, since the consumer is the one that imports the export.",
+            cycle.join(" → ")
+        )
     }
 
     /// The merged [`Settings`] a crate generates under: built-in (clap, by omission) → `[defaults]`
@@ -429,14 +581,35 @@ impl Config {
         merged
     }
 
-    /// Expand to the sequence of invocations this config describes, in crate-name order.
+    /// Expand to the sequence of invocations this config describes, in generation order.
     ///
     /// `selected` empty means every crate. A name with no `[crates.<name>]` table is a hard error
     /// rather than a silent no-op — a typoed crate name on the command line would otherwise generate
     /// nothing and exit 0.
+    ///
+    /// Selecting a subset does NOT pull in its dependencies. The unselected dependency's committed
+    /// output is trusted exactly as a dependency in another repository's is — the same contract the
+    /// cross-crate flags already document — so `--config c.toml ledger` regenerates one crate against
+    /// what `core` last wrote, and fails with the flags' own error if `core` never wrote anything.
     pub fn expand(&self, selected: &[String]) -> Result<Vec<(String, Cli)>, String> {
-        let chosen: Vec<&String> = if selected.is_empty() {
-            self.crates.keys().collect()
+        // EVERY crate is expanded first, selected or not, because the graph derivation reads values
+        // (`output`, `lib-name`, `wasm`, `package-json`) out of the OTHER crate's finished `Cli`
+        // rather than re-deriving clap's defaults here — reading them back is what stops a default
+        // drifting between the two places it would otherwise be written. A dependency of a selected
+        // crate need not be selected, and neither need a consumer whose reverse edge a selected
+        // dependency carries, so the set that must be expanded is all of them.
+        let mut ungraphed: BTreeMap<String, Cli> = BTreeMap::new();
+        for (name, entry) in &self.crates {
+            let settings = self.merged_settings(entry);
+            ungraphed.insert(
+                name.clone(),
+                build_cli(name, entry, &settings, &self.base_dir)?,
+            );
+        }
+
+        let order = self.generation_order()?;
+        let chosen: Vec<String> = if selected.is_empty() {
+            order
         } else {
             for name in selected {
                 if !self.crates.contains_key(name) {
@@ -446,12 +619,12 @@ impl Config {
                     ));
                 }
             }
-            // Deduplicated and re-ordered into config order: the selection picks WHICH crates run,
-            // never in what order — that is the config's business (crate name here, topological once
-            // dependency edges exist), so `a b` and `b a` must generate the same thing.
+            // Deduplicated and re-ordered into generation order: the selection picks WHICH crates
+            // run, never in what order — that is the config's business — so `a b` and `b a` must
+            // generate the same thing.
             let wanted: BTreeSet<&String> = selected.iter().collect();
-            self.crates
-                .keys()
+            order
+                .into_iter()
                 .filter(|name| wanted.contains(name))
                 .collect()
         };
@@ -459,12 +632,139 @@ impl Config {
         chosen
             .into_iter()
             .map(|name| {
-                let entry = &self.crates[name];
-                let settings = self.merged_settings(entry);
-                let cli = build_cli(name, entry, &settings, &self.base_dir)?;
-                Ok((name.clone(), cli))
+                let entry = &self.crates[&name];
+                let mut settings = self.merged_settings(entry);
+                self.apply_graph_edges(&name, entry, &mut settings, &ungraphed);
+                let cli = build_cli(&name, entry, &settings, &self.base_dir)?;
+                Ok((name, cli))
             })
             .collect()
+    }
+
+    /// Fold this crate's `deps` edges — both directions — into its merged settings.
+    ///
+    /// Every value here is one the config already holds, which is the whole point: hand-maintaining
+    /// `<name>=<path>` pairs on both sides of an edge means two files that must agree about a third
+    /// crate's `output` and `lib-name`, and nothing checks that they do.
+    ///
+    /// A hand-written sub-table entry for the same key always wins, silently: an explicit value is
+    /// the user overriding the sugar for a case it does not cover, not a conflict to report.
+    fn apply_graph_edges(
+        &self,
+        name: &str,
+        entry: &CrateEntry,
+        settings: &mut Settings,
+        ungraphed: &BTreeMap<String, Cli>,
+    ) {
+        // FORWARD edges: what this crate needs in order to consume each dependency.
+        for dep in &entry.deps {
+            let dep_entry = &self.crates[dep];
+            let dep_cli = &ungraphed[dep.as_str()];
+            let key = normalized(&dep_entry.lib_name);
+
+            // The dependency's committed extern-interface export, a sibling of `rust/`/`wasm/` under
+            // its `output` (NOT under the `--package-json` nesting — the export is emitted in every
+            // mode, including rust-only, so it does not live inside the npm package's crate root).
+            settings
+                .extern_import
+                .entry(key.clone())
+                .or_insert_with(|| join(&dep_entry.output, &format!("extern-interface/{key}")));
+
+            // The remaining three are all about the dependency's WASM face, so all three are emitted
+            // exactly when it has one. `--workspace-dep` in particular is not optional here: it is a
+            // hard error without an `--extern-wasm-crate` mapping, so a dependency generating no
+            // wasm crate must get neither.
+            if !dep_cli.wasm {
+                continue;
+            }
+            settings
+                .extern_wasm_crate
+                .entry(key.clone())
+                .or_insert_with(|| format!("{key}_wasm"));
+            settings
+                .extern_wrapper_index
+                .entry(key.clone())
+                .or_insert_with(|| {
+                    crate_relative(
+                        dep_cli,
+                        &dep_entry.output,
+                        "wasm/src/generated/collections.rs",
+                    )
+                });
+            if !settings.workspace_dep.contains(&key) {
+                settings.workspace_dep.push(key);
+            }
+        }
+
+        // REVERSE edges: the sidecars each consumer of THIS crate emits, which this crate reads so
+        // the wrappers and key derives its consumers borrow are hosted here rather than duplicated
+        // per consumer. In consumer-name order; the label is the consumer's library name, which is
+        // what the attribution comments the dep emits will carry.
+        if !ungraphed[name].wasm {
+            // Without a wasm crate this crate is never a `--workspace-dep` of anyone, so no consumer
+            // emits either sidecar and both derived paths would name files that are never written.
+            return;
+        }
+        for (consumer_name, consumer) in &self.crates {
+            if !consumer.deps.iter().any(|dep| dep.as_str() == name) {
+                continue;
+            }
+            let consumer_cli = &ungraphed[consumer_name.as_str()];
+            let label = normalized(&consumer.lib_name);
+            // The rust-side sidecar rides on `--workspace-dep` alone, so a rust-only consumer still
+            // emits it; the wasm-side one exists only when the consumer has a wasm crate to record.
+            settings
+                .key_requests
+                .entry(label.clone())
+                .or_insert_with(|| {
+                    crate_relative(
+                        consumer_cli,
+                        &consumer.output,
+                        "rust/src/generated/borrowed_key_types.rs",
+                    )
+                });
+            if consumer_cli.wasm {
+                settings.wrapper_requests.entry(label).or_insert_with(|| {
+                    crate_relative(
+                        consumer_cli,
+                        &consumer.output,
+                        "wasm/src/generated/borrowed_collections.rs",
+                    )
+                });
+            }
+        }
+    }
+}
+
+/// A library name in the form every cross-crate value uses: the rust crate name, which is the
+/// `--lib-name` with dashes normalised to underscores (`Cli::lib_name_code`). It is simultaneously
+/// the `extern-interface/<dir>` name a dependency exports under and the
+/// `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>` scope a consumer imports it into — they coincide because
+/// the scope's leading component IS the crate the generated `use` line names, so the two cannot be
+/// chosen independently.
+fn normalized(lib_name: &str) -> String {
+    lib_name.replace('-', "_")
+}
+
+/// A path under a crate's `output`, left CONFIG-RELATIVE — [`argv_fragments`] resolves it against the
+/// config file's directory like every other path value, so resolving here would apply the base
+/// directory twice.
+fn join(output: &str, tail: &str) -> String {
+    Path::new(output).join(tail).to_string_lossy().into_owned()
+}
+
+/// A path to a file inside one of a crate's generated CRATES (`rust/…`, `wasm/…`), as opposed to a
+/// sibling of them.
+///
+/// `--package-json` moves the crates one level down: the output root becomes the npm package (its
+/// `package.json` and `scripts/`) and the cargo crates land under `<output>/rust/{rust,wasm}`. So
+/// every derived path into a crate depends on the OTHER crate's `package-json` value — which is read
+/// off its expanded `Cli`, never guessed.
+fn crate_relative(cli: &Cli, output: &str, tail: &str) -> String {
+    if cli.package_json {
+        join(output, &format!("rust/{tail}"))
+    } else {
+        join(output, tail)
     }
 }
 
@@ -709,6 +1009,111 @@ fn build_cli(
             Err(format!("[crates.{name}]: {}", err.to_string().trim_end()))
         }
     }
+}
+
+/// The convergence check: whether a sidecar this run CONSUMED was rewritten by the same run.
+///
+/// The two edge kinds want opposite generation orders. `--extern-import`/`--extern-wrapper-index`
+/// want the dependency first; `--wrapper-requests`/`--key-requests` want the consumer first. No
+/// single pass satisfies both, and this is not a defect to engineer away — both flags document their
+/// input as the OTHER crate's *committed* output. Generation order resolves it in the dependency's
+/// favour, which leaves the reverse edges reading last run's sidecars.
+///
+/// So this records each consumed sidecar's bytes BEFORE the run and compares them after. A change
+/// means the crate that read it generated against a stale one and is now a run behind. It is
+/// strictly a diagnostic: it runs after every file is written, changes no output byte, and feeds
+/// nothing back into what is generated — deliberately NOT an automatic re-run, which would need a
+/// divergence bound and would muddy "run twice = run once = clean run", where a warning makes the
+/// two-run case explicit and self-documenting.
+pub struct Convergence {
+    /// `(the crate that read it, the sidecar's path, its bytes before the run)`. `None` for bytes
+    /// means the file did not exist — a workspace whose consumer has never generated, which converges
+    /// the same way any other change does.
+    entries: Vec<(String, PathBuf, Option<Vec<u8>>)>,
+}
+
+impl Convergence {
+    /// Snapshot every sidecar the expanded invocations will consume.
+    ///
+    /// Read off the expanded `Cli`s rather than off the `deps` edges, so a hand-written
+    /// `[crates.<n>.wrapper-requests]` entry pointing at a crate in this run is watched exactly like
+    /// a derived one. A sidecar whose owner is NOT in this run cannot change, so it never fires and
+    /// needs no special case.
+    pub fn capture(expanded: &[(String, Cli)]) -> Self {
+        let mut entries = Vec::new();
+        for (name, cli) in expanded {
+            let consumed = cli
+                .wrapper_requests()
+                .into_values()
+                .chain(cli.key_requests().into_values());
+            for path in consumed {
+                let path = PathBuf::from(path);
+                let before = std::fs::read(&path).ok();
+                entries.push((name.clone(), path, before));
+            }
+        }
+        Self { entries }
+    }
+
+    /// The crates whose consumed sidecars differ now from when they read them.
+    pub fn stale_crates(&self) -> BTreeSet<String> {
+        self.entries
+            .iter()
+            .filter(|(_, path, before)| std::fs::read(path).ok() != *before)
+            .map(|(name, _, _)| name.clone())
+            .collect()
+    }
+
+    /// The re-run instruction, or `None` when the run converged.
+    pub fn warning(&self, config_path: &Path, selected: &[String]) -> Option<String> {
+        let stale = self.stale_crates();
+        if stale.is_empty() {
+            return None;
+        }
+        let names: Vec<&str> = stale.iter().map(String::as_str).collect();
+        let mut command = format!("cddl-codegen --config {}", config_path.display());
+        for name in selected {
+            command.push(' ');
+            command.push_str(name);
+        }
+        Some(format!(
+            "warning: a sidecar changed during this run, so {} generated against a stale one \
+             ({}). The sidecars a dependency reads are its consumers' COMMITTED output, and this \
+             run rewrote one of them after the dependency had already read it. Re-run `{command}` \
+             to converge.",
+            list_or_none(stale.iter()),
+            if names.len() == 1 {
+                "it is one run behind".to_owned()
+            } else {
+                "they are one run behind".to_owned()
+            },
+        ))
+    }
+}
+
+/// Run everything a config file describes: expand it, generate each crate in order, then report
+/// whether the run converged.
+///
+/// Expansion happens up front, so every value is validated before ANY crate generates — a typo in the
+/// last crate's table must not leave the first crate's output half-migrated on disk.
+pub fn generate(config_path: &Path, selected: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let config = load(config_path)?;
+    let expanded = config.expand(selected)?;
+    let convergence = Convergence::capture(&expanded);
+    for (name, cli) in &expanded {
+        // A per-crate banner, NOT a per-line prefix: the generator's progress output is consumed
+        // as-is by humans and by tests, so this adds a line rather than rewriting the existing ones.
+        println!(
+            "\n[{name}] generating from {} into {}",
+            cli.input.display(),
+            cli.output.display()
+        );
+        crate::api::generate_to_disk(cli)?;
+    }
+    if let Some(warning) = convergence.warning(config_path, selected) {
+        eprintln!("{warning}");
+    }
+    Ok(())
 }
 
 /// The config-mode command line: `cddl-codegen --config <file> [CRATE...]`.

@@ -26,28 +26,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     api::generate_to_disk(&Cli::parse())
 }
 
-/// `cddl-codegen --config <file.toml> [CRATE...]`: expand the config into one `Cli` per crate and run
-/// the ordinary single-crate entry point once per crate, in the order the config yields.
+/// `cddl-codegen --config <file.toml> [CRATE...]`: the command-line half of config mode.
 ///
-/// The loop is the whole of config mode's runtime: expansion happens up front, so every value is
-/// validated before ANY crate generates — a typo in the last crate's table must not leave the first
-/// crate's output half-migrated on disk.
+/// Only the argv handling lives here — the run itself is `config::generate`, so the test suite drives
+/// exactly the sequence a real invocation does rather than a re-implementation of it.
 fn generate_from_config(argv: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     config::reject_generation_flags(argv)?;
     let invocation = config::ConfigCli::parse_from(argv);
-    let config = config::load(&invocation.config)?;
-    let expanded = config.expand(&invocation.crates)?;
-    for (name, cli) in &expanded {
-        // A per-crate banner, NOT a per-line prefix: the generator's progress output is consumed
-        // as-is by humans and by tests, so this adds a line rather than rewriting the existing ones.
-        println!(
-            "\n[{name}] generating from {} into {}",
-            cli.input.display(),
-            cli.output.display()
-        );
-        api::generate_to_disk(cli)?;
-    }
-    Ok(())
+    config::generate(&invocation.config, &invocation.crates)
 }
 
 #[cfg(test)]

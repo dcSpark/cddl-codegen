@@ -341,7 +341,7 @@ json-schema-root = ["demo_lib::hand::Address", "demo_lib::hand::Key"]
 workspace-dep = ["core"]
 
 [crates.demo.extern-import]
-core = "../core/rust/extern-interface/core"
+core = "../core/extern-interface/core"
 
 [crates.demo.extern-wasm-crate]
 core = "core_wasm"
@@ -418,7 +418,7 @@ core = "core_json_schema_gen"
         "--workspace-dep",
         "core",
         "--extern-import",
-        "core=../core/rust/extern-interface/core",
+        "core=../core/extern-interface/core",
         "--extern-wasm-crate",
         "core=core_wasm",
         "--extern-wrapper-index",
@@ -892,4 +892,499 @@ fn per_crate_keys_are_absent_from_the_shared_settings_struct() {
             "`{key}` must not be a `Settings` field — it would become settable in [defaults]"
         );
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The graph — `deps`
+// ---------------------------------------------------------------------------------------------
+
+/// The load-bearing graph test: one `deps` edge expands to exactly the flag values a hand-written
+/// two-invocation shell script spells, on BOTH sides of it.
+///
+/// Both sides are asserted against a `Cli::parse_from` of the flags that script passes, so the test
+/// pins the flag VALUES rather than the derivation's internal spelling — a derivation that produced a
+/// path the tool would reject, or one the emission site does not write, fails here.
+#[test]
+fn a_deps_edge_expands_to_the_hand_written_flag_values_in_both_directions() {
+    use clap::Parser;
+
+    let config = parse(
+        r#"
+[crates.core]
+input = "specs/core.cddl"
+output = "gen/core"
+
+[crates.ledger]
+input = "specs/ledger.cddl"
+output = "gen/ledger"
+deps = ["core"]
+"#,
+    );
+    let expanded = config.expand(&[]).expect("must expand");
+    let by_name: std::collections::BTreeMap<String, Cli> = expanded.into_iter().collect();
+
+    // The CONSUMER's side: everything it needs to resolve the dependency's types.
+    let ledger = Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        "specs/ledger.cddl",
+        "--output",
+        "gen/ledger",
+        "--lib-name",
+        "ledger",
+        "--extern-import",
+        "core=gen/core/extern-interface/core",
+        "--extern-wasm-crate",
+        "core=core_wasm",
+        "--extern-wrapper-index",
+        "core=gen/core/wasm/src/generated/collections.rs",
+        "--workspace-dep",
+        "core",
+    ]);
+    assert_eq!(by_name["ledger"].extern_import, ledger.extern_import);
+    assert_eq!(
+        by_name["ledger"].extern_wasm_crate,
+        ledger.extern_wasm_crate
+    );
+    assert_eq!(
+        by_name["ledger"].extern_wrapper_index,
+        ledger.extern_wrapper_index
+    );
+    assert_eq!(by_name["ledger"].workspace_dep, ledger.workspace_dep);
+
+    // The DEPENDENCY's side: the reverse edges, one per consumer.
+    let core = Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        "specs/core.cddl",
+        "--output",
+        "gen/core",
+        "--lib-name",
+        "core",
+        "--wrapper-requests",
+        "ledger=gen/ledger/wasm/src/generated/borrowed_collections.rs",
+        "--key-requests",
+        "ledger=gen/ledger/rust/src/generated/borrowed_key_types.rs",
+    ]);
+    assert_eq!(by_name["core"].wrapper_requests, core.wrapper_requests);
+    assert_eq!(by_name["core"].key_requests, core.key_requests);
+    // The consumer never grows a reverse edge and the dependency never grows a forward one: an edge
+    // is directed, and deriving both halves onto both crates would be a cycle in flag form.
+    assert!(by_name["ledger"].wrapper_requests.is_empty());
+    assert!(by_name["core"].extern_import.is_empty());
+}
+
+/// Every cross-crate name is the dependency's `lib-name` NORMALISED (`-` -> `_`), because that single
+/// spelling is simultaneously the directory its export lands in and the crate name the generated
+/// `use` line carries — they are not independently choosable.
+#[test]
+fn derived_names_use_the_normalised_library_name() {
+    let config = parse(
+        "[crates.my-core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n\
+         [crates.multi-era]\ninput = \"m.cddl\"\noutput = \"gen/multi-era\"\ndeps = [\"my-core\"]\n",
+    );
+    let by_name: std::collections::BTreeMap<String, Cli> =
+        config.expand(&[]).unwrap().into_iter().collect();
+    assert_eq!(
+        by_name["multi-era"].extern_import,
+        vec!["my_core=gen/core/extern-interface/my_core"]
+    );
+    assert_eq!(
+        by_name["multi-era"].extern_wasm_crate,
+        vec!["my_core=my_core_wasm"]
+    );
+    assert_eq!(by_name["multi-era"].workspace_dep, vec!["my_core"]);
+    assert_eq!(
+        by_name["my-core"].key_requests,
+        vec!["multi_era=gen/multi-era/rust/src/generated/borrowed_key_types.rs"]
+    );
+}
+
+/// A dependency with `wasm = false` derives ONLY `--extern-import`.
+///
+/// The other three are all about a wasm face it does not have, and `--workspace-dep` is not merely
+/// pointless without one — it is a hard error without an `--extern-wasm-crate` mapping, which a
+/// crate generating no wasm bindings must not be given. The reverse edges go with them: the sidecars
+/// a consumer emits exist only because it has a workspace dependency to record.
+#[test]
+fn a_dependency_without_wasm_derives_only_the_extern_import() {
+    let config = parse(
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\nwasm = false\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\ndeps = [\"core\"]\n",
+    );
+    let by_name: std::collections::BTreeMap<String, Cli> =
+        config.expand(&[]).unwrap().into_iter().collect();
+    assert_eq!(
+        by_name["ledger"].extern_import,
+        vec!["core=gen/core/extern-interface/core"]
+    );
+    assert!(by_name["ledger"].extern_wasm_crate.is_empty());
+    assert!(by_name["ledger"].extern_wrapper_index.is_empty());
+    assert!(by_name["ledger"].workspace_dep.is_empty());
+    assert!(by_name["core"].wrapper_requests.is_empty());
+    assert!(by_name["core"].key_requests.is_empty());
+}
+
+/// A rust-only CONSUMER of a wasm dependency still gets the rust-side reverse edge and not the
+/// wasm-side one: `--workspace-dep` makes it emit `borrowed_key_types.rs` in either mode, while
+/// `borrowed_collections.rs` is written only under `--wasm`, so deriving it would name a file that is
+/// never written.
+#[test]
+fn a_rust_only_consumer_derives_only_the_rust_side_reverse_edge() {
+    let config = parse(
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\nwasm = false\n\
+         deps = [\"core\"]\n",
+    );
+    let by_name: std::collections::BTreeMap<String, Cli> =
+        config.expand(&[]).unwrap().into_iter().collect();
+    assert_eq!(
+        by_name["core"].key_requests,
+        vec!["ledger=gen/ledger/rust/src/generated/borrowed_key_types.rs"]
+    );
+    assert!(by_name["core"].wrapper_requests.is_empty());
+    // The consumer still defers to the dependency's wrappers, so it keeps the full forward edge.
+    assert_eq!(by_name["ledger"].workspace_dep, vec!["core"]);
+}
+
+/// Every derived path INTO a crate follows that crate's own `package-json` value, because the flag
+/// nests the cargo crates one level down (`<output>/rust/{rust,wasm}`) to leave the output root to
+/// the npm package. The extern-interface export does NOT move: it is emitted in every mode, rust-only
+/// included, as a sibling of the crate directories rather than a member of them.
+#[test]
+fn derived_paths_follow_the_other_crates_package_json_layout() {
+    let config = parse(
+        "[defaults]\npackage-json = true\n\
+         [crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\ndeps = [\"core\"]\n",
+    );
+    let by_name: std::collections::BTreeMap<String, Cli> =
+        config.expand(&[]).unwrap().into_iter().collect();
+    assert_eq!(
+        by_name["ledger"].extern_wrapper_index,
+        vec!["core=gen/core/rust/wasm/src/generated/collections.rs"]
+    );
+    assert_eq!(
+        by_name["core"].wrapper_requests,
+        vec!["ledger=gen/ledger/rust/wasm/src/generated/borrowed_collections.rs"]
+    );
+    assert_eq!(
+        by_name["core"].key_requests,
+        vec!["ledger=gen/ledger/rust/rust/src/generated/borrowed_key_types.rs"]
+    );
+    assert_eq!(
+        by_name["ledger"].extern_import,
+        vec!["core=gen/core/extern-interface/core"],
+        "the export is a sibling of the crates, so the npm nesting does not move it"
+    );
+}
+
+/// A hand-written sub-table entry for the same key wins over the derived one, silently. An explicit
+/// value is the user overriding the sugar for a case it does not cover — a vendored copy of a
+/// dependency's export, say — not a conflict to report. Only the key it names is overridden; the rest
+/// of the edge still derives.
+#[test]
+fn a_hand_written_entry_wins_over_the_derived_one() {
+    let config = parse(
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\ndeps = [\"core\"]\n\n\
+         [crates.ledger.extern-import]\ncore = \"vendor/core-export\"\n",
+    );
+    let by_name: std::collections::BTreeMap<String, Cli> =
+        config.expand(&[]).unwrap().into_iter().collect();
+    assert_eq!(
+        by_name["ledger"].extern_import,
+        vec!["core=vendor/core-export"]
+    );
+    assert_eq!(
+        by_name["ledger"].extern_wrapper_index,
+        vec!["core=gen/core/wasm/src/generated/collections.rs"],
+        "overriding one key must not disable the rest of the edge"
+    );
+}
+
+/// Generation order is a topological sort over `deps` with ties broken by crate name.
+///
+/// The fixture discriminates on both halves at once: `alpha` must come after `zeta` despite sorting
+/// before it (topology beats the name), while `beta` and `zeta` — both immediately ready — come in
+/// name order (the tie-break makes the order total rather than traversal-dependent).
+#[test]
+fn generation_order_is_topological_with_a_name_tie_break() {
+    let config = parse(
+        "[crates.zeta]\ninput = \"z.cddl\"\noutput = \"gz\"\n\
+         [crates.alpha]\ninput = \"a.cddl\"\noutput = \"ga\"\ndeps = [\"zeta\"]\n\
+         [crates.beta]\ninput = \"b.cddl\"\noutput = \"gb\"\n",
+    );
+    assert_eq!(
+        config.generation_order().unwrap(),
+        vec!["beta", "zeta", "alpha"]
+    );
+    let names: Vec<String> = config
+        .expand(&[])
+        .unwrap()
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect();
+    assert_eq!(names, vec!["beta", "zeta", "alpha"]);
+}
+
+/// A cycle is a hard error that NAMES the cycle, at parse time. Reporting only that one exists leaves
+/// the user to find it across a config where every crate looks locally fine.
+#[test]
+fn a_dependency_cycle_is_reported_by_naming_it() {
+    let err = error(
+        "[crates.a]\ninput = \"a.cddl\"\noutput = \"ga\"\ndeps = [\"c\"]\n\
+         [crates.b]\ninput = \"b.cddl\"\noutput = \"gb\"\ndeps = [\"a\"]\n\
+         [crates.c]\ninput = \"c.cddl\"\noutput = \"gc\"\ndeps = [\"b\"]\n",
+    );
+    assert!(
+        err.contains("a → c → b → a"),
+        "the cycle itself must be in the message, got: {err}"
+    );
+
+    // A crate that merely DEPENDS on a cycle is not part of it, so it must not be printed as if it
+    // were — `outer` sorts first and is where the walk starts.
+    let err = error(
+        "[crates.outer]\ninput = \"o.cddl\"\noutput = \"go\"\ndeps = [\"x\"]\n\
+         [crates.x]\ninput = \"x.cddl\"\noutput = \"gx\"\ndeps = [\"y\"]\n\
+         [crates.y]\ninput = \"y.cddl\"\noutput = \"gy\"\ndeps = [\"x\"]\n",
+    );
+    assert!(
+        err.contains("x → y → x") && !err.contains("outer"),
+        "only the cycle's own members belong in it, got: {err}"
+    );
+}
+
+/// The three ways a `deps` list can name something it must not, each a hard error before any crate
+/// generates. An unknown name additionally says why the sugar cannot cover an out-of-config
+/// dependency: every derived value comes from the dependency's own entry.
+#[test]
+fn deps_naming_an_unknown_self_or_duplicate_crate_is_a_hard_error() {
+    let unknown = error(
+        "[crates.ledger]\ninput = \"l.cddl\"\noutput = \"gl\"\ndeps = [\"kore\"]\n\
+         [crates.core]\ninput = \"c.cddl\"\noutput = \"gc\"\n",
+    );
+    assert!(
+        unknown.contains("kore") && unknown.contains("`core`") && unknown.contains("extern-import"),
+        "must name the bad dep, list the configured crates, and point at the raw escape hatch, got: {unknown}"
+    );
+
+    let itself = error("[crates.core]\ninput = \"c.cddl\"\noutput = \"gc\"\ndeps = [\"core\"]\n");
+    assert!(
+        itself.contains("itself"),
+        "a self-edge must say so, got: {itself}"
+    );
+
+    let twice = error(
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gc\"\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gl\"\ndeps = [\"core\", \"core\"]\n",
+    );
+    assert!(
+        twice.contains("twice"),
+        "a duplicate edge must say so, got: {twice}"
+    );
+}
+
+/// `deps` is per-crate only: an edge shared by every crate is not a graph. Rejected in both shared
+/// layers, with a reason specific to what `deps` is rather than the generic per-crate sentence.
+#[test]
+fn deps_in_a_shared_layer_is_a_hard_error() {
+    for layer in ["[defaults]", "[profiles.p]"] {
+        let err = error(&format!(
+            "{layer}\ndeps = [\"core\"]\n{MINIMAL_CRATE}\n[crates.core]\ninput = \"c\"\noutput = \"gc\"\n"
+        ));
+        assert!(
+            err.contains("`deps`") && err.contains("EDGE"),
+            "{layer} must reject `deps` as an edge, got: {err}"
+        );
+    }
+}
+
+/// Two crates cannot share a library name: every cross-crate value is derived from it, so the export
+/// directory, the wasm crate and the request labels would all collide — and one cargo workspace could
+/// not hold both crates either.
+#[test]
+fn two_crates_with_one_library_name_are_a_hard_error() {
+    let err = error(
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gc\"\n\
+         [crates.core-v2]\ninput = \"c2.cddl\"\noutput = \"gc2\"\nlib-name = \"core\"\n",
+    );
+    assert!(
+        err.contains("`core`") && err.contains("lib-name"),
+        "must name the shared library name and the key that fixes it, got: {err}"
+    );
+}
+
+/// Selecting a subset picks WHICH crates run, never in what order, and never pulls in a dependency:
+/// the unselected dependency's committed output is trusted exactly as a dependency in another
+/// repository's is. The selected crate still carries the full derived edge — that is what makes the
+/// committed output reachable.
+#[test]
+fn a_subset_selection_does_not_pull_in_its_dependencies() {
+    let config = parse(
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\ndeps = [\"core\"]\n",
+    );
+    let run = |selected: &[&str]| {
+        config
+            .expand(&selected.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+            .unwrap()
+    };
+    let only_ledger = run(&["ledger"]);
+    assert_eq!(
+        only_ledger.iter().map(|(n, _)| n).collect::<Vec<_>>(),
+        vec!["ledger"]
+    );
+    assert_eq!(
+        only_ledger[0].1.extern_import,
+        vec!["core=gen/core/extern-interface/core"],
+        "the edge must survive the selection, or the committed output is unreachable"
+    );
+
+    let forwards = run(&["core", "ledger"]);
+    let backwards = run(&["ledger", "core"]);
+    assert_eq!(
+        forwards.iter().map(|(n, _)| n).collect::<Vec<_>>(),
+        vec!["core", "ledger"]
+    );
+    assert_eq!(
+        forwards
+            .iter()
+            .map(|(n, c)| (n, format!("{c:?}")))
+            .collect::<Vec<_>>(),
+        backwards
+            .iter()
+            .map(|(n, c)| (n, format!("{c:?}")))
+            .collect::<Vec<_>>(),
+        "argument order must not reach the generated output"
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Convergence
+// ---------------------------------------------------------------------------------------------
+
+/// The convergence warning fires exactly when a sidecar this run CONSUMED was rewritten during it,
+/// and is silent otherwise.
+///
+/// Both directions matter: a warning that never fires leaves the one-run-stale case silent (the whole
+/// reason generation order picks the dependency's side of the conflict), and one that always fires is
+/// noise a user learns to ignore. The absent-then-written case is the cold workspace, and it converges
+/// like any other change rather than being special.
+#[test]
+fn the_convergence_warning_fires_only_when_a_consumed_sidecar_changed() {
+    let dir = std::env::temp_dir().join(format!("cddl_config_converge_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let sidecar = dir.join("gen/ledger/wasm/src/generated/borrowed_collections.rs");
+    std::fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+
+    let config = config::parse_str(
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\ndeps = [\"core\"]\n",
+        &dir,
+    )
+    .unwrap();
+    let expanded = config.expand(&[]).unwrap();
+    let config_path = dir.join("codegen.toml");
+
+    // Unchanged: silent. (`borrowed_key_types.rs` is absent in both snapshots, which is "unchanged".)
+    std::fs::write(&sidecar, "// first\n").unwrap();
+    let converged = config::Convergence::capture(&expanded);
+    assert!(converged.stale_crates().is_empty());
+    assert!(converged.warning(&config_path, &[]).is_none());
+
+    // Rewritten during the run: the crate that read it is a run behind.
+    let stale = config::Convergence::capture(&expanded);
+    std::fs::write(&sidecar, "// second\n").unwrap();
+    assert_eq!(
+        stale.stale_crates(),
+        ["core".to_owned()].into_iter().collect()
+    );
+    let warning = stale
+        .warning(&config_path, &["core".to_owned()])
+        .expect("a changed sidecar must warn");
+    assert!(
+        warning.contains("`core`") && warning.contains("re-run") || warning.contains("Re-run"),
+        "must name the stale crate and say what to do, got: {warning}"
+    );
+    assert!(
+        warning.contains(&format!("--config {} core", config_path.display())),
+        "the instruction must be the command that converges THIS run, got: {warning}"
+    );
+
+    // A cold workspace: the sidecar did not exist when the dependency read it.
+    std::fs::remove_file(&sidecar).unwrap();
+    let cold = config::Convergence::capture(&expanded);
+    std::fs::write(&sidecar, "// written by this run\n").unwrap();
+    assert_eq!(
+        cold.stale_crates(),
+        ["core".to_owned()].into_iter().collect()
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ---------------------------------------------------------------------------------------------
+// End to end
+// ---------------------------------------------------------------------------------------------
+
+/// The whole graph, on real disk: a two-crate config with one `deps` edge, generated from a COLD
+/// scratch directory by the same `config::generate` a command line reaches.
+///
+/// What it asserts is the point of the derivation: not that the argv looked right (the unit tests
+/// above pin the flag values), but that the derived paths actually name the files the generator
+/// writes and reads — the consumer's generated rust really imports the dependency's type through the
+/// dependency's crate, which only happens if the derived `--extern-import` found the export the
+/// dependency's own run had just emitted.
+#[test]
+fn a_two_crate_config_generates_a_consumer_that_imports_its_dependency() {
+    let dir = std::env::temp_dir().join(format!("cddl_config_e2e_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("specs")).unwrap();
+    std::fs::write(dir.join("specs/core.cddl"), "foo = [a: uint, b: text]\n").unwrap();
+    // The consumer both references a dependency type directly and builds a collection over it, which
+    // is the shape `--workspace-dep` deferral exists for.
+    std::fs::write(
+        dir.join("specs/ledger.cddl"),
+        "bar = [f: foo, l: [* foo]]\n",
+    )
+    .unwrap();
+    let config_path = dir.join("codegen.toml");
+    std::fs::write(
+        &config_path,
+        format!(
+            "[defaults]\nstatic-dir = \"{}/static\"\n\n\
+             [crates.core]\ninput = \"specs/core.cddl\"\noutput = \"gen/core\"\n\n\
+             [crates.ledger]\ninput = \"specs/ledger.cddl\"\noutput = \"gen/ledger\"\n\
+             deps = [\"core\"]\n",
+            env!("CARGO_MANIFEST_DIR")
+        ),
+    )
+    .unwrap();
+
+    config::generate(&config_path, &[])
+        .unwrap_or_else(|e| panic!("a cold config run must generate: {e}"));
+
+    let dep_export = dir.join("gen/core/extern-interface/core/mod.cddl");
+    assert!(
+        dep_export.is_file(),
+        "the dependency must export the interface the derived --extern-import names"
+    );
+    let consumer = std::fs::read_to_string(dir.join("gen/ledger/rust/src/generated/mod.rs"))
+        .expect("the consumer must generate a rust crate");
+    assert!(
+        consumer.contains("use core::Foo;"),
+        "the consumer must import the dependency's type from the dependency's crate, got:\n{consumer}"
+    );
+    assert!(
+        dir.join("gen/ledger/wasm/src/generated/borrowed_collections.rs")
+            .is_file(),
+        "the derived --workspace-dep must make the consumer emit the sidecar its dependency reads"
+    );
+
+    // A second run has every sidecar in place, which is what convergence means here.
+    config::generate(&config_path, &[]).expect("a warm config run must generate");
+
+    let _ = std::fs::remove_dir_all(&dir);
 }
