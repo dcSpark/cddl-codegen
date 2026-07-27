@@ -1737,7 +1737,14 @@ cheapest-in-isolation first:
   another definition references — the shape that ships as an undeclared `TS2304` unless the whole
   document is compiled as one unit), resolved refs, enum → union, the `additionalProperties` guard on both a struct and a map
   definition, a definition whose own `title` does not become its emitted name, no near-duplicate
-  `FooJSON1` from a `$ref` with a sibling annotation, and no synthetic root. Four further phases pin
+  `FooJSON1` from a `$ref` with a sibling annotation, and no synthetic root. It also pins the
+  pattern-catch-all widening — named properties beside a `patternProperties` catch-all, top level and
+  nested, with the optional-property case that needs `undefined` in the widened union — and then
+  type-checks the emitted file with `tsc --noEmit --strict --target esnext`, the oracle the substring
+  asserts cannot be. `--skipLibCheck` stays off (it would make the check vacuous over a `.d.ts`) and
+  `--strict` is what makes the optional-property case fail at all; `typescript` is injected into the
+  work dir's manifest by the test, so the shipped `static/package_json_schemas.json` keeps pinning
+  only what a consumer's package actually needs. Four further phases pin
   the failure directions, each a non-zero exit that leaves the last-good `json-types.d.ts` on disk: a
   document that cannot compile, a stale per-type schema beside the document, two documents, and a
   document with no definitions. (Any of them exiting 0 ships a `.d.ts` that silently drops part of
