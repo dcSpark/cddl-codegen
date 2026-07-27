@@ -1,0 +1,11 @@
+; An ARRAY-representation group-choice arm whose whole content is a fixed value with a member key
+; (`[ a: 0 // b: tstr ]`). The arm carries no data, so its enum variant is field-less and the
+; deserializer names it rather than calling it. The matrix containment axis carries the MAP-rep
+; spelling of this construct (`{ a: 0 // b: tstr }`); neither array spelling has a cell, so this
+; hand fixture and its bare sibling (group_choice_fixed_arm_bare.cddl) are the pins.
+;
+; This row records the generation OUTCOME only. What the emitted code must look like — the
+; field-less construction, and the fixed value still being VERIFIED rather than merely skipped — is
+; pinned by `group_choice_fixed_value_arm_emits_fieldless_variant` in src/tests/integration_tests.rs,
+; because a catalog row cannot tell correct output from output that merely generated.
+t = [ a: 0 // b: tstr ]

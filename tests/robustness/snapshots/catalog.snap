@@ -29,6 +29,8 @@ float_table_key_composite  error (graceful)
 garbage                    error (graceful)
 generic_arity_mismatch     error (graceful)
 generic_call_member        ok
+group_choice_fixed_arm_array ok
+group_choice_fixed_arm_bare ok
 group_choice_map_keyless_entry error (graceful)
 inline_array_group_choice_member error (graceful)
 inline_group_choice_arm_map error (graceful)

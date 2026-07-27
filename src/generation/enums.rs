@@ -873,11 +873,21 @@ fn make_keyed_map_variant_deser_code(
     let mut inner = DeserializationCode::default();
     push_map_choice_key_deser(&mut inner.content, &variant_var, key, cli);
     inner.throws = true;
-    // read the value
+    // Read the value. A fixed-value arm (`t = { a: 0 // b: tstr }`) has nothing to bind under the
+    // default profile: `generate_deserialize`'s `Fixed` branch only READS AND VERIFIES the constant
+    // and evaluates to no value, which is exactly what its `assert_eq!(before_after.before/after,
+    // "")` pair states. Under `--preserve-encodings` the arm still owns encoding fields (the value's
+    // own, plus the `{var}_key_encoding` pushed above), so there the binding is real and stays —
+    // which is why that profile has always generated this shape.
+    let (before, after) = if !cli.preserve_encodings && ty.is_fixed_value() {
+        (Cow::from(""), "")
+    } else {
+        (Cow::from(format!("let {var_names_str} = ")), ";")
+    };
     let value_code = gen_scope.generate_deserialize(
         types,
         ty.into(),
-        DeserializeBeforeAfter::new(&format!("let {var_names_str} = "), ";", false),
+        DeserializeBeforeAfter::new(&before, after, false),
         DeserializeConfig::new(&variant_var),
         cli,
     );
@@ -895,7 +905,15 @@ fn make_keyed_map_variant_deser_code(
         Representation::Array,
         cli,
     );
-    if enum_gen_info.outer_vars == 0 {
+    if enum_gen_info.names.is_empty() {
+        // A field-less variant is constructed by naming it, not by calling it. This is the same
+        // spelling the type-choice path uses for its own field-less arms; reached here only by a
+        // fixed-value arm under the default profile (any encoding field would put a name in the
+        // list), which is precisely the case whose value was not bound above.
+        deser_code
+            .content
+            .line(&format!("Ok({}::{})", name, variant.name));
+    } else if enum_gen_info.outer_vars == 0 {
         deser_code.content.line(&format!(
             "Ok({}::{}({}))",
             name, variant.name, var_names_str
@@ -1360,14 +1378,19 @@ fn generate_enum(
                         } else {
                             variant.name_as_var()
                         };
-                        let (before, after) = if cli.preserve_encodings
-                            || !variant.rust_type().is_fixed_value()
-                            || rep.is_some()
-                        {
-                            (Cow::from(format!("let {var_names_str} = ")), ";")
-                        } else {
-                            (Cow::from(""), "")
-                        };
+                        // A fixed-value arm evaluates to no value in either representation — the
+                        // `Fixed` deserialize branch reads and verifies the constant and binds
+                        // nothing — so the exemption is a property of the arm's TYPE alone. It used
+                        // to carry `|| rep.is_some()`, which forced a GROUP-choice arm to bind a
+                        // value it has none of and tripped that branch's own empty-before/after
+                        // assertion; the type-choice case took the exemption, which is why
+                        // `t = 0 / tstr` generated while `t = [ 0 // tstr ]` aborted.
+                        let (before, after) =
+                            if cli.preserve_encodings || !variant.rust_type().is_fixed_value() {
+                                (Cow::from(format!("let {var_names_str} = ")), ";")
+                            } else {
+                                (Cow::from(""), "")
+                            };
                         let mut variant_deser_code = gen_scope.generate_deserialize(
                             types,
                             (variant.rust_type()).into(),
@@ -1385,7 +1408,14 @@ fn generate_enum(
                             // this will never be 1 line so don't bother with the below cases
                             variant_deser_code =
                                 surround_in_len_checks(variant_deser_code, len_info, r, cli);
-                            if enum_gen_info.outer_vars == 0 {
+                            if enum_gen_info.names.is_empty() {
+                                // Field-less variant: name it, don't call it. Same spelling the
+                                // `rep.is_none()` branch below uses for its own empty-names arm,
+                                // reached here only by a fixed-value arm under the default profile.
+                                variant_deser_code
+                                    .content
+                                    .line(&format!("Ok({}::{})", name, variant.name));
+                            } else if enum_gen_info.outer_vars == 0 {
                                 variant_deser_code.content.line(&format!(
                                     "Ok({}::{}({}))",
                                     name, variant.name, var_names_str

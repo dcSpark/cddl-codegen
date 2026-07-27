@@ -1,0 +1,9 @@
+; An ARRAY-representation group-choice arm that is a BARE fixed value — no member key at all
+; (`[ 0 // tstr ]`). The keyless spelling is a distinct shape from its keyed sibling
+; (group_choice_fixed_arm_array.cddl): the variant takes its name from the value's position
+; (`I0`) rather than from a key, and the wire form is a one-element array holding just the
+; constant. No matrix cell expresses either array spelling.
+;
+; This row records the generation OUTCOME only; the emitted code's shape is pinned by
+; `group_choice_fixed_value_arm_emits_fieldless_variant` in src/tests/integration_tests.rs.
+t = [ 0 // tstr ]
