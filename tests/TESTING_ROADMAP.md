@@ -566,7 +566,18 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   claims to re-verify against the live tree when the item is picked up (AGENTS.md's
   premise-probing rule — the re-scan is one grep), and the delivery prunes the whole bullet,
   premise included. Authoring rule for future bullets: scope any inventory claim to its evidence
-  ("scanned at <sha>") or phrase it as the check to re-run, never as a standing fact. The
+  ("scanned at <sha>") or phrase it as the check to re-run, never as a standing fact.
+  FOURTH instance, in a home the first three did not reach — a session HANDOFF file, where the
+  claim is about VERIFICATION STATE rather than about the tree: a `draft/` worklist's carry-forward
+  bullet read "no cycle-1 commit has been seen by a `full`-tier gate", true when written and
+  falsified as soon as the tier was run. The next cycle's orchestrator propagated the file's line
+  into its own report in preference to the fresher fact it had been given directly, which is the
+  rot mode worth naming: a handoff doc is READ as current state by construction, so a stale
+  standing fact in one is not merely wrong, it OUTRANKS newer evidence in the reader's head. The
+  authoring rule above already covers it verbatim (a tier verdict is a point-in-time inventory
+  claim, and "PASSED at `<sha>`" satisfies it while "has never run" does not), so this is the rule
+  firing rather than a gap — but note it applies to `draft/` handoff files, which no gate scans and
+  which are gitignored, so review is the only reader that can enforce it. The
   SECOND-instance mechanical layer
   is now BUILT for that home: the findings-claims arm (`project_corpus.ts` check `I`, local tier)
   fails a failure-claim finding that names no resolvable tracking pin — current state, including
@@ -712,11 +723,12 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   `encoding_fields_impl` minted no encoding sidecar for a member whose serialize read one. Three
   further sites, one of them profile-gated, all reachable from the single input the panic fix
   unblocked. No outcome catalog can see this: `tests/robustness/` is generate-only BY DESIGN, so a
-  PANIC row flipped to `ok` asserts nothing about the emitted crate. Standing coverage meanwhile is
-  the working rule that landed the fix — when a fix turns an abort into generated code, `cargo
-  check` the emitted crate under EVERY profile before believing the fix, never the default one
-  alone — plus a per-shape integration fixture, which is what
-  `recursive_collection_ref`/`recursive_collection_ref_preserve` are. The trigger for a mechanical
+  PANIC row flipped to `ok` asserts nothing about the emitted crate. The standing rule that covers
+  this today is IN FORCE and lives in `tests/README.md` § the `lint_doc_citations` conventions
+  list (`cargo check` the emitted crate under EVERY profile when a fix turns an abort into
+  generated code, plus a per-shape integration fixture —
+  `recursive_collection_ref`/`recursive_collection_ref_preserve` are that fixture). What remains
+  future here is only the mechanical layer. The trigger for a mechanical
   layer (a compile leg on robustness `ok` rows, or a promotion path from a flipped PANIC row into
   the integration corpus) is a SECOND instance where a robustness row flips PANIC→`ok` and the
   emitted crate does not compile; building it now would put a per-profile nested cargo build behind
@@ -1583,6 +1595,25 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   they answer a different question (did the composer rot?). The cost of NOT having it grows with
   the count of hand-written measured quantities nothing re-measures — see `cddl-matrix/ROADMAP.md`
   § Maintenance, which owns that axis across both docs.
+- **`KNOWN_PANIC_CLASSES` is guarded on its KEY and unguarded on its CITATION, and the citation is
+  the half a human reads.** Each entry is `(panic-message substring, "…pinned by <fixture>")`. The
+  sweep asserts the SUBSTRING is still observed (`observed_classes.contains(sub)`), so a fixed class
+  fails loud — but nothing checks that the cited fixture actually produces the cited class, and
+  `lint_doc_citations` cannot help: the path resolves, so no citation lint can fire. That is the
+  claim-semantics boundary again, EXCEPT that here the claim is mechanically checkable, which is
+  what separates it from the declined prose-drift class in this section. Proven instance
+  (read-caught by a cycle that needed the pin, not by any gate): the `"Anonymous groups not allowed"`
+  entry cited `tests/matrix_panic/contain.array-element.type2.map.cddl`, which actually produces
+  `"TODO: non-table types as types"` — the two anonymous-composite classes split by the composite's
+  BRACKET, and the citation named the wrong bracket, so triage following it would land on the wrong
+  parse site. Every citation has since been re-derived by RUNNING the named fixture, and the entries
+  now say which bracket each owns. Detector, cheap because the machinery already exists: the
+  robustness harness runs each `tests/matrix_panic/` fixture under `catch_unwind` and captures its
+  message, so assert per entry that at least one cited fixture's captured message CONTAINS the
+  entry's substring — a mis-citation becomes a red test instead of a mislead, with no new nested
+  cargo. Trigger to build rather than defer, on the axis the cost grows along and measurable by
+  whoever pays it: a SECOND mis-citation, or the first report from someone who followed a citation
+  during triage and reached the wrong site.
 - **Nothing asserts how MANY times a rejection message is emitted, and nested composites emit
   theirs twice.** `a = [x: [* 5]]` prints its refusal twice because the parse walk visits a nested
   composite twice; `a = [x: { uint => tstr }]` duplicates the same way, so the class predates the
@@ -2055,7 +2086,20 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   machinery for prose drift that review catches at its actual rate. The decline has narrowed since
   it was made: identifier-existence drift (a cited pin that no longer exists) is now mechanically
   covered by the `lint_doc_citations` gate, so what stays declined is prose SEMANTICS only — a
-  sentence whose cited pin exists but whose claim about it is wrong. NB this decision covers PROSE
+  sentence whose cited pin exists but whose claim about it is wrong. A THIRD prose home joins
+  `docs/` and the generated `COVERAGE.md` span: a FIXTURE HEADER commenting on a SIBLING fixture.
+  `tests/robustness/choice_cbor_ref_arm.cddl` described the rule-body spelling as "the remaining
+  unsupported spelling … unaffected by rule ordering" — a claim its sibling
+  `cbor_ref_rule_body.cddl` contradicted in its own header from the commit that fixed both, and
+  which the catalog snapshot (`ok`) had already recorded as false. Fixture prose is outside
+  `lint_doc_citations`' scan surface for the same reason catalog prose is, and the claim named no
+  artifact that could dangle, so this stays in the declined class. It is recorded as evidence the
+  decline is calibrated rather than as a gap: review caught it one cycle after it shipped, which is
+  the "actual rate" the decline is priced at, and the reopening signal for this class is a false
+  claim SHIPPING PAST review — not one being caught by it. Authoring rule that would have prevented
+  it at zero cost: a fixture header states what THIS fixture pins, and refers to a sibling only by
+  name and role, never by asserting the sibling's support status — the catalog snapshot is where
+  that status lives, and it is already gate-enforced. NB this decision covers PROSE
   drift only — the separate class of a directive silently no-oping in an unenumerated attachment
   position (`@name` was dropped on arrow keys once and bareword keys once, both found by hand) is
   a real class with its own standing system: the directive × attachment-position sweep

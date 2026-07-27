@@ -829,9 +829,12 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 /// remaining collapse boundary is per-(message, file, function): two bare sites in the SAME
 /// function share one key (`codegen_struct` / `generate_wrapper_struct` each host two).
 const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
+    // The two anonymous-composite classes split by the composite's BRACKET, not by the role, and a
+    // citation naming the wrong one sends a reader to a fixture that produces the other class. Each
+    // citation below was confirmed by running the named fixture through the generator.
     (
         "Anonymous groups not allowed",
-        "anonymous nested composite; pinned by tests/matrix_panic/contain.array-element.type2.map.cddl (and role siblings)",
+        "anonymous nested ARRAY (`a = [[int]]`); pinned by tests/matrix_panic/contain.array-element.type2.array.cddl (and role siblings)",
     ),
     (
         "inline group entries are not implemented",
@@ -839,7 +842,7 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     ),
     (
         "TODO: non-table types as types",
-        "anonymous composite where a type is required; pinned by tests/matrix_panic/contain.group-choice-arm.type2.map.array.cddl and tests/matrix_panic/contain.generic-arg.type2.map.cddl",
+        "anonymous nested MAP where a type is required; pinned by tests/matrix_panic/contain.group-choice-arm.type2.map.array.cddl and tests/matrix_panic/contain.generic-arg.type2.map.cddl — and reached by every `…type2.map` role sibling (array-element, map-value, cbor-payload, choice-member, occurrence-target), so one fix flips the whole family",
     ),
     (
         "unsupported cddl prelude type:",

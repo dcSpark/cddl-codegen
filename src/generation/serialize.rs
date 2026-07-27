@@ -288,7 +288,18 @@ impl EncodingVarIsCopy for ConceptualRustType {
                 }
                 RustStructType::RawBytesType => false,
                 _ => {
-                    // technically no encoding var
+                    // technically no encoding var.
+                    //
+                    // EXCEPT `Table`/`Array`, which reach this arm from a NOMINAL reference and DO
+                    // contribute one: `encoding_fields_impl` pushes the collection's encodings OUT
+                    // to the referring member, since a collection typedef has no struct to hold
+                    // them. `true` is still the right answer for them, and not by luck — that var
+                    // is the collection's LENGTH encoding, which the structural `Map`/`Array` arms
+                    // above also answer `true` for (key/value/element encodings are separate vars).
+                    // Both reference paths therefore agree, which is the property that matters.
+                    // Spelled out because the blanket "no encoding var" reasoning stopped being
+                    // true for these two variants, and a reader auditing this dispatch class would
+                    // otherwise have to re-derive why the catch-all is still correct.
                     true
                 }
             },
