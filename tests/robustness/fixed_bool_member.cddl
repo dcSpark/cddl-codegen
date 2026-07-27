@@ -6,12 +6,15 @@
 ; catch-all; tests/corpus/fixed_bool_member.cddl additionally round-trips the mandatory array/map
 ; placements and the tag-wrapped members (OPTIONAL fixed-value placements stay a pre-existing
 ; generation-failure class — see cddl-matrix/ROADMAP.md § findings).
-; Distinct from neighboring shapes that stay REJECTED/PANIC: top-level `foo = true`
-; (graceful rejection, tests/matrix_reject/prelude.true.cddl), a fixed value under an occurrence
-; `[* true]` (tests/robustness/fixed_value_occurrence.cddl), a bool MAP KEY `{ true => uint }`
-; (MapKeyKind rejection), and a tagged prelude constant `#6.11(true)`
-; (tests/robustness/tagged_prelude_constant.cddl). Matrix rows `contain.array-element.prelude.true`,
+; Distinct from neighboring shapes that stay REJECTED, all of them gracefully: top-level
+; `foo = true` (tests/matrix_reject/prelude.true.cddl), a fixed value under a count-permitting
+; occurrence `[* true]` (tests/robustness/fixed_value_occurrence.cddl) and its table-VALUE sibling
+; (tests/robustness/fixed_table_value.cddl), a bool MAP KEY `{ true => uint }` (MapKeyKind
+; rejection), and a tagged prelude constant `#6.11(true)`
+; (tests/robustness/tagged_prelude_constant.cddl). What separates this fixture's shape from all of
+; them is CARDINALITY: exactly one occurrence needs no per-repetition storage, so the fixed member
+; can be checked on the wire and stored nowhere. Matrix rows `contain.array-element.prelude.true`,
 ; `contain.map-value.prelude.false`, `contain.array-element.type2.tag.fixed_null`, and
 ; `contain.array-element.type2.tag.fixed_bool` carry the mandatory member containment verdicts; this
-; hand fixture remains the panic/reject boundary for neighboring shapes.
+; hand fixture remains the support/reject boundary for neighboring shapes.
 arr = [v: true, x: uint]

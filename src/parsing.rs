@@ -1755,7 +1755,33 @@ fn parse_type(
                                             ));
                                             return;
                                         }
+                                        // A PRELUDE CONSTANT body (`true`/`false`/`null`/`nil`)
+                                        // resolves to a bare `Fixed`, which has no member Rust
+                                        // representation. The untagged spelling reaches
+                                        // `register_type_alias`'s guard below and is rejected there;
+                                        // a tag head (or `@newtype`) diverts it to the WRAPPER seam
+                                        // instead, which would render the `Fixed` as the wrapper's
+                                        // inner member type and panic `for_rust_member` during
+                                        // generation. Reject at both seams through the one shared
+                                        // message, so `#6.11(true)` is classified exactly like the
+                                        // literal-inner sibling `#6.5(5)` the alias seam already
+                                        // rejects. Registering the wrapper anyway (rather than
+                                        // returning early) matches the alias guard's reasoning: a
+                                        // sibling rule may reference this one, and a dropped
+                                        // registration would dangle that lookup during the parse
+                                        // walk — before `finalize` surfaces the graceful `Err`. The
+                                        // wrapper is harmless because generation never runs once a
+                                        // rejection is recorded.
                                         if rule_metadata.newtype.is_some() || outer_tag.is_some() {
+                                            if let ConceptualRustType::Fixed(fixed) = concrete_type
+                                                .conceptual_type
+                                                .resolve_alias_shallow()
+                                            {
+                                                let fixed = fixed.clone();
+                                                types.record_bare_fixed_rule_rejection(
+                                                    type_name, &fixed,
+                                                );
+                                            }
                                             types.register_rust_struct(
                                                 parent_visitor,
                                                 RustStruct::new_wrapper(
@@ -2214,6 +2240,47 @@ fn flatten_group_entries<'a>(
 
 /// Parses which type of group it is for various common special cases to handle
 ///
+/// How a rejection message names the composite it complains about: the enclosing rule by its
+/// SOURCE spelling when there is one (the user is looking at their CDDL, not our camel-cased
+/// output), and `anonymous` for a nested composite that has no rule of its own.
+fn rejection_site(
+    types: &IntermediateTypes,
+    rule_name: Option<&RustIdent>,
+    anonymous: &str,
+) -> String {
+    match rule_name {
+        Some(name) => format!(
+            "rule `{}`",
+            types
+                .source_rule_name(name)
+                .map(str::to_owned)
+                .unwrap_or_else(|| name.to_string())
+        ),
+        None => anonymous.to_owned(),
+    }
+}
+
+/// The rejection for a table entry whose VALUE domain is a bare fixed value (`{ * uint => 5 }`).
+/// Shared by the plain and the parenthesized (`{ * (uint => 5) }`) table arms so the two spellings
+/// of the same shape can't be told apart by their message.
+fn record_fixed_table_value_rejection(
+    types: &mut IntermediateTypes,
+    site: &str,
+    entry_src: &str,
+    fixed: &FixedValue,
+) {
+    let value_desc = fixed.cddl_source_desc();
+    types.record_rejection(format!(
+        "{site}: the table entry `{entry_src}` has a bare fixed value ({value_desc}) as its VALUE \
+         domain, which is unsupported — a fixed value has no type to store per table row, it only \
+         has meaning as a single (unstored) member whose value the schema fixes. Naming it as its \
+         own rule does not help: a top-level bare fixed value is rejected for the same reason. \
+         Widening the value to the CDDL type the constant inhabits (`uint` / `bool` / `tstr` / …) \
+         generates, but it no longer constrains the value to {value_desc}, so it is a different \
+         spec, not an equivalent one."
+    ));
+}
+
 /// `rule_name` is the enclosing rule when there is one (the named-rule path through
 /// `parse_group_choice`); `None` for anonymous nested composites (`rust_type_from_type2`'s
 /// `Type2::Array` / `Type2::Map` arms), where rejection messages describe the entry instead of
@@ -2235,10 +2302,11 @@ fn parse_group_type<'a>(
             // gracefully rather than panicking on the unsupported element.
             if entries.len() == 1 && !matches!(entries[0].0, GroupEntry::InlineGroup { .. }) {
                 let (entry, _has_comma) = entries[0];
-                let (elem_type, occur) = match entry {
+                let (elem_type, occur, elem_src) = match entry {
                     GroupEntry::ValueMemberKey { ge, .. } => (
                         rust_type(types, parent_visitor, &ge.entry_type, cli),
                         &ge.occur,
+                        ge.entry_type.to_string(),
                     ),
                     GroupEntry::TypeGroupname { ge, .. } => (
                         // Route through the shared helper so a generic instantiation used as a
@@ -2254,6 +2322,7 @@ fn parse_group_type<'a>(
                             cli,
                         ),
                         &ge.occur,
+                        ge.name.to_string(),
                     ),
                     GroupEntry::InlineGroup { .. } => unreachable!("guarded above"),
                 };
@@ -2266,6 +2335,42 @@ fn parse_group_type<'a>(
                     Occur::Optional { .. } => (None, Some(1)),
                     Occur::OneOrMore { .. } => (Some(1), None),
                 });
+                // `[* 5]` / `[+ 5]` / `[? 5]` / `[2*5 5]`: a bare fixed value as the target of a
+                // COUNT-PERMITTING occurrence. The homogeneous-array path stores its elements in a
+                // `Vec<T>`, and a `Fixed` has no `T` — it exists only as an unstored member whose
+                // value the schema pins, so there is nothing to store per repetition and
+                // `for_rust_member` panics on it during generation. Reject it here, at the parse
+                // walk, so `finalize` turns it into a graceful `Err` before generation runs.
+                //
+                // Recording the rejection IS the deliverable: the tempting alternative — falling
+                // through to the record path — would silently drop the marker and emit a
+                // one-element record, so the generated decoder would accept a single-element array
+                // for a `0..N` spec (a certified over-acceptance). The `HomogenousArray` returns
+                // below are therefore left untouched: parse behaviour stays byte-identical to
+                // before, and the `Fixed` element is inert because generation never runs once a
+                // rejection is recorded. The EXACTLY-ONCE placement (`[5]`, `[v: true]`) is
+                // supported and is deliberately outside this guard — it lands on the record path
+                // where a fixed member is stored nowhere but checked on the wire.
+                if !matches!(bounds, None | Some((Some(1), Some(1))))
+                    && let ConceptualRustType::Fixed(fixed) =
+                        elem_type.conceptual_type.resolve_alias_shallow()
+                {
+                    let value_desc = fixed.cddl_source_desc();
+                    let site = rejection_site(types, rule_name, "inline array");
+                    types.record_rejection(format!(
+                        "{site}: the array element `{elem_src}` is a bare fixed value \
+                         ({value_desc}) under a count-permitting occurrence marker (`*` / `+` / \
+                         `?` / `n*m`), which is unsupported — a fixed value has no element type to \
+                         store per repetition, it only has meaning as a single (unstored) member \
+                         whose value the schema fixes. Naming it as its own rule does not help: a \
+                         top-level bare fixed value is rejected for the same reason. If exactly \
+                         one element is meant, drop the marker (`[{elem_src}]`) — that placement \
+                         IS supported. Widening the element to the CDDL type the constant \
+                         inhabits (`uint` / `bool` / `tstr` / …) generates, but it no longer \
+                         constrains the element to {value_desc}, so it is a different spec, not \
+                         an equivalent one."
+                    ));
+                }
                 match bounds {
                     // no bounds
                     Some((None, None)) => {
@@ -2337,16 +2442,7 @@ fn parse_group_type<'a>(
                                     // cite the rule by its SOURCE spelling when we have one (the user
                                     // is looking at their CDDL, not our output); anonymous nested maps
                                     // describe the entry instead.
-                                    let site = match rule_name {
-                                        Some(name) => format!(
-                                            "rule `{}`",
-                                            types
-                                                .source_rule_name(name)
-                                                .map(str::to_owned)
-                                                .unwrap_or_else(|| name.to_string())
-                                        ),
-                                        None => "inline map".to_owned(),
-                                    };
+                                    let site = rejection_site(types, rule_name, "inline map");
                                     let value = &ge.entry_type;
                                     let occ_bounds = ge.occur.as_ref().map(|o| match o.occur {
                                         Occur::ZeroOrMore { .. } => (None, None),
@@ -2401,6 +2497,25 @@ fn parse_group_type<'a>(
                                     // in between.
                                     let value_type =
                                         rust_type(types, parent_visitor, &ge.entry_type, cli);
+                                    // The map sibling of the array-element fixed guard: a table's
+                                    // VALUE domain lands in the `BTreeMap<K, V>`'s `V`, and a
+                                    // `Fixed` has no `V` — `{ * uint => 5 }` reaches the same
+                                    // `for_rust_member` panic as `[* 5]`. (A fixed KEY is a
+                                    // different story and is handled above: per RFC 8610 `1 => v`
+                                    // is the same wire entry as `1: v`, so it diverts to the record
+                                    // path. A fixed VALUE has no such re-reading — the entry really
+                                    // is a table row whose value is pinned.)
+                                    if let ConceptualRustType::Fixed(fixed) =
+                                        value_type.conceptual_type.resolve_alias_shallow()
+                                    {
+                                        let fixed = fixed.clone();
+                                        record_fixed_table_value_rejection(
+                                            types,
+                                            &site,
+                                            &format!("{t1} => {value}"),
+                                            &fixed,
+                                        );
+                                    }
                                     return GroupParsingType::HomogenousMap(
                                         key_type,
                                         value_type,
@@ -2459,6 +2574,19 @@ fn parse_group_type<'a>(
                                 ) {
                                     let value_type =
                                         rust_type(types, parent_visitor, &ge.entry_type, cli);
+                                    // same fixed-VALUE guard as the single-entry table arm:
+                                    // `{ * (uint => 5) }` puts a `Fixed` in the map's value
+                                    // position, which has no type to store per row.
+                                    if let ConceptualRustType::Fixed(fixed) =
+                                        value_type.conceptual_type.resolve_alias_shallow()
+                                    {
+                                        let fixed = fixed.clone();
+                                        let site = rejection_site(types, rule_name, "inline map");
+                                        let entry_src = format!("{t1} => {}", ge.entry_type);
+                                        record_fixed_table_value_rejection(
+                                            types, &site, &entry_src, &fixed,
+                                        );
+                                    }
                                     // `{ * (k => v) }`: the inline group's own `*` marker is the
                                     // cardinality (unbounded); the inner entry carries no honored
                                     // bound of its own here.

@@ -1,10 +1,19 @@
-; A bare FIXED VALUE as a zero-or-more occurrence target (`[* 5]` — a homogeneous array of the
-; constant 5) panics generation in `for_rust_member` (`should not expose Fixed type in member`,
-; intermediate/rust_type.rs): the homogeneous-element path asks for a Rust representation of a standalone
-; `Fixed`, which has none. The registration-time graceful rejection that owns the TOP-LEVEL shapes
-; (`x = 5` / `x = true` / `#6.5(5)` — pinned by the tests/matrix_reject value.number/type2.value
-; rows and tests/robustness/tagged_literal.cddl) never sees this position, so the occurrence shape
-; still reaches the panic. Same class fires for `[* true]` / `[* "v1"]` / `[* null]`, and for a
-; tagged prelude constant (tests/robustness/tagged_prelude_constant.cddl). Surfaced by the
-; recombination sweep (src/tests/recombination_tests.rs).
+; A bare FIXED VALUE as the target of a COUNT-PERMITTING occurrence (`[* 5]`; equally `[+ 5]`,
+; `[? 5]`, `[2*5 5]`, `[* true]`, `[* "v1"]`, `[* null]`) is REJECTED GRACEFULLY in the parse walk
+; (`parse_group_type`), so the generator exits 1 with an actionable message rather than aborting.
+; The refusal is what the shape actually means: a homogeneous array stores its elements in a
+; `Vec<T>`, and a `Fixed` has no `T` — it exists only as an unstored member whose value the schema
+; pins, so there is nothing to store per repetition. A rejection is recorded rather than the marker
+; being dropped onto the record path, because a one-element record would make the generated decoder
+; accept a single-element array for a `0..N` spec — a certified over-acceptance, which is worse
+; than a refusal. Its table sibling is the same class: a fixed VALUE domain (`{ * uint => 5 }`, and
+; the parenthesized `{ * (uint => 5) }`) has no per-row type either, and is rejected by the same
+; guard family. The message names no false remedy — naming the constant as its own rule resolves to
+; the same `Fixed` (and is itself rejected at the alias seam), so it offers only what really works,
+; the EXACTLY-ONCE placement (`[5]`, tests/robustness/fixed_bool_member.cddl), which stays supported
+; and is deliberately outside the guard — and it says plainly that widening to the constant's CDDL
+; type is a different spec, not an equivalent one.
+;
+; A fixed KEY domain (`{ 1 => uint }`) is deliberately NOT this class: per RFC 8610 it is the same
+; wire entry as the colon spelling, so it diverts to the record path and generates.
 a = [* 5]

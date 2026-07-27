@@ -18,7 +18,9 @@ empty                      ok
 empty_array                ok
 empty_group                ok
 fixed_bool_member          ok
-fixed_value_occurrence     PANIC
+fixed_table_value          error (graceful)
+fixed_table_value_paren    error (graceful)
+fixed_value_occurrence     error (graceful)
 float_table_key            error (graceful)
 float_table_key_composite  error (graceful)
 garbage                    error (graceful)
@@ -42,7 +44,7 @@ prelude_biguint            ok
 self_recursive             ok
 single_bareword_map_field  ok
 tagged_literal             error (graceful)
-tagged_prelude_constant    PANIC
+tagged_prelude_constant    error (graceful)
 undefined_generic          error (graceful)
 undefined_reference        error (graceful)
 unknown_control            error (graceful)

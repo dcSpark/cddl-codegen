@@ -92,6 +92,24 @@ impl FixedValue {
         }
     }
 
+    /// How the value is spelled in CDDL SOURCE, for rejection messages the user reads against
+    /// their own spec (`5`, `true`, `null`, `"v1"`) — not the rust-literal renderings above, whose
+    /// escaping / `to_owned()` framing belongs to emitted code. Every message naming a bare fixed
+    /// value routes through this one helper so the alias-position and member-position rejections
+    /// can't drift in how they quote the value back.
+    pub fn cddl_source_desc(&self) -> String {
+        match self {
+            FixedValue::Null => "null".to_owned(),
+            FixedValue::Bool(b) => b.to_string(),
+            FixedValue::Nint(i) => i.to_string(),
+            FixedValue::Uint(u) => u.to_string(),
+            // `{:?}`, not Display: Display on a whole-valued f64 drops the decimal point, which
+            // would quote `3.0` back to the user as `3`.
+            FixedValue::Float(f) => format!("{f:?}"),
+            FixedValue::Text(s) => format!("\"{s}\""),
+        }
+    }
+
     /// Converts a literal to a valid rust comparison valid for comparisons
     /// e.g. Text can be &str to avoid creating a String
     pub fn to_primitive_str_compare(&self) -> String {
