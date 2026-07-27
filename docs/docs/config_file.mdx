@@ -581,3 +581,205 @@ the only command-line selector; the config file is the edit loop.
 
 Selecting a subset generates only the crates you name. Their order on the command line does not
 matter — the config decides the generation order.
+
+## Migrating a generation script
+
+The shape this feature was designed against is a real one: `codegen.sh` in
+[cardano-multiplatform-lib](https://github.com/dcSpark/cardano-multiplatform-lib), which generates
+four crates with a shared flag bundle, a fifth reduced-flavor invocation, a workspace edge, and a
+hand-threaded JSON surface. This section maps that script onto a config so the correspondence is
+greppable from either side.
+
+**This is a mapping, not a migration.** Nothing in this feature has been run against CML or any other
+consumer repository — deliberately, since generation rewrites `src/generated/**` in place. Treat what
+follows as the translation to start from, not as a result someone has already reproduced.
+
+### The flag bundles
+
+The script keeps three arrays and composes them per invocation:
+
+| script | becomes |
+|---|---|
+| `OVERRIDE` — `--common-import-override=cml_core`, `--no-synthesized-rust-collection-aliases=true` | the first flag is `[runtime] common-import`; the second is a `[defaults]` key |
+| `WASM_MACROS` — `--wasm`, `--rust-wasm-feature`, the three macro flags | `[defaults]` keys |
+| `COMMON` = `--preserve-encodings` + `--canonical-form` + `--json-serde-derives` + `--json-schema-export` + `OVERRIDE` + `WASM_MACROS` | the json pair joins `[defaults]`; the encoding pair becomes a **profile**, because one crate omits exactly those two |
+| `CIP25_WASM_MACROS` — `WASM_MACROS` with a different `--wasm-cbor-json-api-macro` | one per-crate key on that crate, overriding the shared value |
+
+The split between `[defaults]` and the profile is decided by the crate that deviates, not by
+taste: a key every crate sets belongs in `[defaults]`, and a key a *subset* sets belongs in a
+profile. `CIP25_WASM_MACROS` needs neither — a bundle that differs from the shared one in a single
+value is a per-crate key, since [later layers win per key](#how-each-kind-of-key-merges).
+
+```toml
+[defaults]
+no-synthesized-rust-collection-aliases = true
+json-serde-derives = true
+json-schema-export = true
+wasm = true
+rust-wasm-feature = "used_from_wasm"
+wasm-cbor-json-api-macro = "cml_core_wasm::impl_wasm_cbor_json_api"
+wasm-conversions-macro = "cml_core_wasm::impl_wasm_conversions"
+wasm-list-macro = "cml_core_wasm::impl_wasm_list_needs_into"
+
+[profiles.encoded]
+preserve-encodings = true
+canonical-form = true
+```
+
+### The crate that omits the encoding flags
+
+`cip25` is generated without `--preserve-encodings` / `--canonical-form` — it never had them. In the
+config that is simply the crate that does not apply the `encoded` profile:
+
+```toml
+[crates.cip25]
+input = "specs/cip25.cddl"
+output = "cip25"
+lib-name = "cml-cip25"
+wasm-cbor-json-api-macro = "cml_core_wasm::impl_wasm_cbor_json_api_cbor_event_serialize"
+json-schema-root = ["cml_cip25::utils::CIP25MiniMetadataDetails"]
+```
+
+That deviation is on two of [the three equality axes](#which-crate-carries-the-export-and-why-it-is-derived),
+so this workspace is the **`flavor-from` case**: no single runtime matches every crate, and the
+carrier cannot be derived. The script already knows this — it places `--export-static-crate` on the
+`chain` invocation with a comment saying cip25's reduced flavor would export a runtime the others
+cannot use. `flavor-from` is that comment turned into a declaration:
+
+```toml
+[runtime]
+export-static-crate = "core/rust"
+common-import = "cml_core"
+flavor-from = "chain"
+```
+
+What the declaration asserts is narrower than "chain is the right crate". It asserts that you accept
+generating `cip25` against a runtime built at `chain`'s flavor, and the run states the accepted gap
+back to you by name — that `cip25` compiles against that runtime only while its spec holds no
+`{+ K => V}` and no `any`. It is a claim about cip25's *spec*, and one that a future spec change can
+falsify; the statement is what makes that visible on the run that introduces it.
+
+### The workspace edge
+
+`multi-era` consumes `chain`. The script spells that with three flags on the consumer
+(`EXTERN_WASM_MULTIERA`) and one on the dependency (`WRAPPER_REQUESTS_CHAIN`):
+
+```toml
+[crates.multi-era]
+input = "specs/multiera"
+output = "multi-era"
+lib-name = "cml-multi-era"
+profiles = ["encoded"]
+deps = ["chain"]
+```
+
+Two things about that edge are worth knowing before you make it, because `deps` derives the
+[whole edge](#dependencies-between-crates) — six flags — and the script passes four of them:
+
+- **`--extern-import`** is derived too. CML declares its extern dependencies by hand, in
+  `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/cml_chain` under the consumer's spec directory, and passes no
+  `--extern-import`. `deps` points the flag at the dependency's *generated* `extern-interface/`
+  export instead. A project in that position is choosing between the two sources; if you want to keep
+  the hand-declared one, write `extern-wasm-crate`, `extern-wrapper-index` and `workspace-dep` as
+  plain per-crate keys and do not use `deps`.
+- **`--key-requests`** is derived too, and the script passes none. It is the dependency-side half of
+  the map-key-derive channel: the dependency starts reading the consumer's
+  `borrowed_key_types.rs` sidecar and deriving `Eq`/`Ord` where the consumer keys a map on one of its
+  types. Additive, but it is a change to the dependency's generated code.
+
+One smaller diff to expect in the regen: the reverse edges' left-hand side is a label that lands in
+the dependency's `/// Generated at the request of: …` attribution comments, and the derived label is
+the consumer's *normalized* library name (`cml_multi_era`), where the script writes `cml-multi-era`.
+
+`cip36` names two extern crates that this config does **not** contain (`cml_crypto` and `cml_chain`
+as spec-declared dep-owned externs rather than as a co-generated edge). Those stay
+[raw sub-table entries](#dependencies-between-crates), which is what the sub-tables are for:
+
+```toml
+[crates.cip36.extern-wasm-crate]
+cml_crypto = "cml_crypto_wasm"
+cml_chain = "cml_chain_wasm"
+```
+
+### `JSON_ROOTS_*`
+
+Each array is a per-crate `json-schema-root` list. Array order is flag order, which is emission
+order, so it is preserved rather than sorted:
+
+```toml
+[crates.chain]
+input = "specs/conway"
+output = "chain"
+lib-name = "cml-chain"
+profiles = ["encoded"]
+json-schema-scripts = true
+json-schema-root = [
+  "cml_chain::byron::AddressContent",
+  "cml_chain::byron::ByronAddress",
+  # …
+  "cml_crypto::Bip32PublicKey",
+]
+```
+
+### `JSON_SCHEMA_DEP_MULTIERA`
+
+The script threads three dependencies' row sets into multi-era's schema document, and separately
+hand-declares each of those crates' json-gen packages in `multi-era/wasm/json-gen/Cargo.toml`. Both
+halves are [derived](#the-published-json-surface) from the same two facts — which crates multi-era
+*depends on*, and which crates its npm package *ships*:
+
+```toml
+[crates.multi-era]
+# …
+deps = ["chain"]
+wasm-reexports = ["cip25", "cip36"]
+```
+
+`deps` already covers `cml_chain`; `wasm-reexports` declares the other two, which multi-era's package
+ships without its spec referencing them. The derivation emits `--json-schema-dep` in
+`deps`-then-`wasm-reexports` order, which is the order the script writes by hand — and it emits
+`--json-gen-dep` alongside, which is what retires the hand-maintained `[dependencies]` entries in the
+json-gen manifest. The relative path in those entries is computed for you.
+
+### The generation order flips
+
+This is the change a migrating project feels first. The script runs **multi-era before chain**, and
+says why: multi-era rewrites its sidecar, chain reads it fresh. A config sorts topologically with
+**dependencies first**, so it runs chain, cip25, cip36, then multi-era.
+
+That is not a better order, it is [the opposite side of the same
+conflict](#generation-order-and-which-edge-is-one-run-stale). The two edge kinds want opposite
+orders and no single pass satisfies both. Running the consumer first means the consumer reads the
+dependency's *previous* output; running the dependency first means the dependency reads the
+consumer's *previous* sidecar. A migrating project is trading one staleness for the other, and the
+observable difference is which failure it can hit: under the config's order, a run in which
+multi-era **adds** a borrow leaves chain not hosting it, and the convergence warning names the crate
+and prints the command that converges it.
+
+CML's hand-rolled `check_convergence` covers the same class of staleness, from the other direction
+and against the committed tree rather than against the run. It is not made redundant by the built-in
+check so much as narrowed: the built-in one reports what *this run* left stale, and a standalone
+check of the committed state is still a standalone check.
+
+### What does not move
+
+A config replaces the flags. It does not replace the wrapper script, and a project deciding whether
+to migrate should count on keeping one:
+
+- **The tool pin, and fetching it.** `CDDL_CODEGEN_PINNED_REV`, the cached clone, the
+  `git archive` extraction of a rev, the `CARGO_TARGET_DIR` tuning — all of it is about *which
+  cddl-codegen runs*, and a config file is an input to a cddl-codegen that is already running.
+- **`cargo fmt --all` and the clippy gate.** These run over the whole repository after generation,
+  hand-written code included, and one of them is a policy decision the script documents at length
+  (check only, never `--fix`, because a fix under `src/generated/` is reverted by the next regen).
+- **The dirty-tree warning**, and everything else about *how* the project reviews a regen — in CML's
+  case, regenerating in place and reading `git diff`.
+- **Opt-in passes that generate a second spec set into an existing crate.** CML's `byron` pass
+  targets the same output and the same `lib-name` as `multi-era` from a different spec directory. Two
+  crate tables cannot share a library name — that is a hard error — so this stays a flag invocation.
+  It cannot be *added* to the config command either, since `--config` takes no generation flags; it
+  stays its own `cddl-codegen` call in the script, beside the `--config` one.
+
+What the config removes from the script is the part that was duplicated and unchecked: the flag
+bundles, the cross-crate paths that two invocations had to agree about, and the ordering comment
+explaining which invocation had to come first.
