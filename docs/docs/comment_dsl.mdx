@@ -552,6 +552,30 @@ hand-written parent impl is exactly the situation the directive exists for.
 If instead the extern *does* implement `schemars::JsonSchema` and you only want it off the published
 surface, no parent annotation is needed.
 
+It is valid on any rule that produces a rust type — an extern, a record, a sum type, a `@newtype`
+wrapper, a collection typedef, a generic instantiation, and a plain group that some rule splices:
+
+```cddl
+grp = (a: uint, b: uint) ; @no_json_schema_export
+```
+
+On a rule that registers **no** rust type there is no row to suppress, so the directive would be
+silently dead and generation is rejected with an error naming the rule. That covers a plain
+transparent alias (`foo = uint`), a `@no_alias` alias, a named binding to a generic instantiation, a
+plain group nothing splices, and a **generic definition** — only its instantiations are types, and
+they do not inherit the directive, so annotate the instance:
+
+```cddl
+gset<T> = [* T]
+inst = gset<uint> ; @no_json_schema_export   ; correct — the instance is the type
+```
+
+On a plain group, write the directive on the same line as the closing paren
+(`grp = (a: uint) ; @no_json_schema_export`). Two other spellings put a group rule's trailing comment
+where the CDDL parser discards it entirely — a closing paren on its own line, and a last entry whose
+own trailing comment is already a field-position `@name` — so the directive (like `@rust_name`) is
+silently dropped there.
+
 ### A suppressed type still has a wasm `to_json_value()`, so the JSON → TypeScript scripts fail on it
 
 The "does not change the wasm surface" bullet above is exact, and its consequence is worth spelling
@@ -576,30 +600,6 @@ The remedy is `--allow-untyped=<Class>` on that script. Spelling it per class is
 duplication informative rather than noise: it is checked in both directions, so if the type later
 becomes reachable from a published root it *is* typed, and the stale-entry error tells you to drop
 the exception.
-
-It is valid on any rule that produces a rust type — an extern, a record, a sum type, a `@newtype`
-wrapper, a collection typedef, a generic instantiation, and a plain group that some rule splices:
-
-```cddl
-grp = (a: uint, b: uint) ; @no_json_schema_export
-```
-
-On a rule that registers **no** rust type there is no row to suppress, so the directive would be
-silently dead and generation is rejected with an error naming the rule. That covers a plain
-transparent alias (`foo = uint`), a `@no_alias` alias, a named binding to a generic instantiation, a
-plain group nothing splices, and a **generic definition** — only its instantiations are types, and
-they do not inherit the directive, so annotate the instance:
-
-```cddl
-gset<T> = [* T]
-inst = gset<uint> ; @no_json_schema_export   ; correct — the instance is the type
-```
-
-On a plain group, write the directive on the same line as the closing paren
-(`grp = (a: uint) ; @no_json_schema_export`). Two other spellings put a group rule's trailing comment
-where the CDDL parser discards it entirely — a closing paren on its own line, and a last entry whose
-own trailing comment is already a field-position `@name` — so the directive (like `@rust_name`) is
-silently dropped there.
 
 ## @custom_serialize / @custom_deserialize
 
