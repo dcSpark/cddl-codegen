@@ -8578,6 +8578,46 @@ fn wasm_json_roundtrip() {
     );
 }
 
+/// A `Serialize` impl must be honest in the serde data model, and `serde_json`'s own `Number` is not
+/// under its `arbitrary_precision` feature: it emits a private `$serde_json::private::Number` token
+/// struct that only serde_json's serializer collapses, so every other serializer — serde-wasm-bindgen
+/// included — ships the token where a number belongs, at every magnitude. Both surfaces that reach a
+/// `serde_json::Value` are covered in ONE `run_test` so only one wasm-pack build is paid: the `any`
+/// member adapter we ship, and a `@custom_json` newtype's hand-written impl routed through the
+/// published `json_value_ser` helper (the consumer-shaped half).
+///
+/// Two oracles, deliberately different in kind. The Rust one (`tests.rs`, via `ciborium` — a
+/// maintained pure-Rust non-serde_json serializer with no special case for the token) is the primary:
+/// it proves honesty in the serde data model GENERALLY and needs no wasm toolchain. The JS one
+/// (`roundtrip.mjs`) adds what only a JS engine can see, and pins that a big integer now reaches
+/// serde-wasm-bindgen's loud >2^53 refusal instead of bypassing it with a token object.
+///
+/// The feature arrives by cargo FEATURE UNIFICATION from `tests/arbitrary-precision-crate`, not from
+/// the generated manifest: the tool owns that manifest's `serde_json` key, so a second `serde_json`
+/// entry in `test_deps` would be a TOML duplicate-key error. It also models the real world honestly —
+/// a workspace where some OTHER crate turns the feature on is exactly how the reporting consumer got
+/// here. `tests.rs` asserts the feature actually arrived, so the fixture cannot pass vacuously.
+#[test]
+fn json_arbitrary_precision() {
+    use std::str::FromStr;
+    let extern_rust_path = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("json-arbitrary-precision")
+        .join("external_json_impls_arbitrary_precision");
+    run_test(
+        "json-arbitrary-precision",
+        &["--json-serde-derives=true"],
+        None,
+        &[extern_rust_path],
+        &[],
+        false,
+        &[
+            "ciborium = \"0.2\"",
+            "arbitrary-precision-crate = { path = \"../../../arbitrary-precision-crate\" }",
+        ],
+    );
+}
+
 /// Smoke-tests the schema → `.d.ts` step: runs the shipped `static/run-json2ts.js` over the committed
 /// schema document using the pinned `json-schema-to-typescript` from `static/package_json_schemas.json`
 /// (installed via `npm install` of that exact file, plus an injected `typescript`), then asserts the

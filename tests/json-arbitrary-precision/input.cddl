@@ -1,0 +1,18 @@
+; Regression fixture for `serde_json/arbitrary_precision`: under that feature `serde_json::Number`'s
+; own `Serialize` is a private `$serde_json::private::Number` token struct that ONLY serde_json's own
+; serializer collapses, so anything routing a `serde_json::Value` through a different serializer
+; (serde-wasm-bindgen, ciborium, …) ships the token instead of a number — at every magnitude. Both
+; halves of that surface are here, and both are deliberately tiny: this fixture pays a wasm-pack build.
+;
+;   any_holder  — the half WE own: an `any`-carrying member gets `#[serde(with = "…natural_any_cbor")]`,
+;                 whose serialize builds a `serde_json::Value`. No consumer code involved.
+;   custom_num  — the CONSUMER-shaped half: a `@custom_json` newtype whose hand-written `Serialize`
+;                 (see `external_json_impls_arbitrary_precision`) builds a `serde_json::Value` and
+;                 routes it through the shipped `json_value_ser` helper. This is what proves the
+;                 published helper actually helps the class the report is about.
+;
+; Deliberately NO open struct / `#[serde(flatten)]` row: serde_json's flatten buffering interacts
+; with `arbitrary_precision` on its own terms, and mixing it in would blur which layer a failure
+; came from.
+any_holder = { payload: any }
+custom_num = uint ; @newtype @custom_json
