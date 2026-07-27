@@ -559,6 +559,35 @@ fn a_rejected_value_is_reported_against_its_config_key() {
     );
 }
 
+/// The same, when the rejected key is `input` or `output` itself. Those two are what the replay's
+/// BASE is built from, so a value clap reads as a flag (`-x.cddl`) makes every probe on top of that
+/// base fail — and the blame lands on the first fragment that is neither, which is always
+/// `lib-name`: a key the user may not have written at all, in a message naming a flag they never
+/// typed and a value that appears nowhere in their config.
+#[test]
+fn a_rejected_input_or_output_is_reported_against_itself_not_lib_name() {
+    for (key, text) in [
+        (
+            "input",
+            "[crates.demo]\ninput = \"-x.cddl\"\noutput = \"g\"\n",
+        ),
+        (
+            "output",
+            "[crates.demo]\ninput = \"s.cddl\"\noutput = \"-g\"\n",
+        ),
+    ] {
+        let err = expand_error(text);
+        assert!(
+            err.contains(&format!("[crates.demo].{key}")),
+            "must point at the `{key}` key, got: {err}"
+        );
+        assert!(
+            !err.contains("lib-name"),
+            "and must not blame a key the config never set, got: {err}"
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------------------------
 // D4 — path resolution
 // ---------------------------------------------------------------------------------------------

@@ -1912,15 +1912,43 @@ fn build_cli(
     match Cli::try_parse_from(&argv) {
         Ok(cli) => Ok(cli),
         Err(err) => {
+            // `--input` and `--output` FIRST, one at a time. The replay below probes each remaining
+            // fragment on top of a base holding both of them, so when the BASE is what clap rejects
+            // — an `input` or `output` value clap reads as a flag, e.g. `-x.cddl` — every probe
+            // fails and the first non-input/output fragment takes the blame. That is always
+            // `lib-name`, a key the user may not even have written. Both are required, so each is
+            // probed with a placeholder standing in for the other rather than alone.
+            let input = resolve_path(base_dir, &entry.input);
+            let output = resolve_path(base_dir, &entry.output);
+            const PLACEHOLDER: &str = "cddl-codegen-config-probe";
+            for (key, argv) in [
+                (
+                    "input",
+                    vec!["--input", input.as_str(), "--output", PLACEHOLDER],
+                ),
+                (
+                    "output",
+                    vec!["--input", PLACEHOLDER, "--output", output.as_str()],
+                ),
+            ] {
+                let probe = std::iter::once("cddl-codegen").chain(argv);
+                if let Err(single) = Cli::try_parse_from(probe) {
+                    return Err(format!(
+                        "[crates.{name}].{key}: {}",
+                        single.to_string().trim_end()
+                    ));
+                }
+            }
+
             // Attribute the rejection to a KEY by replaying the invocation one fragment at a time on
             // top of the required pair. Without this the user is shown a clap error about a flag they
             // never typed; with it they are pointed at the TOML line they did.
             let base: Vec<String> = vec![
                 "cddl-codegen".to_owned(),
                 "--input".to_owned(),
-                resolve_path(base_dir, &entry.input),
+                input,
                 "--output".to_owned(),
-                resolve_path(base_dir, &entry.output),
+                output,
             ];
             for (key, fragment) in &fragments {
                 // Already in `base`; re-adding them is clap's "cannot be used multiple times", which
