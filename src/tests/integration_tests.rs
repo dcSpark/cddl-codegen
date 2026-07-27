@@ -6979,6 +6979,134 @@ fn emit_tests_open_array_execute() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// Walks every arm of the integer bounds condition through `bounds_reject_value` — the predicate
+/// the `--emit-tests` minter asks "would the emitted decoder accept this key?".
+///
+/// It matters that this is a walk over ARM SHAPES rather than over fixtures: the emitted condition
+/// and the minter's answer come from one `reject_cond`, so the only way they can disagree is if an
+/// arm is classified wrongly, and the `.ne N` encoding is where that is easy — the parser turns it
+/// into an INVERTED range `Range(N+1, N-1)` (`parsing.rs`, the `NE` arm), which reads as an empty
+/// window to anyone who takes `(min, max)` at face value. A minter that did would refuse to mint
+/// any key at all for `.ne`, and the e2e gate would still be green (a skipped map is not a failure).
+///
+/// `(None, None)` is included because the EMITTER treats it as `unreachable!` while the minter must
+/// answer for it: an unbounded key domain constrains nothing.
+#[test]
+fn bounds_reject_value_agrees_with_emitted_condition() {
+    use crate::generation::bounds_reject_value;
+    let rejected = |b: (Option<i128>, Option<i128>), lo: i128, hi: i128| -> Vec<i128> {
+        (lo..=hi).filter(|v| bounds_reject_value(&b, *v)).collect()
+    };
+
+    // `.ne 0` -> Range(1, -1): the single excluded value is `min - 1` == 0. This is the shape the
+    // minter's naive base-0 key landed on.
+    assert_eq!(rejected((Some(1), Some(-1)), -3, 3), vec![0]);
+    // `.ne 1` -> Range(2, 0): the boundary case, where base 0 IS acceptable and base 1 is not.
+    assert_eq!(rejected((Some(2), Some(0)), -3, 3), vec![1]);
+    // a single-value window accepts exactly one value
+    assert_eq!(rejected((Some(5), Some(5)), 3, 7), vec![3, 4, 6, 7]);
+    // two-sided window
+    assert_eq!(rejected((Some(5), Some(9)), 3, 11), vec![3, 4, 10, 11]);
+    // one-sided upper / one-sided lower
+    assert_eq!(rejected((None, Some(9)), 8, 11), vec![10, 11]);
+    assert_eq!(rejected((Some(5), None), 3, 6), vec![3, 4]);
+    // a `min == 0` window: the emitter may drop the dead `e < 0` leg when the checked expression is
+    // provably non-negative, but the predicate answers for arbitrary candidates and must not.
+    assert_eq!(rejected((Some(0), Some(2)), -2, 4), vec![-2, -1, 3, 4]);
+    // no window at all constrains nothing — and must not reach the emitter's `unreachable!`
+    assert_eq!(rejected((None, None), -3, 3), Vec::<i128>::new());
+}
+
+/// Executes `--emit-tests` over tables whose KEY DOMAIN carries a value window
+/// (`{* int .ne 0 => uint}` and friends — `tests/emit-tests-bounded-key/input.cddl`). The minter
+/// lays keys down consecutively from a base, so a base fixed at `0` mints a key the emitted
+/// bounds check rejects with `RangeCheck`: the round-trip vector goes red blaming a decoder that
+/// is doing exactly what the CDDL asked. `cargo test`ing the generated crate is what proves the
+/// minted keys are ACCEPTED — a `cargo check` compiles either way.
+///
+/// The fixture spans both encodings of a window: the INVERTED `.ne N` range (`Range(N+1, N-1)`,
+/// an exclusion) and ordinary one-/two-sided windows, so the minter's agreement with
+/// `bounds_check_if_block` is exercised on both arms (the predicate-level walk over every arm is
+/// `bounds_reject_value_agrees_with_emitted_condition`).
+///
+/// Non-preserve, rust-only: the key-base decision is profile-independent (it happens in the shared
+/// `MintValue` derivation, before either renderer), and the rust `cargo test` is the cheapest thing
+/// that RUNS the emitted assertions.
+#[test]
+fn emit_tests_bounded_map_key_execute() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let input = std::path::PathBuf::from("tests/emit-tests-bounded-key/input.cddl");
+    let root =
+        std::env::temp_dir().join(format!("cddl_codegen_bounded_key_{:016x}", checkout_hash()));
+    let _ = std::fs::remove_dir_all(&root);
+    let out = root.join("crate");
+    let generate = codegen_cmd()
+        .arg(format!("--input={}", input.to_str().unwrap()))
+        .arg(format!("--output={}", out.to_str().unwrap()))
+        .arg("--wasm=false")
+        .arg("--emit-tests=true")
+        .output()
+        .unwrap();
+    if !generate.status.success() {
+        eprintln!("{}", String::from_utf8_lossy(&generate.stderr));
+    }
+    assert!(
+        generate.status.success(),
+        "generation failed (a bounded table key must still generate)"
+    );
+
+    let src =
+        std::fs::read_to_string(out.join("rust/src/generated/mod.rs")).expect("generated mod.rs");
+    // Floor: every holder is minted at all. A skipped type would make the run vacuously green.
+    for ty in [
+        "roundtrip_holder_ne_zero",
+        "roundtrip_holder_ne_one",
+        "roundtrip_holder_window",
+        "roundtrip_holder_ge",
+        "roundtrip_holder_str_size",
+    ] {
+        assert!(
+            src.contains(&format!("fn {ty}(")),
+            "emit-tests skipped `{ty}` — a bounded table key must still be minted, not dropped"
+        );
+    }
+    // The `.size`-bounded TEXT key is the loud-skip side of the same decision: the window is a
+    // LENGTH, which the `__i.to_string()` spelling cannot steer, so the map mints EMPTY (with an
+    // `eprintln!` naming the key) rather than minting a violating key and reporting the resulting
+    // `RangeCheck` as a decoder failure. Pinned as the empty-map build, so a future change that
+    // "helpfully" mints a wrong-length key here fails here rather than in the round-trip.
+    assert!(
+        src.contains("let v = HolderStrSize::new(Default::default());"),
+        "a `.size`-bounded text key must mint the map EMPTY (loud skip), never a key whose length \
+         violates the window\n{src}"
+    );
+    // Vacuity guard: the `.ne 0` table's keys must actually START above the excluded value. Without
+    // this the gate could pass by minting the map EMPTY (or by the table vanishing from the
+    // fixture) — a green that asserts nothing about the key window.
+    assert!(
+        src.contains("1 + __i as i128"),
+        "the `int .ne 0` table did not mint a non-zero key base — the excluded key `0` is back, \
+         or the table is minting empty\n{src}"
+    );
+
+    let test = tool_cmd("cargo")
+        .arg("test")
+        .current_dir(out.join("rust"))
+        .output()
+        .unwrap();
+    if !test.status.success() {
+        eprintln!("stdout:\n{}", String::from_utf8_lossy(&test.stdout));
+        eprintln!("stderr:\n{}", String::from_utf8_lossy(&test.stderr));
+    }
+    assert!(
+        test.status.success(),
+        "generated bounded-table-key emit-tests crate failed cargo test"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// Executes the `--emit-tests` generated WASM-test module end-to-end (tests/README.md § "wasm-crate
 /// test module"): generate the rich `core` fixture with `--wasm=true --emit-tests=true`, then
 /// `cargo test` the generated WASM crate so the emitted `wasm_roundtrip_*`/`wasm_reject_*` module runs

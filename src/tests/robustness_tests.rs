@@ -2866,8 +2866,8 @@ fn no_occurrence_arrow_map_entry_rejects_gracefully() {
 /// rules, parenthesized groups, and nested anonymous maps, but not this reach. This test pins it
 /// so the reach cannot silently regress back to widening. (Surfaced by the recombination fuzzer's
 /// layer-2 vacuity guard when its `outer=generic_arg inner=map_key filler=ctl.ne.zero` composition
-/// stopped reaching layer 2 — that retired `LAYER2_KNOWN_BAD` entry's minter gap is ledgered
-/// separately in cddl-matrix/ROADMAP.md § findings.)
+/// stopped reaching layer 2 — that retired `LAYER2_KNOWN_BAD` entry's minter gap is now closed and
+/// pinned by `emit_tests_bounded_map_key_execute`.)
 #[test]
 fn generic_arg_no_occurrence_table_rejects_gracefully() {
     fn run(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, String>, String> {

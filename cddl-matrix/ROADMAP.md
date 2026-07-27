@@ -333,12 +333,11 @@ are ledgered here (that's what the probe/gate error messages point at).
   is allowed in any position. Non-last rejection pinned by `tests/robustness/choice_any_arm.cddl`,
   last-position support by `tests/robustness/choice_last_any_arm.cddl`. The matrix has no
   containment cell for the shape, which is the coverage gap the fuzzer exists to find.
-- **Six compile/round-trip-class families remaining from the recombination fuzzer's layer-2 sweeps**
+- **Five compile/round-trip-class families remaining from the recombination fuzzer's layer-2 sweeps**
   (`recombination_crates_execute`: generation is ok, but the generated crate fails `cargo test`
   under `--emit-tests`, default profile). Generation-outcome catalogs cannot see these, so each
   class is held in the sweep's `LAYER2_KNOWN_BAD` cited ledger (desc-keyed, vacuity-guarded — a
-  fixed class flips loudly) with THIS entry as its pin — except the one entry below marked
-  UNPINNED, whose pinning composition left the sweep's reach; each is a candidate cddl-codegen fix:
+  fixed class flips loudly) with THIS entry as its pin; each is a candidate cddl-codegen fix:
   - **A non-final `?` optional field in an array record breaks compilation** (E0599:
     `from_cbor_bytes` trait bounds unsatisfied — the `Deserialize` impl is not emitted):
     `a = [ ? f0: uint, f1: uint ]` and any `[? x, …more…]` variant. Optional-LAST array fields
@@ -356,17 +355,6 @@ are ledgered here (that's what the probe/gate error messages point at).
     — a valid-CBOR byte string matches the `.cbor` arm first). Candidate fix: reject duplicate arms
     at generation, or document first-match semantics and have `--emit-tests` skip
     variant-identity asserts for ambiguous choices.
-  - **The `--emit-tests` minter does not respect `.ne` on a table key domain**: for a
-    `*`-spelled table (`gen<{ * int .ne 0 => uint }>`, verified at HEAD) it mints key `0`, which
-    the (correct) emitted decoder rejects with a `RangeCheck` — a minter-side gap, not a decoder
-    bug. UNPINNED at HEAD, the one exception to this family's ledger rule: its `LAYER2_KNOWN_BAD`
-    pin retired because the fuzzer's pinning composition (the no-occurrence spelling
-    `gen<{ int .ne 0 => uint }>`) rejects gracefully at generation under the no-occurrence
-    arrow-entry rejection (`5ef7ed0`; its generic-instantiation reach is pinned by
-    `generic_arg_no_occurrence_table_rejects_gracefully`), while the
-    sweep's `map_key` template has no `*`-spelled variant to re-reach the minter. Re-pin by adding
-    a `*`-spelled map-key template (or a hand `--emit-tests` fixture over
-    `{ * int .ne 0 => uint }`) when this gap is picked up.
   - **An emitted-test baseline decode failure on a nested shape**: a
     `bytes .cbor float64` member fails its baseline re-decode (`Expected(Special, Text)` at the
     following field — a `.cbor` float payload mis-frames the buffer; still to minimize when picked
