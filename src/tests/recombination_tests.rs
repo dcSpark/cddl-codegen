@@ -872,10 +872,19 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
         "doubly nested tags are not supported",
         "tag directly inside a tag; pinned by tests/matrix_panic/contain.tag-content.type2.tag.cddl",
     ),
-    (
-        "failed left: \";\" right: \"\" @ src/generation/deserialize.rs",
-        "map-rep group-choice arm with a fixed-value entry; pinned by tests/matrix_panic/contain.group-choice-arm.type2.value.map.cddl",
-    ),
+    // (retired when the fixed-value group-choice arm gained default-profile SUPPORT) A group-choice
+    // arm whose whole content is a fixed value (`t = { a: 0 // b: tstr }`, `t = [ a: 0 // b: tstr ]`,
+    // `t = [ 0 // tstr ]`) now generates under every profile instead of aborting under all but
+    // `--preserve-encodings`. The key carried no `fn` component, so it covered BOTH callers of the
+    // `Fixed` deserialize branch, and both were fixed: `generate_enum` dropped the `|| rep.is_some()`
+    // that forced a group-choice arm to bind a value it has none of, and
+    // `make_keyed_map_variant_deser_code` gained the fixed-value exemption it never had. The
+    // `assert_eq!`s at the branch are deliberately LEFT IN PLACE — they are the guard that caught
+    // this, and after the fix they simply never fire; a future caller that reaches them with a
+    // binding re-earns this entry rather than being papered over. The emitted code's shape (a
+    // field-less construction, with the constant and the map arm's member key still VERIFIED) is
+    // pinned by `group_choice_fixed_value_arm_emits_fieldless_variant`; the two array spellings,
+    // which no matrix cell expresses, are `ok` rows in tests/robustness/.
     // (retired when `any` gained runtime support) `any` in member/element position no longer panics —
     // it lowers to the `AnyCbor` runtime type (tests/robustness/any_member.cddl is now an `ok`
     // fixture). The former `self.generic_instances.contains_key(ident)` assertion class is gone.
@@ -1034,11 +1043,18 @@ const LAYER2_KNOWN_BAD: &[(&str, &str)] = &[
     // needed. This retired the two undefined-`Int` entries that formerly rode here, one masked in the
     // default gate and surfaced only by the wasm leg's different batch boundaries (see the batch-masking
     // caveat on `LAYER2_RULES_PER_BATCH`).
-    // -- tagged fixed value inside a map-rep group-choice arm (E0618) ------------------------------
-    (
-        "outer=garm_map inner=tag_content filler=type2.value",
-        "tagged fixed value in a map-rep group-choice arm emits a call to a non-fn struct (E0618); cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
-    ),
+    // (retired with the fixed-value group-choice arm's default-profile support) The tagged fixed
+    // value in a map-rep arm (`t = { ga: #6.11(42) // fb: tstr }`) was the COMPILE-side twin of that
+    // same defect, not a separate bug: the tag wrapper routed its deserialize down a branch that
+    // never reached the `Fixed` assert, so generation succeeded while still emitting
+    // `Ok(T::Ga(ga))` — a call on a field-less variant, which is the E0618. The fix emits
+    // `Ok(T::Ga)` and the crate now `cargo check`s clean; verified by generating the shape from the
+    // parent commit (E0618) and from the fix (clean), the emitted diff being exactly those two
+    // lines. NOTE for whoever runs the full tier: this retirement was NOT confirmed by
+    // `recombination_crates_execute` itself (a full-tier `#[ignore]`d gate). If the class survives,
+    // the gate now reports it as an unledgered layer-2 failure naming this composition, which is the
+    // loud direction — the entry staying would instead have silently excluded a passing class
+    // forever, since the vacuity guard only fires on an entry matching ZERO ok compositions.
     // -- wire-ambiguous type-choice arms: variant identity is unpreservable under first-match ------
     (
         "outer=choice_member filler=prelude.text",

@@ -298,12 +298,28 @@ are ledgered here (that's what the probe/gate error messages point at).
   regeneration reaches 1. Today that count is 0 in every consumer spec; the two repros above are
   synthetic probes minted while fixing an unrelated defect, and a synthetic probe costs nobody a
   re-edit.
-- **Give the map-rep group-choice arm's fixed-value entry a graceful refusal or real support.**
-  `contain.group-choice-arm.type2.value.map` (`t = { a: 0 // b: tstr }`) is valid CDDL that aborts
-  generation at exit 101, at the `assert_eq!(";" vs "")` site in `generate_deserialize`
-  (generation/deserialize.rs) — a known PANIC row in `tests/matrix_panic/`. Deliverable shape:
-  the row flips to `error (graceful)`, or the arm generates. A printed remedy has to be one that
-  actually works (the float-table-key precedent, where the naive remedy was itself a dead end).
+- **A BOOL or NULL fixed value in a map-rep group-choice arm emits invalid Rust under
+  `--preserve-encodings`.** `t = { a: true // b: tstr }` and `t = { a: null // b: tstr }` generate
+  and `cargo check` clean under the default profile, but under `--preserve-encodings` the emitted
+  source is rejected by the rustfmt post-pass with `expected pattern, found '='`, which `export`
+  turns into a fatal "rustfmt failed on the generated source" error — a generator bug, not a
+  formatting preference. The uint and TEXT kinds (`a: 0`, `a: "v"`) are clean in both profiles, so
+  the break is specific to the value kinds whose preserve-mode encoding sidecar differs. This
+  predates the arm gaining default-profile support (reproduced against the parent commit), and the
+  support is what makes it reachable in practice rather than hidden behind an earlier abort.
+  Unpinned, and the reason is itself the gap: the failure lives in the rustfmt/export seam, which
+  `api::generated_strings` never runs, so no in-process test can see it — pinning it needs a
+  disk-write (`generate_to_disk`) vector, which no current robustness layer mints. Reopening signal
+  on the magnitude axis: the count of fixed-value KINDS a consumer cannot use in a preserve crate is
+  2 of the 5 spellable today (bool, null), measurable by anyone generating such a spec.
+- **Enumerate the fixed-value group-choice arm's remaining VALUE KINDS.** The arm is supported in
+  every profile now, but the committed vectors are `uint 0` plus the three kinds probed on delivery
+  (text clean, bool and null broken under preserve — the entry above). Nint and float constants, and
+  the tag-wrapped forms in the ARRAY reps, are unprobed in both directions. This is enumeration work
+  with a known NON-uniform result rather than a speculative sweep, which is what makes it worth
+  rows: two of the four kinds probed so far behave differently from `uint`. Reopening signal: the
+  next kind that a consumer finds differs — the ratio is 1-in-2 so far, so the cost of not
+  enumerating is paid per spec, not per consumer.
 - Fixed-value member containment still has unenumerated variants beyond the precedent rows
   `contain.array-element.prelude.{true,null}`, `contain.map-value.prelude.false`, and
   `contain.array-element.type2.tag.{fixed_null,fixed_bool}`. Remaining candidates include map-value
@@ -339,7 +355,7 @@ are ledgered here (that's what the probe/gate error messages point at).
   is allowed in any position. Non-last rejection pinned by `tests/robustness/choice_any_arm.cddl`,
   last-position support by `tests/robustness/choice_last_any_arm.cddl`. The matrix has no
   containment cell for the shape, which is the coverage gap the fuzzer exists to find.
-- **Six compile/round-trip-class families remaining from the recombination fuzzer's layer-2 sweeps**
+- **Five compile/round-trip-class families remaining from the recombination fuzzer's layer-2 sweeps**
   (`recombination_crates_execute`: generation is ok, but the generated crate fails `cargo test`
   under `--emit-tests`, default profile). Generation-outcome catalogs cannot see these, so each
   class is held in the sweep's `LAYER2_KNOWN_BAD` cited ledger (desc-keyed, vacuity-guarded — a
@@ -352,8 +368,6 @@ are ledgered here (that's what the probe/gate error messages point at).
     like the count-permitting occurrence entry above.
   - **An array-rep group-choice arm containing a `?` optional member breaks compilation** (E0599:
     the arm struct's `deserialize_as_embedded_group` is not emitted): `t = [ ? f0: uint, f1: uint // tstr ]`.
-  - **A tagged fixed value inside a map-rep group-choice arm emits a call to a non-fn struct**
-    (E0618 `expected function`): `t = { ga: #6.11(42) // fb: tstr }`.
   - **Wire-ambiguous type-choice arms cannot round-trip variant identity** (emitted round-trip
     asserts `variant N in == variant N out`, but first-match decoding maps every overlapping value
     to the earliest matching arm): duplicate/equivalent arms (`tstr / tstr`, `text / tstr`), a

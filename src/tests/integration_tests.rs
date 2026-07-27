@@ -5934,6 +5934,103 @@ fn corpus_group_choice_map_key_written_and_verified() {
     );
 }
 
+/// A group-choice arm whose whole content is a FIXED VALUE has no data to store, so its enum
+/// variant is FIELD-LESS and its deserializer must construct it by NAMING it (`Ok(T::A)`), never by
+/// calling it with a value it never bound (`Ok(T::A(a))`). Three spellings reach this: the keyed
+/// map arm (`t = { a: 0 // b: tstr }`, via `make_keyed_map_variant_deser_code`) and the two array
+/// arms (`t = [ a: 0 // b: tstr ]`, `t = [ 0 // tstr ]`, via `generate_enum`) — two different
+/// callers of the `Fixed` deserialize branch, which is why both are asserted here.
+///
+/// The failure this pins is not a compile error in THIS crate but an abort while generating: the
+/// `Fixed` branch asserts an empty before/after because it only reads and verifies the constant,
+/// so a caller that asks it to bind trips `assert_eq!` at generation time. That is why the checks
+/// below are about the EMITTED text rather than about a value: by the time a value exists, the
+/// generator has already either aborted or emitted the right thing.
+///
+/// Also asserted: dropping the binding must not have dropped the VERIFICATION. A decoder that
+/// stopped checking the constant (or, on the map side, the member key) would still round-trip with
+/// its own encoder — the exact blind spot that hid the historical key-drop miscompile — so the
+/// wire-level checks are named explicitly. In-process, no nested cargo.
+#[test]
+fn group_choice_fixed_value_arm_emits_fieldless_variant() {
+    use clap::Parser;
+
+    // (label, cddl, variant, the emitted guard proving the constant is still verified)
+    let shapes = [
+        ("map", "t = { a: 0 // b: tstr }\n", "A", "if a_value != 0 {"),
+        (
+            "array",
+            "t = [ a: 0 // b: tstr ]\n",
+            "A",
+            "if a_value != 0 {",
+        ),
+        ("bare", "t = [ 0 // tstr ]\n", "I0", "if i0_value != 0 {"),
+    ];
+    for (label, spec, variant, value_check) in shapes {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_gc_fixed_{label}_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+
+        let emit = |extra: &[&str]| -> String {
+            let mut argv = vec![
+                "cddl-codegen",
+                "--input",
+                path.to_str().unwrap(),
+                "--output",
+                "unused_in_memory_generation",
+            ];
+            argv.extend_from_slice(extra);
+            let cli = crate::cli::Cli::parse_from(argv);
+            crate::api::generated_strings(&cli)
+                .unwrap_or_else(|e| panic!("{label}: generation failed: {e}"))
+                .get("rust/src/generated/serialization.rs")
+                .unwrap_or_else(|| panic!("{label}: no rust serialization.rs emitted"))
+                .clone()
+        };
+
+        let default = emit(&[]);
+        assert!(
+            default.contains(&format!("Ok(T::{variant})")),
+            "{label}: default profile must construct the field-less variant as `Ok(T::{variant})`"
+        );
+        assert!(
+            !default.contains(&format!("Ok(T::{variant}(")),
+            "{label}: default profile constructs `Ok(T::{variant}(…))` — a field-less variant is \
+             being called with a value that was never bound"
+        );
+        assert!(
+            default.contains(value_check),
+            "{label}: default profile no longer verifies the arm's fixed value (`{value_check}`) — \
+             dropping the binding must not drop the check"
+        );
+
+        // Preserve keeps its encoding fields, so it binds and builds a STRUCT variant. This shape
+        // generated under preserve long before it did under default; the arm must stay untouched.
+        let preserve = emit(&["--preserve-encodings", "true"]);
+        assert!(
+            preserve.contains(&format!("Ok(Self::{variant} {{")),
+            "{label}: preserve profile must still build the struct variant with its encoding fields"
+        );
+
+        // Map rep only: the collapsed arm stores no value at all now, so the member key is the ONLY
+        // thing on the wire. Losing either half re-emits malformed CBOR that round-trips with itself.
+        if label == "map" {
+            assert!(
+                default.contains("serializer.write_text(\"a\")?;"),
+                "map: serialize no longer writes the collapsed arm's member key"
+            );
+            assert!(
+                default.contains("if a_key != \"a\" {"),
+                "map: deserialize no longer verifies the collapsed arm's member key"
+            );
+        }
+
+        std::fs::remove_file(&path).ok();
+    }
+}
+
 #[test]
 fn core_with_wasm() {
     use std::str::FromStr;
