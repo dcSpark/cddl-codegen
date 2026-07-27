@@ -4,10 +4,15 @@
 #
 # This file is the FULL major-type (0..7) x length/ai-form grid. Two layers of rows:
 #   1. PARENT rows  `enc.major<N>` (+ `enc.major7.float`) — one per CBOR major type. These are the ids
-#      features.toml references; kept stable. `forms` summarizes the cells beneath them.
+#      features.toml references; kept stable. `forms` summarizes the cells beneath them, and `cells`
+#      NAMES them (the parent -> leaf relation, see below).
 #   2. CELL rows    `enc.major<N>.<form>` — one per distinct additional-information (ai) form, i.e. one
 #      grid cell. A cell is a *distinct encoding alternative*, so it gets its own row (same rule the
 #      feature axis uses). Concrete vectors are cited from sources/appendix_a.json where available.
+#
+# PARENT vs LEAF is decided STRUCTURALLY, with no vocabulary to keep in sync: a row is a PARENT iff it
+# declares `cells`, a LEAF iff it declares none. That is what project_golden_hex.ts derives its legal-
+# leaf set from, and what build_matrix.ts's drift check enforces the relation over.
 #
 # CBOR head byte = (major_type << 5) | additional_info (RFC8949 §3.1, Table 1). The ai field (0..31):
 #   0..23  argument is the ai itself        (immediate / no following bytes)
@@ -18,12 +23,21 @@
 #   28..30 reserved — NOT well-formed (RFC8949 §3.3)
 #   31     indefinite length (major 2..5) / "break" stop code (major 7) / reserved (major 0,1,6)
 #
-# Schema per [[encoding]] (unchanged):
+# Schema per [[encoding]]:
 #   id           "enc.major<N>[.sub]"
 #   major_type   CBOR major type 0..7
 #   rfc          RFC8949 section
 #   forms        the length / additional-info variant(s) this row covers
 #   note         prose + concrete appendix_a.json vectors where available
+#   cells        PARENT rows only: the leaf ids beneath this row. Absent on a leaf.
+#
+# Why `cells` is explicit DATA rather than a string-prefix derivation (`enc.major7.*` under
+# `enc.major7`): the prefix rule breaks on `enc.major7.float`, whose leaves are `enc.major7.float16` /
+# `.float32` / `.float64` — NOT `enc.major7.float.*`. A prefix rule therefore needs a special case that
+# would silently mis-scope any future `<name><digits>` family, and it puts the relation in the
+# projection instead of where the ids are declared. `enc.major7.float`'s cells are deliberately a
+# SUBSET of `enc.major7`'s (the float summary row exists so a float-only feature can reference the
+# three IEEE widths as one id); the invariants permit that overlap.
 
 # =====================================================================================
 # PARENT rows — one per major type (the ids features.toml links to). Kept stable.
@@ -34,63 +48,72 @@ id = "enc.major0"
 major_type = 0
 rfc = "RFC8949 §3.1"
 forms = ["ai 0-23 immediate", "ai 24 (1B)", "ai 25 (2B)", "ai 26 (4B)", "ai 27 (8B)"]
-note = "Unsigned integer; argument = the value. The additional-info width is the encoding variation. ai 28-31 reserved (ill-formed). Cells: enc.major0.imm/.ai24/.ai25/.ai26/.ai27."
+note = "Unsigned integer; argument = the value. The additional-info width is the encoding variation. ai 28-31 reserved (ill-formed)."
+cells = ["enc.major0.imm", "enc.major0.ai24", "enc.major0.ai25", "enc.major0.ai26", "enc.major0.ai27"]
 
 [[encoding]]
 id = "enc.major1"
 major_type = 1
 rfc = "RFC8949 §3.1"
 forms = ["ai 0-23 immediate", "ai 24 (1B)", "ai 25 (2B)", "ai 26 (4B)", "ai 27 (8B)"]
-note = "Negative integer, value = -1 - argument. ai 28-31 reserved (ill-formed). Cells: enc.major1.imm/.ai24/.ai25/.ai26/.ai27."
+note = "Negative integer, value = -1 - argument. ai 28-31 reserved (ill-formed)."
+cells = ["enc.major1.imm", "enc.major1.ai24", "enc.major1.ai25", "enc.major1.ai26", "enc.major1.ai27"]
 
 [[encoding]]
 id = "enc.major2"
 major_type = 2
 rfc = "RFC8949 §3.1, §3.2"
 forms = ["ai 0-23 immediate length", "ai 24/25/26/27 length", "ai 31 indefinite (0x5f..0xff)"]
-note = "Byte string; argument = byte length (definite) or indefinite chunks. ai 28-30 reserved. Cells: enc.major2.imm/.ai24/.ai25/.ai26/.ai27/.indef."
+note = "Byte string; argument = byte length (definite) or indefinite chunks. ai 28-30 reserved."
+cells = ["enc.major2.imm", "enc.major2.ai24", "enc.major2.ai25", "enc.major2.ai26", "enc.major2.ai27", "enc.major2.indef"]
 
 [[encoding]]
 id = "enc.major3"
 major_type = 3
 rfc = "RFC8949 §3.1, §3.2"
 forms = ["ai 0-23 immediate length", "ai 24/25/26/27 length", "ai 31 indefinite (0x7f..0xff)"]
-note = "Text string (UTF-8); argument = byte length. ai 28-30 reserved. Cells: enc.major3.imm/.ai24/.ai25/.ai26/.ai27/.indef."
+note = "Text string (UTF-8); argument = byte length. ai 28-30 reserved."
+cells = ["enc.major3.imm", "enc.major3.ai24", "enc.major3.ai25", "enc.major3.ai26", "enc.major3.ai27", "enc.major3.indef"]
 
 [[encoding]]
 id = "enc.major4"
 major_type = 4
 rfc = "RFC8949 §3.1, §3.2"
 forms = ["ai 0-23 immediate count", "ai 24/25/26/27 count", "ai 31 indefinite (0x9f..0xff)"]
-note = "Array; argument = element count. ai 28-30 reserved. Cells: enc.major4.imm/.ai24/.ai25/.ai26/.ai27/.indef."
+note = "Array; argument = element count. ai 28-30 reserved."
+cells = ["enc.major4.imm", "enc.major4.ai24", "enc.major4.ai25", "enc.major4.ai26", "enc.major4.ai27", "enc.major4.indef"]
 
 [[encoding]]
 id = "enc.major5"
 major_type = 5
 rfc = "RFC8949 §3.1, §3.2"
 forms = ["ai 0-23 immediate count", "ai 24/25/26/27 count", "ai 31 indefinite (0xbf..0xff)"]
-note = "Map; argument = number of key/value pairs. ai 28-30 reserved. Cells: enc.major5.imm/.ai24/.ai25/.ai26/.ai27/.indef."
+note = "Map; argument = number of key/value pairs. ai 28-30 reserved."
+cells = ["enc.major5.imm", "enc.major5.ai24", "enc.major5.ai25", "enc.major5.ai26", "enc.major5.ai27", "enc.major5.indef"]
 
 [[encoding]]
 id = "enc.major6"
 major_type = 6
 rfc = "RFC8949 §3.1, §3.4"
 forms = ["ai 0-23 immediate tag#", "ai 24 (1B)", "ai 25 (2B)", "ai 26 (4B)", "ai 27 (8B)"]
-note = "Tagged data item; argument = tag number, followed by one enclosed data item. ai 28-31 reserved. Cells: enc.major6.imm/.ai24/.ai25/.ai26/.ai27."
+note = "Tagged data item; argument = tag number, followed by one enclosed data item. ai 28-31 reserved."
+cells = ["enc.major6.imm", "enc.major6.ai24", "enc.major6.ai25", "enc.major6.ai26", "enc.major6.ai27"]
 
 [[encoding]]
 id = "enc.major7"
 major_type = 7
 rfc = "RFC8949 §3.1, §3.3"
 forms = ["simple 0-23 immediate", "simple 24 (1B)", "float16 (ai25)", "float32 (ai26)", "float64 (ai27)", "break (ai31, 0xff)"]
-note = "Simple values, floats, and the break stop code; ai selects the meaning (not a length). ai 28-30 reserved. Cells: enc.major7.simple_imm/.ai24/.float16/.float32/.float64/.break."
+note = "Simple values, floats, and the break stop code; ai selects the meaning (not a length). ai 28-30 reserved."
+cells = ["enc.major7.simple_imm", "enc.major7.ai24", "enc.major7.float16", "enc.major7.float32", "enc.major7.float64", "enc.major7.break"]
 
 [[encoding]]
 id = "enc.major7.float"
 major_type = 7
 rfc = "RFC8949 §3.3"
 forms = ["float16 (0xf9)", "float32 (0xfa)", "float64 (0xfb)"]
-note = "Float subset of major 7 (the half/single/double IEEE 754 widths). Cells: enc.major7.float16/.float32/.float64."
+note = "Float subset of major 7 (the half/single/double IEEE 754 widths); a strict subset of enc.major7's cells, so a float-only feature can reference the three widths as one id."
+cells = ["enc.major7.float16", "enc.major7.float32", "enc.major7.float64"]
 
 # =====================================================================================
 # GRID CELLS — major type 0 : unsigned integer (RFC8949 §3.1)

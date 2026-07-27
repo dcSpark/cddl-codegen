@@ -57,10 +57,18 @@ const headClass = (b: number): [number, string] => {
 const cellId = (b: number) => { const [mt, form] = headClass(b); return `enc.major${mt}.${form}`; };
 
 // --- legal grid cells (LEAF cells only — exclude parent rows incl. the enc.major7.float summary) ---
-const LEAF_FORMS = new Set(["imm", "ai24", "ai25", "ai26", "ai27", "indef",
-  "simple_imm", "float16", "float32", "float64", "break"]);
-const grid = (await Bun.file(`${HERE}/matrix.json`).json() as { encodings: { id: string }[] }).encodings;
-const cells = new Set(grid.map(e => e.id).filter(id => LEAF_FORMS.has(id.split(".").at(-1)!)));
+// PARENT vs LEAF is read STRUCTURALLY off the master: a row is a PARENT iff it declares `cells`, the
+// leaf ids beneath it (encodings.toml's header says why that relation is authored data rather than an
+// id-prefix rule). Deriving it here rather than from a hand-maintained form vocabulary means a new ai
+// form cannot be silently dropped from the denominator by a vocabulary nobody remembered to extend.
+// `headClass`/`cellId` above keep their own form names on purpose: that is the byte -> cell-id map, a
+// different concern from the legality relation, and the two are deliberately not coupled.
+const matrix = await Bun.file(`${HERE}/matrix.json`).json() as {
+  encodings: { id: string; cells?: string[] }[];
+  features: { id: string; encodings?: string[] }[];
+};
+const cells = new Set(matrix.encodings.filter(e => !e.cells).map(e => e.id));
+const cellsOf = new Map(matrix.encodings.filter(e => e.cells).map(e => [e.id, e.cells!]));
 
 // --- asserted test bytes (file order preserved) ---
 // Name and bytes are captured from the SAME kat! invocation (never paired positionally across two
@@ -311,6 +319,57 @@ for (let mt = 0; mt < 8; mt++) {
     w(`| \`${v.hexn}\` | ${decoded(v)} | ${mark(v)} | ${detail(v)} |`);
   w();
 }
+// --- Q3's per-CONSTRUCT answer: "for construct C, these legal encodings are untested" ---
+// The global summary above answers the same question for the whole grid; this narrows it to one
+// construct by expanding that construct's declared `encodings` refs through the master's parent->leaf
+// relation (a parent ref -> its `cells`; a leaf ref -> itself) and intersecting with the SAME
+// `cellsCovered` the grid uses. The uncovered remainder is split by the same cell-keyed `out_of_scope`
+// overlay as the summary, so the two can never disagree about which cells are actionable.
+const constructs = matrix.features
+  .filter(f => (f.encodings ?? []).length)
+  .map(f => {
+    const legal = [...new Set((f.encodings ?? []).flatMap(ref => cellsOf.get(ref) ?? [ref]))].sort();
+    const uncovered = legal.filter(c => !cellsCovered.has(c));
+    return {
+      id: f.id,
+      legal,
+      covered: legal.filter(c => cellsCovered.has(c)),
+      never: uncovered.filter(c => oosCells.has(c)),
+      emittable: uncovered.filter(c => !oosCells.has(c)),
+    };
+  })
+  .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+const constructsWithGaps = constructs.filter(c => c.emittable.length).length;
+w("## Per-construct legal encodings");
+w();
+w(`Q3 narrowed to one construct at a time: for each of the **${constructs.length}** feature rows that`);
+w("declare an `encodings` list, the leaf cells that construct can legally take, and which of them no");
+w("golden vector asserts. Each declared ref is expanded through the master's parent→leaf relation");
+w("(`cddl-matrix/encodings.toml` — a PARENT row names its leaves in `cells`; a leaf ref is itself), then");
+w("intersected with the same derived coverage the grid above uses.");
+w();
+w("**What \"legal\" means here, and what it does not.** *Legal* = the leaf cells beneath the encoding");
+w("rows the construct **declares**. It is deliberately **not** a claim that cddl-codegen emits each of");
+w("them under default flags — the *never emitted* column carries that, from the same cell-keyed");
+w("`out_of_scope` notes as the summary. And it is **not** a claim that each cell is reachable for");
+w("**every value** of the construct: argument width follows the value, so a `uint` reaches");
+w("`enc.major0.ai27` only at values ≥ 2^32, and a `bstr` reaches `enc.major2.ai26` only at lengths");
+w("≥ 2^16. An *untested and emittable* cell therefore names an encoding the construct can take at");
+w("**some** value — not one every instance of it takes.");
+w();
+w("Reported, never fatal: this gate's non-zero exit stays reserved for note drift and ➕ (uncovered");
+w("Appendix A vector with no rationale). This column is derived from the same `cellsCovered` as the");
+w("summary's *emittable but no Appendix A vector lands here* line, which is already a deliberate");
+w("non-failure — failing here would re-litigate that threshold from a different direction.");
+w();
+w(`- Constructs with at least one untested-and-emittable cell: **${constructsWithGaps}** of ${constructs.length}`);
+w();
+w("| construct | legal | covered | never emitted | untested and emittable |");
+w("|-----------|-------|---------|---------------|------------------------|");
+for (const c of constructs)
+  w(`| \`${c.id}\` | ${c.legal.length} | ${c.covered.length} | ${c.never.length} | ` +
+    `${c.emittable.length ? c.emittable.map(x => `\`${x}\``).join(", ") : "—"} |`);
+w();
 w("## Consistency (join drift check)");
 w();
 if (drift.length) for (const d of drift) w(`- ❌ ${d}`);
