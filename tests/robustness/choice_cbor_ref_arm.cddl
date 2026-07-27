@@ -13,8 +13,10 @@
 ; The target being an ALIAS (`bar = uint`, a transparent `pub type Bar = u64;`) is deliberately part
 ; of the shape: it is the case where the resolved type is NOT a struct, so it exercises exactly the
 ; lookups the missing edge used to break. The inline-target form (`bytes .cbor uint`) never needed
-; an edge and has always generated. The remaining unsupported spelling puts such a target under a
-; top-level rule BODY (tests/robustness/cbor_ref_rule_body.cddl) — a different site with a
-; different cause, unaffected by rule ordering.
+; an edge and has always generated. The sibling spelling puts such a target under a top-level rule
+; BODY (tests/robustness/cbor_ref_rule_body.cddl); it also generates, but reaches its failure
+; through a different site and needs the parse-side half of the fix as well as this edge — so it
+; keeps its own row rather than folding into this one. Chain DEPTH is covered by
+; tests/robustness/cbor_ref_alias_chain.cddl.
 a = bytes .cbor bar / tstr
 bar = uint

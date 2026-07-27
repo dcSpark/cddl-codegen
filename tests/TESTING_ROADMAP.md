@@ -1546,10 +1546,19 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
 - **The recombination sweep's outcome counts are enforced only by vacuity floors, so a real class
   migration lands unseen — TRIGGER ALREADY FIRED, build the detector.** `ok` / `graceful` / `panic`
   are asserted only against floors sitting ~5% under the true numbers, and the exact baseline lives
-  in a source comment. Both halves failed together once: 42 compositions moved `ok` → `graceful`
-  (a deliberate anti-over-acceptance narrowing, but nothing recorded it as such) and the comment
-  drifted to match nothing, while every gate stayed green — found by re-measuring at the true
-  parent commit during an unrelated review, not by any run. Detector half, to land first: commit
+  in a source comment. Both halves failed together once: the comment stayed at `927 ok / 197
+  graceful / 420 panic` across a span in which the sweep reached `885 / 280 / 379` — a net 42-count
+  `ok` → `graceful` slide that no gate saw, found by re-measuring at the true parent commit during
+  an unrelated review. Bisected afterwards (`git bisect run` over the sweep, endpoints `dc6e4e98`
+  good / `db340908` bad), so the cause is attributed rather than inferred: `5ef7ed07` — "reject the
+  no-occurrence type-domain arrow map entry (`{ k => v }`) instead of widening to 0..N" — moved
+  **56** compositions `ok` → `graceful` in one step (927/197/420 → 871/253/420, `panic` untouched),
+  and later commits recovered 14 of them, so the 42 anyone measures at the endpoints is a NET of at
+  least two movements and matches no single change. The narrowing itself is correct and was
+  argued at length in its own commit message (RFC 8610: no occurrence indicator means exactly once);
+  what nothing recorded was the count it moved. That is the shape of the risk this entry exists
+  for — a per-class count is only readable as evidence at the commit that moved it, and an endpoint
+  subtraction across a range silently sums unrelated events. Detector half, to land first: commit
   the sweep's exact per-class counts as a self-measuring datum and fail on ANY movement, the shape
   `tests/timings.json` already uses for durations, so a class migration is a reviewed bless-diff
   carrying its reason instead of a silent slide; keep the floors as the vacuity backstop, since

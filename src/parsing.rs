@@ -992,6 +992,14 @@ fn parse_control_operator(
             // the alias and its target are the SAME Rust type — only the spelling in the emitted
             // source differs. Aliases are the only case that needs this; a target naming a real
             // struct/collection is already a `Rust` ident and passes through untouched.
+            //
+            // ONE strip is enough at ANY chain depth (`a = b`, `b = c`, `c = uint`), and that is an
+            // invariant rather than a coincidence of the shapes tested: `register_type_alias`
+            // refuses an already-`Alias`-wrapped base, so the alias table never stores a nested
+            // alias and `resolve_alias`/`new_type` can never hand one back. Each link flattens as
+            // it registers — the rule-body registration site strips a single level for the same
+            // reason — so a four-link chain and a one-link chain resolve to the identical
+            // `RustType` here. Pinned by tests/robustness/cbor_ref_alias_chain.cddl.
             token::ControlOperator::CBOR => {
                 let mut target = rust_type_from_type2(types, parent_visitor, &operator.type2, cli);
                 if let ConceptualRustType::Alias(_, inner) = target.conceptual_type {
