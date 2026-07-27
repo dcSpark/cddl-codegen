@@ -167,21 +167,60 @@ for (const [name, body] of Object.entries(sourceDefs)) {
 // one of them fails TS2411 against it. Widen each catch-all to also accept the named property
 // types: the emitted declaration is legal and loses only the disjointness. Recursive, because the
 // combination is just as expressible (and just as uncompilable) on a nested object schema.
+//
+// An OPTIONAL named property needs one member more than its own schema. Under `strictNullChecks`
+// the type checked against the index signature for `a?: T` is `T | undefined`, so the named schemas
+// alone still leave TS2411 on `? foo: uint` beside a rest row. `tsType` is json2ts's escape hatch
+// for emitting a raw TypeScript type verbatim, and is what puts `undefined` in the union. A
+// property counts as optional unless `required` positively lists it, since `required` may be
+// absent, not an array, or name keys that `properties` does not have.
+//
+// The wrap decision must only ever be evaluated on a node that IS a schema. The recursion stays
+// generic (as `rewriteRefs` above is), but two keyword classes are handled by name so that every
+// node it reaches is one. A schema MAP (`properties`, `patternProperties`, `$defs`, `definitions`,
+// `dependentSchemas`, `dependencies`) is entered by its VALUES — the map itself is not a schema, and
+// a consumer whose record has fields literally named `properties` and `patternProperties` would
+// otherwise have that map satisfy the wrap condition and be silently rewritten. A data-bearing
+// keyword (`enum`, `const`, `default`, `examples`) holds instance values, never schemas, so the walk
+// stops there rather than treating an object literal as a schema. Everything else is a schema, an
+// array of schemas, or a primitive that falls out at the top of the recursion — so no
+// schema-position flag is threaded: by construction there is no other way in.
+//
+// The wrap runs AFTER the node's children are walked, so the `anyOf` built here — which holds the
+// very objects `node.properties` holds — is never re-entered. That is what keeps a nested
+// named-beside-pattern property from being wrapped a second time through its parent's catch-all.
+const SCHEMA_MAP_KEYWORDS =
+  ['properties', 'patternProperties', '$defs', 'definitions', 'dependentSchemas', 'dependencies'];
+const DATA_KEYWORDS = ['enum', 'const', 'default', 'examples'];
 const widenPatternCatchAlls = (node) => {
   if (Array.isArray(node)) {
     node.forEach(widenPatternCatchAlls);
     return;
   }
   if (node === null || typeof node !== 'object') return;
-  const named = Object.values(node.properties || {});
-  if (named.length > 0 && node.patternProperties != null) {
-    for (const [pattern, patternSchema] of Object.entries(node.patternProperties)) {
-      node.patternProperties[pattern] = { anyOf: [patternSchema, ...named] };
+  for (const [key, value] of Object.entries(node)) {
+    if (DATA_KEYWORDS.includes(key)) continue;
+    if (SCHEMA_MAP_KEYWORDS.includes(key)) {
+      if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+        Object.values(value).forEach(widenPatternCatchAlls);
+      }
+    } else {
+      widenPatternCatchAlls(value);
     }
   }
-  Object.values(node).forEach(widenPatternCatchAlls);
+  if (node.patternProperties == null) return;
+  const named = Object.entries(node.properties || {});
+  if (named.length === 0) return;
+  const members = named.map(([, schema]) => schema);
+  if (named.some(([key]) => !Array.isArray(node.required) || !node.required.includes(key))) {
+    members.push({ tsType: 'undefined' });
+  }
+  for (const [pattern, patternSchema] of Object.entries(node.patternProperties)) {
+    node.patternProperties[pattern] = { anyOf: [patternSchema, ...members] };
+  }
 };
-widenPatternCatchAlls(defs);
+// `defs` is a map OF schemas, not a schema, so each definition is what enters the walk.
+Object.values(defs).forEach(widenPatternCatchAlls);
 
 const merged = {
   $schema: document.$schema || 'https://json-schema.org/draft/2020-12/schema',
