@@ -1655,6 +1655,26 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   axis the cost grows along — the repetition FACTOR, measurable by whoever next authors a fixture:
   a catalog fixture whose refusal repeats a message THREE or more times (a deeper nest multiplies
   it again), at which point a user cannot tell one refusal from several.
+- **An `--emit-tests` gate that asserts only "the round-trip is green" cannot tell an INTENDED
+  minted value from a wrong one that happens to land in-window.** Proven by the bounded-map-key
+  minter: choosing a `nint` key base in VALUE space emitted that base as a u64 MAGNITUDE, so
+  `{* nint .le -5 => uint}` minted magnitude 18446744073709551611 — wire value about -1.8e19, which
+  SATISFIES `<= -5`, so the emitted round-trip passed. A false green, and the harder half to
+  notice: the sign-mirror `{* nint .ge -5 => uint}` failed loudly on the identical wrong base, so a
+  fixture carrying only ONE sign of the window would have certified the defect in whichever
+  direction it was pointed. The conformance oracle (`--emit-tests-conformance`) cannot see this
+  class either — the minted value is genuinely spec-VALID, merely degenerate — which is why it
+  needs a layer of its own rather than a wider oracle. Meanwhile the working rule, which
+  `tests/emit-tests-bounded-key/` now embodies: an emit-tests fixture for a bounded domain carries
+  BOTH endpoints/signs of the window, and its gate pins the minted SPELLING (compared
+  whitespace-stripped, so rustfmt line-breaking cannot quietly weaken it), not just the round-trip
+  verdict. The mechanical layer is a mint-intent assertion — derive each bounded mint's expected
+  literal from the same `MintValue` the renderer consumes and diff the two — so that no bounded
+  mint can be wrong-but-passing. Trigger, on the axis the cost grows along: the COUNT of
+  minted-value sites whose STORAGE space differs from the CDDL value space, measurable by whoever
+  next adds a bounded mint. Today that count is one (the `N64` magnitude, transformed through
+  `nint_bounds_to_u64`); a SECOND such site means the working rule is being carried by hand in more
+  than one place, and hand-carrying is what produced this instance.
 
 ## Deferred features (build when a real consumer needs them)
 
