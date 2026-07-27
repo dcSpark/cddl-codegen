@@ -315,30 +315,14 @@ are ledgered here (that's what the probe/gate error messages point at).
   `parsing.rs`'s `group_entry_to_type` (`inline group entries are not implemented`). This is a
   distinct inline-group arm
   limitation, tracked as a known PANIC row in `tests/matrix_panic/`.
-- **Panic-class families remaining from the recombination fuzzer's sweeps**
-  (`src/tests/recombination_tests.rs`), each pinned as a `tests/robustness/` row. None of them is
-  cited in the sweep's `KNOWN_PANIC_CLASSES` ledger: the `.cbor` family was surfaced by a TRANSIENT
-  enumeration (a since-skipped vacuous filler shifted the composition indices) that the current
-  enumeration no longer composes, so the robustness rows alone keep it exercised (the ledger's
-  stale-pin guard forbids unobserved entries; a comment beside the ledger records the re-add
-  protocol). The matrix has no containment cells for any of these shapes, which is itself the
-  coverage gap the fuzzer exists to find:
-  - A bare `any` type-choice arm in a NON-LAST position (`a = any / tstr`) is a permanent graceful
-    rejection, listed here so the decision is not re-litigated: a bare `any` accepts every CBOR
-    item, so any arm after it is unreachable dead code
-    ("`any` arm makes later arms unreachable — move it last"). A LAST-position bare `any` arm is
-    supported (forced-backtracking dispatch); a tagged `any` arm (`#6.n(any)`) is not a catch-all and
-    is allowed in any position. Non-last rejection pinned by `tests/robustness/choice_any_arm.cddl`,
-    last-position support by `tests/robustness/choice_last_any_arm.cddl`.
-  - A `.cbor`-over-a-REFERENCE as a type-choice arm (`a = bytes .cbor bar / tstr`) panics "variant
-    ctor refers to undefined ident" in intermediate/structs.rs
-    (`EnumVariant::group_ctor_record_fields`): the
-    variant ctor resolves the arm's synthesized `.cbor` wrapper ident before the alias target
-    registers. Both the reference AND the choice position are required — the inline form
-    (`bytes .cbor uint / tstr`) and the choice-free form (`x = bytes .cbor bar`) take other paths
-    (the latter panics at a distinct, separately-unledgered site in intermediate/mod.rs
-    cross-reference resolution — same family, surfaced by the same probe). Pinned by
-    `tests/robustness/choice_cbor_ref_arm.cddl`.
+- **A bare `any` type-choice arm in a NON-LAST position** (`a = any / tstr`) is a permanent graceful
+  rejection, recorded here so the decision is not re-litigated: a bare `any` accepts every CBOR
+  item, so any arm after it is unreachable dead code
+  ("`any` arm makes later arms unreachable — move it last"). A LAST-position bare `any` arm is
+  supported (forced-backtracking dispatch); a tagged `any` arm (`#6.n(any)`) is not a catch-all and
+  is allowed in any position. Non-last rejection pinned by `tests/robustness/choice_any_arm.cddl`,
+  last-position support by `tests/robustness/choice_last_any_arm.cddl`. The matrix has no
+  containment cell for the shape, which is the coverage gap the fuzzer exists to find.
 - **Six compile/round-trip-class families remaining from the recombination fuzzer's layer-2 sweeps**
   (`recombination_crates_execute`: generation is ok, but the generated crate fails `cargo test`
   under `--emit-tests`, default profile). Generation-outcome catalogs cannot see these, so each

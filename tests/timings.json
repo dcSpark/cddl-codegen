@@ -571,7 +571,17 @@
       "gate": "verify_cache_transparency"
     },
     {
-      "gate": "verify_selftest"
+      "gate": "verify_selftest",
+      "warm_ms": 30,
+      "n": 3,
+      "measured": "2026-07-27",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-07-27",
+          "warm_ms": 30
+        }
+      ]
     },
     {
       "gate": "wasm_matrix_roundtrips",

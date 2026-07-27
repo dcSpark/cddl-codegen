@@ -77,7 +77,20 @@ fn find_references<'a>(cddl_rule: &'a Rule<'a>) -> (&'a Identifier<'a>, Vec<&'a 
 }
 
 fn find_refs_type1<'a>(refs: &mut Vec<&'a Identifier<'a>>, type1: &'a Type1<'a>) {
-    match &type1.type2 {
+    find_refs_type2(refs, &type1.type2);
+    // A CONTROL OPERATOR's right-hand side names types too — `bytes .cbor bar` depends on `bar`
+    // exactly as `[bar]` does. Walking only `type1.type2` left those references out of the rule
+    // graph, so the operator's target could be ordered AFTER its user; the user then resolved the
+    // ident as an unregistered forward reference (a bare `Rust` ident naming no struct), which
+    // panicked downstream on any lookup assuming a struct. Literal-valued operands (`.default 5`,
+    // `.size 4`, ranges) contribute nothing here, so this only adds the edges that were missing.
+    if let Some(operator) = &type1.operator {
+        find_refs_type2(refs, &operator.type2);
+    }
+}
+
+fn find_refs_type2<'a>(refs: &mut Vec<&'a Identifier<'a>>, type2: &'a Type2<'a>) {
+    match type2 {
         Type2::Typename {
             ident,
             generic_args,
