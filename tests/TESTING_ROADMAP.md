@@ -1710,6 +1710,38 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   members that earlier targets do not know — a trap specific to this half, since the json2ts output
   carries no wasm-bindgen surface. Reopening signal: a shipped merged `.d.ts` breaks a consumer's
   build in a way the substring asserts could not see.
+- **Propagating a deliberately-unpublished type's intent to the JSON → TS scripts.** A type whose
+  CDDL rule carries `@no_json_schema_export` still mints a wasm class with `to_json_value(): any`
+  (the directive removes the registration row, not the derives), so when nothing published
+  references it either, `json-ts-types.js` fails on it and the consumer restates the class by hand
+  in `--allow-untyped`. The tool cannot compute that set at GENERATION time, and the reason is the
+  design constraint to build against: whether a rowless type lands in `$defs` is decided by
+  `schemars` at json-gen *runtime*, and a hand-written `JsonSchema` impl can introduce references
+  the IR cannot see — so any generation-time list is an approximation that goes stale in both
+  directions, against a stale-entry check that is a hard error by design. The mechanism worth
+  building instead reports from where BOTH facts are known: have the json-gen crate emit, at
+  `export_schemas()` time, which deliberately-unrowed types ended up absent from the finished
+  document, and have `json-ts-types.js` consume that instead of a hand-maintained flag value. Note
+  the shapes it must cover and the ones it must not: a record, a type or group choice, and a
+  `@newtype` wrapper mint a class declaring the JSON method; an `_CDDL_CODEGEN_EXTERN_TYPE_`, a
+  collection wrapper and a c-style enum do not. Reopening signal: a consumer whose
+  deliberately-unpublished set is large enough that restating it on the script command line is a
+  maintenance burden.
+- **Guarantee `<$defs key>JSON` is the emitted declaration name.** `run-json2ts.js` sets each
+  definition's `title` to `<key>JSON`, but `json-schema-to-typescript` normalizes titles into
+  identifiers, so a key that is not a fixed point of that normalization is published under a name
+  `json-ts-types.js` cannot key on (`Blake2b256` → `Blake2B256JSON`) and its class reads as untyped.
+  The constraint that shapes any fix: post-compile identifier renaming is not available, because it
+  also rewrites matching words inside doc comments and string-literal unions — which is exactly why
+  the script sets titles BEFORE compiling. The candidate design worth recording removes
+  normalization from the contract rather than detecting it: compile with synthetic per-definition
+  titles that are provably normalization fixed points and provably absent from the source document,
+  then map them back to `<key>JSON` in the emitted text. What exists meanwhile is diagnosis only —
+  `json-ts-types.js`'s failure compares modulo normalization and names the declaration that does
+  exist (pinned by `integration_tests::js_d_ts_merge`'s case 2), so the consumer is not told to
+  publish a type they already published; the class is still untyped in the shipped `.d.ts`, and no
+  `--allow-untyped` entry fixes that. Reopening signal: a consumer's type name is not a fixed point
+  of the normalization and its class does expose JSON methods.
 - **A file listing `--json-schema-root` values, instead of one flag per root.** The repeatable flag
   is what shipped, on the grounds that it matches every other repeatable flag and that the asking
   consumer's eight entries do not justify a new file format. A file-listing variant stays purely
