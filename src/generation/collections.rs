@@ -112,11 +112,26 @@ impl GenerationScope {
         {
             if rule_declared {
                 if self.deferred_warned.insert(wrapper_ident.clone()) {
+                    // The message asserts only what this guard checked. `wrapper_placement` is a pure
+                    // function of the constituents' owner set and `--workspace-dep`; it consults no
+                    // inventory of the dependency, so whether the dep exports a class of this name is
+                    // unknown here. It does so only if its OWN spec produces the wrapper or some
+                    // consumer's request sidecar asked it to mint one — and this rule-declared wrapper
+                    // falls through WITHOUT `record_borrowed_wrapper`, so it never enters this
+                    // consumer's `borrowed_collections.rs` and never becomes such a request. The
+                    // type-identity split is therefore the unconditional consequence and the link
+                    // collision the conditional one, phrased like the sibling not-in-index warning
+                    // below ("a dep that later adds it would duplicate-symbol").
                     eprintln!(
                         "warning: rule-declared type {structural_name} shadows the collection wrapper \
                          this crate would otherwise borrow from workspace dependency {dep:?}; the \
-                         authored class will duplicate-symbol against the dep's requested class at \
-                         link. Remedy: rename the rule, or give it a distinct @name."
+                         authored class is minted locally, so this crate's {structural_name} and the \
+                         dependency's are DISTINCT types across the package boundary even though they \
+                         are structurally identical (values cannot be passed between the two packages \
+                         as that type), and if the dependency's wasm crate also exports that name — \
+                         its own spec declaring it, or another consumer's request sidecar having asked \
+                         it to mint one — the two duplicate-symbol at link. Remedy: rename the rule, \
+                         or give it a distinct @name."
                     );
                 }
                 // fall through to the shipped behavior (never a workspace defer)
