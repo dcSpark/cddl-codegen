@@ -624,6 +624,26 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   point-in-time-inventory-claim entry in this section prescribes. Mechanical layer, on a SECOND
   instance: a `check.ts` listing mode that prints the gates a given tier does NOT run, so a
   deferral rationale can enumerate what it is not evidence about instead of asserting a universal.
+- **A ruling whose premise is "gate X stays green" must be probed in the state the ruling CREATES,
+  not the state that precedes it.** This is the scope-the-claim discipline above applied to the
+  ORDER of a probe rather than its breadth, and it is a ruling-protocol rule rather than a quirk of
+  any one gate. Proven instance: an orchestrator approved blessing
+  `tests/matrix_panic/snapshots/catalog.snap` ahead of a `cddl-matrix/verify.ts` re-grounding, on
+  the premise that the snapshot records only the observed generation outcome and encodes no matrix
+  class, so `project_robustness.ts --check` compares directory PLACEMENT and would stay green. That
+  premise was established by running the gate with the snapshot still UNBLESSED — the one state in
+  which the disagreement it checks for cannot exist. The gate ALSO cross-checks the committed
+  catalog against the matrix verdict class (it is the drift class the check was built for, and its
+  own message states the required order: re-run verify.ts, re-project, re-bless), and it is
+  `fast`-tier, so the bless would have turned CI red for fourteen cells. It was found by RUNNING the
+  gate in the post-bless state, not by re-reading it — which is the tell: a pre-change green says
+  nothing about a post-change gate whose input the change is what alters. Standing consequence, now
+  settled: **a catalog bless is the LAST step of a re-grounding, never a step that precedes it.**
+  Authoring rule: a ruling resting on a gate verdict names the STATE the verdict was measured in,
+  and if that state is not the one the ruling produces, the verdict is not evidence for the ruling.
+  Mechanical layer, on a SECOND instance where the pre/post distinction is not visible from the
+  gate's own message: have the drift check name both inputs it compares in its GREEN line, so a
+  reader of a passing run can tell which comparisons actually ran.
 - **Observed-baseline comments beside gate floors rot silently — TWO instances, two homes, two
   distinct rot modes; the floors/consts stay the enforced artifact.** These comments are
   informational and review-maintained by design (replacing them with exact gate-asserted counts
