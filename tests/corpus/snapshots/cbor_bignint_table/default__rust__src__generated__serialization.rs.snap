@@ -45,8 +45,8 @@ impl Deserialize for Holder {
                     cbor_event::Len::Indefinite => true,
                 } {
                     if matches!(payload_len, cbor_event::Len::Indefinite)
-                        && raw.cbor_type()? == cbor_event::Type::Special
-                        && raw.special_break()?
+                        && inner_de.cbor_type()? == cbor_event::Type::Special
+                        && inner_de.special_break()?
                     {
                         break;
                     }
