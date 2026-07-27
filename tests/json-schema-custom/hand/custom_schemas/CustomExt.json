@@ -1,0 +1,8 @@
+{
+  "type": "object",
+  "properties": {
+    "bytes": { "type": "string" },
+    "owner": { "$ref": "#/$defs/OwnThing" }
+  },
+  "required": ["bytes"]
+}

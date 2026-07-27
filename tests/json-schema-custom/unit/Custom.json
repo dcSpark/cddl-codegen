@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "title": "hand-authored",
+  "properties": {
+    "alpha": { "$ref": "#/$defs/Alpha" },
+    "many": {
+      "type": "array",
+      "prefixItems": [{ "$ref": "#/$defs/Alpha" }, { "$ref": "#/$defs/Beta" }]
+    },
+    "bare": { "$ref": "PlutusData" },
+    "remote": { "$ref": "https://example.invalid/schema.json#/$defs/Alpha" },
+    "other_document": { "$ref": "sibling.schema.json#/$defs/Alpha" }
+  }
+}

@@ -1794,15 +1794,15 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   consumer settles: build it when someone's root list is large enough that a command line stops being
   the right place for it. Note what such a file must NOT become — the paths are Rust, not CDDL, and
   routing them through the spec is the category error the flag exists to avoid.
-- **Assert a hand-authored JSON schema against the type's actual serialization.** Supplying a
-  schema body by hand needs no new spec syntax: `@custom_json` suppresses the `serde`/`schemars`
-  derives while the type still gets a registration row, so a hand-written
-  `JsonSchema::json_schema` returning the real body (e.g.
-  `serde_json::from_str(include_str!("…"))`) lands in the document as an ordinary local `$defs`
-  entry through the normal route. The missing half is the one with the value: a hand-written schema
-  drifts from the serialization it claims to describe and nothing notices — the reported consumer
-  failure is a hand-maintained schema that had been wrong in two places for years. The assertion
-  SHAPE already exists, hand-authored per fixture: `tests/json/tests.rs`'s
+- **Assert a hand-authored JSON schema against the type's actual serialization.** Supplying the
+  schema body needs neither new spec syntax nor a hand-written impl: `@custom_json` suppresses the
+  `serde`/`schemars` derives while the type still gets a registration row, and `custom_schema_impl!`
+  writes the `JsonSchema` impl around a JSON file, so an authored body lands in the document as an
+  ordinary local `$defs` entry through the normal route (`docs/docs/comment_dsl.mdx` § Writing the
+  `JsonSchema` impl the directive promises). The missing half is the one with the value: a
+  hand-written schema drifts from the serialization it claims to describe and nothing notices — the
+  reported consumer failure is a hand-maintained schema that had been wrong in two places for years.
+  The assertion SHAPE already exists, hand-authored per fixture: `tests/json/tests.rs`'s
   `schemas_validate_serialization` validates a concrete value of every exported type against
   `schema_for!(T)`, with `schemas_reject_wrong_shapes` as the over-permissive counterpart (a
   degenerate always-true schema passes every positive check). What it needs in order to generalize

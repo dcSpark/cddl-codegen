@@ -1252,6 +1252,12 @@ which the registrar delegates to and which stays public for a row you write by h
 json_schema_gen.rs` in-crate; under `--common-import-override` it is the common crate's, written
 there by [`--export-static-crate`](./command_line_flags) and declared by hand in that crate's root.
 
+That same module carries `custom_schema_impl!` and `custom_schema_body`, which nothing emitted calls:
+they write the `schemars::JsonSchema` impl a hand-authored schema body needs, in the crate that
+DEFINES the type — for a generated type, a hand-owned module of the **rust** crate declared from its
+seed-once `src/lib.rs`, never anywhere under `src/generated/**`. See
+[Comment DSL § Writing the `JsonSchema` impl the directive promises](./comment_dsl#writing-the-jsonschema-impl-the-directive-promises).
+
 
 `--package-json true --json-schema-export true`
 
