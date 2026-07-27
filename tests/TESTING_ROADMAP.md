@@ -1992,6 +1992,20 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
 
 ## Operational watches
 
+- **`lint_doc_citations` crashes rather than reports when a tracked file is deleted but unstaged.**
+  It walks `git ls-files`, which lists a path git still tracks even after the working-tree file is
+  gone, and `readText` is typed `string | null` as though absence were handled while `readFileSync`
+  throws — so the gate dies with a bun stack trace and an ENOENT path instead of a citation verdict.
+  Seen while re-projecting a matrix re-grounding: `project_robustness.ts` moved fifteen fixtures
+  between `tests/matrix_*` directories, and the gate crashed until the moves were staged. Diagnosis
+  only, deliberately not fixed: the recovery is `git add`, the gate is correct once the tree is
+  staged, and it never misreports a verdict — it fails to produce one. The cost is triage time for
+  whoever meets it mid-re-projection and reads an ENOENT on a fixture path as evidence that the
+  re-projection deleted something it should not have. Reopening signal: a second run where the crash
+  is read as a projection defect rather than an unstaged tree, or any use of this gate somewhere a
+  dirty tree is normal (a pre-commit hook), where the crash would be the common case rather than the
+  exception.
+
 - **The extern-interface export is a public interchange format.** Once a consumer regenerates
   against a dep's committed `extern-interface/<dep>/**`, its dialect (header line, marker rows,
   `@rust_name` pins, `; unexported:` records) is cross-crate API: any change to what the emitter
