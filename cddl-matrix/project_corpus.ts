@@ -31,6 +31,9 @@
  * real cddl-crate AST walk (examples/ast_roles.rs) + the matrix's per-cell support verdict, so a construct
  * ➖ as a standalone type still shows its supported member/choice role. The support seam (C) is reported
  * non-fatal — reconciling isolated-probe vs in-context support is its own step.
+ * The AST role floor additionally runs over the WHOLE corpus and is joined against the containment
+ * relation into a rendered role × feature GRID, whose point is the cell the corpus exercises and the
+ * matrix models nothing for — informational (no verdict), enforced against staleness by `coverage_md_diff`.
  */
 import { readFileSync, existsSync } from "node:fs";
 import { featuresIn, rolesIn, NO_DETECTOR } from "./corpus_detect.ts";
@@ -54,6 +57,12 @@ const findings = ov.finding ?? [];
 
 interface Feature { id: string; production: string; profile: string; title: string; desc: string }
 interface Ctl { id: string; name: string; profile: string }
+interface Role { id: string; title: string }
+// A containment row is SHAPE-granular: `role`/`feature` say WHICH (role × feature) cell it sits in,
+// and the rest of the id is a variation suffix naming the concrete shape probed. Always key on the
+// `role`/`feature` FIELDS — a `.`-split of the id mis-keys every varied row
+// (`contain.array-element.type2.tag.fixed_null`, `contain.map-key.memberkey.type1.uint_arrow_multi`).
+interface Contain { id: string; role: string; feature: string; spec: "allowed" | "disallowed" }
 interface Support {
   id: string;
   status: string;
@@ -63,6 +72,8 @@ interface Support {
 const matrix = JSON.parse(readFileSync(`${HERE}/matrix.json`, "utf8")) as {
   features: Feature[];
   control_operators: Ctl[];
+  roles: Role[];
+  containment: Contain[];
   annotations: { cddl_codegen: Support[] };
 };
 const universe = new Set([...matrix.features.map(f => f.id), ...matrix.control_operators.map(c => c.id)]);
@@ -116,12 +127,18 @@ for (const c of featureCovers) {
 // an unreadable file, so batching a typo'd fixture would abort the whole run with a Rust panic
 // before any of the diagnostics below print (the staleB branch was unreachable). A parse failure
 // inside ast_roles is likewise caught and downgraded to a hard staleB row instead of a crash.
-const cellFixtures = [...new Set(cellCovers.map(c => c.fixture))].filter(f => files.includes(f));
+// The batch is the WHOLE corpus, not just the role-keyed cover fixtures: the role × feature grid
+// rendered below needs the floor for every fixture, and check A's per-cell branch reads the same,
+// larger map unchanged. `files` IS the corpus glob, so the "must be a file in tests/corpus/" guard
+// above is satisfied by construction here. Consequence: the cargo run is now UNCONDITIONAL (it was
+// previously skipped when the overlay carried no role-keyed cover). That costs ~0.05 s on a warm
+// build — the batch is one `cargo run --example ast_roles` over all fixtures either way.
+const floorFixtures = files;
 let cellFloor = new Map<string, Set<string>>();
 let cellFloorFailed = false;
-if (cellFixtures.length) {
+if (floorFixtures.length) {
   try {
-    cellFloor = rolesIn(cellFixtures);
+    cellFloor = rolesIn(floorFixtures);
   } catch (e) {
     cellFloorFailed = true;
     staleB.push(`AST role floor failed — per-cell content drift (check A) could not be verified: ${String(e).split("\n")[0]}`);
@@ -150,6 +167,96 @@ for (const c of cellCovers) {
   if (!cellCoversById.has(c.id)) cellCoversById.set(c.id, []);
   cellCoversById.get(c.id)!.push({ role, fixture: c.fixture, note: c.note });
 }
+
+// --- the role × feature grid: join the whole-corpus AST role floor against the containment relation ---
+//
+// THE GRANULARITY TRAP — the single most likely wrong turn here, so it is stated at the site AND in
+// the rendered legend. The two sides of this join are at DIFFERENT granularities:
+//   - the floor is FEATURE-granular: it records "an array appears in array-element role", nothing more;
+//   - a containment row is SHAPE-granular: `contain.array-element.type2.array`'s example is
+//     `a = [[int]]` — an ANONYMOUS INLINE array — and that shape is `unsupported`.
+// The corpus exercises `type2.array@role.array-element` in 5 fixtures and every corpus fixture compiles
+// under all three profiles (`integration_tests::feature_corpus_compiles`), because those fixtures use a
+// NAMED rule reference — a different shape. So a cross-check of "the corpus exercises this cell" against
+// "the matrix says this cell is unsupported" is INVALID and must never be built: it is not a
+// contradiction, it is two different shapes. Many such pairs exist today
+// (`type2.array@role.choice-member`, 10 fixtures; `type2.map@role.array-element`, 2 fixtures; …).
+// What the grid DOES say is one thing the join can support: a cell the corpus exercises and the
+// containment relation has NO row for is a cell nothing has an opinion about.
+const cellKeyOf = (feature: string, role: string) => `${feature}@${role}`;
+const floorCells = new Map<string, string[]>();      // cell -> fixtures exercising it
+for (const [f, cells] of cellFloor) for (const c of cells) {
+  if (!floorCells.has(c)) floorCells.set(c, []);
+  floorCells.get(c)!.push(f);
+}
+const modelledCells = new Map<string, Contain[]>();  // cell -> the containment rows sitting at it
+for (const c of matrix.containment) {
+  const k = cellKeyOf(c.feature, c.role);
+  if (!modelledCells.has(k)) modelledCells.set(k, []);
+  modelledCells.get(k)!.push(c);
+}
+// A base cell can hold SEVERAL variation rows with different verdicts — that is normal, not drift
+// (`memberkey.type1@role.map-key` holds 11 rows, 4 supported / 7 unsupported), so the cell mark
+// summarises them. `spec = "disallowed"` rows are DELIBERATELY never support-probed (verify.ts only
+// probes where the nesting is spec-valid), so their missing support row is not an ungrounded cell and
+// must not render `?` — a permanent "not yet" would be a false claim. `?` is reserved for a
+// spec-ALLOWED row awaiting its grounding verify.ts run.
+const GRID = {
+  supported: "✅",      // modelled; every probed row supported
+  unsupported: "➖",    // modelled; every probed row unsupported / out_of_profile
+  mixed: "◐",           // modelled; probed rows disagree (a shape boundary inside one cell)
+  ungrounded: "?",      // modelled; a spec-allowed row has no support row yet
+  illegal: "✗",         // modelled ONLY as spec-disallowed — the grammar forbids this nesting
+  exercised: "·",       // NOT modelled, yet ≥1 corpus fixture exercises it
+  blank: "",            // neither modelled nor exercised — nothing here has an opinion
+} as const;
+interface GridRow { spec: "allowed" | "disallowed"; status: string | undefined }
+// Pure so the mark table is checkable without a matrix: `gridMarkSelfCheck` below pins every branch,
+// including the two the CURRENT matrix cannot reach (no ungrounded spec-allowed row exists today, so
+// `?` would otherwise be untested dead code in a fast-tier gate's render).
+function markForRows(rows: readonly GridRow[], exercised: boolean): string {
+  if (!rows.length) return exercised ? GRID.exercised : GRID.blank;
+  if (rows.some(r => r.spec === "allowed" && r.status === undefined)) return GRID.ungrounded;
+  const probed = rows.map(r => r.status).filter((s): s is string => s !== undefined);
+  if (!probed.length) return GRID.illegal;
+  const ok = probed.filter(s => s === "supported").length;
+  return ok === probed.length ? GRID.supported : ok === 0 ? GRID.unsupported : GRID.mixed;
+}
+function gridMarkSelfCheck() {
+  const R = (spec: GridRow["spec"], status: string | undefined): GridRow => ({ spec, status });
+  const cases: [string, GridRow[], boolean, string][] = [
+    ["neither modelled nor exercised", [], false, GRID.blank],
+    ["exercised, nothing models it", [], true, GRID.exercised],
+    ["all probed shapes supported", [R("allowed", "supported"), R("allowed", "supported")], true, GRID.supported],
+    ["all probed shapes unsupported", [R("allowed", "unsupported")], false, GRID.unsupported],
+    ["out_of_profile counts as not-supported", [R("allowed", "out_of_profile")], false, GRID.unsupported],
+    ["probed shapes disagree", [R("allowed", "supported"), R("allowed", "unsupported")], false, GRID.mixed],
+    // An ungrounded spec-allowed row OUTRANKS its probed siblings: a cell awaiting its verify.ts
+    // grounding run must say so, not be averaged into a verdict it has not earned.
+    ["ungrounded row outranks probed siblings", [R("allowed", undefined), R("allowed", "supported")], false, GRID.ungrounded],
+    // A spec-DISALLOWED row is never support-probed BY DESIGN (verify.ts probes only spec-valid
+    // nestings), so its absent support row is not "not yet" — rendering `?` would be a permanent
+    // false claim about a cell that will never be probed.
+    ["disallowed-only cell is not ungrounded", [R("disallowed", undefined)], false, GRID.illegal],
+    ["a disallowed sibling does not mask a probed verdict", [R("disallowed", undefined), R("allowed", "supported")], false, GRID.supported],
+  ];
+  for (const [name, rows, exercised, want] of cases) {
+    const got = markForRows(rows, exercised);
+    if (got !== want) throw new Error(`project_corpus.ts gridMark self-check '${name}': expected '${want}', got '${got}'`);
+  }
+}
+gridMarkSelfCheck();
+const gridMark = (cell: string): string =>
+  markForRows((modelledCells.get(cell) ?? []).map(r => ({ spec: r.spec, status: supportById.get(r.id) })), floorCells.has(cell));
+const gridExercisedUnmodelled = [...floorCells.keys()].filter(k => !modelledCells.has(k)).sort();
+const gridExercisedModelled = [...floorCells.keys()].filter(k => modelledCells.has(k)).sort();
+const gridModelledUnexercised = [...modelledCells.keys()].filter(k => !floorCells.has(k)).sort();
+// Rows: every construct id modelled in ≥1 role OR exercised in ≥1 role. An id that is neither would
+// render an all-blank row, so it is omitted rather than padding the grid with 50 empty lines.
+const gridFeatureIds = [...new Set([
+  ...[...floorCells.keys()].map(k => k.slice(0, k.lastIndexOf("@"))),
+  ...matrix.containment.map(c => c.feature),
+])].sort();
 
 // D: floor completeness — a SUPPORTED construct the corpus exercises must have a canonical fixture.
 // Detected-but-unsupported ids are exempt: they appear incidentally (e.g. a fixed value as a struct
@@ -332,6 +439,22 @@ w(`   resolve case-by-case: fix the example if it's a degenerate form (the const
 w(`   ➖ + a note and drop the cover if it's a genuine gap (don't relabel it ✅ by editing the example):`);
 for (const s of seamC.sort((a, b) => (a.id < b.id ? -1 : 1))) w(`   - ${s.id}  (matrix: ${s.status})`);
 
+// Informational, like C above and for the same reason: it bears no verdict, so it is deliberately NOT
+// in CHECKS (the registry's invariant is that every member decides the gate). A hard check here would
+// need a ~146-entry exemption ledger encoding an editorial judgement — `containment/array-element.toml`
+// omits trivial primitive-as-element cells ON PURPOSE ("only the structurally interesting (composite /
+// choice / unwrap / group) cells are recorded") — which is worse than the gap it would close. The real
+// enforcement is the rendered grid plus the `coverage_md_diff` gate: a new fixture that exercises a new
+// cell changes COVERAGE.md and the fast tier goes red until someone regenerates and reads the diff.
+w();
+w(`ℹ️  ROLE × FEATURE GRID (${gridExercisedUnmodelled.length}) — cells the corpus EXERCISES that the containment`);
+w(`   relation models nothing for. Not a failure: many are trivial primitive-in-role cells the relation omits`);
+w(`   by design. It IS the list to read before assuming a nesting is covered — for each, either author a`);
+w(`   containment row (\`cddl-matrix/containment/<role>.toml\`) or accept the omission as trivial. Rendered as`);
+w(`   \`${GRID.exercised}\` in COVERAGE.md § "Role × feature containment grid":`);
+for (const k of gridExercisedUnmodelled) w(`   - ${k}  (${floorCells.get(k)!.length} fixture${floorCells.get(k)!.length === 1 ? "" : "s"})`);
+w(`   (${gridExercisedModelled.length} exercised cells ARE modelled; ${gridModelledUnexercised.length} modelled cells the corpus does not exercise.)`);
+
 // ============================================================================================
 // RENDER — join the validated overlay onto the matrix and write the COVERAGE doc (golden_hex shape).
 // Sections are derived: profile (spec-first) -> production (alpha) -> id (alpha). No authored layout.
@@ -480,6 +603,52 @@ for (const c of [...matrix.control_operators].sort((a, b) => (a.id < b.id ? -1 :
 }
 o();
 
+// --- role × feature containment grid: the whole-corpus AST role floor joined onto the containment
+//     relation. Placed between the control-op table and the findings so the doc reads
+//     features -> control ops -> containment -> findings. ---
+o("## Role × feature containment grid");
+o();
+o("> Every construct the corpus exercises in ≥1 role, or the containment relation models in ≥1 role.");
+o("> Columns are the `role` axis in **grammar order** (`cddl-matrix/roles.toml`, mirrored into");
+o("> `matrix.json` `roles`) — top-level outward through the nesting positions. That order is derived, not");
+o("> alphabetical; do not \"fix\" it to a sort.");
+o();
+o("| mark | meaning |");
+o("|------|---------|");
+o(`| ${GRID.supported} | the matrix models this cell and every probed shape in it is **supported** |`);
+o(`| ${GRID.unsupported} | the matrix models this cell and every probed shape in it is **not supported** |`);
+o(`| ${GRID.mixed} | the matrix models this cell and the probed shapes **disagree** — a support boundary *inside* the cell |`);
+o(`| ${GRID.ungrounded} | the matrix models this cell but a spec-allowed row has **no support verdict yet** (awaiting a \`verify.ts\` grounding run) |`);
+o(`| ${GRID.illegal} | the matrix models this cell only as **spec-disallowed** — the grammar forbids the nesting, so it is never support-probed |`);
+o(`| ${GRID.exercised} | **the corpus exercises this cell and the matrix models nothing here** — no row, so no verdict |`);
+o("| _(blank)_ | neither modelled nor exercised |");
+o();
+o("The grid's denominator is \"cells the matrix models, plus cells this corpus exercises\". A blank cell is");
+o("**not** a claim that the nesting is illegal or unsupported — it is a claim that nothing here has an");
+o("opinion about it.");
+o();
+o("**Do not read a `·` next to a `➖` sibling as a contradiction, and do not cross-check the two axes.**");
+o("The floor is FEATURE-granular (\"an array appears in array-element role\"); a containment row is");
+o("SHAPE-granular (`contain.array-element.type2.array`'s example is `a = [[int]]`, an *anonymous inline*");
+o("array, which is `unsupported`). The corpus exercises `type2.array` as an array element in 5 fixtures and");
+o("every corpus fixture compiles under all three profiles (`integration_tests::feature_corpus_compiles`) —");
+o("because those fixtures use a *named rule reference*, a different shape. A cell being exercised by the");
+o("corpus and marked unsupported by the matrix is therefore two different shapes, never a contradiction.");
+o();
+{
+  const roles = matrix.roles;
+  o(`| construct | ${roles.map(r => `${r.title} \`${r.id.replace(/^role\./, "")}\``).join(" | ")} |`);
+  o(`|---|${roles.map(() => "---").join("|")}|`);
+  for (const id of gridFeatureIds)
+    o(`| \`${id}\` | ${roles.map(r => gridMark(cellKeyOf(id, r.id))).join(" | ")} |`);
+  o();
+  o(`- Modelled \`(role × feature)\` cells: **${modelledCells.size}** (over ${matrix.containment.length} shape-granular containment rows).`);
+  o(`- Exercised by the corpus **and** modelled: **${gridExercisedModelled.length}**.`);
+  o(`- Exercised by the corpus, modelled by **nothing**: **${gridExercisedUnmodelled.length}** (the \`${GRID.exercised}\` cells).`);
+  o(`- Modelled but not exercised by any corpus fixture: **${gridModelledUnexercised.length}**.`);
+  o();
+}
+
 // --- doc-level findings (narrative) ---
 o("## Notable findings");
 o();
@@ -501,8 +670,9 @@ o("(`cddl-matrix/examples/ast_roles.rs`) and cross-checked against the matrix's 
 o("➖ standalone type still surfaces its supported member/choice role (e.g. `prelude.null` ➖ as a top-level");
 o(`type, ✅ as a choice-member). **${cellCovers.length} such cells** are mapped (appended as "also ✅ @role" on the`);
 o("rows above); constructs whose support doesn't vary by role stay feature-axis (the role is unremarkably");
-o("top-level). A full role × feature coverage grid for *every* construct is future work — the floor data");
-o("(`rolesIn`) already supports it.");
+o("top-level). The full role × feature picture — every construct the corpus exercises or the containment");
+o("relation models, in every role — is rendered above in **§ Role × feature containment grid**, joined from");
+o("the whole-corpus floor; that is where a cell nothing models shows up.");
 if (unexplained.length) {
   o();
   o(`**Overlay rationale gap (disclosed).** ${unexplained.length} unsupported feature(s) render ➖ with no rationale note —`);

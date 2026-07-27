@@ -425,7 +425,12 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   `examples/ast_roles.rs` hand-walks via the crate's `Visitor` trait instead. Role-detection only
   needs the crate to PARSE (soft caveat) — which it does for the whole corpus by construction.
   `project_corpus.ts` verifies a role-keyed `[[cover]]` against the AST role floor AND the per-cell
-  support verdict (check H), so it can't claim ✅ on an unsupported cell.
+  support verdict (check H), so it can't claim ✅ on an unsupported cell. The same floor is taken over
+  the WHOLE corpus and joined onto the containment relation into `tests/corpus/COVERAGE.md`
+  § "Role × feature containment grid" — whose point is the `·` cell: one the corpus exercises and no
+  containment row models. The two sides are at different granularities (the floor is feature-granular,
+  a containment row is shape-granular), so the grid reports both and deliberately cross-checks
+  neither; the grid is informational and kept honest by the `coverage_md_diff` gate, not by a verdict.
 - **Failure-claim findings must carry a resolvable pin (check I).** A corpus-overlay `[[finding]]`
   that states a defect ("Bug —"/"Gap —" or "Candidate cddl-codegen fix") must name at least one
   backtick-quoted tracking artifact that resolves against the tree (a `tests/…` file or a
