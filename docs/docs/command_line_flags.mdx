@@ -364,6 +364,8 @@ What it buys, and why `--json-schema-root` is not a substitute: with **one docum
 
 **Dep calls come first.** They are emitted before the name ledger, before every spec-derived row, and before every `--json-schema-root` row, in **flag order** (never sorted — the flag list is an input, and sorting would rewrite it). This is the deliberate mirror of why CLI roots come last: a dependency's published names are already shipped in the dependency's own package, so on a cross-crate name collision it is **your** row that should be renamed, and registering the dependency first is what makes the injectivity guard blame it (see the cross-crate bound under `--json-schema-export` above).
 
+**Regeneration order does not matter here; currency does.** The emitted line is built from the flag value alone and reads nothing of the dependency, so there is no ordering obligation — regenerate the two crates in either order, including a consumer-before-dependency order some other flag forces on you. What there is instead is a completeness property: **a consumer's document is only as current as its dependency's last regeneration.** The row set arrives as compiled code, so a dependency whose json-gen crate is stale contributes its stale rows silently and the consumer's build is green either way. This is deliberately unlike `--extern-import` and `--extern-wrapper-index`, whose "regenerate the dependency first" discipline exists because there the consumer's pass reads a file the dependency's pass wrote.
+
 Three further behaviours worth stating outright:
 
 - Requires `--json-schema-export`; without it there is no json-gen crate and no `add_schemas` for the call to land in, so the combination is rejected up front.
