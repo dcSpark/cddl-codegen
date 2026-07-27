@@ -32,7 +32,7 @@ Every cddl-codegen regeneration emits an `extern-interface/<dep>/**` directory (
 
 ```bash
 cddl-codegen --input=cml_chain.cddl --output=export --lib-name=cml-chain \
-  --extern-import=cml_core=../cml-core/rust/extern-interface/cml_core
+  --extern-import=cml_core=../cml-core/extern-interface/cml_core
 ```
 
 The imported rules land in the same non-exported `<dep>` scope a physical stub tree would, after which the entire extern-deps pathway is unchanged. Three properties are worth knowing:

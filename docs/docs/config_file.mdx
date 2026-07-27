@@ -161,7 +161,7 @@ input = "specs/ext.cddl"
 output = "gen/ext"
 
 [crates.my-extension.extern-import]
-upstream_core = "../upstream-core/rust/extern-interface/upstream_core"
+upstream_core = "../upstream-core/extern-interface/upstream_core"
 
 [crates.my-extension.extern-wasm-crate]
 upstream_core = "upstream_core_wasm"
@@ -171,6 +171,112 @@ upstream_core = "upstream_core_wasm"
 Everything after a `[crates.<name>.<sub-table>]` header belongs to the sub-table, not to the crate.
 Write a crate's plain keys first and its sub-tables last, or the plain keys land in the wrong place.
 :::
+
+## Dependencies between crates
+
+The sub-tables above are how you name a dependency the config does **not** contain. When both crates
+are in one config, `deps` names the edge and every `<name>=<path>` pair is derived from it:
+
+```toml
+[defaults]
+preserve-encodings = true
+
+[crates.core]
+input = "specs/core"                 # a directory input works per-crate
+output = "gen/core"
+
+[crates.ledger]
+input = "specs/ledger.cddl"
+output = "gen/ledger"
+deps = ["core"]
+
+[crates.governance]
+input = "specs/governance.cddl"
+output = "gen/governance"
+deps = ["core"]
+```
+
+Every value the edge expands to is one the config already holds, which is the point: hand-maintaining
+the pairs means two invocations that must agree about a third crate's `output` and `lib-name`, and
+nothing checks that they do.
+
+On the **consumer** (`ledger`), from the dependency's own entry:
+
+| derived flag | where the value comes from |
+|---|---|
+| `--extern-import core=gen/core/extern-interface/core` | the dependency's `output`, plus its `lib-name` — which is both the directory its export lands in and the crate name the generated `use` line carries |
+| `--extern-wasm-crate core=core_wasm` | the dependency's `lib-name` |
+| `--extern-wrapper-index core=gen/core/wasm/src/generated/collections.rs` | the dependency's `output` |
+| `--workspace-dep core` | being in this config is what "co-generated workspace member" means |
+
+On the **dependency** (`core`), one pair per consumer, in consumer order:
+
+| derived flag | where the value comes from |
+|---|---|
+| `--wrapper-requests ledger=gen/ledger/wasm/src/generated/borrowed_collections.rs` | the consumer's `output` |
+| `--key-requests ledger=gen/ledger/rust/src/generated/borrowed_key_types.rs` | the consumer's `output` |
+
+Two things vary the paths, and both are read from the *other* crate's own settings rather than
+assumed:
+
+- **`wasm = false` on the dependency** derives `--extern-import` and nothing else. The other three are
+  all about a wasm face it does not have — and `--workspace-dep` is not merely pointless without one,
+  it is a hard error without an `--extern-wasm-crate` mapping. The reverse edges go with them, since
+  the sidecars a consumer emits exist only because it has a workspace dependency to record. (A
+  `wasm = false` *consumer* still gets `--key-requests`: that sidecar is a rust-crate concern and is
+  written in either mode.)
+- **`package-json = true`** moves a crate's cargo crates one level down, to
+  `<output>/rust/rust` and `<output>/rust/wasm`, leaving the output root to the npm package. Every
+  derived path *into* a crate follows that layout. The `extern-interface/` export does **not** move:
+  it is emitted in every mode, rust-only included, as a sibling of the crate directories.
+
+A hand-written sub-table entry for the same key always wins, silently — an explicit value is you
+overriding the sugar for a case it does not cover, not a conflict. Only the key it names is
+overridden; the rest of the edge still derives.
+
+`deps` is per-crate only. A shared edge is not a graph: it would make every crate depend on every
+crate named, itself included.
+
+### Generation order, and which edge is one run stale
+
+Generation order is a **topological sort over `deps`, dependencies first**, ties broken by crate name
+so the order is total and reproducible. A cycle is a hard error that names it (`a → b → c → a`), as
+are a `deps` entry naming an unknown crate, a crate naming itself, and a name listed twice.
+
+That order settles a genuine conflict rather than a technicality. The two edge kinds want opposite
+orders:
+
+- `--extern-import` / `--extern-wrapper-index` want the **dependency** generated first — the consumer
+  reads files the dependency writes;
+- `--wrapper-requests` / `--key-requests` want the **consumer** generated first — the dependency reads
+  sidecars the consumer writes.
+
+No single pass satisfies both. Dependencies-first is chosen, so the reverse edges read each consumer's
+**committed** sidecar, exactly as [their own documentation](command_line_flags.mdx) specifies. A run
+that *changes* a sidecar therefore leaves that dependency one run behind — and says so:
+
+```
+warning: a sidecar changed during this run, so `core` generated against a stale one (it is one run
+behind). … Re-run `cddl-codegen --config codegen.toml` to converge.
+```
+
+Run it again and the warning goes away. There is no automatic re-run: a loop needs a divergence bound
+and muddies "run twice = run once = clean run", where the warning makes the two-run case explicit.
+
+:::note Migrating from a script that runs consumers first
+A hand-written `codegen.sh` may well run its crates in the *other* order — consumers before
+dependencies — and accept staleness on the `--extern-import` side instead. Converting it to a config
+flips which of your two edges is the stale one. Nothing is lost: the first run after the flip prints
+the convergence warning, and a second run converges. A brand-new workspace also takes two runs, since
+the sidecars a dependency reads do not exist until its consumers have generated once — a run with no
+sidecar to read says so on stderr and treats the consumer as borrowing nothing.
+:::
+
+Selecting a subset does **not** pull in its dependencies. The unselected dependency's committed output
+is trusted exactly as a dependency in another repository's is, which is the same contract the
+cross-crate flags already document; the selected crate still carries the full derived edge, which is
+what makes that committed output reachable. If it was never generated, the flags' own error names the
+missing path.
 
 ## Paths resolve against the config file
 
