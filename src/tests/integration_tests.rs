@@ -18106,7 +18106,11 @@ fn export_static_crate_writes_composed_runtime_and_manifest() {
 ///      the CML cascade) gets the notice naming `pub mod ordered_set;`;
 ///   2. immediate re-export — nothing is new, so NO notice fires;
 ///   3. a deleted-then-reintroduced file (a version-bump's incremental case) — the notice fires again
-///      for exactly that file and no other.
+///      for exactly that file and no other;
+///   4. a FLAG-introduced file — adding `--json-schema-export` to an otherwise-identical command line
+///      brings `json_schema_gen.rs` into the exported set, and the consumer learns the `pub mod
+///      json_schema_gen;` they now owe from this notice and nowhere else (nothing else the tool
+///      writes mentions it), with no notice for the files that were already there.
 #[test]
 fn export_static_crate_warns_on_new_files_only() {
     let root = std::env::temp_dir().join(format!(
@@ -18120,17 +18124,19 @@ fn export_static_crate_warns_on_new_files_only() {
     let out = root.join("crate");
     let runtime_crate = root.join("exported-runtime");
 
-    let export = || -> String {
-        let run = codegen_cmd()
-            .arg(format!("--input={}", input.to_str().unwrap()))
+    let export_with = |extra: &[&str]| -> String {
+        let mut cmd = codegen_cmd();
+        cmd.arg(format!("--input={}", input.to_str().unwrap()))
             .arg(format!("--output={}", out.to_str().unwrap()))
             .arg("--wasm=false")
             .arg(format!(
                 "--export-static-crate={}",
                 runtime_crate.to_str().unwrap()
-            ))
-            .output()
-            .unwrap();
+            ));
+        for arg in extra {
+            cmd.arg(arg);
+        }
+        let run = cmd.output().unwrap();
         assert!(
             run.status.success(),
             "generation failed:\n{}",
@@ -18138,6 +18144,7 @@ fn export_static_crate_warns_on_new_files_only() {
         );
         String::from_utf8_lossy(&run.stderr).into_owned()
     };
+    let export = || export_with(&[]);
 
     // 1. First export: ordered_set.rs is new — the notice names its `pub mod` line and the cascade.
     let stderr1 = export();
@@ -18174,6 +18181,23 @@ fn export_static_crate_warns_on_new_files_only() {
     assert!(
         !stderr3.contains("NEW static file error.rs"),
         "a still-present runtime file must NOT be warned about:\n{stderr3}"
+    );
+
+    // 4. Turning on `--json-schema-export` brings a file into the set that no earlier run wrote, so
+    //    the notice fires for it and for nothing else. This is the whole channel by which a consumer
+    //    learns they owe `pub mod json_schema_gen;` — and the prerequisite for the hand feature-gating
+    //    recipe in `--export-static-crate`'s docs, which starts from that declaration being theirs.
+    let stderr4 = export_with(&["--json-schema-export=true"]);
+    assert!(
+        stderr4.contains("NEW static file json_schema_gen.rs")
+            && stderr4.contains("declare `pub mod json_schema_gen;`"),
+        "enabling --json-schema-export must warn that json_schema_gen.rs needs a \
+         `pub mod json_schema_gen;` declaration:\n{stderr4}"
+    );
+    assert!(
+        stderr4.matches("NEW static file").count() == 1,
+        "only the flag-introduced file is new — every other runtime file was already \
+         written:\n{stderr4}"
     );
 
     let _ = std::fs::remove_dir_all(&root);
