@@ -819,8 +819,10 @@ fn config_expansion_generates_byte_identical_output_to_the_flag_invocation() {
 /// - `input` / `output` / `lib-name` are `Cli` fields but live on the per-crate entry rather than on
 ///   `Settings`, because a shared value for any of them would point every crate at one spec, one
 ///   directory, or one library. They are checked as present-on-the-crate-entry instead.
-/// - `profiles` is a config key with no `Cli` field: it selects which shared layers a crate applies,
-///   which is the config's own structure and has no flag equivalent by construction.
+/// - `profiles` and `deps` are config keys with no `Cli` field: one selects which shared layers a
+///   crate applies, the other declares an edge to another crate. Both are the config's own
+///   structure — they have no flag equivalent by construction, and neither is on `Settings`, so
+///   neither reaches `config_keys` in the first place.
 /// - `--config` itself is on `ConfigCli`, not `Cli`, so it needs no exclusion — it is not a
 ///   generation flag and cannot be set from inside a config file.
 #[test]
@@ -874,8 +876,8 @@ fn config_keys_match_cli_fields() {
     if let Some(extra) = config_keys.difference(&cli_keys).next() {
         panic!(
             "config key `{extra}` has no `Cli` field — no knob may exist only in the config. Either \
-             add the flag to `Cli` or remove the key. (`profiles` is the one structural key and is \
-             excluded here by construction, not by this list.)"
+             add the flag to `Cli` or remove the key. (`profiles` and `deps` are the structural keys \
+             and are excluded here by construction, not by this list.)"
         );
     }
 }
@@ -886,7 +888,7 @@ fn config_keys_match_cli_fields() {
 fn per_crate_keys_are_absent_from_the_shared_settings_struct() {
     let settings = Settings::default();
     let rendered = format!("{settings:?}");
-    for key in ["input", "output", "lib_name", "profiles"] {
+    for key in ["input", "output", "lib_name", "profiles", "deps"] {
         assert!(
             !rendered.contains(&format!("{key}:")),
             "`{key}` must not be a `Settings` field — it would become settable in [defaults]"
