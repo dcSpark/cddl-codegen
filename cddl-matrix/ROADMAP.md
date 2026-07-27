@@ -377,6 +377,25 @@ are ledgered here (that's what the probe/gate error messages point at).
   `bytes .cbor {h}` without parentheses, so a self-composition spells
   `bytes .cbor bytes .cbor uint`, which fails to PARSE and therefore never reaches the execution
   layer — the shape is invisible to the fuzzer by construction.
+- **Make a `bytes .cbor <c-style enum>` payload under `--preserve-encodings` either generate or
+  refuse.** The shape compiles and round-trips under the default profile (pinned by
+  `cbor_payload_leaves` in `tests/core/tests.rs`), but adding `--preserve-encodings` emits a crate
+  rustc rejects. A c-style enum has no `Deserialize` impl of its own, so its try-each-variant
+  sequence is inlined at the use site and reuses the enclosing `final_exprs` as the `Ok(..)` match
+  pattern of its variant dispatch; the `.cbor` arm has pushed a value EXPRESSION
+  (`StringEncoding::from(<var>_bytes_encoding)`) into those exprs, so the emitted arm reads
+  `Ok((StringEncoding::from(<var>_bytes_encoding), <var>_encoding)) => …` — a call in pattern
+  position. The two roles `final_exprs` serves — a constructor argument and a destructuring
+  pattern — have diverged, and only the encoding-carrying `.cbor` arm makes them differ. As with the
+  nested `.cbor` entry above the outcome is a hard compile break, so a graceful generation-time
+  refusal is the acceptable intermediate: the tool must not emit a crate that cannot build.
+  **Reopening signal:** a consumer who needs `--preserve-encodings` (they must re-emit received
+  bytes unchanged — a ledger or consensus format, not one they may re-encode freely) holds a spec
+  containing one or more `bytes .cbor` members whose payload type is a choice of literal values.
+  Both halves are a `grep` over a spec and a flag they already have, and the count of such members
+  is the size of the hand-written serialization they would maintain beside the generated crate. The
+  profile is why this sat unseen: `tests/core` is default-profile on both of its gates and in the
+  snapshot registry, so no committed vehicle generates this shape under `--preserve-encodings`.
 - **Give the array-rep group-choice arm's anonymous map a graceful refusal or real support.**
   `contain.group-choice-arm.type2.map.array` (`t = [ {a: int, b: uint} // tstr ]`) is valid CDDL
   that aborts in `parsing.rs` at the `TODO: non-table types as types` site — the
