@@ -73,6 +73,20 @@ semver = "1.0"
 # Cargo.toml changeset model in `cargo_manifest.rs`: untouched keys/comments/formatting of a
 # user-edited manifest survive regeneration byte-for-byte. `default-features` keeps `parse`+`display`.
 toml_edit = "0.25"
+# Deserializes the `--config` TOML file (`config.rs`). A READ-ONLY, value-model parser is the right
+# tool here and `toml_edit` (above) is not: that one exists to EDIT a user's manifest in place,
+# preserving their formatting; a config file is an input the tool only ever reads, so the serde data
+# model is what it wants. Pinned to the 1.x line because that lineage shares `toml_datetime`/
+# `toml_parser`/`toml_writer` with `toml_edit` 0.25 — the 0.8 line would drag a second `toml_edit`
+# major into the graph for nothing. Also navigated as `toml::Value` by the harness-side corpus
+# readers (`decode_conformance_replay`, the cddl-matrix annotation gates).
+toml = "1.1"
+# Derives the `config.rs` schema (`deny_unknown_fields` is what turns a typoed config key into the
+# hard error a misspelled CLI flag already is). Generated crates get this same dep under
+# `--json-serde-derives` (cargo_manifest.rs); already in-tree transitively, so no lockfile weight.
+# Also needed harness-side by the `any_cbor_tests` json shim, which `include!`s
+# `static/any_cbor_json.rs` (manual serde impls + `#[serde(untagged)]`).
+serde = { version = "1", features = ["derive"] }
 # default-features=false to drop the optional `regex` dep; `real-sys` (the actual lookup impl) is
 # off by default in which 8, so enable it explicitly.
 which = { version = "8", optional = true, default-features = false, features = ["real-sys"] }
@@ -88,21 +102,12 @@ insta = "1.48"
 ciborium = "0.2"
 # `half` gates the `decode::Tokenizer` + `data::Token` stream API the differential drives.
 minicbor = { version = "0.26", features = ["half"] }
-# Harness-side ONLY (never a generated-crate dep): `decode_conformance_replay` parses the committed
-# `tests/decode_conformance/catalog.toml` corpus (same class as ciborium/minicbor above). Navigated
-# via `toml::Value` — no serde derives of our own.
-toml = "0.8"
 # Harness-side ONLY (never a generated-crate dep): `recombination_tests` parses the projected
 # `tests/recomb/ingredients.json` (cddl-matrix/project_recombination.ts). Already in-tree
 # transitively (via the `cddl` validator), so this adds no lockfile weight. Navigated via
 # `serde_json::Value` — no serde derives of our own. Also drives the `any_cbor_tests` json shim,
 # which compiles the shipped `static/any_cbor_json.rs` fragment to pin the JSON round-trip laws.
 serde_json = "1"
-# Harness-side ONLY (never a generated-crate dep): the `any_cbor_tests` json shim `include!`s
-# `static/any_cbor_json.rs`, whose manual serde impls reference `serde` (traits) + `#[serde(untagged)]`
-# derive. Generated crates get this same dep under `--json-serde-derives` (cargo_manifest.rs); it is
-# already in-tree transitively (via serde_json), so this adds no lockfile weight.
-serde = { version = "1", features = ["derive"] }
 # Harness-side ONLY (never a generated-crate dep): the `json_schema_gen_tests` shim `include!`s
 # `static/json_schema_gen.rs`, whose `add_schema` row registrar is written against the `schemars`
 # generator API. Compiling it here is what puts the shipped helper under `cargo clippy --all-targets`

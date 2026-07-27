@@ -3,6 +3,7 @@ pub mod cargo_manifest;
 pub mod cli;
 pub mod comment_ast;
 pub mod comment_preserve;
+pub mod config;
 pub mod dep_graph;
 pub mod emit_tests;
 pub mod emit_tests_wasm;

@@ -5,6 +5,11 @@ sidebar_position: 3
 
 # Command line flags
 
+Every flag below is also a key in a [config file](config_file.mdx), which is what a project
+generating several crates wants: shared values are declared once, paths resolve against the config
+file rather than the current directory, and `cddl-codegen --config <file.toml>` generates every
+crate in one run. `--config` is mutually exclusive with the flags below.
+
 :::info `--input`
 Specifies the input CDDL file(s).
 

@@ -1,0 +1,211 @@
+---
+sidebar_position: 4
+---
+
+# Config file
+
+A project that generates one crate is well served by [command line flags](command_line_flags.mdx). A
+project that generates several is not: each invocation repeats a long, mostly-identical flag list,
+and the overlap has structure the command line cannot express — flags every crate shares, flags a
+*subset* shares, and flags that belong to one crate alone.
+
+`cddl-codegen --config <file.toml>` reads that structure from a TOML file:
+
+```bash
+cddl-codegen --config codegen.toml            # generate every crate in the config
+cddl-codegen --config codegen.toml wire       # generate only `wire`
+cddl-codegen --config codegen.toml wire core  # generate a subset
+```
+
+Every key in the file is a flag. There is no knob that exists only in the config, and no flag that a
+config cannot set — a drift gate in the test suite asserts the two sides stay in bijection — so
+[command line flags](command_line_flags.mdx) remains the one reference for what each key *means*.
+This page covers only where a key's value comes from.
+
+## One spec, one crate
+
+The floor: a config must not be more ceremony than the flags it replaces.
+
+```toml
+[crates.address-book]
+input = "specs/address_book.cddl"
+output = "gen/address-book"
+preserve-encodings = true
+```
+
+`input` and `output` are required. `lib-name` defaults to the crate table key — here `address-book`
+— which is the one place the config is *less* repetitive than the command line, where `--lib-name`
+defaults to `cddl-lib` and so realistically always needs passing. Every other key keeps its flag's
+default.
+
+## Shared values
+
+`[defaults]` holds any key a crate table holds, and applies to every crate:
+
+```toml
+[defaults]
+preserve-encodings = true
+canonical-form = true
+json-serde-derives = true
+static-dir = "vendor/cddl-codegen/static"
+
+[crates.messages]
+input = "specs/messages.cddl"
+output = "gen/messages"
+
+[crates.storage]
+input = "specs/storage.cddl"
+output = "gen/storage"
+
+[crates.wire]
+input = "specs/wire.cddl"
+output = "gen/wire"
+wasm = false                 # internal crate, no bindings
+```
+
+A crate's own key wins over `[defaults]`, which wins over the built-in default.
+
+`input`, `output`, `lib-name` and `profiles` may **not** appear in `[defaults]` (it is a hard error,
+not a silent skip): a shared value for any of them would point every crate at one spec, one
+directory, or one library.
+
+## Profiles
+
+Real projects have grouping axes that do not nest — say every crate shares a base, the *published*
+ones add npm packaging, and the *constrained-device* ones add a depth limit. One `[defaults]` table
+cannot express two overlapping subsets without pushing the flags back down into every crate.
+
+```toml
+[defaults]
+preserve-encodings = true
+
+[profiles.published]
+package-json = true
+emit-tests = true
+
+[profiles.hardened]
+deserialize-depth-limit = 128
+
+[crates.core]
+input = "specs/core.cddl"
+output = "gen/core"
+
+[crates.wallet]
+input = "specs/wallet.cddl"
+output = "gen/wallet"
+profiles = ["published"]
+
+[crates.firmware-msgs]
+input = "specs/firmware.cddl"
+output = "gen/firmware-msgs"
+profiles = ["published", "hardened"]
+```
+
+A profile is a named `[defaults]` table applied by reference, so the merge order is simply:
+
+> built-in default → `[defaults]` → each profile **in the crate's listed order** → the crate's own
+> keys
+
+Later wins. The order in `profiles = [...]` is the order they apply, not the order they are declared
+in the file.
+
+Profiles are **flat**: a `[profiles.*]` table cannot itself carry `profiles`. Naming a profile that
+has no table, or naming one twice, is a hard error.
+
+## How each kind of key merges
+
+Most keys are scalars and the later layer simply wins. Two kinds behave differently, because for
+them "replace" would be the wrong answer:
+
+**Arrays concatenate**, earlier layers first, author order preserved within each layer. `workspace-dep`
+and `json-schema-root` are additive per-item lists, and `--json-schema-root` is order-significant
+(extra roots emit after every spec-derived row, in flag order), so a crate adding one root must not
+discard the shared list `[defaults]` exists to hold.
+
+```toml
+[defaults]
+json-schema-root = ["cml_chain::byron::AddressContent"]
+
+[crates.chain]
+input = "specs/conway"
+output = "gen/chain"
+json-schema-root = ["cml_chain::byron::ByronAddress"]
+# effective order: AddressContent, then ByronAddress
+```
+
+**`<key>=<value>` flags become sub-tables**, which union per key — a later layer overrides only the
+keys it names, exactly as repeated flag occurrences already accumulate. The flags spelled this way
+are `extern-import`, `extern-wasm-crate`, `extern-wrapper-index`, `wrapper-requests`,
+`key-requests` and `json-schema-dep`:
+
+```toml
+[crates.my-extension]
+input = "specs/ext.cddl"
+output = "gen/ext"
+
+[crates.my-extension.extern-import]
+upstream_core = "../upstream-core/rust/extern-interface/upstream_core"
+
+[crates.my-extension.extern-wasm-crate]
+upstream_core = "upstream_core_wasm"
+```
+
+:::caution TOML sub-tables end their parent table
+Everything after a `[crates.<name>.<sub-table>]` header belongs to the sub-table, not to the crate.
+Write a crate's plain keys first and its sub-tables last, or the plain keys land in the wrong place.
+:::
+
+## Paths resolve against the config file
+
+Every path-valued key — `input`, `output`, `static-dir`, `export-static-crate`, and the right-hand
+sides of `extern-import`, `extern-wrapper-index`, `wrapper-requests` and `key-requests` — resolves
+against **the directory holding the config file**, never the current working directory. A config
+checked into a repository therefore means the same command works from anywhere, which is what
+retires the trap where `--static-dir static` silently picks up whichever checkout you happen to be
+standing in.
+
+Absolute paths pass through untouched.
+
+Two right-hand sides are deliberately *not* resolved, because they are names rather than paths:
+`extern-wasm-crate` names a crate, and `json-schema-dep` names a Rust module path that lands
+verbatim in generated code.
+
+## Booleans
+
+Booleans are TOML booleans, never the `--flag true` string form:
+
+```toml
+preserve-encodings = true
+wasm = false
+```
+
+One key is spelled positively where its flag is negated: `--no-preserve-comments` becomes
+`preserve-comments = false`. TOML has booleans, so the config does not make you write a double
+negative; omitting the key, or setting it to `true`, leaves
+[edit preservation](preserving_edits.mdx) on as it is by default.
+
+`deserialize-depth-limit` is a TOML integer.
+
+## What the config refuses
+
+The config file is checked before **any** crate generates, so a mistake in the last crate's table
+cannot leave the first crate's output half-migrated on disk.
+
+- **An unknown key is a hard error naming it**, at every level — crate table, `[defaults]`,
+  `[profiles.*]`, and the top-level tables. This is the config-file equivalent of a misspelled flag,
+  which is already rejected; letting a typo fall back to a default would ship a crate built with the
+  wrong flag set and no diagnostic at all.
+- **A value the flag itself rejects is reported against the config key that produced it**, so you
+  are pointed at the TOML line you wrote rather than at a flag you never typed.
+- **An unknown crate name on the command line is a hard error** listing the configured crates,
+  rather than a run that generates nothing and exits successfully.
+
+## `--config` cannot be mixed with generation flags
+
+Passing any generation flag alongside `--config` is a hard error naming the flag. There is no
+flags-override-config precedence on purpose: every override would have to define whether it applies
+to one crate or to all of them, and the honest answer differs per flag. Positional crate names are
+the only command-line selector; the config file is the edit loop.
+
+Selecting a subset generates only the crates you name. Their order on the command line does not
+matter — the config decides the generation order.

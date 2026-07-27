@@ -3,6 +3,7 @@ pub(crate) mod cargo_manifest;
 pub(crate) mod cli;
 pub(crate) mod comment_ast;
 pub(crate) mod comment_preserve;
+pub(crate) mod config;
 pub(crate) mod dep_graph;
 pub(crate) mod emit_tests;
 pub(crate) mod emit_tests_wasm;
@@ -16,12 +17,37 @@ pub(crate) mod wrapper_requests;
 
 use clap::Parser;
 use cli::Cli;
-use std::sync::LazyLock;
-
-pub static CLI_ARGS: LazyLock<Cli> = LazyLock::new(Cli::parse);
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    api::generate_to_disk(&CLI_ARGS)
+    let argv: Vec<String> = std::env::args().collect();
+    if config::is_config_mode(&argv) {
+        return generate_from_config(&argv);
+    }
+    api::generate_to_disk(&Cli::parse())
+}
+
+/// `cddl-codegen --config <file.toml> [CRATE...]`: expand the config into one `Cli` per crate and run
+/// the ordinary single-crate entry point once per crate, in the order the config yields.
+///
+/// The loop is the whole of config mode's runtime: expansion happens up front, so every value is
+/// validated before ANY crate generates — a typo in the last crate's table must not leave the first
+/// crate's output half-migrated on disk.
+fn generate_from_config(argv: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    config::reject_generation_flags(argv)?;
+    let invocation = config::ConfigCli::parse_from(argv);
+    let config = config::load(&invocation.config)?;
+    let expanded = config.expand(&invocation.crates)?;
+    for (name, cli) in &expanded {
+        // A per-crate banner, NOT a per-line prefix: the generator's progress output is consumed
+        // as-is by humans and by tests, so this adds a line rather than rewriting the existing ones.
+        println!(
+            "\n[{name}] generating from {} into {}",
+            cli.input.display(),
+            cli.output.display()
+        );
+        api::generate_to_disk(cli)?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
