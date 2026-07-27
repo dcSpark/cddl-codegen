@@ -8603,7 +8603,10 @@ fn js_schema_to_ts() {
 /// 2. a class with NO emitted JSON type is a non-zero exit naming the class and the
 ///    `--allow-untyped=` escape — not a silently-`any` method; with the escape it keeps `any`
 ///    rather than gaining a dangling TS2304 `LooseJSON`, and a STALE escape (the class is typed
-///    now) is itself an error so the list cannot rot;
+///    now) is itself an error so the list cannot rot. The one offender shape that is NOT a missing
+///    type — a class whose declaration differs from `<Class>JSON` only by json2ts's normalization
+///    of the definition title (`Blake2b256` → `Blake2B256JSON`) — is named with BOTH spellings and
+///    is left out of the suggested `--allow-untyped` value, since its type already exists;
 /// 3. running twice is byte-identical (the appended block is marker-delimited and truncated each
 ///    run, so a second run without an intervening `rimraf ./pkg` can't duplicate every declaration);
 /// 4. a method name the script can't find (the `--wasm-cbor-json-api-macro` case, where the macro
@@ -8704,6 +8707,48 @@ fn js_d_ts_merge() {
     assert!(
         String::from_utf8_lossy(&stale.stderr).contains("Gone"),
         "stale-entry failure must name the entry"
+    );
+
+    // 2 (diagnostic half): a class whose emitted declaration differs from `<Class>JSON` only by
+    // json2ts's normalization of the definition title into an identifier (`$defs` key `Blake2b256`
+    // -> declaration `Blake2B256JSON`). The document DOES publish its type; the script just cannot
+    // see it under the name it keys on. The failure must name BOTH spellings and must not offer
+    // `--allow-untyped` for it — telling a consumer to publish a type they have already published,
+    // or to suppress one they already have, is a worse diagnosis than the `any` this check replaced.
+    const NORM_DTS: &str =
+        "export class Blake2b256 {\n  free(): void;\n  to_json_value(): any;\n}\n";
+    const NORM_DEFS: &str = "export interface Blake2B256JSON {\n  hash: string;\n}\n";
+    let norm_path = lay_out("normalized", "cddl_lib_wasm", NORM_DTS, NORM_DEFS);
+    let near_miss = run("normalized", &[]);
+    assert!(
+        !near_miss.status.success(),
+        "a class with no `<Class>JSON` declaration must still fail the run"
+    );
+    let near_miss_stderr = String::from_utf8_lossy(&near_miss.stderr);
+    assert!(
+        near_miss_stderr.contains("Blake2b256"),
+        "{near_miss_stderr}"
+    );
+    assert!(
+        near_miss_stderr.contains("Blake2B256JSON"),
+        "the failure must name the declaration that DOES exist:\n{near_miss_stderr}"
+    );
+    assert!(
+        !near_miss_stderr.contains("--allow-untyped=Blake2b256"),
+        "--allow-untyped must not be offered for a class whose type is published under a \
+         normalized name:\n{near_miss_stderr}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&norm_path).unwrap(),
+        NORM_DTS,
+        "a failed run must leave the .d.ts untouched"
+    );
+    // The diagnostic changes the MESSAGE only: the escape still applies to this class exactly as it
+    // does to any other untyped one.
+    assert!(
+        run("normalized", &["--allow-untyped=Blake2b256"])
+            .status
+            .success()
     );
 
     // 1 + 2 (escape half): the happy path, with the undeclared class explicitly allowed.

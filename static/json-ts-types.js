@@ -115,8 +115,9 @@ if (!fs.existsSync(jsonDefsFile)) {
 const jsonDefs = fs.readFileSync(jsonDefsFile, 'utf8');
 
 // Only names this file actually DECLARES may be spliced into the bindings: renaming `any` to a type
-// nothing declares trades a lossy-but-valid `any` for a TS2304 dangling reference. A class with no
-// schema row (e.g. one carrying `@no_json_schema_export`) therefore keeps its `any`.
+// nothing declares trades a lossy-but-valid `any` for a TS2304 dangling reference. So a class the
+// document publishes no type for is never spliced — it FAILS the run (see the untyped-class check
+// at the bottom), and keeps its `any` only under an explicit `--allow-untyped=<Class>` exception.
 const declared = new Set();
 for (const m of jsonDefs.matchAll(/^export\s+(?:type|interface)\s+(\w+)/gm)) {
   declared.add(m[1]);
@@ -217,14 +218,54 @@ if (staleAllows.length > 0) {
 }
 const untyped = [...untypedClasses.keys()].filter(cls => !allowUntyped.has(cls)).sort();
 if (untyped.length > 0) {
+  // One offender shape is NOT a missing type: `run-json2ts.js` sets each definition's title to
+  // `<key>JSON`, but json2ts normalizes titles into identifiers, so the declaration it emits can
+  // differ from the `<Class>JSON` this script keys on (`$defs` key `Blake2b256` -> declaration
+  // `Blake2B256JSON`). Telling that consumer to publish a type they have already published is a
+  // worse diagnosis than the `any` this check replaced, so name the declaration that exists.
+  // Comparing modulo normalization — every non-alphanumeric stripped, case folded — is cheap and
+  // catches the whole class without modelling json2ts's exact rules. DIAGNOSTIC ONLY: which classes
+  // fail, and the exit code, are unchanged.
+  const normalized = name => name.replace(/[^A-Za-z0-9]/g, '').toLowerCase();
+  const declaredByNormalized = new Map();
+  for (const name of declared) {
+    const key = normalized(name);
+    if (!declaredByNormalized.has(key)) {
+      declaredByNormalized.set(key, []);
+    }
+    declaredByNormalized.get(key).push(name);
+  }
+  const nearMisses = new Map();
+  for (const cls of untyped) {
+    const matches = declaredByNormalized.get(normalized(`${cls}JSON`));
+    if (matches != null) {
+      nearMisses.set(cls, matches);
+    }
+  }
+  // `--allow-untyped` is the wrong answer for a near miss — the type exists — so those classes are
+  // named in the failure but left out of the suggested flag value.
+  const allowable = untyped.filter(cls => !nearMisses.has(cls));
   console.error(
-    `${SCRIPT}: ${untyped.length} class(es) declare \`${method}(): any\` but the schema ` +
-    `document publishes no type for them, so they would silently ship untyped:\n` +
-    untyped.map(cls => `  ${cls}: ${untypedClasses.get(cls)}`).join('\n') +
+    `${SCRIPT}: ${untyped.length} class(es) declare \`${method}(): any\` with no \`<Class>JSON\` ` +
+    `declaration in the emitted defs, so they would silently ship untyped:\n` +
+    untyped.map(cls => {
+      const entry = `  ${cls}: ${untypedClasses.get(cls)}`;
+      const matches = nearMisses.get(cls);
+      if (matches == null) {
+        return entry;
+      }
+      return `${entry}\n    ^ the document DOES publish a type for this class, declared as ` +
+        `${matches.join(' / ')} — that differs from ${cls}JSON only by json2ts's normalization of ` +
+        `the definition title into an identifier. --allow-untyped is not the answer here (it would ` +
+        `ship \`any\` for a class that has a type): rename the rule, or give it an @name, so the ` +
+        `class name is a fixed point of that normalization.`;
+    }).join('\n') +
     `\n${dtsFile} was left untouched. Publish a type for each (a CDDL rule, ` +
     `--json-schema-root for a hand-written type, or --json-schema-dep for a dependency whose ` +
-    `classes ship in this package), or record a deliberate exception with ` +
-    `--allow-untyped=${untyped.join(',')}.`);
+    `classes ship in this package)` +
+    (allowable.length > 0
+      ? `, or record a deliberate exception with --allow-untyped=${allowable.join(',')}.`
+      : '.'));
   process.exit(1);
 }
 
