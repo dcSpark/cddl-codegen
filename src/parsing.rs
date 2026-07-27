@@ -2823,10 +2823,14 @@ fn group_entry_to_raw_field_name(entry: &GroupEntry) -> Option<String> {
             true => None,
             false => Some(name.to_string()),
         },
-        GroupEntry::InlineGroup { group, .. } => panic!(
-            "not implemented (define a new struct for this!) = {}\n\n {:?}",
-            group, group
-        ),
+        // An inline group has no explicit field name — which is exactly what `None` means here, and
+        // what the sole caller (the one-entry group-choice arm in `parse_group`) already handles by
+        // falling back to a type-derived variant name. It reaches this only for a shape
+        // `group_entry_to_type` rejected one line earlier (`t = [ (uint, tstr) // bytes ]`), so the
+        // derived name is inert: `finalize` short-circuits on the recorded rejection before any
+        // emission. Panicking here instead would abort the run AFTER the graceful rejection was
+        // already recorded, which is the abort this seam exists to avoid.
+        GroupEntry::InlineGroup { .. } => None,
     }
 }
 
@@ -3127,7 +3131,35 @@ fn rust_type_from_type2(
                                 None => map_type,
                             }
                         }
-                        _ => unimplemented!("TODO: non-table types as types: {:?}", group),
+                        // Every non-table inline map — `{ a: int, b: uint }`, `{ g }`, `{ * uint }`,
+                        // `{}`. For `Representation::Map` `parse_group_type` returns only
+                        // `HomogenousMap` (handled above) or `Heterogenous`, so this arm IS the
+                        // whole non-table remainder; the `WrappedBasicGroup` / `HomogenousArray`
+                        // returns live in its `Representation::Array` half.
+                        //
+                        // The `Type2::Array` sibling above turns `Heterogenous` into a struct by
+                        // reading a `@name` off the type2's trailing comment. There is no such
+                        // naming door on the map side, so an anonymous nested map has no
+                        // representation here: reject gracefully and point at the named form,
+                        // exactly like the multi-group-choice sibling below.
+                        //
+                        // The remedy is probed to generate under BOTH the default and the
+                        // `--preserve-encodings` profile for every keyed shape that reaches this
+                        // arm (array element, map value, `.cbor` payload, `/` choice alternative,
+                        // generic argument, occurrence target, group-choice arm). A KEYLESS inline
+                        // map (`{ g }`, `{ * uint }`) also lands here and its named form is
+                        // rejected for a separate, self-describing reason (a map member needs a
+                        // key), so the message points at the supported spelling rather than
+                        // promising that naming alone fixes every shape.
+                        _ => {
+                            types.record_rejection(
+                                "an inline map (`{ a: int, b: uint }`) used as a member or element \
+                                 type is unsupported unless it is a table (`{ * k => v }`) — name \
+                                 it as its own rule (`m = { a: int, b: uint }`) and reference `m`"
+                                    .to_string(),
+                            );
+                            ConceptualRustType::Fixed(FixedValue::Null).into()
+                        }
                     }
                 }
                 _ => {
@@ -3233,7 +3265,14 @@ fn group_entry_optional(entry: &GroupEntry) -> bool {
     let occur = match entry {
         GroupEntry::ValueMemberKey { ge, .. } => &ge.occur,
         GroupEntry::TypeGroupname { ge, .. } => &ge.occur,
-        GroupEntry::InlineGroup { .. } => panic!("inline group entries are not implemented"),
+        // The only caller (`parse_record_from_group_choice`) rejects EVERY `InlineGroup` entry
+        // gracefully before its field loop reads optionality, and nothing else calls this — so an
+        // inline group cannot arrive. Kept as an assertion rather than converted to a rejection: a
+        // rejection here would be untestable dead code, whereas a future caller that does reach it
+        // fails loudly as a NEW panic class in the recombination sweep.
+        GroupEntry::InlineGroup { .. } => unreachable!(
+            "an inline group entry is rejected by the record path before optionality is read"
+        ),
     };
     occur
         .as_ref()
@@ -3268,7 +3307,22 @@ fn group_entry_to_type(
                 cli,
             )
         }
-        GroupEntry::InlineGroup { .. } => panic!("inline group entries are not implemented"),
+        // An inline group as the sole entry of a group-choice arm — `t = [ (uint, tstr) // bytes ]`
+        // and its map-rep spelling `t = { (a: uint) // b: tstr }`. That arm (`parse_group`'s
+        // one-entry variant branch) is the only path that can deliver an `InlineGroup` here: the
+        // record path rejects every inline group before calling us, and an open-array rest tail
+        // never selects one (an inline group carries no `ge.occur`, so it is never a candidate).
+        // Reject gracefully and name the group; the remedy is probed to generate under BOTH the
+        // default and the `--preserve-encodings` profile for the array-rep, map-rep, `?`-marked and
+        // both-arms spellings.
+        GroupEntry::InlineGroup { .. } => {
+            types.record_rejection(
+                "an inline group (`(uint, tstr)`) in entry position is unsupported. Name the group \
+                 instead (e.g. `pair = (uint, tstr)`, then reference `pair`)."
+                    .to_string(),
+            );
+            ConceptualRustType::Fixed(FixedValue::Null).into()
+        }
     }
 }
 

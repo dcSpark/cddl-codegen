@@ -455,6 +455,110 @@ fn inline_array_group_choice_member_rejects_gracefully() {
     );
 }
 
+/// Generate `spec` and return the graceful rejection message, asserting the run neither succeeded
+/// nor panicked. `tag` names the temp file (tests share a pid, so it must be unique per vector) and
+/// `extra` carries the profile flags.
+fn expect_graceful_rejection(tag: &str, spec: &str, extra: &[&str]) -> String {
+    let path = std::env::temp_dir().join(format!("cddl_codegen_{tag}_{}.cddl", std::process::id()));
+    std::fs::write(&path, spec).unwrap();
+    let mut argv = vec![
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "reject_unused",
+    ];
+    argv.extend_from_slice(extra);
+    let cli = Cli::parse_from(argv);
+    let result = crate::api::generated_strings(&cli);
+    std::fs::remove_file(&path).ok();
+    result
+        .expect_err(&format!(
+            "spec must be a graceful Err, not a panic and not a success:\n{spec}"
+        ))
+        .to_string()
+}
+
+/// An anonymous nested MAP in a position that requires a TYPE — an array element, a map value, a
+/// `.cbor` payload, a `/` choice alternative, a generic argument, an occurrence target, a
+/// group-choice arm — is rejected BY DESIGN, via a GRACEFUL `Err` (deferred through
+/// `record_rejection` → drained by `finalize`), never a `panic!`. The ARRAY sibling of this shape
+/// can be named through a `@name` comment at the type2; the map side has no such door, so the
+/// NAMED form (`m = {x: int, y: uint}` referenced by name) is the supported spelling and the
+/// message points at it — verified to generate under both profiles for every keyed vector below.
+///
+/// Both profiles are asserted because the rejection must be profile-INDEPENDENT: `finalize`
+/// short-circuits on a recorded rejection before any emission, so no flag can rescue the shape (and
+/// a per-profile split would be a support claim this seam cannot make). The keyless vector
+/// (`{ g }`) pins that the same arm covers a map whose sole member is a plain-group reference, a
+/// spelling no matrix cell expresses; `tests/robustness/inline_map_keyless_member.cddl` pins its
+/// outcome category.
+#[test]
+fn inline_map_member_rejects_gracefully() {
+    let vectors = [
+        ("anon_map_elem", "a = [{x: int, y: uint}]\n"),
+        ("anon_map_val", "m = { outer: { a: int, c: uint } }\n"),
+        ("anon_map_cbor", "b = bytes .cbor ({a: int, c: uint})\n"),
+        (
+            "anon_map_choice",
+            "t = {a: int, c: uint} / {b: tstr, d: uint}\n",
+        ),
+        (
+            "anon_map_generic",
+            "foo<a> = [a]\nbar = foo<{x: int, y: uint}>\n",
+        ),
+        ("anon_map_occur", "a = [* {x: int, y: uint}]\n"),
+        ("anon_map_garm", "t = [ {a: int, b: uint} // tstr ]\n"),
+        ("anon_map_keyless", "g = (x: uint)\na = [{ g }]\n"),
+    ];
+    for (tag, spec) in vectors {
+        for extra in [&[][..], &["--preserve-encodings", "true"][..]] {
+            let msg = expect_graceful_rejection(tag, spec, extra);
+            // Names the construct...
+            assert!(
+                msg.contains("inline map"),
+                "rejection should name the inline-map construct ({tag}, {extra:?}), got: {msg}"
+            );
+            // ...and points at the named-rule spelling that IS supported.
+            assert!(
+                msg.contains("name it as its own rule") && msg.contains("reference"),
+                "rejection should point at the named-rule spelling ({tag}, {extra:?}), got: {msg}"
+            );
+        }
+    }
+}
+
+/// An inline GROUP as the sole entry of a group-choice arm (`t = [ (uint, tstr) // bytes ]`, and
+/// the map-rep spelling `t = { (a: uint) // b: tstr }`) is rejected BY DESIGN, via a GRACEFUL
+/// `Err`, never a `panic!`. Naming the group (`pair = (uint, tstr)`, then `t = [ pair // bytes ]`)
+/// IS the supported spelling under both profiles, so the message points at it.
+/// `tests/robustness/inline_group_choice_arm_map.cddl` pins the map rep's outcome category.
+///
+/// The `?`-marked vector matters on its own: the arm reads the entry's TYPE without consulting its
+/// occurrence marker, so a shape whose marker is silently dropped must still not generate.
+#[test]
+fn inline_group_choice_arm_rejects_gracefully() {
+    let vectors = [
+        ("inline_garm_arr", "t = [ (uint, tstr) // bytes ]\n"),
+        ("inline_garm_map", "t = { (a: uint) // b: tstr }\n"),
+        ("inline_garm_opt", "t = [ ? (uint, tstr) // bytes ]\n"),
+        ("inline_garm_both", "t = [ (uint, tstr) // (bytes, int) ]\n"),
+    ];
+    for (tag, spec) in vectors {
+        for extra in [&[][..], &["--preserve-encodings", "true"][..]] {
+            let msg = expect_graceful_rejection(tag, spec, extra);
+            assert!(
+                msg.contains("inline group"),
+                "rejection should name the inline-group construct ({tag}, {extra:?}), got: {msg}"
+            );
+            assert!(
+                msg.contains("Name the group instead"),
+                "rejection should point at the named-group spelling ({tag}, {extra:?}), got: {msg}"
+            );
+        }
+    }
+}
+
 /// `@raw_bytes_flavor` anywhere other than a `_CDDL_CODEGEN_EXTERN_TYPE_` rule definition is
 /// rejected BY DESIGN — via a GRACEFUL `Err` (deferred through `record_rejection` → drained by
 /// `finalize`), never a `panic!` and never a silent no-op. One vector per rejecting seam: a

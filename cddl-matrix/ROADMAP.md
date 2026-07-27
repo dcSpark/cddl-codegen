@@ -331,12 +331,6 @@ are ledgered here (that's what the probe/gate error messages point at).
   report makes it user-visible; enumerating a wrong-value reject vector for a nint fixed member is
   what would surface it systematically (the vector author confronts the rendered message at
   pin-authoring time).
-- **Give the array-rep group-choice arm's inline group a graceful refusal or real support.**
-  `contain.group-choice-arm.grpent.inline_group.array` (`t = [ (uint, tstr) // bytes ]`) is valid
-  CDDL that aborts in `parsing.rs`'s `group_entry_to_type` (`inline group entries are not
-  implemented`) — a distinct inline-group arm limitation, and a known PANIC row in
-  `tests/matrix_panic/`. Deliverable shape and remedy discipline: as for the map-rep fixed-value
-  arm above.
 - **A bare `any` type-choice arm in a NON-LAST position** (`a = any / tstr`) is a permanent graceful
   rejection, recorded here so the decision is not re-litigated: a bare `any` accepts every CBOR
   item, so any arm after it is unreachable dead code
@@ -383,12 +377,28 @@ are ledgered here (that's what the probe/gate error messages point at).
     `bytes .cbor float64` member fails its baseline re-decode (`Expected(Special, Text)` at the
     following field — a `.cbor` float payload mis-frames the buffer; still to minimize when picked
     up).
-- **Give the array-rep group-choice arm's anonymous map a graceful refusal or real support.**
-  `contain.group-choice-arm.type2.map.array` (`t = [ {a: int, b: uint} // tstr ]`) is valid CDDL
-  that aborts in `parsing.rs` at the `TODO: non-table types as types` site — the
-  anonymous-composite family, but with its own panic site, and a known PANIC row in
-  `tests/matrix_panic/`. Deliverable shape and remedy discipline: as for the two group-choice-arm
-  rows above.
+- **Real support for the anonymous nested MAP in a type position** (`a = [{x: int, y: uint}]`, and
+  its map-value / `.cbor`-payload / `/`-choice / generic-argument / occurrence-target /
+  group-choice-arm siblings). The abort is gone — every one of those shapes now rejects gracefully
+  under both profiles, naming the map's supported named form (`m = {x: int, y: uint}`, referenced by
+  `m`); that rejection is pinned by `inline_map_member_rejects_gracefully` and its keyless spelling
+  by `tests/robustness/inline_map_keyless_member.cddl`. But the
+  ARRAY sibling goes further: a `@name` comment on the type2 mints the struct in place. The map side
+  has no such door because `Type2::Map`'s member-position walk never reads rule metadata. Giving it
+  one would close the last asymmetry between the two anonymous-composite families. Reopening signal:
+  the count of anonymous nested maps a consumer must hoist to named rules to compile ONE committed
+  spec reaches 5 — hoisting is a mechanical per-occurrence edit, so the cost grows inside a single
+  spec rather than across consumers, and the consumer can count it from their own rejection output.
+- **Real support for an inline group as a group-choice arm's sole entry**
+  (`t = [ (uint, tstr) // bytes ]`, and the map-rep `t = { (a: uint) // b: tstr }`). Both now reject
+  gracefully in place of the former abort, pointing at the equivalent named form
+  (`pair = (uint, tstr)`, then `t = [ pair // bytes ]`) — pinned by
+  `inline_group_choice_arm_rejects_gracefully`, with the map rep's outcome category held by
+  `tests/robustness/inline_group_choice_arm_map.cddl`. Support means minting the arm's struct from
+  the parenthesized group the way a named plain group already is. Lower value than the anonymous-map
+  entry above because the remedy is fully equivalent here (naming the group changes nothing on the
+  wire), so the reopening signal is the same magnitude one on a higher threshold: the count of
+  inline group-choice arms a consumer must name to compile ONE committed spec reaches 10.
 - Float-family table key domains are **rejected gracefully** at generation — a key domain that is
   (or recursively contains) a float compiles to a `BTreeMap<f64, _>` (or an `OrderedHashMap` bounded
   `K: Hash + Eq + Ord` under `--preserve-encodings`), and floats implement none of `Eq`/`Ord`/`Hash`,
