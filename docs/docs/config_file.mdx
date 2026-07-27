@@ -492,6 +492,13 @@ files, so which one is picked cannot be observed in the output — but the run s
 runtime it writes serves all of them.
 ```
 
+**A subset that leaves the carrier out does not refresh the runtime.** The export rides the carrier's
+invocation, so `cddl-codegen --config c.toml cip25` uses the committed runtime as it stands — the run
+says so instead, naming the carrier. That is the same "a subset trusts committed output" contract the
+dependency edges follow, and it is usually what you want; the case to know about is a *fresh*
+workspace, where the runtime has never been written and every crate in the subset is pointed at it by
+`--common-import-override`. Generate once without a selection first.
+
 Two configurations have no carrier, and both are hard errors rather than a silently inadequate
 runtime:
 
@@ -584,6 +591,12 @@ cannot leave the first crate's output half-migrated on disk.
   are pointed at the TOML line you wrote rather than at a flag you never typed.
 - **An unknown crate name on the command line is a hard error** listing the configured crates,
   rather than a run that generates nothing and exits successfully.
+- **Two crates cannot generate into one `output`**, nor one inside another's. A crate's output is
+  regenerated as a whole, so the crate running second would erase the first's generated tree while
+  the first's seed-once `lib.rs` survived — a crate root belonging to one spec sitting over a
+  generated tree belonging to another, with the run reporting success. It is also the copy-paste
+  mistake this file invites most: duplicate a `[crates.*]` block, change `input`, forget `output`.
+  Sibling directories that merely share a name prefix (`gen/alpha` and `gen/alphabet`) are fine.
 - **A `[runtime]` no single static runtime can serve is a hard error** naming the keys the crates
   disagree on, or the crate each missing key comes from. Selecting a subset does not soften it:
   which crate can carry the shared runtime is a property of the config, so

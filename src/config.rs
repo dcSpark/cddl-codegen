@@ -690,6 +690,55 @@ impl Config {
             }
         }
 
+        // Two crates writing into one `output` — or one writing inside another's — is the
+        // destructive case, and the only one this file can catch before anything is written.
+        // Generation replaces a crate's `src/generated/**` wholesale, so whichever crate runs second
+        // erases the first's modules while the first's seed-once `lib.rs` survives: a crate root
+        // belonging to one spec over a generated tree belonging to another, reported as success. It
+        // is also the copy-paste error a multi-crate TOML invites most — duplicate a `[crates.*]`
+        // block, edit `input`, forget `output`. Compared lexically on the RESOLVED paths, since
+        // neither directory need exist yet; `Path::starts_with` is component-wise, so `gen/ab` is
+        // correctly not inside `gen/a`.
+        let resolved: Vec<(&String, PathBuf)> = self
+            .crates
+            .iter()
+            .map(|(name, entry)| {
+                (
+                    name,
+                    PathBuf::from(resolve_path(&self.base_dir, &entry.output)),
+                )
+            })
+            .collect();
+        for (index, (name, path)) in resolved.iter().enumerate() {
+            for (other_name, other) in &resolved[index + 1..] {
+                let (inner, outer, inner_name, outer_name) = if other.starts_with(path) {
+                    (other, path, other_name, name)
+                } else if path.starts_with(other) {
+                    (path, other, name, other_name)
+                } else {
+                    continue;
+                };
+                return Err(if inner == outer {
+                    format!(
+                        "[crates.{name}] and [crates.{other_name}] both generate into `{}`. A \
+                         crate's output is regenerated as a whole, so whichever ran second would \
+                         erase the other's generated tree while leaving its crate root behind — and \
+                         the run would report success. Give each crate its own `output`.",
+                        path.display()
+                    )
+                } else {
+                    format!(
+                        "[crates.{outer_name}] generates into `{}`, which contains \
+                         [crates.{inner_name}]'s `{}`. A crate's output is regenerated as a whole, \
+                         so the outer crate's run would clobber the inner crate's tree. Give them \
+                         sibling directories instead.",
+                        outer.display(),
+                        inner.display()
+                    )
+                });
+            }
+        }
+
         self.validate_runtime()?;
 
         self.generation_order().map(|_| ())
@@ -1865,8 +1914,22 @@ pub fn generate(config_path: &Path, selected: &[String]) -> Result<(), Box<dyn s
     // Stated before the first crate generates: which crate carries the shared runtime, and what the
     // choice accepted. Silently choosing is what the hand-placed flag already does.
     if let Some(choice) = config.runtime_report()? {
-        for note in &choice.notes {
-            println!("{note}");
+        // The export rides the CARRIER's invocation, so a subset that leaves the carrier out does
+        // not refresh the runtime — and the notes are written in the present tense. Say which run
+        // this is, or the line claims a write that is not happening: the crates in the subset are
+        // still pointed at the runtime directory by `--common-import-override`, and on a workspace
+        // where it has never been written that is a crate that cannot build.
+        if expanded.iter().any(|(name, _)| name == &choice.carrier) {
+            for note in &choice.notes {
+                println!("{note}");
+            }
+        } else {
+            println!(
+                "[runtime] `{}` carries --export-static-crate and is not in this run, so the \
+                 runtime is NOT refreshed here — the committed one is used as it stands. Run \
+                 without a crate selection, or name `{}`, to refresh it.",
+                choice.carrier, choice.carrier
+            );
         }
     }
     let convergence = Convergence::capture(&expanded);
