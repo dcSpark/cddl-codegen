@@ -115,6 +115,38 @@ cbor_in_cbor = [foo_bytes, uint_bytes: bytes .cbor uint, tagged_foo_bytes]
 
 tagged_foo_bytes = #6.20(bytes .cbor foo)
 
+; --- Every leaf under a `bytes .cbor <X>` overload reads the PAYLOAD's cursor ---
+; The payload's decode runs against an `inner_de` built over the byte string's contents, so a leaf
+; that names the outer reader instead consumes the next OUTER item and mis-frames everything after
+; it. Three leaf kinds did exactly that (`float64`/`float32`/`bool`, emitted as `<T>::deserialize`),
+; as did the indefinite-length break probe and the INLINED c-style-enum variant sweep — a c-style
+; enum has no `Deserialize` impl of its own, so its try-each-variant sequence is emitted at the use
+; site and its position save/restore plus each variant closure's argument must name the payload
+; reader too.
+;
+; Every payload member is followed by another member, and the record ends in `tail: text`: the
+; assertion that proves framing is the FOLLOWING field's value, not merely that decode succeeded.
+; Both bounded and unbounded float spellings appear because they are separate emission sites.
+cbor_payload_leaves = [
+	f64_payload: bytes .cbor float64,
+	f32_payload: bytes .cbor float32,
+	bounded64_payload: bytes .cbor (float64 .le 10.5),
+	bounded32_payload: bytes .cbor (float32 .le 10.5),
+	bool_payload: bytes .cbor bool,
+	enum_payload: bytes .cbor c_enum,
+	tail: text,
+]
+
+; Collections reached through `.cbor`: the loop reads elements/keys from the payload, so the break
+; probe must read it too. Only an INDEFINITE-length inner encoding reaches that probe, and the
+; emitted serializer only ever writes definite lengths — `cbor_payload_indefinite_inner` in
+; tests/core/tests.rs decodes a hand-built payload to reach it.
+cbor_payload_collections = [
+	arr_payload: bytes .cbor [* uint],
+	map_payload: bytes .cbor {* uint => text},
+	tail: text,
+]
+
 u8 = uint .size 1
 u16 = uint .le 65535
 u32 = 0..4294967295

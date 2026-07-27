@@ -1067,10 +1067,14 @@ const LAYER2_KNOWN_BAD: &[(&str, &str)] = &[
     // the minter picks a key base its own emitted bounds check accepts — and is pinned end-to-end
     // for `*`-spelled tables by `emit_tests_bounded_map_key_execute`, arm-by-arm by
     // `bounds_reject_value_agrees_with_emitted_condition`.)
-    (
-        "outer=arr_mid inner=cbor_payload filler=prelude.float64",
-        "a bytes .cbor float64 member fails its emitted baseline re-decode; cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",
-    ),
+    //
+    // (The former `outer=arr_mid inner=cbor_payload filler=prelude.float64` entry — a
+    // `bytes .cbor float64` member failing its emitted baseline re-decode — retired when the defect
+    // it cited was fixed: every leaf under a `bytes .cbor` overload now reads the payload's own
+    // deserializer instead of the outer one. Pinned end-to-end by `cbor_payload_leaves` /
+    // `cbor_payload_indefinite_inner` in `tests/core/tests.rs`, which execute a decode and assert the
+    // member AFTER the payload — the assertion a snapshot of the emitted text structurally cannot
+    // make.)
 ];
 
 // ---- generalized layer-2 runner (shared by every emission profile) --------------------------------

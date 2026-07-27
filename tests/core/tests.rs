@@ -691,6 +691,69 @@ mod tests {
         deser_test(&CborInCbor::new(foo.clone(), 9, foo.into()))
     }
 
+    // A `bytes .cbor <X>` payload is decoded from a deserializer built over the byte string's
+    // contents. A leaf that names the OUTER reader instead consumes the next outer item, so the
+    // damage is invisible in the payload's own value and shows up as the FOLLOWING member decoding
+    // garbage (or, more usually, an `Expected(...)` a field later). These tests therefore assert the
+    // following member's value, not merely that decode succeeded — a snapshot of the emitted text
+    // cannot catch this class at all, since text blessed while the bug was live stays green forever.
+    #[test]
+    fn cbor_payload_leaves() {
+        let orig = CborPayloadLeaves::new(
+            1.5,
+            2.5,
+            3.5,
+            4.5,
+            true,
+            CEnum::I4,
+            String::from("framing"),
+        )
+        .unwrap();
+        deser_test(&orig);
+        let deser = CborPayloadLeaves::from_cbor_bytes(&orig.to_cbor_bytes()).unwrap();
+        assert_eq!(deser.f64_payload, 1.5);
+        assert_eq!(deser.f32_payload, 2.5);
+        assert_eq!(deser.bounded64_payload, 3.5);
+        assert_eq!(deser.bounded32_payload, 4.5);
+        assert!(deser.bool_payload);
+        assert!(matches!(deser.enum_payload, CEnum::I4));
+        // the member AFTER the last payload: proves nothing upstream over-read the outer buffer
+        assert_eq!(deser.tail, "framing");
+    }
+
+    #[test]
+    fn cbor_payload_collections() {
+        let orig = CborPayloadCollections::new(
+            vec![1, 2, 3],
+            BTreeMap::from([(7u64, String::from("seven"))]),
+            String::from("framing"),
+        );
+        deser_test(&orig);
+        let deser = CborPayloadCollections::from_cbor_bytes(&orig.to_cbor_bytes()).unwrap();
+        assert_eq!(deser.arr_payload, vec![1, 2, 3]);
+        assert_eq!(deser.map_payload.get(&7).map(String::as_str), Some("seven"));
+        assert_eq!(deser.tail, "framing");
+    }
+
+    // The break probe inside a `.cbor` payload's collection loop is only reached for an INDEFINITE
+    // inner length, and the emitted serializer only ever writes definite lengths — so a round trip
+    // cannot reach it and the payload has to be built by hand. If the probe reads the outer buffer
+    // it looks at the NEXT outer item (here a byte string, then a text), never sees Special, and the
+    // loop runs one iteration too many straight into the `0xff` break as if it were an element.
+    #[test]
+    fn cbor_payload_indefinite_inner() {
+        let bytes = [
+            0x83, // outer array(3)
+            0x44, 0x9f, 0x01, 0x02, 0xff, // arr_payload: bstr(4) = [_ 1, 2]
+            0x45, 0xbf, 0x01, 0x61, 0x61, 0xff, // map_payload: bstr(5) = {_ 1: "a"}
+            0x61, 0x7a, // tail: "z"
+        ];
+        let deser = CborPayloadCollections::from_cbor_bytes(&bytes).unwrap();
+        assert_eq!(deser.arr_payload, vec![1, 2]);
+        assert_eq!(deser.map_payload.get(&1).map(String::as_str), Some("a"));
+        assert_eq!(deser.tail, "z");
+    }
+
     #[test]
     fn test_prelude_numbers() {
         assert_eq!(0u8, U8::from(0u8));
