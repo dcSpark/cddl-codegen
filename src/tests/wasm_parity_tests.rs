@@ -948,11 +948,10 @@ fn flags_enable_preserve(flags: &[&str]) -> bool {
     flags.contains(&"--preserve-encodings=true")
 }
 
-#[test]
-fn wasm_api_parity() {
+/// The sweep's (label, input, profile, flags) axis product, built once so the pin guards and the
+/// shards agree on exactly what "a swept pair" means.
+fn parity_sweep_cases() -> Vec<(String, PathBuf, &'static str, &'static [&'static str])> {
     let inputs = parity_inputs();
-    assert_corpus_axis_complete();
-
     let mut sweep_cases: Vec<(String, PathBuf, &'static str, &'static [&'static str])> = vec![];
     for (label, input) in &inputs {
         for (profile, extra) in super::ALL_PROFILES {
@@ -969,6 +968,23 @@ fn wasm_api_parity() {
             ));
         }
     }
+    sweep_cases
+}
+
+/// Every whole-axis assertion of the parity sweep, kept in ONE test because each is only correct
+/// when a single test sees the WHOLE axis product: a shard walking a slice cannot distinguish "this
+/// pin names a pair that was deleted" from "this pin names a pair another shard owns", so splitting
+/// them across shards would leave them vacuous while the suite stayed green. It builds the axis and
+/// reads the corpus directory — no generation — so keeping it whole costs milliseconds.
+///
+/// The `PARITY_EXEMPT` axis guard is NEW with the shard split and is what keeps the ledger's
+/// resurfaced-check honest: each shard reconciles only the exempt entries whose (profile, label) is
+/// one of ITS OWN cases, so an entry naming a pair no shard sweeps would be reconciled by nobody.
+/// Asserting here that every entry names a swept pair closes that hole by construction.
+#[test]
+fn wasm_api_parity_axes_and_pins_are_live() {
+    assert_corpus_axis_complete();
+    let sweep_cases = parity_sweep_cases();
 
     // A pin naming a (profile, input) pair the sweep never visits would rot silently (its two-way
     // guard only fires on visited pairs) — validate every pin against the live axes up front.
@@ -986,16 +1002,110 @@ fn wasm_api_parity() {
              remove or fix it"
         );
     }
+    let swept_pairs: BTreeSet<(&str, &str)> = sweep_cases
+        .iter()
+        .map(|(l, _, p, _)| (*p, l.as_str()))
+        .collect();
+    for (p, l, i, _) in PARITY_EXEMPT {
+        assert!(
+            swept_pairs.contains(&(*p, *l)),
+            "PARITY_EXEMPT entry ({p}, {l}, {i}) names a (profile, input) pair the sweep never \
+             visits — no shard would ever reconcile it, so its resurfaced-check is vacuous; stale \
+             pin, remove or fix it"
+        );
+    }
+
+    // Vacuity guard: every (input, profile) pair must be in the product. A filter bug that shrinks
+    // the input set (or a dropped profile) fails here rather than passing a hollow sweep.
+    let cell_count = std::fs::read_dir("tests/matrix_wasm")
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("cddl"))
+        .count();
+    assert_eq!(
+        parity_inputs().len(),
+        cell_count + 2,
+        "input enumeration drifted from (matrix_wasm cells + 2 depth fixtures)"
+    );
+    assert_eq!(
+        sweep_cases.len(),
+        (cell_count + 2) * super::ALL_PROFILES.len() + total_corpus_profile_rows(),
+        "sweep shrank: expected every (input, profile) pair to be visited"
+    );
+}
+
+/// How many `#[test]`s the parity sweep is split across. The sweep is pure in-process generation
+/// (`api::generated_strings`) plus string parsing — no cargo, no scratch dir, no lock — so its cells
+/// are the one kind in this suite that libtest's 32-thread pool can genuinely absorb; the count is
+/// sized so a shard lands well under the ~63 s the rest of the suite takes.
+const PARITY_SHARDS: usize = 12;
+
+macro_rules! wasm_api_parity_shards {
+    ($($name:ident = $shard:expr;)+) => {
+        $(
+            #[test]
+            fn $name() {
+                wasm_api_parity_shard($shard);
+            }
+        )+
+    };
+}
+
+wasm_api_parity_shards! {
+    wasm_api_parity_shard_00 = 0;
+    wasm_api_parity_shard_01 = 1;
+    wasm_api_parity_shard_02 = 2;
+    wasm_api_parity_shard_03 = 3;
+    wasm_api_parity_shard_04 = 4;
+    wasm_api_parity_shard_05 = 5;
+    wasm_api_parity_shard_06 = 6;
+    wasm_api_parity_shard_07 = 7;
+    wasm_api_parity_shard_08 = 8;
+    wasm_api_parity_shard_09 = 9;
+    wasm_api_parity_shard_10 = 10;
+    wasm_api_parity_shard_11 = 11;
+}
+
+/// One slice of [`parity_sweep_cases`]. Named `wasm_api_parity_shard_NN` so every substring selector
+/// that named the old single test still selects the whole sweep.
+///
+/// **Reporting contract.** The unsharded test accumulated four batches and asserted once at the end,
+/// so one failure named every problem. Each shard keeps that batching for ITS OWN cases, and libtest
+/// reports every failing shard in a run — so a run still surfaces every problem, grouped by shard
+/// rather than in one list. The whole-axis assertions moved to
+/// [`wasm_api_parity_axes_and_pins_are_live`]; only the ledger reconciliation, which is decidable
+/// per case, stayed here.
+fn wasm_api_parity_shard(shard: usize) {
+    let all_cases = parity_sweep_cases();
+    // Round-robin over the axis product, which `parity_sweep_cases` builds in a deterministic order,
+    // so which case lands in which shard is reproducible from the fixtures alone.
+    let sweep_cases: Vec<&(String, PathBuf, &'static str, &'static [&'static str])> = all_cases
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| i % PARITY_SHARDS == shard)
+        .map(|(_, c)| c)
+        .collect();
+    // The ledger half this shard owns: an exempt entry is "resurfaced" when no live finding matches
+    // it, and findings for a (profile, label) can only come from the shard sweeping that pair — so
+    // the reconciliation is decidable per shard once the entries are partitioned the same way.
+    // `wasm_api_parity_axes_and_pins_are_live` asserts every entry names a swept pair, so no entry
+    // falls between the shards.
+    let mine: BTreeSet<(&str, &str)> = sweep_cases
+        .iter()
+        .map(|(l, _, p, _)| (*p, l.as_str()))
+        .collect();
+    let shard_exempt: Vec<&(&str, &str, &str, &str)> = PARITY_EXEMPT
+        .iter()
+        .filter(|(p, l, _, _)| mine.contains(&(*p, *l)))
+        .collect();
 
     let mut findings: Vec<Finding> = vec![];
     let mut strays: Vec<String> = vec![]; // new emission surface the differential doesn't parse
     let mut gen_failures: Vec<String> = vec![]; // unlisted generation aborts (real regressions)
     let mut gap_closed: Vec<String> = vec![]; // EXPECTED_GENERATION_FAIL that now generates
-    let mut swept = 0usize;
 
     for (label, input, profile, extra) in &sweep_cases {
         let input_str = input.to_str().unwrap();
-        swept += 1;
         let expected_fail = EXPECTED_GENERATION_FAIL
             .iter()
             .any(|(p, l, _)| p == profile && l == label);
@@ -1082,24 +1192,6 @@ fn wasm_api_parity() {
         );
     }
 
-    // Vacuity guard: every (input, profile) pair must have been visited. A filter bug that shrinks
-    // the input set (or a dropped profile) fails here rather than passing a hollow sweep.
-    let cell_count = std::fs::read_dir("tests/matrix_wasm")
-        .unwrap()
-        .flatten()
-        .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("cddl"))
-        .count();
-    assert_eq!(
-        inputs.len(),
-        cell_count + 2,
-        "input enumeration drifted from (matrix_wasm cells + 2 depth fixtures)"
-    );
-    assert_eq!(
-        swept,
-        (cell_count + 2) * super::ALL_PROFILES.len() + total_corpus_profile_rows(),
-        "sweep shrank: expected every (input, profile) pair to be visited"
-    );
-
     // Structural guards (the emission surface / generation-abort verdicts) before the parity diff.
     assert!(
         strays.is_empty(),
@@ -1119,7 +1211,9 @@ fn wasm_api_parity() {
         gen_failures.join("\n")
     );
 
-    // Reconcile findings against the ledger (the `WASM_MATRIX_SKIP` idiom).
+    // Reconcile findings against the ledger (the `WASM_MATRIX_SKIP` idiom). The exempt SET is the
+    // whole ledger — an exemption must silence its finding whichever shard raised it — while the
+    // resurfaced scan is over this shard's slice of the ledger only.
     let exempt: BTreeSet<(&str, &str, &str)> = PARITY_EXEMPT
         .iter()
         .map(|(p, l, i, _)| (*p, *l, *i))
@@ -1133,7 +1227,7 @@ fn wasm_api_parity() {
         .iter()
         .filter(|f| !exempt.contains(&(f.profile.as_str(), f.label.as_str(), f.item.as_str())))
         .collect();
-    let resurfaced: Vec<&(&str, &str, &str, &str)> = PARITY_EXEMPT
+    let resurfaced: Vec<&&(&str, &str, &str, &str)> = shard_exempt
         .iter()
         .filter(|(p, l, i, _)| !live.contains(&(*p, *l, *i)))
         .collect();
