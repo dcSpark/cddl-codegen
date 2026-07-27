@@ -10155,6 +10155,18 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[];
             && shadow_stderr.contains("rename the rule"),
         "a rule-declared shadow must warn naming the type, the dep, and the remedy; stderr:\n{shadow_stderr}"
     );
+    // …and must assert only what it checked. Placement is decided from the constituents' owner set
+    // alone, and a shadowed wrapper is never recorded in `borrowed_collections.rs` (asserted just
+    // below), so nothing here knows whether the dep exports that name: the type-identity split is
+    // unconditional, the link collision conditional. A consumer regenerated with this warning firing
+    // whose cdylibs then linked clean is the state the old unconditional "will duplicate-symbol"
+    // phrasing mis-described.
+    assert!(
+        shadow_stderr.contains("DISTINCT types across the package boundary")
+            && shadow_stderr.contains("if the dependency's wasm crate also exports that name"),
+        "the shadow warning must state the unconditional consequence and mark the link collision \
+         conditional; stderr:\n{shadow_stderr}"
+    );
     let shadow_mod = read("export_shadow", "wasm/src/generated/mod.rs");
     // The consumer's own rule-declared class is minted LOCALLY (never suppressed), listed in its own
     // index, and absent from the sidecar (it is not a borrow).
