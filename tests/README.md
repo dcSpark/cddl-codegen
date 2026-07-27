@@ -1651,10 +1651,30 @@ simpler one passes under both orders and certifies nothing.
 hard error, and the value parser accepts a rust type path (generics included) while rejecting
 anything that could inject tokens into the generated file.
 
+**`--json-schema-dep` (threading a dependency's registrar) is pinned across three layers.** Its
+emitted SHAPE is the fast-tier tail of `snapshot_tests::json_gen_extern_schema_rows` — the calls are
+present verbatim, dashes in a cargo package name are normalised to underscores, they appear in flag
+order rather than sorted, and they precede both the name ledger and every row of the crate's own.
+That ordering is the deliberate mirror of the `--json-schema-root` rows asserted just above it in the
+same test, and the reason is the guard: registering the dependency first is what makes a cross-crate
+collision hand the CONSUMER's row the `<name>2` and blame the side whose owner can change it. Its
+input contract is pinned without cargo by `json_schema_dep_input_contract` (requires
+`--json-schema-export`; a repeated label and one lib name under two labels are both hard errors; the
+value parser accepts a crate name, a module path and a dashed package name while rejecting a token
+injection, a missing `=`, and either side empty). Its SUCCESS direction is the nested-cargo
+`json_schema_dep_threading` over `tests/json-schema-dep`, which appends a `vendored_dep` module to
+the seed-once `wasm/json-gen/src/lib.rs`, runs the crate, and asserts a root NOTHING in the fixture
+spec references reached `$defs` beside the fixture's own — the unreferenced-roots gap is the entire
+point of the flag, since everything referenced is already there through the closure. That cell's
+"dependency" is a module of the json-gen crate itself, so it proves the emitted call site compiles,
+runs first, and lands unreferenced roots; resolving a genuinely separate crate is cargo's job and its
+failure mode is the documented `E0433`.
+
 What these layers cannot see — a collision whose loser has no row and whose `schema_id`s match, a
-cross-crate collision between two `add_schemas` calls, a name schemars percent-encodes, and the
-conditions under which the emitted closure check silently skips — is enumerated in
-`tests/TESTING_ROADMAP.md`.
+cross-crate collision between two `add_schemas` calls whose `schema_id`s match, a name schemars
+percent-encodes, and the conditions under which the emitted closure check silently skips — is
+enumerated in `tests/TESTING_ROADMAP.md`, along with the two `--json-schema-dep` cells (a cross-crate
+collision, and an e2e whose dep is a separate crate) that are recorded rather than minted.
 
 ### JSON-schema → TypeScript JS-side pipeline (`js_schema_to_ts`, `js_d_ts_merge`, `package_json_pipeline`, `json_schema_scripts_without_package_json`)
 

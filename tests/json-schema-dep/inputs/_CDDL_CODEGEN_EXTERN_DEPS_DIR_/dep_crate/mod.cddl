@@ -1,0 +1,9 @@
+; A declared extern dependency, so the `--json-schema-dep=dep_crate=…` LABEL in the driving test
+; names something real in the fixture rather than an arbitrary string. Nothing else depends on it:
+; the label is never resolved against this set (the emission reads only the right-hand side), which
+; is the property the label's documentation states.
+;
+; `dep_thing` is deliberately UNREFERENCED by `lib.cddl`. An extern rule emits no definition of its
+; own and a non-exported scope emits no files, so with nothing referencing it no generated code names
+; `dep_crate::…` — which is why this fixture needs no real `dep_crate` crate on disk to compile.
+dep_thing = _CDDL_CODEGEN_EXTERN_TYPE_
