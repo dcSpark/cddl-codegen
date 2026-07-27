@@ -1050,12 +1050,12 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "contain.array-element.type2.array"
 status = "unsupported"
-evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.array-element.type2.map"
 status = "unsupported"
-evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.array-element.type2.tag"
@@ -1128,12 +1128,12 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "contain.cbor-payload.type2.array"
 status = "unsupported"
-evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.cbor-payload.type2.map"
 status = "unsupported"
-evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.cbor-payload.type2.tag"
@@ -1156,12 +1156,12 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "contain.choice-member.type2.array"
 status = "unsupported"
-evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.choice-member.type2.map"
 status = "unsupported"
-evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.choice-member.type2.tag"
@@ -1193,7 +1193,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "contain.generic-arg.type2.map"
 status = "unsupported"
-evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.group-choice-arm.grpchoice.sequence.array"
@@ -1234,7 +1234,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "contain.group-choice-arm.grpent.inline_group.array"
 status = "unsupported"
-evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.group-choice-arm.grpent.member.array"
@@ -1317,12 +1317,16 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "contain.group-choice-arm.type2.map.array"
 status = "unsupported"
-evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.group-choice-arm.type2.value.map"
-status = "unsupported"
-evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+status = "supported"
+evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
 [[support]]
 id = "contain.map-key.memberkey.type1.bool_arrow_multi"
@@ -1454,7 +1458,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "contain.map-key.type2.array"
 status = "unsupported"
-evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.map-key.type2.tag"
@@ -1486,12 +1490,12 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "contain.map-value.type2.array"
 status = "unsupported"
-evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.map-value.type2.map"
 status = "unsupported"
-evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.map-value.type2.tag"
@@ -1633,12 +1637,12 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "contain.occurrence-target.type2.array"
 status = "unsupported"
-evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.occurrence-target.type2.map"
 status = "unsupported"
-evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.tag-content.type.choice"
