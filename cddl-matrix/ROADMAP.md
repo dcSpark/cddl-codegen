@@ -315,31 +315,21 @@ are ledgered here (that's what the probe/gate error messages point at).
   `parsing.rs`'s `group_entry_to_type` (`inline group entries are not implemented`). This is a
   distinct inline-group arm
   limitation, tracked as a known PANIC row in `tests/matrix_panic/`.
-- **Six panic-class families remaining from the recombination fuzzer's sweeps**
-  (`src/tests/recombination_tests.rs`; each pinned as a `tests/robustness/` PANIC row — the first
-  four also cited in the sweep's `KNOWN_PANIC_CLASSES` ledger, while the last two were surfaced by
-  a TRANSIENT enumeration (a since-skipped vacuous filler shifted the composition indices) that the
-  current enumeration no longer composes, so the robustness rows alone keep them exercised (the
-  ledger's stale-pin guard forbids unobserved entries; a comment beside the ledger records the
-  re-add protocol). The matrix has no containment cells for any of these shapes,
-  which is itself the coverage gap the fuzzer exists to find; a further one, the inline map carrying
-  a group choice as a member/element type, now rejects gracefully with its array sibling —
-  `tests/robustness/inline_group_choice_member.cddl` / `inline_array_group_choice_member.cddl`,
-  both `error (graceful)` rows — though the matrix-cell coverage gap for those shapes stands):
+- **Panic-class families remaining from the recombination fuzzer's sweeps**
+  (`src/tests/recombination_tests.rs`), each pinned as a `tests/robustness/` row. None of them is
+  cited in the sweep's `KNOWN_PANIC_CLASSES` ledger: the `.cbor` family was surfaced by a TRANSIENT
+  enumeration (a since-skipped vacuous filler shifted the composition indices) that the current
+  enumeration no longer composes, so the robustness rows alone keep it exercised (the ledger's
+  stale-pin guard forbids unobserved entries; a comment beside the ledger records the re-add
+  protocol). The matrix has no containment cells for any of these shapes, which is itself the
+  coverage gap the fuzzer exists to find:
   - A bare `any` type-choice arm in a NON-LAST position (`a = any / tstr`) is a permanent graceful
-    rejection: a bare `any` accepts every CBOR item, so any arm after it is unreachable dead code
+    rejection, listed here so the decision is not re-litigated: a bare `any` accepts every CBOR
+    item, so any arm after it is unreachable dead code
     ("`any` arm makes later arms unreachable — move it last"). A LAST-position bare `any` arm is
     supported (forced-backtracking dispatch); a tagged `any` arm (`#6.n(any)`) is not a catch-all and
     is allowed in any position. Non-last rejection pinned by `tests/robustness/choice_any_arm.cddl`,
     last-position support by `tests/robustness/choice_last_any_arm.cddl`.
-  - A bare fixed value as a zero-or-more occurrence target (`a = [* 5]`, equally `true`/`"v1"`/`null`)
-    reaches `for_rust_member`'s `should not expose Fixed type in member` panic — the
-    registration-time graceful rejection that owns the top-level shapes never sees this position.
-    Pinned by `tests/robustness/fixed_value_occurrence.cddl`.
-  - A tag wrapping a PRELUDE CONSTANT (`t = #6.11(true)`) hits the same `Fixed` panic: the literal
-    inner (`#6.5(5)`, `tests/robustness/tagged_literal.cddl`) is rejected gracefully, but a prelude
-    constant resolves through the prelude alias on a path the guard does not classify. Pinned by
-    `tests/robustness/tagged_prelude_constant.cddl`.
   - A `.cbor`-over-a-REFERENCE as a type-choice arm (`a = bytes .cbor bar / tstr`) panics "variant
     ctor refers to undefined ident" in intermediate/structs.rs
     (`EnumVariant::group_ctor_record_fields`): the

@@ -1925,22 +1925,29 @@ impl<'a> IntermediateTypes<'a> {
         // lookup during parse — before `finalize` ever surfaces the graceful `Err`. The registered
         // `Fixed` alias is harmless because `finalize` never generates once a rejection is recorded.
         if let ConceptualRustType::Fixed(fixed) = &info.base_type.conceptual_type {
-            let value_desc = match fixed {
-                FixedValue::Null => "null".to_owned(),
-                FixedValue::Bool(b) => b.to_string(),
-                FixedValue::Nint(i) => i.to_string(),
-                FixedValue::Uint(u) => u.to_string(),
-                FixedValue::Float(f) => format!("{f:?}"),
-                FixedValue::Text(s) => format!("\"{s}\""),
-            };
-            self.record_rejection(format!(
-                "rule `{alias}`: a top-level rule whose entire body is a bare fixed value ({value_desc}) \
-                 is unsupported — a fixed value has no standalone type representation, only meaning as an \
-                 (unstored) struct or array member. Wrap it in a group (e.g. `{alias} = [{value_desc}]`) \
-                 or reference it from a member position."
-            ));
+            let fixed = fixed.clone();
+            self.record_bare_fixed_rule_rejection(&alias, &fixed);
         }
         self.type_aliases.insert(alias.into(), info);
+    }
+
+    /// The rejection for a top-level rule whose whole body is a bare fixed value. Shared by the two
+    /// registration seams a rule body can land on — the transparent-alias seam
+    /// (`register_type_alias` above, `foo = 5` / `foo = true` / `foo = #6.5(5)`) and the WRAPPER
+    /// seam in the parse walk (`foo = #6.11(true)`, where a tag head or `@newtype` forces
+    /// `RustStruct::new_wrapper` instead of an alias). They are genuinely different seams — one
+    /// inserts into the alias table, the other registers a rust struct — so each keeps its own
+    /// guard, and this helper keeps the ONE message they both emit from drifting apart. The text is
+    /// a matrix `code_anchor` (`cddl-matrix/annotations/corpus/cddl_codegen.toml`, the
+    /// `value.number` / `prelude.true` family): reword it and those annotations dangle.
+    pub fn record_bare_fixed_rule_rejection(&mut self, rule: &RustIdent, fixed: &FixedValue) {
+        let value_desc = fixed.cddl_source_desc();
+        self.record_rejection(format!(
+            "rule `{rule}`: a top-level rule whose entire body is a bare fixed value ({value_desc}) \
+             is unsupported — a fixed value has no standalone type representation, only meaning as an \
+             (unstored) struct or array member. Wrap it in a group (e.g. `{rule} = [{value_desc}]`) \
+             or reference it from a member position."
+        ));
     }
 
     pub fn rust_struct(&self, ident: &RustIdent) -> Option<&RustStruct> {

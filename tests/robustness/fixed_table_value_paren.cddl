@@ -1,0 +1,6 @@
+; The PARENTHESIZED spelling of tests/robustness/fixed_table_value.cddl (`{ * (uint => 5) }`), which
+; the occurrence-aware group flatten leaves unspliced on the map side and which therefore reaches a
+; DIFFERENT table-detection arm of `parse_group_type` than the bare spelling. Both arms carry the
+; fixed-VALUE guard so the two spellings of one shape get the same graceful rejection and the same
+; message; this row is what makes that equivalence a regression pin rather than an assumption.
+a = { * (uint => 5) }

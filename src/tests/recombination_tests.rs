@@ -876,10 +876,14 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // tests/robustness/choice_any_arm.cddl is that `error (graceful)` fixture, the last-position
     // support is tests/robustness/choice_last_any_arm.cddl). A `[* any]` (container-of-any) arm
     // generates correctly (tests/robustness/choice_array_any_arm.cddl).
-    (
-        "should not expose Fixed type",
-        "bare fixed value under an occurrence / tagged prelude constant; pinned by tests/robustness/fixed_value_occurrence.cddl and tests/robustness/tagged_prelude_constant.cddl (recombination findings)",
-    ),
+    // (retired when the bare-fixed-in-member families became graceful rejections) the
+    // `"should not expose Fixed type"` class is gone: a fixed value under a count-permitting
+    // occurrence (`[* 5]`, and its table-VALUE sibling `{ * uint => 5 }`) is rejected in the parse
+    // walk by `parse_group_type`, and a tag-wrapped prelude constant (`#6.11(true)`) is rejected at
+    // the wrapper registration seam through the same shared message the alias seam already used for
+    // `#6.5(5)`. Both robustness fixtures (tests/robustness/fixed_value_occurrence.cddl,
+    // tests/robustness/tagged_prelude_constant.cddl) are now `error (graceful)` catalog rows. The
+    // EXACTLY-ONCE placement stays supported (tests/robustness/fixed_bool_member.cddl).
 ];
 // NOT in the ledger despite being a real, robustness-pinned panic class (the ledger's stale-pin
 // guard requires sweep observation, and the CURRENT enumeration does not compose the shape): the
@@ -951,7 +955,7 @@ fn recombination_generation_sweep() {
     );
 
     // Vacuity floors — from the EXECUTED artifact, not the inputs. Current baseline
-    // (1544 swept / 927 ok / 420 panic / 197 graceful); floors sit ~10% under so real shrinkage
+    // (1544 swept / 885 ok / 367 panic / 292 graceful); floors sit under it so real shrinkage
     // fails loud while ingredient additions don't churn them. (Generic INSTANTIATION in bare member
     // position moved panic -> ok when the `TypeGroupname` group-entry arm was routed through
     // `generic_instance_or_new_type` — see tests/corpus/generic_call_member.cddl. Earlier, fixed BOOL

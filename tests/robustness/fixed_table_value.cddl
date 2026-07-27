@@ -1,0 +1,16 @@
+; The TABLE-VALUE sibling of tests/robustness/fixed_value_occurrence.cddl: a bare fixed value as a
+; table's VALUE domain (`{ * uint => 5 }`; equally `+` and the other count-permitting markers) is
+; REJECTED GRACEFULLY in the parse walk. Same reason as the array element — the table lowers to a
+; `BTreeMap<K, V>` and a `Fixed` has no `V`, so there is nothing to store per row — and the same
+; refusal-over-widening rule, since silently generating `V = uint` would drop the constant from the
+; spec the decoder enforces.
+;
+; It gets its OWN catalog row rather than riding the array fixture's, because it is a separate guard
+; on a separate parse path (the table-detection arm of `parse_group_type`, not the
+; homogeneous-array arm): a fixture that only pinned the array shape would let this one regress back
+; to `for_rust_member`'s panic unnoticed. The parenthesized spelling has its own row again for the
+; same reason (tests/robustness/fixed_table_value_paren.cddl).
+;
+; The KEY domain is deliberately unaffected: per RFC 8610 `{ 1 => uint }` is the same wire entry as
+; `{ 1: uint }`, so a fixed key diverts to the record path and generates.
+a = { * uint => 5 }
