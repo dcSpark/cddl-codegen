@@ -774,10 +774,13 @@ impl GenerationScope {
                                     config.var_name, deserializer_name
                                 ));
                             }
-                            let x_abs = (x + 1).abs();
                             let mut compare_block =
                                 Block::new(format!("if {}_value != {}", config.var_name, x));
-                            compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Uint(({}_value + 1).unsigned_abs() as u64), expected: Key::Uint({}) }}.into());", config.var_name, x_abs));
+                            // `negative_integer_sz()` yields `(i128, Sz)`, so `{var}_value` is
+                            // already `i128` in both profiles and feeds `Key::Nint` directly. Both
+                            // sides name the value the CDDL AUTHORED (`-7`), not the nint wire
+                            // representation (`-1-N`, i.e. `6`) a u64-only `Key` would have forced.
+                            compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Nint({}_value), expected: Key::Nint({}) }}.into());", config.var_name, x));
                             deser_code.content.push_block(compare_block);
                             if cli.preserve_encodings {
                                 config
