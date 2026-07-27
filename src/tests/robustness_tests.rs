@@ -559,6 +559,68 @@ fn inline_group_choice_arm_rejects_gracefully() {
     }
 }
 
+/// A heterogeneous anonymous inline ARRAY in a position that requires a TYPE (`a = [[int]]`, a
+/// `.cbor` payload, a `/` choice alternative, a map key, a map value, an occurrence target) is
+/// rejected BY DESIGN — a GRACEFUL `Err`, never a `panic!`. This is the BRACKET sibling of
+/// `inline_map_member_rejects_gracefully`: the array side has a naming door the map side lacks, so
+/// the message carries BOTH remedies (an explicit rule, or a `; @name` on the type2).
+///
+/// The final vector is a CONTROL, not a rejection: at the choice-member position the `@name`
+/// comment does reach the naming site, so the struct is minted and generation succeeds. Without it
+/// this test could pass while the rejection had swallowed the naming door whole — the pin would
+/// hold for the wrong reason. (The positions where `@name` is DROPPED are pinned separately, by the
+/// comment-DSL position sweep's `KNOWN_SILENT_DROP` list.)
+#[test]
+fn anonymous_nested_array_rejects_gracefully() {
+    let vectors = [
+        ("anon_arr_elem", "a = [[int]]\n"),
+        ("anon_arr_cbor", "b = bytes .cbor ([uint, uint])\n"),
+        ("anon_arr_choice", "t = [int] / [tstr]\n"),
+        ("anon_arr_mapkey", "m = { [int] => tstr }\n"),
+        ("anon_arr_mapval", "m = { k: [int], j: uint }\n"),
+        ("anon_arr_occur", "a = [* [int]]\n"),
+    ];
+    for (tag, spec) in vectors {
+        for extra in [&[][..], &["--preserve-encodings", "true"][..]] {
+            let msg = expect_graceful_rejection(tag, spec, extra);
+            assert!(
+                msg.contains("Anonymous groups not allowed"),
+                "rejection should name the anonymous-group construct ({tag}, {extra:?}), got: {msg}"
+            );
+            // Both halves of the advertised remedy, each verified to generate.
+            assert!(
+                msg.contains("create an explicit rule") && msg.contains("@name"),
+                "rejection should carry both remedies ({tag}, {extra:?}), got: {msg}"
+            );
+        }
+    }
+
+    // Control: `@name` at the choice-member position DOES reach the naming site, so the struct is
+    // minted and this generates. The rejection above must not have closed that door.
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_anon_arr_named_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, "x = [1, bytes] ; @name arr_variant\n  / uint\n").unwrap();
+    let cli = Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "anon_arr_named_unused",
+    ]);
+    let result = crate::api::generated_strings(&cli);
+    std::fs::remove_file(&path).ok();
+    let generated =
+        result.expect("a `; @name`d anonymous array at choice-member position generates");
+    assert!(
+        generated
+            .values()
+            .any(|src| src.contains("struct ArrVariant")),
+        "the `@name`d anonymous array must still mint its struct"
+    );
+}
+
 /// `@raw_bytes_flavor` anywhere other than a `_CDDL_CODEGEN_EXTERN_TYPE_` rule definition is
 /// rejected BY DESIGN — via a GRACEFUL `Err` (deferred through `record_rejection` → drained by
 /// `finalize`), never a `panic!` and never a silent no-op. One vector per rejecting seam: a

@@ -3041,12 +3041,27 @@ fn rust_type_from_type2(
                                 get_comment_after(parent_visitor, &CDDLType::from(type2), None)
                                     .as_ref(),
                             );
+                            // A heterogeneous inline array in a type position becomes a struct, and a
+                            // struct needs a name. The `@name` comment on the type2 is the naming
+                            // door — but it only reaches here from positions whose comment slot
+                            // `get_comment_after(type2)` can ascend to, so at the others there is no
+                            // name to be had. That is a rejection, not an abort: record it with the
+                            // remedy the message has always advertised and continue with an inert
+                            // placeholder, so `finalize` reports it alongside anything else the walk
+                            // finds. Wording is unchanged from the panic it replaces (both halves of
+                            // the remedy are still the working ones) minus the AST dump, which was
+                            // never actionable for a user reading their own CDDL.
                             let name = match rule_metadata.name.as_ref() {
                                 Some(name) => name,
-                                None => panic!(
-                                    "Anonymous groups not allowed. Either create an explicit rule (foo = [0, bytes]) or give it a name using the @name notation. Group: {:#?}",
-                                    group
-                                ),
+                                None => {
+                                    types.record_rejection(format!(
+                                        "Anonymous groups not allowed: the inline array `[{group}]` \
+                                         is used where a type is required. Either create an explicit \
+                                         rule (`foo = [0, bytes]`, then reference `foo`) or give it \
+                                         a name using the `@name` notation."
+                                    ));
+                                    return ConceptualRustType::Fixed(FixedValue::Null).into();
+                                }
                             };
                             let cddl_ident = CDDLIdent::new(name);
                             let rust_ident = RustIdent::new(cddl_ident.clone());

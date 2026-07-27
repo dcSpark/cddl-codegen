@@ -390,10 +390,12 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   ➖ note in the corpus overlay, never relabelled to green the drift-check.
 - **Anonymous-group limitation (pervasive contextual fact, surfaced by per-cell support).** An INLINE
   anonymous map/array/group nested in a choice / array-element / cbor-payload / generic-arg / map-value
-  position panics (`parsing.rs` "Anonymous groups not allowed") — it must be **named**. A named RULE
-  works in every position; the `@name` naming route the panic message advertises works only where the
+  position is **rejected gracefully** (`parsing.rs`, "Anonymous groups not allowed" for the array
+  bracket, "an inline map … unsupported unless it is a table" for the map one) — it must be
+  **named**. A named RULE
+  works in every position; the `@name` naming route the array message advertises works only where the
   comment can reach the naming site — verified for the choice-member position, while at member
-  positions (array-element, map-value) the directive never arrives and the panic stands (a pinned
+  positions (array-element, map-value) the directive never arrives and the rejection stands (a pinned
   `KNOWN_SILENT_DROP` finding — see the comment-DSL entry in `ROADMAP.md` § findings). The one
   exception: **tag-content** accepts an inline composite. So `type2.map` is supported as
   tag-content, unsupported inline elsewhere, and works everywhere via a named reference — the

@@ -1614,6 +1614,20 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   cargo. Trigger to build rather than defer, on the axis the cost grows along and measurable by
   whoever pays it: a SECOND mis-citation, or the first report from someone who followed a citation
   during triage and reached the wrong site.
+- **A matrix cell's `note` names the panic site it aborts at, and nothing re-derives that name from
+  a run either.** Recorded as a second INSTANCE of the class above, in a different artifact, so a
+  cross-artifact evaluation has both in one place. The `note` fields of the `…type2.map` containment
+  cells (`cddl-matrix/containment/{array-element,cbor-payload,choice-member,generic-arg,map-value,
+  occurrence-target}.toml`, mirrored verbatim into `matrix.json`) attribute the abort to
+  `parsing.rs 'Anonymous groups not allowed'`. Every one of them actually reached the
+  `"TODO: non-table types as types"` site — the same wrong-BRACKET confusion as the ledger instance,
+  authored independently in a different file and a different language. The named site is now gone
+  entirely (those cells reject gracefully), so that text must be rewritten during the matrix
+  re-grounding regardless; what survives the rewrite is the gap, which is that a hand-authored site
+  name inside an annotation is checked by nothing. Whether the two instances are ONE detectable class
+  is the open question and the reason this is recorded rather than built: the ledger's detector keys
+  on a Rust test's `catch_unwind` capture, while a cell note is TOML consumed by TypeScript, so a
+  single detector spanning both is a claim to establish, not to assume.
 - **An encoding-variant mutator asserts a spec-equality premise that is a property of the TYPE
   FLAVOR, not of CBOR — and the exemption for that is hand-listed per row, so the guard is loud on
   a STALE entry and silent until tier-time on a MISSING one.** The replay gates mutate an accept

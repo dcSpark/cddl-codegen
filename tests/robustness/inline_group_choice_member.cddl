@@ -1,8 +1,10 @@
-; An INLINE map carrying a group choice (`{ x: uint // y: tstr }`) used as a member/element type
-; panics parsing (`group choices in inlined map types not allowed`, parsing.rs) — a DISTINCT site
-; from the plain anonymous-composite "Anonymous groups not allowed" panic (which fires for choice-
-; free inline maps): the group-choice check trips first. The named form (`t = { x: uint // y: tstr }`
-; referenced by name) is the supported spelling. No matrix cell covers a group-choice-map in member
-; position (contain.* map cells are choice-free), so this hand fixture is the pin. Surfaced by the
-; recombination sweep (src/tests/recombination_tests.rs).
+; An INLINE map carrying a group choice (`{ x: uint // y: tstr }`) used as a member/element type is
+; rejected gracefully (`an inline map with group choices ... is unsupported`, parsing.rs
+; `rust_type_from_type2`) — a DISTINCT arm from the one a choice-FREE inline map takes (`an inline
+; map ... unsupported unless it is a table`): the group-choice count check trips first, so this
+; fixture pins the multi-choice arm specifically. The named form (`t = { x: uint // y: tstr }`
+; referenced by name) is the supported spelling, which the message points at. No matrix cell covers
+; a group-choice map in member position (the contain.* map cells are choice-free), so this hand
+; fixture is the pin. Surfaced by the recombination sweep (src/tests/recombination_tests.rs); the
+; message itself is pinned by `inline_map_group_choice_member_rejects_gracefully`.
 a = [{ x: uint // y: tstr }]

@@ -72,11 +72,11 @@ struct Cell {
 /// pin's control is the `anon-group-choice-member` cell.
 ///
 /// Four live findings (none fixed by this task — the scoped fix is rule-position `@name` rejection):
-///   - `@name` @ `anon-group-member`: the "Anonymous groups not allowed" panic advertises `@name` as
-///     the remedy, but at a MEMBER-position anonymous inline group the comment lands on the enclosing
-///     group entry's trailing_comments, which the naming site's `get_comment_after(type2)` never
-///     reaches (it ascends only through Type1/TypeChoice). So `@name` is dropped and the anonymous-
-///     group panic fires anyway — the advertised remedy does not work in this position.
+///   - `@name` @ `anon-group-member`: the "Anonymous groups not allowed" rejection advertises `@name`
+///     as the remedy, but at a MEMBER-position anonymous inline group the comment lands on the
+///     enclosing group entry's trailing_comments, which the naming site's `get_comment_after(type2)`
+///     never reaches (it ascends only through Type1/TypeChoice). So `@name` is dropped and the
+///     anonymous-group rejection fires anyway — the advertised remedy does not work in this position.
 ///   - `@doc` @ `type-choice-variant`: on a FIXED-VALUE type choice (`0 / 1`, a dataless C-style
 ///     enum) the per-variant `@doc` is captured into the IR (`create_variants_from_type_choices`
 ///     threads `rule_metadata.comment`) but never emitted — the dataless-variant rendering drops it.
@@ -97,8 +97,8 @@ const KNOWN_SILENT_DROP: &[(&str, &str, &str)] = &[
         "@name",
         "anon-group-member",
         "@name at a member-position anonymous inline group is unreachable by the naming site's \
-         get_comment_after(type2) ascent (Type1/TypeChoice only), so the anonymous-group panic fires \
-         despite the panic message advertising @name as the remedy",
+         get_comment_after(type2) ascent (Type1/TypeChoice only), so the anonymous-group rejection \
+         fires despite its message advertising @name as the remedy",
     ),
     (
         "@doc",
