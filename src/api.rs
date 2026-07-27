@@ -318,13 +318,19 @@ fn extern_import_staleness_error(
     )
 }
 
-/// Parse the CDDL input described by `cli`, build the intermediate representation, and invoke
-/// `f` with a borrow of it plus the `export_raw_bytes_encoding_trait` flag. The AST and IR are
-/// owned for the duration of the call, so `f` must return owned data (it cannot leak the borrow).
-pub fn with_types<R>(
-    cli: &Cli,
-    f: impl FnOnce(&IntermediateTypes, bool) -> R,
-) -> Result<R, Box<dyn std::error::Error>> {
+/// Every rule that rejects a COMBINATION of flags, as a pure function of the `Cli`.
+///
+/// Extracted from [`with_types`] — which still calls it, in the same position, so a single-crate
+/// command line behaves byte for byte as it did — because the multi-crate `--config` front end needs
+/// to run these rules for EVERY crate before ANY crate generates. Inside the generation loop, a
+/// shared key that trips one of them leaves the crates before it fully regenerated on disk and
+/// reports a bare flag message naming neither the crate nor the config key that produced it.
+///
+/// Every rule here reads `cli` alone. That is the property that makes the hoist possible at all, and
+/// it is a constraint on what may be added: a rule needing the parsed spec (`--workspace-dep`'s
+/// "names a configured extern dependency", say) cannot live here, because there is no spec to
+/// consult before generation starts.
+pub fn validate_flag_combinations(cli: &Cli) -> Result<(), String> {
     // The canonical toggle is emitted as an extra argument on the preserve-encodings `serialize`
     // signatures; without --preserve-encodings those signatures don't take it, so the generator
     // emits `serialize(serializer, force_canonical)` calls against 1-arg methods and references an
@@ -335,7 +341,7 @@ pub fn with_types<R>(
             "--canonical-form=true requires --preserve-encodings=true: the canonical toggle rides \
              on the preserve-encodings serialize signatures, so on its own the generated crate does \
              not compile"
-                .into(),
+                .to_owned(),
         );
     }
     // The conformance oracle is a per-round-trip-case add-on to the --emit-tests module; without
@@ -346,7 +352,7 @@ pub fn with_types<R>(
             "--emit-tests-conformance=true requires --emit-tests=true: the conformance oracle adds \
              a validation call to each emitted round-trip case, so there is nothing to add without \
              the generated-test module"
-                .into(),
+                .to_owned(),
         );
     }
     // The copied scripts compile the schema document the `--json-schema-export` json-gen crate
@@ -358,7 +364,7 @@ pub fn with_types<R>(
             "--json-schema-scripts=true requires --json-schema-export=true: the copied scripts read \
              the schema document the json-gen crate exports, so without it there is nothing to \
              compile to TypeScript"
-                .into(),
+                .to_owned(),
         );
     }
     // An extra schema root is an additional registration row in the json-gen crate's `add_schemas`;
@@ -370,7 +376,7 @@ pub fn with_types<R>(
             "--json-schema-root requires --json-schema-export=true: the extra root is emitted as a \
              registration row in the json-gen crate's `add_schemas`, so without it there is no \
              crate for the row to land in"
-                .into(),
+                .to_owned(),
         );
     }
     // Two identical --json-schema-root values are a user mistake with no meaning: the emitted rows
@@ -387,8 +393,7 @@ pub fn with_types<R>(
                  registered exactly once, so a repeated value is a no-op rather than anything the \
                  tool could act on (this compares the value verbatim — two spellings of one type are \
                  not detected, and are harmless)"
-            )
-            .into());
+            ));
         }
     }
     // A dep registrar call is a line in the json-gen crate's `add_schemas`; without
@@ -399,7 +404,7 @@ pub fn with_types<R>(
             "--json-schema-dep requires --json-schema-export=true: the dependency's registrar is \
              emitted as a call in the json-gen crate's `add_schemas`, so without it there is no \
              crate for the call to land in"
-                .into(),
+                .to_owned(),
         );
     }
     // Both duplicate checks live here rather than falling out of the accessor's collection type,
@@ -417,8 +422,7 @@ pub fn with_types<R>(
                  (this compares the label verbatim after trimming — two labels naming the SAME \
                  dependency are not detected, and are caught by the lib-name check below whenever \
                  they map to one registrar)"
-            )
-            .into());
+            ));
         }
     }
     // The same registrar under two labels is a user mistake with no meaning: `add_schemas` registers
@@ -435,8 +439,7 @@ pub fn with_types<R>(
                  spellings of one registrar, e.g. `dep_json_schema_gen` and \
                  `crate::vendored_dep_alias`, are not detected, and are harmless for the same \
                  reason)"
-            )
-            .into());
+            ));
         }
     }
     // A `--json-gen-dep` entry is a `[dependencies]` key in the json-gen crate's manifest; without
@@ -447,7 +450,7 @@ pub fn with_types<R>(
             "--json-gen-dep requires --json-schema-export=true: the entry is written into the \
              json-gen crate's `Cargo.toml`, so without it there is no crate and no manifest for the \
              dependency to land in"
-                .into(),
+                .to_owned(),
         );
     }
     // One package name under two paths is ambiguous, not additive: a manifest holds ONE
@@ -465,10 +468,20 @@ pub fn with_types<R>(
                 "--json-gen-dep package name {name:?} was passed more than once: a manifest holds \
                  one `[dependencies]` entry per package, so a second path under one name would \
                  silently replace the first rather than adding anything"
-            )
-            .into());
+            ));
         }
     }
+    Ok(())
+}
+
+/// Parse the CDDL input described by `cli`, build the intermediate representation, and invoke
+/// `f` with a borrow of it plus the `export_raw_bytes_encoding_trait` flag. The AST and IR are
+/// owned for the duration of the call, so `f` must return owned data (it cannot leak the borrow).
+pub fn with_types<R>(
+    cli: &Cli,
+    f: impl FnOnce(&IntermediateTypes, bool) -> R,
+) -> Result<R, Box<dyn std::error::Error>> {
+    validate_flag_combinations(cli)?;
     // Pre-processing files for multi-file support
     let input_files = if cli.input.is_dir() {
         let mut cddl_paths_buf = Vec::new();

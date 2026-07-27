@@ -120,6 +120,8 @@ fn array_keys_concatenate_across_layers_in_layer_order() {
     let cli = expand_one(
         r#"
 [defaults]
+# `--json-schema-root` is refused without it, and expansion now runs that rule.
+json-schema-export = true
 json-schema-root = ["d::One", "d::Two"]
 workspace-dep = ["dep_a"]
 
@@ -557,6 +559,50 @@ fn a_rejected_value_is_reported_against_its_config_key() {
         err.contains("invalid character"),
         "must carry clap's own reason, got: {err}"
     );
+}
+
+/// A flag COMBINATION the generator refuses is rejected during expansion, so no crate has generated
+/// when the run fails.
+///
+/// These rules used to run per crate INSIDE the generation loop, which made a shared key destructive
+/// out of proportion to the mistake: `[defaults].json-schema-scripts = true` with one crate lacking
+/// `json-schema-export` regenerated every earlier crate in full, then failed with a bare flag
+/// message naming neither the crate nor the TOML line. Both halves are pinned — the failure is at
+/// expansion (`expand` returning `Err` is what "before any crate generates" means here) and the
+/// message names the crate.
+#[test]
+fn a_refused_flag_combination_fails_expansion_and_names_the_crate() {
+    for (what, text, expected) in [
+        (
+            "a shared key tripping a rule on the crate that lacks its partner",
+            "[defaults]\njson-schema-scripts = true\n\
+             [crates.alpha]\ninput = \"a.cddl\"\noutput = \"gen/a\"\njson-schema-export = true\n\
+             [crates.beta]\ninput = \"b.cddl\"\noutput = \"gen/b\"\n",
+            "--json-schema-scripts=true requires --json-schema-export=true",
+        ),
+        (
+            "the same for a raw sub-table entry",
+            "[defaults.json-gen-dep]\ndep-json-schema-gen = \"../dep/wasm/json-gen\"\n\
+             [crates.beta]\ninput = \"b.cddl\"\noutput = \"gen/b\"\n",
+            "--json-gen-dep requires --json-schema-export=true",
+        ),
+        (
+            "and for a pair of keys neither of which mentions json-schema",
+            "[defaults]\ncanonical-form = true\n\
+             [crates.beta]\ninput = \"b.cddl\"\noutput = \"gen/b\"\n",
+            "--canonical-form=true requires --preserve-encodings=true",
+        ),
+    ] {
+        let err = expand_error(text);
+        assert!(
+            err.contains("[crates.beta]"),
+            "the refusal must name the crate the combination landed on ({what}), got:\n{err}"
+        );
+        assert!(
+            err.contains(expected),
+            "and must carry the generator's own reason ({what}), got:\n{err}"
+        );
+    }
 }
 
 /// The same, when the rejected key is `input` or `output` itself. Those two are what the replay's
