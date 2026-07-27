@@ -1543,6 +1543,21 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   a filesystem-effect claim has no artifact inventory to enumerate. If a flag-level instance actually
   ships, the layer to build is the same shape one rung out: a per-flag datum naming the artifact its
   documentation makes claims about.
+- **`verify.ts`'s assert-at-startup self-tests are millisecond pure-function checks that no tier gate
+  reaches — only the ~60-minute `full`-tier `verify` gate runs them.** They cover the deciders whose
+  failures are SILENT in production: a wrong output is a plausible annotation, not an error. Proven
+  instance: the wasm-oracle evidence composer attributed a generation-time refusal to the
+  `cargo test` stage (`wasm crate failed to compile (cargo test exit 1)` for a `cargo test` that never
+  ran), which nearly carried a wasm-support review to the wrong conclusion; the fix added a
+  stage-taxonomy self-test beside the pre-existing ruby-Bernoulli one, so `verify.ts` now refuses to
+  run on either being wrong. Standing system meanwhile: `bun run verify.ts --selftest` runs BOTH
+  blocks and exits in ~30 ms, and is the red/green check to run by hand after touching either
+  decider. Mechanical layer, when the trigger fires: register that one command as a `local`-tier gate,
+  which costs the tier nothing measurable. Trigger — the cost of the gap grows with the number of
+  self-tested deciders sitting behind a full-tier-only run, so: a THIRD assert-at-startup self-test
+  block in `verify.ts`. (The count is the right instrument rather than "a second silent-decider
+  incident", because an incident of this class is by construction found late and by a reader, not by
+  the party who added the block.)
 
 ## Deferred features (build when a real consumer needs them)
 

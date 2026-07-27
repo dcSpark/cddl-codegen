@@ -24,7 +24,8 @@
  * By DEFAULT the cddl-codegen probe ALSO runs a wasm oracle: it regenerates each example with
  * `--wasm=true --emit-tests=true` and `cargo test`s the generated wasm crate (the emitted
  * `cddl_generated_wasm_tests` module — cross-crate byte differential + wire round-trip + accessor
- * read-back), recorded as additional per-probe evidence (`minted_wasm` / `wasm_roundtrips`). The rust
+ * read-back), recorded as additional per-probe evidence — one field per STAGE of the leg
+ * (`wasm_gen` / `minted_wasm` / `wasm_roundtrips`), so the clause names where a failure happened. The rust
  * round-trip verdict still gates support; wasm is corroborating evidence. Opt out for a faster run with
  * `--no-wasm` (or `VERIFY_WASM=0`), which roughly halves per-probe cargo work — but a `--no-wasm` run
  * rewrites every row's evidence WITHOUT the wasm bits (wholesale diff churn), so keep wasm ON for any
@@ -183,11 +184,14 @@ const MINT_ONLY = onlyArg
   ? new Set(onlyArg.slice("--only=".length).split(",").map(s => s.trim()).filter(s => s.length))
   : null;
 
-// ASSERT-AT-STARTUP self-test for the ruby-generate Bernoulli classifier (Change A's deterministic
-// verdict source). Runs on EVERY invocation before any oracle work — a mis-classification would silently
-// route a Bernoulli row back onto the flaky `generate` verdict (or a deterministic row onto the nondet
-// token), so it must fail loud and early rather than surface as a spurious annotations flip. `--selftest`
-// runs ONLY this block and exits, for a sub-second red/green check without the multi-minute pipeline.
+// ASSERT-AT-STARTUP self-tests for the two pure evidence-vocabulary deciders. Both run on EVERY
+// invocation before any oracle work, because both fail SILENTLY in production — a wrong verdict token
+// or a wrong stage name reads as a plausible annotation, not as an error. `--selftest` runs ONLY these
+// blocks and exits, for a sub-second red/green check without the multi-minute pipeline.
+const SELFTEST = process.argv.includes("--selftest");
+// (1) The ruby-generate Bernoulli classifier (Change A's deterministic verdict source): a
+// mis-classification would silently route a Bernoulli row back onto the flaky `generate` verdict (or a
+// deterministic row onto the nondet token), surfacing only as a spurious annotations flip.
 {
   const cases: [string, boolean][] = [
     ["x = uint .and (0..9)", true],   // .and narrows the value space -> generate is Bernoulli
@@ -205,11 +209,46 @@ const MINT_ONLY = onlyArg
     );
     process.exit(2);
   }
-  if (process.argv.includes("--selftest")) {
-    console.log(`ruby-generate Bernoulli classifier self-test OK (${cases.length} fixtures)`);
-    process.exit(0);
-  }
+  if (SELFTEST) console.log(`ruby-generate Bernoulli classifier self-test OK (${cases.length} fixtures)`);
 }
+// (2) The wasm-oracle evidence composer's STAGE taxonomy: each probe-record shape `wasmProbe()` can
+// emit must render a clause naming the stage that produced it. The failure this pins is a stage name
+// that is merely wrong rather than absent — a generation-time refusal once rendered as `wasm crate
+// failed to compile (cargo test exit 1)`, describing a `cargo test` that never ran, and it nearly
+// carried a wasm-support review to the wrong conclusion. Hence the extra assertion that no
+// generation-stage clause contains the words `cargo test` at all.
+{
+  type WasmFields = { minted_wasm?: boolean; wasm_gen?: number; wasm_roundtrips?: number };
+  const cases: [WasmFields, boolean, string][] = [
+    [{}, false, ""],                                                                       // opted out / rust gen failed
+    [{ minted_wasm: false, wasm_gen: 1 }, false, "; wasm generation REFUSED (generator exit 1)"],
+    [{ minted_wasm: false, wasm_gen: 101 }, false, "; wasm generation PANICKED (generator exit 101)"],
+    [{ minted_wasm: true, wasm_gen: 0, wasm_roundtrips: 0 }, false, "; wasm round-trips"],
+    [{ minted_wasm: false, wasm_gen: 0, wasm_roundtrips: 0 }, false, "; wasm compiles (no minted wasm surface)"],
+    [{ minted_wasm: true, wasm_gen: 0, wasm_roundtrips: 101 }, false, "; wasm round-trip FAILED (cargo test exit 101)"],
+    [{ minted_wasm: false, wasm_gen: 0, wasm_roundtrips: 1 }, false, "; wasm crate failed to compile (cargo test exit 1)"],
+    [{ minted_wasm: false, wasm_gen: 1 }, true, "; wasm standalone-test N/A (user-supplied code)"],
+  ];
+  const failures = cases
+    .map(([fields, exempt, want]) => ({ fields, exempt, want, got: wasmEvidence(fields, exempt) }))
+    .filter(f => f.got !== f.want);
+  const leaked = cases
+    .filter(([fields]) => (fields.wasm_gen ?? 0) !== 0)
+    .map(([fields]) => wasmEvidence(fields))
+    .filter(clause => clause.includes("cargo test"));
+  if (failures.length || leaked.length) {
+    console.error(
+      "HARNESS FAILURE: wasm-evidence stage-taxonomy self-test failed — " +
+      failures.map(f => `${JSON.stringify(f.fields)}${f.exempt ? " (exempt)" : ""}: expected ${JSON.stringify(f.want)}, got ${JSON.stringify(f.got)}`)
+        .concat(leaked.map(c => `generation-stage clause names \`cargo test\`: ${JSON.stringify(c)}`))
+        .join("; ") +
+      " — the annotations would attribute failures to the wrong stage; refusing to run.",
+    );
+    process.exit(2);
+  }
+  if (SELFTEST) console.log(`wasm-evidence stage-taxonomy self-test OK (${cases.length} fixtures)`);
+}
+if (SELFTEST) process.exit(0);
 // K ruby-generated candidate instances per row (deduped byte-identically before two-oracle validation).
 const FOREIGN_K = 10;
 // The committed catalog the mint writes and the D4 corroborating oracle reads.
@@ -237,7 +276,7 @@ interface ProbeResult extends Derived {
   // Deterministic ruby verdict token for the `ruby=` evidence clause (rubyClause; Change A). `ruby` above
   // stays the raw generate exit for the diagnostic report; the annotation clause reads this.
   ruby_clause: string;
-  minted_wasm?: boolean; wasm_roundtrips?: number;
+  minted_wasm?: boolean; wasm_gen?: number; wasm_roundtrips?: number;
   // Decode-foreign oracle (D4): whether the generated decoder accepted the committed spec-derived
   // vectors, and how many accept vectors were replayed. Undefined when opted out (byte-identical output).
   accepts_foreign?: boolean; foreign_vectors?: number;
@@ -253,7 +292,7 @@ interface ContainmentCorr {
   ruby_clause: string;  // deterministic ruby verdict token for the `ruby=` clause (rubyClause; Change A)
   parser_limitation: boolean; contradiction: boolean; example: string;
   codegen: number; compile: number; test: number; minted: boolean;
-  minted_wasm?: boolean; wasm_roundtrips?: number;
+  minted_wasm?: boolean; wasm_gen?: number; wasm_roundtrips?: number;
   accepts_foreign?: boolean; foreign_vectors?: number;  // decode-foreign oracle (D4), iff supported
   support: string | null;  // per-cell cddl-codegen support (the role × feature axis)
   emission?: Record<string, EmissionOutcome>;  // per-emission-profile verdicts (iff support === "supported")
@@ -809,13 +848,15 @@ function runWasmTest(cell: string, timeoutS = PROBE_TIMEOUT): number {
 // `minted` = the emitted lib actually contains the generated-test module; without it a `cargo test`
 // pass is vacuous (transparent aliases / pure c-enums mint nothing, by design — skipped loudly by the
 // emitter), so the verdict evidence must not claim "round-trips" for those.
-// `minted_wasm` / `wasm_roundtrips` are populated under the WASM_PROBE (default-on; undefined when
-// opted out via --no-wasm / VERIFY_WASM=0, so they're then omitted from the JSON report and add no wasm
-// evidence to annotations — an opted-out run's output is byte-identical to a pre-wasm-probe run).
-// `wasm_roundtrips` is the `cargo test` exit of the generated wasm crate; `minted_wasm` = its lib
-// actually contains the generated wasm-test module (else a green `cargo test` is vacuous, same caveat
-// as `minted`).
-interface CodegenProbe { gen: number; compile: number; test: number; minted: boolean; minted_wasm?: boolean; wasm_roundtrips?: number }
+// `minted_wasm` / `wasm_gen` / `wasm_roundtrips` are populated under the WASM_PROBE (default-on;
+// undefined when opted out via --no-wasm / VERIFY_WASM=0, so they're then omitted from the JSON report
+// and add no wasm evidence to annotations — an opted-out run's output is byte-identical to a
+// pre-wasm-probe run). Each names ONE stage of the wasm leg, so a failure can be attributed to the
+// stage it happened at: `wasm_gen` is the GENERATOR's exit for the `--wasm=true` re-run;
+// `wasm_roundtrips` is the `cargo test` exit of a wasm crate that was actually generated (so it is set
+// only when `wasm_gen` is 0); `minted_wasm` = that crate's lib actually contains the generated
+// wasm-test module (else a green `cargo test` is vacuous, same caveat as `minted`).
+interface CodegenProbe { gen: number; compile: number; test: number; minted: boolean; minted_wasm?: boolean; wasm_gen?: number; wasm_roundtrips?: number }
 // The RUST-ONLY core of a codegen probe (generate -> cargo test -> classify), shared by the default
 // probe and the per-emission-profile probes. `extraFlags` appends a profile's CLI flags; the emission
 // probes deliberately DON'T run the wasm oracle (design doc: wasm stays default-profile corroborating
@@ -841,13 +882,16 @@ function probeCodegen(cell: string): CodegenProbe {
 
 // The wasm half of a probe (default-on): generate `--wasm=true`, cargo test the wasm crate. Returns {}
 // when opted out so the fields stay undefined (report/annotation output matches a pre-wasm-probe run).
-function wasmProbe(cell: string): { minted_wasm?: boolean; wasm_roundtrips?: number } {
+function wasmProbe(cell: string): { minted_wasm?: boolean; wasm_gen?: number; wasm_roundtrips?: number } {
   if (!WASM_PROBE) return {};
   const gen = runCodegenWasm();
-  if (gen !== 0) return { minted_wasm: false, wasm_roundtrips: gen };
+  // A generation failure leaves `wasm_roundtrips` UNSET rather than borrowing it to carry the
+  // generator's exit: the two are different stages, and one field holding either made a graceful
+  // generation-time refusal read as a compile regression in the annotations.
+  if (gen !== 0) return { minted_wasm: false, wasm_gen: gen };
   const wasmLib = join(ccOutWasm, "wasm", "src", "generated", "mod.rs");
   const minted_wasm = existsSync(wasmLib) && readFileSync(wasmLib, "utf8").includes("mod cddl_generated_wasm_tests");
-  return { minted_wasm, wasm_roundtrips: runWasmTest(cell) };
+  return { minted_wasm, wasm_gen: gen, wasm_roundtrips: runWasmTest(cell) };
 }
 
 // The cddl-codegen half of the support verdict, shared by the feature / per-cell / control-op loops so
@@ -863,16 +907,29 @@ function codegenVerdict(p: CodegenProbe): { supported: boolean; detail: string }
   return { supported: false, detail: `rejected at parse/lex (exit ${p.gen})` };
 }
 
-// Honest wasm-oracle evidence suffix (default-on). "" when the wasm probe didn't run (opted out / rust
-// gen failed / fields undefined) so an opted-out run's annotations are unchanged. `exempt` features reference
-// user-supplied code, so — exactly like the rust standalone-compile exemption — the wasm crate can't be
-// `cargo test`ed standalone; say N/A, not FAILED. Same fallback discipline as `minted`: a green test with
-// nothing minted is "compiles (no minted wasm surface)", NOT a round-trip; a failure is worded by whether
-// a module was actually minted (module present -> a round-trip assertion failed; absent -> the crate
-// itself failed to compile, mirroring the rust compile verdict).
-function wasmEvidence(minted_wasm?: boolean, wasm_roundtrips?: number, exempt = false): string {
-  if (wasm_roundtrips === undefined) return "";
+// Honest wasm-oracle evidence suffix (default-on). Every clause names the STAGE the observation was
+// made at, because a reader acts on the stage: a generation-time refusal is the wasm surface declining
+// a shape (often deliberate, sometimes a gap to fill), while a compile or round-trip failure is a
+// build/emission break. Naming the wrong stage nearly misled a wasm-support review once, when a
+// generation refusal was reported as `wasm crate failed to compile (cargo test exit 1)` — a `cargo
+// test` that never ran. The taxonomy, in the order tested:
+//   - probe didn't run (opted out / rust gen failed / fields undefined)  -> "" (annotations unchanged)
+//   - `exempt`: the feature references user-supplied code, so — exactly like the rust
+//     standalone-compile exemption — the wasm crate can't be `cargo test`ed standalone: N/A, not FAILED
+//   - generation refused / panicked (`wasm_gen` nonzero)  -> a clause naming GENERATION and the
+//     GENERATOR's exit; deliberately free of the substring `cargo test`, which is what misread
+//   - generated + `cargo test` 0    -> round-trips, or (nothing minted) compiles-only; same `minted`
+//     fallback discipline as rust — a green test over an unminted surface is not a round-trip
+//   - generated + `cargo test` nonzero -> worded by whether a module was actually minted (present -> a
+//     round-trip assertion failed; absent -> the crate itself failed to compile, mirroring the rust
+//     compile verdict). Reachable only for a crate that really was generated.
+function wasmEvidence(p: { minted_wasm?: boolean; wasm_gen?: number; wasm_roundtrips?: number }, exempt = false): string {
+  const { minted_wasm, wasm_gen, wasm_roundtrips } = p;
+  if (wasm_gen === undefined) return "";
   if (exempt) return "; wasm standalone-test N/A (user-supplied code)";
+  if (wasm_gen !== 0 && wasm_gen !== 101) return `; wasm generation REFUSED (generator exit ${wasm_gen})`;
+  if (wasm_gen === 101) return "; wasm generation PANICKED (generator exit 101)";
+  if (wasm_roundtrips === undefined) return "";   // unreachable: wasm_gen 0 always sets it
   if (wasm_roundtrips === 0)
     return minted_wasm ? "; wasm round-trips" : "; wasm compiles (no minted wasm surface)";
   return minted_wasm
@@ -1942,7 +1999,7 @@ for (const f of featureList) {
   // Decode-foreign oracle (D4): corroborate a supported verdict by replaying the committed spec-derived
   // vectors through the generated decoder. Never changes `d.support`.
   const foreign = d.status === "supported" ? decodeForeignProbe(f.id, f.example) : {};
-  probe_results.push({ id: f.id, production: f.production ?? null, profile, example: f.example, ruby: a, ruby_clause: rc.token, rust: b, codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted, minted_wasm: cg.minted_wasm, wasm_roundtrips: cg.wasm_roundtrips, accepts_foreign: foreign.accepts_foreign, foreign_vectors: foreign.foreign_vectors, embedded, emission, ...d });
+  probe_results.push({ id: f.id, production: f.production ?? null, profile, example: f.example, ruby: a, ruby_clause: rc.token, rust: b, codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted, minted_wasm: cg.minted_wasm, wasm_gen: cg.wasm_gen, wasm_roundtrips: cg.wasm_roundtrips, accepts_foreign: foreign.accepts_foreign, foreign_vectors: foreign.foreign_vectors, embedded, emission, ...d });
 }
 // The later loops (containment, control-op, decode-foreign replay) write `probeFile` and expect the
 // codegen probes to read it — reset the input in case the LAST feature above was extern-stub-shaped.
@@ -1993,7 +2050,7 @@ for (const c of containCells) {
     id: c.id, spec_declared: c.spec ?? null, spec_observed: observed,
     ruby: a, ruby_clause: rc.token, rust: b, parser_limitation, contradiction, example: c.example!,
     codegen: cg.gen, compile: cg.compile, test: cg.test, minted: cg.minted,
-    minted_wasm: cg.minted_wasm, wasm_roundtrips: cg.wasm_roundtrips,
+    minted_wasm: cg.minted_wasm, wasm_gen: cg.wasm_gen, wasm_roundtrips: cg.wasm_roundtrips,
     accepts_foreign: foreign.accepts_foreign, foreign_vectors: foreign.foreign_vectors, support, emission,
   });
 }
@@ -2147,7 +2204,7 @@ function pushEmissionLines(emission?: Record<string, EmissionOutcome>) {
   }
 }
 for (const pr of probe_results) {
-  let ev = `probe: cddl-codegen ${embedDetail(pr.support_detail ?? "exit " + pr.codegen, pr.embedded)}${wasmEvidence(pr.minted_wasm, pr.wasm_roundtrips, Object.hasOwn(COMPILE_GATE_EXEMPT, pr.id))}${decodeForeignEvidence({ accepts_foreign: pr.accepts_foreign, foreign_vectors: pr.foreign_vectors })}; ruby=${pr.ruby_clause} rust=${ok(pr.rust)}`;
+  let ev = `probe: cddl-codegen ${embedDetail(pr.support_detail ?? "exit " + pr.codegen, pr.embedded)}${wasmEvidence(pr, Object.hasOwn(COMPILE_GATE_EXEMPT, pr.id))}${decodeForeignEvidence({ accepts_foreign: pr.accepts_foreign, foreign_vectors: pr.foreign_vectors })}; ruby=${pr.ruby_clause} rust=${ok(pr.rust)}`;
   if (pr.parser_limitation) ev += " (rust parser limitation: reference/ABNF accept)";
   if (pr.profile === "CDDL_CODEGEN") ev += " (vendor profile: validity by cddl-codegen; ruby/rust informational)";
   if (pr.status === "out_of_profile")
@@ -2166,7 +2223,7 @@ annoLines.push("");
 for (const c of containment_corroboration.filter(c => c.support !== null)) {
   const roundtrips = c.test === 0 ? (c.minted ? "ok" : "n/a (nothing minted)") : "fail";
   const compile = c.codegen === 0 ? `; compiles=${c.compile === 0 ? "ok" : "fail"}; round-trips=${roundtrips}` : "";
-  const ev = `probe (cell): cddl-codegen exit ${c.codegen}${compile}${wasmEvidence(c.minted_wasm, c.wasm_roundtrips)}${decodeForeignEvidence({ accepts_foreign: c.accepts_foreign, foreign_vectors: c.foreign_vectors })}; ruby=${c.ruby_clause} rust=${ok(c.rust)}`;
+  const ev = `probe (cell): cddl-codegen exit ${c.codegen}${compile}${wasmEvidence(c)}${decodeForeignEvidence({ accepts_foreign: c.accepts_foreign, foreign_vectors: c.foreign_vectors })}; ruby=${c.ruby_clause} rust=${ok(c.rust)}`;
   annoLines.push("[[support]]");
   annoLines.push(`id = ${tomlStr(c.id)}`);
   annoLines.push(`status = ${tomlStr(c.support!)}`);
