@@ -1063,9 +1063,10 @@ const LAYER2_KNOWN_BAD: &[(&str, &str)] = &[
     // it rejects gracefully at generation under the no-occurrence arrow-entry rejection (`5ef7ed0`);
     // the staleness sat latent until the next full-tier run (this sweep is full-tier-only). The
     // generic-instantiation REACH of that rejection is pinned by
-    // `generic_arg_no_occurrence_table_rejects_gracefully`. The MINTER gap itself still stands
-    // unpinned for `*`-spelled tables — cddl-matrix/ROADMAP.md § findings, recombination layer-2
-    // entry.)
+    // `generic_arg_no_occurrence_table_rejects_gracefully`. The MINTER gap itself is now closed —
+    // the minter picks a key base its own emitted bounds check accepts — and is pinned end-to-end
+    // for `*`-spelled tables by `emit_tests_bounded_map_key_execute`, arm-by-arm by
+    // `bounds_reject_value_agrees_with_emitted_condition`.)
     (
         "outer=arr_mid inner=cbor_payload filler=prelude.float64",
         "a bytes .cbor float64 member fails its emitted baseline re-decode; cddl-matrix/ROADMAP.md § findings, recombination layer-2 entry",

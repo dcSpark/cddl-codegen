@@ -57,8 +57,8 @@
 
 use crate::cli::Cli;
 use crate::emit_tests::{
-    self, MapKey, MintValue, arg_can_fail, bound_cases, measure_kind, mint_struct,
-    record_ctor_can_fail, valid_value, variant_arg_fields,
+    self, MintValue, arg_can_fail, bound_cases, map_key_expr, map_key_literal, measure_kind,
+    mint_struct, record_ctor_can_fail, valid_value, variant_arg_fields,
 };
 use crate::generation::rust_crate_struct_from_wasm;
 use crate::intermediate::{
@@ -240,12 +240,13 @@ fn rust_scoped(mv: &MintValue, scoped: &ScopeMap) -> String {
         MintValue::Array { elem: None, .. } => "vec![]".to_owned(),
         MintValue::Map {
             key,
+            key_base,
             val,
             count,
             non_empty,
             preserve,
         } => {
-            let k = map_key_expr(key);
+            let k = map_key_expr(key, *key_base);
             let v = rust_scoped(val, scoped);
             if *non_empty {
                 // build via new(first_key, first_value) + insert (flavor-agnostic; a bare
@@ -303,15 +304,6 @@ fn rust_scoped(mv: &MintValue, scoped: &ScopeMap) -> String {
         // skip at the caller — the wasm AnyCbor wrapper exposes no composite `new_*` ctors), so an
         // `Any` mint never reaches this scoped renderer. Delegate for exhaustiveness only.
         MintValue::Any => emit_tests::render_rust(mv),
-    }
-}
-
-fn map_key_expr(key: &MapKey) -> String {
-    match key {
-        MapKey::Int(p) => format!("__i as {p}"),
-        MapKey::Str => "__i.to_string()".to_owned(),
-        MapKey::Bytes => "vec![__i as u8]".to_owned(),
-        MapKey::Bool => "__i == 1".to_owned(),
     }
 }
 
@@ -558,7 +550,11 @@ fn wasm_collection_build(
         (
             ConceptualRustType::Map(_k, v),
             MintValue::Map {
-                key, val, count, ..
+                key,
+                key_base,
+                val,
+                count,
+                ..
             },
         ) => {
             // cheaply-minted map keys are always primitives crossing by value (see `materialize`),
@@ -570,12 +566,12 @@ fn wasm_collection_build(
                 // state), `insert` the rest. `count` is >= 1 for a `{+ k => v}` shape.
                 let mut body = format!(
                     "let mut m = {wrapper}::new({}, {val_expr});",
-                    map_key_literal(key, 0)
+                    map_key_literal(key, *key_base, 0)
                 );
                 for i in 1..*count {
                     body.push_str(&format!(
                         " m.insert({}, {val_expr});",
-                        map_key_literal(key, i)
+                        map_key_literal(key, *key_base, i)
                     ));
                 }
                 return Some(format!("{{ {body} m }}"));
@@ -584,7 +580,7 @@ fn wasm_collection_build(
             for i in 0..*count {
                 body.push_str(&format!(
                     " m.insert({}, {val_expr});",
-                    map_key_literal(key, i)
+                    map_key_literal(key, *key_base, i)
                 ));
             }
             Some(format!("{{ {body} m }}"))
@@ -594,17 +590,6 @@ fn wasm_collection_build(
             Some(format!("{{ {wrapper}::new() }}"))
         }
         _ => None,
-    }
-}
-
-/// A single synthesized map key at index `i` (the literal form of `map_key_expr`, whose `__i` is a
-/// closure param unavailable in the explicit-`insert` build).
-fn map_key_literal(key: &MapKey, i: i128) -> String {
-    match key {
-        MapKey::Int(p) => format!("{i} as {p}"),
-        MapKey::Str => format!("{i}.to_string()"),
-        MapKey::Bytes => format!("vec![{i} as u8]"),
-        MapKey::Bool => format!("{i} == 1"),
     }
 }
 
