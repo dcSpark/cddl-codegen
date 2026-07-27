@@ -454,8 +454,18 @@ my_sum =
   / bytes ; @name raw @custom_json
 ```
 
-With `--preserve-encodings`, the type's serde/schemars derives and the `#[serde(skip)]`
-attributes on its encoding fields are omitted together (either alone would not compile).
+The last arm's trailing comment **is** the rule-position slot — that is the whole of the mechanism,
+not a convenience. On any other arm the directive is read as that variant's own metadata, where
+`@custom_json` means nothing, and it is silently dropped. So reordering a type choice's arms can
+turn the directive off: if you move the arm that carries it out of last place, the type gets its
+JSON derives back, and they will collide with the impls you wrote by hand. Keep the directive on
+whichever arm is last.
+
+The suppression covers `serde::Serialize`/`serde::Deserialize` and `schemars::JsonSchema`
+together — one decision, not two — so `--json-schema-export` never leaves a `JsonSchema` derive
+behind on a type whose JSON form you own. With `--preserve-encodings`, the `#[serde(skip)]`
+attributes on the type's encoding fields are omitted along with the derives (either alone would not
+compile).
 
 ## @no_json_schema_export
 
