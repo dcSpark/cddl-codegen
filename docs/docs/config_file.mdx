@@ -153,7 +153,7 @@ json-schema-root = ["cml_chain::byron::ByronAddress"]
 **`<key>=<value>` flags become sub-tables**, which union per key — a later layer overrides only the
 keys it names, exactly as repeated flag occurrences already accumulate. The flags spelled this way
 are `extern-import`, `extern-wasm-crate`, `extern-wrapper-index`, `wrapper-requests`,
-`key-requests` and `json-schema-dep`:
+`key-requests`, `json-schema-dep` and `json-gen-dep`:
 
 ```toml
 [crates.my-extension]
@@ -388,9 +388,15 @@ standing in.
 
 Absolute paths pass through untouched.
 
-Two right-hand sides are deliberately *not* resolved, because they are names rather than paths:
+Three right-hand sides are deliberately *not* resolved. Two of them are not paths at all:
 `extern-wasm-crate` names a crate, and `json-schema-dep` names a Rust module path that lands
 verbatim in generated code.
+
+`json-gen-dep` is the third and the one worth stating: its right-hand side **is** a path, and is
+still passed through verbatim. It becomes a cargo *path dependency* in
+`<output>/wasm/json-gen/Cargo.toml`, and cargo resolves such a path against the manifest holding it —
+so rewriting it against the config file's directory would point it somewhere cargo never looks.
+Count it from the json-gen crate, exactly as you would writing the entry by hand.
 
 ## Booleans
 

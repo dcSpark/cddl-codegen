@@ -439,6 +439,36 @@ pub fn with_types<R>(
             .into());
         }
     }
+    // A `--json-gen-dep` entry is a `[dependencies]` key in the json-gen crate's manifest; without
+    // --json-schema-export that crate is never generated and neither is its manifest, so the flag
+    // would silently do nothing (mirrors the five rules above).
+    if !cli.json_gen_dep.is_empty() && !cli.json_schema_export {
+        return Err(
+            "--json-gen-dep requires --json-schema-export=true: the entry is written into the \
+             json-gen crate's `Cargo.toml`, so without it there is no crate and no manifest for the \
+             dependency to land in"
+                .into(),
+        );
+    }
+    // One package name under two paths is ambiguous, not additive: a manifest holds ONE
+    // `[dependencies]` entry per package, so the second value would silently replace the first.
+    // Read off the RAW flag list rather than `json_gen_deps()`, whose `BTreeMap` is exactly where a
+    // duplicate would disappear.
+    let mut seen_json_gen_deps = std::collections::BTreeSet::new();
+    for entry in &cli.json_gen_dep {
+        let name = entry
+            .split_once('=')
+            .map_or(entry.as_str(), |(name, _)| name)
+            .trim();
+        if !seen_json_gen_deps.insert(name) {
+            return Err(format!(
+                "--json-gen-dep package name {name:?} was passed more than once: a manifest holds \
+                 one `[dependencies]` entry per package, so a second path under one name would \
+                 silently replace the first rather than adding anything"
+            )
+            .into());
+        }
+    }
     // Pre-processing files for multi-file support
     let input_files = if cli.input.is_dir() {
         let mut cddl_paths_buf = Vec::new();

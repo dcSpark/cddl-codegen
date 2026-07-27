@@ -9818,6 +9818,236 @@ fn json_schema_dep_input_contract() {
     );
 }
 
+/// The cheap (no nested cargo) halves of `--json-gen-dep`'s input contract, modelled on
+/// `json_schema_dep_input_contract` directly above. The success direction — a written entry cargo
+/// actually resolves — is the nested-cargo `json_gen_dep_links_a_threaded_dependency`; what is
+/// pinned here is what must be rejected, and rejected before anything is written.
+///
+/// 1. Without `--json-schema-export` there is no json-gen crate and no manifest for the entry to
+///    land in, so the flag would silently do nothing.
+/// 2. A repeated PACKAGE NAME is ambiguous rather than additive: a manifest holds one
+///    `[dependencies]` entry per package, so the second path would silently replace the first.
+/// 3. The package-name side becomes a `[dependencies]` key, so it carries cargo's package-name
+///    charset. The PATH side deliberately carries no charset rule at all — it is written through
+///    `toml_edit`, which quotes and escapes it, so the injection argument every sibling parser makes
+///    (a value landing verbatim in generated rust) simply does not apply to it.
+#[test]
+fn json_gen_dep_input_contract() {
+    use clap::Parser;
+
+    let base = || crate::cli::Cli {
+        input: std::path::PathBuf::from("tests/json-extern/input.cddl"),
+        output: std::path::PathBuf::from("unused"),
+        json_serde_derives: true,
+        json_schema_export: true,
+        wasm: false,
+        ..Default::default()
+    };
+
+    // 1. requires --json-schema-export
+    let cli = crate::cli::Cli {
+        json_schema_export: false,
+        json_gen_dep: vec!["dep-json-schema-gen=../dep/wasm/json-gen".to_owned()],
+        ..base()
+    };
+    let err = crate::api::with_types(&cli, |_, _| ())
+        .expect_err("--json-gen-dep without --json-schema-export should be rejected");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("--json-gen-dep") && msg.contains("--json-schema-export=true"),
+        "rejection message should name both flags, got: {msg}"
+    );
+
+    // 2. a repeated PACKAGE NAME is rejected, and the message names it
+    let cli = crate::cli::Cli {
+        json_gen_dep: vec![
+            "dep-json-schema-gen=../first".to_owned(),
+            "other-json-schema-gen=../other".to_owned(),
+            "dep-json-schema-gen=../second".to_owned(),
+        ],
+        ..base()
+    };
+    let err = crate::api::with_types(&cli, |_, _| ())
+        .expect_err("a repeated --json-gen-dep package name should be rejected");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("--json-gen-dep") && msg.contains("\"dep-json-schema-gen\""),
+        "rejection message should name the repeated package, got: {msg}"
+    );
+
+    // baseline: two DISTINCT packages are accepted, so it is the repetition that is rejected above
+    // and not the flag itself — including two packages sharing ONE path, which is legal (whether a
+    // directory holds one crate or a workspace is cargo's business, not this tool's).
+    let cli = crate::cli::Cli {
+        json_gen_dep: vec![
+            "dep-json-schema-gen=../dep/wasm/json-gen".to_owned(),
+            "other-json-schema-gen=../dep/wasm/json-gen".to_owned(),
+        ],
+        ..base()
+    };
+    assert!(
+        crate::api::with_types(&cli, |_, _| ()).is_ok(),
+        "distinct --json-gen-dep packages should be accepted"
+    );
+
+    // 3. the value parser: shape and charset.
+    let parse = |value: &str| {
+        crate::cli::Cli::try_parse_from([
+            "cddl-codegen",
+            "--input=tests/json-extern/input.cddl",
+            "--output=unused",
+            "--json-schema-export=true",
+            value,
+        ])
+    };
+    let ok = parse("--json-gen-dep=cml-chain-json-schema-gen=../../../chain/wasm/json-gen")
+        .expect("a dashed package name and a relative path must be accepted");
+    assert_eq!(
+        ok.json_gen_deps().into_iter().collect::<Vec<_>>(),
+        vec![(
+            "cml-chain-json-schema-gen".to_owned(),
+            "../../../chain/wasm/json-gen".to_owned()
+        )],
+        "dashes must NOT be normalised here — the left side is already the cargo package name"
+    );
+    assert!(
+        parse("--json-gen-dep=dep=/abs/path with spaces/json-gen").is_ok(),
+        "the path side takes any non-empty value: it is quoted by the TOML writer, not spliced"
+    );
+    let err = parse("--json-gen-dep=cml_chain::json=../dep")
+        .expect_err("a rust module path on the package side must be rejected")
+        .to_string();
+    assert!(
+        err.contains("invalid character ':'") && err.contains("CARGO PACKAGE NAME"),
+        "the charset rejection should name the character and the side's real type, got: {err}"
+    );
+    let err = parse("--json-gen-dep=some-package")
+        .expect_err("a value with no `=` must be rejected")
+        .to_string();
+    assert!(
+        err.contains("--json-gen-dep value must be <cargo_package_name>=<path>"),
+        "the missing-separator rejection should name the flag and its shape, got: {err}"
+    );
+    let err = parse("--json-gen-dep==../dep")
+        .expect_err("an empty package name must be rejected")
+        .to_string();
+    assert!(
+        err.contains("non-empty"),
+        "the empty-package rejection should say so, got: {err}"
+    );
+    let err = parse("--json-gen-dep=dep=")
+        .expect_err("an empty path must be rejected")
+        .to_string();
+    assert!(
+        err.contains("non-empty"),
+        "the empty-path rejection should say so, got: {err}"
+    );
+}
+
+/// The SUCCESS direction of `--json-gen-dep`, and the one thing no manifest-text assertion can
+/// reach: **cargo resolves the path the flag wrote**. Two generated crates in a scratch directory,
+/// the consumer threading the dependency with `--json-schema-dep` (the call) and `--json-gen-dep`
+/// (the entry that makes the call link), and the consumer's json-gen crate actually built and run.
+///
+/// This is the pairing the flag exists for. `json_schema_dep_threading` proves the emitted call site
+/// compiles and composes, but its "dependency" is a module of the json-gen crate itself, so it says
+/// nothing about a SEPARATE crate — precisely the case whose manifest entry used to be a hand edit
+/// and an `E0433` when forgotten. Here the dependency is a real second package resolved through
+/// `[dependencies]`, so a path that is written but does not resolve fails this cell and only this
+/// cell: the manifest text would look right in every other assertion in the suite.
+///
+/// The relative path is counted from the manifest that holds it (`<consumer>/wasm/json-gen/`), which
+/// is what a cargo path dependency means and what the flag's docs promise — three levels up reaches
+/// the scratch root, and getting that wrong is exactly the failure this cell is here to see.
+///
+/// A scratch directory rather than a committed `tests/*/export` tree, unlike its neighbours: the
+/// subject is two crates and their inter-crate resolution, so there is no single export dir to reset,
+/// and nothing here needs to survive the run.
+#[test]
+fn json_gen_dep_links_a_threaded_dependency() {
+    let dir = std::env::temp_dir().join(format!("cddl_json_gen_dep_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("specs")).unwrap();
+    std::fs::write(dir.join("specs/dep.cddl"), "dep_thing = [x: uint]\n").unwrap();
+    // The consumer's spec references NOTHING of the dependency's: the dep's row can only reach the
+    // consumer's document through the threaded `add_schemas` call, never through the ref closure.
+    std::fs::write(dir.join("specs/user.cddl"), "own_thing = [y: text]\n").unwrap();
+
+    let static_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/static");
+    let generate = |args: &[String]| {
+        let out = codegen_cmd()
+            .arg(format!("--static-dir={static_dir}"))
+            .arg("--wasm=false")
+            .arg("--json-serde-derives=true")
+            .arg("--json-schema-export=true")
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "generation must succeed:\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+    generate(&[
+        format!("--input={}", dir.join("specs/dep.cddl").display()),
+        format!("--output={}", dir.join("dep").display()),
+        "--lib-name=depcrate".to_owned(),
+    ]);
+    generate(&[
+        format!("--input={}", dir.join("specs/user.cddl").display()),
+        format!("--output={}", dir.join("user").display()),
+        "--lib-name=usercrate".to_owned(),
+        // the call: a rust LIB path, underscored
+        "--json-schema-dep=depcrate=depcrate_json_schema_gen".to_owned(),
+        // the entry that makes it link: a cargo PACKAGE name, dashed, plus where the crate lives
+        "--json-gen-dep=depcrate-json-schema-gen=../../../dep/wasm/json-gen".to_owned(),
+    ]);
+
+    let manifest =
+        std::fs::read_to_string(dir.join("user/wasm/json-gen/Cargo.toml")).expect("manifest");
+    assert!(
+        manifest.contains("depcrate-json-schema-gen = { path = \"../../../dep/wasm/json-gen\" }"),
+        "the flag must write the entry:\n{manifest}"
+    );
+
+    let json_gen_dir = dir.join("user/wasm/json-gen");
+    let run = tool_cmd("cargo")
+        .arg("run")
+        .current_dir(&json_gen_dir)
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&run.stderr).into_owned();
+    assert!(
+        run.status.success(),
+        "the consumer's json-gen crate must build and run — cargo did not resolve the dependency \
+         the flag declared:\n{stderr}"
+    );
+
+    let document: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(json_gen_dir.join("schemas/usercrate.schema.json"))
+            .expect("the json-gen run must write its document"),
+    )
+    .expect("the exported document must be valid JSON");
+    let defs = document
+        .get("$defs")
+        .and_then(|d| d.as_object())
+        .expect("the exported document must hold a `$defs` object");
+    assert!(
+        defs.contains_key("DepThing"),
+        "the threaded dependency's row must reach `$defs` — it can only arrive through the call the \
+         written manifest entry lets link; got keys {:?}",
+        defs.keys().collect::<Vec<_>>()
+    );
+    assert!(
+        defs.contains_key("OwnThing"),
+        "the consumer's own row must still reach `$defs`; got keys {:?}",
+        defs.keys().collect::<Vec<_>>()
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// End-to-end validation of the shipped `--package-json --json-schema-export` consumer pipeline
 /// (`generation/export.rs`'s `export` copy block + `static/package_json_schemas.json`). It generates a small
 /// fixture with those flags and runs the SHIPPED `npm run rust:build-nodejs` script VERBATIM in the
