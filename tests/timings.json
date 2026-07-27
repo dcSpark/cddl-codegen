@@ -571,6 +571,9 @@
       "gate": "verify_cache_transparency"
     },
     {
+      "gate": "verify_selftest"
+    },
+    {
       "gate": "wasm_matrix_roundtrips",
       "warm_ms": 444000,
       "n": 20,
