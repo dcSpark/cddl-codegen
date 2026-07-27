@@ -16631,6 +16631,26 @@ fn corpus_decode_replay() {
             "everything",
             "composite includes the map-reordering transform",
         ),
+        // `mdmap` IS the preserve pair-map the other rows reach through a union or a field
+        // (`pub type Mdmap = PairMap<String, Md>` in every profile), so it is the most direct
+        // instance of this class, not a new one. It was absent until the collection-typedef fix
+        // un-pinned the row — its `pinned_reason` said generation aborted, so no vector of it had
+        // ever been replayed and the exemption had nothing to attach to. Proven for this row
+        // specifically rather than assumed from its siblings: on accept vector
+        // `8200a267596f6c616e64611909ac636375728180`, the original and its entry-reversed twin BOTH
+        // decode and BOTH re-encode byte-exactly to their own input — so the decoder is faithful in
+        // both directions, and since encoding is a function of the value, the two inputs cannot be
+        // the same value. The reordering is a different VALUE, not a spec-equal re-encoding.
+        (
+            "table_preserve.mdmap",
+            "reverse_maps",
+            "entry order is value-bearing for the preserve pair-map (this row IS the pair-map)",
+        ),
+        (
+            "table_preserve.mdmap",
+            "everything",
+            "composite includes the map-reordering transform",
+        ),
         (
             "table_preserve.holder",
             "reverse_maps",

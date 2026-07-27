@@ -1614,6 +1614,36 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   cargo. Trigger to build rather than defer, on the axis the cost grows along and measurable by
   whoever pays it: a SECOND mis-citation, or the first report from someone who followed a citation
   during triage and reached the wrong site.
+- **An encoding-variant mutator asserts a spec-equality premise that is a property of the TYPE
+  FLAVOR, not of CBOR — and the exemption for that is hand-listed per row, so the guard is loud on
+  a STALE entry and silent until tier-time on a MISSING one.** The replay gates mutate an accept
+  vector (indefinite framing, non-minimal widths, chunked strings, reversed map entries) and require
+  the decoded value to be unchanged. `reverse_maps` / `everything` embed the premise that map entry
+  order is an encoding detail. For an `@duplicates preserve` rule that premise is FALSE by design:
+  the rule lowers to `PairMap<K, V>` — a `Vec<(K, V)>` with derived `PartialEq`, in every profile —
+  so reordering produces a genuinely different value, which is the feature's whole contract. The
+  mutator operates on raw CBOR bytes and holds no type information, so it structurally cannot know
+  which nested maps carry the policy; that is why the exemption lives in each gate's
+  `ENCODING_VARIANT_SKIP` rather than in the mutator, and that placement is correct.
+  Proven instance: `table_preserve.mdmap` failed 12 assertions in a `full` tier at exactly these two
+  labels while every order-preserving variant passed. All five sibling rows already carried the
+  exemption; `mdmap` did not, because its row was PINNED (`cddl-codegen cannot generate this
+  construct standalone`) until the collection-typedef fix un-pinned it, so no vector of it had ever
+  been replayed and the exemption had nothing to attach to. **The generalizable point is about
+  pinned rows, not about pair-maps: a pinned row hides the evidence machinery's untested assumptions
+  about its shape, not merely the shape. Un-pinning one is therefore never a no-op for the
+  machinery — it activates premises nothing has exercised, and the bill arrives at tier time.**
+  Deliverable, which removes the hand-maintenance rather than adding to it: DERIVE the exemption
+  from the row instead of listing it. Each catalog row already carries its `spec` text, and
+  `@duplicates preserve` is present in it, so a gate can compute "this row's decoded value is
+  order-sensitive" and skip the order-changing labels itself — turning both the stale-entry and the
+  missing-entry cases into the same automatically-correct answer. Keep the explicit ledger for
+  class (a) (a real decoder gap over a genuinely spec-equal re-encoding), which is a different claim
+  and must stay reviewed. Reopening signal on the axis the cost actually grows along, measurable by
+  whoever pays it: a SECOND full-tier run spent discovering a missing order-sensitivity exemption
+  (the count of hand-maintained exemptions is 14 today — six rows × two labels in the corpus gate,
+  one row × two in the matrix gate — and every newly un-pinned or newly added preserve row owes two
+  more).
 - **Nothing asserts how MANY times a rejection message is emitted, and nested composites emit
   theirs twice.** `a = [x: [* 5]]` prints its refusal twice because the parse walk visits a nested
   composite twice; `a = [x: { uint => tstr }]` duplicates the same way, so the class predates the
