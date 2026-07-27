@@ -8493,8 +8493,10 @@ fn js_schema_to_ts() {
 ///
 /// Five cases, one per failure mode the script must not have:
 /// 1. the happy path (specialize + append);
-/// 2. a class with NO emitted JSON type keeps `any` — a rename there would be a TS2304 dangling
-///    reference, which is strictly worse than the lossy-but-valid `any`;
+/// 2. a class with NO emitted JSON type is a non-zero exit naming the class and the
+///    `--allow-untyped=` escape — not a silently-`any` method; with the escape it keeps `any`
+///    rather than gaining a dangling TS2304 `LooseJSON`, and a STALE escape (the class is typed
+///    now) is itself an error so the list cannot rot;
 /// 3. running twice is byte-identical (the appended block is marker-delimited and truncated each
 ///    run, so a second run without an intervening `rimraf ./pkg` can't duplicate every declaration);
 /// 4. a method name the script can't find (the `--wasm-cbor-json-api-macro` case, where the macro
@@ -8567,9 +8569,38 @@ fn js_d_ts_merge() {
                        to_json_value(): any;\n}\n";
     const DEFS: &str = "export interface FooJSON {\n  x: number;\n}\n";
 
-    // 1 + 2: the happy path, and the undeclared class keeping `any`.
+    // 2 (loud half): the undeclared class fails the run, naming the class and the escape, with
+    // the `.d.ts` untouched.
     let dts_path = lay_out("basic", "cddl_lib_wasm", DTS, DEFS);
-    assert!(run("basic", &[]).status.success());
+    let untyped = run("basic", &[]);
+    assert!(
+        !untyped.status.success(),
+        "a class with no emitted JSON type must fail the run, not silently ship `any`"
+    );
+    let untyped_stderr = String::from_utf8_lossy(&untyped.stderr);
+    assert!(untyped_stderr.contains("Loose"), "{untyped_stderr}");
+    assert!(
+        untyped_stderr.contains("--allow-untyped=Loose"),
+        "{untyped_stderr}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&dts_path).unwrap(),
+        DTS,
+        "a failed run must leave the .d.ts untouched"
+    );
+    // ...and a stale escape is itself an error (nothing named `Gone` is untyped here).
+    let stale = run("basic", &["--allow-untyped=Loose,Gone"]);
+    assert!(
+        !stale.status.success(),
+        "a stale --allow-untyped entry must fail the run"
+    );
+    assert!(
+        String::from_utf8_lossy(&stale.stderr).contains("Gone"),
+        "stale-entry failure must name the entry"
+    );
+
+    // 1 + 2 (escape half): the happy path, with the undeclared class explicitly allowed.
+    assert!(run("basic", &["--allow-untyped=Loose"]).status.success());
     let merged = std::fs::read_to_string(&dts_path).unwrap();
     // to_json_value()'s `any` return was specialized to the class's JSON interface...
     assert!(merged.contains("to_json_value(): FooJSON;"), "{merged}");
@@ -8581,7 +8612,7 @@ fn js_d_ts_merge() {
     assert!(loose.contains("to_json_value(): any;"), "{loose}");
 
     // 3: idempotency. A second run over the already-merged file is byte-identical.
-    assert!(run("basic", &[]).status.success());
+    assert!(run("basic", &["--allow-untyped=Loose"]).status.success());
     let twice = std::fs::read_to_string(&dts_path).unwrap();
     assert_eq!(merged, twice, "second run was not a fixed point");
     assert_eq!(
@@ -8607,9 +8638,10 @@ fn js_d_ts_merge() {
         macro_dts,
         "a failed run must leave the .d.ts untouched"
     );
-    // ...and the documented override makes the same layout succeed.
+    // ...and the documented override makes the same layout succeed (`Loose`'s
+    // `to_json_val(): any` is then the untyped-class case, so it needs its escape).
     assert!(
-        run("macro_named", &["--method=to_json_val"])
+        run("macro_named", &["--method=to_json_val", "--allow-untyped=Loose"])
             .status
             .success()
     );
@@ -8621,7 +8653,7 @@ fn js_d_ts_merge() {
 
     // 5: a non-default wasm-pack crate name (i.e. `--lib-name`) is discovered, not hardcoded.
     let renamed_path = lay_out("lib_name", "my_lib_wasm", DTS, DEFS);
-    assert!(run("lib_name", &[]).status.success());
+    assert!(run("lib_name", &["--allow-untyped=Loose"]).status.success());
     let renamed = std::fs::read_to_string(&renamed_path).unwrap();
     assert!(renamed.contains("to_json_value(): FooJSON;"), "{renamed}");
     assert!(renamed.contains("export interface FooJSON"), "{renamed}");
