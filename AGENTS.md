@@ -351,6 +351,17 @@ A lot of components of this library have markdown files following two different 
 
 Entries in both projects should generally avoid "we tried X, then we did Y", and instead prefer "we did Y, to avoid issues like X". Otherwise, it's unclear if Y was the proper fix, whereas if you start with Y and properly justify it, it's easier to understand as an approach reached through thinking from first principles and easier to verify for correctness (important for our test-driven development)
 
+A roadmap entry that defers or declines work carries a **reopening signal** — the observable that
+would make us build it. A signal is only worth writing if it can actually fire, which constrains it
+twice. It must name something **measurable by a party who already has the problem**, not by us and
+not by a hypothetical future reporter. And it must lie on **the dimension along which the deferred
+cost actually grows**: a generality signal ("a second consumer hits this") is the wrong instrument
+for a cost whose magnitude grows *within* a single consumer — put a magnitude signal there instead
+(the count of the thing that is duplicated, the size of what must be hand-maintained). Check the
+signal against the entry's own body before shipping it: a signal that the entry already records
+evidence for is not a signal, it is a deferral with no exit, and such an entry must be either built
+or re-signalled onto an observable it does not already meet.
+
 Given this means we actively prune ROADMAP as features are implemented, code should generally not store references to roadmap items long-term. They can be acceptable as an intermediate step (i.e. call-outs so reviewing agents know how to code maps to implementation plans), but should generally be fixed up before features are shipped. Never cite a roadmap item by NUMBER or position ("ROADMAP item <N>") in any document or comment: pruning/renumbering retargets a positional citation silently — it never dangles, so no existence check can flag it. Cite a stable identifier instead (a pin/test/gate name, the delivered system's doc section, or the item's exact title): those fail loudly and greppably when the referent goes away. Both halves are mechanically enforced by the `lint_doc_citations` gate (check.ts `local` tier): it bans the positional form tree-wide (outside `draft/`) and asserts hand-doc citations still resolve.
 
 Note: there is no roadmap that isn't related to the testing framework. That's because a "feature" roadmap is encoded indirectly in tests: any test that fail is a feature we need to support, and any new feature we decide to add should be encoded as a test (that first fails, then passes when the test is implemented)
