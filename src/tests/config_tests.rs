@@ -213,10 +213,10 @@ fn an_unknown_key_is_a_hard_error_naming_it() {
     // A top-level table serde never reaches, including the ones later phases will add: a config
     // written against a newer version must say so rather than silently ignore the table.
     let top_level = error(&format!(
-        "[runtime]\ncommon-import = \"rt\"\n{MINIMAL_CRATE}"
+        "[wasm-reexports]\nledger = [\"cip25\"]\n{MINIMAL_CRATE}"
     ));
     assert!(
-        top_level.contains("runtime") && top_level.contains("[crates]"),
+        top_level.contains("wasm-reexports") && top_level.contains("[crates]"),
         "must name the unknown table and what is understood, got: {top_level}"
     );
 }
@@ -1387,6 +1387,713 @@ fn a_two_crate_config_generates_a_consumer_that_imports_its_dependency() {
 
     // A second run has every sidecar in place, which is what convergence means here.
     config::generate(&config_path, &[]).expect("a warm config run must generate");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ---------------------------------------------------------------------------------------------
+// `[runtime]` — one shared static runtime for the whole config
+// ---------------------------------------------------------------------------------------------
+
+/// The derivation runs during EXPANSION (it needs each crate's finished `Cli`), so its refusals are
+/// not reachable through the parse-time [`error`] helper.
+fn expand_error(text: &str) -> String {
+    parse(text)
+        .expand(&[])
+        .err()
+        .unwrap_or_else(|| panic!("expansion must be rejected:\n{text}"))
+}
+
+fn expand_all(text: &str) -> std::collections::BTreeMap<String, Cli> {
+    parse(text)
+        .expand(&[])
+        .unwrap_or_else(|e| panic!("must expand: {e}"))
+        .into_iter()
+        .collect()
+}
+
+/// Two crates whose flavors agree on everything, so a fixture can be about one key at a time.
+const TWO_PLAIN_CRATES: &str = "\n[crates.a]\ninput = \"a.cddl\"\noutput = \"gen/a\"\n\n\
+                                [crates.b]\ninput = \"b.cddl\"\noutput = \"gen/b\"\n";
+
+/// The flavor axes are read off an expanded `Cli`, and the join over a config where nobody sets one
+/// is that axis's bottom — which is only true while every axis's clap default IS the bottom. Pinned
+/// here rather than assumed, because a default flipped upstream would silently invert a join without
+/// changing a line of this module.
+#[test]
+fn every_runtime_flavor_axis_defaults_to_the_bottom_of_that_axis() {
+    use clap::Parser;
+
+    let cli = Cli::parse_from(["cddl-codegen", "--input", "s.cddl", "--output", "gen"]);
+    assert!(!cli.preserve_encodings, "preserve-encodings");
+    assert!(!cli.canonical_form, "canonical-form");
+    assert_eq!(cli.deserialize_depth_limit, None, "deserialize-depth-limit");
+    assert!(!cli.json_serde_derives, "json-serde-derives");
+    assert!(!cli.json_schema_export, "json-schema-export");
+}
+
+/// `common-import` reaches every crate, and it is the LOWEST layer: an explicit
+/// `common-import-override` anywhere in the merge chain wins for the crates it reaches, which is the
+/// exotic case (one crate importing a different runtime) the shared key is sugar for the common one
+/// of.
+#[test]
+fn runtime_common_import_reaches_every_crate_and_an_explicit_key_wins() {
+    let expanded = expand_all(
+        r#"
+[runtime]
+common-import = "cddl_runtime"
+
+[crates.a]
+input = "a.cddl"
+output = "gen/a"
+
+[crates.b]
+input = "b.cddl"
+output = "gen/b"
+common-import-override = "other_runtime"
+"#,
+    );
+    assert_eq!(
+        expanded["a"].common_import_override.as_deref(),
+        Some("cddl_runtime"),
+        "a crate that names no runtime gets the shared one"
+    );
+    assert_eq!(
+        expanded["b"].common_import_override.as_deref(),
+        Some("other_runtime"),
+        "a crate's own key wins over the shared one"
+    );
+}
+
+/// `common-import` is expansion, not a second knob: the flag value it produces is the one a hand
+/// invocation spells.
+#[test]
+fn runtime_common_import_expands_to_the_hand_written_flag() {
+    use clap::Parser;
+
+    let cli = expand_one(&format!(
+        "[runtime]\ncommon-import = \"cddl_runtime\"\n{MINIMAL_CRATE}"
+    ));
+    let from_flags = Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        "spec.cddl",
+        "--output",
+        "gen",
+        "--lib-name",
+        "demo",
+        "--common-import-override",
+        "cddl_runtime",
+    ]);
+    assert_eq!(
+        cli.common_import_override,
+        from_flags.common_import_override
+    );
+}
+
+/// The carrier is the crate whose flavor is the join over the MAX axes — not the first crate, and
+/// not the one that happens to name the runtime. Only `b` has both json axes, so only `b` can export
+/// a runtime `a` also resolves against.
+#[test]
+fn runtime_carrier_is_the_crate_whose_flavor_is_the_join() {
+    let config = parse(
+        r#"
+[runtime]
+export-static-crate = "crates/runtime"
+common-import = "cddl_runtime"
+
+[defaults]
+preserve-encodings = true
+canonical-form = true
+
+[crates.a]
+input = "a.cddl"
+output = "gen/a"
+json-serde-derives = true
+
+[crates.b]
+input = "b.cddl"
+output = "gen/b"
+json-serde-derives = true
+json-schema-export = true
+"#,
+    );
+    let choice = config
+        .runtime_report()
+        .expect("the flavors agree, so a carrier exists")
+        .expect("`export-static-crate` is set, so a carrier is chosen");
+    assert_eq!(choice.carrier, "b");
+    assert!(
+        choice.notes.iter().any(|n| n.contains("`b` carries")),
+        "the run must say which crate carries the export, got: {:?}",
+        choice.notes
+    );
+
+    let expanded = expand_all(
+        r#"
+[runtime]
+export-static-crate = "crates/runtime"
+
+[defaults]
+preserve-encodings = true
+canonical-form = true
+
+[crates.a]
+input = "a.cddl"
+output = "gen/a"
+json-serde-derives = true
+
+[crates.b]
+input = "b.cddl"
+output = "gen/b"
+json-serde-derives = true
+json-schema-export = true
+"#,
+    );
+    assert_eq!(
+        expanded["b"].export_static_crate,
+        Some(std::path::PathBuf::from("crates/runtime")),
+        "the carrier's invocation gets the flag"
+    );
+    assert_eq!(
+        expanded["a"].export_static_crate, None,
+        "exactly one invocation carries it"
+    );
+}
+
+/// When several crates tie on the join the choice must be deterministic, since the run's output
+/// names it. Crate-name order is the order this config's tables are held in.
+#[test]
+fn runtime_carrier_ties_break_deterministically() {
+    let text = format!("[runtime]\nexport-static-crate = \"crates/runtime\"\n{TWO_PLAIN_CRATES}");
+    for _ in 0..3 {
+        let choice = parse(&text)
+            .runtime_report()
+            .expect("identical flavors")
+            .expect("a carrier is chosen");
+        assert_eq!(choice.carrier, "a");
+    }
+}
+
+/// The CML shape, which is exactly the configuration this table exists to make honest: one crate at
+/// a reduced flavor and one at the full one cannot share a runtime, and the refusal names the axis
+/// and which crates hold which value.
+#[test]
+fn runtime_equality_axis_disagreement_is_an_error_naming_the_axis() {
+    let err = expand_error(
+        r#"
+[runtime]
+export-static-crate = "crates/runtime"
+
+[crates.chain]
+input = "chain.cddl"
+output = "gen/chain"
+preserve-encodings = true
+canonical-form = true
+
+[crates.cip25]
+input = "cip25.cddl"
+output = "gen/cip25"
+"#,
+    );
+    assert!(
+        err.contains("`preserve-encodings` (`false` in `cip25`, `true` in `chain`)"),
+        "the refusal must name the axis and which crates hold which value, got:\n{err}"
+    );
+    assert!(
+        err.contains("`canonical-form` (`false` in `cip25`, `true` in `chain`)"),
+        "every disagreeing axis is named, not just the first, got:\n{err}"
+    );
+    assert!(
+        err.contains("flavor-from"),
+        "the refusal must name the remedy, got:\n{err}"
+    );
+}
+
+/// A depth limit is a contract about which documents are ACCEPTED, baked by value into the exported
+/// `AnyCbor` guard — a mismatch compiles cleanly and silently guards one crate's `any` values at
+/// another crate's limit, which is why it is an equality axis and why "unset" counts as a value.
+#[test]
+fn runtime_depth_limit_must_be_identical_including_unset() {
+    let differing_values = expand_error(
+        r#"
+[runtime]
+export-static-crate = "crates/runtime"
+
+[crates.a]
+input = "a.cddl"
+output = "gen/a"
+deserialize-depth-limit = 16
+
+[crates.b]
+input = "b.cddl"
+output = "gen/b"
+deserialize-depth-limit = 64
+"#,
+    );
+    assert!(
+        differing_values.contains("`deserialize-depth-limit` (`16` in `a`, `64` in `b`)"),
+        "two different limits must be refused by value, got:\n{differing_values}"
+    );
+
+    let against_unset = expand_error(
+        r#"
+[runtime]
+export-static-crate = "crates/runtime"
+
+[crates.a]
+input = "a.cddl"
+output = "gen/a"
+deserialize-depth-limit = 16
+
+[crates.b]
+input = "b.cddl"
+output = "gen/b"
+"#,
+    );
+    assert!(
+        against_unset.contains("`deserialize-depth-limit` (`16` in `a`, `unset` in `b`)"),
+        "an absent limit is a VALUE, not an absence to be filled in, got:\n{against_unset}"
+    );
+}
+
+/// The max axes can be split so that no crate holds the join. That is the honest diagnostic:
+/// `--export-static-crate` exports the flag set of one invocation, so a runtime nobody's flags
+/// describe cannot be written at all.
+#[test]
+fn runtime_no_join_crate_is_an_error_naming_which_crate_supplies_each_axis() {
+    let err = expand_error(
+        r#"
+[runtime]
+export-static-crate = "crates/runtime"
+
+[crates.a]
+input = "a.cddl"
+output = "gen/a"
+json-serde-derives = true
+
+[crates.b]
+input = "b.cddl"
+output = "gen/b"
+json-schema-export = true
+"#,
+    );
+    assert!(
+        err.contains("json-serde-derives comes from `a`"),
+        "the refusal must name which crate supplies each axis, got:\n{err}"
+    );
+    assert!(
+        err.contains("json-schema-export comes from `b`"),
+        "…and the other one, got:\n{err}"
+    );
+    assert!(
+        err.contains("no single crate has all of it"),
+        "the refusal must say WHY there is no carrier, got:\n{err}"
+    );
+}
+
+/// `flavor-from` overrides the derivation, fires no warning (the user declared this, and a warning
+/// that fires on every run of the motivating consumer trains people to ignore warnings), and states
+/// once what was accepted: which crates are at a flavor the runtime does not match, and the two
+/// constructs that would break them.
+#[test]
+fn runtime_flavor_from_overrides_the_derivation_and_states_the_gap() {
+    let config = parse(
+        r#"
+[runtime]
+export-static-crate = "crates/runtime"
+common-import = "cml_core"
+flavor-from = "chain"
+
+[crates.chain]
+input = "chain.cddl"
+output = "gen/chain"
+preserve-encodings = true
+canonical-form = true
+
+[crates.cip25]
+input = "cip25.cddl"
+output = "gen/cip25"
+"#,
+    );
+    let choice = config
+        .runtime_report()
+        .expect("`flavor-from` accepts what the derivation refuses")
+        .expect("a carrier is chosen");
+    assert_eq!(choice.carrier, "chain");
+    let notes = choice.notes.join("\n");
+    assert!(
+        notes.contains("`chain` carries --export-static-crate, declared by `flavor-from`"),
+        "the run must say who carries it and that it was declared, got:\n{notes}"
+    );
+    assert!(
+        notes.contains("`cip25`"),
+        "the accepted gap must NAME the crates it applies to, got:\n{notes}"
+    );
+    assert!(
+        notes.contains("{+ K => V}") && notes.contains("NonEmptyMap"),
+        "the accepted gap must name the map construct that breaks it, got:\n{notes}"
+    );
+    assert!(
+        notes.contains("`any`") && notes.contains("AnyCbor"),
+        "…and the `any` construct, got:\n{notes}"
+    );
+    assert!(
+        !notes.to_lowercase().contains("warning"),
+        "a declared choice is a statement, not a warning, got:\n{notes}"
+    );
+
+    let expanded = expand_all(
+        r#"
+[runtime]
+export-static-crate = "crates/runtime"
+flavor-from = "chain"
+
+[crates.chain]
+input = "chain.cddl"
+output = "gen/chain"
+preserve-encodings = true
+canonical-form = true
+
+[crates.cip25]
+input = "cip25.cddl"
+output = "gen/cip25"
+"#,
+    );
+    assert_eq!(
+        expanded["chain"].export_static_crate,
+        Some(std::path::PathBuf::from("crates/runtime"))
+    );
+    assert_eq!(expanded["cip25"].export_static_crate, None);
+}
+
+/// `flavor-from` naming the crate the derivation would have picked anyway accepts nothing, so it
+/// states nothing beyond who carries the export.
+#[test]
+fn runtime_flavor_from_on_the_join_crate_states_no_gap() {
+    let choice = parse(&format!(
+        "[runtime]\nexport-static-crate = \"crates/runtime\"\nflavor-from = \"a\"\n{TWO_PLAIN_CRATES}"
+    ))
+    .runtime_report()
+    .expect("identical flavors")
+    .expect("a carrier is chosen");
+    assert_eq!(
+        choice.notes.len(),
+        1,
+        "nothing was accepted: {:?}",
+        choice.notes
+    );
+}
+
+/// Which crate can carry the runtime is a property of the CONFIG, so selecting a subset must reject
+/// the same configs a full run rejects rather than pass because the offending crate sat this one out.
+#[test]
+fn runtime_derivation_is_independent_of_the_selection() {
+    let config = parse(
+        r#"
+[runtime]
+export-static-crate = "crates/runtime"
+
+[crates.chain]
+input = "chain.cddl"
+output = "gen/chain"
+preserve-encodings = true
+canonical-form = true
+
+[crates.cip25]
+input = "cip25.cddl"
+output = "gen/cip25"
+"#,
+    );
+    let Err(err) = config.expand(&["chain".to_owned()]) else {
+        panic!("selecting one crate must not hide the config's flavor split");
+    };
+    assert!(err.contains("preserve-encodings"), "got:\n{err}");
+}
+
+/// Two static-runtime exports in one config is a mistake, not a configuration: letting either win
+/// would make which runtime survives depend on generation order. Rejected from every layer a
+/// `Settings` can come from.
+#[test]
+fn a_second_export_static_crate_alongside_runtime_is_an_error() {
+    for (label, layer) in [
+        (
+            "[crates.demo]",
+            "[crates.demo]\nexport-static-crate = \"other\"\ninput = \"s.cddl\"\noutput = \"gen\"\n",
+        ),
+        (
+            "[defaults]",
+            "[defaults]\nexport-static-crate = \"other\"\n[crates.demo]\ninput = \"s.cddl\"\noutput = \"gen\"\n",
+        ),
+        (
+            "[profiles.p]",
+            "[profiles.p]\nexport-static-crate = \"other\"\n[crates.demo]\nprofiles = [\"p\"]\ninput = \"s.cddl\"\noutput = \"gen\"\n",
+        ),
+    ] {
+        let err = error(&format!(
+            "[runtime]\nexport-static-crate = \"crates/runtime\"\n{layer}"
+        ));
+        assert!(
+            err.contains(label) && err.contains("generation order"),
+            "the refusal must name the offending layer ({label}) and why it is not a precedence \
+             question, got:\n{err}"
+        );
+    }
+}
+
+/// A per-crate `export-static-crate` with NO `[runtime].export-static-crate` is the hand-placed flag
+/// this table replaces, and stays legal — the refusal above is about two exports, not about the key.
+#[test]
+fn a_lone_per_crate_export_static_crate_stays_legal() {
+    let cli = expand_one(
+        "[runtime]\ncommon-import = \"cddl_runtime\"\n[crates.demo]\n\
+         export-static-crate = \"crates/runtime\"\ninput = \"s.cddl\"\noutput = \"gen\"\n",
+    );
+    assert_eq!(
+        cli.export_static_crate,
+        Some(std::path::PathBuf::from("crates/runtime"))
+    );
+}
+
+/// `[runtime].export-static-crate` resolves against the config file's directory, like every other
+/// path key — the property that makes a checked-in config work from any CWD.
+#[test]
+fn runtime_export_static_crate_resolves_against_the_config_directory() {
+    let config = config::parse_str(
+        &format!("[runtime]\nexport-static-crate = \"crates/runtime\"\n{MINIMAL_CRATE}"),
+        Path::new("/proj/cfg"),
+    )
+    .expect("must parse");
+    let expanded = config.expand(&[]).expect("must expand");
+    assert_eq!(
+        expanded[0].1.export_static_crate,
+        Some(std::path::PathBuf::from("/proj/cfg/crates/runtime"))
+    );
+}
+
+/// An empty `[runtime]` asks for nothing, which is a typo rather than a request.
+#[test]
+fn an_empty_runtime_table_is_an_error() {
+    let err = error(&format!("[runtime]\n{MINIMAL_CRATE}"));
+    assert!(err.contains("neither"), "got:\n{err}");
+}
+
+/// An unknown key in `[runtime]` is rejected like every other typo.
+#[test]
+fn an_unknown_runtime_key_is_an_error() {
+    let err = error(&format!(
+        "[runtime]\ncommon-imports = \"x\"\n{MINIMAL_CRATE}"
+    ));
+    assert!(
+        err.contains("[runtime]") && err.contains("common-imports"),
+        "got:\n{err}"
+    );
+}
+
+/// `flavor-from` must name a crate in this config: it selects whose flag set the runtime IS, so a
+/// name from outside cannot answer that.
+#[test]
+fn runtime_flavor_from_must_name_a_configured_crate() {
+    let err = error(&format!(
+        "[runtime]\nexport-static-crate = \"r\"\nflavor-from = \"nope\"\n{MINIMAL_CRATE}"
+    ));
+    assert!(
+        err.contains("`nope`") && err.contains("`demo`"),
+        "the refusal must name the unknown crate and list the configured ones, got:\n{err}"
+    );
+}
+
+/// `flavor-from` with nothing to carry is a key that cannot mean anything.
+#[test]
+fn runtime_flavor_from_without_an_export_is_an_error() {
+    let err = error(&format!(
+        "[runtime]\ncommon-import = \"r\"\nflavor-from = \"demo\"\n{MINIMAL_CRATE}"
+    ));
+    assert!(err.contains("no export to carry"), "got:\n{err}");
+}
+
+/// The `[runtime]` table on real disk, with the leg that no other test in this repo has: a shared
+/// runtime exported at ONE crate's flavor, and a crate at a DIFFERENT flavor compiled against it.
+///
+/// A generation-only assertion cannot catch an inadequate runtime — that is the entire failure this
+/// table exists to prevent, and it only shows up at `cargo check`. So this generates a CML-shaped
+/// config (a full-flavor crate carrying the export, a reduced-flavor crate importing it via
+/// `common-import`), hand-writes the target crate's `lib.rs` exactly as the tool's new-static-file
+/// notice instructs, and compiles the whole workspace.
+///
+/// The MUTATION leg at the end is what makes the run's accepted-gap statement a tested claim rather
+/// than prose: adding a `{+ K => V}` to the reduced crate's spec — one of the two constructs that
+/// statement names — must break the build, because under `--preserve-encodings` the runtime's
+/// `NonEmptyMap` is backed by `OrderedHashMap` while the reduced crate builds a `BTreeMap`.
+#[test]
+fn a_runtime_table_exports_a_runtime_the_other_flavor_compiles_against() {
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_config_runtime_e2e_{:016x}",
+        crate::tests::integration_tests::checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("specs")).unwrap();
+    // The FULL-flavor crate: preserve + canonical + json, and a spec that reaches every runtime type
+    // the export composes, so the exported files are exercised rather than merely present.
+    std::fs::write(
+        dir.join("specs/full.cddl"),
+        "full_rec = [ne: [+ uint], nm: {+ uint => text}, m: {* uint => text}, a: any]\n",
+    )
+    .unwrap();
+    // The REDUCED-flavor crate: none of those flags, and a spec that avoids the two constructs the
+    // accepted-gap statement names.
+    std::fs::write(
+        dir.join("specs/reduced.cddl"),
+        "reduced_rec = [x: uint, m: {* uint => text}, s: text]\n",
+    )
+    .unwrap();
+
+    let config_path = dir.join("codegen.toml");
+    let config_text = format!(
+        "[defaults]\nstatic-dir = \"{}/static\"\nwasm = false\n\n\
+         [runtime]\nexport-static-crate = \"runtime\"\ncommon-import = \"cddl_runtime\"\n\
+         flavor-from = \"full\"\n\n\
+         [crates.full]\ninput = \"specs/full.cddl\"\noutput = \"gen/full\"\nlib-name = \"full-lib\"\n\
+         preserve-encodings = true\ncanonical-form = true\njson-serde-derives = true\n\n\
+         [crates.reduced]\ninput = \"specs/reduced.cddl\"\noutput = \"gen/reduced\"\n\
+         lib-name = \"reduced-lib\"\n",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    std::fs::write(&config_path, &config_text).unwrap();
+
+    // The derivation refuses this shape without `flavor-from`; with it, the run states the gap.
+    let choice = config::load(&config_path)
+        .expect("must load")
+        .runtime_report()
+        .expect("`flavor-from` accepts the split")
+        .expect("a carrier is chosen");
+    assert_eq!(choice.carrier, "full");
+    assert!(
+        choice.notes.join("\n").contains("`reduced`"),
+        "the accepted gap must name the reduced crate, got: {:?}",
+        choice.notes
+    );
+
+    config::generate(&config_path, &[])
+        .unwrap_or_else(|e| panic!("a cold config run must generate: {e}"));
+
+    // The shared runtime really received the files, in the crate shape `--export-static-crate`
+    // documents (`<dir>/src/` plus a merged `<dir>/Cargo.toml`).
+    let runtime_src = dir.join("runtime/src");
+    for expected in [
+        "error.rs",
+        "serialization.rs",
+        "any_cbor.rs",
+        "non_empty.rs",
+        "non_empty_map.rs",
+        "ordered_hash_map.rs",
+    ] {
+        assert!(
+            runtime_src.join(expected).is_file(),
+            "the shared runtime must receive {expected}"
+        );
+    }
+    let manifest = std::fs::read_to_string(dir.join("runtime/Cargo.toml"))
+        .expect("the exported runtime gets its manifest too — source and deps are one artifact");
+    assert!(
+        manifest.contains("serde"),
+        "the carrier's json flavor must reach the runtime's dependency list, got:\n{manifest}"
+    );
+    assert!(
+        !dir.join("gen/reduced/rust/src/generated/error.rs").exists(),
+        "a --common-import-override crate keeps no local copy of the runtime"
+    );
+
+    // The target crate root is HAND-owned: the tool never writes it, and its new-static-file notice
+    // says exactly this. Write it the way a consumer would.
+    let mut modules: Vec<String> = std::fs::read_dir(&runtime_src)
+        .unwrap()
+        .filter_map(|e| {
+            let name = e.unwrap().file_name().to_string_lossy().into_owned();
+            name.strip_suffix(".rs").map(str::to_owned)
+        })
+        .collect();
+    modules.sort();
+    std::fs::write(
+        runtime_src.join("lib.rs"),
+        modules
+            .iter()
+            .map(|m| format!("pub mod {m};\n"))
+            .collect::<String>(),
+    )
+    .unwrap();
+
+    // A workspace over the three crates, with each generated crate depending on the runtime under
+    // the code name `common-import` gave it.
+    std::fs::write(
+        dir.join("Cargo.toml"),
+        "[workspace]\nmembers = [\"runtime\", \"gen/full/rust\", \"gen/reduced/rust\"]\n\
+         resolver = \"2\"\n",
+    )
+    .unwrap();
+    let add_runtime_dep = |crate_dir: &str| {
+        let path = dir.join(crate_dir).join("Cargo.toml");
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            !text.contains("cddl_runtime"),
+            "the tool does not write the consumer's dependency on the shared runtime — the \
+             --common-import-override docs make that the user's line"
+        );
+        std::fs::write(
+            &path,
+            text.replace(
+                "[dependencies]",
+                "[dependencies]\ncddl_runtime = { package = \"cddl-runtime\", path = \"../../../runtime\" }",
+            ),
+        )
+        .unwrap();
+    };
+    add_runtime_dep("gen/full/rust");
+    add_runtime_dep("gen/reduced/rust");
+
+    let target_dir = dir.join("target");
+    let check = crate::tests::integration_tests::tool_cmd("cargo")
+        .arg("check")
+        .arg("--workspace")
+        .current_dir(&dir)
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .output()
+        .unwrap();
+    assert!(
+        check.status.success(),
+        "the exported runtime must compile BOTH flavors that import it:\n{}\n{}",
+        String::from_utf8_lossy(&check.stdout),
+        String::from_utf8_lossy(&check.stderr)
+    );
+
+    // The mutation leg: the accepted gap the run stated is real. `{+ K => V}` in the reduced crate's
+    // spec is `NonEmptyMap<_, BTreeMap-backed>` there and `OrderedHashMap`-backed in the runtime the
+    // full-flavor crate exported, so the same workspace must now FAIL.
+    std::fs::write(
+        dir.join("specs/reduced.cddl"),
+        "reduced_rec = [x: uint, nm: {+ uint => text}]\n",
+    )
+    .unwrap();
+    config::generate(&config_path, &["reduced".to_owned()])
+        .expect("the reduced crate must still GENERATE — the gap is a compile-time one");
+    let mutated = crate::tests::integration_tests::tool_cmd("cargo")
+        .arg("check")
+        .arg("--workspace")
+        .current_dir(&dir)
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .output()
+        .unwrap();
+    assert!(
+        !mutated.status.success(),
+        "a `{{+ K => V}}` in the reduced crate must break against a preserve-encodings runtime — \
+         that is the hazard `flavor-from` makes the user accept, and if it stopped being real the \
+         accepted-gap statement is now telling users something false"
+    );
+    assert!(
+        String::from_utf8_lossy(&mutated.stderr).contains("NonEmptyMap"),
+        "the failure must be the one the statement names, got:\n{}",
+        String::from_utf8_lossy(&mutated.stderr)
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
 }

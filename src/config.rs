@@ -73,7 +73,105 @@ fn per_crate_key_reason(key: &str) -> &'static str {
 
 /// The tables the document may hold at top level. Anything else is a typo or a feature this version
 /// does not have; either way the user must hear about it rather than have the table ignored.
-const TOP_LEVEL_KEYS: &[&str] = &["defaults", "profiles", "crates"];
+const TOP_LEVEL_KEYS: &[&str] = &["defaults", "profiles", "crates", "runtime"];
+
+/// The `[runtime]` table: one shared static runtime crate for every crate in the config.
+///
+/// Top-level rather than a `[defaults]` key because both halves are statements about the CONFIG, not
+/// about a crate. `--export-static-crate` writes a runtime that serves everyone, so it belongs to
+/// exactly one invocation and the config picks which; `--common-import-override` pointing at
+/// different runtimes within one config is a mistake in every realistic project, so the shared value
+/// is the one worth spelling once.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct Runtime {
+    /// Where the shared runtime is written. Resolved against the config file's directory, like every
+    /// other path key. Expands to `--export-static-crate` on exactly ONE crate's invocation — see
+    /// [`Config::runtime_carrier`] for which.
+    pub export_static_crate: Option<String>,
+    /// Expands to `--common-import-override <value>` on every crate. It is the LOWEST layer in the
+    /// merge: an explicit `common-import-override` in `[defaults]`, a profile, or a crate table wins
+    /// for the crates it reaches, which is the exotic case (a crate importing a different runtime)
+    /// this key is sugar for the common one of.
+    pub common_import: Option<String>,
+    /// Name the carrier by hand instead of deriving it, accepting the flavor gap that made the
+    /// derivation refuse. See [`Config::runtime_carrier`].
+    pub flavor_from: Option<String>,
+}
+
+/// The exported runtime's flavor: the `Cli` fields that change a byte of what
+/// `--export-static-crate` writes, and the only ones.
+///
+/// Measured, not read off the flag's documentation: every `Cli` field was flipped one at a time and
+/// the exported crate byte-diffed. `lib-name` does not appear because the change log the static
+/// runtime's `Cargo.toml` folds carries no `cddl-lib` token to substitute; `static-dir` does change
+/// the bytes but is the tool's own installation path rather than a property of a crate, so it is not
+/// an axis a carrier can be chosen on.
+///
+/// The two GROUPS below are what make the derivation possible at all, and they are not
+/// interchangeable — see [`Config::runtime_carrier`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RuntimeFlavor {
+    // --- EQUALITY axes: a runtime exported at one value does not compile a crate generated at
+    // another, in EITHER direction. `preserve-encodings` swaps `NonEmptyMap`'s inner table for
+    // `OrderedHashMap` and re-types `CBORReadLen`; `canonical-form` changes the arity of `fit_sz`,
+    // `LenEncoding::to_len_sz` and `SerializeEmbeddedGroup`, and moves `Serialize` between the
+    // runtime and `cbor_event`; `deserialize-depth-limit` bakes its VALUE into the exported
+    // `AnyCbor` recursion guard, so a mismatch compiles cleanly while silently guarding one crate's
+    // `any` values at another crate's limit.
+    preserve_encodings: bool,
+    canonical_form: bool,
+    deserialize_depth_limit: Option<u32>,
+
+    // --- MAX axes: `true` is a superset of `false`. The json/schemars companions are appended to
+    // the runtime types, so a runtime carrying them serves a crate that does not, while the reverse
+    // leaves the crate's `serde`/`schemars` impls unresolved.
+    json_serde_derives: bool,
+    json_schema_export: bool,
+}
+
+impl RuntimeFlavor {
+    /// Read off a fully expanded `Cli` rather than off merged [`Settings`], so clap's defaults are
+    /// never restated here — the same rule the graph derivation follows.
+    fn of(cli: &Cli) -> Self {
+        Self {
+            preserve_encodings: cli.preserve_encodings,
+            canonical_form: cli.canonical_form,
+            deserialize_depth_limit: cli.deserialize_depth_limit,
+            json_serde_derives: cli.json_serde_derives,
+            json_schema_export: cli.json_schema_export,
+        }
+    }
+
+    /// The axes every crate sharing one runtime must match EXACTLY, as rendered values.
+    fn equality_axes(&self) -> [(&'static str, String); 3] {
+        [
+            ("preserve-encodings", self.preserve_encodings.to_string()),
+            ("canonical-form", self.canonical_form.to_string()),
+            (
+                "deserialize-depth-limit",
+                match self.deserialize_depth_limit {
+                    Some(v) => v.to_string(),
+                    None => "unset".to_owned(),
+                },
+            ),
+        ]
+    }
+}
+
+/// One max axis for the no-carrier diagnostic: `(config key, whether the join wants it, how to read
+/// it off a flavor)`. Named so the "which crate supplies each axis" loop can stay a table.
+type MaxAxis = (&'static str, bool, fn(&RuntimeFlavor) -> bool);
+
+/// Which crate carries `--export-static-crate`, and what the run should say about it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RuntimeChoice {
+    /// The crate whose invocation gets the flag.
+    pub carrier: String,
+    /// Lines to print in the existing progress style, before any crate generates. Never empty: a
+    /// silently-chosen carrier is what the hand-placed flag already does.
+    pub notes: Vec<String>,
+}
 
 /// Every `Cli` field that is not per-crate, each optional so "absent" is distinguishable from "set to
 /// the value that happens to be the built-in default" — the distinction the merge is built on: an
@@ -261,6 +359,8 @@ pub struct Config {
     pub defaults: Settings,
     pub profiles: BTreeMap<String, Settings>,
     pub crates: BTreeMap<String, CrateEntry>,
+    /// The optional `[runtime]` table.
+    pub runtime: Option<Runtime>,
 }
 
 /// Read and parse a config file. Paths inside it resolve against ITS directory, so the caller's CWD
@@ -310,6 +410,14 @@ pub fn parse_str(text: &str, base_dir: &Path) -> Result<Config, String> {
             );
         }
     }
+
+    let runtime = match doc.get("runtime") {
+        Some(v) => Some(
+            Runtime::deserialize(v.clone())
+                .map_err(|e| format!("[runtime]: {}", e.to_string().trim_end()))?,
+        ),
+        None => None,
+    };
 
     let crate_tables = doc.get("crates").ok_or_else(|| {
         "no `[crates.<name>]` tables; a config generates at least one crate".to_owned()
@@ -361,6 +469,7 @@ pub fn parse_str(text: &str, base_dir: &Path) -> Result<Config, String> {
         defaults,
         profiles,
         crates,
+        runtime,
     };
     config.validate()?;
     Ok(config)
@@ -494,7 +603,78 @@ impl Config {
             }
         }
 
+        self.validate_runtime()?;
+
         self.generation_order().map(|_| ())
+    }
+
+    /// The `[runtime]` checks that need no expanded `Cli` — an empty table, an unknown
+    /// `flavor-from`, and a second `export-static-crate` somewhere in the layer stack.
+    ///
+    /// The flavor derivation itself is NOT here: it reads each crate's finished `Cli`, so it lives
+    /// in [`Self::runtime_carrier`] and runs during expansion — still before any crate generates.
+    fn validate_runtime(&self) -> Result<(), String> {
+        let Some(runtime) = &self.runtime else {
+            return Ok(());
+        };
+
+        if runtime.export_static_crate.is_none() && runtime.common_import.is_none() {
+            return Err(
+                "`[runtime]` sets neither `export-static-crate` nor `common-import`, so it asks for \
+                 nothing. An empty table is a typo rather than a request — either give it a key or \
+                 delete it. (`flavor-from` only names which crate carries `export-static-crate`; it \
+                 is not a request on its own.)"
+                    .to_owned(),
+            );
+        }
+
+        if let Some(from) = &runtime.flavor_from {
+            if runtime.export_static_crate.is_none() {
+                return Err(format!(
+                    "`[runtime].flavor-from` names `{from}` as the crate that carries \
+                     `export-static-crate`, but `[runtime]` sets no `export-static-crate`. There is \
+                     no export to carry — drop `flavor-from`, or say where the runtime is written."
+                ));
+            }
+            if !self.crates.contains_key(from) {
+                return Err(format!(
+                    "`[runtime].flavor-from` names `{from}`, which has no `[crates.{from}]` table. \
+                     It must name a crate in this config, since it selects whose flag set the \
+                     exported runtime is. Configured crates: {}",
+                    list_or_none(self.crates.keys())
+                ));
+            }
+        }
+
+        // A second `export-static-crate` anywhere in the layer stack. Rejected rather than resolved
+        // by precedence: two static-runtime exports in one config is a mistake, and letting one win
+        // would make WHICH runtime survives depend on generation order — the property this table
+        // exists to take out of the user's hands.
+        if runtime.export_static_crate.is_some() {
+            let mut layers: Vec<(String, &Settings)> =
+                vec![("[defaults]".to_owned(), &self.defaults)];
+            for (name, settings) in &self.profiles {
+                layers.push((format!("[profiles.{name}]"), settings));
+            }
+            for (name, entry) in &self.crates {
+                layers.push((format!("[crates.{name}]"), &entry.settings));
+            }
+            if let Some((label, _)) = layers
+                .iter()
+                .find(|(_, settings)| settings.export_static_crate.is_some())
+            {
+                return Err(format!(
+                    "`{label}` sets `export-static-crate` while `[runtime]` also does. One config \
+                     writes one shared runtime: two exports would race for the same role, and \
+                     letting either win silently would make which runtime survives depend on \
+                     generation order. Keep the `[runtime]` one and delete `{label}.\
+                     export-static-crate`, or drop `[runtime].export-static-crate` and place the \
+                     key by hand."
+                ));
+            }
+        }
+
+        Ok(())
     }
 
     /// The order the crates generate in: a topological sort over `deps`, dependencies FIRST, ties
@@ -592,20 +772,11 @@ impl Config {
     /// cross-crate flags already document — so `--config c.toml ledger` regenerates one crate against
     /// what `core` last wrote, and fails with the flags' own error if `core` never wrote anything.
     pub fn expand(&self, selected: &[String]) -> Result<Vec<(String, Cli)>, String> {
-        // EVERY crate is expanded first, selected or not, because the graph derivation reads values
-        // (`output`, `lib-name`, `wasm`, `package-json`) out of the OTHER crate's finished `Cli`
-        // rather than re-deriving clap's defaults here — reading them back is what stops a default
-        // drifting between the two places it would otherwise be written. A dependency of a selected
-        // crate need not be selected, and neither need a consumer whose reverse edge a selected
-        // dependency carries, so the set that must be expanded is all of them.
-        let mut ungraphed: BTreeMap<String, Cli> = BTreeMap::new();
-        for (name, entry) in &self.crates {
-            let settings = self.merged_settings(entry);
-            ungraphed.insert(
-                name.clone(),
-                build_cli(name, entry, &settings, &self.base_dir)?,
-            );
-        }
+        let ungraphed = self.ungraphed()?;
+        // Derived from EVERY crate, never from the selection: which crate can carry the shared
+        // runtime is a property of the config, so `--config c.toml ledger` must reject the same
+        // configs a full run rejects rather than pass because the offending crate sat this one out.
+        let runtime_choice = self.runtime_carrier(&ungraphed)?;
 
         let order = self.generation_order()?;
         let chosen: Vec<String> = if selected.is_empty() {
@@ -635,10 +806,247 @@ impl Config {
                 let entry = &self.crates[&name];
                 let mut settings = self.merged_settings(entry);
                 self.apply_graph_edges(&name, entry, &mut settings, &ungraphed);
+                self.apply_runtime(&name, &mut settings, runtime_choice.as_ref());
                 let cli = build_cli(&name, entry, &settings, &self.base_dir)?;
                 Ok((name, cli))
             })
             .collect()
+    }
+
+    /// Every crate's `Cli` as its own table alone describes it — before any cross-crate derivation.
+    ///
+    /// EVERY crate is expanded, selected or not, because the derivations read values (`output`,
+    /// `lib-name`, `wasm`, `package-json`, and the runtime flavor axes) out of the OTHER crate's
+    /// finished `Cli` rather than re-deriving clap's defaults — reading them back is what stops a
+    /// default drifting between the two places it would otherwise be written.
+    fn ungraphed(&self) -> Result<BTreeMap<String, Cli>, String> {
+        let mut out: BTreeMap<String, Cli> = BTreeMap::new();
+        for (name, entry) in &self.crates {
+            let settings = self.merged_settings(entry);
+            out.insert(
+                name.clone(),
+                build_cli(name, entry, &settings, &self.base_dir)?,
+            );
+        }
+        Ok(out)
+    }
+
+    /// Fold the `[runtime]` table into one crate's merged settings.
+    fn apply_runtime(&self, name: &str, settings: &mut Settings, choice: Option<&RuntimeChoice>) {
+        let Some(runtime) = &self.runtime else {
+            return;
+        };
+        if let Some(common_import) = &runtime.common_import {
+            // Lowest layer: a `common-import-override` the merge already produced was written
+            // explicitly somewhere, and an explicit value is the user overriding the sugar rather
+            // than a conflict to report.
+            settings
+                .common_import_override
+                .get_or_insert_with(|| common_import.clone());
+        }
+        if let (Some(path), Some(choice)) = (&runtime.export_static_crate, choice)
+            && choice.carrier == name
+        {
+            settings.export_static_crate = Some(path.clone());
+        }
+    }
+
+    /// Which crate carries `--export-static-crate`, and what to say about the choice. `None` when
+    /// `[runtime]` writes no runtime.
+    ///
+    /// # Why this is derived rather than a key
+    ///
+    /// The export is a pure function of the flag set (a run against a different spec at the same
+    /// flags writes byte-identical files), so the carrier is not a preference — it is whichever
+    /// crate's flag set the shared runtime must have. Naming it by hand is what CML does today, with
+    /// a comment explaining that a reduced-flavor crate would export a runtime the others cannot
+    /// use; a config already knows every crate's flavor, so it can make that choice instead of
+    /// documenting it.
+    ///
+    /// # The two kinds of axis
+    ///
+    /// [`RuntimeFlavor`]'s equality axes must be IDENTICAL across every crate. This is measured, not
+    /// assumed: a runtime exported with `canonical-form` fails to compile a crate generated without
+    /// it (and vice versa) on the arity of `fit_sz`/`to_len_sz`/`SerializeEmbeddedGroup`; a
+    /// `preserve-encodings` runtime fails a crate generated without it as soon as that crate's spec
+    /// holds a `{+ K => V}`; and a depth limit is a contract about which documents are ACCEPTED,
+    /// baked by value into the exported `AnyCbor` guard, which is worse than a compile error because
+    /// it compiles. The max axes (`json-serde-derives`, `json-schema-export`) genuinely nest: the
+    /// json/schemars companions are appended to the runtime types, so carrying them serves a crate
+    /// that does not.
+    ///
+    /// So the carrier is the first crate — in crate-name order, the order this config's tables are
+    /// held in — whose flavor equals the agreed equality axes plus the OR of the max axes. Any crate
+    /// matching that produces byte-identical output, so which one is picked is unobservable.
+    ///
+    /// # `flavor-from`
+    ///
+    /// Declaring the carrier by hand skips both refusals. It fires no per-run warning — the user has
+    /// said they know, and a warning that fires forever trains people to ignore warnings — but the
+    /// run states once which crates are generated at a flavor the runtime does not match, and which
+    /// two constructs would break them.
+    fn runtime_carrier(
+        &self,
+        ungraphed: &BTreeMap<String, Cli>,
+    ) -> Result<Option<RuntimeChoice>, String> {
+        let Some(runtime) = &self.runtime else {
+            return Ok(None);
+        };
+        if runtime.export_static_crate.is_none() {
+            return Ok(None);
+        }
+        let flavors: BTreeMap<&str, RuntimeFlavor> = ungraphed
+            .iter()
+            .map(|(name, cli)| (name.as_str(), RuntimeFlavor::of(cli)))
+            .collect();
+
+        if let Some(from) = &runtime.flavor_from {
+            // Validated to name a configured crate by `validate_runtime`.
+            let carrier_flavor = &flavors[from.as_str()];
+            let mut notes = vec![format!(
+                "[runtime] `{from}` carries --export-static-crate, declared by `flavor-from`."
+            )];
+            let mismatched: Vec<&str> = flavors
+                .iter()
+                .filter(|(name, flavor)| {
+                    **name != from.as_str()
+                        && flavor.equality_axes() != carrier_flavor.equality_axes()
+                })
+                .map(|(name, _)| *name)
+                .collect();
+            if !mismatched.is_empty() {
+                notes.push(format!(
+                    "[runtime] Generated at a flavor the shared runtime does not match: {}. They \
+                     compile against it only while their specs hold no `{{+ K => V}}` (whose \
+                     `NonEmptyMap` is backed by `OrderedHashMap` under --preserve-encodings) and no \
+                     `any` (whose `AnyCbor` serialize arity follows --canonical-form), and a crate \
+                     whose --deserialize-depth-limit differs has its `any` values guarded at `{}`'s \
+                     limit rather than its own.",
+                    quoted(mismatched.iter().copied()),
+                    from
+                ));
+            }
+            return Ok(Some(RuntimeChoice {
+                carrier: from.clone(),
+                notes,
+            }));
+        }
+
+        // 1. The equality axes must agree. Reported axis by axis with the crates holding each value,
+        //    because a user reading "the flavors disagree" has to diff five keys across N tables by
+        //    hand to find which one.
+        let mut disagreements: Vec<String> = Vec::new();
+        for axis in 0..3 {
+            let mut by_value: BTreeMap<String, Vec<&str>> = BTreeMap::new();
+            for (name, flavor) in &flavors {
+                let (_, value) = flavor.equality_axes()[axis].clone();
+                by_value.entry(value).or_default().push(name);
+            }
+            if by_value.len() > 1 {
+                let label = flavors
+                    .values()
+                    .next()
+                    .expect("a config has at least one crate")
+                    .equality_axes()[axis]
+                    .0;
+                let split = by_value
+                    .iter()
+                    .map(|(value, names)| format!("`{value}` in {}", quoted(names.iter().copied())))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                disagreements.push(format!("`{label}` ({split})"));
+            }
+        }
+        if !disagreements.is_empty() {
+            return Err(format!(
+                "`[runtime].export-static-crate` cannot write one runtime for these crates: they \
+                 disagree on {}, and a shared runtime must match {} EXACTLY. A runtime exported at \
+                 one value does not compile a crate generated at another — the preserve/canonical \
+                 serialize signatures differ in arity and in which crate defines `Serialize`, and \
+                 the depth limit is baked by value into the exported `AnyCbor` guard, so a mismatch \
+                 there compiles while guarding one crate's `any` values at another's limit. Give \
+                 every crate the same value, or accept the gap explicitly with \
+                 `[runtime].flavor-from = \"<crate>\"`.",
+                disagreements.join("; "),
+                if disagreements.len() == 1 {
+                    "it"
+                } else {
+                    "them"
+                },
+            ));
+        }
+
+        // 2. The join: the agreed equality axes plus the OR of the max axes.
+        let any = flavors
+            .values()
+            .next()
+            .expect("a config has at least one crate");
+        let join = RuntimeFlavor {
+            preserve_encodings: any.preserve_encodings,
+            canonical_form: any.canonical_form,
+            deserialize_depth_limit: any.deserialize_depth_limit,
+            json_serde_derives: flavors.values().any(|f| f.json_serde_derives),
+            json_schema_export: flavors.values().any(|f| f.json_schema_export),
+        };
+
+        // 3. The first crate in crate-name order whose flavor IS the join.
+        let carrier = flavors
+            .iter()
+            .find(|(_, flavor)| **flavor == join)
+            .map(|(name, _)| (*name).to_owned());
+        let Some(carrier) = carrier else {
+            let getters: [MaxAxis; 2] = [
+                (
+                    "json-serde-derives",
+                    join.json_serde_derives,
+                    |f: &RuntimeFlavor| f.json_serde_derives,
+                ),
+                (
+                    "json-schema-export",
+                    join.json_schema_export,
+                    |f: &RuntimeFlavor| f.json_schema_export,
+                ),
+            ];
+            let suppliers = getters
+                .into_iter()
+                .filter(|(_, wanted, _)| *wanted)
+                .map(|(label, _, get)| {
+                    let names: Vec<&str> = flavors
+                        .iter()
+                        .filter(|(_, f)| get(f))
+                        .map(|(n, _)| *n)
+                        .collect();
+                    format!("{label} comes from {}", quoted(names.into_iter()))
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(format!(
+                "no crate in this config has the flavor the shared runtime needs: {suppliers}, and \
+                 no single crate has all of it. `--export-static-crate` exports the flag set of ONE \
+                 invocation, so the runtime can only ever be a flavor some crate already has. Turn \
+                 the missing keys on for one crate so it can carry the export, or name a carrier \
+                 with `[runtime].flavor-from = \"<crate>\"` and accept that the crates it lacks \
+                 will not resolve the runtime's json or schemars impls."
+            ));
+        };
+
+        Ok(Some(RuntimeChoice {
+            notes: vec![format!(
+                "[runtime] `{carrier}` carries --export-static-crate: its flavor is the join of \
+                 every crate's, so the runtime it writes serves all of them."
+            )],
+            carrier,
+        }))
+    }
+
+    /// The `[runtime]` decision this config makes, for a run to state before it generates anything.
+    ///
+    /// Recomputed rather than returned out of [`Self::expand`] so the expansion's signature stays
+    /// "a config is a list of invocations"; it is a pure function of the config, so the two cannot
+    /// disagree.
+    pub fn runtime_report(&self) -> Result<Option<RuntimeChoice>, String> {
+        let ungraphed = self.ungraphed()?;
+        self.runtime_carrier(&ungraphed)
     }
 
     /// Fold this crate's `deps` edges — both directions — into its merged settings.
@@ -766,6 +1174,14 @@ fn crate_relative(cli: &Cli, output: &str, tail: &str) -> String {
     } else {
         join(output, tail)
     }
+}
+
+/// `` `a`, `b` `` — a comma-joined, backticked name list for a diagnostic.
+fn quoted<'a>(names: impl Iterator<Item = &'a str>) -> String {
+    names
+        .map(|n| format!("`{n}`"))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn list_or_none<'a>(names: impl Iterator<Item = &'a String>) -> String {
@@ -1099,6 +1515,13 @@ impl Convergence {
 pub fn generate(config_path: &Path, selected: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let config = load(config_path)?;
     let expanded = config.expand(selected)?;
+    // Stated before the first crate generates: which crate carries the shared runtime, and what the
+    // choice accepted. Silently choosing is what the hand-placed flag already does.
+    if let Some(choice) = config.runtime_report()? {
+        for note in &choice.notes {
+            println!("{note}");
+        }
+    }
     let convergence = Convergence::capture(&expanded);
     for (name, cli) in &expanded {
         // A per-crate banner, NOT a per-line prefix: the generator's progress output is consumed
