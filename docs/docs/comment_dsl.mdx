@@ -481,6 +481,50 @@ behind on a type whose JSON form you own. With `--preserve-encodings`, the `#[se
 attributes on the type's encoding fields are omitted along with the derives (either alone would not
 compile).
 
+### Writing the `JsonSchema` impl the directive promises
+
+Under `--json-schema-export` the impl you supply is not optional decoration: the json-gen crate
+checks, before writing anything, that every `$ref` in the finished document resolves inside that
+same document (see [Command line flags § `--json-schema-export`](./command_line_flags)). A
+hand-written impl that returns a bare `Schema::new_ref("SomeType")` where a body belongs fails that
+check by name. So `json_schema()` has to return the real body.
+
+The shape that works, and the two constraints that are easy to get wrong:
+
+- **Keep the schema file inside the rust crate** — `src/json/custom_schemas/<Name>.json` beside the
+  impl, read with `include_str!`. This is a cargo packaging constraint, not a cddl-codegen one: a
+  published crate ships only files under its own directory, so an `include_str!` reaching into a
+  sibling crate compiles locally and breaks at `cargo publish`.
+- **Write internal references as `#/$defs/<Name>`.** The exported document always puts its
+  definitions under the literal key `$defs`, and the json-gen crate's own checks read the reference
+  namespace from the generator's settings rather than assuming it, so the two agree for the default
+  generator the crate builds. It is still the one spot in this pattern where a hand-written string
+  encodes a decision the tool otherwise reads at runtime.
+
+```rust
+impl schemars::JsonSchema for PlutusData {
+    fn schema_name() -> std::borrow::Cow<'static, str> { "PlutusData".into() }
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        serde_json::from_str(include_str!("custom_schemas/PlutusData.json"))
+            .expect("PlutusData.json is not a valid schema")
+    }
+    fn inline_schema() -> bool { false }
+}
+```
+
+`inline_schema()` returning `false` is what makes the type referable: schemars then registers the
+body as a definition and hands out a `$ref` to it, so one hand-authored schema can point at
+another's entry (`{"$ref": "#/$defs/ConstrPlutusData"}`) and each shape is declared once. What that
+does **not** do is create the entry — a type reached only through a hand-written `$ref` is never
+visited by schemars at all, so it needs a registration row of its own (its own CDDL rule, or
+`--json-schema-root`) or the closure check fails on the dangling pointer.
+
+Worth adding on your side: a round-trip test validating `serde_json::to_value` of real values
+against the same files, composed the way the document composes them
+(`{"$defs": {…every file…}, "$ref": "#/$defs/<Name>"}`). Nothing in this tool can check that a
+hand-authored schema describes the type's actual serialization — that is the whole meaning of
+`@custom_json` — so the assertion has to live where the impls do.
+
 ## @no_json_schema_export
 
 ```cddl
