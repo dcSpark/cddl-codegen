@@ -754,6 +754,29 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   emitted crate does not compile; building it now would put a per-profile nested cargo build behind
   a catalog whose whole value is running in seconds on every `cargo test`.
 
+- **A defect whose only manifestation is in the DISK-WRITE seam is invisible to every in-process
+  test, including the compile leg the entry above would build.** This is that entry's sibling, not a
+  duplicate: there the emitted crate reached rustc and was rejected, so any compile leg would catch
+  it. Here the emitted code never reaches rustc at all — it fails in `export`'s rustfmt post-pass,
+  and `api::generated_strings` (the library API every in-process suite drives) does not run that
+  seam. A compile leg built on `generated_strings` would therefore stay green on this class while it
+  shipped. Proven instance: a bool or null fixed value in a map-representation group-choice arm
+  emits Rust that rustfmt rejects (`expected pattern, found '='`) under `--preserve-encodings`. It
+  reproduces against the parent of the fixed-value-arm support commit, so it predates that change;
+  making the default profile generate the uint spelling is what put a reader in front of it. It has
+  no pin today precisely because the failure has nowhere in-process to be observed — a robustness
+  row would record `ok` and mean nothing.
+  The systematic answer is cheaper than a new test layer and should not be mistaken for one: a
+  disk-writing gate ALREADY exists — `all_supported_constructs_generate_all_profiles` writes real
+  crates under every profile — and its only limitation is that its INPUT is `supported.cddl`.
+  Extending an existing gate's input beats adopting a new contract, so the work is to route
+  robustness `ok` rows through that gate's disk-write path per profile, not to build an export-test
+  harness beside it. Reopening signal, on the magnitude axis the deferred cost actually grows along:
+  **the count of `ok`-recording robustness rows whose emitted crate fails at export** — measurable
+  by a consumer whose generation aborts at rustfmt while our catalog records the shape as `ok`, a
+  party that already has the problem and needs nothing from us to notice it. That count is zero
+  today (the instance above has no row at all), so the signal is unmet rather than pre-satisfied.
+
 - **Parallel-constructor fixture diversity: a parser over external input must span the ident-class
   matrix of REAL specs, not the feature spec's mental model.** Proven instance: the
   `--wrapper-requests` shape parser hand-built bare `Rust(ident)` element leaves instead of
