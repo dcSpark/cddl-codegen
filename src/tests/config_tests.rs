@@ -1241,6 +1241,48 @@ fn two_crates_with_one_library_name_are_a_hard_error() {
     );
 }
 
+/// Two crates cannot generate into one directory, nor one inside another's.
+///
+/// This is the only destructive shape the config can catch, and it catches it before anything is
+/// written. Generation replaces a crate's `src/generated/**` wholesale, so the crate running second
+/// erases the first's modules while the first's seed-once `lib.rs` survives — a crate root belonging
+/// to one spec sitting over a generated tree belonging to another, reported as success. It is also
+/// the copy-paste error a multi-crate TOML invites most: duplicate a `[crates.*]` block, edit
+/// `input`, forget `output`.
+///
+/// The last case is the one a naive string prefix gets wrong: `gen/alphabet` starts with the TEXT of
+/// `gen/alpha` while being its sibling, not its child, so it must be accepted.
+#[test]
+fn two_crates_cannot_generate_into_one_directory() {
+    let config = |a: &str, b: &str| {
+        format!(
+            "[crates.alpha]\ninput = \"a.cddl\"\noutput = \"{a}\"\n\
+             [crates.beta]\ninput = \"b.cddl\"\noutput = \"{b}\"\n"
+        )
+    };
+
+    let same = error(&config("gen/shared", "gen/shared"));
+    assert!(
+        same.contains("[crates.alpha]")
+            && same.contains("[crates.beta]")
+            && same.contains("output"),
+        "an identical output must name both crates and the key that fixes it, got: {same}"
+    );
+
+    let nested = error(&config("gen/alpha", "gen/alpha/inner"));
+    assert!(
+        nested.contains("gen/alpha/inner") && nested.contains("contains"),
+        "a nested output must say which directory contains which, got: {nested}"
+    );
+    // Containment is symmetric: the same pair the other way round is the same refusal.
+    assert!(
+        error(&config("gen/alpha/inner", "gen/alpha")).contains("contains"),
+        "containment must be caught whichever crate declares the outer directory"
+    );
+
+    parse(&config("gen/alpha", "gen/alphabet"));
+}
+
 /// Selecting a subset picks WHICH crates run, never in what order, and never pulls in a dependency:
 /// the unselected dependency's committed output is trusted exactly as a dependency in another
 /// repository's is. The selected crate still carries the full derived edge — that is what makes the
