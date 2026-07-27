@@ -347,8 +347,7 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
 
 /// One tiny CDDL file per language construct → a localized snapshot per feature, across every
 /// flag profile.
-#[test]
-fn feature_corpus() {
+fn feature_corpus_entries() -> Vec<std::path::PathBuf> {
     let corpus_dir = std::path::Path::new("tests/corpus");
     let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(corpus_dir)
         .unwrap()
@@ -361,7 +360,16 @@ fn feature_corpus() {
         "no corpus files found in {:?}",
         corpus_dir
     );
-    let corpus_stems: std::collections::BTreeSet<String> = entries
+    entries
+}
+
+/// The stale-pin half of [`feature_corpus`], which is only correct when ONE test sees EVERY corpus
+/// fixture: a shard walking a slice cannot tell "this pin names a fixture that was deleted" from
+/// "this pin names a fixture another shard owns", so leaving it in the shards would make it vacuous
+/// while the suite stayed green. Reads the corpus directory and nothing else.
+#[test]
+fn feature_corpus_pins_are_live() {
+    let corpus_stems: std::collections::BTreeSet<String> = feature_corpus_entries()
         .iter()
         .map(|p| p.file_stem().unwrap().to_str().unwrap().to_owned())
         .collect();
@@ -372,6 +380,47 @@ fn feature_corpus() {
              tests/corpus — stale pin, remove or fix it"
         );
     }
+}
+
+/// How many `#[test]`s the corpus snapshot sweep is split across. Like the parity sweep it is pure
+/// in-process generation plus `insta` file comparison — no cargo, no scratch dir, no lock — so
+/// libtest's thread pool absorbs the cells directly.
+const FEATURE_CORPUS_SNAPSHOT_SHARDS: usize = 8;
+
+macro_rules! feature_corpus_shards {
+    ($($name:ident = $shard:expr;)+) => {
+        $(
+            #[test]
+            fn $name() {
+                feature_corpus_shard($shard);
+            }
+        )+
+    };
+}
+
+feature_corpus_shards! {
+    feature_corpus_shard_0 = 0;
+    feature_corpus_shard_1 = 1;
+    feature_corpus_shard_2 = 2;
+    feature_corpus_shard_3 = 3;
+    feature_corpus_shard_4 = 4;
+    feature_corpus_shard_5 = 5;
+    feature_corpus_shard_6 = 6;
+    feature_corpus_shard_7 = 7;
+}
+
+/// One slice of the corpus. `insta` asserts per snapshot and panics on the first mismatch, so — unlike
+/// the batching compile gates — this sweep never reported more than one failure per run anyway; the
+/// split strictly widens that (one failure per shard).
+fn feature_corpus_shard(shard: usize) {
+    let all_entries = feature_corpus_entries();
+    // Round-robin over the SORTED list, so which fixture lands in which shard is deterministic.
+    let entries: Vec<std::path::PathBuf> = all_entries
+        .into_iter()
+        .enumerate()
+        .filter(|(i, _)| i % FEATURE_CORPUS_SNAPSHOT_SHARDS == shard)
+        .map(|(_, p)| p)
+        .collect();
     for path in entries {
         let label = path.file_stem().unwrap().to_str().unwrap().to_owned();
         assert!(

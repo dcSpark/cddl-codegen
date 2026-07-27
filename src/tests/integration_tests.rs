@@ -394,6 +394,100 @@ fn acquire_scratch_lock_serializes() {
     let _ = std::fs::remove_file(&lock_path);
 }
 
+/// One scratch root shared by the sibling `#[test]` SHARDS a matrix compile gate is split across.
+///
+/// The unsharded loop owned its root outright and wiped it twice: on entry, because generation is
+/// only hermetic against a clean tree (the comment-preservation overlay READS prior generated
+/// output, so a stale crate changes what the next run emits), and on exit, because the root holds
+/// one generated crate per cell plus the shared `CARGO_TARGET_DIR` — gigabytes at rest, which
+/// `draft/test-duration-first-principles.md` measured and rejected persisting.
+///
+/// Shards must keep BOTH halves while still sharing ONE target dir (per-shard target dirs would pay
+/// the cbor_event/wasm-bindgen dependency build once per shard on a cold gate cache). So the wipe is
+/// keyed on how many shards are currently INSIDE the root rather than on any single shard: the first
+/// one in wipes, the last one out wipes. A run that selects a single shard by name degenerates to
+/// exactly the old wipe-on-entry/wipe-on-exit behaviour.
+///
+/// Occupancy, not "shards finished": a filtered run that selects some shards must still clean up,
+/// and a shard that panics must still release its count — hence the `Drop` impl, which libtest's
+/// unwinding harness runs on the failure path too.
+struct SharedScratch {
+    root: std::path::PathBuf,
+    occupancy: &'static std::sync::Mutex<usize>,
+}
+
+impl SharedScratch {
+    /// Enter the root, wiping it if no other shard is inside. `occupancy` must be a `static` unique
+    /// to the gate — two gates sharing one counter would wipe each other's roots.
+    fn enter(occupancy: &'static std::sync::Mutex<usize>, root: std::path::PathBuf) -> Self {
+        {
+            // `unwrap_or_else(into_inner)`, never `unwrap()`: a shard that panics poisons the mutex,
+            // and a poisoned-lock panic raised from the `Drop` below would abort the whole test
+            // process instead of reporting the shard's own failure.
+            let mut inside = occupancy.lock().unwrap_or_else(|e| e.into_inner());
+            if *inside == 0 {
+                let _ = std::fs::remove_dir_all(&root);
+            }
+            *inside += 1;
+        }
+        Self { root, occupancy }
+    }
+
+    fn root(&self) -> &std::path::Path {
+        &self.root
+    }
+}
+
+impl Drop for SharedScratch {
+    fn drop(&mut self) {
+        let mut inside = self.occupancy.lock().unwrap_or_else(|e| e.into_inner());
+        *inside -= 1;
+        if *inside == 0 {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+}
+
+/// The two halves of [`SharedScratch`]'s contract, which no gate run can demonstrate on its own:
+/// the FIRST entrant wipes (hermetic generation) and the LAST leaver wipes (disk), while an
+/// overlapping shard in between sees the root survive.
+#[test]
+fn shared_scratch_wipes_on_first_in_and_last_out() {
+    static OCCUPANCY: std::sync::Mutex<usize> = std::sync::Mutex::new(0);
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_shared_scratch_probe_{}",
+        std::process::id()
+    ));
+    let stale = root.join("stale.txt");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(&stale, "prior run").unwrap();
+
+    let first = SharedScratch::enter(&OCCUPANCY, root.clone());
+    assert!(
+        !stale.exists(),
+        "the first shard inside must wipe the root — generation is only hermetic against a clean tree"
+    );
+    std::fs::create_dir_all(first.root()).unwrap();
+    let live = root.join("live.txt");
+    std::fs::write(&live, "shard output").unwrap();
+
+    let second = SharedScratch::enter(&OCCUPANCY, root.clone());
+    assert!(
+        live.exists(),
+        "a shard entering a root another shard is still inside must NOT wipe it"
+    );
+    std::mem::drop(first);
+    assert!(
+        live.exists(),
+        "a shard leaving while another is still inside must NOT wipe the root"
+    );
+    std::mem::drop(second);
+    assert!(
+        !root.exists(),
+        "the last shard out must wipe the root — the shared target dir is gigabytes at rest"
+    );
+}
+
 fn tool_exists(bin: &str) -> bool {
     std::process::Command::new(bin)
         .arg("--version")
@@ -1623,10 +1717,16 @@ fn unused_generated_variable_scan_flags_named_binding() {
 /// compile. One profile keeps the wall-clock bounded (preserve/json stay compile-only for now),
 /// and the emitted-module count floor keeps the execution half from going vacuous if emission
 /// silently shrinks.
-#[test]
-fn feature_corpus_compiles() {
+///
+/// **Sharded.** The body below is one `#[test]` per [`FEATURE_CORPUS_SHARDS`] slice of the corpus
+/// (`feature_corpus_compiles_shard_NN`), so libtest's existing thread pool runs the cells
+/// concurrently instead of one test walking them serially. The shard names all contain
+/// `feature_corpus_compiles`, so every substring selector that named the old test (`cargo test
+/// feature_corpus_compiles`, the docs, `CLOSURE_AUDIT_GATE`) still selects the whole gate. The
+/// whole-corpus assertions that no single shard can make live in
+/// [`feature_corpus_compiles_pins_are_live`].
+fn feature_corpus_entries() -> Vec<std::path::PathBuf> {
     use std::str::FromStr;
-    let profiles = super::ALL_PROFILES;
     let corpus_dir = std::path::PathBuf::from_str("tests/corpus").unwrap();
     let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&corpus_dir)
         .unwrap()
@@ -1635,7 +1735,17 @@ fn feature_corpus_compiles() {
         .collect();
     entries.sort();
     assert!(!entries.is_empty(), "no corpus files in {corpus_dir:?}");
+    entries
+}
 
+/// The stale-pin half of `feature_corpus_compiles`, which is only correct when ONE test sees EVERY
+/// corpus fixture: a shard that walks a slice could not tell "this pin names a fixture that was
+/// deleted" from "this pin names a fixture another shard owns", so a naive split would leave both
+/// guards vacuous while the suite stayed green. It reads the corpus directory and nothing else — no
+/// generation, no cargo — so keeping it whole costs milliseconds.
+#[test]
+fn feature_corpus_compiles_pins_are_live() {
+    let entries = feature_corpus_entries();
     let corpus_stems: std::collections::BTreeSet<&str> = entries
         .iter()
         .map(|p| p.file_stem().unwrap().to_str().unwrap())
@@ -1654,20 +1764,82 @@ fn feature_corpus_compiles() {
              tests/corpus — stale pin, remove or fix it"
         );
     }
+}
 
-    // Scratch dir + one shared target so cbor_event & friends build once (~30 tiny crates × 3).
-    let root = std::env::temp_dir().join(format!(
-        "cddl_codegen_corpus_compile_{:016x}",
-        checkout_hash()
-    ));
-    let _ = std::fs::remove_dir_all(&root);
+/// How many `#[test]`s the corpus compile gate is split across. Sized against the gate's own
+/// measured scaling, not a core count: its cells are dominated by per-cell generation and the gate
+/// cache's `cargo generate-lockfile` preflight, and that preflight serializes on cargo's PROCESS-WIDE
+/// `$CARGO_HOME/.package-cache` lock — so past a modest degree extra shards queue rather than run.
+/// Measured standalone on this gate: 1 shard 109 s, 12 shards 60 s, 24 shards slower again.
+const FEATURE_CORPUS_SHARDS: usize = 6;
+
+/// Cross-shard accumulator for the execution-half vacuous-pass guard. The floor ("at least 38 of the
+/// corpus fixtures emit a generated-test module") is a property of the WHOLE corpus, so no shard can
+/// check it alone; the shard that completes the set checks it. Every full `cargo test`, and every
+/// substring selector that names the gate, runs all [`FEATURE_CORPUS_SHARDS`] shards and so fires the
+/// guard exactly once. A run that selects a SINGLE shard by exact name does not complete the set and
+/// does not check the floor — the same way a run that filtered the unsharded gate out did not.
+static FEATURE_CORPUS_EMITTED_TEST_MODULES: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+static FEATURE_CORPUS_SHARDS_COMPLETED: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+/// Occupancy counter for the shards' one shared scratch root (see [`SharedScratch`]).
+static FEATURE_CORPUS_SCRATCH: std::sync::Mutex<usize> = std::sync::Mutex::new(0);
+
+macro_rules! feature_corpus_compiles_shards {
+    ($($name:ident = $shard:expr;)+) => {
+        $(
+            #[test]
+            fn $name() {
+                feature_corpus_compiles_shard($shard);
+            }
+        )+
+    };
+}
+
+feature_corpus_compiles_shards! {
+    feature_corpus_compiles_shard_00 = 0;
+    feature_corpus_compiles_shard_01 = 1;
+    feature_corpus_compiles_shard_02 = 2;
+    feature_corpus_compiles_shard_03 = 3;
+    feature_corpus_compiles_shard_04 = 4;
+    feature_corpus_compiles_shard_05 = 5;
+}
+
+/// One slice of the corpus. The unsharded loop accumulated every cell's failure and asserted once at
+/// the end, so a single failure named every problem; each shard keeps that batching for ITS OWN
+/// cells, and libtest reports every failing shard in a run — so a run still surfaces every problem,
+/// grouped by shard rather than in one list.
+fn feature_corpus_compiles_shard(shard: usize) {
+    let profiles = super::ALL_PROFILES;
+    let all_entries = feature_corpus_entries();
+    // Round-robin over the SORTED list, so which fixture lands in which shard is deterministic and
+    // reproducible from the corpus alone — a failure names its cell, and rerunning that shard
+    // reproduces it.
+    let entries: Vec<&std::path::PathBuf> = all_entries
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| i % FEATURE_CORPUS_SHARDS == shard)
+        .map(|(_, p)| p)
+        .collect();
+
+    // Scratch dir + one shared target so cbor_event & friends build once (~30 tiny crates × 3),
+    // shared across the shards (see `SharedScratch` for the wipe contract).
+    let scratch = SharedScratch::enter(
+        &FEATURE_CORPUS_SCRATCH,
+        std::env::temp_dir().join(format!(
+            "cddl_codegen_corpus_compile_{:016x}",
+            checkout_hash()
+        )),
+    );
+    let root = scratch.root().to_path_buf();
     let target_dir = root.join("target");
 
     let mut failures = vec![];
     let mut emitted_test_modules = 0usize;
     let mut cache_run = 0usize;
     let mut cache_hit = 0usize;
-    for input in &entries {
+    for input in entries {
         let stem = input.file_stem().unwrap().to_str().unwrap();
         if COMPILE_SKIP.contains(&stem) {
             continue;
@@ -1839,22 +2011,37 @@ fn feature_corpus_compiles() {
             }
         }
     }
-    // execution-half vacuous-pass guard: most corpus fixtures mint at least one round-trip/reject
-    // test today (41 of 44; the rest are transparent aliases / pure c-enums). A big drop means the
-    // emitter's coverage silently shrank, not that the corpus got simpler.
-    assert!(
-        emitted_test_modules >= 38,
-        "only {emitted_test_modules} corpus fixtures emitted a generated-test module (expected >= 38) — emit_tests coverage shrank"
-    );
     if gate_cache::enabled() {
-        println!("feature_corpus_compiles gate-cache: {cache_run} run, {cache_hit} cached");
+        println!(
+            "feature_corpus_compiles shard {shard}/{FEATURE_CORPUS_SHARDS} gate-cache: {cache_run} run, {cache_hit} cached"
+        );
     }
-    let _ = std::fs::remove_dir_all(&root);
+    // The shard's own cells first: a failing shard must report its own cells, not the corpus-wide
+    // floor it never had the whole of.
     assert!(
         failures.is_empty(),
         "corpus crates failed to compile:\n\n{}",
         failures.join("\n\n")
     );
+
+    // execution-half vacuous-pass guard: most corpus fixtures mint at least one round-trip/reject
+    // test today (41 of 44; the rest are transparent aliases / pure c-enums). A big drop means the
+    // emitter's coverage silently shrank, not that the corpus got simpler. Corpus-wide, so it is
+    // accumulated across shards and checked by whichever shard completes the set.
+    //
+    // Order matters: every shard publishes its count BEFORE announcing completion, so the shard
+    // whose completion makes the set whole is guaranteed to observe every other shard's count.
+    // Reading the accumulator after that check (not the `fetch_add` return) is what makes that
+    // guarantee usable — the return value is only a snapshot from before the concurrent adds.
+    use std::sync::atomic::Ordering;
+    FEATURE_CORPUS_EMITTED_TEST_MODULES.fetch_add(emitted_test_modules, Ordering::SeqCst);
+    if FEATURE_CORPUS_SHARDS_COMPLETED.fetch_add(1, Ordering::SeqCst) + 1 == FEATURE_CORPUS_SHARDS {
+        let total = FEATURE_CORPUS_EMITTED_TEST_MODULES.load(Ordering::SeqCst);
+        assert!(
+            total >= 38,
+            "only {total} corpus fixtures emitted a generated-test module (expected >= 38) — emit_tests coverage shrank"
+        );
+    }
 }
 
 /// Standing, table-driven sweep over the generator's synthesized wasm-boundary idents. The generator
@@ -2525,10 +2712,12 @@ fn extern_interface_check_has_no_trailing_row_comments() {
 /// wasm crate (single default profile) — lighter than `feature_corpus_compiles`. The round-trip
 /// upgrade of this gate exists as `wasm_matrix_roundtrips` (manual, full tier); this compile floor
 /// stays always-on beside it.
-#[test]
-fn wasm_matrix_compiles() {
+///
+/// **Sharded** into `wasm_matrix_compiles_shard_NN` — see [`FEATURE_CORPUS_SHARDS`] for the shape and
+/// [`wasm_matrix_compiles_pins_are_live`] for the whole-matrix half. The shard names all contain
+/// `wasm_matrix_compiles`, so every substring selector that named the old test still selects the gate.
+fn wasm_matrix_entries() -> Vec<std::path::PathBuf> {
     use std::str::FromStr;
-
     let dir = std::path::PathBuf::from_str("tests/matrix_wasm").unwrap();
     let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
         .unwrap()
@@ -2540,7 +2729,17 @@ fn wasm_matrix_compiles() {
         !entries.is_empty(),
         "no wasm-matrix fixtures in {dir:?} (run `bun run project_wasm_matrix.ts`)"
     );
+    entries
+}
 
+/// The stale-pin half of `wasm_matrix_compiles`, kept whole for the reason given on
+/// [`feature_corpus_compiles_pins_are_live`]: a shard walking a slice cannot tell a deleted fixture
+/// from one another shard owns, so this guard is only correct when one test sees every cell. The
+/// four-state per-cell verdict (red/green × listed/unlisted) is decidable per cell and stays in the
+/// shards.
+#[test]
+fn wasm_matrix_compiles_pins_are_live() {
+    let entries = wasm_matrix_entries();
     let cell_stems: std::collections::BTreeSet<&str> = entries
         .iter()
         .map(|p| p.file_stem().unwrap().to_str().unwrap())
@@ -2552,18 +2751,59 @@ fn wasm_matrix_compiles() {
              stale pin, remove or fix it"
         );
     }
+}
 
-    // Scratch dir + one shared target so cbor_event/wasm-bindgen build once, then each tiny crate checks.
-    let root =
-        std::env::temp_dir().join(format!("cddl_codegen_wasm_matrix_{:016x}", checkout_hash()));
-    let _ = std::fs::remove_dir_all(&root);
+/// See [`FEATURE_CORPUS_SHARDS`] for why this is sized against measured scaling, not core count.
+const WASM_MATRIX_SHARDS: usize = 6;
+/// Occupancy counter for the shards' one shared scratch root (see [`SharedScratch`]).
+static WASM_MATRIX_SCRATCH: std::sync::Mutex<usize> = std::sync::Mutex::new(0);
+
+macro_rules! wasm_matrix_compiles_shards {
+    ($($name:ident = $shard:expr;)+) => {
+        $(
+            #[test]
+            fn $name() {
+                wasm_matrix_compiles_shard($shard);
+            }
+        )+
+    };
+}
+
+wasm_matrix_compiles_shards! {
+    wasm_matrix_compiles_shard_00 = 0;
+    wasm_matrix_compiles_shard_01 = 1;
+    wasm_matrix_compiles_shard_02 = 2;
+    wasm_matrix_compiles_shard_03 = 3;
+    wasm_matrix_compiles_shard_04 = 4;
+    wasm_matrix_compiles_shard_05 = 5;
+}
+
+/// One slice of the wasm-ABI matrix. Each shard batches its own cells' failures and asserts once,
+/// exactly as the unsharded loop did for the whole matrix; libtest reports every failing shard, so a
+/// run still surfaces every red cell.
+fn wasm_matrix_compiles_shard(shard: usize) {
+    let all_entries = wasm_matrix_entries();
+    let entries: Vec<&std::path::PathBuf> = all_entries
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| i % WASM_MATRIX_SHARDS == shard)
+        .map(|(_, p)| p)
+        .collect();
+
+    // Scratch dir + one shared target so cbor_event/wasm-bindgen build once, then each tiny crate
+    // checks; shared across shards (see `SharedScratch` for the wipe contract).
+    let scratch = SharedScratch::enter(
+        &WASM_MATRIX_SCRATCH,
+        std::env::temp_dir().join(format!("cddl_codegen_wasm_matrix_{:016x}", checkout_hash())),
+    );
+    let root = scratch.root().to_path_buf();
     let target_dir = root.join("target");
 
     let mut failures = vec![]; // red cells NOT on WASM_MATRIX_SKIP — real bugs
     let mut resurfaced = vec![]; // WASM_MATRIX_SKIP cells that now compile — remove them
     let mut cache_run = 0usize;
     let mut cache_hit = 0usize;
-    for input in &entries {
+    for input in entries {
         let stem = input.file_stem().unwrap().to_str().unwrap();
         let skipped = WASM_MATRIX_SKIP.contains(&stem);
         let out = root.join(stem);
@@ -2643,9 +2883,10 @@ fn wasm_matrix_compiles() {
         }
     }
     if gate_cache::enabled() {
-        println!("wasm_matrix_compiles gate-cache: {cache_run} run, {cache_hit} cached");
+        println!(
+            "wasm_matrix_compiles shard {shard}/{WASM_MATRIX_SHARDS} gate-cache: {cache_run} run, {cache_hit} cached"
+        );
     }
-    let _ = std::fs::remove_dir_all(&root);
     assert!(
         resurfaced.is_empty(),
         "these WASM_MATRIX_SKIP-listed wasm-matrix cells now compile — remove them from \
@@ -2690,10 +2931,13 @@ fn wasm_matrix_compiles() {
 /// wasm crate is handled symmetrically (a red for a non-skip cell, a resurface for a skip cell), so the
 /// ledger can't silently rot. Always-on (no `#[ignore]`): it joins the default `cargo test` / check.ts
 /// local tier.
-#[test]
-fn multifile_matrix_compiles() {
+///
+/// **Sharded** into `multifile_matrix_compiles_shard_NN` — see [`FEATURE_CORPUS_SHARDS`] for the
+/// shape and [`multifile_matrix_compiles_pins_are_live`] for the whole-matrix half. The shard names
+/// all contain `multifile_matrix_compiles`, so every substring selector that named the old test —
+/// including `audit_gate_cache_closure.ts`'s default `CLOSURE_AUDIT_GATE` — still selects the gate.
+fn multifile_matrix_cell_dirs() -> Vec<std::path::PathBuf> {
     use std::str::FromStr;
-
     let dir = std::path::PathBuf::from_str("tests/matrix_multifile").unwrap();
     let mut cell_dirs: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
         .unwrap()
@@ -2705,7 +2949,15 @@ fn multifile_matrix_compiles() {
         !cell_dirs.is_empty(),
         "no multifile-matrix fixtures in {dir:?} (run `bun run project_multifile_matrix.ts`)"
     );
+    cell_dirs
+}
 
+/// The up-front stale-key guard of `multifile_matrix_compiles`, kept whole for the reason given on
+/// [`feature_corpus_compiles_pins_are_live`]. The pin's rustc-error-code CLASS assertion is
+/// decidable per cell and stays in the shards.
+#[test]
+fn multifile_matrix_compiles_pins_are_live() {
+    let cell_dirs = multifile_matrix_cell_dirs();
     let cell_stems: std::collections::BTreeSet<&str> = cell_dirs
         .iter()
         .map(|p| p.file_name().unwrap().to_str().unwrap())
@@ -2717,20 +2969,61 @@ fn multifile_matrix_compiles() {
              — stale pin, remove or fix it"
         );
     }
+}
 
-    // Scratch dir + one shared target so cbor_event/wasm-bindgen build once, then each tiny crate checks.
-    let root = std::env::temp_dir().join(format!(
-        "cddl_codegen_multifile_matrix_{:016x}",
-        checkout_hash()
-    ));
-    let _ = std::fs::remove_dir_all(&root);
+/// See [`FEATURE_CORPUS_SHARDS`] for why this is sized against measured scaling, not core count.
+const MULTIFILE_MATRIX_SHARDS: usize = 6;
+/// Occupancy counter for the shards' one shared scratch root (see [`SharedScratch`]).
+static MULTIFILE_MATRIX_SCRATCH: std::sync::Mutex<usize> = std::sync::Mutex::new(0);
+
+macro_rules! multifile_matrix_compiles_shards {
+    ($($name:ident = $shard:expr;)+) => {
+        $(
+            #[test]
+            fn $name() {
+                multifile_matrix_compiles_shard($shard);
+            }
+        )+
+    };
+}
+
+multifile_matrix_compiles_shards! {
+    multifile_matrix_compiles_shard_00 = 0;
+    multifile_matrix_compiles_shard_01 = 1;
+    multifile_matrix_compiles_shard_02 = 2;
+    multifile_matrix_compiles_shard_03 = 3;
+    multifile_matrix_compiles_shard_04 = 4;
+    multifile_matrix_compiles_shard_05 = 5;
+}
+
+/// One slice of the multifile-placement matrix. Each shard batches its own cells' failures and
+/// asserts once, exactly as the unsharded loop did for the whole matrix.
+fn multifile_matrix_compiles_shard(shard: usize) {
+    let all_cell_dirs = multifile_matrix_cell_dirs();
+    let cell_dirs: Vec<&std::path::PathBuf> = all_cell_dirs
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| i % MULTIFILE_MATRIX_SHARDS == shard)
+        .map(|(_, p)| p)
+        .collect();
+
+    // Scratch dir + one shared target so cbor_event/wasm-bindgen build once, then each tiny crate
+    // checks; shared across shards (see `SharedScratch` for the wipe contract).
+    let scratch = SharedScratch::enter(
+        &MULTIFILE_MATRIX_SCRATCH,
+        std::env::temp_dir().join(format!(
+            "cddl_codegen_multifile_matrix_{:016x}",
+            checkout_hash()
+        )),
+    );
+    let root = scratch.root().to_path_buf();
     let target_dir = root.join("target");
 
     let mut failures = vec![]; // red cells NOT on MULTIFILE_MATRIX_SKIP — real bugs
     let mut resurfaced = vec![]; // MULTIFILE_MATRIX_SKIP cells that now compile — remove them
     let mut cache_run = 0usize;
     let mut cache_hit = 0usize;
-    for input in &cell_dirs {
+    for input in cell_dirs {
         let stem = input.file_name().unwrap().to_str().unwrap();
         let pin = MULTIFILE_MATRIX_SKIP.iter().find(|(s, _, _)| *s == stem);
         let skipped = pin.is_some();
@@ -2831,9 +3124,10 @@ fn multifile_matrix_compiles() {
         }
     }
     if gate_cache::enabled() {
-        println!("multifile_matrix_compiles gate-cache: {cache_run} run, {cache_hit} cached");
+        println!(
+            "multifile_matrix_compiles shard {shard}/{MULTIFILE_MATRIX_SHARDS} gate-cache: {cache_run} run, {cache_hit} cached"
+        );
     }
-    let _ = std::fs::remove_dir_all(&root);
     assert!(
         resurfaced.is_empty(),
         "these MULTIFILE_MATRIX_SKIP-listed cells now compile — remove them from MULTIFILE_MATRIX_SKIP \
