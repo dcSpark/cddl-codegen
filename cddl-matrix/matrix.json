@@ -3807,6 +3807,13 @@
   ],
   "encodings": [
     {
+      "cells": [
+        "enc.major0.imm",
+        "enc.major0.ai24",
+        "enc.major0.ai25",
+        "enc.major0.ai26",
+        "enc.major0.ai27"
+      ],
       "forms": [
         "ai 0-23 immediate",
         "ai 24 (1B)",
@@ -3816,10 +3823,17 @@
       ],
       "id": "enc.major0",
       "major_type": 0,
-      "note": "Unsigned integer; argument = the value. The additional-info width is the encoding variation. ai 28-31 reserved (ill-formed). Cells: enc.major0.imm/.ai24/.ai25/.ai26/.ai27.",
+      "note": "Unsigned integer; argument = the value. The additional-info width is the encoding variation. ai 28-31 reserved (ill-formed).",
       "rfc": "RFC8949 §3.1"
     },
     {
+      "cells": [
+        "enc.major1.imm",
+        "enc.major1.ai24",
+        "enc.major1.ai25",
+        "enc.major1.ai26",
+        "enc.major1.ai27"
+      ],
       "forms": [
         "ai 0-23 immediate",
         "ai 24 (1B)",
@@ -3829,10 +3843,18 @@
       ],
       "id": "enc.major1",
       "major_type": 1,
-      "note": "Negative integer, value = -1 - argument. ai 28-31 reserved (ill-formed). Cells: enc.major1.imm/.ai24/.ai25/.ai26/.ai27.",
+      "note": "Negative integer, value = -1 - argument. ai 28-31 reserved (ill-formed).",
       "rfc": "RFC8949 §3.1"
     },
     {
+      "cells": [
+        "enc.major2.imm",
+        "enc.major2.ai24",
+        "enc.major2.ai25",
+        "enc.major2.ai26",
+        "enc.major2.ai27",
+        "enc.major2.indef"
+      ],
       "forms": [
         "ai 0-23 immediate length",
         "ai 24/25/26/27 length",
@@ -3840,10 +3862,18 @@
       ],
       "id": "enc.major2",
       "major_type": 2,
-      "note": "Byte string; argument = byte length (definite) or indefinite chunks. ai 28-30 reserved. Cells: enc.major2.imm/.ai24/.ai25/.ai26/.ai27/.indef.",
+      "note": "Byte string; argument = byte length (definite) or indefinite chunks. ai 28-30 reserved.",
       "rfc": "RFC8949 §3.1, §3.2"
     },
     {
+      "cells": [
+        "enc.major3.imm",
+        "enc.major3.ai24",
+        "enc.major3.ai25",
+        "enc.major3.ai26",
+        "enc.major3.ai27",
+        "enc.major3.indef"
+      ],
       "forms": [
         "ai 0-23 immediate length",
         "ai 24/25/26/27 length",
@@ -3851,10 +3881,18 @@
       ],
       "id": "enc.major3",
       "major_type": 3,
-      "note": "Text string (UTF-8); argument = byte length. ai 28-30 reserved. Cells: enc.major3.imm/.ai24/.ai25/.ai26/.ai27/.indef.",
+      "note": "Text string (UTF-8); argument = byte length. ai 28-30 reserved.",
       "rfc": "RFC8949 §3.1, §3.2"
     },
     {
+      "cells": [
+        "enc.major4.imm",
+        "enc.major4.ai24",
+        "enc.major4.ai25",
+        "enc.major4.ai26",
+        "enc.major4.ai27",
+        "enc.major4.indef"
+      ],
       "forms": [
         "ai 0-23 immediate count",
         "ai 24/25/26/27 count",
@@ -3862,10 +3900,18 @@
       ],
       "id": "enc.major4",
       "major_type": 4,
-      "note": "Array; argument = element count. ai 28-30 reserved. Cells: enc.major4.imm/.ai24/.ai25/.ai26/.ai27/.indef.",
+      "note": "Array; argument = element count. ai 28-30 reserved.",
       "rfc": "RFC8949 §3.1, §3.2"
     },
     {
+      "cells": [
+        "enc.major5.imm",
+        "enc.major5.ai24",
+        "enc.major5.ai25",
+        "enc.major5.ai26",
+        "enc.major5.ai27",
+        "enc.major5.indef"
+      ],
       "forms": [
         "ai 0-23 immediate count",
         "ai 24/25/26/27 count",
@@ -3873,10 +3919,17 @@
       ],
       "id": "enc.major5",
       "major_type": 5,
-      "note": "Map; argument = number of key/value pairs. ai 28-30 reserved. Cells: enc.major5.imm/.ai24/.ai25/.ai26/.ai27/.indef.",
+      "note": "Map; argument = number of key/value pairs. ai 28-30 reserved.",
       "rfc": "RFC8949 §3.1, §3.2"
     },
     {
+      "cells": [
+        "enc.major6.imm",
+        "enc.major6.ai24",
+        "enc.major6.ai25",
+        "enc.major6.ai26",
+        "enc.major6.ai27"
+      ],
       "forms": [
         "ai 0-23 immediate tag#",
         "ai 24 (1B)",
@@ -3886,10 +3939,18 @@
       ],
       "id": "enc.major6",
       "major_type": 6,
-      "note": "Tagged data item; argument = tag number, followed by one enclosed data item. ai 28-31 reserved. Cells: enc.major6.imm/.ai24/.ai25/.ai26/.ai27.",
+      "note": "Tagged data item; argument = tag number, followed by one enclosed data item. ai 28-31 reserved.",
       "rfc": "RFC8949 §3.1, §3.4"
     },
     {
+      "cells": [
+        "enc.major7.simple_imm",
+        "enc.major7.ai24",
+        "enc.major7.float16",
+        "enc.major7.float32",
+        "enc.major7.float64",
+        "enc.major7.break"
+      ],
       "forms": [
         "simple 0-23 immediate",
         "simple 24 (1B)",
@@ -3900,10 +3961,15 @@
       ],
       "id": "enc.major7",
       "major_type": 7,
-      "note": "Simple values, floats, and the break stop code; ai selects the meaning (not a length). ai 28-30 reserved. Cells: enc.major7.simple_imm/.ai24/.float16/.float32/.float64/.break.",
+      "note": "Simple values, floats, and the break stop code; ai selects the meaning (not a length). ai 28-30 reserved.",
       "rfc": "RFC8949 §3.1, §3.3"
     },
     {
+      "cells": [
+        "enc.major7.float16",
+        "enc.major7.float32",
+        "enc.major7.float64"
+      ],
       "forms": [
         "float16 (0xf9)",
         "float32 (0xfa)",
@@ -3911,7 +3977,7 @@
       ],
       "id": "enc.major7.float",
       "major_type": 7,
-      "note": "Float subset of major 7 (the half/single/double IEEE 754 widths). Cells: enc.major7.float16/.float32/.float64.",
+      "note": "Float subset of major 7 (the half/single/double IEEE 754 widths); a strict subset of enc.major7's cells, so a float-only feature can reference the three widths as one id.",
       "rfc": "RFC8949 §3.3"
     },
     {

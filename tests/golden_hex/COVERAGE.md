@@ -166,6 +166,81 @@ redundant or has no canonical RFC vector.
 | `fbc010666666666666` | -4.1 | ✅ | `float_negative` |
 | `fbfff0000000000000` | -Infinity | ✅ | `float_neg_infinity` |
 
+## Per-construct legal encodings
+
+Q3 narrowed to one construct at a time: for each of the **48** feature rows that
+declare an `encodings` list, the leaf cells that construct can legally take, and which of them no
+golden vector asserts. Each declared ref is expanded through the master's parent→leaf relation
+(`cddl-matrix/encodings.toml` — a PARENT row names its leaves in `cells`; a leaf ref is itself), then
+intersected with the same derived coverage the grid above uses.
+
+**What "legal" means here, and what it does not.** *Legal* = the leaf cells beneath the encoding
+rows the construct **declares**. It is deliberately **not** a claim that cddl-codegen emits each of
+them under default flags — the *never emitted* column carries that, from the same cell-keyed
+`out_of_scope` notes as the summary. And it is **not** a claim that each cell is reachable for
+**every value** of the construct: argument width follows the value, so a `uint` reaches
+`enc.major0.ai27` only at values ≥ 2^32, and a `bstr` reaches `enc.major2.ai26` only at lengths
+≥ 2^16. An *untested and emittable* cell therefore names an encoding the construct can take at
+**some** value — not one every instance of it takes.
+
+Reported, never fatal: this gate's non-zero exit stays reserved for note drift and ➕ (uncovered
+Appendix A vector with no rationale). This column is derived from the same `cellsCovered` as the
+summary's *emittable but no Appendix A vector lands here* line, which is already a deliberate
+non-failure — failing here would re-litigate that threshold from a different direction.
+
+- Constructs with at least one untested-and-emittable cell: **34** of 48
+
+| construct | legal | covered | never emitted | untested and emittable |
+|-----------|-------|---------|---------------|------------------------|
+| `prelude.b64legacy` | 5 | 2 | 0 | `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27` |
+| `prelude.b64url` | 5 | 2 | 0 | `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27` |
+| `prelude.bigfloat` | 5 | 2 | 0 | `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27` |
+| `prelude.bigint` | 5 | 2 | 0 | `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27` |
+| `prelude.bignint` | 5 | 2 | 0 | `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27` |
+| `prelude.biguint` | 5 | 2 | 0 | `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27` |
+| `prelude.bool` | 1 | 1 | 0 | — |
+| `prelude.bstr` | 6 | 1 | 1 | `enc.major2.ai24`, `enc.major2.ai25`, `enc.major2.ai26`, `enc.major2.ai27` |
+| `prelude.bytes` | 6 | 1 | 1 | `enc.major2.ai24`, `enc.major2.ai25`, `enc.major2.ai26`, `enc.major2.ai27` |
+| `prelude.cbor-any` | 5 | 2 | 0 | `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27` |
+| `prelude.decfrac` | 5 | 2 | 0 | `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27` |
+| `prelude.eb16` | 5 | 2 | 0 | `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27` |
+| `prelude.eb64legacy` | 5 | 2 | 0 | `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27` |
+| `prelude.eb64url` | 5 | 2 | 0 | `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27` |
+| `prelude.encoded-cbor` | 5 | 2 | 0 | `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27` |
+| `prelude.false` | 1 | 1 | 0 | — |
+| `prelude.float` | 3 | 1 | 2 | — |
+| `prelude.float16` | 1 | 0 | 1 | — |
+| `prelude.float16-32` | 2 | 0 | 2 | — |
+| `prelude.float32` | 1 | 0 | 1 | — |
+| `prelude.float32-64` | 2 | 1 | 1 | — |
+| `prelude.float64` | 1 | 1 | 0 | — |
+| `prelude.int` | 10 | 9 | 0 | `enc.major1.ai26` |
+| `prelude.integer` | 15 | 11 | 0 | `enc.major1.ai26`, `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27` |
+| `prelude.mime-message` | 5 | 2 | 0 | `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27` |
+| `prelude.nil` | 1 | 1 | 0 | — |
+| `prelude.nint` | 5 | 4 | 0 | `enc.major1.ai26` |
+| `prelude.null` | 1 | 1 | 0 | — |
+| `prelude.number` | 13 | 10 | 2 | `enc.major1.ai26` |
+| `prelude.regexp` | 5 | 2 | 0 | `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27` |
+| `prelude.tdate` | 5 | 2 | 0 | `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27` |
+| `prelude.text` | 6 | 1 | 1 | `enc.major3.ai24`, `enc.major3.ai25`, `enc.major3.ai26`, `enc.major3.ai27` |
+| `prelude.time` | 5 | 2 | 0 | `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27` |
+| `prelude.true` | 1 | 1 | 0 | — |
+| `prelude.tstr` | 6 | 1 | 1 | `enc.major3.ai24`, `enc.major3.ai25`, `enc.major3.ai26`, `enc.major3.ai27` |
+| `prelude.uint` | 5 | 5 | 0 | — |
+| `prelude.undefined` | 1 | 1 | 0 | — |
+| `prelude.unsigned` | 10 | 7 | 0 | `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27` |
+| `prelude.uri` | 5 | 2 | 0 | `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27` |
+| `type2.array` | 6 | 2 | 1 | `enc.major4.ai25`, `enc.major4.ai26`, `enc.major4.ai27` |
+| `type2.major` | 45 | 18 | 8 | `enc.major1.ai26`, `enc.major2.ai24`, `enc.major2.ai25`, `enc.major2.ai26`, `enc.major2.ai27`, `enc.major3.ai24`, `enc.major3.ai25`, `enc.major3.ai26`, `enc.major3.ai27`, `enc.major4.ai25`, `enc.major4.ai26`, `enc.major4.ai27`, `enc.major5.ai24`, `enc.major5.ai25`, `enc.major5.ai26`, `enc.major5.ai27`, `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27` |
+| `type2.major7` | 6 | 2 | 4 | — |
+| `type2.map` | 6 | 1 | 1 | `enc.major5.ai24`, `enc.major5.ai25`, `enc.major5.ai26`, `enc.major5.ai27` |
+| `type2.tag` | 5 | 2 | 0 | `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27` |
+| `type2.tag_head_type` | 5 | 2 | 0 | `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27` |
+| `value.bytes` | 6 | 1 | 1 | `enc.major2.ai24`, `enc.major2.ai25`, `enc.major2.ai26`, `enc.major2.ai27` |
+| `value.number` | 13 | 10 | 2 | `enc.major1.ai26` |
+| `value.text` | 6 | 1 | 1 | `enc.major3.ai24`, `enc.major3.ai25`, `enc.major3.ai26`, `enc.major3.ai27` |
+
 ## Consistency (join drift check)
 
 - ✅ All notes resolve to a real vector/cell and agree with the derived coverage. No drift.

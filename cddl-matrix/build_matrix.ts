@@ -51,6 +51,39 @@ for (const [tool, rows] of Object.entries(annos)) {
   }
 }
 
+// --- the encoding parent -> leaf relation (encodings.toml `cells`). Master data, so it is checked
+// here rather than in the golden_hex projection that consumes it. PARENT/LEAF is decided
+// STRUCTURALLY — a row is a PARENT iff it declares `cells` — so there is no form vocabulary to keep
+// in sync with the file (the hand-maintained one this replaced could drift silently).
+// `enc.major7.float`'s cells are a SUBSET of `enc.major7`'s: an intended overlap, so nothing here
+// requires a leaf to have exactly one parent.
+const encById = new Map(encodings.map(e => [e.id, e]));
+const leafIds = encodings.filter(e => !e.cells).map(e => e.id);
+const claimedLeaves = new Set<string>();
+for (const parent of encodings.filter(e => e.cells)) {
+  for (const cid of parent.cells!) {
+    const child = encById.get(cid);
+    if (!child) { errors.push(`encodings: '${parent.id}'.cells names '${cid}', which resolves to no encoding row`); continue; }
+    claimedLeaves.add(cid);
+    // one level only: a parent-of-parent chain would make "the leaf cells beneath X" ambiguous for
+    // every consumer that expands a feature's `encodings` refs.
+    if (child.cells) errors.push(`encodings: '${parent.id}'.cells names '${cid}', which is itself a PARENT (declares cells) — the relation is one level deep`);
+    if (child.major_type !== parent.major_type)
+      errors.push(`encodings: '${parent.id}' (major_type ${parent.major_type}) lists cell '${cid}' of major_type ${child.major_type} — cross-major cell`);
+  }
+}
+// An orphan leaf is invisible to every per-construct expansion (no feature ref can reach it through a
+// parent), so it would silently drop out of the per-construct legality answer.
+for (const lid of leafIds)
+  if (!claimedLeaves.has(lid)) errors.push(`encodings: leaf '${lid}' appears in no parent's cells — it is outside the parent->leaf relation`);
+
+// Feature -> encoding link integrity. verify.ts checks this too, but verify.ts is a FULL-tier gate and
+// CI runs `fast` only; the ref set is master data, so the master's own fast-tier drift gate owns it.
+const encIds = new Set(encodings.map(e => e.id));
+for (const f of features)
+  for (const eid of f.encodings ?? [])
+    if (!encIds.has(eid)) errors.push(`features: '${f.id}'.encodings names '${eid}', which resolves to no encoding row`);
+
 const out = stableJson(matrix);
 const nAnno = Object.values(annos).reduce((a, v) => a + v.length, 0);
 const summary =

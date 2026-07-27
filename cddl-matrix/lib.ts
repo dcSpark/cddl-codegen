@@ -23,7 +23,10 @@ export interface Feature {
   roles?: string[];
 }
 export interface Role { id: string }
-export interface Encoding { id: string }
+/** An encoding-grid row. PARENT vs LEAF is STRUCTURAL: a row is a PARENT iff it declares `cells`
+ * (the leaf ids beneath it), a LEAF iff it declares none — no form vocabulary to keep in sync.
+ * `encodings.toml`'s header explains why the relation is data rather than an id-prefix rule. */
+export interface Encoding { id: string; major_type?: number; cells?: string[] }
 export interface Containment { id: string; role: string; feature: string; spec?: string; example?: string }
 export interface ControlOp { id: string; name: string; rfc: string; example?: string }
 

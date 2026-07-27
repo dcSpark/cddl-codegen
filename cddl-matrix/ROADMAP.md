@@ -64,10 +64,16 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
 
 ## F4 / F5 follow-ons (only when their consumer exists)
 
-- **F5 (encoding precision):** the encoding axis is already major-type-dependent (no impossible cells). The
-  golden_hex projection lists uncovered legal cells *globally*; the remaining work is per-*construct*
-  legal-cell enumeration so Q3 can say "for construct C, these legal encodings are untested" — link
-  `features[].encodings` to the leaf cells each construct can emit and intersect with golden coverage.
+- **Per-VALUE encoding reachability.** The per-construct section of `tests/golden_hex/COVERAGE.md`
+  answers legality per construct, and its own prose bounds that: a cell is legal for the construct,
+  not necessarily reachable at every value. Argument width follows the value, so `enc.major0.ai27`
+  needs a uint ≥ 2^32 and `enc.major2.ai26` a byte string ≥ 2^16 bytes. Modelling it means a
+  per-(construct, cell) value predicate — a second relation far larger than the parent→leaf one it
+  would sit on — so the column reports the legal remainder and leaves that judgment to whoever acts
+  on it. *Reopening signal:* an author working the *untested and emittable* column hand-dismisses
+  more listed cells as value-unreachable than they can write vectors for. Measured by the person
+  already doing the work, and on the axis this deferral's cost actually grows along — how far the
+  column overstates the actionable set, not how many readers it has.
 - **F4 (tag registry):** deliberately not pinned/enumerated (cddl-codegen is tag-parametric). Revisit only
   if a *tag-semantic* consumer of the master appears.
 
