@@ -77,10 +77,10 @@ fn collect_schema_refs(value: &serde_json::Value, out: &mut std::collections::BT
     match value {
         serde_json::Value::Object(map) => {
             for (key, child) in map {
-                if key == "$ref" {
-                    if let Some(reference) = child.as_str() {
-                        out.insert(reference.to_owned());
-                    }
+                if key == "$ref"
+                    && let Some(reference) = child.as_str()
+                {
+                    out.insert(reference.to_owned());
                 }
                 collect_schema_refs(child, out);
             }
@@ -110,12 +110,13 @@ fn decode_schema_ref_name(encoded: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         let mut escaped = false;
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(byte) = u8::from_str_radix(&encoded[i + 1..i + 3], 16) {
-                decoded.push(byte);
-                i += 3;
-                escaped = true;
-            }
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let Ok(byte) = u8::from_str_radix(&encoded[i + 1..i + 3], 16)
+        {
+            decoded.push(byte);
+            i += 3;
+            escaped = true;
         }
         if !escaped {
             decoded.push(bytes[i]);
