@@ -541,6 +541,31 @@ fn parse_type_choices(
             ));
         }
         handle_rust_name_pin(types, name, &rule_metadata);
+        // A rule-level directive on a NON-LAST arm is built and thrown away: the rule slot is
+        // `type_choices.last()` (read above), and `create_variants_from_type_choices` consumes only
+        // `.name` and `.comment` from each choice. So on any other arm the directive generates
+        // exit-0 output identical to omitting it — the silent-drop class, and the worst instance of
+        // it, because the arms of a type choice are a thing people reorder. Reject instead, naming
+        // the directive and the remedy. Deliberately NOT applied to the `T / null` optional-inner
+        // branch above: that branch's metadata slot is the INNER arm's comment, which for
+        // `foo = uint ; @x / null` is the non-last one, so the same rule would be wrong there.
+        for choice in &type_choices[..type_choices.len() - 1] {
+            let arm_metadata = merge_metadata(
+                &RuleMetadata::from(choice.type1.comments_after_type.as_ref()),
+                &RuleMetadata::from(choice.comments_after_type.as_ref()),
+            );
+            let misplaced = arm_metadata.non_variant_directives();
+            if !misplaced.is_empty() {
+                types.record_rejection(format!(
+                    "{} on a non-last arm of the multi-choice type rule `{name}`: a rule-level \
+                     directive attaches through the LAST arm's trailing comment, which is the \
+                     rule-position slot — on any other arm only `@name` and `@doc` are read (they \
+                     name and document that variant). Move it to the last arm, or reorder the arms \
+                     so the one carrying it is last.",
+                    misplaced.join(" / ")
+                ));
+            }
+        }
         // Build the arms. The tag-258 collapse recognizer below compares the raw arm types for
         // structural equality and then DISCARDS these builds; the surviving product (the nominal set
         // wrapper or a transparent alias) is what registers. Inline `#6.258` occurrences NESTED inside

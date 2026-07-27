@@ -15,7 +15,10 @@
 //! whose directive is currently DROPPED in that position — asserted to STILL be dropped, so the pin
 //! flips loudly the day a fix lands. A pin is a FINDING, not a license to fix: do not silence a drop
 //! by re-authoring its expectation, and do not fix a newly-found drop beyond the scoped rule-position
-//! `@name` rejection that this module's Part 2 lands.
+//! `@name` rejection this module's Part 2 lands and the non-last-arm rule-level rejection beside it.
+//! Both of those are deliberate, triggered fixes rather than opportunistic ones, and each ships with
+//! its own placement CONTROL cell isolating position as the variable — which is the bar a third one
+//! has to clear too.
 //!
 //! Every cell runs generation under `catch_unwind` + `with_thread_silenced_panics` (like the hazard
 //! sweep) so a panic is reported as its own failure kind — never a test abort, and never mistaken for
@@ -547,6 +550,41 @@ const GRID: &[Cell] = &[
                 "#[serde(skip)]\n    pub encodings: Option<MyRecEncoding>",
                 "serde::Serialize)]\npub struct MyRec {",
             ],
+        },
+    },
+    // 21c. A rule-level directive on a NON-LAST arm of a multi-choice type rule. The rule slot is
+    //      the LAST arm's trailing comment (`parse_type_choices` reads `type_choices.last()` and
+    //      nothing else); `create_variants_from_type_choices` consumes only `.name`/`.comment` per
+    //      choice, so anything else written on an earlier arm used to generate exit-0 output
+    //      identical to omitting it. Now a graceful rejection. The placement CONTROL is cell 21a
+    //      (`type-choice-rule`), whose directive sits on the LAST arm of the same rule shape and
+    //      takes effect — isolating arm position as the variable, per this module's authoring rule.
+    //      `@used_as_key` rather than `@custom_json` because its effect is visible on the
+    //      --wasm=false baseline, so the cell is not flag-conditional.
+    Cell {
+        directive: "@used_as_key",
+        position: "type-choice-non-last-arm",
+        spec: "my_sum =\n    uint ; @name integer @used_as_key\n  / bytes ; @name raw\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Reject("on a non-last arm of the multi-choice type rule"),
+    },
+    // 21d. The exclusion set of 21c's rejection: `@name` and `@doc` are what a type-choice VARIANT
+    //      position legitimately consumes, so they must keep working on a non-last arm. Without this
+    //      cell, widening the rejection to every directive would pass 21c and silently break the
+    //      overwhelmingly common spelling (three of the four arms of a real `plutus_data` carry
+    //      `@name`). Anchored on the generated constructor rather than the variant token: the ctor
+    //      name comes from `EnumVariant::name_as_var()`, and the un-named control spelling for a
+    //      `uint` arm is `new_uint` — so the must/must_not pair cannot both hold by accident.
+    Cell {
+        directive: "@name",
+        position: "type-choice-non-last-arm-allowed",
+        spec: "my_sum =\n    uint ; @name integer\n  / bytes ; @name raw\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &["pub fn new_integer("],
+            must_not: &["pub fn new_uint("],
         },
     },
     // ---- @custom_serialize / @custom_deserialize (string-level only) -------------------------
