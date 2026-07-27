@@ -1783,6 +1783,12 @@ cheapest-in-isolation first:
   registration row (`@no_json_schema_export`) but IS referenced by `foo`, so the document must carry
   it in `$defs` and the merged `.d.ts` must DECLARE it — the pin exists because a suppressed-but-
   referenced type reaching the shipped package as a `TS2304` is invisible to every Rust-side gate.
+  Because it runs the shipped script line verbatim, it also runs `json-ts-types.js` with **no
+  `--allow-untyped`** — so it is the only layer asserting that a default generated package satisfies
+  the untyped-class check end to end. What keeps that true is which classes declare the JSON method
+  at all: a record mints one, while a collection wrapper and a c-style enum do not, so the fixture's
+  table, list and enum rules are outside the check by construction and only `foo` (rowed) and
+  `inner_no_row` (in `$defs` by reference) have to be typed.
   It builds the
   generated crate with the user's `+stable` toolchain (faithful to the shipped consumer experience),
   so a `+stable` failure here is a real finding about shipped output, not a test bug. Needs
