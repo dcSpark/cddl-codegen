@@ -1902,9 +1902,35 @@ classes — `widen_float` included, via the `any`-range composite — exercise c
 `emit_tests_open_struct_ignore_execute` (local, the tolerate-and-drop twin — generates
 `tests/open-struct-map-ignore-e2e` under `--emit-tests` non-preserve and runs the crate, proving each
 `@ignore` type gets an ordinary `roundtrip_<type>` with no ignore-specific gating and mints into no
-`.rest` map), and
+`.rest` map),
+`emit_tests_bounded_map_key_execute` (local — generates `tests/emit-tests-bounded-key` under
+`--emit-tests` non-preserve and runs the crate, proving a table key whose DOMAIN carries a value
+window is minted inside that window), and
 `feature_corpus_roundtrips_nondefault_profiles` (full tier, corpus × preserve breadth); the canonical
 differential runs once at whole-program scale via the `canonical` fixture's `--emit-tests`.
+
+#### Authoring standard for a bounded-domain emit-tests fixture
+
+A green round-trip does not distinguish an INTENDED minted value from a wrong one that happens to
+land inside the window, so a fixture over a bounded domain owes two things beyond "it passes":
+
+1. **Both endpoints/signs of the window**, never one. The minter lays keys down from a base, and a
+   base computed in the wrong space can satisfy one side of a window while violating the other — so
+   a one-sided fixture certifies the defect in whichever direction it happens to point. Proven by
+   the `nint` key rows in `tests/emit-tests-bounded-key/`: the identical wrong base made `.ge -5`
+   fail loudly and `.le -5` pass on a garbage key (magnitude `-5 as u64`, wire value ~ -1.8e19,
+   which does satisfy `<= -5`).
+2. **A pin on the minted SPELLING, not just the round-trip verdict** — compared
+   whitespace-stripped, so rustfmt line-breaking cannot quietly weaken it. This is what makes a
+   wrong-but-passing mint fail.
+
+`--emit-tests-conformance` does not substitute for either: it validates minted bytes against the
+source rule, and a degenerate-but-in-window value is genuinely spec-VALID.
+
+Note which gate can carry such evidence. The snapshot corpus contains **no** emitted-test map-key
+text (no `.snap` holds an `__i as …` key expression), so `snapshot_quick` — and therefore the whole
+`fast` tier — cannot witness a change to key rendering; only the `*_execute` gates above run that
+code. Cite one of them, not `check.ts fast`.
 
 ### wasm-crate test module (`--emit-tests` + `--wasm=true`, `src/emit_tests_wasm.rs`)
 

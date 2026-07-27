@@ -624,6 +624,22 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   point-in-time-inventory-claim entry in this section prescribes. Mechanical layer, on a SECOND
   instance: a `check.ts` listing mode that prints the gates a given tier does NOT run, so a
   deferral rationale can enumerate what it is not evidence about instead of asserting a universal.
+  **That trigger has FIRED — second instance, cycle 3 Lane B**, in a new tier pair and a new
+  direction: not a deferral rationale but a DELEGATION. A lane restricted to `fast` (heavy tiers
+  being serialized centrally) added `tests/emit-tests-bounded-key/`, whose registry is enforced by
+  `wasm_api_parity_axes_and_pins_are_live` — a plain `#[test]`, hence `local`. `fast`'s only cargo
+  invocation is `cargo test --bin cddl-codegen snapshot_tests`, a SUBSTRING filter, so every
+  `#[test]` outside that module is invisible to it; the implementer had no signal and shipped the
+  fixture without its registry row, costing a fail-fast `local` run that skipped twelve later gates.
+  Two corrections to this entry's own sketch, measured while the trigger fired: (a) the tier pair
+  that bites is `fast`/`local`, not only `fast`/`full`, and the `fast`/`local` gap is the one an
+  agent-delegation protocol runs into daily; (b) the sketched layer is PARTLY BUILT already — every
+  tier run's summary already prints its `not-in-tier` rows — so what is actually missing is
+  narrower than "a listing mode": a way to answer "which tier enforces the registry governing THIS
+  PATH" without running anything, which is the question a delegation needs answered before it
+  starts. The AUTHORING half is now in force (AGENTS.md § delegation: name the enforcing tier for
+  any registry-governed tree a delegation writes into); the mechanical half is a maintainer call,
+  deliberately not taken mid-cycle because it edits `check.ts` itself.
 - **Observed-baseline comments beside gate floors rot silently — TWO instances, two homes, two
   distinct rot modes; the floors/consts stay the enforced artifact.** These comments are
   informational and review-maintained by design (replacing them with exact gate-asserted counts
@@ -1614,6 +1630,20 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   cargo. Trigger to build rather than defer, on the axis the cost grows along and measurable by
   whoever pays it: a SECOND mis-citation, or the first report from someone who followed a citation
   during triage and reached the wrong site.
+  SECOND FORM of the same class, in a population the detector above cannot reach — the cited thing
+  is a GATE and the claim is that the gate is EVIDENCE for a property. Instance (read-caught in
+  orchestrator review, never committed): a delivery report cited `check.ts fast` as proof that an
+  `--emit-tests` map-key spelling was byte-identical, but the snapshot corpus holds zero `__i as …`
+  key expressions, so no run of that tier could ever have witnessed the property either way. The
+  class property is identical — the citation RESOLVES (the gate exists, it was green), so nothing
+  that checks resolution can fire, and only the claim is false — but the population is prose in
+  reports and handoff docs, which no gate scans, so the ledger detector above does not extend to
+  it and this is NOT its second-instance trigger firing. What DOES transfer is the cheap
+  instrument, which is the same shape as the detector: before citing a gate as evidence for
+  emitted TEXT, grep that gate's corpus for the text. Which corpus covers what is a `tests/README.md`
+  fact, and the emit-tests key-rendering answer now lives there (§ "Authoring standard for a
+  bounded-domain emit-tests fixture"); the general rule is that a tier verdict evidences a property
+  only where that tier's corpus contains an instance of it.
 - **An encoding-variant mutator asserts a spec-equality premise that is a property of the TYPE
   FLAVOR, not of CBOR — and the exemption for that is hand-listed per row, so the guard is loud on
   a STALE entry and silent until tier-time on a MISSING one.** The replay gates mutate an accept
@@ -1664,11 +1694,12 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   fixture carrying only ONE sign of the window would have certified the defect in whichever
   direction it was pointed. The conformance oracle (`--emit-tests-conformance`) cannot see this
   class either — the minted value is genuinely spec-VALID, merely degenerate — which is why it
-  needs a layer of its own rather than a wider oracle. Meanwhile the working rule, which
-  `tests/emit-tests-bounded-key/` now embodies: an emit-tests fixture for a bounded domain carries
-  BOTH endpoints/signs of the window, and its gate pins the minted SPELLING (compared
-  whitespace-stripped, so rustfmt line-breaking cannot quietly weaken it), not just the round-trip
-  verdict. The mechanical layer is a mint-intent assertion — derive each bounded mint's expected
+  needs a layer of its own rather than a wider oracle. The standing rule that covers this today is
+  IN FORCE and lives in `tests/README.md` § "Authoring standard for a bounded-domain emit-tests
+  fixture" (both signs/endpoints of the window; the gate pins the minted SPELLING, compared
+  whitespace-stripped, not just the round-trip verdict), with
+  `tests/emit-tests-bounded-key/` as that fixture. What remains future here is only the mechanical
+  layer: a mint-intent assertion — derive each bounded mint's expected
   literal from the same `MintValue` the renderer consumes and diff the two — so that no bounded
   mint can be wrong-but-passing. Trigger, on the axis the cost grows along: the COUNT of
   minted-value sites whose STORAGE space differs from the CDDL value space, measurable by whoever

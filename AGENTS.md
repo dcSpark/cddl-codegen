@@ -342,6 +342,27 @@ For sessions that spawn their own sub-agents (an orchestrating session, or a sub
   unprobed remainder is visible in the claim instead of implied — and remember CI runs `fast` only,
   so a `full`-tier gate is where such a premise survives longest. Corollary for reviewers: when a
   premise's scope is narrower than the conclusion drawn from it, that gap is the finding.
+- **A NEGATIVE premise ("nothing does X") is bounded by its search VOCABULARY, not just its scope —
+  so establish absence by enumerating the registry, never by a keyword grep.** Distinct from the
+  rule above and not caught by it: a grep can cover exactly the right scope and still miss the
+  mechanism because the mechanism does not use the words you guessed, and absence-of-hits then
+  reads as absence-of-thing. Proven 2026-07-27: a cycle-3 delegation spec asserted "no gate
+  enumerates fixture dirs for orphans" from a grep over the whole `src/tests/` tree for
+  `read_dir("tests")` / `fixture_dirs` / `orphan` — none of which
+  `wasm_api_parity_axes_and_pins_are_live` spells, while that gate requires every
+  `tests/*/input.cddl` dir to be registered. The implementer built on the premise; the `local` tier
+  caught it, fail-fast, skipping twelve later gates. Working rule: to claim NO mechanism does X,
+  list the mechanism's members (the `check.ts` gate registry, the `#[test]` fns in the module, the
+  registry consts) and check them — a grep can support a POSITIVE finding, never a negative one.
+- **A delegation that writes into a registry-governed tree must name the TIER that enforces the
+  registry.** `fast`'s only cargo invocation is `cargo test --bin cddl-codegen snapshot_tests` — a
+  substring filter — so every `#[test]` outside that module is `local` or later, and a sub-agent
+  restricted to `fast` (as it should be when heavy tiers are serialized) gets NO signal from the
+  drift/registry gates that own most `tests/` trees. Adding `tests/<dir>/input.cddl` obliges a
+  `CORPUS_PARITY_INPUTS`/`CORPUS_PARITY_EXCLUDED` row (`src/tests/wasm_parity_tests.rs`); other
+  trees have their own. Say so in the prompt, with the enforcing gate named — otherwise the
+  omission surfaces only when the orchestrator runs the tier, which is the most expensive place to
+  find it.
 
 
 
