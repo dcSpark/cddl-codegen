@@ -1971,6 +1971,11 @@ impl GenerationScope {
             // order-dependent `<name>2` (distinct ids — schemars' `{base}{i}` suffix loop). Both are
             // silent, and both make a published name a function of registration order rather than of
             // the spec.
+            //
+            // Keyed on this crate's OWN rows, never on `--json-schema-dep`: a dep registrar call goes
+            // through the DEP's copy of this helper, so a crate whose `add_schemas` holds nothing but
+            // dep calls needs no row helper of its own (an unused one would be a dead-code warning in
+            // generated code the consumer is told never to hand-edit).
             if !self.json_lines.is_empty() {
                 lib_str.push_str(ADD_SCHEMA_HELPER);
                 lib_str.push_str("\n\n");
@@ -1989,13 +1994,42 @@ impl GenerationScope {
             lib_add_fn
                 .vis("pub")
                 .arg("generator", "&mut schemars::SchemaGenerator");
-            if self.json_lines.is_empty() {
+            let json_schema_deps = cli.json_schema_deps();
+            if self.json_lines.is_empty() && json_schema_deps.is_empty() {
                 // A spec whose every rule is skipped (array/table typedefs only, say) registers
                 // nothing, and the parameter would then be an unused-variable warning in generated
                 // code the consumer is told never to hand-edit. An unused `claimed` local would be a
                 // NEW warning of the same class, so the ledger is emitted only when there are rows.
+                // A `--json-schema-dep` call USES `generator`, so it suppresses the attribute on its
+                // own: an `allow` over a used parameter is inert snapshot noise.
                 lib_add_fn.attr("allow(unused_variables)");
-            } else {
+            }
+            // `--json-schema-dep` registrar calls, FIRST — before the ledger local and before every
+            // spec-derived row and every `--json-schema-root` row. Read straight off `cli`: the dep
+            // list is a flag, not IR, so it never travels through `json_lines`.
+            //
+            // FIRST is the deliberate mirror of why `--json-schema-root` rows come LAST. A dep's
+            // published names are already shipped in the dep's own package, so on a cross-crate name
+            // collision the CONSUMER's row is the one that should be renamed and blamed — the one its
+            // owner can change. A consequence worth stating: with deps registered first, a
+            // cross-crate collision whose `schema_id`s DIFFER is caught by the emitted helper's
+            // kept-its-own-name check (B), because `subschema_for` then hands the consumer's row
+            // `<name>2`. That is reasoned from the mechanism `integration_tests::
+            // json_schema_name_stolen_fails` exercises WITHIN one crate — cross-crate it is not run.
+            //
+            // FLAG ORDER, never sorted, for the same reason the `--json-schema-root` block gives: the
+            // flag list is an input, so preserving it keeps "same inputs -> same bytes" while staying
+            // readable; sorting would reorder registration, which is observable through the guard's
+            // messages.
+            //
+            // No banner comment above the block, also for the `--json-schema-root` block's reason:
+            // this file is inside the comment-preservation overlay's tree, and a comment above lines
+            // that all vanish when the flag is dropped is the stranded-comment/`unpreserved-comment`
+            // trap class.
+            for (_label, lib) in &json_schema_deps {
+                lib_add_fn.line(format!("{lib}::add_schemas(generator);"));
+            }
+            if !self.json_lines.is_empty() {
                 lib_add_fn.line(ADD_SCHEMA_LEDGER_DECL);
             }
             lib_add_fn.push_all(self.json_lines.clone());

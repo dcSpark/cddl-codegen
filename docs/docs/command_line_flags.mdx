@@ -190,19 +190,23 @@ The json-gen crate writes **one document per crate**, `wasm/json-gen/schemas/<li
 
 A pure definitions bundle — no top-level `type`/`properties`. Its `$defs` keys are `schemars::JsonSchema::schema_name()` values (for a generated type, the Rust type name; for an extern, whatever its hand-written impl returns), and its contents are byte-stable across regenerations of the same spec.
 
-Two public functions build it. `export_schemas()` writes the document; `add_schemas(&mut schemars::SchemaGenerator)` registers this crate's types into a generator you own, and is the composition point for threading several crates' types into one document.
+Two public functions build it. `export_schemas()` writes the document; `add_schemas(&mut schemars::SchemaGenerator)` registers this crate's types into a generator you own, and is the composition point for threading several crates' types into one document. `--json-schema-dep` below is the supported spelling of that composition — it emits the dependency's `add_schemas` call into this crate's, so you do not hand-write the wiring; `add_schemas` stays `pub` for the layouts the flag does not cover.
 
 `add_schemas` emits one registration row per **exported** type. Each `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_` extern therefore must implement `schemars::JsonSchema` (part of the extern contract under these flags — see [Comment DSL § `_CDDL_CODEGEN_EXTERN_TYPE_`](./comment_dsl#_cddl_codegen_extern_type_)). Two row classes are deliberately **not** emitted, as neither could compile here: the bare BASE of an extern generic (`Foo` in `foo<T>` — it names no concrete type; the concrete instances still get rows), and any type owned by a workspace dependency (an extern-deps-dir / `--extern-import` type) — in workspace mode each crate's own json-gen run exports its own schemas, and this crate's json-gen manifest depends only on the own rust crate.
 
 A row is a declaration that a type is part of the published surface; it is **not** the list of definitions. `$defs` additionally holds every type reached from a row'd type, so a type with no row of its own is still declared whenever something published references it. Nothing downstream distinguishes the two — the emitted TypeScript declares every `$defs` entry either way.
 
-**Controlling what the document holds.** The row set defaults to the spec, and three mechanisms adjust it. Which one you want follows from *what* you are changing — a row, or a reference:
+**Controlling what the document holds.** The row set defaults to the spec, and four mechanisms adjust it. The first three change *this* crate's row set, and which one you want follows from *what* you are changing — a row, or a reference:
 
 - **Add a row** for a published type your CDDL never describes (hand-written machinery whose JSON form is API, in this crate or in one with no spec at all): `--json-schema-root` below, which takes a Rust type path.
 - **Drop a row** for a rule whose derived schema is not that type's published encoding: [`@no_json_schema_export`](./comment_dsl#no_json_schema_export) on the rule. It removes the *declaration*, so a type a published type still references stays in `$defs` and still reaches the emitted TypeScript.
 - **Keep a type out of `$defs` entirely** — the only mechanism that can, because a reference that survives has to resolve: [`@custom_json`](./comment_dsl#custom_json) on every rule that would reference it, which removes the derives and makes you supply the JSON impls by hand. This is also what an own-spec extern with no `schemars::JsonSchema` impl needs on its parents, on top of `@no_json_schema_export` on itself.
 
-The two directives and the flag do not conflict: the flag consults no IR, so an extra root naming a `@no_json_schema_export` type re-registers it, and `@custom_json` + `@no_json_schema_export` on one rule is legal and means both things at once.
+The fourth is different in kind, and that difference is the point of choosing it:
+
+- **Import another crate's whole row set** rather than adjusting this one's: `--json-schema-dep` below, which emits a dependency's `add_schemas` call at the top of this crate's. You do not name types at all — the dependency's own generation decides its row set, so the two never drift. Reach for it when a dependency's UNREFERENCED roots belong in your published surface: with one document per crate, everything your own types *reference* is already here through the closure, so a dependency's roots that nothing here points at are exactly what is missing. Covering them with `--json-schema-root` instead means hand-restating the dependency's root list in your build script — a duplicate that silently drifts from it.
+
+The two directives and the two flags do not conflict: the flags consult no IR, so an extra root naming a `@no_json_schema_export` type re-registers it, and `@custom_json` + `@no_json_schema_export` on one rule is legal and means both things at once.
 
 **Published names must be injective, and the json-gen run enforces it.** A `$defs` key is a published API name — `run-json2ts.js` suffixes it with `JSON` and json2ts emits that as the TypeScript type name — so `add_schemas` fails the run, naming both offenders, when any of these holds:
 
@@ -228,7 +232,13 @@ cddl-codegen --json-schema-export: cddl_lib::Inlined publishes the inline JSON s
 "Shared", but the document already defines "Shared" with a different body. …
 ```
 
-All three are otherwise silent: `schemars::JsonSchema::schema_id()` **defaults to `schema_name()`**, so two types sharing a hand-written constant name are one type to `schemars` — one definition is emitted and every reference to the other resolves to its shape. When the ids do differ, both are emitted but which one gets the bare name (and which gets `<name>2`) follows first-encounter order, so an unrelated spec edit can silently rename a published TypeScript type. An inlined type contributes no definition at all, so its row would otherwise leave whichever body reached the name first in place — publishing one type's shape under the other's name with nothing said. **A spec that ships such a name today will start failing its json-gen run**: give one of the types a `schema_name()` unique within the crate (for a generic extern, vary it with the parameters — see [Comment DSL § `_CDDL_CODEGEN_EXTERN_TYPE_`](./comment_dsl#_cddl_codegen_extern_type_)). One bound: the ledger is a local of `add_schemas`, so a collision between two *different* crates' `add_schemas` calls threaded into one generator is not covered by the first check — the second still catches it whenever the losing type is a row of the crate being checked.
+All three are otherwise silent: `schemars::JsonSchema::schema_id()` **defaults to `schema_name()`**, so two types sharing a hand-written constant name are one type to `schemars` — one definition is emitted and every reference to the other resolves to its shape. When the ids do differ, both are emitted but which one gets the bare name (and which gets `<name>2`) follows first-encounter order, so an unrelated spec edit can silently rename a published TypeScript type. An inlined type contributes no definition at all, so its row would otherwise leave whichever body reached the name first in place — publishing one type's shape under the other's name with nothing said. **A spec that ships such a name today will start failing its json-gen run**: give one of the types a `schema_name()` unique within the crate (for a generic extern, vary it with the parameters — see [Comment DSL § `_CDDL_CODEGEN_EXTERN_TYPE_`](./comment_dsl#_cddl_codegen_extern_type_)).
+
+Two bounds are worth stating, because both are about what the checks cannot see rather than what they do.
+
+**Cross-crate collisions.** The ledger is a local of one crate's `add_schemas`, so it never sees two *different* crates' registrations. Under `--json-schema-dep` the tool now emits that composition itself, and it emits the dependency's call **first** — so the consumer's colliding row is the one that gets `<name>2` from `subschema_for` and the kept-its-own-name check fires on it, naming the side whose owner can change it. What that leaves uncovered is the collision whose `schema_id`s *match*: there `schemars` sees one type, both returned refs equal the shared name, and only a ledger spanning both crates could see it. (This cross-crate reasoning follows from the mechanism the single-crate `<name>2` check is built on; it is not measured by a cross-crate vector.)
+
+**Collisions where *neither* type has a row.** Both checks are row-side — the ledger holds rows, and "kept its own name" is asked only of a registered type — so two types reached only *through* other types' schemas can collide invisibly. The common shape is a generic instantiated twice with a constant `schema_name()`, referenced from fields rather than published in its own right. You can make the guard see it: give each instantiation a row with `--json-schema-root` (`--json-schema-root=my_crate::AssetBundle<u64>`, `…<i64>`). Registering both turns it into two rows publishing one name with different `std::any::type_name`s, which the ledger reports; registering just the one that lost the bare name makes the kept-its-own-name check report the `<name>2` it was assigned. (Reasoned from the emitted helper and the flag's accepted charset — generic arguments are inside it — rather than from a fixture.)
 
 **The document must also resolve its own references, and the same run enforces that.** Before anything is written, `export_schemas()` walks the finished document and fails — naming every offender, in a sorted list — when a `$ref` is not an internal pointer at one of that document's own definitions:
 
@@ -248,6 +258,7 @@ The two classes are the two ways a hand-written `schemars::JsonSchema` impl goes
 - `cddl-codegen --json-schema-export: two distinct Rust types both publish …` / `… but the document assigned it "<name>2" …` / `… publishes the inline JSON schema name …` — a panic in `cargo run` of your `wasm/json-gen` crate. Two published names collided; see the injectivity section above.
 - `cddl-codegen --json-schema-export: the exported JSON schema document holds references that do not resolve inside it:` — a panic in that same run, before the document is written. A hand-written `JsonSchema` impl returned a reference where a body belongs, or points at a type with no row; see the reference-closure section above.
 - `E0433`/`E0412` in `wasm/json-gen/src/generated/mod.rs`, on a path you recognise from your command line — a `--json-schema-root` value that does not resolve from the json-gen crate. The flag emits its value verbatim and this tool does not typecheck Rust, so reachability is checked by your compiler; see `--json-schema-root` below.
+- `E0433` in that same file, naming a *crate* you recognise from your command line — a `--json-schema-dep` lib name that `wasm/json-gen/Cargo.toml` does not depend on. That manifest entry is yours: the tool knows the crate name but not its path or version, so it never writes one, and the merged manifest is what makes your hand-added entry survive regeneration. See `--json-schema-dep` below.
 
 The JS side fails separately and always non-zero, leaving the last-good `json-types.d.ts` in place — see `--json-schema-scripts` below for those.
 
@@ -328,6 +339,42 @@ cddl-codegen --input=cml_chain.cddl --output=export --lib-name=cml-chain \
   --json-serde-derives=true --json-schema-export=true \
   --json-schema-root=cml_chain::byron::ByronAddress \
   --json-schema-root=cml_crypto::Bip32PublicKey
+```
+:::
+
+<br/><br/>
+
+:::info `--json-schema-dep`
+Threads a **dependency's whole row set** into this crate's schema document: one
+
+```rust
+<DEP_JSON_GEN_LIB>::add_schemas(generator);
+```
+
+call emitted at the top of the json-gen crate's `add_schemas`. Each value is `<dep>=<dep_json_gen_lib_name>`, and the flag is repeatable.
+
+What it buys, and why `--json-schema-root` is not a substitute: with **one document per crate**, everything your own types reference is already in your document through the closure. What is missing is the dependency's **unreferenced roots** — types a consumer of your package holds directly (an address, a transaction, a hash) that nothing in *your* spec points at, so no closure can reach them. You could name each with `--json-schema-root`, but that means maintaining a copy of the dependency's root list inside your build script, which silently drifts from the dependency's actual row set. A dep call imports the list instead of restating it.
+
+**The two sides answer to different rules.**
+
+- The **left** side is a **label**, used only for duplicate detection and error messages. It is never resolved against your extern-dep set, because the emitted line depends solely on the right side — a wrong label is inert, not wrong. Write the dependency's rust-crate name there so the line reads next to the `--extern-wasm-crate=<dep>=<dep>_wasm` line for the same dependency; nothing enforces that.
+- The **right** side is a rust **module path**, emitted **verbatim** as a call path. Accepted characters are `[A-Za-z0-9_]`, `:` and `-` (normalised to `_`, so a cargo package name works as written); `<`, `>`, `,` and space are not — a module path has no generic arguments, and anything else could introduce a comment, a statement separator or a string literal into a generated file. Both a crate (`cml_chain_json_schema_gen`) and a path to a re-export (`crate::vendored`) are expressible.
+
+**The tool does not touch `wasm/json-gen/Cargo.toml` for this.** It knows the crate name but not its path or version, and that dependency is yours to declare — exactly as `--json-schema-root`'s cross-crate roots are. The manifest is **merged**, never clobbered, so the `[dependencies]` entry you add there by hand survives regeneration. A name the manifest does not depend on is an `E0433` in your own json-gen build naming the crate, never a generation-time reject.
+
+**Dep calls come first.** They are emitted before the name ledger, before every spec-derived row, and before every `--json-schema-root` row, in **flag order** (never sorted — the flag list is an input, and sorting would rewrite it). This is the deliberate mirror of why CLI roots come last: a dependency's published names are already shipped in the dependency's own package, so on a cross-crate name collision it is **your** row that should be renamed, and registering the dependency first is what makes the injectivity guard blame it (see the cross-crate bound under `--json-schema-export` above).
+
+Three further behaviours worth stating outright:
+
+- Requires `--json-schema-export`; without it there is no json-gen crate and no `add_schemas` for the call to land in, so the combination is rejected up front.
+- Passing the same **label** twice is a hard error naming it: a dependency has one json-gen crate, so two mappings for one label are ambiguous rather than additive.
+- Passing one **lib name** under two labels is a hard error naming it: `add_schemas` registers a fixed set into the generator it is handed, so the second call registers nothing the first did not. Both checks compare verbatim strings (after trimming, and after dash normalisation for the lib name), so two spellings of one registrar are not detected — and are harmless for that same reason.
+
+```bash
+cddl-codegen --input=cml_multi_era.cddl --output=export --lib-name=cml-multi-era \
+  --json-serde-derives=true --json-schema-export=true \
+  --extern-wasm-crate=cml_chain=cml_chain_wasm \
+  --json-schema-dep=cml_chain=cml_chain_json_schema_gen
 ```
 :::
 

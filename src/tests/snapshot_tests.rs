@@ -573,6 +573,56 @@ fn json_gen_extern_schema_rows() {
         last_spec_row < zeta && zeta < alpha,
         "extra roots must follow every spec-derived row, in flag order (never sorted):\n{root_mod_rs}"
     );
+
+    // `--json-schema-dep` registrar calls: the same fixture regenerated with two mappings, pinning
+    // the OPPOSITE end of the same ordering contract the roots block above pins. One label is
+    // `dep_crate` — the fixture's real extern dep, whose `dep_thing` row is skipped above because the
+    // dep owns it — so the cell reads as the intended story: the dep's rows are skipped locally and
+    // threaded in from the dep's own crate. The second mapping is spelled with dashes, pinning the
+    // cargo-package-name normalisation.
+    //
+    // Deps FIRST is the mirror of roots LAST: a dep's names are already shipped in the dep's package,
+    // so on a cross-crate collision the consumer's row is the one that should be renamed and blamed.
+    let with_deps = cli_for(
+        std::path::Path::new("tests/json-extern-rows/inputs"),
+        &[
+            "--json-serde-derives=true",
+            "--json-schema-export=true",
+            "--json-schema-root=other_crate::Zeta",
+            "--json-schema-dep=dep_crate=zeta_dep_json_schema_gen",
+            "--json-schema-dep=other_dep=alpha-dep-json-schema-gen",
+        ],
+    );
+    let dep_mod_rs = crate::api::generated_strings(&with_deps)
+        .expect("generation must succeed")
+        .get("wasm/json-gen/src/generated/mod.rs")
+        .expect("json-gen generated/mod.rs must be emitted under --json-schema-export")
+        .clone();
+    let zeta_dep = dep_mod_rs
+        .find("zeta_dep_json_schema_gen::add_schemas(generator);")
+        .unwrap_or_else(|| panic!("dep registrar call missing verbatim:\n{dep_mod_rs}"));
+    let alpha_dep = dep_mod_rs
+        .find("alpha_dep_json_schema_gen::add_schemas(generator);")
+        .unwrap_or_else(|| {
+            panic!("dep registrar call with a dashed cargo package name must be normalised to underscores:\n{dep_mod_rs}")
+        });
+    // The ledger local, which opens `add_schemas` whenever this crate has rows of its own.
+    let ledger = dep_mod_rs
+        .find("let mut claimed: std::collections::BTreeMap<String, &'static str> =")
+        .unwrap_or_else(|| panic!("the name ledger local is missing:\n{dep_mod_rs}"));
+    // The first spec-derived row. `add_schema::<` cannot match the helper's own
+    // `fn add_schema<T: schemars::JsonSchema>(` definition above it.
+    let first_row = dep_mod_rs
+        .find("add_schema::<")
+        .unwrap_or_else(|| panic!("spec-derived rows missing:\n{dep_mod_rs}"));
+    assert!(
+        zeta_dep < alpha_dep,
+        "dep registrar calls must be emitted in flag order (never sorted):\n{dep_mod_rs}"
+    );
+    assert!(
+        alpha_dep < ledger && alpha_dep < first_row,
+        "dep registrar calls must precede the ledger local and every row of this crate's own:\n{dep_mod_rs}"
+    );
 }
 
 /// Byte-stability of the json-gen crate root across regenerations. The schema document is built by

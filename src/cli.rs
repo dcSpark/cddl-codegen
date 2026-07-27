@@ -55,6 +55,54 @@ fn parse_json_schema_root(s: &str) -> Result<String, String> {
     Ok(s.to_owned())
 }
 
+/// clap value parser for `--json-schema-dep`, whose value is `<dep>=<dep-json-gen-lib-name>`.
+///
+/// The two sides answer to different rules on purpose. The LEFT side is a pure LABEL: cddl-codegen
+/// never resolves it against the extern-dep set, because the emitted line depends only on the right
+/// side, so a wrong label is inert rather than wrong. Its jobs are duplicate detection, error
+/// messages, and keeping the line readable next to the `--extern-wasm-crate=<dep>=<dep>_wasm` line
+/// for that same dependency. (Same class as `--wrapper-requests` / `--key-requests`, whose
+/// `<consumer>` is likewise a label; `--workspace-dep` validates its `<dep>` because there the name
+/// DRIVES behaviour.) So the only requirement is non-empty.
+///
+/// The RIGHT side lands VERBATIM in generated rust as a call path
+/// (`<rhs>::add_schemas(generator);`), so it carries exactly the injection argument
+/// `parse_json_schema_root` carries. Accepted: `[A-Za-z0-9_]`, `:` (a module path — a dep's
+/// registrar may be reached as `cml_chain_json_schema_gen` or as `crate::vendored`) and `-`
+/// (normalised to `_` by `Cli::json_schema_deps`, mirroring `extern_wasm_crate_map`, so a cargo
+/// package name works verbatim). NOT accepted: `<`, `>`, `,` and space — a module path has no
+/// generic arguments — and everything else, since any other character could introduce a comment, a
+/// statement separator, or a string literal into a generated file.
+fn parse_json_schema_dep(s: &str) -> Result<String, String> {
+    let (dep, lib) = s.split_once('=').ok_or_else(|| {
+        format!("--json-schema-dep value must be <dep>=<dep_json_gen_lib_name>, got: {s:?}")
+    })?;
+    let dep = dep.trim();
+    let lib = lib.trim();
+    if dep.is_empty() || lib.is_empty() {
+        return Err(format!(
+            "--json-schema-dep value must be <dep>=<dep_json_gen_lib_name> with both sides \
+             non-empty, got: {s:?}"
+        ));
+    }
+    if let Some(c) = lib
+        .chars()
+        .find(|c| !matches!(c, 'A'..='Z' | 'a'..='z' | '0'..='9' | '_' | ':' | '-'))
+    {
+        return Err(format!(
+            "invalid character {c:?}; the <dep_json_gen_lib_name> side of --json-schema-dep takes a \
+             rust MODULE PATH (a crate name, or a path to a re-export — e.g. \
+             `cml_chain_json_schema_gen` or `crate::vendored`), not a type and not an arbitrary \
+             expression: the value is emitted verbatim into generated rust as \
+             `PATH::add_schemas(generator);`, so only [A-Za-z0-9_], `:` and `-` (normalised to `_`, \
+             so a cargo package name works verbatim) can be accepted — a module path has no generic \
+             arguments, and every other character could introduce a comment, a statement separator, \
+             or a string literal into a generated file"
+        ));
+    }
+    Ok(s.to_owned())
+}
+
 #[derive(Debug, Default, Parser)]
 #[clap()]
 pub struct Cli {
@@ -188,6 +236,34 @@ pub struct Cli {
         value_name = "RUST_PATH"
     )]
     pub json_schema_root: Vec<String>,
+
+    /// Thread a DEPENDENCY's whole row set into this crate's schema document: one
+    /// `<DEP_JSON_GEN_LIB>::add_schemas(generator);` call emitted into the json-gen crate's
+    /// `add_schemas`. With one document per crate, anything this crate's own types reference is
+    /// already present through the closure — what this adds is a dependency's UNREFERENCED roots,
+    /// which no closure over this document can reach and which `--json-schema-root` can only cover
+    /// by hand-restating the dep's root list (a duplicate that silently drifts from it). Each value
+    /// is `<dep>=<dep_json_gen_lib_name>`. The LEFT side is a LABEL only — it is never resolved
+    /// against the extern-dep set, since the emission depends solely on the right side; it exists for
+    /// duplicate detection, error messages, and readability beside the `--extern-wasm-crate` line for
+    /// the same dependency. The RIGHT side is a rust MODULE PATH emitted VERBATIM (charset
+    /// `[A-Za-z0-9_]`, `:` and `-`, the last normalised to `_` so a cargo package name works
+    /// verbatim). cddl-codegen does not touch `wasm/json-gen/Cargo.toml` for it: the tool knows the
+    /// crate NAME but not its path or version, and that manifest is MERGED rather than clobbered, so
+    /// the `[dependencies]` entry you add by hand survives regeneration (same story as
+    /// `--json-schema-root`'s cross-crate roots). A name the manifest does not depend on is an
+    /// `E0433` in your own json-gen build naming the crate, never a generation-time reject. Dep calls
+    /// are emitted FIRST, before this crate's own rows, in flag order (never sorted): a dep's names
+    /// are already shipped in the dep's own package, so on a cross-crate collision the consumer's row
+    /// is the one that should be renamed — the deliberate mirror of why `--json-schema-root` rows
+    /// come last. Repeatable; a repeated label, or one lib name under two labels, is a hard error.
+    /// Requires `--json-schema-export`.
+    #[clap(
+        long = "json-schema-dep",
+        value_parser = parse_json_schema_dep,
+        value_name = "DEP=DEP_JSON_GEN_LIB"
+    )]
+    pub json_schema_dep: Vec<String>,
 
     /// Location override for default common types (error, serialization, etc)
     /// This is useful for integrating into an exisitng project that is based on
@@ -501,6 +577,42 @@ impl Cli {
             map.insert(dep.to_owned(), path.to_owned());
         }
         map
+    }
+
+    /// Parsed `--json-schema-dep` mappings: `(dep label, dep json-gen lib name in code form)`, in
+    /// FLAG ORDER.
+    ///
+    /// A `Vec` rather than a `BTreeMap`/`BTreeSet` — deliberately the one accessor in this impl that
+    /// is not a sorted collection. Every sibling sorts because its consumer must not depend on flag
+    /// order; here flag order IS the input being preserved, because it decides the order the dep
+    /// registrars run in, and that order is observable through the emitted injectivity guard's
+    /// messages. Sorting would silently rewrite an input; a `Vec` keeps "same inputs -> same bytes"
+    /// without inventing an ordering. Duplicate detection therefore does not fall out of the
+    /// collection type and lives in `api::with_types` instead.
+    ///
+    /// Dashes in the lib name are normalised to underscores here (mirroring `extern_wasm_crate_map`)
+    /// so a cargo package name can be passed verbatim. A malformed value (no `=`, or an empty side)
+    /// is a hard error naming the flag, mirroring `extern_wasm_crate_map`; a parsed invocation cannot
+    /// reach that panic, since `parse_json_schema_dep` rejects the same shapes gracefully first.
+    pub fn json_schema_deps(&self) -> Vec<(String, String)> {
+        self.json_schema_dep
+            .iter()
+            .map(|entry| {
+                let (dep, lib) = entry.split_once('=').unwrap_or_else(|| {
+                    panic!(
+                        "--json-schema-dep value must be <dep>=<dep_json_gen_lib_name>, got: {entry:?}"
+                    )
+                });
+                let dep = dep.trim();
+                let lib = lib.trim();
+                if dep.is_empty() || lib.is_empty() {
+                    panic!(
+                        "--json-schema-dep value must be <dep>=<dep_json_gen_lib_name> with both sides non-empty, got: {entry:?}"
+                    );
+                }
+                (dep.to_owned(), lib.replace('-', "_"))
+            })
+            .collect()
     }
 
     /// If someone override the common imports, we don't want to export them

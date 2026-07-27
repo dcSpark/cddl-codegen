@@ -1340,8 +1340,8 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   extra root is emitted as an ordinary row through the same helper, so it inherits all three checks
   by construction; that inheritance is asserted by reading the emitter, not by a fixture with an
   extra root on the LOSING side of a collision, which would cost another nested-cargo failure cell —
-  mint one if a consumer reports a collision they introduced through the flag. Four holes remain,
-  each needing its own mechanism:
+  mint one if a consumer reports a collision they introduced through the flag. What remains — four
+  holes, each needing its own mechanism, plus one pair of recorded-but-unminted cells:
   - **A collision whose LOSER has no row and whose `schema_id`s match** is a silent merge nothing can
     see: the ledger only holds rows, and the merge makes both returned refs equal the shared name, so
     the kept-its-own-name check reads clean. Reaching it needs a way to enumerate what a row pulls in
@@ -1349,12 +1349,29 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
     reachable type set, or an upstream `schemars` setting that rejects two `TypeId`s resolving to one
     `schema_id`. The upstream lever is report-and-wait (`schemars` is a crates.io dependency, not a
     fork we pin like the `cddl` parser), so the document post-pass is the schedulable one.
-  - **A cross-crate collision** — two crates' `add_schemas` threaded into one `SchemaGenerator` —
-    escapes the ledger, which is a local of one crate's `add_schemas`. Widening it means either a
-    published ledger type in the static runtime (a new cross-crate API surface) or making
-    `add_schemas` take the ledger, which would break the composition-point signature a consumer was
-    told to call. Neither is worth doing before a consumer actually composes two documents; the
-    kept-its-own-name check still fires whenever the loser is a row of the crate being checked.
+  - **A cross-crate collision whose `schema_id`s MATCH** — two crates' `add_schemas` threaded into
+    one `SchemaGenerator` — escapes the ledger, which is a local of one crate's `add_schemas`. The
+    tool now EMITS that composition (`--json-schema-dep`), so this is no longer a hypothetical
+    layout: what remains uncovered is only the ids-match merge, because dep calls are emitted FIRST
+    and therefore an ids-DIFFER cross-crate collision hands the consumer's row `<name>2` and trips
+    the kept-its-own-name check on the side whose owner can change it. (That last step is reasoned
+    from the mechanism `json_schema_name_stolen_fails` exercises within one crate — cross-crate it is
+    not run; the two cells that would run it are recorded below.) Widening the ledger to span crates
+    still means either a published ledger type in the static runtime (a new cross-crate API surface)
+    or making `add_schemas` take the ledger, which would break the composition-point signature a
+    consumer was told to call — so the ids-match merge is where a cross-crate report would have to
+    land before either is worth doing.
+  - **`--json-schema-dep`'s two unminted cells**, both nested-cargo and both recorded rather than
+    built because each needs a second crate or a deliberate collision fixture:
+    a **cross-crate collision** cell (a vendored dep registering a name a consumer row also
+    publishes, asserting the CONSUMER's row is the one the guard blames — the assertion that would
+    turn the reasoning above into a measurement); and an **e2e whose dep is a genuinely separate
+    crate** rather than a module of the json-gen crate, which is what
+    `integration_tests::json_schema_dep_threading` uses today (its doc comment scopes this: the cell
+    proves the emitted call compiles, runs first, and lands unreferenced roots, not that cargo
+    resolves an external crate). Reopening signal for either: a consumer reporting a cross-crate
+    collision the guard did not blame correctly, or an `E0433` story that turns out to differ from
+    the documented one.
   - **A `schema_name()` that `schemars` percent-encodes into its `$ref`** (anything outside
     `[A-Za-z0-9_]`, e.g. the static runtime's `OrderedHashMap<K, V>`) skips the kept-its-own-name
     check entirely: `schemars`' `encode_ref_name` lives in a private module (`mod encoding` in
@@ -1677,23 +1694,6 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   (Scope: this records the ask as understood from the delivery's response notes; the requester's own
   statement of it is not in-tree.) Reopening signal: a consumer whose layout genuinely forces two
   passes into one json-gen crate and for whom the hand-written composition is not enough.
-- **Threading a dependency's `add_schemas` into a consumer's document.** Genuinely blocked on the
-  requester, not on design: the tool does not know a dependency's *json-gen crate name or path*.
-  `--extern-wasm-crate` / `--workspace-dep` establish the rust and wasm crate identities; the
-  json-gen crate is a third artifact whose existence is not implied (a dependency may have none at
-  all), and wiring it would need a new dependency edge in the consumer's json-gen manifest written
-  against a layout convention the tool would have to invent. What unblocks it, all workspace-layout
-  facts rather than design choices: how a consumer's json-gen crate should FIND a dep's json-gen
-  crate (a flag carrying `<dep-rust-crate>=<dep-json-gen-crate-name>@<path>`, or a convention plus
-  an opt-in flag), and whether a dependency with no json-gen crate is a hard error or a skip. What
-  it is worth is now narrower than when it was asked: with one document per crate, anything a
-  consumer's own types reference is already in the consumer's document through the closure, so the
-  residue is only a dependency's UNREFERENCED roots — and those are already expressible as
-  `--json-schema-root=<dep_crate>::<Type>` plus a hand-added dependency in the merged
-  `wasm/json-gen/Cargo.toml`. The entry stays because that route makes the consumer restate each root
-  by hand, where threading would import the dependency's own list; it remains blocked on the same
-  workspace-layout facts. `add_schemas` is emitted `pub` precisely so this stays additive.
-
 ## Operational watches
 
 - **The extern-interface export is a public interchange format.** Once a consumer regenerates

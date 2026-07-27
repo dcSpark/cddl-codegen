@@ -7851,6 +7851,125 @@ fn json_schema_ref_dangling_fails() {
     );
 }
 
+/// The SUCCESS direction of `--json-schema-dep`: the emitted registrar call compiles, runs, and puts
+/// a root NOTHING in this spec references into the exported document. That last clause is the whole
+/// feature — with one document per crate, anything the consumer's own types reference is already
+/// present through the closure, so what a dep's `add_schemas` adds is exactly its UNREFERENCED
+/// roots, which no closure could reach and which `--json-schema-root` can only cover by
+/// hand-restating the dep's root list.
+///
+/// Its own self-contained harness rather than a `run_test` row, modelled on
+/// `run_json_gen_failure_test` (same export-dir reset — the three merged manifests and the three
+/// seed-once `lib.rs` roots, both load-bearing for a REUSED export dir since generation merges
+/// manifests and never clobbers a crate root — the same `--no-preserve-comments` regeneration, and
+/// the same append-to-the-user-owned-root move) but asserting the run SUCCEEDS and then reading the
+/// document it wrote.
+///
+/// **Scope, stated honestly:** the "dependency" here is a MODULE of the json-gen crate itself
+/// (`crate::vendored_dep`), reached through the value the flag emits verbatim. So this cell proves
+/// the emitted call site compiles, runs BEFORE this crate's own rows, and lands unreferenced roots in
+/// the document. It does NOT exercise resolving a separate CRATE — that is cargo's job, and the
+/// failure mode when the hand-owned `wasm/json-gen/Cargo.toml` does not depend on the named crate is
+/// the documented `E0433`, not anything this tool can check.
+#[test]
+fn json_schema_dep_threading() {
+    use std::str::FromStr;
+    let test_path = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("json-schema-dep");
+    let export_path = test_path.join("export");
+    println!("--------- running json-schema-dep threading test ---------");
+    for manifest in [
+        "rust/Cargo.toml",
+        "wasm/Cargo.toml",
+        "wasm/json-gen/Cargo.toml",
+    ] {
+        let _ = std::fs::remove_file(export_path.join(manifest));
+    }
+    for root in [
+        "rust/src/lib.rs",
+        "wasm/src/lib.rs",
+        "wasm/json-gen/src/lib.rs",
+    ] {
+        let _ = std::fs::remove_file(export_path.join(root));
+    }
+    let generate = codegen_cmd()
+        .arg(format!("--output={}", export_path.to_str().unwrap()))
+        .arg(format!(
+            "--input={}",
+            test_path.join("inputs").to_str().unwrap()
+        ))
+        .arg("--no-preserve-comments")
+        .arg("--json-schema-export=true")
+        .arg("--json-serde-derives=true")
+        .arg("--wasm=false")
+        .arg("--json-schema-dep=dep_crate=crate::vendored_dep")
+        .output()
+        .unwrap();
+    if !generate.status.success() {
+        eprintln!("{}", String::from_utf8_lossy(&generate.stderr));
+    }
+    assert!(
+        generate.status.success(),
+        "generation must succeed for the json-schema-dep fixture"
+    );
+
+    // The stand-in dependency, appended to the SEED-ONCE json-gen crate root (never clobbered, so a
+    // hand-added module is exactly what a consumer would do; here it stands in for the `path`
+    // dependency a real consumer adds to the merged `wasm/json-gen/Cargo.toml`). `VendoredRoot` is
+    // referenced by nothing in the fixture spec.
+    let mut json_gen_lib_rs = std::fs::OpenOptions::new()
+        .append(true)
+        .open(export_path.join("wasm/json-gen/src/lib.rs"))
+        .unwrap();
+    json_gen_lib_rs
+        .write_all(
+            "\npub mod vendored_dep {\n    #[derive(schemars::JsonSchema)]\n    pub struct \
+             VendoredRoot {\n        pub tag: String,\n    }\n\n    pub fn add_schemas(generator: \
+             &mut schemars::SchemaGenerator) {\n        \
+             generator.subschema_for::<VendoredRoot>();\n    }\n}\n"
+                .as_bytes(),
+        )
+        .unwrap();
+    std::mem::drop(json_gen_lib_rs);
+
+    let json_export_dir = export_path.join("wasm/json-gen");
+    let run = tool_cmd("cargo")
+        .arg("run")
+        .current_dir(&json_export_dir)
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&run.stderr).into_owned();
+    println!("json-gen run stderr:\n{stderr}");
+    assert!(
+        run.status.success(),
+        "the json-gen run must SUCCEED — the emitted dep registrar call did not compile or panicked:\n{stderr}"
+    );
+
+    let document: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(json_export_dir.join("schemas/cddl_lib.schema.json"))
+            .expect("the json-gen run must write its document"),
+    )
+    .expect("the exported document must be valid JSON");
+    let defs = document
+        .get("$defs")
+        .and_then(|d| d.as_object())
+        .expect("the exported document must hold a `$defs` object");
+    // The dep's unreferenced root — the point of the flag. Absent without the emitted call, since
+    // nothing in the consumer's own document refers to it.
+    assert!(
+        defs.contains_key("VendoredRoot"),
+        "the dependency's UNREFERENCED root must reach `$defs`; got keys {:?}",
+        defs.keys().collect::<Vec<_>>()
+    );
+    // …alongside this crate's own row, so the dep call composes rather than replaces.
+    assert!(
+        defs.contains_key("OwnThing"),
+        "this crate's own row must still reach `$defs`; got keys {:?}",
+        defs.keys().collect::<Vec<_>>()
+    );
+}
+
 /// Float JSON serde/schema, split from `json` because that fixture also runs under
 /// `json_preserve` and preserve-encodings is unimplemented for floats.
 #[test]
@@ -8381,6 +8500,159 @@ fn json_schema_root_input_contract() {
     assert!(
         err.contains("non-empty"),
         "the empty-value rejection should say so, got: {err}"
+    );
+}
+
+/// The cheap (no nested cargo) halves of `--json-schema-dep`'s input contract, modelled directly on
+/// `json_schema_root_input_contract`. The success direction — a dep's registrar actually running and
+/// landing its unreferenced roots in the document — is the nested-cargo `json_schema_dep_threading`;
+/// this pins what must be rejected, and rejected BEFORE anything is written.
+///
+/// 1. Without `--json-schema-export` there is no json-gen crate and no `add_schemas` for the call to
+///    land in, so the flag would silently do nothing.
+/// 2. A repeated LABEL is ambiguous rather than additive: a dependency has one json-gen crate, and
+///    nothing decides which of two registrars is "the" one for it.
+/// 3. One lib name under two labels is a no-op: `add_schemas` registers a fixed set into the
+///    generator it is handed, so calling it twice registers nothing new.
+/// 4. The lib name is emitted VERBATIM as a call path, so the clap value parser's charset whitelist
+///    is what keeps a flag value from introducing a comment, a statement separator, or a string
+///    literal into a generated file — the same argument `--json-schema-root`'s parser carries. The
+///    label side has no charset rule at all (it is never emitted); it only has to be non-empty.
+#[test]
+fn json_schema_dep_input_contract() {
+    use clap::Parser;
+
+    let base = || crate::cli::Cli {
+        input: std::path::PathBuf::from("tests/json-extern/input.cddl"),
+        output: std::path::PathBuf::from("unused"),
+        json_serde_derives: true,
+        json_schema_export: true,
+        wasm: false,
+        ..Default::default()
+    };
+
+    // 1. requires --json-schema-export
+    let cli = crate::cli::Cli {
+        json_schema_export: false,
+        json_schema_dep: vec!["dep_crate=dep_crate_json_schema_gen".to_owned()],
+        ..base()
+    };
+    let err = crate::api::with_types(&cli, |_, _| ())
+        .expect_err("--json-schema-dep without --json-schema-export should be rejected");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("--json-schema-dep") && msg.contains("--json-schema-export=true"),
+        "rejection message should name both flags, got: {msg}"
+    );
+
+    // 2. a repeated LABEL is rejected, and the message names the label
+    let cli = crate::cli::Cli {
+        json_schema_dep: vec![
+            "dep_crate=first_json_schema_gen".to_owned(),
+            "other_dep=other_json_schema_gen".to_owned(),
+            "dep_crate=second_json_schema_gen".to_owned(),
+        ],
+        ..base()
+    };
+    let err = crate::api::with_types(&cli, |_, _| ())
+        .expect_err("a repeated --json-schema-dep label should be rejected");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("--json-schema-dep") && msg.contains("\"dep_crate\""),
+        "rejection message should name the repeated label, got: {msg}"
+    );
+
+    // 3. one lib name under two labels is rejected, and the message names the lib name
+    let cli = crate::cli::Cli {
+        json_schema_dep: vec![
+            "dep_crate=shared_json_schema_gen".to_owned(),
+            "other_dep=shared_json_schema_gen".to_owned(),
+        ],
+        ..base()
+    };
+    let err = crate::api::with_types(&cli, |_, _| ())
+        .expect_err("one --json-schema-dep lib name under two labels should be rejected");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("\"shared_json_schema_gen\""),
+        "rejection message should name the repeated lib name, got: {msg}"
+    );
+
+    // baseline: two DISTINCT pairs are accepted, so it is the repetition that is rejected in both
+    // directions above and not the flag itself.
+    let cli = crate::cli::Cli {
+        json_schema_dep: vec![
+            "dep_crate=dep_crate_json_schema_gen".to_owned(),
+            "other_dep=other_dep_json_schema_gen".to_owned(),
+        ],
+        ..base()
+    };
+    assert!(
+        crate::api::with_types(&cli, |_, _| ()).is_ok(),
+        "distinct --json-schema-dep pairs should be accepted"
+    );
+
+    // 4. the value parser: shape, charset, and the dash normalisation.
+    let parse = |value: &str| {
+        crate::cli::Cli::try_parse_from([
+            "cddl-codegen",
+            "--input=tests/json-extern/input.cddl",
+            "--output=unused",
+            "--json-schema-export=true",
+            value,
+        ])
+    };
+    assert!(
+        parse("--json-schema-dep=dep=some_crate").is_ok(),
+        "a bare crate name must be accepted"
+    );
+    assert!(
+        parse("--json-schema-dep=dep=crate::vendored").is_ok(),
+        "a module path must be accepted — a dep's registrar may be reached through a re-export"
+    );
+    let dashed = parse("--json-schema-dep=dep=some-crate")
+        .expect("a cargo package name with dashes must be accepted");
+    assert_eq!(
+        dashed.json_schema_deps(),
+        vec![("dep".to_owned(), "some_crate".to_owned())],
+        "dashes in the lib name must be normalised to underscores on the way in"
+    );
+    let err = parse("--json-schema-dep=dep=some_crate; std::process::exit(1)")
+        .expect_err("a value carrying a statement separator must be rejected")
+        .to_string();
+    assert!(
+        err.contains("invalid character ';'"),
+        "the charset rejection should name the offending character, got: {err}"
+    );
+    // An empty value carries no `=`, so it is rejected by the SHAPE rule rather than the
+    // non-empty-sides one — the two empty-side cases below are what exercise that rule.
+    let err = parse("--json-schema-dep=")
+        .expect_err("an empty value must be rejected")
+        .to_string();
+    assert!(
+        err.contains("--json-schema-dep value must be <dep>=<dep_json_gen_lib_name>"),
+        "the empty-value rejection should name the flag and its shape, got: {err}"
+    );
+    let err = parse("--json-schema-dep=some_crate")
+        .expect_err("a value with no `=` must be rejected")
+        .to_string();
+    assert!(
+        err.contains("--json-schema-dep value must be <dep>=<dep_json_gen_lib_name>"),
+        "the missing-separator rejection should name the flag and its shape, got: {err}"
+    );
+    let err = parse("--json-schema-dep==some_crate")
+        .expect_err("an empty label must be rejected")
+        .to_string();
+    assert!(
+        err.contains("non-empty"),
+        "the empty-label rejection should say so, got: {err}"
+    );
+    let err = parse("--json-schema-dep=dep=")
+        .expect_err("an empty lib name must be rejected")
+        .to_string();
+    assert!(
+        err.contains("non-empty"),
+        "the empty-lib-name rejection should say so, got: {err}"
     );
 }
 

@@ -1,0 +1,10 @@
+; End-to-end fixture for `--json-schema-dep` (feature request 12). Driven by
+; `integration_tests::json_schema_dep_threading`, which generates this spec with
+; `--json-schema-dep=dep_crate=crate::vendored_dep`, appends a `vendored_dep` module to the
+; seed-once `wasm/json-gen/src/lib.rs`, runs the json-gen crate, and asserts the vendored module's
+; UNREFERENCED root reached the document's `$defs` alongside this spec's own type.
+;
+; Deliberately minimal: one own type, which is all the cell needs on this side. The whole subject of
+; the cell lives on the OTHER side — a root nothing in this spec points at, so no closure over this
+; document could reach it, which is exactly the 60-definition gap the flag exists to close.
+own_thing = [a: uint, b: text]

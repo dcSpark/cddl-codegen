@@ -391,6 +391,54 @@ pub fn with_types<R>(
             .into());
         }
     }
+    // A dep registrar call is a line in the json-gen crate's `add_schemas`; without
+    // --json-schema-export there is no json-gen crate and no `add_schemas` for the call to land in,
+    // so the flag would silently do nothing (mirrors the four rules above).
+    if !cli.json_schema_dep.is_empty() && !cli.json_schema_export {
+        return Err(
+            "--json-schema-dep requires --json-schema-export=true: the dependency's registrar is \
+             emitted as a call in the json-gen crate's `add_schemas`, so without it there is no \
+             crate for the call to land in"
+                .into(),
+        );
+    }
+    // Both duplicate checks live here rather than falling out of the accessor's collection type,
+    // because `json_schema_deps()` is a Vec on purpose (flag order is load-bearing for the emission).
+    let deps = cli.json_schema_deps();
+    // One label naming two json-gen crates is ambiguous, not additive: nothing decides which of the
+    // two registrars is "the" one for that dependency, and emitting both would silently make the
+    // label mean something other than a dependency.
+    let mut seen_dep_labels = std::collections::BTreeSet::new();
+    for (label, _) in &deps {
+        if !seen_dep_labels.insert(label.as_str()) {
+            return Err(format!(
+                "--json-schema-dep label {label:?} was passed more than once: a dependency has one \
+                 json-gen crate, so two mappings for one label are ambiguous rather than additive \
+                 (this compares the label verbatim after trimming — two labels naming the SAME \
+                 dependency are not detected, and are caught by the lib-name check below whenever \
+                 they map to one registrar)"
+            )
+            .into());
+        }
+    }
+    // The same registrar under two labels is a user mistake with no meaning: `add_schemas` registers
+    // this crate's types into the generator it is handed, so calling it twice registers nothing new —
+    // the second call is a no-op rather than a composition.
+    let mut seen_dep_libs = std::collections::BTreeMap::new();
+    for (label, lib) in &deps {
+        if let Some(previous) = seen_dep_libs.insert(lib.as_str(), label.as_str()) {
+            return Err(format!(
+                "--json-schema-dep lib name {lib:?} was passed under more than one label \
+                 ({previous:?} and {label:?}): calling one crate's `add_schemas` twice registers \
+                 nothing the first call did not, so the second is a no-op rather than a composition \
+                 (this compares the lib name verbatim after trimming and dash normalisation — two \
+                 spellings of one registrar, e.g. `dep_json_schema_gen` and \
+                 `crate::vendored_dep_alias`, are not detected, and are harmless for the same \
+                 reason)"
+            )
+            .into());
+        }
+    }
     // Pre-processing files for multi-file support
     let input_files = if cli.input.is_dir() {
         let mut cddl_paths_buf = Vec::new();
