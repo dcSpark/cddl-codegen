@@ -172,7 +172,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      rule classifies as a plain alias (`rcN = bytes .cbor {…}`, `bytes .cbor (int .ne N)`) emits its
      wrapper (de)serialize code only at an embed/USE site — a bare alias rule emits none — so the
      layer-2 sweeps never compile that emission surface for alias roots (embedding exists only when
-     such a template lands INNER under another outer, e.g. the ledgered
+     such a template lands INNER under another outer, e.g. the
      `arr_mid inner=cbor_payload` case). Both escapes were preserve-only compile bugs found by
      review/fixture-TDD in the session that fixed their ledgered `tag_content` siblings (tag rules
      AUTO-WRAP into a struct, so those failed standalone and were ledgered; alias roots stayed
@@ -1728,6 +1728,33 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   next adds a bounded mint. Today that count is one (the `N64` magnitude, transformed through
   `nint_bounds_to_u64`); a SECOND such site means the working rule is being carried by hand in more
   than one place, and hand-carrying is what produced this instance.
+- **Nothing asserts that a recursive emitter's OVERLOADABLE parameter reaches every leaf it
+  emits, so a leaf that hardcodes the default is invisible until a composition happens to reach
+  it.** `generate_deserialize` threads a deserializer name (`raw` by default, `inner_de` under a
+  `bytes .cbor` payload), and four emission sites named `raw` outright: the `bool`/`f32`/`f64`
+  leaves, the indefinite-length break probe, and the INLINED c-style-enum variant sweep (whose
+  helper drops the overload by building a fresh config, and whose OTHER caller is legitimately
+  `raw`-based — the shape that makes a by-eye sweep unreliable). Each emitted a payload decode that
+  read the OUTER buffer, silently mis-framing every member after it. Detection today is entirely
+  by composition luck: the recombination layer-2 sweep found exactly ONE of the four
+  (`arr_mid × cbor_payload × prelude.float64`) because that filler exists; the other three were
+  found only by reading the emitter while fixing the first, and the sweep cannot reach them
+  (`bool` has no `.cbor`-composable filler that lands on the arm, an indefinite inner length is
+  unreachable from an emitter that only writes definite ones, and a c-style enum under `.cbor` is
+  not a composed pair). Detection is also LATE by construction — that sweep is full-tier-only, so
+  the one found instance sat in `LAYER2_KNOWN_BAD` rather than being fixed. All four are now fixed
+  and pinned by `cbor_payload_leaves` / `cbor_payload_indefinite_inner` in `tests/core/tests.rs`,
+  which execute a decode and assert the member AFTER the payload — the assertion a snapshot pin
+  structurally cannot make, since text blessed while the bug was live stays green forever. The
+  mechanical layer, which is a SOURCE lint rather than a fixture and therefore fast-tier-cheap:
+  enumerate the emitting sites reachable from `generate_deserialize` (its own body plus the
+  transitive closure of the helpers it calls) and fail on any emitted string literal containing a
+  bare `raw` token — the default must be spelled through the config accessor, never inline.
+  Trigger, on the axis the cost grows along: the COUNT of emitter parameters that are overloadable
+  in this way. Today it is one (the deserializer name); a SECOND — the serializer side has the
+  same shape latent, since `<var>_inner_se` is depth-agnostic (see cddl-matrix/ROADMAP.md's nested
+  `bytes .cbor` entry) — means the closure is being carried by hand in more than one emitter, and
+  hand-carrying is what produced these four.
 
 ## Deferred features (build when a real consumer needs them)
 
