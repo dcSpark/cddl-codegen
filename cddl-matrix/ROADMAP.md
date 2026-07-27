@@ -372,11 +372,17 @@ are ledgered here (that's what the probe/gate error messages point at).
   published wire format, not one they can rewrite) contains one or more `bytes .cbor` members whose
   payload type itself carries a `.cbor` control, directly or through a named alias. That is a `grep`
   over a spec they already hold, and the count of such members is the size of the hand-written
-  serialization they would have to maintain alongside the generated crate. Note that the
-  recombination sweep cannot supply this signal: its `cbor_payload` builder composes
-  `bytes .cbor {h}` without parentheses, so a self-composition spells
-  `bytes .cbor bytes .cbor uint`, which fails to PARSE and therefore never reaches the execution
-  layer — the shape is invisible to the fuzzer by construction.
+  serialization they would have to maintain alongside the generated crate.
+  The recombination sweep does not supply this signal today, but it is one character from doing so,
+  and that is the cheap way to reach the shape rather than a reason it cannot be reached. Its
+  `cbor_payload` builder composes `bytes .cbor {h}` unparenthesized, so a self-composition spells
+  `bytes .cbor bytes .cbor uint` — which is not merely unparsed by our front end but **illegal
+  CDDL**: RFC 8610's grammar is `type1 = type2 [S (rangeop / ctlop) S type2]`, so a control
+  operator's right-hand side is a `type2`, and `bytes .cbor uint` is a `type1`. The parse rejection
+  is the `cddl` crate behaving correctly, not a front-end gap. Parenthesizing that builder
+  (`bytes .cbor ({h})`) makes the RHS a `type2` and the self-composition legal, which would route
+  the shape straight into the execution layer — worth doing deliberately, with the composition churn
+  that implies, rather than treating the shape as unreachable.
 - **Make a `bytes .cbor <c-style enum>` payload under `--preserve-encodings` either generate or
   refuse.** The shape compiles and round-trips under the default profile (pinned by
   `cbor_payload_leaves` in `tests/core/tests.rs`), but adding `--preserve-encodings` emits a crate

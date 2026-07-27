@@ -772,6 +772,33 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   emitted crate does not compile; building it now would put a per-profile nested cargo build behind
   a catalog whose whole value is running in seconds on every `cargo test`.
 
+- **A fixture certifies only the PROFILES it is generated under, so a shape added to a
+  default-profile fixture is unexamined everywhere else — and no trigger above fires on it.** The
+  entry above is conditioned on a fix turning an abort into generated code (its trigger is a
+  robustness row flipping PANIC→`ok`); this class involves no abort, no flip, and no fix widening a
+  reachable set. The shape always generated. Proven instance: `bytes .cbor <c-style enum>` compiles
+  and round-trips under the default profile — `cbor_payload_leaves` in `tests/core/tests.rs` pins
+  exactly that — and emits a crate rustc rejects under `--preserve-encodings`, because the inlined
+  try-each-variant sequence reuses the enclosing `final_exprs` as its `Ok(..)` match pattern while
+  the `.cbor` arm has pushed a value expression (`StringEncoding::from(<var>_bytes_encoding)`) into
+  them. Established pre-existing by regenerating the same probe spec with the production files
+  stashed, so nothing about it is a consequence of the change that put a reader in front of it.
+  Two properties make it invisible rather than merely unpinned. First, it reaches **rustc** and is
+  rejected there, so it is not the disk-write-seam class (a call in pattern position is
+  syntactically a valid tuple-struct pattern, so rustfmt formats the file happily and generation
+  exits 0 — the defect is a resolution failure, not a parse failure, and no formatter can see it).
+  Second, `tests/core` is default-profile on both of its integration gates and in the snapshot
+  registry, so no committed vehicle generates this shape under `--preserve-encodings` at all.
+  The systematic answer is again to extend an existing gate's INPUT rather than adopt a new
+  contract: `all_supported_constructs_generate_all_profiles` already writes real crates under every
+  profile and is limited only by taking `supported.cddl` as its input, so the work is to get
+  profile-sensitive shapes into that input — not to build a per-profile harness beside it.
+  Trigger, on the axis the cost grows along: **the count of shapes pinned green by a
+  default-profile fixture that fail under another profile.** Today it is one, and a consumer
+  measures it without anything from us — they flip a flag on a spec they already have and their
+  build breaks on a shape our docs list as supported. A SECOND instance means default-profile
+  fixtures are systematically over-claiming, and the input extension stops being optional.
+
 - **Parallel-constructor fixture diversity: a parser over external input must span the ident-class
   matrix of REAL specs, not the feature spec's mental model.** Proven instance: the
   `--wrapper-requests` shape parser hand-built bare `Rust(ident)` element leaves instead of
