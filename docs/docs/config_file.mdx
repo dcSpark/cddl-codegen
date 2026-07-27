@@ -117,6 +117,23 @@ has no table, or naming one twice, is a hard error.
 Most keys are scalars and the later layer simply wins. Two kinds behave differently, because for
 them "replace" would be the wrong answer:
 
+:::caution A shared value can be overridden, but not un-set
+"Later wins" means a later layer can give a key a **different** value. It cannot take the key back to
+its built-in default, because the config has no spelling for "absent" — and for the keys whose flag
+takes an optional value (`static-dir`, `export-static-crate`, `rust-wasm-feature`,
+`deserialize-depth-limit`, `common-import-override`, and the three `wasm-*-macro` keys) no *value*
+means "off" either. In particular `common-import-override = ""` is not an escape hatch: it sets the
+override to the empty string, which still suppresses the crate's own static runtime, so you get a
+crate whose runtime files were never written.
+
+Boolean keys are unaffected — `false` is a real value, which is how a deviating crate turns
+`preserve-encodings` back off.
+
+So put a value in `[defaults]` only when it is genuinely universal. When it is shared by *most*
+crates, that is what a `[profiles.*]` table is for: the crates that want it list it, and the one that
+does not simply omits it.
+:::
+
 **Arrays concatenate**, earlier layers first, author order preserved within each layer. `workspace-dep`
 and `json-schema-root` are additive per-item lists, and `--json-schema-root` is order-significant
 (extra roots emit after every spec-derived row, in flag order), so a crate adding one root must not
