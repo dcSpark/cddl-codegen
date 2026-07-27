@@ -1,0 +1,26 @@
+; A `.cbor` target reached through a MULTI-LEVEL alias chain generates, in every position the
+; single-level siblings cover (tests/robustness/choice_cbor_ref_arm.cddl,
+; tests/robustness/cbor_ref_rule_body.cddl) — this row is the DEPTH axis those two do not have.
+;
+; Both of those fixtures pin a chain of length one (`bar = uint`), and the parse-side half of the
+; fix that makes them work strips exactly ONE `Alias` wrapper off the control operator's target
+; (`parse_control_operator`, the `ControlOperator::CBOR` arm). One strip is enough at any depth
+; because of an invariant held elsewhere: `register_type_alias` refuses an already-`Alias`-wrapped
+; base, so the alias table never stores a nested alias, so `resolve_alias`/`new_type` never hand
+; back one. Each link in a chain is therefore flattened as it registers — the rule-body registration
+; site does its own single strip for the same reason — and by the time a `.cbor` target resolves,
+; a four-link chain and a one-link chain are the identical `RustType`. Without this row, that
+; invariant is load-bearing for a shape nothing exercises, and a future change that lets a nested
+; alias into the table would only surface at depth.
+;
+; The rule NAMES are deliberately sorted so the chain links do NOT sort before their users
+; (`aaa_a` uses `bbb_b` uses `mmm_c` uses `zzz_d`): the rule-graph edge, not name order, is what has
+; to order them, and a name-order coincidence is exactly how the rule-body sibling used to generate
+; or abort by accident.
+zzz_d = uint
+mmm_c = zzz_d
+bbb_b = mmm_c
+aaa_a = bbb_b
+arm = bytes .cbor aaa_a / tstr
+memb = [f: bytes .cbor aaa_a]
+body = bytes .cbor aaa_a

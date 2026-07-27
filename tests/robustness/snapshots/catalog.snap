@@ -8,6 +8,7 @@ expression: catalog
 
 any_control_op             error (graceful)
 any_member                 ok
+cbor_ref_alias_chain       ok
 cbor_ref_rule_body         ok
 choice_any_arm             error (graceful)
 choice_array_any_arm       ok
