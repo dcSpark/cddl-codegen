@@ -5187,8 +5187,8 @@ impl Deserialize for OptFixedMap {
                                 let (m_nint_value, _) = raw.negative_integer_sz()?;
                                 if m_nint_value != -7 {
                                     return Err(DeserializeFailure::FixedValueMismatch {
-                                        found: Key::Uint((m_nint_value + 1).unsigned_abs() as u64),
-                                        expected: Key::Uint(6),
+                                        found: Key::Nint(m_nint_value),
+                                        expected: Key::Nint(-7),
                                     }
                                     .into());
                                 }
@@ -7036,8 +7036,8 @@ impl Deserialize for SignedInts {
                 let (i64_min_value, _) = raw.negative_integer_sz()?;
                 if i64_min_value != -9223372036854775808 {
                     return Err(DeserializeFailure::FixedValueMismatch {
-                        found: Key::Uint((i64_min_value + 1).unsigned_abs() as u64),
-                        expected: Key::Uint(9223372036854775807),
+                        found: Key::Nint(i64_min_value),
+                        expected: Key::Nint(-9223372036854775808),
                     }
                     .into());
                 }
