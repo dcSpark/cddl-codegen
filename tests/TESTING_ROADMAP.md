@@ -628,8 +628,11 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   direction: not a deferral rationale but a DELEGATION. A lane restricted to `fast` (heavy tiers
   being serialized centrally) added `tests/emit-tests-bounded-key/`, whose registry is enforced by
   `wasm_api_parity_axes_and_pins_are_live` — a plain `#[test]`, hence `local`. `fast`'s only cargo
-  invocation is `cargo test --bin cddl-codegen snapshot_tests`, a SUBSTRING filter, so every
-  `#[test]` outside that module is invisible to it; the implementer had no signal and shipped the
+  TEST invocation is `cargo test --bin cddl-codegen snapshot_tests`, a SUBSTRING filter, so every
+  `#[test]` outside that module is invisible to it. (`fast` does run `cargo fmt`/`cargo clippy`;
+  since `clippy --all-targets` type-checks test code, the precise asymmetry is that `fast` catches a
+  new `#[test]` that fails to COMPILE and never one that FAILS.) The implementer had no signal and
+  shipped the
   fixture without its registry row, costing a fail-fast `local` run that skipped twelve later gates.
   Two corrections to this entry's own sketch, measured while the trigger fired: (a) the tier pair
   that bites is `fast`/`local`, not only `fast`/`full`, and the `fast`/`local` gap is the one an
@@ -640,6 +643,25 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   starts. The AUTHORING half is now in force (AGENTS.md § delegation: name the enforcing tier for
   any registry-governed tree a delegation writes into); the mechanical half is a maintainer call,
   deliberately not taken mid-cycle because it edits `check.ts` itself.
+  **DEAD END, recorded with its proof, because it is the move anyone reaches for first: do NOT add
+  a hand-authored path-glob per registry gate.** The data needed splits in two, and only one half
+  exists. `gate -> tier` is already machine-readable in `check.ts`'s registry. `gate -> governed
+  paths` exists NOWHERE — `wasm_api_parity_axes_and_pins_are_live` governs `tests/*/input.cddl`, but
+  nothing declares that; it is implicit in a `read_dir` inside the test body. Declaring it by hand
+  manufactures a SECOND registry describing the first, which can drift from the gate it describes
+  while every path in it still resolves — a fresh instance of the precise class this section
+  already records four times over (the `KNOWN_PANIC_CLASSES` citation entry and the
+  point-in-time-inventory entry). A layer built that way would be a new instance of the failure it
+  is meant to prevent, and the drift would be invisible to any resolution check. Deriving the map
+  instead of declaring it does not rescue the approach either: the gates that govern a tree
+  enumerate it AT RUNTIME, so deriving means running them, which is what the layer exists to avoid.
+  UNBUILT SKETCH, not a validated design — offered only so the next attempt starts past the dead
+  end: invert the question. The risk materialises only when a NEW FILE appears under a governed
+  tree, which is a git-visible event, so a new-file trigger ("you added `tests/<newdir>/input.cddl`;
+  the registries enumerating that tree are X, Y, tier Z") needs only the LIST of enumerating gates —
+  no per-gate glob, hence no second registry to drift — and fires exactly when the delegation risk
+  is real rather than requiring someone to think to ask. Nothing about this was prototyped; its own
+  premise (that the set of tree-enumerating gates is small and stable enough to list) is unprobed.
 - **Observed-baseline comments beside gate floors rot silently — TWO instances, two homes, two
   distinct rot modes; the floors/consts stay the enforced artifact.** These comments are
   informational and review-maintained by design (replacing them with exact gate-asserted counts

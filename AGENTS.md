@@ -355,8 +355,11 @@ For sessions that spawn their own sub-agents (an orchestrating session, or a sub
   list the mechanism's members (the `check.ts` gate registry, the `#[test]` fns in the module, the
   registry consts) and check them — a grep can support a POSITIVE finding, never a negative one.
 - **A delegation that writes into a registry-governed tree must name the TIER that enforces the
-  registry.** `fast`'s only cargo invocation is `cargo test --bin cddl-codegen snapshot_tests` — a
-  substring filter — so every `#[test]` outside that module is `local` or later, and a sub-agent
+  registry.** `fast`'s only cargo TEST invocation is `cargo test --bin cddl-codegen snapshot_tests`
+  — a substring filter — so every `#[test]` outside that module is `local` or later. (It runs
+  `cargo fmt` and `cargo clippy` too, which is where the operationally useful asymmetry comes from:
+  `clippy --all-targets` TYPE-CHECKS test code, so a `fast`-restricted lane catches a new `#[test]`
+  that fails to COMPILE and never one that FAILS.) So a sub-agent
   restricted to `fast` (as it should be when heavy tiers are serialized) gets NO signal from the
   drift/registry gates that own most `tests/` trees. Adding `tests/<dir>/input.cddl` obliges a
   `CORPUS_PARITY_INPUTS`/`CORPUS_PARITY_EXCLUDED` row (`src/tests/wasm_parity_tests.rs`); other
