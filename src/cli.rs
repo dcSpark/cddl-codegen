@@ -409,7 +409,7 @@ pub struct Cli {
     /// category and determinism wording as `--extern-wrapper-index` (explicit cross-crate input; same
     /// inputs -> same bytes). Regenerate the dependency BEFORE the consumer so its export is fresh.
     /// Repeatable; each value is `<dep>=<path/to/extern-interface/<dep>>` (e.g.
-    /// `--extern-import cml_core=../cml-core/rust/extern-interface/cml_core`).
+    /// `--extern-import cml_core=../cml-core/extern-interface/cml_core`).
     #[clap(long = "extern-import", value_parser)]
     pub extern_import: Vec<String>,
 
