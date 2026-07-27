@@ -23,6 +23,15 @@
 //! guard-limit-exceeded path — at / under / over the limit, a graceful `DepthLimitExceeded` with no
 //! SIGABRT — is covered here exactly as a generated `--deserialize-depth-limit` crate behaves.
 
+// The sibling runtime module `static/any_cbor_json.rs` reaches for its final `serde_json::Value` →
+// serializer step (`super::json_value_ser::…`). Hosted ONCE here at this file's root so both JSON
+// shims below resolve it with the same `super::…` spelling a generated crate uses — the shims are
+// children of this module exactly as `any_cbor` is a child of `generated`.
+#[allow(dead_code)]
+mod json_value_ser {
+    include!("../../static/json_value_ser.rs");
+}
+
 // ---------------------------------------------------------------------------------------------
 // Module-independent corpus + generator (operate on raw bytes / cbor_event only; no AnyCbor).
 // ---------------------------------------------------------------------------------------------
