@@ -226,6 +226,10 @@ const CORPUS_PARITY_INPUTS: &[CorpusParityInput] = &[
         ],
     ),
     (
+        "json-arbitrary-precision",
+        &[("json_serde", &["--json-serde-derives=true"])],
+    ),
+    (
         "json-float",
         &[(
             "json",
