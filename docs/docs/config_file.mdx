@@ -382,6 +382,23 @@ only way to thread a crate that is **not** in this config. They union on top of 
 derivation or the override produced; an entry naming a key the derivation would also produce wins,
 silently and per half, like every other hand-written sub-table entry.
 
+:::note An umbrella package still needs a hand-written exporter
+Every `[crates.<name>]` table needs an `input`, so a config cannot describe a crate that generates
+*only* a schema document. That is the shape an **umbrella npm package** takes — one that re-exports
+several generated crates' wasm classes without having a spec of its own. Its document must cover the
+union of what it ships, and the config has no entry for it.
+
+Until it does, that package keeps a small hand-written json-gen crate: a `main.rs` calling each
+generated crate's `add_schemas` in turn through one `schemars::SchemaGenerator`, then the same
+document assembly and reference-closure check a generated one performs. The registration order is
+yours to choose there, and the reasoning is the one above — register the crate whose names you would
+rather keep stable **first**.
+
+The blocker is not the document. An input-less run already emits the right `add_schemas`; it also
+emits a vestigial rust crate that the json-gen manifest then depends on, whose package name collides
+with the umbrella crate you are trying to serve.
+:::
+
 ### Order, and which crate a collision blames
 
 `--json-schema-dep` is order-significant: flag order is registration order, and registration order
