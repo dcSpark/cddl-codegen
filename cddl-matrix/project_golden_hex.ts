@@ -339,6 +339,12 @@ const constructs = matrix.features
     };
   })
   .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+// Vacuity floor (the same class loadTomlArray guards at the overlay's root): if the feature rows ever
+// stopped carrying `encodings` — a renamed field, a loader that drops it — this section would render
+// an empty table and every gate would stay green, silently answering "no construct has an untested
+// legal encoding". An empty expansion is a broken input, not an answer.
+if (!constructs.length)
+  throw new Error("no feature row declares a non-empty `encodings` list — the per-construct expansion is vacuous (matrix.json lost the field?)");
 const constructsWithGaps = constructs.filter(c => c.emittable.length).length;
 w("## Per-construct legal encodings");
 w();
