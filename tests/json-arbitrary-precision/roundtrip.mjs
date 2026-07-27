@@ -39,6 +39,11 @@ for (const n of ['0', '1', '1000', '9007199254740991']) {
 for (const n of ['-1', '-3', '-9007199254740991']) {
   check(lib.AnyHolder.from_json(`{"payload":${n}}`), `AnyHolder(any=${n})`);
 }
+// Floats have an exact serde image too, so they must arrive as JS numbers rather than tokens. (JSON
+// has one number type, so `to_json()`'s `1.5` and JS's `1.5` are the same value on both sides.)
+for (const n of ['0.0', '1.5', '-0.25', '1e300']) {
+  check(lib.AnyHolder.from_json(`{"payload":${n}}`), `AnyHolder(any=${n})`);
+}
 // The consumer-shaped half: a `@custom_json` newtype whose hand-written Serialize routes a
 // serde_json::Value through the shipped helper.
 for (const n of ['0', '1000', '9007199254740991']) {

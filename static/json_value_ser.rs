@@ -15,16 +15,17 @@
 // WHAT THIS GUARANTEES.
 //   * WITHOUT `arbitrary_precision` (the default): byte-identical to `serde_json::Value`'s own
 //     `Serialize`. An integer `Number` is internally a `u64`/`i64` and is emitted through the same
-//     `serialize_u64`/`serialize_i64` calls; a float is internally an `f64`, fails every integer
-//     accessor and every integer parse of its decimal spelling, and falls through to the delegate arm
-//     — i.e. `serialize_f64`, exactly as before.
+//     `serialize_u64`/`serialize_i64` calls; a float is internally an `f64` whose decimal spelling IS
+//     serde_json's own print of it, so it reaches `serialize_f64`, exactly as before.
 //   * WITH `arbitrary_precision`: every value whose decimal spelling IS a canonical integer in
-//     `u64`/`i64`/`u128`/`i128` range is emitted as that integer, so the far side sees a number.
-//     Anything else (a fractional decimal carrying more precision than `f64`, an exponent form, a
-//     non-canonical spelling like `007`, an integer beyond ±2^127) keeps serde_json's own token
-//     rendering, because the serde data model has no lossless image for it and substituting `f64`
-//     would silently truncate `to_json()`. Never worse than the status quo, strictly better for every
-//     integer.
+//     `u64`/`i64`/`u128`/`i128` range is emitted as that integer, and every value whose spelling is
+//     exactly what serde_json prints for the `f64` it parses back to is emitted as that `f64` — so
+//     the far side sees a number. Only what the serde data model genuinely cannot hold LOSSLESSLY
+//     keeps serde_json's own token rendering: a decimal carrying more precision than `f64`, an
+//     exponent or non-canonical spelling (`1e+3`, `007`) whose bytes are not the number's own, and an
+//     integer beyond ±2^127. Substituting an approximation there would truncate `to_json()`, which is
+//     the trade this design refuses. Never worse than the status quo, strictly better everywhere a
+//     lossless image exists.
 //
 // The round-trip guard on each arm (the chosen integer's `to_string()` must equal the `Number`'s own)
 // is what makes the first guarantee hold for hand-built pathological spellings too: under
@@ -46,9 +47,10 @@
 // edition is theirs to choose, and into this repo's own in-bin runtime tests.
 
 /// Serialize a [`serde_json::Number`] HONESTLY: as an integer when its decimal spelling is a
-/// canonical integer that fits `u64`/`i64`/`u128`/`i128`, otherwise by delegating to serde_json's own
-/// impl (which is exact for floats, and is the only lossless carrier for an arbitrary-precision
-/// decimal). See this file's header for the two cfg guarantees.
+/// canonical integer that fits `u64`/`i64`/`u128`/`i128`, as an `f64` when its spelling is exactly
+/// what serde_json prints for that `f64`, and otherwise by delegating to serde_json's own impl (the
+/// only lossless carrier for a decimal the serde data model cannot hold). See this file's header for
+/// the two cfg guarantees.
 pub fn serialize_json_number<S>(
     number: &serde_json::Number,
     serializer: S,
@@ -82,9 +84,25 @@ where
     {
         return serializer.serialize_i128(i);
     }
-    // Not an integer the serde data model can hold: a float (whose delegate is `serialize_f64`, the
-    // pre-existing behaviour) or an arbitrary-precision decimal (whose only lossless carrier IS
-    // serde_json's token — keeping it is what keeps `to_json()` exact).
+    // Not an integer — but a float is honest too whenever the `Number`'s spelling is EXACTLY what
+    // serde_json prints for the `f64` it parses back to. That is EVERY float a
+    // `not(arbitrary_precision)` build can hold (its spelling IS that print), so this arm reproduces
+    // the old `serialize_f64` delegate exactly rather than changing it; and under the feature it
+    // covers every decimal an `f64` represents exactly, e.g. the `1.5` a CBOR float in an `any` member
+    // becomes. The guard is what excludes the genuinely unrepresentable rest: a decimal carrying more
+    // precision than `f64` (`0.1234567890123456789`) or an exponent spelling (`1e+3`) re-prints
+    // differently, so it falls through and keeps its exact bytes.
+    let spelling_is_this_f64 = |f: &f64| match serde_json::Number::from_f64(*f) {
+        Some(reprinted) => reprinted.to_string() == spelling,
+        None => false,
+    };
+    if let Some(f) = number.as_f64().filter(spelling_is_this_f64) {
+        return serializer.serialize_f64(f);
+    }
+    // An arbitrary-precision decimal with no image anywhere in the serde data model. serde_json's own
+    // token is its ONLY lossless carrier, so keeping it is what keeps `to_json()` exact — substituting
+    // the nearest `f64` here would silently truncate the lossless surface to buy a prettier
+    // `to_json_value()`, which is the trade this whole design refuses.
     serde::Serialize::serialize(number, serializer)
 }
 
