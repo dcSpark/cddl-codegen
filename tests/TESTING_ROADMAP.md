@@ -1543,6 +1543,30 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   a filesystem-effect claim has no artifact inventory to enumerate. If a flag-level instance actually
   ships, the layer to build is the same shape one rung out: a per-flag datum naming the artifact its
   documentation makes claims about.
+- **The recombination sweep's outcome counts are enforced only by vacuity floors, so a real class
+  migration lands unseen — TRIGGER ALREADY FIRED, build the detector.** `ok` / `graceful` / `panic`
+  are asserted only against floors sitting ~5% under the true numbers, and the exact baseline lives
+  in a source comment. Both halves failed together once: 42 compositions moved `ok` → `graceful`
+  (a deliberate anti-over-acceptance narrowing, but nothing recorded it as such) and the comment
+  drifted to match nothing, while every gate stayed green — found by re-measuring at the true
+  parent commit during an unrelated review, not by any run. Detector half, to land first: commit
+  the sweep's exact per-class counts as a self-measuring datum and fail on ANY movement, the shape
+  `tests/timings.json` already uses for durations, so a class migration is a reviewed bless-diff
+  carrying its reason instead of a silent slide; keep the floors as the vacuity backstop, since
+  they answer a different question (did the composer rot?). The cost of NOT having it grows with
+  the count of hand-written measured quantities nothing re-measures — see `cddl-matrix/ROADMAP.md`
+  § Maintenance, which owns that axis across both docs.
+- **Nothing asserts how MANY times a rejection message is emitted, and nested composites emit
+  theirs twice.** `a = [x: [* 5]]` prints its refusal twice because the parse walk visits a nested
+  composite twice; `a = [x: { uint => tstr }]` duplicates the same way, so the class predates the
+  guards that surfaced it. Behaviour is correct and the exit code is right — only the reading is
+  degraded, which is why the robustness/reject catalogs (they record an outcome LABEL, never the
+  message) cannot see it. Meanwhile the working rule is that a rejection's text is reviewed by
+  reading it once, at authoring time. The mechanical layer is a multiplicity assertion over the
+  catalogs' captured stderr, paired with a `contains` de-dup in `record_rejection`. Trigger, on the
+  axis the cost grows along — the repetition FACTOR, measurable by whoever next authors a fixture:
+  a catalog fixture whose refusal repeats a message THREE or more times (a deeper nest multiplies
+  it again), at which point a user cannot tell one refusal from several.
 
 ## Deferred features (build when a real consumer needs them)
 

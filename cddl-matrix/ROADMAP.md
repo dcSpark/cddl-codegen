@@ -45,7 +45,16 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
 - **Full role × feature coverage grid.** The corpus projection keys coverage on `(role × feature)` only for
   the cells where support *differs by role* (`prelude.null`, the literal values). A full grid for *every*
   construct is unbuilt — the floor data (`corpus_detect.ts` `rolesIn`, via `examples/ast_roles.rs`) already
-  supports it; wire it into `project_corpus.ts` if a consumer wants the complete matrix view.
+  supports it; wire it into `project_corpus.ts`.
+  The gap costs correctness, not presentation: two generation PANICs on valid CDDL lived in cells
+  the matrix has no row for, and both were found only by hand-probing around a neighbouring
+  fixture. A bare fixed value as a table's VALUE domain (`{ * uint => 5 }`) aborted while its array
+  sibling `[* 5]` was already pinned; and `.cbor` over a reference aborted while
+  `containment/cbor-payload.toml` carries `type2.map` / `type2.tag` / `type.choice` cells but no
+  `type2.typename` — so a capability `docs/docs/current_capacities.mdx` lists as supported
+  (`foo_bytes = bytes .cbor foo`) held for a struct target and aborted for an alias one, with
+  nothing to notice the disagreement. A grid names the unprobed cell instead of leaving it to
+  whoever happens to look next to it.
 - **Extern-interface seam sentinels — decide whether they're matrix surface.** `--extern-import`
   input files carry vendor constructs beyond the two `ext.*` sentinels: the
   `; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1` header and `; unexported:` records (strictly parsed at
@@ -285,10 +294,12 @@ are ledgered here (that's what the probe/gate error messages point at).
   the fixture's own `holder` DOES generate (the same table reached through more context), so the
   panic is order/paths-sensitive; pickup: classify the unhandled variant at the panic arm, add a
   `tests/robustness/` PANIC pin for the minimized shape, then re-mint the corpus row.
-- Map-representation group-choice arm with a fixed-value entry panics:
-  `contain.group-choice-arm.type2.value.map` (`t = { a: 0 // b: tstr }`) reaches generation and aborts at
-  the `assert_eq!(";" vs "")` site in `generate_deserialize` (generation/deserialize.rs). This is a new valid-CDDL surface for fixed values in a
-  map-rep arm, tracked as a known PANIC row in `tests/matrix_panic/`.
+- **Give the map-rep group-choice arm's fixed-value entry a graceful refusal or real support.**
+  `contain.group-choice-arm.type2.value.map` (`t = { a: 0 // b: tstr }`) is valid CDDL that aborts
+  generation at exit 101, at the `assert_eq!(";" vs "")` site in `generate_deserialize`
+  (generation/deserialize.rs) — a known PANIC row in `tests/matrix_panic/`. Deliverable shape:
+  the row flips to `error (graceful)`, or the arm generates. A printed remedy has to be one that
+  actually works (the float-table-key precedent, where the naive remedy was itself a dead end).
 - Fixed-value member containment still has unenumerated variants beyond the precedent rows
   `contain.array-element.prelude.{true,null}`, `contain.map-value.prelude.false`, and
   `contain.array-element.type2.tag.{fixed_null,fixed_bool}`. Remaining candidates include map-value
@@ -298,6 +309,12 @@ are ledgered here (that's what the probe/gate error messages point at).
   `tests/corpus/fixed_bool_member.cddl`). This is the "Intra-alternative variation rows" expansion
   rule (this doc) applied to the fixed-value member role: enumerate the wrapped variants as rows
   BEFORE trusting a green.
+  The variation axis is CARDINALITY as well as wrapping, and that half is what a
+  position-keyed enumeration misses: a fixed value is supported in exactly-once placement and
+  refused under a count-permitting occurrence, so every fixed-value kind needs rows on both sides
+  of that boundary. Proven by the shapes this rule would have named in advance — `[* 5]` and its
+  map sibling `{ * uint => 5 }` both reached generation as PANICs, and the map one had no row at
+  all until it was found by hand next to the array one.
 - **A nint fixed-value mismatch reports the CBOR wire representation, not the authored value** —
   `Key` (static/error.rs) has no signed variant, so the emitted check for `? neg: -3` renders
   `FixedValueMismatch { found: Key::Uint((neg_value + 1).unsigned_abs()), expected: Key::Uint(2) }`:
@@ -310,11 +327,12 @@ are ledgered here (that's what the probe/gate error messages point at).
   report makes it user-visible; enumerating a wrong-value reject vector for a nint fixed member is
   what would surface it systematically (the vector author confronts the rendered message at
   pin-authoring time).
-- Array-representation group-choice arm with an inline group panics:
-  `contain.group-choice-arm.grpent.inline_group.array` (`t = [ (uint, tstr) // bytes ]`) aborts in
-  `parsing.rs`'s `group_entry_to_type` (`inline group entries are not implemented`). This is a
-  distinct inline-group arm
-  limitation, tracked as a known PANIC row in `tests/matrix_panic/`.
+- **Give the array-rep group-choice arm's inline group a graceful refusal or real support.**
+  `contain.group-choice-arm.grpent.inline_group.array` (`t = [ (uint, tstr) // bytes ]`) is valid
+  CDDL that aborts in `parsing.rs`'s `group_entry_to_type` (`inline group entries are not
+  implemented`) — a distinct inline-group arm limitation, and a known PANIC row in
+  `tests/matrix_panic/`. Deliverable shape and remedy discipline: as for the map-rep fixed-value
+  arm above.
 - **A bare `any` type-choice arm in a NON-LAST position** (`a = any / tstr`) is a permanent graceful
   rejection, recorded here so the decision is not re-litigated: a bare `any` accepts every CBOR
   item, so any arm after it is unreachable dead code
@@ -361,10 +379,12 @@ are ledgered here (that's what the probe/gate error messages point at).
     `bytes .cbor float64` member fails its baseline re-decode (`Expected(Special, Text)` at the
     following field — a `.cbor` float payload mis-frames the buffer; still to minimize when picked
     up).
-- Array-representation group-choice arm with an anonymous map panics:
-  `contain.group-choice-arm.type2.map.array` (`t = [ {a: int, b: uint} // tstr ]`) aborts at
-  `parsing.rs:1592` (`TODO: non-table types as types`). This belongs to the anonymous-composite family but
-  has its own panic site, tracked as a known PANIC row in `tests/matrix_panic/`.
+- **Give the array-rep group-choice arm's anonymous map a graceful refusal or real support.**
+  `contain.group-choice-arm.type2.map.array` (`t = [ {a: int, b: uint} // tstr ]`) is valid CDDL
+  that aborts in `parsing.rs` at the `TODO: non-table types as types` site — the
+  anonymous-composite family, but with its own panic site, and a known PANIC row in
+  `tests/matrix_panic/`. Deliverable shape and remedy discipline: as for the two group-choice-arm
+  rows above.
 - Float-family table key domains are **rejected gracefully** at generation — a key domain that is
   (or recursively contains) a float compiles to a `BTreeMap<f64, _>` (or an `OrderedHashMap` bounded
   `K: Hash + Eq + Ord` under `--preserve-encodings`), and floats implement none of `Eq`/`Ord`/`Hash`,
@@ -715,8 +735,16 @@ another review rule. The class is not confined to this doc — one armed instanc
 wasm-ABI shape-family delivery (2026-07-21) grew the multifile skip ledger across three reviewed
 commits while `tests/README.md`'s "Twelve cells" pinned-cell prose (count + enumeration) went
 stale, caught only by a dedicated post-delivery doc audit, not by any of the six per-commit
-reviews. A second such instance in the pinned-cell prose is the trigger to derive that count/list
-from `MULTIFILE_MATRIX_SKIP` itself (a generated span, per this rule) rather than re-auditing.
+reviews. A second armed instance is on record and it did NOT land in prose: the recombination
+sweep's baseline outcome counts, carried as a source comment in `src/tests/recombination_tests.rs`,
+drifted 42 `ok` compositions from a fresh measurement while every gate stayed green — the sweep's
+vacuity floors sit far enough under the real numbers that the drift could not fire them. So the
+trigger is the class, not the venue, and it sits on the axis the cost grows along: **the count of
+hand-written MEASURED quantities that nothing re-measures**. Any such number a delivery has to
+hand-correct is the signal to derive it from its source rather than re-audit it — a generated span
+where the quantity is structural (`MULTIFILE_MATRIX_SKIP`'s count and enumeration), a committed
+self-measuring datum where it is measured (the shape `tests/timings.json` already uses for
+durations; the sweep's own datum is specified in `tests/TESTING_ROADMAP.md`).
 
 ## Related
 
