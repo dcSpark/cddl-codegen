@@ -18,6 +18,15 @@ holder_window = [m: {* 5..9 => tstr}]
 ; A one-sided window (no upper endpoint).
 holder_ge = [m: {* uint .ge 5 => tstr}]
 
+; A `nint` key: its RUST value is the u64 magnitude `m = |v + 1|`, not the CDDL value, and the
+; magnitude is DECREASING in the value — so the window's endpoints swap on the way in. `.ge -5`
+; becomes a magnitude window `m <= 4` (base 0 is already inside it, so the key spelling stays the
+; pre-base `__i as u64`), while `.le -5` becomes `m >= 4` (base 0 is magnitude 0 = value -1, which
+; violates it, so a non-zero magnitude must be chosen). Choosing or verifying a base in VALUE space
+; here emits `-5 as u64` = 18446744073709551611.
+holder_nint_ge = [m: {* nint .ge -5 => uint}]
+holder_nint_le = [m: {* nint .le -5 => uint}]
+
 ; A NON-integer key whose window is a LENGTH (`.size 3`), which the `__i.to_string()` key spelling
 ; has no way to steer. The minter must SKIP it loudly (the map mints empty and says why), never
 ; mint a violating key and let the emitted vector go red against a correct decoder.

@@ -1920,6 +1920,15 @@ fn materialize_at(
 /// check, so the minter and the decoder can never disagree about what the window means (the `.ne N`
 /// inverted-range encoding in particular is easy to re-derive backwards).
 ///
+/// The base is chosen in the KEY'S OWN storage space, which for `nint` is not value space: an
+/// `N64` key is stored as the u64 magnitude `m = |v + 1|`, so its value window has to go through
+/// `nint_bounds_to_u64` (which swaps the endpoints, magnitude being decreasing in the value)
+/// before either the choice or the verification means anything. Both the constructor check
+/// (`value_bounds_check_line`) and the value minter (`valid_value_at`'s `N64` arm) delegate to
+/// that same helper, and the reason to delegate rather than re-derive is written on it: a
+/// hand-rolled copy that drops the swap inverts the window while the deserializer — which checks
+/// the signed value directly — stays correct, so the two silently disagree.
+///
 /// `None` means "skip this map loudly" — this module never silently weakens a vector.
 fn map_key_base(key: &MapKey, key_ty: &RustType, count: i128) -> Option<i128> {
     let Some(bounds) = key_ty.config.bounds else {
@@ -1938,7 +1947,25 @@ fn map_key_base(key: &MapKey, key_ty: &RustType, count: i128) -> Option<i128> {
     if count <= 0 {
         return Some(0);
     }
-    let (prim_min, prim_max) = prim_range(p);
+    // `N64` is the one key primitive whose stored value is not the CDDL value: transform the window
+    // into magnitude space FIRST, so the candidates, the representability guard and the acceptance
+    // check all speak the same language as the emitted key literal.
+    let is_nint = matches!(p, Primitive::N64);
+    let bounds = if is_nint {
+        crate::generation::nint_bounds_to_u64(&bounds)
+    } else {
+        bounds
+    };
+    // The domain the minted literal must fit. `prim_range` answers `(i128::MIN, i128::MAX)` for
+    // `N64` — deliberately, since its callers ask about the CDDL value — which would make this
+    // guard vacuous for exactly the primitive that most needs it (a negative magnitude renders as
+    // `-5 as u64`, i.e. 18446744073709551611). Use the u64 magnitude domain here instead of
+    // widening `prim_range`, whose other caller (`materialize`) depends on the current answer.
+    let (prim_min, prim_max) = if is_nint {
+        (0, u64::MAX as i128)
+    } else {
+        prim_range(p)
+    };
     // Candidate bases in preference order: the window's lower endpoint (which for the INVERTED
     // `.ne N` encoding is `N + 1` — the first value above the exclusion), `0` (a window open on
     // the low side), and the highest run that still fits under the upper endpoint. Each is only a
@@ -1959,6 +1986,8 @@ fn map_key_base(key: &MapKey, key_ty: &RustType, count: i128) -> Option<i128> {
             return Some(base);
         }
     }
+    // `bounds` here is the STORAGE-space window (magnitude, for `N64`) the search actually ran in —
+    // reporting the value-space one would name a window the reader cannot line up with the failure.
     eprintln!(
         "cddl-codegen --emit-tests: map key window {bounds:?} has no run of {count} consecutive accepted {p:?} values — the map's key wire path is unexercised"
     );
