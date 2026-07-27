@@ -906,9 +906,34 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   `scope_references` over-imports). Still future-facing: the `cbor_event::se::Serialize` TRAIT
   import the non-canonical serialization prelude emits — a trait is exercised by a method call
   whose ident never appears, so name-scan cannot prove it unused; the detector's
-  `UNUSED_IMPORT_TRAIT_RESIDUE` skips it. A per-file trait-need model (scan for the `.serialize(`
-  method call / a bare `Serialize` bound) would remove it, but is deferred until the class recurs
-  with a second unremovable trait. Also watched, warning-severity only (never a compile error):
+  `UNUSED_IMPORT_TRAIT_RESIDUE` skips it. What a consumer sees is one rustc `unused import` warning
+  on every build of a crate whose flavor does not need it: `push_base_serialize_imports` pushes the
+  import whenever `!(preserve_encodings && canonical_form)`, while specs whose emitted impls name
+  the trait only by full path (`impl cbor_event::se::Serialize for …`) never exercise it — reported
+  from a downstream migration against a cip25-shaped non-preserve crate. The design that would
+  retire it, recorded so it is not re-derived: a trait's only ident-invisible use is METHOD-CALL
+  position, so `cbor_event::se::Serialize` is justified in a module family iff the family contains a
+  bare `Serialize` ident (UFCS, a bound, a trait object — all of which the scan already sees, since
+  a path TAIL like `cbor_event::se::Serialize` is correctly skipped) OR an ident `serialize`
+  IMMEDIATELY PRECEDED BY A LONE `.`. The `.`-precedence is the whole load: every generated
+  `impl … Serialize for X` block DEFINES `fn serialize`, so counting the bare ident would justify
+  the import in every file and the naive version is useless;
+  `.serialize_as_embedded_group(..)` is a different ident, so token-level matching needs no special
+  case, and `collect_idents_in_tokens` already tracks `prev1`/`prev2` for the path-tail skip, which
+  makes the detection itself a small local addition. The COST is not there: `is_candidate` keys on
+  the import's leaf ident against `ALLOWLIST ∪ PruneConfig::extra_candidates`, and justification is
+  a single `used` ident set per file, unioned across a module family through the super-glob
+  protector logic — a method-call-justified candidate needs a SECOND ident set threaded through
+  `used_by_path` and through every protector-union and disqualifier path beside the existing one.
+  That is a structural change to a pass whose entire design is conservative-keep, and its failure
+  direction is the bad one: over-prune is a consumer COMPILE ERROR where under-prune is only a
+  warning, and the gate that would catch an over-prune is `feature_corpus_compiles`, so the change
+  is only worth making in a cycle that can run it. Retiring the detector's
+  `UNUSED_IMPORT_TRAIT_RESIDUE` exemption (and its self-test) is the other half of the same change —
+  the residue and the exemption go together or not at all. Reopening signal: a second unremovable
+  trait joins the residue, or a consumer for whom the warning is more than cosmetic (it breaks a
+  `-D warnings` build, or it masks a real unused import in the same crate). Also watched,
+  warning-severity only (never a compile error):
   the one deliberately-conservative keep the disqualifiers do not cover — an intermediate module
   between the ancestor and a deeper protector that consumes the ancestor's copy for everything
   below it; replace the per-descendant approximation with exact resolution modelling only on a
