@@ -7029,6 +7029,13 @@ fn bounds_reject_value_agrees_with_emitted_condition() {
 /// `bounds_check_if_block` is exercised on both arms (the predicate-level walk over every arm is
 /// `bounds_reject_value_agrees_with_emitted_condition`).
 ///
+/// It also spans both SPACES a key can live in. An `N64` key stores the u64 magnitude
+/// `m = |v + 1|`, not the CDDL value, and the magnitude is decreasing in the value — so a window
+/// picked or verified in value space is wrong in both directions at once, and wrong QUIETLY: the
+/// `nint .le -5` row was green under a value-space base, because the nonsense magnitude it emitted
+/// (`-5 as u64`) decodes to about -1.8e19, which does satisfy `<= -5`. Only the `.ge` row goes red
+/// on that mistake, so both rows are pinned.
+///
 /// Non-preserve, rust-only: the key-base decision is profile-independent (it happens in the shared
 /// `MintValue` derivation, before either renderer), and the rust `cargo test` is the cheapest thing
 /// that RUNS the emitted assertions.
@@ -7065,6 +7072,8 @@ fn emit_tests_bounded_map_key_execute() {
         "roundtrip_holder_ne_one",
         "roundtrip_holder_window",
         "roundtrip_holder_ge",
+        "roundtrip_holder_nint_ge",
+        "roundtrip_holder_nint_le",
         "roundtrip_holder_str_size",
     ] {
         assert!(
@@ -7081,6 +7090,25 @@ fn emit_tests_bounded_map_key_execute() {
         src.contains("let v = HolderStrSize::new(Default::default());"),
         "a `.size`-bounded text key must mint the map EMPTY (loud skip), never a key whose length \
          violates the window\n{src}"
+    );
+    // The two `nint` rows pin that the window is transformed into MAGNITUDE space before the base
+    // is chosen AND before it is verified. Compared with whitespace stripped so the pins survive
+    // rustfmt's line breaking; each names the whole minted expression, because both the base and
+    // the spelling around it are the thing under test.
+    let flat: String = src.chars().filter(|c| !c.is_whitespace()).collect();
+    // `.ge -5` -> magnitude window `m <= 4`: base 0 is already inside it, so the key renders as the
+    // pre-base `__i as u64`. This is also the byte-identity floor for a base of 0.
+    assert!(
+        flat.contains("HolderNintGe::new((0u64..1).map(|__i|(__iasu64,0))"),
+        "a `nint .ge` key must mint back at magnitude base 0 (`__i as u64`) — a value-space base \
+         emits `-5 as u64` = 18446744073709551611\n{src}"
+    );
+    // `.le -5` -> magnitude window `m >= 4`: base 0 (magnitude 0 = value -1) violates it, so a
+    // non-zero MAGNITUDE must be chosen. 4 is the boundary, i.e. exactly value -5.
+    assert!(
+        flat.contains("HolderNintLe::new((0u64..1).map(|__i|((4+__iasi128)asu64,0))"),
+        "a `nint .le` key must mint magnitude 4 (value -5) — magnitude 0 is value -1, outside the \
+         window, and a value-space base is outside it by ~1.8e19 in the other direction\n{src}"
     );
     // Vacuity guard: the `.ne 0` table's keys must actually START above the excluded value. Without
     // this the gate could pass by minting the map EMPTY (or by the table vanishing from the
