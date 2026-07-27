@@ -232,30 +232,99 @@ for (const f of findings) {
 }
 
 const w = (s = "") => console.log(s);
+
+// --- CHECK REGISTRY ------------------------------------------------------------------------------
+// The verdict-bearing checks live in ONE list that drives both `hardFail` and the ❌/✅ console
+// blocks, so a check cannot fail the gate without printing what failed (the sibling of the same
+// invariant in verify.ts's SECTIONS). `group` places a check in the run's narrative — the overlay
+// half prints before the informational lines, the nuance half after — without letting either half
+// become a second hand-maintained list. Purely informational output (phantom / unreferenced /
+// detectorBlind / the C. SUPPORT SEAM block) is deliberately NOT here: it bears no verdict, so
+// registering it would only put non-verdict rows in the structure that defines the verdict.
+interface CheckSection {
+  key: string;                              // stable identifier, matches the collection it reports
+  group: "overlay" | "nuance";
+  hard: boolean;                            // does a non-empty `items` fail the gate?
+  items: readonly string[];
+  fail: (n: number) => string;              // the ❌ heading
+  ok: string;                               // the ✅ line printed when the check is clean
+  body?: (items: readonly string[]) => string[];   // default: one `   - <item>` line per item
+}
+const CHECKS: CheckSection[] = [
+  {
+    key: "driftA", group: "overlay", hard: true, items: driftA,
+    fail: n => `❌ A. CONTENT DRIFT (${n}):`,
+    ok: `✅ A. content drift: every cover (feature-axis + per-cell role) is exercised by its fixture.`,
+  },
+  {
+    key: "staleB", group: "overlay", hard: true, items: staleB,
+    fail: n => `❌ B. STALE (${n}):`,
+    ok: `✅ B. stale: every overlay id/fixture is real and every cell cover has a containment cell.`,
+  },
+  {
+    key: "driftH", group: "overlay", hard: true, items: driftH,
+    fail: n => `❌ H. CELL SUPPORT (${n}) — per-cell cover claims ✅ on a non-supported cell:`,
+    ok: `✅ H. per-cell coverage: every role-keyed cover targets a \`supported\` (role × feature) cell.`,
+  },
+  {
+    key: "unassigned", group: "overlay", hard: true, items: unassigned,
+    fail: n => `❌ D. UNASSIGNED (corpus exercises these, no canonical fixture) (${n}):`,
+    ok: `✅ D. completeness: every construct the corpus exercises has a canonical fixture.`,
+    body: items => [`   ${items.join(", ")}`],   // bare ids read better as one comma-joined line
+  },
+  {
+    key: "driftE", group: "nuance", hard: true, items: driftE,
+    fail: n => `❌ E. NOTE↔SUPPORT DISAGREEMENT (${n}):`,
+    ok: `✅ E. note status agrees with the matrix support verdict for every note.`,
+  },
+  {
+    key: "staleF", group: "nuance", hard: true, items: staleF,
+    fail: n => `❌ F. STALE NOTES (${n}):`,
+    ok: `✅ F. every note id is a real matrix id with a valid status.`,
+  },
+  {
+    key: "driftG", group: "nuance", hard: true, items: driftG,
+    fail: n => `❌ G. BROKEN ANCHORS (${n}) — self-invalidating evidence no longer in src/:`,
+    ok: `✅ G. every code_anchor is still present in src/ (evidence holds).`,
+  },
+  {
+    key: "staleFindingClaims", group: "nuance", hard: true, items: staleFindingClaims,
+    fail: n => `❌ I. STALE FINDING CLAIMS (${n}) — a failure-claim finding with no resolvable pin:`,
+    ok: `✅ I. every failure-claim finding names a resolvable tracking pin (tests/ file or src/tests/ symbol).`,
+  },
+];
+{
+  const seen = new Set<string>();
+  for (const c of CHECKS) {
+    if (!c.key) throw new Error("project_corpus.ts CHECKS: a check has an empty key");
+    if (seen.has(c.key)) throw new Error(`project_corpus.ts CHECKS: duplicate check key '${c.key}'`);
+    seen.add(c.key);
+  }
+}
+const emitted = new Set<string>();
+const emitChecks = (group: CheckSection["group"]) => {
+  for (const c of CHECKS.filter(c => c.group === group)) {
+    emitted.add(c.key);
+    if (!c.items.length) { w(c.ok); continue; }
+    w(c.fail(c.items.length));
+    for (const line of (c.body ?? (items => items.map(x => `   - ${x}`)))(c.items)) w(line);
+  }
+};
+
 w(`corpus overlay: ${featureCovers.length} feature-axis + ${cellCovers.length} per-cell (role×feature) assignments over ${files.length} fixtures`);
 w(`detected floor: ${detected.size} constructs exercised; ${coverIds.size} assigned a canonical fixture`);
 w();
-if (driftA.length) { w(`❌ A. CONTENT DRIFT (${driftA.length}):`); for (const x of driftA) w(`   - ${x}`); }
-else w(`✅ A. content drift: every cover (feature-axis + per-cell role) is exercised by its fixture.`);
-if (staleB.length) { w(`❌ B. STALE (${staleB.length}):`); for (const x of staleB) w(`   - ${x}`); }
-else w(`✅ B. stale: every overlay id/fixture is real and every cell cover has a containment cell.`);
-if (driftH.length) { w(`❌ H. CELL SUPPORT (${driftH.length}) — per-cell cover claims ✅ on a non-supported cell:`); for (const x of driftH) w(`   - ${x}`); }
-else w(`✅ H. per-cell coverage: every role-keyed cover targets a \`supported\` (role × feature) cell.`);
-if (unassigned.length) { w(`❌ D. UNASSIGNED (corpus exercises these, no canonical fixture) (${unassigned.length}):`); w(`   ${unassigned.join(", ")}`); }
-else w(`✅ D. completeness: every construct the corpus exercises has a canonical fixture.`);
+emitChecks("overlay");
 if (phantom.length) w(`⚠️  overlay ids the corpus never exercises (review): ${phantom.join(", ")}`);
 if (unreferenced.length) w(`ℹ️  fixtures no [[cover]] references (${unreferenced.length}/${files.length} — attribution gap, not a testing gap): ${unreferenced.join(", ")}`);
 if (detectorBlind.length) w(`ℹ️  supported ids undetectable by the text floor (check D cannot demand covers for these — see corpus_detect.NO_DETECTOR): ${detectorBlind.join(", ")}`);
 w();
 w(`nuance overlay: ${notes.length} notes (${notes.filter(n => n.status === "partial").length} ⚠️ partial, ${notes.filter(n => n.status === "unsupported").length} ➖ unsupported), ${findings.length} findings`);
-if (driftE.length) { w(`❌ E. NOTE↔SUPPORT DISAGREEMENT (${driftE.length}):`); for (const x of driftE) w(`   - ${x}`); }
-else w(`✅ E. note status agrees with the matrix support verdict for every note.`);
-if (staleF.length) { w(`❌ F. STALE NOTES (${staleF.length}):`); for (const x of staleF) w(`   - ${x}`); }
-else w(`✅ F. every note id is a real matrix id with a valid status.`);
-if (driftG.length) { w(`❌ G. BROKEN ANCHORS (${driftG.length}) — self-invalidating evidence no longer in src/:`); for (const x of driftG) w(`   - ${x}`); }
-else w(`✅ G. every code_anchor is still present in src/ (evidence holds).`);
-if (staleFindingClaims.length) { w(`❌ I. STALE FINDING CLAIMS (${staleFindingClaims.length}) — a failure-claim finding with no resolvable pin:`); for (const x of staleFindingClaims) w(`   - ${x}`); }
-else w(`✅ I. every failure-claim finding names a resolvable tracking pin (tests/ file or src/tests/ symbol).`);
+emitChecks("nuance");
+// Every registered check must have reached the console — a group value no `emitChecks` call names
+// would otherwise let a check fail the gate silently, the shape the registry exists to forbid.
+if (emitted.size !== CHECKS.length)
+  throw new Error(`project_corpus.ts CHECKS: ${CHECKS.length - emitted.size} check(s) never printed — an unemitted group`);
 w();
 w(`ℹ️  C. SUPPORT SEAM (${seamC.length}) — a construct with a ✅ cover entry yet marked not-supported by the`);
 w(`   matrix (a directional mismatch — covered in one context, unsupported in another). Reported, not fatal;`);
@@ -444,7 +513,7 @@ o();
 // The committed doc is written only when the gate passes: a hard-failing overlay must not rewrite
 // COVERAGE.md with rows rendered from the very claims that just failed validation (CI would catch
 // the nonzero exit either way; this protects the LOCAL working tree from a poisoned regeneration).
-const hardFail = driftA.length || staleB.length || driftH.length || unassigned.length || driftE.length || staleF.length || driftG.length || staleFindingClaims.length;
+const hardFail = CHECKS.some(c => c.hard && c.items.length > 0);
 w();
 if (hardFail) {
   w(`SKIPPED writing ${OUT.replace(`${HERE}/../`, "")} (hard failure — the committed doc is left untouched)`);

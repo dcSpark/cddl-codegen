@@ -2385,71 +2385,147 @@ for (const prod of ALT_PRODUCTIONS) {
   else console.log(`  - ${prod.padEnd(12)} [HARD] ${nAcct}/${nAlt} alternatives accounted${extras ? "  " + extras : ""}`);
 }
 
-if (fabricated.length) {
-  console.log("\nFABRICATED productions (backward lint: not in ABNF, not `prelude`, not control-op registry):");
-  for (const x of fabricated) console.log(`  - ${x.id}: production '${x.production}'`);
+// --- SECTION REGISTRY ----------------------------------------------------------------------------
+// ONE list is both the failure verdict and the printed evidence, so a category cannot join the
+// `RESULT: FAIL` accounting without also getting a console section — which is exactly how
+// `cddl_codegen_gaps` once failed a run with "see above" pointing at nothing, the culprit readable
+// only in verify_report.json. `hard_fail` is derived by filtering this array; the summary loop below
+// iterates the SAME array, so there is no second list to keep in step.
+//
+// `always` = print the header (with its count) even when empty — the standing counters a reader
+// expects to see at zero. `when: false` removes the section entirely (a flag-gated oracle): it is
+// neither printed nor eligible to fail the gate. `footer` is a trailing non-item line the section owns.
+interface ReportSection {
+  key: string;                      // stable identifier; matches the verify_report.json field where one exists
+  hard: boolean;                    // does a non-empty `items` fail the gate?
+  items: readonly unknown[];
+  header: (n: number) => string;
+  line?: (item: any) => string;
+  always?: boolean;
+  when?: boolean;
+  footer?: () => string;
 }
-if (gaps.length) { console.log("\nCOMPLETENESS GAPS (prelude):"); for (const g of gaps) console.log(`  - ${JSON.stringify(g)}`); }
-// Print this hard-fail category like its siblings — it once fired with no console section at all
-// ("see above" pointed at nothing; the culprit was only visible in verify_report.json).
-if (cddl_codegen_gaps.length) { console.log("\nCOMPLETENESS GAPS (CDDL_CODEGEN comment-DSL: documented directive/marker with no feature row):"); for (const g of cddl_codegen_gaps) console.log(`  - ${JSON.stringify(g)}`); }
-if (link_errors.length) { console.log("\nLINK-INTEGRITY ERRORS:"); for (const e of link_errors) console.log(`  - ${e.kind}: ${e.id} -> unknown '${e.ref}'`); }
-if (type2_uncovered.length) { console.log("\nTYPE2 PER-ALTERNATIVE GAPS (no covering feature row):"); for (const a of type2_uncovered) console.log(`  - ${a}`); }
-if (altCoverageResult.problems.length) {
-  console.log("\nALTERNATIVE COVERAGE GAPS:");
-  for (const p of altCoverageResult.problems) console.log(`  - ${p}`);
-}
-if (spec_invalid.length) {
-  console.log("\nSPEC-INVALID EXAMPLES (REFERENCE parser rejects an authored example):");
-  for (const pr of spec_invalid) console.log(`  - ${pr.id}: ruby=${ok(pr.ruby)} rust=${ok(pr.rust)}  ex=${JSON.stringify(pr.example)}`);
-}
-if (containment_contradictions.length) {
-  console.log("\nCONTAINMENT CONTRADICTIONS (reference-observed spec != declared spec):");
-  for (const c of containment_contradictions) console.log(`  - ${c.id}: declared=${c.spec_declared} observed=${c.spec_observed}`);
-}
-if (parser_limitations.length || containment_parser_limitations.length) {
-  console.log("\nPARSER LIMITATIONS (reference/ABNF accept, rust rejects — informational, non-fatal):");
-  for (const u of [...parser_limitations].sort()) console.log(`  - ${u}`);
-  for (const u of [...containment_parser_limitations].sort()) console.log(`  - ${u} (containment)`);
+const SECTIONS: ReportSection[] = [
+  {
+    key: "fabricated", hard: true, items: fabricated,
+    header: () => "\nFABRICATED productions (backward lint: not in ABNF, not `prelude`, not control-op registry):",
+    line: (x: typeof fabricated[number]) => `  - ${x.id}: production '${x.production}'`,
+  },
+  {
+    key: "gaps", hard: true, items: gaps,
+    header: () => "\nCOMPLETENESS GAPS (prelude):",
+    line: g => `  - ${JSON.stringify(g)}`,
+  },
+  {
+    key: "cddl_codegen_gaps", hard: true, items: cddl_codegen_gaps,
+    header: () => "\nCOMPLETENESS GAPS (CDDL_CODEGEN comment-DSL: documented directive/marker with no feature row):",
+    line: g => `  - ${JSON.stringify(g)}`,
+  },
+  {
+    key: "link_errors", hard: true, items: link_errors,
+    header: () => "\nLINK-INTEGRITY ERRORS:",
+    line: (e: typeof link_errors[number]) => `  - ${e.kind}: ${e.id} -> unknown '${e.ref}'`,
+  },
+  {
+    key: "type2_uncovered_alternatives", hard: false, items: type2_uncovered,
+    header: () => "\nTYPE2 PER-ALTERNATIVE GAPS (no covering feature row):",
+    line: (a: string) => `  - ${a}`,
+  },
+  {
+    key: "alternative_coverage_problems", hard: true, items: altCoverageResult.problems,
+    header: () => "\nALTERNATIVE COVERAGE GAPS:",
+    line: (p: string) => `  - ${p}`,
+  },
+  {
+    key: "spec_invalid", hard: true, items: spec_invalid,
+    header: () => "\nSPEC-INVALID EXAMPLES (REFERENCE parser rejects an authored example):",
+    line: (pr: typeof spec_invalid[number]) => `  - ${pr.id}: ruby=${ok(pr.ruby)} rust=${ok(pr.rust)}  ex=${JSON.stringify(pr.example)}`,
+  },
+  {
+    key: "containment_contradictions", hard: true, items: containment_contradictions,
+    header: () => "\nCONTAINMENT CONTRADICTIONS (reference-observed spec != declared spec):",
+    line: (c: typeof containment_contradictions[number]) => `  - ${c.id}: declared=${c.spec_declared} observed=${c.spec_observed}`,
+  },
+  {
+    // One section over two collections: the feature-loop and containment-loop limitations read as one
+    // list to a human, distinguished per line rather than by a second heading.
+    key: "parser_limitations", hard: false,
+    items: [
+      ...[...parser_limitations].sort().map(id => ({ id, containment: false })),
+      ...[...containment_parser_limitations].sort().map(id => ({ id, containment: true })),
+    ],
+    header: () => "\nPARSER LIMITATIONS (reference/ABNF accept, rust rejects — informational, non-fatal):",
+    line: (u: { id: string; containment: boolean }) => `  - ${u.id}${u.containment ? " (containment)" : ""}`,
+  },
+  {
+    key: "out_of_profile", hard: false, items: out_of_profile, always: true,
+    header: n => "\nOUT_OF_PROFILE (" + n + `; profile newer than ${CDDL_CODEGEN_TARGET_PROFILE} and cddl-codegen rejects — excluded from gaps, NOT unsupported):`,
+    line: (u: string) => {
+      const pr = probe_results.find(p => p.id === u)!;
+      return `  - ${u} (profile ${pr.profile}; ${pr.support_detail})`;
+    },
+  },
+  {
+    key: "uncertain", hard: false, items: uncertain, always: true,
+    header: n => "\nUNCERTAIN (" + n + "):",
+    line: (u: string) => `  - ${u}`,
+  },
+  {
+    key: "emission_divergences", hard: false, items: emission_divergences, always: true,
+    header: n => "\nEMISSION DIVERGENCES (" + n + "; default-supported but unsupported under a non-default emission profile):",
+    line: (dv: EmissionDivergence) => `  - ${dv.id} [emission=${dv.profile}]: ${dv.detail}`,
+  },
+  {
+    key: "decode_foreign_failures", hard: false, items: decode_foreign_failures, always: true, when: DECODE_FOREIGN,
+    header: n => "\nDECODE-FOREIGN FAILURES (" + n + "; supported row whose committed spec-derived vectors the generated decoder REJECTED — corroboration only, verdict unchanged):",
+    line: (df: DecodeForeignFailure) => `  - ${df.id} (${df.vectors} accept vector(s))`,
+    footer: () => `decode-foreign     : corroborated=${decodeForeignCounts.rows_corroborated} row(s) (${decodeForeignCounts.vectors_accepted} vector(s)); no-vectors=${decodeForeignCounts.rows_no_vectors}; failed=${decodeForeignCounts.rows_failed}`,
+  },
+  {
+    key: "controlop_missing_example", hard: true, items: controlop_missing_example,
+    header: () => "\nCONTROL-OPS MISSING AN EXAMPLE (add to control_examples.toml):",
+    line: (id: string) => `  - ${id}`,
+  },
+  {
+    key: "containment_missing_example", hard: true, items: containment_missing_example,
+    header: () => "\nCONTAINMENT CELLS MISSING AN EXAMPLE (unprobed, uncorroborated — add to containment/*.toml):",
+    line: (id: string) => `  - ${id}`,
+  },
+  {
+    key: "controlop_uncorroborated", hard: false, items: controlop_uncorroborated,
+    header: () => "\nCONTROL-OP EXAMPLES UNCORROBORATED BY THE REFERENCE (nonzero ruby exit — either the example is malformed OR ruby postdates/rejects the op; REVIEW against the defining RFC):",
+    line: (id: string) => `  - ${id}`,
+  },
+];
+// Structural self-check: a half-registered category (no key, a duplicate key, or a hard category with
+// no per-item printer) would reintroduce the very "fails with nothing to read" shape this registry
+// exists to make impossible, so refuse to run rather than emit a verdict nobody can act on.
+{
+  const seen = new Set<string>();
+  for (const s of SECTIONS) {
+    if (!s.key) throw new Error("verify.ts SECTIONS: a section has an empty key");
+    if (seen.has(s.key)) throw new Error(`verify.ts SECTIONS: duplicate section key '${s.key}'`);
+    seen.add(s.key);
+    if (s.hard && typeof s.line !== "function")
+      throw new Error(`verify.ts SECTIONS: hard section '${s.key}' has no per-item printer — it could fail the gate with nothing to read`);
+  }
 }
 
-console.log("\nOUT_OF_PROFILE (" + out_of_profile.length + `; profile newer than ${CDDL_CODEGEN_TARGET_PROFILE} and cddl-codegen rejects — excluded from gaps, NOT unsupported):`);
-for (const u of out_of_profile) {
-  const pr = probe_results.find(p => p.id === u)!;
-  console.log(`  - ${u} (profile ${pr.profile}; ${pr.support_detail})`);
+for (const sec of SECTIONS) {
+  if (sec.when === false) continue;
+  if (!sec.always && sec.items.length === 0) continue;
+  console.log(sec.header(sec.items.length));
+  const line = sec.line;
+  if (line) for (const item of sec.items) console.log(line(item));
+  if (sec.footer) console.log(sec.footer());
 }
 
-console.log("\nUNCERTAIN (" + uncertain.length + "):");
-for (const u of uncertain) console.log(`  - ${u}`);
-
-console.log("\nEMISSION DIVERGENCES (" + emission_divergences.length + "; default-supported but unsupported under a non-default emission profile):");
-for (const dv of emission_divergences) console.log(`  - ${dv.id} [emission=${dv.profile}]: ${dv.detail}`);
-
-if (DECODE_FOREIGN) {
-  console.log("\nDECODE-FOREIGN FAILURES (" + decode_foreign_failures.length + "; supported row whose committed spec-derived vectors the generated decoder REJECTED — corroboration only, verdict unchanged):");
-  for (const df of decode_foreign_failures) console.log(`  - ${df.id} (${df.vectors} accept vector(s))`);
-  console.log(`decode-foreign     : corroborated=${decodeForeignCounts.rows_corroborated} row(s) (${decodeForeignCounts.vectors_accepted} vector(s)); no-vectors=${decodeForeignCounts.rows_no_vectors}; failed=${decodeForeignCounts.rows_failed}`);
-}
-
-if (controlop_missing_example.length) {
-  console.log("\nCONTROL-OPS MISSING AN EXAMPLE (add to control_examples.toml):");
-  for (const id of controlop_missing_example) console.log(`  - ${id}`);
-}
-if (containment_missing_example.length) {
-  console.log("\nCONTAINMENT CELLS MISSING AN EXAMPLE (unprobed, uncorroborated — add to containment/*.toml):");
-  for (const id of containment_missing_example) console.log(`  - ${id}`);
-}
-if (controlop_uncorroborated.length) {
-  console.log("\nCONTROL-OP EXAMPLES UNCORROBORATED BY THE REFERENCE (nonzero ruby exit — either the example is malformed OR ruby postdates/rejects the op; REVIEW against the defining RFC):");
-  for (const id of controlop_uncorroborated) console.log(`  - ${id}`);
-}
 if (harness_timeouts_retried)
   console.log(`\nNOTE: ${harness_timeouts_retried} probe(s) timed out / were killed and succeeded on retry.`);
 
 console.log("\nwrote verify_report.json");
 
-const hard_fail = fabricated.length || gaps.length || cddl_codegen_gaps.length || link_errors.length || altCoverageResult.problems.length ||
-  spec_invalid.length || containment_contradictions.length || controlop_missing_example.length || containment_missing_example.length;
+const hard_fail = SECTIONS.some(s => s.hard && s.when !== false && s.items.length > 0);
 if (hard_fail) { console.log("\nRESULT: FAIL (hard failure — see above; annotations/cddl_codegen.toml left untouched)"); process.exit(1); }
 const prevAnno = existsSync(annoPath) ? readFileSync(annoPath, "utf8") : "";
 writeFileSync(annoPath, annoContent);

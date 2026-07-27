@@ -754,16 +754,6 @@ On the next edit to the wasm-oracle evidence composer, distinguish the stages in
 graceful rejection is not mistaken for a build break; until then, cross-check a surprising wasm
 clause against the generator's own exit before treating it as a regression.
 
-`verify.ts`'s hard-fail accounting (the `hard_fail` expression) and its console sections are two
-hand-maintained parallel lists, so a category can join the failure verdict without joining the
-output: `cddl_codegen_gaps` did exactly that — a run failed with "see above" pointing at nothing,
-and the culprit was only readable in `verify_report.json` (a print section exists now, but that's
-the tactical patch, not the class fix). On the next category addition — or the next instance of a
-swallowed diagnostic anywhere in the gate scripts — derive both from ONE section registry
-(`{label, items, print}`; `hard_fail` = any section non-empty; the summary loop prints every
-non-empty section) so counting silently becomes structurally impossible, and audit
-`project_corpus.ts`'s sibling `hardFail` list to the same standard while there.
-
 ## Related
 
 Broader testing work (clear-wins, roadmap items, the trailing-bytes runtime change) lives in

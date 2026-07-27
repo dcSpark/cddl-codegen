@@ -505,6 +505,19 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   leftover `$TMPDIR/cddl_verify_*` now means a run that was KILLED (a signal skips exit handlers) or a
   red run's one kept probe dir — not the normal case. The triage lesson still generalizes: before
   trusting (or hand-reverting) a wide evidence diff, check `df` and clear stale scratch.
+- **A failure category joins the verdict by joining the OUTPUT — one registry, not two lists.**
+  `verify.ts`'s `SECTIONS` and `project_corpus.ts`'s `CHECKS` are each a single array from which both
+  the hard-fail verdict (`hard` entries with non-empty `items`) and the printed console sections are
+  derived, so registering a category is one edit and a category cannot fail a run with nothing to
+  read. This is the structural form of a defect that shipped: `cddl_codegen_gaps` sat in `verify.ts`'s
+  hard-fail expression with no print block, and a red run said "see above" pointing at nothing — the
+  culprit readable only in `verify_report.json`. Adding a category means adding a registry entry
+  (`key`, `hard`, `items`, headings, per-item printer); a module-scope self-check refuses to run on a
+  duplicate/empty key or a hard entry with no printer, and `project_corpus.ts` additionally asserts
+  every registered check reached the console. Purely informational output (`verify.ts`'s
+  `harness_timeouts_retried` note; `project_corpus.ts`'s phantom/unreferenced/detector-blind lines and
+  the `ℹ️  C. SUPPORT SEAM` block) stays outside the registries — it bears no verdict, and putting
+  non-verdict rows in the structure that defines the verdict is what makes such a list drift.
 
 ## Registering a new vendor (CDDL_CODEGEN) feature row
 
