@@ -103,6 +103,48 @@ fn parse_json_schema_dep(s: &str) -> Result<String, String> {
     Ok(s.to_owned())
 }
 
+/// clap value parser for `--json-gen-dep`, whose value is `<cargo-package-name>=<path>`.
+///
+/// Unlike every sibling in this file, NEITHER side lands in generated rust — both land in a TOML
+/// manifest, as `<name> = { path = "<path>" }` under `[dependencies]` of `wasm/json-gen/Cargo.toml`.
+/// That changes what each side has to guard against:
+///
+/// * The LEFT side is a **cargo package name**, so it carries cargo's package-name charset
+///   (`[A-Za-z0-9_-]`). It is also a TOML key and a `[dependencies]` path segment, and restricting it
+///   here is what keeps it from having to be quoted or escaped anywhere downstream. Note the
+///   direction: this is the dashed PACKAGE name (`cml-chain-json-schema-gen`), the opposite side of
+///   the `-`/`_` normalisation from `--json-schema-dep`'s right-hand side, which is the underscored
+///   rust LIB path (`cml_chain_json_schema_gen`).
+/// * The RIGHT side is a filesystem path with no charset restriction: it is written through
+///   `toml_edit`, which quotes and escapes it, so it cannot inject structure into the manifest the
+///   way a verbatim-into-rust value could. The only requirement is non-empty.
+fn parse_json_gen_dep(s: &str) -> Result<String, String> {
+    let (name, path) = s.split_once('=').ok_or_else(|| {
+        format!("--json-gen-dep value must be <cargo_package_name>=<path>, got: {s:?}")
+    })?;
+    let name = name.trim();
+    let path = path.trim();
+    if name.is_empty() || path.is_empty() {
+        return Err(format!(
+            "--json-gen-dep value must be <cargo_package_name>=<path> with both sides non-empty, \
+             got: {s:?}"
+        ));
+    }
+    if let Some(c) = name
+        .chars()
+        .find(|c| !matches!(c, 'A'..='Z' | 'a'..='z' | '0'..='9' | '_' | '-'))
+    {
+        return Err(format!(
+            "invalid character {c:?}; the <cargo_package_name> side of --json-gen-dep is a CARGO \
+             PACKAGE NAME (e.g. `cml-chain-json-schema-gen`), which uses only [A-Za-z0-9_-] — it \
+             becomes a `[dependencies]` key in the generated `wasm/json-gen/Cargo.toml`. Note this \
+             is the DASHED package name, not the underscored rust lib path \
+             `--json-schema-dep` takes on its right-hand side"
+        ));
+    }
+    Ok(s.to_owned())
+}
+
 /// The flags below describe ONE generated crate. A project that generates several — the shape that
 /// makes the flag lists long and mostly-repeated — can instead put them in a config file:
 /// `cddl-codegen --config <file.toml> [CRATE...]`, where every flag here is a key. That mode is
@@ -229,9 +271,9 @@ pub struct Cli {
     /// in the json-gen crate's `add_schemas`, for a type that is part of the published surface but that the CDDL never
     /// describes (a hand-written address/key type whose JSON form is API while its bytes are not a
     /// CDDL rule). The value is a RUST path rooted anywhere the json-gen crate can reach — the own
-    /// rust crate (`cddl_lib::byron::ByronAddress`) or another crate the consumer adds to the
-    /// generated `wasm/json-gen/Cargo.toml` by hand (that manifest is MERGED, never clobbered, so
-    /// the added dependency survives regeneration). Emitted VERBATIM, so the value's charset is
+    /// rust crate (`cddl_lib::byron::ByronAddress`) or another crate the consumer declares in the
+    /// generated `wasm/json-gen/Cargo.toml` — with `--json-gen-dep`, or by hand (that manifest is
+    /// MERGED, never clobbered, so either survives regeneration). Emitted VERBATIM, so the value's charset is
     /// restricted to `[A-Za-z0-9_]`, `:`, `<`, `>`, `,` and space; cddl-codegen does not typecheck
     /// Rust, so a path that does not resolve is an `E0433`/`E0412` in the consumer's json-gen build,
     /// never a generation-time reject. Extra roots are emitted AFTER every spec-derived row, in flag
@@ -258,10 +300,11 @@ pub struct Cli {
     /// duplicate detection, error messages, and readability beside the `--extern-wasm-crate` line for
     /// the same dependency. The RIGHT side is a rust MODULE PATH emitted VERBATIM (charset
     /// `[A-Za-z0-9_]`, `:` and `-`, the last normalised to `_` so a cargo package name works
-    /// verbatim). cddl-codegen does not touch `wasm/json-gen/Cargo.toml` for it: the tool knows the
-    /// crate NAME but not its path or version, and that manifest is MERGED rather than clobbered, so
-    /// the `[dependencies]` entry you add by hand survives regeneration (same story as
-    /// `--json-schema-root`'s cross-crate roots). A name the manifest does not depend on is an
+    /// verbatim). This flag alone does not touch `wasm/json-gen/Cargo.toml`: it knows the crate NAME
+    /// but not where the crate lives, so the `[dependencies]` entry comes from `--json-gen-dep`
+    /// (which carries the path) or from a hand edit — that manifest is MERGED rather than clobbered,
+    /// so either survives regeneration (same story as `--json-schema-root`'s cross-crate roots). A
+    /// name the manifest does not depend on is an
     /// `E0433` in your own json-gen build naming the crate, never a generation-time reject. Dep calls
     /// are emitted FIRST, before this crate's own rows, in flag order (never sorted): a dep's names
     /// are already shipped in the dep's own package, so on a cross-crate collision the consumer's row
@@ -274,6 +317,44 @@ pub struct Cli {
         value_name = "DEP=DEP_JSON_GEN_LIB"
     )]
     pub json_schema_dep: Vec<String>,
+
+    /// Declare a `[dependencies]` entry in the generated `wasm/json-gen/Cargo.toml`:
+    /// `<cargo-package-name> = { path = "<path>" }`. This is the manifest half of every cross-crate
+    /// reference the json-gen crate can make — the half the tool cannot derive from the reference
+    /// itself, since a rust path names a crate but not where it lives. Three flags produce such a
+    /// reference and none of them writes the entry: `--json-schema-dep` (the dep's registrar call),
+    /// `--json-schema-root` with a path rooted in another crate, and `--common-import-override`
+    /// (the `Registrar`/`check_schema_ref_closure` import). Pass this flag once per crate they
+    /// need; without it the name is an `E0433` in your own json-gen build.
+    ///
+    /// The LEFT side is the **cargo package name** (`cml-chain-json-schema-gen`) — the dashed
+    /// spelling that goes in a manifest, NOT the underscored rust lib path
+    /// (`cml_chain_json_schema_gen`) that `--json-schema-dep`'s right-hand side takes. Getting the
+    /// two backwards is the obvious mistake and the resulting error does not point at it: a
+    /// mis-spelled package name is a cargo resolution failure, and a missing one is an `E0433` on a
+    /// crate whose name looks right.
+    ///
+    /// The RIGHT side is written into the manifest VERBATIM, so a relative value means what a cargo
+    /// path dependency always means: relative to the directory holding that manifest, i.e.
+    /// `<output>/wasm/json-gen/`. (`../../rust`, the entry the tool already writes for this crate's
+    /// own rust crate, is the shape to count from.) The tool does not check that the path exists —
+    /// an unresolvable one is a cargo error naming it.
+    ///
+    /// Merge contract: the entry is ASSERTED, never removed. It merges field-level into whatever
+    /// `[dependencies]` entry is already there (so a hand-added entry for the same package converges
+    /// rather than duplicating, with this flag's `path` winning and the user's other fields — a
+    /// `version`, `optional`, `features` — surviving), and dropping the flag LEAVES THE ENTRY
+    /// BEHIND: the flag's absence carries no package name, so there is nothing for the tool to
+    /// tombstone. Remove a no-longer-wanted dependency by hand, as you would in any manifest.
+    ///
+    /// Repeatable; a repeated package name is a hard error. Requires `--json-schema-export` (without
+    /// it there is no json-gen crate and no manifest for the entry to land in).
+    #[clap(
+        long = "json-gen-dep",
+        value_parser = parse_json_gen_dep,
+        value_name = "PACKAGE=PATH"
+    )]
+    pub json_gen_dep: Vec<String>,
 
     /// Location override for default common types (error, serialization, etc)
     /// This is useful for integrating into an exisitng project that is based on
@@ -639,6 +720,39 @@ impl Cli {
                 (dep.to_owned(), lib.replace('-', "_"))
             })
             .collect()
+    }
+
+    /// Parsed `--json-gen-dep` mappings: `cargo package name -> path`, SORTED by package name.
+    ///
+    /// A `BTreeMap`, unlike its `--json-schema-dep` sibling directly above, and for the reason that
+    /// one gives inverted: there flag order IS the input, because it decides the order dependency
+    /// registrars run in and that order is observable in the emitted guard's messages. Here the
+    /// values become `[dependencies]` keys in a TOML manifest, where nothing observes the order they
+    /// were declared in — so sorting invents no semantics and gives the manifest a stable key order
+    /// independent of how the flags happened to be spelled. Duplicate detection therefore cannot
+    /// fall out of the map (a duplicate would silently collapse) and lives in `api::with_types`,
+    /// which reads the raw flag list.
+    ///
+    /// No dash normalisation, unlike `json_schema_deps`: the left side is already the cargo package
+    /// name, which is where the dashes belong. A malformed value is a hard error naming the flag,
+    /// mirroring the siblings; a parsed invocation cannot reach that panic, since
+    /// `parse_json_gen_dep` rejects the same shapes gracefully first.
+    pub fn json_gen_deps(&self) -> std::collections::BTreeMap<String, String> {
+        let mut map = std::collections::BTreeMap::new();
+        for entry in &self.json_gen_dep {
+            let (name, path) = entry.split_once('=').unwrap_or_else(|| {
+                panic!("--json-gen-dep value must be <cargo_package_name>=<path>, got: {entry:?}")
+            });
+            let name = name.trim();
+            let path = path.trim();
+            if name.is_empty() || path.is_empty() {
+                panic!(
+                    "--json-gen-dep value must be <cargo_package_name>=<path> with both sides non-empty, got: {entry:?}"
+                );
+            }
+            map.insert(name.to_owned(), path.to_owned());
+        }
+        map
     }
 
     /// If someone override the common imports, we don't want to export them

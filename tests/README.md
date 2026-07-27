@@ -1798,14 +1798,33 @@ the seed-once `wasm/json-gen/src/lib.rs`, runs the crate, and asserts a root NOT
 spec references reached `$defs` beside the fixture's own — the unreferenced-roots gap is the entire
 point of the flag, since everything referenced is already there through the closure. That cell's
 "dependency" is a module of the json-gen crate itself, so it proves the emitted call site compiles,
-runs first, and lands unreferenced roots; resolving a genuinely separate crate is cargo's job and its
-failure mode is the documented `E0433`.
+runs first, and lands unreferenced roots — the SEPARATE-crate half is its `--json-gen-dep` sibling
+below.
+
+**`--json-gen-dep` (the `[dependencies]` entry that makes a threaded call link) is pinned across
+three layers.** The manifest CHANGESET is pinned without cargo by three unit tests in
+`cargo_manifest.rs`: `json_gen_dep_writes_a_path_dependency_entry` (one path entry per value, in
+package-name order rather than flag order, beside the change log's own keys),
+`json_gen_dep_converges_on_a_hand_added_entry` (an entry a user already wrote by hand converges on
+ONE entry — our `path` wins, their `optional`/`features`/comment survive, unrelated keys and
+`[profile.*]` pass through — and re-applying over our own output is a fixed point, the
+run-twice-equals-run-once contract asserted on the MERGED form, which is the only form that can
+drift), and `json_gen_dep_entry_is_asserted_never_removed` (dropping the flag LEAVES the entry: the
+package name lives only in the flag value, so nothing names it to tombstone — pinned because the
+alternative reading would take a hand-added dependency with it). Its input contract is pinned by
+`json_gen_dep_input_contract` (requires `--json-schema-export`; a repeated package name is a hard
+error; the package side carries cargo's package-name charset while the path side deliberately
+carries none, since it is quoted by the TOML writer rather than spliced). Its SUCCESS direction is
+the nested-cargo `json_gen_dep_links_a_threaded_dependency`, which generates TWO crates into a
+scratch directory, threads the second to the first with `--json-schema-dep` *and* `--json-gen-dep`,
+and builds and runs the consumer's json-gen crate — the only layer that can see whether cargo
+actually resolves the path the flag wrote, since the manifest text reads correct either way.
 
 What these layers cannot see — a collision whose loser has no row and whose `schema_id`s match, a
 cross-crate collision between two `add_schemas` calls whose `schema_id`s match, a name schemars
 percent-encodes, and the conditions under which the emitted closure check silently skips — is
-enumerated in `tests/TESTING_ROADMAP.md`, along with the two `--json-schema-dep` cells (a cross-crate
-collision, and an e2e whose dep is a separate crate) that are recorded rather than minted.
+enumerated in `tests/TESTING_ROADMAP.md`, along with the `--json-schema-dep` cross-crate-collision
+cell that is recorded rather than minted.
 
 ### JSON-schema → TypeScript JS-side pipeline (`js_schema_to_ts`, `js_d_ts_merge`, `package_json_pipeline`, `json_schema_scripts_without_package_json`)
 

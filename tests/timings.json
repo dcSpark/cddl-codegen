@@ -516,14 +516,18 @@
     },
     {
       "gate": "self_checks",
-      "warm_ms": 152,
-      "n": 20,
-      "measured": "2026-07-26",
+      "warm_ms": 5000,
+      "n": 10,
+      "measured": "2026-07-27",
       "machine": "86216c55",
       "history": [
         {
           "date": "2026-07-26",
           "warm_ms": 152
+        },
+        {
+          "date": "2026-07-27",
+          "warm_ms": 5000
         }
       ]
     },

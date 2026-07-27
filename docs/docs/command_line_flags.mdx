@@ -270,7 +270,7 @@ The two classes are the two ways a hand-written `schemars::JsonSchema` impl goes
 - `cddl-codegen --json-schema-export: the exported JSON schema document holds references that do not resolve inside it:` — a panic in that same run, before the document is written. A hand-written `JsonSchema` impl returned a reference where a body belongs, or points at a type with no row; see the reference-closure section above.
 - `E0433`/`E0412` in `wasm/json-gen/src/generated/mod.rs`, on a path you recognise from your command line — a `--json-schema-root` value that does not resolve from the json-gen crate. The flag emits its value verbatim and this tool does not typecheck Rust, so reachability is checked by your compiler; see `--json-schema-root` below.
 - `E0433` in that same file on `use <crate>::json_schema_gen::…`, naming your `--common-import-override` value — the json-gen crate imports the row registrar and the closure check from the common runtime crate, and that dependency is yours to add to `wasm/json-gen/Cargo.toml` (the tool cannot derive a cargo package name from an override that is a Rust path prefix; the merged manifest keeps your entry across regenerations). Without an override there is nothing to add — the module comes from the generated rust crate the json-gen manifest already depends on.
-- `E0433` in that same file, naming a *crate* you recognise from your command line — a `--json-schema-dep` lib name that `wasm/json-gen/Cargo.toml` does not depend on. That manifest entry is yours: the tool knows the crate name but not its path or version, so it never writes one, and the merged manifest is what makes your hand-added entry survive regeneration. See `--json-schema-dep` below.
+- `E0433` in that same file, naming a *crate* you recognise from your command line — a `--json-schema-dep` lib name that `wasm/json-gen/Cargo.toml` does not depend on. Declare it: `--json-gen-dep=<cargo-package-name>=<path>` writes the `[dependencies]` entry, and the merged manifest is what makes a hand-added one survive regeneration if you prefer to own it yourself. See `--json-schema-dep` and `--json-gen-dep` below.
 
 The JS side fails separately and always non-zero, leaving the last-good `json-types.d.ts` in place — see `--json-schema-scripts` below for those.
 
@@ -335,7 +335,7 @@ Registers an **additional** JSON-schema root: one extra `reg.add::<RUST_PATH>();
 The value is a **Rust path**, not a CDDL identifier, and it is emitted **verbatim**. So:
 
 - The path must resolve **from the json-gen crate**. `cddl-codegen` does not typecheck Rust, so a path that does not resolve is an `E0433`/`E0412` in your own json-gen build — never a generation-time reject. Confirming reachability is yours, not the tool's.
-- Reaching another crate's type works because the generated `wasm/json-gen/Cargo.toml` is a **merged** manifest: keys the tool does not manage pass through untouched, so a dependency you add there by hand survives regeneration. That is a hand edit in a hand-owned manifest, not an `insert` block in generated code. Re-exporting the type through your own rust crate is the other route.
+- Reaching another crate's type needs that crate in the generated `wasm/json-gen/Cargo.toml`. Declare it with `--json-gen-dep` below, or add it by hand — the manifest is **merged**, so keys the tool does not manage pass through untouched and a hand-added dependency survives regeneration either way. That is a manifest edit, not an `insert` block in generated code. Re-exporting the type through your own rust crate is the other route.
 - What the flag takes is a **type path** — a name, optionally with generic arguments — and *not* an arbitrary type expression. `cddl_lib::sub::Ext<u64, String>` and `<Foo as Trait>::Assoc` are expressible; an array (`[u8; 32]`), a tuple (`(A, B)`) and a reference (`&T`) are not. That boundary is forced rather than incidental: the value lands verbatim inside a turbofish in a generated file, so the accepted characters are exactly `[A-Za-z0-9_]`, `:`, `<`, `>`, `,` and space — everything else could introduce a comment, a statement separator or a string literal into that file, and `;` (the separator array syntax needs) is the clearest case of a character the guard cannot admit. Anything else is rejected naming the offending character. Give such a type a named alias in your own crate and register that.
 
 Repeatable. Extra roots are emitted **after every spec-derived row**, in **flag order** (never sorted): registration order decides which side of a published-name collision the injectivity guard names, and with the CLI roots last a spec-derived row keeps its own name and the guard blames the CLI-supplied path — the one you can change without touching your spec.
@@ -374,7 +374,7 @@ What it buys, and why `--json-schema-root` is not a substitute: with **one docum
 - The **left** side is a **label**, used only for duplicate detection and error messages. It is never resolved against your extern-dep set, because the emitted line depends solely on the right side — a wrong label is inert, not wrong. Write the dependency's rust-crate name there so the line reads next to the `--extern-wasm-crate=<dep>=<dep>_wasm` line for the same dependency; nothing enforces that.
 - The **right** side is a rust **module path**, emitted **verbatim** as a call path. Accepted characters are `[A-Za-z0-9_]`, `:` and `-` (normalised to `_`, so a cargo package name works as written); `<`, `>`, `,` and space are not — a module path has no generic arguments, and anything else could introduce a comment, a statement separator or a string literal into a generated file. Both a crate (`cml_chain_json_schema_gen`) and a path to a re-export (`crate::vendored`) are expressible.
 
-**The tool does not touch `wasm/json-gen/Cargo.toml` for this.** It knows the crate name but not its path or version, and that dependency is yours to declare — exactly as `--json-schema-root`'s cross-crate roots are. The manifest is **merged**, never clobbered, so the `[dependencies]` entry you add there by hand survives regeneration. The same hand-manifest contract covers one more entry under `--common-import-override`: the json-gen crate imports `Registrar` / `check_schema_ref_closure` from `<override>::json_schema_gen`, and that crate is a Rust path prefix the tool cannot turn into a cargo package name (`crate::common` is a legal value), so the dependency on the common crate is yours to declare there too — again surviving regeneration through the merge. A name the manifest does not depend on is an `E0433` in your own json-gen build naming the crate, never a generation-time reject.
+**This flag does not itself touch `wasm/json-gen/Cargo.toml`.** It knows the crate name but not where the crate lives, so the `[dependencies]` entry comes from **`--json-gen-dep`** below — which carries the path — or from a hand edit, if you would rather keep that manifest entirely yours. It is **merged**, never clobbered, so either survives regeneration, and the two converge on one entry rather than fighting if you do both. Two more references have the same shape and the same choice: `--json-schema-root`'s cross-crate roots, and — under `--common-import-override` — the json-gen crate's import of `Registrar` / `check_schema_ref_closure` from `<override>::json_schema_gen` (an override is a Rust path prefix, so the tool cannot derive a package name from it; name the package on `--json-gen-dep` yourself). A name the manifest does not depend on is an `E0433` in your own json-gen build naming the crate, never a generation-time reject.
 
 **Dep calls come first.** They are emitted before the name ledger, before every spec-derived row, and before every `--json-schema-root` row, in **flag order** (never sorted — the flag list is an input, and sorting would rewrite it). This is the deliberate mirror of why CLI roots come last: a dependency's published names are already shipped in the dependency's own package, so on a cross-crate name collision it is **your** row that should be renamed, and registering the dependency first is what makes the injectivity guard blame it (see the cross-crate bound under `--json-schema-export` above).
 
@@ -390,7 +390,43 @@ Three further behaviours worth stating outright:
 cddl-codegen --input=cml_multi_era.cddl --output=export --lib-name=cml-multi-era \
   --json-serde-derives=true --json-schema-export=true \
   --extern-wasm-crate=cml_chain=cml_chain_wasm \
-  --json-schema-dep=cml_chain=cml_chain_json_schema_gen
+  --json-schema-dep=cml_chain=cml_chain_json_schema_gen \
+  --json-gen-dep=cml-chain-json-schema-gen=../../../chain/wasm/json-gen
+```
+:::
+
+<br/><br/>
+
+:::info `--json-gen-dep`
+Declares a `[dependencies]` entry in the generated `wasm/json-gen/Cargo.toml`:
+
+```toml
+<cargo-package-name> = { path = "<path>" }
+```
+
+This is the **manifest half** of every cross-crate reference the json-gen crate can make. Three flags produce such a reference and none of them can write the entry, because a Rust path names a crate but never says where it lives:
+
+- `--json-schema-dep` above — the dependency's registrar call.
+- `--json-schema-root` above, with a path rooted in another crate (`cml_crypto::Bip32PublicKey`).
+- `--common-import-override` below — the `Registrar` / `check_schema_ref_closure` import.
+
+Pass this flag once per crate they need. Without it the name is an `E0433` in your own json-gen build; with it, the build links.
+
+**The left side is the cargo *package* name — the opposite spelling from `--json-schema-dep`'s right side.** A manifest key is dashed (`cml-chain-json-schema-gen`); a Rust path is underscored (`cml_chain_json_schema_gen`). Writing them the same way is the obvious mistake, and neither resulting error points at it: a package name cargo cannot find is a resolution failure, and a missing one is an `E0433` on a crate whose name *looks* right. The accepted charset is cargo's own, `[A-Za-z0-9_-]`; anything else is rejected naming the character.
+
+**The right side is a path, written verbatim, and relative to the manifest.** That is what a cargo path dependency always means, so a relative value counts from `<output>/wasm/json-gen/`. The entry the tool already writes for your own rust crate — `<lib-name> = { path = "../../rust" }` — is the shape to count from; a sibling generated crate is typically `../../../<sibling>/wasm/json-gen`. Absolute paths work too. The path takes any characters (it is quoted and escaped by the TOML writer, not spliced into it), and the tool does not check that it exists — an unresolvable one is a cargo error naming it.
+
+**The entry is asserted, never removed.** It merges field-level into whatever entry is already there, so an entry you added by hand for the same package **converges** rather than duplicating: this flag's `path` wins, and your `version`, `optional`, `features` and comments survive. The other direction is the part to know before you rely on it — **dropping the flag leaves the entry behind.** Unlike the conditional deps the tool removes when their flag goes away, the package name here lives only inside the flag value, so a run without the flag has no name to tombstone. Remove a dependency you no longer want by hand, as you would in any manifest. (This is also what makes the flag safe: it can never delete a dependency you added yourself.)
+
+Repeatable. Passing the same **package name** twice is a hard error naming it: a manifest holds one `[dependencies]` entry per package, so a second path would silently replace the first rather than adding anything. Two different packages may share one path.
+
+Requires `--json-schema-export`; without it there is no json-gen crate and no manifest for the entry to land in, so the combination is rejected up front.
+
+```bash
+cddl-codegen --input=cml_multi_era.cddl --output=export --lib-name=cml-multi-era \
+  --json-serde-derives=true --json-schema-export=true \
+  --json-schema-dep=cml_chain=cml_chain_json_schema_gen \
+  --json-gen-dep=cml-chain-json-schema-gen=../../../chain/wasm/json-gen
 ```
 :::
 

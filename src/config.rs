@@ -234,6 +234,11 @@ pub struct Settings {
     pub key_requests: BTreeMap<String, String>,
     #[serde(default)]
     pub json_schema_dep: BTreeMap<String, String>,
+    /// The one sub-table whose right-hand side is a path that is nevertheless NOT resolved against
+    /// the config file: it is a cargo path dependency, which cargo resolves against the manifest it
+    /// lands in (`<output>/wasm/json-gen/Cargo.toml`). See `argv_fragments`.
+    #[serde(default)]
+    pub json_gen_dep: BTreeMap<String, String>,
 }
 
 impl Settings {
@@ -275,6 +280,7 @@ impl Settings {
             wrapper_requests,
             key_requests,
             json_schema_dep,
+            json_gen_dep,
         } = over;
 
         // Scalars: a set value replaces, an absent one leaves the earlier layer alone.
@@ -329,6 +335,7 @@ impl Settings {
             wrapper_requests,
             key_requests,
             json_schema_dep,
+            json_gen_dep,
         );
     }
 }
@@ -1248,6 +1255,7 @@ fn argv_fragments(
         wrapper_requests,
         key_requests,
         json_schema_dep,
+        json_gen_dep,
     } = settings;
 
     let mut out: Vec<(&'static str, Vec<String>)> = Vec::new();
@@ -1375,6 +1383,14 @@ fn argv_fragments(
     }
     for (k, v) in json_schema_dep {
         flag!("json-schema-dep", "json-schema-dep", format!("{k}={v}"));
+    }
+    // `json-gen-dep`'s right side IS a path — and still does not resolve here, which is why it needs
+    // stating rather than reading off the split above. It becomes a cargo PATH DEPENDENCY in
+    // `<output>/wasm/json-gen/Cargo.toml`, and cargo resolves such a path against the manifest
+    // holding it. Rewriting it against the config file's directory would retarget it somewhere cargo
+    // never looks.
+    for (k, v) in json_gen_dep {
+        flag!("json-gen-dep", "json-gen-dep", format!("{k}={v}"));
     }
 
     out

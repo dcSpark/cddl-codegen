@@ -50,7 +50,11 @@ changing the *runtime behaviour* of generated code usually means editing `static
     existing manifest so user edits survive, bounded to "keys the op set doesn't mention pass through;
     `SeedOnce` keys check existence only" (the `--export-static-crate` target's `Cargo.toml` is the
     same exception class applied to a crate *outside* the output dir — same changeset machinery,
-    with a co-owned contract: deps only asserted never removed, package identity seed-only); (2) each generated crate root `src/lib.rs` (rust, wasm,
+    with a co-owned contract: deps only asserted never removed, package identity seed-only; the
+    asserted-never-removed half now also applies INSIDE the output dir, to the `--json-gen-dep`
+    entries in `wasm/json-gen/Cargo.toml` — the tool cannot tombstone a package name that exists only
+    in a flag value, so a dropped flag leaves a stale entry, and the "does not touch this manifest"
+    contract the json-schema flags used to state is conditional on that flag now); (2) each generated crate root `src/lib.rs` (rust, wasm,
     json-gen) is a seed-once thin root — written on a first export, then skipped if the file exists
     (existence check only, same bounded wording as the manifest `SeedOnce`; all generated code lives
     under the always-clobbered `src/generated/**`, alongside the dep-side extern-interface export

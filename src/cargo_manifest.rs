@@ -40,9 +40,13 @@
 //!
 //! Flag/type-conditional deps in the generated-crate changesets emit **set-or-remove, never
 //! set-or-skip**: e.g. `--preserve-encodings` false emits `Remove(dependencies.linked-hash-map)`,
-//! so flipping a flag off doesn't strand a stale dep. The one exception is the static-runtime
-//! changeset ([`ops_for_static_runtime`]) — that manifest is co-owned with a hand-owned crate, so
-//! its conditional deps are set-or-skip (see that fn's docs).
+//! so flipping a flag off doesn't strand a stale dep. That rule is available only because the tool
+//! knows every such dep's NAME independently of the flag's value, so it can tombstone one it no
+//! longer wants. Two changesets fall outside it and are assert-only: [`ops_for_static_runtime`],
+//! whose manifest is co-owned with a hand-owned crate the tool cannot speak for, and
+//! [`ops_for_json_gen`]'s `--json-gen-dep` entries, whose package names exist only inside the flag
+//! values — a dropped flag carries no name to tombstone. Both document the stale-entry consequence
+//! where a user meets it.
 //! An unparseable existing manifest is a hard error naming the file — never a silent clobber,
 //! since a parse failure is exactly the case where the user has content we can't safely preserve.
 
@@ -721,12 +725,43 @@ pub fn ops_for_static_runtime(cli: &Cli) -> std::io::Result<Vec<(KeyPath, Manife
     Ok(ops)
 }
 
-/// The declarative changeset for `wasm/json-gen/Cargo.toml` (no conditional deps of its own).
+/// The declarative changeset for `wasm/json-gen/Cargo.toml`: change-log keys, the `--json-gen-dep`
+/// path deps, and the write-only version stamp. No flag/type-conditional deps of its own.
 pub fn ops_for_json_gen(cli: &Cli) -> std::io::Result<Vec<(KeyPath, ManifestOp)>> {
     // Deliberately no `float_roundtrip`: the json-gen runner only SERIALIZES schemas
     // (`serde_json::to_string_pretty`) — it never parses untrusted floats, so the lossy default
     // parse can't bite here (the exact-parse feature lives on the rust/wasm manifests instead).
     let mut ops = ops_from_log(cli, "manifest_changes/json_gen.toml")?;
+
+    // `--json-gen-dep=<package>=<path>`: the manifest half of a cross-crate reference the json-gen
+    // crate makes (`--json-schema-dep`'s registrar call, a `--json-schema-root` rooted in another
+    // crate, `--common-import-override`'s helper import). All three name a crate; only this flag
+    // carries where it lives.
+    //
+    // ASSERT-ONLY, never set-or-remove — the one place this changeset departs from the
+    // generated-crate rule and joins `ops_for_static_runtime`'s co-owned posture, for a different
+    // reason: there the tool can't know a dep its flavor stopped needing isn't needed by hand code;
+    // here it can't even NAME the entry to tombstone, because the package name lives only in the
+    // flag value and a dropped flag carries none. A stale entry therefore lingers until removed by
+    // hand — documented on the flag rather than left to be discovered.
+    //
+    // Built through `toml_edit` rather than a formatted snippet so the path is quoted and escaped by
+    // the TOML writer: unlike every value elsewhere in this file, it is user-supplied at the point of
+    // emission (the change-log snippets are repo-owned constants), and the flag's parser deliberately
+    // puts no charset restriction on the path side because this does the job properly.
+    //
+    // The `["dependencies", <name>]` shape is exactly the path class `apply` merges FIELD-LEVEL, so
+    // an entry a user already added by hand for the same package converges on one entry: our `path`
+    // wins, their `version`/`optional`/`features` survive.
+    for (name, path) in cli.json_gen_deps() {
+        let mut spec = InlineTable::new();
+        spec.insert("path", Value::from(path));
+        ops.push((
+            key_path(&["dependencies", name.as_str()]),
+            ManifestOp::Set(Item::Value(Value::InlineTable(spec))),
+        ));
+    }
+
     ops.push(version_stamp());
     Ok(ops)
 }
@@ -1596,5 +1631,136 @@ used_from_wasm = [\"wasm-bindgen\"]
                 );
             }
         }
+    }
+
+    // ---- `--json-gen-dep` ---------------------------------------------------------------------
+
+    /// A json-gen changeset for the given `--json-gen-dep` values, read from the repo's own static
+    /// dir so the log-derived keys are the real ones the flag's entries sit beside.
+    fn json_gen_ops(values: &[&str]) -> Vec<(KeyPath, ManifestOp)> {
+        use clap::Parser;
+        let mut argv = vec![
+            "cddl-codegen".to_owned(),
+            "--input=unused".to_owned(),
+            "--output=unused".to_owned(),
+            concat!("--static-dir=", env!("CARGO_MANIFEST_DIR"), "/static").to_owned(),
+            "--json-schema-export=true".to_owned(),
+        ];
+        argv.extend(values.iter().map(|v| format!("--json-gen-dep={v}")));
+        ops_for_json_gen(&Cli::parse_from(argv)).unwrap()
+    }
+
+    /// The flag's whole visible effect: one `[dependencies]` path entry per value, in package-name
+    /// order rather than flag order (the manifest observes no ordering, so the accessor's `BTreeMap`
+    /// is what keeps the file stable against how the flags were spelled), beside the entries the
+    /// change log already writes.
+    #[test]
+    fn json_gen_dep_writes_a_path_dependency_entry() {
+        let out = apply(
+            // deliberately NOT in sorted order on the command line
+            &json_gen_ops(&["z-json-schema-gen=../../../z/wasm/json-gen", "a-crate=../a"]),
+            None,
+            "wasm/json-gen/Cargo.toml",
+        )
+        .unwrap();
+        let deps = out.parse::<DocumentMut>().unwrap()["dependencies"]
+            .as_table_like()
+            .expect("[dependencies] exists")
+            .iter()
+            .map(|(k, v)| (k.to_owned(), v.to_string().trim().to_owned()))
+            .collect::<Vec<_>>();
+        assert!(
+            deps.contains(&("a-crate".to_owned(), "{ path = \"../a\" }".to_owned())),
+            "the flag must write a path dep entry, got {deps:?}"
+        );
+        assert!(
+            deps.contains(&(
+                "z-json-schema-gen".to_owned(),
+                "{ path = \"../../../z/wasm/json-gen\" }".to_owned()
+            )),
+            "the flag must write a path dep entry, got {deps:?}"
+        );
+        let flag_keys: Vec<&String> = deps
+            .iter()
+            .map(|(k, _)| k)
+            .filter(|k| *k == "a-crate" || *k == "z-json-schema-gen")
+            .collect();
+        assert_eq!(
+            flag_keys,
+            vec!["a-crate", "z-json-schema-gen"],
+            "entries land in package-name order, not flag order"
+        );
+        // the log's own keys are untouched by the addition
+        assert!(out.contains("schemars = \"1.2.1\""));
+        assert!(out.contains("cddl-lib = { path = \"../../rust\" }"));
+    }
+
+    /// C3, the contract that makes this flag safe to point at a manifest a consumer already hand-
+    /// edited: the entry MERGES onto theirs rather than duplicating or fighting it. Our `path` wins
+    /// (the flag is the statement of where the crate lives), every field we do not set survives,
+    /// their comment and unrelated keys pass through, and re-running over our own output is a fixed
+    /// point — the run-twice-equals-run-once contract, asserted on the merged form rather than the
+    /// fresh one, since only the merged form can drift.
+    #[test]
+    fn json_gen_dep_converges_on_a_hand_added_entry() {
+        let existing = "\
+[package]
+name = \"demo-lib-json-schema-gen\"
+
+[dependencies]
+# added by hand before the flag existed
+other-json-schema-gen = { path = \"../../../elsewhere\", optional = true, features = [\"x\"] }
+unrelated = \"1.0\"
+
+[profile.release]
+lto = true
+";
+        let ops = json_gen_ops(&["other-json-schema-gen=../../../other/wasm/json-gen"]);
+        let first = apply(&ops, Some(existing), "wasm/json-gen/Cargo.toml").unwrap();
+
+        assert_eq!(
+            first.matches("other-json-schema-gen").count(),
+            1,
+            "the flag must converge on the existing entry, not add a second one:\n{first}"
+        );
+        assert!(
+            first.contains(
+                "other-json-schema-gen = { path = \"../../../other/wasm/json-gen\", optional = true, features = [\"x\"] }"
+            ),
+            "our path must win while the user's own fields survive:\n{first}"
+        );
+        assert!(
+            first.contains("# added by hand before the flag existed"),
+            "the user's comment on the entry must survive:\n{first}"
+        );
+        // keys the op set does not mention pass through untouched — the merge contract itself
+        assert!(first.contains("unrelated = \"1.0\""), "{first}");
+        assert!(first.contains("[profile.release]"), "{first}");
+        assert!(first.contains("lto = true"), "{first}");
+
+        let second = apply(&ops, Some(&first), "wasm/json-gen/Cargo.toml").unwrap();
+        assert_eq!(
+            first, second,
+            "run twice must equal run once for the merged manifest"
+        );
+    }
+
+    /// C2, and the one place this changeset departs from the generated-crate set-or-remove rule:
+    /// dropping the flag leaves the entry behind, because the flag's absence carries no package name
+    /// to tombstone. Pinned rather than merely documented — the alternative reading (a stale entry
+    /// silently disappearing) would take a hand-added dependency with it.
+    #[test]
+    fn json_gen_dep_entry_is_asserted_never_removed() {
+        let with = apply(
+            &json_gen_ops(&["other-json-schema-gen=../../../other/wasm/json-gen"]),
+            None,
+            "wasm/json-gen/Cargo.toml",
+        )
+        .unwrap();
+        let without = apply(&json_gen_ops(&[]), Some(&with), "wasm/json-gen/Cargo.toml").unwrap();
+        assert!(
+            without.contains("other-json-schema-gen"),
+            "dropping the flag must LEAVE the entry (nothing names it to tombstone):\n{without}"
+        );
     }
 }

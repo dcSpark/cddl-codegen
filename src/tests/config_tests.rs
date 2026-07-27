@@ -357,6 +357,9 @@ ledger = "../ledger/rust/src/generated/borrowed_key_types.rs"
 
 [crates.demo.json-schema-dep]
 core = "core_json_schema_gen"
+
+[crates.demo.json-gen-dep]
+core-json-schema-gen = "../../../core/wasm/json-gen"
 "#,
     );
 
@@ -429,6 +432,8 @@ core = "core_json_schema_gen"
         "ledger=../ledger/rust/src/generated/borrowed_key_types.rs",
         "--json-schema-dep",
         "core=core_json_schema_gen",
+        "--json-gen-dep",
+        "core-json-schema-gen=../../../core/wasm/json-gen",
     ]);
 
     // Exhaustive on purpose — see the doc comment.
@@ -453,6 +458,7 @@ core = "core_json_schema_gen"
         json_schema_scripts,
         json_schema_root,
         json_schema_dep,
+        json_gen_dep,
         common_import_override,
         wasm_cbor_json_api_macro,
         wasm_conversions_macro,
@@ -488,6 +494,15 @@ core = "core_json_schema_gen"
     assert_eq!(json_schema_scripts, from_flags.json_schema_scripts);
     assert_eq!(json_schema_root, from_flags.json_schema_root);
     assert_eq!(json_schema_dep, from_flags.json_schema_dep);
+    // The one path-valued right-hand side that must NOT be rewritten against the config file's
+    // directory: it is a cargo path dependency, resolved by cargo against the manifest it lands in.
+    // The two sides agree here only because the config passes it through verbatim.
+    assert_eq!(json_gen_dep, from_flags.json_gen_dep);
+    assert_eq!(
+        json_gen_dep,
+        vec!["core-json-schema-gen=../../../core/wasm/json-gen".to_owned()],
+        "a `json-gen-dep` path must reach the flag verbatim, not resolved against the config file"
+    );
     assert_eq!(common_import_override, from_flags.common_import_override);
     assert_eq!(
         wasm_cbor_json_api_macro,

@@ -1630,17 +1630,16 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
     or making `add_schemas` take the ledger, which would break the composition-point signature a
     consumer was told to call — so the ids-match merge is where a cross-crate report would have to
     land before either is worth doing.
-  - **`--json-schema-dep`'s two unminted cells**, both nested-cargo and both recorded rather than
-    built because each needs a second crate or a deliberate collision fixture:
-    a **cross-crate collision** cell (a vendored dep registering a name a consumer row also
-    publishes, asserting the CONSUMER's row is the one the guard blames — the assertion that would
-    turn the reasoning above into a measurement); and an **e2e whose dep is a genuinely separate
-    crate** rather than a module of the json-gen crate, which is what
-    `integration_tests::json_schema_dep_threading` uses today (its doc comment scopes this: the cell
-    proves the emitted call compiles, runs first, and lands unreferenced roots, not that cargo
-    resolves an external crate). Reopening signal for either: a consumer reporting a cross-crate
-    collision the guard did not blame correctly, or an `E0433` story that turns out to differ from
-    the documented one.
+  - **`--json-schema-dep`'s unminted cross-crate-COLLISION cell**, nested-cargo and recorded rather
+    than built because it needs a deliberate collision fixture: a vendored dep registering a name a
+    consumer row also publishes, asserting the CONSUMER's row is the one the guard blames — the
+    assertion that would turn the reasoning above into a measurement. (Its former sibling gap, an
+    e2e whose dep is a genuinely SEPARATE crate rather than a module of the json-gen crate, is
+    closed: `integration_tests::json_gen_dep_links_a_threaded_dependency` generates two crates into a
+    scratch dir and resolves one from the other through a real `[dependencies]` path entry. That
+    became cheap to build once `--json-gen-dep` could write the entry, which is why it was recorded
+    rather than built while the entry was a hand edit.) Reopening signal: a consumer reporting a
+    cross-crate collision the guard did not blame correctly.
   - **A `schema_name()` that `schemars` percent-encodes into its `$ref`** (anything outside
     `[A-Za-z0-9_]`, e.g. the static runtime's `OrderedHashMap<K, V>`) skips the kept-its-own-name
     check entirely: `schemars`' `encode_ref_name` lives in a private module (`mod encoding` in
