@@ -318,6 +318,18 @@ repo's stance is mechanical per-run enforcement instead — the closure is revie
 site, mutation-verified red-first at landing (comment-only fixture edit still hits; a rule rename
 misses exactly its cells; a corrupted entry re-runs), and `GATE_CACHE=0` exists for suspicion.
 
+The lockfile preflight: before a cell is keyed, its generated crates need a `Cargo.lock` — that lock
+is part of the hashed tree, so dependency resolution is part of what the verdict is cached against.
+The resolution itself is memoized in-process (`src/tests/gate_cache.rs`), keyed on every file in the
+generated tree that resolution reads, because the generated manifests are identical across fixtures
+and differ only by generation profile: one measured `cargo test --all-features --all-targets` run
+went from 952 `cargo generate-lockfile` processes to 27. What the gate-cache key covers is unchanged
+— only the derivation is shared. `GATE_CACHE_LOCKFILE_VERIFY=1` is the enforcement: it makes every
+cell re-derive its lockfiles with cargo and fails, naming the differing files, unless the resulting
+tree is byte-identical to the memoized one. It is off by default because it doubles the preflight
+cost, and it is the check to reach for whenever a resolution input is suspected to be missing from
+the memo key.
+
 Covered sites: `verify.ts`'s per-example rust/wasm probe tests, failure-classifying checks, and
 decode-foreign replays (its warm-ups turn lazy — first miss only — behind an always-run
 generation-only self-test, so a generator that doesn't build still aborts the run before any
