@@ -1,0 +1,15 @@
+; End-to-end fixture for `--json-schema-export` WITHOUT `--json-serde-derives`. Driven by
+; `integration_tests::json_schema_export_without_serde_derives`, which generates this spec with the
+; schema flag alone and runs the resulting json-gen crate.
+;
+; The combination is legal — nothing in `cli.rs` or `api.rs` couples the two flags — and it is what
+; makes the `serde_json` dependency the generated `rust/Cargo.toml` asserts conditional on
+; `--json-serde-derives` OR `--json-schema-export` rather than on the first alone: the rust crate
+; then hosts `json_schema_gen.rs`, whose reference-closure check walks a `serde_json::Value`, while
+; no type in the crate derives `serde::Serialize`.
+;
+; Deliberately minimal: two plain records, one array-rep and one map-rep, which is all a
+; "does the crate the flag pair produces actually build and write its document" cell needs.
+own_record = [a: uint, b: text]
+
+own_map = {c: text}

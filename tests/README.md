@@ -1688,6 +1688,18 @@ it exercises all three escape classes *and* distinguishes the unescape ORDER (th
 encodes to `~01`, which the wrong order decodes to `Odd<K>//name`). Do not simplify that name — a
 simpler one passes under both orders and certifies nothing.
 
+**`--json-schema-export` without `--json-serde-derives`.** The two flags are independent — nothing
+implies or rejects either from the other — but every other json-schema cell passes both, so the
+uncoupled combination gets one of its own: `json_schema_export_without_serde_derives` over
+`tests/json-schema-no-serde` generates with the schema flag alone and runs the json-gen crate. What
+it holds is the generated `rust/Cargo.toml`'s `serde_json` condition, which is the OR of the two
+flags rather than `--json-serde-derives` alone: under the schema flag the rust crate hosts
+`json_schema_gen.rs`, whose closure check walks a `serde_json::Value`, while no type in the crate
+derives `serde::Serialize`. Narrowing the condition back makes the crate an `E0433`, which only a
+real compile sees — hence a nested `cargo run` rather than a manifest assertion alone. Its
+`--export-static-crate` twin is generation-level only, a leg of
+`export_static_crate_writes_composed_runtime_and_manifest`.
+
 `--json-schema-root`'s input contract is pinned separately and without cargo by
 `json_schema_root_input_contract`: the flag requires `--json-schema-export`, a repeated value is a
 hard error, and the value parser accepts a rust type path (generics included) while rejecting

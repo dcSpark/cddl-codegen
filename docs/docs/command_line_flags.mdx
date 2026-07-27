@@ -176,7 +176,9 @@ cddl-codegen --input=example --output=export --json-serde-derives true
 <br/><br/>
 
 :::info `--json-schema-export`
-Tags types with JsonSchema derives and generates a crate (in wasm/json-gen) to export them. This requires `--json-serde-derives`.
+Tags types with JsonSchema derives and generates a crate (in wasm/json-gen) to export them.
+
+Normally passed together with `--json-serde-derives`, because a schema describes the JSON surface those derives are what produce. The two flags are nevertheless **independent** — nothing implies one from the other and nothing rejects either combination. `--json-schema-export` alone generates types deriving `schemars::JsonSchema` and neither `serde::Serialize` nor `serde::Deserialize`, so the exported document describes a JSON surface the crate itself does not emit. The one place the pair is coupled is the generated `rust/Cargo.toml`, which declares `serde_json` under **either** flag: under this one the crate hosts the `json_schema_gen` module described below, whose reference-closure check walks a `serde_json::Value`.
 
 The json-gen crate writes **one document per crate**, `wasm/json-gen/schemas/<lib_name>.schema.json`:
 
