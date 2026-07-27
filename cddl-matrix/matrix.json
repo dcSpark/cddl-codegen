@@ -1572,12 +1572,12 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.array-element.type2.array",
         "status": "unsupported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.array-element.type2.map",
         "status": "unsupported"
       },
@@ -1692,12 +1692,12 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.cbor-payload.type2.array",
         "status": "unsupported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.cbor-payload.type2.map",
         "status": "unsupported"
       },
@@ -1732,12 +1732,12 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.choice-member.type2.array",
         "status": "unsupported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.choice-member.type2.map",
         "status": "unsupported"
       },
@@ -1787,7 +1787,7 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.generic-arg.type2.map",
         "status": "unsupported"
       },
@@ -1852,7 +1852,7 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.group-choice-arm.grpent.inline_group.array",
         "status": "unsupported"
       },
@@ -1977,14 +1977,24 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.group-choice-arm.type2.map.array",
         "status": "unsupported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; no committed decode vectors (see catalog); ruby=ok rust=ok",
         "id": "contain.group-choice-arm.type2.value.map",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
@@ -2162,7 +2172,7 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.map-key.type2.array",
         "status": "unsupported"
       },
@@ -2212,12 +2222,12 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.map-value.type2.array",
         "status": "unsupported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.map-value.type2.map",
         "status": "unsupported"
       },
@@ -2407,12 +2417,12 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.occurrence-target.type2.array",
         "status": "unsupported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.occurrence-target.type2.map",
         "status": "unsupported"
       },
@@ -2769,7 +2779,7 @@
       "example": "a = [{x: int, y: uint}]",
       "feature": "type2.map",
       "id": "contain.array-element.type2.map",
-      "note": "An INLINE map as an array element. Unsupported: an anonymous nested composite must be named (parsing.rs 'Anonymous groups not allowed') — works via a named-type reference. RFC8610 §3.4, §3.5. (2-field map, so the panic is the anonymous-group limit, not the single-field-map bug.)",
+      "note": "An INLINE map as an array element. Unsupported: an inline map in a position requiring a TYPE is not a table, and there is no anonymous representation for it — cddl-codegen rejects it gracefully and names the supported spelling (hoist it to its own rule and reference it). Distinct from the anonymous-ARRAY class, which is a separate site keyed on the bracket. RFC8610 §3.4, §3.5.",
       "role": "role.array-element",
       "spec": "allowed"
     },
@@ -2857,7 +2867,7 @@
       "example": "b = bytes .cbor ({a: int, c: uint})",
       "feature": "type2.map",
       "id": "contain.cbor-payload.type2.map",
-      "note": "A byte string constrained via .cbor to encode an INLINE map (controller parenthesized). Unsupported: an anonymous nested composite must be named (parsing.rs 'Anonymous groups not allowed') — works via a named-type reference. RFC8610 §3.8.4, §3.5. (2-field map, so the panic is the anonymous-group limit, not the single-field-map bug.)",
+      "note": "A byte string constrained via .cbor to encode an INLINE map (controller parenthesized). Unsupported: an inline map in a position requiring a TYPE is not a table, and there is no anonymous representation for it — cddl-codegen rejects it gracefully and names the supported spelling (hoist it to its own rule and reference it). Distinct from the anonymous-ARRAY class, which is a separate site keyed on the bracket. RFC8610 §3.8.4, §3.5.",
       "role": "role.cbor-payload",
       "spec": "allowed"
     },
@@ -2881,7 +2891,7 @@
       "example": "t = {a: int, c: uint} / {b: tstr, d: uint}",
       "feature": "type2.map",
       "id": "contain.choice-member.type2.map",
-      "note": "An INLINE map as a `/` choice alternative. Unsupported: an anonymous nested composite must be named (parsing.rs 'Anonymous groups not allowed') — works via named-type references (enum of named structs). RFC8610 §2.2.2, §3.5. (2-field maps, so the panic is the anonymous-group limit, not the single-field-map bug.)",
+      "note": "An INLINE map as a `/` choice alternative. Unsupported: an inline map in a position requiring a TYPE is not a table, and there is no anonymous representation for it — cddl-codegen rejects it gracefully and names the supported spelling (an enum of named structs). Distinct from the anonymous-ARRAY class, which is a separate site keyed on the bracket. RFC8610 §2.2.2, §3.5.",
       "role": "role.choice-member",
       "spec": "allowed"
     },
@@ -2929,7 +2939,7 @@
       "example": "foo<a> = [a]\nbar = foo<{x: int, y: uint}>",
       "feature": "type2.map",
       "id": "contain.generic-arg.type2.map",
-      "note": "An INLINE map bound to a generic parameter. Unsupported: an anonymous nested composite must be named (parsing.rs 'Anonymous groups not allowed') — works by binding a named-type argument. RFC8610 §3.10. (2-field map, so the panic is the anonymous-group limit, not the single-field-map bug.)",
+      "note": "An INLINE map bound to a generic parameter. Unsupported: an inline map in a position requiring a TYPE is not a table, and there is no anonymous representation for it — cddl-codegen rejects it gracefully and names the supported spelling (bind a named-type argument). Distinct from the anonymous-ARRAY class, which is a separate site keyed on the bracket. RFC8610 §3.10.",
       "role": "role.generic-arg",
       "spec": "allowed"
     },
@@ -3265,7 +3275,7 @@
       "example": "m = { k: [int], j: uint }",
       "feature": "type2.array",
       "id": "contain.map-value.type2.array",
-      "note": "An INLINE array as a member value. Unsupported: cddl-codegen requires an anonymous nested composite to be named (parsing.rs 'Anonymous groups not allowed') — works via a named-type reference, not inline. RFC8610 §3.5.1, §3.4. (2-field map, so the panic is the anonymous-array limit, not the single-field-map bug.)",
+      "note": "An INLINE array as a member value. Unsupported: a heterogeneous inline array in a position requiring a TYPE becomes a struct, and a struct needs a name — where no `@name` comment can reach the site there is none to be had, so cddl-codegen rejects it gracefully and names both remedies (an explicit rule, or `; @name`). RFC8610 §3.5.1, §3.4.",
       "role": "role.map-value",
       "spec": "allowed"
     },
@@ -3297,7 +3307,7 @@
       "example": "a = [* {x: int, y: uint}]",
       "feature": "type2.map",
       "id": "contain.occurrence-target.type2.map",
-      "note": "An occurrence repeating an INLINE map entry. Unsupported: an anonymous nested composite must be named (parsing.rs 'Anonymous groups not allowed') — works via a named-type reference. RFC8610 §3.2, §3.5. (2-field map, so the panic is the anonymous-group limit, not the single-field-map bug.)",
+      "note": "An occurrence repeating an INLINE map entry. Unsupported: an inline map in a position requiring a TYPE is not a table, and there is no anonymous representation for it — cddl-codegen rejects it gracefully and names the supported spelling (hoist it to its own rule and reference it). Distinct from the anonymous-ARRAY class, which is a separate site keyed on the bracket. RFC8610 §3.2, §3.5.",
       "role": "role.occurrence-target",
       "spec": "allowed"
     },

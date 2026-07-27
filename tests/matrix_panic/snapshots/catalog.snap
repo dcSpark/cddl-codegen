@@ -7,23 +7,8 @@ expression: catalog
 # is a FIX (re-bless); a new panic, or a panic decaying to a silently-wrong `ok`, is a regression.
 # Generate-only: captures panic-class gaps only, not compile-class. Source: cddl-matrix/project_robustness.ts.
 
-contain.array-element.type2.array  PANIC
-contain.array-element.type2.map    PANIC
 contain.array-element.type2.unwrap PANIC
-contain.cbor-payload.type2.array   PANIC
-contain.cbor-payload.type2.map     PANIC
-contain.choice-member.type2.array  PANIC
-contain.choice-member.type2.map    PANIC
-contain.generic-arg.type2.map      PANIC
-contain.group-choice-arm.grpent.inline_group.array PANIC
-contain.group-choice-arm.type2.map.array PANIC
-contain.group-choice-arm.type2.value.map PANIC
-contain.map-key.type2.array        PANIC
-contain.map-value.type2.array      PANIC
-contain.map-value.type2.map        PANIC
 contain.map-value.type2.unwrap     PANIC
-contain.occurrence-target.type2.array PANIC
-contain.occurrence-target.type2.map PANIC
 contain.tag-content.type2.tag      PANIC
 ctl.abnf                           PANIC
 ctl.abnfb                          PANIC

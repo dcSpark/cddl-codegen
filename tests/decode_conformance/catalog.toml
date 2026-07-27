@@ -1543,6 +1543,44 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "contain.group-choice-arm.type2.value.map"
+axis = "containment"
+example = "t = { a: 0 // b: tstr }"
+spec = "t = { a: 0 // b: tstr }"
+mode = "standalone"
+type_name = "T"
+
+[[row.vector]]
+hex = "a1616100"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a161626773696e6e657273"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a16162696e69747069636b6564"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a1616269796f64656c6c696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a161626b696e646972656374696f6e"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "a161626b74656d706f726172696573"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "contain.map-key.memberkey.type1.text_arrow_multi"
 axis = "containment"
 example = "m = { \"k\" => uint, 1: uint }"

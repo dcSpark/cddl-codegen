@@ -9,7 +9,7 @@ id = "contain.choice-member.type2.map"
 role = "role.choice-member"
 feature = "type2.map"
 spec = "allowed"
-note = "An INLINE map as a `/` choice alternative. Unsupported: an anonymous nested composite must be named (parsing.rs 'Anonymous groups not allowed') — works via named-type references (enum of named structs). RFC8610 §2.2.2, §3.5. (2-field maps, so the panic is the anonymous-group limit, not the single-field-map bug.)"
+note = "An INLINE map as a `/` choice alternative. Unsupported: an inline map in a position requiring a TYPE is not a table, and there is no anonymous representation for it — cddl-codegen rejects it gracefully and names the supported spelling (an enum of named structs). Distinct from the anonymous-ARRAY class, which is a separate site keyed on the bracket. RFC8610 §2.2.2, §3.5."
 example = "t = {a: int, c: uint} / {b: tstr, d: uint}"
 
 [[contain]]

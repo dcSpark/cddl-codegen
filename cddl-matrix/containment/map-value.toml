@@ -17,7 +17,7 @@ id = "contain.map-value.type2.array"
 role = "role.map-value"
 feature = "type2.array"
 spec = "allowed"
-note = "An INLINE array as a member value. Unsupported: cddl-codegen requires an anonymous nested composite to be named (parsing.rs 'Anonymous groups not allowed') — works via a named-type reference, not inline. RFC8610 §3.5.1, §3.4. (2-field map, so the panic is the anonymous-array limit, not the single-field-map bug.)"
+note = "An INLINE array as a member value. Unsupported: a heterogeneous inline array in a position requiring a TYPE becomes a struct, and a struct needs a name — where no `@name` comment can reach the site there is none to be had, so cddl-codegen rejects it gracefully and names both remedies (an explicit rule, or `; @name`). RFC8610 §3.5.1, §3.4."
 example = "m = { k: [int], j: uint }"
 
 [[contain]]
