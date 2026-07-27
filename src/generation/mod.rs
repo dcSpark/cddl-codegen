@@ -1010,7 +1010,7 @@ impl GenerationScope {
                     .entry(types.scope(rust_ident).clone())
                     .or_default()
                     .push(format!(
-                        "add_schema::<{}>(generator, &mut claimed);",
+                        "reg.add::<{}>();",
                         rust_crate_struct_from_wasm(types, rust_ident, cli)
                     ));
             }
@@ -1028,7 +1028,7 @@ impl GenerationScope {
                     .entry((*ROOT_SCOPE).clone())
                     .or_default()
                     .push(format!(
-                        "add_schema::<{}::any_cbor::AnyCbor>(generator, &mut claimed);",
+                        "reg.add::<{}::any_cbor::AnyCbor>();",
                         cli.lib_name_code()
                     ));
             }
@@ -1061,8 +1061,7 @@ impl GenerationScope {
             // overlay's tree, and a comment above rows that all vanish when the flag is dropped is
             // the stranded-comment/`unpreserved-comment` trap class. The rows carry their own meaning.
             for root in &cli.json_schema_root {
-                self.json_lines
-                    .line(&format!("add_schema::<{root}>(generator, &mut claimed);"));
+                self.json_lines.line(&format!("reg.add::<{root}>();"));
             }
         }
 

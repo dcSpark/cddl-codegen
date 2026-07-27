@@ -2,29 +2,28 @@
 source: src/tests/snapshot_tests.rs
 expression: content
 ---
-use cddl_lib::json_schema_gen::add_schema;
+use cddl_lib::json_schema_gen::Registrar;
 use cddl_lib::json_schema_gen::check_schema_ref_closure;
 
 pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
-    let mut claimed: std::collections::BTreeMap<String, &'static str> =
-        std::collections::BTreeMap::new();
-    add_schema::<cddl_lib::BytesWrapper>(generator, &mut claimed);
-    add_schema::<cddl_lib::CustomWrapper>(generator, &mut claimed);
-    add_schema::<cddl_lib::I16Wrapper>(generator, &mut claimed);
-    add_schema::<cddl_lib::I64Wrapper>(generator, &mut claimed);
-    add_schema::<cddl_lib::Int>(generator, &mut claimed);
-    add_schema::<cddl_lib::IntWrapper>(generator, &mut claimed);
-    add_schema::<cddl_lib::NePreservePmapJson>(generator, &mut claimed);
-    add_schema::<cddl_lib::NemJson>(generator, &mut claimed);
-    add_schema::<cddl_lib::NevJson>(generator, &mut claimed);
-    add_schema::<cddl_lib::NintWrapper>(generator, &mut claimed);
-    add_schema::<cddl_lib::PreservePmapJson>(generator, &mut claimed);
-    add_schema::<cddl_lib::RejectSetJson>(generator, &mut claimed);
-    add_schema::<cddl_lib::StrWrapper>(generator, &mut claimed);
-    add_schema::<cddl_lib::StructWrapper>(generator, &mut claimed);
-    add_schema::<cddl_lib::TableHolder>(generator, &mut claimed);
-    add_schema::<cddl_lib::U64Wrapper>(generator, &mut claimed);
-    add_schema::<cddl_lib::U8Wrapper>(generator, &mut claimed);
+    let mut reg = Registrar::new(generator);
+    reg.add::<cddl_lib::BytesWrapper>();
+    reg.add::<cddl_lib::CustomWrapper>();
+    reg.add::<cddl_lib::I16Wrapper>();
+    reg.add::<cddl_lib::I64Wrapper>();
+    reg.add::<cddl_lib::Int>();
+    reg.add::<cddl_lib::IntWrapper>();
+    reg.add::<cddl_lib::NePreservePmapJson>();
+    reg.add::<cddl_lib::NemJson>();
+    reg.add::<cddl_lib::NevJson>();
+    reg.add::<cddl_lib::NintWrapper>();
+    reg.add::<cddl_lib::PreservePmapJson>();
+    reg.add::<cddl_lib::RejectSetJson>();
+    reg.add::<cddl_lib::StrWrapper>();
+    reg.add::<cddl_lib::StructWrapper>();
+    reg.add::<cddl_lib::TableHolder>();
+    reg.add::<cddl_lib::U64Wrapper>();
+    reg.add::<cddl_lib::U8Wrapper>();
 }
 
 pub fn export_schemas() {

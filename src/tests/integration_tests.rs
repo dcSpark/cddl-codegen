@@ -1497,15 +1497,18 @@ fn run_test(
             "json-gen produced an empty `$defs` in {:?}",
             written[0]
         );
-        // Row-set sanity: every `add_schema::<T>` row lands in `$defs` by construction (the emitted
+        // Row-set sanity: every `reg.add::<T>()` row lands in `$defs` by construction (the runtime
         // helper publishes an inline-schema type under its own name rather than letting
         // `subschema_for` drop it), and `$defs` additionally holds every type reached transitively.
         // So `$defs` is never SMALLER than the row set. The only way it could be is two rows whose
         // `schema_name()` collide — no fixture has that, and a new one that does should be looked at
         // rather than accommodated here.
+        //
+        // `reg.add::<` is the row spelling; it matches no import line and no other emitted
+        // construct, so the count is genuinely the number of ROWS.
         let rows = std::fs::read_to_string(json_export_dir.join("src/generated/mod.rs"))
             .unwrap()
-            .matches("add_schema::<")
+            .matches("reg.add::<")
             .count();
         assert!(
             defs.len() >= rows,
@@ -8012,7 +8015,7 @@ fn json_extern() {
 
 /// Harness for a json-gen crate that must FAIL to run. `run_test` asserts the json-gen `cargo run`
 /// SUCCEEDS, so the schema-name guard's vectors cannot go through it: the whole point is a spec whose
-/// document would publish an order-dependent or merged name, which the emitted `add_schema` guard now
+/// document would publish an order-dependent or merged name, which the runtime `add_schema` guard now
 /// turns into a panic in the CONSUMER's own run.
 ///
 /// Mirrors `run_test`'s shape for everything that is not the verdict: the same export-dir reset (the
@@ -9017,7 +9020,7 @@ fn json_schema_scripts_without_package_json() {
 ///    land in, so the flag would silently do nothing (mirrors
 ///    `json_schema_scripts_without_package_json`'s rejection half).
 /// 2. A repeated value is a user mistake with no meaning: the emitted rows are byte-identical and the
-///    second is a no-op, because the emitted `add_schema` ledger keys on `std::any::type_name` and
+///    second is a no-op, because the runtime `add_schema` ledger keys on `std::any::type_name` and
 ///    only fires when a name is claimed by a DIFFERENT rust type. Exact-string dedup only.
 /// 3. The value is emitted VERBATIM inside a turbofish, so the clap value parser's charset whitelist
 ///    is what keeps a flag value from introducing a comment, a statement separator, or a string
@@ -9096,8 +9099,7 @@ fn json_schema_root_input_contract() {
         "a rust path with generic arguments, spaces and a leading `::` must be accepted verbatim"
     );
     // A qualified path is inside the promised surface (the docs say so), and it does survive the
-    // turbofish emission — `add_schema::<<Foo as Trait>::Assoc>(…)` parses, the leading `::<<` and
-    // all.
+    // turbofish emission — `reg.add::<<Foo as Trait>::Assoc>();` parses, the `::<<` and all.
     assert!(
         parse("--json-schema-root=<cddl_lib::Foo as cddl_lib::Trait>::Assoc").is_ok(),
         "a qualified `<Foo as Trait>::Assoc` path must be accepted"
@@ -18162,11 +18164,12 @@ fn export_static_crate_writes_composed_runtime_and_manifest() {
         "the runtime files land in the hand crate's src/ alongside the merged manifest"
     );
 
-    // (e) `--json-schema-export` leg: the json-gen helper module (`add_schema` + the
-    // reference-closure check) is hosted in the COMMON crate, one copy for however many json-gen
-    // crates point at it, so it must be part of the exported file set — and the json-gen crate must
-    // reach it through the override prefix rather than carrying its own emitted copy. Paired with
-    // `--common-import-override`, which is the configuration this flag exists to serve.
+    // (e) `--json-schema-export` leg: the json-gen helper module (the row `Registrar`, the
+    // `add_schema` guard it delegates to, and the reference-closure check) is hosted in the COMMON
+    // crate, one copy for however many json-gen crates point at it, so it must be part of the
+    // exported file set — and the json-gen crate must reach it through the override prefix rather
+    // than carrying its own emitted copy. Paired with `--common-import-override`, which is the
+    // configuration this flag exists to serve.
     let schema_crate = scratch.join("schema-runtime");
     let schema_out = scratch.join("schema-crate");
     let cli_schema = crate::cli::Cli::parse_from([
@@ -18191,9 +18194,11 @@ fn export_static_crate_writes_composed_runtime_and_manifest() {
     let json_schema_gen_rs =
         std::fs::read_to_string(schema_src.join("json_schema_gen.rs")).unwrap();
     assert!(
-        json_schema_gen_rs.contains("pub fn add_schema<T: schemars::JsonSchema>(")
+        json_schema_gen_rs.contains("pub struct Registrar<")
+            && json_schema_gen_rs.contains("pub fn add_schema<T: schemars::JsonSchema>(")
             && json_schema_gen_rs.contains("pub fn check_schema_ref_closure("),
-        "the exported module must publish both helpers:\n{json_schema_gen_rs}"
+        "the exported module must publish the registrar, the guard it delegates to, and the \
+         closure check:\n{json_schema_gen_rs}"
     );
     // Still no module wiring — a NEW file changes nothing about who owns the declarations (the
     // per-file stderr notice, pinned by `export_static_crate_warns_on_new_files_only`, is how the
@@ -18215,13 +18220,14 @@ fn export_static_crate_writes_composed_runtime_and_manifest() {
         std::fs::read_to_string(schema_out.join("wasm/json-gen/src/generated/mod.rs"))
             .expect("json-gen generated/mod.rs must be written under --json-schema-export");
     assert!(
-        json_gen_mod.contains("use cml_core::json_schema_gen::add_schema;")
+        json_gen_mod.contains("use cml_core::json_schema_gen::Registrar;")
             && json_gen_mod.contains("use cml_core::json_schema_gen::check_schema_ref_closure;"),
         "the json-gen crate must reach both helpers through the --common-import-override prefix:\n{json_gen_mod}"
     );
     assert!(
-        !json_gen_mod.contains("fn add_schema<T: schemars::JsonSchema>("),
-        "the row helper must not be re-emitted per json-gen crate:\n{json_gen_mod}"
+        !json_gen_mod.contains("fn add_schema<T: schemars::JsonSchema>(")
+            && !json_gen_mod.contains("struct Registrar<"),
+        "the row helper and its registrar must not be re-emitted per json-gen crate:\n{json_gen_mod}"
     );
 
     // (f) The same export with `--json-serde-derives` dropped. The two flags are independent —

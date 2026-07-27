@@ -23,7 +23,7 @@ fn parse_rust_wasm_feature(s: &str) -> Result<String, String> {
 /// clap value parser for `--json-schema-root`. What the flag takes is a rust TYPE PATH — a name,
 /// optionally with generic arguments — and not an arbitrary type expression. That boundary is forced
 /// by the emission: the value goes VERBATIM into generated rust inside a turbofish
-/// (`add_schema::<VALUE>(generator, &mut claimed);`), so the accepted characters are the ones a type
+/// (`reg.add::<VALUE>();`), so the accepted characters are the ones a type
 /// path needs and nothing that could introduce a comment, a statement separator, or a string literal
 /// into a generated file. `[A-Za-z0-9_]`, `:`, `<`, `>`, `,` and space cover a scoped path with
 /// nested generics and a qualified `<Foo as Trait>::Assoc`; they cannot express an array
@@ -45,7 +45,7 @@ fn parse_json_schema_root(s: &str) -> Result<String, String> {
         return Err(format!(
             "invalid character {c:?}; --json-schema-root takes a rust TYPE PATH (generic arguments \
              allowed, e.g. `my_crate::sub::Ext<u64, String>`), not an arbitrary type expression: the \
-             value is emitted verbatim into generated rust as `add_schema::<PATH>(…)`, so only \
+             value is emitted verbatim into generated rust as `reg.add::<PATH>()`, so only \
              [A-Za-z0-9_], `:`, `<`, `>`, `,` and spaces can be accepted — every other character \
              could introduce a comment, a statement separator, or a string literal into a generated \
              file. For an array/tuple/reference type, give it a named alias in your crate and \
@@ -214,9 +214,8 @@ pub struct Cli {
     #[clap(long, value_parser, action = clap::ArgAction::Set, default_value_t = false)]
     pub json_schema_scripts: bool,
 
-    /// Register an ADDITIONAL type as a JSON-schema root: one extra
-    /// `add_schema::<RUST_PATH>(generator, &mut claimed);` row in the json-gen crate's
-    /// `add_schemas`, for a type that is part of the published surface but that the CDDL never
+    /// Register an ADDITIONAL type as a JSON-schema root: one extra `reg.add::<RUST_PATH>();` row
+    /// in the json-gen crate's `add_schemas`, for a type that is part of the published surface but that the CDDL never
     /// describes (a hand-written address/key type whose JSON form is API while its bytes are not a
     /// CDDL rule). The value is a RUST path rooted anywhere the json-gen crate can reach — the own
     /// rust crate (`cddl_lib::byron::ByronAddress`) or another crate the consumer adds to the
@@ -225,7 +224,7 @@ pub struct Cli {
     /// restricted to `[A-Za-z0-9_]`, `:`, `<`, `>`, `,` and space; cddl-codegen does not typecheck
     /// Rust, so a path that does not resolve is an `E0433`/`E0412` in the consumer's json-gen build,
     /// never a generation-time reject. Extra roots are emitted AFTER every spec-derived row, in flag
-    /// order (never sorted), and go through the same `add_schema` helper — so they are subject to the
+    /// order (never sorted), and go through the same registrar — so they are subject to the
     /// same published-name injectivity guard as any other row. A path naming a type whose CDDL rule
     /// carries `@no_json_schema_export` re-registers it (the flag consults no IR at all). Repeatable;
     /// two identical values are a hard error. Requires `--json-schema-export` (without it there is no
@@ -636,7 +635,8 @@ impl Cli {
     }
 
     /// The path prefix the `wasm/json-gen` crate reaches the common runtime through — the crate that
-    /// hosts `json_schema_gen` (the `add_schema` row registrar and the reference-closure check).
+    /// hosts `json_schema_gen` (the row `Registrar`, the `add_schema` guard it delegates to, and the
+    /// reference-closure check).
     ///
     /// Its body coincides with [`Self::common_import_wasm`] because both name the **rust** runtime
     /// crate: an override points at it verbatim, and with no override the json-gen crate reaches the

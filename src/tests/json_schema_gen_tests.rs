@@ -16,6 +16,11 @@
 //!    the two escape layers and — the one its own comment calls out — the ORDER they must be undone
 //!    in, which no end-to-end fixture exercises because no fixture has a schema name holding a
 //!    literal `~1`.
+//!
+//! 3. **`Registrar` is proven to be a pure re-spelling of the row.** Every emitted registration row
+//!    goes through it, so "the registrar registers what a direct `add_schema` call would, and its
+//!    ledger still fires" is the property the reshape rests on. Asserted against the DOCUMENT the two
+//!    routes build, not against their call shapes.
 
 // The included runtime file is written for a generated crate, where every item is reachable from
 // emitted code; here `add_schema` is only compiled and linted, never called, so the unexercised
@@ -32,7 +37,106 @@ mod json_schema_gen {
     }
 }
 
-use json_schema_gen::{check_schema_ref_closure, decode_for_test as decode_schema_ref_name};
+use json_schema_gen::{
+    Registrar, add_schema, check_schema_ref_closure, decode_for_test as decode_schema_ref_name,
+};
+
+/// Two ordinary derived types, one referencing the other, so the document a registration builds is
+/// non-trivial: `Beta`'s row pulls `Alpha` in through the closure as well as by its own row.
+#[derive(schemars::JsonSchema)]
+struct Alpha {
+    #[allow(dead_code)]
+    a: u64,
+}
+
+#[derive(schemars::JsonSchema)]
+struct Beta {
+    #[allow(dead_code)]
+    b: String,
+    #[allow(dead_code)]
+    alpha: Alpha,
+}
+
+/// A pair of DISTINCT rust types that publish ONE schema name — the collision the ledger exists to
+/// catch. Kept beside the registrar tests because the whole point of `Registrar::add` delegating to
+/// `add_schema` is that the guard is not reimplemented: this fires through the registrar or the
+/// delegation is a lie.
+#[derive(schemars::JsonSchema)]
+#[schemars(rename = "Shared")]
+struct SharedOne {
+    #[allow(dead_code)]
+    one: u64,
+}
+
+#[derive(schemars::JsonSchema)]
+#[schemars(rename = "Shared")]
+struct SharedTwo {
+    #[allow(dead_code)]
+    two: String,
+}
+
+/// The reshape's load-bearing claim: driving rows through a `Registrar` builds the SAME document as
+/// calling `add_schema` directly with a hand-threaded ledger. Compared on the finished `$defs` map
+/// (what actually ships) rather than on anything about the calls, so the assertion survives any
+/// future change to how the registrar carries its state.
+#[test]
+fn registrar_builds_the_same_document_as_direct_add_schema() {
+    let mut via_registrar = schemars::SchemaGenerator::default();
+    {
+        let mut reg = Registrar::new(&mut via_registrar);
+        reg.add::<Alpha>();
+        reg.add::<Beta>();
+    }
+    let mut direct = schemars::SchemaGenerator::default();
+    let mut claimed = std::collections::BTreeMap::new();
+    add_schema::<Alpha>(&mut direct, &mut claimed);
+    add_schema::<Beta>(&mut direct, &mut claimed);
+    let via_registrar = via_registrar.take_definitions(true);
+    let direct = direct.take_definitions(true);
+    assert!(
+        via_registrar.contains_key("Alpha") && via_registrar.contains_key("Beta"),
+        "both rows must reach `$defs`; got {:?}",
+        via_registrar.keys().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        via_registrar, direct,
+        "a registrar-driven registration must produce the document a direct `add_schema` call does"
+    );
+}
+
+/// The ledger the registrar OWNS still fires. Reached only through `reg.add`, which is what proves
+/// the delegation rather than assuming it — a `Registrar::add` that quietly reimplemented the row
+/// without the guard would pass every other test in this file.
+#[test]
+#[should_panic(expected = "two distinct Rust types both publish the JSON schema name")]
+fn registrar_ledger_catches_a_published_name_collision() {
+    let mut generator = schemars::SchemaGenerator::default();
+    let mut reg = Registrar::new(&mut generator);
+    reg.add::<SharedOne>();
+    reg.add::<SharedTwo>();
+}
+
+/// The ledger's scope is ONE registrar, matching the scope it had as a local of one crate's
+/// `add_schemas`: a dependency's rows are threaded through the dep's own `add_schemas` and therefore
+/// its own registrar. So two registrars over one generator do not share a ledger — stated here
+/// because it is the one property of the reshape a reader could reasonably expect to have changed,
+/// and because it is what keeps a cross-crate collision the ledger's blind spot rather than a new
+/// false positive.
+#[test]
+fn a_second_registrar_starts_with_a_fresh_ledger() {
+    let mut generator = schemars::SchemaGenerator::default();
+    {
+        let mut reg = Registrar::new(&mut generator);
+        reg.add::<Alpha>();
+    }
+    // A second registrar re-registering the same type is a no-op against a ledger that never saw it,
+    // and must not panic.
+    {
+        let mut reg = Registrar::new(&mut generator);
+        reg.add::<Alpha>();
+    }
+    assert!(generator.take_definitions(true).contains_key("Alpha"));
+}
 
 /// A plain identifier survives both layers untouched — the overwhelmingly common case, and the one
 /// that would break loudest if either `replace` grew a false positive.

@@ -2,19 +2,18 @@
 source: src/tests/snapshot_tests.rs
 expression: content
 ---
-use cddl_lib::json_schema_gen::add_schema;
+use cddl_lib::json_schema_gen::Registrar;
 use cddl_lib::json_schema_gen::check_schema_ref_closure;
 
 pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
-    let mut claimed: std::collections::BTreeMap<String, &'static str> =
-        std::collections::BTreeMap::new();
-    add_schema::<cddl_lib::Holder>(generator, &mut claimed);
-    add_schema::<cddl_lib::OptOut>(generator, &mut claimed);
-    add_schema::<cddl_lib::PlainNesetReject>(generator, &mut claimed);
-    add_schema::<cddl_lib::PlainReject>(generator, &mut claimed);
-    add_schema::<cddl_lib::PlainTable>(generator, &mut claimed);
-    add_schema::<cddl_lib::SingleArmNeset>(generator, &mut claimed);
-    add_schema::<cddl_lib::SingleArmSet>(generator, &mut claimed);
+    let mut reg = Registrar::new(generator);
+    reg.add::<cddl_lib::Holder>();
+    reg.add::<cddl_lib::OptOut>();
+    reg.add::<cddl_lib::PlainNesetReject>();
+    reg.add::<cddl_lib::PlainReject>();
+    reg.add::<cddl_lib::PlainTable>();
+    reg.add::<cddl_lib::SingleArmNeset>();
+    reg.add::<cddl_lib::SingleArmSet>();
 }
 
 pub fn export_schemas() {

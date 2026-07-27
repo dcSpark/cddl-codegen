@@ -1388,12 +1388,12 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   set cannot see.** The json-gen crate's `schemas/<lib>.schema.json` is written by a program we emit,
   so its content is a property of the RUN, not of the emitted source, and every cheap verdict
   ("generates", "compiles", "the `.d.ts` type-checks") is satisfied by a document publishing one
-  type's shape under another type's name. The emitted `add_schema` helper's name ledger, its
+  type's shape under another type's name. The runtime `add_schema` helper's name ledger, its
   kept-its-own-name check and its inline-branch conflict check close that for every collision with a
   row on the losing side, in the consumer's own `cargo run` (message wording and wiring pinned by
   `snapshot_tests::json_gen_extern_schema_rows`,
   `integration_tests::json_schema_name_merge_fails` and `..._stolen_fails`). A `--json-schema-root`
-  extra root is emitted as an ordinary row through the same helper, so it inherits all three checks
+  extra root is emitted as an ordinary row through the same registrar, so it inherits all three checks
   by construction; that inheritance is asserted by reading the emitter, not by a fixture with an
   extra root on the LOSING side of a collision, which would cost another nested-cargo failure cell —
   mint one if a consumer reports a collision they introduced through the flag. What remains — four
@@ -1406,7 +1406,8 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
     `schema_id`. The upstream lever is report-and-wait (`schemars` is a crates.io dependency, not a
     fork we pin like the `cddl` parser), so the document post-pass is the schedulable one.
   - **A cross-crate collision whose `schema_id`s MATCH** — two crates' `add_schemas` threaded into
-    one `SchemaGenerator` — escapes the ledger, which is a local of one crate's `add_schemas`. The
+    one `SchemaGenerator` — escapes the ledger, which belongs to the registrar one crate's
+    `add_schemas` opens. The
     tool now EMITS that composition (`--json-schema-dep`), so this is no longer a hypothetical
     layout: what remains uncovered is only the ids-match merge, because dep calls are emitted FIRST
     and therefore an ids-DIFFER cross-crate collision hands the consumer's row `<name>2` and trips
@@ -1781,23 +1782,6 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   publish a type they already published; the class is still untyped in the shipped `.d.ts`, and no
   `--allow-untyped` entry fixes that. Reopening signal: a consumer's type name is not a fixed point
   of the normalization and its class does expose JSON methods.
-- **Registrar state instead of a threaded name ledger in the json-gen rows.** A registration row is
-  `add_schema::<T>(generator, &mut claimed)` — the published-name ledger is a local of `add_schemas`
-  threaded through every row by hand, so the shape of a row exposes the guard's bookkeeping to
-  anyone reading a migration diff. The shape to reach is registrar state inside
-  `static/json_schema_gen.rs`: `let mut reg = Registrar::new(generator);` then `reg.add::<T>();`,
-  with the ledger owned by the registrar and `Registrar::add` delegating to the existing
-  `add_schema` so there stays exactly one implementation of the guard. Two constraints to honour
-  rather than rediscover. `add_schemas` keeps its exact published signature
-  (`pub fn add_schemas(generator: &mut schemars::SchemaGenerator)`) — it is the cross-crate
-  composition point the tool emits calls to, a hand-written one is compiled by
-  `integration_tests::json_schema_dep_threading`, and the docs quote it; and the
-  `--json-schema-dep` registrar calls must stay emitted BEFORE the registrar takes its `&mut`
-  borrow. `add_schema` itself stays `pub`, because `--json-schema-root` is documented as emitting a
-  row and a consumer may have hand-written one. The cost is a re-bless of every registration row in
-  the corpus plus the `.matches("add_schema::<")` row-count proxies in `integration_tests`, which
-  must be retargeted rather than dropped. Reopening signal: a consumer reads the threaded ledger as
-  API and copies it into hand-written registration code.
 - **json2ts artifact doc comments naming `undefined`.** The emitted `.d.ts` carries comments like
   "This interface was referenced by `undefined`'s JSON-Schema definition via the `patternProperty`
   …" — `undefined` because the parent definition's title is managed by `run-json2ts.js` rather than

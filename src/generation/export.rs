@@ -13,7 +13,7 @@ mod generated;
 pub use generated::*;
 ";
 
-// The json-gen crate's two runtime helpers — the `add_schema` row registrar (which carries the
+// The json-gen crate's runtime helpers — the row `Registrar` (which owns the ledger carrying the
 // document's NAME-INJECTIVITY guard) and `check_schema_ref_closure` (the REFERENCE-CLOSURE check) —
 // are no longer emitted per json-gen crate. They live in `static/json_schema_gen.rs`, composed into
 // the common runtime crate by `composed_runtime_static_files` under `--json-schema-export`, and the
@@ -21,10 +21,14 @@ pub use generated::*;
 // rationale for why both checks run in the CONSUMER's own `cargo run` rather than in this tool's
 // suite, and the note that their panic wordings are pinned test keys.
 
-/// The `add_schemas` body's first line when the spec registers at least one row: the name ledger
-/// `add_schema` threads through every row. A local (not a parameter) because `add_schemas` keeps its
-/// exact published signature — cycle 2 shipped it as the cross-crate composition point.
-const ADD_SCHEMA_LEDGER_DECL: &str = "let mut claimed: std::collections::BTreeMap<String, &'static str> = std::collections::BTreeMap::new();";
+/// The `add_schemas` body's first line when the spec registers at least one row: the registrar that
+/// owns the published-name ledger every row is threaded through. A LOCAL, never a parameter, because
+/// `add_schemas` keeps its exact published signature (`pub fn add_schemas(generator: &mut
+/// schemars::SchemaGenerator)`) — cycle 2 shipped it as the cross-crate composition point, the tool
+/// emits calls to it under `--json-schema-dep`, and consumers hand-write one for the layouts the flag
+/// does not cover. Emitted AFTER the dep calls: the registrar holds the generator's `&mut` borrow for
+/// the rest of the body, and each dep call passes that same borrow on.
+const REGISTRAR_DECL: &str = "let mut reg = Registrar::new(generator);";
 
 /// The code-generation provenance banner stamped at the top of every generated `.rs` file in the
 /// tool-owned generated trees. Ends with a newline so it prepends cleanly onto rustfmt'd content.
@@ -1807,13 +1811,14 @@ impl GenerationScope {
             lib_str.push_str(&format!(
                 "use {common}::json_schema_gen::check_schema_ref_closure;\n"
             ));
-            // The row helper is imported only when this crate has rows of its own, never for
+            // The row registrar is imported only when this crate has rows of its own, never for
             // `--json-schema-dep`: a dep registrar call goes through the DEP's `add_schemas`, so a
-            // crate whose `add_schemas` holds nothing but dep calls calls `add_schema` nowhere — and
+            // crate whose `add_schemas` holds nothing but dep calls constructs no `Registrar` — and
             // an unused import would be a warning in generated code the consumer is told never to
-            // hand-edit.
+            // hand-edit. `add_schema` itself is NOT imported: emitted rows reach the guard through
+            // the registrar, and the helper stays public for hand-written rows only.
             if !self.json_lines.is_empty() {
-                lib_str.push_str(&format!("use {common}::json_schema_gen::add_schema;\n"));
+                lib_str.push_str(&format!("use {common}::json_schema_gen::Registrar;\n"));
             }
             lib_str.push('\n');
             let mut lib_scope = codegen::Scope::new();
@@ -1827,15 +1832,19 @@ impl GenerationScope {
             if self.json_lines.is_empty() && json_schema_deps.is_empty() {
                 // A spec whose every rule is skipped (array/table typedefs only, say) registers
                 // nothing, and the parameter would then be an unused-variable warning in generated
-                // code the consumer is told never to hand-edit. An unused `claimed` local would be a
-                // NEW warning of the same class, so the ledger is emitted only when there are rows.
-                // A `--json-schema-dep` call USES `generator`, so it suppresses the attribute on its
-                // own: an `allow` over a used parameter is inert snapshot noise.
+                // code the consumer is told never to hand-edit. An unused `reg` local would be a
+                // NEW warning of the same class, so the registrar is emitted only when there are
+                // rows. A `--json-schema-dep` call USES `generator`, so it suppresses the attribute
+                // on its own: an `allow` over a used parameter is inert snapshot noise.
                 lib_add_fn.attr("allow(unused_variables)");
             }
-            // `--json-schema-dep` registrar calls, FIRST — before the ledger local and before every
-            // spec-derived row and every `--json-schema-root` row. Read straight off `cli`: the dep
-            // list is a flag, not IR, so it never travels through `json_lines`.
+            // `--json-schema-dep` registrar calls, FIRST — before the `Registrar` local and before
+            // every spec-derived row and every `--json-schema-root` row. Read straight off `cli`: the
+            // dep list is a flag, not IR, so it never travels through `json_lines`.
+            //
+            // FIRST is also what makes this compile at all now that the ledger lives in a registrar:
+            // `Registrar::new` takes the generator's `&mut` borrow for the rest of the body, and each
+            // dep call passes that same borrow on to the dependency's `add_schemas`.
             //
             // FIRST is the deliberate mirror of why `--json-schema-root` rows come LAST. A dep's
             // published names are already shipped in the dep's own package, so on a cross-crate name
@@ -1859,7 +1868,7 @@ impl GenerationScope {
                 lib_add_fn.line(format!("{lib}::add_schemas(generator);"));
             }
             if !self.json_lines.is_empty() {
-                lib_add_fn.line(ADD_SCHEMA_LEDGER_DECL);
+                lib_add_fn.line(REGISTRAR_DECL);
             }
             lib_add_fn.push_all(self.json_lines.clone());
             lib_scope.push_fn(lib_add_fn);
