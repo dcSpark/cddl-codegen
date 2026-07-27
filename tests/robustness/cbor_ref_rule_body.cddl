@@ -1,0 +1,19 @@
+; A `.cbor` over a reference to an ALIAS rule, in top-level rule-BODY position
+; (`x = bytes .cbor bar` with `bar = uint`), GENERATES — the sibling position to
+; tests/robustness/choice_cbor_ref_arm.cddl, kept as its own row because it reaches the failure
+; through a different site and needed a different fix.
+;
+; What it pins is that the `.cbor` TARGET is alias-resolved when the control operator is parsed, so
+; `bytes .cbor bar` lowers exactly as `bytes .cbor uint` does. Without that, the target arrives as
+; an already-`Alias`-wrapped `RustType`, and registering the rule body trips
+; `register_type_alias`'s first assertion, which forbids exactly that. Resolving loses nothing: a
+; CDDL alias rule over a primitive generates a TRANSPARENT `pub type Bar = u64;`, so the alias and
+; its target are the same Rust type — only the spelling in the generated source differs.
+;
+; This row is also the reason the rule-graph edge that fixes the choice-arm sibling cannot ship on
+; its own. That edge orders the target BEFORE its user, which is correct; but it means the body sees
+; a resolved `Alias` where it used to see an unregistered forward reference. Whether it saw one or
+; the other used to depend on how the two rule NAMES happened to sort — so this shape generated or
+; aborted by coincidence of naming. Both fixes together make the outcome the same for every name.
+x = bytes .cbor bar
+bar = uint

@@ -885,17 +885,14 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // tests/robustness/tagged_prelude_constant.cddl) are now `error (graceful)` catalog rows. The
     // EXACTLY-ONCE placement stays supported (tests/robustness/fixed_bool_member.cddl).
 ];
-// NOT in the ledger despite being a real, robustness-pinned panic class (the ledger's stale-pin
-// guard requires sweep observation, and the CURRENT enumeration does not compose the shape): the
-// `.cbor`-over-a-reference type-choice arm (tests/robustness/choice_cbor_ref_arm.cddl, "variant
-// ctor refers to undefined ident" — that message was worded lead-constant so a future ledger entry
-// can key on it). It was surfaced by a TRANSIENT enumeration (a since-skipped vacuous
-// `dsl.rust_name` filler shifted the composition indices), promoted, then the enumeration reverted;
-// the robustness catalog row keeps it exercised. If an enumeration change re-composes the shape, the
-// sweep fails NEW-finding with the fixture already committed — re-add the entry citing it.
-// (The array-of-`any` type-choice arm that used to sit here is gone: `[* any]` is now a supported
-// homogeneous array, so `[* any] / tstr` generates correctly — tests/robustness/choice_array_any_arm.cddl
-// is an `ok` fixture, not a panic class, since `any` gained runtime support.)
+// (Three classes that used to sit here are gone.) The array-of-`any` type-choice arm: `[* any]` is
+// now a supported homogeneous array, so `[* any] / tstr` generates correctly —
+// tests/robustness/choice_array_any_arm.cddl is an `ok` fixture. The `.cbor`-over-a-reference
+// type-CHOICE arm ("variant ctor refers to undefined ident") and its rule-BODY sibling
+// (`register_type_alias`'s "wraps automatically in Alias" assertion): a control operator's target
+// is a rule-graph dependency and is alias-resolved when parsed, so both generate —
+// tests/robustness/choice_cbor_ref_arm.cddl and tests/robustness/cbor_ref_rule_body.cddl are `ok`
+// fixtures. Both messages stay worded lead-constant so a future ledger entry can key on them.
 
 // ---- LAYER 1: the generation-classification sweep ---------------------------------------------------
 /// Sweep every composition through in-process generation and classify ok / graceful / PANIC.

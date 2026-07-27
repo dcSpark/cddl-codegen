@@ -1,12 +1,20 @@
-; A `.cbor`-over-a-REFERENCE as a TYPE-CHOICE ARM (`bytes .cbor bar / tstr`) panics generation at
-; "variant ctor refers to undefined ident" in intermediate/structs.rs
-; (`EnumVariant::group_ctor_record_fields`):
-; the choice's variant ctor resolves the arm's synthesized `.cbor` wrapper ident before the alias
-; target is registered. DISTINCT from the same shape WITHOUT the choice (`x = bytes .cbor bar`),
-; which panics at a different site (intermediate/mod.rs cross-reference resolution), and from the
-; inline-target form (`bytes .cbor uint`), which generates fine both ways — the reference AND the
-; choice-arm position are both required for THIS class. Surfaced by the recombination sweep
-; (src/tests/recombination_tests.rs, composition class outer=choice_member inner=cbor_payload
-; filler=type2.typename).
+; A `.cbor`-over-a-REFERENCE as a TYPE-CHOICE ARM (`bytes .cbor bar / tstr`) GENERATES: the
+; reference is a dependency like any other, so the rule graph orders `bar` before `a` and the arm
+; resolves it as a registered type rather than as a dangling forward reference.
+;
+; That ordering is what this fixture pins. A control operator's right-hand side names types
+; (`bytes .cbor bar` depends on `bar` exactly as `[bar]` does), so `dep_graph`'s reference walk
+; covers `type1.operator` as well as `type1.type2`. Without that edge the target can be ordered
+; AFTER its user, and the arm then holds a bare `Rust` ident naming no registered struct — which
+; panics every downstream lookup that assumes one (`EnumVariant::group_ctor_record_fields`,
+; `IntermediateTypes::is_enum`). The choice-arm and the plain-member spellings
+; (`a = [f: bytes .cbor bar]`) both went through that one hole, and one edge covers both.
+;
+; The target being an ALIAS (`bar = uint`, a transparent `pub type Bar = u64;`) is deliberately part
+; of the shape: it is the case where the resolved type is NOT a struct, so it exercises exactly the
+; lookups the missing edge used to break. The inline-target form (`bytes .cbor uint`) never needed
+; an edge and has always generated. The remaining unsupported spelling puts such a target under a
+; top-level rule BODY (tests/robustness/cbor_ref_rule_body.cddl) — a different site with a
+; different cause, unaffected by rule ordering.
 a = bytes .cbor bar / tstr
 bar = uint

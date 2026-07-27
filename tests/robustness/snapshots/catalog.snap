@@ -8,9 +8,10 @@ expression: catalog
 
 any_control_op             error (graceful)
 any_member                 ok
+cbor_ref_rule_body         ok
 choice_any_arm             error (graceful)
 choice_array_any_arm       ok
-choice_cbor_ref_arm        PANIC
+choice_cbor_ref_arm        ok
 choice_group_array_arm     ok
 choice_last_any_arm        ok
 duplicate_rule             error (graceful)

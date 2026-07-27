@@ -982,12 +982,23 @@ fn parse_control_operator(
             token::ControlOperator::DEFAULT => {
                 ControlOperator::Default(type2_to_fixed_value(&operator.type2))
             }
-            token::ControlOperator::CBOR => ControlOperator::CBOR(rust_type_from_type2(
-                types,
-                parent_visitor,
-                &operator.type2,
-                cli,
-            )),
+            // The `.cbor` TARGET is alias-resolved here, so `bytes .cbor bar` (with `bar = uint`)
+            // lowers exactly as `bytes .cbor uint` does. Both consumers of this type need that.
+            // A rule BODY registers it as a transparent alias, and `register_type_alias`'s first
+            // assertion forbids an already-`Alias`-wrapped base — the shape would abort there.
+            // A MEMBER or type-choice arm keeps it as the field/variant type, where an alias ident
+            // naming no registered struct panics every lookup that assumes one. Resolving loses
+            // nothing: a CDDL alias rule over a primitive generates a TRANSPARENT `pub type`, so
+            // the alias and its target are the SAME Rust type — only the spelling in the emitted
+            // source differs. Aliases are the only case that needs this; a target naming a real
+            // struct/collection is already a `Rust` ident and passes through untouched.
+            token::ControlOperator::CBOR => {
+                let mut target = rust_type_from_type2(types, parent_visitor, &operator.type2, cli);
+                if let ConceptualRustType::Alias(_, inner) = target.conceptual_type {
+                    target.conceptual_type = *inner;
+                }
+                ControlOperator::CBOR(target)
+            }
             token::ControlOperator::EQ => ControlOperator::Range((
                 Some(type2_to_number_literal(&operator.type2)),
                 Some(type2_to_number_literal(&operator.type2)),
