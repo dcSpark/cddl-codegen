@@ -1875,8 +1875,10 @@ impl GenerationScope {
             // owner can change. A consequence worth stating: with deps registered first, a
             // cross-crate collision whose `schema_id`s DIFFER is caught by the emitted helper's
             // kept-its-own-name check (B), because `subschema_for` then hands the consumer's row
-            // `<name>2`. That is reasoned from the mechanism `integration_tests::
-            // json_schema_name_stolen_fails` exercises WITHIN one crate — cross-crate it is not run.
+            // `<name>2`. Measured cross-crate, not merely reasoned from the single-crate mechanism
+            // `integration_tests::json_schema_name_stolen_fails` exercises: the two-crate cell
+            // `config_tests::a_derived_thread_links_and_a_collision_blames_the_consumer`
+            // asserts the panic names the CONSUMER's type.
             //
             // FLAG ORDER, never sorted, for the same reason the `--json-schema-root` block gives: the
             // flag list is an input, so preserving it keeps "same inputs -> same bytes" while staying

@@ -1609,7 +1609,7 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   by construction; that inheritance is asserted by reading the emitter, not by a fixture with an
   extra root on the LOSING side of a collision, which would cost another nested-cargo failure cell —
   mint one if a consumer reports a collision they introduced through the flag. What remains — four
-  holes, each needing its own mechanism, plus one pair of recorded-but-unminted cells:
+  holes, each needing its own mechanism:
   - **A collision whose LOSER has no row and whose `schema_id`s match** is a silent merge nothing can
     see: the ledger only holds rows, and the merge makes both returned refs equal the shared name, so
     the kept-its-own-name check reads clean. Reaching it needs a way to enumerate what a row pulls in
@@ -1620,26 +1620,19 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   - **A cross-crate collision whose `schema_id`s MATCH** — two crates' `add_schemas` threaded into
     one `SchemaGenerator` — escapes the ledger, which belongs to the registrar one crate's
     `add_schemas` opens. The
-    tool now EMITS that composition (`--json-schema-dep`), so this is no longer a hypothetical
-    layout: what remains uncovered is only the ids-match merge, because dep calls are emitted FIRST
+    tool now EMITS that composition (`--json-schema-dep`) and DERIVES it from a config's crate
+    graph, so this is no longer a hypothetical layout: what remains uncovered is only the ids-match
+    merge, because dep calls are emitted FIRST
     and therefore an ids-DIFFER cross-crate collision hands the consumer's row `<name>2` and trips
-    the kept-its-own-name check on the side whose owner can change it. (That last step is reasoned
-    from the mechanism `json_schema_name_stolen_fails` exercises within one crate — cross-crate it is
-    not run; the two cells that would run it are recorded below.) Widening the ledger to span crates
+    the kept-its-own-name check on the side whose owner can change it. That last step is a
+    measurement rather than an inference, pinned by
+    `config_tests::a_derived_thread_links_and_a_collision_blames_the_consumer`.
+    It threads one generated crate's document into another's, makes both publish one name, and
+    asserts the panic names the CONSUMER's type. Widening the ledger to span crates
     still means either a published ledger type in the static runtime (a new cross-crate API surface)
     or making `add_schemas` take the ledger, which would break the composition-point signature a
     consumer was told to call — so the ids-match merge is where a cross-crate report would have to
     land before either is worth doing.
-  - **`--json-schema-dep`'s unminted cross-crate-COLLISION cell**, nested-cargo and recorded rather
-    than built because it needs a deliberate collision fixture: a vendored dep registering a name a
-    consumer row also publishes, asserting the CONSUMER's row is the one the guard blames — the
-    assertion that would turn the reasoning above into a measurement. (Its former sibling gap, an
-    e2e whose dep is a genuinely SEPARATE crate rather than a module of the json-gen crate, is
-    closed: `integration_tests::json_gen_dep_links_a_threaded_dependency` generates two crates into a
-    scratch dir and resolves one from the other through a real `[dependencies]` path entry. That
-    became cheap to build once `--json-gen-dep` could write the entry, which is why it was recorded
-    rather than built while the entry was a hand edit.) Reopening signal: a consumer reporting a
-    cross-crate collision the guard did not blame correctly.
   - **A `schema_name()` that `schemars` percent-encodes into its `$ref`** (anything outside
     `[A-Za-z0-9_]`, e.g. the static runtime's `OrderedHashMap<K, V>`) skips the kept-its-own-name
     check entirely: `schemars`' `encode_ref_name` lives in a private module (`mod encoding` in

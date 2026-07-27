@@ -48,7 +48,15 @@ use std::path::{Path, PathBuf};
 /// `profiles` is the reference INTO the layer system, so a profile listing profiles would be the
 /// nesting the flat design deliberately excludes. `deps` is an EDGE, and an edge shared by every
 /// crate is not a graph: it would make every crate depend on every other one, itself included.
-const PER_CRATE_ONLY_KEYS: &[&str] = &["input", "output", "lib-name", "profiles", "deps"];
+const PER_CRATE_ONLY_KEYS: &[&str] = &[
+    "input",
+    "output",
+    "lib-name",
+    "profiles",
+    "deps",
+    "wasm-reexports",
+    "json-schema-deps",
+];
 
 /// Why a given [`PER_CRATE_ONLY_KEYS`] entry cannot be shared, in the rejection message. Each key
 /// gets its own sentence because the reasons are genuinely different — one is "this names a single
@@ -59,6 +67,11 @@ fn per_crate_key_reason(key: &str) -> &'static str {
         "deps" => {
             "`deps` declares an EDGE from one crate to another. A shared edge is not a graph: every \
              crate would depend on every crate named, itself included."
+        }
+        "wasm-reexports" | "json-schema-deps" => {
+            "`wasm-reexports` and `json-schema-deps` are EDGES too — the ones that decide whose rows \
+             a crate's JSON-schema document threads. A shared edge is not a graph: every crate \
+             would thread every crate named, itself included."
         }
         "profiles" => {
             "`profiles` selects which shared layers ONE crate applies, so a shared value for it \
@@ -354,7 +367,38 @@ pub struct CrateEntry {
     /// invocation spells on BOTH sides of the edge, and the set of edges is the generation order.
     /// Author order is preserved — it is the order the derived `--workspace-dep` occurrences take.
     pub deps: Vec<String>,
+    /// Names of other `[crates.*]` entries whose WASM classes ship in this crate's package without
+    /// this crate's spec referencing them — CML's "not actual dependencies but we re-export these
+    /// for the wasm builds", promoted from a comment in a manifest to a declaration.
+    ///
+    /// It is a packaging fact and nothing else: no rust/extern edge, no generation-order edge. Its
+    /// only effect is that it joins `deps` as a source for the JSON-schema threading derivation —
+    /// see [`Config::threading`], which is where the reason a package's composition (rather than a
+    /// spec's references) is the right source lives.
+    pub wasm_reexports: Vec<String>,
+    /// Explicit override of the threading derivation for this crate. `Some(list)` REPLACES
+    /// `deps ∪ wasm-reexports` entirely (`Some(vec![])` threads nothing); `None` derives.
+    pub json_schema_deps: Option<Vec<String>>,
     pub settings: Settings,
+}
+
+/// One derived JSON-schema thread, as the two flag values it expands to.
+///
+/// A `Vec` of these rather than entries folded into [`Settings`]'s two sub-tables, because those are
+/// `BTreeMap`s: they emit in NAME order, and `--json-schema-dep` is order-significant — flag order
+/// is registration order, which decides which crate a published-name collision blames. The ordered
+/// forms are the config's arrays (`deps`, `wasm-reexports`, `json-schema-deps`), so the derivation
+/// carries their order through to argv instead of losing it in a map.
+///
+/// Each half is optional so a hand-written sub-table entry can override one of them alone.
+#[derive(Clone, Debug, PartialEq)]
+struct DerivedThread {
+    /// The config key that produced this thread, for attributing a clap rejection to a TOML line.
+    key: &'static str,
+    /// `--json-schema-dep` value: `<dep lib normalized>=<dep lib normalized>_json_schema_gen`.
+    json_schema_dep: Option<String>,
+    /// `--json-gen-dep` value: `<dep lib-name>-json-schema-gen=<relative path>`.
+    json_gen_dep: Option<String>,
 }
 
 /// A parsed config document. Crate iteration is `BTreeMap` order (crate name) — never hash order, so
@@ -458,6 +502,16 @@ pub fn parse_str(text: &str, base_dir: &Path) -> Result<Config, String> {
             Some(v) => string_array(v, &format!("{label}.deps"))?,
             None => Vec::new(),
         };
+        let wasm_reexports = match table.get("wasm-reexports") {
+            Some(v) => string_array(v, &format!("{label}.wasm-reexports"))?,
+            None => Vec::new(),
+        };
+        // `Option`, unlike its two neighbours: an ABSENT key derives while an EMPTY array threads
+        // nothing, and those are different requests. `Vec::new()` cannot tell them apart.
+        let json_schema_deps = match table.get("json-schema-deps") {
+            Some(v) => Some(string_array(v, &format!("{label}.json-schema-deps"))?),
+            None => None,
+        };
         crates.insert(
             name.clone(),
             CrateEntry {
@@ -466,6 +520,8 @@ pub fn parse_str(text: &str, base_dir: &Path) -> Result<Config, String> {
                 lib_name,
                 profiles,
                 deps,
+                wasm_reexports,
+                json_schema_deps,
                 settings,
             },
         );
@@ -590,6 +646,30 @@ impl Config {
                     ));
                 }
             }
+
+            self.validate_crate_names(name, "wasm-reexports", &entry.wasm_reexports)?;
+            if let Some(explicit) = &entry.json_schema_deps {
+                self.validate_crate_names(name, "json-schema-deps", explicit)?;
+            }
+
+            // One crate reached through both edges is not two facts about it: `deps` already makes
+            // the dependency's classes ship in this package, so `wasm-reexports` adds nothing and
+            // the derivation would emit the same thread twice — which `--json-schema-dep` itself
+            // rejects as an ambiguous label. Caught here so the message names the config keys
+            // rather than the flag the user never typed.
+            if let Some(both) = entry
+                .wasm_reexports
+                .iter()
+                .find(|name| entry.deps.contains(name))
+            {
+                return Err(format!(
+                    "[crates.{name}] lists `{both}` in both `deps` and `wasm-reexports`. The edge \
+                     exists once: `deps` already puts the dependency's classes in this package, so \
+                     `wasm-reexports` adds nothing and the JSON-schema thread would be derived \
+                     twice — which `--json-schema-dep` rejects as one label under two mappings. \
+                     Keep `deps`, which carries the rust/extern edge as well."
+                ));
+            }
         }
 
         // Two crates with one library name would collide on every derived value at once: one
@@ -613,6 +693,44 @@ impl Config {
         self.validate_runtime()?;
 
         self.generation_order().map(|_| ())
+    }
+
+    /// The three shape checks a crate-name array carries: no self-reference, every name configured,
+    /// no name twice.
+    ///
+    /// Shared by the two THREADING arrays, whose consequence is one sentence either way (a thread
+    /// is a registrar call into another crate's document). `deps` keeps its own copies rather than
+    /// calling this: each of its messages explains what the derived rust/extern EDGE would have
+    /// done, which is a different thing to say at each of the three.
+    fn validate_crate_names(&self, owner: &str, key: &str, names: &[String]) -> Result<(), String> {
+        let mut seen = BTreeSet::new();
+        for named in names {
+            if named == owner {
+                return Err(format!(
+                    "[crates.{owner}].{key} lists `{owner}` itself. A crate's own rows are already \
+                     in its own schema document; threading it into itself would register them a \
+                     second time."
+                ));
+            }
+            if !self.crates.contains_key(named) {
+                return Err(format!(
+                    "[crates.{owner}].{key} names `{named}`, which has no `[crates.{named}]` \
+                     table. Both derived values come from the named crate's OWN entry (its \
+                     `lib-name` and its `output`), so a crate outside this config cannot be sugar \
+                     — spell it with the raw `[crates.{owner}.json-schema-dep]` and \
+                     `[crates.{owner}.json-gen-dep]` sub-tables instead. Configured crates: {}",
+                    list_or_none(self.crates.keys())
+                ));
+            }
+            if !seen.insert(named.clone()) {
+                return Err(format!(
+                    "[crates.{owner}].{key} lists `{named}` twice; one mention is one thread, and \
+                     the second would emit the same registrar call again — which \
+                     `--json-schema-dep` rejects as one label under two mappings."
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// The `[runtime]` checks that need no expanded `Cli` — an empty table, an unknown
@@ -814,10 +932,154 @@ impl Config {
                 let mut settings = self.merged_settings(entry);
                 self.apply_graph_edges(&name, entry, &mut settings, &ungraphed);
                 self.apply_runtime(&name, &mut settings, runtime_choice.as_ref());
-                let cli = build_cli(&name, entry, &settings, &self.base_dir)?;
+                let threads = self.threading(&name, entry, &settings, &ungraphed)?;
+                let cli = build_cli(&name, entry, &settings, &self.base_dir, &threads)?;
                 Ok((name, cli))
             })
             .collect()
+    }
+
+    /// Every JSON-schema thread this crate's document carries, in emission order.
+    ///
+    /// # Why the source is the WASM dependency list
+    ///
+    /// A document must thread the crates whose wasm classes ship in this crate's PACKAGE — not the
+    /// crates its spec references. The two are different lists, and the package one is the one that
+    /// decides what the published `.d.ts` has to declare: with one document per crate, everything
+    /// this crate's own types *reference* is already present through the ref closure, so what a
+    /// thread adds is a dependency's UNREFERENCED roots. Those are exactly the types a package
+    /// re-exports without naming.
+    ///
+    /// So the source is `deps ∪ wasm-reexports`: `deps` covers the wasm dependencies that exist
+    /// because the spec references them, `wasm-reexports` the ones that exist only because the
+    /// package ships them. Both sides of both derived values come from the named crate's own entry,
+    /// so a `lib-name` or `output` rename propagates and nothing can drift.
+    ///
+    /// Reading the generated `wasm/Cargo.toml` instead — where the fact already is — is not an
+    /// option: that manifest is co-owned prior output, and deciding WHICH ROWS TO EMIT from prior
+    /// output is the one thing the determinism contract does not bend on. Declaring the same fact
+    /// in the config makes it an input.
+    ///
+    /// # What is silent and what is a hard error
+    ///
+    /// A DERIVED thread whose target has no schema document is a silent skip — that is precisely
+    /// what filters hand-written crates out of the intersection, and it is what lets one config
+    /// hold both kinds of crate. An EXPLICITLY listed one is a hard error: the user asked for a
+    /// call into a crate that generates no json-gen crate for it to reach, and the failure without
+    /// this check is a cargo path-resolution error in the consumer's json-gen build, naming a
+    /// directory that was simply never written.
+    ///
+    /// The same split applies to the consumer side. A crate with no document of its own derives
+    /// nothing (there is nowhere for the rows to land), while an explicit `json-schema-deps` on
+    /// such a crate is the same impossible request and is refused the same way.
+    fn threading(
+        &self,
+        name: &str,
+        entry: &CrateEntry,
+        settings: &Settings,
+        ungraphed: &BTreeMap<String, Cli>,
+    ) -> Result<Vec<DerivedThread>, String> {
+        // Read off the expanded `Cli` rather than off merged `Settings`, so clap's default for
+        // `--json-schema-export` is never restated here — the rule every derivation in this file
+        // follows.
+        if !ungraphed[name].json_schema_export {
+            if entry
+                .json_schema_deps
+                .as_ref()
+                .is_some_and(|explicit| !explicit.is_empty())
+            {
+                return Err(format!(
+                    "[crates.{name}].json-schema-deps threads other crates' rows into \
+                     `{name}`'s schema document, but `{name}` has `json-schema-export = false` and \
+                     generates no json-gen crate — there is no document for the rows to land in. \
+                     Turn `json-schema-export` on for `{name}`, or drop the key (`json-schema-deps \
+                     = []` if you meant to thread nothing)."
+                ));
+            }
+            return Ok(Vec::new());
+        }
+
+        // The override REPLACES the derivation rather than adding to it: a crate whose package
+        // composition and dependency list genuinely diverge needs to say the whole list, and a key
+        // that could only ever add would leave no way to say "not that one".
+        let sources: Vec<(&'static str, &String)> = match &entry.json_schema_deps {
+            Some(explicit) => explicit
+                .iter()
+                .map(|dep| ("json-schema-deps", dep))
+                .collect(),
+            None => entry
+                .deps
+                .iter()
+                .map(|dep| ("deps", dep))
+                .chain(
+                    entry
+                        .wasm_reexports
+                        .iter()
+                        .map(|dep| ("wasm-reexports", dep)),
+                )
+                .collect(),
+        };
+
+        let consumer_dir = self.json_gen_dir(&ungraphed[name], &entry.output);
+        let mut threads = Vec::with_capacity(sources.len());
+        for (key, dep) in sources {
+            // Validated to name a configured crate by `validate_crate_names`.
+            let dep_entry = &self.crates[dep];
+            if !ungraphed[dep.as_str()].json_schema_export {
+                if key == "json-schema-deps" {
+                    return Err(format!(
+                        "[crates.{name}].json-schema-deps names `{dep}`, which has \
+                         `json-schema-export = false`. That crate generates no json-gen crate, so \
+                         there is no `add_schemas` to call and no package to depend on — the call \
+                         could never link. Turn `json-schema-export` on for `{dep}`, or drop it \
+                         from the list."
+                    ));
+                }
+                continue;
+            }
+            let lib = normalized(&dep_entry.lib_name);
+            // A hand-written sub-table entry for the same key wins, silently, and independently per
+            // half: the same rule `apply_graph_edges` follows, for the same reason. An explicit
+            // value is the user covering a case the sugar does not, not a conflict — and emitting
+            // both would be the flag's own duplicate-label rejection instead.
+            let json_schema_dep = (!settings.json_schema_dep.contains_key(&lib))
+                .then(|| format!("{lib}={lib}_json_schema_gen"));
+            // The cargo PACKAGE name, which is the `--lib-name` verbatim (dashes and all) plus the
+            // suffix — the opposite spelling from the rust lib path above. Read off the same
+            // `package.name` the json-gen manifest's change log writes.
+            let package = format!("{}-json-schema-gen", dep_entry.lib_name);
+            let json_gen_dep = if settings.json_gen_dep.contains_key(&package) {
+                None
+            } else {
+                let dep_dir = self.json_gen_dir(&ungraphed[dep.as_str()], &dep_entry.output);
+                Some(format!(
+                    "{package}={}",
+                    json_gen_relative_path(&consumer_dir, &dep_dir).map_err(|e| format!(
+                        "[crates.{name}].{key} names `{dep}`, whose json-gen crate this crate must \
+                         depend on by path: {e}"
+                    ))?
+                ))
+            };
+            threads.push(DerivedThread {
+                key,
+                json_schema_dep,
+                json_gen_dep,
+            });
+        }
+        Ok(threads)
+    }
+
+    /// A crate's json-gen crate directory, resolved against the config file's directory.
+    ///
+    /// `wasm/json-gen` under the crate's rust root — which `--package-json` moves one level down,
+    /// exactly like the other generated crates, so the layout is read off the OTHER crate's own
+    /// expanded `Cli` and never guessed. Note the directory exists in `wasm = false` runs too: the
+    /// json-gen crate follows `--json-schema-export`, not the wasm face.
+    fn json_gen_dir(&self, cli: &Cli, output: &str) -> PathBuf {
+        PathBuf::from(resolve_path(
+            &self.base_dir,
+            &crate_relative(cli, output, "wasm/json-gen"),
+        ))
     }
 
     /// Every crate's `Cli` as its own table alone describes it — before any cross-crate derivation.
@@ -832,7 +1094,7 @@ impl Config {
             let settings = self.merged_settings(entry);
             out.insert(
                 name.clone(),
-                build_cli(name, entry, &settings, &self.base_dir)?,
+                build_cli(name, entry, &settings, &self.base_dir, &[])?,
             );
         }
         Ok(out)
@@ -1183,6 +1445,55 @@ fn crate_relative(cli: &Cli, output: &str, tail: &str) -> String {
     }
 }
 
+/// The `--json-gen-dep` path for one thread: from the CONSUMER's json-gen crate directory to the
+/// DEPENDENCY's, RELATIVE.
+///
+/// Relative is a determinism requirement, not a style choice. Every other derived path in this file
+/// is read by the tool at generation time and never emitted; this one is WRITTEN into a committed
+/// `wasm/json-gen/Cargo.toml`. An absolute value would bake this machine's checkout location into a
+/// file the project commits, so the same config would produce different bytes in a different clone —
+/// "same inputs -> same bytes" broken in the most visible way there is. Relative is also simply what
+/// the value MEANS: cargo resolves a path dependency against the manifest holding it.
+///
+/// Both endpoints are already resolved against the config file's directory, so they normally share a
+/// frame and the diff is a pure lexical answer. One input shape has no lexical answer — one side
+/// absolute and the other relative, which a config mixing absolute and relative `output` values
+/// produces — and `pathdiff` reports it by handing back an ABSOLUTE path (or `None`) rather than by
+/// failing, so the result is checked rather than the inputs. There the relative side's location
+/// genuinely is only known through the process CWD, so that is what the fallback uses. (The output
+/// tree's own location depends on the CWD in that configuration too, so this adds no dependence the
+/// run did not already have.)
+fn json_gen_relative_path(from_dir: &Path, to_dir: &Path) -> Result<String, String> {
+    if let Some(relative) = pathdiff::diff_paths(to_dir, from_dir).filter(|p| p.is_relative()) {
+        return Ok(relative.to_string_lossy().into_owned());
+    }
+    let cwd = std::env::current_dir().map_err(|e| {
+        format!(
+            "`{}` and `{}` are one absolute path and one relative one, so the relative path \
+             between them is only defined against the current directory, which cannot be read: {e}",
+            to_dir.display(),
+            from_dir.display()
+        )
+    })?;
+    let absolute = |path: &Path| {
+        if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            cwd.join(path)
+        }
+    };
+    pathdiff::diff_paths(absolute(to_dir), absolute(from_dir))
+        .filter(|p| p.is_relative())
+        .map(|relative| relative.to_string_lossy().into_owned())
+        .ok_or_else(|| {
+            format!(
+                "no relative path leads from `{}` to `{}`",
+                from_dir.display(),
+                to_dir.display()
+            )
+        })
+}
+
 /// `` `a`, `b` `` — a comma-joined, backticked name list for a diagnostic.
 fn quoted<'a>(names: impl Iterator<Item = &'a str>) -> String {
     names
@@ -1223,6 +1534,7 @@ fn argv_fragments(
     entry: &CrateEntry,
     settings: &Settings,
     base_dir: &Path,
+    threads: &[DerivedThread],
 ) -> Vec<(&'static str, Vec<String>)> {
     let Settings {
         static_dir,
@@ -1381,6 +1693,16 @@ fn argv_fragments(
     for (k, v) in extern_wasm_crate {
         flag!("extern-wasm-crate", "extern-wasm-crate", format!("{k}={v}"));
     }
+    // Derived threads come BEFORE the raw sub-table entries, and this is the whole of the ordering
+    // story. `--json-schema-dep` is order-significant — flag order is registration order, which
+    // decides which crate a published-name collision blames — and a TOML sub-table is unordered, so
+    // the raw entries below emit in NAME order: deterministic, but not the author's. The arrays that
+    // produced these threads ARE ordered, so where order matters the ordered forms are the arrays.
+    for thread in threads {
+        if let Some(v) = &thread.json_schema_dep {
+            flag!(thread.key, "json-schema-dep", v.clone());
+        }
+    }
     for (k, v) in json_schema_dep {
         flag!("json-schema-dep", "json-schema-dep", format!("{k}={v}"));
     }
@@ -1389,6 +1711,14 @@ fn argv_fragments(
     // `<output>/wasm/json-gen/Cargo.toml`, and cargo resolves such a path against the manifest
     // holding it. Rewriting it against the config file's directory would retarget it somewhere cargo
     // never looks.
+    // Derived before raw here too. Nothing observes the order of these — they become
+    // `[dependencies]` keys, which `Cli::json_gen_deps` sorts anyway — but matching the sibling
+    // above keeps one rule to remember rather than two.
+    for thread in threads {
+        if let Some(v) = &thread.json_gen_dep {
+            flag!(thread.key, "json-gen-dep", v.clone());
+        }
+    }
     for (k, v) in json_gen_dep {
         flag!("json-gen-dep", "json-gen-dep", format!("{k}={v}"));
     }
@@ -1402,10 +1732,11 @@ fn build_cli(
     entry: &CrateEntry,
     settings: &Settings,
     base_dir: &Path,
+    threads: &[DerivedThread],
 ) -> Result<Cli, String> {
     use clap::Parser;
 
-    let fragments = argv_fragments(entry, settings, base_dir);
+    let fragments = argv_fragments(entry, settings, base_dir, threads);
     let mut argv: Vec<String> = vec!["cddl-codegen".to_owned()];
     for (_, fragment) in &fragments {
         argv.extend(fragment.iter().cloned());

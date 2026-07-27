@@ -285,6 +285,137 @@ cross-crate flags already document; the selected crate still carries the full de
 what makes that committed output reachable. If it was never generated, the flags' own error names the
 missing path.
 
+## The published JSON surface
+
+Under `json-schema-export`, each crate's json-gen crate writes **one document**
+(`schemas/<lib>.schema.json`), and `run-json2ts.js` compiles it into the `.d.ts` the npm package
+ships. A published class whose type that document does not declare fails the npm step — so the
+document has to cover everything the *package* ships, not everything the *spec* describes.
+
+Two things bridge that gap, and only one of them is derivable:
+
+- **`json-schema-root`** names a hand-written Rust type no CDDL rule describes. It is emitted verbatim
+  and cannot be derived — the config cannot tell `byron::ByronAddress` (a module of *this* crate)
+  from `cml_crypto::Bip32PublicKey` (another crate entirely) without inventing a marker.
+- **Threading another generated crate's rows** is derived, because the list it needs is one the
+  project already maintains for the crate to link.
+
+```toml
+[crates.multi-era]
+input = "specs/multiera"
+output = "gen/multi-era"
+deps = ["chain"]                      # the spec references chain's types
+wasm-reexports = ["cip25", "cip36"]   # the package ships their classes; the spec never mentions them
+```
+
+### Why the source is the wasm dependency list, not the rust one
+
+The crates a document must thread are the ones whose **wasm classes ship in this crate's package**.
+That is the crate's *wasm-side* dependency list, and it is not the same list as the rust one.
+
+With one document per crate, everything this crate's own types *reference* is already present through
+the reference closure. What a thread adds is a dependency's **unreferenced roots** — an address, a
+hash, a transaction that a consumer of your package holds directly but nothing in *your* spec points
+at. Those are exactly the types a package re-exports without naming.
+
+CML's tree is where this was measured. Its two crates that are published npm packages — `multi-era`
+and the hand-written `cml` umbrella — each thread precisely their wasm dependencies that are
+generated crates. Its two crates with no `package.json` (`cip25`, `cip36`) thread nothing while
+depending on `chain`; their documents are never consumed, so the missing thread has never cost
+anything. The rule holds wherever it is observable.
+
+So the derivation is `deps ∪ wasm-reexports`: `deps` covers the wasm dependencies that exist because
+the spec references them, `wasm-reexports` the ones that exist only because the package ships them.
+Crates outside the config drop out on their own — they have no json-gen crate to call.
+
+`wasm-reexports` creates **no** rust/extern edge and **no** generation-order edge. It is a packaging
+fact and nothing else; `deps` is what declares a real dependency.
+
+:::note Why not read the generated `wasm/Cargo.toml`, where the fact already is?
+Because that manifest is co-owned prior output — the tool writes it through a merge, and your
+hand-added lines survive. Reading it back to decide *which rows to emit* would make generated code
+depend on prior output, which is the one thing the determinism contract does not bend on. Declaring
+the same fact in the config makes it an input.
+:::
+
+### The two derived flags
+
+Each threaded crate expands to **two** flags, both read off that crate's own entry so a `lib-name` or
+`output` rename propagates and nothing can drift:
+
+| derived flag | where the value comes from |
+|---|---|
+| `--json-schema-dep=cml_chain=cml_chain_json_schema_gen` | the dependency's `lib-name`, underscored — the rust **lib path** of its json-gen crate |
+| `--json-gen-dep=cml-chain-json-schema-gen=../../../chain/wasm/json-gen` | the dependency's `lib-name` verbatim — the cargo **package** name — plus the path from your json-gen crate to its |
+
+The two spellings are opposite on purpose, and writing either the other way round is the mistake whose
+error names neither cause. Deriving them removes the choice.
+
+**The path is relative, and that is a determinism requirement.** It is the only derived path in this
+file that is *written into a committed file* rather than read at generation time — it becomes a cargo
+path dependency in `wasm/json-gen/Cargo.toml`. An absolute value would bake your checkout location
+into a file your project commits, so the same config would produce different bytes in a different
+clone. It is counted from the consumer's json-gen directory to the dependency's, and both endpoints
+follow their own crate's `package-json` setting.
+
+A crate with `json-schema-export = false` on **either** end of a derived edge contributes nothing,
+silently: a dependency with no json-gen crate has no `add_schemas` to call, and a consumer with no
+document has nowhere for the rows to land. That silence is what lets one config hold both kinds of
+crate.
+
+### Overriding the derivation
+
+`json-schema-deps` **replaces** the derivation for that crate entirely — `deps` and `wasm-reexports`
+then contribute no threading at all, and `json-schema-deps = []` threads nothing while leaving the
+edges themselves intact. It is the escape hatch for a crate whose package composition and dependency
+list genuinely diverge.
+
+The raw `[crates.<name>.json-schema-dep]` and `[crates.<name>.json-gen-dep]` sub-tables remain the
+only way to thread a crate that is **not** in this config. They union on top of whatever the
+derivation or the override produced; an entry naming a key the derivation would also produce wins,
+silently and per half, like every other hand-written sub-table entry.
+
+### Order, and which crate a collision blames
+
+`--json-schema-dep` is order-significant: flag order is registration order, and registration order
+decides which of two crates publishing one schema name keeps it. Dependency calls are emitted before
+your own rows, so on a cross-crate collision it is **your** row that the injectivity guard blames —
+the side whose owner can rename it.
+
+A TOML sub-table is unordered: it deserializes into a map, so the raw `json-schema-dep` entries emit
+in **name** order. That is deterministic but not author-controlled. **Where order matters, use the
+arrays** — `deps`, `wasm-reexports` and `json-schema-deps` keep the order you wrote. Derived entries
+are emitted before raw ones.
+
+### What this refuses
+
+All of it before any crate generates:
+
+- **`json-schema-deps` naming a crate with `json-schema-export = false`** — hard error naming both
+  crates. You asked for a call into a crate that generates no json-gen crate for it to reach; without
+  the check, the failure is a cargo path-resolution error naming a directory that was simply never
+  written. A *derived* edge onto such a crate is the silent skip above — that is the difference
+  between "the config filtered it out for you" and "you asked for something impossible".
+- **`json-schema-deps` on a crate with `json-schema-export = false`** — hard error: there is no
+  document for the threaded rows to land in. (`json-schema-deps = []` is not a request and stays
+  legal.)
+- **`wasm-reexports` or `json-schema-deps` naming an unknown crate** — hard error listing the
+  configured crates. Both derived values come from the named crate's own entry, so a crate outside
+  this config cannot be sugar.
+- **A crate naming itself** in either — hard error: its own rows are already in its own document.
+- **A crate in both `deps` and `wasm-reexports`** — hard error. The edge exists once; the duplicate
+  would derive the thread twice, which the flag itself rejects as one label under two mappings.
+- **A name listed twice in any of the arrays** — hard error, for the same reason.
+- **`wasm-reexports` or `json-schema-deps` in `[defaults]` or a `[profiles.*]` table** — hard error.
+  They are edges, and a shared edge is not a graph.
+
+### What this does and does not buy
+
+It does **not** make a forgotten *root* impossible — only the npm step can see a hand-written type
+that no rule describes, and `json-ts-types.js` already does. It does make a forgotten *thread*
+impossible, because the thread now follows from a list the project maintains anyway for the crate to
+link.
+
 ## One shared runtime crate
 
 Many generated crates in one workspace usually want **one** copy of the static rust runtime
@@ -396,7 +527,9 @@ verbatim in generated code.
 still passed through verbatim. It becomes a cargo *path dependency* in
 `<output>/wasm/json-gen/Cargo.toml`, and cargo resolves such a path against the manifest holding it —
 so rewriting it against the config file's directory would point it somewhere cargo never looks.
-Count it from the json-gen crate, exactly as you would writing the entry by hand.
+Count it from the json-gen crate, exactly as you would writing the entry by hand. (For a dependency
+this config contains you do not write it at all: the
+[threading derivation](#the-published-json-surface) computes that relative path for you.)
 
 ## Booleans
 
