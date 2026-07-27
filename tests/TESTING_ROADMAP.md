@@ -160,7 +160,26 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
 
 ## Next work items, in priority order
 
-1. **Grammar-fuzzer escalations.** The lazy-first shape-recombination fuzzer is shipped
+1. **Two uncovered surfaces around `export()`, both measured while probing the aggregate-package
+   deferral above.** Neither depends on that feature ever shipping.
+   - **A generated crate's `package.name` can collide with an existing workspace member and nothing
+     says so.** The tool writes `rust/Cargo.toml` with `package.name` derived from `--lib-name`,
+     and cargo adopts in-workspace path dependencies as members, so a name a hand-written crate
+     already claims surfaces only as `error: two packages named X in this workspace` at the
+     consumer's next `cargo metadata` — after generation reported success. Reproduced in scratch
+     with a synthetic umbrella crate. What to build: a vector generating into a workspace that
+     already holds the name, asserting whatever diagnosis we decide the tool owes (a generation-time
+     refusal is one option; the collision is only detectable if the tool reads the surrounding
+     workspace, which is an input, not prior output).
+   - **`export()`'s write tail has no coverage independent of a full spec-bearing run.** The
+     snapshot corpus goes through `generated_strings`, which stops at the file map; the manifest
+     merge, comment-preservation overlay, post-overlay import re-prune, seed-once write loop and
+     stale-file scan are exercised only incidentally by the e2e cells that happen to write to disk.
+     That is the most invariant-dense code in the tree — three bounded exceptions to
+     no-prior-output-dependence plus four diagnostic-only prior-output reads — and it is the half a
+     refactor there would most easily break silently.
+
+2. **Grammar-fuzzer escalations.** The lazy-first shape-recombination fuzzer is shipped
    (`tests/README.md` § "Shape-recombination fuzzer": `cddl-matrix/project_recombination.ts` →
    `tests/recomb/ingredients.json` → `recombination_generation_sweep` (default suite) + the
    profile-parameterized layer-2 gates `recombination_crates_execute` /
@@ -218,7 +237,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    - **Real-world corpus differential** (see `draft/testing-recommendations/RECOMMENDATIONS.md`):
      synthetic breadth vs real-world depth — recombination does not replace it.
 
-2. **Byte-fuzzer depth: the tag-set peek path + reject door are wired, but only compile-checked.**
+3. **Byte-fuzzer depth: the tag-set peek path + reject door are wired, but only compile-checked.**
    The `from_cbor_bytes` fuzz crate generates from `tests/preserve-encodings/input.cddl`, which now
    carries a `@duplicates reject` collapsed tag-set field minted as a GENERIC instance
    (`oset_p<a> = #6.258([* a]) / [* a] ; @duplicates reject`, used by `reject_set_preserve`) — so
@@ -234,7 +253,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    surface is actually walked, not merely compiled — the compile-rot gate cannot see a panic that
    only a live libFuzzer input triggers.
 
-3. **Identifier-length realism (a fixture-corpus dimension, recur-first).** Every fixture corpus
+4. **Identifier-length realism (a fixture-corpus dimension, recur-first).** Every fixture corpus
    uses short synthetic names, so any emission-width-driven failure class is structurally
    unreachable by every gate — proven by escape: consumer-scale names (CML's
    `MapTransactionIndexTo…AuxiliaryData` wrappers, fully-qualified extern paths) pushed wasm
@@ -252,7 +271,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    non-0/3-rustfmt-exit-is-fatal contract already turns any formatter internal error into a
    generation failure, so no new assertion machinery is needed.
 
-4. **Duplicates-policy residuals.** Both `@duplicates` flavors are shipped on every boundary —
+5. **Duplicates-policy residuals.** Both `@duplicates` flavors are shipped on every boundary —
    `reject` (set/array uniqueness twins) and `preserve` (table pair-map twins), covering rust,
    preserve-encodings, canonical, JSON/schemars, wasm, extern-interface projection, and the
    `dsl.duplicates.{reject,preserve}` matrix feature rows. Current state lives in
@@ -337,7 +356,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      `cbor_types` panic (the cddl-matrix findings entry) — while the fixture's
      `holder`/`pmap`/`nepmap`/`pmap_txt`/`md` rows minted with vectors.)
 
-5. **Rustfmt-stability sweep over the preserve-fixture corpus.** The rustfmt match-tail
+6. **Rustfmt-stability sweep over the preserve-fixture corpus.** The rustfmt match-tail
    comment-fold escape (the second rustfmt exposure instance in the `prettyplease` entry above)
    was found by a manual repro, not by any standing layer — the overlay's fixtures all exercised
    `preserve(old, new)` on pre-rustfmt text, and the one standing test that DOES drive the real
@@ -359,7 +378,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    — role/feature/encoding grids — and none would have caught this class; output post-processing
    round-trips are this roadmap's domain.)
 
-6. **Lint-provocation shapes for `generated_code_clippy_clean` (partially systematic at best).**
+7. **Lint-provocation shapes for `generated_code_clippy_clean` (partially systematic at best).**
    The gate itself already exists and denies `clippy::all` over the generated rust and wasm crates
    on two profiles (`generated_code_clippy_clean`, local tier; documented in `tests/README.md`) —
    yet lint classes still arrive consumer-reported when the gate's rich input is provocation-POOR
@@ -2011,6 +2030,30 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   the gate cache), which is why the probe is scoped to those cells rather than to the grid.
 
 ## Deferred features (build when a real consumer needs them)
+
+- **A crate entry that generates only a JSON-schema document (the aggregate package).** An npm
+  package composing several generated crates needs one schema document over their union, but is
+  often not itself a generated crate — so it carries a hand-written json-gen crate transcribing what
+  this tool already emits for a `--json-schema-dep`-only run, registration-order reasoning and all.
+  Measured, the emission side is already there: an input-less run (an empty `--input` directory)
+  emits a `wasm/json-gen/` whose `add_schemas` holds the threaded calls in flag order and nothing
+  else, and a fixture over two generated crates builds it and gets a document carrying a root from
+  each. What blocks it is the SURPLUS such a run also writes — a vestigial rust crate that
+  `static/manifest_changes/json_gen.toml` then makes the json-gen crate depend on
+  (`dependencies.<lib> = { path = "../../rust" }`, an unconditional entry in an append-only log).
+  Cargo auto-adopts that path dependency as a workspace member, so its `package.name` collides with
+  the hand-written umbrella crate the aggregate exists to serve; renaming escapes the collision only
+  by changing the document's title and filename, both published surface.
+  What to build, in order: FIRST extract `GenerationScope::export`'s write tail (manifest merge,
+  comment-preservation overlay, post-overlay import re-prune, seed-once write loop, stale-file scan)
+  into one parameterised helper, so the no-prior-output contract and its diagnostic-only reads have
+  exactly one implementation; lift the `--json-schema-dep` / `--json-gen-dep` / `--json-schema-root`
+  validations out of `with_types`, which an input-less run never enters; make the `../../rust`
+  manifest op conditional. Only then land the aggregate path on top. A second write loop beside the
+  existing one is the shape to avoid — the snapshot corpus reaches `generated_strings`, not
+  `export`, so nothing there would cover it. Reopening signal (magnitude, consumer-side): the count
+  of hand-written umbrella exporter files a consumer maintains rising above one, which is what a
+  project publishing a second npm package over generated crates produces.
 
 - **Finish the cross-flavor accommodation in the shared static runtime.** A runtime written by
   `--export-static-crate` is meant to serve crates at REDUCED flavors — the preludes carry
