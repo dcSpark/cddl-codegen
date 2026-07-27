@@ -225,6 +225,13 @@ assumed:
   the sidecars a consumer emits exist only because it has a workspace dependency to record. (A
   `wasm = false` *consumer* still gets `--key-requests`: that sidecar is a rust-crate concern and is
   written in either mode.)
+
+  Worth knowing before you set it: because `--workspace-dep` requires a wasm crate to exist, a
+  dependency with `wasm = false` also loses the **map-key-derive channel** that rides on it. If a
+  consumer keys a map on one of that dependency's types, the dependency never learns it must derive
+  `Eq`/`Ord`/`PartialOrd` there, and the consumer fails to build with an `E0277` naming the type.
+  The remedy is to give the dependency a wasm crate, or to declare the key demand in the
+  dependency's own spec with [`@used_as_key`](./comment_dsl).
 - **`package-json = true`** moves a crate's cargo crates one level down, to
   `<output>/rust/rust` and `<output>/rust/wasm`, leaving the output root to the npm package. Every
   derived path *into* a crate follows that layout. The `extern-interface/` export does **not** move:

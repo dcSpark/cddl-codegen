@@ -376,8 +376,12 @@ pub struct Cli {
     /// carrying a `/// Generated at the request of: …` attribution doc). This hosts the wrapper in the
     /// dep so sibling consumers import one definition instead of each minting a colliding
     /// `#[wasm_bindgen]` class. Repeatable; `<consumer>` is a label (used only in the attribution and
-    /// error messages), `<path>` must be a readable sidecar. With no `--wrapper-requests` flags the
-    /// output is byte-identical to today (the file is not emitted).
+    /// error messages). A `<path>` with NO FILE means that consumer borrows nothing — what a consumer
+    /// which has never generated records — and is a loud stderr warning rather than an error, since
+    /// otherwise a cold workspace cannot bootstrap in either direction (see
+    /// `wrapper_requests::read_request_sidecar`); a file that exists but cannot be read or parsed
+    /// stays a hard error. With no `--wrapper-requests` flags the output is byte-identical to today
+    /// (the file is not emitted).
     #[clap(long = "wrapper-requests", value_parser)]
     pub wrapper_requests: Vec<String>,
 
@@ -390,7 +394,8 @@ pub struct Cli {
     /// `borrowed_collections.rs`) still gets `Eq/Ord/PartialOrd` (plus `Hash` under
     /// `--preserve-encodings`) derived on `dep_key`. A row naming a type the dep no longer defines is a
     /// hard error naming the consumer and file. Repeatable; `<consumer>` is a label (used only in error
-    /// messages), `<path>` must be a readable sidecar. With no `--key-requests` flags the output is
+    /// messages). A `<path>` with NO FILE is the cold-workspace case — a warning, not an error; same
+    /// contract as `--wrapper-requests` above. With no `--key-requests` flags the output is
     /// byte-identical to today.
     #[clap(long = "key-requests", value_parser)]
     pub key_requests: Vec<String>,
