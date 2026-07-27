@@ -703,6 +703,24 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   by the catalog test alongside the category) is a SECOND instance where an un-shadowed deeper
   site goes unnoticed past its converting commit; building it now would trade the catalogs'
   deliberate refactor-stability for a fingerprint that churns on every panic-message edit.
+- **A panic fix lands on the FIRST site that dispatches on a shape, not the last: the sites behind
+  it ask the same question and each answers it in its own code.** Proven instance: the `cbor_types`
+  `_ => panic!()` over a nominal reference to a collection typedef (`RustStructType::Table`/`Array`,
+  which emit a rust typedef and no impls). Fixing the panic arm let the shape GENERATE and produced
+  a crate rustc rejected, because `generate_serialize`/`generate_deserialize` emitted
+  `.serialize()`/`::deserialize()` on a `BTreeMap`, and — under `--preserve-encodings` ONLY —
+  `encoding_fields_impl` minted no encoding sidecar for a member whose serialize read one. Three
+  further sites, one of them profile-gated, all reachable from the single input the panic fix
+  unblocked. No outcome catalog can see this: `tests/robustness/` is generate-only BY DESIGN, so a
+  PANIC row flipped to `ok` asserts nothing about the emitted crate. Standing coverage meanwhile is
+  the working rule that landed the fix — when a fix turns an abort into generated code, `cargo
+  check` the emitted crate under EVERY profile before believing the fix, never the default one
+  alone — plus a per-shape integration fixture, which is what
+  `recursive_collection_ref`/`recursive_collection_ref_preserve` are. The trigger for a mechanical
+  layer (a compile leg on robustness `ok` rows, or a promotion path from a flipped PANIC row into
+  the integration corpus) is a SECOND instance where a robustness row flips PANIC→`ok` and the
+  emitted crate does not compile; building it now would put a per-profile nested cargo build behind
+  a catalog whose whole value is running in seconds on every `cargo test`.
 
 - **Parallel-constructor fixture diversity: a parser over external input must span the ident-class
   matrix of REAL specs, not the feature spec's mental model.** Proven instance: the
