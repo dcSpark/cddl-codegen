@@ -3,6 +3,21 @@
   "title": "cddl_lib",
   "$defs": {
     "Bar": { "type": "string", "enum": ["x", "y"] },
+    "Deep": {
+      "type": "object",
+      "required": ["inner"],
+      "properties": {
+        "inner": {
+          "type": "object",
+          "required": ["titled"],
+          "properties": {
+            "titled": { "$ref": "#/$defs/Titled" },
+            "extra": { "type": "integer" }
+          },
+          "patternProperties": { "^\\d+$": { "$ref": "#/$defs/Bar" } }
+        }
+      }
+    },
     "Foo": {
       "type": "object",
       "required": ["bar", "count", "nested", "titled"],
@@ -17,6 +32,15 @@
       "type": "object",
       "required": ["n"],
       "properties": { "n": { "type": "integer", "format": "uint64", "minimum": 0 } }
+    },
+    "Open": {
+      "type": "object",
+      "required": ["nested"],
+      "properties": {
+        "nested": { "$ref": "#/$defs/Nested" },
+        "label": { "type": "string" }
+      },
+      "patternProperties": { "^\\d+$": { "$ref": "#/$defs/Bar" } }
     },
     "Table": {
       "type": "object",

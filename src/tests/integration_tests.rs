@@ -8303,10 +8303,21 @@ fn wasm_json_roundtrip() {
 
 /// Smoke-tests the schema → `.d.ts` step: runs the shipped `static/run-json2ts.js` over the committed
 /// schema document using the pinned `json-schema-to-typescript` from `static/package_json_schemas.json`
-/// (installed via `npm install` of that exact file), then asserts the emitted types. This is the only
-/// coverage of that script + dependency — a bump there is otherwise invisible to CI, since the rest of
-/// the suite only `cargo build`s the json-gen crate and never runs the JS. See `tests/json2ts/README.md`
-/// and `tests/README.md` § "JSON-schema → TypeScript JS-side pipeline".
+/// (installed via `npm install` of that exact file, plus an injected `typescript`), then asserts the
+/// emitted types. This is the only coverage of that script + dependency — a bump there is otherwise
+/// invisible to CI, since the rest of the suite only `cargo build`s the json-gen crate and never runs
+/// the JS. See `tests/json2ts/README.md` and `tests/README.md` § "JSON-schema → TypeScript JS-side
+/// pipeline".
+///
+/// The emitted file is then TYPE-CHECKED with `tsc --noEmit --strict --target esnext`, which is the
+/// oracle the substring asserts cannot be: it catches the class as a class (dangling names, duplicate
+/// declarations, malformed unions, a named property that does not satisfy its own index signature).
+/// Both flag choices are load-bearing. `--skipLibCheck` must stay OFF, because the file under test IS
+/// a `.d.ts` and the flag would make the check vacuous — which also means every type the file
+/// references has to resolve inside it. `--strict` is what makes the optional-property case bite at
+/// all: without `strictNullChecks` an optional `a?: T` is checked against the index signature as `T`
+/// rather than `T | undefined`, and the `Open`/`Deep` definitions would pass without the catch-all
+/// widening carrying `undefined`.
 ///
 /// Further phases pin the failure directions, all four of which must be non-zero exits that leave the
 /// last-good `json-types.d.ts` on disk: a document that does not compile, a stale per-type schema file
@@ -8343,9 +8354,26 @@ fn js_schema_to_ts() {
         work.join("scripts/run-json2ts.js"),
     )
     .unwrap();
-    std::fs::copy(
-        static_dir.join("package_json_schemas.json"),
+    // The shipped manifest verbatim except for one injected devDependency: the `tsc` this test
+    // type-checks the emitted `.d.ts` with. It is injected here rather than shipped because a
+    // consumer's generated package needs the emitted TYPES, not a type-checker, and the README's
+    // claim that this test runs the *pinned* json2ts only holds while that pin keeps coming from the
+    // shipped file.
+    let mut manifest: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(static_dir.join("package_json_schemas.json")).unwrap(),
+    )
+    .unwrap();
+    manifest
+        .get_mut("devDependencies")
+        .and_then(serde_json::Value::as_object_mut)
+        .expect("static/package_json_schemas.json must have a devDependencies object")
+        .insert(
+            "typescript".to_string(),
+            serde_json::Value::String("^5.9.0".to_string()),
+        );
+    std::fs::write(
         work.join("package.json"),
+        serde_json::to_string_pretty(&manifest).unwrap(),
     )
     .unwrap();
     for entry in std::fs::read_dir(&fixtures).unwrap() {
@@ -8391,6 +8419,8 @@ fn js_schema_to_ts() {
         "export interface NestedJSON",
         "export interface TableJSON",
         "export interface TitledJSON",
+        "export interface OpenJSON",
+        "export interface DeepJSON",
     ] {
         assert_eq!(
             dts.matches(declaration).count(),
@@ -8422,6 +8452,83 @@ fn js_schema_to_ts() {
     };
     assert!(!foo_block.contains("[k: string]"), "{foo_block}");
     assert!(dts.contains("[k: string]: number"), "{dts}");
+
+    // Named properties beside a `patternProperties` catch-all — the shape a CDDL open-map rest row
+    // (`* k => v`) flattened into a record produces. json2ts renders the pattern as an index
+    // signature that every named property must be assignable to, so the script widens the catch-all
+    // into a union that admits the named schemas; an OPTIONAL named property additionally needs
+    // `undefined` in that union, because under `strictNullChecks` that is the type checked against
+    // the index signature. Doc-comment lines are dropped before the `undefined` check, since
+    // json2ts's own `patternProperty` comment contains that word for an unrelated reason.
+    fn code_only(block: &str) -> String {
+        block
+            .lines()
+            .filter(|line| {
+                let trimmed = line.trim_start();
+                !(trimmed.starts_with('*') || trimmed.starts_with("/*"))
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+    let open_block = {
+        let start = dts.find("export interface OpenJSON").unwrap();
+        code_only(&dts[start..start + dts[start..].find('}').unwrap()])
+    };
+    assert!(open_block.contains("nested: NestedJSON"), "{open_block}");
+    assert!(open_block.contains("label?: string"), "{open_block}");
+    assert!(open_block.contains("[k: string]"), "{open_block}");
+    assert!(open_block.contains("BarJSON"), "{open_block}");
+    assert!(open_block.contains("undefined"), "{open_block}");
+    // The same combination one level down, on an inline object property's own schema: the widening
+    // is a recursive walk, not a top-level pass. Anchored on `DeepJSON`'s inner optional property
+    // rather than on a brace-matched block, so it holds whether json2ts inlines that member's type
+    // or hoists it into a declaration of its own.
+    let code = code_only(&dts);
+    assert!(code.contains("extra?: number"), "{code}");
+    let nested_index = code[code.find("extra?: number").unwrap()..]
+        .lines()
+        .find(|line| line.trim_start().starts_with("[k: string]"))
+        .unwrap_or_else(|| panic!("no index signature beside `extra?: number`:\n{code}"))
+        .to_string();
+    assert!(nested_index.contains("TitledJSON"), "{nested_index}");
+    assert!(nested_index.contains("undefined"), "{nested_index}");
+
+    // The oracle the substring asserts cannot be: type-check the emitted declaration file. It
+    // catches the class as a class — dangling names, duplicate declarations, malformed unions, a
+    // named property that does not satisfy its own index signature. `--skipLibCheck` is deliberately
+    // absent: the file under test IS a `.d.ts`, so the flag would make the check vacuous (and its
+    // absence means every type the file references must resolve inside it). `--strict` is what makes
+    // the optional-property case bite at all — without `strictNullChecks` an optional `a?: T` is
+    // checked against the index signature as `T` rather than `T | undefined`.
+    let tsc = work.join("node_modules/typescript/bin/tsc");
+    assert!(
+        tsc.exists(),
+        "the injected `typescript` devDependency must install {}",
+        tsc.display()
+    );
+    let tsc_run = std::process::Command::new("node")
+        .arg(std::fs::canonicalize(&tsc).unwrap())
+        .args([
+            "--noEmit",
+            "--strict",
+            "--target",
+            "esnext",
+            "rust/wasm/json-gen/output/json-types.d.ts",
+        ])
+        .current_dir(&work)
+        .output()
+        .unwrap();
+    if !tsc_run.status.success() {
+        eprintln!(
+            "tsc stdout:\n{}\ntsc stderr:\n{}",
+            String::from_utf8_lossy(&tsc_run.stdout),
+            String::from_utf8_lossy(&tsc_run.stderr)
+        );
+    }
+    assert!(
+        tsc_run.status.success(),
+        "the emitted json-types.d.ts must type-check:\n{dts}"
+    );
 
     // Failure directions. Each re-runs over the same, now-populated, output and must exit non-zero
     // without touching it.
@@ -8641,9 +8748,12 @@ fn js_d_ts_merge() {
     // ...and the documented override makes the same layout succeed (`Loose`'s
     // `to_json_val(): any` is then the untyped-class case, so it needs its escape).
     assert!(
-        run("macro_named", &["--method=to_json_val", "--allow-untyped=Loose"])
-            .status
-            .success()
+        run(
+            "macro_named",
+            &["--method=to_json_val", "--allow-untyped=Loose"]
+        )
+        .status
+        .success()
     );
     let overridden = std::fs::read_to_string(&macro_path).unwrap();
     assert!(

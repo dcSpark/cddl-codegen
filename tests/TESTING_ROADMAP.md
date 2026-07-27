@@ -1695,17 +1695,20 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   Mechanical layer: a property over the `AnyCbor` fuzz corpus asserting
   `from_edn(to_edn(x))` byte-identity against the existing span oracle
   (`src/tests/any_cbor_tests.rs`).
-- **Type-check the merged `.d.ts` with `tsc --noEmit`.** The JS-side pipeline
-  (`js_schema_to_ts` / `js_d_ts_merge` / `package_json_pipeline`) asserts on *substrings* of the
-  emitted TypeScript, so it can only catch the wrongness it was told to look for; a real
-  type-checker over the merged file is the oracle that catches the class as a class (dangling
-  names, duplicate declarations, malformed unions). Deferred on cost, not on value: it adds a
-  TypeScript dependency and its install weight to `package_json_pipeline`, already the heaviest
+- **Type-check the MERGED `.d.ts` with `tsc --noEmit`.** The type-checker oracle covers the json2ts
+  output alone (`js_schema_to_ts`); the merged file — wasm-pack's bindings with the JSON interfaces
+  appended and each `to_json_value()` specialized, produced by `js_d_ts_merge` and
+  `package_json_pipeline` — is still asserted on *substrings* of the emitted TypeScript, so it can
+  only catch the wrongness it was told to look for. A real type-checker over the merged file is the
+  oracle that catches the class as a class: a specialized method naming a type the append step never
+  wrote, a declaration duplicated between the two halves, a malformed union. Deferred on cost, not
+  on value: it adds TypeScript's install weight to `package_json_pipeline`, already the heaviest
   JS-side gate. Two traps to build it with, so the follow-up does not rediscover them: (1)
-  `--skipLibCheck` makes the check VACUOUS here, because the file under test *is* a `.d.ts` —
-  the flag must stay off, which also means every type the file references must resolve; and (2)
+  `--skipLibCheck` makes the check VACUOUS here, because the file under test *is* a `.d.ts` — the
+  flag must stay off, which also means every type the file references must resolve; and (2)
   TypeScript must be ≥ 5.2 with `--target esnext`, because wasm-bindgen emits `Symbol.dispose`
-  members that earlier targets do not know. Reopening signal: a shipped `.d.ts` breaks a consumer's
+  members that earlier targets do not know — a trap specific to this half, since the json2ts output
+  carries no wasm-bindgen surface. Reopening signal: a shipped merged `.d.ts` breaks a consumer's
   build in a way the substring asserts could not see.
 - **A file listing `--json-schema-root` values, instead of one flag per root.** The repeatable flag
   is what shipped, on the grounds that it matches every other repeatable flag and that the asking
