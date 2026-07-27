@@ -2166,12 +2166,14 @@ includes the guard runtime with a small baked limit and pins the at/under/over-l
 runtime crate: `Registrar` (the row registrar — one `reg.add::<T>();` per row, owning the
 published-name ledger and delegating each row to the `add_schema` helper beside it, which stays
 public for a hand-written row) and `check_schema_ref_closure` (the document's reference-closure
-check). All of it runs in a *consumer's* `cargo run` of their json-gen crate, so without this layer
-its only compile proof is a nested-cargo run — a local-tier cost to catch a syntax error, and no lint
-sees it at all.
+check). It also holds the two items a *consumer's own* code calls rather than anything emitted:
+`custom_schema_impl!`, the macro writing the `schemars::JsonSchema` impl a hand-authored schema body
+needs, and `custom_schema_body` under it. All of it runs in a *consumer's* `cargo run` of their
+json-gen crate, so without this layer its only compile proof is a nested-cargo run — a local-tier
+cost to catch a syntax error, and no lint sees it at all.
 
 `src/tests/json_schema_gen_tests.rs` `include!`s the file into one shim module, the same technique
-`any_cbor_tests` / `ordered_set_runtime_tests` use. That buys two things:
+`any_cbor_tests` / `ordered_set_runtime_tests` use. That buys:
 
 - **Lint and compile coverage in the fast tier.** `cargo clippy --workspace --all-features
   --all-targets` reaches the bin crate's test binary, so the shipped helper is linted like any other
@@ -2191,12 +2193,34 @@ sees it at all.
   `~1` encodes to `~01`, so `~1`-before-`~0` is the only order that recovers it. `check_schema_ref_
   closure` gets the accept path (including a definitions namespace that is not `#/$defs`, and an
   unresolvable one, which must SKIP rather than fail) plus both failure classes.
+- **Both arms of `custom_schema_impl!` expanded.** A macro body is text until something expands it,
+  so the shim invokes each arm over a committed JSON file under `tests/json-schema-custom/unit/` —
+  which also asserts that `include_str!` resolves relative to the INVOKING file rather than to
+  `static/json_schema_gen.rs`, since a resolution against the latter would not find them. The
+  reference retarget under it gets vectors against `custom_schema_body` directly, including the case
+  the tool's own emitted generator can never reach: a generator whose `definitions_path` is not
+  `/$defs` (`export_schemas()` always builds a default one, but `add_schemas` takes the generator as
+  a parameter). The deliberate non-rewrites — a bare name, an `http(s)://` URL, a pointer into
+  another document — have their own vector, because those are exactly what `check_schema_ref_closure`
+  exists to report.
 
 Runs under plain `cargo test` (`cargo test --bin cddl-codegen json_schema_gen_tests`) — no nested
 cargo, no dedicated gate. The end-to-end proofs stay where they were: `integration_tests::
 json_schema_name_merge_fails` / `..._stolen_fails` / `json_schema_ref_dangling_fails` run a real
 json-gen crate and assert it panics, and `snapshot_tests::json_gen_extern_schema_rows` pins that the
 generated crate still *imports* the helpers rather than inlining copies of them.
+
+**`custom_schema_impl!` in a real generated crate** is `integration_tests::
+custom_schema_impl_writes_a_closing_document` over `tests/json-schema-custom`, and it is the only
+layer that can see the macro's placement contract: the shim above proves the expansion COMPILES, not
+that `$crate::json_schema_gen::…` resolves where the tool actually puts the module. The cell
+generates the fixture, installs the committed hand-owned module (`hand/custom_ext.rs` plus the schema
+file it includes) at `rust/src/`, declares it from the SEED-ONCE `rust/src/lib.rs` — the only home
+the orphan rule leaves, and outside the `src/generated/**` every run clobbers — then `cargo run`s the
+json-gen crate and reads the document. `cargo run` rather than `cargo check` because the closure
+check runs when the document is built. Scope: the in-crate layout only, where the expansion resolves
+through the seed-once root's `pub use generated::*;`; nothing in-tree compiles the
+`--common-import-override` arrangement, where the macro's crate and the invocation's crate differ.
 
 ## wasm-ABI matrix (`tests/matrix_wasm/` + `integration_tests::wasm_matrix_compiles`)
 

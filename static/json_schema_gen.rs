@@ -8,6 +8,12 @@
 // `add_schema` stays public beside the registrar: it is the one implementation of the guard, and a
 // consumer whose layout the flags do not cover may have hand-written a row against it.
 //
+// The rest of the module serves the CONSUMER's own hand-written code rather than any emitted call:
+// `custom_schema_impl!` (and the `custom_schema_body` / `retarget_defs_references` pair under it)
+// writes the `schemars::JsonSchema` impl that `@custom_json` — and a hand-written extern with no
+// derive — commits its author to. Nothing the tool emits calls those; the tool emits the
+// registration ROW for such a type and the impl has to exist for that row to compile.
+//
 // Both checks live in the CONSUMER's own `cargo run` of their json-gen crate rather than in
 // cddl-codegen's suite, for the same reason: we are the party that requires the hand-written
 // `schemars::JsonSchema` impls they bite, and cddl-codegen's own suite asserting these properties
@@ -17,6 +23,210 @@
 // `json-schema-name-merge` / `json-schema-name-stolen` / `json-schema-ref-dangling` fixtures assert
 // on message fragments, and `docs/docs/command_line_flags.mdx` / `docs/docs/comment_dsl.mdx` quote
 // them. Reword nothing.
+
+/// The prefix a HAND-AUTHORED schema body writes its internal references with. It is a fixed part
+/// of the authoring convention (`{"$ref": "#/$defs/ConstrPlutusData"}`), NOT a claim about the
+/// document the body ends up in: `retarget_defs_references` below rewrites exactly these onto
+/// whatever namespace the generator actually uses, which is what keeps the hand-written file from
+/// encoding a runtime fact.
+const HAND_AUTHORED_DEFS_PREFIX: &str = "#/$defs/";
+
+/// The ONE normalisation of a generator's `definitions_path` setting, read by every helper here
+/// that has to name the reference namespace: the setting is spelled `/$defs` by schemars' own
+/// defaults but a consumer's settings may carry the `#` and/or a trailing `/`, and the three
+/// readers (the row guard's stolen-name check, the closure check, and the hand-authored-body
+/// retarget) must agree on what "the namespace" is or they contradict each other on the same
+/// document.
+///
+/// Returns the setting as a plain JSON POINTER into the finished document (`/$defs`), which is the
+/// form the closure check needs for `serde_json::Value::pointer`.
+fn definitions_pointer(definitions_path: &str) -> &str {
+    let path = definitions_path
+        .strip_prefix('#')
+        .unwrap_or(definitions_path);
+    path.strip_suffix('/').unwrap_or(path)
+}
+
+/// The same setting as the URI-fragment REFERENCE prefix every `$ref` into the definitions map
+/// starts with (`#/$defs/`). Derived from `definitions_pointer` rather than normalised again, so
+/// the pointer form and the reference form can never disagree.
+fn definitions_ref_prefix(definitions_path: &str) -> String {
+    format!("#{}/", definitions_pointer(definitions_path))
+}
+
+/// Rewrites a HAND-AUTHORED schema body's internal references onto the namespace `generator`
+/// actually uses, recursively, everywhere in `body`.
+///
+/// Only a `$ref` already carrying the authoring convention's `#/$defs/` prefix is touched, and only
+/// its prefix. Every other `$ref` is left exactly as written — a bare `"PlutusData"`, an
+/// `http(s)://` URL, a pointer into some other document — because those are the shapes
+/// `check_schema_ref_closure` exists to report, and silently rewriting one would turn a reported
+/// failure into a differently-dangling reference.
+///
+/// This is why a hand-authored file may write `#/$defs/` and still not be encoding a runtime fact:
+/// the prefix is the authoring convention, and the namespace the document ships with is read off
+/// the generator here. It matters because `add_schemas` takes the generator as a parameter — a
+/// consumer composing several crates' rows supplies their own, and `--json-schema-dep` threads it
+/// across crates — so the document a hand-authored body lands in is not always the one
+/// `export_schemas` builds with schemars' defaults.
+pub fn retarget_defs_references(body: &mut serde_json::Value, definitions_path: &str) {
+    retarget_with_prefix(body, definitions_ref_prefix(definitions_path).as_str());
+}
+
+fn retarget_with_prefix(value: &mut serde_json::Value, prefix: &str) {
+    match value {
+        serde_json::Value::Object(map) => {
+            for (key, child) in map.iter_mut() {
+                if key == "$ref"
+                    && let Some(name) = child
+                        .as_str()
+                        .and_then(|r| r.strip_prefix(HAND_AUTHORED_DEFS_PREFIX))
+                {
+                    *child = serde_json::Value::String(format!("{prefix}{name}"));
+                } else {
+                    retarget_with_prefix(child, prefix);
+                }
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                retarget_with_prefix(item, prefix);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The whole `json_schema()` member `custom_schema_impl!` writes, as an ordinary function: parse the
+/// hand-authored document, retarget its references onto `generator`'s namespace, and hand back a
+/// `schemars::Schema`. `origin` names the file in the two failure messages and is otherwise unused.
+///
+/// A function rather than more macro body, for two reasons that both outlast the macro. It is the
+/// part with behaviour, so it is directly testable and directly lintable, while what stays in the
+/// macro is impl scaffolding a compiler checks on sight. And it is what a consumer whose type the
+/// macro cannot serve — a manual `impl` for a shape outside the macro's two forms — calls to get the
+/// same body without reimplementing the retarget.
+pub fn custom_schema_body(
+    generator: &schemars::SchemaGenerator,
+    origin: &str,
+    source: &str,
+) -> schemars::Schema {
+    let mut body: serde_json::Value = serde_json::from_str(source).unwrap_or_else(|e| {
+        panic!("cddl-codegen custom_schema_impl!: {origin} is not valid JSON: {e}")
+    });
+    retarget_defs_references(&mut body, &generator.settings().definitions_path);
+    schemars::Schema::try_from(body).unwrap_or_else(|e| {
+        panic!("cddl-codegen custom_schema_impl!: {origin} is not a valid JSON schema: {e}")
+    })
+}
+
+/// Writes the whole `schemars::JsonSchema` impl for a type whose schema BODY is a hand-authored
+/// JSON file — the impl `@custom_json` commits a spec author to, and the one a hand-written
+/// `_CDDL_CODEGEN_EXTERN_TYPE_` needs before it can carry a registration row.
+///
+/// ```ignore
+/// // the published name is the type's own name, `PlutusData`
+/// crate::custom_schema_impl!(PlutusData, "custom_schemas/PlutusData.json");
+/// // …or state it, for a type that is not a bare ident here or that publishes under another name
+/// crate::custom_schema_impl!(Ext<u64>, "custom_schemas/ExtU64.json", "ExtU64");
+/// ```
+///
+/// `crate::` is the in-crate spelling — this file is a module of the rust crate you are writing in.
+/// Under `--common-import-override` / `--export-static-crate` the macro lives in the common crate,
+/// so it is `<common>::custom_schema_impl!(…)` instead, invoked from whichever crate defines the
+/// type (fact 3).
+///
+/// Five facts about where it may be written, each of which is a compile error to get wrong:
+///
+/// 1. **It is exported at the CRATE ROOT of the crate hosting this module** (`#[macro_export]`
+///    hoists it), so it is `<common>::custom_schema_impl!`, never
+///    `<common>::json_schema_gen::custom_schema_impl!`. If that module is behind a `#[cfg]` of your
+///    own, the macro is gated with it — it is defined in this file.
+/// 2. **The expansion reaches back here as `$crate::json_schema_gen::…`**, and `$crate` is the crate
+///    that DEFINES this macro — the one hosting this file, never the invoking one — so that crate
+///    must have a module named `json_schema_gen` reachable from ITS root. Under
+///    `--export-static-crate` you hand-declare `pub mod json_schema_gen;` in the target crate's root
+///    (the tool's new-static-file notice names it). In-crate the tool declares the module inside
+///    `src/generated/mod.rs`, so root reachability comes from the seed-once `src/lib.rs`'s
+///    `pub use generated::*;` — a line you own after the first export. Narrowing that glob to a name
+///    list makes every invocation an `E0433` for `json_schema_gen` in `$crate`, reported at the
+///    expansion rather than at the edit that caused it.
+/// 3. **The invocation must live in the crate that DEFINES the type.** `schemars::JsonSchema` is a
+///    foreign trait, so the orphan rule allows the impl nowhere else. For a generated type carrying
+///    `@custom_json` that means a hand-owned module of the GENERATED rust crate, declared from its
+///    seed-once `src/lib.rs` — outside `src/generated/**`, which is clobbered every run.
+/// 4. **`include_str!` resolves `$path` relative to the INVOKING file**, not to this one. Keep the
+///    JSON inside the invoking crate's own directory: a published crate ships only its own files,
+///    so a path reaching into a sibling crate compiles locally and breaks at `cargo publish`.
+/// 5. **The invoking crate needs `schemars` reachable under that name** — and only that one. The
+///    expansion writes `schemars::JsonSchema` / `SchemaGenerator` / `Schema` unqualified, but no
+///    `serde_json`: the document is parsed inside `custom_schema_body`, compiled once in the crate
+///    hosting this file, and the invocation hands it a `&'static str`. So a crate that invokes this
+///    for a type of its own needs no JSON dependency of its own. Under `--json-schema-export` the
+///    tool already asserts `schemars` on the generated rust crate, which is where fact 3 puts a
+///    generated type's invocation.
+///
+/// `inline_schema()` returns `false`: that is what makes the type REFERABLE — schemars registers the
+/// returned body as a definition and hands out a `$ref` to it — so one hand-authored file can point
+/// at another's entry and each shape is declared once. It is also schemars' own default; stated
+/// explicitly because it is the load-bearing half of the impl, not because it changes anything.
+///
+/// `schema_name()` is derived from the TYPE TOKEN in the two-argument form. That makes a
+/// hand-authored type's published name follow the same rule as every generated sibling in the same
+/// document (the schemars derive publishes the Rust type name) by construction, rather than by an
+/// author keeping a string in sync with a type. Taking an `ident` there is what makes the derivation
+/// exact — an ident stringifies to itself, with no path qualifier or generic-argument spelling
+/// leaking into a published API name — and it costs nothing, because fact 3 already puts the
+/// invocation in the crate that defines the type, where the type is nameable as a bare ident.
+///
+/// The three-argument form takes the name as an expression instead, for the two shapes the
+/// derivation cannot serve: a type that is not a bare ident at the invocation, and a deliberate
+/// published name that differs from the Rust one. Explicit rather than derived, because
+/// `schema_name()` doubles as `schema_id()` by default and therefore as an IDENTITY: a generic whose
+/// instantiations all report one constant name is exactly the silent MERGE the row ledger in
+/// `add_schema` panics on, and the author is the only party who can vary it
+/// (`format!("Base_{}", <T as schemars::JsonSchema>::schema_name())` — an expression, which is why
+/// this argument is one).
+/// The two arms deliberately do NOT delegate to one another: an arm written as
+/// `$crate::custom_schema_impl!(…)` is an absolute path to a `macro_export` macro, which rustc
+/// rejects outright in a crate that obtained this file by `include!` rather than as a real module
+/// ("macro-expanded `macro_export` macros from the current crate cannot be referred to by absolute
+/// paths") — cddl-codegen's own harness is exactly such a crate. Since `custom_schema_body` already
+/// holds everything with behaviour, the price of no delegation is one duplicated three-member
+/// skeleton whose only difference is the `schema_name()` line.
+#[macro_export]
+macro_rules! custom_schema_impl {
+    ($ty:ident, $path:literal) => {
+        impl schemars::JsonSchema for $ty {
+            fn schema_name() -> ::std::borrow::Cow<'static, str> {
+                ::std::borrow::Cow::Borrowed(::core::stringify!($ty))
+            }
+
+            fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+                $crate::json_schema_gen::custom_schema_body(generator, $path, include_str!($path))
+            }
+
+            fn inline_schema() -> bool {
+                false
+            }
+        }
+    };
+    ($ty:ty, $path:literal, $name:expr) => {
+        impl schemars::JsonSchema for $ty {
+            fn schema_name() -> ::std::borrow::Cow<'static, str> {
+                ::core::convert::Into::into($name)
+            }
+
+            fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+                $crate::json_schema_gen::custom_schema_body(generator, $path, include_str!($path))
+            }
+
+            fn inline_schema() -> bool {
+                false
+            }
+        }
+    };
+}
 
 /// The row helper every registration row reaches, through `Registrar::add` below.
 /// `subschema_for::<T>()` registers T — and everything T references — into the generator's shared
@@ -77,14 +287,7 @@ pub fn add_schema<T: schemars::JsonSchema>(
         // which case schemars hands out `<name>2`. This is what sees a collision whose WINNER has no
         // row of its own (a type reached only through another row's schema), which the ledger cannot.
         // A returned schema with no `$ref` at all is not a naming decision, so it is skipped.
-        let definitions_path = generator.settings().definitions_path.to_string();
-        let definitions_path = definitions_path
-            .strip_prefix('#')
-            .unwrap_or(definitions_path.as_str());
-        let definitions_path = definitions_path
-            .strip_suffix('/')
-            .unwrap_or(definitions_path);
-        let prefix = format!("#{definitions_path}/");
+        let prefix = definitions_ref_prefix(&generator.settings().definitions_path);
         // schemars percent-/JSON-pointer-encodes a name whose bytes are not safe inside a URI
         // fragment (`OrderedHashMap<K, V>` becomes `OrderedHashMap%3CK,%20V%3E`) with an encoder that
         // is not part of its public API. Comparing only names no encoder can touch keeps this guard
@@ -203,15 +406,10 @@ fn decode_schema_ref_name(encoded: &str) -> String {
 /// `"#"`, an `http(s)://` URL, another document's path, or an internal pointer at a key nothing
 /// defined — ships as a `.d.ts` that references a type it never declares (`TS2304`).
 pub fn check_schema_ref_closure(document: &serde_json::Value, definitions_path: &str) {
-    // The reference namespace is read off the generator's own settings, never hardcoded (the same
-    // normalisation the add_schema helper does).
-    let definitions_path = definitions_path
-        .strip_prefix('#')
-        .unwrap_or(definitions_path);
-    let definitions_path = definitions_path
-        .strip_suffix('/')
-        .unwrap_or(definitions_path);
-    let prefix = format!("#{definitions_path}/");
+    // The reference namespace is read off the generator's own settings, never hardcoded, through the
+    // same `definitions_pointer` normalisation the row guard and the hand-authored-body retarget use.
+    let prefix = definitions_ref_prefix(definitions_path);
+    let definitions_path = definitions_pointer(definitions_path);
     // The definitions MAP is resolved through that same setting (as a JSON pointer into the finished
     // document) rather than assumed to be `$defs`, so the two halves of every comparison come from
     // one source. If it resolves to nothing, the reference namespace and the emitted document shape

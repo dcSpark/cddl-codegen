@@ -8401,6 +8401,152 @@ fn json_schema_export_without_serde_derives() {
     }
 }
 
+/// `custom_schema_impl!` in a REAL generated crate. The macro writes the `schemars::JsonSchema` impl
+/// a hand-authored schema body needs, and every part of that is a claim about code the tool does not
+/// compile: the module the expansion reaches back into (`$crate::json_schema_gen::…`) lives inside
+/// `src/generated/**` in this layout, so the path resolves only through the seed-once root's
+/// `pub use generated::*;` — and the impl itself may live nowhere but the crate defining the type,
+/// because `schemars::JsonSchema` is foreign. In-crate unit vectors
+/// (`tests::json_schema_gen_tests`) expand both arms against the harness's own `include!`ed copy,
+/// which proves the expansion COMPILES but not that either path holds in a generated crate.
+///
+/// So this cell is the one that can see:
+///
+/// 1. **the invocation's home works** — `rust/src/custom_ext.rs`, declared from the seed-once
+///    `rust/src/lib.rs`, outside the `src/generated/**` every run clobbers;
+/// 2. **`crate::custom_schema_impl!` resolves** — the absolute path documented on the macro, legal
+///    here because the module is a REAL module rather than one obtained by `include!`;
+/// 3. **`include_str!` reads the invoking crate's own file** — `custom_schemas/CustomExt.json`
+///    beside the module, not beside the file defining the macro;
+/// 4. **the document CLOSES** — the hand-authored body's `#/$defs/OwnThing` and the generated
+///    `OwnThing`'s reference to `CustomExt` resolve against each other, which
+///    `check_schema_ref_closure` asserts at run time before anything is written.
+///
+/// A `cargo run` rather than a `cargo check` for (4): the closure check runs when the document is
+/// built, so a check-only verdict would be satisfied by a document that never resolves.
+///
+/// Scope, stated honestly: the IN-CRATE layout only. Under `--common-import-override` the macro is
+/// `<common>::custom_schema_impl!` and `$crate` is the common crate, whose `pub mod json_schema_gen;`
+/// the consumer hand-declares (the `--export-static-crate` new-static-file notice names it); nothing
+/// here compiles that arrangement.
+///
+/// Its own self-contained harness rather than a `run_test` row for the same reason
+/// `json_schema_dep_threading` has one, and modelled on it: the export-dir reset of the merged
+/// manifests and the seed-once crate roots is load-bearing for a REUSED export dir, since generation
+/// merges manifests and never clobbers a crate root — this cell APPENDS to that root, so a stale one
+/// would carry a duplicate `pub mod`.
+#[test]
+fn custom_schema_impl_writes_a_closing_document() {
+    use std::str::FromStr;
+    let test_path = std::path::PathBuf::from_str("tests")
+        .unwrap()
+        .join("json-schema-custom");
+    let export_path = test_path.join("export");
+    println!("--------- running custom_schema_impl test ---------");
+    for manifest in [
+        "rust/Cargo.toml",
+        "wasm/Cargo.toml",
+        "wasm/json-gen/Cargo.toml",
+    ] {
+        let _ = std::fs::remove_file(export_path.join(manifest));
+    }
+    for root in [
+        "rust/src/lib.rs",
+        "wasm/src/lib.rs",
+        "wasm/json-gen/src/lib.rs",
+    ] {
+        let _ = std::fs::remove_file(export_path.join(root));
+    }
+    let generate = codegen_cmd()
+        .arg(format!("--output={}", export_path.to_str().unwrap()))
+        .arg(format!(
+            "--input={}",
+            test_path.join("inputs").to_str().unwrap()
+        ))
+        .arg("--no-preserve-comments")
+        .arg("--json-schema-export=true")
+        .arg("--json-serde-derives=true")
+        .arg("--wasm=false")
+        .output()
+        .unwrap();
+    if !generate.status.success() {
+        eprintln!("{}", String::from_utf8_lossy(&generate.stderr));
+    }
+    assert!(
+        generate.status.success(),
+        "generation must succeed for the custom_schema_impl fixture"
+    );
+
+    // Install the hand-owned side: the module, the schema file it includes (beside it, inside the
+    // crate — a published crate ships only its own directory), and the seed-once root's declaration
+    // of both the module and the extern re-export the generated glue requires.
+    let rust_src = export_path.join("rust/src");
+    std::fs::create_dir_all(rust_src.join("custom_schemas")).unwrap();
+    std::fs::copy(
+        test_path.join("hand/custom_ext.rs"),
+        rust_src.join("custom_ext.rs"),
+    )
+    .unwrap();
+    std::fs::copy(
+        test_path.join("hand/custom_schemas/CustomExt.json"),
+        rust_src.join("custom_schemas/CustomExt.json"),
+    )
+    .unwrap();
+    let lib_rs_path = rust_src.join("lib.rs");
+    let lib_rs = std::fs::read_to_string(&lib_rs_path).unwrap();
+    std::fs::write(
+        &lib_rs_path,
+        format!("{lib_rs}\npub mod custom_ext;\npub use custom_ext::CustomExt;\n"),
+    )
+    .unwrap();
+
+    let json_export_dir = export_path.join("wasm/json-gen");
+    let run = tool_cmd("cargo")
+        .arg("run")
+        .current_dir(&json_export_dir)
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&run.stderr).into_owned();
+    println!("json-gen run stderr:\n{stderr}");
+    assert!(
+        run.status.success(),
+        "the json-gen run must SUCCEED — the macro's expansion did not compile, or the document it \
+         contributed does not resolve inside itself:\n{stderr}"
+    );
+
+    let document: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(json_export_dir.join("schemas/cddl_lib.schema.json"))
+            .expect("the json-gen run must write its document"),
+    )
+    .expect("the exported document must be valid JSON");
+    let defs = document
+        .get("$defs")
+        .and_then(|d| d.as_object())
+        .expect("the exported document must hold a `$defs` object");
+    // The published name is the TYPE TOKEN's, derived by the two-argument arm rather than restated
+    // by the author — so a `$defs` key spelled anything else means the derivation broke.
+    assert!(
+        defs.contains_key("CustomExt"),
+        "the hand-authored type must be published under its own type name; got keys {:?}",
+        defs.keys().collect::<Vec<_>>()
+    );
+    // …carrying the file's body, which is what `inline_schema() == false` buys: a definition of its
+    // own rather than a copy inlined at each use.
+    assert_eq!(
+        defs["CustomExt"]["properties"]["bytes"]["type"], "string",
+        "the `$defs` entry must be the hand-authored body, not a derived one"
+    );
+    // Both directions of the cross-reference, which together are what the closure check ran over.
+    assert_eq!(
+        defs["CustomExt"]["properties"]["owner"]["$ref"], "#/$defs/OwnThing",
+        "the hand-authored reference must name the generated sibling's entry"
+    );
+    assert_eq!(
+        defs["OwnThing"]["properties"]["p"]["$ref"], "#/$defs/CustomExt",
+        "the generated body must reference the hand-authored entry"
+    );
+}
+
 /// Float JSON serde/schema, split from `json` because that fixture also runs under
 /// `json_preserve` and preserve-encodings is unimplemented for floats.
 #[test]

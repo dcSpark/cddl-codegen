@@ -1,0 +1,6 @@
+{
+  "type": "object",
+  "properties": {
+    "alpha": { "$ref": "#/$defs/Alpha" }
+  }
+}

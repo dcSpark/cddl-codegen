@@ -26,3 +26,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests;
+
+/// Test-harness plumbing, not production API. `static/json_schema_gen.rs` exports
+/// `custom_schema_impl!` with `#[macro_export]`, and its expansion reaches back into the hosting
+/// crate as `$crate::json_schema_gen::…` — the path a generated crate really has. The suite compiles
+/// that shipped file into THIS crate's test binary (`tests::json_schema_gen_tests`), so `$crate` is
+/// this root, and the module has to be reachable from it or the macro cannot be invoked here at all.
+/// One alias buys the macro's expansion the same rustc/clippy pass as the rest of the file, instead
+/// of leaving it provable only by a nested-cargo run of a generated crate.
+#[cfg(test)]
+pub(crate) use tests::json_schema_gen_tests::json_schema_gen;

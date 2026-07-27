@@ -1,0 +1,13 @@
+; End-to-end fixture for `custom_schema_impl!`. Driven by
+; `integration_tests::custom_schema_impl_writes_a_closing_document`, which generates this spec,
+; installs the hand-owned module under `../hand/` into the generated rust crate (declared from its
+; SEED-ONCE `src/lib.rs`, outside the clobbered `src/generated/**` — the only home the orphan rule
+; leaves for an impl of a foreign trait on this crate's type), runs the json-gen crate, and reads the
+; document it wrote.
+;
+; `custom_ext` is an extern with no `@no_json_schema_export`, so it carries a registration ROW: the
+; row is what makes the missing `schemars::JsonSchema` impl a compile error, and the macro is what
+; supplies it. `own_thing` embeds it so the hand-authored body and a generated body reference each
+; other, which is the closure the check runs over.
+custom_ext = _CDDL_CODEGEN_EXTERN_TYPE_
+own_thing = [a: uint, p: custom_ext]
