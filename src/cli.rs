@@ -103,8 +103,19 @@ fn parse_json_schema_dep(s: &str) -> Result<String, String> {
     Ok(s.to_owned())
 }
 
+/// The flags below describe ONE generated crate. A project that generates several — the shape that
+/// makes the flag lists long and mostly-repeated — can instead put them in a config file:
+/// `cddl-codegen --config <file.toml> [CRATE...]`, where every flag here is a key. That mode is
+/// mutually exclusive with these flags (see `docs/docs/config_file.mdx`), which is why `--config` is
+/// not itself listed among them; this note is how it stays discoverable from `--help`.
+const CONFIG_MODE_HELP: &str = "Multi-crate projects: `cddl-codegen --config <file.toml> [CRATE...]` \
+                                takes every flag above as a key in a TOML file, with shared values \
+                                declared once. Paths in it resolve against the config file rather \
+                                than the current directory. `--config` cannot be combined with the \
+                                flags above.";
+
 #[derive(Debug, Default, Parser)]
-#[clap()]
+#[clap(after_help = CONFIG_MODE_HELP, after_long_help = CONFIG_MODE_HELP)]
 pub struct Cli {
     /// Input .cddl file to generate from. If this is a directory then it will read all *.cddl files and generate one output for each.
     #[clap(short, long, value_parser, value_name = "INPUT_FILE/INPUT_DIR")]

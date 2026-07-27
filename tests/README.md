@@ -2996,6 +2996,43 @@ Adding a member kind / role template / construct shape extends the swept surface
 executed-artifact floors when doing so deliberately. Changing `SEED` re-rolls every sampled
 composition — do it deliberately and re-triage.
 
+## Config-file front end (`src/tests/config_tests.rs`)
+
+`--config <file.toml>` (`src/config.rs`) is a pure expansion layer: it turns one TOML document into
+`Vec<(crate name, Cli)>` and hands each `Cli` to the same `api::generate_to_disk` a command line
+would have reached. Its whole claim is "a config key IS its flag", so the suite is organised around
+the three ways that claim breaks, and deliberately re-tests nothing about what a flag MEANS (that is
+covered wherever the flag is).
+
+**A key that does not reach the flag.** The merge (built-in → `[defaults]` → profiles in the crate's
+listed order → the crate's own keys) is pinned per layer boundary, each by a key only that boundary
+decides, so collapsing two layers fails rather than coincidentally passing; profile order is proven
+by asserting a REVERSED list gives the reversed answer. Arrays concatenate across layers, and the sub-tables that spell a repeatable
+key/value flag union per key.
+`expansion_equals_the_equivalent_hand_written_flag_list` sets every key at once and compares the
+result field by field against `Cli::parse_from` of the flag list — both sides destructured
+EXHAUSTIVELY, so a new `Cli` field fails it at compile time.
+
+**A key that reaches the wrong value.**
+`path_keys_resolve_against_the_config_file_not_the_process_cwd` is discriminating by construction:
+the config sits in a temp directory and names `tests/core/input.cddl`, a path that also exists
+relative to the process CWD with different content, so a CWD-relative implementation succeeds with
+the WRONG file rather than merely failing. `--no-preserve-comments` is the one negated flag behind a
+positive key, so both directions of that inversion are pinned.
+
+**A key that exists on one side only.** `config_keys_match_cli_fields` reads `struct Cli` and
+`struct Settings` from SOURCE with `syn` and asserts a bijection modulo a documented exclusion list
+(the three per-crate keys, which live on the crate entry; `profiles`, which is the config's own
+structure). A flag added without a config key fails it, and so does a key invented with no flag.
+
+The acceptance test is `config_expansion_generates_byte_identical_output_to_the_flag_invocation`:
+one corpus fixture generated twice through `api::generated_strings`, once from a config and once
+from the equivalent flags, asserted file-set-equal and content-equal. That is what pins "config =
+flag expansion, nothing more" at the level of emitted source rather than at the `Cli` struct.
+
+Everything here runs under plain `cargo test` (`cargo test --bin cddl-codegen config_tests`;
+in-tier via the local tier's workspace `cargo test`, no nested cargo, no dedicated gate).
+
 ## Design rules (review-owned; each with a shipped exemplar)
 
 Three rules govern how guards, graceful-rejection refactors, and directive-effect pins are written.
