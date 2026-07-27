@@ -7023,7 +7023,44 @@ axis = "corpus"
 example = "md = mdmap / [* md] / int / bytes / text\nmdmap = { * text => md } ; @duplicates preserve"
 fixture = "table_preserve"
 rule = "mdmap"
-pinned_reason = "cddl-codegen cannot generate this construct standalone (holder+closure; cargo run exit 101)"
+spec = "__probe_holder = [0, mdmap]\nmd = mdmap / [* md] / int / bytes / text\nmdmap = { * text => md } ; @duplicates preserve"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a267596f6c616e64611909ac636375728180"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a2686d696c6b6d6169646a677574747572616c2773684d616c69616e277346656174657273"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a26a72657065617461626c651901456853757065726d616e657769647468"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a36c736565727375636b65722773190d66646e756e736872656164696e67736d70726f706f7274696f6e696e678449416e74696f636827734644657874657283a36967656e65736973277319059769636f6e73747275656439021a684575727964696365a03901fca167596f75547562654c5769747467656e737465696e4a73686f72746375742773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a4667765616b656e19121167446f6e6e652773826a70686f6e6963616c6c79824c736576656e7465656e74687347696e68756d616e6e70726f647563746976697479277319010b6b6163636f756e74616e747381687472757374792773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a46e736861726563726f707065722773190c946a7265766f6c76657227731908ac66646566616d65190413656772756573190e2b"
+source = "ruby-generate"
+expect = "accept"
 
 [[row]]
 id = "table_preserve.nepmap"

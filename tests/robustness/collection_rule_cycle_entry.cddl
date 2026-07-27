@@ -1,0 +1,21 @@
+; A rule cycle ENTERED AT the collection rule: the referrer is parsed first, so its reference to the
+; collection never resolves through the alias table and stays a NOMINAL `Rust(ident)` naming a
+; `RustStructType::Table`. That struct emits no impls of its own (it is a bare rust typedef,
+; `pub type Mdmap = BTreeMap<String, Md>`), so every generation site that dispatches on a struct
+; reference has to answer "what is this shape" for it. Three did not: `cbor_types` aborted at a bare
+; `_ => panic!()` with no message, and serialize/deserialize emitted `.serialize()` / `::deserialize()`
+; naming methods a `BTreeMap` does not have. All three now recurse into the collection's structural
+; type, which is what the resolved-alias reference path has always emitted.
+;
+; The CYCLE ENTRY POINT is the load-bearing ingredient, not recursion as such: the same three rules
+; with `h = [md]` as the root put `mdmap` first in the rule order, the reference resolves to the
+; alias, and the spec has always generated and compiled. Only entering at `mdmap` (as `h = [mdmap]`
+; does) produces the nominal reference. `tests/recursive-collection-ref` pins BOTH spellings against a
+; real compile + round-trip, across the array/table/`@duplicates preserve`/`{+ }` flavors; this row is
+; the generation-outcome half — it flips loudly if the panic ever returns.
+;
+; NOTE this catalog is generate-only, so an `ok` row here means "generation exits 0" and cannot see a
+; compile failure. The compile-side guarantee is the integration fixture named above.
+h = [mdmap]
+md = mdmap / int
+mdmap = { * text => md }

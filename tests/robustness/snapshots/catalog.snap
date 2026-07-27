@@ -15,6 +15,7 @@ choice_array_any_arm       ok
 choice_cbor_ref_arm        ok
 choice_group_array_arm     ok
 choice_last_any_arm        ok
+collection_rule_cycle_entry ok
 duplicate_rule             error (graceful)
 empty                      ok
 empty_array                ok

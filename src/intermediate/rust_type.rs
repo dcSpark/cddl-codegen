@@ -623,7 +623,19 @@ impl RustType {
                                 Representation::Map => vec![CBORType::Map],
                             },
                             RustStructType::RawBytesType => vec![CBORType::Bytes],
-                            _ => panic!(),
+                            // a named table/array rule emits no struct of its own — it is a rust
+                            // type ALIAS onto a map/vec collection (`pub type Mdmap =
+                            // BTreeMap<String, Int>`), so its wire shape is exactly that
+                            // collection's: the `Map`/`Array` conceptual arms below. Reached — in
+                            // preference to those resolved arms — when a RECURSIVE rule cycle keeps
+                            // the reference nominal: the referring rule is handled before the
+                            // collection rule registers its alias, so the variant stays a
+                            // `Rust(ident)` forward reference naming the registered struct.
+                            RustStructType::Table { .. } => vec![CBORType::Map],
+                            RustStructType::Array { .. } => vec![CBORType::Array],
+                            // NO catch-all arm: every `RustStructType` is spelled out, so a new
+                            // variant is a compile error at this site rather than an abort on valid
+                            // user input at generation time.
                         }
                     }
                 }
