@@ -1907,6 +1907,59 @@ fn a_second_export_static_crate_alongside_runtime_is_an_error() {
     }
 }
 
+/// Two export SITES with no `[runtime]` table at all. `export-static-crate` is an ordinary
+/// `Settings` key, so one `[defaults]` line is a single layer and one export site PER CRATE — the
+/// shape the `[runtime]`-gated refusal above never sees, and the one that is destructive: two crates
+/// exporting at differing flavors is not idempotent (measured: the exported `any_cbor.rs` grew
+/// 62 → 143 → 224 → 305 `compile_error!` blocks over four runs of one unchanged config, exit 0 each
+/// time). Every layer a shared value can come from produces it.
+#[test]
+fn two_export_static_crate_sites_without_a_runtime_table_are_an_error() {
+    for (what, text) in [
+        (
+            "one shared [defaults] value reaching both crates",
+            "[defaults]\nexport-static-crate = \"runtime\"\n\
+             [crates.a]\ninput = \"a.cddl\"\noutput = \"gen/a\"\n\
+             [crates.b]\ninput = \"b.cddl\"\noutput = \"gen/b\"\n",
+        ),
+        (
+            "one shared profile applied to both crates",
+            "[profiles.shared]\nexport-static-crate = \"runtime\"\n\
+             [crates.a]\ninput = \"a.cddl\"\noutput = \"gen/a\"\nprofiles = [\"shared\"]\n\
+             [crates.b]\ninput = \"b.cddl\"\noutput = \"gen/b\"\nprofiles = [\"shared\"]\n",
+        ),
+        (
+            "two crate tables each naming one",
+            "[crates.a]\ninput = \"a.cddl\"\noutput = \"gen/a\"\nexport-static-crate = \"runtime\"\n\
+             [crates.b]\ninput = \"b.cddl\"\noutput = \"gen/b\"\nexport-static-crate = \"other\"\n",
+        ),
+    ] {
+        let err = error(text);
+        assert!(
+            err.contains("`a`") && err.contains("`b`"),
+            "the refusal must name both exporting crates ({what}), got:\n{err}"
+        );
+        assert!(
+            err.contains("idempotent"),
+            "the refusal must say what breaks, not just that it is refused ({what}), got:\n{err}"
+        );
+    }
+}
+
+/// The refusal is about the SECOND site, so a shared value reaching exactly one crate stays legal —
+/// otherwise a single-crate config could not set the key from `[defaults]` at all.
+#[test]
+fn one_export_static_crate_site_from_a_shared_layer_stays_legal() {
+    let cli = expand_one(
+        "[defaults]\nexport-static-crate = \"crates/runtime\"\n\
+         [crates.demo]\ninput = \"s.cddl\"\noutput = \"gen\"\n",
+    );
+    assert_eq!(
+        cli.export_static_crate,
+        Some(std::path::PathBuf::from("crates/runtime"))
+    );
+}
+
 /// A per-crate `export-static-crate` with NO `[runtime].export-static-crate` is the hand-placed flag
 /// this table replaces, and stays legal — the refusal above is about two exports, not about the key.
 #[test]
