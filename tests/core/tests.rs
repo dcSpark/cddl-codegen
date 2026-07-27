@@ -179,6 +179,26 @@ mod tests {
         ]
         .concat();
         assert!(OptFixedMap::from_cbor_bytes(&wrong).is_err());
+        // present NINT key with the WRONG constant (m_nint => -8, expected -7). The message must
+        // name the value the CDDL AUTHORED on BOTH sides, so it is greppable against the spec.
+        // A `Key` with no signed variant forces the nint through its CBOR wire representation
+        // (`-1-N`), which rendered this exact vector as "Expected fixed value 6 found 7" —
+        // arithmetically correct for the wire, and findable nowhere in the .cddl the user wrote.
+        let wrong_nint = [
+            map_def(2),
+            cbor_string("a"),
+            cbor_int(5, cbor_event::Sz::Inline),
+            cbor_string("m_nint"),
+            cbor_int(-8, cbor_event::Sz::Inline),
+        ]
+        .concat();
+        let wrong_nint_err = OptFixedMap::from_cbor_bytes(&wrong_nint).unwrap_err();
+        assert!(
+            wrong_nint_err
+                .to_string()
+                .contains("Expected fixed value -7 found -8"),
+            "{wrong_nint_err}"
+        );
     }
 
     // Optional fixed FLOAT member: identical `bool` presence model, but the constant is a Special

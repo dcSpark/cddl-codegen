@@ -319,18 +319,6 @@ are ledgered here (that's what the probe/gate error messages point at).
   of that boundary. Proven by the shapes this rule would have named in advance — `[* 5]` and its
   map sibling `{ * uint => 5 }` both reached generation as PANICs, and the map one had no row at
   all until it was found by hand next to the array one.
-- **A nint fixed-value mismatch reports the CBOR wire representation, not the authored value** —
-  `Key` (static/error.rs) has no signed variant, so the emitted check for `? neg: -3` renders
-  `FixedValueMismatch { found: Key::Uint((neg_value + 1).unsigned_abs()), expected: Key::Uint(2) }`:
-  a user sees "Expected fixed value 2" for a spec that says `-3` (read-caught during the
-  optional-fixed-value delivery; the mandatory path shares the spelling, so this is the fixed-nint
-  error-rendering convention, not an optional-path bug). Behavior is correct — only the message
-  misleads. Candidate fix: a signed `Key` variant (or signed rendering for the nint arm) so the
-  message names the authored value; any reason-asserted decode vector pinning the current "2"
-  spelling flips loudly with it. Cosmetic until a reason-asserted reject vector or a consumer
-  report makes it user-visible; enumerating a wrong-value reject vector for a nint fixed member is
-  what would surface it systematically (the vector author confronts the rendered message at
-  pin-authoring time).
 - **Give the array-rep group-choice arm's inline group a graceful refusal or real support.**
   `contain.group-choice-arm.grpent.inline_group.array` (`t = [ (uint, tstr) // bytes ]`) is valid
   CDDL that aborts in `parsing.rs`'s `group_entry_to_type` (`inline group entries are not
