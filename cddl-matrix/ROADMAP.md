@@ -116,6 +116,27 @@ The durable gotchas and the upstream-oracle-gap state are CURRENT state and live
 (§ "Gotchas", § "Upstream oracle gaps"); this section holds only what is still to do. New findings
 are ledgered here (that's what the probe/gate error messages point at).
 
+- **Say each rejection once, so the count of messages is the count of problems.** A single
+  offending construct can report the same rejection twice: `a = [{x: int}]`, `a = [[int]]` and
+  `x = bytes .cbor ({a: int, c: uint})` each print their message two times, while the same defect in
+  a map-value position (`m = { outer: { a: int, c: uint } }`) and the older group-choice rejections
+  print it once. The duplication is positional — the parse walk visits an array-element / `.cbor`-
+  controller type2 twice — and it is not new behaviour: the walk always did this, and the `panic!`
+  that used to sit at those sites aborted on the FIRST visit, so nothing ever reached the second.
+  Converting them to record-and-continue is what made a pre-existing double-walk observable, which
+  is the general shape to expect from any further abort→rejection conversion.
+  `record_rejection` is a bare `Vec::push` and `rejections_error` joins the vector, so nothing
+  dedups. The fix is NOT simply deduping that join, and that is the part worth recording: two
+  genuinely distinct rules can hit one site and produce byte-identical messages (several rejection
+  texts name the construct class, not the offending rule), so a blind dedup would silently collapse
+  two real problems into one report — trading a cosmetic defect for a correctness one. The shape
+  that works is to make the message identify its site (the `rejection_site` helper already exists
+  for exactly this) and dedup on the identified pair, or to suppress the second VISIT rather than
+  the second message. Reopening signal, on the axis the cost grows: a spec whose rejection output
+  makes the number of DISTINCT problems unreadable — three or more copies of one message, or
+  duplicates interleaved with genuinely different rejections — reported by someone reading that
+  output to fix their own spec.
+
 **Upstream close-outs (waiting on external releases):**
 - When a release ships the `90f66ff` prelude-`number` float fix (README gap #7): prune the
   fix-provenance notes (README gap #7, the `prelude-number-float-accepts` /
