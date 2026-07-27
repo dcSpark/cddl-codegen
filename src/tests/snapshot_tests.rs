@@ -574,16 +574,31 @@ fn json_gen_extern_schema_rows() {
     // `integration_tests::json_schema_name_merge_fails` / `..._stolen_fails`, which run a json-gen
     // crate and assert it panics — a local-tier cost). A guard that silently stops being threaded
     // through the rows would leave both those fixtures failing for a DIFFERENT reason, so pin the
-    // three pieces that carry it here, in the fast tier: the ledger local, the helper's parameter,
-    // and the two-argument row call (asserted above with the KEPT rows).
+    // three pieces that carry it here, in the fast tier: the ledger local, the IMPORT of the helper
+    // from the common runtime crate, and the two-argument row call (asserted above with the KEPT
+    // rows). The helper's BODY no longer lives in this file — it is `static/json_schema_gen.rs`,
+    // hosted once per common crate and compiled/unit-tested in-crate by `json_schema_gen_tests` — so
+    // the import is what proves the rows still reach it.
     for wiring in [
         "let mut claimed: std::collections::BTreeMap<String, &'static str> =",
-        "claimed: &mut std::collections::BTreeMap<String, &'static str>,",
-        ".insert(name.clone(), rust)",
+        "use cddl_lib::json_schema_gen::add_schema;",
+        "use cddl_lib::json_schema_gen::check_schema_ref_closure;",
     ] {
         assert!(
             mod_rs.contains(wiring),
             "schema-name guard wiring `{wiring}` missing from the emitted json-gen crate:\n{mod_rs}"
+        );
+    }
+    // …and the bodies must NOT be re-emitted here: hosting them once per common crate is the whole
+    // point, so an inlined copy is the regression. One fragment unique to each body stands in for it.
+    for inlined in [
+        "fn add_schema<T: schemars::JsonSchema>(",
+        "fn collect_schema_refs(",
+    ] {
+        assert!(
+            !mod_rs.contains(inlined),
+            "`{inlined}` must come from the common crate's `json_schema_gen` module, not be inlined \
+             into every json-gen crate:\n{mod_rs}"
         );
     }
 
@@ -659,8 +674,8 @@ fn json_gen_extern_schema_rows() {
     let ledger = dep_mod_rs
         .find("let mut claimed: std::collections::BTreeMap<String, &'static str> =")
         .unwrap_or_else(|| panic!("the name ledger local is missing:\n{dep_mod_rs}"));
-    // The first spec-derived row. `add_schema::<` cannot match the helper's own
-    // `fn add_schema<T: schemars::JsonSchema>(` definition above it.
+    // The first spec-derived row. `add_schema::<` cannot match the `use …::add_schema;` import
+    // above it (no turbofish there), so the position is genuinely the first ROW.
     let first_row = dep_mod_rs
         .find("add_schema::<")
         .unwrap_or_else(|| panic!("spec-derived rows missing:\n{dep_mod_rs}"));

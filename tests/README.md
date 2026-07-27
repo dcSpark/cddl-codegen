@@ -2147,6 +2147,35 @@ includes the guard runtime with a small baked limit and pins the at/under/over-l
 (`integration_tests::deserialize_depth_limit_guards_any_member`) proving a generated
 `--deserialize-depth-limit` crate rejects a pathologically deep value in an `any` position.
 
+## json-gen helper runtime (`src/tests/json_schema_gen_tests.rs`)
+
+`static/json_schema_gen.rs` holds the two helpers a generated `wasm/json-gen` crate imports from the
+rust runtime crate: `add_schema` (the registration-row registrar carrying the published-name
+injectivity guard) and `check_schema_ref_closure` (the document's reference-closure check). Both run
+in a *consumer's* `cargo run` of their json-gen crate, so without this layer their only compile proof
+is a nested-cargo run — a local-tier cost to catch a syntax error, and no lint sees them at all.
+
+`src/tests/json_schema_gen_tests.rs` `include!`s the file into one shim module, the same technique
+`any_cbor_tests` / `ordered_set_runtime_tests` use. That buys two things:
+
+- **Lint and compile coverage in the fast tier.** `cargo clippy --workspace --all-features
+  --all-targets` reaches the bin crate's test binary, so the shipped helper is linted like any other
+  code. (`schemars` is a `[dev-dependencies]` entry of cddl-codegen for exactly this shim; it is
+  never a dependency of the tool itself.)
+- **Real unit vectors for `decode_schema_ref_name`**, the inverse of a schemars-private encoder,
+  which is reachable no other way. The vectors cover both escape layers (percent / JSON-Pointer),
+  the truncated- and non-hex-escape passthroughs, and — the case the code's own comment calls out
+  and no fixture exercises — the ORDER the two layers must be undone in: a name holding a literal
+  `~1` encodes to `~01`, so `~1`-before-`~0` is the only order that recovers it. `check_schema_ref_
+  closure` gets the accept path (including a definitions namespace that is not `#/$defs`, and an
+  unresolvable one, which must SKIP rather than fail) plus both failure classes.
+
+Runs under plain `cargo test` (`cargo test --bin cddl-codegen json_schema_gen_tests`) — no nested
+cargo, no dedicated gate. The end-to-end proofs stay where they were: `integration_tests::
+json_schema_name_merge_fails` / `..._stolen_fails` / `json_schema_ref_dangling_fails` run a real
+json-gen crate and assert it panics, and `snapshot_tests::json_gen_extern_schema_rows` pins that the
+generated crate still *imports* the helpers rather than inlining copies of them.
+
 ## wasm-ABI matrix (`tests/matrix_wasm/` + `integration_tests::wasm_matrix_compiles`)
 
 A **coverage-by-construction** gate for the generated wasm-bindgen bindings: it compiles the wasm crate

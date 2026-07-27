@@ -13,6 +13,7 @@ expression: content
 
 pub mod error;
 mod extern_interface_check;
+pub mod json_schema_gen;
 pub mod ordered_set;
 impl std::ops::Deref for ElemTagged {
     type Target = OrderedSet<u64>;

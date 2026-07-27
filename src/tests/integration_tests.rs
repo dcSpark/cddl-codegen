@@ -17774,7 +17774,8 @@ fn comment_preservation_replace_in_descendant_orphans_parent_import() {
 ///       (a prelude trait present, raw_bytes always included, and NO generated per-type impl for the
 ///       distinctively-named spec type); non_empty_map.rs carries OrderedHashMap not BTreeMap under
 ///       preserve; and a fresh `<dir>/Cargo.toml` is seeded with the flavor's dep set (cbor_event,
-///       hex, linked-hash-map, serde — and NOT schemars, since json-schema-export is off);
+///       hex, linked-hash-map, serde, serde_json — and NOT schemars, since json-schema-export is
+///       off);
 ///   (b) a `cddl-codegen:insert` block hand-added to an exported file survives a re-export
 ///       (the comment/code-preservation overlay runs in this dir too);
 ///   (c) with the flag unset the crate dir is untouched (a pre-existing sentinel file is neither
@@ -17784,7 +17785,12 @@ fn comment_preservation_replace_in_descendant_orphans_parent_import() {
 ///       source the exported source requires (the merge's source-assertion rule — no stale version
 ///       requirement survives beside it), and a hand serde pin that satisfies the tool's floor is kept —
 ///       the exact skew class where source targeting a new cbor_event landed next to a manifest
-///       still pinning the old one, which this flag's pre-crate-shaped form silently allowed.
+///       still pinning the old one, which this flag's pre-crate-shaped form silently allowed;
+///   (e) under `--json-schema-export` (paired with `--common-import-override`, the configuration
+///       this flag serves) the json-gen helper module `json_schema_gen.rs` joins the exported set —
+///       hosted ONCE in the common crate for however many json-gen crates point at it — the manifest
+///       gains schemars + serde_json, mod.rs/lib.rs are still not written, and the json-gen crate
+///       reaches both helpers through the override prefix instead of inlining its own copy.
 /// `--wasm=false` keeps it to the single rust crate.
 #[test]
 fn export_static_crate_writes_composed_runtime_and_manifest() {
@@ -17878,17 +17884,31 @@ fn export_static_crate_writes_composed_runtime_and_manifest() {
         !static_dir.join("mod.rs").exists() && !static_dir.join("lib.rs").exists(),
         "the exported dir must NOT contain mod.rs/lib.rs"
     );
+    // json_schema_gen.rs is NOT written with json-schema-export off — the file set is a pure
+    // function of the flag set, and this flavor's flags do not include it. The `--json-schema-export`
+    // leg below is the positive twin.
+    assert!(
+        !static_dir.join("json_schema_gen.rs").exists(),
+        "json_schema_gen.rs must not be exported with --json-schema-export off"
+    );
     // A fresh crate dir gets a seeded Cargo.toml carrying exactly the deps this flavor's exported
-    // source references: cbor_event + hex always, linked-hash-map (preserve-encodings), serde
-    // (json-serde-derives) — and NOT schemars, since json-schema-export is off (set-or-SKIP: absent
-    // is fine, but the tool must not have added it).
+    // source references: cbor_event + hex always, linked-hash-map (preserve-encodings), serde AND
+    // serde_json (json-serde-derives — `any_cbor_json.rs`, always exported here, calls
+    // `serde_json::Value` / `serde_json::Number::from_f64`) — and NOT schemars, since
+    // json-schema-export is off (set-or-SKIP: absent is fine, but the tool must not have added it).
     let manifest = std::fs::read_to_string(runtime_crate.join("Cargo.toml"))
         .expect("a fresh export-static-crate dir must get a seeded Cargo.toml");
     assert!(
         manifest.contains("name = \"cddl-runtime\""),
         "fresh manifest must seed the package identity:\n{manifest}"
     );
-    for dep in ["cbor_event", "hex", "linked-hash-map", "serde"] {
+    for dep in [
+        "cbor_event",
+        "hex",
+        "linked-hash-map",
+        "serde",
+        "serde_json",
+    ] {
         assert!(
             manifest.contains(&format!("{dep} = ")),
             "fresh manifest must declare {dep} (this flavor's exported source references it):\n{manifest}"
@@ -18008,6 +18028,68 @@ fn export_static_crate_writes_composed_runtime_and_manifest() {
     assert!(
         hand_crate.join("src").join("error.rs").exists(),
         "the runtime files land in the hand crate's src/ alongside the merged manifest"
+    );
+
+    // (e) `--json-schema-export` leg: the json-gen helper module (`add_schema` + the
+    // reference-closure check) is hosted in the COMMON crate, one copy for however many json-gen
+    // crates point at it, so it must be part of the exported file set — and the json-gen crate must
+    // reach it through the override prefix rather than carrying its own emitted copy. Paired with
+    // `--common-import-override`, which is the configuration this flag exists to serve.
+    let schema_crate = scratch.join("schema-runtime");
+    let schema_out = scratch.join("schema-crate");
+    let cli_schema = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        schema_out.to_str().unwrap(),
+        "--wasm=false",
+        "--json-serde-derives=true",
+        "--json-schema-export=true",
+        "--common-import-override=cml_core",
+        "--export-static-crate",
+        schema_crate.to_str().unwrap(),
+    ]);
+    crate::api::generate_to_disk(&cli_schema).unwrap();
+    let schema_src = schema_crate.join("src");
+    assert!(
+        schema_src.join("json_schema_gen.rs").exists(),
+        "json_schema_gen.rs must be exported under --json-schema-export"
+    );
+    let json_schema_gen_rs =
+        std::fs::read_to_string(schema_src.join("json_schema_gen.rs")).unwrap();
+    assert!(
+        json_schema_gen_rs.contains("pub fn add_schema<T: schemars::JsonSchema>(")
+            && json_schema_gen_rs.contains("pub fn check_schema_ref_closure("),
+        "the exported module must publish both helpers:\n{json_schema_gen_rs}"
+    );
+    // Still no module wiring — a NEW file changes nothing about who owns the declarations (the
+    // per-file stderr notice, pinned by `export_static_crate_warns_on_new_files_only`, is how the
+    // consumer learns it needs `pub mod json_schema_gen;`).
+    assert!(
+        !schema_src.join("mod.rs").exists() && !schema_src.join("lib.rs").exists(),
+        "the exported dir must NOT contain mod.rs/lib.rs even with the json-gen helper module"
+    );
+    let schema_manifest = std::fs::read_to_string(schema_crate.join("Cargo.toml")).unwrap();
+    for dep in ["schemars", "serde_json"] {
+        assert!(
+            schema_manifest.contains(&format!("{dep} = ")),
+            "the exported manifest must declare {dep} — json_schema_gen.rs references it:\n{schema_manifest}"
+        );
+    }
+    // The consuming side of the same move: the json-gen crate IMPORTS the helpers from the override
+    // crate and inlines neither.
+    let json_gen_mod =
+        std::fs::read_to_string(schema_out.join("wasm/json-gen/src/generated/mod.rs"))
+            .expect("json-gen generated/mod.rs must be written under --json-schema-export");
+    assert!(
+        json_gen_mod.contains("use cml_core::json_schema_gen::add_schema;")
+            && json_gen_mod.contains("use cml_core::json_schema_gen::check_schema_ref_closure;"),
+        "the json-gen crate must reach both helpers through the --common-import-override prefix:\n{json_gen_mod}"
+    );
+    assert!(
+        !json_gen_mod.contains("fn add_schema<T: schemars::JsonSchema>("),
+        "the row helper must not be re-emitted per json-gen crate:\n{json_gen_mod}"
     );
 
     let _ = std::fs::remove_dir_all(&scratch);

@@ -579,10 +579,14 @@ pub fn ops_for_rust(
     // `float_roundtrip`: serde_json's default (fast) f64 parse loses 1 ULP; the feature switches to
     // an exact parse so the generated json surface round-trips f64 bit-for-bit. The merge machinery
     // unions features, so a user-customized serde_json spec keeps its own features and gains this one.
+    //
+    // Also required under `--json-schema-export` ALONE (which does not imply `--json-serde-derives`
+    // — no validation couples them): this crate then hosts `json_schema_gen.rs`, whose
+    // reference-closure check walks a `serde_json::Value`.
     ops.push(dep(
         "serde_json",
         "{ version = \"1.0.57\", features = [\"float_roundtrip\"] }",
-        cli.json_serde_derives,
+        cli.json_serde_derives || cli.json_schema_export,
     ));
     ops.push(dep("schemars", "\"1.2.1\"", cli.json_schema_export));
 
@@ -684,8 +688,9 @@ pub fn ops_for_wasm(cli: &Cli) -> std::io::Result<Vec<(KeyPath, ManifestOp)>> {
 /// target crate's hand code, and the tool cannot know that a dep its current flavor doesn't need
 /// isn't still needed by that hand code — so it only ever asserts the deps it does need
 /// (`cbor_event`/`hex` unconditionally via the log; `linked-hash-map` iff preserve-encodings,
-/// `serde` iff json-serde-derives, `schemars` iff json-schema-export — mirroring exactly which
-/// composed runtime files reference them). Package identity keys are seed-only (see the log).
+/// `serde` iff json-serde-derives, `serde_json` iff json-serde-derives OR json-schema-export,
+/// `schemars` iff json-schema-export — mirroring exactly which composed runtime files reference
+/// them). Package identity keys are seed-only (see the log).
 pub fn ops_for_static_runtime(cli: &Cli) -> std::io::Result<Vec<(KeyPath, ManifestOp)>> {
     let mut ops = ops_from_log(cli, "manifest_changes/static_runtime.toml")?;
     if cli.preserve_encodings {
@@ -695,6 +700,17 @@ pub fn ops_for_static_runtime(cli: &Cli) -> std::io::Result<Vec<(KeyPath, Manife
         ops.push(dep(
             "serde",
             "{ version = \"1.0\", features = [\"derive\"] }",
+            true,
+        ));
+    }
+    // Two exported files name `serde_json`: `any_cbor_json.rs` (under `--json-serde-derives`) and
+    // `json_schema_gen.rs` (under `--json-schema-export`). The two flags are independent, so the
+    // condition is their OR — asserting only `serde` under the first left the exported
+    // `any_cbor_json.rs` referencing a crate the manifest never declared.
+    if cli.json_serde_derives || cli.json_schema_export {
+        ops.push(dep(
+            "serde_json",
+            "{ version = \"1.0.57\", features = [\"float_roundtrip\"] }",
             true,
         ));
     }
