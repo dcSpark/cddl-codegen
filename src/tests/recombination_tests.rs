@@ -836,14 +836,21 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
         "Anonymous groups not allowed",
         "anonymous nested ARRAY (`a = [[int]]`); pinned by tests/matrix_panic/contain.array-element.type2.array.cddl (and role siblings)",
     ),
-    (
-        "inline group entries are not implemented",
-        "inline group in a group-choice arm; pinned by tests/matrix_panic/contain.group-choice-arm.grpent.inline_group.array.cddl",
-    ),
-    (
-        "TODO: non-table types as types",
-        "anonymous nested MAP where a type is required; pinned by tests/matrix_panic/contain.group-choice-arm.type2.map.array.cddl and tests/matrix_panic/contain.generic-arg.type2.map.cddl — and reached by every `…type2.map` role sibling (array-element, map-value, cbor-payload, choice-member, occurrence-target), so one fix flips the whole family",
-    ),
+    // (retired when the anonymous nested MAP and the group-choice-arm inline group became graceful
+    // rejections) Two classes lived here. `"TODO: non-table types as types"`: an anonymous nested
+    // map in a position requiring a TYPE now records a rejection naming the map's supported named
+    // form, so every `…type2.map` role sibling (array-element, map-value, cbor-payload,
+    // choice-member, generic-arg, occurrence-target, group-choice-arm) rejects gracefully under both
+    // the default and the `--preserve-encodings` profile. `"inline group entries are not
+    // implemented"`: an inline group as a group-choice arm's sole entry now rejects the same way
+    // (message pinned by `inline_group_choice_arm_rejects_gracefully`), in both the array and map
+    // reps. Its second site (`group_entry_optional`) was left an abort because the record path
+    // rejects every inline group before optionality is read, so no input reaches it; the follow-on
+    // `"not implemented (define a new struct for this!)"` site that the arm's walk then hit
+    // (`group_entry_to_raw_field_name`) now returns `None` — an inline group genuinely has no
+    // explicit field name — and its remaining twin (`group_entry_to_field_name`) is unreachable
+    // behind the same record-path guard. Both messages stay worded lead-constant so a future ledger
+    // entry can key on them.
     (
         "unsupported cddl prelude type:",
         "unsupported prelude types (eb64url/eb64legacy/eb16/cbor-any/undefined); pinned by tests/matrix_panic/prelude.eb64url.cddl and siblings",

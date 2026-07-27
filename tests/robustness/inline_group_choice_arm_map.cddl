@@ -1,0 +1,9 @@
+; An inline GROUP as the sole entry of a MAP-rep group-choice arm (`{ (a: uint) // b: tstr }`) is
+; rejected gracefully (`an inline group ... in entry position is unsupported`, parsing.rs
+; `group_entry_to_type`) rather than aborting the run. Naming the group (`g = (a: uint)`, then
+; `t = { g // b: tstr }`) is the spelling the rejection points at, verified to generate under both
+; the default and the `--preserve-encodings` profile. This fixture pins the MAP rep: the matrix
+; containment axis carries the array-rep spelling of the same construct, and no cell expresses this
+; one. The message itself is pinned by `inline_group_choice_arm_rejects_gracefully` in
+; src/tests/robustness_tests.rs.
+t = { (a: uint) // b: tstr }

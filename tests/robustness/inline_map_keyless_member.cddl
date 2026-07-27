@@ -1,0 +1,11 @@
+; An inline MAP whose sole member is a plain-group reference (`{ g }`) used as an element type is
+; rejected gracefully (`an inline map ... is unsupported unless it is a table`, parsing.rs
+; `rust_type_from_type2`) rather than aborting the run. It reaches the same arm as the keyed
+; anonymous-nested-map shapes, through a spelling no matrix cell expresses (the containment
+; `type2.map` cells all carry keyed members). Naming it does not on its own make THIS shape
+; generate: a map member still needs a key, which the named form reports on its own terms — which
+; is why the rejection points at the supported spelling instead of promising the rename fixes every
+; inline map. The message is pinned by `inline_map_member_rejects_gracefully` in
+; src/tests/robustness_tests.rs.
+g = (x: uint)
+a = [{ g }]
