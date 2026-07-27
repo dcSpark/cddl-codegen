@@ -1328,6 +1328,24 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   to the group rule by line position would be a second, drift-prone comment parser, so it needs a
   real consumer to justify it.
 
+- **A type choice's LAST arm's trailing comment IS the rule-position slot, so reordering arms can
+  silently switch a rule-level directive off.** `parse_type_choices` reads rule metadata from
+  `type_choices.last()` only, and `create_variants_from_type_choices` consumes just `.name` and
+  `.comment` per choice — so a rule-level directive on any other arm is read as that variant's own
+  metadata, where it means nothing, and is dropped without a word. The concrete consumer exposure,
+  reported by CML: `plutus_data`'s `@custom_json` sits on its `bytes` arm, which is last today;
+  reordering the arms would silently restore `serde` + `schemars::JsonSchema` derives on a type whose
+  JSON impls are hand-written, and the collision surfaces as a compile error far from the spec edit
+  that caused it. This is the general "rule-level directive at a non-rule position" class that
+  `dsl_position_tests.rs`'s own header rules out fixing opportunistically, so no rejection was added.
+  Owned meanwhile by the `@custom_json` docs section, which now states the reordering hazard
+  outright, and by `dsl_position_tests`' `type-choice-rule` / `type-choice-rule-schemars` cells,
+  which pin that the LAST-arm placement works (the placement control any rejection would need). The
+  fix, when a trigger arrives: reject a rule-level directive found on a non-last arm, behind a vector
+  per directive — a spec relying on today's silence starts failing (correctly) at generation.
+  Trigger: a consumer report of a directive that stopped applying after a spec edit that only
+  reordered arms, or a second directive in this class.
+
 - **The schema document's name injectivity is enforced ROW-side, so the residue is everything the row
   set cannot see.** The json-gen crate's `schemas/<lib>.schema.json` is written by a program we emit,
   so its content is a property of the RUN, not of the emitted source, and every cheap verdict
@@ -1402,6 +1420,35 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
     the observable signature of the collision. It carries a real false-positive class — a genuine
     Rust type named `Foo2` — so it would need an opt-out, which is most of why it is not obviously
     worth shipping.
+
+    **This hole is MEASURED, not hypothetical — by the consumer, in their corpus, not by us.** CML
+    reported that the `AssetBundle`/`AssetBundle2` pair we predicted would trip check 1 trips
+    nothing: neither is a row. They are `$defs` entries reached through fields (`Value.multiasset`,
+    `TransactionBody.mint`) from a hand-written generic substituted in by a `replace` block, and
+    because that generic `#[derive(JsonSchema)]`s, the ids DIFFER — so both bodies are emitted and
+    which instantiation keeps the bare name is traversal order. Milder than the ids-match merge
+    recorded above (no wrong body; both types exist) and worse in one specific way: it silently
+    renames a *published TypeScript type* on an unrelated spec edit, which for a published package is
+    an API break.
+
+    It is recorded rather than built for a reason that is now probed rather than assumed: a precise
+    detector needs the schema_id -> assigned-name mapping, and `schemars::SchemaGenerator` exposes no
+    such accessor — `definitions()` / `definitions_mut()` / `take_definitions()` all return only
+    `Map<String, Value>` (read at `schemars-1.2.1/src/generate.rs`). From the finished document alone
+    the `{base}{i}` rename is indistinguishable from a type genuinely named `Foo2`, so the
+    `$defs`-shaped heuristic above would fire on legitimate corpora and train people to ignore it.
+    The consumer's own committed-`.d.ts` CI diff is the precise detector for this class and is
+    already the standing recommendation.
+
+    What a consumer can do TODAY, and why that further lowers the priority: give each instantiation a
+    row with `--json-schema-root` (`--json-schema-root=my_crate::AssetBundle<u64>` and `…<i64>` —
+    generic arguments are inside the flag's accepted charset). Registering both makes them two rows
+    publishing one `schema_name()` with different `std::any::type_name`s, which the ledger reports;
+    registering only the instantiation that LOST the bare name makes the kept-its-own-name check
+    report the `<name>2` it was assigned. So the row-side guard is opt-in-able for exactly the shape
+    it cannot see on its own. (Reasoned from `ADD_SCHEMA_HELPER` and `parse_json_schema_root`'s
+    charset — not run.) Reopening signal for building anything more: a public schemars accessor for
+    the assigned-name map, or a consumer reporting a rename their `.d.ts` diff did not catch.
 
   The document's reference CLOSURE is checked in two places now, and neither closes the holes above:
   `integration_tests::run_test` asserts it over every `--json-schema-export` fixture of ours, and the
@@ -1694,6 +1741,7 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   (Scope: this records the ask as understood from the delivery's response notes; the requester's own
   statement of it is not in-tree.) Reopening signal: a consumer whose layout genuinely forces two
   passes into one json-gen crate and for whom the hand-written composition is not enough.
+
 ## Operational watches
 
 - **The extern-interface export is a public interchange format.** Once a consumer regenerates

@@ -503,6 +503,29 @@ const GRID: &[Cell] = &[
             ],
         },
     },
+    // 21a-schemars. The SAME type-choice rule as 21a, under the JSON-SCHEMA flags instead of the
+    //      preserve ones. 21a pins the SERDE half of the suppression (no `#[serde(skip)]` on the
+    //      variant encoding fields); this pins the `schemars::JsonSchema` half. They are one branch in
+    //      the emitter (`add_struct_derives`'s single `if !custom_json`), so this is not redundant
+    //      coverage of that branch — it is coverage of a distinct promise a consumer depends on
+    //      SEPARATELY: a crate hand-writing its JSON impls needs the schemars derive specifically
+    //      absent, and 21a's `#[serde(skip)]` anchor is invisible without --preserve-encodings, so
+    //      nothing else in the grid would notice the schemars derive coming back. Control `CtrlSum`
+    //      (no @custom_json, same flags) keeps the derive, attributing the absence to the directive
+    //      rather than to a missing flag. The derive list is emitted in insertion order (the `codegen`
+    //      crate pushes onto a `Vec` and never sorts), so `schemars::JsonSchema` is last and the
+    //      anchor form mirrors 21b's.
+    Cell {
+        directive: "@custom_json",
+        position: "type-choice-rule-schemars",
+        spec: "my_sum =\n    uint ; @name integer\n  / bytes ; @name raw @custom_json\nctrl_sum =\n    uint ; @name cint\n  / bytes ; @name craw\n",
+        flags: &["--json-serde-derives=true", "--json-schema-export=true"],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &["schemars::JsonSchema)]\npub enum CtrlSum {"],
+            must_not: &["schemars::JsonSchema)]\npub enum MySum {"],
+        },
+    },
     // 21b. @custom_json on a RECORD-STRUCT (map group) rule, same flags. The struct's serde/schemars
     //      derives AND its preserve-encodings `encodings` field's `#[serde(skip)]` must BOTH be
     //      suppressed — they're only coherent together (derives without the skip demand serde impls
