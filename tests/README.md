@@ -23,7 +23,10 @@ gate cache does not make `full` cheap.
 policy below). `local` is "run before considering work done" — the heavy correctness gates (full
 `cargo test`, corpus + wasm-matrix compiles) plus `matrix_typecheck` (`tsc --noEmit` over the
 `cddl-matrix` scripts, via a dev-only local `typescript`/`@types/bun` — run `bun install` in
-`cddl-matrix/` once; the runtime stays dependency-free) and the decode-conformance catalog +
+`cddl-matrix/` once; the runtime stays dependency-free), `verify_selftest` (`verify.ts`'s
+assert-at-startup deciders, run standalone in ~30 ms — their own gate is `full`-tier, and a wrong
+verdict token or evidence-stage name is silent in production, so the cheap tier is where it must
+fail), and the decode-conformance catalog +
 status-header count and doc-citation drift gates (`project_decode_conformance.ts`,
 `project_status_headers.ts`, `lint_doc_citations.ts`) live here, NOT in CI. The doc-citation gate
 checks that gap prose's cited pins still exist, rejects positional roadmap/list citations, bans

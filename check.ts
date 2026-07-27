@@ -789,6 +789,16 @@ export const REGISTRY: Gate[] = [
     desc: "snapshot orphan check" },
   { id: "matrix_typecheck", tier: "local", kind: "fn", run: runMatrixTypecheck,
     desc: "tsc --noEmit over the cddl-matrix scripts (pinned local devDependency)" },
+  // verify.ts's own gate is `full`-tier, so without this its assert-at-startup self-tests would only
+  // ever run inside a ~60-minute manual gate — a millisecond check sitting behind the most expensive
+  // thing in the repo. What they cover fails SILENTLY in production: a wrong ruby verdict token or a
+  // wrong wasm-evidence stage name is a plausible-looking annotation, not an error, so the window
+  // between breaking one and anyone noticing is the thing worth closing. Hermetic and ~30ms — only
+  // argv parsing runs ahead of the self-test blocks, so it needs no oracle, no cargo, no network.
+  // (`script:` is deliberately absent: meta-check 2's verify.ts mapping belongs to the `verify` gate.)
+  { id: "verify_selftest", tier: "local", kind: "cmd",
+    cmd: ["bun", "run", "verify.ts", "--selftest"], cwd: MATRIX,
+    desc: "verify.ts's two pure evidence-vocabulary deciders (ruby-generate Bernoulli classifier + wasm-evidence stage taxonomy), whose failures are silent in production" },
   { id: "lint_doc_citations", tier: "local", kind: "cmd",
     cmd: ["bun", "run", "lint_doc_citations.ts"], cwd: MATRIX,
     script: "lint_doc_citations.ts", desc: "documentation citation existence + positional-citation + MD022 lint" },
