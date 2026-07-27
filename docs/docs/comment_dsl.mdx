@@ -166,6 +166,12 @@ external `HashMap`/`BTreeMap` requirement exists regardless of the encoding flag
 transaction_output = alonzo_format_tx_out / conway_format_tx_out ; @used_as_key hash
 ```
 
+**On a multi-choice type rule the tag must sit on the LAST arm.** That arm's trailing comment is the
+rule-position slot; on any other arm the tag is read as that variant's own metadata and rejected.
+The one-line spelling above cannot get this wrong — a `;` comment runs to end of line, so it is
+always the last arm's — but a multi-line spelling can, and a reorder can move the wrong arm into
+last place. See `@custom_json` for the general rule.
+
 | Tag | Derives |
 |-----|---------|
 | `@used_as_key` (bare) | `Eq, PartialEq, Ord, PartialOrd` (+ `Hash` under `--preserve-encodings`) |
@@ -455,11 +461,19 @@ my_sum =
 ```
 
 The last arm's trailing comment **is** the rule-position slot — that is the whole of the mechanism,
-not a convenience. On any other arm the directive is read as that variant's own metadata, where
-`@custom_json` means nothing, and it is silently dropped. So reordering a type choice's arms can
-turn the directive off: if you move the arm that carries it out of last place, the type gets its
-JSON derives back, and they will collide with the impls you wrote by hand. Keep the directive on
-whichever arm is last.
+not a convenience. A type-choice VARIANT position consumes only `@name` (which names the variant)
+and `@doc` (which documents it), so a rule-level directive written on any other arm is **a hard
+error**: generation stops and names the directive, the rule, and the remedy. Keep the directive on
+whichever arm is last, and if you reorder the arms, move it with them.
+
+That rejection exists because the alternative was worse than a wrong build. Before it, a reorder
+turned the directive off in silence — the type quietly got its JSON derives back and they collided
+with the impls you wrote by hand, in a compile error nowhere near the spec edit that caused it. And
+the slot is shared: **every** rule-level directive reads from that same last-arm comment, so one
+reorder could switch off several unrelated contracts at once. A single arm annotated
+`; @name bytes @custom_json @used_as_key` carries both a JSON-suppression contract and a key-demand
+contract, and a reorder dropped both — the JSON half silently, the key half as a missing derive that
+`generated/key_demand_assertions.rs` at least names.
 
 The suppression covers `serde::Serialize`/`serde::Deserialize` and `schemars::JsonSchema`
 together — one decision, not two — so `--json-schema-export` never leaves a `JsonSchema` derive
