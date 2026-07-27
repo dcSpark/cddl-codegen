@@ -358,6 +358,13 @@ into a file your project commits, so the same config would produce different byt
 clone. It is counted from the consumer's json-gen directory to the dependency's, and both endpoints
 follow their own crate's `package-json` setting.
 
+One caveat follows from that. Both endpoints are the crates' `output` values, so they are both
+relative or both absolute in the ordinary case — whichever the config file's own path was. If you
+write an **absolute** `output` for one crate and a relative one for another, the relative path
+between them is only defined against the current directory, so the value written into the manifest
+becomes CWD-dependent even though it is still relative. Keep the `output` values in one config the
+same kind, which is what happens by default if you never write an absolute one.
+
 A crate with `json-schema-export = false` on **either** end of a derived edge contributes nothing,
 silently: a dependency with no json-gen crate has no `add_schemas` to call, and a consumer with no
 document has nowhere for the rows to land. That silence is what lets one config hold both kinds of
