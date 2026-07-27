@@ -634,4 +634,22 @@ impl Cli {
             .clone()
             .unwrap_or_else(|| self.lib_name_code())
     }
+
+    /// The path prefix the `wasm/json-gen` crate reaches the common runtime through — the crate that
+    /// hosts `json_schema_gen` (the `add_schema` row registrar and the reference-closure check).
+    ///
+    /// Its body coincides with [`Self::common_import_wasm`] because both name the **rust** runtime
+    /// crate: an override points at it verbatim, and with no override the json-gen crate reaches the
+    /// generated rust crate by package name through its path dep, resolving into `generated` via
+    /// that crate's seed-once `pub use generated::*;` root. It is its own accessor rather than a call
+    /// to the wasm-named one so json-gen emission never reads as depending on the WASM crate's
+    /// naming: the two answers are equal today for a reason that is entirely about the rust crate,
+    /// and the wasm face already diverges elsewhere (`--extern-wasm-crate` routes the built-in
+    /// `Int`'s wasm face away from the bare override), so a future divergence must not silently
+    /// retarget the json-gen imports.
+    pub fn common_import_json_gen(&self) -> String {
+        self.common_import_override
+            .clone()
+            .unwrap_or_else(|| self.lib_name_code())
+    }
 }

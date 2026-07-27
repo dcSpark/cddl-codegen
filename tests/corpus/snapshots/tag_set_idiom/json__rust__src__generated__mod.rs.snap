@@ -13,6 +13,7 @@ expression: content
 
 pub mod error;
 mod extern_interface_check;
+pub mod json_schema_gen;
 pub mod non_empty;
 impl std::ops::Deref for IntNeset {
     type Target = NonEmptyVec<u64>;

@@ -1122,6 +1122,13 @@ impl GenerationScope {
             if cli.json_serde_derives && types.uses_open_struct_rest() {
                 self.rust_lib().raw("pub mod open_struct_rest_json;");
             }
+            // the json-gen crate's row registrar + reference-closure check, which THIS crate never
+            // calls — it hosts them so every json-gen crate pointed at this runtime shares one copy.
+            // Flag-gated, never spec-gated (unlike the runtimes above): a json-gen crate that imports
+            // them exists exactly when `--json-schema-export` is on, whatever the spec holds.
+            if cli.json_schema_export {
+                self.rust_lib().raw("pub mod json_schema_gen;");
+            }
         }
         if cli.preserve_encodings {
             self.rust_lib().raw("extern crate derivative;");

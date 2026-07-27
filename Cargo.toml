@@ -103,6 +103,13 @@ serde_json = "1"
 # derive. Generated crates get this same dep under `--json-serde-derives` (cargo_manifest.rs); it is
 # already in-tree transitively (via serde_json), so this adds no lockfile weight.
 serde = { version = "1", features = ["derive"] }
+# Harness-side ONLY (never a generated-crate dep): the `json_schema_gen_tests` shim `include!`s
+# `static/json_schema_gen.rs`, whose `add_schema` row registrar is written against the `schemars`
+# generator API. Compiling it here is what puts the shipped helper under `cargo clippy --all-targets`
+# and under real unit tests — otherwise it is reachable only through a nested-cargo run of a
+# generated json-gen crate. Generated crates get this same dep under `--json-schema-export`
+# (cargo_manifest.rs), at the same version.
+schemars = "1.2.1"
 # Harness-side ONLY: `gate_cache` content-addresses generated-crate trees (memoize-and-skip for
 # the nested-cargo gates). Already in-tree transitively, so this adds no lockfile weight.
 sha2 = "0.10"

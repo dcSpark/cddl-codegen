@@ -441,6 +441,11 @@ const ALLOWED_RUST_GENERATED: &[&str] = &[
     // not per-spec-type surface, so the differential does not parse it — but it must be an ALLOWED
     // key so a fixture using `any` does not trip the stray-file guard.
     "any_cbor.rs",
+    // The json-gen helper module (`add_schema` + the reference-closure check) this crate HOSTS under
+    // `--json-schema-export` for the `wasm/json-gen` crates that import it. This crate never calls
+    // it and it carries no per-type boundary API, so the differential does not parse it — but it
+    // must be an ALLOWED key or every json-profile fixture trips the stray-file guard.
+    "json_schema_gen.rs",
 ];
 const ALLOWED_WASM_GENERATED: &[&str] = &["mod.rs", "collections.rs"];
 

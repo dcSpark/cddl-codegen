@@ -1241,6 +1241,14 @@ types publishing one `schema_name()`, and a `$ref` that does not resolve inside 
 messages, and what to do about each, are under
 [Command line flags § `--json-schema-export`](./command_line_flags).
 
+Neither check is *emitted* into this crate. `wasm/json-gen/src/generated/mod.rs` opens with imports
+of them from the rust runtime crate's `json_schema_gen` module — `use <lib>::json_schema_gen::
+check_schema_ref_closure;` always, and `use <lib>::json_schema_gen::add_schema;` when this crate has
+registration rows of its own — so a workspace of several generated packages shares one
+implementation rather than one copy per json-gen crate. The module is `rust/src/generated/
+json_schema_gen.rs` in-crate; under `--common-import-override` it is the common crate's, written
+there by [`--export-static-crate`](./command_line_flags) and declared by hand in that crate's root.
+
 
 `--package-json true --json-schema-export true`
 

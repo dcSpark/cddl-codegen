@@ -869,24 +869,20 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   (`unused_parens` et al.): evaluate specific beyond-`all` lints one at a time, adding a per-lint
   deny only if it is currently green-able on both profiles (nursery lints carry known false
   positives). Act on a second instance or a consumer report, not before.
-- **The json-gen crate is the one generated crate no lint gate sees.** `generated_code_clippy_clean`
+- **The json-gen crate's own emitted bodies are linted by nobody.** `generated_code_clippy_clean`
   denies `clippy::all` over the generated **rust** and **wasm** crates for two profiles, neither of
-  which passes `--json-schema-export` — so the third generated crate, and with it the ~200 lines of
-  helper Rust we hand-author as string constants in `src/generation/export.rs`
-  (`ADD_SCHEMA_HELPER`, `CLOSURE_CHECK_HELPER`), is linted by nobody. Proven by a consumer:
-  a `-D clippy::all` regen gate downstream failed on `collapsible_if` in the emitted closure-check
-  helper after a clippy release taught that lint about let-chains, and the fix reached us as a
-  direct commit to master rather than as a red gate here. Two layers, cheapest first. (1) Add a
-  `--json-schema-export` profile to `generated_code_clippy_clean` and lint its `json-gen` crate with
-  the same deny/allow set the other two legs use — no new contract, since denying `clippy::all` over
-  generated output is already the shipped policy for the rust and wasm crates, and the marginal cost
-  is one more nested cargo cell. (2) The durable version for the helpers specifically: make the Rust
-  we hand-author compile as REAL workspace code (a `static/` file the exporter copies, the way the
-  serialization runtime already works) instead of a string constant, at which point the fast-tier
-  `clippy` gate covers it for free and forever. Note the ordering: layer 2 is also the prerequisite
-  shape for the "emit the json-gen helper machinery once per workspace" item under deferred
-  features, so a cycle that does that one should take this with it. Reopening signal: a second
-  toolchain-sensitive lint in emitted helper code reaches a consumer before it reaches a gate.
+  which passes `--json-schema-export` — so the third generated crate is outside every lint gate.
+  What remains in scope is what the generator EMITS into it: the `add_schemas` and `export_schemas`
+  bodies, plus the registration rows. (The helper machinery those bodies call is no longer part of
+  this: it is `static/json_schema_gen.rs`, compiled and linted as real workspace code by the
+  fast-tier `clippy` gate through the `json_schema_gen_tests` shim — the durable shape that closes
+  a whole class here, since a toolchain-sensitive lint in hand-authored helper Rust now fails a
+  local `cargo clippy` rather than a consumer's regen gate.) The remedy is one nested cargo cell:
+  add a `--json-schema-export` profile to `generated_code_clippy_clean` and lint its `json-gen`
+  crate with the same deny/allow set the other two legs use — no new contract, since denying
+  `clippy::all` over generated output is already the shipped policy for the other two crates.
+  Reopening signal: a lint fires on emitted `add_schemas`/`export_schemas`/row code in a consumer's
+  regen gate before it fires in ours.
 - **`unused_imports` on generated crates — residual trait-import class the name-scan model cannot
   reach.** The rustc-warning DETECTOR is live and BROAD — the generated-code unused-import scan
   (`unused_generated_import_lines`) inside `feature_corpus_compiles` fails on ANY `unused import`
@@ -1488,7 +1484,7 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
     publishing one `schema_name()` with different `std::any::type_name`s, which the ledger reports;
     registering only the instantiation that LOST the bare name makes the kept-its-own-name check
     report the `<name>2` it was assigned. So the row-side guard is opt-in-able for exactly the shape
-    it cannot see on its own. (Reasoned from `ADD_SCHEMA_HELPER` and `parse_json_schema_root`'s
+    it cannot see on its own. (Reasoned from `static/json_schema_gen.rs`'s `add_schema` and `parse_json_schema_root`'s
     charset — not run.) Reopening signal for building anything more: a public schemars accessor for
     the assigned-name map, or a consumer reporting a rename their `.d.ts` diff did not catch.
 
@@ -1785,29 +1781,23 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   publish a type they already published; the class is still untyped in the shipped `.d.ts`, and no
   `--allow-untyped` entry fixes that. Reopening signal: a consumer's type name is not a fixed point
   of the normalization and its class does expose JSON methods.
-- **Emit the json-gen helper machinery once per workspace instead of once per crate.** Every
-  json-gen `mod.rs` opens with the same ~200 lines — `add_schema` (the name-injectivity guard),
-  `collect_schema_refs`, `decode_schema_ref_name`, `check_schema_ref_closure` — emitted verbatim
-  from string constants in `src/generation/export.rs`. The checks belong in the consumer's
-  `cargo run`, but the DUPLICATION does not follow from that, and it makes a multi-crate consumer's
-  migration diff read as machinery rather than as the row sets a reviewer cares about (reported from
-  a four-json-gen-crate workspace). The mechanism to use is the one the serialization runtime
-  already uses: compose the helpers as one more flavored `static/` file written by
-  `--export-static-crate` into the consumer's common crate, emitted only under
-  `--json-schema-export` — `ops_for_static_runtime` already asserts `schemars` on that manifest
-  under exactly that condition and would assert `serde_json` beside it — gated behind a cargo
-  feature so crates.io consumers of the common crate never see tooling API, with the json-gen
-  crates enabling it through their hand-declared dependency on the common crate (the same
-  hand-manifest contract `--json-schema-dep` already has). Each json-gen `mod.rs` then shrinks to
-  rows plus a thin `export_schemas`. Two constraints to honour rather than rediscover. First, **no
-  published runtime crate**: the no-published-runtime property is what lets a pin — including an
-  unpushed local rev, which is how the asking consumer consumes us — fully determine behaviour, and
-  a crates.io runtime cannot track an unpushed rev at all. Second, the registrar shape belongs in
-  the same change: `reg.add::<T>()` with the claimed-name ledger as registrar state, instead of
-  `add_schema::<T>(generator, &mut claimed)` threading a local. Note the interaction with "The
-  json-gen crate is the one generated crate no lint gate sees" under standing-system residuals —
-  moving these helpers into `static/` is that item's durable layer, so whichever lands first should
-  carry the other. Reopening signal: a second consumer with more than one json-gen crate.
+- **Registrar state instead of a threaded name ledger in the json-gen rows.** A registration row is
+  `add_schema::<T>(generator, &mut claimed)` — the published-name ledger is a local of `add_schemas`
+  threaded through every row by hand, so the shape of a row exposes the guard's bookkeeping to
+  anyone reading a migration diff. The shape to reach is registrar state inside
+  `static/json_schema_gen.rs`: `let mut reg = Registrar::new(generator);` then `reg.add::<T>();`,
+  with the ledger owned by the registrar and `Registrar::add` delegating to the existing
+  `add_schema` so there stays exactly one implementation of the guard. Two constraints to honour
+  rather than rediscover. `add_schemas` keeps its exact published signature
+  (`pub fn add_schemas(generator: &mut schemars::SchemaGenerator)`) — it is the cross-crate
+  composition point the tool emits calls to, a hand-written one is compiled by
+  `integration_tests::json_schema_dep_threading`, and the docs quote it; and the
+  `--json-schema-dep` registrar calls must stay emitted BEFORE the registrar takes its `&mut`
+  borrow. `add_schema` itself stays `pub`, because `--json-schema-root` is documented as emitting a
+  row and a consumer may have hand-written one. The cost is a re-bless of every registration row in
+  the corpus plus the `.matches("add_schema::<")` row-count proxies in `integration_tests`, which
+  must be retargeted rather than dropped. Reopening signal: a consumer reads the threaded ledger as
+  API and copies it into hand-written registration code.
 - **json2ts artifact doc comments naming `undefined`.** The emitted `.d.ts` carries comments like
   "This interface was referenced by `undefined`'s JSON-Schema definition via the `patternProperty`
   …" — `undefined` because the parent definition's title is managed by `run-json2ts.js` rather than
