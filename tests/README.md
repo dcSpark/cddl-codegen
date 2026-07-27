@@ -39,7 +39,16 @@ counterexamples are allowlisted by exact span text), and enforces
 blank lines before headings in the hand docs. The conventions it backs: gap-tracking prose names its
 pin by exact identifier ("pinned by/tracked by/gated by `name`"), and a *behavioral* claim ("construct
 X panics/rejects") gets a robustness-catalog row FIRST — the panic/reject catalogs flip loudly on a
-behavior change, where prose-only claims rot silently. `full` additionally runs the
+behavior change, where prose-only claims rot silently. Those catalogs are **generate-only by
+design**, which bounds what a row discharges: a PANIC row flipped to `ok` asserts that generation
+exited 0 and nothing whatever about whether the emitted crate compiles. So when a change turns an
+abort into generated code, `cargo check` the emitted crate under **every** profile before believing
+the fix — not the default one alone — and pair the flipped row with an integration fixture (or, if
+the crate genuinely does not compile, with the matching compile-side ledger entry). The profiles are
+not interchangeable: a nominal reference to a collection typedef needed an `encoding_fields_impl`
+fix that exists ONLY under `--preserve-encodings`, and every other profile was green while it was
+missing (`integration_tests::recursive_collection_ref` / `recursive_collection_ref_preserve`).
+`full` additionally runs the
 manual gates (<!-- status-header gate roll-call is generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:tests-ignored-gates -->the thirteen `#[ignore]`d gates `wasm_matrix_roundtrips` / `multifile_matrix_roundtrips` / `identifier_hazard_crates_compile` / `recombination_crates_execute` / `recombination_preserve_crates_execute` / `recombination_json_crates_execute` / `recombination_wasm_crates_check` / `ir_conformance_corpus` / `rust_oracle_fingerprint` / `decode_conformance_replay` / `corpus_decode_replay` / `all_supported_constructs_generate_all_profiles` / `feature_corpus_roundtrips_nondefault_profiles`<!-- /gen:sh:tests-ignored-gates -->, `cddl-matrix/verify.ts`, `corpus_detect.ts`, and
 the fuzz-crate compile-rot check, plus the two gate-cache soundness gates — the input-closure audit `gate_cache_closure_audit` and the flag-gated `verify_cache_transparency` — see the gate-cache section below) — run it before shipping a feature. Every run ends with the **full registry** printed as a table (`PASS` / `FAIL` /
 `SKIPPED(reason)` / `STUB` / `not-in-tier` + per-gate durations), so a gate that didn't run is always
