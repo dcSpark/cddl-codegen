@@ -970,11 +970,44 @@ fn key_hard_error(file: &str, what: &str, offending: &str) -> ! {
     );
 }
 
+/// Read one `--wrapper-requests` / `--key-requests` sidecar, or `None` when the consumer has not
+/// generated one yet.
+///
+/// A sidecar records what a consumer BORROWS from this crate, so a consumer that has never generated
+/// borrows nothing — and an absent file is the faithful spelling of that, not an error. Treating it
+/// as one makes a cold workspace unbootstrappable in both directions at once: the dependency cannot
+/// generate until its consumer has written a sidecar, and the consumer cannot generate until the
+/// dependency has written the export it imports. The absence is announced on stderr because the OTHER
+/// way to reach it is a wrong path, which would otherwise silently disable the whole channel.
+///
+/// Every other read failure — a permission error, a non-UTF-8 file — stays a hard error: those are
+/// not "no sidecar", they are a sidecar this run cannot honour.
+///
+/// Determinism is unaffected: the file's absence is an input state exactly as its content is, so the
+/// same inputs still produce the same bytes. This is not a prior-OUTPUT read either — the sidecar is
+/// another crate's committed input, whether it exists or not.
+pub fn read_request_sidecar(flag: &str, consumer: &str, path: &str) -> Option<String> {
+    match std::fs::read_to_string(path) {
+        Ok(contents) => Some(contents),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            eprintln!(
+                "warning: {flag} {consumer}={path}: no sidecar there yet, so `{consumer}` is treated \
+                 as borrowing nothing from this crate. That is what a consumer which has never been \
+                 generated records. If `{consumer}` HAS been generated, the path is wrong — check it, \
+                 or regenerate `{consumer}` and re-run this crate to converge."
+            );
+            None
+        }
+        Err(e) => panic!("{flag} {consumer}={path}: cannot read the sidecar: {e}"),
+    }
+}
+
 /// Seed `used_as_key` from every `--key-requests` sidecar's rows addressed to THIS dep, resolving
 /// each CDDL ident to a `RustIdent` and marking it (finalize then expands transitively). No-op (and
-/// byte-identical to today) when there are no `--key-requests` flags. STRICT: an unreadable path is a
-/// hard error; a row naming a type this dep does not define is a hard error naming the consumer and
-/// file (a consumer keying on a type the dep deleted must be loud, mirroring the W1 compiled-`use`).
+/// byte-identical to today) when there are no `--key-requests` flags. STRICT: a sidecar that exists
+/// but cannot be read is a hard error, and so is a row naming a type this dep does not define (a
+/// consumer keying on a type the dep deleted must be loud, mirroring the W1 compiled-`use`). A path
+/// with no file at all is the cold-workspace case — see [`read_request_sidecar`].
 pub fn seed_used_as_key_from_key_requests(types: &mut IntermediateTypes, cli: &Cli) {
     let request_files = cli.key_requests();
     if request_files.is_empty() {
@@ -984,9 +1017,9 @@ pub fn seed_used_as_key_from_key_requests(types: &mut IntermediateTypes, cli: &C
     let mut to_mark: std::collections::BTreeMap<RustIdent, DemandSet> =
         std::collections::BTreeMap::new();
     for (consumer, path) in &request_files {
-        let contents = std::fs::read_to_string(path).unwrap_or_else(|e| {
-            panic!("--key-requests {consumer}={path}: cannot read the sidecar: {e}")
-        });
+        let Some(contents) = read_request_sidecar("--key-requests", consumer, path) else {
+            continue;
+        };
         for entry in parse_key_types_sidecar(&contents, path) {
             if entry.dep.replace('-', "_") != my_lib {
                 continue;

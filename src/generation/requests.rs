@@ -41,9 +41,11 @@ impl GenerationScope {
         let mut union: BTreeMap<String, Unioned> = BTreeMap::new();
 
         for (consumer, path) in &request_files {
-            let contents = std::fs::read_to_string(path).unwrap_or_else(|e| {
-                panic!("--wrapper-requests {consumer}={path}: cannot read the sidecar: {e}")
-            });
+            let Some(contents) =
+                crate::wrapper_requests::read_request_sidecar("--wrapper-requests", consumer, path)
+            else {
+                continue;
+            };
             let entries = crate::wrapper_requests::parse_sidecar(&contents, path);
             for entry in entries {
                 // Entries addressed to OTHER deps (dep column != this crate's normalized lib name)

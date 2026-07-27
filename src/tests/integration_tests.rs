@@ -4569,8 +4569,10 @@ fn cargo_manifest_disk_round_trip() {
 #[test]
 fn package_json_creates_a_missing_output_directory() {
     use clap::Parser;
-    let scratch =
-        std::env::temp_dir().join(format!("cddl_codegen_pkg_json_mkdir_{:016x}", checkout_hash()));
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_pkg_json_mkdir_{:016x}",
+        checkout_hash()
+    ));
     let _ = std::fs::remove_dir_all(&scratch);
     std::fs::create_dir_all(&scratch).unwrap();
     let input = scratch.join("input.cddl");
@@ -11946,6 +11948,70 @@ fn workspace_key_requests_derive_effect_and_hard_errors() {
             && uint_err.contains("uint"),
         "a reserved ident other than `int` must still hard-error naming it; stderr:\n{uint_err}"
     );
+}
+
+/// A request sidecar that does not exist yet is a cold workspace, not an error.
+///
+/// The sidecar records what a consumer BORROWS from this crate, so a consumer that has never
+/// generated borrows nothing and the absent file says exactly that. Treating it as a hard error made
+/// a cold workspace unbootstrappable in both directions at once: this crate could not generate until
+/// its consumer had written a sidecar, and the consumer could not generate until this crate had
+/// written the extern-interface export it imports. Nothing could go first.
+///
+/// The absence is announced on stderr, because the other way to reach it is a WRONG path — which
+/// would otherwise silently disable the whole channel. And a sidecar that exists but cannot be
+/// parsed stays a hard error: that is not "no sidecar", it is one this run cannot honour.
+#[test]
+fn a_missing_request_sidecar_is_a_cold_workspace_not_an_error() {
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_cold_sidecar_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let missing = scratch.join("never-generated/wasm/src/generated/borrowed_collections.rs");
+    let missing_keys = scratch.join("never-generated/rust/src/generated/borrowed_key_types.rs");
+
+    let run = |out: &str, wrappers: &std::path::Path, keys: &std::path::Path| {
+        codegen_cmd()
+            .arg("--input=tests/workspace-requests/dep_inputs")
+            .arg(format!("--output={}", scratch.join(out).to_str().unwrap()))
+            .arg("--lib-name=wr-dep")
+            .arg("--wasm=true")
+            .arg(format!(
+                "--wrapper-requests=c={}",
+                wrappers.to_str().unwrap()
+            ))
+            .arg(format!("--key-requests=c={}", keys.to_str().unwrap()))
+            .output()
+            .unwrap()
+    };
+
+    let cold = run("cold", &missing, &missing_keys);
+    let stderr = String::from_utf8_lossy(&cold.stderr);
+    assert!(
+        cold.status.success(),
+        "a not-yet-written sidecar must not stop generation; stderr:\n{stderr}"
+    );
+    for flag in ["--wrapper-requests", "--key-requests"] {
+        assert!(
+            stderr.contains(&format!("warning: {flag} c=")) && stderr.contains("borrowing nothing"),
+            "{flag} must announce the absence rather than disable the channel silently; stderr:\n{stderr}"
+        );
+    }
+
+    // A sidecar that EXISTS but is not a tool-generated one is still a hard error — the strictness
+    // the cold case relaxes is about absence only.
+    let garbage = scratch.join("garbage.rs");
+    std::fs::write(&garbage, "not a sidecar at all\n").unwrap();
+    let broken = run("broken", &missing, &garbage);
+    let broken_err = String::from_utf8_lossy(&broken.stderr);
+    assert!(
+        !broken.status.success() && broken_err.contains("--key-requests"),
+        "a malformed sidecar must still be a hard error naming the flag; stderr:\n{broken_err}"
+    );
+
+    let _ = std::fs::remove_dir_all(&scratch);
 }
 
 /// The CONSUMER half of the cross-crate `int` key-flavor channel: a spec keying a map on `int` under
