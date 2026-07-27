@@ -552,6 +552,31 @@ hand-written parent impl is exactly the situation the directive exists for.
 If instead the extern *does* implement `schemars::JsonSchema` and you only want it off the published
 surface, no parent annotation is needed.
 
+### A suppressed type still has a wasm `to_json_value()`, so the JSON → TypeScript scripts fail on it
+
+The "does not change the wasm surface" bullet above is exact, and its consequence is worth spelling
+out because the failure it produces surfaces two build steps later. Under `--wasm
+--json-serde-derives`, a rule that mints a **generated** wasm class — a record, a type or group
+choice, a `@newtype` wrapper — declares `to_json_value(): any` in the wasm-pack `.d.ts` whether or not
+it carries this directive: that method is emitted off the *derives*, not off the schema row. (Rules
+that mint no class of their own are untouched by this: an `_CDDL_CODEGEN_EXTERN_TYPE_` — the examples
+opening this section — has a hand-written wasm face, and a collection wrapper or a c-style enum
+declares no JSON method at all.)
+
+That only bites when the type is **also** absent from the document's `$defs`, which takes the recipe
+in [Command line flags § `--json-schema-export`](./command_line_flags): `@custom_json` on every rule
+that would reference it. A suppressed type that something published still references stays in `$defs`
+and its class is typed as usual. But *suppressed and unreferenced* is the directive's primary use
+case — a type whose real published JSON comes from a parent's hand-written impl — and there
+`json-ts-types.js` finds a class declaring `to_json_value(): any` with no `<Class>JSON` to splice in,
+and fails the run naming it — see
+[Command line flags § `--json-schema-scripts`](./command_line_flags).
+
+The remedy is `--allow-untyped=<Class>` on that script. Spelling it per class is what makes the
+duplication informative rather than noise: it is checked in both directions, so if the type later
+becomes reachable from a published root it *is* typed, and the stale-entry error tells you to drop
+the exception.
+
 It is valid on any rule that produces a rust type — an extern, a record, a sum type, a `@newtype`
 wrapper, a collection typedef, a generic instantiation, and a plain group that some rule splices:
 
