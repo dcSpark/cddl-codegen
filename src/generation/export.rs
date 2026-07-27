@@ -655,6 +655,14 @@ impl GenerationScope {
         // check it exists here to get clearer error message
         assert!(std::path::Path::exists(&cli.static_dir));
 
+        // The output root, created before anything is copied INTO it. Every other artifact reaches
+        // disk through a write that creates its own parent, so the tree scaffolds itself on the way
+        // down — but the two copies below land directly in the root, and `fs::copy` does not create
+        // one. Without this, `--package-json` on a not-yet-existing `--output` failed with a bare
+        // `Os { code: 2, kind: NotFound }` naming no file (pinned by
+        // `package_json_creates_a_missing_output_directory`).
+        std::fs::create_dir_all(&cli.output)?;
+
         // package.json / scripts
         //
         // The two JSON-schema -> TypeScript scripts are copied independently of the npm manifest, so

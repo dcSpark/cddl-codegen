@@ -4555,6 +4555,58 @@ fn cargo_manifest_disk_round_trip() {
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
+/// `--package-json` must create the output directory it writes `package.json` into.
+///
+/// Every other artifact reaches disk through a write that `create_dir_all`s its parent first, so a
+/// fresh `--output` gets scaffolded on the way; the npm manifest is a `fs::copy` straight into the
+/// output ROOT, which has no such parent pass. The gap is only reachable when nothing else created
+/// that root first — i.e. `--package-json` WITHOUT `--json-schema-export`/`--json-schema-scripts`,
+/// whose script copy creates `<output>/scripts` — and it surfaced as a bare
+/// `Os { code: 2, kind: NotFound }` naming no file at all.
+///
+/// Both directions are asserted: the same fresh directory generates fine WITHOUT the flag, so a
+/// regression cannot be excused as "creating the output directory is the caller's job".
+#[test]
+fn package_json_creates_a_missing_output_directory() {
+    use clap::Parser;
+    let scratch =
+        std::env::temp_dir().join(format!("cddl_codegen_pkg_json_mkdir_{:016x}", checkout_hash()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    std::fs::write(&input, "foo = [x: uint]\n").unwrap();
+
+    let run = |out: &std::path::Path, package_json: bool| {
+        crate::api::generate_to_disk(&crate::cli::Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            input.to_str().unwrap(),
+            "--output",
+            out.to_str().unwrap(),
+            "--package-json",
+            if package_json { "true" } else { "false" },
+        ]))
+    };
+
+    let without = scratch.join("no-package-json");
+    run(&without, false).expect("a fresh output directory generates without --package-json");
+
+    let with = scratch.join("with-package-json");
+    assert!(
+        !with.exists(),
+        "the discriminating premise: the output directory must not exist yet"
+    );
+    run(&with, true).unwrap_or_else(|e| {
+        panic!("--package-json must create its own output directory, got: {e:?}")
+    });
+    assert!(
+        with.join("package.json").is_file(),
+        "the npm manifest must land in the created directory"
+    );
+
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
 /// The `lib.rs` seed-once contract (the thin-root counterpart of the manifest changeset): a first
 /// export seeds a thin root (`mod generated; pub use generated::*;`) and emits every generated file
 /// under `rust/src/generated/**`; the root is thereafter user-owned and NEVER rewritten — an
