@@ -1771,6 +1771,12 @@ fn feature_corpus_compiles_pins_are_live() {
 /// cache's `cargo generate-lockfile` preflight, and that preflight serializes on cargo's PROCESS-WIDE
 /// `$CARGO_HOME/.package-cache` lock — so past a modest degree extra shards queue rather than run.
 /// Measured standalone on this gate: 1 shard 109 s, 12 shards 60 s, 24 shards slower again.
+///
+/// The preflight half of that ceiling is GONE: `gate_cache` memoizes the lockfile derivation per
+/// distinct manifest set, which took this gate from 568 `cargo generate-lockfile` processes to 21
+/// and its standalone wall from 26.4 s to 16.0 s. The count above is left at its measured value
+/// because the scaling has NOT been re-measured since — re-measure before raising it, do not assume
+/// the old curve still describes the gate.
 const FEATURE_CORPUS_SHARDS: usize = 6;
 
 /// Cross-shard accumulator for the execution-half vacuous-pass guard. The floor ("at least 38 of the
