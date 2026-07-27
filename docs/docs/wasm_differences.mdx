@@ -283,3 +283,34 @@ Above that, a `uint` (Rust `u64`) can hold values JavaScript's `number` cannot r
 - **`JSON.parse(to_json())` is lossy** for these values — that is a property of JavaScript's native `JSON.parse`, not of the generated code.
 
 If you need full precision above `2^53` on the JS side, take `to_json()` and parse it with a BigInt-aware JSON parser rather than `JSON.parse` / `to_json_value()`.
+
+## A hand-written `Serialize` must be honest in the serde data model
+
+`to_json_value()` is `serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())`. That is correct for any type whose `Serialize` describes itself truthfully to whatever serializer it is handed — but a `Serialize` impl is free to describe a number as something that is not a number, and one very common building block does exactly that.
+
+**`serde_json::Number` is dishonest under `serde_json/arbitrary_precision`.** With that cargo feature on, `Number`'s `Serialize` emits a one-field struct named `$serde_json::private::Number` holding the raw decimal string. Only serde_json's own serializer collapses that token back into a number; every other serializer — `serde-wasm-bindgen` included — emits it verbatim. `serde_json::Value` delegates its number arm to `Number`, so **anything whose `Serialize` routes through a `serde_json::Value` inherits this**, at every magnitude:
+
+```js
+Thing.to_json()        // {"int": 1000}                                  (looks fine)
+Thing.to_json_value()  // {"int":{"$serde_json::private::Number":"1000"}} (a token, not a number)
+```
+
+Cargo unifies features across a build graph, so *one* crate anywhere in your workspace turning `arbitrary_precision` on is enough — your own manifest need not mention it. Building a `serde_json::Value` is the natural shape for a hand-written JSON encoding, so this lands squarely on [`_CDDL_CODEGEN_EXTERN_TYPE_`](./output_format) and [`@custom_json`](./comment_dsl#custom_json) types.
+
+**The fix: route the final step through the shipped `json_value_ser` module.** Under `--json-serde-derives` every generated rust crate carries `json_value_ser.rs`, which renders a `serde_json::Value` honestly — arm for arm identical to serde_json's own impl except that a number is emitted through serde's real integer/float methods:
+
+```rust
+impl serde::Serialize for MyExternType {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value: serde_json::Value = self.to_json_value_of_my_own();
+        // instead of `serde::Serialize::serialize(&value, serializer)`:
+        crate::generated::json_value_ser::serialize_json_value(&value, serializer)
+    }
+}
+```
+
+The module also exposes `serialize_json_number` (the number arm alone, for an impl that already holds a `Number`) and `JsonValueSer<'a>` (a `Serialize`-implementing view, so a `Value` composes inside serde containers). `serialize_json_value`'s signature is `#[serde(serialize_with = "…")]`-compatible. Under `--common-import-override` the module lives in the shared runtime crate, so spell it `<that_crate>::json_value_ser::…`; under [`--export-static-crate`](./command_line_flags) it is one of the files written into your hand-owned crate root.
+
+This **strengthens** the `2^53` contract above rather than bending it. A big integer that previously bypassed `to_json_value()`'s refusal entirely — handing JavaScript a lossless-but-unusable token object — now reaches that refusal like any other `u64`, so the loud failure stays loud and everything at or below the safe-integer cliff becomes a real JS number. `to_json()` is byte-identical either way: each arm only substitutes an integer or float whose re-printed decimal spelling equals the `Number`'s own, so a value the serde data model cannot hold losslessly (a decimal carrying more precision than `f64`, an integer beyond ±2^127) keeps serde_json's token and keeps its exact bytes.
+
+Generated code needs no change from you: the `any`-typed member adapters route through this already.
