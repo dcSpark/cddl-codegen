@@ -552,7 +552,12 @@ pub(super) fn make_deser_loop(len_var: &str, len_expr: &str, cli: &Cli) -> Block
     ))
 }
 
-fn make_deser_loop_break_check(len_var: &str, cli: &Cli) -> Block {
+fn make_deser_loop_break_check(len_var: &str, deserializer_name: &str, cli: &Cli) -> Block {
+    // The probe reads from `deserializer_name`, NOT unconditionally from `raw`: under a `bytes .cbor`
+    // overload the collection's elements/keys come from the payload's own `inner_de`, so probing the
+    // outer buffer for the break byte would frame the check against a different cursor than the one
+    // the loop is consuming.
+    //
     // Only INDEFINITE-length collections carry a break byte (`0xff`). For a definite length the loop
     // reads exactly `n` items, so there is nothing to detect here — and we must NOT peek: the break
     // byte shares major type 7 (Special) with bool / null / float16-32-64 / simple, so an ungated
@@ -566,7 +571,7 @@ fn make_deser_loop_break_check(len_var: &str, cli: &Cli) -> Block {
     // consumed-and-rejected. The `cbor_type` guard stays load-bearing: `special_break` errors on
     // non-Special input.
     let mut brk = Block::new(format!(
-        "if matches!({len_var}, {}) && raw.cbor_type()? == cbor_event::Type::Special && raw.special_break()?",
+        "if matches!({len_var}, {}) && {deserializer_name}.cbor_type()? == cbor_event::Type::Special && {deserializer_name}.special_break()?",
         cbor_event_len_indef(cli)
     ));
     brk.line("break;");
@@ -1272,7 +1277,7 @@ impl GenerationScope {
                             deser_code.content.line(&final_result_expr_complete(
                                 &mut deser_code.throws,
                                 config.final_exprs,
-                                "bool::deserialize(raw)",
+                                &format!("bool::deserialize({deserializer_name})"),
                             ));
                         }
                         Primitive::F32 => {
@@ -1290,10 +1295,10 @@ impl GenerationScope {
                             );
                             let result_expr = match &type_cfg.float_bounds {
                                 Some(window) => format!(
-                                    "f32::deserialize(raw).and_then(|x| {} else {{ Ok(x) }})",
+                                    "f32::deserialize({deserializer_name}).and_then(|x| {} else {{ Ok(x) }})",
                                     bounds_check_if_block_float(window, true, "x", false, None)
                                 ),
-                                None => "f32::deserialize(raw)".to_owned(),
+                                None => format!("f32::deserialize({deserializer_name})"),
                             };
                             deser_code.content.line(&final_result_expr_complete(
                                 &mut deser_code.throws,
@@ -1311,10 +1316,10 @@ impl GenerationScope {
                             );
                             let result_expr = match &type_cfg.float_bounds {
                                 Some(window) => format!(
-                                    "f64::deserialize(raw).and_then(|x| {} else {{ Ok(x) }})",
+                                    "f64::deserialize({deserializer_name}).and_then(|x| {} else {{ Ok(x) }})",
                                     bounds_check_if_block_float(window, false, "x", false, None)
                                 ),
-                                None => "f64::deserialize(raw)".to_owned(),
+                                None => format!("f64::deserialize({deserializer_name})"),
                             };
                             deser_code.content.line(&final_result_expr_complete(
                                 &mut deser_code.throws,
@@ -1397,7 +1402,9 @@ impl GenerationScope {
                                         Some(b) => b,
                                         None => &mut deser_code.content,
                                     };
-                                    target.line("let initial_position = raw.position();");
+                                    target.line(&format!(
+                                        "let initial_position = {deserializer_name}.position();"
+                                    ));
                                     let mut variant_final_exprs = config.final_exprs.clone();
                                     if cli.preserve_encodings {
                                         for enc_var in encoding_fields(
@@ -1419,6 +1426,7 @@ impl GenerationScope {
                                                 variant_final_exprs.is_empty(),
                                                 None,
                                                 target,
+                                                deserializer_name,
                                                 cli,
                                             );
                                         // pattern parens only for a real tuple (>1), mirroring the
@@ -1433,7 +1441,7 @@ impl GenerationScope {
                             .line(format!("Ok({}) => return Ok({}),",
                             ok_pattern,
                             final_expr(variant_final_exprs.clone(), Some(format!("{}::{}", ident, variant.name)))))
-                            .line("Err(_) => raw.set_position(initial_position).unwrap(),")
+                            .line(format!("Err(_) => {deserializer_name}.set_position(initial_position).unwrap(),"))
                             .after(";");
                                         target.push_block(return_if_deserialized);
                                     }
@@ -1766,7 +1774,11 @@ impl GenerationScope {
                             None,
                         ),
                     };
-                    deser_loop.push_block(make_deser_loop_break_check("len", cli));
+                    deser_loop.push_block(make_deser_loop_break_check(
+                        "len",
+                        deserializer_name,
+                        cli,
+                    ));
                     if let Some(plain_len_check) = plain_len_check {
                         deser_loop.line(plain_len_check);
                     }
@@ -1980,7 +1992,11 @@ impl GenerationScope {
                         }
                         let mut deser_loop =
                             make_deser_loop(&len_var, &format!("({table_var}.len() as u64)"), cli);
-                        deser_loop.push_block(make_deser_loop_break_check(&len_var, cli));
+                        deser_loop.push_block(make_deser_loop_break_check(
+                            &len_var,
+                            deserializer_name,
+                            cli,
+                        ));
                         let mut key_config = DeserializeConfig::new(&key_var_name);
                         key_config.deserializer_name_overload = config.deserializer_name_overload;
                         let mut value_config = DeserializeConfig::new(&value_var_name);

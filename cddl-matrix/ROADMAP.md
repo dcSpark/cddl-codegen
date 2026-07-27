@@ -355,10 +355,28 @@ are ledgered here (that's what the probe/gate error messages point at).
     — a valid-CBOR byte string matches the `.cbor` arm first). Candidate fix: reject duplicate arms
     at generation, or document first-match semantics and have `--emit-tests` skip
     variant-identity asserts for ambiguous choices.
-  - **An emitted-test baseline decode failure on a nested shape**: a
-    `bytes .cbor float64` member fails its baseline re-decode (`Expected(Special, Text)` at the
-    following field — a `.cbor` float payload mis-frames the buffer; still to minimize when picked
-    up).
+- **Make a NESTED `bytes .cbor` payload either generate or refuse.** A `.cbor` payload whose own
+  type carries a `.cbor` control — `bytes .cbor (bytes .cbor uint)`, and equally the named-alias
+  spelling `innerc = bytes .cbor uint` / `b: bytes .cbor innerc`, which the `.cbor` single-alias
+  strip flattens into the same shape — generates Rust that does not compile, on both sides. The
+  serializer emits two `<var>_inner_se = Serializer::new_vec()` bindings at the same name, so the
+  inner `finalize()` moves the binding the outer write then uses (`error[E0382]: borrow of moved
+  value: <var>_inner_se`); the deserializer emits two `let <var>_bytes = raw.bytes()?` reads, both
+  against the OUTER buffer, plus two `inner_de` bindings that shadow. The cause is that the
+  payload-framing bindings are depth-agnostic, where the tag path already threads a `tag_depth` for
+  exactly this reason; a real fix threads a `cbor_depth` the same way. Because the outcome is a hard
+  compile break rather than a silent mis-decode, nothing can ship on top of it, so the cheap
+  intermediate is a graceful generation-time refusal naming the shape — the tool must not emit a
+  crate that cannot build.
+  **Reopening signal:** a CDDL specification a consumer must implement but does not control (a
+  published wire format, not one they can rewrite) contains one or more `bytes .cbor` members whose
+  payload type itself carries a `.cbor` control, directly or through a named alias. That is a `grep`
+  over a spec they already hold, and the count of such members is the size of the hand-written
+  serialization they would have to maintain alongside the generated crate. Note that the
+  recombination sweep cannot supply this signal: its `cbor_payload` builder composes
+  `bytes .cbor {h}` without parentheses, so a self-composition spells
+  `bytes .cbor bytes .cbor uint`, which fails to PARSE and therefore never reaches the execution
+  layer — the shape is invisible to the fuzzer by construction.
 - **Give the array-rep group-choice arm's anonymous map a graceful refusal or real support.**
   `contain.group-choice-arm.type2.map.array` (`t = [ {a: int, b: uint} // tstr ]`) is valid CDDL
   that aborts in `parsing.rs` at the `TODO: non-table types as types` site — the
