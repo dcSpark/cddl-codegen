@@ -163,7 +163,7 @@ excluded-endpoint number, NaN against a float window — each a valid instance o
 certified spec-invalid at mint and durably rejected by the generated decoder — for the pinned
 REASON: each vector's `expect_err` substring is asserted against the decoder's error Display by the
 replay gate, so the rejection names the violated constraint, not just any `Err`. The green set is
-<!-- gen:sh:readme-enforce-green -->28 rows<!-- /gen:sh:readme-enforce-green -->: `ctl.size`, `ctl.cbor`, `memberkey.cut`, the six numeric range/eq ops (`ctl.{le,lt,gt,eq,ne,ge}`)
+<!-- gen:sh:readme-enforce-green -->43 rows<!-- /gen:sh:readme-enforce-green -->: `ctl.size`, `ctl.cbor`, `memberkey.cut`, the six numeric range/eq ops (`ctl.{le,lt,gt,eq,ne,ge}`)
 plus their boundary-value rows `ctl.ne.{zero,one}` (the `(1,-1)` / degenerate `(2,0)` NE encodings),
 `ctl.size.uint` (65536 over the u16-collapsed window, rejected by the width-guarded member decode —
 the guard that replaced the silent truncation this row's vector exposed; pinned by the
@@ -174,7 +174,15 @@ rows `.int`/`.nint`/`.float`), the three occurrence-bound rows `occur.bounded{,.
 rows `value.number.{hexfloat,hex,bin}` (wrong-value instances against the fixed 3.0 / 16 / 10,
 rejected as FixedValueMismatch — hex/bin carry hand pins including `[0]`, the silent-zero
 radix-conversion trap from `draft/rust-cddl-radix-int-literal-gap.md` § post-implementation
-findings). Upstream rust-oracle
+findings), and the 15 fixed-value MEMBER cells
+(`contain.{array-element,map-value,occurrence-target}.…` — the `prelude.{true,false,null}`,
+`type2.value{,.bare_exactly_once}`, `value.{number,text}` and the two optional
+`type2.value.optional_keyed_{array,map}` cells: each carries one wrong-constant instance derived
+from one of its own accepts by mutating ONLY the constant's byte(s), so the constant is the sole
+difference and the row's green tests the CONSTANT rather than just the shape — rejected as
+FixedValueMismatch, except the two `prelude.null` cells, which pin `ExpectedNull` because for null
+the constant IS the type; the optional cells' instances are present-wrong, since absence is a legal
+accept shape). Upstream rust-oracle
 gaps shape what "certified" means per family
 (`query_q4_directional.ts --check` pins the exact green set — and the now-empty unverified set — so
 a decay fails loudly rather than
