@@ -15,6 +15,7 @@ and the overlap has structure the command line cannot express — flags every cr
 cddl-codegen --config codegen.toml            # generate every crate in the config
 cddl-codegen --config codegen.toml wire       # generate only `wire`
 cddl-codegen --config codegen.toml wire core  # generate a subset
+cddl-codegen --config codegen.toml --print-flags  # say what it would do, generate nothing
 ```
 
 Every key in the file is a flag. There is no knob that exists only in the config, and no flag that a
@@ -635,6 +636,53 @@ the only command-line selector; the config file is the edit loop.
 
 Selecting a subset generates only the crates you name. Their order on the command line does not
 matter — the config decides the generation order.
+
+## Seeing what a config does, without running it
+
+`--print-flags` prints the flag list each crate would be generated with, and generates nothing:
+
+```bash
+cddl-codegen --config codegen.toml --print-flags        # every crate, in generation order
+cddl-codegen --config codegen.toml --print-flags core   # just this one
+```
+
+```
+# The flags each crate WOULD be generated with, and the config key each one comes from.
+# This is a listing, not a command line: the left column is a config key rather than an
+# argument, nothing is shell-quoted, and a copy of it stops being true at the next edit of
+# the config. Nothing was generated.
+
+[crates.core]
+  input               --input specs/core.cddl
+  output              --output gen/core
+  lib-name            --lib-name core-lib
+  preserve-encodings  --preserve-encodings true
+  deps                --wrapper-requests ledger=gen/ledger/wasm/src/generated/borrowed_collections.rs
+  deps                --key-requests ledger=gen/ledger/rust/src/generated/borrowed_key_types.rs
+
+[crates.ledger]
+  input               --input specs/ledger.cddl
+  …
+  deps                --workspace-dep core
+  deps                --extern-import core=gen/core/extern-interface/core
+```
+
+Every line leads with **the config key that produced it**, which is the question worth answering:
+whether a `[defaults]` key reached a crate, or a `deps` edge derived the path you expected, is
+otherwise visible only by generating and reading the output tree. The six flags an edge derives are
+tagged `deps` rather than with their own flag names, since those name no line in your file — a
+reverse-edge flag on a *dependency*'s block comes from the consumer's `deps`, and the label in its
+value says which consumer. A sub-table entry you wrote by hand keeps the key you wrote it under.
+
+The expansion behind the listing is the real one: every path resolution, every derivation and every
+validation. A config a run would refuse is refused here, with the same message.
+
+:::caution It is a listing, not a second invocation to keep
+Deliberately not shell-quoted, and deliberately not a token sequence any shell accepts. A pasted
+flag list is accurate on the day it is copied and silently stops being so at the next edit of the
+config — which is the duplication this feature exists to remove, not to mint more of. Use it to
+answer *why is this flag here*, and keep the config as the thing that is maintained.
+:::
 
 ## Migrating a generation script
 

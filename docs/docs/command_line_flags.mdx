@@ -8,7 +8,10 @@ sidebar_position: 3
 Every flag below is also a key in a [config file](config_file.mdx), which is what a project
 generating several crates wants: shared values are declared once, paths resolve against the config
 file rather than the current directory, and `cddl-codegen --config <file.toml>` generates every
-crate in one run. `--config` is mutually exclusive with the flags below.
+crate in one run. `--config` is mutually exclusive with the flags below — which is why
+[`--print-flags`](config_file.mdx#seeing-what-a-config-does-without-running-it) exists: it prints the
+flags each crate would be generated with, keyed by the config line that produced each one, and
+generates nothing.
 
 :::info `--input`
 Specifies the input CDDL file(s).

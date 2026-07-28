@@ -831,6 +831,172 @@ fn positional_crate_names_select_a_subset_in_config_order() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// `--print-flags`
+// ---------------------------------------------------------------------------------------------
+
+/// The listing states, per crate and in GENERATION order, every flag the run would use and the
+/// config key that put it there.
+///
+/// The fixture is built so both halves of that sentence can fail. `zeta` depends on `alpha`, so the
+/// generation order is `alpha` then `zeta` while the crate tables (and every `BTreeMap` behind them)
+/// are in the opposite order — a listing that simply walked the config would print them backwards.
+/// And the edge's six derived flags are ones no key in the file is NAMED after: attributing them to
+/// `extern-import`/`workspace-dep`/… would point at TOML lines that do not exist, which is the exact
+/// question the key column answers.
+#[test]
+fn print_flags_lists_every_crate_in_generation_order_keyed_by_the_config_key() {
+    let listing = parse(
+        "[defaults]\npreserve-encodings = true\n\
+         [crates.zeta]\ninput = \"z.cddl\"\noutput = \"gen/zeta\"\ndeps = [\"alpha\"]\n\
+         [crates.alpha]\ninput = \"a.cddl\"\noutput = \"gen/alpha\"\n",
+    )
+    .flag_listing(&[])
+    .expect("a valid config must list");
+
+    let blocks: Vec<&str> = listing
+        .lines()
+        .filter(|line| line.starts_with("[crates."))
+        .collect();
+    assert_eq!(
+        blocks,
+        vec!["[crates.alpha]", "[crates.zeta]"],
+        "the blocks must be in generation order — dependencies first — not in table order, got:\n\
+         {listing}"
+    );
+
+    // Every flag line leads with its config key, never with the flag: that is what makes the listing
+    // answer "why is this here?", and it is also what stops it being mistaken for something to paste
+    // into a script.
+    for line in listing.lines() {
+        if line.starts_with("  ") {
+            assert!(
+                !line.trim_start().starts_with("--"),
+                "a flag line must lead with the config key, not the flag, got: {line:?}"
+            );
+        }
+    }
+
+    for (key, flag) in [
+        ("input", "--input a.cddl"),
+        ("preserve-encodings", "--preserve-encodings true"),
+        // The reverse half of the edge, on the DEPENDENCY's block.
+        (
+            "deps",
+            "--wrapper-requests zeta=gen/zeta/wasm/src/generated/borrowed_collections.rs",
+        ),
+        // And the forward half, on the consumer's.
+        (
+            "deps",
+            "--extern-import alpha=gen/alpha/extern-interface/alpha",
+        ),
+    ] {
+        assert!(
+            listing
+                .lines()
+                .any(|line| line.trim_start().starts_with(key) && line.ends_with(flag)),
+            "the listing must carry `{flag}` tagged `{key}`, got:\n{listing}"
+        );
+    }
+
+    // A hand-written entry in the same sub-table keeps the flag-named key, because that IS what the
+    // user typed — the sugar's key is reported only for what the sugar wrote.
+    let hand = parse(
+        "[crates.demo]\ninput = \"d.cddl\"\noutput = \"gen/demo\"\n\
+         [crates.demo.extern-import]\nother = \"vendor/other\"\n",
+    )
+    .flag_listing(&[])
+    .expect("a valid config must list");
+    assert!(
+        hand.lines()
+            .any(|line| line.trim_start().starts_with("extern-import")),
+        "a hand-written sub-table entry stays attributed to the key it was written under, got:\n{hand}"
+    );
+}
+
+/// Naming crates lists those crates; naming none lists them all. Same selector as a run, so a
+/// listing cannot describe a set of crates the same command line would not generate.
+#[test]
+fn print_flags_lists_only_the_crates_named() {
+    let config = parse(
+        "[crates.alpha]\ninput = \"a.cddl\"\noutput = \"ga\"\n\
+         [crates.beta]\ninput = \"b.cddl\"\noutput = \"gb\"\n",
+    );
+    let blocks = |selected: &[&str]| {
+        config
+            .flag_listing(&selected.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+            .expect("a valid config must list")
+            .lines()
+            .filter(|line| line.starts_with("[crates."))
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(blocks(&[]), vec!["[crates.alpha]", "[crates.beta]"]);
+    assert_eq!(blocks(&["beta"]), vec!["[crates.beta]"]);
+}
+
+/// Listing runs the WHOLE expansion, so a config that could not generate cannot be listed either —
+/// and fails with the identical message.
+///
+/// This is what stops `--print-flags` becoming a second, laxer front door onto the same file: a
+/// listing that printed flags for a config a run would refuse would be describing an invocation that
+/// never happens.
+#[test]
+fn print_flags_reports_exactly_what_a_run_would_reject() {
+    for text in [
+        // A cross-flag rule, refused during expansion.
+        "[defaults]\ncanonical-form = true\n[crates.beta]\ninput = \"b.cddl\"\noutput = \"gb\"\n",
+        // A graph refusal, refused during validation.
+        "[crates.a]\ninput = \"a.cddl\"\noutput = \"ga\"\ndeps = [\"b\"]\n\
+         [crates.b]\ninput = \"b.cddl\"\noutput = \"gb\"\ndeps = [\"a\"]\n",
+    ] {
+        let listed = config::parse_str(text, Path::new(""))
+            .and_then(|config| config.flag_listing(&[]))
+            .err();
+        let ran = config::parse_str(text, Path::new(""))
+            .and_then(|config| config.expand(&[]).map(|_| String::new()))
+            .err();
+        assert!(
+            listed.is_some(),
+            "a config a run refuses must not list:\n{text}"
+        );
+        assert_eq!(
+            listed, ran,
+            "listing and running must refuse a config the same way, or `--print-flags` is a second \
+             front door with its own rules:\n{text}"
+        );
+    }
+}
+
+/// `--print-flags` reaches the config parser rather than the generation-flag rejection, and does not
+/// consume the positional selectors.
+///
+/// It is a mode switch, not a generation flag — nothing about it changes what any crate is generated
+/// WITH — so it belongs on the same side of `reject_generation_flags` as the crate names.
+#[test]
+fn print_flags_is_not_a_generation_flag_and_leaves_the_selection_alone() {
+    use clap::Parser;
+
+    let argv: Vec<String> = [
+        "cddl-codegen",
+        "--config",
+        "c.toml",
+        "--print-flags",
+        "core",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect();
+    config::reject_generation_flags(&argv)
+        .expect("`--print-flags` is a mode switch, not a generation flag");
+    let invocation = config::ConfigCli::parse_from(&argv);
+    assert!(invocation.print_flags);
+    assert_eq!(invocation.crates, vec!["core".to_owned()]);
+
+    let without = config::ConfigCli::parse_from(["cddl-codegen", "--config", "c.toml"]);
+    assert!(!without.print_flags, "the default is to generate");
+}
+
+// ---------------------------------------------------------------------------------------------
 // D8.10 — the acceptance test
 // ---------------------------------------------------------------------------------------------
 

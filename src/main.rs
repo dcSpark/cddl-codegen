@@ -33,6 +33,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn generate_from_config(argv: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     config::reject_generation_flags(argv)?;
     let invocation = config::ConfigCli::parse_from(argv);
+    if invocation.print_flags {
+        return config::print_flags(&invocation.config, &invocation.crates);
+    }
     config::generate(&invocation.config, &invocation.crates)
 }
 
