@@ -332,3 +332,20 @@ cbor_enum_wrappers = [
   bytes_arm: bytes .cbor cbor_payload_enum,
   tagged_arm: #6.42(cbor_payload_enum),
 ]
+
+; --- a `.cbor` payload nested inside another `.cbor` payload's collection, under --preserve-encodings ---
+; The inner byte-string read is emitted inside the OUTER payload's loop body, where the enclosing
+; reader is an `inner_de` overload; naming the outer reader there consumes the next outer item as
+; the element's payload. Only the decode side was wrong, so the shape COMPILES and encodes
+; spec-correctly under every profile — an executed round trip is the only thing that sees it, and
+; under this flag the round trip must additionally carry each nested payload's own byte-string
+; `StringEncoding` (the outer container's `LenEncoding` plus one `StringEncoding` per element/value)
+; through an irregular re-encoding byte-identically.
+; `*` is load-bearing: a fixed `[X]` would mint a record struct whose `fn deserialize(raw..)`
+; boundary resets the buffer name and masks the defect. The default/json profiles of this shape
+; live in tests/corpus/cbor_payload_nested.cddl, and tests/core carries the hand-vector decode leg.
+cbor_nested_payloads = [
+  elem_payloads: bytes .cbor [* bytes .cbor uint],
+  value_payloads: bytes .cbor {* uint => bytes .cbor uint},
+  after_payload: bytes .cbor uint,
+]

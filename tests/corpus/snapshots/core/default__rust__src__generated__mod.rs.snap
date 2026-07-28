@@ -446,6 +446,30 @@ impl CborPayloadLeaves {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct CborPayloadNestedPayloads {
+    pub elem_payloads: Vec<u64>,
+    pub value_payloads: BTreeMap<u64, u64>,
+    pub after_payload: u64,
+    pub tail: String,
+}
+
+impl CborPayloadNestedPayloads {
+    pub fn new(
+        elem_payloads: Vec<u64>,
+        value_payloads: BTreeMap<u64, u64>,
+        after_payload: u64,
+        tail: String,
+    ) -> Self {
+        Self {
+            elem_payloads,
+            value_payloads,
+            after_payload,
+            tail,
+        }
+    }
+}
+
 pub type CustomBytes = Vec<u8>;
 
 pub type DefaultUint = u64;

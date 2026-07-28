@@ -2299,20 +2299,35 @@ impl GenerationScope {
                     .add_to_code(&mut deser_code);
                 }
                 SerializingRustType::EncodingOperation(CBOREncodingOperation::CBORBytes, child) => {
+                    // The byte string HOLDING the payload is itself an item of whatever stream this
+                    // arm was reached through, so it is read from `deserializer_name` like every
+                    // sibling arm — not unconditionally from `raw`. The two differ exactly when a
+                    // `.cbor` payload is nested inside another one's collection loop: there the
+                    // enclosing reader is the outer payload's `inner_de` overload, and naming `raw`
+                    // consumed the next OUTER item as the element's payload. Only the decode side
+                    // was affected (the serializer writes the nested payload correctly), so the
+                    // shape compiled, encoded to spec, and then rejected its own output.
                     if cli.preserve_encodings {
                         config.final_exprs.push(format!(
                             "StringEncoding::from({}_bytes_encoding)",
                             config.var_name
                         ));
                         deser_code.content.line(&format!(
-                            "let ({}_bytes, {}_bytes_encoding) = raw.bytes_sz()?;",
+                            "let ({}_bytes, {}_bytes_encoding) = {deserializer_name}.bytes_sz()?;",
                             config.var_name, config.var_name
                         ));
                     } else {
-                        deser_code
-                            .content
-                            .line(&format!("let {}_bytes = raw.bytes()?;", config.var_name));
+                        deser_code.content.line(&format!(
+                            "let {}_bytes = {deserializer_name}.bytes()?;",
+                            config.var_name
+                        ));
                     };
+                    // Shadowing `inner_de` is safe for the nested-collection shape because the inner
+                    // rebind is scoped to the loop-BODY block: the next iteration's length/break
+                    // probe and the map arm's key read both sit before it and still see the enclosing
+                    // payload's reader. A same-block SEQUEL to a `.cbor` member (direct nesting
+                    // within one op chain) would capture the inner binding instead, which is why
+                    // that shape needs depth-suffixed names and is out of scope here.
                     let name_overload = "inner_de";
                     deser_code.content.line(&format!(
                         "let {} = &mut Deserializer::from({}_bytes);",

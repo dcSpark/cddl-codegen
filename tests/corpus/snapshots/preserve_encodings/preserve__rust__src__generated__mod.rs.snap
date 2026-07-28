@@ -85,14 +85,15 @@ use crate::generated::serialization::{LenEncoding, StringEncoding};
 use cbor_encodings::{
     AEncoding, ArrayOptFieldsEncoding, BarEncoding, BasicArrEncoding, BasicEncoding,
     BoundsEncoding, BytesUintEncoding, CEncoding, CborEnumWrappersEncoding, CborInCborEncoding,
-    CustomFieldHolderEncoding, DeeplyNestedEncoding, EdEncoding, EeEncoding, EnumsEncoding,
-    FirstEncoding, FooEncoding, HashEncoding, MapWithDefaultsEncoding, NemPreserveEncoding,
-    NevPreserveEncoding, NullableSpecialsEncoding, OptFixedArrEncoding, OptFixedMapEncoding,
-    OsetPU64Encoding, PlainArraysEncoding, PlainEncoding, RejectSetPreserveEncoding,
-    SecondEncoding, SignBoundsEncoding, SignedIntsEncoding, String64Encoding, String1632Encoding,
-    StructWithCustomSerializationEncoding, TableArrMembersEncoding, TaggedFooBytesEncoding,
-    TaggedTextEncoding, ThreeEncoding, TopLevelNegRangeEncoding, TopLevelPosRangeEncoding,
-    TopLevelTaggedRangeEncoding, WidthCollapseEncoding, WrapperListEncoding, WrapperTableEncoding,
+    CborNestedPayloadsEncoding, CustomFieldHolderEncoding, DeeplyNestedEncoding, EdEncoding,
+    EeEncoding, EnumsEncoding, FirstEncoding, FooEncoding, HashEncoding, MapWithDefaultsEncoding,
+    NemPreserveEncoding, NevPreserveEncoding, NullableSpecialsEncoding, OptFixedArrEncoding,
+    OptFixedMapEncoding, OsetPU64Encoding, PlainArraysEncoding, PlainEncoding,
+    RejectSetPreserveEncoding, SecondEncoding, SignBoundsEncoding, SignedIntsEncoding,
+    String64Encoding, String1632Encoding, StructWithCustomSerializationEncoding,
+    TableArrMembersEncoding, TaggedFooBytesEncoding, TaggedTextEncoding, ThreeEncoding,
+    TopLevelNegRangeEncoding, TopLevelPosRangeEncoding, TopLevelTaggedRangeEncoding,
+    WidthCollapseEncoding, WrapperListEncoding, WrapperTableEncoding,
 };
 use std::collections::BTreeMap;
 
@@ -420,6 +421,29 @@ impl CborInCbor {
             foo_bytes,
             uint_bytes,
             tagged_foo_bytes,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CborNestedPayloads {
+    pub elem_payloads: Vec<u64>,
+    pub value_payloads: OrderedHashMap<u64, u64>,
+    pub after_payload: u64,
+    pub encodings: Option<CborNestedPayloadsEncoding>,
+}
+
+impl CborNestedPayloads {
+    pub fn new(
+        elem_payloads: Vec<u64>,
+        value_payloads: OrderedHashMap<u64, u64>,
+        after_payload: u64,
+    ) -> Self {
+        Self {
+            elem_payloads,
+            value_payloads,
+            after_payload,
             encodings: None,
         }
     }

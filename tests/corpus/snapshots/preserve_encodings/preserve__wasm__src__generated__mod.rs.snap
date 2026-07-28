@@ -806,6 +806,61 @@ impl AsRef<cddl_lib::CborInCbor> for CborInCbor {
     }
 }
 
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct CborNestedPayloads(pub(crate) cddl_lib::CborNestedPayloads);
+
+#[wasm_bindgen]
+impl CborNestedPayloads {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<CborNestedPayloads, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn elem_payloads(&self) -> Vec<u64> {
+        self.0.elem_payloads.clone()
+    }
+
+    pub fn value_payloads(&self) -> MapU64ToU64 {
+        self.0.value_payloads.clone().into()
+    }
+
+    pub fn after_payload(&self) -> u64 {
+        self.0.after_payload
+    }
+
+    pub fn new(elem_payloads: Vec<u64>, value_payloads: &MapU64ToU64, after_payload: u64) -> Self {
+        Self(cddl_lib::CborNestedPayloads::new(
+            elem_payloads,
+            value_payloads.clone().into(),
+            after_payload,
+        ))
+    }
+}
+
+impl From<cddl_lib::CborNestedPayloads> for CborNestedPayloads {
+    fn from(native: cddl_lib::CborNestedPayloads) -> Self {
+        Self(native)
+    }
+}
+
+impl From<CborNestedPayloads> for cddl_lib::CborNestedPayloads {
+    fn from(wasm: CborNestedPayloads) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::CborNestedPayloads> for CborNestedPayloads {
+    fn as_ref(&self) -> &cddl_lib::CborNestedPayloads {
+        &self.0
+    }
+}
+
 pub type CustomBytes = Vec<u8>;
 
 #[derive(Clone, Debug)]

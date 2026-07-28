@@ -147,6 +147,25 @@ cbor_payload_collections = [
 	tail: text,
 ]
 
+; A `.cbor` payload whose ELEMENTS/VALUES are themselves `.cbor` payloads. The inner byte-string
+; read is emitted inside the outer collection's loop body, where the enclosing payload's reader is
+; an `inner_de` overload — naming the OUTER reader there consumes the next outer item as the
+; element's payload, so the member decodes plausible values and every member after it mis-frames.
+; Only the decode side was ever wrong (the serializer writes the nested payload correctly), which
+; makes this round-trip-visible rather than silent, and makes the encode-vs-oracle assertion in
+; `cbor_payload_nested_payloads` (tests/core/tests.rs) a real control rather than a formality.
+;
+; `*` is load-bearing on both containers: a fixed `[X]` mints a record struct whose
+; `fn deserialize(raw..)` boundary resets the buffer name and masks the defect entirely. Both the
+; array-element and the map-VALUE position are spelled because they are separate emission sites in
+; the loop body (the map's key is read before the value, so only the value can mis-frame).
+cbor_payload_nested_payloads = [
+	elem_payloads: bytes .cbor [* bytes .cbor uint],
+	value_payloads: bytes .cbor {* uint => bytes .cbor uint},
+	after_payload: bytes .cbor uint,
+	tail: text,
+]
+
 u8 = uint .size 1
 u16 = uint .le 65535
 u32 = 0..4294967295

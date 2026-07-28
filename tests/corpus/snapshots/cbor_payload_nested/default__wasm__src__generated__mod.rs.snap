@@ -1,0 +1,126 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use std::collections::BTreeMap;
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct CborPayloadNested(pub(crate) cddl_lib::CborPayloadNested);
+
+#[wasm_bindgen]
+impl CborPayloadNested {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<CborPayloadNested, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn elem_payloads(&self) -> Vec<u64> {
+        self.0.elem_payloads.clone()
+    }
+
+    pub fn value_payloads(&self) -> MapU64ToU64 {
+        self.0.value_payloads.clone().into()
+    }
+
+    pub fn after_payload(&self) -> u64 {
+        self.0.after_payload
+    }
+
+    pub fn tail(&self) -> String {
+        self.0.tail.clone()
+    }
+
+    pub fn new(
+        elem_payloads: Vec<u64>,
+        value_payloads: &MapU64ToU64,
+        after_payload: u64,
+        tail: String,
+    ) -> Self {
+        Self(cddl_lib::CborPayloadNested::new(
+            elem_payloads,
+            value_payloads.clone().into(),
+            after_payload,
+            tail,
+        ))
+    }
+}
+
+impl From<cddl_lib::CborPayloadNested> for CborPayloadNested {
+    fn from(native: cddl_lib::CborPayloadNested) -> Self {
+        Self(native)
+    }
+}
+
+impl From<CborPayloadNested> for cddl_lib::CborPayloadNested {
+    fn from(wasm: CborPayloadNested) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::CborPayloadNested> for CborPayloadNested {
+    fn as_ref(&self) -> &cddl_lib::CborPayloadNested {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapU64ToU64(pub(crate) BTreeMap<u64, u64>);
+
+#[wasm_bindgen]
+impl MapU64ToU64 {
+    pub fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: u64, value: u64) -> Option<u64> {
+        self.0.insert(key, value)
+    }
+
+    pub fn get(&self, key: u64) -> Option<u64> {
+        self.0.get(&key).copied()
+    }
+
+    pub fn keys(&self) -> Vec<u64> {
+        self.0.keys().copied().collect::<Vec<_>>()
+    }
+}
+
+impl From<BTreeMap<u64, u64>> for MapU64ToU64 {
+    fn from(native: BTreeMap<u64, u64>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapU64ToU64> for BTreeMap<u64, u64> {
+    fn from(wasm: MapU64ToU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<BTreeMap<u64, u64>> for MapU64ToU64 {
+    fn as_ref(&self) -> &BTreeMap<u64, u64> {
+        &self.0
+    }
+}

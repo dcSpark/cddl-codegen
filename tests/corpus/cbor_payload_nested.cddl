@@ -1,0 +1,26 @@
+; A `.cbor` payload nested one level INSIDE another `.cbor` payload's collection, in both the
+; array-element and the map-VALUE position. The inner byte-string read is emitted inside the outer
+; collection's loop body, where the enclosing payload's reader is an `inner_de` overload — naming
+; the OUTER reader there consumes the next outer item as the element's payload, so the member
+; decodes plausible values and everything after it mis-frames. Only the decode side was ever wrong
+; (the serializer writes the nested payload correctly), so the crate BUILDS clean and rejects valid
+; CBOR: nothing short of an executed decode sees it, which is why the executed legs live elsewhere
+; (`cbor_payload_nested_payloads` in tests/core/tests.rs decodes hand-derived RFC 8949 bytes;
+; `cbor_nested_payloads` in tests/preserve-encodings/input.cddl carries the preserve round trip).
+; This fixture is the all-profile snapshot/compile half.
+;
+; `*` is load-bearing on both containers: a fixed `[X]` mints a record struct whose
+; `fn deserialize(raw..)` boundary resets the buffer name and masks the defect entirely.
+;
+; Kept OUT of cbor_in_bytes.cddl deliberately, on the precedent cbor_nonempty_payload.cddl
+; documents: the ruby `cddl` gem (0.12.14) cannot PARSE an inline composite type2 controller
+; (`bytes .cbor [* ...]` — exit 65, draft/ruby-cddl-inline-composite-control-arg-gap.md), and a
+; spec-parse failure poisons every rule in its fixture for the `ir_conformance_corpus` ruby sweep.
+; Isolating the shape here keeps the ruby-judgeable fixtures judgeable; this one is
+; compile/snapshot-gated only.
+cbor_payload_nested = [
+  elem_payloads: bytes .cbor [* bytes .cbor uint],
+  value_payloads: bytes .cbor {* uint => bytes .cbor uint},
+  after_payload: bytes .cbor uint,
+  tail: text,
+]

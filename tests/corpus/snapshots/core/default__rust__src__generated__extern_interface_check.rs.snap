@@ -106,6 +106,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::CborPayloadCollections>();
     _assert_serialize::<crate::generated::CborPayloadLeaves>();
     _assert_deserialize::<crate::generated::CborPayloadLeaves>();
+    _assert_serialize::<crate::generated::CborPayloadNestedPayloads>();
+    _assert_deserialize::<crate::generated::CborPayloadNestedPayloads>();
     _assert_serialize::<crate::generated::Docs>();
     _assert_deserialize::<crate::generated::Docs>();
     _assert_serialize::<crate::generated::DocsGroupchoice>();
