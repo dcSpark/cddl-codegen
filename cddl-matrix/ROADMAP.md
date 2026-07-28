@@ -289,21 +289,28 @@ ledgered here (that's what the probe/gate error messages point at).
   carrying two-or-more Special-typed literal arms beside data arms — a `grep` over a spec and a
   flag they already have, and the count of such choices is the hand-maintained surface they would
   keep beside the generated crate. Today the evidence is one synthetic probe.
-- **An all-special choice (`true / null`) panics generation under EVERY profile.** The choice
-  classifies as a c-style enum (all arms fixed), and generation dies at the pinned
+- **`true / null` — a fixed-value inner under the `T / null` Option-collapse — panics generation
+  under EVERY profile.** A two-arm choice with a null arm never becomes an enum:
+  `parse_type_choices` collapses it to an `Option<T>` alias (the same lowering that makes
+  `t = null / tstr` an `Option<String>`). With `T` itself a fixed value, the collapsed type is
+  `Optional(Fixed(Bool(true)))`, and rendering that as a member/alias type dies at the pinned
   `should not expose Fixed type in member, only needed for serializaiton:` panic
-  (`src/intermediate/rust_type.rs` — two sibling sites carry the message), wrapper or not. Notable
-  because the recombination ledger records the `"should not expose Fixed type"` class as retired
-  for the bare-fixed-in-member families — the sites survive, and the all-special-choice spelling
-  still reaches them, under the default profile too (this is not a preserve gap). A useful shape
-  (`bool-or-null` is ordinary wire vocabulary), currently uncatalogued as a matrix cell: the
-  `type.enum` rows spell int/text literal arms only. Candidate fix: give the all-special choice
-  the c-style-enum lowering its int/text siblings have, or refuse it gracefully naming the rule —
-  a panic on valid CDDL is the posture this repo otherwise retired. **Reopening signal**, on the
-  magnitude axis: a spec brought to us contains an all-special choice, i.e. the count of rules its
-  owner must hand-rewrite to keep generating reaches 1; today the evidence is synthetic probes
-  only (recorded in `tests/corpus/cbor_enum_payload.cddl`'s header, whose fixture deliberately
-  does not spell the shape).
+  (`src/intermediate/rust_type.rs` — the `for_rust_member_ct`/`for_wasm_member_ct` `Fixed` arms),
+  wrapper or not, default profile included (this is not a preserve gap). Notable because the
+  recombination ledger records the `"should not expose Fixed type"` class as retired for the
+  bare-fixed-in-member families — the sites survive, and this spelling still reaches them; the
+  recombination sweep cannot spell it (the ingredient list carries `prelude.null` as a
+  choice-member but no special-literal filler for the other arm). `false / null` is the same
+  collapse with `Fixed(Bool(false))` — reasoned identical, unprobed. `true / false` (no null arm,
+  so no collapse — an ordinary all-fixed choice) is a DIFFERENT path, unprobed in both
+  directions. A useful shape (`bool-or-null` is ordinary wire vocabulary), currently uncatalogued
+  as a matrix cell. Candidate fix: teach the collapse that a fixed-value inner carries only
+  presence (lower to a presence-shaped newtype or refuse gracefully at the collapse site naming
+  the rule) — a panic on valid CDDL is the posture this repo otherwise retired. **Reopening
+  signal**, on the magnitude axis: a spec brought to us contains a fixed-value/null two-arm
+  choice, i.e. the count of rules its owner must hand-rewrite to keep generating reaches 1; today
+  the evidence is synthetic probes only (the mechanism read from `parse_type_choices` +
+  `rust_type.rs`; the panic observed empirically).
 - **Enumerate the remaining fixed-value KINDS, in both the arm and the member position.** The kind
   axis and the position axis are separate cells, but they share one blocker and one reason to be
   enumerated at all, said here once: the result is known to be NON-uniform (probed kinds keep

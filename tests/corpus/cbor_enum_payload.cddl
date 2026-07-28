@@ -22,11 +22,13 @@
 ; fields from the first variant is sound. A mixed-kind choice such as `0 / true` becomes an ordinary
 ; type-choice enum with its own `Deserialize` impl and never reaches this site.
 ;
-; NOT spelled here: an all-special c-enum (`true / null` — the no-encoding-fields edge of the
-; pattern split, where the closure returns `Ok(())` and the pattern is `()`). That shape panics at
-; generation under EVERY profile, wrapper or not (`should not expose Fixed type in member, only
-; needed for serializaiton: Fixed(Bool(true))`), so it pins nothing about this site; the empty-list
-; edge is instead covered by these same rules under the default/json profiles.
+; NOT spelled here: a dedicated no-encoding-fields probe of the pattern split's `Ok(())`/`()`
+; edge. The tempting spelling `true / null` never reaches this dispatch at all — a two-arm choice
+; with a null arm Option-collapses in `parse_type_choices`, and the collapsed
+; `Optional(Fixed(Bool(true)))` panics generation under EVERY profile when rendered as a
+; member/alias type (`should not expose Fixed type in member, only needed for serializaiton:` —
+; ledgered in cddl-matrix/ROADMAP.md § "Findings — open") — so it pins nothing about this site;
+; the empty-list edge is instead covered by these same rules under the default/json profiles.
 payload_enum = 0 / 1 / 2
 cbor_enum_holder = [
   bytes_payload: bytes .cbor payload_enum,
