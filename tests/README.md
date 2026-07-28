@@ -1391,6 +1391,11 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
     rejects for a subtly WRONG reason (a stray length check, an unrelated error path) fails the gate
     instead of passing as it would under a bare `is_err` check. The drift gate REQUIRES `expect_err`
     on `class="constraint"` and forbids it elsewhere; a mint round-trips both fields verbatim.
+    Authoring `reason`: describe the violating instance hex-free (decoded values plus what was
+    mutated — "`[false, 68]` with only the constant byte flipped"), never by citing a sibling
+    ACCEPT vector's hex — `--only` re-mints regenerate the ruby accepts (the reference generator
+    draws fresh random instances per run), so a cited byte string silently stops matching any
+    committed vector while the prose keeps reading as if it did.
     Authoring `expect_err`: pick a generous discriminating fragment of the generator-emitted Display
     including the bound and the vector's own found value (both deterministic — same bytes, same
     decoder), e.g. `11 not at most 10`, `not in float range (>=0.5, <=10.5)` — formats in

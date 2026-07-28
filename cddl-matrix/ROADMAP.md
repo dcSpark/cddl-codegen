@@ -45,19 +45,24 @@ matrix's own side — as opposed to in the generator, which is the findings ledg
 kinds: a defect in a projection (buildable now) and known incompletenesses of the coverage MODEL
 (deferred, so each names the observable that would reopen it).
 
-- **De-duplicate the role list `query_q1_gaps.ts` renders into `docs/docs/current_capacities.mdx`
-  § "Contextual gaps (supported top-level, unsupported when nested)" — buildable now.** The
-  Unsupported-roles column joins one entry per CONTAINMENT CELL rather than per role, so a construct
-  with several unsupported shapes in one role prints that role once per shape: `memberkey.type1`
-  currently reads `map-key` seven times and `occurrence-target` three, and `grpent.inline_group`
-  reads `occurrence-target` five times. This is published user documentation, and it reads as a
-  rendering bug rather than as information. The Example column has the same root: it shows the FIRST
-  cell's example, which for a multi-cell row illustrates a role the reader may not be looking at.
-  The fix is to group the cells by role — one role name, and either the role's own example or a
-  count — in `query_q1_gaps.ts`, plus a `--write` regeneration of the generated span. Magnitude, on
-  the axis it grows along: the repetition is monotonic in cell enumeration, so every future
-  (feature, role) cell makes an already-listed row longer and less readable — the fixed-value member
-  enumeration alone lengthened rows that were already repeating.
+- **Classify the fixed-value member CELLS as enforcement-bearing in `query_q4_directional.ts` —
+  buildable now.** `carriesConstraint`'s own comment already claims the member forms
+  ("`value.number*` (and the other `value.*` fixed-value rows' member forms) — a fixed value is a
+  rejectable equality constraint"), but the predicate tests only FEATURE-id prefixes (`ctl.*`,
+  `memberkey.cut`, `occur.bounded*`, `value.number*`), which no `contain.*` cell id matches — found
+  by reading during the 2026-07-28 boundary-vector delivery (scope: the 15 supported fixed-value
+  member cells' ids checked against the predicate; nothing executed). Consequence: a
+  supported-but-vectorless fixed-value member cell derives `n/a (no constraint)` instead of
+  `unverified (no reject vector)` — indistinguishable from "carries no constraint", exactly the
+  state the classification exists to make visible, and the state all 15 cells sat in from their
+  grounding until their wrong-constant vectors landed. Today the gap is latent (every such cell
+  carries a constraint vector, and the `EXPECTED_ENFORCE_YES` pin guards decay), so the cost falls
+  on FUTURE cells: the nint member cell ("Enumerate the remaining fixed-value KINDS, in both the arm
+  and the member position", § findings) or any newly enumerated fixed-value cell can land
+  supported-and-vectorless with no pin drifting. The fix is to extend `carriesConstraint` to the
+  fixed-value cell ids (`contain.<role>.prelude.{true,false,null}`, `contain.<role>.type2.value*`,
+  `contain.<role>.value.*`), turning the unverified-set pin into the forcing function that lands
+  each new cell WITH its wrong-constant vector.
 - **Grammar-derived legality denominator for the role × feature grid.** The grid rendered in
   `tests/corpus/COVERAGE.md` § "Role × feature containment grid" takes its denominator from two
   *observed* sets — the cells the containment relation models, plus the cells the snapshot corpus
@@ -335,22 +340,6 @@ ledgered here (that's what the probe/gate error messages point at).
     The `n*m` marker on the cardinality boundary is omitted rather than deferred — the refusal
     message names `*` / `+` / `?` / `n*m` from one site, so a fourth row would model the same code
     path the three markers already reach.
-- **Give the fixed-value member cells a BOUNDARY vector, so their green tests the constant and not
-  just the shape.** The cells themselves are grounded (`README.md` § "Gotchas" carries what they
-  establish), and what they stand on is generate + round-trip evidence, which exercises the RIGHT
-  constant only — nothing asserts that the WRONG constant is refused. The vector shape is the
-  `value.number.hexfloat` precedent in
-  `tests/decode_conformance/catalog.toml`: `source = "hand"`, `expect = "reject"`,
-  `class = "constraint"`, and an `expect_err` substring of the generated decoder's Display, derived
-  empirically rather than guessed. **This is buildable now, not deferred: the ordering constraint is
-  discharged.** A catalog row is rejected by `project_decode_conformance` unless the matrix already
-  calls its id `supported`, which is why the vectors could never be authored in the change that added
-  the cells — and the eleven fixed-value member cells that landed `supported` are grounded, so the
-  precondition those vectors were waiting on is met. The worked precedent for the assertion itself is
-  `tests/core/tests.rs`'s `opt_fixed_member_map`, which reason-asserts the authored spelling for the
-  optional nint member and was confirmed RED before the `Key::Nint` fix; it covers one spelling by
-  hand, and what remains is the same assertion as a `class="constraint"` catalog row on each grounded
-  cell.
 - **`undefined` in MEMBER position crashes the generator, while its sibling fixed prelude constants
   do not.** `[v: undefined, x: uint]` and `{ k: undefined, j: uint }` both abort (exit 101) at the
   prelude-name lookup in `src/utils.rs`, under the default and `--preserve-encodings` profiles alike:
@@ -856,6 +845,16 @@ hand-correct is the signal to derive it from its source rather than re-audit it 
 where the quantity is structural (`MULTIFILE_MATRIX_SKIP`'s count and enumeration), a committed
 self-measuring datum where it is measured (the shape `tests/timings.json` already uses for
 durations; the sweep's own datum is specified in `tests/TESTING_ROADMAP.md`).
+
+One deliberate NON-firing on record, so the next delivery inherits the judgement instead of
+re-deriving it: the Q4 enforce-green enumeration (`README.md` § "Directional support evidence
+(Q4)") absorbed the 2026-07-28 fixed-value member-cell growth (28 → 43 rows) as ONE grouped family
+clause — the TOTAL lives in the generated `gen:sh:readme-enforce-green` span, and no existing hand
+count had to be corrected, so by this section's own trigger the enumeration stays hand prose: each
+family clause carries certification rationale (which oracle gaps shape "certified" for that
+family) that no generated span can derive. The quantities to watch there are the family-INTERNAL
+counts ("the 15 fixed-value MEMBER cells", "the eight `rangeop` rows"): the first delivery that
+must hand-correct one of those is this trigger firing for that enumeration.
 
 ## Related
 
