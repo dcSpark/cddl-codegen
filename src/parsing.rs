@@ -3208,8 +3208,67 @@ fn rust_type_from_type2(
             rust_type(types, parent_visitor, t, cli).tag(tag_unwrap)
         }
         Type2::ParenthesizedType { pt, .. } => rust_type(types, parent_visitor, pt, cli),
-        _ => {
-            panic!("Ignoring Type2: {:?}", type2);
+        x => {
+            // Unsupported `type2` in MEMBER / ELEMENT position — the role-sibling of the rule-body
+            // catch-all in `parse_type`. This function is only ever reached from a position that
+            // needs a TYPE to store (an array element, a map key/value, a `.cbor` payload, a choice
+            // arm, a generic argument, an occurrence target); rule bodies go through `parse_type`
+            // and never arrive here, so "as a member or element type" is honest wording at this
+            // seam. None of these constructs has a storable representation there, so reject
+            // gracefully with an inert `Fixed(FixedValue::Null)` placeholder — exactly like the
+            // inline-array / inline-map sibling arms above — instead of aborting the whole run on
+            // otherwise-valid CDDL. `finalize` drains the recorded rejection into a graceful `Err`
+            // before any generation runs.
+            //
+            // The (construct, hint) table below deliberately MIRRORS the rule-body one rather than
+            // sharing it: the two sites say different things about the same construct (the remedies
+            // differ by role), and the rule-body texts are matrix `code_anchor`s that must not move
+            // when this one is reworded. Parallel per-site siblings are this repo's pattern for
+            // exactly that reason (see the wasm wrapper-name collision detectors).
+            let (construct, hint) = match x {
+                // A byte-string literal. All three spellings the grammar has are one class: the
+                // value is fixed by the schema, and a fixed byte string has no generated
+                // representation in a member (`FixedValue` has no bytes variant — a fixed member
+                // is unstored, and there is nothing to unstore here). NB `b64'…'` currently fails
+                // in the upstream parser before reaching us; it is listed so the class stays
+                // complete if that gap closes.
+                Type2::B16ByteString { .. }
+                | Type2::B64ByteString { .. }
+                | Type2::UTF8ByteString { .. } => (
+                    "a byte-string literal (`h'…'` / `b64'…'` / `'…'`)".to_string(),
+                    " — widening the member to `bytes` generates, but it no longer constrains the \
+                     value to that literal, so it is a different spec, not an equivalent one"
+                        .to_string(),
+                ),
+                Type2::Unwrap { .. } => (
+                    "an unwrap (`~name`)".to_string(),
+                    " — inline the referenced rule's definition manually".to_string(),
+                ),
+                Type2::DataMajorType { .. } => (
+                    "a bare major-type constraint (`#N` / `#N.M`)".to_string(),
+                    String::new(),
+                ),
+                // The grammar's `#` sigil, NOT the prelude NAME `any` — the latter is supported in
+                // this position (it lowers to the `AnyCbor` runtime type) and never reaches here.
+                Type2::Any { .. } => (
+                    "the `any` type (`#`)".to_string(),
+                    " — the prelude name `any` is supported in this position; write `any` instead"
+                        .to_string(),
+                ),
+                Type2::ChoiceFromGroup { .. } => (
+                    "a choice-from-group (`&groupname`)".to_string(),
+                    String::new(),
+                ),
+                Type2::ChoiceFromInlineGroup { .. } => (
+                    "a choice-from-inline-group (`&( ... )`)".to_string(),
+                    String::new(),
+                ),
+                other => (format!("this type2 construct ({other:?})"), String::new()),
+            };
+            types.record_rejection(format!(
+                "{construct} used as a member or element type is unsupported{hint}"
+            ));
+            ConceptualRustType::Fixed(FixedValue::Null).into()
         }
     }
 }

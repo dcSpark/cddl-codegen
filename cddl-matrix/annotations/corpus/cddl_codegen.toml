@@ -536,31 +536,31 @@ code_anchor = "Generics not supported on plain groups"
 [[note]]
 id = "type2.any"
 status = "unsupported"
-reason = "bare `#` (any) — Type2 variant unmatched, falls into the catch-all panic"
-code_anchor = "Ignoring Type2"
+reason = "bare `#` (any) — no storable representation, rejected gracefully in both rule-body and member position (the prelude NAME `any` is supported and is what the message points at)"
+code_anchor = "the `any` type (`#`)"
 
 [[note]]
 id = "type2.major"
 status = "unsupported"
-reason = "major-type sigils `#N` / `#N.n` — Type2::DataMajorType unmatched, catch-all panic"
-code_anchor = "Ignoring Type2"
+reason = "major-type sigils `#N` / `#N.n` — no storable representation, rejected gracefully in both rule-body and member position"
+code_anchor = "a bare major-type constraint"
 
 [[note]]
 id = "type2.major7"
 status = "unsupported"
-reason = "`#7` / `#7.n` simple/float sigils — unmatched, catch-all panic"
-code_anchor = "Ignoring Type2"
+reason = "`#7` / `#7.n` simple/float sigils — same bare major-type constraint, rejected gracefully in both rule-body and member position"
+code_anchor = "a bare major-type constraint"
 
 [[note]]
 id = "value.bytes"
 status = "unsupported"
-reason = "byte-string literal (h'..'/b64'..'/'..') as a value — Type2 unmatched (also a rust-parser limitation: ruby/ABNF accept)"
-code_anchor = "Ignoring Type2"
+reason = "byte-string literal (h'..'/'..') as a value — the value is fixed by the schema and `FixedValue` has no bytes variant, so it is rejected gracefully in both rule-body and member position; widening to `bytes` is a different spec, not an equivalent one (the b64'..' spelling additionally fails in the rust parser: ruby/ABNF accept)"
+code_anchor = "a byte-string literal"
 
 [[note]]
 id = "type2.unwrap"
 status = "unsupported"
-reason = "unwrap `~` — Type2::Unwrap unmatched, catch-all panic"
+reason = "unwrap `~` — the construct splices a group's contents, so there is no type to store; rejected gracefully in both rule-body and member position, pointing at the one remedy that works (inline the referenced rule by hand)"
 code_anchor = "Type2::Unwrap"
 
 [[note]]

@@ -8,6 +8,7 @@ expression: catalog
 
 any_control_op             error (graceful)
 any_member                 ok
+bytes_member               error (graceful)
 cbor_ref_alias_chain       ok
 cbor_ref_rule_body         ok
 choice_any_arm             error (graceful)
@@ -56,4 +57,5 @@ undefined_generic          error (graceful)
 undefined_member           error (graceful)
 undefined_reference        error (graceful)
 unknown_control            error (graceful)
+unwrap_member              error (graceful)
 whitespace_only            ok
