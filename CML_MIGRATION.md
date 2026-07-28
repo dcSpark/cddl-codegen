@@ -6,6 +6,11 @@ extern-interface export system that shipped in cddl-codegen series `47ba2f3`..`8
 actual work, and §4 is that loop applied to the one edge — multi-era consuming chain — that has been
 executed end to end and measured.
 
+Its sibling is `CML_CONFIG_MIGRATION.md`, which replaces `codegen.sh`'s flag bundles with a committed
+`codegen.toml`. That is a separate job, and it takes this document's multi-era edge as a
+prerequisite: the `deps` key it uses derives the same `--extern-import` the stub tree declares by
+hand, and declaring both is refused.
+
 Reference docs in this repo (read on demand, not prerequisites):
 - `docs/docs/integration-other.mdx` — the consumer-facing contract (primary path + escape hatch).
 - `docs/docs/command_line_flags.mdx` § `--extern-import` — the flag's full error contract.
