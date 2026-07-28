@@ -85,8 +85,15 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
   is a proven correctness exposure — rust-lang/rustfmt#5703 (an internal error on over-width
   `pub(crate)` tuple fields, fatal under `export.rs`'s deliberate non-0/3-exit-is-fatal contract)
   aborted consumer regens outright and forced a `#[rustfmt::skip]` + hand-canonical-layout
-  workaround into shipped output (`WasmWrapper::push_inner_field`; pinned by
-  `integration_overwidth_wasm_wrapper_field_gets_rustfmt_skip`). A SECOND proven instance of the
+  workaround into shipped output — now at TWO emission sites (the wasm wrappers and the rust-crate
+  default-profile newtype tuple field), sharing one guard owner
+  (`push_overwidth_guarded_tuple_field`, `src/generation/mod.rs`; pinned both directions per site by
+  `integration_overwidth_wasm_wrapper_field_gets_rustfmt_skip` /
+  `integration_overwidth_rust_newtype_field_gets_rustfmt_skip`, and held across the whole hazard
+  range by `integration_tuple_field_width_ladder_never_aborts_rustfmt`, whose doc comment records
+  the measured 6-char fatal WINDOW — rendered type lengths 86..=91 abort while both 85 and 92
+  format clean — that makes a dense ladder, not a huge-name fixture, the only meaningful gate
+  shape). A SECOND proven instance of the
   same exposure class: rustfmt's comment-ownership misattribution (the open upstream family of
   rust-lang/rustfmt#6347 / #4654 / #3527) folds an own-line comment after a match's last arm onto
   that arm's `}` as a trailing comment — which rewrote the preserve overlay's own emitted
@@ -98,11 +105,19 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
   genuine fixed point under current stable). `prettyplease` has no
   internal-error/bail class and does not re-own comments, so adopting it retires both workarounds
   (grep `rustfmt::skip` in
-  `src/generation/` and remove the over-width branch in the same change; the unfold pre-pass must
+  `src/generation/` — the over-width branch now lives once, in
+  `push_overwidth_guarded_tuple_field` — and remove it in the same change; the unfold pre-pass must
   STAY for files already committed in the folded form) — weigh that retirement
   plus the exposure against the emitted-token-stability constraints in AGENTS.md (the snapshot
   corpus and comment-preservation overlay key on the formatter's exact output, so the swap
-  re-blesses broadly and must hold the overlay's idempotent-fixed-point property).
+  re-blesses broadly and must hold the overlay's idempotent-fixed-point property). The swap's
+  overlay risk now has a mechanical acceptance suite waiting for it:
+  `preserve_fixtures_rustfmt_cycle_stability` sweeps every expected-case preserve fixture through
+  `rustfmt_generated_string` and asserts the post-format on-disk fixed point, so pointing that
+  seam at prettyplease turns the corpus into the swap's per-structure acceptance run on day one
+  (while the width ladder above largely dissolves under the swap — prettyplease has no
+  internal-error class, so the exit-contract tripwire it leans on stops being where formatter
+  surprises surface).
 
 - **Consider promoting the sub-second drift/count gates from `local` into `fast` (CI).** The
   local-tier placement of `project_recombination_check`, `project_decode_conformance`, the
@@ -253,25 +268,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    surface is actually walked, not merely compiled — the compile-rot gate cannot see a panic that
    only a live libFuzzer input triggers.
 
-4. **Identifier-length realism (a fixture-corpus dimension, recur-first).** Every fixture corpus
-   uses short synthetic names, so any emission-width-driven failure class is structurally
-   unreachable by every gate — proven by escape: consumer-scale names (CML's
-   `MapTransactionIndexTo…AuxiliaryData` wrappers, fully-qualified extern paths) pushed wasm
-   wrapper tuple-field lines past rustfmt's `max_width`, tripping rust-lang/rustfmt#5703's fatal
-   internal error and aborting regen — first surfaced as hand-placed `#[rustfmt::skip]` blocks in
-   CML's committed generated output (the hand-patched-consumer-output tell; see
-   `cddl-matrix/ROADMAP.md` § "wasm-ABI & multifile placement matrices"). The instance is fixed
-   and pinned both directions (`integration_overwidth_wasm_wrapper_field_gets_rustfmt_skip`), but
-   only for the wasm tuple-field site; other emission sites that concatenate names into one line
-   (named struct fields — today verified to wrap safely after the colon — enum variants, fn
-   signatures, `impl` headers) are unswept against the formatter internal-error class. The cheap
-   mechanical layer, to build on the next width-class instance rather than speculatively: one
-   long-identifier stress fixture (names sized so common emission sites exceed 100 columns) swept
-   across the emission profiles, whose whole gate is "generation succeeds" — `export.rs`'s
-   non-0/3-rustfmt-exit-is-fatal contract already turns any formatter internal error into a
-   generation failure, so no new assertion machinery is needed.
-
-5. **Duplicates-policy residuals.** Both `@duplicates` flavors are shipped on every boundary —
+4. **Duplicates-policy residuals.** Both `@duplicates` flavors are shipped on every boundary —
    `reject` (set/array uniqueness twins) and `preserve` (table pair-map twins), covering rust,
    preserve-encodings, canonical, JSON/schemars, wasm, extern-interface projection, and the
    `dsl.duplicates.{reject,preserve}` matrix feature rows. Current state lives in
@@ -356,29 +353,7 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      `cbor_types` panic (the cddl-matrix findings entry) — while the fixture's
      `holder`/`pmap`/`nepmap`/`pmap_txt`/`md` rows minted with vectors.)
 
-6. **Rustfmt-stability sweep over the preserve-fixture corpus.** The rustfmt match-tail
-   comment-fold escape (the second rustfmt exposure instance in the `prettyplease` entry above)
-   was found by a manual repro, not by any standing layer — the overlay's fixtures all exercised
-   `preserve(old, new)` on pre-rustfmt text, and the one standing test that DOES drive the real
-   rustfmt seam twice (`comment_preservation_disk_round_trip`) injects a replace block that swaps
-   a mid-function statement, a position rustfmt never folds — so "the tool's own rustfmt pass
-   rewrites a marker placement the next run's scan can't read" had no systematic witness; the
-   delivered `preserve_markers_survive_rustfmt_fold_roundtrip` closes only the one hand-picked
-   shape.
-   The general property is cheap to sweep because the corpus already enumerates every supported
-   overlay structure: for each `tests/preserve-fixtures/<case>/expected.rs`, run
-   `rustfmt_generated_string(expected)` and assert `preserve(formatted, new)` still succeeds with
-   the same user content surviving (reuse the harness's never-silent unit check; error-expectation
-   cases are exempt — they have no `expected.rs`). That makes "the on-disk, post-rustfmt form of
-   every overlay structure re-parses" a standing property over all current AND future fixtures, so
-   the next formatter canonicalization quirk (or a `prettyplease` swap) fails a sweep instead of a
-   consumer regen. Cost: one in-process rustfmt call per expected-case (~50 fixtures, sub-second
-   each) — fits the default suite next to `preserve_fixtures`.
-   (The cddl-matrix roadmap was checked for overlap: its pending items cover CDDL *input* surface
-   — role/feature/encoding grids — and none would have caught this class; output post-processing
-   round-trips are this roadmap's domain.)
-
-7. **Lint-provocation shapes for `generated_code_clippy_clean` (partially systematic at best).**
+5. **Lint-provocation shapes for `generated_code_clippy_clean` (partially systematic at best).**
    The gate itself already exists and denies `clippy::all` over the generated rust and wasm crates
    on two profiles (`generated_code_clippy_clean`, local tier; documented in `tests/README.md`) —
    yet lint classes still arrive consumer-reported when the gate's rich input is provocation-POOR
@@ -400,6 +375,30 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    layout-dependently, so the gate certifies "no lint fires on shapes we provoke", never "no
    consumer CI will trip"; the consumer-report channel stays load-bearing for that remainder, which
    is why those two lints are allowed at the generated root rather than chased per-spec.
+
+6. **The rustfmt-invocation seam's own error paths are contract-untested.**
+   `rustfmt_generated_string` (`src/generation/export.rs`) carries the deliberate
+   non-0/3-exit-is-fatal contract that both the width ladder
+   (`integration_tuple_field_width_ladder_never_aborts_rustfmt`) and the preserve-fixture rustfmt
+   sweep (`preserve_fixtures_rustfmt_cycle_stability`) cite as their entire assertion mechanism —
+   but the contract's own failure paths have no witness, because every existing test drives the
+   seam through the real toolchain rustfmt, which can produce neither condition:
+   - **Non-UTF-8 stdout is a silent swallow, not a fatal.** When rustfmt's stdout fails UTF-8
+     conversion, the function returns the UNFORMATTED input as `Ok`, ignoring the exit status
+     entirely — the one hole in the fatal contract. A rustfmt that crashed mid-write emitting
+     truncated bytes would thereby ship unformatted output and mask its own error instead of
+     aborting, quietly breaking the canonical-layout invariant and every gate whose only assertion
+     is "a bad format is a generation failure".
+   - **A missing rustfmt binary is a panic, not an error.** The lookup is unwrapped
+     (`rustfmt_path().unwrap()`), so an absent binary gives a CLI user a backtrace where every
+     other formatter failure surfaces as a clean generation error.
+   The systematic layer is a PATH-stubbed fake rustfmt: a scratch stub emitting invalid UTF-8
+   bytes with a non-zero exit drives the swallow leg (assert `Err`, never `Ok`-carrying-the-input,
+   after tightening the conversion), and an empty/absent lookup drives the missing-binary leg
+   (assert `Err` after converting the unwrap). Both are unit-scale, no corpus needed. Interaction:
+   the `prettyplease` swap (Pending maintainer action) dissolves the subprocess seam entirely —
+   but until that maintainer decision lands, the fatal contract two standing gates lean on keeps
+   an untested swallow path at its center, which is the wrong place for one.
 
 ## Standing-system residuals (recur-first)
 

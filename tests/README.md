@@ -563,14 +563,30 @@ bytes the harness asserts three properties **independent of the blessed content*
   output either placed or `escape_for_rust_string`-transformed inside a `compile_error!`;
 - `changed == false` ⇒ output byte-identical to `new`.
 
+A second glob test (`preserve_fixture_tests::preserve_fixtures_rustfmt_cycle_stability`) sweeps
+every expected-case fixture through the tool's exact rustfmt pass and asserts the POST-rustfmt
+on-disk fixed point — `rustfmt(preserve(rustfmt(expected), new)) == rustfmt(expected)`, the form
+the tool actually writes — plus never-silent survival baselined on `old.rs` (nothing user-authored
+lost across old → merge → format → merge). It never pins a specific folded spelling, so a rustfmt
+version bump that starts folding a construct the corpus contains goes red here instead of in a
+consumer regen. Honest scope, so the property is not over-claimed: it is a regression net over the
+fold/format classes the corpus already embodies (every new fixture buys it automatically), not a
+discovery instrument for fold positions no fixture holds.
+
 Bless with `BLESS_PRESERVE_FIXTURES=1 cargo test --bin cddl-codegen preserve_fixtures`, then
-review the diff like a snapshot. Blessing never creates `error.txt` cases. The directory's
+review the diff like a snapshot. Blessing never creates `error.txt` cases. The rustfmt-cycle sweep
+skips itself under `BLESS_PRESERVE_FIXTURES=1` — cargo runs tests as parallel threads in one
+process while the bless path rewrites `expected.rs` files, so a sibling test reading fixture files
+mid-bless would flake on half-written reads; any future test that reads this corpus must adopt the
+same skip. The directory's
 `.gitattributes` (`* -text`) pins CRLF fixture bytes against checkout conversion; per-case
 intents live in `tests/preserve-fixtures/README.md`.
 
 What the pure fixtures CANNOT see — assumptions about real generator output (the header banner,
 doc ownership) and the disk-level write / toolchain-formatter seams — is
-pinned by exactly three integration tests: `comment_preservation_disk_round_trip` (real pipeline;
+pinned by exactly three integration tests (the rustfmt-cycle sweep above adds corpus BREADTH over
+the formatter seam, but only for merge inputs the fixtures express; these three pin the
+real-pipeline assumptions no fixture can): `comment_preservation_disk_round_trip` (real pipeline;
 injects comments + an insert block + a replace block, regenerates twice, asserts the post-rustfmt
 fixed point), `comment_preserve_lexer_round_trip_over_corpus` (lexer assumptions vs everything
 the generator emits across flag profiles), and `preserve_markers_survive_rustfmt_fold_roundtrip`

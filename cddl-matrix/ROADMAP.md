@@ -738,11 +738,14 @@ composition-space cross-check that complements this matrix's curated per-shape g
     floor cannot build it standalone (`extern` / `rawbytes`) bounds the GATE, not the generator, and
     a consumer regen has already broken inside exactly such an exclusion. An exclusion justified by
     the gate's execution model is never evidence the generator has nothing to get wrong there.
-  Two residuals are recorded rather than enumerated, both in `tests/TESTING_ROADMAP.md`: the
+  One residual is recorded rather than enumerated, in `tests/TESTING_ROADMAP.md`: the
   `gcvariant` mode extension over the Record-resolving shapes plus a generation-only leg over the
-  excluded shapes (§ "Multifile reference-POSITION coverage"), and input REALISM — consumer-scale
-  identifier length, a dimension no axis enumerates, which kept an over-width-field class unreachable
-  under every short-named fixture (§ "Identifier-length realism"). One mechanical upgrade is armed:
+  excluded shapes (§ "Multifile reference-POSITION coverage"). (Input REALISM — consumer-scale
+  identifier length, a dimension no axis here enumerates — is no longer a residual: the
+  over-width-field class every short-named fixture kept unreachable is held by a standing
+  cddl-codegen gate, the dense width ladder
+  `integration_tuple_field_width_ladder_never_aborts_rustfmt`, whose step-1 rungs cannot let the
+  measured 6-char rustfmt#5703 fatal window hide between fixtures.) One mechanical upgrade is armed:
   the multifile `SHAPES` list has drifted from the wasm projection's once, caught by doc-coherence
   review rather than by a gate — a SECOND such near-miss is the signal to make
   `project_multifile_matrix.ts --check` assert its `SHAPES` is a superset of the wasm projection's
