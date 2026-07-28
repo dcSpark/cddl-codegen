@@ -383,8 +383,8 @@ impl Int {
     }
 }
 
-impl std::fmt::Display for Int {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for Int {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Uint(x) => write!(f, "{}", x),
             Self::Nint(x) => write!(f, "-{}", x + 1),
@@ -392,7 +392,7 @@ impl std::fmt::Display for Int {
     }
 }
 
-impl std::str::FromStr for Int {
+impl core::str::FromStr for Int {
     type Err = IntError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -402,7 +402,7 @@ impl std::str::FromStr for Int {
 }
 
 impl TryFrom<i128> for Int {
-    type Error = std::num::TryFromIntError;
+    type Error = core::num::TryFromIntError;
 
     fn try_from(x: i128) -> Result<Self, Self::Error> {
         if x >= 0 {
@@ -415,8 +415,8 @@ impl TryFrom<i128> for Int {
 
 #[derive(Clone, Debug)]
 pub enum IntError {
-    Bounds(std::num::TryFromIntError),
-    Parsing(std::num::ParseIntError),
+    Bounds(core::num::TryFromIntError),
+    Parsing(core::num::ParseIntError),
 }
 ```
 
@@ -1053,8 +1053,8 @@ impl Int {
     }
 }
 
-impl std::fmt::Display for Int {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for Int {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Uint(x) => write!(f, "{}", x),
             Self::Nint(x) => write!(f, "-{}", x + 1),
@@ -1062,7 +1062,7 @@ impl std::fmt::Display for Int {
     }
 }
 
-impl std::str::FromStr for Int {
+impl core::str::FromStr for Int {
     type Err = IntError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -1072,7 +1072,7 @@ impl std::str::FromStr for Int {
 }
 
 impl TryFrom<i128> for Int {
-    type Error = std::num::TryFromIntError;
+    type Error = core::num::TryFromIntError;
 
     fn try_from(x: i128) -> Result<Self, Self::Error> {
         if x >= 0 {
@@ -1085,8 +1085,8 @@ impl TryFrom<i128> for Int {
 
 #[derive(Clone, Debug)]
 pub enum IntError {
-    Bounds(std::num::TryFromIntError),
-    Parsing(std::num::ParseIntError),
+    Bounds(core::num::TryFromIntError),
+    Parsing(core::num::ParseIntError),
 }
 
 #[derive(Clone, Debug)]
