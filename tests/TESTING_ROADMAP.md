@@ -400,6 +400,29 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
    but until that maintainer decision lands, the fatal contract two standing gates lean on keeps
    an untested swallow path at its center, which is the wrong place for one.
 
+7. **Positional-diversity fold family for the preserve-fixture corpus — the authoring work that
+   gives the rustfmt-cycle sweep discovery power.**
+   `preserve_fixtures_rustfmt_cycle_stability` holds the post-rustfmt on-disk fixed point over
+   every fixture, but only over fold positions the corpus expresses — its own delivery record is
+   explicit that it would not have caught its motivating escape, because no pre-escape fixture
+   held a marker at a foldable tail. The gap is NOT in the unfold pre-pass:
+   `unfold_trailing_markers` cuts on any non-own-line `cddl-codegen:`-tagged comment regardless
+   of the construct it trails, so the pre-pass generalizes over positions by construction. What
+   has no standing witness per position is the WHOLE chain — rustfmt folds the marker, the
+   pre-pass unfolds it, the merge re-applies the block, and the on-disk form reaches its fixed
+   point — where indentation, marker geometry, and block-body reconstruction genuinely differ by
+   construct. The family: fixtures placing tagged blocks at each grammar-level trailing position
+   rustfmt can fold a comment onto — last match arm is in-corpus (the `*_rustfmt_folded_tail_*`
+   family); last statement of a block, if/else chain tails, struct-literal tail, last enum
+   variant, and the closing brace of a nested module/impl are not — across the three block
+   flavors. Authored as ordinary preserve fixtures, the sweep covers each automatically with zero
+   harness change (that compounding is the shipped design). Honest bound to keep with the entry:
+   this enumerates trailing-position folds only; rustfmt comment mechanisms that are not
+   trail-folds (the proven import-reorder marker-glue class recorded in the standing-system
+   residuals below) are a different family, and no finite fixture set anticipates a future
+   formatter's novel comment re-owning — the sweep's version-bump tripwire is the instrument for
+   those.
+
 ## Standing-system residuals (recur-first)
 
 Each entry here is a ledger record for a proven-once failure class: what happened, which standing
