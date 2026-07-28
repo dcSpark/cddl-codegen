@@ -687,8 +687,13 @@ fn extern_import_single_file_consumer_keeps_root_scope() {
 
 /// Staleness: a consumer referencing an ident absent from the export fails the checked parse, and
 /// with `--extern-import` in use that failure is AUGMENTED (not swallowed) with the declared dep
-/// list, the export path, and the regenerate-the-dependency / check-`; unexported:`-records / hand-stub
-/// hint.
+/// list, the export path, and the regenerate-the-dependency / fix-the-`; unexported:`-cause hint.
+///
+/// Every remedy it names is on the DEPENDENCY's side, and that is pinned from both directions: a
+/// per-rule hand stub cannot be one, because a dependency is declared exactly once (a stub beside
+/// the import is the double-declaration error) and a stub under any other directory name resolves
+/// the rules to a different crate. Advice a reader cannot act on is worse than none, so the pin is
+/// what stops it coming back.
 #[test]
 fn extern_import_staleness_wraps_undefined_reference() {
     let export = mint_export(&fixture("dep/lib.cddl"), "dep", "stale");
@@ -718,6 +723,11 @@ fn extern_import_staleness_wraps_undefined_reference() {
     assert!(
         err.contains("unexported") && err.contains("Regenerate the dependency"),
         "the wrapped error must carry the staleness hint (records / regenerate): {err}"
+    );
+    assert!(
+        !err.contains("hand-stub the missing rule") && !err.contains("hand-stub it"),
+        "and must not advise a per-rule hand stub, which the exactly-once rule makes \
+         unreachable for a dependency this crate imports: {err}"
     );
     // The original parse error is augmented, not swallowed.
     assert!(

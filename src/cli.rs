@@ -626,8 +626,11 @@ pub struct Cli {
     pub key_requests: Vec<String>,
 
     /// Consume a dependency's committed extern-interface export (`extern-interface/<dep>/**`, emitted
-    /// by the dep's own regen) instead of hand-maintaining a stub under
-    /// `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/`. Each mapped path is read and the rules THIS SPEC NEEDS
+    /// by the dep's own regen). This is how a dependency that HAS an export is declared; a physical
+    /// `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/` stub tree is how one WITHOUT an export is (a
+    /// hand-written crate, one you cannot regenerate, a deliberately separate pass) — the two are
+    /// alternative declarations of a whole dependency, never a supplement to each other.
+    /// Each mapped path is read and the rules THIS SPEC NEEDS
     /// are concatenated with EXTERN_DEPS_DIR scope markers so they land in the same non-exported scope
     /// a physical stub tree would — after which the whole extern-deps pathway is unchanged. The needed
     /// set is computed, never declared: the names this spec references and does not define itself,
@@ -644,7 +647,11 @@ pub struct Cli {
     /// header (`; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1`), must parse standalone, and must carry only
     /// recognized `@`-annotations — a missing/unknown version or an unknown token is a hard error
     /// naming the file. Declaring `<dep>` here AND as a physical `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/`
-    /// input directory is a hard error (ambiguous double declaration, never a merge). Same INPUT
+    /// input directory is a hard error (ambiguous double declaration, never a merge) — so a rule the
+    /// export lacks cannot be supplied by stubbing that one rule; the remedies are on the dependency's
+    /// side (regenerate it, or fix what its export could not project), and switching to a whole-dep
+    /// stub means dropping this flag for that dependency. A `--config` run refuses the same double
+    /// declaration during expansion, before any crate generates. Same INPUT
     /// category and determinism wording as `--extern-wrapper-index` (explicit cross-crate input; same
     /// inputs -> same bytes). Regenerate the dependency BEFORE the consumer so its export is fresh.
     /// Repeatable; each value is `<dep>=<path/to/extern-interface/<dep>>` (e.g.
