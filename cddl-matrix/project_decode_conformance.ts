@@ -651,6 +651,11 @@ const CORPUS_EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
   "c_style_enum_map_key.fixed_enum": ["int"],
   "c_style_enum_newtype.fixed_enum": ["int"],
   "dsl_used_as_key_hash_cstyle.fixed_enum": ["int"],
+  // Fixed bool/null in CHOICE-ARM position under --preserve-encodings. Only the TYPE-choice rule is
+  // in floor scope; the fixture's map-rep/array-rep group-choice rules are not type choices. The
+  // fixed `true` arm is a wire-level bool (major 7) beside the tstr arm (major 3) — same two classes
+  // as `bool_choice.bool_or_text`, which spells the arm as the `bool` TYPE rather than the literal.
+  "group_choice_fixed_special.type_choice_bool": ["3", "7"],
   "int_alias.bare_int": ["int"],   // `bare_int = int` — the uint/nint arm merges to "int"
   "nullable.maybe_text": ["3", "7"],
   "nullable_nested.data_enum": ["3", "int"],
