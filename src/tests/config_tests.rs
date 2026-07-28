@@ -1834,6 +1834,468 @@ fn config_keys_match_cli_fields() {
     );
 }
 
+// ---------------------------------------------------------------------------------------------
+// The editor schema
+// ---------------------------------------------------------------------------------------------
+
+/// The committed JSON Schema an editor loads, relative to the crate root.
+const EDITOR_SCHEMA_PATH: &str = "docs/editor/cddl-codegen-config.schema.json";
+
+/// A JSON value in the four shapes a schema document needs, rendered in INSERTION order.
+///
+/// Hand-built rather than `serde_json::Value`, whose object is a `BTreeMap` unless the
+/// `preserve_order` feature happens to be enabled somewhere in the dependency graph: the committed
+/// file's key order would then be decided by cargo feature unification rather than by this file,
+/// and a schema whose properties follow their struct's declaration order reads like the struct. The
+/// rendered string is parsed back as JSON by the test, so the hand emitter cannot ship a malformed
+/// document.
+#[derive(Clone)]
+enum Json {
+    Str(String),
+    Int(i64),
+    Bool(bool),
+    Obj(Vec<(String, Json)>),
+    Arr(Vec<Json>),
+}
+
+fn escape_json(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// Pretty-print with two-space indentation — the shape a committed, hand-reviewed JSON file wants.
+fn render_json(value: &Json, indent: usize) -> String {
+    let pad = "  ".repeat(indent);
+    let inner = "  ".repeat(indent + 1);
+    match value {
+        Json::Str(s) => format!("\"{}\"", escape_json(s)),
+        Json::Int(i) => i.to_string(),
+        Json::Bool(b) => b.to_string(),
+        Json::Obj(entries) if entries.is_empty() => "{}".to_owned(),
+        Json::Obj(entries) => {
+            let body = entries
+                .iter()
+                .map(|(k, v)| {
+                    format!(
+                        "{inner}\"{}\": {}",
+                        escape_json(k),
+                        render_json(v, indent + 1)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(",\n");
+            format!("{{\n{body}\n{pad}}}")
+        }
+        Json::Arr(items) if items.is_empty() => "[]".to_owned(),
+        Json::Arr(items) => {
+            let body = items
+                .iter()
+                .map(|v| format!("{inner}{}", render_json(v, indent + 1)))
+                .collect::<Vec<_>>()
+                .join(",\n");
+            format!("[\n{body}\n{pad}]")
+        }
+    }
+}
+
+/// One struct's fields as `(TOML key, whitespace-stripped Rust type)`, in DECLARATION order.
+///
+/// The same `syn`-off-SOURCE read `config_keys_match_cli_fields` uses, for the same reason: the only
+/// thing that can satisfy it is the real declaration.
+fn struct_field_types(path: &str, struct_name: &str) -> Vec<(String, String)> {
+    use quote::ToTokens;
+
+    let source = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {path}: {e}"));
+    let file = syn::parse_file(&source).unwrap_or_else(|e| panic!("parse {path}: {e}"));
+    let item = file
+        .items
+        .iter()
+        .find_map(|item| match item {
+            syn::Item::Struct(s) if s.ident == struct_name => Some(s),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("{path} declares no `struct {struct_name}`"));
+    let fields: Vec<(String, String)> = item
+        .fields
+        .iter()
+        .filter_map(|f| f.ident.as_ref().map(|ident| (ident, &f.ty)))
+        .map(|(ident, ty)| {
+            let rendered: String = ty
+                .to_token_stream()
+                .to_string()
+                .chars()
+                .filter(|c| !c.is_whitespace())
+                .collect();
+            (ident.to_string().replace('_', "-"), rendered)
+        })
+        .collect();
+    assert!(
+        !fields.is_empty(),
+        "parsed zero fields from `{struct_name}` in {path} — the source parse drifted and the \
+         schema gate went vacuous"
+    );
+    fields
+}
+
+/// Each `Cli` field's config key mapped to `(long flag, whether the flag NEGATES the key)`, read
+/// off clap's attributes rather than assumed to be the field name: `preserve_comments`'s flag is the
+/// negated `--no-preserve-comments`, so a description deriving the flag from the field name alone
+/// would name a flag that does not exist, and one ignoring the `SetFalse` action would tell the
+/// reader the key's `true` value passes it.
+fn cli_flag_spellings(path: &str) -> std::collections::BTreeMap<String, (String, bool)> {
+    use quote::ToTokens;
+
+    let source = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {path}: {e}"));
+    let file = syn::parse_file(&source).unwrap_or_else(|e| panic!("parse {path}: {e}"));
+    let item = file
+        .items
+        .iter()
+        .find_map(|item| match item {
+            syn::Item::Struct(s) if s.ident == "Cli" => Some(s),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("{path} declares no `struct Cli`"));
+
+    let mut longs = std::collections::BTreeMap::new();
+    let mut any_renamed = false;
+    for field in &item.fields {
+        let Some(ident) = field.ident.as_ref() else {
+            continue;
+        };
+        let key = ident.to_string().replace('_', "-");
+        let attrs: Vec<String> = field
+            .attrs
+            .iter()
+            .map(|attr| attr.to_token_stream().to_string())
+            .collect();
+        let declared = attrs.iter().find_map(|text| {
+            let start = text.find("long = \"")? + "long = \"".len();
+            let rest = &text[start..];
+            rest.find('"').map(|end| rest[..end].to_owned())
+        });
+        // clap's `SetFalse` is what makes a flag the key's NEGATION: passing it stores `false`, so
+        // it is the key's `false` value that emits the flag.
+        let negated = attrs.iter().any(|text| text.contains("SetFalse"));
+        let long = declared.unwrap_or_else(|| key.clone());
+        any_renamed |= long != key;
+        longs.insert(key, (long, negated));
+    }
+    assert!(
+        any_renamed && longs.values().any(|(_, negated)| *negated),
+        "no `Cli` field declares a `long = \"…\"` spelling different from its field name, or none \
+         declares `SetFalse` — either the negated `--no-preserve-comments` stopped being negated, \
+         or this attribute read broke and every description now describes a flag guessed from a \
+         field name"
+    );
+    longs
+}
+
+/// The JSON-Schema keywords one Rust field type means as a TOML value, or `None` for a type this
+/// schema cannot express.
+///
+/// `None` is the DECISION POINT made mechanical: a `Settings` field of some richer type would be a
+/// config value an editor cannot check, and that has to be decided rather than approximated.
+fn schema_type_keywords(rust_type: &str) -> Option<Vec<(String, Json)>> {
+    let string = || Json::Obj(vec![("type".to_owned(), Json::Str("string".to_owned()))]);
+    let entries = match rust_type {
+        "Option<bool>" | "bool" => vec![("type".to_owned(), Json::Str("boolean".to_owned()))],
+        "Option<u32>" => vec![
+            ("type".to_owned(), Json::Str("integer".to_owned())),
+            ("minimum".to_owned(), Json::Int(0)),
+        ],
+        "Option<String>" | "String" => {
+            vec![("type".to_owned(), Json::Str("string".to_owned()))]
+        }
+        "Vec<String>" | "Option<Vec<String>>" => vec![
+            ("type".to_owned(), Json::Str("array".to_owned())),
+            ("items".to_owned(), string()),
+        ],
+        "BTreeMap<String,String>" => vec![
+            ("type".to_owned(), Json::Str("object".to_owned())),
+            ("additionalProperties".to_owned(), string()),
+        ],
+        _ => return None,
+    };
+    Some(entries)
+}
+
+/// The one-line description a key carries in the schema, DERIVED rather than written: the flag it
+/// is the config key for, or — for the config's own structural keys, which have no flag by
+/// construction — a pointer at the document that explains them. Per-key prose would rot silently,
+/// since nothing can check it.
+fn key_description(
+    key: &str,
+    longs: &std::collections::BTreeMap<String, (String, bool)>,
+) -> String {
+    match longs.get(key) {
+        Some((long, true)) => format!(
+            "Config key for the `--{long}` flag: setting this key to `false` is what passes it. \
+             See docs/docs/command_line_flags.mdx."
+        ),
+        Some((long, false)) => {
+            format!("Config key for the `--{long}` flag. See docs/docs/command_line_flags.mdx.")
+        }
+        None => "Config-structure key with no flag of its own. See docs/docs/config_file.mdx."
+            .to_owned(),
+    }
+}
+
+/// Build the whole schema document from the config surface's own declarations.
+fn build_editor_schema() -> String {
+    use std::collections::BTreeSet;
+
+    let config_rs = concat!(env!("CARGO_MANIFEST_DIR"), "/src/config.rs");
+    let cli_rs = concat!(env!("CARGO_MANIFEST_DIR"), "/src/cli.rs");
+    let longs = cli_flag_spellings(cli_rs);
+
+    let property = |key: &str, rust_type: &str| -> (String, Json) {
+        let mut keywords = schema_type_keywords(rust_type).unwrap_or_else(|| {
+            panic!(
+                "config key `{key}` has Rust type `{rust_type}`, which this schema has no TOML type \
+                 for. A config value must be a boolean, an integer, a string, an array of strings \
+                 or a table of strings — extend the mapping if the new type is one of those in \
+                 disguise, otherwise the key itself needs deciding, not approximating."
+            )
+        });
+        keywords.push((
+            "description".to_owned(),
+            Json::Str(key_description(key, &longs)),
+        ));
+        (key.to_owned(), Json::Obj(keywords))
+    };
+
+    // `[defaults]`, every `[profiles.<name>]`, and the settings half of every `[crates.<name>]`.
+    let settings_fields = struct_field_types(config_rs, "Settings");
+    assert_eq!(
+        settings_fields
+            .iter()
+            .map(|(k, _)| k.clone())
+            .collect::<BTreeSet<_>>(),
+        config::SETTINGS_KEYS
+            .iter()
+            .map(|k| (*k).to_owned())
+            .collect::<BTreeSet<_>>(),
+        "`struct Settings` and `SETTINGS_KEYS` disagree; `config_keys_match_cli_fields` says which"
+    );
+    let settings_props: Vec<(String, Json)> = settings_fields
+        .iter()
+        .map(|(key, ty)| property(key, ty))
+        .collect();
+
+    // The `[crates.<name>]`-only keys, which the shared tables must NOT accept.
+    let per_crate_fields: Vec<(String, String)> = struct_field_types(config_rs, "CrateEntry")
+        .into_iter()
+        // The nested settings layer, not a key of its own.
+        .filter(|(key, _)| key != "settings")
+        .collect();
+    assert_eq!(
+        per_crate_fields
+            .iter()
+            .map(|(k, _)| k.clone())
+            .collect::<BTreeSet<_>>(),
+        config::PER_CRATE_ONLY_KEYS
+            .iter()
+            .map(|k| (*k).to_owned())
+            .collect::<BTreeSet<_>>(),
+        "`struct CrateEntry` and `PER_CRATE_ONLY_KEYS` disagree — one of them has a key the other \
+         does not, so the schema would accept or refuse the wrong thing in a crate table"
+    );
+    let mut crate_props: Vec<(String, Json)> = per_crate_fields
+        .iter()
+        .map(|(key, ty)| property(key, ty))
+        .collect();
+    crate_props.extend(settings_props.clone());
+
+    // The two keys `parse_str` demands of every crate table (`required_string`); `lib-name` is not
+    // among them because it defaults to the table's own name.
+    let required = ["input", "output"];
+    for key in required {
+        assert!(
+            per_crate_fields.iter().any(|(k, _)| k == key),
+            "`{key}` is declared required by the schema but is not a `CrateEntry` field"
+        );
+    }
+
+    let runtime_props: Vec<(String, Json)> = struct_field_types(config_rs, "Runtime")
+        .iter()
+        .map(|(key, ty)| property(key, ty))
+        .collect();
+
+    let definition = |props: Vec<(String, Json)>, required: Option<Vec<&str>>| -> Json {
+        let mut entries = vec![
+            ("type".to_owned(), Json::Str("object".to_owned())),
+            ("additionalProperties".to_owned(), Json::Bool(false)),
+        ];
+        if let Some(required) = required {
+            entries.push((
+                "required".to_owned(),
+                Json::Arr(
+                    required
+                        .into_iter()
+                        .map(|k| Json::Str(k.to_owned()))
+                        .collect(),
+                ),
+            ));
+        }
+        entries.push(("properties".to_owned(), Json::Obj(props)));
+        Json::Obj(entries)
+    };
+
+    let reference = |description: &str, definition: &str| -> Json {
+        // `description` beside a bare `$ref` is dropped by a draft-07 reader, so the annotation goes
+        // on the wrapper and the reference sits under `allOf` where it keeps its meaning.
+        Json::Obj(vec![
+            ("description".to_owned(), Json::Str(description.to_owned())),
+            (
+                "allOf".to_owned(),
+                Json::Arr(vec![Json::Obj(vec![(
+                    "$ref".to_owned(),
+                    Json::Str(format!("#/definitions/{definition}")),
+                )])]),
+            ),
+        ])
+    };
+    let table_of = |description: &str, definition: &str| -> Json {
+        Json::Obj(vec![
+            ("description".to_owned(), Json::Str(description.to_owned())),
+            ("type".to_owned(), Json::Str("object".to_owned())),
+            (
+                "additionalProperties".to_owned(),
+                Json::Obj(vec![(
+                    "$ref".to_owned(),
+                    Json::Str(format!("#/definitions/{definition}")),
+                )]),
+            ),
+        ])
+    };
+
+    // Driven by `TOP_LEVEL_KEYS` so a table this version gains is a schema entry it cannot be
+    // generated without — the same set `parse_str` refuses anything outside of.
+    let top_level: Vec<(String, Json)> = config::TOP_LEVEL_KEYS
+        .iter()
+        .map(|key| {
+            let value = match *key {
+                "defaults" => reference(
+                    "Settings every crate starts from — the lowest layer of the merge.",
+                    "settings",
+                ),
+                "profiles" => table_of(
+                    "Named shared layers, applied by the crates whose `profiles` list names them.",
+                    "settings",
+                ),
+                "crates" => table_of(
+                    "One table per generated crate, keyed by the crate's name.",
+                    "crate",
+                ),
+                "runtime" => reference(
+                    "Config-wide runtime settings: which crate exports the shared serialization \
+                     runtime, and what every crate imports.",
+                    "runtime",
+                ),
+                other => panic!(
+                    "top-level table `[{other}]` has no schema entry; every entry in \
+                     `TOP_LEVEL_KEYS` needs one, or an editor accepts a table it cannot check"
+                ),
+            };
+            ((*key).to_owned(), value)
+        })
+        .collect();
+
+    let document = Json::Obj(vec![
+        (
+            "$schema".to_owned(),
+            Json::Str("http://json-schema.org/draft-07/schema#".to_owned()),
+        ),
+        (
+            "title".to_owned(),
+            Json::Str("cddl-codegen config".to_owned()),
+        ),
+        (
+            "description".to_owned(),
+            Json::Str(
+                "Schema for a cddl-codegen `--config` TOML file. Generated from `struct Settings`, \
+                 `struct CrateEntry` and `struct Runtime` in src/config.rs by the \
+                 `editor_schema_matches_the_config_surface` test — edit those and re-bless rather \
+                 than editing this file."
+                    .to_owned(),
+            ),
+        ),
+        ("type".to_owned(), Json::Str("object".to_owned())),
+        ("additionalProperties".to_owned(), Json::Bool(false)),
+        ("properties".to_owned(), Json::Obj(top_level)),
+        (
+            "definitions".to_owned(),
+            Json::Obj(vec![
+                ("settings".to_owned(), definition(settings_props, None)),
+                (
+                    "crate".to_owned(),
+                    definition(crate_props, Some(required.to_vec())),
+                ),
+                ("runtime".to_owned(), definition(runtime_props, None)),
+            ]),
+        ),
+    ]);
+
+    format!("{}\n", render_json(&document, 0))
+}
+
+/// Drift gate for the committed editor schema (`docs/editor/cddl-codegen-config.schema.json`).
+///
+/// The schema is what an editor checks a config against, so it is a THIRD spelling of the key set —
+/// and the one nothing else would notice going stale, since the tool never reads it. This builds the
+/// document from the same `syn` read of `struct Settings` / `struct CrateEntry` / `struct Runtime`
+/// that `config_keys_match_cli_fields` uses, and requires the committed file to be it byte for byte.
+/// A key added to the config therefore either appears in the schema or fails here.
+///
+/// `BLESS_EDITOR_SCHEMA=1 cargo test --bin cddl-codegen editor_schema_matches_the_config_surface`
+/// rewrites the committed file (the repo's blessing convention, as for `manifest_template_drift`).
+#[test]
+fn editor_schema_matches_the_config_surface() {
+    let built = build_editor_schema();
+    // A hand-written emitter must not be able to commit a document no editor can load.
+    serde_json::from_str::<serde_json::Value>(&built)
+        .unwrap_or_else(|e| panic!("the built schema is not valid JSON: {e}\n{built}"));
+
+    let path = Path::new(concat!(env!("CARGO_MANIFEST_DIR"))).join(EDITOR_SCHEMA_PATH);
+    let committed = std::fs::read_to_string(&path).unwrap_or_default();
+    if built == committed {
+        return;
+    }
+    if std::env::var("BLESS_EDITOR_SCHEMA")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+    {
+        std::fs::create_dir_all(path.parent().unwrap())
+            .unwrap_or_else(|e| panic!("create {}: {e}", path.display()));
+        std::fs::write(&path, &built).unwrap_or_else(|e| panic!("write {}: {e}", path.display()));
+        return;
+    }
+    let first_diff = built
+        .lines()
+        .zip(committed.lines())
+        .position(|(a, b)| a != b)
+        .map(|i| {
+            format!(
+                "first difference at line {}:\n  built:     {}\n  committed: {}",
+                i + 1,
+                built.lines().nth(i).unwrap_or(""),
+                committed.lines().nth(i).unwrap_or("")
+            )
+        })
+        .unwrap_or_else(|| {
+            format!(
+                "the files agree up to line {}, then one ends: built has {} line(s), committed {}",
+                built.lines().count().min(committed.lines().count()),
+                built.lines().count(),
+                committed.lines().count()
+            )
+        });
+    panic!(
+        "{EDITOR_SCHEMA_PATH} is stale against the config surface it describes; {first_diff}\n\
+         regenerate with `BLESS_EDITOR_SCHEMA=1 cargo test --bin cddl-codegen \
+         editor_schema_matches_the_config_surface`"
+    );
+}
+
 /// The two `generation::layout` constants whose EMITTER half is a data file rather than code.
 ///
 /// The layout constants are load-bearing at both ends by construction — the emitter writes the path

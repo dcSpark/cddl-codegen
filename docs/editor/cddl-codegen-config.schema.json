@@ -1,0 +1,447 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "cddl-codegen config",
+  "description": "Schema for a cddl-codegen `--config` TOML file. Generated from `struct Settings`, `struct CrateEntry` and `struct Runtime` in src/config.rs by the `editor_schema_matches_the_config_surface` test — edit those and re-bless rather than editing this file.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "defaults": {
+      "description": "Settings every crate starts from — the lowest layer of the merge.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/settings"
+        }
+      ]
+    },
+    "profiles": {
+      "description": "Named shared layers, applied by the crates whose `profiles` list names them.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/settings"
+      }
+    },
+    "crates": {
+      "description": "One table per generated crate, keyed by the crate's name.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/crate"
+      }
+    },
+    "runtime": {
+      "description": "Config-wide runtime settings: which crate exports the shared serialization runtime, and what every crate imports.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/runtime"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "static-dir": {
+          "type": "string",
+          "description": "Config key for the `--static-dir` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "export-static-crate": {
+          "type": "string",
+          "description": "Config key for the `--export-static-crate` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "annotate-fields": {
+          "type": "boolean",
+          "description": "Config key for the `--annotate-fields` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "to-from-bytes-methods": {
+          "type": "boolean",
+          "description": "Config key for the `--to-from-bytes-methods` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "binary-wrappers": {
+          "type": "boolean",
+          "description": "Config key for the `--binary-wrappers` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "preserve-encodings": {
+          "type": "boolean",
+          "description": "Config key for the `--preserve-encodings` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "canonical-form": {
+          "type": "boolean",
+          "description": "Config key for the `--canonical-form` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "wasm": {
+          "type": "boolean",
+          "description": "Config key for the `--wasm` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "json-serde-derives": {
+          "type": "boolean",
+          "description": "Config key for the `--json-serde-derives` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "emit-tests": {
+          "type": "boolean",
+          "description": "Config key for the `--emit-tests` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "emit-tests-conformance": {
+          "type": "boolean",
+          "description": "Config key for the `--emit-tests-conformance` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "json-schema-export": {
+          "type": "boolean",
+          "description": "Config key for the `--json-schema-export` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "package-json": {
+          "type": "boolean",
+          "description": "Config key for the `--package-json` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "json-schema-scripts": {
+          "type": "boolean",
+          "description": "Config key for the `--json-schema-scripts` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "no-synthesized-rust-collection-aliases": {
+          "type": "boolean",
+          "description": "Config key for the `--no-synthesized-rust-collection-aliases` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "preserve-comments": {
+          "type": "boolean",
+          "description": "Config key for the `--no-preserve-comments` flag: setting this key to `false` is what passes it. See docs/docs/command_line_flags.mdx."
+        },
+        "rust-wasm-feature": {
+          "type": "string",
+          "description": "Config key for the `--rust-wasm-feature` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "deserialize-depth-limit": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Config key for the `--deserialize-depth-limit` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "common-import-override": {
+          "type": "string",
+          "description": "Config key for the `--common-import-override` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "wasm-cbor-json-api-macro": {
+          "type": "string",
+          "description": "Config key for the `--wasm-cbor-json-api-macro` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "wasm-conversions-macro": {
+          "type": "string",
+          "description": "Config key for the `--wasm-conversions-macro` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "wasm-list-macro": {
+          "type": "string",
+          "description": "Config key for the `--wasm-list-macro` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "json-schema-root": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Config key for the `--json-schema-root` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "workspace-dep": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Config key for the `--workspace-dep` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "extern-import": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Config key for the `--extern-import` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "extern-wasm-crate": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Config key for the `--extern-wasm-crate` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "extern-wrapper-index": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Config key for the `--extern-wrapper-index` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "wrapper-requests": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Config key for the `--wrapper-requests` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "key-requests": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Config key for the `--key-requests` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "json-schema-dep": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Config key for the `--json-schema-dep` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "json-gen-dep": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Config key for the `--json-gen-dep` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "wasm-dep": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Config key for the `--wasm-dep` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "rust-dep": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Config key for the `--rust-dep` flag. See docs/docs/command_line_flags.mdx."
+        }
+      }
+    },
+    "crate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input",
+        "output"
+      ],
+      "properties": {
+        "input": {
+          "type": "string",
+          "description": "Config key for the `--input` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "output": {
+          "type": "string",
+          "description": "Config key for the `--output` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "lib-name": {
+          "type": "string",
+          "description": "Config key for the `--lib-name` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "profiles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Config-structure key with no flag of its own. See docs/docs/config_file.mdx."
+        },
+        "deps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Config-structure key with no flag of its own. See docs/docs/config_file.mdx."
+        },
+        "wasm-reexports": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Config-structure key with no flag of its own. See docs/docs/config_file.mdx."
+        },
+        "json-schema-deps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Config-structure key with no flag of its own. See docs/docs/config_file.mdx."
+        },
+        "static-dir": {
+          "type": "string",
+          "description": "Config key for the `--static-dir` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "export-static-crate": {
+          "type": "string",
+          "description": "Config key for the `--export-static-crate` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "annotate-fields": {
+          "type": "boolean",
+          "description": "Config key for the `--annotate-fields` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "to-from-bytes-methods": {
+          "type": "boolean",
+          "description": "Config key for the `--to-from-bytes-methods` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "binary-wrappers": {
+          "type": "boolean",
+          "description": "Config key for the `--binary-wrappers` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "preserve-encodings": {
+          "type": "boolean",
+          "description": "Config key for the `--preserve-encodings` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "canonical-form": {
+          "type": "boolean",
+          "description": "Config key for the `--canonical-form` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "wasm": {
+          "type": "boolean",
+          "description": "Config key for the `--wasm` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "json-serde-derives": {
+          "type": "boolean",
+          "description": "Config key for the `--json-serde-derives` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "emit-tests": {
+          "type": "boolean",
+          "description": "Config key for the `--emit-tests` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "emit-tests-conformance": {
+          "type": "boolean",
+          "description": "Config key for the `--emit-tests-conformance` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "json-schema-export": {
+          "type": "boolean",
+          "description": "Config key for the `--json-schema-export` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "package-json": {
+          "type": "boolean",
+          "description": "Config key for the `--package-json` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "json-schema-scripts": {
+          "type": "boolean",
+          "description": "Config key for the `--json-schema-scripts` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "no-synthesized-rust-collection-aliases": {
+          "type": "boolean",
+          "description": "Config key for the `--no-synthesized-rust-collection-aliases` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "preserve-comments": {
+          "type": "boolean",
+          "description": "Config key for the `--no-preserve-comments` flag: setting this key to `false` is what passes it. See docs/docs/command_line_flags.mdx."
+        },
+        "rust-wasm-feature": {
+          "type": "string",
+          "description": "Config key for the `--rust-wasm-feature` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "deserialize-depth-limit": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Config key for the `--deserialize-depth-limit` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "common-import-override": {
+          "type": "string",
+          "description": "Config key for the `--common-import-override` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "wasm-cbor-json-api-macro": {
+          "type": "string",
+          "description": "Config key for the `--wasm-cbor-json-api-macro` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "wasm-conversions-macro": {
+          "type": "string",
+          "description": "Config key for the `--wasm-conversions-macro` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "wasm-list-macro": {
+          "type": "string",
+          "description": "Config key for the `--wasm-list-macro` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "json-schema-root": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Config key for the `--json-schema-root` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "workspace-dep": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Config key for the `--workspace-dep` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "extern-import": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Config key for the `--extern-import` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "extern-wasm-crate": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Config key for the `--extern-wasm-crate` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "extern-wrapper-index": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Config key for the `--extern-wrapper-index` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "wrapper-requests": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Config key for the `--wrapper-requests` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "key-requests": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Config key for the `--key-requests` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "json-schema-dep": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Config key for the `--json-schema-dep` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "json-gen-dep": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Config key for the `--json-gen-dep` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "wasm-dep": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Config key for the `--wasm-dep` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "rust-dep": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Config key for the `--rust-dep` flag. See docs/docs/command_line_flags.mdx."
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "export-static-crate": {
+          "type": "string",
+          "description": "Config key for the `--export-static-crate` flag. See docs/docs/command_line_flags.mdx."
+        },
+        "common-import": {
+          "type": "string",
+          "description": "Config-structure key with no flag of its own. See docs/docs/config_file.mdx."
+        },
+        "flavor-from": {
+          "type": "string",
+          "description": "Config-structure key with no flag of its own. See docs/docs/config_file.mdx."
+        }
+      }
+    }
+  }
+}

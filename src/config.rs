@@ -54,7 +54,7 @@ use std::path::{Path, PathBuf};
 /// `profiles` is the reference INTO the layer system, so a profile listing profiles would be the
 /// nesting the flat design deliberately excludes. `deps` is an EDGE, and an edge shared by every
 /// crate is not a graph: it would make every crate depend on every other one, itself included.
-const PER_CRATE_ONLY_KEYS: &[&str] = &[
+pub(crate) const PER_CRATE_ONLY_KEYS: &[&str] = &[
     "input",
     "output",
     "lib-name",
@@ -103,7 +103,7 @@ const PRINT_FLAGS_PREAMBLE: &str = "\
 
 /// The tables the document may hold at top level. Anything else is a typo or a feature this version
 /// does not have; either way the user must hear about it rather than have the table ignored.
-const TOP_LEVEL_KEYS: &[&str] = &["defaults", "profiles", "crates", "runtime"];
+pub(crate) const TOP_LEVEL_KEYS: &[&str] = &["defaults", "profiles", "crates", "runtime"];
 
 /// The [`Cli`] arguments [`reject_generation_flags`] does NOT harvest, by clap arg id (the `Cli`
 /// field name) rather than by long spelling, so a renamed flag keeps its exemption or loses it

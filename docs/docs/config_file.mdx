@@ -119,6 +119,31 @@ cddl-codegen --config codegen.toml --static-dir ../cddl-codegen/static --print-f
 cddl-codegen --config codegen.toml --static-dir ../cddl-codegen/static
 ```
 
+### Editor support
+
+A JSON Schema for this file ships in the repository at
+`docs/editor/cddl-codegen-config.schema.json`. An editor that reads it completes the key names,
+shows each key's type and the flag it stands for, and marks a misspelled or misplaced key where you
+typed it rather than at the next run — the same refusals [this file
+lists](#what-the-config-refuses), only earlier.
+
+The schema is generated from `struct Settings`, `struct CrateEntry` and `struct Runtime` in
+`src/config.rs`, and the `editor_schema_matches_the_config_surface` test fails if the committed copy
+stops matching them. So it describes the version of the tool it was checked out with, not a
+hand-maintained approximation of some version.
+
+Wiring it is one line at the top of the config, which
+[taplo](https://taplo.tamasfe.dev/) and the VS Code extension built on it
+(**Even Better TOML**) both honour:
+
+```toml
+#:schema ../cddl-codegen/docs/editor/cddl-codegen-config.schema.json
+```
+
+The path is relative to the config file. To associate it without touching the file, taplo takes a
+`[[rule]]` in `.taplo.toml` (`include = ["**/codegen.toml"]`, `[rule.schema] path = "…"`), and VS
+Code takes an `evenBetterToml.schema.associations` entry keyed by a filename pattern.
+
 ## One spec, one crate
 
 The floor: a config must not be more ceremony than the flags it replaces.
