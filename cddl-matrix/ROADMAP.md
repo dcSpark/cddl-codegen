@@ -340,34 +340,38 @@ ledgered here (that's what the probe/gate error messages point at).
     The `n*m` marker on the cardinality boundary is omitted rather than deferred — the refusal
     message names `*` / `+` / `?` / `n*m` from one site, so a fourth row would model the same code
     path the three markers already reach.
-- **`undefined` in MEMBER position crashes the generator, while its sibling fixed prelude constants
-  do not.** `[v: undefined, x: uint]` and `{ k: undefined, j: uint }` both abort (exit 101) at the
-  prelude-name lookup in `src/utils.rs`, under the default and `--preserve-encodings` profiles alike:
-  the member-position flip that carries `true` / `false` / `null` (`README.md` § "Gotchas") does not
-  reach `undefined`. The abort is a deliberate `TODO` at the
-  prelude-name lookup and is role-independent, so it is the same site the top-level fixture
-  `tests/matrix_panic/prelude.undefined.cddl` pins; the cells
-  `contain.array-element.prelude.undefined` and `contain.map-value.prelude.undefined` are what make
-  the member half visible. Candidate cddl-codegen fix: give `undefined` the member representation the
-  other zero-information constants already have, or refuse it gracefully naming the member position —
-  a panic on valid CDDL is the posture this repo otherwise retired. Reopening signal on the magnitude
-  axis: a spec brought to us contains an `undefined` member, i.e. the count of members its owner must
-  hand-rewrite to keep generating reaches 1; today the entry's evidence is synthetic probes only, and
-  a synthetic probe costs nobody a rewrite.
-- **A byte-string literal as a fixed MEMBER value crashes the generator, while the same literal at
-  TOP LEVEL is refused gracefully — member position is strictly worse here.** `[v: h'0102', x: uint]`,
-  the unkeyed `[h'0102', x: uint]`, and `{ k: h'0102', j: uint }` all abort (exit 101) on the
-  `Ignoring Type2: B16ByteString` catch-all in `src/parsing.rs`, in both profiles, whereas the
-  top-level `x = h'0102'` type exits 1 with a message (`tests/matrix_reject/value.bytes.cddl`) — the
-  inverse of the member-position flip, and the reason that flip is written down as a gotcha rather
-  than left to be generalized. The cells
-  `contain.array-element.value.bytes` and `contain.map-value.value.bytes` model both positions.
-  Candidate cddl-codegen fix: emit the fixed-value member path the uint/text kinds already use (a
-  bytes constant carries zero information, like every other fixed kind), or route the catch-all
-  through `record_rejection` so the member site refuses as gracefully as the top-level one. Reopening
-  signal on the magnitude axis: a spec brought to us contains a byte-string fixed member, i.e. the
-  count of members its owner must hand-rewrite reaches 1 — today only synthetic probes reach the
-  site.
+- **`undefined` has no member REPRESENTATION, so a spec that constrains a position to it must be
+  hand-rewritten.** `undefined` is refused gracefully in every position — `[v: undefined, x: uint]`,
+  `{ k: undefined, j: uint }` and the rule body `x = undefined` all exit 1 naming the type, under the
+  default and `--preserve-encodings` profiles alike (pinned by
+  `undefined_prelude_rejects_gracefully_in_every_position` and
+  `tests/robustness/undefined_member.cddl`). That refusal is the correct posture and is not the
+  deferred work; what is deferred is REPRESENTING the constraint. `undefined` differs from its
+  major-type-7 siblings `true` / `false` / `null` in exactly one way that matters here: those have a
+  `FixedValue` and so ride the member-position flip (`README.md` § "Gotchas"), reading and verifying
+  the constant on deserialize without storing it, while `undefined` has none — giving it one is the
+  work. The widening a user can reach for today is not equivalent: `any` carries an arbitrary CBOR
+  item (`undefined` included) but constrains nothing, which is a different spec. The cells
+  `contain.array-element.prelude.undefined` and `contain.map-value.prelude.undefined` keep the member
+  half visible beside the rule-body row. Reopening signal on the magnitude axis: a spec brought to us
+  contains an `undefined` member, i.e. the count of members its owner must hand-rewrite to keep
+  generating reaches 1; today the entry's evidence is synthetic probes only, and a synthetic probe
+  costs nobody a rewrite.
+- **A byte-string literal has no fixed-MEMBER representation, so a spec that pins a member to a
+  literal must be hand-rewritten.** `[v: h'0102', x: uint]`, the unkeyed `[h'0102', x: uint]`,
+  `{ k: h'0102', j: uint }` and the UTF-8 spelling `[v: 'text', x: uint]` are all refused gracefully
+  (exit 1, naming the construct) in both profiles, as is the rule body `x = h'0102'`
+  (`tests/matrix_reject/value.bytes.cddl`) — position no longer changes the outcome, only the
+  wording. Member identity is pinned by `unsupported_member_type2_rejects_gracefully` and
+  `tests/robustness/bytes_member.cddl`. The deferred work is the REPRESENTATION: `FixedValue` has no
+  bytes variant, so the fixed-member path the uint / text / bool kinds already use — verify on
+  deserialize, store nothing — has nothing to verify against. Widening the member to `bytes`
+  generates but stops constraining the value, so it is a different spec, not a workaround. The cells
+  `contain.array-element.value.bytes` and `contain.map-value.value.bytes` model both positions. NB
+  the `b64'…'` spelling cannot be probed at all: the rust `cddl` parser rejects it before generation
+  (a separate upstream gap, tracked with the other fork divergences). Reopening signal on the
+  magnitude axis: a spec brought to us contains a byte-string fixed member, i.e. the count of members
+  its owner must hand-rewrite reaches 1 — today only synthetic probes reach the site.
 - **Enumerate the `any`-arm POSITION variation as containment cells.** The rejection boundary itself
   is decided and permanent (`README.md` § "Gotchas": non-last bare `any` refused, last-position bare
   `any` and tagged `#6.n(any)` supported), but the matrix models none of the three positions — the

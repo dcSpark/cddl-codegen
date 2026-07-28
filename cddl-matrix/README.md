@@ -410,15 +410,17 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   `a = [v: true, x: uint]`, `m = { k: 5, j: uint }`, the bare unkeyed `a = [5, x: uint]`, and the
   optional keyed forms `[x: uint, ? v: 5, label: tstr]` / `{ ? k: 5, j: uint }`. So a reader who
   generalizes the *feature-row* verdict to member position generalizes wrongly — which is what the
-  per-cell (role × feature) verdict is for. Two kinds break the pattern in the other direction and
-  are the reason the cells exist: `undefined` and a byte-string literal (`h'0102'`) **abort the
-  generator** (exit 101) in BOTH member positions, and for the bytes literal the top level is
-  *better* (a graceful exit-1 refusal), so member position is strictly worse there. Cardinality is a
+  per-cell (role × feature) verdict is for. Two kinds do NOT flip and are the reason the cells exist:
+  `undefined` and a byte-string literal (`h'0102'`) stay **unsupported in member position too**,
+  refused gracefully (exit 1, naming the construct) there exactly as at the top level. Both refusals
+  are for the same structural reason — neither has a `FixedValue`, so there is no constant for the
+  member path to verify against — which is why no position rescues them and why the deferred work is
+  a REPRESENTATION, not a rejection (`ROADMAP.md` § findings). Cardinality is a
   third, independent splitter: an occurrence marker over an UNKEYED fixed value (`[* 5]`, `[? 5]`,
   `[+ 5]`, `{ * uint => 5 }`) is unsupported while the keyed optional forms above generate — which is
   why `type2.value` × `role.occurrence-target` renders ◐ in the grid. Grounding these 19 cells landed
-  11 supported / 8 unsupported, and the two panic classes are ledgered as candidate fixes
-  (`ROADMAP.md` § findings).
+  11 supported / 8 unsupported — the two non-flipping kinds are among the 8, and their verdict is
+  unchanged by the refusal being graceful.
 - **Containment cell-example hygiene.** The `type2.map`-in-a-role cells (`array-element` /
   `cbor-payload` / `choice-member` / `generic-arg` / `occurrence-target`) use 2-field map examples so
   any panic is attributable to the real **anonymous-group** reason (an inline map inside a role needs
