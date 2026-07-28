@@ -137,7 +137,16 @@ changing the *runtime behaviour* of generated code usually means editing `static
   detector (their message texts differ meaningfully and are pinned) — the anticipated third
   container kind (`@duplicates reject` sets) appeared 2026-07-20 and was added as exactly such a
   sibling, and the fourth (`@duplicates preserve` pair-map tables) followed the same day as
-  `preserve_pair_map_wrapper_name_collisions`; a fifth kind gets the same treatment.
+  `preserve_pair_map_wrapper_name_collisions`; a fifth kind gets the same treatment. Two
+  further stay-as-is rulings from the 2026-07-28 `--config` review series: the `[runtime]` table's
+  carrier derivation stays exactly as shipped — reviewed twice without agreement and ruled CLOSED
+  by the maintainer; do not re-investigate, re-litigate, or change it without explicit maintainer
+  permission. And config mode's cross-crate mediation stays committed-file sidecars plus the
+  convergence pass — no global IR, no in-memory request passing — because the byte-equivalence
+  acceptance gate (`a_whole_config_generates_what_the_hand_written_flags_generate`) is only
+  possible while config adds no semantics, and `IntermediateTypes` borrows the AST; reopening
+  signal for an in-memory fast path: the convergence pass's `[converge] re-running` lines
+  exceeding roughly half the config's crates on routine edits.
 
 ## Git workflow
 
