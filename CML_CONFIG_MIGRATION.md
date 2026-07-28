@@ -240,9 +240,11 @@ config above carries four.
 A root is only ever needed for a type that is a root in the graph sense — `schemars` registers
 everything a registered type's schema *references*, transitively — and its only observable purpose
 is to type a wasm class's JSON method in the published `.d.ts`. Measured read-only against CML's
-tree (the two `wasm-pack` `.d.ts` files already built there, the two committed schema documents, and
-the wasm sources; nothing regenerated), for each of the 14: does the corresponding wasm class declare
-a JSON method, and is its `$defs` entry referenced by any other definition?
+tree — the two `wasm-pack` `.d.ts` files already built there
+(`cml/wasm/pkg/cardano_multiplatform_lib.d.ts`, `multi-era/wasm/pkg/…multiera_lib.d.ts`), the two
+committed schema documents under `cml/wasm/json-gen/schemas/` and `multi-era/wasm/json-gen/schemas/`,
+and the wasm sources; nothing regenerated — for each of the 14: does the corresponding wasm class
+declare a JSON method, and is its `$defs` entry referenced by any other definition?
 
 **Drop (10).** None of these declares a JSON method — the byron classes go through
 `impl_wasm_cbor_event_serialize_api!`, which is CBOR-only, and `Crc32` has no API macro at all —
@@ -250,8 +252,9 @@ and none is referenced by any other definition:
 
 - all eight of `JSON_ROOTS_CHAIN`: `cml_chain::byron::{AddressContent, ByronAddress, ByronAddrType,
   ByronTxOut, Crc32, SpendingData, StakeholderId}` and `cml_crypto::Bip32PublicKey`. This is a
-  closed, unreferenced island: the only definitions that reference `ByronAddrType` and
-  `Bip32PublicKey` are the bodies of other entries in the same list.
+  closed, unreferenced island: six carry zero `$ref`s in the document, and the only definitions that
+  reference the remaining two are `AddressContent` (for `ByronAddrType`) and `SpendingData` (for
+  `Bip32PublicKey`) — both themselves entries in the same list.
 - two of `JSON_ROOTS_MULTIERA`: `cml_multi_era::byron::Blake2b256` and
   `cml_multi_era::byron::utils::ByronAny`.
 
