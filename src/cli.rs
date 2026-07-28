@@ -703,10 +703,20 @@ pub struct Cli {
     pub export_static_crate: Option<std::path::PathBuf>,
 }
 
+/// A `--lib-name` in the form rust code spells it: dashes normalised to underscores.
+///
+/// A free function over `&str` rather than a method alone, because the same normalisation has to be
+/// applied where there is no `Cli` yet — `config::normalized` derives every cross-crate value from
+/// another crate's configured `lib-name` BEFORE that crate's `Cli` exists. Two copies of a
+/// one-expression rule is exactly the kind of duplication that stops matching quietly.
+pub fn lib_name_code(lib_name: &str) -> String {
+    lib_name.replace('-', "_")
+}
+
 impl Cli {
     /// lib name from code i.e. with underscores
     pub fn lib_name_code(&self) -> String {
-        self.lib_name.replace('-', "_")
+        lib_name_code(&self.lib_name)
     }
 
     /// Parsed `--extern-wasm-crate` mappings: extern-deps directory name -> wasm crate name in code

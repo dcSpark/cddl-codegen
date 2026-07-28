@@ -52,6 +52,10 @@ Changes the directory used for cddl-codegen's static runtime and template files.
 ```bash
 cddl-codegen --input=example --output=export --static-dir custom-static
 ```
+
+In a config file this is `static-dir = "…"`, and this is the one generation flag that may also be
+passed alongside `--config` — where it applies to every crate in the run and overrides the key. See
+[the config file reference](./config_file.mdx).
 :::
 
 <br/><br/>
