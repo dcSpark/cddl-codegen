@@ -103,11 +103,12 @@ fn parse_json_schema_dep(s: &str) -> Result<String, String> {
     Ok(s.to_owned())
 }
 
-/// clap value parser for `--json-gen-dep`, whose value is `<cargo-package-name>=<path>`.
+/// clap value parser body for the two `<cargo-package-name>=<path>` flags — `--json-gen-dep` and
+/// `--wasm-dep`, each of which declares a `[dependencies]` entry in one generated manifest.
 ///
-/// Unlike every sibling in this file, NEITHER side lands in generated rust — both land in a TOML
-/// manifest, as `<name> = { path = "<path>" }` under `[dependencies]` of `wasm/json-gen/Cargo.toml`.
-/// That changes what each side has to guard against:
+/// Unlike every other parser in this file, NEITHER side lands in generated rust — both land in a
+/// TOML manifest, as `<name> = { path = "<path>" }`. That changes what each side has to guard
+/// against:
 ///
 /// * The LEFT side is a **cargo package name**, so it carries cargo's package-name charset
 ///   (`[A-Za-z0-9_-]`). It is also a TOML key and a `[dependencies]` path segment, and restricting it
@@ -118,15 +119,24 @@ fn parse_json_schema_dep(s: &str) -> Result<String, String> {
 /// * The RIGHT side is a filesystem path with no charset restriction: it is written through
 ///   `toml_edit`, which quotes and escapes it, so it cannot inject structure into the manifest the
 ///   way a verbatim-into-rust value could. The only requirement is non-empty.
-fn parse_json_gen_dep(s: &str) -> Result<String, String> {
-    let (name, path) = s.split_once('=').ok_or_else(|| {
-        format!("--json-gen-dep value must be <cargo_package_name>=<path>, got: {s:?}")
-    })?;
+///
+/// One body rather than two near-identical ones because the two flags differ in exactly three
+/// tokens — their name, the manifest they write, and the package name their example carries — and
+/// every one of those appears in the messages, so a reader still sees which flag rejected them.
+fn parse_manifest_dep(
+    s: &str,
+    flag: &str,
+    manifest: &str,
+    example: &str,
+) -> Result<String, String> {
+    let (name, path) = s
+        .split_once('=')
+        .ok_or_else(|| format!("--{flag} value must be <cargo_package_name>=<path>, got: {s:?}"))?;
     let name = name.trim();
     let path = path.trim();
     if name.is_empty() || path.is_empty() {
         return Err(format!(
-            "--json-gen-dep value must be <cargo_package_name>=<path> with both sides non-empty, \
+            "--{flag} value must be <cargo_package_name>=<path> with both sides non-empty, \
              got: {s:?}"
         ));
     }
@@ -135,14 +145,62 @@ fn parse_json_gen_dep(s: &str) -> Result<String, String> {
         .find(|c| !matches!(c, 'A'..='Z' | 'a'..='z' | '0'..='9' | '_' | '-'))
     {
         return Err(format!(
-            "invalid character {c:?}; the <cargo_package_name> side of --json-gen-dep is a CARGO \
-             PACKAGE NAME (e.g. `cml-chain-json-schema-gen`), which uses only [A-Za-z0-9_-] — it \
-             becomes a `[dependencies]` key in the generated `wasm/json-gen/Cargo.toml`. Note this \
+            "invalid character {c:?}; the <cargo_package_name> side of --{flag} is a CARGO \
+             PACKAGE NAME (e.g. `{example}`), which uses only [A-Za-z0-9_-] — it \
+             becomes a `[dependencies]` key in the generated `{manifest}`. Note this \
              is the DASHED package name, not the underscored rust lib path \
              `--json-schema-dep` takes on its right-hand side"
         ));
     }
     Ok(s.to_owned())
+}
+
+/// clap value parser for `--json-gen-dep`, whose value is `<cargo-package-name>=<path>`.
+fn parse_json_gen_dep(s: &str) -> Result<String, String> {
+    parse_manifest_dep(
+        s,
+        "json-gen-dep",
+        "wasm/json-gen/Cargo.toml",
+        "cml-chain-json-schema-gen",
+    )
+}
+
+/// clap value parser for `--wasm-dep`, whose value is `<cargo-package-name>=<path>`.
+fn parse_wasm_dep(s: &str) -> Result<String, String> {
+    parse_manifest_dep(s, "wasm-dep", "wasm/Cargo.toml", "cml-chain-wasm")
+}
+
+/// Fold one of the `<cargo-package-name>=<path>` flag lists into `package name -> path`, SORTED by
+/// package name.
+///
+/// A `BTreeMap`, unlike the `--json-schema-dep` sibling, and for the reason that one gives inverted:
+/// there flag order IS the input, because it decides the order dependency registrars run in and that
+/// order is observable in the emitted guard's messages. Here the values become `[dependencies]` keys
+/// in a TOML manifest, where nothing observes the order they were declared in — so sorting invents
+/// no semantics and gives the manifest a stable key order independent of how the flags happened to
+/// be spelled. Duplicate detection therefore cannot fall out of the map (a duplicate would silently
+/// collapse) and lives in `api::validate_flag_combinations`, which reads the raw flag lists.
+///
+/// No dash normalisation, unlike `json_schema_deps`: the left side is already the cargo package
+/// name, which is where the dashes belong. A malformed value is a hard error naming the flag,
+/// mirroring the siblings; a parsed invocation cannot reach that panic, since the value parsers
+/// reject the same shapes gracefully first.
+fn manifest_deps(entries: &[String], flag: &str) -> std::collections::BTreeMap<String, String> {
+    let mut map = std::collections::BTreeMap::new();
+    for entry in entries {
+        let (name, path) = entry.split_once('=').unwrap_or_else(|| {
+            panic!("--{flag} value must be <cargo_package_name>=<path>, got: {entry:?}")
+        });
+        let name = name.trim();
+        let path = path.trim();
+        if name.is_empty() || path.is_empty() {
+            panic!(
+                "--{flag} value must be <cargo_package_name>=<path> with both sides non-empty, got: {entry:?}"
+            );
+        }
+        map.insert(name.to_owned(), path.to_owned());
+    }
+    map
 }
 
 /// The flags below describe ONE generated crate. A project that generates several — the shape that
@@ -355,6 +413,46 @@ pub struct Cli {
         value_name = "PACKAGE=PATH"
     )]
     pub json_gen_dep: Vec<String>,
+
+    /// Declare a `[dependencies]` entry in the generated `wasm/Cargo.toml`:
+    /// `<cargo-package-name> = { path = "<path>" }`. The same move as `--json-gen-dep`, for the
+    /// other manifest: it is the half of a cross-crate reference that the reference itself cannot
+    /// carry, since a rust path names a crate but not where it lives.
+    ///
+    /// What produces such a reference here is `--extern-import` (with `--extern-wasm-crate` /
+    /// `--extern-wrapper-index`): the wasm pass emits `use <dep>_wasm::…` for the wasm boundary and
+    /// keeps the dependency's **rust** type as a wrapper's inner storage, so a crate consuming one
+    /// dependency generally needs BOTH of that dependency's packages declared here — pass the flag
+    /// once per package. Without it the name is an `E0432`/`E0433` in your own wasm build.
+    ///
+    /// The LEFT side is the **cargo package name** (`cml-chain-wasm`) — the dashed spelling that
+    /// goes in a manifest, NOT the underscored rust crate name (`cml_chain_wasm`) that
+    /// `--extern-wasm-crate`'s right-hand side takes. Getting the two backwards is the obvious
+    /// mistake and the resulting error does not point at it: a mis-spelled package name is a cargo
+    /// resolution failure, and a missing one is an `E0433` on a crate whose name looks right.
+    ///
+    /// The RIGHT side is written into the manifest VERBATIM, so a relative value means what a cargo
+    /// path dependency always means: relative to the directory holding that manifest, i.e.
+    /// `<output>/wasm/`. (`../rust`, the entry the tool already writes for this crate's own rust
+    /// crate, is the shape to count from.) The tool does not check that the path exists — an
+    /// unresolvable one is a cargo error naming it.
+    ///
+    /// Merge contract: the entry is ASSERTED, never removed — identical to `--json-gen-dep`'s, and
+    /// for the identical forced reason. It merges field-level into whatever `[dependencies]` entry
+    /// is already there (so a hand-added entry for the same package converges rather than
+    /// duplicating, with this flag's `path` winning and the user's other fields — a `version`,
+    /// `optional`, `features` — surviving), and dropping the flag LEAVES THE ENTRY BEHIND: the
+    /// flag's absence carries no package name, so there is nothing for the tool to tombstone. Remove
+    /// a no-longer-wanted dependency by hand, as you would in any manifest.
+    ///
+    /// Repeatable; a repeated package name is a hard error. Requires `--wasm=true` (without it there
+    /// is no wasm crate and no manifest for the entry to land in).
+    #[clap(
+        long = "wasm-dep",
+        value_parser = parse_wasm_dep,
+        value_name = "PACKAGE=PATH"
+    )]
+    pub wasm_dep: Vec<String>,
 
     /// Location override for default common types (error, serialization, etc)
     /// This is useful for integrating into an exisitng project that is based on
@@ -728,37 +826,16 @@ impl Cli {
             .collect()
     }
 
-    /// Parsed `--json-gen-dep` mappings: `cargo package name -> path`, SORTED by package name.
-    ///
-    /// A `BTreeMap`, unlike its `--json-schema-dep` sibling directly above, and for the reason that
-    /// one gives inverted: there flag order IS the input, because it decides the order dependency
-    /// registrars run in and that order is observable in the emitted guard's messages. Here the
-    /// values become `[dependencies]` keys in a TOML manifest, where nothing observes the order they
-    /// were declared in — so sorting invents no semantics and gives the manifest a stable key order
-    /// independent of how the flags happened to be spelled. Duplicate detection therefore cannot
-    /// fall out of the map (a duplicate would silently collapse) and lives in `api::with_types`,
-    /// which reads the raw flag list.
-    ///
-    /// No dash normalisation, unlike `json_schema_deps`: the left side is already the cargo package
-    /// name, which is where the dashes belong. A malformed value is a hard error naming the flag,
-    /// mirroring the siblings; a parsed invocation cannot reach that panic, since
-    /// `parse_json_gen_dep` rejects the same shapes gracefully first.
+    /// Parsed `--json-gen-dep` mappings: `cargo package name -> path`, SORTED by package name. See
+    /// [`manifest_deps`] for why sorted and why duplicate detection lives elsewhere.
     pub fn json_gen_deps(&self) -> std::collections::BTreeMap<String, String> {
-        let mut map = std::collections::BTreeMap::new();
-        for entry in &self.json_gen_dep {
-            let (name, path) = entry.split_once('=').unwrap_or_else(|| {
-                panic!("--json-gen-dep value must be <cargo_package_name>=<path>, got: {entry:?}")
-            });
-            let name = name.trim();
-            let path = path.trim();
-            if name.is_empty() || path.is_empty() {
-                panic!(
-                    "--json-gen-dep value must be <cargo_package_name>=<path> with both sides non-empty, got: {entry:?}"
-                );
-            }
-            map.insert(name.to_owned(), path.to_owned());
-        }
-        map
+        manifest_deps(&self.json_gen_dep, "json-gen-dep")
+    }
+
+    /// Parsed `--wasm-dep` mappings: `cargo package name -> path`, SORTED by package name. Same
+    /// contract as [`Self::json_gen_deps`] directly above, for `wasm/Cargo.toml`.
+    pub fn wasm_deps(&self) -> std::collections::BTreeMap<String, String> {
+        manifest_deps(&self.wasm_dep, "wasm-dep")
     }
 
     /// If someone override the common imports, we don't want to export them

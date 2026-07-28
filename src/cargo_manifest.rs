@@ -42,11 +42,11 @@
 //! set-or-skip**: e.g. `--preserve-encodings` false emits `Remove(dependencies.linked-hash-map)`,
 //! so flipping a flag off doesn't strand a stale dep. That rule is available only because the tool
 //! knows every such dep's NAME independently of the flag's value, so it can tombstone one it no
-//! longer wants. Two changesets fall outside it and are assert-only: [`ops_for_static_runtime`],
-//! whose manifest is co-owned with a hand-owned crate the tool cannot speak for, and
-//! [`ops_for_json_gen`]'s `--json-gen-dep` entries, whose package names exist only inside the flag
-//! values — a dropped flag carries no name to tombstone. Both document the stale-entry consequence
-//! where a user meets it.
+//! longer wants. Two kinds of entry fall outside it and are assert-only: [`ops_for_static_runtime`],
+//! whose manifest is co-owned with a hand-owned crate the tool cannot speak for, and the
+//! `<package>=<path>` dependency entries [`manifest_dep_ops`] builds for `--json-gen-dep` and
+//! `--wasm-dep`, whose package names exist only inside the flag values — a dropped flag carries no
+//! name to tombstone. Both document the stale-entry consequence where a user meets it.
 //! An unparseable existing manifest is a hard error naming the file — never a silent clobber,
 //! since a parse failure is exactly the case where the user has content we can't safely preserve.
 
@@ -681,8 +681,45 @@ pub fn ops_for_wasm(cli: &Cli) -> std::io::Result<Vec<(KeyPath, ManifestOp)>> {
         ))),
     ));
 
+    // `--wasm-dep=<package>=<path>`: the manifest half of the cross-crate references this crate's
+    // wasm pass emits for an extern dependency — `use <dep>_wasm::…` at the boundary
+    // (`--extern-wasm-crate`, `--extern-wrapper-index`) and the dependency's RUST type as a locally
+    // minted wrapper's inner storage. Both name a crate; only this flag carries where it lives.
+    //
+    // ASSERT-ONLY, on exactly the terms `ops_for_json_gen` states for the same op on the json-gen
+    // manifest: the package name lives only inside the flag value, so a dropped flag carries no name
+    // to tombstone and a stale entry lingers until removed by hand — documented on the flag rather
+    // than left to be discovered.
+    ops.extend(manifest_dep_ops(cli.wasm_deps()));
+
     ops.push(version_stamp());
     Ok(ops)
+}
+
+/// `[dependencies].<package> = { path = "<path>" }` per entry of a `--wasm-dep` / `--json-gen-dep`
+/// map, as assert-only [`ManifestOp::Set`]s.
+///
+/// Built through `toml_edit` rather than a formatted snippet so the path is quoted and escaped by
+/// the TOML writer: unlike every value elsewhere in this file, it is user-supplied at the point of
+/// emission (the change-log snippets are repo-owned constants), and the flags' parsers deliberately
+/// put no charset restriction on the path side because this does the job properly.
+///
+/// The `["dependencies", <name>]` shape is exactly the path class [`apply`] merges FIELD-LEVEL, so
+/// an entry a user already added by hand for the same package converges on one entry: our `path`
+/// wins, their `version`/`optional`/`features` survive.
+fn manifest_dep_ops(
+    deps: std::collections::BTreeMap<String, String>,
+) -> Vec<(KeyPath, ManifestOp)> {
+    deps.into_iter()
+        .map(|(name, path)| {
+            let mut spec = InlineTable::new();
+            spec.insert("path", Value::from(path));
+            (
+                key_path(&["dependencies", name.as_str()]),
+                ManifestOp::Set(Item::Value(Value::InlineTable(spec))),
+            )
+        })
+        .collect()
 }
 
 /// The declarative changeset for the `--export-static-crate` target's `Cargo.toml`: the deps the
@@ -743,24 +780,9 @@ pub fn ops_for_json_gen(cli: &Cli) -> std::io::Result<Vec<(KeyPath, ManifestOp)>
     // reason: there the tool can't know a dep its flavor stopped needing isn't needed by hand code;
     // here it can't even NAME the entry to tombstone, because the package name lives only in the
     // flag value and a dropped flag carries none. A stale entry therefore lingers until removed by
-    // hand — documented on the flag rather than left to be discovered.
-    //
-    // Built through `toml_edit` rather than a formatted snippet so the path is quoted and escaped by
-    // the TOML writer: unlike every value elsewhere in this file, it is user-supplied at the point of
-    // emission (the change-log snippets are repo-owned constants), and the flag's parser deliberately
-    // puts no charset restriction on the path side because this does the job properly.
-    //
-    // The `["dependencies", <name>]` shape is exactly the path class `apply` merges FIELD-LEVEL, so
-    // an entry a user already added by hand for the same package converges on one entry: our `path`
-    // wins, their `version`/`optional`/`features` survive.
-    for (name, path) in cli.json_gen_deps() {
-        let mut spec = InlineTable::new();
-        spec.insert("path", Value::from(path));
-        ops.push((
-            key_path(&["dependencies", name.as_str()]),
-            ManifestOp::Set(Item::Value(Value::InlineTable(spec))),
-        ));
-    }
+    // hand — documented on the flag rather than left to be discovered. `--wasm-dep` carries the same
+    // op onto `wasm/Cargo.toml` on the same terms; see `manifest_dep_ops`.
+    ops.extend(manifest_dep_ops(cli.json_gen_deps()));
 
     ops.push(version_stamp());
     Ok(ops)
@@ -1760,6 +1782,141 @@ lto = true
         let without = apply(&json_gen_ops(&[]), Some(&with), "wasm/json-gen/Cargo.toml").unwrap();
         assert!(
             without.contains("other-json-schema-gen"),
+            "dropping the flag must LEAVE the entry (nothing names it to tombstone):\n{without}"
+        );
+    }
+
+    // ---- `--wasm-dep` -------------------------------------------------------------------------
+
+    /// A wasm changeset for the given `--wasm-dep` values, read from the repo's own static dir so
+    /// the log-derived keys are the real ones the flag's entries sit beside.
+    fn wasm_ops(values: &[&str]) -> Vec<(KeyPath, ManifestOp)> {
+        use clap::Parser;
+        let mut argv = vec![
+            "cddl-codegen".to_owned(),
+            "--input=unused".to_owned(),
+            "--output=unused".to_owned(),
+            concat!("--static-dir=", env!("CARGO_MANIFEST_DIR"), "/static").to_owned(),
+        ];
+        argv.extend(values.iter().map(|v| format!("--wasm-dep={v}")));
+        ops_for_wasm(&Cli::parse_from(argv)).unwrap()
+    }
+
+    /// The flag's whole visible effect on `wasm/Cargo.toml`, mirroring
+    /// `json_gen_dep_writes_a_path_dependency_entry` for the other manifest: one `[dependencies]`
+    /// path entry per value, in package-name order rather than flag order, beside the entries the
+    /// change log and the in-code rust path dep already write.
+    #[test]
+    fn wasm_dep_writes_a_path_dependency_entry() {
+        let out = apply(
+            // deliberately NOT in sorted order on the command line
+            &wasm_ops(&["z-wasm=../../z/wasm", "a-crate=../../a/rust"]),
+            None,
+            "wasm/Cargo.toml",
+        )
+        .unwrap();
+        let deps = out.parse::<DocumentMut>().unwrap()["dependencies"]
+            .as_table_like()
+            .expect("[dependencies] exists")
+            .iter()
+            .map(|(k, v)| (k.to_owned(), v.to_string().trim().to_owned()))
+            .collect::<Vec<_>>();
+        assert!(
+            deps.contains(&(
+                "a-crate".to_owned(),
+                "{ path = \"../../a/rust\" }".to_owned()
+            )),
+            "the flag must write a path dep entry, got {deps:?}"
+        );
+        assert!(
+            deps.contains(&(
+                "z-wasm".to_owned(),
+                "{ path = \"../../z/wasm\" }".to_owned()
+            )),
+            "the flag must write a path dep entry, got {deps:?}"
+        );
+        let flag_keys: Vec<&String> = deps
+            .iter()
+            .map(|(k, _)| k)
+            .filter(|k| *k == "a-crate" || *k == "z-wasm")
+            .collect();
+        assert_eq!(
+            flag_keys,
+            vec!["a-crate", "z-wasm"],
+            "entries land in package-name order, not flag order"
+        );
+        // the log's own keys, and the in-code rust path dep, are untouched by the addition
+        assert!(out.contains("wasm-bindgen = \"0.2\""));
+        assert!(out.contains("cddl-lib = { path = \"../rust\", features = [\"wasm\"] }"));
+    }
+
+    /// The contract that makes this flag safe to point at a manifest a consumer already hand-edited
+    /// — identical to `json_gen_dep_converges_on_a_hand_added_entry`, because it is the same op on a
+    /// different file, and asserted separately because "it is the same code path" is exactly the
+    /// claim a later refactor could quietly falsify. Our `path` wins, every field we do not set
+    /// survives, their comment and unrelated keys pass through, and re-running over our own output
+    /// is a fixed point — run-twice-equals-run-once on the MERGED form, the only form that can
+    /// drift.
+    #[test]
+    fn wasm_dep_converges_on_a_hand_added_entry() {
+        let existing = "\
+[package]
+name = \"demo-lib-wasm\"
+
+[dependencies]
+# added by hand before the flag existed
+other-wasm = { path = \"../../elsewhere/wasm\", optional = true, features = [\"x\"] }
+unrelated = \"1.0\"
+
+[profile.release]
+lto = true
+";
+        let ops = wasm_ops(&["other-wasm=../../other/wasm"]);
+        let first = apply(&ops, Some(existing), "wasm/Cargo.toml").unwrap();
+
+        assert_eq!(
+            first.matches("other-wasm").count(),
+            1,
+            "the flag must converge on the existing entry, not add a second one:\n{first}"
+        );
+        assert!(
+            first.contains(
+                "other-wasm = { path = \"../../other/wasm\", optional = true, features = [\"x\"] }"
+            ),
+            "our path must win while the user's own fields survive:\n{first}"
+        );
+        assert!(
+            first.contains("# added by hand before the flag existed"),
+            "the user's comment on the entry must survive:\n{first}"
+        );
+        // keys the op set does not mention pass through untouched — the merge contract itself
+        assert!(first.contains("unrelated = \"1.0\""), "{first}");
+        assert!(first.contains("[profile.release]"), "{first}");
+        assert!(first.contains("lto = true"), "{first}");
+
+        let second = apply(&ops, Some(&first), "wasm/Cargo.toml").unwrap();
+        assert_eq!(
+            first, second,
+            "run twice must equal run once for the merged manifest"
+        );
+    }
+
+    /// The second place a changeset departs from the generated-crate set-or-remove rule, for the
+    /// same forced reason as the first: dropping the flag leaves the entry behind, because the
+    /// flag's absence carries no package name to tombstone. Pinned rather than merely documented —
+    /// the alternative reading (a stale entry silently disappearing) would take a hand-added
+    /// dependency with it.
+    #[test]
+    fn wasm_dep_entry_is_asserted_never_removed() {
+        let with = apply(
+            &wasm_ops(&["other-wasm=../../other/wasm"]),
+            None,
+            "wasm/Cargo.toml",
+        )
+        .unwrap();
+        let without = apply(&wasm_ops(&[]), Some(&with), "wasm/Cargo.toml").unwrap();
+        assert!(
+            without.contains("other-wasm"),
             "dropping the flag must LEAVE the entry (nothing names it to tombstone):\n{without}"
         );
     }
