@@ -7542,6 +7542,20 @@ fn ir_conformance_corpus() {
              Repro + upstream steps: \
              draft/ruby-cddl-inline-composite-control-arg-gap.md",
         ),
+        (
+            "cbor_payload_nested",
+            "cbor_payload_nested",
+            "same gem PARSER gap as cbor_wrapped_group_array's entry, `[…]` flavor, twice over: the \
+             fixture's `bytes .cbor [* bytes .cbor uint]` inline-array controller is a parse error \
+             (exit 65, verified against gem 0.12.14 directly on both the fixture and its dumped \
+             case), so the spec-parse failure poisons the sole rule without judging it. The RUST \
+             oracle half judges this fixture green, so only the ruby half is blind, and the \
+             executed decode legs live outside the corpus entirely \
+             (`cbor_payload_nested_payloads` in tests/core/tests.rs decodes a hand-derived oracle; \
+             `cbor_nested_payloads` in tests/preserve-encodings carries the preserve round trip). \
+             Repro + upstream steps: \
+             draft/ruby-cddl-inline-composite-control-arg-gap.md",
+        ),
     ];
 
     // Vacuity floor on total cases the gem actually validated across the corpus. 70 swept at landing;
