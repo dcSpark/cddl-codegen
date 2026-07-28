@@ -24,6 +24,7 @@
  * token (via JSON.parse source access) so floats/-0.0/>2^53 ints stay exact — no re-serialization drift.
  */
 import notesToml from "./annotations/golden_hex/cddl_codegen.toml";
+import { featuresIn, NO_DETECTOR } from "./corpus_detect";
 
 const HERE = import.meta.dir;
 const GOLDEN = `${HERE}/../tests/golden_hex`;
@@ -325,20 +326,42 @@ for (let mt = 0; mt < 8; mt++) {
 // relation (a parent ref -> its `cells`; a leaf ref -> itself) and intersecting with the SAME
 // `cellsCovered` the grid uses. The uncovered remainder is split by the same cell-keyed `out_of_scope`
 // overlay as the summary, so the two can never disagree about which cells are actionable.
+//
+// `cellsCovered` is a UNION over every kat! in the file, so on its own it would credit construct C for
+// a cell some OTHER construct's vector landed in — `prelude.bigfloat` would read "2 of 5 covered" from
+// a fixture that never mentions bigfloat. So the split is gated on the golden fixture's own construct
+// floor first: a construct the fixture does not exercise AT ALL has nothing asserted about it, whatever
+// cells its neighbours happen to cover.
+const fixtureCddl = await Bun.file(`${GOLDEN}/input.cddl`).text();
+const detected = featuresIn(fixtureCddl);
+const fixtureFloor = new Set([...detected.rfc, ...detected.ctl, ...detected.dsl]);
 const constructs = matrix.features
   .filter(f => (f.encodings ?? []).length)
   .map(f => {
     const legal = [...new Set((f.encodings ?? []).flatMap(ref => cellsOf.get(ref) ?? [ref]))].sort();
-    const uncovered = legal.filter(c => !cellsCovered.has(c));
+    const exercised = fixtureFloor.has(f.id);
+    const covered = exercised ? legal.filter(c => cellsCovered.has(c)) : [];
+    const uncovered = legal.filter(c => !covered.includes(c));
     return {
       id: f.id,
+      exercised,
       legal,
-      covered: legal.filter(c => cellsCovered.has(c)),
+      covered,
       never: uncovered.filter(c => oosCells.has(c)),
       emittable: uncovered.filter(c => !oosCells.has(c)),
     };
   })
   .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+// Vacuity floors on the gate itself. An empty/moved fixture would make the floor empty, flipping EVERY
+// construct to "not exercised" and inflating every untested count — the failure would read as a big
+// honest-looking answer. `NO_DETECTOR` is corpus_detect's declared blind set: if one of its ids ever
+// gained an `encodings` list it would read as never-exercised for a reason that is about the detector,
+// not the fixture, so that must be stated rather than silently rendered.
+if (!fixtureFloor.size)
+  throw new Error(`${GOLDEN}/input.cddl detected no constructs — the fixture floor is vacuous, which would mark every construct unexercised`);
+const blind = matrix.features.filter(f => (f.encodings ?? []).length && NO_DETECTOR.has(f.id)).map(f => f.id);
+if (blind.length)
+  throw new Error(`construct(s) [${blind.join(", ")}] carry encodings but are in corpus_detect's NO_DETECTOR set — their fixture-floor answer would be a detector artifact; give them a detector or exclude them explicitly`);
 // Vacuity floor (the same class loadTomlArray guards at the overlay's root): if the feature rows ever
 // stopped carrying `encodings` — a renamed field, a loader that drops it — this section would render
 // an empty table and every gate would stay green, silently answering "no construct has an untested
@@ -346,34 +369,56 @@ const constructs = matrix.features
 if (!constructs.length)
   throw new Error("no feature row declares a non-empty `encodings` list — the per-construct expansion is vacuous (matrix.json lost the field?)");
 const constructsWithGaps = constructs.filter(c => c.emittable.length).length;
+const unexercised = constructs.filter(c => !c.exercised).length;
 w("## Per-construct legal encodings");
 w();
 w(`Q3 narrowed to one construct at a time: for each of the **${constructs.length}** feature rows that`);
 w("declare an `encodings` list, the leaf cells that construct can legally take, and which of them no");
 w("golden vector asserts. Each declared ref is expanded through the master's parent→leaf relation");
-w("(`cddl-matrix/encodings.toml` — a PARENT row names its leaves in `cells`; a leaf ref is itself), then");
-w("intersected with the same derived coverage the grid above uses.");
+w("(`cddl-matrix/encodings.toml` — a PARENT row names its leaves in `cells`; a leaf ref is itself).");
+w();
+w("**The fixture floor comes first.** `input.cddl` is what the golden vectors are generated from, so a");
+w(`construct it never mentions has nothing asserted about it at all — **${unexercised}** of the`);
+w(`${constructs.length} rows are in that position, marked ✗ below, and their whole legal set is`);
+w("untested. This matters because coverage is derived as a union over every `kat!` in the file: without");
+w("the floor, a construct would be credited for a cell some *other* construct's vector happened to land");
+w("in (a fixture with no `bigfloat` in it would still report bigfloat's tag cell as covered).");
+w();
+w("**For a ✓ construct the covered/uncovered split is still CELL-keyed**, not vector-keyed: a cell counts");
+w("as covered when some asserted item's head lands in it, which need not be an item of *this* construct.");
+w("`type2.tag` reads `enc.major6.imm` covered because the bignum vectors (`c2`/`c3`) land there. So a ✓");
+w("row's *covered* is an upper bound on what is asserted about that construct specifically.");
 w();
 w("**What \"legal\" means here, and what it does not.** *Legal* = the leaf cells beneath the encoding");
-w("rows the construct **declares**. It is deliberately **not** a claim that cddl-codegen emits each of");
-w("them under default flags — the *never emitted* column carries that, from the same cell-keyed");
-w("`out_of_scope` notes as the summary. And it is **not** a claim that each cell is reachable for");
-w("**every value** of the construct: argument width follows the value, so a `uint` reaches");
-w("`enc.major0.ai27` only at values ≥ 2^32, and a `bstr` reaches `enc.major2.ai26` only at lengths");
-w("≥ 2^16. An *untested and emittable* cell therefore names an encoding the construct can take at");
-w("**some** value — not one every instance of it takes.");
+w("rows the construct **declares**. A construct whose CBOR head is fixed by its own definition declares");
+w("the single cell that head lands in — `bigfloat = #6.5(…)` is tag 5 at every value, so it declares");
+w("`enc.major6.imm` alone, and the master's drift gate re-derives that from the pinned prelude rather");
+w("than trusting the list. What remains is deliberately **not** a claim that cddl-codegen emits each");
+w("cell under default flags — the *never emitted* column carries that, from the same cell-keyed");
+w("`out_of_scope` notes as the summary — and **not** a claim that a cell is reachable at **every**");
+w("value where the head argument follows the value: a `uint` reaches `enc.major0.ai27` only at values");
+w("≥ 2^32, and a `bstr` reaches `enc.major2.ai26` only at lengths ≥ 2^16.");
+w();
+w("**Scope limit of the floor.** It is `corpus_detect.ts`'s text scan, which matches a construct by");
+w("NAME. A construct the fixture expresses under a synonym or a wider choice type therefore reads ✗:");
+w("`input.cddl` writes `tstr`, so `prelude.text` (its exact prelude alias) is ✗, and it writes `float`,");
+w("so `prelude.float64` is ✗ even though the `fb…` double vectors exist. Read ✗ as *no golden rule names");
+w("this construct*, which is the honest fact, not as *nothing resembling it is asserted anywhere*.");
 w();
 w("Reported, never fatal: this gate's non-zero exit stays reserved for note drift and ➕ (uncovered");
-w("Appendix A vector with no rationale). This column is derived from the same `cellsCovered` as the");
-w("summary's *emittable but no Appendix A vector lands here* line, which is already a deliberate");
-w("non-failure — failing here would re-litigate that threshold from a different direction.");
+w("Appendix A vector with no rationale). The coverage this narrows is the same `cellsCovered` behind");
+w("the summary's *emittable but no Appendix A vector lands here* line, which is already a deliberate");
+w("non-failure — failing here would re-litigate that threshold from a different direction. (The two");
+w("counts do not match, and should not: the summary asks whether ANY vector reaches a cell, this asks");
+w("whether one reaches it *for this construct*, so a globally covered cell is still untested here.)");
 w();
+w(`- Exercised by \`input.cddl\`: **${constructs.length - unexercised}** of ${constructs.length} (✗ rows below have their full legal set untested)`);
 w(`- Constructs with at least one untested-and-emittable cell: **${constructsWithGaps}** of ${constructs.length}`);
 w();
-w("| construct | legal | covered | never emitted | untested and emittable |");
-w("|-----------|-------|---------|---------------|------------------------|");
+w("| construct | in fixture | legal | covered | never emitted | untested and emittable |");
+w("|-----------|:---------:|-------|---------|---------------|------------------------|");
 for (const c of constructs)
-  w(`| \`${c.id}\` | ${c.legal.length} | ${c.covered.length} | ${c.never.length} | ` +
+  w(`| \`${c.id}\` | ${c.exercised ? "✓" : "✗"} | ${c.legal.length} | ${c.covered.length} | ${c.never.length} | ` +
     `${c.emittable.length ? c.emittable.map(x => `\`${x}\``).join(", ") : "—"} |`);
 w();
 w("## Consistency (join drift check)");

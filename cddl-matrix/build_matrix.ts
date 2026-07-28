@@ -9,7 +9,7 @@
  * Run from cddl-matrix/:  bun run build_matrix.ts   (or `--check` for the snapshot gate)
  */
 import { readFileSync } from "node:fs";
-import { ROOT, loadMatrixInputs, loadTomlArray, globRel, stableJson } from "./lib";
+import { ROOT, PRELUDE_DEFS, loadMatrixInputs, loadTomlArray, globRel, splitTopAlts, stableJson } from "./lib";
 
 const { features, roles, contain, encodings, controlOps } = loadMatrixInputs();
 
@@ -83,6 +83,58 @@ const encIds = new Set(encodings.map(e => e.id));
 for (const f of features)
   for (const eid of f.encodings ?? [])
     if (!encIds.has(eid)) errors.push(`features: '${f.id}'.encodings names '${eid}', which resolves to no encoding row`);
+
+// --- a prelude construct whose CBOR head is FIXED by its own definition must declare exactly the cell
+// that head lands in. Derived from the pinned prelude, never hand-trusted: `bigfloat = #6.5(...)` is
+// tag 5 at EVERY value, so declaring the `enc.major6` parent claimed five cells of which four are
+// unreachable — and the per-construct projection then reported those four as untested gaps. The two
+// head kinds follow DIFFERENT rules and are deliberately not unified:
+//   `#6.N(...)`  N is the tag NUMBER; the ai follows its magnitude (the head-argument width rule).
+//   `#7.N`       N IS the ai itself (20=false … 25=float16), so it maps directly, with no width rule.
+// Parametric heads (`type2.tag`'s user-chosen `#6.N`, `type2.major7`'s `#7.N`) are not prelude rules
+// and never reach here — they keep the parent ref, which is the correct claim for them.
+const tagNumberCell = (n: number) =>
+  `enc.major6.${n <= 23 ? "imm" : n <= 255 ? "ai24" : n <= 65535 ? "ai25" : n <= 0xffffffff ? "ai26" : "ai27"}`;
+const AI_CELL: Record<number, string> = { 24: "ai24", 25: "float16", 26: "float32", 27: "float64", 31: "break" };
+// The cells a prelude RHS pins, or null when nothing about it is fixed — the check stays silent rather
+// than guessing. A top-level choice resolves only if EVERY arm is itself pinned: `bigint = biguint /
+// bignint` pins {enc.major6.imm}, while `number = int / float` pins nothing.
+function pinnedHeadCells(rhs: string, depth = 0): string[] | null {
+  if (depth > 3) return null;
+  const arms = splitTopAlts(rhs);
+  if (arms.length > 1) {
+    const all = arms.map(a => pinnedHeadCells(a.trim(), depth + 1));
+    return all.every(x => x) ? [...new Set((all as string[][]).flat())].sort() : null;
+  }
+  const t = rhs.trim();
+  const tag = t.match(/^#6\.(\d+)\s*\(/);
+  if (tag) return [tagNumberCell(parseInt(tag[1], 10))];
+  const simple = t.match(/^#7\.(\d+)\s*$/);
+  if (simple) {
+    const ai = parseInt(simple[1], 10);
+    const form = ai <= 23 ? "simple_imm" : AI_CELL[ai];
+    return form ? [`enc.major7.${form}`] : null;
+  }
+  const named = PRELUDE_DEFS.get(t);
+  return named !== undefined ? pinnedHeadCells(named, depth + 1) : null;
+}
+let pinnedChecked = 0;
+for (const f of features) {
+  if (!f.id?.startsWith("prelude.") || !f.encodings?.length) continue;
+  const rhs = PRELUDE_DEFS.get(f.id.slice("prelude.".length));
+  const want = rhs === undefined ? null : pinnedHeadCells(rhs);
+  if (!want) continue;
+  pinnedChecked++;
+  const got = [...new Set(f.encodings.flatMap(ref => encById.get(ref)?.cells ?? [ref]))].sort();
+  if (got.join(",") !== want.join(","))
+    errors.push(
+      `features: '${f.id}' has a head fixed by the pinned prelude (\`${rhs}\`), which can only encode as ` +
+      `[${want.join(", ")}], but its encodings expand to [${got.join(", ")}] — declare the exact cell(s)`);
+}
+// Vacuity floor: the check is silent by design for anything unpinned, so a prelude-parse or naming
+// change that pinned NOTHING would leave it green while checking zero rows.
+if (!pinnedChecked)
+  errors.push("features: no prelude row resolved to a pinned CBOR head — the prelude-derived cell check is checking nothing");
 
 const out = stableJson(matrix);
 const nAnno = Object.values(annos).reduce((a, v) => a + v.length, 0);
