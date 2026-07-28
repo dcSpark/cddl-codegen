@@ -657,14 +657,18 @@
     },
     {
       "gate": "wasm_matrix_roundtrips",
-      "warm_ms": 444000,
+      "warm_ms": 343000,
       "n": 20,
-      "measured": "2026-07-26",
+      "measured": "2026-07-28",
       "machine": "86216c55",
       "history": [
         {
           "date": "2026-07-26",
           "warm_ms": 444000
+        },
+        {
+          "date": "2026-07-28",
+          "warm_ms": 343000
         }
       ]
     }
