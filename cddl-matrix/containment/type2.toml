@@ -45,7 +45,7 @@ id = "contain.map-value.type2.map"
 role = "role.map-value"
 feature = "type2.map"
 spec = "allowed"
-note = "A map as a member value (nested map / table-as-value). (2-field inner map: a single-field struct hits an orthogonal panic.)"
+note = "A map as a member value (nested map / table-as-value). (2-field example by this file's convention, not a workaround: a single-field bareword map is itself supported, pinned by tests/corpus/single_field_map.cddl.)"
 example = "m = { outer: { a: int, c: uint } }"
 
 [[contain]]
