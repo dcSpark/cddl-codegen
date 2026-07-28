@@ -1810,6 +1810,96 @@ fn a_two_crate_config_generates_a_consumer_that_imports_its_dependency() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A dependency declared BOTH as an extern-interface import AND as a physical stub in the consumer's
+/// own input tree is refused during expansion — before any crate generates — and in the config's
+/// vocabulary rather than the flag's.
+///
+/// The generator refuses the same shape, and still does; but it reaches it mid-generation, so the
+/// dependency (which generates first) is already fully written to disk when the consumer aborts, and
+/// the message names an `--extern-import <dep>=<path>` value the config derived rather than any key
+/// the user wrote. Both halves are pinned: nothing may exist under the output root, and the message
+/// must name the key that declared the edge.
+#[test]
+fn a_dependency_declared_twice_is_refused_before_any_crate_generates() {
+    let dir =
+        std::env::temp_dir().join(format!("cddl_config_stub_conflict_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("specs/ledger/_CDDL_CODEGEN_EXTERN_DEPS_DIR_/core")).unwrap();
+    std::fs::write(dir.join("specs/core.cddl"), "foo = [a: uint, b: text]\n").unwrap();
+    std::fs::write(dir.join("specs/ledger/lib.cddl"), "bar = [f: foo]\n").unwrap();
+    std::fs::write(
+        dir.join("specs/ledger/_CDDL_CODEGEN_EXTERN_DEPS_DIR_/core/mod.cddl"),
+        "foo = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name Foo\n",
+    )
+    .unwrap();
+    let write_config = |file: &str, edge: &str| {
+        let path = dir.join(file);
+        std::fs::write(
+            &path,
+            format!(
+                "[defaults]\nstatic-dir = \"{}/static\"\n\n\
+                 [crates.core]\ninput = \"specs/core.cddl\"\noutput = \"gen/core\"\n\n\
+                 [crates.ledger]\ninput = \"specs/ledger\"\noutput = \"gen/ledger\"\n{edge}",
+                env!("CARGO_MANIFEST_DIR")
+            ),
+        )
+        .unwrap();
+        path
+    };
+
+    // The sugar: `deps` derives the `--extern-import` that collides with the stub.
+    let derived = write_config("derived.toml", "deps = [\"core\"]\n");
+    let err = config::generate(&derived, &[])
+        .expect_err("a dependency declared by `deps` AND by a stub must be refused")
+        .to_string();
+    assert!(
+        err.contains("[crates.ledger].deps"),
+        "the refusal must name the key that declared the edge, got:\n{err}"
+    );
+    assert!(
+        err.contains("_CDDL_CODEGEN_EXTERN_DEPS_DIR_/core"),
+        "and the stub directory it collides with, got:\n{err}"
+    );
+    assert!(
+        !err.contains("--extern-import"),
+        "and must not name a flag this user never typed, got:\n{err}"
+    );
+    // The promise the move exists to keep. `core` generates first, so with the check left where the
+    // generator reaches it, its whole output tree would be on disk by now.
+    assert!(
+        !dir.join("gen").exists(),
+        "no crate may have generated: the config is checked before any crate runs"
+    );
+
+    // `--print-flags` performs the real expansion, so it refuses identically.
+    let listed = config::print_flags(&derived, &[])
+        .expect_err("--print-flags must refuse what a run refuses")
+        .to_string();
+    assert_eq!(
+        listed, err,
+        "--print-flags must fail with the identical message"
+    );
+
+    // A hand-written sub-table entry is the same conflict, attributed to the key that user typed.
+    let hand = write_config(
+        "hand.toml",
+        "\n[crates.ledger.extern-import]\ncore = \"gen/core/extern-interface/core\"\n",
+    );
+    let err = config::generate(&hand, &[])
+        .expect_err("the same conflict declared by hand must be refused")
+        .to_string();
+    assert!(
+        err.contains("[crates.ledger].extern-import"),
+        "a hand-written entry is attributed to the flag-named key, got:\n{err}"
+    );
+    assert!(
+        !dir.join("gen").exists(),
+        "no crate may have generated for the hand-written spelling either"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 // ---------------------------------------------------------------------------------------------
 // `[runtime]` — one shared static runtime for the whole config
 // ---------------------------------------------------------------------------------------------

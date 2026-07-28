@@ -916,9 +916,12 @@ Two things about that edge are worth knowing before you make it, because `deps` 
 - **`--extern-import`** is derived too. CML declares its extern dependencies by hand, in
   `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/cml_chain` under the consumer's spec directory, and passes no
   `--extern-import`. `deps` points the flag at the dependency's *generated* `extern-interface/`
-  export instead. A project in that position is choosing between the two sources; if you want to keep
-  the hand-declared one, write `extern-wasm-crate`, `extern-wrapper-index` and `workspace-dep` as
-  plain per-crate keys and do not use `deps`.
+  export instead. A project in that position is choosing between the two sources, and it is a choice
+  rather than a merge: a dependency named by `deps` — or by a hand-written `extern-import` entry —
+  that the consumer *also* declares as a stub directory is a **hard error**, naming the key that
+  declared the edge and the stub directory it collides with, during expansion and so before any crate
+  generates. If you want to keep the hand-declared one, write `extern-wasm-crate`,
+  `extern-wrapper-index` and `workspace-dep` as plain per-crate keys and do not use `deps`.
 - **`--key-requests`** is derived too, and the script passes none. It is the dependency-side half of
   the map-key-derive channel: the dependency starts reading the consumer's
   `borrowed_key_types.rs` sidecar and deriving `Eq`/`Ord` where the consumer keys a map on one of its
