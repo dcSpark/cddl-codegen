@@ -478,7 +478,21 @@ pub fn load(path: &Path) -> Result<Config, String> {
     })?;
     // `parent()` of a bare filename is `Some("")`, which joins as a no-op relative path — exactly the
     // "same directory" answer, so no special case is needed.
-    let base_dir = path.parent().unwrap_or(Path::new("")).to_path_buf();
+    let base_dir = path.parent().unwrap_or(Path::new(""));
+    // Absolutized HERE, at the one place the CWD legitimately participates (it already located the
+    // config file this function just read). Every path key then resolves to an absolute path, so no
+    // downstream computation — in particular `manifest_relative_path`, whose result lands in a
+    // COMMITTED `Cargo.toml` — ever consults the CWD again: with a relative base, a config mixing an
+    // absolute `output` with a relative one made the derived manifest path a function of where the
+    // tool was invoked from. Lexical, not `canonicalize`: resolving symlinks would rewrite the paths
+    // the user spelled, and the join needs no filesystem access.
+    let base_dir = if base_dir.is_absolute() {
+        base_dir.to_path_buf()
+    } else {
+        let cwd = std::env::current_dir()
+            .map_err(|e| format!("--config {}: cannot read the current directory to resolve the config file's location: {e}", path.display()))?;
+        lexically_normalized(&cwd.join(base_dir))
+    };
     parse_str(&text, &base_dir).map_err(|e| format!("--config {}: {e}", path.display()))
 }
 
@@ -751,14 +765,18 @@ impl Config {
         // is also the copy-paste error a multi-crate TOML invites most — duplicate a `[crates.*]`
         // block, edit `input`, forget `output`. Compared lexically on the RESOLVED paths, since
         // neither directory need exist yet; `Path::starts_with` is component-wise, so `gen/ab` is
-        // correctly not inside `gen/a`.
+        // correctly not inside `gen/a`. NORMALIZED before comparing, because a `.` or `..` in an
+        // `output` is a spelling: `Path::components` keeps a leading `.` and every `..`, so without
+        // normalization `./gen/x` vs `gen/x` (and any `..` spelling) walk past the guard and the
+        // second crate silently erases the first's generated tree — the exact destruction this
+        // check exists for.
         let resolved: Vec<(&String, PathBuf)> = self
             .crates
             .iter()
             .map(|(name, entry)| {
                 (
                     name,
-                    PathBuf::from(resolve_path(&self.base_dir, &entry.output)),
+                    lexically_normalized(Path::new(&resolve_path(&self.base_dir, &entry.output))),
                 )
             })
             .collect();
