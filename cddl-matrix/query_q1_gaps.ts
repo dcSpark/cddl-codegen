@@ -124,7 +124,12 @@ const featureGaps = gaps.filter(g => g.axis === "feature");
 const ctlGaps = gaps.filter(g => g.axis === "control-op");
 
 // Contextual gaps: containment cells that are unsupported WHERE the feature is supported top-level.
-interface Contextual { feature: string; example: string; roles: { role: string; example: string }[] }
+// Cells are GROUPED by (feature, role): a role reached by several distinct unsupported spellings is
+// one entry carrying the cell `count` and that role's OWN example, so no role name repeats and no
+// row shows a neighbouring role's example. The example is the role's first cell in the id-sorted
+// `gaps` order (deterministic — the `--check` byte-compare pins it).
+interface ContextualRole { role: string; count: number; example: string }
+interface Contextual { feature: string; roles: ContextualRole[] }
 const contextualByFeature = new Map<string, Contextual>();
 for (const g of gaps) {
   if (g.axis !== "containment-cell") continue;
@@ -134,10 +139,15 @@ for (const g of gaps) {
   const roleShort = (cell.role ?? "").replace(/^role\./, "");
   let ctx = contextualByFeature.get(feat);
   if (!ctx) {
-    ctx = { feature: feat, example: inlineExample(featureById.get(feat)?.example), roles: [] };
+    ctx = { feature: feat, roles: [] };
     contextualByFeature.set(feat, ctx);
   }
-  ctx.roles.push({ role: roleShort, example: g.example });
+  let entry = ctx.roles.find(r => r.role === roleShort);
+  if (!entry) {
+    entry = { role: roleShort, count: 0, example: g.example };
+    ctx.roles.push(entry);
+  }
+  entry.count++;
 }
 const contextual = [...contextualByFeature.values()].sort((a, b) => a.feature.localeCompare(b.feature));
 for (const c of contextual) c.roles.sort((a, b) => a.role.localeCompare(b.role));
@@ -198,15 +208,20 @@ function renderBlock(): string {
   L.push("### Contextual gaps (supported top-level, unsupported when nested)");
   L.push("");
   L.push(
-    "These constructs work as their own rule but are unsupported in the listed nesting roles — an " +
-    "inline anonymous composite must be given a name (a rule or a `; @name`).",
+    "These constructs work as their own rule but are unsupported in the listed nesting role — one " +
+    "row per (construct, role). A role annotated with a shape count is reached by that many " +
+    "distinct unsupported spellings; the Example column shows one of them. For the inline " +
+    "anonymous composites (`type2.map`, `type2.array`) the remedy is to name the composite (a rule " +
+    "or a `; @name`); for the key and occurrence rows the remedy depends on the spelling.",
   );
   L.push("");
-  L.push("| Construct | Unsupported roles | Example |");
-  L.push("|-----------|-------------------|---------|");
+  L.push("| Construct | Unsupported role | Example |");
+  L.push("|-----------|------------------|---------|");
   for (const c of contextual) {
-    const roles = c.roles.map(r => r.role).join(", ");
-    L.push(`| \`${c.feature}\` | ${roles} | \`${c.roles[0].example}\` |`);
+    for (const r of c.roles) {
+      const role = r.count > 1 ? `${r.role} (${r.count} shapes)` : r.role;
+      L.push(`| \`${c.feature}\` | ${role} | \`${r.example}\` |`);
+    }
   }
   L.push("");
 
@@ -339,7 +354,8 @@ if (shownCtl.length) {
 const shownCtx = contextual.filter(c => match(c.feature) || c.roles.some(r => match(`${c.feature}.${r.role}`)));
 if (shownCtx.length) {
   console.log(`### CONTEXTUAL gaps — supported top-level, unsupported when nested (${shownCtx.length} feature(s))`);
-  for (const c of shownCtx) console.log(`  ${c.feature.padEnd(24)}  roles: ${c.roles.map(r => r.role).join(", ")}`);
+  for (const c of shownCtx)
+    console.log(`  ${c.feature.padEnd(24)}  roles: ${c.roles.map(r => (r.count > 1 ? `${r.role} (x${r.count})` : r.role)).join(", ")}`);
   console.log("");
 }
 
