@@ -294,28 +294,36 @@ ledgered here (that's what the probe/gate error messages point at).
   carrying two-or-more Special-typed literal arms beside data arms — a `grep` over a spec and a
   flag they already have, and the count of such choices is the hand-maintained surface they would
   keep beside the generated crate. Today the evidence is one synthetic probe.
-- **`true / null` — a fixed-value inner under the `T / null` Option-collapse — panics generation
-  under EVERY profile.** A two-arm choice with a null arm never becomes an enum:
-  `parse_type_choices` collapses it to an `Option<T>` alias (the same lowering that makes
-  `t = null / tstr` an `Option<String>`). With `T` itself a fixed value, the collapsed type is
-  `Optional(Fixed(Bool(true)))`, and rendering that as a member/alias type dies at the pinned
-  `should not expose Fixed type in member, only needed for serializaiton:` panic
-  (`src/intermediate/rust_type.rs` — the `for_rust_member_ct`/`for_wasm_member_ct` `Fixed` arms),
-  wrapper or not, default profile included (this is not a preserve gap). Notable because the
-  recombination ledger records the `"should not expose Fixed type"` class as retired for the
-  bare-fixed-in-member families — the sites survive, and this spelling still reaches them; the
-  recombination sweep cannot spell it (the ingredient list carries `prelude.null` as a
-  choice-member but no special-literal filler for the other arm). `false / null` is the same
-  collapse with `Fixed(Bool(false))` — reasoned identical, unprobed. `true / false` (no null arm,
-  so no collapse — an ordinary all-fixed choice) is a DIFFERENT path, unprobed in both
-  directions. A useful shape (`bool-or-null` is ordinary wire vocabulary), currently uncatalogued
-  as a matrix cell. Candidate fix: teach the collapse that a fixed-value inner carries only
-  presence (lower to a presence-shaped newtype or refuse gracefully at the collapse site naming
-  the rule) — a panic on valid CDDL is the posture this repo otherwise retired. **Reopening
-  signal**, on the magnitude axis: a spec brought to us contains a fixed-value/null two-arm
-  choice, i.e. the count of rules its owner must hand-rewrite to keep generating reaches 1; today
-  the evidence is synthetic probes only (the mechanism read from `parse_type_choices` +
-  `rust_type.rs`; the panic observed empirically).
+- **A fixed-value inner under the `T / null` Option-collapse (`true / null`) has no member
+  REPRESENTATION, so a spec that pins one arm of a nullable to a constant must be hand-rewritten.**
+  A two-arm choice with a null arm never becomes an enum: the collapse lowers it to an `Option<T>`
+  (the same lowering that makes `t = null / tstr` an `Option<String>`). With `T` itself a fixed
+  value there is nothing to put in the `T` slot — a `Fixed` is unstored, carrying meaning only as a
+  member whose value the schema pins — so BOTH collapse sites refuse the shape gracefully rather
+  than building an unrenderable `Optional(Fixed(..))`: the rule-level site (`parse_type_choices`)
+  names the rule by its source spelling, and the member-level one (`rust_type`'s two-arm null
+  checks, reached by `[v: true / null]`, `{? k: true / null}`, `{* uint => (true / null)}`) is
+  role-generic. Both quote the offending value back in CDDL form and offer the one remedy probed to
+  work — widening the fixed arm, `bool / null` lowering to `Option<bool>` — with the standing caveat
+  that widening drops the constraint, so it is a different spec. Pinned by
+  `tests/robustness/choice_fixed_null_collapse.cddl` and its `_member` sibling, which are hand
+  fixtures because the recombination sweep cannot spell the shape (its ingredient list carries
+  `prelude.null` as a choice-member but no special-literal filler for the other arm). Probe scope:
+  every fixed KIND the collapse can carry — bool (`true`/`false`), uint, nint, float, text, and the
+  degenerate `null / null`, which gets its own sentence because it has no non-`null` arm to widen —
+  each exit 1 under BOTH the default and `--preserve-encodings` profiles. Not probed: the
+  `--wasm=true` emission path (the refusal is recorded in the parse walk, before any emission
+  profile is consulted, so profile-independence there is reasoning rather than measurement).
+  `true / false` — no null arm, so no collapse — is a DIFFERENT path that generates an ordinary
+  `pub enum T { True, False }`, and is not this item.
+  What remains open is REPRESENTATION: a fixed-value inner carries only PRESENCE, so a
+  presence-shaped lowering (a newtype whose `Option` is the whole information content) would make
+  the shape generate instead of refuse. It stays deferred because a refusal naming the shape and a
+  working remedy costs its owner one rewritten rule, while a presence lowering adds a
+  representation to every downstream surface (rust, wasm, json) that nobody has yet asked for. The
+  shape is still uncatalogued as a matrix cell. **Reopening signal**, on the magnitude axis: a spec
+  brought to us contains a fixed-value/null two-arm choice, i.e. the count of rules its owner must
+  hand-rewrite to keep generating reaches 1; today the evidence is synthetic probes only.
 - **Enumerate the remaining fixed-value KINDS, in both the arm and the member position.** The kind
   axis and the position axis are separate cells, but they share one blocker and one reason to be
   enumerated at all, said here once: the result is known to be NON-uniform (probed kinds keep
@@ -332,8 +340,8 @@ ledgered here (that's what the probe/gate error messages point at).
     covered in the map-rep, array-rep, and two-arm type-choice spellings
     (`tests/corpus/group_choice_fixed_special.cddl`, plus the preserve round-trip members in
     `tests/preserve-encodings/input.cddl`). Nint constants and the tag-wrapped forms in the ARRAY
-    reps are unprobed in both directions, and the same-major-type (brute-force) pairings are open
-    defects (the two entries above).
+    reps are unprobed in both directions, and the same-major-type (brute-force) pairings remain an
+    open defect (the brute-force `()`-emission entry above).
   - **The NINT member cell.** Held back only while its message rendering was an open defect that a
     row would have restated rather than discovered; `Key::Nint` landed and that ledger retired, so
     the nint kind's member-position verdict is now an ordinary unknown that only a cell can carry.
