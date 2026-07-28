@@ -730,12 +730,14 @@ new hand vectors in these shapes; a vector that merely EXERCISES the code certif
    new field list. (Mutation scoring cannot substitute: a generator mutant breaking the new behaviour
    dies to any OTHER fixture asserting the same arm.)
 
-Two fixture dirs exist purely to carry such vectors across profiles rather than to add a shape:
-`tests/recursive-collection-ref/` runs a nominal reference to a collection typedef under BOTH the
-default and preserve profiles (`recursive_collection_ref` / `recursive_collection_ref_preserve`),
-because the encoding-sidecar half of that shape exists only under `--preserve-encodings`; and
-`tests/emit-tests-bounded-key/` carries both signs of a bounded map-key window (see § "Authoring
-standard for a bounded-domain emit-tests fixture").
+`tests/recursive-collection-ref/` exists purely to run one hand suite across two profiles rather
+than to add a shape: a nominal reference to a collection typedef, generated under BOTH the default
+and preserve profiles (`recursive_collection_ref` / `recursive_collection_ref_preserve`), because
+the encoding-sidecar half of that shape exists only under `--preserve-encodings`. Its sibling
+`tests/emit-tests-bounded-key/` is the opposite case and is included here for the contrast: it has
+no `tests.rs` at all, because the values under test are the ones the `--emit-tests` minter chooses,
+so its discipline is about the MINT rather than about hand anchors (see § "Authoring standard for a
+bounded-domain emit-tests fixture").
 
 **A new `tests/<dir>/input.cddl` owes the wasm-parity registry an entry.** The corpus axis of
 `wasm_api_parity` enumerates `tests/*/input.cddl` at runtime and requires every dir to be in either
