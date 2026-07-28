@@ -3045,14 +3045,58 @@ EXHAUSTIVELY, so a new `Cli` field fails it at compile time.
 `path_keys_resolve_against_the_config_file_not_the_process_cwd` is discriminating by construction:
 the config sits in a temp directory and names `tests/core/input.cddl`, a path that also exists
 relative to the process CWD with different content, so a CWD-relative implementation succeeds with
-the WRONG file rather than merely failing. `--no-preserve-comments` is the one negated flag behind a
-positive key, so both directions of that inversion are pinned.
+the WRONG file rather than merely failing; `load_resolves_a_relative_config_path_to_absolute_keys`
+pins the companion property that the CWD participates exactly once (locating the config file), so no
+derived byte can depend on it. `--no-preserve-comments` is the one negated flag behind a
+positive key, so both directions of that inversion are pinned. Values are emitted as single
+`--name=value` tokens so a leading-dash value is representable
+(`a_leading_dash_value_reaches_the_flag_verbatim`; that no `Cli` argument accepts hyphen-led values
+under the two-token spelling is itself pinned by enumeration in
+`no_cli_argument_accepts_hyphen_led_values`), and the two sub-table spellings — header and inline —
+are pinned equivalent by `an_inline_sub_table_expands_exactly_as_the_header_spelling_does`.
 
 **A key that exists on one side only.** `config_keys_match_cli_fields` reads `struct Cli` and
 `struct Settings` from SOURCE with `syn` and asserts a bijection modulo a documented exclusion list
 (the three per-crate keys, which live on the crate entry; `profiles` and the three graph keys, which
-are the config's own structure). A flag added without a config key fails it, and so does a key
-invented with no flag.
+are the config's own structure), and additionally pins the runtime mirror `SETTINGS_KEYS` — the
+const the pre-serde unknown-key check consults — to the same field set, so the const is hand-written
+but not hand-maintained. A flag added without a config key fails it, and so does a key
+invented with no flag. The same syn read drives `editor_schema_matches_the_config_surface`, which
+builds the editor JSON Schema (`docs/editor/cddl-codegen-config.schema.json`) from the three config
+structs and fails byte-for-byte against the committed file — bless with
+`BLESS_EDITOR_SCHEMA=1 cargo test --bin cddl-codegen editor_schema_matches_the_config_surface`. A
+`Settings` field whose Rust type maps onto no TOML type fails the build with a decide-this message
+rather than being approximated.
+
+**What the user is told when it breaks.** The refusal surface is tested as its own concern, because
+a config's error is the config's UI: an unknown key gets a nearest-match suggestion computed against
+the table's real vocabulary (`an_unknown_key_suggests_the_nearest_key_that_table_accepts` — a crate
+table may be sent to a per-crate key, a shared table must not be); an empty `input`/`output` is
+refused naming the key (`an_empty_input_or_output_is_a_hard_error_naming_the_key`) instead of
+degrading the clobber diagnostic; a clap rejection is replayed fragment-by-fragment so the blame
+lands on the TOML key that caused it even when path values start with a dash
+(`a_rejection_is_attributed_to_its_key_even_when_a_path_starts_with_a_dash`); post-parse errors
+carry the `--config <path>` prefix parse errors always had
+(`errors_after_parsing_still_name_the_config_file`); and the binary prints all of it through
+`Display`, pinned end to end because no unit test sees `main`'s termination path
+(`binary_errors_print_the_message_verbatim_not_debug_escaped`). The exit code is part of the same
+contract: `the_committed_state_verdict_exits_2_and_other_failures_exit_1` pins 0/1/2 (the verdict —
+a statement about the committed TREE that re-running cannot settle — is the one exit-2, classified
+by `VerdictError`'s type rather than by message match), and
+`a_mid_run_generation_failure_names_the_crates_already_regenerated` pins that a failure partway
+through a run states what is already rewritten on disk, checking the earlier crate's output really
+exists rather than only the wording.
+
+**The command-line surface of config mode.** `--static-dir` is the one generation flag accepted
+alongside `--config` (a machine-local tool location with no per-crate precedence question);
+`static_dir_is_accepted_alongside_config_and_reaches_every_crate` pins all three spellings, the
+override-vs-key precedence, and that the exemption is by arg id so it cannot silently widen.
+`--with-deps` closes the positional selection transitively over `deps` — dependencies only, in
+generation order regardless of how the names were typed
+(`with_deps_closes_the_selection_over_dependencies_only`), and
+`with_deps_settles_the_subset_case_in_one_command` proves the workflow it exists for: the
+edit-one-consumer case that previously needed a run, a verdict, and a second run now exits 0 in one
+command.
 
 **A derived value that names something that is not there.** The cross-crate sugar (`deps`,
 `wasm-reexports`, `json-schema-deps`, `[runtime]`) turns one declaration into flag values pointing at
@@ -3127,9 +3171,22 @@ run 2 is also what pins the absence of the residual convergence WARNING rather t
 sidecar that moved across run 1's pass would leave a crate generating different bytes when run 2 ran
 it against the settled one.
 
+The one-pass argument itself is pinned above depth 1 by
+`a_two_edge_dependency_chain_converges_in_one_invocation` (a middle crate that is consumer AND
+dependency at once — a shape no single edge produces) and
+`a_diamond_dependency_graph_converges_in_one_invocation`, each with real borrows on both sidecar
+channels at every edge and the same runs-2-and-3-byte-identical assertion; the invariant bounding
+the argument (export non-transitivity) is cited at the pass itself. The residual instrument watches
+EVERY consumed sidecar, not only the re-run crates' — the discriminating shape (a sidecar moving
+under a not-re-run crate) is constructible only if the one-pass argument is false, so the breadth is
+pinned directly instead: the chain fixture's incremental leg asserts `watched_crates()` against what
+a stale-restricted capture would watch, at the depth where the two come apart.
+
 Everything here runs under plain `cargo test` (`cargo test --bin cddl-codegen config_tests`; in-tier
-via the local tier's workspace `cargo test`, no dedicated gate). Three cells nest a cargo run inside
-that, each for a verdict no generation-time assertion can reach: a two-crate `deps` config whose
+via the local tier's workspace `cargo test`, no dedicated gate). The binary-level tests (the error
+rendering, exit codes, `--with-deps` and mid-run-failure pins above) spawn the real generator via
+`codegen_cmd`, which builds it once per test process. Three cells additionally nest a full cargo
+build/run inside that, each for a verdict no generation-time assertion can reach: a two-crate `deps` config whose
 consumer really imports its dependency's type; a `[runtime]` export compiled against BOTH flavors
 that import it (with a mutation leg proving the accepted gap is real); and
 `a_derived_thread_links_and_a_collision_blames_the_consumer`, which builds and RUNS a consumer's
