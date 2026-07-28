@@ -699,15 +699,26 @@ cddl-codegen --input=cml_core.cddl --output=export --lib-name=cml-core --wasm=tr
 <br/><br/>
 
 :::info `--extern-import`
-Consume a dependency's committed **extern-interface export** (`extern-interface/<dep>/**`, emitted by that dependency's own regeneration — see [Output format](./output_format#extern-interface-export)) instead of hand-maintaining a stub under `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/`. Repeatable; each value is `<dep>=<path/to/extern-interface/<dep>>` (a value with no `=` aborts generation, like the other cross-crate flag parsers). Each mapped path is read and concatenated with `_CDDL_CODEGEN_EXTERN_DEPS_DIR_` scope markers, so its rules land in the same **non-exported** `<dep>` scope a physical stub tree would — after which the whole extern-deps pathway (scope filter, extern resolution, wasm crate mapping, request sidecars) is unchanged. Because the export carries the dependency's final Rust names as [`@rust_name`](./comment_dsl) pins, the consumer **reads** names instead of re-deriving them, eliminating the cross-version naming-skew class.
+Consume a dependency's committed **extern-interface export** (`extern-interface/<dep>/**`, emitted by that dependency's own regeneration — see [Output format](./output_format#extern-interface-export)) instead of hand-maintaining a stub under `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/`. Repeatable; each value is `<dep>=<path/to/extern-interface/<dep>>` (a value with no `=` aborts generation, like the other cross-crate flag parsers). Each mapped path is read and **the rules your spec needs** are concatenated with `_CDDL_CODEGEN_EXTERN_DEPS_DIR_` scope markers, so they land in the same **non-exported** `<dep>` scope a physical stub tree would — after which the whole extern-deps pathway (scope filter, extern resolution, wasm crate mapping, request sidecars) is unchanged. Because the export carries the dependency's final Rust names as [`@rust_name`](./comment_dsl) pins, the consumer **reads** names instead of re-deriving them, eliminating the cross-version naming-skew class.
 
-Flag-fed files are **strictly parsed**: each must begin with the versioned seam header (`; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1`) and carry only recognized `@`-annotations. The hard errors (each naming the flag value or the offending file):
+**The needed set is computed, never declared.** A dependency's export is complete — it states that dependency's whole surface once, independent of how many consumers read it — while a consumer needs a slice of it, and the slice is derivable from two things the run already holds: the names your spec **references and does not define itself**, plus whatever those transitively reference through the export's own rule bodies. Only *transparent* export rows (aliases, named collections, value enums, plain-group bodies) carry those transitive edges; an opaque `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_` row references nothing, so the closure is shallow in practice.
+
+Two consequences worth stating outright:
+
+- **An export rule nothing reaches is inert.** It is never imported and never enters your spec's flat CDDL namespace, so a dependency whose spec grows new rules cannot break an existing consumer — and your spec may define a rule name the dependency also defines, as long as you do not need the dependency's one. That is how a consumer hand-owns a dependency type it re-exports itself: declare your own rule as `_CDDL_CODEGEN_EXTERN_TYPE_` and `pub use` the dependency's Rust type from your crate root.
+- **What remains is genuinely ambiguous, and is refused by name.** A rule you *do* need whose export body pulls in a name you also define cannot be resolved either way silently; neither can one name needed from two dependencies' exports at once. Both are hard errors naming the chain and the remedies, in place of the flat namespace's bare `rule "X" is already defined`.
+
+Flag-fed files are **strictly parsed — in full, whether or not any of their rules are needed**, because the seam's guarantees are per file: each must begin with the versioned seam header (`; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1`), must parse on its own, and must carry only recognized `@`-annotations. The hard errors (each naming the flag value or the offending file):
 
 - a **malformed value** (no `=` separating `<dep>` from the path);
 - a **missing** version header, or an **unknown** version (a header naming a version this cddl-codegen does not understand — the seam is versioned, so bump the tool);
 - an **unknown `@`-annotation** token (a typo or a newer dialect — the strict seam refuses to silently misread it);
+- an export file that **does not parse standalone** (export files are self-contained by construction, so a failure here is a defect in the dependency's export — regenerate it);
+- a needed rule whose export body references a name **your own spec also defines**, or one name **needed from two dependencies' exports** (the two cases above);
 - declaring `<dep>` here **and** as a physical `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/` input directory (ambiguous **double declaration**, never a merge — a dependency is declared exactly once);
 - a path that **does not exist** or contains **no `.cddl` files**.
+
+A declared dependency your spec reaches nothing in is **not** an error — that is an ordinary state of a workspace being wired up — but it is announced on stderr, since the other way to reach it is a wrong `<dep>` key.
 
 A physical hand-stub under the extern-deps directory remains supported (same dialect, parsed leniently) as the escape hatch for an un-regenerable dependency.
 

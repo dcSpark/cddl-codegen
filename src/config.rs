@@ -2700,7 +2700,10 @@ pub fn generate(config_path: &Path, selected: &[String]) -> Result<(), Box<dyn s
     // a pure projection of the dependency's own finalized IR and carries none of the request
     // channel's demands — so the sidecars themselves, being a function of a crate's spec and its
     // dependencies' exports, are already final after the first pass and this one cannot make a new
-    // crate stale.
+    // crate stale. Those same two inputs are also exactly what decides WHICH rules of an export a
+    // consumer imports (`extern_narrow`: the consumer's own spec references, closed over the export's
+    // own bodies), so the narrowing is covered by this argument rather than being a third input to
+    // it — nothing this pass adds to a dependency can change what a consumer needs from it.
     //
     // The residual convergence check below is what states that reasoning as a measurement rather
     // than an assumption: it is captured AROUND this pass, so a sidecar that did move again would

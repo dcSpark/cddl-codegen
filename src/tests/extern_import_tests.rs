@@ -1584,3 +1584,298 @@ fn transitive_consumer_byte_identity_stubs_vs_flags() {
         );
     }
 }
+
+// --- Need-based narrowing ----------------------------------------------------------------------
+//
+// `--extern-import` concatenates only the rules a consumer NEEDS from a dependency's export: the
+// names it references and does not define, plus what those transitively reference. The unit-level
+// exact-set pins for the closure itself live in `extern_narrow`; these are the end-to-end legs.
+
+/// Write an export tree to a fresh scratch dir and return the `<dep>=<path>` flag value.
+fn stage_export(
+    export: &BTreeMap<String, String>,
+    dep: &str,
+    tag: &str,
+) -> (std::path::PathBuf, String) {
+    let dir = scratch(tag);
+    for (path, content) in export {
+        write(&dir, path, content);
+    }
+    let arg = format!(
+        "{dep}={}",
+        dir.join(format!("extern-interface/{dep}"))
+            .to_str()
+            .unwrap()
+    );
+    (dir, arg)
+}
+
+/// THE regression test for the whole feature, in its minimal CML shape. A consumer that hand-owns
+/// its own `block` (a re-export of the dependency's Conway block, declared as an own-spec extern)
+/// and uses the dependency's `thing` must generate — even though the dependency's export ALSO
+/// carries a `block` rule the consumer never means. Before narrowing this aborted with the flat
+/// namespace's `rule "block" is already defined`, which no consumer could route around: the export
+/// is complete by design and the collision was on a rule the consumer does not need.
+///
+/// The two halves are pinned separately, because "it generates" alone would pass with the
+/// dependency's `block` silently winning: the consumer's `block` must resolve to its OWN
+/// `crate::Block`, and `thing` to the dependency's crate.
+#[test]
+fn extern_import_narrows_past_an_unneeded_name_collision() {
+    let export = mint_export(
+        "thing = [a: uint]\nblock = [b: uint, c: text]\n",
+        "dep",
+        "collide",
+    );
+    let root = scratch("collide_consumer");
+    write(
+        &root,
+        "lib.cddl",
+        "block = _CDDL_CODEGEN_EXTERN_TYPE_\nholder = [t: thing, b: block]\n",
+    );
+    let (export_dir, import_arg) = stage_export(&export, "dep", "collide_export");
+    let files = generate(&root.join("lib.cddl"), &["--extern-import", &import_arg])
+        .expect("a collision on an UNNEEDED export rule must no longer abort generation");
+    let all = files.values().cloned().collect::<String>();
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&export_dir);
+
+    assert!(
+        all.contains("use dep::Thing;"),
+        "`thing` must resolve to the dependency's crate:\n{all}"
+    );
+    assert!(
+        !all.contains("use dep::Block;"),
+        "`block` must resolve to the consumer's OWN extern, never the dependency's:\n{all}"
+    );
+    assert!(
+        all.contains("b: Block"),
+        "the consumer's own `block` extern must still type the field:\n{all}"
+    );
+}
+
+/// Output-neutrality, the property that makes narrowing a pure availability widening: a consumer
+/// generated against a dependency's FULL export and against a hand-pre-narrowed copy of it (only
+/// the rules the consumer needs) produces byte-identical output. If this ever moved, narrowing
+/// would be changing generated code rather than only changing what is available to it.
+#[test]
+fn extern_import_narrowing_is_output_neutral() {
+    let export = mint_export(
+        "coin = uint\nfoo = [a: uint]\nspare = [z: text]\nspare_alias = spare\n",
+        "dep",
+        "neutral",
+    );
+    let consumer = "thing = [f: foo, c: coin]\n";
+
+    let root_full = scratch("neutral_full_consumer");
+    write(&root_full, "lib.cddl", consumer);
+    let (dir_full, arg_full) = stage_export(&export, "dep", "neutral_full_export");
+    let via_full = generate(&root_full.join("lib.cddl"), &["--extern-import", &arg_full])
+        .expect("generation against the full export must succeed");
+
+    // The same export with every rule the consumer does not need removed by hand.
+    let pruned = export
+        .iter()
+        .map(|(path, content)| {
+            let kept = content
+                .lines()
+                .filter(|line| !line.starts_with("spare"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            (path.clone(), format!("{kept}\n"))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let root_narrow = scratch("neutral_narrow_consumer");
+    write(&root_narrow, "lib.cddl", consumer);
+    let (dir_narrow, arg_narrow) = stage_export(&pruned, "dep", "neutral_narrow_export");
+    let via_narrow = generate(
+        &root_narrow.join("lib.cddl"),
+        &["--extern-import", &arg_narrow],
+    )
+    .expect("generation against the pre-narrowed export must succeed");
+
+    let _ = std::fs::remove_dir_all(&root_full);
+    let _ = std::fs::remove_dir_all(&root_narrow);
+    let _ = std::fs::remove_dir_all(&dir_full);
+    let _ = std::fs::remove_dir_all(&dir_narrow);
+
+    assert_eq!(
+        via_full.keys().collect::<Vec<_>>(),
+        via_narrow.keys().collect::<Vec<_>>(),
+        "the generated file SET must not depend on the export's unused rules"
+    );
+    for (path, full) in &via_full {
+        assert_eq!(
+            via_narrow.get(path),
+            Some(full),
+            "output-neutrality broke for {path}"
+        );
+    }
+}
+
+/// Determinism: the narrowed pipeline run twice over the same inputs emits the same bytes. The
+/// closure is a fixpoint over two sets, so an accidental hash-ordered container inside it would
+/// show up here (and in nothing else — a single run is self-consistent).
+#[test]
+fn extern_import_narrowing_is_reproducible() {
+    let export = mint_export(
+        "coin = uint\nfoo = [a: uint]\nchain_a = chain_b\nchain_b = uint\nspare = [z: text]\n",
+        "dep",
+        "repro",
+    );
+    let root = scratch("repro_consumer");
+    write(&root, "lib.cddl", "thing = [f: foo, c: coin, x: chain_a]\n");
+    let (export_dir, import_arg) = stage_export(&export, "dep", "repro_export");
+    let first = generate(&root.join("lib.cddl"), &["--extern-import", &import_arg]).unwrap();
+    let second = generate(&root.join("lib.cddl"), &["--extern-import", &import_arg]).unwrap();
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&export_dir);
+    assert_eq!(first, second, "two narrowed runs must emit identical bytes");
+}
+
+/// The honest remainder in the shadowing direction: the consumer NEEDS `outer`, whose export body
+/// references `inner`, and the consumer defines `inner` itself. Nothing can decide that silently,
+/// so it is a hard error naming the chain — the imported rule that pulled the name in, the
+/// consumer's own definition of it, and both remedies.
+#[test]
+fn extern_import_deep_shadowing_hard_errors() {
+    let export = mint_export("inner = uint\nouter = [* inner]\n", "dep", "shadow");
+    let root = scratch("shadow_consumer");
+    write(
+        &root,
+        "lib.cddl",
+        "inner = _CDDL_CODEGEN_EXTERN_TYPE_\nthing = [o: outer]\n",
+    );
+    let (export_dir, import_arg) = stage_export(&export, "dep", "shadow_export");
+    let err = generate(&root.join("lib.cddl"), &["--extern-import", &import_arg])
+        .expect_err("a needed rule the consumer also defines must be refused");
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&export_dir);
+
+    assert!(
+        err.contains("--extern-import dep"),
+        "must name the flag and the dependency: {err}"
+    );
+    assert!(
+        err.contains("`outer`") && err.contains("`inner`"),
+        "must name both the puller and the shadowed rule: {err}"
+    );
+    assert!(
+        err.contains("rename") && err.contains("_CDDL_CODEGEN_EXTERN_TYPE_"),
+        "must carry both remedies (rename yours, or hand-own the type): {err}"
+    );
+}
+
+/// The honest remainder in the ambiguity direction: one name needed from two dependencies' exports
+/// at once. Neither export can be preferred, so the error names both and the rule.
+#[test]
+fn extern_import_ambiguous_name_hard_errors() {
+    let alpha = mint_export("shared = uint\n", "alpha", "amb_a");
+    let beta = mint_export("shared = uint\n", "beta", "amb_b");
+    let root = scratch("amb_consumer");
+    write(&root, "lib.cddl", "thing = [s: shared]\n");
+    let (dir_a, arg_a) = stage_export(&alpha, "alpha", "amb_a_export");
+    let (dir_b, arg_b) = stage_export(&beta, "beta", "amb_b_export");
+    let err = generate(
+        &root.join("lib.cddl"),
+        &["--extern-import", &arg_a, "--extern-import", &arg_b],
+    )
+    .expect_err("a name needed from two exports must be refused");
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&dir_a);
+    let _ = std::fs::remove_dir_all(&dir_b);
+
+    assert!(
+        err.contains("`shared`"),
+        "must name the ambiguous rule: {err}"
+    );
+    assert!(
+        err.contains("alpha") && err.contains("beta"),
+        "must name both dependencies: {err}"
+    );
+}
+
+/// The seam is per-FILE and stays that way: narrowing selects which rules are concatenated, never
+/// which files are checked. An export whose UNNEEDED rule carries an unknown annotation still fails
+/// the strict seam, so a dependency cannot ship a malformed export that happens to be invisible to
+/// one consumer.
+#[test]
+fn extern_import_seam_still_scans_unselected_rules() {
+    let root = scratch("seamscan_consumer");
+    write(&root, "lib.cddl", "thing = [f: foo]\n");
+    let export_dir = scratch("seamscan_export");
+    write(
+        &export_dir,
+        "extern-interface/dep/mod.cddl",
+        "; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1\n\
+         foo = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name Foo\n\
+         never_used = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name NeverUsed @bogus_tag\n",
+    );
+    let import_arg = format!(
+        "dep={}",
+        export_dir.join("extern-interface/dep").to_str().unwrap()
+    );
+    let err = generate(&root.join("lib.cddl"), &["--extern-import", &import_arg])
+        .expect_err("an unknown annotation on an unselected rule must still fail the seam");
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&export_dir);
+    assert!(
+        err.contains("@bogus_tag"),
+        "must name the offending token even though its rule is never imported: {err}"
+    );
+}
+
+/// A dependency's raw-bytes surface sets the `RawBytesEncoding` trait flag off the WHOLE export, so
+/// narrowing cannot flip it: a consumer that imports none of the dependency's raw-bytes types emits
+/// exactly what it emitted before narrowing existed. Pinned against a physical stub carrying the
+/// same rules, which is the channel that has always imported everything.
+#[test]
+fn extern_import_raw_bytes_trait_flag_survives_narrowing() {
+    let export = mint_export(
+        "hash = _CDDL_CODEGEN_RAW_BYTES_TYPE_\ncoin = uint\n",
+        "dep",
+        "rawflag",
+    );
+    let consumer = "thing = [c: coin]\n";
+
+    let stub_root = scratch("rawflag_stub");
+    write(&stub_root, "lib.cddl", consumer);
+    for (path, content) in &export {
+        let sub = path.strip_prefix("extern-interface/dep/").unwrap();
+        write(
+            &stub_root,
+            &format!("_CDDL_CODEGEN_EXTERN_DEPS_DIR_/dep/{sub}"),
+            &strip_header(content),
+        );
+    }
+    let via_stub = generate(&stub_root, &[]).expect("physical-stub generation must succeed");
+
+    let flag_root = scratch("rawflag_flag");
+    write(&flag_root, "lib.cddl", consumer);
+    let (export_dir, import_arg) = stage_export(&export, "dep", "rawflag_export");
+    let via_flag = generate(
+        &flag_root.join("lib.cddl"),
+        &["--extern-import", &import_arg],
+    )
+    .expect("--extern-import generation must succeed");
+
+    let _ = std::fs::remove_dir_all(&stub_root);
+    let _ = std::fs::remove_dir_all(&flag_root);
+    let _ = std::fs::remove_dir_all(&export_dir);
+
+    // The flag's in-process footprint is the rust manifest's `hex` dependency (the trait itself is
+    // a static runtime file `export` concatenates, outside the generated-source map). A fixture
+    // that did not exercise it would make the byte-identity below vacuous.
+    assert!(
+        via_stub["rust/Cargo.toml"].contains("hex"),
+        "the fixture must actually exercise the raw-bytes trait flag:\n{}",
+        via_stub["rust/Cargo.toml"]
+    );
+    for (path, stub_content) in &via_stub {
+        assert_eq!(
+            via_flag.get(path),
+            Some(stub_content),
+            "the raw-bytes trait flag must not depend on which rules were selected, at {path}"
+        );
+    }
+}

@@ -48,7 +48,14 @@ fn dfs_visit<'a>(
     topo_order.push(rule);
 }
 
-fn find_references<'a>(cddl_rule: &'a Rule<'a>) -> (&'a Identifier<'a>, Vec<&'a Identifier<'a>>) {
+/// The rule's own identifier plus every identifier its body references, in source order.
+///
+/// Shared with `extern_narrow`, which needs the SAME notion of "what this rule references" the
+/// topological sort uses: the narrowing closure walks a dependency's export bodies with this walk,
+/// so a reference shape the ordering understands can never be a closure edge the narrowing misses.
+pub(crate) fn find_references<'a>(
+    cddl_rule: &'a Rule<'a>,
+) -> (&'a Identifier<'a>, Vec<&'a Identifier<'a>>) {
     let mut refs = Vec::new();
     let ident = match cddl_rule {
         Rule::Type { rule, .. } => {

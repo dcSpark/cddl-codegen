@@ -627,13 +627,22 @@ pub struct Cli {
 
     /// Consume a dependency's committed extern-interface export (`extern-interface/<dep>/**`, emitted
     /// by the dep's own regen) instead of hand-maintaining a stub under
-    /// `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/`. Each mapped path is read and concatenated with
-    /// EXTERN_DEPS_DIR scope markers so its rules land in the same non-exported scope a physical stub
-    /// tree would — after which the whole extern-deps pathway is unchanged. The export carries the
+    /// `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/`. Each mapped path is read and the rules THIS SPEC NEEDS
+    /// are concatenated with EXTERN_DEPS_DIR scope markers so they land in the same non-exported scope
+    /// a physical stub tree would — after which the whole extern-deps pathway is unchanged. The needed
+    /// set is computed, never declared: the names this spec references and does not define itself,
+    /// plus whatever those transitively reference through the export's own bodies. An export rule
+    /// nothing reaches is INERT — never imported, never in this spec's namespace — so a dependency's
+    /// spec growing new rules cannot break an existing consumer, and this spec may define a rule the
+    /// dependency also defines as long as it does not need the dependency's one (declare yours as
+    /// `_CDDL_CODEGEN_EXTERN_TYPE_` and re-export the type by hand). Two cases stay hard errors, each
+    /// naming the chain: a rule this spec DOES need whose export body pulls in a name this spec also
+    /// defines, and one name needed from two dependencies' exports at once. The export carries the
     /// dep's final Rust names as `@rust_name` pins, so the consumer READS names instead of re-deriving
-    /// them (killing the cross-version naming-skew class). Flag-fed files are STRICTLY parsed: each
-    /// must begin with the versioned seam header (`; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1`) and carry
-    /// only recognized `@`-annotations — a missing/unknown version or an unknown token is a hard error
+    /// them (killing the cross-version naming-skew class). Flag-fed files are STRICTLY parsed — in
+    /// full, whether or not any of their rules are needed: each must begin with the versioned seam
+    /// header (`; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1`), must parse standalone, and must carry only
+    /// recognized `@`-annotations — a missing/unknown version or an unknown token is a hard error
     /// naming the file. Declaring `<dep>` here AND as a physical `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/`
     /// input directory is a hard error (ambiguous double declaration, never a merge). Same INPUT
     /// category and determinism wording as `--extern-wrapper-index` (explicit cross-crate input; same

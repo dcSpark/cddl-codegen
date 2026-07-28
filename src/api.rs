@@ -93,23 +93,39 @@ fn scan_module_directives(
     Ok(())
 }
 
-/// Read every `--extern-import <dep>=<path>` export and append it to `content` with EXTERN_DEPS_DIR
-/// scope markers (a SEPARATE assembly loop from the main input's — see the call site). `marker_start`
-/// is the first free scope-marker index (the main loop used `0..input_files.len()`), so imported
-/// markers get distinct indices (a duplicate rule ident would be a parse error).
+/// Read every `--extern-import <dep>=<path>` export and append the rules `content` NEEDS to it, with
+/// EXTERN_DEPS_DIR scope markers (a SEPARATE assembly loop from the main input's — see the call
+/// site). `marker_start` is the first free scope-marker index (the main loop used
+/// `0..input_files.len()`), so imported markers get distinct indices (a duplicate rule ident would be
+/// a parse error). Returns whether any imported file — narrowed or not — carried the raw-bytes
+/// marker (see the call site for why that is read off the WHOLE export).
+///
+/// Only the needed closure of each export is concatenated (`extern_narrow`): the rules `content`
+/// references and does not define, plus what those transitively reference through their export
+/// bodies. Every file is still read and seam-scanned in full, because the seam's guarantees are
+/// per-file — an unused rule carrying a bad annotation must still fail the seam.
 ///
 /// Hard errors (each naming the flag value): a `<dep>` also declared as a physical
 /// `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/` input directory (ambiguous double declaration, never a
 /// merge); a path that does not exist or contains no `.cddl` files; a flag-fed file missing the
-/// versioned seam header or carrying an unknown `@`-annotation (the strict seam — physical stubs stay
-/// lenient because they are not routed here).
+/// versioned seam header, carrying an unknown `@`-annotation (the strict seam — physical stubs stay
+/// lenient because they are not routed here), or failing to parse standalone; and the two narrowing
+/// errors (a needed rule the consumer also defines, a name needed from two exports).
 fn append_extern_imports(
     cli: &Cli,
     extern_imports: &std::collections::BTreeMap<String, String>,
     marker_start: usize,
     content: &mut String,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut marker_index = marker_start;
+) -> Result<bool, Box<dyn std::error::Error>> {
+    /// One export file, kept from the read/scan pass so the selection pass can slice it.
+    struct ImportedFile {
+        scope: String,
+        raw: String,
+        parsed: crate::extern_narrow::ExportFile,
+    }
+    let mut files_by_dep: std::collections::BTreeMap<String, Vec<ImportedFile>> =
+        std::collections::BTreeMap::new();
+    let mut raw_bytes_marker_seen = false;
     for (dep, import_path) in extern_imports {
         // Double declaration: a physical extern-deps dir AND the flag is ambiguous — refuse both.
         if cli.input.is_dir() {
@@ -146,6 +162,7 @@ fn append_extern_imports(
             )
             .into());
         }
+        let mut staged = Vec::new();
         for import_file in &imported {
             let raw = std::fs::read_to_string(import_file)?;
             // The general per-file directive guard applies to imported files too (an export never
@@ -153,18 +170,95 @@ fn append_extern_imports(
             scan_module_directives(import_file, &raw)?;
             // The strict extern-interface seam: header + `@`-token whitelist (flag-fed files ONLY).
             scan_extern_import_seam(import_file, &raw)?;
-            let scope = extern_import_scope(dep, &import_root, import_file);
+            raw_bytes_marker_seen |= raw.contains(parsing::RAW_BYTES_MARKER);
+            let parsed = crate::extern_narrow::parse_export_file(&raw).map_err(|e| {
+                format!(
+                    "extern-interface file {} does not parse on its own: {e}. Export files are \
+                     self-contained by construction, so this is a defect in the dependency's export \
+                     rather than something to route around — regenerate the dependency, and report \
+                     the file if the regenerated export still fails.",
+                    import_file.display()
+                )
+            })?;
+            staged.push(ImportedFile {
+                scope: extern_import_scope(dep, &import_root, import_file),
+                raw,
+                parsed,
+            });
+        }
+        files_by_dep.insert(dep.clone(), staged);
+    }
+
+    // The selection. A consumer whose own content does not parse selects EVERYTHING: the pipeline's
+    // checked parse is a few lines away and will report the real error, so falling back here keeps
+    // that diagnostic exactly as it is instead of replacing it with a narrowing artifact.
+    let surface = crate::extern_narrow::scan_consumer(content);
+    let selected = match &surface {
+        Some(surface) => {
+            let index = files_by_dep
+                .iter()
+                .map(|(dep, files)| {
+                    let rules = files
+                        .iter()
+                        .flat_map(|f| f.parsed.rules.iter())
+                        .map(|r| (r.name.clone(), r.refs.clone()))
+                        .collect();
+                    (dep.clone(), rules)
+                })
+                .collect();
+            crate::extern_narrow::needed_closure(surface, &index)?
+        }
+        None => files_by_dep
+            .iter()
+            .map(|(dep, files)| {
+                let all = files
+                    .iter()
+                    .flat_map(|f| f.parsed.names())
+                    .map(str::to_owned)
+                    .collect();
+                (dep.clone(), all)
+            })
+            .collect(),
+    };
+
+    let mut marker_index = marker_start;
+    for (dep, files) in &files_by_dep {
+        let names = &selected[dep];
+        if names.is_empty() {
+            eprintln!(
+                "{}",
+                crate::extern_narrow::unused_dependency_note(dep, &extern_imports[dep])
+            );
+        }
+        for file in files {
+            let picked = file
+                .parsed
+                .rules
+                .iter()
+                .filter(|rule| names.contains(&rule.name))
+                .collect::<Vec<_>>();
+            // A file contributing no rule contributes no marker either — an empty scope switch is
+            // the only thing it could add.
+            if picked.is_empty() {
+                continue;
+            }
+            // The header and the `; unexported:` records ride along verbatim, so a file whose every
+            // rule is needed re-emits its own bytes exactly.
+            let mut body = file.raw[..file.parsed.prefix_end].to_owned();
+            for rule in picked {
+                body.push_str(&file.raw[rule.span.0..rule.span.1]);
+            }
             content.push_str(&format!(
                 "\n{}{} = \"{}\"\n{}\n",
                 parsing::SCOPE_MARKER,
                 marker_index,
-                scope,
-                raw
+                file.scope,
+                body
             ));
             marker_index += 1;
         }
     }
-    Ok(())
+    Ok(raw_bytes_marker_seen)
 }
 
 /// The EXTERN_DEPS_DIR scope-marker string for a file pulled in via `--extern-import`, in the marker
@@ -572,13 +666,18 @@ pub fn with_types<R>(
     // the raw-bytes-marker scan below so a dep's raw-bytes export sets the trait flag identically to a
     // physical stub carrying the same marker.
     let extern_imports = cli.extern_import_paths();
-    append_extern_imports(
+    let imported_raw_bytes = append_extern_imports(
         cli,
         &extern_imports,
         input_files.len(),
         &mut input_files_content,
     )?;
-    let export_raw_bytes_encoding_trait = input_files_content.contains(parsing::RAW_BYTES_MARKER);
+    // The raw-bytes trait flag is read off the WHOLE export, not the narrowed slice. It is a
+    // property of the dependency surface a consumer is built against, not of which rules that
+    // consumer happens to reach this run — so narrowing must not be able to flip it, and a consumer
+    // regenerated after adding or dropping one reference does not gain or lose the trait.
+    let export_raw_bytes_encoding_trait =
+        imported_raw_bytes || input_files_content.contains(parsing::RAW_BYTES_MARKER);
     // we also need to mark the extern marker to a placeholder struct that won't get codegened
     input_files_content.push_str(&format!("{} = [0]", parsing::EXTERN_MARKER));
     // and a raw bytes one too

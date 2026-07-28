@@ -1023,6 +1023,12 @@ is the machine-generated form of the stub dialect a human otherwise writes under
 - **Directory shape mirrors the crate's module tree** (`sub/module` scope →
   `extern-interface/<dep>/sub/module/mod.cddl`), the same scope-as-directory encoding the stub
   channel uses, so a consumer's `--extern-import` recovers the scope from the path.
+- **Complete here, consumed in slices there.** The export states the whole surface once, independent
+  of how many consumers read it; each consumer imports only the reference-closure of what its own
+  spec needs (see [`--extern-import`](./command_line_flags)), so a rule a given consumer never
+  reaches never enters that consumer's namespace. Growing this surface therefore cannot break an
+  existing consumer, and a consumer may define a rule name this crate also defines as long as it
+  does not need this crate's one.
 
 Each file begins with a strict versioned **seam header** on its first line:
 

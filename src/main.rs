@@ -7,6 +7,7 @@ pub(crate) mod config;
 pub(crate) mod dep_graph;
 pub(crate) mod emit_tests;
 pub(crate) mod emit_tests_wasm;
+pub(crate) mod extern_narrow;
 pub(crate) mod generation;
 pub(crate) mod import_prune;
 pub(crate) mod intermediate;
