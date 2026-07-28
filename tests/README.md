@@ -3072,7 +3072,11 @@ either end of the edge, since the rust crate is the one crate every run generate
 
 **The compile proof for a config-generated workspace.**
 `a_config_generated_workspace_builds_with_wasm_on` generates a two-crate config with `wasm = true`, a
-`deps` edge and a `[runtime]` table into a scratch directory and `cargo check`s the whole workspace.
+`deps` edge and a `[runtime]` table into a scratch directory with ONE invocation, asserts a second
+invocation leaves byte-identical output, and `cargo check`s the whole workspace. The single
+invocation is load-bearing: before the convergence pass this test needed two `generate` calls and
+discarded the first one's result, so "one command produces a workspace that builds" is asserted here
+rather than assumed.
 It exists because no manifest-TEXT assertion can see whether a `[dependencies]` path resolves or
 whether the package it names is the one the generated `use` lines need — every derivation test above
 would pass over a workspace that does not build, and before `--wasm-dep` one did not. Its three
@@ -3112,12 +3116,16 @@ the field that moved. Keep both assertions: the struct comparison is what makes 
 provably complete, the byte comparison is what proves nothing in the emitted output depends on where
 the run happened.
 
-`a_config_run_converges_and_then_repeats_byte_for_byte` covers idempotence across a multi-crate run,
-where crates read each other's output. It deliberately does not assert "run 1 equals run 2": a cold
-workspace cannot converge in one run, because generation order resolves the two edge directions in
-the dependency's favour, so the dependency reads a sidecar the consumer writes afterwards. The shape
-asserted is run 1 warns, run 2 does not, run 3 is byte-identical to run 2 — plus that run 2 differs
-from run 1, so the fixture cannot silently stop exercising the cross-crate read.
+`a_config_run_converges_and_then_repeats_byte_for_byte` covers the convergence pass, which is what
+makes "run twice = run once" true of a config run: one invocation over a cold tree exits 0 and
+settles the workspace, because after the first ordered pass the run re-runs exactly the crates whose
+consumed sidecars that pass rewrote. The shape asserted is run 1 exits 0, runs 2 and 3 are
+byte-identical to it, and — the guard that keeps the fixture honest, replacing the old
+`assert_ne!(run 1, run 2)` — the dependency's wrapper index really hosts what the consumer borrows,
+which it can only do having been generated after the consumer recorded the borrow. Byte-identity at
+run 2 is also what pins the absence of the residual convergence WARNING rather than a proxy for it: a
+sidecar that moved across run 1's pass would leave a crate generating different bytes when run 2 ran
+it against the settled one.
 
 Everything here runs under plain `cargo test` (`cargo test --bin cddl-codegen config_tests`; in-tier
 via the local tier's workspace `cargo test`, no dedicated gate). Three cells nest a cargo run inside
