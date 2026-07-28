@@ -99,6 +99,121 @@ const PRINT_FLAGS_PREAMBLE: &str = "\
 /// does not have; either way the user must hear about it rather than have the table ignored.
 const TOP_LEVEL_KEYS: &[&str] = &["defaults", "profiles", "crates", "runtime"];
 
+/// The [`Cli`] arguments [`reject_generation_flags`] does NOT harvest, by clap arg id (the `Cli`
+/// field name) rather than by long spelling, so a renamed flag keeps its exemption or loses it
+/// loudly.
+///
+/// The criterion is not "harmless" but "has no per-crate precedence question": `--static-dir` names
+/// where THIS MACHINE keeps the tool's own hand-written runtime, so there is exactly one answer to
+/// "which crate does it apply to" — all of them — and that is what every other generation flag
+/// cannot say. It is also the one flag a config file cannot get right by itself: the value is a
+/// property of a checkout, and a config is committed.
+const EXEMPT_ARG_IDS: &[&str] = &["static_dir"];
+
+/// Every key [`Settings`] holds, as it is spelled in TOML.
+///
+/// A hand-written mirror of the struct, which is only safe because it is not hand-MAINTAINED: the
+/// drift gate `config_keys_match_cli_fields` parses `struct Settings` out of this file with `syn` and
+/// requires the two to be the same set, so a field added without a row here fails there.
+///
+/// It exists because [`settings_from_table`] must know the key set BEFORE serde does. serde's
+/// `deny_unknown_fields` reports the keys of the struct it was handed, and the struct it is handed
+/// has already had the per-crate-only keys removed — so its message omits exactly the keys a
+/// crate-table typo is most likely to be aiming at, and it offers no nearest match at all.
+pub(crate) const SETTINGS_KEYS: &[&str] = &[
+    "static-dir",
+    "export-static-crate",
+    "annotate-fields",
+    "to-from-bytes-methods",
+    "binary-wrappers",
+    "preserve-encodings",
+    "canonical-form",
+    "wasm",
+    "json-serde-derives",
+    "emit-tests",
+    "emit-tests-conformance",
+    "json-schema-export",
+    "package-json",
+    "json-schema-scripts",
+    "no-synthesized-rust-collection-aliases",
+    "preserve-comments",
+    "rust-wasm-feature",
+    "deserialize-depth-limit",
+    "common-import-override",
+    "wasm-cbor-json-api-macro",
+    "wasm-conversions-macro",
+    "wasm-list-macro",
+    "json-schema-root",
+    "workspace-dep",
+    "extern-import",
+    "extern-wasm-crate",
+    "extern-wrapper-index",
+    "wrapper-requests",
+    "key-requests",
+    "json-schema-dep",
+    "json-gen-dep",
+    "wasm-dep",
+    "rust-dep",
+];
+
+/// Levenshtein distance, capped: the caller only ever asks "is this within 2?", so the row-by-row
+/// walk bails as soon as the whole row exceeds the cap.
+///
+/// Implemented here rather than pulled in as a dependency — it is eleven lines, and a new crate in
+/// the tree to spell-check config keys is not a trade worth making.
+fn edit_distance_within(a: &str, b: &str, cap: usize) -> Option<usize> {
+    let b: Vec<char> = b.chars().collect();
+    if a.chars().count().abs_diff(b.len()) > cap {
+        return None;
+    }
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    let mut row: Vec<usize> = vec![0; b.len() + 1];
+    for (i, ca) in a.chars().enumerate() {
+        row[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let substitute = prev[j] + usize::from(ca != *cb);
+            row[j + 1] = substitute.min(prev[j + 1] + 1).min(row[j] + 1);
+        }
+        if row.iter().min().copied().unwrap_or(0) > cap {
+            return None;
+        }
+        std::mem::swap(&mut prev, &mut row);
+    }
+    let distance = prev[b.len()];
+    (distance <= cap).then_some(distance)
+}
+
+/// How far a key may be from a known one and still be offered as the thing it meant. Two edits
+/// covers the realistic typo (a dropped, doubled, swapped or wrong character, or two of them) without
+/// reaching the point where several unrelated keys qualify and the "nearest" is arbitrary.
+const SUGGEST_WITHIN: usize = 2;
+
+/// What to say about an unknown key: the nearest known key if there is one within
+/// [`SUGGEST_WITHIN`] edits, else the whole expected set.
+///
+/// The full list is the fallback rather than the answer, because the two cases are different
+/// questions. A key one character off is a user who knows the vocabulary and mistyped it — the
+/// single key they meant is the whole answer, and a 33-entry list buries it. A key resembling
+/// nothing is a user who does not know the vocabulary, and there the list IS the answer.
+fn unknown_key_advice(key: &str, known: &[&str]) -> String {
+    let nearest = known
+        .iter()
+        .filter_map(|candidate| {
+            edit_distance_within(key, candidate, SUGGEST_WITHIN).map(|d| (d, *candidate))
+        })
+        // Ties broken by name so the suggestion is the same on every machine, like every other
+        // ordering in this file.
+        .min_by(|(da, a), (db, b)| da.cmp(db).then_with(|| a.cmp(b)));
+    match nearest {
+        Some((_, candidate)) => format!("did you mean `{candidate}`?"),
+        None => {
+            let mut sorted: Vec<&str> = known.to_vec();
+            sorted.sort_unstable();
+            format!("this table understands {}", quoted(sorted.iter().copied()))
+        }
+    }
+}
+
 /// The `[runtime]` table: one shared static runtime crate for every crate in the config.
 ///
 /// Top-level rather than a `[defaults]` key because both halves are statements about the CONFIG, not
@@ -403,11 +518,17 @@ pub struct CrateEntry {
     pub settings: Settings,
 }
 
-/// One argv fragment — a whole flag occurrence (`["--input", "<path>"]`, or the single token of a
-/// switch) tagged with the config key that produced it. The tag exists so a clap rejection can be
-/// reported against the TOML line the user wrote; [`Config::flag_listing`] prints the same tag, which
-/// is what turns "what flags does this config use" into "and which key put each one there".
-type Fragment = (&'static str, Vec<String>);
+/// One argv fragment — a whole flag occurrence (`["--input=<path>"]`, or a switch's lone token)
+/// tagged with the config key that produced it. The tag exists so a clap rejection can be reported
+/// against the TOML line the user wrote; [`Config::flag_listing`] prints the same tag, which is what
+/// turns "what flags does this config use" into "and which key put each one there". A `Vec` although
+/// every fragment is one token today: it is what lets a future flag whose spelling clap does not
+/// accept after an `=` be emitted without changing the tag's meaning.
+///
+/// The tag is owned rather than `&'static str` because one of them is not a config key at all —
+/// `command line`, for a value passed alongside `--config` — and another names the crate that caused
+/// it (see [`Provenance`]).
+type Fragment = (String, Vec<String>);
 
 /// Which config key derived a `<k>=<v>` sub-table entry or an array item that a user could equally
 /// have written by hand, keyed by `(flag name, the entry's own key or value)`.
@@ -418,7 +539,11 @@ type Fragment = (&'static str, Vec<String>);
 /// wrote and cannot grep for — in the listing AND in a clap rejection. The threading derivations do
 /// not appear here: a [`DerivedThread`] carries its own key already, because it never merges into a
 /// sub-table.
-type Provenance = BTreeMap<(&'static str, String), &'static str>;
+///
+/// The value is an owned `String` rather than a `&'static str` because a REVERSE edge's provenance
+/// names the crate that caused it: `deps` is where to look, but not in THIS crate's table — see
+/// [`Config::apply_graph_edges`].
+type Provenance = BTreeMap<(&'static str, String), String>;
 
 /// One derived JSON-schema thread, as the two flag values it expands to.
 ///
@@ -465,6 +590,16 @@ pub struct Config {
     pub crates: BTreeMap<String, CrateEntry>,
     /// The optional `[runtime]` table.
     pub runtime: Option<Runtime>,
+    /// A command-line `--static-dir`, which overrides the key of that name for EVERY crate.
+    ///
+    /// Not parsed from the document — [`parse_str`] always leaves it `None` — because it is not a
+    /// config value: it is the one thing a committed config cannot know, this machine's copy of the
+    /// tool's hand-written runtime. Set by [`generate`]/[`print_flags`] from [`ConfigCli`].
+    ///
+    /// Carried VERBATIM rather than resolved against the config file's directory, because it did not
+    /// come from the config file. A relative value means what it means on any other command line —
+    /// relative to the process CWD — so the flag behaves identically in both modes.
+    pub static_dir_override: Option<String>,
 }
 
 /// Read and parse a config file. Paths inside it resolve against ITS directory, so the caller's CWD
@@ -600,6 +735,7 @@ pub fn parse_str(text: &str, base_dir: &Path) -> Result<Config, String> {
         profiles,
         crates,
         runtime,
+        static_dir_override: None,
     };
     config.validate()?;
     Ok(config)
@@ -611,12 +747,29 @@ fn as_table<'a>(value: &'a toml::Value, label: &str) -> Result<&'a toml::Table, 
         .ok_or_else(|| format!("`{label}` must be a table"))
 }
 
+/// A key whose value is a required, NON-EMPTY string.
+///
+/// Empty is refused rather than passed on, because neither of the two keys that use this
+/// (`input`/`output`) has a defensible meaning for it and the failures are worse than the omission
+/// they resemble. An empty `output` resolves to the config file's own directory, which as a component
+/// sequence is a prefix of every other crate's output — so the clobber guard reports the config
+/// directory containing a crate's output, a diagnostic naming neither the empty value nor the key
+/// that holds it. A lone crate escapes the guard entirely and reaches clap, which refuses the empty
+/// value against a flag the user never typed.
 fn required_string(table: &toml::Table, key: &str, label: &str) -> Result<String, String> {
     match table.get(key) {
-        Some(v) => v
-            .as_str()
-            .map(str::to_owned)
-            .ok_or_else(|| format!("{label}.{key} must be a string")),
+        Some(v) => {
+            let value = v
+                .as_str()
+                .ok_or_else(|| format!("{label}.{key} must be a string"))?;
+            if value.trim().is_empty() {
+                return Err(format!(
+                    "{label}.{key} is empty; it must name a path. An empty `{key}` is not the same \
+                     as an absent one — it resolves to the config file's own directory."
+                ));
+            }
+            Ok(value.to_owned())
+        }
         None => Err(format!("{label} has no `{key}`; it is required")),
     }
 }
@@ -639,6 +792,14 @@ fn string_array(value: &toml::Value, label: &str) -> Result<Vec<String>, String>
 ///
 /// The hand split is what puts an unknown key back in front of `deny_unknown_fields`: see the module
 /// doc on why `#[serde(flatten)]` cannot be used here.
+///
+/// The unknown-key check is ours rather than serde's, because the key set serde can see is the wrong
+/// one. By the time it runs, the per-crate-only keys have been split off, so `deny_unknown_fields`
+/// would report a crate table's vocabulary MINUS exactly the keys that are per-crate — and a
+/// `dep`-for-`deps` typo would be told about every key except the one it meant. Ours knows which
+/// table it is in ([`SETTINGS_KEYS`] alone for a shared table, plus [`PER_CRATE_ONLY_KEYS`] for a
+/// crate table) and can therefore also offer a nearest match. serde's `deny_unknown_fields` stays on
+/// as the backstop: unreachable for KEYS now, still what rejects a value of the wrong shape.
 fn settings_from_table(
     table: &toml::Table,
     label: &str,
@@ -654,6 +815,20 @@ fn settings_from_table(
                 "`{key}` is a per-crate key and cannot appear in {label}: {} Move it into the \
                  `[crates.<name>]` table it belongs to.",
                 per_crate_key_reason(key)
+            ));
+        }
+        if !SETTINGS_KEYS.contains(&key.as_str()) {
+            // The known set is the one THIS table has: a crate table's suggestion may name a
+            // per-crate-only key, a shared table's may not — `json-schema-deps` is the nearest
+            // neighbour of several plausible typos and suggesting it in `[defaults]` would send the
+            // user to a key that table cannot hold.
+            let mut known: Vec<&str> = SETTINGS_KEYS.to_vec();
+            if allow_per_crate_keys {
+                known.extend_from_slice(PER_CRATE_ONLY_KEYS);
+            }
+            return Err(format!(
+                "unknown key `{key}` in {label}: {}",
+                unknown_key_advice(key, &known)
             ));
         }
         rest.insert(key.clone(), value.clone());
@@ -1333,6 +1508,7 @@ impl Config {
                     &wasm_deps,
                     &rust_deps,
                     &derived,
+                    self.static_dir_override.as_deref(),
                 );
                 let cli = build_cli(&name, entry, &self.base_dir, &fragments)?;
                 // The generator's own cross-flag rules, run HERE rather than where the generator
@@ -1687,6 +1863,7 @@ impl Config {
                 &[],
                 &[],
                 &Provenance::new(),
+                self.static_dir_override.as_deref(),
             );
             out.insert(
                 name.clone(),
@@ -1935,15 +2112,22 @@ impl Config {
         // Write a sub-table entry only if the merge did not already hold one, recording the config
         // key that produced it. Spelled out rather than through `Entry::or_insert_with` because the
         // recording has to happen exactly when the insertion does.
+        //
+        // The provenance is a PARAMETER rather than the constant `"deps"` it once was: the two edge
+        // directions below are both caused by a `deps` array but not by the SAME one, and a
+        // hardcoded tag makes a future third derivation silently claim to come from `deps`.
         macro_rules! derive {
-            ($table:ident, $flag:literal, $key:expr, $value:expr $(,)?) => {{
+            ($table:ident, $flag:literal, $key:expr, $value:expr, $provenance:expr $(,)?) => {{
                 let key: String = $key;
                 if !settings.$table.contains_key(&key) {
                     settings.$table.insert(key.clone(), $value);
-                    derived.insert(($flag, key), "deps");
+                    derived.insert(($flag, key), $provenance);
                 }
             }};
         }
+        // The forward edges' provenance: this crate's OWN `deps` array, which is the table the
+        // listing is printed under, so the bare key is the whole answer.
+        let own_deps = || "deps".to_owned();
 
         // FORWARD edges: what this crate needs in order to consume each dependency.
         for dep in &entry.deps {
@@ -1959,6 +2143,7 @@ impl Config {
                 "extern-import",
                 key.clone(),
                 join(&dep_entry.output, &format!("extern-interface/{key}")),
+                own_deps(),
             );
 
             // The remaining three are all about the dependency's WASM face, so all three are emitted
@@ -1973,6 +2158,7 @@ impl Config {
                 "extern-wasm-crate",
                 key.clone(),
                 format!("{key}_wasm"),
+                own_deps(),
             );
             derive!(
                 extern_wrapper_index,
@@ -1983,12 +2169,13 @@ impl Config {
                     &dep_entry.output,
                     "wasm/src/generated/collections.rs",
                 ),
+                own_deps(),
             );
             if !settings.workspace_dep.contains(&key) {
                 settings.workspace_dep.push(key.clone());
                 // Keyed by the VALUE rather than by a map key: `--workspace-dep` is an array, and
                 // its items are the only thing distinguishing one occurrence from another.
-                derived.insert(("workspace-dep", key), "deps");
+                derived.insert(("workspace-dep", key), own_deps());
             }
         }
 
@@ -1997,10 +2184,11 @@ impl Config {
         // per consumer. In consumer-name order; the label is the consumer's library name, which is
         // what the attribution comments the dep emits will carry.
         //
-        // These are attributed to `deps` like the forward ones, and the key is on the OTHER crate's
-        // table — a reverse edge exists because a consumer declared it. `deps` is still the right
-        // answer to "which key produced this flag"; the label in each value names the consumer whose
-        // table holds it.
+        // These come from a `deps` array too, but not from THIS crate's — a reverse edge exists
+        // because a CONSUMER declared it, and a listing that said only `deps` would send a reader
+        // looking for it in a table that does not have it. So the provenance names the consumer's
+        // table as well: `deps (from [crates.<consumer>])` answers "which key produced this flag"
+        // and "whose" in one line.
         if !ungraphed[name].wasm {
             // Without a wasm crate this crate is never a `--workspace-dep` of anyone, so no consumer
             // emits either sidecar and both derived paths would name files that are never written.
@@ -2012,6 +2200,7 @@ impl Config {
             }
             let consumer_cli = &ungraphed[consumer_name.as_str()];
             let label = normalized(&consumer.lib_name);
+            let from_consumer = || format!("deps (from [crates.{consumer_name}])");
             // The rust-side sidecar rides on `--workspace-dep` alone, so a rust-only consumer still
             // emits it; the wasm-side one exists only when the consumer has a wasm crate to record.
             derive!(
@@ -2023,6 +2212,7 @@ impl Config {
                     &consumer.output,
                     "rust/src/generated/borrowed_key_types.rs",
                 ),
+                from_consumer(),
             );
             if consumer_cli.wasm {
                 derive!(
@@ -2034,6 +2224,7 @@ impl Config {
                         &consumer.output,
                         "wasm/src/generated/borrowed_collections.rs",
                     ),
+                    from_consumer(),
                 );
             }
         }
@@ -2063,7 +2254,7 @@ fn collection_index_names(text: &str) -> BTreeSet<String> {
 /// the scope's leading component IS the crate the generated `use` line names, so the two cannot be
 /// chosen independently.
 fn normalized(lib_name: &str) -> String {
-    lib_name.replace('-', "_")
+    crate::cli::lib_name_code(lib_name)
 }
 
 /// A path under a crate's `output`, left CONFIG-RELATIVE — [`argv_fragments`] resolves it against the
@@ -2217,6 +2408,11 @@ fn resolve_path(base_dir: &Path, value: &str) -> String {
 ///
 /// Exhaustively destructures `settings` for the same reason [`Settings::merge_over`] does: a new
 /// field that nothing emits here would parse, merge, and then vanish.
+// Every parameter is a distinct INPUT to the expansion — the settings after merging, the derivations
+// that are not settings, and the one value that comes from neither — so folding them into a struct
+// would rename the list rather than shorten it, and hide from the signature which of them a caller
+// legitimately has nothing to pass (`ungraphed` passes three empties).
+#[allow(clippy::too_many_arguments)]
 fn argv_fragments(
     entry: &CrateEntry,
     settings: &Settings,
@@ -2225,6 +2421,7 @@ fn argv_fragments(
     wasm_deps: &[DerivedManifestDep],
     rust_deps: &[DerivedManifestDep],
     derived: &Provenance,
+    static_dir_override: Option<&str>,
 ) -> Vec<Fragment> {
     let Settings {
         static_dir,
@@ -2265,9 +2462,17 @@ fn argv_fragments(
     let mut out: Vec<Fragment> = Vec::new();
     // A macro rather than a closure so the negated switch below (which pushes a one-token fragment)
     // does not collide with a closure's exclusive borrow of `out`.
+    //
+    // ONE token, `--name=value`, rather than the two-token `["--name", value]`: clap takes everything
+    // after the first `=` on a long option as the value VERBATIM, so a value whose first character is
+    // `-` is representable. Split across two tokens it is not — no `Cli` argument sets
+    // `allow_hyphen_values` (pinned by `no_cli_argument_accepts_hyphen_led_values`), so
+    // `--lib-name -x` is read as the unknown flag `-x` and the config has no spelling at all for a
+    // path or a name that starts with a dash. The value needs no escaping: the split is at the FIRST
+    // `=`, which is what leaves the `<k>=<v>` sub-table values (`--extern-import=core=../p`) intact.
     macro_rules! flag {
         ($key:expr, $name:expr, $value:expr $(,)?) => {
-            out.push(($key, vec![format!("--{}", $name), $value]))
+            out.push(($key.to_string(), vec![format!("--{}={}", $name, $value)]))
         };
     }
 
@@ -2277,8 +2482,17 @@ fn argv_fragments(
     flag!("lib-name", "lib-name", entry.lib_name.clone());
 
     // Paths — resolved against the config file's directory, never the process CWD.
-    if let Some(v) = static_dir {
-        flag!("static-dir", "static-dir", resolve_path(base_dir, v));
+    //
+    // `static-dir` excepted, and only when it came from the command line: that value is not a config
+    // value, so it is emitted verbatim and tagged `command line` rather than with a key, which is
+    // what makes `--print-flags` say WHY the committed key is not the value being used.
+    match static_dir_override {
+        Some(v) => flag!("command line", "static-dir", v),
+        None => {
+            if let Some(v) = static_dir {
+                flag!("static-dir", "static-dir", resolve_path(base_dir, v));
+            }
+        }
     }
     if let Some(v) = export_static_crate {
         flag!(
@@ -2316,7 +2530,7 @@ fn argv_fragments(
     // `preserve-comments` keeps the config free of double negatives — TOML has booleans.
     if preserve_comments == &Some(false) {
         out.push((
-            "preserve-comments",
+            "preserve-comments".to_owned(),
             vec!["--no-preserve-comments".to_owned()],
         ));
     }
@@ -2364,11 +2578,11 @@ fn argv_fragments(
     // The config key to report for one entry of a sub-table or array: the sugar's key when
     // `apply_graph_edges` wrote it, else the flag-named key, which is what a user writing it by hand
     // typed. Consulted per ENTRY, since one table routinely holds both kinds.
-    let tag = |flag: &'static str, entry_key: &str| -> &'static str {
+    let tag = |flag: &'static str, entry_key: &str| -> String {
         derived
             .get(&(flag, entry_key.to_owned()))
-            .copied()
-            .unwrap_or(flag)
+            .cloned()
+            .unwrap_or_else(|| flag.to_owned())
     };
     for v in workspace_dep {
         flag!(tag("workspace-dep", v), "workspace-dep", v.clone());
@@ -2483,8 +2697,8 @@ fn validate_extern_import_stubs(name: &str, cli: &Cli, derived: &Provenance) -> 
         // hand-written sub-table entry carries — the same attribution `argv_fragments` prints.
         let key = derived
             .get(&("extern-import", dep.clone()))
-            .copied()
-            .unwrap_or("extern-import");
+            .cloned()
+            .unwrap_or_else(|| "extern-import".to_owned());
         let drop_the_edge = if key == "deps" {
             format!("drop `{dep}` from `deps`")
         } else {
@@ -2523,26 +2737,40 @@ fn build_cli(
     match Cli::try_parse_from(&argv) {
         Ok(cli) => Ok(cli),
         Err(err) => {
+            // Every probe below spells its flags the SINGLE-TOKEN way `argv_fragments` does, and that
+            // is load-bearing rather than cosmetic: a probe built as two tokens would reject an
+            // `input` of `-x.cddl` — a value the real invocation accepts — so a rejection caused by
+            // some OTHER key would be blamed on `input`, which is the misattribution this whole
+            // block exists to prevent, inverted.
+            //
             // `--input` and `--output` FIRST, one at a time. The replay below probes each remaining
             // fragment on top of a base holding both of them, so when the BASE is what clap rejects
-            // — an `input` or `output` value clap reads as a flag, e.g. `-x.cddl` — every probe
-            // fails and the first non-input/output fragment takes the blame. That is always
-            // `lib-name`, a key the user may not even have written. Both are required, so each is
-            // probed with a placeholder standing in for the other rather than alone.
+            // every probe fails and the first non-input/output fragment takes the blame. That is
+            // always `lib-name`, a key the user may not even have written. Both are required, so
+            // each is probed with a placeholder standing in for the other rather than alone. Single-
+            // token emission plus the non-empty check on both keys leaves no VALUE clap rejects
+            // here today; the pair stays probed because what makes that true is a property of
+            // `Cli`'s two value parsers, and a parser added to either would restore the shape.
             let input = resolve_path(base_dir, &entry.input);
             let output = resolve_path(base_dir, &entry.output);
             const PLACEHOLDER: &str = "cddl-codegen-config-probe";
             for (key, argv) in [
                 (
                     "input",
-                    vec!["--input", input.as_str(), "--output", PLACEHOLDER],
+                    vec![
+                        format!("--input={input}"),
+                        format!("--output={PLACEHOLDER}"),
+                    ],
                 ),
                 (
                     "output",
-                    vec!["--input", PLACEHOLDER, "--output", output.as_str()],
+                    vec![
+                        format!("--input={PLACEHOLDER}"),
+                        format!("--output={output}"),
+                    ],
                 ),
             ] {
-                let probe = std::iter::once("cddl-codegen").chain(argv);
+                let probe = std::iter::once("cddl-codegen".to_owned()).chain(argv);
                 if let Err(single) = Cli::try_parse_from(probe) {
                     return Err(format!(
                         "[crates.{name}].{key}: {}",
@@ -2556,15 +2784,13 @@ fn build_cli(
             // never typed; with it they are pointed at the TOML line they did.
             let base: Vec<String> = vec![
                 "cddl-codegen".to_owned(),
-                "--input".to_owned(),
-                input,
-                "--output".to_owned(),
-                output,
+                format!("--input={input}"),
+                format!("--output={output}"),
             ];
             for (key, fragment) in fragments {
                 // Already in `base`; re-adding them is clap's "cannot be used multiple times", which
                 // would misattribute every rejection to `input`.
-                if matches!(*key, "input" | "output") {
+                if matches!(key.as_str(), "input" | "output") {
                     continue;
                 }
                 let mut probe = base.clone();
@@ -2712,12 +2938,21 @@ impl Convergence {
 /// Expansion happens up front, so every value AND every flag combination is validated before ANY
 /// crate generates — a typo in the last crate's table must not leave the first crate's output
 /// half-migrated on disk.
-pub fn generate(config_path: &Path, selected: &[String]) -> Result<(), Box<dyn std::error::Error>> {
-    let config = load(config_path)?;
-    let expanded = config.expand(selected)?;
+pub fn generate(
+    config_path: &Path,
+    selected: &[String],
+    static_dir: Option<&Path>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let config = load_with(config_path, static_dir)?;
+    let expanded = config
+        .expand(selected)
+        .map_err(|e| about_the_config(config_path, e))?;
     // Stated before the first crate generates: which crate carries the shared runtime, and what the
     // choice accepted. Silently choosing is what the hand-placed flag already does.
-    if let Some(choice) = config.runtime_report()? {
+    if let Some(choice) = config
+        .runtime_report()
+        .map_err(|e| about_the_config(config_path, e))?
+    {
         // The export rides the CARRIER's invocation, so a subset that leaves the carrier out does
         // not refresh the runtime — and the notes are written in the present tense. Say which run
         // this is, or the line claims a write that is not happening: the crates in the subset are
@@ -2802,10 +3037,38 @@ pub fn generate(config_path: &Path, selected: &[String]) -> Result<(), Box<dyn s
     // convergence pass means a feedback path no single extra pass settles, and stays at exit 0; the
     // verdict below is about the TREE ("this does not build"), which no repeat of this command
     // settles. Only the second is a reason to fail. A full run should now trip neither.
-    if let Some(verdict) = config.committed_verdict(config_path, selected)? {
+    if let Some(verdict) = config
+        .committed_verdict(config_path, selected)
+        .map_err(|e| about_the_config(config_path, e))?
+    {
+        // The verdict itself is deliberately NOT wrapped. Every other message here is about the
+        // config; this one is about the committed TREE, and it already names the files it read.
         return Err(verdict.into());
     }
     Ok(())
+}
+
+/// Every diagnostic a config run produces names the config it came from.
+///
+/// [`load`] already prefixes what it returns, so parse-time errors carry it; this is the same prefix
+/// for everything AFTER load — expansion, the runtime report, the committed-state read — which
+/// otherwise reaches `main` as a bare sentence about a `[crates.<name>]` table without saying which
+/// file holds that table. That matters most exactly where it is least visible: a repository with
+/// several configs, or a wrapper script that picked the path.
+///
+/// Not applied to a per-crate GENERATION failure: that error is about a CDDL spec, and prefixing it
+/// with a TOML path would name the wrong document. The per-crate banner printed before it is what
+/// says which crate was running.
+fn about_the_config(config_path: &Path, error: impl std::fmt::Display) -> String {
+    format!("--config {}: {error}", config_path.display())
+}
+
+/// [`load`] plus the command-line `--static-dir` override, which is not a config value and so cannot
+/// be parsed from the document.
+fn load_with(config_path: &Path, static_dir: Option<&Path>) -> Result<Config, String> {
+    let mut config = load(config_path)?;
+    config.static_dir_override = static_dir.map(|p| p.to_string_lossy().into_owned());
+    Ok(config)
 }
 
 /// `--print-flags`: state what a config expands to, and generate nothing.
@@ -2821,8 +3084,12 @@ pub fn generate(config_path: &Path, selected: &[String]) -> Result<(), Box<dyn s
 pub fn print_flags(
     config_path: &Path,
     selected: &[String],
+    static_dir: Option<&Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    print!("{}", load(config_path)?.flag_listing(selected)?);
+    let listing = load_with(config_path, static_dir)?
+        .flag_listing(selected)
+        .map_err(|e| about_the_config(config_path, e))?;
+    print!("{listing}");
     Ok(())
 }
 
@@ -2845,12 +3112,34 @@ pub struct ConfigCli {
     pub config: PathBuf,
 
     /// Print the flags each crate would be generated with, and generate nothing.
-    ///
-    /// Not a generation flag, so it does not collide with [`reject_generation_flags`]: it changes
-    /// what the run DOES rather than what any crate is generated with, which is the same class as
-    /// the positional crate selector.
+    // Everything below the first paragraph is a `//` comment on purpose: clap renders a field's DOC
+    // comment into `--help`, so a maintainer's note about which internal function this does not
+    // collide with would be printed to every user asking what the flag does.
+    //
+    // Not a generation flag, so it does not collide with [`reject_generation_flags`]: it changes
+    // what the run DOES rather than what any crate is generated with, which is the same class as
+    // the positional crate selector.
     #[clap(long = "print-flags", action = clap::ArgAction::SetTrue)]
     pub print_flags: bool,
+
+    /// Where the hand-written serialization runtime is read from (overrides any `static-dir` key).
+    // The ONE generation flag [`reject_generation_flags`] lets through, and the exemption criterion
+    // is visible in what it names: a checkout-local location of the TOOL's own inputs, not a
+    // property of any crate. That makes it the one flag with no per-crate precedence question to
+    // answer — it applies to every crate uniformly, which is why "does this apply to one crate or
+    // all of them?" (the question that rules every other flag out) has an answer here. The
+    // command-line value wins over a `static-dir` key silently: the key is a committed default and
+    // this is the per-machine override of it, so reporting a conflict would report the intended use.
+    // Both spellings, because the exemption is by ARG ID and so covers `Cli`'s `-s` as well as its
+    // `--static-dir`: a short that passed the rejection only to be an unknown argument here would be
+    // a worse error than the one it got through.
+    #[clap(
+        short = 's',
+        long = "static-dir",
+        value_parser,
+        value_name = "STATIC_DIR"
+    )]
+    pub static_dir: Option<PathBuf>,
 
     /// Generate only these crates (default: every crate in the config).
     #[clap(value_parser, value_name = "CRATE")]
@@ -2876,6 +3165,9 @@ pub fn is_config_mode(argv: &[String]) -> bool {
 /// There is no flags-override-config precedence story on purpose: every override would have to
 /// define whether it applies to one crate or all of them, and the honest answer differs per flag. The
 /// config file is the edit loop.
+///
+/// [`EXEMPT_ARG_IDS`] is the one exception, and it is the same class as `--print-flags`: a flag that
+/// does not describe a crate.
 pub fn reject_generation_flags(argv: &[String]) -> Result<(), String> {
     use clap::CommandFactory;
 
@@ -2883,6 +3175,9 @@ pub fn reject_generation_flags(argv: &[String]) -> Result<(), String> {
     let mut longs: BTreeSet<String> = BTreeSet::new();
     let mut shorts: BTreeSet<char> = BTreeSet::new();
     for arg in command.get_arguments() {
+        if EXEMPT_ARG_IDS.contains(&arg.get_id().as_str()) {
+            continue;
+        }
         for long in arg.get_long_and_visible_aliases().unwrap_or_default() {
             longs.insert(long.to_owned());
         }
@@ -2910,7 +3205,9 @@ pub fn reject_generation_flags(argv: &[String]) -> Result<(), String> {
                  config file, and mixing the two would need a precedence rule that differs per flag \
                  (does a command-line `{offender}` apply to one crate or all of them?). Set it under \
                  `[defaults]`, a `[profiles.<name>]` table, or the `[crates.<name>]` table it belongs \
-                 to. Positional crate names are the only command-line selector."
+                 to. Positional crate names and `--static-dir` — which names this machine's copy of \
+                 the tool's runtime rather than anything about a crate, so it applies to all of them \
+                 — are the only command-line arguments config mode takes."
             ));
         }
     }

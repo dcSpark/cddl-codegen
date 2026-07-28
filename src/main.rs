@@ -43,10 +43,11 @@ fn main() {
 fn generate_from_config(argv: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     config::reject_generation_flags(argv)?;
     let invocation = config::ConfigCli::parse_from(argv);
+    let static_dir = invocation.static_dir.as_deref();
     if invocation.print_flags {
-        return config::print_flags(&invocation.config, &invocation.crates);
+        return config::print_flags(&invocation.config, &invocation.crates, static_dir);
     }
-    config::generate(&invocation.config, &invocation.crates)
+    config::generate(&invocation.config, &invocation.crates, static_dir)
 }
 
 #[cfg(test)]

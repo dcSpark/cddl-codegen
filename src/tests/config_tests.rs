@@ -223,6 +223,72 @@ fn an_unknown_key_is_a_hard_error_naming_it() {
     );
 }
 
+/// An unknown key that resembles a real one says which one, and an unknown key that resembles
+/// nothing lists what the table understands.
+///
+/// The suggestion is computed against THIS table's vocabulary, which is the half serde cannot do:
+/// by the time `deny_unknown_fields` runs, the per-crate-only keys have been split off, so its
+/// message describes a crate table as understanding everything except the keys that are per-crate —
+/// and `dep` for `deps` would be answered with a list that excludes `deps`.
+#[test]
+fn an_unknown_key_suggests_the_nearest_key_that_table_accepts() {
+    // A per-crate-only key is reachable only from a crate table, and that is exactly where its
+    // typo has to be answerable.
+    let dep = error("[crates.demo]\ninput = \"s\"\noutput = \"g\"\ndep = [\"core\"]\n");
+    assert!(
+        dep.contains("`dep`") && dep.contains("did you mean `deps`?"),
+        "a crate table must suggest its per-crate keys, got: {dep}"
+    );
+
+    let typo = error(&format!(
+        "[defaults]\npreserv-encodings = true\n{MINIMAL_CRATE}"
+    ));
+    assert!(
+        typo.contains("did you mean `preserve-encodings`?"),
+        "a one-character typo must be answered with the key, got: {typo}"
+    );
+
+    // The near-collision. `json-schema-dep` (a Settings key) and `json-schema-deps` (per-crate only)
+    // differ by one character, so which one is nearest is decided by which table is being read.
+    let in_crate =
+        error("[crates.demo]\ninput = \"s\"\noutput = \"g\"\njson-schema-depss = [\"core\"]\n");
+    assert!(
+        in_crate.contains("did you mean `json-schema-deps`?"),
+        "a crate table holds both, so the nearest wins, got: {in_crate}"
+    );
+    let in_defaults = error(&format!(
+        "[defaults]\njson-schema-depss = [\"core\"]\n{MINIMAL_CRATE}"
+    ));
+    assert!(
+        in_defaults.contains("did you mean `json-schema-dep`?"),
+        "a shared table cannot hold `json-schema-deps`, so it must not be suggested there, got: \
+         {in_defaults}"
+    );
+
+    // Both spellings really are accepted in a crate table — otherwise the assertion above is about
+    // a distinction that does not exist.
+    parse(
+        "[crates.demo]\ninput = \"s\"\noutput = \"g\"\njson-schema-export = true\n\
+         json-schema-deps = []\n\n\
+         [crates.demo.json-schema-dep]\ncore = \"core_json_schema_gen\"\n",
+    );
+
+    // Nowhere near anything: the whole vocabulary, and still the table.
+    let alien = error(&format!("[profiles.p]\nquux = true\n{MINIMAL_CRATE}"));
+    assert!(
+        alien.contains("[profiles.p]")
+            && alien.contains("`quux`")
+            && alien.contains("`preserve-encodings`")
+            && alien.contains("`wasm`")
+            && !alien.contains("did you mean"),
+        "an unrecognisable key must list what the table understands, got: {alien}"
+    );
+    assert!(
+        !alien.contains("`deps`"),
+        "and a shared table must not advertise the per-crate keys, got: {alien}"
+    );
+}
+
 /// A per-crate-only key in a shared table is a hard error naming the key and the table. serde would
 /// report these as "unknown field", which is true but unhelpful — the key is real, it is in the
 /// wrong table — so they are split out and rejected with the reason.
@@ -283,6 +349,48 @@ fn a_config_without_crates_is_a_hard_error() {
             "must say a config generates at least one crate, got: {err}"
         );
     }
+}
+
+/// An empty `input` or `output` is refused at parse, naming the key and the crate table.
+///
+/// Neither has a defensible meaning for it, and both failure modes without this check name something
+/// other than the empty value: an empty `output` resolves to the config file's own directory, which
+/// as a component sequence is a prefix of every other crate's output — so the clobber guard fires and
+/// reports the config directory as containing a crate's tree, a diagnostic about a relationship the
+/// user never wrote. A lone crate slips past that guard and is refused by clap instead, against a
+/// flag the user never typed.
+#[test]
+fn an_empty_input_or_output_is_a_hard_error_naming_the_key() {
+    for (key, text) in [
+        ("input", "[crates.demo]\ninput = \"\"\noutput = \"gen\"\n"),
+        (
+            "output",
+            "[crates.demo]\ninput = \"s.cddl\"\noutput = \"\"\n",
+        ),
+        // Whitespace is emptiness with a keystroke in it, and reaches the same two failures.
+        (
+            "output",
+            "[crates.demo]\ninput = \"s.cddl\"\noutput = \"  \"\n",
+        ),
+    ] {
+        let err = error(text);
+        assert!(
+            err.contains(&format!("[crates.demo].{key}")) && err.contains("empty"),
+            "must name the key and say it is empty, got: {err}"
+        );
+    }
+
+    // The diagnostic this replaces, shown to be the one it replaces: two crates, one of them with an
+    // empty `output`, used to be reported as a containment. It must now be reported as the empty
+    // value it is, and must not name the OTHER crate at all.
+    let two = error(
+        "[crates.alpha]\ninput = \"a.cddl\"\noutput = \"\"\n\
+         [crates.beta]\ninput = \"b.cddl\"\noutput = \"gen/beta\"\n",
+    );
+    assert!(
+        two.contains("[crates.alpha].output") && !two.contains("contains"),
+        "an empty output must be reported as itself, not as a clobber of its siblings, got: {two}"
+    );
 }
 
 /// `lib-name` defaults to the crate table key — the one place the config is LESS repetitive than the
@@ -625,33 +733,73 @@ fn a_refused_flag_combination_fails_expansion_and_names_the_crate() {
     }
 }
 
-/// The same, when the rejected key is `input` or `output` itself. Those two are what the replay's
-/// BASE is built from, so a value clap reads as a flag (`-x.cddl`) makes every probe on top of that
-/// base fail — and the blame lands on the first fragment that is neither, which is always
-/// `lib-name`: a key the user may not have written at all, in a message naming a flag they never
-/// typed and a value that appears nowhere in their config.
+/// A value whose first character is `-` reaches its flag verbatim.
+///
+/// Every valued flag is emitted as ONE token, `--name=value`, because clap takes everything after the
+/// first `=` on a long option as the value. Split across two tokens the same value is unrepresentable
+/// — nothing here sets `allow_hyphen_values` (pinned below), so `--lib-name -x` is read as the
+/// unknown flag `-x` — which would leave a config with no spelling at all for a directory or a
+/// library name that starts with a dash. The two sub-table cases are here too because they are the
+/// one place the `=` split could have gone wrong in the other direction: the VALUE contains an `=`,
+/// and only a first-`=` split leaves it intact.
 #[test]
-fn a_rejected_input_or_output_is_reported_against_itself_not_lib_name() {
-    for (key, text) in [
-        (
-            "input",
-            "[crates.demo]\ninput = \"-x.cddl\"\noutput = \"g\"\n",
-        ),
-        (
-            "output",
-            "[crates.demo]\ninput = \"s.cddl\"\noutput = \"-g\"\n",
-        ),
-    ] {
-        let err = expand_error(text);
-        assert!(
-            err.contains(&format!("[crates.demo].{key}")),
-            "must point at the `{key}` key, got: {err}"
-        );
-        assert!(
-            !err.contains("lib-name"),
-            "and must not blame a key the config never set, got: {err}"
-        );
-    }
+fn a_leading_dash_value_reaches_the_flag_verbatim() {
+    let cli = expand_one(
+        "[crates.demo]\ninput = \"-x.cddl\"\noutput = \"-gen\"\nlib-name = \"-x\"\n\
+         static-dir = \"-vendor/static\"\n\
+         [crates.demo.extern-import]\ncore = \"-vendor/core\"\n",
+    );
+    assert_eq!(cli.input, Path::new("-x.cddl"));
+    assert_eq!(cli.output, Path::new("-gen"));
+    assert_eq!(cli.lib_name, "-x");
+    assert_eq!(cli.static_dir, Path::new("-vendor/static"));
+    assert_eq!(cli.extern_import, vec!["core=-vendor/core".to_owned()]);
+}
+
+/// No `Cli` argument accepts hyphen-led values, which is WHY the single-token emission above is
+/// required rather than merely tidier.
+///
+/// Established by enumerating clap's own argument list rather than by grepping the derive attributes:
+/// absence is only as good as the vocabulary searched for, and `allow_hyphen_values` can arrive
+/// through an attribute this file does not spell.
+#[test]
+fn no_cli_argument_accepts_hyphen_led_values() {
+    use clap::CommandFactory;
+
+    let accepting: Vec<String> = Cli::command()
+        .get_arguments()
+        .filter(|arg| arg.is_allow_hyphen_values_set())
+        .map(|arg| arg.get_id().to_string())
+        .collect();
+    assert!(
+        accepting.is_empty(),
+        "`{accepting:?}` accept hyphen-led values, so the two-token spelling would work for them — \
+         if that is now true of every argument, the single-token emission is no longer load-bearing"
+    );
+}
+
+/// A rejection is attributed to the key that caused it even when `input` or `output` starts with a
+/// dash.
+///
+/// Discriminating by construction: the replay that attributes a clap rejection to a config key
+/// builds a BASE from `input` and `output` and probes every other fragment on top of it. Spelled as
+/// two tokens, that base would fail on `-x.cddl` — a value the real invocation accepts — so the
+/// blame for the genuinely bad key below would land on `input` instead, which is the misattribution
+/// the replay exists to prevent, inverted.
+#[test]
+fn a_rejection_is_attributed_to_its_key_even_when_a_path_starts_with_a_dash() {
+    let err = expand_error(
+        "[crates.demo]\ninput = \"-x.cddl\"\noutput = \"-g\"\n\
+         json-schema-root = [\"a::B; let x = 1\"]\n",
+    );
+    assert!(
+        err.contains("[crates.demo].json-schema-root"),
+        "must point at the key clap actually rejected, got: {err}"
+    );
+    assert!(
+        !err.contains("].input") && !err.contains("].output"),
+        "and must not blame a path key the tool accepts, got: {err}"
+    );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -797,6 +945,61 @@ fn binary_errors_print_the_message_verbatim_not_debug_escaped() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// Every diagnostic a config run produces names the config file it came from, not only the ones
+/// produced while parsing it.
+///
+/// `load` prefixes what it returns, so a bad VALUE has always said which file held it. Everything
+/// after `load` — expansion, the runtime report, the committed-state read — reached the user as a
+/// bare sentence about a `[crates.<name>]` table, which is the least useful place to omit the file
+/// name: a repository with several configs, or a wrapper script that chose the path.
+#[test]
+fn errors_after_parsing_still_name_the_config_file() {
+    let dir = std::env::temp_dir().join(format!("cddl_config_prefix_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("codegen.toml");
+    // A cross-flag rule, refused during EXPANSION — after `load` has already returned Ok.
+    std::fs::write(
+        &path,
+        "[defaults]\ncanonical-form = true\n[crates.demo]\ninput = \"s.cddl\"\noutput = \"gen\"\n",
+    )
+    .unwrap();
+    let expected = format!("--config {}: ", path.display());
+
+    let ran = config::generate(&path, &[], None)
+        .expect_err("the combination must be refused")
+        .to_string();
+    assert!(
+        ran.starts_with(&expected),
+        "a run's expansion error must name the config, got: {ran}"
+    );
+    assert!(
+        ran.contains("[crates.demo]"),
+        "and must still say which crate, got: {ran}"
+    );
+
+    let listed = config::print_flags(&path, &[], None)
+        .expect_err("--print-flags refuses what a run refuses")
+        .to_string();
+    assert_eq!(
+        listed, ran,
+        "the listing must fail with the identical message, prefix included"
+    );
+
+    // A PARSE error was already prefixed and must not now be prefixed twice.
+    std::fs::write(&path, "[crates.demo]\ninput = \"s.cddl\"\n").unwrap();
+    let parse_time = config::generate(&path, &[], None)
+        .expect_err("a missing `output` must be refused")
+        .to_string();
+    assert_eq!(
+        parse_time.matches("--config").count(),
+        1,
+        "the prefix must be applied once, got: {parse_time}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// An absolute path passes through untouched — a config may name a vendored runtime by absolute
 /// path, and joining it onto the config's directory would corrupt it.
 #[test]
@@ -837,11 +1040,16 @@ fn name_valued_sub_table_sides_are_never_path_resolved() {
 ///
 /// The offending-flag set is read out of `Cli`'s own clap `Command`, so this is checked across EVERY
 /// flag rather than a sample — a flag added tomorrow is rejected without anyone updating a list.
+/// `--static-dir` is the one exemption, and it is asserted from the same enumeration (below), so the
+/// exemption cannot silently widen either.
 #[test]
 fn a_generation_flag_alongside_config_is_a_hard_error() {
     use clap::CommandFactory;
 
     for arg in Cli::command().get_arguments() {
+        if arg.get_id() == "static_dir" {
+            continue;
+        }
         for long in arg.get_long_and_visible_aliases().unwrap_or_default() {
             for spelling in [format!("--{long}"), format!("--{long}=x")] {
                 let argv = vec![
@@ -881,6 +1089,148 @@ fn a_generation_flag_alongside_config_is_a_hard_error() {
         "core".to_owned(),
     ];
     config::reject_generation_flags(&clean).expect("a bare selector list is not a generation flag");
+}
+
+/// `--static-dir` is the one generation flag config mode accepts, in every spelling, and it applies
+/// to every crate in the run.
+///
+/// The exemption criterion is not "harmless" but "has no per-crate precedence question to answer":
+/// the flag names where THIS MACHINE keeps the tool's own hand-written runtime, so "does it apply to
+/// one crate or all of them?" — the question that rules out every other flag — has one answer. It is
+/// also the one value a committed config cannot get right by itself, which is why an override has to
+/// exist somewhere.
+#[test]
+fn static_dir_is_accepted_alongside_config_and_reaches_every_crate() {
+    use clap::Parser;
+
+    for spelling in [
+        vec!["--static-dir", "/tmp/s"],
+        vec!["--static-dir=/tmp/s"],
+        vec!["-s", "/tmp/s"],
+    ] {
+        let argv: Vec<String> = ["cddl-codegen", "--config", "c.toml"]
+            .into_iter()
+            .chain(spelling.iter().copied())
+            .map(str::to_owned)
+            .collect();
+        config::reject_generation_flags(&argv)
+            .unwrap_or_else(|e| panic!("`{spelling:?}` must be accepted with --config, got: {e}"));
+        let invocation = config::ConfigCli::parse_from(&argv);
+        assert_eq!(
+            invocation.static_dir.as_deref(),
+            Some(Path::new("/tmp/s")),
+            "`{spelling:?}` must parse into the override"
+        );
+    }
+
+    // It is still an override of a real key, so the three states are: config only, command line
+    // only, both.
+    let text = "[defaults]\nstatic-dir = \"vendor/static\"\n\
+                [crates.alpha]\ninput = \"a.cddl\"\noutput = \"ga\"\n\
+                [crates.beta]\ninput = \"b.cddl\"\noutput = \"gb\"\n";
+    let static_dirs = |config: &config::Config| {
+        config
+            .expand(&[])
+            .expect("must expand")
+            .into_iter()
+            .map(|(name, cli)| (name, cli.static_dir))
+            .collect::<Vec<_>>()
+    };
+
+    let from_key = parse(text);
+    assert_eq!(
+        static_dirs(&from_key),
+        vec![
+            (
+                "alpha".to_owned(),
+                std::path::PathBuf::from("vendor/static")
+            ),
+            ("beta".to_owned(), std::path::PathBuf::from("vendor/static")),
+        ],
+        "the config key alone still reaches every crate"
+    );
+
+    let mut overridden = parse(text);
+    overridden.static_dir_override = Some("/machine/static".to_owned());
+    assert_eq!(
+        static_dirs(&overridden),
+        vec![
+            (
+                "alpha".to_owned(),
+                std::path::PathBuf::from("/machine/static")
+            ),
+            (
+                "beta".to_owned(),
+                std::path::PathBuf::from("/machine/static")
+            ),
+        ],
+        "the command line wins over the committed key, for every crate at once"
+    );
+
+    // With no key at all the override is still what every crate gets — otherwise the flag would
+    // work only on configs that already spell the value it is replacing.
+    let mut no_key = parse(
+        "[crates.alpha]\ninput = \"a.cddl\"\noutput = \"ga\"\n\
+         [crates.beta]\ninput = \"b.cddl\"\noutput = \"gb\"\n",
+    );
+    no_key.static_dir_override = Some("/machine/static".to_owned());
+    assert_eq!(
+        static_dirs(&no_key),
+        vec![
+            (
+                "alpha".to_owned(),
+                std::path::PathBuf::from("/machine/static")
+            ),
+            (
+                "beta".to_owned(),
+                std::path::PathBuf::from("/machine/static")
+            ),
+        ]
+    );
+
+    // A RELATIVE override is passed through verbatim rather than resolved against the config file's
+    // directory: it did not come from the config file. `--static-dir static` therefore means on a
+    // config command line exactly what it means on any other one — relative to the process CWD.
+    let mut relative = parse(text);
+    relative.static_dir_override = Some("vendor/other".to_owned());
+    assert_eq!(
+        static_dirs(&relative)[0].1,
+        std::path::PathBuf::from("vendor/other")
+    );
+}
+
+/// The override is visible in `--print-flags`, tagged `command line` rather than with a config key —
+/// which is the only way the listing can explain why the `static-dir` key in the file is not the
+/// value being used.
+#[test]
+fn print_flags_attributes_the_static_dir_override_to_the_command_line() {
+    let text = "[defaults]\nstatic-dir = \"vendor/static\"\n\
+                [crates.alpha]\ninput = \"a.cddl\"\noutput = \"ga\"\n";
+
+    let from_key = parse(text).flag_listing(&[]).expect("a valid config lists");
+    assert!(
+        from_key.lines().any(
+            |line| line.trim_start() == "static-dir  --static-dir=vendor/static"
+                || (line.trim_start().starts_with("static-dir")
+                    && line.ends_with("--static-dir=vendor/static"))
+        ),
+        "without an override the key is the provenance, got:\n{from_key}"
+    );
+
+    let mut overridden = parse(text);
+    overridden.static_dir_override = Some("/machine/static".to_owned());
+    let listing = overridden.flag_listing(&[]).expect("a valid config lists");
+    assert!(
+        listing
+            .lines()
+            .any(|line| line.trim_start().starts_with("command line")
+                && line.ends_with("--static-dir=/machine/static")),
+        "the override must be listed as coming from the command line, got:\n{listing}"
+    );
+    assert!(
+        !listing.contains("vendor/static"),
+        "and the overridden key's value must not also be listed, got:\n{listing}"
+    );
 }
 
 /// Both spellings clap accepts for a valued flag select config mode; nothing else does.
@@ -980,17 +1330,24 @@ fn print_flags_lists_every_crate_in_generation_order_keyed_by_the_config_key() {
     }
 
     for (key, flag) in [
-        ("input", "--input a.cddl"),
-        ("preserve-encodings", "--preserve-encodings true"),
-        // The reverse half of the edge, on the DEPENDENCY's block.
+        ("input", "--input=a.cddl"),
+        ("preserve-encodings", "--preserve-encodings=true"),
+        // The reverse half of the edge, on the DEPENDENCY's block. `alpha` has no `deps` array at
+        // all, so a bare `deps` would send a reader looking in the wrong table: the provenance names
+        // the consumer whose `deps` caused it.
         (
-            "deps",
-            "--wrapper-requests zeta=gen/zeta/wasm/src/generated/borrowed_collections.rs",
+            "deps (from [crates.zeta])",
+            "--wrapper-requests=zeta=gen/zeta/wasm/src/generated/borrowed_collections.rs",
         ),
-        // And the forward half, on the consumer's.
+        (
+            "deps (from [crates.zeta])",
+            "--key-requests=zeta=gen/zeta/rust/src/generated/borrowed_key_types.rs",
+        ),
+        // And the forward half, on the consumer's — this crate's own `deps`, so the bare key is the
+        // whole answer.
         (
             "deps",
-            "--extern-import alpha=gen/alpha/extern-interface/alpha",
+            "--extern-import=alpha=gen/alpha/extern-interface/alpha",
         ),
     ] {
         assert!(
@@ -1000,6 +1357,18 @@ fn print_flags_lists_every_crate_in_generation_order_keyed_by_the_config_key() {
             "the listing must carry `{flag}` tagged `{key}`, got:\n{listing}"
         );
     }
+
+    // The two provenances are genuinely different, not one a prefix of the other by accident: a
+    // forward edge stays the bare key, so a `starts_with` on it cannot be what passed above.
+    let forward = listing
+        .lines()
+        .find(|line| line.contains("--extern-import="))
+        .expect("the consumer's block carries the forward edge");
+    assert_eq!(
+        forward.trim_start().split("  ").next(),
+        Some("deps"),
+        "a forward edge is this crate's own `deps` key and nothing more, got: {forward:?}"
+    );
 
     // A hand-written entry in the same sub-table keeps the flag-named key, because that IS what the
     // user typed — the sugar's key is reported only for what the sugar wrote.
@@ -1097,6 +1466,56 @@ fn print_flags_is_not_a_generation_flag_and_leaves_the_selection_alone() {
 
     let without = config::ConfigCli::parse_from(["cddl-codegen", "--config", "c.toml"]);
     assert!(!without.print_flags, "the default is to generate");
+}
+
+/// `--help` and `--version` alongside `--config` reach clap, not the generation-flag rejection.
+///
+/// They are not `Cli` arguments at all — clap synthesises them at build time, so they never appear
+/// in the `Cli::command().get_arguments()` enumeration the rejection harvests. That is a fact about
+/// clap rather than a decision of ours, which is exactly why it is pinned here: a config user asking
+/// what the command does must get the help, not a lecture about where generation flags live.
+#[test]
+fn help_and_version_are_not_generation_flags() {
+    for flag in ["--help", "-h", "--version", "-V"] {
+        let argv: Vec<String> = ["cddl-codegen", "--config", "c.toml", flag]
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
+        config::reject_generation_flags(&argv)
+            .unwrap_or_else(|e| panic!("`{flag}` must reach clap, got: {e}"));
+    }
+}
+
+/// `--help` shows what the flag DOES and nothing about how it is implemented.
+///
+/// clap renders a field's doc comment into the help, so a maintainer's note living in a second
+/// paragraph is printed to every user. The note that used to be there named an internal function by
+/// its rustdoc link, which reads to a user as a broken sentence about something they cannot see.
+#[test]
+fn config_mode_help_carries_no_maintainer_notes() {
+    use clap::CommandFactory;
+
+    let help = config::ConfigCli::command().render_long_help().to_string();
+    assert!(
+        help.contains("Print the flags each crate would be generated with"),
+        "the help must still describe the flag, got:\n{help}"
+    );
+    assert!(
+        help.contains("Where the hand-written serialization runtime is read from"),
+        "and the exempted flag, got:\n{help}"
+    );
+    // Two independent shapes of the same leak: the specific note that used to render, and any
+    // rustdoc intra-doc link at all — the latter is what makes this catch the NEXT one rather than
+    // only this one.
+    assert!(
+        !help.contains("reject_generation_flags"),
+        "a maintainer's note about an internal function reached --help, got:\n{help}"
+    );
+    assert!(
+        !help.contains("[`"),
+        "a rustdoc intra-doc link reached --help, where it renders as a broken reference, got:\n\
+         {help}"
+    );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1240,6 +1659,25 @@ fn config_keys_match_cli_fields() {
              and are excluded here by construction, not by this list.)"
         );
     }
+
+    // `SETTINGS_KEYS` spells the same field set a third time, for the unknown-key check that has to
+    // know the vocabulary before serde does. It is safe to hand-WRITE only because it is not
+    // hand-MAINTAINED: this is where a field added without a row in it fails.
+    let listed: BTreeSet<String> = config::SETTINGS_KEYS
+        .iter()
+        .map(|k| (*k).to_owned())
+        .collect();
+    assert_eq!(
+        listed.len(),
+        config::SETTINGS_KEYS.len(),
+        "`SETTINGS_KEYS` lists a key twice, which would make the suggestion list repeat itself"
+    );
+    assert_eq!(
+        listed, settings_keys,
+        "`config::SETTINGS_KEYS` and `struct Settings` disagree — the unknown-key check would \
+         reject a real key, or accept one serde then refuses with a message about a struct the user \
+         cannot see"
+    );
 }
 
 /// The exclusion list above is only honest if the per-crate keys really are absent from `Settings`;
@@ -1890,7 +2328,8 @@ fn a_two_crate_config_generates_a_consumer_that_imports_its_dependency() {
     // ONE cold run, and it settles: the convergence pass re-runs `core` after `ledger` has recorded
     // the wrapper it borrows, so the invocation exits 0 over a workspace that hosts it. The
     // idempotence half is pinned by [`a_config_run_converges_and_then_repeats_byte_for_byte`].
-    config::generate(&config_path, &[]).expect("one cold config run must converge and exit 0");
+    config::generate(&config_path, &[], None)
+        .expect("one cold config run must converge and exit 0");
 
     let dep_export = dir.join("gen/core/extern-interface/core/mod.cddl");
     assert!(
@@ -1910,7 +2349,7 @@ fn a_two_crate_config_generates_a_consumer_that_imports_its_dependency() {
     );
 
     // A second run has nothing left to do, which is what convergence means here.
-    config::generate(&config_path, &[]).expect("a warm config run must generate");
+    config::generate(&config_path, &[], None).expect("a warm config run must generate");
 
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -1954,7 +2393,7 @@ fn a_dependency_declared_twice_is_refused_before_any_crate_generates() {
 
     // The sugar: `deps` derives the `--extern-import` that collides with the stub.
     let derived = write_config("derived.toml", "deps = [\"core\"]\n");
-    let err = config::generate(&derived, &[])
+    let err = config::generate(&derived, &[], None)
         .expect_err("a dependency declared by `deps` AND by a stub must be refused")
         .to_string();
     assert!(
@@ -1977,7 +2416,7 @@ fn a_dependency_declared_twice_is_refused_before_any_crate_generates() {
     );
 
     // `--print-flags` performs the real expansion, so it refuses identically.
-    let listed = config::print_flags(&derived, &[])
+    let listed = config::print_flags(&derived, &[], None)
         .expect_err("--print-flags must refuse what a run refuses")
         .to_string();
     assert_eq!(
@@ -1990,7 +2429,7 @@ fn a_dependency_declared_twice_is_refused_before_any_crate_generates() {
         "hand.toml",
         "\n[crates.ledger.extern-import]\ncore = \"gen/core/extern-interface/core\"\n",
     );
-    let err = config::generate(&hand, &[])
+    let err = config::generate(&hand, &[], None)
         .expect_err("the same conflict declared by hand must be refused")
         .to_string();
     assert!(
@@ -2641,7 +3080,7 @@ fn a_runtime_table_exports_a_runtime_the_other_flavor_compiles_against() {
         choice.notes
     );
 
-    config::generate(&config_path, &[])
+    config::generate(&config_path, &[], None)
         .unwrap_or_else(|e| panic!("a cold config run must generate: {e}"));
 
     // The shared runtime really received the files, in the crate shape `--export-static-crate`
@@ -2741,7 +3180,7 @@ fn a_runtime_table_exports_a_runtime_the_other_flavor_compiles_against() {
         "reduced_rec = [x: uint, nm: {+ uint => text}]\n",
     )
     .unwrap();
-    config::generate(&config_path, &["reduced".to_owned()])
+    config::generate(&config_path, &["reduced".to_owned()], None)
         .expect("the reduced crate must still GENERATE — the gap is a compile-time one");
     let mutated = crate::tests::integration_tests::tool_cmd("cargo")
         .arg("check")
@@ -3707,9 +4146,10 @@ fn a_config_generated_workspace_builds_with_wasm_on() {
     // The idempotence half is taken BEFORE the hand edits below, so what it compares is the tool's
     // own output rather than the merge of a hand-edited manifest (which the manifest convergence
     // tests pin separately, and which would confound the claim being made here).
-    config::generate(&config_path, &[]).expect("one cold config run must converge and exit 0");
+    config::generate(&config_path, &[], None)
+        .expect("one cold config run must converge and exit 0");
     let after_first = tree_bytes(&dir, &["gen", "runtime"]);
-    config::generate(&config_path, &[]).expect("the second run must generate");
+    config::generate(&config_path, &[], None).expect("the second run must generate");
     if let Some(difference) = first_tree_difference(
         "first run",
         &after_first,
@@ -3911,7 +4351,7 @@ fn a_derived_thread_links_and_a_collision_blames_the_consumer() {
     )
     .unwrap();
 
-    config::generate(&config_path, &[])
+    config::generate(&config_path, &[], None)
         .unwrap_or_else(|e| panic!("a cold config run must generate: {e}"));
 
     let json_gen_dir = dir.join("gen/user/wasm/json-gen");
@@ -3955,7 +4395,7 @@ fn a_derived_thread_links_and_a_collision_blames_the_consumer() {
 
     // Leg 2: the consumer now publishes a name the dependency already registered.
     std::fs::write(dir.join("specs/user.cddl"), "dep_thing = [z: text]\n").unwrap();
-    config::generate(&config_path, &["usercrate".to_owned()])
+    config::generate(&config_path, &["usercrate".to_owned()], None)
         .expect("the collision is a RUN-time verdict — generation must still succeed");
     let collided = crate::tests::integration_tests::tool_cmd("cargo")
         .arg("run")
@@ -4391,7 +4831,7 @@ fn a_whole_config_generates_what_the_hand_written_flags_generate() {
 
     // ONE config run over a cold tree, and it exits 0: the convergence pass inside it re-runs the
     // dependencies whose sidecars the run rewrote.
-    config::generate(&config_path, &[])
+    config::generate(&config_path, &[], None)
         .expect("one cold config run over the acceptance fixture must converge and exit 0");
 
     // The hand-written side has to model that pass, or the two trees differ for a reason that is not
@@ -4504,7 +4944,7 @@ fn a_config_run_converges_and_then_repeats_byte_for_byte() {
     // went from absent to present across the whole invocation, which is true and is precisely what
     // triggered the convergence pass. What it does NOT mean any more is "run this again".
     let cold = config::Convergence::capture(&expanded);
-    config::generate(&config_path, &[])
+    config::generate(&config_path, &[], None)
         .expect("one cold config run must converge inside the invocation and exit 0");
     assert_eq!(
         cold.stale_crates(),
@@ -4532,7 +4972,7 @@ fn a_config_run_converges_and_then_repeats_byte_for_byte() {
 
     // (3) Run 2: nothing to do, nothing changed.
     let warm = config::Convergence::capture(&expanded);
-    config::generate(&config_path, &[]).expect("the second run must generate");
+    config::generate(&config_path, &[], None).expect("the second run must generate");
     assert!(
         warm.stale_crates().is_empty(),
         "a settled workspace must consume no sidecar this run rewrites — one still moving here \
@@ -4557,7 +4997,7 @@ fn a_config_run_converges_and_then_repeats_byte_for_byte() {
     }
 
     // (4) And the fixed point is a fixed point.
-    config::generate(&config_path, &[]).expect("the repeat run must generate");
+    config::generate(&config_path, &[], None).expect("the repeat run must generate");
     let after_third = tree_bytes(&dir, &["gen"]);
     if let Some(difference) =
         first_tree_difference("second run", &after_second, "third run", &after_third)
@@ -4608,7 +5048,8 @@ fn the_convergence_pass_says_which_crate_it_re_runs_and_why() {
     let expanded = config::load(&config_path).unwrap().expand(&[]).unwrap();
 
     let cold = config::Convergence::capture(&expanded);
-    config::generate(&config_path, &[]).expect("one cold config run must converge and exit 0");
+    config::generate(&config_path, &[], None)
+        .expect("one cold config run must converge and exit 0");
     let notes = cold.rerun_notes();
     assert_eq!(
         notes.len(),
@@ -4632,7 +5073,7 @@ fn the_convergence_pass_says_which_crate_it_re_runs_and_why() {
 
     // A settled workspace announces nothing: no crate is re-run, so there is no line to print.
     let warm = config::Convergence::capture(&expanded);
-    config::generate(&config_path, &[]).expect("the second run must generate");
+    config::generate(&config_path, &[], None).expect("the second run must generate");
     assert!(
         warm.rerun_notes().is_empty(),
         "a converged run must print no convergence line at all: {:?}",
@@ -4684,7 +5125,8 @@ fn a_subset_run_that_adds_a_borrow_is_reported_against_the_committed_tree() {
     .unwrap();
 
     // Converge, in one invocation: the convergence pass leaves `core` hosting `CoreThingList`.
-    config::generate(&config_path, &[]).expect("one cold config run must converge and exit 0");
+    config::generate(&config_path, &[], None)
+        .expect("one cold config run must converge and exit 0");
 
     // Now the case. The consumer's spec gains a map over the dependency's type, so it borrows a
     // wrapper the dependency has never been asked for, and only the consumer is regenerated.
@@ -4699,7 +5141,7 @@ fn a_subset_run_that_adds_a_borrow_is_reported_against_the_committed_tree() {
         .expand(&selected)
         .unwrap();
     let bracketing = config::Convergence::capture(&expanded);
-    let verdict = config::generate(&config_path, &selected)
+    let verdict = config::generate(&config_path, &selected, None)
         .expect_err("a subset run that adds a borrow leaves the workspace unbuildable");
 
     assert!(
@@ -4733,7 +5175,7 @@ fn a_subset_run_that_adds_a_borrow_is_reported_against_the_committed_tree() {
         verdict.contains(&format!("--config {} core", config_path.display())),
         "the verdict must print the command that settles it, got: {verdict}"
     );
-    config::generate(&config_path, &["core".to_owned()])
+    config::generate(&config_path, &["core".to_owned()], None)
         .expect("the dependency-alone regen the verdict names must converge the workspace");
     let index =
         std::fs::read_to_string(dir.join("gen/core/wasm/src/generated/collections.rs")).unwrap();
@@ -4741,7 +5183,7 @@ fn a_subset_run_that_adds_a_borrow_is_reported_against_the_committed_tree() {
         index.contains("MapU64ToCoreThing"),
         "the dependency must now host the wrapper, got:\n{index}"
     );
-    config::generate(&config_path, &[]).expect("and the converged workspace is silent");
+    config::generate(&config_path, &[], None).expect("and the converged workspace is silent");
 
     let _ = std::fs::remove_dir_all(&dir);
 }

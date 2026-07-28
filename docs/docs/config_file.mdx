@@ -772,6 +772,30 @@ the only command-line selector; the config file is the edit loop.
 Selecting a subset generates only the crates you name. Their order on the command line does not
 matter — the config decides the generation order.
 
+### The one exception: `--static-dir`
+
+`--static-dir` (short `-s`) is accepted alongside `--config` and applies to **every crate in the
+run**:
+
+```bash
+cddl-codegen --config codegen.toml --static-dir ../cddl-codegen/static
+```
+
+It is exempt because it is the one flag with nothing per-crate to decide. It names where *this
+machine* keeps cddl-codegen's own hand-written serialization runtime — a property of a checkout, not
+of any crate — so "one crate or all of them?", the question that rules every other flag out, has a
+single answer here. It is also the one value a committed config cannot get right by itself.
+
+A command-line value **wins over a `static-dir` key**, silently and everywhere: the key is a
+committed default and this is the per-machine override of it, so a conflict here is the intended use
+rather than a mistake to report. `--print-flags` shows which one is in force — the overriding value
+is listed with the provenance `command line` instead of a config key.
+
+Unlike every key inside the config, the command-line value is **not** resolved against the config
+file's directory: it did not come from the config file, so a relative `--static-dir vendor/static`
+means what it means on any other command line — relative to the current directory. Prefer an
+absolute path in a script that may run from anywhere.
+
 ## Seeing what a config does, without running it
 
 `--print-flags` prints the flag list each crate would be generated with, and generates nothing:
@@ -788,26 +812,32 @@ cddl-codegen --config codegen.toml --print-flags core   # just this one
 # the config. Nothing was generated.
 
 [crates.core]
-  input               --input specs/core.cddl
-  output              --output gen/core
-  lib-name            --lib-name core-lib
-  preserve-encodings  --preserve-encodings true
-  deps                --wrapper-requests ledger=gen/ledger/wasm/src/generated/borrowed_collections.rs
-  deps                --key-requests ledger=gen/ledger/rust/src/generated/borrowed_key_types.rs
+  input                        --input=specs/core.cddl
+  output                       --output=gen/core
+  lib-name                     --lib-name=core-lib
+  preserve-encodings           --preserve-encodings=true
+  deps (from [crates.ledger])  --wrapper-requests=ledger=gen/ledger/wasm/src/generated/borrowed_collections.rs
+  deps (from [crates.ledger])  --key-requests=ledger=gen/ledger/rust/src/generated/borrowed_key_types.rs
 
 [crates.ledger]
-  input               --input specs/ledger.cddl
+  input                        --input=specs/ledger.cddl
   …
-  deps                --workspace-dep core
-  deps                --extern-import core=gen/core/extern-interface/core
+  deps                         --workspace-dep=core
+  deps                         --extern-import=core=gen/core/extern-interface/core
 ```
 
 Every line leads with **the config key that produced it**, which is the question worth answering:
 whether a `[defaults]` key reached a crate, or a `deps` edge derived the path you expected, is
 otherwise visible only by generating and reading the output tree. Every flag an edge derives is
-tagged `deps` rather than with its own flag name, since those name no line in your file — a
-reverse-edge flag on a *dependency*'s block comes from the consumer's `deps`, and the label in its
-value says which consumer. A sub-table entry you wrote by hand keeps the key you wrote it under.
+tagged `deps` rather than with its own flag name, since those name no line in your file. A
+reverse-edge flag lands on a *dependency*'s block but comes from a consumer's `deps` — a table the
+dependency does not have — so those read `deps (from [crates.<consumer>])`, naming the file's line
+you would actually go and edit. A sub-table entry you wrote by hand keeps the key you wrote it under,
+and a value overridden from the command line is tagged `command line`.
+
+Each flag is one token, `--name=value`, rather than two. That is what lets a value begin with a `-`
+(a directory named `-out`, a library named `-x`): everything after the first `=` is taken verbatim,
+so a `<k>=<v>` sub-table value such as `--extern-import=core=gen/core/…` survives it unchanged.
 
 The expansion behind the listing is the real one: every path resolution, every derivation and every
 validation. A config a run would refuse is refused here, with the same message.
@@ -1058,8 +1088,9 @@ to migrate should count on keeping one:
 - **Opt-in passes that generate a second spec set into an existing crate.** CML's `byron` pass
   targets the same output and the same `lib-name` as `multi-era` from a different spec directory. Two
   crate tables cannot share a library name — that is a hard error — so this stays a flag invocation.
-  It cannot be *added* to the config command either, since `--config` takes no generation flags; it
-  stays its own `cddl-codegen` call in the script, beside the `--config` one.
+  It cannot be *added* to the config command either, since the only generation flag `--config`
+  accepts is [`--static-dir`](#the-one-exception---static-dir); it stays its own `cddl-codegen` call
+  in the script, beside the `--config` one.
 
 What the config removes from the script is the part that was duplicated and unchecked: the flag
 bundles, the cross-crate paths that two invocations had to agree about, and the ordering comment
