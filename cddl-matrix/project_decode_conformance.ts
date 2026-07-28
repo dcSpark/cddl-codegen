@@ -650,6 +650,11 @@ const CORPUS_EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
   "c_style_enum.fixed_enum": ["int"],
   "c_style_enum_map_key.fixed_enum": ["int"],
   "c_style_enum_newtype.fixed_enum": ["int"],
+  // A c-style enum used as the CONTENT of encoding-carrying wrappers (`bytes .cbor` / a tag). Only
+  // the enum RULE is a type choice and so in floor scope; its holder is a record. All three arms are
+  // fixed uints, so the whole choice merges to one class — the same single-class shape as every
+  // other `fixed_enum` row above; the wrappers ride on the HOLDER, not on the arms.
+  "cbor_enum_payload.payload_enum": ["int"],
   "dsl_used_as_key_hash_cstyle.fixed_enum": ["int"],
   // Fixed bool/null in CHOICE-ARM position under --preserve-encodings. Only the TYPE-choice rule is
   // in floor scope; the fixture's map-rep/array-rep group-choice rules are not type choices. The
