@@ -609,6 +609,71 @@ impl First {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum FixedSpecialGroupChoice {
+    Flag {
+        flag_key_encoding: StringEncoding,
+        len_encoding: LenEncoding,
+    },
+    Absent {
+        absent_key_encoding: StringEncoding,
+        len_encoding: LenEncoding,
+    },
+    Label {
+        label: String,
+        label_encoding: StringEncoding,
+        label_key_encoding: StringEncoding,
+        len_encoding: LenEncoding,
+    },
+}
+
+impl FixedSpecialGroupChoice {
+    pub fn new_flag() -> Self {
+        Self::Flag {
+            flag_key_encoding: StringEncoding::default(),
+            len_encoding: LenEncoding::default(),
+        }
+    }
+
+    pub fn new_absent() -> Self {
+        Self::Absent {
+            absent_key_encoding: StringEncoding::default(),
+            len_encoding: LenEncoding::default(),
+        }
+    }
+
+    pub fn new_label(label: String) -> Self {
+        Self::Label {
+            label,
+            label_encoding: StringEncoding::default(),
+            label_key_encoding: StringEncoding::default(),
+            len_encoding: LenEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum FixedSpecialTypeChoice {
+    True,
+    Text {
+        text: String,
+        text_encoding: StringEncoding,
+    },
+}
+
+impl FixedSpecialTypeChoice {
+    pub fn new_true() -> Self {
+        Self::True
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text {
+            text,
+            text_encoding: StringEncoding::default(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, derivative::Derivative)]
 #[derivative(Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Foo {

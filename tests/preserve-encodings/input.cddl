@@ -293,3 +293,24 @@ opt_fixed_map = {a: uint, ? m_uint: 5, ? m_text: "tag", ? m_nint: -7, ? m_bool: 
 oset_p<a> = #6.258([* a]) / [* a] ; @duplicates reject
 oset_p_u64 = oset_p<uint>
 reject_set_preserve = [ s: oset_p_u64 ]
+
+; --- fixed BOOL / NULL values in CHOICE-ARM position under --preserve-encodings ---
+; bool and null are single-byte CBOR specials with no encoding variation, so a fixed one in arm
+; position has NOTHING to bind under this flag: no value (it is fixed) and no encoding sidecar
+; (unlike a fixed uint/nint's `Sz` or a fixed text's `StringEncoding`). The arm must VERIFY the
+; constant without binding it; binding an empty list emitted `let  = ();`, which rustfmt rejects,
+; so these two rules were UNGENERATABLE under the flag until the arm paths grew the same guard the
+; member-position path carries. Here for the ROUND-TRIP half of that fix: the emitted tests
+; construct each variant and assert the preserve contract on irregular re-encodings (the map arm's
+; key `StringEncoding` and the group's `LenEncoding` are still real encoding state that must
+; survive, and the fixed special beside them must not disturb it).
+;   fixed_special_group_choice — collapsed map-rep arms with fixed keys (the
+;                                `make_keyed_map_variant_deser_code` site), bool and null arms
+;                                beside an ordinary text-valued arm.
+;   fixed_special_type_choice  — a bare type choice (`rep = None`) through the generic
+;                                `EnumVariantData::RustType` site, where the bool arm is genuinely
+;                                field-less under every profile.
+; The array-rep arm flavor and the default/json profiles of all of these live in
+; tests/corpus/group_choice_fixed_special.cddl; this fixture is the preserve-only execution half.
+fixed_special_group_choice = { flag: true // absent: null // label: tstr }
+fixed_special_type_choice = true / tstr

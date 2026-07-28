@@ -3150,6 +3150,232 @@ impl DeserializeEmbeddedGroup for First {
     }
 }
 
+impl cbor_event::se::Serialize for FixedSpecialGroupChoice {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            FixedSpecialGroupChoice::Flag {
+                flag_key_encoding,
+                len_encoding,
+            } => {
+                serializer.write_map_sz(len_encoding.to_len_sz(1))?;
+                serializer
+                    .write_text_sz("flag", flag_key_encoding.to_str_len_sz("flag".len() as u64))?;
+                serializer.write_special(cbor_event::Special::Bool(true))?;
+                len_encoding.end(serializer)?;
+                Ok(serializer)
+            }
+            FixedSpecialGroupChoice::Absent {
+                absent_key_encoding,
+                len_encoding,
+            } => {
+                serializer.write_map_sz(len_encoding.to_len_sz(1))?;
+                serializer.write_text_sz(
+                    "absent",
+                    absent_key_encoding.to_str_len_sz("absent".len() as u64),
+                )?;
+                serializer.write_special(cbor_event::Special::Null)?;
+                len_encoding.end(serializer)?;
+                Ok(serializer)
+            }
+            FixedSpecialGroupChoice::Label {
+                label,
+                label_encoding,
+                label_key_encoding,
+                len_encoding,
+            } => {
+                serializer.write_map_sz(len_encoding.to_len_sz(1))?;
+                serializer.write_text_sz(
+                    "label",
+                    label_key_encoding.to_str_len_sz("label".len() as u64),
+                )?;
+                serializer
+                    .write_text_sz(label, label_encoding.to_str_len_sz(label.len() as u64))?;
+                len_encoding.end(serializer)?;
+                Ok(serializer)
+            }
+        }
+    }
+}
+
+impl Deserialize for FixedSpecialGroupChoice {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let initial_position = raw.position();
+            let mut errs = Vec::new();
+            let variant_deser = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::new(len);
+                read_len.read_elems(1)?;
+                read_len.finish()?;
+                let (flag_key, flag_key_encoding) = raw.text_sz()?;
+                if flag_key != "flag" {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Str(flag_key),
+                        expected: Key::Str(String::from("flag")),
+                    }
+                    .into());
+                }
+                let flag_key_encoding = StringEncoding::from(flag_key_encoding);
+                let flag_value = raw.bool()?;
+                if flag_value != true {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Bool(flag_value),
+                        expected: Key::Bool(true),
+                    }
+                    .into());
+                }
+                ();
+                match len {
+                    cbor_event::LenSz::Len(_, _) => (),
+                    cbor_event::LenSz::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                Ok(Self::Flag {
+                    flag_key_encoding,
+                    len_encoding,
+                })
+            })(raw);
+            match variant_deser {
+                Ok(variant) => return Ok(variant),
+                Err(e) => {
+                    errs.push(e.annotate("Flag"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            let variant_deser = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::new(len);
+                read_len.read_elems(1)?;
+                read_len.finish()?;
+                let (absent_key, absent_key_encoding) = raw.text_sz()?;
+                if absent_key != "absent" {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Str(absent_key),
+                        expected: Key::Str(String::from("absent")),
+                    }
+                    .into());
+                }
+                let absent_key_encoding = StringEncoding::from(absent_key_encoding);
+                if raw.special()? != cbor_event::Special::Null {
+                    return Err(DeserializeFailure::ExpectedNull.into());
+                }
+                ();
+                match len {
+                    cbor_event::LenSz::Len(_, _) => (),
+                    cbor_event::LenSz::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                Ok(Self::Absent {
+                    absent_key_encoding,
+                    len_encoding,
+                })
+            })(raw);
+            match variant_deser {
+                Ok(variant) => return Ok(variant),
+                Err(e) => {
+                    errs.push(e.annotate("Absent"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            let variant_deser = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::new(len);
+                read_len.read_elems(1)?;
+                read_len.finish()?;
+                let (label_key, label_key_encoding) = raw.text_sz()?;
+                if label_key != "label" {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Str(label_key),
+                        expected: Key::Str(String::from("label")),
+                    }
+                    .into());
+                }
+                let label_key_encoding = StringEncoding::from(label_key_encoding);
+                let (label, label_encoding) = raw
+                    .text_sz()
+                    .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
+                match len {
+                    cbor_event::LenSz::Len(_, _) => (),
+                    cbor_event::LenSz::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                Ok(Self::Label {
+                    label,
+                    label_encoding,
+                    label_key_encoding,
+                    len_encoding,
+                })
+            })(raw);
+            match variant_deser {
+                Ok(variant) => return Ok(variant),
+                Err(e) => {
+                    errs.push(e.annotate("Label"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
+        })()
+        .map_err(|e| e.annotate("FixedSpecialGroupChoice"))
+    }
+}
+
+impl cbor_event::se::Serialize for FixedSpecialTypeChoice {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            FixedSpecialTypeChoice::True => {
+                serializer.write_special(cbor_event::Special::Bool(true))
+            }
+            FixedSpecialTypeChoice::Text {
+                text,
+                text_encoding,
+            } => serializer.write_text_sz(text, text_encoding.to_str_len_sz(text.len() as u64)),
+        }
+    }
+}
+
+impl Deserialize for FixedSpecialTypeChoice {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::Special => {
+                    let true_value = raw.bool()?;
+                    if true_value != true {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Bool(true_value),
+                            expected: Key::Bool(true),
+                        }
+                        .into());
+                    }
+                    ();
+                    Ok(FixedSpecialTypeChoice::True)
+                }
+                cbor_event::Type::Text => {
+                    let (text, text_encoding) = raw
+                        .text_sz()
+                        .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
+                    Ok(Self::Text {
+                        text,
+                        text_encoding,
+                    })
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("FixedSpecialTypeChoice"))
+    }
+}
+
 impl cbor_event::se::Serialize for Foo {
     fn serialize<'se>(
         &self,

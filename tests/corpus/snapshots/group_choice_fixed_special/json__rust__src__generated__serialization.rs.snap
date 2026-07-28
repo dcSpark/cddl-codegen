@@ -1,0 +1,360 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for ArrBoolArm {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            ArrBoolArm::Flag => {
+                serializer.write_array(cbor_event::Len::Len(1))?;
+                serializer.write_special(cbor_event::Special::Bool(true))
+            }
+            ArrBoolArm::Label(label) => {
+                serializer.write_array(cbor_event::Len::Len(1))?;
+                serializer.write_text(label)
+            }
+        }
+    }
+}
+
+impl Deserialize for ArrBoolArm {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            match raw.cbor_type()? {
+                cbor_event::Type::Special => {
+                    let mut read_len = CBORReadLen::from(len);
+                    read_len.read_elems(1)?;
+                    read_len.finish()?;
+                    let flag_value = raw.bool()?;
+                    if flag_value != true {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Bool(flag_value),
+                            expected: Key::Bool(true),
+                        }
+                        .into());
+                    }
+                    match len {
+                        cbor_event::Len::Len(_) => (),
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => (),
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    }
+                    Ok(ArrBoolArm::Flag)
+                }
+                cbor_event::Type::Text => {
+                    let mut read_len = CBORReadLen::from(len);
+                    read_len.read_elems(1)?;
+                    read_len.finish()?;
+                    let label = raw.text()?;
+                    match len {
+                        cbor_event::Len::Len(_) => (),
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => (),
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    }
+                    Ok(ArrBoolArm::Label(label))
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("ArrBoolArm"))
+    }
+}
+
+impl cbor_event::se::Serialize for ArrNullArm {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            ArrNullArm::Absent => {
+                serializer.write_array(cbor_event::Len::Len(1))?;
+                serializer.write_special(cbor_event::Special::Null)
+            }
+            ArrNullArm::Label(label) => {
+                serializer.write_array(cbor_event::Len::Len(1))?;
+                serializer.write_text(label)
+            }
+        }
+    }
+}
+
+impl Deserialize for ArrNullArm {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            match raw.cbor_type()? {
+                cbor_event::Type::Special => {
+                    let mut read_len = CBORReadLen::from(len);
+                    read_len.read_elems(1)?;
+                    read_len.finish()?;
+                    if raw.special()? != cbor_event::Special::Null {
+                        return Err(DeserializeFailure::ExpectedNull.into());
+                    }
+                    match len {
+                        cbor_event::Len::Len(_) => (),
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => (),
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    }
+                    Ok(ArrNullArm::Absent)
+                }
+                cbor_event::Type::Text => {
+                    let mut read_len = CBORReadLen::from(len);
+                    read_len.read_elems(1)?;
+                    read_len.finish()?;
+                    let label = raw.text()?;
+                    match len {
+                        cbor_event::Len::Len(_) => (),
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => (),
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    }
+                    Ok(ArrNullArm::Label(label))
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("ArrNullArm"))
+    }
+}
+
+impl cbor_event::se::Serialize for MapBoolArm {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            MapBoolArm::Flag => {
+                serializer.write_map(cbor_event::Len::Len(1))?;
+                serializer.write_text("flag")?;
+                serializer.write_special(cbor_event::Special::Bool(true))
+            }
+            MapBoolArm::Label(label) => {
+                serializer.write_map(cbor_event::Len::Len(1))?;
+                serializer.write_text("label")?;
+                serializer.write_text(label)
+            }
+        }
+    }
+}
+
+impl Deserialize for MapBoolArm {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let initial_position = raw.position();
+            let mut errs = Vec::new();
+            let variant_deser = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::from(len);
+                read_len.read_elems(1)?;
+                read_len.finish()?;
+                let flag_key = raw.text()?;
+                if flag_key != "flag" {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Str(flag_key),
+                        expected: Key::Str(String::from("flag")),
+                    }
+                    .into());
+                }
+                let flag_value = raw.bool()?;
+                if flag_value != true {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Bool(flag_value),
+                        expected: Key::Bool(true),
+                    }
+                    .into());
+                }
+                match len {
+                    cbor_event::Len::Len(_) => (),
+                    cbor_event::Len::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                Ok(MapBoolArm::Flag)
+            })(raw);
+            match variant_deser {
+                Ok(variant) => return Ok(variant),
+                Err(e) => {
+                    errs.push(e.annotate("Flag"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            let variant_deser = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::from(len);
+                read_len.read_elems(1)?;
+                read_len.finish()?;
+                let label_key = raw.text()?;
+                if label_key != "label" {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Str(label_key),
+                        expected: Key::Str(String::from("label")),
+                    }
+                    .into());
+                }
+                let label = raw.text()?;
+                match len {
+                    cbor_event::Len::Len(_) => (),
+                    cbor_event::Len::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                Ok(MapBoolArm::Label(label))
+            })(raw);
+            match variant_deser {
+                Ok(variant) => return Ok(variant),
+                Err(e) => {
+                    errs.push(e.annotate("Label"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
+        })()
+        .map_err(|e| e.annotate("MapBoolArm"))
+    }
+}
+
+impl cbor_event::se::Serialize for MapNullArm {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            MapNullArm::Absent => {
+                serializer.write_map(cbor_event::Len::Len(1))?;
+                serializer.write_text("absent")?;
+                serializer.write_special(cbor_event::Special::Null)
+            }
+            MapNullArm::Label(label) => {
+                serializer.write_map(cbor_event::Len::Len(1))?;
+                serializer.write_text("label")?;
+                serializer.write_text(label)
+            }
+        }
+    }
+}
+
+impl Deserialize for MapNullArm {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let initial_position = raw.position();
+            let mut errs = Vec::new();
+            let variant_deser = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::from(len);
+                read_len.read_elems(1)?;
+                read_len.finish()?;
+                let absent_key = raw.text()?;
+                if absent_key != "absent" {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Str(absent_key),
+                        expected: Key::Str(String::from("absent")),
+                    }
+                    .into());
+                }
+                if raw.special()? != cbor_event::Special::Null {
+                    return Err(DeserializeFailure::ExpectedNull.into());
+                }
+                match len {
+                    cbor_event::Len::Len(_) => (),
+                    cbor_event::Len::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                Ok(MapNullArm::Absent)
+            })(raw);
+            match variant_deser {
+                Ok(variant) => return Ok(variant),
+                Err(e) => {
+                    errs.push(e.annotate("Absent"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            let variant_deser = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::from(len);
+                read_len.read_elems(1)?;
+                read_len.finish()?;
+                let label_key = raw.text()?;
+                if label_key != "label" {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Str(label_key),
+                        expected: Key::Str(String::from("label")),
+                    }
+                    .into());
+                }
+                let label = raw.text()?;
+                match len {
+                    cbor_event::Len::Len(_) => (),
+                    cbor_event::Len::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                Ok(MapNullArm::Label(label))
+            })(raw);
+            match variant_deser {
+                Ok(variant) => return Ok(variant),
+                Err(e) => {
+                    errs.push(e.annotate("Label"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
+        })()
+        .map_err(|e| e.annotate("MapNullArm"))
+    }
+}
+
+impl cbor_event::se::Serialize for TypeChoiceBool {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            TypeChoiceBool::True => serializer.write_special(cbor_event::Special::Bool(true)),
+            TypeChoiceBool::Text(text) => serializer.write_text(text),
+        }
+    }
+}
+
+impl Deserialize for TypeChoiceBool {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::Special => {
+                    let true_value = raw.bool()?;
+                    if true_value != true {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Bool(true_value),
+                            expected: Key::Bool(true),
+                        }
+                        .into());
+                    }
+                    Ok(TypeChoiceBool::True)
+                }
+                cbor_event::Type::Text => Ok(TypeChoiceBool::Text(raw.text()?)),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("TypeChoiceBool"))
+    }
+}

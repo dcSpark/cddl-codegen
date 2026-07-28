@@ -1,0 +1,39 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+use cddl_lib::json_schema_gen::Registrar;
+use cddl_lib::json_schema_gen::check_schema_ref_closure;
+
+pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
+    let mut reg = Registrar::new(generator);
+    reg.add::<cddl_lib::ArrBoolArm>();
+    reg.add::<cddl_lib::ArrNullArm>();
+    reg.add::<cddl_lib::MapBoolArm>();
+    reg.add::<cddl_lib::MapNullArm>();
+    reg.add::<cddl_lib::TypeChoiceBool>();
+}
+
+pub fn export_schemas() {
+    let schema_path = std::path::Path::new("schemas");
+    if !schema_path.exists() {
+        std::fs::create_dir(schema_path).unwrap();
+    }
+    let mut generator = schemars::SchemaGenerator::default();
+    add_schemas(&mut generator);
+    let meta_schema = generator.settings().meta_schema.clone();
+    let definitions_path = generator.settings().definitions_path.to_string();
+    let mut document = serde_json::Map::new();
+    if let Some(meta_schema) = meta_schema {
+        document.insert("$schema".to_owned(), meta_schema.into_owned().into());
+    }
+    document.insert("title".to_owned(), "cddl_lib".into());
+    document.insert("$defs".to_owned(), generator.take_definitions(true).into());
+    let document = serde_json::Value::Object(document);
+    check_schema_ref_closure(&document, &definitions_path);
+    std::fs::write(
+        schema_path.join("cddl_lib.schema.json"),
+        serde_json::to_string_pretty(&document).unwrap(),
+    )
+    .unwrap();
+}
