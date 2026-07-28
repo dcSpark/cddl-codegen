@@ -202,8 +202,10 @@ ledgered here (that's what the probe/gate error messages point at).
   `occurrence_on_array_record_field_rejects_gracefully`. The rejection avoids the silent
   exactly-once narrowing that makes a generated decoder reject spec-valid repetition counts —
   invisible to round-trip tests, surfaced only by spec-derived decode vectors. Real support for the
-  middle-position case needs decode lookahead: a repeated-item run bounded by the following fields'
-  types, i.e. peek-type disambiguation.
+  middle-position case is one decode-disambiguation design shared with the non-final-`?` overlap
+  family in the layer-2 findings entry below: the emitter already peeks major types for optional
+  fields; the missing signal is the remaining definite-length COUNT (repeats = len − fixed), plus
+  the shared residue/indefinite-length policy decisions that entry spells out.
 - **Real bounded `?` / `n*m` table cardinality is a candidate feature.** A count-permitting occurrence
   marker on a single non-literal arrow map entry no longer silently widens to an unbounded `*` table
   (the removed bug: the table-detection arm ignored the entry occurrence and `HomogenousMap` — unlike
@@ -264,21 +266,34 @@ ledgered here (that's what the probe/gate error messages point at).
   `a = [* pair]`). Real `Vec<Synthesized>` / `Option`-style support for zero-permitting markers is a
   candidate feature; flipping a row to `ok` must not decay back to silent narrowing (unsupported
   rows carry no decode-conformance row; `project_decode_conformance.ts` enforces that boundary).
-- **Give a NON-TERMINABLE recursive type a boundary instead of an advisory notice.** A cycle whose
-  every path back to itself closes through a mandatory, non-collection member has infinite size in
-  Rust: `mdmap = { * text => mdmap }` (the self-reference is the map VALUE, so the emitted typedef is
-  `pub type Mdmap = BTreeMap<String, Mdmap>`) and `md = mdrec / int` with `mdrec = { a: md }` both
-  generate at exit 0 and then fail `cargo check`. Terminable recursion is supported and unaffected
-  (`current_capacities.mdx` § "Recursive types"). The generator already detects the cycle — dep_graph
-  prints `Recursive type: … code will possibly need to be edited by hand to use Box/etc` — so what is
-  missing is not detection but a boundary: an advisory notice leaves a spec that needs hand-editing
-  indistinguishable at the CLI from one that does not, and the hand edit lands in `src/generated/**`,
-  which every regeneration clobbers. Deliverable shape: box the cycle-closing member automatically,
-  or promote the notice to a rejection naming that member. Reopening signal: a consumer's committed
-  spec contains one such cycle — i.e. the count of cycle-closing members they must re-Box after each
-  regeneration reaches 1. Today that count is 0 in every consumer spec; the two repros above are
-  synthetic probes minted while fixing an unrelated defect, and a synthetic probe costs nobody a
-  re-edit.
+- **Give a recursive type whose emitted Rust cannot compile a boundary instead of an advisory
+  notice.** Recursion compiles when the emitted cycle passes through a NOMINAL type (a generated
+  struct/enum, not a `pub type` alias) AND crosses heap indirection (a collection) — the
+  user-facing statement of that predicate is `current_capacities.mdx` § "Recursive types".
+  Terminability of the CDDL is neither necessary nor sufficient (`x = [* x]` terminates and still
+  fails). A cycle missing one condition generates at exit 0 and then fails `cargo check`, in two
+  rustc classes with different remedies: ALIAS-ONLY cycles fail E0391 (`x = [* x]`,
+  `mdmap = { * text => mdmap }` → `pub type Mdmap = BTreeMap<String, Mdmap>`; boxing cannot help —
+  alias expansion is structural — while the spec-side `; @newtype` remedy works today and
+  survives regeneration), and NOMINAL cycles without indirection fail E0072 (`md = mdrec / int`
+  with `mdrec = { a: md }`; an `Option` member does not help — not heap indirection — and no
+  "box this member" directive exists: the generator emits no `Box` in type positions at all).
+  What is missing is not detection but a boundary — with one design constraint learned by
+  probing: dep_graph's `Recursive type: …` stderr notice CANNOT be promoted to the rejection,
+  because it fires on supported cycles too (`tree = [value: uint, children: [* tree]]` prints it
+  and compiles), is rule-granular (member attribution is lost), and its reported back edge is
+  traversal-order dependent while output is promised entry-order invariant. A real boundary needs
+  its own classifier, post-`finalize` where struct kinds and member shapes are known (SCC over
+  the ident graph; per-SCC, check for a nominal node behind indirection), feeding either a
+  rejection naming the cycle and its closing member(s) or the per-class auto-fix: auto-`@newtype`
+  for the E0391 alias (breaks nothing that builds today), auto-`Box` for E0072 — the expensive
+  half, since `Box` would be a new emitted-type concept threaded through fields, ctors, wasm and
+  emit-tests, and the boxed-member choice must be a canonical property of the cycle, never the
+  DFS back edge, or byte-identical output breaks across rule orderings. Reopening signal, on the
+  magnitude axis: a consumer's committed spec contains one such cycle — i.e. the count of rules
+  its owner must `@newtype`-annotate or restructure (E0391), or hand-`Box` after each
+  regeneration (E0072, where no spec-side remedy exists), reaches 1. Today that count is 0 in
+  every consumer spec; the repros above are synthetic probes.
 - **A choice whose bool and null arms share the CBOR Special major type routes through the
   brute-force try-each-arm dispatch, which still emits invalid Rust under `--preserve-encodings`.**
   `t = true / null / tstr` fails generation at exit 1 (rustfmt: `expected pattern, found '='`-class
@@ -365,6 +380,24 @@ ledgered here (that's what the probe/gate error messages point at).
   contains an `undefined` member, i.e. the count of members its owner must hand-rewrite to keep
   generating reaches 1; today the entry's evidence is synthetic probes only, and a synthetic probe
   costs nobody a rewrite.
+- **The remaining prelude abort class: `cbor-any` / `eb64url` / `eb64legacy` / `eb16` still PANIC
+  where `undefined` now refuses.** All four are `any`-content prelude tags (`#6.55799(any)`,
+  `#6.21/22/23(any)`) that reach the `panic!("unsupported cddl prelude type: …")` arm of
+  `cddl_prelude` (`src/utils.rs`) through the same unresolved-reserved fallback the `undefined`
+  refusal intercepts one arm earlier; the panic catalog holds
+  `tests/matrix_panic/prelude.{cbor-any,eb16,eb64url,eb64legacy}.cddl` and the generated
+  Limitations table honestly reads "panics generation" for each. The buildable-now candidate fix
+  is the POSTURE conversion, not support: a graceful refusal at the same seam, naming the type and
+  the supported `any` widening — the exact remedy shape the `undefined` refusal ships (with the
+  same caveat that widening drops the expected-conversion/self-description meaning, so it is a
+  different spec). Support itself is a separate per-name question: `cbor-any` is a decided
+  permanent exclusion (`tests/TESTING_ROADMAP.md` § North star's exclude list — a refusal is
+  consistent with that ruling; a crash is not), while the three `eb*` names have no ruling — with
+  `any` now first-class, the mechanical route would be the prelude-expansion path the supported
+  tags ride (`eb64url` → `#6.21(any)`, as `encoded-cbor` → `#6.24(bstr)` does today). Reopening
+  signal for the `eb*` support half, on the magnitude axis: a spec brought to us uses one of the
+  three names, i.e. the count of rules its owner must widen to `any` to keep generating reaches 1;
+  the refusal half needs no signal — a panic on valid CDDL is a standing defect class.
 - **A byte-string literal has no fixed-MEMBER representation, so a spec that pins a member to a
   literal must be hand-rewritten.** `[v: h'0102', x: uint]`, the unkeyed `[h'0102', x: uint]`,
   `{ k: h'0102', j: uint }` and the UTF-8 spelling `[v: 'text', x: uint]` are all refused gracefully
@@ -395,23 +428,54 @@ ledgered here (that's what the probe/gate error messages point at).
 - **Three compile/round-trip-class families remaining from the recombination fuzzer's layer-2 sweeps**
   (`recombination_crates_execute`: generation is ok, but the generated crate fails `cargo test`
   under `--emit-tests`, default profile). Generation-outcome catalogs cannot see these, so each
-  class is held in the sweep's `LAYER2_KNOWN_BAD` cited ledger (desc-keyed, vacuity-guarded — a
-  fixed class flips loudly) with THIS entry as its pin; each is a candidate cddl-codegen fix:
-  - **A non-final `?` optional field in an array record breaks compilation** (E0599:
-    `from_cbor_bytes` trait bounds unsatisfied — the `Deserialize` impl is not emitted):
-    `a = [ ? f0: uint, f1: uint ]` and any `[? x, …more…]` variant. Optional-LAST array fields
-    (`[uint, ? bytes]`) compile and round-trip — the gap is the position, needing decode lookahead
-    like the count-permitting occurrence entry above.
-  - **An array-rep group-choice arm containing a `?` optional member breaks compilation** (E0599:
-    the arm struct's `deserialize_as_embedded_group` is not emitted): `t = [ ? f0: uint, f1: uint // tstr ]`.
-  - **Wire-ambiguous type-choice arms cannot round-trip variant identity** (emitted round-trip
-    asserts `variant N in == variant N out`, but first-match decoding maps every overlapping value
-    to the earliest matching arm): duplicate/equivalent arms (`tstr / tstr`, `text / tstr`), a
-    subsuming arm (`uint / tstr / bytes / tstr`, `int .ne 0 / tstr / tstr`,
-    `[ ga: -10...10 / tstr // tstr ]`), and payload/type overlap (`bytes .cbor uint / tstr / bytes`
-    — a valid-CBOR byte string matches the `.cbor` arm first). Candidate fix: reject duplicate arms
-    at generation, or document first-match semantics and have `--emit-tests` skip
-    variant-identity asserts for ambiguous choices.
+  class is held in the sweep's `LAYER2_KNOWN_BAD` cited ledger (desc-keyed; NB the vacuity guard
+  fires only when a composition stops REACHING layer 2 — a class fixed AT layer 2 stays silently
+  excluded, so a fixing commit must delete its ledger entries itself, in the same commit) with
+  THIS entry as its pin; each is a candidate cddl-codegen fix:
+  - **A non-final `?` optional field in an array record whose CBOR major types OVERLAP a later
+    field's fails under `--emit-tests`** (E0599: `from_cbor_bytes` trait bounds unsatisfied):
+    `a = [ ? f0: uint, f1: uint ]`. The gap is NOT position per se — the emitter already
+    peek-disambiguates optional array-record fields against every reachable follower's
+    `cbor_types`, so a type-disjoint non-final `?` (`[ ? f0: uint, f1: tstr ]`) works today; on
+    overlap it records `dont_generate_deserialize` (notice + exit 0). The crate compiles
+    standalone; the break is an INTEGRITY gap in a consumer of that refusal: `--emit-tests` mints
+    `from_cbor_bytes` round-trips unconditionally (`emit_generated_tests` never sees the
+    no-deserialize set — the wasm surface has exactly the needed gate at its analogous emission
+    site). Real support for the overlap case shares ONE design with the middle-position `*`
+    occurrence entry above: add the remaining definite-length COUNT to the existing PEEK signal,
+    decide the genuinely ambiguous residue (count+peek admitting ≥2 assignments — the same
+    information-the-wire-does-not-carry loss as the wire-ambiguity family below, so the two
+    policies should be decided once), and decide the indefinite-length story (no count signal
+    there; peek-only makes acceptance encoding-dependent).
+  - **An array-rep group-choice arm containing an overlap-refused `?` member breaks plain
+    compilation** (E0599): `t = [ ? f0: uint, f1: uint // tstr ]` — the same refusal, but the
+    choice enum's `Deserialize` impl IS emitted and calls the arm struct's never-emitted
+    `deserialize_as_embedded_group`, so the crate itself fails `cargo check`: an emitted crate
+    that cannot build, the posture the same-chain `.cbor` entry above names. The cheap integrity
+    fixes for this family pair (propagate arm-struct no-deser to the containing enum, mirroring
+    the wasm gate; thread the no-deser set into emit-tests and skip loudly) are independent of
+    any disambiguation feature — with one trap: after them the ledgered compositions PASS layer
+    2, and the vacuity guard fires only on compositions that stop REACHING layer 2, so the stale
+    ledger entries must be deleted in the same commit.
+  - **Wire-ambiguous type-choice arms cannot round-trip variant identity — a property of the
+    wire, not a decoder bug.** RFC 8610 defines a choice as matching when ANY arm matches; arm
+    identity does not exist on the wire and neither oracle emits one, so first-match decoding is
+    not wrong. What fails is the emitted round-trip's variant-identity assertion
+    (default-profile-only by construction — preserve mode sets no value-equality leg), which
+    asserts something the wire cannot represent for duplicate/equivalent arms (`tstr / tstr`,
+    `text / tstr`), subsuming arms (`uint / tstr / bytes / tstr`, `int .ne 0 / tstr / tstr`,
+    `[ ga: -10...10 / tstr // tstr ]`), and payload/type overlap (`bytes .cbor uint / tstr /
+    bytes` — a valid-CBOR byte string matches the `.cbor` arm first). The two obvious fixes each
+    have a known flaw: generation-time duplicate-arm rejection reaches only literally-identical
+    arms (value-dependent overlap is undecidable at generation) and breaks a legitimate source of
+    collapsed duplicates — generic instantiation (`either<a,b> = a / b` at `<tstr, tstr>`);
+    skipping the identity assert needs an ambiguity analysis whose cheap form (`cbor_types`
+    overlap) over-flags content-distinguishable same-major-type choices, silently weakening tests
+    with teeth. The third option avoids both: assert FIRST-MATCH semantics itself (decoded
+    variant index ≤ minted index; equal ⇒ values equal), which degenerates to today's exact
+    assertion for unambiguous choices and pins the documented contract for ambiguous ones —
+    complemented by IR-level dedup of literally identical arms (`tstr / tstr` today mints
+    `Text`/`Text2` variants — pure API noise, and the shape generic collapse produces).
 - **Make a SAME-CHAIN nested `bytes .cbor` payload either generate or refuse.** A `.cbor` payload
   whose own member type carries a second `.cbor` control in the SAME op chain —
   `bytes .cbor (bytes .cbor uint)`, and equally the named-alias spelling
@@ -530,8 +594,9 @@ ledgered here (that's what the probe/gate error messages point at).
   nint shapes land as graceful rejections + enumeration cells; when one does, the work is the
   runtime/emitted-type design plus the upstream literal-width question, not IR plumbing — then
   flip the pinned rejection rows (record path first, then the group-choice arm).
-- `float16` / float-choice aliases unsupported while `float32/64` work; generics on
-  plain groups rejected. The historical blocker rationale ("no native Rust f16") is RETIRED as of
+- `float16` / float-choice aliases unsupported while `float32/64` work (the alias rows still
+  panic generation, per the generated Limitations table); generics on plain groups likewise still
+  panic. The historical blocker rationale ("no native Rust f16") is RETIRED as of
   2026-07-23: the dcSpark `cbor_event` fork the main crate now pins ships lossless software
   f16/f32↔f64 conversion plus width-carrying endpoints (`float_sz` / `write_float_sz` /
   `smallest_float_sz`, NaN payloads preserved) — already exercised by the `AnyCbor` runtime type's
@@ -799,9 +864,10 @@ composition-space cross-check that complements this matrix's curated per-shape g
   neither SHAPES/ROLES nor this input-mode rule enumerates — is recorded in
   `tests/TESTING_ROADMAP.md`'s `--extern-wrapper-index` deferral-boundaries entry, whose
   mechanical layer (a deferral-profile leg over the extern-capable shapes) is now DUE: its
-  recur-first trigger fired on a consumer-reported pair of companion-wrapper cells (the
-  named-table workspace keys-list and the co-hosted requested keys-list — details and the leg's
-  axis refinements live in that entry).
+  recur-first trigger is over-met on three arming instances — the consumer-reported
+  companion-wrapper pair (the named-table workspace keys-list and the co-hosted requested
+  keys-list) plus a probed named-reference-position red — details, the participation table, and
+  the leg's axis refinements live in that entry.
 - **Mint the two remaining unminted wasm-surface classes (or declare them permanent).** Extern /
   raw-bytes ctor args (user-supplied types with no generated conversion) and the `--wasm-*-macro`
   modes (they replace the whole wrapper method surface) fall back to the compile verdict with loud
