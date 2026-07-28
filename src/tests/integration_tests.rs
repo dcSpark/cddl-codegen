@@ -18884,7 +18884,7 @@ fn comment_preservation_replace_in_descendant_orphans_parent_import() {
 ///       (a prelude trait present, raw_bytes always included, and NO generated per-type impl for the
 ///       distinctively-named spec type); non_empty_map.rs carries OrderedHashMap not BTreeMap under
 ///       preserve; and a fresh `<dir>/Cargo.toml` is seeded with the flavor's dep set (cbor_event,
-///       hex, linked-hash-map, serde, serde_json — and NOT schemars, since json-schema-export is
+///       hex, hashlink, serde, serde_json — and NOT schemars, since json-schema-export is
 ///       off);
 ///   (b) a `cddl-codegen:insert` block hand-added to an exported file survives a re-export
 ///       (the comment/code-preservation overlay runs in this dir too);
@@ -19006,7 +19006,7 @@ fn export_static_crate_writes_composed_runtime_and_manifest() {
         "json_schema_gen.rs must not be exported with --json-schema-export off"
     );
     // A fresh crate dir gets a seeded Cargo.toml carrying exactly the deps this flavor's exported
-    // source references: cbor_event + hex always, linked-hash-map (preserve-encodings), serde AND
+    // source references: cbor_event + hex always, hashlink (preserve-encodings), serde AND
     // serde_json (json-serde-derives — `any_cbor_json.rs`, always exported here, calls
     // `serde_json::Value` / `serde_json::Number::from_f64`) — and NOT schemars, since
     // json-schema-export is off (set-or-SKIP: absent is fine, but the tool must not have added it).
@@ -19016,13 +19016,7 @@ fn export_static_crate_writes_composed_runtime_and_manifest() {
         manifest.contains("name = \"cddl-runtime\""),
         "fresh manifest must seed the package identity:\n{manifest}"
     );
-    for dep in [
-        "cbor_event",
-        "hex",
-        "linked-hash-map",
-        "serde",
-        "serde_json",
-    ] {
+    for dep in ["cbor_event", "hex", "hashlink", "serde", "serde_json"] {
         assert!(
             manifest.contains(&format!("{dep} = ")),
             "fresh manifest must declare {dep} (this flavor's exported source references it):\n{manifest}"

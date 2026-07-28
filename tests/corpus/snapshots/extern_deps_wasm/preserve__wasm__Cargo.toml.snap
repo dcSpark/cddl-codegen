@@ -17,4 +17,3 @@ crate-type = ["cdylib", "rlib"]
 cddl-lib = { path = "../rust", features = ["wasm"] }
 cbor_event = { git = "https://github.com/dcSpark/cbor_event", rev = "e2bca6d257f70ab0c226c4efd0726d3f5c1b4490" }
 wasm-bindgen = "0.2"
-linked-hash-map = "0.5.3"

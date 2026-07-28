@@ -835,7 +835,7 @@ fn serialization_prelude() {
 }
 
 /// The generated rust `Cargo.toml`'s dependency set is driven by conditional logic: the edition,
-/// flag-deps (serde/schemars/linked-hash-map/derivative), and *type*-conditional deps — `hex` for
+/// flag-deps (serde/schemars/hashlink/derivative), and *type*-conditional deps — `hex` for
 /// byte wrappers, `wasm-bindgen` for c-style enums. The per-feature corpus skips `Cargo.toml` as
 /// near-constant noise, but the distinct dep *combinations* are not all produced by
 /// [`whole_program`]. So cover them here with a curated matrix that toggles each type-conditional
@@ -882,7 +882,10 @@ fn cargo_toml_matrix() {
                 let hex = label == "hex";
                 let wasm_bindgen = label == "wasm_bindgen";
                 for (key, expected) in [
-                    ("linked-hash-map", preserve),
+                    ("hashlink", preserve),
+                    // The backing crate `OrderedHashMap` used before hashlink: the tool tombstones
+                    // it unconditionally, so no flag combination may bring it back.
+                    ("linked-hash-map", false),
                     ("derivative", preserve),
                     ("serde", serde),
                     ("serde_json", serde),

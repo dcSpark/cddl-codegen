@@ -1162,7 +1162,7 @@ Every key falls into one of three categories:
 
 - **Tool-owned (rewritten every run).** `package.name`, `package.edition`, `lib.crate-type`, and the
   entire `[dependencies]` set the generator emits (e.g. `cbor_event`, and the flag/type-conditional
-  deps `linked-hash-map`, `derivative`, `serde`, `serde_json`, `schemars`, `hex`, `wasm-bindgen`,
+  deps `hashlink`, `derivative`, `serde`, `serde_json`, `schemars`, `hex`, `wasm-bindgen`,
   `serde-wasm-bindgen`). Non-dependency keys here are rewritten wholesale — **your edits to them are
   overwritten by design** (the same contract `cargo add` makes). Dependency entries are **merged
   field-level**, not clobbered: the tool owns the version *floor* (a compatible pin you wrote is kept
