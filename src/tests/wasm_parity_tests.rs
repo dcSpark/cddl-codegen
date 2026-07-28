@@ -226,6 +226,10 @@ const CORPUS_PARITY_INPUTS: &[CorpusParityInput] = &[
         ],
     ),
     (
+        "json-arbitrary-precision",
+        &[("json_serde", &["--json-serde-derives=true"])],
+    ),
+    (
         "json-float",
         &[(
             "json",
@@ -468,6 +472,11 @@ const ALLOWED_RUST_GENERATED: &[&str] = &[
     // it and it carries no per-type boundary API, so the differential does not parse it — but it
     // must be an ALLOWED key or every json-profile fixture trips the stray-file guard.
     "json_schema_gen.rs",
+    // The honest `serde_json::Value`/`Number` serializer walk, emitted under `--json-serde-derives`
+    // (flag-gated, never spec-gated — it is a published API for hand-written `Serialize` impls). Pure
+    // runtime helpers, no per-type boundary API, so the differential does not parse it — but it must
+    // be an ALLOWED key or every json-profile fixture trips the stray-file guard.
+    "json_value_ser.rs",
 ];
 const ALLOWED_WASM_GENERATED: &[&str] = &["mod.rs", "collections.rs"];
 

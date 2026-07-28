@@ -14,6 +14,7 @@ expression: content
 pub mod any_cbor;
 pub mod error;
 pub mod json_schema_gen;
+pub mod json_value_ser;
 pub mod ordered_hash_map;
 extern crate derivative;
 pub mod cbor_encodings;

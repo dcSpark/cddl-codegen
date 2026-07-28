@@ -244,6 +244,16 @@ documented JSON-only ambiguity; `"012"`/`"+7"`/`"5.0"` stay text). CBOR is autho
 lossy side by charter. The round-trip law is `from_natural_json(to_natural_json(x)?)` value-equal
 modulo encodings, object-key ordering, and that numeric-key reading.
 
+**Serializer-independence.** `to_natural_json` returns a `serde_json::Value`, but the `#[serde(with =
+…)]` adapter that puts it on a member does **not** hand that value to the serializer through
+`serde_json::Value`'s own `Serialize` — it walks it through the `json_value_ser` runtime module, which
+renders numbers through serde's real integer/float methods. That is what keeps an `any` member honest
+under `serde_json/arbitrary_precision`, where `serde_json::Number`'s own impl emits a private token
+struct that non-serde_json serializers (`serde-wasm-bindgen`, `ciborium`, …) ship verbatim. The table
+above therefore describes what every serializer sees, not just `to_json`. The same module is the
+published helper a hand-written `Serialize` should route through — see
+[Wasm differences](./wasm_differences).
+
 **Depth.** JSON *reading* (both natural and the tagged value codec) inherits serde_json's own
 recursion limit, so hostile deeply-nested JSON is a graceful `Err`, never a stack overflow; JSON
 *writing* (`to_json`/`to_natural_json`) carries the crate-wide unbounded-recursion posture — no depth
