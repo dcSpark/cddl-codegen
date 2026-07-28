@@ -464,6 +464,11 @@ All of it before any crate generates:
 - **`json-schema-deps` on a crate with `json-schema-export = false`** — hard error: there is no
   document for the threaded rows to land in. (`json-schema-deps = []` is not a request and stays
   legal.)
+- **`wasm-reexports` naming a crate with `wasm = false`** — hard error naming both crates. The key
+  says your package ships that crate's wasm classes; a crate that generates no wasm crate has none,
+  so the declaration cannot be about anything. Without the check it is *silent* rather than wrong —
+  the threading derivation filters on `json-schema-export`, a different axis, so such a name produced
+  no diagnostic and no effect.
 - **`wasm-reexports` or `json-schema-deps` naming an unknown crate** — hard error listing the
   configured crates. Both derived values come from the named crate's own entry, so a crate outside
   this config cannot be sugar.

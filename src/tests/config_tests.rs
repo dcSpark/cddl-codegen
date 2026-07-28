@@ -3000,6 +3000,79 @@ fn the_threading_keys_refuse_every_edge_that_cannot_mean_anything() {
     assert!(by_name["ledger"].json_schema_dep.is_empty());
 }
 
+/// `wasm-reexports` naming a crate that generates no wasm crate: the one case in this family where
+/// the declaration is false at the coarsest level at which a config can tell, and the one that was
+/// silent.
+///
+/// The key says a package ships another crate's wasm classes. A `wasm = false` crate has none, so
+/// there is nothing the declaration could be about — and the failure without this check is *nothing
+/// at all*: the threading derivation skips the named crate on a different axis entirely
+/// (`json-schema-export`), so the user gets no diagnostic, no manifest entry and no thread.
+///
+/// `wasm` is a merged value, so each of the three layers that can set it is exercised: a crate's own
+/// key, `[defaults]`, and a profile. All three must reach the same refusal, because the check reads
+/// the finished `Cli` and cannot see which layer wrote it.
+#[test]
+fn wasm_reexports_refuses_a_crate_that_generates_no_wasm_crate() {
+    let consumer = "[crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\n\
+                    wasm-reexports = [\"core\"]\n";
+
+    for (layer, text) in [
+        (
+            "the crate's own key",
+            format!(
+                "[crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\nwasm = false\n{consumer}"
+            ),
+        ),
+        (
+            "[defaults]",
+            format!(
+                "[defaults]\nwasm = false\n\
+                 [crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n{consumer}\
+                 wasm = true\n"
+            ),
+        ),
+        (
+            "a profile",
+            format!(
+                "[profiles.headless]\nwasm = false\n\
+                 [crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n\
+                 profiles = [\"headless\"]\n{consumer}"
+            ),
+        ),
+    ] {
+        let err = expand_error(&text);
+        assert!(
+            err.contains("[crates.ledger].wasm-reexports")
+                && err.contains("`core`")
+                && err.contains("wasm = false"),
+            "the refusal must name the declaring crate, the named crate and the flavor that makes \
+             it impossible ({layer}), got: {err}"
+        );
+    }
+
+    // The refusal is a property of the CONFIG, so a run that selects neither crate still rejects it
+    // — the same rule the runtime carrier follows.
+    let err = parse(&format!(
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\nwasm = false\n{consumer}\
+         [crates.other]\ninput = \"o.cddl\"\noutput = \"gen/other\"\n"
+    ))
+    .expand(&["other".to_owned()])
+    .err()
+    .expect("a subset run must reject the same config a full run rejects");
+    assert!(err.contains("[crates.ledger].wasm-reexports"), "got: {err}");
+
+    // Baseline: the same fixture with the named crate generating a wasm crate is accepted, so it is
+    // the flavor that is refused above and not the key.
+    assert!(
+        expand_all(&format!(
+            "[crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n{consumer}"
+        ))
+        .contains_key("ledger"),
+        "a wasm-generating crate must stay a legal `wasm-reexports` target"
+    );
+}
+
 /// The two things no generation-time assertion can reach, on real disk: a derived thread **links**,
 /// and when it collides the guard blames the **consumer**.
 ///
@@ -3010,7 +3083,11 @@ fn the_threading_keys_refuse_every_edge_that_cannot_mean_anything() {
 /// holding a row the consumer's spec never mentions, which can only have arrived through the thread.
 /// `wasm-reexports` carries the edge here rather than `deps`, so the fixture holds nothing but the
 /// threading edge: no extern import, no workspace dependency, no shared type. The consumer's spec
-/// references nothing of the dependency's, so the ref closure cannot supply the row either.
+/// references nothing of the dependency's, so the ref closure cannot supply the row either. The
+/// dependency is the one crate here with `wasm = true`, because the key says a package ships its
+/// classes and naming a crate that generates none is refused
+/// (`wasm_reexports_refuses_a_crate_that_generates_no_wasm_crate`); the CONSUMER stays `wasm =
+/// false`, which the key does not constrain and which keeps this fixture about the document alone.
 ///
 /// Leg 2 — the collision. Registration order decides which of two crates publishing one schema name
 /// keeps it, and the tool emits dep calls FIRST precisely so the loser is the CONSUMER's row: a
@@ -3036,7 +3113,7 @@ fn a_derived_thread_links_and_a_collision_blames_the_consumer() {
         format!(
             "[defaults]\nstatic-dir = \"{}/static\"\nwasm = false\n\
              json-serde-derives = true\njson-schema-export = true\n\n\
-             [crates.depcrate]\ninput = \"specs/dep.cddl\"\noutput = \"gen/dep\"\n\n\
+             [crates.depcrate]\ninput = \"specs/dep.cddl\"\noutput = \"gen/dep\"\nwasm = true\n\n\
              [crates.usercrate]\ninput = \"specs/user.cddl\"\noutput = \"gen/user\"\n\
              wasm-reexports = [\"depcrate\"]\n",
             env!("CARGO_MANIFEST_DIR")
