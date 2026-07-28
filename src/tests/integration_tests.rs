@@ -20133,3 +20133,261 @@ fn integration_overwidth_wasm_wrapper_field_gets_rustfmt_skip() {
         "exactly one wrapper (the over-width one) should be skipped:\n{wasm}"
     );
 }
+
+/// Pin BOTH directions of the over-width guard on the RUST-crate site: a `@newtype` wrapper under
+/// the DEFAULT (non-preserve-encodings) profile emits the same single-field tuple shape as a wasm
+/// wrapper — `pub struct <N>(pub(crate) <Type>);` — and therefore carries the identical
+/// rust-lang/rustfmt#5703 hazard. Measured on rustfmt 1.9.0-stable, a `@newtype` over a rule whose
+/// PascalCase rendering is 86..=91 chars long aborts generation with
+/// `error[internal]: left behind trailing whitespace` (rustfmt exit 1, which
+/// `rustfmt_generated_string` treats as fatal). Under `--preserve-encodings` the same wrapper is a
+/// NAMED field, which the bug does not affect.
+///
+/// As in the wasm sibling above there is no separate "did the file round-trip rustfmt?" assertion:
+/// a successful `generated_strings` return already proves it, since a non-0/3 rustfmt exit is fatal.
+/// `long` is the in-window case (guard must fire); `tiny` is the short control (guard must not).
+#[test]
+fn integration_overwidth_rust_newtype_field_gets_rustfmt_skip() {
+    use clap::Parser;
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_codegen_overwidth_newtype_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    // 88-char inner rule name — mid-window for #5703 (86..=91 rendered type length). PascalCase
+    // preserves the length, so the emitted field type is `X` + 87 `a`s.
+    let inner = format!("x{}", "a".repeat(87));
+    let inner_pascal = format!("X{}", "a".repeat(87));
+    assert_eq!(inner_pascal.len(), 88, "ladder arithmetic drifted");
+    std::fs::write(
+        dir.join("lib.cddl"),
+        format!(
+            "{inner} = [f: uint]\n\
+             tiny_inner = [f: uint]\n\
+             long = {inner} ; @newtype\n\
+             tiny = tiny_inner ; @newtype\n"
+        ),
+    )
+    .unwrap();
+
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        dir.to_str().unwrap(),
+        "--output",
+        "overwidth_newtype",
+        "--wasm=false",
+    ]);
+    let files = crate::api::generated_strings(&cli).unwrap_or_else(|e| panic!("gen failed: {e}"));
+    let _ = std::fs::remove_dir_all(&dir);
+    let rust = files
+        .get("rust/src/generated/mod.rs")
+        .unwrap_or_else(|| {
+            panic!(
+                "no `rust/src/generated/mod.rs` among generated files; got: {:?}",
+                files.keys().collect::<Vec<_>>()
+            )
+        })
+        .clone();
+    let lines: Vec<&str> = rust.lines().collect();
+
+    // --- Over-width newtype: canonical two-line shape, frozen by the skip. ---
+    let header_idx = lines
+        .iter()
+        .position(|l| *l == "pub struct Long(")
+        .unwrap_or_else(|| {
+            panic!("no canonical `pub struct Long(` header (own line, trailing `(`) in:\n{rust}")
+        });
+    assert_eq!(
+        lines[header_idx + 1],
+        format!("    pub(crate) {inner_pascal},"),
+        "over-width newtype field must be its own 4-space-indented `pub(crate) …,` line:\n{rust}"
+    );
+    assert_eq!(
+        lines[header_idx + 2],
+        ");",
+        "canonical two-line tuple shape must close with `);` on its own line:\n{rust}"
+    );
+    assert_eq!(
+        lines[header_idx - 1],
+        "#[rustfmt::skip]",
+        "over-width newtype must carry #[rustfmt::skip] directly above `pub struct`:\n{rust}"
+    );
+    assert_eq!(
+        lines[header_idx - 2],
+        "// (rust-lang/rustfmt#5703, fix PR #5708 unmerged). Remove when #5708 ships.",
+        "over-width newtype must carry the second citation comment line:\n{rust}"
+    );
+    assert_eq!(
+        lines[header_idx - 3],
+        "// rustfmt::skip: rustfmt breaks after the field vis leaving trailing whitespace and errors",
+        "over-width newtype must carry the first citation comment line:\n{rust}"
+    );
+
+    // --- Short control: single-line, no skip. ---
+    let tiny_idx = lines
+        .iter()
+        .position(|l| l.starts_with("pub struct Tiny("))
+        .unwrap_or_else(|| panic!("no `pub struct Tiny(` newtype line in:\n{rust}"));
+    assert_eq!(
+        lines[tiny_idx], "pub struct Tiny(pub(crate) TinyInner);",
+        "short newtype must stay single-line `pub struct Tiny(pub(crate) …);`"
+    );
+    let window = &lines[tiny_idx.saturating_sub(5)..tiny_idx];
+    assert!(
+        !window.iter().any(|l| l.contains("rustfmt::skip")),
+        "short newtype must NOT carry any rustfmt::skip attribute/comment:\n{window:?}"
+    );
+    // Exactly one skip in the whole file — only the over-width newtype's.
+    assert_eq!(
+        rust.matches("#[rustfmt::skip]").count(),
+        1,
+        "exactly one newtype (the over-width one) should be skipped:\n{rust}"
+    );
+}
+
+/// A width LADDER over every single-field tuple-struct emission site, stepping by 1.
+///
+/// Design, stated honestly: rustfmt#5703's fatal region is not a threshold but a 6-char WINDOW —
+/// on rustfmt 1.9.0-stable a `pub(crate)` tuple field whose rendered type is 86..=91 chars aborts
+/// generation, while 85 and 92 both format cleanly. So the usual "make one identifier enormous"
+/// fixture OVERSHOOTS the window and certifies nothing. This ladder therefore walks rendered type
+/// lengths 78..=100 in steps of 1 (step ≤ window width, so no window of that size can hide between
+/// rungs) and runs the whole ladder under three profiles: the default profile (rust newtype = tuple
+/// field, the guarded hazard), `--preserve-encodings` (same wrapper becomes a NAMED field — the
+/// unaffected class, documented here as no-abort), and `--wasm=true` (the wasm wrapper site, across
+/// the whole range rather than the single length its own pin fixes).
+///
+/// The gate per profile is simply that `generated_strings` returns Ok: a non-0/3 rustfmt exit is
+/// fatal inside it, so an abort anywhere on the ladder fails the test. Nothing here asserts
+/// rustfmt's own layout choices, so the test passes QUIETLY on a future toolchain that fixes #5703
+/// — our guard fires on OUR width predicate regardless of rustfmt's behavior, and generation
+/// succeeds either way.
+///
+/// The COVERAGE assertion re-derives the rendered type lengths from the generated OUTPUT rather
+/// than from the input arithmetic, so identifier-mangling drift that silently slid the ladder off a
+/// (possibly moved) window fails loudly instead of passing vacuously.
+///
+/// Placement is deliberate: inline via `generated_strings`, with NO `tests/<dir>` fixture. A
+/// `tests/*/input.cddl` dir obliges a `CORPUS_PARITY_INPUTS`/`CORPUS_PARITY_EXCLUDED` row (enforced
+/// by `wasm_api_parity_axes_and_pins_are_live` in `src/tests/wasm_parity_tests.rs`) and heavy-tier
+/// pickup, which this width sweep does not need.
+#[test]
+fn integration_tuple_field_width_ladder_never_aborts_rustfmt() {
+    use clap::Parser;
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_codegen_width_ladder_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    // One rung per rendered length L: an inner struct rule whose PascalCase rendering is exactly L
+    // chars, plus a `@newtype` wrapper over it with a short distinct name (`wa`..`ww` → `Wa`..`Ww`,
+    // so the wrapper names themselves never reach the window and stay easy to find in the output).
+    const LO: usize = 78;
+    const HI: usize = 100;
+    let mut cddl = String::new();
+    for (i, len) in (LO..=HI).enumerate() {
+        let inner = format!("x{}", "a".repeat(len - 1));
+        let wrapper = format!("w{}", (b'a' + i as u8) as char);
+        cddl.push_str(&format!("{inner} = [f: uint]\n"));
+        cddl.push_str(&format!("{wrapper} = {inner} ; @newtype\n"));
+    }
+    std::fs::write(dir.join("lib.cddl"), &cddl).unwrap();
+
+    let run = |output: &str, extra: &[&str]| -> std::collections::BTreeMap<String, String> {
+        let mut args = vec![
+            "cddl-codegen",
+            "--input",
+            dir.to_str().unwrap(),
+            "--output",
+            output,
+        ];
+        args.extend_from_slice(extra);
+        let cli = crate::cli::Cli::parse_from(args);
+        crate::api::generated_strings(&cli).unwrap_or_else(|e| {
+            panic!(
+                "generation aborted for profile {extra:?} — a rung of the {LO}..={HI} width ladder \
+                 tripped rustfmt (rust-lang/rustfmt#5703 is fatal via `rustfmt_generated_string`): {e}"
+            )
+        })
+    };
+
+    // (1) default profile: the rust newtype is a `pub(crate)` TUPLE field — the guarded hazard.
+    let default_files = run("width_ladder_default", &["--wasm=false"]);
+    // (2) --preserve-encodings: the same wrapper becomes a NAMED `pub(crate) inner` field, the class
+    //     #5703 does not affect. The ladder documents that no-abort rather than assuming it.
+    let _ = run(
+        "width_ladder_pe",
+        &["--wasm=false", "--preserve-encodings=true"],
+    );
+    // (3) --wasm=true: the wasm wrapper site (`WasmWrapper::push_inner_field`) across the range.
+    let _ = run("width_ladder_wasm", &["--wasm=true"]);
+    let _ = std::fs::remove_dir_all(&dir);
+
+    // --- Coverage, derived from the DEFAULT profile's output. ---
+    let rust = default_files
+        .get("rust/src/generated/mod.rs")
+        .unwrap_or_else(|| {
+            panic!(
+                "no `rust/src/generated/mod.rs` among generated files; got: {:?}",
+                default_files.keys().collect::<Vec<_>>()
+            )
+        })
+        .clone();
+    let lines: Vec<&str> = rust.lines().collect();
+    let mut lengths: Vec<usize> = Vec::new();
+    for (i, line) in lines.iter().enumerate() {
+        let Some(rest) = line.strip_prefix("pub struct W") else {
+            continue;
+        };
+        if let Some(idx) = rest.find("(pub(crate) ") {
+            // Single-line shape: `pub struct Wx(pub(crate) <Type>);`
+            let ty = &rest[idx + "(pub(crate) ".len()..];
+            lengths.push(ty.strip_suffix(");").unwrap_or(ty).len());
+        } else if rest.ends_with('(') {
+            // Two-line shape: the type is on the next, 4-space-indented field line. Reached either
+            // by our skip-frozen canonical emission (field line > 100) or by rustfmt's OWN legal
+            // break of a struct line that is itself over max_width while its field line is not —
+            // both put the type in the same place, which is all this measurement needs.
+            let field = lines[i + 1].trim();
+            let ty = field
+                .strip_prefix("pub(crate) ")
+                .and_then(|t| t.strip_suffix(','))
+                .unwrap_or_else(|| {
+                    panic!("unexpected frozen tuple-field line `{field}` in:\n{rust}")
+                });
+            lengths.push(ty.len());
+        }
+    }
+    lengths.sort_unstable();
+    lengths.dedup();
+    assert!(
+        lengths.first().copied().unwrap_or(usize::MAX) <= LO,
+        "ladder's shortest rendered tuple-field type is {:?}, expected ≤ {LO} — identifier \
+         rendering drifted and the ladder no longer starts below the hazard window",
+        lengths.first()
+    );
+    assert!(
+        lengths.last().copied().unwrap_or(0) >= HI,
+        "ladder's longest rendered tuple-field type is {:?}, expected ≥ {HI} — identifier \
+         rendering drifted and the ladder no longer reaches past the hazard window",
+        lengths.last()
+    );
+    for w in lengths.windows(2) {
+        assert!(
+            w[1] - w[0] <= 6,
+            "gap {}..{} in the measured ladder exceeds the 6-char width of rustfmt#5703's fatal \
+             window — a window that size could hide between rungs: {lengths:?}",
+            w[0],
+            w[1]
+        );
+    }
+    assert!(
+        lengths.iter().any(|l| (86..=91).contains(l)),
+        "ladder must include at least one rung inside the measured 86..=91 fatal window \
+         (rustfmt 1.9.0-stable); got {lengths:?}"
+    );
+}
