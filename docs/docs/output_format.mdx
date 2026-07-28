@@ -810,8 +810,10 @@ wrappers all back their inner `Vec`/`BTreeMap`/`OrderedHashMap`/`NonEmptyVec`/`N
 visibility is the macro's choice, not the generator's — give that macro a `pub(crate)` field if its
 wrappers are hand-augmented.
 
-When a wasm wrapper's `pub(crate)` tuple-field line would exceed rustfmt's default `max_width` (100
-columns) — long generic map/list types with fully-qualified paths — the wrapper is emitted with a
+When any of these wrappers' `pub(crate)` tuple-field line would exceed rustfmt's default
+`max_width` (100 columns) — long generic map/list types with fully-qualified paths in a wasm
+wrapper, or a rust-crate newtype (default profile, where the field is a tuple rather than the named
+`inner`) over a long-named type — the wrapper is emitted with a
 `#[rustfmt::skip]` attribute and a two-line citation comment, and its field is laid out in the
 canonical two-line tuple shape by the generator itself. This works around
 [rust-lang/rustfmt#5703](https://github.com/rust-lang/rustfmt/issues/5703), where rustfmt breaks the
