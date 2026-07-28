@@ -1759,4 +1759,131 @@ mod tests {
             assert!(NullableSpecials::from_cbor_bytes(bad).is_err());
         }
     }
+
+    // --- OrderedHashMap mutation semantics, pinned at the WIRE level ---
+    //
+    // A table's iteration order IS its serialized key order (the emitted map loop walks
+    // `inner.iter()` verbatim), so any change in the backing insertion-ordered map's mutation
+    // semantics silently rewrites the bytes of a re-serialized value. Under --preserve-encodings
+    // that is a fidelity break, not a cosmetic one: a value decoded from the wire and written back
+    // after an in-place edit must keep every key where the wire put it.
+    //
+    // These three tests pin the semantics the wrapper is contractually required to have,
+    // independently of WHICH insertion-ordered map backs it. They assert only through
+    // `OrderedHashMap`'s own surface and `to_cbor_bytes()` — no backing-crate path is named — so
+    // they stay meaningful across a swap of that backing. Written against the current backing and
+    // green on it, so a later swap that changes any of the three is caught as a behavior change
+    // rather than blessed as new bytes.
+    //
+    // Values are all < 24 so every uint is a single Sz::Inline byte, keeping the expected byte
+    // vectors readable; `WrapperTable` ( `{ * uint => uint }` @newtype ) serializes as exactly the
+    // bare map, with `encodings: None` giving the minimal definite length.
+
+    // Pin 1: overwriting an EXISTING key with `insert` moves it to the BACK of the order (and takes
+    // the new value). Asserted on the bytes: K2 leaves its original slot and reappears last.
+    #[test]
+    fn ordered_hash_map_insert_overwrite_moves_to_back() {
+        let mut table: OrderedHashMap<u64, u64> = OrderedHashMap::new();
+        table.insert(1, 10);
+        table.insert(2, 11);
+        table.insert(3, 12);
+        let before = WrapperTable::new(table.clone()).to_cbor_bytes();
+        assert_eq!(
+            before,
+            [
+                map_def(3),
+                cbor_int(1, Sz::Inline),
+                cbor_int(10, Sz::Inline),
+                cbor_int(2, Sz::Inline),
+                cbor_int(11, Sz::Inline),
+                cbor_int(3, Sz::Inline),
+                cbor_int(12, Sz::Inline),
+            ]
+            .concat()
+        );
+        // overwrite K2: value becomes 19 AND the key moves behind K3
+        table.insert(2, 19);
+        let after_value = WrapperTable::new(table.clone());
+        let after = after_value.to_cbor_bytes();
+        assert_eq!(
+            after,
+            [
+                map_def(3),
+                cbor_int(1, Sz::Inline),
+                cbor_int(10, Sz::Inline),
+                cbor_int(3, Sz::Inline),
+                cbor_int(12, Sz::Inline),
+                cbor_int(2, Sz::Inline),
+                cbor_int(19, Sz::Inline),
+            ]
+            .concat()
+        );
+        assert!(
+            before != after,
+            "overwriting a key must be visible on the wire"
+        );
+        // the mutated bytes are themselves valid input and round-trip byte-identically
+        let back = WrapperTable::from_cbor_bytes(&after).unwrap();
+        assert_eq!(back.to_cbor_bytes(), after);
+        deser_test(&after_value);
+    }
+
+    // Pin 2: `entry(k).or_insert(..)` must NOT move an existing key — the entry API is how a
+    // consumer accumulates into a decoded table (`*t.entry(k).or_insert(0) += n`), and a
+    // position-refreshing `or_insert` would reorder the re-serialized map behind the caller's back.
+    // A key absent from the map is appended at the end, as a plain insert would be.
+    #[test]
+    fn ordered_hash_map_or_insert_keeps_position() {
+        let mut table: OrderedHashMap<u64, u64> = OrderedHashMap::new();
+        table.insert(1, 10);
+        table.insert(2, 11);
+        table.insert(3, 12);
+        // existing key: value incremented in place, position untouched
+        *table.entry(2).or_insert(0) += 1;
+        // absent key: inserted with the default and appended last
+        *table.entry(4).or_insert(14) += 0;
+        let value = WrapperTable::new(table);
+        assert_eq!(
+            value.to_cbor_bytes(),
+            [
+                map_def(4),
+                cbor_int(1, Sz::Inline),
+                cbor_int(10, Sz::Inline),
+                cbor_int(2, Sz::Inline),
+                cbor_int(12, Sz::Inline),
+                cbor_int(3, Sz::Inline),
+                cbor_int(12, Sz::Inline),
+                cbor_int(4, Sz::Inline),
+                cbor_int(14, Sz::Inline),
+            ]
+            .concat()
+        );
+        deser_test(&value);
+    }
+
+    // Pin 3: `from_iter` over a sequence containing a DUPLICATE key behaves as repeated `insert`s —
+    // the duplicate keeps the LAST value and sits at the BACK. Pinned both as an iteration trace
+    // (what a consumer walking the table sees) and on the wire (what the map serializes to), since
+    // the two must not be allowed to drift apart.
+    #[test]
+    fn ordered_hash_map_from_iter_duplicate_keys() {
+        let table = OrderedHashMap::from_iter([(1u64, 10u64), (2, 11), (1, 19), (3, 12)]);
+        let trace: Vec<(u64, u64)> = table.iter().map(|(k, v)| (*k, *v)).collect();
+        assert_eq!(trace, vec![(2, 11), (1, 19), (3, 12)]);
+        let value = WrapperTable::new(table);
+        assert_eq!(
+            value.to_cbor_bytes(),
+            [
+                map_def(3),
+                cbor_int(2, Sz::Inline),
+                cbor_int(11, Sz::Inline),
+                cbor_int(1, Sz::Inline),
+                cbor_int(19, Sz::Inline),
+                cbor_int(3, Sz::Inline),
+                cbor_int(12, Sz::Inline),
+            ]
+            .concat()
+        );
+        deser_test(&value);
+    }
 }
