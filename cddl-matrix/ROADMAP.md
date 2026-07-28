@@ -274,37 +274,54 @@ ledgered here (that's what the probe/gate error messages point at).
   regeneration reaches 1. Today that count is 0 in every consumer spec; the two repros above are
   synthetic probes minted while fixing an unrelated defect, and a synthetic probe costs nobody a
   re-edit.
-- **A BOOL or NULL fixed value in a map-rep group-choice arm emits invalid Rust under
-  `--preserve-encodings`.** `t = { a: true // b: tstr }` and `t = { a: null // b: tstr }` generate
-  and `cargo check` clean under the default profile, but under `--preserve-encodings` the emitted
-  source is rejected by the rustfmt post-pass with `expected pattern, found '='`, which `export`
-  turns into a fatal "rustfmt failed on the generated source" error — a generator bug, not a
-  formatting preference. The uint and TEXT kinds (`a: 0`, `a: "v"`) are clean in both profiles, so
-  the break is specific to the value kinds whose preserve-mode encoding sidecar differs. This
-  predates the arm gaining default-profile support (reproduced against the parent commit), and the
-  support is what makes it reachable in practice rather than hidden behind an earlier abort.
-  Severity, for prioritising: 2 of the 5 spellable fixed-value kinds are unusable in a preserve
-  crate. Unpinned, and the reason is itself a gap: the failure lives in the rustfmt/export seam,
-  which `api::generated_strings` never runs, so no in-process test can see it — pinning it needs a
-  disk-write (`generate_to_disk`) vector, which no current robustness layer mints. **Reopening
-  signal**, either half: a consumer who needs `--preserve-encodings` (they must re-emit received
-  bytes unchanged — a ledger or consensus format) holds a spec with ≥1 map-rep group-choice arm whose
-  fixed value is a bool or null, which is a `grep` over a spec and a flag they already have; or a
-  robustness layer that mints disk-write vectors comes to exist, at which point the pin costs one
-  row and the entry should not stay unpinned. Today the evidence is synthetic probes only, and a
-  synthetic probe costs nobody a rewrite.
+- **A choice whose bool and null arms share the CBOR Special major type routes through the
+  brute-force try-each-arm dispatch, which still emits invalid Rust under `--preserve-encodings`.**
+  `t = true / null / tstr` fails generation at exit 1 (rustfmt: `expected pattern, found '='`-class
+  malformed emission — an unterminated `()` value expression ahead of the dispatch's appended
+  `Ok(())`), zero files written. This is the surviving THIRD site of the empty-binding class whose
+  two type-match-dispatch siblings are fixed and pinned (a fixed bool/null arm binds no value and
+  no encoding sidecar; the guard is binding-emptiness — see `tests/corpus/group_choice_fixed_special.cddl`,
+  whose header records this neighbour): same-major-type arms force the brute-force path, a separate
+  emission site the two-arm spellings never reach. Verified equally red before and after the
+  two-site fix, so it is mechanism-independent of that change. Candidate fix: the same
+  empty-binding guard, applied at the brute-force variant-probe emission. **Reopening signal**, on
+  the magnitude axis: a consumer who needs `--preserve-encodings` holds a spec with ≥1 type choice
+  carrying two-or-more Special-typed literal arms beside data arms — a `grep` over a spec and a
+  flag they already have, and the count of such choices is the hand-maintained surface they would
+  keep beside the generated crate. Today the evidence is one synthetic probe.
+- **An all-special choice (`true / null`) panics generation under EVERY profile.** The choice
+  classifies as a c-style enum (all arms fixed), and generation dies at the pinned
+  `should not expose Fixed type in member, only needed for serializaiton:` panic
+  (`src/intermediate/rust_type.rs` — two sibling sites carry the message), wrapper or not. Notable
+  because the recombination ledger records the `"should not expose Fixed type"` class as retired
+  for the bare-fixed-in-member families — the sites survive, and the all-special-choice spelling
+  still reaches them, under the default profile too (this is not a preserve gap). A useful shape
+  (`bool-or-null` is ordinary wire vocabulary), currently uncatalogued as a matrix cell: the
+  `type.enum` rows spell int/text literal arms only. Candidate fix: give the all-special choice
+  the c-style-enum lowering its int/text siblings have, or refuse it gracefully naming the rule —
+  a panic on valid CDDL is the posture this repo otherwise retired. **Reopening signal**, on the
+  magnitude axis: a spec brought to us contains an all-special choice, i.e. the count of rules its
+  owner must hand-rewrite to keep generating reaches 1; today the evidence is synthetic probes
+  only (recorded in `tests/corpus/cbor_enum_payload.cddl`'s header, whose fixture deliberately
+  does not spell the shape).
 - **Enumerate the remaining fixed-value KINDS, in both the arm and the member position.** The kind
   axis and the position axis are separate cells, but they share one blocker and one reason to be
-  enumerated at all, said here once: the result is known to be NON-uniform (two of the four kinds
-  probed so far behave differently from `uint`), so these are rows with a known payoff rather than a
+  enumerated at all, said here once: the result is known to be NON-uniform (probed kinds keep
+  behaving differently from `uint`), so these are rows with a known payoff rather than a
   speculative sweep — and FLOAT is blocked in both positions by the same preserve-mode float stub
   (`stub_preserve_encodings_supports_floats`, plus `tests/corpus/optional_fixed_float.cddl`), so the
-  float half of each waits on that stub retiring, which is its reopening signal. What is buildable
-  now:
-  - **Group-choice ARM kinds.** The arm is supported in every profile, but the committed vectors are
-    `uint 0` plus the three kinds probed on delivery (text clean; bool and null broken under
-    preserve — the entry above). Nint constants and the tag-wrapped forms in the ARRAY reps are
-    unprobed in both directions.
+  float half of each waits on that stub retiring, which is its reopening signal. The kind axis has
+  a second dimension the cells must spell deliberately: the DISPATCH PATH. A choice's arms reach
+  either the type-match dispatch or (when arms share a CBOR major type) the brute-force
+  try-each-arm path, and the two emit independently — the bool/null arm kinds were fixed on the
+  type-match sites while the brute-force sibling stayed broken (the entry above), so a kind row
+  probed on one path certifies nothing about the other. What is buildable now:
+  - **Group-choice ARM kinds.** The arm is supported in every profile; bool and null are now
+    covered in the map-rep, array-rep, and two-arm type-choice spellings
+    (`tests/corpus/group_choice_fixed_special.cddl`, plus the preserve round-trip members in
+    `tests/preserve-encodings/input.cddl`). Nint constants and the tag-wrapped forms in the ARRAY
+    reps are unprobed in both directions, and the same-major-type (brute-force) pairings are open
+    defects (the two entries above).
   - **The NINT member cell.** Held back only while its message rendering was an open defect that a
     row would have restated rather than discovered; `Key::Nint` landed and that ledger retired, so
     the nint kind's member-position verdict is now an ordinary unknown that only a cell can carry.
@@ -381,19 +398,31 @@ ledgered here (that's what the probe/gate error messages point at).
     — a valid-CBOR byte string matches the `.cbor` arm first). Candidate fix: reject duplicate arms
     at generation, or document first-match semantics and have `--emit-tests` skip
     variant-identity asserts for ambiguous choices.
-- **Make a NESTED `bytes .cbor` payload either generate or refuse.** A `.cbor` payload whose own
-  type carries a `.cbor` control — `bytes .cbor (bytes .cbor uint)`, and equally the named-alias
-  spelling `innerc = bytes .cbor uint` / `b: bytes .cbor innerc`, which the `.cbor` single-alias
-  strip flattens into the same shape — generates Rust that does not compile, on both sides. The
+- **Make a SAME-CHAIN nested `bytes .cbor` payload either generate or refuse.** A `.cbor` payload
+  whose own member type carries a second `.cbor` control in the SAME op chain —
+  `bytes .cbor (bytes .cbor uint)`, and equally the named-alias spelling
+  `innerc = bytes .cbor uint` / `b: bytes .cbor innerc`, which the `.cbor` single-alias strip
+  flattens into the same shape — generates Rust that does not compile, on both sides. The
   serializer emits two `<var>_inner_se = Serializer::new_vec()` bindings at the same name, so the
   inner `finalize()` moves the binding the outer write then uses (`error[E0382]: borrow of moved
-  value: <var>_inner_se`); the deserializer emits two `let <var>_bytes = raw.bytes()?` reads, both
-  against the OUTER buffer, plus two `inner_de` bindings that shadow. The cause is that the
-  payload-framing bindings are depth-agnostic, where the tag path already threads a `tag_depth` for
-  exactly this reason; a real fix threads a `cbor_depth` the same way. Because the outcome is a hard
-  compile break rather than a silent mis-decode, nothing can ship on top of it, so the cheap
-  intermediate is a graceful generation-time refusal naming the shape — the tool must not emit a
-  crate that cannot build.
+  value: <var>_inner_se`); the deserializer's depth-agnostic names collide the same way (two
+  `<var>_bytes` frames, a same-block `inner_de` shadow the sequel statements would capture), and
+  under `--preserve-encodings` the encoding-sidecar minting recurses under one name and declares
+  the struct field twice (E0124/E0062). The cause is that the payload-framing NAMES are
+  depth-agnostic, where the tag path already threads a `tag_depth` for exactly this reason; a real
+  fix threads a `cbor_depth` the same way. The boundary is narrower than it used to be, in a way a
+  refusal must draw exactly: nesting through a NAME-CHANGING recursion is supported — a fresh fn
+  scope (the long-standing named-struct form, `cbor_in_cbor` in `tests/core/input.cddl`) and,
+  since the CBORBytes arm reads its byte string from the stream that reached it rather than a
+  hardcoded `raw`, a payload's own collection elements/values (`bytes .cbor [* bytes .cbor uint]`
+  and the map-value twin; pinned by `tests/corpus/cbor_payload_nested.cddl`,
+  `cbor_payload_nested_payloads` in `tests/core/tests.rs` against hand-derived RFC 8949 bytes, and
+  `cbor_nested_payloads` in `tests/preserve-encodings/input.cddl`). Only the same-chain
+  composition — direct or alias-flattened — remains broken. Because that outcome is a hard compile
+  break rather than a silent mis-decode, nothing can ship on top of it, so the cheap intermediate
+  is a graceful generation-time refusal naming the shape (keyed on two `CBORBytes` in one op
+  chain, which now exactly matches the broken set) — the tool must not emit a crate that cannot
+  build.
   **Reopening signal:** a CDDL specification a consumer must implement but does not control (a
   published wire format, not one they can rewrite) contains one or more `bytes .cbor` members whose
   payload type itself carries a `.cbor` control, directly or through a named alias. That is a `grep`
@@ -409,25 +438,6 @@ ledgered here (that's what the probe/gate error messages point at).
   (`bytes .cbor ({h})`) makes the RHS a `type2` and the self-composition legal, which would route
   the shape straight into the execution layer — worth doing deliberately, with the composition churn
   that implies, rather than treating the shape as unreachable.
-- **Make a `bytes .cbor <c-style enum>` payload under `--preserve-encodings` either generate or
-  refuse.** The shape compiles and round-trips under the default profile (pinned by
-  `cbor_payload_leaves` in `tests/core/tests.rs`), but adding `--preserve-encodings` emits a crate
-  rustc rejects. A c-style enum has no `Deserialize` impl of its own, so its try-each-variant
-  sequence is inlined at the use site and reuses the enclosing `final_exprs` as the `Ok(..)` match
-  pattern of its variant dispatch; the `.cbor` arm has pushed a value EXPRESSION
-  (`StringEncoding::from(<var>_bytes_encoding)`) into those exprs, so the emitted arm reads
-  `Ok((StringEncoding::from(<var>_bytes_encoding), <var>_encoding)) => …` — a call in pattern
-  position. The two roles `final_exprs` serves — a constructor argument and a destructuring
-  pattern — have diverged, and only the encoding-carrying `.cbor` arm makes them differ. As with the
-  nested `.cbor` entry above the outcome is a hard compile break, so a graceful generation-time
-  refusal is the acceptable intermediate: the tool must not emit a crate that cannot build.
-  **Reopening signal:** a consumer who needs `--preserve-encodings` (they must re-emit received
-  bytes unchanged — a ledger or consensus format, not one they may re-encode freely) holds a spec
-  containing one or more `bytes .cbor` members whose payload type is a choice of literal values.
-  Both halves are a `grep` over a spec and a flag they already have, and the count of such members
-  is the size of the hand-written serialization they would maintain beside the generated crate. The
-  profile is why this sat unseen: `tests/core` is default-profile on both of its gates and in the
-  snapshot registry, so no committed vehicle generates this shape under `--preserve-encodings`.
 - **Real support for the anonymous nested MAP in a type position** (`a = [{x: int, y: uint}]`, and
   its map-value / `.cbor`-payload / `/`-choice / generic-argument / occurrence-target /
   group-choice-arm siblings). The abort is gone — every one of those shapes now rejects gracefully
@@ -530,7 +540,11 @@ ledgered here (that's what the probe/gate error messages point at).
 - **A CBOR tag over a type-choice enum is unimplemented under `--preserve-encodings`** — a non-float
   preserve gap: `t = #6.10(int / tstr)` panics generation at the tagged-enum serialize path's explicit
   `assert!(!cli.preserve_encodings)` (its own `TODO: how to even store these?` — the per-variant encoding
-  metadata has no home on the enum). Tags over structs/arrays/maps preserve fine. Surfaced by the
+  metadata has no home on the enum). Tags over structs/arrays/maps preserve fine — and so does a
+  tag over a NAMED c-style enum at a member (`t1: #6.42(myenum)` with `myenum = 0 / 1 / 2`), whose
+  encoding rides the owner's sidecar through the inlined dispatch
+  (`tests/corpus/cbor_enum_payload.cddl`); the gap here is specifically the anonymous
+  non-all-fixed choice, where the tag rides the enum RULE. Surfaced by the
   decode-conformance replay gate's preserve leg (skip-listed there in `PRESERVE_SKIP`, stale-guarded)
   and now recorded on the emission axis (`contain.tag-content.type.choice` →
   `emission.preserve = unsupported`), alongside `prelude.number` / `prelude.time` and the two

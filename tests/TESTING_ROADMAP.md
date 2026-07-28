@@ -846,37 +846,45 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   - ***rustfmt, so the code never reaches rustc at all.*** Not a duplicate of the class above: there
     the emitted crate reached rustc and was rejected, so any compile leg would catch it; here
     generation itself fails in `export`'s rustfmt post-pass, and a compile leg built on
-    `generated_strings` would stay green on this class while it shipped. Proven instance: a bool or
-    null fixed value in a map-representation group-choice arm emits Rust that rustfmt rejects
-    (`expected pattern, found '='`) under `--preserve-encodings`. It reproduces against the parent of
-    the fixed-value-arm support commit, so it predates that change; making the default profile
-    generate the uint spelling is what put a reader in front of it. It has no pin today precisely
-    because the failure has nowhere in-process to be observed — a robustness row would record `ok`
-    and mean nothing. Reopening signal, on the magnitude axis the deferred cost grows along: **the
-    count of `ok`-recording robustness rows whose emitted crate fails at export** — measurable by a
-    consumer whose generation aborts at rustfmt while our catalog records the shape as `ok`, a party
-    that already has the problem and needs nothing from us to notice it. That count is zero today
-    (the instance above has no row at all), so the signal is unmet rather than pre-satisfied.
+    `generated_strings` would stay green on this class while it shipped. Proven instance (since
+    fixed on the type-match dispatch sites and given exactly this entry's remedy — promoted into
+    `tests/corpus/group_choice_fixed_special.cddl`, whose cells shell the real CLI so the rustfmt
+    seam is witnessed for the shape): a bool or null fixed value in a map-representation
+    group-choice arm emitted Rust that rustfmt rejects (`expected pattern, found '='`) under
+    `--preserve-encodings`. It reproduced against the parent of the fixed-value-arm support commit,
+    so it predated that change; making the default profile generate the uint spelling is what put a
+    reader in front of it. The class is not empty: the brute-force-dispatch sibling
+    (`t = true / null / tstr`) still fails at the same seam and is ledgered in
+    `cddl-matrix/ROADMAP.md` § findings — a robustness row for it would record an error today, but
+    an `ok`-flip after a fix would again certify only generation. Reopening signal, on the
+    magnitude axis the deferred cost grows along: **the count of `ok`-recording robustness rows
+    whose emitted crate fails at export** — measurable by a consumer whose generation aborts at
+    rustfmt while our catalog records the shape as `ok`, a party that already has the problem and
+    needs nothing from us to notice it. That count is zero today, so the signal is unmet rather
+    than pre-satisfied.
   - ***another profile, with no flip, no abort and no fix widening a reachable set — the shape always
     generated.*** A fixture certifies only the PROFILES it is generated under, so a shape added to a
-    default-profile fixture is unexamined everywhere else. Proven instance:
-    `bytes .cbor <c-style enum>` compiles and round-trips under the default profile —
-    `cbor_payload_leaves` in `tests/core/tests.rs` pins exactly that — and emits a crate rustc
-    rejects under `--preserve-encodings`, because the inlined try-each-variant sequence reuses the
-    enclosing `final_exprs` as its `Ok(..)` match pattern while the `.cbor` arm has pushed a value
+    default-profile fixture is unexamined everywhere else. Proven instance (since fixed and given
+    exactly this entry's remedy — promoted into `tests/corpus/cbor_enum_payload.cddl`, all-profile
+    by construction, with the preserve round-trip carried by `tests/preserve-encodings/input.cddl`):
+    `bytes .cbor <c-style enum>` compiled and round-tripped under the default profile —
+    `cbor_payload_leaves` in `tests/core/tests.rs` pins exactly that — while emitting a crate rustc
+    rejected under `--preserve-encodings`, because the inlined try-each-variant sequence reused the
+    enclosing `final_exprs` as its `Ok(..)` match pattern while the `.cbor` arm had pushed a value
     expression (`StringEncoding::from(<var>_bytes_encoding)`) into them. Established pre-existing by
-    regenerating the same probe spec with the production files stashed, so nothing about it is a
-    consequence of the change that put a reader in front of it. Two properties make it invisible
-    rather than merely unpinned. First, it reaches **rustc** (a call in pattern position is
+    regenerating the same probe spec with the production files stashed, so nothing about it was a
+    consequence of the change that put a reader in front of it. Two properties made it invisible
+    rather than merely unpinned. First, it reached **rustc** (a call in pattern position is
     syntactically a valid tuple-struct pattern, so rustfmt formats the file happily and generation
-    exits 0 — the defect is a resolution failure, not a parse failure). Second, `tests/core` is
+    exits 0 — the defect was a resolution failure, not a parse failure). Second, `tests/core` is
     default-profile on both of its integration gates and in the snapshot registry, so no committed
-    vehicle generates this shape under `--preserve-encodings` at all — which is exactly what
-    promoting the shape into `tests/corpus/` fixes. Trigger: **the count of shapes pinned green by a
-    default-profile fixture that fail under another profile.** Today it is one, and a consumer
-    measures it without anything from us — they flip a flag on a spec they already have and their
-    build breaks on a shape our docs list as supported. A SECOND instance means default-profile
-    fixtures are systematically over-claiming, and the input extension stops being optional.
+    vehicle generated the shape under `--preserve-encodings` at all — which is exactly what
+    promoting a shape into `tests/corpus/` fixes, and did. Trigger: **the count of shapes pinned
+    green by a default-profile fixture that fail under another profile.** A consumer measures it
+    without anything from us — they flip a flag on a spec they already have and their build breaks
+    on a shape our docs list as supported. The count returned to zero when the instance above was
+    fixed; the next instance means default-profile fixtures are systematically over-claiming, and
+    the input extension stops being optional.
 
 - **Parallel-constructor fixture diversity: a parser over external input must span the ident-class
   matrix of REAL specs, not the feature spec's mental model.** Proven instance: the
@@ -1032,6 +1040,26 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   strings (the builder owns the markers), and the § "Blessing changes" discipline — review the
   blessed diff, never accept blind, ESPECIALLY when snapshots were already red before your
   change (the diff then contains someone else's unreviewed delta interleaved with yours).
+- **A lint class INSIDE `generated_code_clippy_clean`'s deny set is emittable through shapes its
+  fixture does not spell — the gate's promise is bounded by one input file, and the bound is now
+  proven non-vacuous.** The gate denies `clippy::all` (its own doc names `clippy::no_effect`
+  degenerate `();` statements as a target) over `tests/canonical/input.cddl` under two profiles —
+  but the preserve-mode verify-only emission for a fixed bool/null (member position in records.rs,
+  and since the choice-arm fix the map-rep/array-rep/type-choice arm positions in enums.rs) ends
+  in exactly such a bare `();` statement, and the canonical fixture spells none of those shapes,
+  so the shipped policy and the shipped emission contradict each other wherever a consumer's spec
+  does (their `cargo clippy` over the regenerated crate flags `no_effect` on code our lint gate
+  calls clean; committed exemplars: the `();` lines in
+  `tests/corpus/snapshots/group_choice_fixed_special/preserve__rust__src__generated__serialization.rs.snap`).
+  Candidate remedies, cheapest first: suppress the trailing `()` value expression when nothing
+  binds it (an emission change — re-blesses the preserve snapshots of every fixed bool/null
+  spelling); or add the shapes to the gate's input and decide the policy explicitly (which today
+  means turning the gate red or allowing `no_effect`). Distinct from the OUTSIDE-`clippy::all`
+  entry below: that class is beyond the deny set's reach by lint tier, this one is inside the deny
+  set and beyond the FIXTURE's reach — a coverage bound, not a policy bound. Reopening signal, on
+  the axis the cost grows along: a consumer reports a clippy finding on a regenerated crate that
+  our gate's input cannot reproduce — the same act-on-consumer-report disposition as the
+  neighbouring entry, since today the class is warn-tier noise in consumer builds, not an error.
 - **Emitted-shape lint classes OUTSIDE `clippy::all` are beyond `generated_code_clippy_clean`'s
   reach — the wasm-boundary clone-of-owned class stays ledgered, no machinery yet.** The
   boundary ops (`from_wasm_boundary_clone`) clone every non-Copy expr regardless of the call
