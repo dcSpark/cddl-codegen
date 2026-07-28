@@ -2864,6 +2864,38 @@
       "spec": "allowed"
     },
     {
+      "example": "a = [v: false, x: uint]",
+      "feature": "prelude.false",
+      "id": "contain.array-element.prelude.false",
+      "note": "The prelude constant `false` as a fixed array-element member value (`[v: false, x: uint]`) — the third of the three fixed prelude constants in this role, beside `contain.array-element.prelude.true` and `.null`, and the array-representation twin of `contain.map-value.prelude.false`. RFC8610 §2.1, §3.4.",
+      "role": "role.array-element",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = [v: undefined, x: uint]",
+      "feature": "prelude.undefined",
+      "id": "contain.array-element.prelude.undefined",
+      "note": "The prelude constant `undefined` as a fixed array-element member value (`[v: undefined, x: uint]`) — the fourth fixed prelude constant in this role, completing the sweep beside `contain.array-element.prelude.true` / `.null` / `.false`. Its map-representation twin is `contain.map-value.prelude.undefined`. RFC8610 §2.1, §3.4.",
+      "role": "role.array-element",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = [v: h'0102', x: uint]",
+      "feature": "value.bytes",
+      "id": "contain.array-element.value.bytes",
+      "note": "A byte-string literal as a fixed array-element member value (`[v: h'0102', x: uint]`) — the third literal LEXEME kind in this role, beside `contain.array-element.value.number` and `.text`; its map-representation twin is `contain.map-value.value.bytes`. RFC8610 §2.1 (bytes value), §3.4; ABNF grpent -> type -> type2 value -> bytes.",
+      "role": "role.array-element",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = [5, x: uint]",
+      "feature": "type2.value",
+      "id": "contain.array-element.type2.value.bare_exactly_once",
+      "note": "A BARE (unkeyed) literal as an array entry in exactly-once placement (`[5, x: uint]`) — no memberkey, so the grpent is a bare `type` that happens to be a value. The exactly-once side of the fixed-value cardinality boundary; its count-permitting siblings are `contain.occurrence-target.type2.value.zero_array` / `.optional_array` / `.plus_array` (`[* 5]`, `[? 5]`, `[+ 5]`). Distinct from `contain.array-element.type2.value`, which carries a memberkey (`[w: uint, v: 5]`) — keying is the varying axis between the two. RFC8610 §2.1, §3.4; ABNF grpent = type (no memberkey) -> type2 value.",
+      "role": "role.array-element",
+      "spec": "allowed"
+    },
+    {
       "example": "b = bytes .cbor ({a: int, c: uint})",
       "feature": "type2.map",
       "id": "contain.cbor-payload.type2.map",
@@ -3304,6 +3336,78 @@
       "spec": "allowed"
     },
     {
+      "example": "m = { k: true, j: uint }",
+      "feature": "prelude.true",
+      "id": "contain.map-value.prelude.true",
+      "note": "The prelude constant `true` as a fixed map-member value (`{ k: true, j: uint }`) — beside the existing `contain.map-value.prelude.false`, and the map-representation twin of `contain.array-element.prelude.true`. RFC8610 §2.1, §3.5.1.",
+      "role": "role.map-value",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { k: null, j: uint }",
+      "feature": "prelude.null",
+      "id": "contain.map-value.prelude.null",
+      "note": "The prelude constant `null` as a fixed map-member value (`{ k: null, j: uint }`) — the map-representation twin of `contain.array-element.prelude.null`, and distinct from the choice-member nullable pattern (`contain.choice-member.prelude.null`), where `null` is an ARM rather than the whole value. RFC8610 §2.1, §3.5.1.",
+      "role": "role.map-value",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { k: undefined, j: uint }",
+      "feature": "prelude.undefined",
+      "id": "contain.map-value.prelude.undefined",
+      "note": "The prelude constant `undefined` as a fixed map-member value (`{ k: undefined, j: uint }`) — completes the four fixed prelude constants in this role beside `contain.map-value.prelude.true` / `.null` / `.false`; its array-representation twin is `contain.array-element.prelude.undefined`. RFC8610 §2.1, §3.5.1.",
+      "role": "role.map-value",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { k: #6.1(null), j: uint }",
+      "feature": "type2.tag",
+      "id": "contain.map-value.type2.tag.fixed_null",
+      "note": "A tag WRAPPING a fixed null member value (`{ k: #6.1(null), j: uint }`) — the map-representation mirror of the array-element precedent `contain.array-element.type2.tag.fixed_null`, so the wrapped fixed-value arm is enumerated in both representations. Distinct from the plain `contain.map-value.type2.tag` (`#6.10(int)`), whose tag content is a TYPE rather than a literal. RFC8610 §3.5.1, §3.6, §2.1.",
+      "role": "role.map-value",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { k: #6.11(true), j: uint }",
+      "feature": "type2.tag",
+      "id": "contain.map-value.type2.tag.fixed_bool",
+      "note": "A tag WRAPPING a fixed bool member value (`{ k: #6.11(true), j: uint }`) — the map-representation mirror of the array-element precedent `contain.array-element.type2.tag.fixed_bool`, varying the wrapped constant away from `null` beside its `.fixed_null` sibling. RFC8610 §3.5.1, §3.6, §2.1.",
+      "role": "role.map-value",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { k: 5, j: uint }",
+      "feature": "value.number",
+      "id": "contain.map-value.value.number",
+      "note": "A numeric literal LEXEME as a fixed map-member value (`{ k: 5, j: uint }`) — the map-representation twin of `contain.array-element.value.number`. Paired with `contain.map-value.type2.value` exactly as the array file pairs `contain.array-element.value.number` with `contain.array-element.type2.value`: the two shapes key on the literal-lexeme feature and the literal-as-type2 feature respectively. RFC8610 §2.1, §3.5.1.",
+      "role": "role.map-value",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { k: \"x\", j: uint }",
+      "feature": "value.text",
+      "id": "contain.map-value.value.text",
+      "note": "A text literal as a fixed map-member value (`{ k: \"x\", j: uint }`) — the map-representation twin of `contain.array-element.value.text`, and the second literal lexeme kind in this role beside `contain.map-value.value.number`. RFC8610 §2.1, §3.5.1.",
+      "role": "role.map-value",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { k: h'0102', j: uint }",
+      "feature": "value.bytes",
+      "id": "contain.map-value.value.bytes",
+      "note": "A byte-string literal as a fixed map-member value (`{ k: h'0102', j: uint }`) — the third literal lexeme kind in this role beside `contain.map-value.value.number` / `.text`, and the map-representation twin of `contain.array-element.value.bytes`. RFC8610 §2.1 (bytes value), §3.5.1; ABNF grpent memberkey type -> type2 value -> bytes.",
+      "role": "role.map-value",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { j: uint, k: 5 }",
+      "feature": "type2.value",
+      "id": "contain.map-value.type2.value",
+      "note": "A literal used as a member TYPE in map-value position (`{ j: uint, k: 5 }`) — the map-representation twin of `contain.array-element.type2.value` (`[w: uint, v: 5]`), and the type2-axis half of the pair whose lexeme-axis half is `contain.map-value.value.number`. The literal follows an ordinary typed member, matching the array precedent's ordering. RFC8610 §2.1, §3.5.1; ABNF grpent memberkey S type -> type2 value.",
+      "role": "role.map-value",
+      "spec": "allowed"
+    },
+    {
       "example": "a = [* {x: int, y: uint}]",
       "feature": "type2.map",
       "id": "contain.occurrence-target.type2.map",
@@ -3468,6 +3572,54 @@
       "feature": "grpent.groupname",
       "id": "contain.occurrence-target.grpent.groupname.table_map",
       "note": "A zero-or-more occurrence can target a named group reference in map representation; this probes the named-group map occupant rather than an inline table. RFC8610 §2.2.1, §3.2, §3.5.",
+      "role": "role.occurrence-target",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = [* 5]",
+      "feature": "type2.value",
+      "id": "contain.occurrence-target.type2.value.zero_array",
+      "note": "A zero-or-more occurrence targeting a BARE (unkeyed) fixed value as an array element: `[* 5]` repeats a literal, not a type. The count-permitting side of the fixed-value cardinality boundary; its exactly-once side is `contain.array-element.type2.value.bare_exactly_once` (`[5, x: uint]`) and its keyed count-permitting siblings are `contain.occurrence-target.type2.value.optional_keyed_array` / `.optional_keyed_map`. RFC8610 §3.2, §3.4, §2.1; ABNF grpent = [occur S] type -> type2 value.",
+      "role": "role.occurrence-target",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = [? 5]",
+      "feature": "type2.value",
+      "id": "contain.occurrence-target.type2.value.optional_array",
+      "note": "An optional occurrence targeting a bare fixed value as an array element: `[? 5]` admits zero or one literal. Same count-permitting side as `contain.occurrence-target.type2.value.zero_array` / `.plus_array`, varying only the marker; the exactly-once side is `contain.array-element.type2.value.bare_exactly_once` and the KEYED optional counterpart is `contain.occurrence-target.type2.value.optional_keyed_array`. RFC8610 §3.2, §3.4, §2.1; ABNF grpent = [occur S] type -> type2 value.",
+      "role": "role.occurrence-target",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = [+ 5]",
+      "feature": "type2.value",
+      "id": "contain.occurrence-target.type2.value.plus_array",
+      "note": "A one-or-more occurrence targeting a bare fixed value as an array element: `[+ 5]` admits one or more repetitions of a literal. Completes the marker sweep over the count-permitting side beside `contain.occurrence-target.type2.value.zero_array` / `.optional_array`; the exactly-once side is `contain.array-element.type2.value.bare_exactly_once`. RFC8610 §3.2, §3.4, §2.1; ABNF grpent = [occur S] type -> type2 value.",
+      "role": "role.occurrence-target",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { * uint => 5 }",
+      "feature": "type2.value",
+      "id": "contain.occurrence-target.type2.value.table_map",
+      "note": "The MAP-representation sibling of the bare-fixed-value occurrence rows: a `*` occurrence on a type-domain arrow entry whose VALUE domain is a literal (`{ * uint => 5 }`), so the repeated payload per table entry is a fixed value. The keyed side of the same boundary in map representation is `contain.occurrence-target.type2.value.optional_keyed_map`; the array-representation count-permitting sibling is `.zero_array`. RFC8610 §3.2, §3.5.2, §2.1; ABNF grpent = [occur S] memberkey type -> type2 value.",
+      "role": "role.occurrence-target",
+      "spec": "allowed"
+    },
+    {
+      "example": "m = { ? k: 5, j: uint }",
+      "feature": "type2.value",
+      "id": "contain.occurrence-target.type2.value.optional_keyed_map",
+      "note": "The KEYED side of the fixed-value cardinality boundary in map representation: an optional occurrence on a member whose key is a bareword and whose value is a literal (`{ ? k: 5, j: uint }`), so the cardinality lives on a named entry rather than on a table row. Its bare/table counterpart is `contain.occurrence-target.type2.value.table_map` (`{ * uint => 5 }`) and its array-representation twin is `.optional_keyed_array`; the same shape appears in `tests/corpus/optional_fixed_member.cddl` (`opt_fixed_map`). Two-field example to match the shape convention of the sibling `role.map-value` rows. RFC8610 §3.2, §3.5.1, §2.1; ABNF grpent = [occur S] memberkey S type.",
+      "role": "role.occurrence-target",
+      "spec": "allowed"
+    },
+    {
+      "example": "a = [x: uint, ? v: 5, label: tstr]",
+      "feature": "type2.value",
+      "id": "contain.occurrence-target.type2.value.optional_keyed_array",
+      "note": "The KEYED side of the fixed-value cardinality boundary in array representation: an optional occurrence on a LABELLED array member whose type is a literal (`[x: uint, ? v: 5, label: tstr]`). Its bare counterpart is `contain.occurrence-target.type2.value.optional_array` (`[? 5]`) and its map twin is `.optional_keyed_map`. The trailing `label: tstr` is deliberate: an array optional whose CBOR major type overlaps the FOLLOWING field trips the ambiguity guard documented in `tests/corpus/optional_fixed_member.cddl`, so a Text-classed successor to the Uint-classed optional keeps this cell on the fixed-value-under-occurrence axis rather than on the guard. RFC8610 §3.2, §3.4, §2.1; ABNF grpent = [occur S] memberkey S type.",
       "role": "role.occurrence-target",
       "spec": "allowed"
     },

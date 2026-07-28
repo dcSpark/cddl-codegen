@@ -43,3 +43,80 @@ feature = "type2.unwrap"
 spec = "allowed"
 note = "`~name` (unwrap) as a member value. Unsupported because type2.unwrap is unsupported at all (not a context effect). RFC8610 §3.5.1, §3.7. (2-field map to avoid the orthogonal single-field-map panic.)"
 example = "arr = [int]\nm = { k: ~arr, j: uint }"
+
+# Fixed-value MEMBER enumeration in map-value position — the map-representation half of the sweep whose
+# array-representation half lives in array-element.toml. Every example below is two-field, matching the
+# shape convention of the rows above (the fixed member sits beside an ordinary typed member, so the cell
+# isolates the VALUE position rather than the whole-map shape).
+
+[[contain]]
+id = "contain.map-value.prelude.true"
+role = "role.map-value"
+feature = "prelude.true"
+spec = "allowed"
+note = "The prelude constant `true` as a fixed map-member value (`{ k: true, j: uint }`) — beside the existing `contain.map-value.prelude.false`, and the map-representation twin of `contain.array-element.prelude.true`. RFC8610 §2.1, §3.5.1."
+example = "m = { k: true, j: uint }"
+
+[[contain]]
+id = "contain.map-value.prelude.null"
+role = "role.map-value"
+feature = "prelude.null"
+spec = "allowed"
+note = "The prelude constant `null` as a fixed map-member value (`{ k: null, j: uint }`) — the map-representation twin of `contain.array-element.prelude.null`, and distinct from the choice-member nullable pattern (`contain.choice-member.prelude.null`), where `null` is an ARM rather than the whole value. RFC8610 §2.1, §3.5.1."
+example = "m = { k: null, j: uint }"
+
+[[contain]]
+id = "contain.map-value.prelude.undefined"
+role = "role.map-value"
+feature = "prelude.undefined"
+spec = "allowed"
+note = "The prelude constant `undefined` as a fixed map-member value (`{ k: undefined, j: uint }`) — completes the four fixed prelude constants in this role beside `contain.map-value.prelude.true` / `.null` / `.false`; its array-representation twin is `contain.array-element.prelude.undefined`. RFC8610 §2.1, §3.5.1."
+example = "m = { k: undefined, j: uint }"
+
+[[contain]]
+id = "contain.map-value.type2.tag.fixed_null"
+role = "role.map-value"
+feature = "type2.tag"
+spec = "allowed"
+note = "A tag WRAPPING a fixed null member value (`{ k: #6.1(null), j: uint }`) — the map-representation mirror of the array-element precedent `contain.array-element.type2.tag.fixed_null`, so the wrapped fixed-value arm is enumerated in both representations. Distinct from the plain `contain.map-value.type2.tag` (`#6.10(int)`), whose tag content is a TYPE rather than a literal. RFC8610 §3.5.1, §3.6, §2.1."
+example = "m = { k: #6.1(null), j: uint }"
+
+[[contain]]
+id = "contain.map-value.type2.tag.fixed_bool"
+role = "role.map-value"
+feature = "type2.tag"
+spec = "allowed"
+note = "A tag WRAPPING a fixed bool member value (`{ k: #6.11(true), j: uint }`) — the map-representation mirror of the array-element precedent `contain.array-element.type2.tag.fixed_bool`, varying the wrapped constant away from `null` beside its `.fixed_null` sibling. RFC8610 §3.5.1, §3.6, §2.1."
+example = "m = { k: #6.11(true), j: uint }"
+
+[[contain]]
+id = "contain.map-value.value.number"
+role = "role.map-value"
+feature = "value.number"
+spec = "allowed"
+note = "A numeric literal LEXEME as a fixed map-member value (`{ k: 5, j: uint }`) — the map-representation twin of `contain.array-element.value.number`. Paired with `contain.map-value.type2.value` exactly as the array file pairs `contain.array-element.value.number` with `contain.array-element.type2.value`: the two shapes key on the literal-lexeme feature and the literal-as-type2 feature respectively. RFC8610 §2.1, §3.5.1."
+example = "m = { k: 5, j: uint }"
+
+[[contain]]
+id = "contain.map-value.value.text"
+role = "role.map-value"
+feature = "value.text"
+spec = "allowed"
+note = "A text literal as a fixed map-member value (`{ k: \"x\", j: uint }`) — the map-representation twin of `contain.array-element.value.text`, and the second literal lexeme kind in this role beside `contain.map-value.value.number`. RFC8610 §2.1, §3.5.1."
+example = "m = { k: \"x\", j: uint }"
+
+[[contain]]
+id = "contain.map-value.value.bytes"
+role = "role.map-value"
+feature = "value.bytes"
+spec = "allowed"
+note = "A byte-string literal as a fixed map-member value (`{ k: h'0102', j: uint }`) — the third literal lexeme kind in this role beside `contain.map-value.value.number` / `.text`, and the map-representation twin of `contain.array-element.value.bytes`. RFC8610 §2.1 (bytes value), §3.5.1; ABNF grpent memberkey type -> type2 value -> bytes."
+example = "m = { k: h'0102', j: uint }"
+
+[[contain]]
+id = "contain.map-value.type2.value"
+role = "role.map-value"
+feature = "type2.value"
+spec = "allowed"
+note = "A literal used as a member TYPE in map-value position (`{ j: uint, k: 5 }`) — the map-representation twin of `contain.array-element.type2.value` (`[w: uint, v: 5]`), and the type2-axis half of the pair whose lexeme-axis half is `contain.map-value.value.number`. The literal follows an ordinary typed member, matching the array precedent's ordering. RFC8610 §2.1, §3.5.1; ABNF grpent memberkey S type -> type2 value."
+example = "m = { j: uint, k: 5 }"

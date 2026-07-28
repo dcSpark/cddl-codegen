@@ -8,7 +8,7 @@ Running the gates is not a roadmap concern either: `check.ts` at the repo root i
 gate registry + entry point, `tests/README.md` § "Running everything" is the prose overview, each
 script's header docstring is the per-gate detail, and `QUERIES.md` documents the Q1–Q6 query scripts.
 
-**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->117 features (95 RFC8610 + 1 RFC9682 + 21 `CDDL_CODEGEN` vendor profile), 98 containment cells, and 249 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
+**Status: gate-green.** <!-- status-header counts are generated — regenerate with: cd cddl-matrix && bun run project_status_headers.ts --write --><!-- gen:sh:roadmap-counts -->117 features (95 RFC8610 + 1 RFC9682 + 21 `CDDL_CODEGEN` vendor profile), 117 containment cells, and 249 cddl-codegen annotations<!-- /gen:sh:roadmap-counts -->, all axes reconciled/deterministic, with
 execution-gated support **per-feature, per-cell (role × feature), and per-control-op** (<!-- gen:sh:roadmap-ops -->all 37 IANA ops probed<!-- /gen:sh:roadmap-ops -->):
 "supported" requires the generated crate's `--emit-tests`
 round-trip/reject tests to PASS (`cargo test`), falling back to the compile verdict only for shapes that
@@ -364,21 +364,61 @@ are ledgered here (that's what the probe/gate error messages point at).
   rows: two of the four kinds probed so far behave differently from `uint`. Reopening signal: the
   next kind that a consumer finds differs — the ratio is 1-in-2 so far, so the cost of not
   enumerating is paid per spec, not per consumer.
-- Fixed-value member containment still has unenumerated variants beyond the precedent rows
-  `contain.array-element.prelude.{true,null}`, `contain.map-value.prelude.false`, and
-  `contain.array-element.type2.tag.{fixed_null,fixed_bool}`. Remaining candidates include map-value
-  tag-wrapped fixed members and the other fixed prelude constants across array/map member positions,
-  so the emission axis probes each fixed-value kind × wrapping position × profile instead of relying
-  on the hand fixtures (`tests/robustness/fixed_bool_member.cddl`,
-  `tests/corpus/fixed_bool_member.cddl`). This is the "Intra-alternative variation rows" expansion
-  rule (this doc) applied to the fixed-value member role: enumerate the wrapped variants as rows
-  BEFORE trusting a green.
-  The variation axis is CARDINALITY as well as wrapping, and that half is what a
-  position-keyed enumeration misses: a fixed value is supported in exactly-once placement and
-  refused under a count-permitting occurrence, so every fixed-value kind needs rows on both sides
-  of that boundary. Proven by the shapes this rule would have named in advance — `[* 5]` and its
-  map sibling `{ * uint => 5 }` both reached generation as PANICs, and the map one had no row at
-  all until it was found by hand next to the array one.
+- **Give the fixed-value member cells a BOUNDARY vector, so their green tests the constant and not
+  just the shape.** The role itself is enumerated: containment rows now cover the four fixed prelude
+  constants and the three literal lexeme kinds in both `role.array-element` and `role.map-value`, the
+  map-value tag-wrapped arms mirroring `contain.array-element.type2.tag.{fixed_null,fixed_bool}`, and
+  both sides of the cardinality boundary (`contain.occurrence-target.type2.value.*` against
+  `contain.array-element.type2.value.bare_exactly_once`). What those cells stand on is
+  generate + round-trip evidence, which exercises the RIGHT constant only — nothing asserts that the
+  WRONG constant is refused. The vector shape is the `value.number.hexfloat` precedent in
+  `tests/decode_conformance/catalog.toml`: `source = "hand"`, `expect = "reject"`,
+  `class = "constraint"`, and an `expect_err` substring of the generated decoder's Display, derived
+  empirically rather than guessed. Ordering constraint that makes this its own delivery: a catalog row
+  is rejected by `project_decode_conformance` unless the matrix already calls its id `supported`, so
+  the vectors can only be authored after a cell is grounded, never in the same change that adds it.
+  Reopening signal on the magnitude axis: a change to the fixed-value mismatch emission (the `Key`
+  rendering, or the emitted verify compare) lands and the local tier stays green — every unvectored
+  fixed-value cell is one more the green cannot speak for, so the person making that change measures
+  the gap directly, at the moment it costs them.
+- **Enumerate the two fixed-value member kinds the rows deliberately skip: NINT and FLOAT.** Both are
+  spellable as members and neither has a containment cell. They are held back because each is already
+  ledgered with its own pin and a row would restate rather than discover: the nint kind generates
+  cleanly in both profiles and its open defect is the message rendering (the entry below), and the
+  float kind's preserve leg rides the `preserve_encodings_supports_floats` stub class plus
+  `tests/corpus/optional_fixed_float.cddl`. The `n*m` marker on the cardinality boundary is likewise
+  omitted rather than deferred — the refusal message names `*` / `+` / `?` / `n*m` from one site, so a
+  fourth row would model the same code path the three markers already reach. Reopening signal: either
+  ledger retires (a signed `Key` variant lands, or preserve-mode floats are implemented), at which
+  point that kind's member-position verdict becomes an ordinary unknown that only a cell can carry.
+- **`undefined` in MEMBER position crashes the generator, while its sibling fixed prelude constants
+  do not.** `[v: undefined, x: uint]` and `{ k: undefined, j: uint }` both abort (exit 101) at the
+  prelude-name lookup in `src/utils.rs`, under the default and `--preserve-encodings` profiles alike,
+  whereas `true` / `false` / `null` are unsupported as TOP-LEVEL types yet supported as members — the
+  member-position flip does not reach `undefined`. The abort is a deliberate `TODO` at the
+  prelude-name lookup and is role-independent, so it is the same site the top-level fixture
+  `tests/matrix_panic/prelude.undefined.cddl` pins; the cells
+  `contain.array-element.prelude.undefined` and `contain.map-value.prelude.undefined` are what make
+  the member half visible. Candidate cddl-codegen fix: give `undefined` the member representation the
+  other zero-information constants already have, or refuse it gracefully naming the member position —
+  a panic on valid CDDL is the posture this repo otherwise retired. Reopening signal on the magnitude
+  axis: a spec brought to us contains an `undefined` member, i.e. the count of members its owner must
+  hand-rewrite to keep generating reaches 1; today the entry's evidence is synthetic probes only, and
+  a synthetic probe costs nobody a rewrite.
+- **A byte-string literal as a fixed MEMBER value crashes the generator, while the same literal at
+  TOP LEVEL is refused gracefully — member position is strictly worse here.** `[v: h'0102', x: uint]`,
+  the unkeyed `[h'0102', x: uint]`, and `{ k: h'0102', j: uint }` all abort (exit 101) on the
+  `Ignoring Type2: B16ByteString` catch-all in `src/parsing.rs`, in both profiles, whereas the
+  top-level `x = h'0102'` type exits 1 with a message (`tests/matrix_reject/value.bytes.cddl`). That
+  is the inverse of the `true`/`false`/`null` pattern, where member position is what makes the value
+  usable, so a reader who generalizes from the prelude constants generalizes wrongly. The cells
+  `contain.array-element.value.bytes` and `contain.map-value.value.bytes` model both positions.
+  Candidate cddl-codegen fix: emit the fixed-value member path the uint/text kinds already use (a
+  bytes constant carries zero information, like every other fixed kind), or route the catch-all
+  through `record_rejection` so the member site refuses as gracefully as the top-level one. Reopening
+  signal on the magnitude axis: a spec brought to us contains a byte-string fixed member, i.e. the
+  count of members its owner must hand-rewrite reaches 1 — today only synthetic probes reach the
+  site.
 - **A nint fixed-value mismatch reports the CBOR wire representation, not the authored value** —
   `Key` (static/error.rs) has no signed variant, so the emitted check for `? neg: -3` renders
   `FixedValueMismatch { found: Key::Uint((neg_value + 1).unsigned_abs()), expected: Key::Uint(2) }`:

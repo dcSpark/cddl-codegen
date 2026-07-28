@@ -112,3 +112,40 @@ feature = "type2.tag"
 spec = "allowed"
 note = "A tag wrapping a fixed bool member value (`[v: #6.11(true)]`) — covers the member-position wrapped fixed-value arm with a non-null prelude constant. RFC8610 §3.4, §3.6."
 example = "a = [v: #6.11(true), x: uint]"
+
+# Fixed-value member enumeration, continued: the remaining prelude constant, the bytes literal kind,
+# and the BARE (unkeyed) exactly-once placement. The bare row is the exactly-once side of the
+# cardinality boundary whose count-permitting side lives in occurrence-target.toml
+# (`contain.occurrence-target.type2.value.{zero,optional,plus}_array`).
+
+[[contain]]
+id = "contain.array-element.prelude.false"
+role = "role.array-element"
+feature = "prelude.false"
+spec = "allowed"
+note = "The prelude constant `false` as a fixed array-element member value (`[v: false, x: uint]`) — the third of the three fixed prelude constants in this role, beside `contain.array-element.prelude.true` and `.null`, and the array-representation twin of `contain.map-value.prelude.false`. RFC8610 §2.1, §3.4."
+example = "a = [v: false, x: uint]"
+
+[[contain]]
+id = "contain.array-element.prelude.undefined"
+role = "role.array-element"
+feature = "prelude.undefined"
+spec = "allowed"
+note = "The prelude constant `undefined` as a fixed array-element member value (`[v: undefined, x: uint]`) — the fourth fixed prelude constant in this role, completing the sweep beside `contain.array-element.prelude.true` / `.null` / `.false`. Its map-representation twin is `contain.map-value.prelude.undefined`. RFC8610 §2.1, §3.4."
+example = "a = [v: undefined, x: uint]"
+
+[[contain]]
+id = "contain.array-element.value.bytes"
+role = "role.array-element"
+feature = "value.bytes"
+spec = "allowed"
+note = "A byte-string literal as a fixed array-element member value (`[v: h'0102', x: uint]`) — the third literal LEXEME kind in this role, beside `contain.array-element.value.number` and `.text`; its map-representation twin is `contain.map-value.value.bytes`. RFC8610 §2.1 (bytes value), §3.4; ABNF grpent -> type -> type2 value -> bytes."
+example = "a = [v: h'0102', x: uint]"
+
+[[contain]]
+id = "contain.array-element.type2.value.bare_exactly_once"
+role = "role.array-element"
+feature = "type2.value"
+spec = "allowed"
+note = "A BARE (unkeyed) literal as an array entry in exactly-once placement (`[5, x: uint]`) — no memberkey, so the grpent is a bare `type` that happens to be a value. The exactly-once side of the fixed-value cardinality boundary; its count-permitting siblings are `contain.occurrence-target.type2.value.zero_array` / `.optional_array` / `.plus_array` (`[* 5]`, `[? 5]`, `[+ 5]`). Distinct from `contain.array-element.type2.value`, which carries a memberkey (`[w: uint, v: 5]`) — keying is the varying axis between the two. RFC8610 §2.1, §3.4; ABNF grpent = type (no memberkey) -> type2 value."
+example = "a = [5, x: uint]"

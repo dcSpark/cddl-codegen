@@ -171,3 +171,57 @@ feature = "grpent.groupname"
 spec = "allowed"
 note = "A zero-or-more occurrence can target a named group reference in map representation; this probes the named-group map occupant rather than an inline table. RFC8610 §2.2.1, §3.2, §3.5."
 example = "m = { * grp }\ngrp = (k: int)"
+
+# Fixed values under an occurrence marker — the CARDINALITY axis of fixed-value member containment.
+# The six rows below are the two SIDES of one boundary (count-permitting vs exactly-once/keyed), in
+# both the array and map representations; each note names its opposite side, because a row set that
+# records only the refused side does not show a boundary. Their exactly-once array sibling lives in
+# array-element.toml (`contain.array-element.type2.value.bare_exactly_once`).
+
+[[contain]]
+id = "contain.occurrence-target.type2.value.zero_array"
+role = "role.occurrence-target"
+feature = "type2.value"
+spec = "allowed"
+note = "A zero-or-more occurrence targeting a BARE (unkeyed) fixed value as an array element: `[* 5]` repeats a literal, not a type. The count-permitting side of the fixed-value cardinality boundary; its exactly-once side is `contain.array-element.type2.value.bare_exactly_once` (`[5, x: uint]`) and its keyed count-permitting siblings are `contain.occurrence-target.type2.value.optional_keyed_array` / `.optional_keyed_map`. RFC8610 §3.2, §3.4, §2.1; ABNF grpent = [occur S] type -> type2 value."
+example = "a = [* 5]"
+
+[[contain]]
+id = "contain.occurrence-target.type2.value.optional_array"
+role = "role.occurrence-target"
+feature = "type2.value"
+spec = "allowed"
+note = "An optional occurrence targeting a bare fixed value as an array element: `[? 5]` admits zero or one literal. Same count-permitting side as `contain.occurrence-target.type2.value.zero_array` / `.plus_array`, varying only the marker; the exactly-once side is `contain.array-element.type2.value.bare_exactly_once` and the KEYED optional counterpart is `contain.occurrence-target.type2.value.optional_keyed_array`. RFC8610 §3.2, §3.4, §2.1; ABNF grpent = [occur S] type -> type2 value."
+example = "a = [? 5]"
+
+[[contain]]
+id = "contain.occurrence-target.type2.value.plus_array"
+role = "role.occurrence-target"
+feature = "type2.value"
+spec = "allowed"
+note = "A one-or-more occurrence targeting a bare fixed value as an array element: `[+ 5]` admits one or more repetitions of a literal. Completes the marker sweep over the count-permitting side beside `contain.occurrence-target.type2.value.zero_array` / `.optional_array`; the exactly-once side is `contain.array-element.type2.value.bare_exactly_once`. RFC8610 §3.2, §3.4, §2.1; ABNF grpent = [occur S] type -> type2 value."
+example = "a = [+ 5]"
+
+[[contain]]
+id = "contain.occurrence-target.type2.value.table_map"
+role = "role.occurrence-target"
+feature = "type2.value"
+spec = "allowed"
+note = "The MAP-representation sibling of the bare-fixed-value occurrence rows: a `*` occurrence on a type-domain arrow entry whose VALUE domain is a literal (`{ * uint => 5 }`), so the repeated payload per table entry is a fixed value. The keyed side of the same boundary in map representation is `contain.occurrence-target.type2.value.optional_keyed_map`; the array-representation count-permitting sibling is `.zero_array`. RFC8610 §3.2, §3.5.2, §2.1; ABNF grpent = [occur S] memberkey type -> type2 value."
+example = "m = { * uint => 5 }"
+
+[[contain]]
+id = "contain.occurrence-target.type2.value.optional_keyed_map"
+role = "role.occurrence-target"
+feature = "type2.value"
+spec = "allowed"
+note = "The KEYED side of the fixed-value cardinality boundary in map representation: an optional occurrence on a member whose key is a bareword and whose value is a literal (`{ ? k: 5, j: uint }`), so the cardinality lives on a named entry rather than on a table row. Its bare/table counterpart is `contain.occurrence-target.type2.value.table_map` (`{ * uint => 5 }`) and its array-representation twin is `.optional_keyed_array`; the same shape appears in `tests/corpus/optional_fixed_member.cddl` (`opt_fixed_map`). Two-field example to match the shape convention of the sibling `role.map-value` rows. RFC8610 §3.2, §3.5.1, §2.1; ABNF grpent = [occur S] memberkey S type."
+example = "m = { ? k: 5, j: uint }"
+
+[[contain]]
+id = "contain.occurrence-target.type2.value.optional_keyed_array"
+role = "role.occurrence-target"
+feature = "type2.value"
+spec = "allowed"
+note = "The KEYED side of the fixed-value cardinality boundary in array representation: an optional occurrence on a LABELLED array member whose type is a literal (`[x: uint, ? v: 5, label: tstr]`). Its bare counterpart is `contain.occurrence-target.type2.value.optional_array` (`[? 5]`) and its map twin is `.optional_keyed_map`. The trailing `label: tstr` is deliberate: an array optional whose CBOR major type overlaps the FOLLOWING field trips the ambiguity guard documented in `tests/corpus/optional_fixed_member.cddl`, so a Text-classed successor to the Uint-classed optional keeps this cell on the fixed-value-under-occurrence axis rather than on the guard. RFC8610 §3.2, §3.4, §2.1; ABNF grpent = [occur S] memberkey S type."
+example = "a = [x: uint, ? v: 5, label: tstr]"
