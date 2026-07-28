@@ -2096,6 +2096,25 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   (`parsing::well_known_tag_default_duplicates`) WIDENS who hits this: every no-directive
   tag-258 set is now the reject shape, not just rules with an explicit `; @duplicates reject` —
   same loud failure class, larger audience, so the reopening signal fires sooner.
+- **The cross-crate sidecar readers abort by `panic!` rather than returning `Err`.** All ten
+  refusals in `src/wrapper_requests.rs` — the `--wrapper-requests` / `--key-requests` grammar
+  rejections, the trapped-`compile_error!` and `unpreserved-comment` guards, the unreadable-sidecar
+  case, and the "borrowed key type this dep no longer defines" case — end the process instead of
+  returning through the generator's error channel. Under `--config` that is the one failure class
+  that escapes the mid-run failure contract (`docs/docs/config_file.mdx` § "Generation itself is not
+  transactional across crates", pinned by
+  `a_mid_run_generation_failure_names_the_crates_already_regenerated`): the wrapper
+  that names the crates already regenerated sits on `generate_to_disk`'s `Result`, and a panic never
+  reaches it, so a user gets a backtrace-shaped message and no statement of what the run had already
+  rewritten. Nine of the ten are reachable only from a HAND-EDITED generated file, which is why they
+  are panics in the first place and why converting them is not urgent; the tenth (the stale borrowed
+  key type) is reachable from committed state alone — a dep whose spec drops a type its consumer's
+  committed sidecar still borrows — which is the same stale-committed-state class the wrapper channel
+  answers with the committed-state verdict rather than with a panic. What to build: thread the
+  sidecar readers' refusals through `Result` to `generate_to_disk`'s caller, and give the key channel
+  the verdict's treatment rather than the panic's. Reopening signal (magnitude, consumer-side): a
+  SECOND of these sites becomes reachable from committed state alone — which is what adding a new row
+  kind to either sidecar produces, and is measurable by whoever adds it.
 - **Extern-interface export dialect v2 candidates.** Each bumps the seam header
   (`_CDDL_CODEGEN_EXTERN_INTERFACE_ v1` — unknown versions hard-error, pinned by
   `extern_import_unknown_version_hard_errors`), so batch them when one gets a real consumer:

@@ -1285,7 +1285,13 @@ fn render_export_files(
                 content.push('\n');
             }
         }
-        files.insert(format!("extern-interface/{dep_key}/{subpath}"), content);
+        files.insert(
+            format!(
+                "{}/{dep_key}/{subpath}",
+                crate::generation::layout::EXTERN_INTERFACE_DIR
+            ),
+            content,
+        );
     }
     files
 }

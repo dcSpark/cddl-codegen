@@ -33,6 +33,11 @@ pub(crate) const SYNTHESIZED_INSTANCE_ALIAS_DOC: &str = "Synthesized convenience
 mod export;
 use export::declare_modules;
 
+// The generated workspace's shared layout facts (the paths and package-name suffixes `config.rs`
+// derives cross-crate flag values from). `pub(crate)` because the whole point is that the reader
+// outside `generation/` uses the same constants the emitter does.
+pub(crate) mod layout;
+
 // The dep-side extern-interface export: the IR->CDDL renderer for TRANSPARENT export rows (commit 3)
 // plus the projection walk / export emitter (`extern_interface_files`) that `export()` drives
 // (commit 4). `pub(crate)` so the test-only `api::extern_interface_strings` helper can reach the

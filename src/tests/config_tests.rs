@@ -1790,6 +1790,51 @@ fn config_keys_match_cli_fields() {
     );
 }
 
+/// The two `generation::layout` constants whose EMITTER half is a data file rather than code.
+///
+/// The layout constants are load-bearing at both ends by construction — the emitter writes the path
+/// the constant names and the config derives its flag values from the same constant, so a rename is
+/// a type-checked edit. The two cargo package suffixes are the exception: the generated
+/// `package.name` is written by the manifest change log, whose derived template carries
+/// `cddl-lib-wasm` / `cddl-lib-json-schema-gen` as TEXT (`ops_from_log` substitutes `--lib-name` for
+/// the `cddl-lib` placeholder). No constant can reach into a `.toml`, so this asserts across the
+/// seam instead: a suffix edited on one side without the other makes every derived `--wasm-dep` /
+/// `--json-gen-dep` name a package cargo cannot resolve.
+#[test]
+fn the_package_suffixes_are_the_ones_the_manifest_templates_carry() {
+    for (template, suffix) in [
+        (
+            "Cargo_wasm.toml",
+            crate::generation::layout::WASM_PACKAGE_SUFFIX,
+        ),
+        (
+            "Cargo_json_gen.toml",
+            crate::generation::layout::JSON_GEN_PACKAGE_SUFFIX,
+        ),
+    ] {
+        let path = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/static")).join(template);
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("{} is readable: {e}", path.display()));
+        let expected = format!("name = \"cddl-lib{suffix}\"");
+        assert!(
+            text.contains(&expected),
+            "static/{template} does not carry `{expected}`: the emitted package name and the suffix \
+             a config predicts for it have drifted"
+        );
+    }
+}
+
+/// `JSON_GEN_MANIFEST` names a file inside `JSON_GEN_DIR` — the one relationship between the layout
+/// constants that a single line does not show, and the one a config depends on (it resolves the
+/// json-gen crate by DIRECTORY while the emitter writes the manifest by full path).
+#[test]
+fn the_json_gen_manifest_lives_in_the_json_gen_directory() {
+    assert_eq!(
+        crate::generation::layout::JSON_GEN_MANIFEST,
+        format!("{}/Cargo.toml", crate::generation::layout::JSON_GEN_DIR),
+    );
+}
+
 /// The exclusion list above is only honest if the per-crate keys really are absent from `Settings`;
 /// otherwise a key could be settable in `[defaults]` while the gate still passed.
 #[test]
@@ -5795,6 +5840,73 @@ fn the_committed_state_verdict_exits_2_and_other_failures_exit_1() {
     assert!(
         String::from_utf8_lossy(&unknown.stderr).contains("is not a crate in this config"),
         "and it must be the expansion failure it was asked for"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A crate that fails to generate says what the run already rewrote before it got there.
+///
+/// Generation is not transactional across crates and cannot be made so — each crate's output is a
+/// committed directory clobbered in place — so the honest thing is to state the boundary. Without
+/// this the failure is a bare CDDL diagnostic, and the one question it leaves ("what state is my tree
+/// in now?") is answerable only by reading `git status` and knowing the generation order.
+///
+/// Binary-level, because the message is what a caller reads on stderr, and because the assertion that
+/// matters is that the run really did rewrite the earlier crate before failing.
+#[test]
+fn a_mid_run_generation_failure_names_the_crates_already_regenerated() {
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_config_midrun_{:016x}",
+        crate::tests::integration_tests::checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("specs")).unwrap();
+    // Two independent crates, so generation order is crate-name order: `aaa` generates, then `zzz`
+    // fails on a spec the parser refuses.
+    std::fs::write(dir.join("specs/aaa.cddl"), "aaa_rec = [a: uint]\n").unwrap();
+    std::fs::write(
+        dir.join("specs/zzz.cddl"),
+        "zzz_rec = [a: not_a_defined_rule]\n",
+    )
+    .unwrap();
+    let config_path = dir.join("cddl-codegen.toml");
+    std::fs::write(
+        &config_path,
+        format!(
+            "[defaults]\nstatic-dir = \"{}\"\n\n\
+             [crates.aaa]\ninput = \"specs/aaa.cddl\"\noutput = \"gen/aaa\"\nlib-name = \"aaa-lib\"\n\n\
+             [crates.zzz]\ninput = \"specs/zzz.cddl\"\noutput = \"gen/zzz\"\nlib-name = \"zzz-lib\"\n",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/static"),
+        ),
+    )
+    .unwrap();
+
+    let out = super::integration_tests::codegen_cmd()
+        .arg("--config")
+        .arg(&config_path)
+        .output()
+        .expect("the generator binary must be spawnable");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "a spec that will not generate is a failed RUN, not a verdict about the tree\nstderr:\n\
+         {stderr}"
+    );
+    assert!(
+        stderr.contains("already regenerated in this run before this failure: aaa"),
+        "the failure must name what the run had already rewritten, got:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("zzz") && stderr.contains("not transactional across crates"),
+        "and it must name the crate that failed and state the contract, got:\n{stderr}"
+    );
+    // The claim the message makes is true: `aaa` really is on disk in its regenerated form.
+    assert!(
+        dir.join("gen/aaa/rust/src/generated/lib.rs").exists()
+            || dir.join("gen/aaa/rust/src/lib.rs").exists(),
+        "the earlier crate must actually have been written before the failure"
     );
 
     let _ = std::fs::remove_dir_all(&dir);
