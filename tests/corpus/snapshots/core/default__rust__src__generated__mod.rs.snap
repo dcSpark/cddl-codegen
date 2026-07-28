@@ -376,6 +376,76 @@ impl CborInCbor {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct CborPayloadCollections {
+    pub arr_payload: Vec<u64>,
+    pub map_payload: BTreeMap<u64, String>,
+    pub tail: String,
+}
+
+impl CborPayloadCollections {
+    pub fn new(arr_payload: Vec<u64>, map_payload: BTreeMap<u64, String>, tail: String) -> Self {
+        Self {
+            arr_payload,
+            map_payload,
+            tail,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CborPayloadLeaves {
+    pub f64_payload: f64,
+    pub f32_payload: f32,
+    pub bounded64_payload: f64,
+    pub bounded32_payload: f32,
+    pub bool_payload: bool,
+    pub enum_payload: CEnum,
+    pub tail: String,
+}
+
+impl CborPayloadLeaves {
+    pub fn new(
+        f64_payload: f64,
+        f32_payload: f32,
+        bounded64_payload: f64,
+        bounded32_payload: f32,
+        bool_payload: bool,
+        enum_payload: CEnum,
+        tail: String,
+    ) -> Result<Self, DeserializeError> {
+        if !(bounded64_payload <= 10.5f64) {
+            return Err(DeserializeFailure::RangeCheckFloat {
+                found: bounded64_payload as f64,
+                min: None,
+                max: Some(10.5f64),
+                min_inclusive: false,
+                max_inclusive: true,
+            }
+            .into());
+        }
+        if !((bounded32_payload as f64) <= 10.5f64) {
+            return Err(DeserializeFailure::RangeCheckFloat {
+                found: bounded32_payload as f64,
+                min: None,
+                max: Some(10.5f64),
+                min_inclusive: false,
+                max_inclusive: true,
+            }
+            .into());
+        }
+        Ok(Self {
+            f64_payload,
+            f32_payload,
+            bounded64_payload,
+            bounded32_payload,
+            bool_payload,
+            enum_payload,
+            tail,
+        })
+    }
+}
+
 pub type CustomBytes = Vec<u8>;
 
 pub type DefaultUint = u64;
