@@ -2470,6 +2470,141 @@ fn unsupported_unwrap_rule_body_names_remedy() {
     );
 }
 
+/// A two-arm `T / null` choice whose non-`null` arm is a bare fixed value is unsupported at BOTH
+/// collapse sites — rejected BY DESIGN via a GRACEFUL `Err`, never the `for_rust_member_ct` abort
+/// the shape used to hit under every profile. The catalog above only records the
+/// `error (graceful)` LABEL for the two committed fixtures; this pins what each message actually
+/// SAYS: the rule-level one names the rule by its SOURCE spelling and quotes the offending value
+/// back in CDDL form, the member-level one uses role-generic wording (no rule name exists there),
+/// and both carry the shared explanation plus a remedy that was probed to generate.
+///
+/// Every fixed kind the collapse can carry is swept, not just bool — the guard keys on
+/// "is a fixed value", not on any one variant — including the degenerate `null / null`, which gets
+/// the distinct sentence it needs (there is no non-`null` arm to widen).
+#[test]
+fn fixed_inner_null_collapse_rejects_gracefully_at_both_sites() {
+    fn run(spec: &str, tag: &str) -> String {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_nullcollapse_{}_{}.cddl",
+            tag,
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "nullcollapse_unused",
+        ]);
+        let result = crate::api::generated_strings(&cli);
+        std::fs::remove_file(&path).ok();
+        result
+            .expect_err(&format!(
+                "a fixed inner under the `T / null` collapse ({tag}) must be a graceful Err, not a panic"
+            ))
+            .to_string()
+    }
+
+    // Rule-level site: names the rule by its SOURCE spelling (`t`, not the camel-cased `T`).
+    let rule = run("a = [x: uint]\nt = true / null\n", "rule");
+    assert!(
+        rule.contains("rule `t`: the two-arm choice `true / null` is unsupported"),
+        "rule-level rejection should name the rule and quote the choice back, got: {rule}"
+    );
+    assert!(
+        rule.contains("collapses to an `Option<T>` rather than an enum"),
+        "rule-level rejection should explain the collapse, got: {rule}"
+    );
+    assert!(
+        rule.contains("`bool / null` lowers to `Option<bool>`")
+            && rule.contains("different spec, not an equivalent one"),
+        "rule-level rejection should carry the probed remedy and its honesty caveat, got: {rule}"
+    );
+
+    // Member-level site: role-generic wording, no rule name available.
+    let member = run("a = [v: true / null, x: uint]\n", "member");
+    assert!(
+        member.contains(
+            "a two-arm `true / null` choice used as a member or element type is unsupported"
+        ),
+        "member-level rejection should use role-generic wording, got: {member}"
+    );
+    assert!(
+        member.contains("collapses to an `Option<T>` rather than an enum")
+            && member.contains("`bool / null` lowers to `Option<bool>`"),
+        "member-level rejection should share the rule-level explanation and remedy, got: {member}"
+    );
+
+    // The guard keys on fixed-ness, not on bool: every other fixed kind refuses the same way, with
+    // the value quoted back in its CDDL spelling.
+    for (spec, tag, quoted) in [
+        (
+            "a = [x: uint]\nt = false / null\n",
+            "false",
+            "`false / null`",
+        ),
+        ("a = [x: uint]\nt = 5 / null\n", "uint", "`5 / null`"),
+        ("a = [x: uint]\nt = -1 / null\n", "nint", "`-1 / null`"),
+        ("a = [x: uint]\nt = 3.0 / null\n", "float", "`3.0 / null`"),
+        (
+            "a = [x: uint]\nt = \"v1\" / null\n",
+            "text",
+            "`\"v1\" / null`",
+        ),
+    ] {
+        let msg = run(spec, tag);
+        assert!(
+            msg.contains(quoted),
+            "the {tag} rejection should quote {quoted} back in CDDL form, got: {msg}"
+        );
+    }
+
+    // `null / null` is the degenerate spelling: no non-`null` arm exists, so the widening remedy
+    // would be dishonest and the message must NOT offer it.
+    let both_null = run("a = [x: uint]\nt = null / null\n", "nullnull");
+    assert!(
+        both_null.contains("`null / null`") && both_null.contains("`null` on both arms"),
+        "the null/null rejection should say both arms are null, got: {both_null}"
+    );
+    assert!(
+        !both_null.contains("Widening the fixed arm"),
+        "the null/null rejection must not offer the widening remedy, got: {both_null}"
+    );
+
+    // Control: the SAME two-arm shape over a non-fixed inner still collapses to a real `Option<T>`,
+    // and a two-arm choice with no `null` arm still takes the enum path — the guard must not widen
+    // into either.
+    for supported in [
+        "a = [x: uint]\nt = bool / null\n",
+        "a = [x: uint]\nt = uint / null\n",
+        "a = [x: uint]\nt = null / tstr\n",
+        "a = [x: uint]\nt = true / false\n",
+        "a = [v: bool / null, x: uint]\n",
+    ] {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_nullcollapse_ok_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&path, supported).unwrap();
+        let cli = Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "nullcollapse_unused",
+        ]);
+        let result = crate::api::generated_strings(&cli);
+        std::fs::remove_file(&path).ok();
+        assert!(
+            result.is_ok(),
+            "`{}` must still generate, got: {:?}",
+            supported.trim(),
+            result.err()
+        );
+    }
+}
+
 /// The `.within` / `.and` control operators are unsupported — rejected BY DESIGN via a GRACEFUL
 /// `Err`, never `todo!()`. Follows the `.size`-on-`int` sibling in `parse_control_operator`
 /// (`record_rejection` + an inert full-range placeholder, drained by `finalize`), including its
