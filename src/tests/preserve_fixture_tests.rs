@@ -38,6 +38,146 @@ fn unit_survives(unit: &str, output: &str) -> bool {
         .all(|l| output.contains(l))
 }
 
+/// Sweeps the whole expected-case corpus for the ON-DISK fixed point: the form the tool actually
+/// writes is `rustfmt(preserve(...))`, so the run-twice = run-once property that matters in
+/// production is `rustfmt(preserve(rustfmt(expected), new)) == rustfmt(expected)` — a fixed point
+/// over the POST-rustfmt bytes, not the pre-rustfmt ones property (a) of `preserve_fixtures` pins.
+/// It never asserts any specific folded spelling, so it is robust across rustfmt versions (same
+/// acceptance-criterion posture as `preserve_markers_survive_rustfmt_fold_roundtrip`), and a
+/// rustfmt bump that starts folding a new construct trips it here rather than in a consumer.
+/// The never-silent leg uses `old.rs` as its baseline — the strongest available chain: nothing
+/// user-authored is lost across old → merge → format → merge.
+///
+/// Honest framing: this sweep would NOT have caught its own motivating escape. The pre-escape
+/// corpus contained no marker in a position rustfmt folds, so formatting would have folded nothing
+/// and the sweep would have stayed green. It is a REGRESSION NET over the fold/format classes the
+/// corpus already embodies — plus automatic coverage of every fixture added later, plus a
+/// rustfmt-version-bump tripwire — NOT a discovery instrument for fold positions the corpus lacks.
+///
+/// It both TESTS and DEPENDS ON the `unfold_trailing_markers` pre-pass: the three
+/// `*_rustfmt_folded_tail_*` fixtures are re-folded by the step-2 rustfmt and unfolded again at the
+/// step-3 `preserve` entry, giving that pre-pass sweep coverage across all three block flavors
+/// (replace / insert / keep) where the delivered unit test covers only replace.
+///
+/// Error cases are exempt by construction: the 20 `error.txt` cases' `old.rs` are user-malformed
+/// inputs the tool never wrote, and a `PreserveError` propagates out of `export()` before the write
+/// loop, so no on-disk file ever has that provenance. The fold-induced hard-error class — a
+/// rustfmt fold that makes the next `preserve` reject its own output — is caught by the
+/// expected-case assertions themselves (step 3 must be `Ok`).
+#[test]
+fn preserve_fixtures_rustfmt_cycle_stability() {
+    // Skip under bless: cargo runs tests as parallel threads in ONE process, and the sibling
+    // `preserve_fixtures` bless path REWRITES `expected.rs` files while this sweep reads them —
+    // a read of a half-written file would be a spurious red.
+    if std::env::var("BLESS_PRESERVE_FIXTURES").map(|v| v == "1") == Ok(true) {
+        eprintln!(
+            "BLESS_PRESERVE_FIXTURES=1: skipping the rustfmt-cycle sweep (expected.rs files are being rewritten concurrently)"
+        );
+        return;
+    }
+
+    let root = std::env::current_dir()
+        .unwrap()
+        .join("tests/preserve-fixtures");
+
+    let mut cases: Vec<std::path::PathBuf> = std::fs::read_dir(&root)
+        .unwrap_or_else(|e| panic!("cannot read fixture root {}: {e}", root.display()))
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.is_dir())
+        .collect();
+    cases.sort();
+
+    let mut failures: Vec<String> = Vec::new();
+    let mut swept = 0usize;
+
+    for dir in &cases {
+        let name = dir.file_name().unwrap().to_string_lossy().into_owned();
+        // Error cases have no on-disk-provenance form to format — see the doc comment.
+        if dir.join("error.txt").exists() {
+            continue;
+        }
+        let read = |f: &str| std::fs::read_to_string(dir.join(f));
+        let (old, new, expected) = match (read("old.rs"), read("new.rs"), read("expected.rs")) {
+            (Ok(o), Ok(n), Ok(e)) => (o, n, e),
+            (o, n, e) => {
+                failures.push(format!(
+                    "[{name}] unreadable fixture files (old: {:?}, new: {:?}, expected: {:?})",
+                    o.err(),
+                    n.err(),
+                    e.err()
+                ));
+                continue;
+            }
+        };
+        swept += 1;
+
+        // Step 1: the on-disk form the tool would actually write for this merge output.
+        let disk1 = match crate::generation::rustfmt_generated_string(&expected) {
+            Ok(s) => s.into_owned(),
+            Err(e) => {
+                failures.push(format!("[{name}] rustfmt(expected.rs) failed: {e}"));
+                continue;
+            }
+        };
+
+        // Step 2: the NEXT regen must re-parse that post-rustfmt on-disk form.
+        let merged = match preserve(&disk1, &new) {
+            Ok(m) => m,
+            Err(e) => {
+                failures.push(format!(
+                    "[{name}] preserve(rustfmt(expected), new) errored — the tool cannot re-read \
+                     its own on-disk output: {e}"
+                ));
+                continue;
+            }
+        };
+
+        // Step 3: on-disk fixed point — run twice == run once, over the bytes actually written.
+        match crate::generation::rustfmt_generated_string(&merged.content) {
+            Ok(disk2) if disk2 == disk1 => {}
+            Ok(disk2) => failures.push(format!(
+                "[{name}] NOT an on-disk fixed point: rustfmt(preserve(rustfmt(expected), new)) != \
+                 rustfmt(expected)\n--- first on-disk form ---\n{disk1}\n--- second on-disk form \
+                 ---\n{disk2}"
+            )),
+            Err(e) => failures.push(format!(
+                "[{name}] rustfmt(preserve(rustfmt(expected), new)) failed — the merge produced \
+                 unformattable Rust: {e}"
+            )),
+        }
+
+        // Never-silent across the whole chain, baselined on old.rs.
+        match never_silent_units(&old) {
+            Ok(units) => {
+                for unit in units {
+                    if !unit_survives(&unit, &merged.content) {
+                        failures.push(format!(
+                            "[{name}] never-silent violation across the rustfmt cycle: a user \
+                             comment/block from old.rs is neither placed nor trapped in a \
+                             compile_error! after old → merge → rustfmt → merge:\n{unit}"
+                        ));
+                    }
+                }
+            }
+            Err(e) => failures.push(format!(
+                "[{name}] never_silent_units(old) errored (old.rs must lex/scan cleanly): {e}"
+            )),
+        }
+    }
+
+    assert!(
+        swept > 0,
+        "no expected.rs fixture cases found under {} — the sweep would be vacuously green",
+        root.display()
+    );
+    assert!(
+        failures.is_empty(),
+        "preserve fixture rustfmt-cycle failures ({} over {swept} expected-case fixture(s)):\n{}",
+        failures.len(),
+        failures.join("\n\n")
+    );
+}
+
 #[test]
 fn preserve_fixtures() {
     let root = std::env::current_dir()
