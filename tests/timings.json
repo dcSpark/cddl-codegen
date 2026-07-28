@@ -167,9 +167,9 @@
     },
     {
       "gate": "gate_cache_closure_audit",
-      "warm_ms": 409000,
-      "n": 15,
-      "measured": "2026-07-27",
+      "warm_ms": 251000,
+      "n": 14,
+      "measured": "2026-07-28",
       "machine": "86216c55",
       "history": [
         {
@@ -183,6 +183,10 @@
         {
           "date": "2026-07-27",
           "warm_ms": 409000
+        },
+        {
+          "date": "2026-07-28",
+          "warm_ms": 251000
         }
       ]
     },
