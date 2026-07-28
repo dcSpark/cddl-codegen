@@ -997,6 +997,14 @@ rule = "wrapped_nonempty_map"
 pinned_reason = "ruby generator cannot mint this construct (last exit 65) — ruby 0.12.14 inline-composite `.cbor`-controller parse gap (draft/ruby-cddl-inline-composite-control-arg-gap.md; re-mint when the gem fix ships)"
 
 [[row]]
+id = "cbor_payload_nested.cbor_payload_nested"
+axis = "corpus"
+example = "cbor_payload_nested = [\n  elem_payloads: bytes .cbor [* bytes .cbor uint],\n  value_payloads: bytes .cbor {* uint => bytes .cbor uint},\n  after_payload: bytes .cbor uint,\n  tail: text,\n]"
+fixture = "cbor_payload_nested"
+rule = "cbor_payload_nested"
+pinned_reason = "ruby generator cannot mint this construct (last exit 65) — ruby 0.12.14 inline-composite `.cbor`-controller parse gap (draft/ruby-cddl-inline-composite-control-arg-gap.md; re-mint when the gem fix ships)"
+
+[[row]]
 id = "cbor_wrapped_group_array.coords"
 axis = "corpus"
 example = "coords = (uint, uint)\n; A `.cbor` payload wrapping an anonymous array-of-plain-group (`bytes .cbor [coords]`): the plain\n; group `coords` must be promoted to an Array-rep Record struct and emitted, not dangled on a bare,\n; never-emitted `Coords`."

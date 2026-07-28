@@ -1,0 +1,42 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+pub mod error;
+mod extern_interface_check;
+pub mod serialization;
+
+use std::collections::BTreeMap;
+
+#[derive(Clone, Debug)]
+pub struct CborPayloadNested {
+    pub elem_payloads: Vec<u64>,
+    pub value_payloads: BTreeMap<u64, u64>,
+    pub after_payload: u64,
+    pub tail: String,
+}
+
+impl CborPayloadNested {
+    pub fn new(
+        elem_payloads: Vec<u64>,
+        value_payloads: BTreeMap<u64, u64>,
+        after_payload: u64,
+        tail: String,
+    ) -> Self {
+        Self {
+            elem_payloads,
+            value_payloads,
+            after_payload,
+            tail,
+        }
+    }
+}

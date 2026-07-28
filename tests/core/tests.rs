@@ -754,6 +754,60 @@ mod tests {
         assert_eq!(deser.tail, "z");
     }
 
+    // A `.cbor` payload nested one level INSIDE another `.cbor` payload's collection. The oracle is
+    // hand-derived per RFC 8949 (spelled out byte-by-byte below) rather than minted from
+    // `to_cbor_bytes`, because the encoder and the decoder disagreed here: encoding was always
+    // spec-correct, so a self-minted oracle would have agreed with the encoder and hidden the
+    // decode break. The three legs are therefore: encode == oracle, decode(oracle) == the values,
+    // and an empty-collection control (the loop body never runs, so it decoded fine even while the
+    // body was reading the wrong buffer — it is the contrast that localises the defect to the body).
+    #[test]
+    fn cbor_payload_nested_payloads() {
+        // Holder { elem_payloads: [5], value_payloads: {1: 9}, after_payload: 7, tail: "z" }
+        let oracle = [
+            0x84, // outer array(4)
+            0x43, 0x81, 0x41, 0x05, // elem_payloads: bstr(3) = [ bstr(1) = 5 ]
+            0x44, 0xa1, 0x01, 0x41, 0x09, // value_payloads: bstr(4) = { 1: bstr(1) = 9 }
+            0x41, 0x07, // after_payload: bstr(1) = 7
+            0x61, 0x7a, // tail: "z"
+        ];
+        let orig = CborPayloadNestedPayloads::new(
+            vec![5],
+            BTreeMap::from([(1u64, 9u64)]),
+            7,
+            String::from("z"),
+        );
+        assert_eq!(orig.to_cbor_bytes(), oracle);
+        deser_test(&orig);
+        let deser = CborPayloadNestedPayloads::from_cbor_bytes(&oracle).unwrap();
+        assert_eq!(deser.elem_payloads, vec![5]);
+        assert_eq!(deser.value_payloads.get(&1), Some(&9));
+        // the members AFTER the nested payloads: proves the element/value reads did not eat them
+        assert_eq!(deser.after_payload, 7);
+        assert_eq!(deser.tail, "z");
+
+        // empty control: both loop bodies are skipped
+        let empty_oracle = [
+            0x84, // outer array(4)
+            0x41, 0x80, // elem_payloads: bstr(1) = []
+            0x41, 0xa0, // value_payloads: bstr(1) = {}
+            0x41, 0x07, // after_payload: bstr(1) = 7
+            0x61, 0x7a, // tail: "z"
+        ];
+        let empty = CborPayloadNestedPayloads::new(
+            vec![],
+            BTreeMap::new(),
+            7,
+            String::from("z"),
+        );
+        assert_eq!(empty.to_cbor_bytes(), empty_oracle);
+        let deser = CborPayloadNestedPayloads::from_cbor_bytes(&empty_oracle).unwrap();
+        assert!(deser.elem_payloads.is_empty());
+        assert!(deser.value_payloads.is_empty());
+        assert_eq!(deser.after_payload, 7);
+        assert_eq!(deser.tail, "z");
+    }
+
     #[test]
     fn test_prelude_numbers() {
         assert_eq!(0u8, U8::from(0u8));
