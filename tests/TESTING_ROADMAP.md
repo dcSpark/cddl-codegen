@@ -1494,6 +1494,40 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   asserted by a static-runtime op, and every asserted dep must appear in the text — a natural
   sibling of `warmup_manifest_covers_registry_dep_universe`, accepting the source-scan heuristics
   then, not before.
+- **A dependency swap can pass compile-parity and every existing gate while silently changing
+  behavior our public API re-exposes — one proven near-miss, pins landed for the instance.**
+  Proven instance (caught by orchestrator differential probing, not by any test): the
+  linked-hash-map→hashlink swap plan carried an `insert`→`replace` "compatibility" forwarding
+  built on a twice-source-read premise that linked-hash-map's `insert` replaces in place. It
+  moves the key to the back — identically to hashlink — so the forwarding would have CHANGED
+  shipped wire-order behavior while presenting as preservation, and the swap's real divergence
+  was elsewhere (`Entry::or_insert` on an occupied entry: hashlink refreshes to back,
+  linked-hash-map doesn't). Every existing layer is structurally blind to the class: round-trip
+  and golden-hex oracles never MUTATE through the dep surface (decode→mutate→re-serialize is
+  where order semantics bite); snapshot pins hold emitted TEXT, which a backing swap legitimately
+  churns; and mutation scoring runs against the CURRENT dep, so it measures coverage of today's
+  baseline, never a baseline change. We therefore pinned the incumbent's semantics at the wire
+  level BEFORE swapping — `ordered_hash_map_{insert_overwrite_moves_to_back,
+  or_insert_keeps_position,from_iter_duplicate_keys,entry_match_shapes}` in
+  `tests/preserve-encodings/tests.rs`, committed green on the old backing in their own commit, so
+  the swap had to reproduce bytes rather than bless new ones — instead of trusting source reads
+  (two independent ones agreed and were both wrong; only an executable differential probe —
+  identical op sequences on both crates, iteration-order traces asserted equal — broke the
+  premise). Residual: the pinned set covers the CONSUMER-PROBED mutation surface (insert,
+  or_insert, from_iter, entry match shapes); other Deref-reachable mutation ops
+  (`remove`/`extend`/`pop_*`) are differential-probed equal but unpinned, and other re-exposed
+  dep surfaces (the `cbor_event` types in every deserialize signature) rely on the round-trip
+  oracles alone, which do cover their read/write behavior but not order-adjacent mutation — no
+  such surface exists there today. Working rule meanwhile: a change to the VERSION FLOOR or
+  IDENTITY of a dependency whose types our public API re-exposes (a Deref target, a re-exported
+  type, a type embedded in public signatures) first lands wire-level pins of the incumbent's
+  consumer-reachable behavior in a separate commit, then swaps under them — and parity premises
+  between two crates are established by executable differential probes, never by source reads.
+  Mechanical layer on a SECOND swap/bump instance of this class (candidates: the cbor_event
+  fork's crates.io upstreaming flip, a hashlink 0.13 floor raise): a curated dep-semantics pin
+  suite per re-exposed surface, enumerated from the public-API type graph (which dep types appear
+  in `pub` signatures/Deref targets), so the pin obligation is discovered by a gate rather than
+  remembered by a rule.
 - **Comment-residue false matches in text scans over emitted/prior `.rs` output — one proven
   instance, no machinery yet.** Any diagnostic or decision that SCANS generated (or user-edited
   prior) Rust text for a code pattern shares one trap: the comment-preservation overlay and the
