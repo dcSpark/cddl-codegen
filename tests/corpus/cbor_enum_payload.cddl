@@ -24,11 +24,12 @@
 ;
 ; NOT spelled here: a dedicated no-encoding-fields probe of the pattern split's `Ok(())`/`()`
 ; edge. The tempting spelling `true / null` never reaches this dispatch at all — a two-arm choice
-; with a null arm Option-collapses in `parse_type_choices`, and the collapsed
-; `Optional(Fixed(Bool(true)))` panics generation under EVERY profile when rendered as a
-; member/alias type (`should not expose Fixed type in member, only needed for serializaiton:` —
-; ledgered in cddl-matrix/ROADMAP.md § "Findings — open") — so it pins nothing about this site;
-; the empty-list edge is instead covered by these same rules under the default/json profiles.
+; with a null arm Option-collapses in `parse_type_choices` rather than becoming an enum, and a
+; FIXED inner leaves nothing to put in the collapsed `Option<T>`, so the shape is refused
+; gracefully at the collapse site itself (tests/robustness/choice_fixed_null_collapse.cddl; the
+; deferred presence-shaped lowering is ledgered in cddl-matrix/ROADMAP.md § "Findings — open") —
+; so it pins nothing about this site; the empty-list edge is instead covered by these same rules
+; under the default/json profiles.
 payload_enum = 0 / 1 / 2
 cbor_enum_holder = [
   bytes_payload: bytes .cbor payload_enum,

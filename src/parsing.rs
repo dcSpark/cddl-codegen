@@ -468,6 +468,32 @@ fn parse_type_choices(
             todo!("support foo<T> = T / null");
         }
         let inner_rust_type = rust_type_from_type1(types, parent_visitor, inner_type2, cli);
+        // A collapse over a FIXED inner (`t = true / null`, `5 / null`, `"v1" / null`, `null /
+        // null`) has nowhere to put the value: the collapse builds `Optional(Fixed(..))`, and a
+        // `Fixed` in member position is a hard panic at render time (`for_rust_member_ct`), under
+        // every profile. Refuse gracefully instead. `resolve_alias_shallow` is the value-carrying
+        // form of `is_fixed_value` — both unwrap aliases, so a prelude spelling that arrives
+        // alias-wrapped is still recognized (same guard shape as the fixed-array-element one).
+        //
+        // Registering NOTHING is correct here, unlike the bare-fixed-rule seam in
+        // `register_type_alias`, which must keep its alias so a sibling reference can still resolve
+        // during parse: this rule registers no rust struct either way, and finalize's
+        // registered-nothing check is what already turns a struct-less rule into a loud rejection —
+        // so a reference to this rule cannot outrun the rejection recorded here.
+        if let ConceptualRustType::Fixed(fixed) =
+            inner_rust_type.conceptual_type.resolve_alias_shallow()
+        {
+            // The `anonymous` fallback is unreachable at this site — a rule-level collapse always
+            // has its rule name.
+            let site = rejection_site(types, Some(name), "anonymous");
+            let message = format!(
+                "{site}: the two-arm choice `{} / null` is unsupported {}",
+                fixed.cddl_source_desc(),
+                fixed_null_collapse_reason(fixed)
+            );
+            types.record_rejection(message);
+            return;
+        }
         let final_type = match tag {
             Some(tag) => {
                 RustType::new(ConceptualRustType::Optional(Box::new(inner_rust_type))).tag(tag)
@@ -2279,6 +2305,42 @@ fn rejection_site(
     }
 }
 
+/// The shared explanation behind both `T / null` fixed-inner refusals — the tail that follows
+/// "… is unsupported" at each of the TWO sites where a two-arm null choice collapses to an
+/// `Option<T>` (the rule-level one in `parse_type_choices`, the member-level one in `rust_type`).
+/// The sites word their own subject differently because their roles differ (one has a rule name to
+/// quote back, the other is a member/element position), but WHY the shape has no representation and
+/// WHAT to write instead are one text, so the two spellings of the same defect can't drift apart in
+/// what they teach.
+///
+/// The advertised remedy is probed, not assumed: `bool / null` and `uint / null` generate (exit 0)
+/// under both the default and `--preserve-encodings` profiles, and `bool / null` lowers to
+/// `Option<bool>`. It carries the same honesty caveat every fixed-value message in this file
+/// carries — widening drops the constraint, so the result is a different spec.
+fn fixed_null_collapse_reason(fixed: &FixedValue) -> String {
+    // `null / null` is a genuinely different sentence: there is no fixed value sitting in the `T`
+    // slot, there is no non-`null` arm AT ALL. Sharing the widening remedy would be dishonest —
+    // `null` names no CDDL type to widen to (a rule body of bare `null` is itself rejected).
+    match fixed {
+        FixedValue::Null => "— a two-arm choice with a `null` arm collapses to an `Option<T>` \
+             rather than an enum, and with `null` on both arms there is no type left to put in the \
+             `T` slot. If a nullable value was meant, one arm must be a non-`null` type (`bool / \
+             null` lowers to `Option<bool>`)."
+            .to_owned(),
+        _ => {
+            let value_desc = fixed.cddl_source_desc();
+            format!(
+                "— a two-arm choice with a `null` arm collapses to an `Option<T>` rather than an \
+                 enum, and a fixed value is unstored (it has meaning only as a member whose value \
+                 the schema fixes), so there is nothing to put in the `T` slot. Widening the fixed \
+                 arm to the CDDL type the constant inhabits generates (`bool / null` lowers to \
+                 `Option<bool>`), but it no longer constrains that arm to {value_desc}, so it is a \
+                 different spec, not an equivalent one."
+            )
+        }
+    }
+}
+
 /// The rejection for a table entry whose VALUE domain is a bare fixed value (`{ * uint => 5 }`).
 /// Shared by the plain and the parenthesized (`{ * (uint => 5) }`) table arms so the two spellings
 /// of the same shape can't be told apart by their message.
@@ -3294,23 +3356,34 @@ fn rust_type(
             // T / null   or   null / T   should map to Option<T>
             let a = &t.type_choices[0].type1;
             let b = &t.type_choices[1].type1;
-            if type2_is_null(&a.type2) {
-                return ConceptualRustType::Optional(Box::new(rust_type_from_type1(
-                    types,
-                    parent_visitor,
-                    b,
-                    cli,
-                )))
-                .into();
-            }
-            if type2_is_null(&b.type2) {
-                return ConceptualRustType::Optional(Box::new(rust_type_from_type1(
-                    types,
-                    parent_visitor,
-                    a,
-                    cli,
-                )))
-                .into();
+            let collapse_inner = if type2_is_null(&a.type2) {
+                Some(b)
+            } else if type2_is_null(&b.type2) {
+                Some(a)
+            } else {
+                None
+            };
+            if let Some(inner_type1) = collapse_inner {
+                let inner_rust_type = rust_type_from_type1(types, parent_visitor, inner_type1, cli);
+                // The member-position sibling of the rule-level collapse guard in
+                // `parse_type_choices`: `a = [v: true / null, x: uint]` builds the same
+                // `Optional(Fixed(..))` and panics at the same render site. Reject gracefully with
+                // an inert `Fixed(FixedValue::Null)` placeholder — exactly like the other graceful
+                // arms in `rust_type_from_type2` — so `finalize` drains it into one clean `Err`.
+                // Role-generic wording: no rule name is available here.
+                if let ConceptualRustType::Fixed(fixed) =
+                    inner_rust_type.conceptual_type.resolve_alias_shallow()
+                {
+                    let message = format!(
+                        "a two-arm `{} / null` choice used as a member or element type is \
+                         unsupported {}",
+                        fixed.cddl_source_desc(),
+                        fixed_null_collapse_reason(fixed)
+                    );
+                    types.record_rejection(message);
+                    return ConceptualRustType::Fixed(FixedValue::Null).into();
+                }
+                return ConceptualRustType::Optional(Box::new(inner_rust_type)).into();
             }
         }
         let variants =
