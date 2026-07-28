@@ -445,11 +445,11 @@ pub fn seed_used_as_key_from_wrapper_requests(types: &mut IntermediateTypes, cli
         let Ok(contents) = std::fs::read_to_string(path) else {
             continue;
         };
-        for (dep, shape) in scan_shape_rows_lenient(&contents) {
-            if dep.replace('-', "_") != my_lib {
+        for row in scan_borrowed_rows_lenient(&contents) {
+            if row.dep.replace('-', "_") != my_lib {
                 continue;
             }
-            for ident in map_key_cddl_idents(&shape) {
+            for ident in map_key_cddl_idents(&row.shape) {
                 // A primitive / reserved key leaf (`{* uint => …}`) is never a dep struct and would
                 // panic `RustIdent::new` (reserved-keyword assert), so skip it — only named dep types
                 // can carry key derives anyway.
@@ -474,13 +474,25 @@ pub fn seed_used_as_key_from_wrapper_requests(types: &mut IntermediateTypes, cli
     }
 }
 
-/// Tolerant scan of a `borrowed_collections.rs` sidecar for its `BORROWED_SHAPES` rows, returning
-/// `(dep, shape)` for each 3-literal `("dep", "name", "shape")` tuple. Deliberately NOT the strict
-/// grammar (`parse_sidecar`): `//` comment lines are dropped first (so an edit-preservation overlay's
-/// `:replaces` recorded-original rows never seed), then the remaining text after the `BORROWED_SHAPES`
-/// marker is tokenized into parenthesized string-literal groups. Never panics — malformed content
-/// yields fewer rows, leaving the strict diagnosis to `emit_requested_collections`.
-fn scan_shape_rows_lenient(contents: &str) -> Vec<(String, String)> {
+/// One tolerantly-scanned `BORROWED_SHAPES` row: `(dep, wrapper name, shape)`.
+pub(crate) struct ScannedRow {
+    pub dep: String,
+    pub name: String,
+    pub shape: String,
+}
+
+/// Tolerant scan of a `borrowed_collections.rs` sidecar for its `BORROWED_SHAPES` rows. Deliberately
+/// NOT the strict grammar (`parse_sidecar`): `//` comment lines are dropped first (so an
+/// edit-preservation overlay's `:replaces` recorded-original rows never seed), then the remaining
+/// text after the `BORROWED_SHAPES` marker is tokenized into parenthesized string-literal groups.
+/// Never panics — malformed content yields fewer rows, leaving the strict diagnosis to
+/// `emit_requested_collections`, which stays the single owner of the W2 hard errors.
+///
+/// Lenience is the right policy for both readers. The pre-finalize `used_as_key` seed must not fire
+/// a second, differently-worded diagnostic for content the strict parser is about to reject; and the
+/// config's committed-state verdict must not turn a malformed sidecar into a build failure it has no
+/// standing to diagnose — under-reading there costs a missed verdict, never a false one.
+pub(crate) fn scan_borrowed_rows_lenient(contents: &str) -> Vec<ScannedRow> {
     let mut body = String::new();
     let mut seen_marker = false;
     for line in contents.lines() {
@@ -532,10 +544,47 @@ fn scan_shape_rows_lenient(contents: &str) -> Vec<(String, String)> {
             }
         }
         if literals.len() == 3 {
-            rows.push((literals[0].clone(), literals[2].clone()));
+            rows.push(ScannedRow {
+                dep: literals[0].clone(),
+                name: literals[1].clone(),
+                shape: literals[2].clone(),
+            });
         }
     }
     rows
+}
+
+/// What one line of a dependency's committed `collections.rs` wrapper index is.
+///
+/// The grammar lives here, beside the sidecar grammars it pairs with, because two readers need it
+/// under different POLICIES and a second copy of a format is how the two drift. The dep-side reader
+/// (`load_extern_wrapper_indices`) hard-errors on [`Self::Unknown`] — a silently-tolerated stray line
+/// there would disable deferral and reintroduce the duplicate-symbol link error. The config's
+/// committed-state verdict ignores it, because a malformed index is not a fact it has standing to
+/// fail a build over.
+pub(crate) enum CollectionIndexLine {
+    /// Blank or a comment: carries no wrapper either way.
+    Ignored,
+    /// `pub use <path>::<Name>;` — the dep provides this wrapper class.
+    Export(String),
+    /// Anything else. The index is a generated file, so this means it was hand-edited or drifted.
+    Unknown,
+}
+
+/// Classify one line of a `collections.rs` wrapper index. The re-export shape is fixed
+/// (`pub use <path>::<Name>;`), and the class name is the segment after the last `::`.
+pub(crate) fn classify_collection_index_line(line: &str) -> CollectionIndexLine {
+    let line = line.trim();
+    if line.is_empty() || line.starts_with("//") {
+        return CollectionIndexLine::Ignored;
+    }
+    line.strip_prefix("pub use ")
+        .and_then(|rest| rest.strip_suffix(';'))
+        .and_then(|path| path.rsplit("::").next())
+        .filter(|name| !name.is_empty() && name.chars().all(|c| c.is_alphanumeric() || c == '_'))
+        .map_or(CollectionIndexLine::Unknown, |name| {
+            CollectionIndexLine::Export(name.to_owned())
+        })
 }
 
 /// Read a `"…"` literal at `chars[start]` leniently (`\"`, `\\`, `\n`, `\t`, `\r`, `\0` unescaped),
@@ -1431,7 +1480,7 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
     #[test]
     fn scan_shape_rows_skips_commented_originals() {
         // The lenient scan drops `//`-commented lines (an overlay `:replaces` recorded original must
-        // not seed) and returns (dep, shape) for each real 3-literal row.
+        // not seed) and returns all three columns of each real 3-literal row.
         let sidecar = r#"// header
 mod borrowed {}
 pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
@@ -1439,11 +1488,57 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
     // ("wr_dep", "GhostList", "[* ghost]"),
 ];
 "#;
-        let rows = scan_shape_rows_lenient(sidecar);
+        let rows: Vec<(String, String, String)> = scan_borrowed_rows_lenient(sidecar)
+            .into_iter()
+            .map(|row| (row.dep, row.name, row.shape))
+            .collect();
         assert_eq!(
             rows,
-            vec![("wr_dep".to_owned(), "{* idx_foo => uint}".to_owned())]
+            vec![(
+                "wr_dep".to_owned(),
+                "MapIdxFooToU64".to_owned(),
+                "{* idx_foo => uint}".to_owned()
+            )]
         );
+    }
+
+    /// The collection-index grammar, in the three answers it gives. Its two readers apply opposite
+    /// policies to `Unknown` — the consumer's own run hard-errors, the config's post-run verdict
+    /// skips — so what the grammar itself decides has to be pinned in one place rather than inferred
+    /// from either policy.
+    #[test]
+    fn collection_index_lines_classify_into_ignored_export_and_unknown() {
+        let exported = |line: &str| match classify_collection_index_line(line) {
+            CollectionIndexLine::Export(name) => Some(name),
+            _ => None,
+        };
+        assert_eq!(
+            exported("pub use crate::generated::requested_collections::ThingList;"),
+            Some("ThingList".to_owned())
+        );
+        assert_eq!(
+            exported("  pub use collections::MapU64ToThing;  "),
+            Some("MapU64ToThing".to_owned())
+        );
+        for ignored in ["", "   ", "// a banner line"] {
+            assert!(matches!(
+                classify_collection_index_line(ignored),
+                CollectionIndexLine::Ignored
+            ));
+        }
+        for unknown in [
+            "pub use collections::Thing List;",
+            "fn stray() {}",
+            "pub use x::;",
+        ] {
+            assert!(
+                matches!(
+                    classify_collection_index_line(unknown),
+                    CollectionIndexLine::Unknown
+                ),
+                "{unknown:?} is not the index's grammar"
+            );
+        }
     }
 
     // ===== strict borrowed_key_types.rs parser (--key-requests) =====

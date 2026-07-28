@@ -2384,7 +2384,10 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   interleave with the generation loop instead of bracketing it. Reopening signal: the warning names
   the same crate on two consecutive runs of an unchanged config — a false positive that does not
   clear is a different defect from this one, and the person seeing it can measure it without
-  reading any of this.
+  reading any of this. The blast radius stays confined to the warning: the committed-state verdict
+  that shares the run's exit path (`Config::committed_verdict`) reads the tree rather than
+  bracketing the run, so it has no before/after comparison for this to reach, and a spurious warning
+  cannot become a spurious build failure.
 
 - **The extern-interface export is a public interchange format.** Once a consumer regenerates
   against a dep's committed `extern-interface/<dep>/**`, its dialect (header line, marker rows,

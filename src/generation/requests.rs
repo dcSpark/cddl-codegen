@@ -846,25 +846,17 @@ pub(super) fn load_extern_wrapper_indices(
         });
         let mut names = BTreeSet::new();
         for line in contents.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with("//") {
-                continue;
-            }
-            // Fixed shape: `pub use <path>::<Name>;` — take the segment after the last `::`.
-            let name = line
-                .strip_prefix("pub use ")
-                .and_then(|rest| rest.strip_suffix(';'))
-                .and_then(|path| path.rsplit("::").next())
-                .filter(|name| {
-                    !name.is_empty() && name.chars().all(|c| c.is_alphanumeric() || c == '_')
-                });
-            match name {
-                Some(name) => {
-                    names.insert(name.to_owned());
+            // The grammar's one owner is `wrapper_requests::classify_collection_index_line`; the
+            // POLICY on an unrecognized line is this reader's own, and it is the strict one.
+            match crate::wrapper_requests::classify_collection_index_line(line) {
+                crate::wrapper_requests::CollectionIndexLine::Ignored => {}
+                crate::wrapper_requests::CollectionIndexLine::Export(name) => {
+                    names.insert(name);
                 }
-                None => panic!(
-                    "--extern-wrapper-index {dep}={path}: unexpected line {line:?}; the index is a \
-                     generated `collections.rs` of `pub use <path>::<Name>;` re-export lines"
+                crate::wrapper_requests::CollectionIndexLine::Unknown => panic!(
+                    "--extern-wrapper-index {dep}={path}: unexpected line {:?}; the index is a \
+                     generated `collections.rs` of `pub use <path>::<Name>;` re-export lines",
+                    line.trim()
                 ),
             }
         }
