@@ -1712,6 +1712,23 @@ certify-or-fix fork mis-modeled exactly the shape an enumeration naturally picks
   axis the cost grows along — the repetition FACTOR, measurable by whoever next authors a fixture:
   a catalog fixture whose refusal repeats a message THREE or more times (a deeper nest multiplies
   it again), at which point a user cannot tell one refusal from several.
+- **A containment note's stated REASON can go false without any gate noticing — the note carries a
+  behavioural claim, and only its `spec` and (via the annotation) its support verdict are checked.**
+  Proven instance: four rows in `cddl-matrix/containment/map-value.toml` justify their two-field
+  examples with "a single-field struct hits an orthogonal cddl-codegen panic", but `m = { k: 5 }`
+  generates exit 0 under both the default and `--preserve-encodings` profiles, and
+  `cddl-matrix/annotations/corpus/cddl_codegen.toml` separately records single-field struct maps as
+  supported — so the note and the annotation contradict each other in the same repo. Nothing
+  connects them: `project_corpus`'s note↔support check (E) reads the corpus nuance overlay's
+  `[[note]]` entries, not containment `note` prose, and `verify.ts` corroborates only the `example`
+  against `spec`. The class is bounded — a containment note is prose, and most of it (grammar
+  anchors, sibling relationships) is not machine-checkable — so the meanwhile rule is narrower than
+  a checker: a note states the SHAPE and its sibling relationships, and any behavioural claim it
+  makes names the fixture or annotation that owns the claim, so the claim rots where a gate already
+  looks. Trigger for the mechanical layer (a lint that flags behavioural vocabulary — "panics",
+  "unsupported", "rejects" — in a containment note whose id carries no annotation asserting it): a
+  SECOND note found stating a behaviour the annotations contradict, which the next author to reuse
+  a note's reasoning measures at the moment they inherit it.
 
 ## Deferred features (build when a real consumer needs them)
 
