@@ -1,0 +1,391 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: ir
+---
+{
+    RustIdent(
+        "ArrBoolArm",
+    ): RustStruct {
+        ident: RustIdent(
+            "ArrBoolArm",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: GroupChoice {
+            variants: [
+                EnumVariant {
+                    name: Custom(
+                        "Flag",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Bool(
+                                    true,
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+                EnumVariant {
+                    name: Custom(
+                        "Label",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Primitive(
+                                Str,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+            ],
+            rep: Array,
+        },
+    },
+    RustIdent(
+        "ArrNullArm",
+    ): RustStruct {
+        ident: RustIdent(
+            "ArrNullArm",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: GroupChoice {
+            variants: [
+                EnumVariant {
+                    name: Custom(
+                        "Absent",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Null,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+                EnumVariant {
+                    name: Custom(
+                        "Label",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Primitive(
+                                Str,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+            ],
+            rep: Array,
+        },
+    },
+    RustIdent(
+        "Int",
+    ): RustStruct {
+        ident: RustIdent(
+            "Int",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Extern,
+    },
+    RustIdent(
+        "MapBoolArm",
+    ): RustStruct {
+        ident: RustIdent(
+            "MapBoolArm",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: GroupChoice {
+            variants: [
+                EnumVariant {
+                    name: Custom(
+                        "Flag",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Bool(
+                                    true,
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: Some(
+                        Text(
+                            "flag",
+                        ),
+                    ),
+                },
+                EnumVariant {
+                    name: Custom(
+                        "Label",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Primitive(
+                                Str,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: Some(
+                        Text(
+                            "label",
+                        ),
+                    ),
+                },
+            ],
+            rep: Map,
+        },
+    },
+    RustIdent(
+        "MapNullArm",
+    ): RustStruct {
+        ident: RustIdent(
+            "MapNullArm",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: GroupChoice {
+            variants: [
+                EnumVariant {
+                    name: Custom(
+                        "Absent",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Null,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: Some(
+                        Text(
+                            "absent",
+                        ),
+                    ),
+                },
+                EnumVariant {
+                    name: Custom(
+                        "Label",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Primitive(
+                                Str,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: Some(
+                        Text(
+                            "label",
+                        ),
+                    ),
+                },
+            ],
+            rep: Map,
+        },
+    },
+    RustIdent(
+        "TypeChoiceBool",
+    ): RustStruct {
+        ident: RustIdent(
+            "TypeChoiceBool",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: TypeChoice {
+            variants: [
+                EnumVariant {
+                    name: Custom(
+                        "True",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Bool(
+                                    true,
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+                EnumVariant {
+                    name: Custom(
+                        "Text",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Primitive(
+                                Str,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+            ],
+        },
+    },
+}

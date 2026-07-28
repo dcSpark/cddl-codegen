@@ -72,6 +72,10 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::EnumOptEmbedFields>();
     _assert_serialize::<crate::generated::Enums>();
     _assert_deserialize::<crate::generated::Enums>();
+    _assert_serialize::<crate::generated::FixedSpecialGroupChoice>();
+    _assert_deserialize::<crate::generated::FixedSpecialGroupChoice>();
+    _assert_serialize::<crate::generated::FixedSpecialTypeChoice>();
+    _assert_deserialize::<crate::generated::FixedSpecialTypeChoice>();
     _assert_serialize::<crate::generated::Foo>();
     _assert_deserialize::<crate::generated::Foo>();
     _assert_serialize::<crate::generated::GroupChoice>();

@@ -3330,6 +3330,186 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "group_choice_fixed_special.arr_bool_arm"
+axis = "corpus"
+example = "arr_bool_arm = [ flag: true // label: tstr ]"
+fixture = "group_choice_fixed_special"
+rule = "arr_bool_arm"
+spec = "__probe_holder = [0, arr_bool_arm]\narr_bool_arm = [ flag: true // label: tstr ]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820081696e75707469616c2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200816c756e64657273686972742773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081f5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "group_choice_fixed_special.arr_null_arm"
+axis = "corpus"
+example = "arr_null_arm = [ absent: null // label: tstr ]"
+fixture = "group_choice_fixed_special"
+rule = "arr_null_arm"
+spec = "__probe_holder = [0, arr_null_arm]\narr_null_arm = [ absent: null // label: tstr ]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82008166776869726c73"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081676c656176652773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008169456c6c69736f6e2773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200816961726d62616e642773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200816d756e666f726765747461626c79"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081f6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "group_choice_fixed_special.map_bool_arm"
+axis = "corpus"
+example = "map_bool_arm = { flag: true // label: tstr }"
+fixture = "group_choice_fixed_special"
+rule = "map_bool_arm"
+spec = "__probe_holder = [0, map_bool_arm]\nmap_bool_arm = { flag: true // label: tstr }"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a164666c6167f5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1656c6162656c67737175616c6f72"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1656c6162656c68736869706d617465"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1656c6162656c687374756c74696679"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1656c6162656c696c6f636f7765656473"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1656c6162656c6a53636f72706975732773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "group_choice_fixed_special.map_null_arm"
+axis = "corpus"
+example = "map_null_arm = { absent: null // label: tstr }"
+fixture = "group_choice_fixed_special"
+rule = "map_null_arm"
+spec = "__probe_holder = [0, map_null_arm]\nmap_null_arm = { absent: null // label: tstr }"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a1656c6162656c65426f796c65"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1656c6162656c6769746368696572"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1656c6162656c68436f70656c616e64"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1656c6162656c6a67726f756e6465722773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a1656c6162656c6c626c61636b62616c6c696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a166616273656e74f6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "group_choice_fixed_special.type_choice_bool"
+axis = "corpus"
+example = "type_choice_bool = true / tstr"
+fixture = "group_choice_fixed_special"
+rule = "type_choice_bool"
+spec = "__probe_holder = [0, type_choice_bool]\ntype_choice_bool = true / tstr"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820069436865726e6f62796c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82006a70757263686173657273"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82006b6e6563746172696e652773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82006d6f6365616e6f67726170686572"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200f5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "group_choice_map.fixed_value_arm"
 axis = "corpus"
 example = "fixed_value_arm = { 1: 5, 2: uint // 3: tstr }"

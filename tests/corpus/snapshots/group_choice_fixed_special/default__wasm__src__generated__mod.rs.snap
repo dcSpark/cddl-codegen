@@ -1,0 +1,330 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ArrBoolArm(pub(crate) cddl_lib::ArrBoolArm);
+
+#[wasm_bindgen]
+impl ArrBoolArm {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ArrBoolArm, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_flag() -> Self {
+        Self(cddl_lib::ArrBoolArm::new_flag())
+    }
+
+    pub fn new_label(label: String) -> Self {
+        Self(cddl_lib::ArrBoolArm::new_label(label))
+    }
+
+    pub fn kind(&self) -> ArrBoolArmKind {
+        match &self.0 {
+            cddl_lib::ArrBoolArm::Flag => ArrBoolArmKind::Flag,
+            cddl_lib::ArrBoolArm::Label(_) => ArrBoolArmKind::Label,
+        }
+    }
+
+    pub fn as_label(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::ArrBoolArm::Label(label) => Some(label.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::ArrBoolArm> for ArrBoolArm {
+    fn from(native: cddl_lib::ArrBoolArm) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ArrBoolArm> for cddl_lib::ArrBoolArm {
+    fn from(wasm: ArrBoolArm) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::ArrBoolArm> for ArrBoolArm {
+    fn as_ref(&self) -> &cddl_lib::ArrBoolArm {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum ArrBoolArmKind {
+    Flag,
+    Label,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ArrNullArm(pub(crate) cddl_lib::ArrNullArm);
+
+#[wasm_bindgen]
+impl ArrNullArm {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ArrNullArm, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_absent() -> Self {
+        Self(cddl_lib::ArrNullArm::new_absent())
+    }
+
+    pub fn new_label(label: String) -> Self {
+        Self(cddl_lib::ArrNullArm::new_label(label))
+    }
+
+    pub fn kind(&self) -> ArrNullArmKind {
+        match &self.0 {
+            cddl_lib::ArrNullArm::Absent => ArrNullArmKind::Absent,
+            cddl_lib::ArrNullArm::Label(_) => ArrNullArmKind::Label,
+        }
+    }
+
+    pub fn as_label(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::ArrNullArm::Label(label) => Some(label.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::ArrNullArm> for ArrNullArm {
+    fn from(native: cddl_lib::ArrNullArm) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ArrNullArm> for cddl_lib::ArrNullArm {
+    fn from(wasm: ArrNullArm) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::ArrNullArm> for ArrNullArm {
+    fn as_ref(&self) -> &cddl_lib::ArrNullArm {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum ArrNullArmKind {
+    Absent,
+    Label,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapBoolArm(pub(crate) cddl_lib::MapBoolArm);
+
+#[wasm_bindgen]
+impl MapBoolArm {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<MapBoolArm, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_flag() -> Self {
+        Self(cddl_lib::MapBoolArm::new_flag())
+    }
+
+    pub fn new_label(label: String) -> Self {
+        Self(cddl_lib::MapBoolArm::new_label(label))
+    }
+
+    pub fn kind(&self) -> MapBoolArmKind {
+        match &self.0 {
+            cddl_lib::MapBoolArm::Flag => MapBoolArmKind::Flag,
+            cddl_lib::MapBoolArm::Label(_) => MapBoolArmKind::Label,
+        }
+    }
+
+    pub fn as_label(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::MapBoolArm::Label(label) => Some(label.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::MapBoolArm> for MapBoolArm {
+    fn from(native: cddl_lib::MapBoolArm) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapBoolArm> for cddl_lib::MapBoolArm {
+    fn from(wasm: MapBoolArm) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::MapBoolArm> for MapBoolArm {
+    fn as_ref(&self) -> &cddl_lib::MapBoolArm {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum MapBoolArmKind {
+    Flag,
+    Label,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MapNullArm(pub(crate) cddl_lib::MapNullArm);
+
+#[wasm_bindgen]
+impl MapNullArm {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<MapNullArm, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_absent() -> Self {
+        Self(cddl_lib::MapNullArm::new_absent())
+    }
+
+    pub fn new_label(label: String) -> Self {
+        Self(cddl_lib::MapNullArm::new_label(label))
+    }
+
+    pub fn kind(&self) -> MapNullArmKind {
+        match &self.0 {
+            cddl_lib::MapNullArm::Absent => MapNullArmKind::Absent,
+            cddl_lib::MapNullArm::Label(_) => MapNullArmKind::Label,
+        }
+    }
+
+    pub fn as_label(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::MapNullArm::Label(label) => Some(label.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::MapNullArm> for MapNullArm {
+    fn from(native: cddl_lib::MapNullArm) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MapNullArm> for cddl_lib::MapNullArm {
+    fn from(wasm: MapNullArm) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::MapNullArm> for MapNullArm {
+    fn as_ref(&self) -> &cddl_lib::MapNullArm {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum MapNullArmKind {
+    Absent,
+    Label,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct TypeChoiceBool(pub(crate) cddl_lib::TypeChoiceBool);
+
+#[wasm_bindgen]
+impl TypeChoiceBool {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<TypeChoiceBool, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_true() -> Self {
+        Self(cddl_lib::TypeChoiceBool::new_true())
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self(cddl_lib::TypeChoiceBool::new_text(text))
+    }
+
+    pub fn kind(&self) -> TypeChoiceBoolKind {
+        match &self.0 {
+            cddl_lib::TypeChoiceBool::True => TypeChoiceBoolKind::True,
+            cddl_lib::TypeChoiceBool::Text(_) => TypeChoiceBoolKind::Text,
+        }
+    }
+
+    pub fn as_text(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::TypeChoiceBool::Text(text) => Some(text.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::TypeChoiceBool> for TypeChoiceBool {
+    fn from(native: cddl_lib::TypeChoiceBool) -> Self {
+        Self(native)
+    }
+}
+
+impl From<TypeChoiceBool> for cddl_lib::TypeChoiceBool {
+    fn from(wasm: TypeChoiceBool) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::TypeChoiceBool> for TypeChoiceBool {
+    fn as_ref(&self) -> &cddl_lib::TypeChoiceBool {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum TypeChoiceBoolKind {
+    True,
+    Text,
+}

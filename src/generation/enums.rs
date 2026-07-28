@@ -886,10 +886,22 @@ fn make_keyed_map_variant_deser_code(
     // Read the value. A fixed-value arm (`t = { a: 0 // b: tstr }`) has nothing to bind under the
     // default profile: `generate_deserialize`'s `Fixed` branch only READS AND VERIFIES the constant
     // and evaluates to no value, which is exactly what its `assert_eq!(before_after.before/after,
-    // "")` pair states. Under `--preserve-encodings` the arm still owns encoding fields (the value's
-    // own, plus the `{var}_key_encoding` pushed above), so there the binding is real and stays —
-    // which is why that profile has always generated this shape.
-    let (before, after) = if !cli.preserve_encodings && ty.is_fixed_value() {
+    // "")` pair states. Under `--preserve-encodings` the binding target is the VALUE's own encoding
+    // sidecar (a `Sz` for uint/nint, a `StringEncoding` for text) — NOT `{var}_key_encoding`, which
+    // `push_map_choice_key_deser` bound separately above. bool and null are single-byte CBOR
+    // specials with no encoding variation, so they contribute no sidecar either and
+    // `encoding_var_names_str` is EMPTY: a `let {} = ` LHS would emit invalid Rust (`let  = ...`).
+    // Those fall through to the verify-only branch, same guard the member-position path carries
+    // (records.rs `generate_array_struct_deserialization`). The trailing `;` is the preserve-only
+    // nuance from that same site: under preserve the `Fixed` branch still emits a trailing `()`
+    // value EXPRESSION, so without a terminator the following statement fails to parse.
+    let (before, after) = if cli.preserve_encodings {
+        if var_names_str.is_empty() {
+            (Cow::from(""), ";")
+        } else {
+            (Cow::from(format!("let {var_names_str} = ")), ";")
+        }
+    } else if ty.is_fixed_value() {
         (Cow::from(""), "")
     } else {
         (Cow::from(format!("let {var_names_str} = ")), ";")
@@ -1395,12 +1407,23 @@ fn generate_enum(
                         // value it has none of and tripped that branch's own empty-before/after
                         // assertion; the type-choice case took the exemption, which is why
                         // `t = 0 / tstr` generated while `t = [ 0 // tstr ]` aborted.
-                        let (before, after) =
-                            if cli.preserve_encodings || !variant.rust_type().is_fixed_value() {
-                                (Cow::from(format!("let {var_names_str} = ")), ";")
-                            } else {
-                                (Cow::from(""), "")
-                            };
+                        // Under `--preserve-encodings` a fixed value normally still binds its own
+                        // encoding sidecar (uint/nint `Sz`, text `StringEncoding`), which is why
+                        // that profile binds where the default profile exempts — but bool and null
+                        // are single-byte specials with no encoding variation, so their binding
+                        // list is EMPTY and `let {} = ` would emit invalid Rust (`let  = ...`).
+                        // Guard on emptiness rather than on the profile, and keep the terminating
+                        // `;`: the preserve `Fixed` branch emits a trailing `()` value EXPRESSION
+                        // that the next statement cannot parse past unterminated. Same guard and
+                        // same nuance as the member-position path in records.rs.
+                        let (before, after) = if cli.preserve_encodings && var_names_str.is_empty()
+                        {
+                            (Cow::from(""), ";")
+                        } else if cli.preserve_encodings || !variant.rust_type().is_fixed_value() {
+                            (Cow::from(format!("let {var_names_str} = ")), ";")
+                        } else {
+                            (Cow::from(""), "")
+                        };
                         let mut variant_deser_code = gen_scope.generate_deserialize(
                             types,
                             (variant.rust_type()).into(),

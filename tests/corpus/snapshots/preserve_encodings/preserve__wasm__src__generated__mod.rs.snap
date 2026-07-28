@@ -1246,6 +1246,138 @@ impl AsRef<cddl_lib::First> for First {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct FixedSpecialGroupChoice(pub(crate) cddl_lib::FixedSpecialGroupChoice);
+
+#[wasm_bindgen]
+impl FixedSpecialGroupChoice {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<FixedSpecialGroupChoice, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_flag() -> Self {
+        Self(cddl_lib::FixedSpecialGroupChoice::new_flag())
+    }
+
+    pub fn new_absent() -> Self {
+        Self(cddl_lib::FixedSpecialGroupChoice::new_absent())
+    }
+
+    pub fn new_label(label: String) -> Self {
+        Self(cddl_lib::FixedSpecialGroupChoice::new_label(label))
+    }
+
+    pub fn kind(&self) -> FixedSpecialGroupChoiceKind {
+        match &self.0 {
+            cddl_lib::FixedSpecialGroupChoice::Flag { .. } => FixedSpecialGroupChoiceKind::Flag,
+            cddl_lib::FixedSpecialGroupChoice::Absent { .. } => FixedSpecialGroupChoiceKind::Absent,
+            cddl_lib::FixedSpecialGroupChoice::Label { .. } => FixedSpecialGroupChoiceKind::Label,
+        }
+    }
+
+    pub fn as_label(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::FixedSpecialGroupChoice::Label { label, .. } => Some(label.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::FixedSpecialGroupChoice> for FixedSpecialGroupChoice {
+    fn from(native: cddl_lib::FixedSpecialGroupChoice) -> Self {
+        Self(native)
+    }
+}
+
+impl From<FixedSpecialGroupChoice> for cddl_lib::FixedSpecialGroupChoice {
+    fn from(wasm: FixedSpecialGroupChoice) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::FixedSpecialGroupChoice> for FixedSpecialGroupChoice {
+    fn as_ref(&self) -> &cddl_lib::FixedSpecialGroupChoice {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum FixedSpecialGroupChoiceKind {
+    Flag,
+    Absent,
+    Label,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct FixedSpecialTypeChoice(pub(crate) cddl_lib::FixedSpecialTypeChoice);
+
+#[wasm_bindgen]
+impl FixedSpecialTypeChoice {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<FixedSpecialTypeChoice, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_true() -> Self {
+        Self(cddl_lib::FixedSpecialTypeChoice::new_true())
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self(cddl_lib::FixedSpecialTypeChoice::new_text(text))
+    }
+
+    pub fn kind(&self) -> FixedSpecialTypeChoiceKind {
+        match &self.0 {
+            cddl_lib::FixedSpecialTypeChoice::True => FixedSpecialTypeChoiceKind::True,
+            cddl_lib::FixedSpecialTypeChoice::Text { .. } => FixedSpecialTypeChoiceKind::Text,
+        }
+    }
+
+    pub fn as_text(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::FixedSpecialTypeChoice::Text { text, .. } => Some(text.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::FixedSpecialTypeChoice> for FixedSpecialTypeChoice {
+    fn from(native: cddl_lib::FixedSpecialTypeChoice) -> Self {
+        Self(native)
+    }
+}
+
+impl From<FixedSpecialTypeChoice> for cddl_lib::FixedSpecialTypeChoice {
+    fn from(wasm: FixedSpecialTypeChoice) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::FixedSpecialTypeChoice> for FixedSpecialTypeChoice {
+    fn as_ref(&self) -> &cddl_lib::FixedSpecialTypeChoice {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum FixedSpecialTypeChoiceKind {
+    True,
+    Text,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct Foo(pub(crate) cddl_lib::Foo);
 
 #[wasm_bindgen]

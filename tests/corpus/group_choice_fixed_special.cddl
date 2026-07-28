@@ -1,0 +1,40 @@
+; A fixed BOOL or NULL value carried by a CHOICE ARM. bool and null are single-byte CBOR specials
+; with no encoding variation, so under `--preserve-encodings` they contribute NO binding target at
+; all: the value itself is fixed (nothing to store) and it has no encoding sidecar either (unlike a
+; fixed uint/nint, which carries an `Sz`, or a fixed text, which carries a `StringEncoding`). The
+; arm's deserialize must therefore VERIFY the constant without binding it — a `let {} = ` LHS over
+; an empty binding list emits `let  = ();`, which rustfmt rejects and the run dies at exit 1 with
+; ZERO files written. The member-position path has always guarded this (records.rs
+; `generate_array_struct_deserialization`); this fixture pins the CHOICE-ARM half, which reaches
+; the guard through two separate enum-side sites:
+;   map_bool_arm / map_null_arm — a collapsed map-rep arm with a fixed key, whose value read is
+;                     emitted by `make_keyed_map_variant_deser_code`. The `{var}_key_encoding` is
+;                     bound separately by the key read, so it does NOT make the VALUE's binding
+;                     list non-empty; only the value's own sidecar would, and a special has none.
+;   arr_bool_arm / arr_null_arm — an array-rep group-choice arm, emitted by the generic
+;                     `EnumVariantData::RustType` deser path. Under preserve the variant still
+;                     carries `len_encoding`, so the constructor stays the struct-variant spelling.
+;   type_choice_bool — a bare TYPE choice (`rep = None`) through the same generic path, where the
+;                     variant is genuinely field-less under every profile and the constructor is
+;                     the `Ok(T::True)` name-it-don't-call-it spelling.
+; The preserve profile is load-bearing for all five: under the default profile a fixed-value arm
+; takes the verify-only exemption unconditionally, so the empty-binding case never arises. Under
+; preserve the verify-only arm still needs the terminating `;`, because the `Fixed` deserialize
+; branch emits a trailing `()` value EXPRESSION there (the default branch emits no value at all).
+;
+; NOT spelled here, deliberately:
+;   `t = null / tstr` — a two-arm type choice with `null` never becomes a fixed-value arm at all;
+;     it lowers to `Option<String>`, so it exercises nothing of this class.
+;   `t = true / null / tstr` — a THREE-arm type choice whose bool and null arms share the CBOR
+;     Special type routes through the brute-force try-each-arm dispatch, which still emits an
+;     unterminated `()` before its appended `Ok(())` (a distinct site from the two above, and
+;     equally broken before and after this fixture's fix). Adding it here would make the whole
+;     fixture ungeneratable; it belongs with whatever pins that site.
+; Fixed specials in ordinary MEMBER position (not arm position) live in `fixed_bool_member.cddl`;
+; the general map-rep group-choice dispatch/key-verification coverage lives in
+; `group_choice_map.cddl`.
+map_bool_arm = { flag: true // label: tstr }
+map_null_arm = { absent: null // label: tstr }
+arr_bool_arm = [ flag: true // label: tstr ]
+arr_null_arm = [ absent: null // label: tstr ]
+type_choice_bool = true / tstr

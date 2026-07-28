@@ -1,0 +1,162 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+mod extern_interface_check;
+pub mod serialization;
+
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+
+#[derive(Clone, Debug)]
+pub enum ArrBoolArm {
+    Flag {
+        len_encoding: LenEncoding,
+    },
+    Label {
+        label: String,
+        label_encoding: StringEncoding,
+        len_encoding: LenEncoding,
+    },
+}
+
+impl ArrBoolArm {
+    pub fn new_flag() -> Self {
+        Self::Flag {
+            len_encoding: LenEncoding::default(),
+        }
+    }
+
+    pub fn new_label(label: String) -> Self {
+        Self::Label {
+            label,
+            label_encoding: StringEncoding::default(),
+            len_encoding: LenEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum ArrNullArm {
+    Absent {
+        len_encoding: LenEncoding,
+    },
+    Label {
+        label: String,
+        label_encoding: StringEncoding,
+        len_encoding: LenEncoding,
+    },
+}
+
+impl ArrNullArm {
+    pub fn new_absent() -> Self {
+        Self::Absent {
+            len_encoding: LenEncoding::default(),
+        }
+    }
+
+    pub fn new_label(label: String) -> Self {
+        Self::Label {
+            label,
+            label_encoding: StringEncoding::default(),
+            len_encoding: LenEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum MapBoolArm {
+    Flag {
+        flag_key_encoding: StringEncoding,
+        len_encoding: LenEncoding,
+    },
+    Label {
+        label: String,
+        label_encoding: StringEncoding,
+        label_key_encoding: StringEncoding,
+        len_encoding: LenEncoding,
+    },
+}
+
+impl MapBoolArm {
+    pub fn new_flag() -> Self {
+        Self::Flag {
+            flag_key_encoding: StringEncoding::default(),
+            len_encoding: LenEncoding::default(),
+        }
+    }
+
+    pub fn new_label(label: String) -> Self {
+        Self::Label {
+            label,
+            label_encoding: StringEncoding::default(),
+            label_key_encoding: StringEncoding::default(),
+            len_encoding: LenEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum MapNullArm {
+    Absent {
+        absent_key_encoding: StringEncoding,
+        len_encoding: LenEncoding,
+    },
+    Label {
+        label: String,
+        label_encoding: StringEncoding,
+        label_key_encoding: StringEncoding,
+        len_encoding: LenEncoding,
+    },
+}
+
+impl MapNullArm {
+    pub fn new_absent() -> Self {
+        Self::Absent {
+            absent_key_encoding: StringEncoding::default(),
+            len_encoding: LenEncoding::default(),
+        }
+    }
+
+    pub fn new_label(label: String) -> Self {
+        Self::Label {
+            label,
+            label_encoding: StringEncoding::default(),
+            label_key_encoding: StringEncoding::default(),
+            len_encoding: LenEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum TypeChoiceBool {
+    True,
+    Text {
+        text: String,
+        text_encoding: StringEncoding,
+    },
+}
+
+impl TypeChoiceBool {
+    pub fn new_true() -> Self {
+        Self::True
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text {
+            text,
+            text_encoding: StringEncoding::default(),
+        }
+    }
+}
