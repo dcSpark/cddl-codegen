@@ -814,6 +814,40 @@ impl Config {
         Ok(())
     }
 
+    /// `wasm-reexports` may only name a crate that HAS a wasm crate.
+    ///
+    /// The key says one thing: this crate's wasm package ships the named crate's classes as well as
+    /// its own. A crate with `wasm = false` generates no wasm crate, so there are no classes to
+    /// ship and the declaration is false at the coarsest level at which it could be — the one level
+    /// this config can check. Left unchecked it is silent: the named crate is simply skipped by the
+    /// threading derivation (which filters on `json-schema-export`), so a user who wrote the key
+    /// expecting their package to carry another crate's surface gets no diagnostic and no effect.
+    ///
+    /// Here rather than in [`Self::validate`] because `wasm` is a merged value — `[defaults]`, a
+    /// profile and the crate table can each set it — so the check needs each crate's finished `Cli`,
+    /// exactly like the two `json-schema-export` refusals in [`Self::threading`]. Still before any
+    /// crate generates, which is the property that matters.
+    ///
+    /// Only the NAMED side is checked. A `wasm = false` crate *declaring* `wasm-reexports` is a
+    /// separate statement (a package with no wasm crate of its own) and is left to the derivation,
+    /// which emits nothing for it.
+    fn validate_wasm_reexports(&self, ungraphed: &BTreeMap<String, Cli>) -> Result<(), String> {
+        for (name, entry) in &self.crates {
+            for reexport in &entry.wasm_reexports {
+                // Validated to name a configured crate by `validate_crate_names`.
+                if !ungraphed[reexport.as_str()].wasm {
+                    return Err(format!(
+                        "[crates.{name}].wasm-reexports names `{reexport}`, which has `wasm = \
+                         false`. The key says `{name}`'s wasm package ships `{reexport}`'s classes \
+                         alongside its own, and `{reexport}` generates no wasm crate — there are no \
+                         classes to ship. Turn `wasm` on for `{reexport}`, or drop it from the list."
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// The `[runtime]` checks that need no expanded `Cli` — an empty table and an unknown
     /// `flavor-from`. The one-export-site rule is [`Self::validate_one_export_site`], which is NOT
     /// here because it must also run when there is no `[runtime]` table.
@@ -1207,6 +1241,10 @@ impl Config {
         selected: &[String],
     ) -> Result<Vec<(String, Cli, Vec<Fragment>)>, String> {
         let ungraphed = self.ungraphed()?;
+        // Over EVERY crate, never over the selection, for the same reason the runtime carrier below
+        // is: whether a declaration can mean anything is a property of the config, so a subset run
+        // must reject the configs a full run rejects.
+        self.validate_wasm_reexports(&ungraphed)?;
         // Derived from EVERY crate, never from the selection: which crate can carry the shared
         // runtime is a property of the config, so `--config c.toml ledger` must reject the same
         // configs a full run rejects rather than pass because the offending crate sat this one out.
