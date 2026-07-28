@@ -11,6 +11,10 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 pub mod error;
 mod extern_interface_check;
 pub mod json_schema_gen;
@@ -38,15 +42,15 @@ impl<'de> serde::de::Deserialize<'de> for Int {
         D: serde::de::Deserializer<'de>,
     {
         let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;
-        std::str::FromStr::from_str(&s).map_err(|_e| {
+        core::str::FromStr::from_str(&s).map_err(|_e| {
             serde::de::Error::invalid_value(serde::de::Unexpected::Str(&s), &"invalid Int")
         })
     }
 }
 
 impl schemars::JsonSchema for Int {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("Int")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("Int")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -69,8 +73,8 @@ impl Int {
     }
 }
 
-impl std::fmt::Display for Int {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for Int {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Uint(x) => write!(f, "{}", x),
             Self::Nint(x) => write!(f, "{}", -((*x as i128) + 1)),
@@ -78,7 +82,7 @@ impl std::fmt::Display for Int {
     }
 }
 
-impl std::str::FromStr for Int {
+impl core::str::FromStr for Int {
     type Err = IntError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -88,7 +92,7 @@ impl std::str::FromStr for Int {
 }
 
 impl TryFrom<i128> for Int {
-    type Error = std::num::TryFromIntError;
+    type Error = core::num::TryFromIntError;
 
     fn try_from(x: i128) -> Result<Self, Self::Error> {
         if x >= 0 {
@@ -101,8 +105,8 @@ impl TryFrom<i128> for Int {
 
 #[derive(Clone, Debug)]
 pub enum IntError {
-    Bounds(std::num::TryFromIntError),
-    Parsing(std::num::ParseIntError),
+    Bounds(core::num::TryFromIntError),
+    Parsing(core::num::ParseIntError),
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
@@ -204,8 +208,8 @@ impl<'de> serde::de::Deserialize<'de> for PreludeB64legacy {
 }
 
 impl schemars::JsonSchema for PreludeB64legacy {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("PreludeB64legacy")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("PreludeB64legacy")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -256,8 +260,8 @@ impl<'de> serde::de::Deserialize<'de> for PreludeB64url {
 }
 
 impl schemars::JsonSchema for PreludeB64url {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("PreludeB64url")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("PreludeB64url")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -344,8 +348,8 @@ impl<'de> serde::de::Deserialize<'de> for PreludeBignint {
 }
 
 impl schemars::JsonSchema for PreludeBignint {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("PreludeBignint")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("PreludeBignint")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -404,8 +408,8 @@ impl<'de> serde::de::Deserialize<'de> for PreludeBiguint {
 }
 
 impl schemars::JsonSchema for PreludeBiguint {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("PreludeBiguint")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("PreludeBiguint")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -476,8 +480,8 @@ impl<'de> serde::de::Deserialize<'de> for PreludeEncodedCbor {
 }
 
 impl schemars::JsonSchema for PreludeEncodedCbor {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("PreludeEncodedCbor")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("PreludeEncodedCbor")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -544,8 +548,8 @@ impl<'de> serde::de::Deserialize<'de> for PreludeMimeMessage {
 }
 
 impl schemars::JsonSchema for PreludeMimeMessage {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("PreludeMimeMessage")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("PreludeMimeMessage")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -596,8 +600,8 @@ impl<'de> serde::de::Deserialize<'de> for PreludeRegexp {
 }
 
 impl schemars::JsonSchema for PreludeRegexp {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("PreludeRegexp")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("PreludeRegexp")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -648,8 +652,8 @@ impl<'de> serde::de::Deserialize<'de> for PreludeTdate {
 }
 
 impl schemars::JsonSchema for PreludeTdate {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("PreludeTdate")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("PreludeTdate")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -716,8 +720,8 @@ impl<'de> serde::de::Deserialize<'de> for PreludeUri {
 }
 
 impl schemars::JsonSchema for PreludeUri {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("PreludeUri")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("PreludeUri")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {

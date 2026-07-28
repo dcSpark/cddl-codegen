@@ -11,6 +11,11 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::borrow::ToOwned;
+use alloc::collections::BTreeMap;
+use alloc::string::String;
+use alloc::vec::Vec;
 pub mod error;
 mod extern_interface_check;
 mod key_demand_assertions;
@@ -18,7 +23,7 @@ pub mod non_empty;
 pub mod non_empty_map;
 pub mod ordered_set;
 pub mod pair_map;
-impl std::ops::Deref for RejectUintSet {
+impl core::ops::Deref for RejectUintSet {
     type Target = OrderedSet<u64>;
 
     fn deref(&self) -> &Self::Target {
@@ -26,7 +31,7 @@ impl std::ops::Deref for RejectUintSet {
     }
 }
 
-impl std::ops::DerefMut for RejectUintSet {
+impl core::ops::DerefMut for RejectUintSet {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -34,7 +39,7 @@ impl std::ops::DerefMut for RejectUintSet {
 
 impl<'a> IntoIterator for &'a RejectUintSet {
     type Item = &'a u64;
-    type IntoIter = std::slice::Iter<'a, u64>;
+    type IntoIter = core::slice::Iter<'a, u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
@@ -43,7 +48,7 @@ impl<'a> IntoIterator for &'a RejectUintSet {
 
 impl IntoIterator for RejectUintSet {
     type Item = u64;
-    type IntoIter = std::vec::IntoIter<u64>;
+    type IntoIter = alloc::vec::IntoIter<u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         Vec::<u64>::from(self.0).into_iter()
@@ -84,7 +89,6 @@ use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::non_empty_map::NonEmptyMap;
 use crate::generated::ordered_set::OrderedSet;
 use crate::generated::pair_map::PairMap;
-use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
 pub struct A {

@@ -11,6 +11,8 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::string::String;
 pub mod error;
 mod extern_interface_check;
 pub mod json_schema_gen;
@@ -142,8 +144,8 @@ impl<'de> serde::de::Deserialize<'de> for TaggedCtlNe {
 }
 
 impl schemars::JsonSchema for TaggedCtlNe {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("TaggedCtlNe")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("TaggedCtlNe")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -211,8 +213,8 @@ impl<'de> serde::de::Deserialize<'de> for TaggedRangeExcl {
 }
 
 impl schemars::JsonSchema for TaggedRangeExcl {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("TaggedRangeExcl")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("TaggedRangeExcl")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -280,8 +282,8 @@ impl<'de> serde::de::Deserialize<'de> for TaggedRangeIncl {
 }
 
 impl schemars::JsonSchema for TaggedRangeIncl {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("TaggedRangeIncl")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("TaggedRangeIncl")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -349,8 +351,8 @@ impl<'de> serde::de::Deserialize<'de> for TaggedRangeNint {
 }
 
 impl schemars::JsonSchema for TaggedRangeNint {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("TaggedRangeNint")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("TaggedRangeNint")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -418,8 +420,8 @@ impl<'de> serde::de::Deserialize<'de> for TaggedRangeUint {
 }
 
 impl schemars::JsonSchema for TaggedRangeUint {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("TaggedRangeUint")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("TaggedRangeUint")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {

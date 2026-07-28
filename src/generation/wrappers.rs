@@ -420,8 +420,8 @@ pub(super) fn generate_wrapper_struct(
         if cli.json_schema_export {
             let mut schema_name_fn = codegen::Function::new("schema_name");
             schema_name_fn
-                .ret("::std::borrow::Cow<'static, str>")
-                .line(format!("::std::borrow::Cow::Borrowed(\"{type_name}\")"));
+                .ret("alloc::borrow::Cow<'static, str>")
+                .line(format!("alloc::borrow::Cow::Borrowed(\"{type_name}\")"));
             let mut json_schema_fn = codegen::Function::new("json_schema");
             json_schema_fn
                 .arg("generator", "&mut schemars::SchemaGenerator")
@@ -833,7 +833,7 @@ pub(super) fn generate_wrapper_struct(
             format!("Vec::<{elem_ty}>::from({self_var}).into_iter()")
         };
         let mut ergo = format!(
-            "impl std::ops::Deref for {type_name} {{\n    type Target = {inner_ty};\n\n    fn deref(&self) -> &Self::Target {{\n        &{self_var}\n    }}\n}}\n\nimpl std::ops::DerefMut for {type_name} {{\n    fn deref_mut(&mut self) -> &mut Self::Target {{\n        &mut {self_var}\n    }}\n}}\n\nimpl<'a> IntoIterator for &'a {type_name} {{\n    type Item = &'a {elem_ty};\n    type IntoIter = std::slice::Iter<'a, {elem_ty}>;\n\n    fn into_iter(self) -> Self::IntoIter {{\n        {self_var}.iter()\n    }}\n}}\n\nimpl IntoIterator for {type_name} {{\n    type Item = {elem_ty};\n    type IntoIter = std::vec::IntoIter<{elem_ty}>;\n\n    fn into_iter(self) -> Self::IntoIter {{\n        {owned_iter_body}\n    }}\n}}\n"
+            "impl core::ops::Deref for {type_name} {{\n    type Target = {inner_ty};\n\n    fn deref(&self) -> &Self::Target {{\n        &{self_var}\n    }}\n}}\n\nimpl core::ops::DerefMut for {type_name} {{\n    fn deref_mut(&mut self) -> &mut Self::Target {{\n        &mut {self_var}\n    }}\n}}\n\nimpl<'a> IntoIterator for &'a {type_name} {{\n    type Item = &'a {elem_ty};\n    type IntoIter = core::slice::Iter<'a, {elem_ty}>;\n\n    fn into_iter(self) -> Self::IntoIter {{\n        {self_var}.iter()\n    }}\n}}\n\nimpl IntoIterator for {type_name} {{\n    type Item = {elem_ty};\n    type IntoIter = alloc::vec::IntoIter<{elem_ty}>;\n\n    fn into_iter(self) -> Self::IntoIter {{\n        {owned_iter_body}\n    }}\n}}\n"
         );
         if !inner_is_plain_vec {
             ergo.push_str(&format!(
@@ -1050,7 +1050,7 @@ pub(super) fn generate_int(gen_scope: &mut GenerationScope, types: &Intermediate
             .arg("deserializer", "D")
             .ret("Result<Self, D::Error>")
             .line("let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;")
-            .line("std::str::FromStr::from_str(&s).map_err(|_e| serde::de::Error::invalid_value(serde::de::Unexpected::Str(&s), &\"invalid Int\"))");
+            .line("core::str::FromStr::from_str(&s).map_err(|_e| serde::de::Error::invalid_value(serde::de::Unexpected::Str(&s), &\"invalid Int\"))");
         serde_deser_impl
             .impl_trait("serde::de::Deserialize<'de>")
             .generic("'de")
@@ -1061,8 +1061,8 @@ pub(super) fn generate_int(gen_scope: &mut GenerationScope, types: &Intermediate
         let mut json_schema_impl = codegen::Impl::new("Int");
         let mut schema_name_fn = codegen::Function::new("schema_name");
         schema_name_fn
-            .ret("::std::borrow::Cow<'static, str>")
-            .line("::std::borrow::Cow::Borrowed(\"Int\")");
+            .ret("alloc::borrow::Cow<'static, str>")
+            .line("alloc::borrow::Cow::Borrowed(\"Int\")");
         let mut json_schema_fn = codegen::Function::new("json_schema");
         json_schema_fn
             .arg("generator", "&mut schemars::SchemaGenerator")
@@ -1130,8 +1130,8 @@ pub(super) fn generate_int(gen_scope: &mut GenerationScope, types: &Intermediate
     let mut deser_match = Block::new("match raw.cbor_type()?");
     if cli.preserve_encodings {
         deser_match
-            .line("cbor_event::Type::UnsignedInteger => raw.unsigned_integer_sz().map(|(x, enc)| Self::Uint{ value: x, encoding: Some(enc) }).map_err(std::convert::Into::into),")
-            .line("cbor_event::Type::NegativeInteger => raw.negative_integer_sz().map(|(x, enc)| Self::Nint{ value: (-1 - x) as u64, encoding: Some(enc) }).map_err(std::convert::Into::into),");
+            .line("cbor_event::Type::UnsignedInteger => raw.unsigned_integer_sz().map(|(x, enc)| Self::Uint{ value: x, encoding: Some(enc) }).map_err(core::convert::Into::into),")
+            .line("cbor_event::Type::NegativeInteger => raw.negative_integer_sz().map(|(x, enc)| Self::Nint{ value: (-1 - x) as u64, encoding: Some(enc) }).map_err(core::convert::Into::into),");
     } else {
         deser_match
             .line("cbor_event::Type::UnsignedInteger => Ok(Self::Uint(raw.unsigned_integer()?)),")
@@ -1147,10 +1147,10 @@ pub(super) fn generate_int(gen_scope: &mut GenerationScope, types: &Intermediate
     int_err.vis("pub").derive("Clone").derive("Debug");
     int_err
         .new_variant("Bounds")
-        .tuple("std::num::TryFromIntError");
+        .tuple("core::num::TryFromIntError");
     int_err
         .new_variant("Parsing")
-        .tuple("std::num::ParseIntError");
+        .tuple("core::num::ParseIntError");
 
     let mut display = codegen::Impl::new("Int");
     let mut display_match = Block::new("match self");
@@ -1168,16 +1168,16 @@ pub(super) fn generate_int(gen_scope: &mut GenerationScope, types: &Intermediate
             .line("Self::Nint(x) => write!(f, \"{}\", -((*x as i128) + 1)),");
     }
     display
-        .impl_trait("std::fmt::Display")
+        .impl_trait("core::fmt::Display")
         .new_fn("fmt")
         .arg_ref_self()
-        .arg("f", "&mut std::fmt::Formatter<'_>")
-        .ret("std::fmt::Result")
+        .arg("f", "&mut core::fmt::Formatter<'_>")
+        .ret("core::fmt::Result")
         .push_block(display_match);
 
     let mut from_str = codegen::Impl::new("Int");
     from_str
-        .impl_trait("std::str::FromStr")
+        .impl_trait("core::str::FromStr")
         .associate_type("Err", "IntError")
         .new_fn("from_str")
         .arg("s", "&str")
@@ -1199,7 +1199,7 @@ pub(super) fn generate_int(gen_scope: &mut GenerationScope, types: &Intermediate
     }
     try_from_i128
         .impl_trait("TryFrom<i128>")
-        .associate_type("Error", "std::num::TryFromIntError")
+        .associate_type("Error", "core::num::TryFromIntError")
         .new_fn("try_from")
         .arg("x", "i128")
         .ret("Result<Self, Self::Error>")

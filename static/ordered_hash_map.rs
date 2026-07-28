@@ -28,7 +28,7 @@ impl<K, V> Default for OrderedHashMap<K, V> where K : Hash + Eq + Ord {
     }
 }
 
-impl<K, V> std::ops::Deref for OrderedHashMap<K, V> where K : Hash + Eq + Ord {
+impl<K, V> core::ops::Deref for OrderedHashMap<K, V> where K : Hash + Eq + Ord {
     type Target = hashlink::LinkedHashMap<K, V, MapHashBuilder>;
 
     fn deref(&self) -> &Self::Target {
@@ -36,7 +36,7 @@ impl<K, V> std::ops::Deref for OrderedHashMap<K, V> where K : Hash + Eq + Ord {
     }
 }
 
-impl<K, V> std::ops::DerefMut for OrderedHashMap<K, V> where K : Hash + Eq + Ord {
+impl<K, V> core::ops::DerefMut for OrderedHashMap<K, V> where K : Hash + Eq + Ord {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }

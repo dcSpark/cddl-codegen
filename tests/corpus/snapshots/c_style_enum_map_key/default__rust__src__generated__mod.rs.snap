@@ -11,11 +11,12 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::collections::BTreeMap;
 pub mod error;
 mod extern_interface_check;
 pub mod serialization;
 
-use std::collections::BTreeMap;
 
 pub type EnumKeyedMap = BTreeMap<FixedEnum, u64>;
 

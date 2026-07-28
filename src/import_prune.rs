@@ -804,24 +804,70 @@ pub(crate) fn collect_used_idents_from_source(source: &str) -> Option<HashSet<St
 /// context is per token stream: a `Group`'s inner stream starts unpreceded, so recursion begins with
 /// a fresh context.
 fn collect_idents_in_tokens(tokens: TokenStream, used: &mut HashSet<String>) {
-    // The two tokens immediately preceding the current one (in THIS stream). `prev1` is the token
-    // right before; `prev2` is the one before that.
-    let mut prev1: Option<TokenTree> = None;
-    let mut prev2: Option<TokenTree> = None;
-    for tree in tokens {
-        match &tree {
+    // Every reported form counts here: this pass asks only "does this name appear somewhere that
+    // could consume a `use` binding", for which a method ident (`x.to_string()`) and a macro ident
+    // (`vec![…]`) count exactly like a bare one.
+    walk_ident_uses(tokens, &mut |ident, _form| {
+        used.insert(ident.to_owned());
+    });
+}
+
+/// How an ident token appeared, for callers that must tell the forms apart. Path-tail idents are
+/// never reported at all (see [`walk_ident_uses`]), so there is no variant for them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IdentForm {
+    /// Immediately followed by `!` — a macro invocation (`vec![…]`, `format!(…)`).
+    Macro,
+    /// Immediately preceded by `.` — a method call or field access (`x.to_string()`).
+    Method,
+    /// Anything else: a type name, a variable, the head of a path.
+    Bare,
+}
+
+/// The ONE ident walker in this crate, shared by the prune pass and the alloc-import injector
+/// (`crate::alloc_import_inject`) so the two can never disagree about what counts as a use of a
+/// name. Reports every ident EXCEPT path tails, classified by [`IdentForm`].
+///
+/// Path-tail exclusion (see the module docs' "Soundness boundary — path-tail idents"): an `Ident`
+/// immediately preceded by the path separator `::` is a path-tail segment (module path, associated
+/// item, enum variant) that resolves relative to the preceding segment, NEVER through the local
+/// module namespace, so it can never consume a `use` binding — it must not protect an import here,
+/// and it must not TRIGGER one in the injector (a fully-qualified `alloc::collections::BTreeSet`
+/// needs no import, and injecting one would be an unused-import warning). `::` is two adjacent
+/// `Punct(':')` tokens — the first with `Spacing::Joint`, the second with `Spacing::Alone` — so the
+/// precise test is: the previous token is `Punct(':')` AND the one before it is `Punct(':')` with
+/// `Spacing::Joint`. A LONE `:` (struct field type, `let x: BTreeMap<…>`) fails the two-token joint
+/// check, so the ident after it still counts (over-skipping there would un-protect a load-bearing
+/// import — failure asymmetry: an over-prune is a consumer compile error, an under-prune only a
+/// warning). The preceding/following context is per token stream: a `Group`'s inner stream starts
+/// unpreceded, so recursion begins with a fresh context.
+pub(crate) fn walk_ident_uses(tokens: TokenStream, sink: &mut impl FnMut(&str, IdentForm)) {
+    // Collected up front because the `Macro` form needs ONE token of lookahead, which an iterator
+    // walk carrying only trailing context cannot supply.
+    let trees: Vec<TokenTree> = tokens.into_iter().collect();
+    for (i, tree) in trees.iter().enumerate() {
+        match tree {
             TokenTree::Ident(ident) => {
-                let after_path_sep = matches!(&prev1, Some(TokenTree::Punct(p)) if p.as_char() == ':')
-                    && matches!(&prev2, Some(TokenTree::Punct(p)) if p.as_char() == ':' && p.spacing() == Spacing::Joint);
-                if !after_path_sep {
-                    used.insert(ident.to_string());
+                let prev1 = i.checked_sub(1).map(|j| &trees[j]);
+                let prev2 = i.checked_sub(2).map(|j| &trees[j]);
+                let after_path_sep = matches!(prev1, Some(TokenTree::Punct(p)) if p.as_char() == ':')
+                    && matches!(prev2, Some(TokenTree::Punct(p)) if p.as_char() == ':' && p.spacing() == Spacing::Joint);
+                if after_path_sep {
+                    continue;
                 }
+                let form = if matches!(trees.get(i + 1), Some(TokenTree::Punct(p)) if p.as_char() == '!')
+                {
+                    IdentForm::Macro
+                } else if matches!(prev1, Some(TokenTree::Punct(p)) if p.as_char() == '.') {
+                    IdentForm::Method
+                } else {
+                    IdentForm::Bare
+                };
+                sink(&ident.to_string(), form);
             }
-            TokenTree::Group(group) => collect_idents_in_tokens(group.stream(), used),
+            TokenTree::Group(group) => walk_ident_uses(group.stream(), sink),
             TokenTree::Punct(_) | TokenTree::Literal(_) => {}
         }
-        prev2 = prev1.take();
-        prev1 = Some(tree);
     }
 }
 
@@ -834,7 +880,7 @@ fn collect_idents_in_tokens(tokens: TokenStream, used: &mut HashSet<String>) {
 /// contributes nothing. Returns an empty set if `source` doesn't parse — such a file is already
 /// `None` in `used_by_path` and poisons its ancestors, so it never reaches the per-descendant
 /// filter that consults this set.
-fn collect_directly_imported_idents(source: &str) -> HashSet<String> {
+pub(crate) fn collect_directly_imported_idents(source: &str) -> HashSet<String> {
     let mut direct = HashSet::new();
     if let Ok(file) = syn::parse_file(source) {
         for item in &file.items {
@@ -1021,7 +1067,7 @@ fn walk_glob_paths(tree: &UseTree, prefix: &mut Vec<String>, globs: &mut HashSet
 /// `const`/`static`/`trait`/`union`/`mod`/`macro_rules`/`extern crate`). Combined with the module's
 /// `use`-bound leaves and its globs' exports, this is what `use super::*;` re-exports downward — the
 /// universe for deciding whether a child's `super::*` is load-bearing. Empty if `source` doesn't parse.
-fn collect_module_item_defs(source: &str) -> HashSet<String> {
+pub(crate) fn collect_module_item_defs(source: &str) -> HashSet<String> {
     let mut defs = HashSet::new();
     if let Ok(file) = syn::parse_file(source) {
         for item in &file.items {
@@ -1883,6 +1929,26 @@ mod tests {
         ));
         assert!(!is_reexport_only_file(
             "pub use crate::Address;\npub struct S;\n"
+        ));
+    }
+
+    /// Cross-pass interaction with [`crate::alloc_import_inject`]: an `extern crate alloc;` is an
+    /// `Item::ExternCrate`, not an `Item::Use`, so a file carrying one is NOT re-export-only and
+    /// keeps its private imports through the wholesale prune.
+    ///
+    /// This is defence in depth rather than a live path — the injector emits that line only into a
+    /// file that USES an alloc name, and such a file has a code item that already disqualifies it —
+    /// but it is pinned because the failure would be silent and severe: the wholesale prune deletes
+    /// ALL private `use` items in a qualifying file, which would strip exactly the alloc imports the
+    /// injector had just added and leave the file unresolvable.
+    #[test]
+    fn reexport_shape_rejects_an_extern_crate_item() {
+        assert!(!is_reexport_only_file(
+            "extern crate alloc;\npub use crate::Address;\n"
+        ));
+        // Order-independent, and still rejected when the private uses are the injector's own.
+        assert!(!is_reexport_only_file(
+            "pub use crate::Address;\nextern crate alloc;\nuse alloc::string::String;\n"
         ));
     }
 

@@ -55,9 +55,9 @@ pub enum AnyCborKind {
 /// Length-first-then-bytewise comparison of two encoded CBOR map keys — the RFC 7049 §3.9
 /// "canonical CBOR" key ordering. Shared runtime helper (see the preserve variant for the fuller
 /// note); present in both variants so callers can rely on it regardless of `--preserve-encodings`.
-pub fn any_cbor_canonical_key_cmp(lhs: &[u8], rhs: &[u8]) -> std::cmp::Ordering {
+pub fn any_cbor_canonical_key_cmp(lhs: &[u8], rhs: &[u8]) -> core::cmp::Ordering {
     match lhs.len().cmp(&rhs.len()) {
-        std::cmp::Ordering::Equal => lhs.cmp(rhs),
+        core::cmp::Ordering::Equal => lhs.cmp(rhs),
         diff_ord => diff_ord,
     }
 }
@@ -419,9 +419,9 @@ impl PartialEq for AnyCbor {
 }
 impl Eq for AnyCbor {}
 
-impl std::hash::Hash for AnySpecial {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        std::mem::discriminant(self).hash(state);
+impl core::hash::Hash for AnySpecial {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        core::mem::discriminant(self).hash(state);
         match self {
             AnySpecial::Bool(b) => b.hash(state),
             AnySpecial::Null | AnySpecial::Undefined => {}
@@ -431,9 +431,9 @@ impl std::hash::Hash for AnySpecial {
     }
 }
 
-impl std::hash::Hash for AnyCbor {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        std::mem::discriminant(self).hash(state);
+impl core::hash::Hash for AnyCbor {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        core::mem::discriminant(self).hash(state);
         match self {
             AnyCbor::UInt(v) => v.hash(state),
             AnyCbor::NInt(v) => v.hash(state),
@@ -461,19 +461,19 @@ fn any_special_ord_rank(s: &AnySpecial) -> u8 {
 }
 
 impl Ord for AnySpecial {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         any_special_ord_rank(self)
             .cmp(&any_special_ord_rank(other))
             .then_with(|| match (self, other) {
                 (AnySpecial::Bool(a), AnySpecial::Bool(b)) => a.cmp(b),
                 (AnySpecial::Unassigned(a), AnySpecial::Unassigned(b)) => a.cmp(b),
                 (AnySpecial::Float(a), AnySpecial::Float(b)) => a.total_cmp(b),
-                _ => std::cmp::Ordering::Equal,
+                _ => core::cmp::Ordering::Equal,
             })
     }
 }
 impl PartialOrd for AnySpecial {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
@@ -492,7 +492,7 @@ fn any_cbor_ord_rank(v: &AnyCbor) -> u8 {
 }
 
 impl Ord for AnyCbor {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         any_cbor_ord_rank(self)
             .cmp(&any_cbor_ord_rank(other))
             .then_with(|| match (self, other) {
@@ -504,12 +504,12 @@ impl Ord for AnyCbor {
                 (AnyCbor::Map(a), AnyCbor::Map(b)) => a.cmp(b),
                 (AnyCbor::Tag(a, ia), AnyCbor::Tag(b, ib)) => a.cmp(b).then_with(|| ia.cmp(ib)),
                 (AnyCbor::Special(a), AnyCbor::Special(b)) => a.cmp(b),
-                _ => std::cmp::Ordering::Equal,
+                _ => core::cmp::Ordering::Equal,
             })
     }
 }
 impl PartialOrd for AnyCbor {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }

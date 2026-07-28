@@ -11,6 +11,8 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::string::String;
 pub mod any_cbor;
 pub mod error;
 pub mod ordered_hash_map;
@@ -26,7 +28,6 @@ use cbor_encodings::{
     AnyRestEncoding, DupRestEncoding, OptRestEncoding, RenamedRestEncoding, TypedRestEncoding,
     UintRestEncoding,
 };
-use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
 pub struct AnyRest {

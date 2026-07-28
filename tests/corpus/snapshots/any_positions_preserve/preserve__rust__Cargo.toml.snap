@@ -16,4 +16,4 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 cbor_event = { git = "https://github.com/dcSpark/cbor_event", rev = "e2bca6d257f70ab0c226c4efd0726d3f5c1b4490" }
 hashlink = "0.12.1"
-derivative = "2.2.0"
+derivative = { version = "2.2.0", features = ["use_core"] }

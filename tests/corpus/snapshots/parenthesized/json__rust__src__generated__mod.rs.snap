@@ -11,6 +11,8 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::string::String;
 pub mod error;
 mod extern_interface_check;
 pub mod json_schema_gen;
@@ -103,8 +105,8 @@ impl<'de> serde::de::Deserialize<'de> for NewtypeViaParens {
 }
 
 impl schemars::JsonSchema for NewtypeViaParens {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("NewtypeViaParens")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("NewtypeViaParens")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {

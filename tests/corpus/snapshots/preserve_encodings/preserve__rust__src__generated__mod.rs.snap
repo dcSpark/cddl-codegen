@@ -11,6 +11,11 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::borrow::ToOwned;
+use alloc::collections::BTreeMap;
+use alloc::string::String;
+use alloc::vec::Vec;
 pub mod error;
 pub mod non_empty;
 pub mod non_empty_map;
@@ -19,7 +24,7 @@ pub mod ordered_set;
 extern crate derivative;
 mod extern_interface_check;
 mod key_demand_assertions;
-impl std::ops::Deref for OsetPU64 {
+impl core::ops::Deref for OsetPU64 {
     type Target = OrderedSet<u64>;
 
     fn deref(&self) -> &Self::Target {
@@ -27,7 +32,7 @@ impl std::ops::Deref for OsetPU64 {
     }
 }
 
-impl std::ops::DerefMut for OsetPU64 {
+impl core::ops::DerefMut for OsetPU64 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
@@ -35,7 +40,7 @@ impl std::ops::DerefMut for OsetPU64 {
 
 impl<'a> IntoIterator for &'a OsetPU64 {
     type Item = &'a u64;
-    type IntoIter = std::slice::Iter<'a, u64>;
+    type IntoIter = core::slice::Iter<'a, u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.inner.iter()
@@ -44,7 +49,7 @@ impl<'a> IntoIterator for &'a OsetPU64 {
 
 impl IntoIterator for OsetPU64 {
     type Item = u64;
-    type IntoIter = std::vec::IntoIter<u64>;
+    type IntoIter = alloc::vec::IntoIter<u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         Vec::<u64>::from(self.inner).into_iter()
@@ -95,7 +100,6 @@ use cbor_encodings::{
     TopLevelNegRangeEncoding, TopLevelPosRangeEncoding, TopLevelTaggedRangeEncoding,
     WidthCollapseEncoding, WrapperListEncoding, WrapperTableEncoding,
 };
-use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
 pub struct A {

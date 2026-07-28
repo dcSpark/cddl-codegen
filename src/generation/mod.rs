@@ -1342,7 +1342,7 @@ impl GenerationScope {
                     // covers cross-scope keys, since a child glob re-imports the parent struct
                     // file's `use` bindings (the scope_references imports pushed above)
                     .push_import("super", "*", None)
-                    .push_import("std::collections", "BTreeMap", None)
+                    .push_import("alloc::collections", "BTreeMap", None)
                     .push_import(
                         format!("{}::serialization", cli.common_import_rust()),
                         "LenEncoding",
@@ -1501,7 +1501,7 @@ impl GenerationScope {
             // Deriving the import set from the emitted tokens is sound by construction and lives in
             // one place; predicting per-file need at each of these ~30 sites would have to mirror
             // every local emission decision and drift.
-            content.push_import("std::collections", "BTreeMap", None);
+            content.push_import("alloc::collections", "BTreeMap", None);
             if cli.preserve_encodings {
                 content.push_import(
                     format!("{}::ordered_hash_map", cli.common_import_rust()),

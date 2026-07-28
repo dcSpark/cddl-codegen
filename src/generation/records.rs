@@ -934,13 +934,13 @@ fn emit_rest_flatten_json(
         // A typed-domain key stringify never fails, so the error type is unconstrained by the body —
         // pin it (`Infallible: Display`) so the generic helper's `E: Display` bound resolves.
         RestKeyDomain::Uint => (
-            "|k: &u64| Ok::<String, std::convert::Infallible>(k.to_string())".to_owned(),
+            "|k: &u64| Ok::<String, core::convert::Infallible>(k.to_string())".to_owned(),
             "let k = ks.parse::<u64>().map_err(|_| serde::de::Error::custom(\
              format!(\"open struct-map rest key {ks:?} is not a valid uint\")))?;"
                 .to_owned(),
         ),
         RestKeyDomain::Text => (
-            "|k: &String| Ok::<String, std::convert::Infallible>(k.clone())".to_owned(),
+            "|k: &String| Ok::<String, core::convert::Infallible>(k.clone())".to_owned(),
             "let k = ks;".to_owned(),
         ),
         RestKeyDomain::Any => (

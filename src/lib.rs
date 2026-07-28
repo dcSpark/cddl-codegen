@@ -1,3 +1,9 @@
+// Mirrors `src/main.rs`: the `static/*.rs` runtime uses `alloc::` paths, and the bin crate's test
+// harness `include!`s several of those files, so the crate roots link `alloc`. Kept on both roots
+// so the two stay aligned (see AGENTS.md § bin/lib module duplication).
+extern crate alloc;
+
+pub mod alloc_import_inject;
 pub mod api;
 pub mod cargo_manifest;
 pub mod cli;

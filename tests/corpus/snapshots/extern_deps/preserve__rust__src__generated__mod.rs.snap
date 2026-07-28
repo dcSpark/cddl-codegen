@@ -11,6 +11,8 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::vec::Vec;
 extern crate derivative;
 pub mod a;
 pub mod b;
@@ -27,7 +29,6 @@ use cbor_encodings::{EverythingEncoding, IntHolderEncoding};
 use extern_dep_crate::ExternCrateFoo;
 use extern_dep_crate::ordered_hash_map::OrderedHashMap;
 use qux::Qux;
-use std::collections::BTreeMap;
 
 pub type DeltaCoin = Int;
 

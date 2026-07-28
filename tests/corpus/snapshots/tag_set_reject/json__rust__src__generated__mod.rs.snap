@@ -11,13 +11,16 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::string::String;
+use alloc::vec::Vec;
 pub mod error;
 mod extern_interface_check;
 pub mod json_schema_gen;
 pub mod json_value_ser;
 pub mod non_empty;
 pub mod ordered_set;
-impl std::ops::Deref for IntNeset {
+impl core::ops::Deref for IntNeset {
     type Target = NonEmptyOrderedSet<u64>;
 
     fn deref(&self) -> &Self::Target {
@@ -25,7 +28,7 @@ impl std::ops::Deref for IntNeset {
     }
 }
 
-impl std::ops::DerefMut for IntNeset {
+impl core::ops::DerefMut for IntNeset {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -33,7 +36,7 @@ impl std::ops::DerefMut for IntNeset {
 
 impl<'a> IntoIterator for &'a IntNeset {
     type Item = &'a u64;
-    type IntoIter = std::slice::Iter<'a, u64>;
+    type IntoIter = core::slice::Iter<'a, u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
@@ -42,7 +45,7 @@ impl<'a> IntoIterator for &'a IntNeset {
 
 impl IntoIterator for IntNeset {
     type Item = u64;
-    type IntoIter = std::vec::IntoIter<u64>;
+    type IntoIter = alloc::vec::IntoIter<u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         Vec::<u64>::from(self.0).into_iter()
@@ -71,7 +74,7 @@ impl IntNeset {
     }
 }
 
-impl std::ops::Deref for IntSet {
+impl core::ops::Deref for IntSet {
     type Target = OrderedSet<u64>;
 
     fn deref(&self) -> &Self::Target {
@@ -79,7 +82,7 @@ impl std::ops::Deref for IntSet {
     }
 }
 
-impl std::ops::DerefMut for IntSet {
+impl core::ops::DerefMut for IntSet {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -87,7 +90,7 @@ impl std::ops::DerefMut for IntSet {
 
 impl<'a> IntoIterator for &'a IntSet {
     type Item = &'a u64;
-    type IntoIter = std::slice::Iter<'a, u64>;
+    type IntoIter = core::slice::Iter<'a, u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
@@ -96,7 +99,7 @@ impl<'a> IntoIterator for &'a IntSet {
 
 impl IntoIterator for IntSet {
     type Item = u64;
-    type IntoIter = std::vec::IntoIter<u64>;
+    type IntoIter = alloc::vec::IntoIter<u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         Vec::<u64>::from(self.0).into_iter()
@@ -125,7 +128,7 @@ impl IntSet {
     }
 }
 
-impl std::ops::Deref for OsetU64 {
+impl core::ops::Deref for OsetU64 {
     type Target = OrderedSet<u64>;
 
     fn deref(&self) -> &Self::Target {
@@ -133,7 +136,7 @@ impl std::ops::Deref for OsetU64 {
     }
 }
 
-impl std::ops::DerefMut for OsetU64 {
+impl core::ops::DerefMut for OsetU64 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -141,7 +144,7 @@ impl std::ops::DerefMut for OsetU64 {
 
 impl<'a> IntoIterator for &'a OsetU64 {
     type Item = &'a u64;
-    type IntoIter = std::slice::Iter<'a, u64>;
+    type IntoIter = core::slice::Iter<'a, u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
@@ -150,7 +153,7 @@ impl<'a> IntoIterator for &'a OsetU64 {
 
 impl IntoIterator for OsetU64 {
     type Item = u64;
-    type IntoIter = std::vec::IntoIter<u64>;
+    type IntoIter = alloc::vec::IntoIter<u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         Vec::<u64>::from(self.0).into_iter()
@@ -179,7 +182,7 @@ impl OsetU64 {
     }
 }
 
-impl std::ops::Deref for TextSet {
+impl core::ops::Deref for TextSet {
     type Target = OrderedSet<String>;
 
     fn deref(&self) -> &Self::Target {
@@ -187,7 +190,7 @@ impl std::ops::Deref for TextSet {
     }
 }
 
-impl std::ops::DerefMut for TextSet {
+impl core::ops::DerefMut for TextSet {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -195,7 +198,7 @@ impl std::ops::DerefMut for TextSet {
 
 impl<'a> IntoIterator for &'a TextSet {
     type Item = &'a String;
-    type IntoIter = std::slice::Iter<'a, String>;
+    type IntoIter = core::slice::Iter<'a, String>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
@@ -204,7 +207,7 @@ impl<'a> IntoIterator for &'a TextSet {
 
 impl IntoIterator for TextSet {
     type Item = String;
-    type IntoIter = std::vec::IntoIter<String>;
+    type IntoIter = alloc::vec::IntoIter<String>;
 
     fn into_iter(self) -> Self::IntoIter {
         Vec::<String>::from(self.0).into_iter()
@@ -300,8 +303,8 @@ impl<'de> serde::de::Deserialize<'de> for IntNeset {
 }
 
 impl schemars::JsonSchema for IntNeset {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("IntNeset")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("IntNeset")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -354,8 +357,8 @@ impl<'de> serde::de::Deserialize<'de> for IntSet {
 }
 
 impl schemars::JsonSchema for IntSet {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("IntSet")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("IntSet")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -408,8 +411,8 @@ impl<'de> serde::de::Deserialize<'de> for OsetU64 {
 }
 
 impl schemars::JsonSchema for OsetU64 {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("OsetU64")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("OsetU64")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -465,8 +468,8 @@ impl<'de> serde::de::Deserialize<'de> for TextSet {
 }
 
 impl schemars::JsonSchema for TextSet {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("TextSet")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("TextSet")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {

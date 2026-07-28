@@ -11,12 +11,14 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::vec::Vec;
 pub mod error;
 mod extern_interface_check;
 pub mod json_schema_gen;
 pub mod json_value_ser;
 pub mod ordered_set;
-impl std::ops::Deref for OsetU64 {
+impl core::ops::Deref for OsetU64 {
     type Target = OrderedSet<u64>;
 
     fn deref(&self) -> &Self::Target {
@@ -24,7 +26,7 @@ impl std::ops::Deref for OsetU64 {
     }
 }
 
-impl std::ops::DerefMut for OsetU64 {
+impl core::ops::DerefMut for OsetU64 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -32,7 +34,7 @@ impl std::ops::DerefMut for OsetU64 {
 
 impl<'a> IntoIterator for &'a OsetU64 {
     type Item = &'a u64;
-    type IntoIter = std::slice::Iter<'a, u64>;
+    type IntoIter = core::slice::Iter<'a, u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
@@ -41,7 +43,7 @@ impl<'a> IntoIterator for &'a OsetU64 {
 
 impl IntoIterator for OsetU64 {
     type Item = u64;
-    type IntoIter = std::vec::IntoIter<u64>;
+    type IntoIter = alloc::vec::IntoIter<u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         Vec::<u64>::from(self.0).into_iter()
@@ -127,8 +129,8 @@ impl<'de> serde::de::Deserialize<'de> for OsetU64 {
 }
 
 impl schemars::JsonSchema for OsetU64 {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("OsetU64")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("OsetU64")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {

@@ -133,7 +133,7 @@ impl<T> OrderedSet<T> {
         self.0.get(index)
     }
 
-    pub fn iter(&self) -> std::slice::Iter<'_, T> {
+    pub fn iter(&self) -> core::slice::Iter<'_, T> {
         self.0.iter()
     }
 
@@ -209,7 +209,7 @@ impl<T> AsRef<[T]> for OrderedSet<T> {
     }
 }
 
-impl<T> std::ops::Index<usize> for OrderedSet<T> {
+impl<T> core::ops::Index<usize> for OrderedSet<T> {
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -219,7 +219,7 @@ impl<T> std::ops::Index<usize> for OrderedSet<T> {
 
 impl<'a, T> IntoIterator for &'a OrderedSet<T> {
     type Item = &'a T;
-    type IntoIter = std::slice::Iter<'a, T>;
+    type IntoIter = core::slice::Iter<'a, T>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
@@ -366,7 +366,7 @@ impl<T> NonEmptyOrderedSet<T> {
         &self.0[0]
     }
 
-    pub fn iter(&self) -> std::slice::Iter<'_, T> {
+    pub fn iter(&self) -> core::slice::Iter<'_, T> {
         self.0.iter()
     }
 
@@ -404,7 +404,7 @@ impl<T> AsRef<[T]> for NonEmptyOrderedSet<T> {
     }
 }
 
-impl<T> std::ops::Index<usize> for NonEmptyOrderedSet<T> {
+impl<T> core::ops::Index<usize> for NonEmptyOrderedSet<T> {
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -414,7 +414,7 @@ impl<T> std::ops::Index<usize> for NonEmptyOrderedSet<T> {
 
 impl<'a, T> IntoIterator for &'a NonEmptyOrderedSet<T> {
     type Item = &'a T;
-    type IntoIter = std::slice::Iter<'a, T>;
+    type IntoIter = core::slice::Iter<'a, T>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()

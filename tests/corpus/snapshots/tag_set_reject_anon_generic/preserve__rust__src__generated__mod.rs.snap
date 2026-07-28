@@ -11,12 +11,14 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::vec::Vec;
 pub mod error;
 pub mod ordered_hash_map;
 pub mod ordered_set;
 extern crate derivative;
 mod extern_interface_check;
-impl std::ops::Deref for OsetU64 {
+impl core::ops::Deref for OsetU64 {
     type Target = OrderedSet<u64>;
 
     fn deref(&self) -> &Self::Target {
@@ -24,7 +26,7 @@ impl std::ops::Deref for OsetU64 {
     }
 }
 
-impl std::ops::DerefMut for OsetU64 {
+impl core::ops::DerefMut for OsetU64 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
@@ -32,7 +34,7 @@ impl std::ops::DerefMut for OsetU64 {
 
 impl<'a> IntoIterator for &'a OsetU64 {
     type Item = &'a u64;
-    type IntoIter = std::slice::Iter<'a, u64>;
+    type IntoIter = core::slice::Iter<'a, u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.inner.iter()
@@ -41,7 +43,7 @@ impl<'a> IntoIterator for &'a OsetU64 {
 
 impl IntoIterator for OsetU64 {
     type Item = u64;
-    type IntoIter = std::vec::IntoIter<u64>;
+    type IntoIter = alloc::vec::IntoIter<u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         Vec::<u64>::from(self.inner).into_iter()

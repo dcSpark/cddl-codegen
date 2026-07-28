@@ -5,6 +5,8 @@ expression: content
 // This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
 
+extern crate alloc;
+use alloc::vec::Vec;
 use super::cbor_encodings::*;
 use super::*;
 use crate::generated::error::*;
@@ -36,14 +38,14 @@ impl Deserialize for Int {
                         value: x,
                         encoding: Some(enc),
                     })
-                    .map_err(std::convert::Into::into),
+                    .map_err(core::convert::Into::into),
                 cbor_event::Type::NegativeInteger => raw
                     .negative_integer_sz()
                     .map(|(x, enc)| Self::Nint {
                         value: (-1 - x) as u64,
                         encoding: Some(enc),
                     })
-                    .map_err(std::convert::Into::into),
+                    .map_err(core::convert::Into::into),
                 _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
         })()

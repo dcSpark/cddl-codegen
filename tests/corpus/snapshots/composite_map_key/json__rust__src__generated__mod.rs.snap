@@ -11,6 +11,9 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
 pub mod error;
 mod extern_interface_check;
 pub mod json_schema_gen;
@@ -19,7 +22,6 @@ pub mod non_empty;
 pub mod serialization;
 
 use crate::generated::non_empty::NonEmptyVec;
-use std::collections::BTreeMap;
 
 pub type ArrU64List = Vec<NonEmptyVec<u64>>;
 

@@ -11,6 +11,8 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::string::String;
 pub mod error;
 mod extern_interface_check;
 pub mod json_schema_gen;
@@ -79,8 +81,8 @@ impl<'de> serde::de::Deserialize<'de> for Tagged {
 }
 
 impl schemars::JsonSchema for Tagged {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("Tagged")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("Tagged")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
@@ -131,8 +133,8 @@ impl<'de> serde::de::Deserialize<'de> for TaggedNewtype {
 }
 
 impl schemars::JsonSchema for TaggedNewtype {
-    fn schema_name() -> ::std::borrow::Cow<'static, str> {
-        ::std::borrow::Cow::Borrowed("TaggedNewtype")
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("TaggedNewtype")
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {

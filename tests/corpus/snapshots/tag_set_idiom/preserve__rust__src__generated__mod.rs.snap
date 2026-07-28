@@ -11,12 +11,15 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::string::String;
+use alloc::vec::Vec;
 pub mod error;
 pub mod non_empty;
 pub mod ordered_hash_map;
 extern crate derivative;
 mod extern_interface_check;
-impl std::ops::Deref for IntNeset {
+impl core::ops::Deref for IntNeset {
     type Target = NonEmptyVec<u64>;
 
     fn deref(&self) -> &Self::Target {
@@ -24,7 +27,7 @@ impl std::ops::Deref for IntNeset {
     }
 }
 
-impl std::ops::DerefMut for IntNeset {
+impl core::ops::DerefMut for IntNeset {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
@@ -32,7 +35,7 @@ impl std::ops::DerefMut for IntNeset {
 
 impl<'a> IntoIterator for &'a IntNeset {
     type Item = &'a u64;
-    type IntoIter = std::slice::Iter<'a, u64>;
+    type IntoIter = core::slice::Iter<'a, u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.inner.iter()
@@ -41,7 +44,7 @@ impl<'a> IntoIterator for &'a IntNeset {
 
 impl IntoIterator for IntNeset {
     type Item = u64;
-    type IntoIter = std::vec::IntoIter<u64>;
+    type IntoIter = alloc::vec::IntoIter<u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         Vec::<u64>::from(self.inner).into_iter()
@@ -62,7 +65,7 @@ impl TryFrom<Vec<u64>> for IntNeset {
     }
 }
 
-impl std::ops::Deref for IntSet {
+impl core::ops::Deref for IntSet {
     type Target = Vec<u64>;
 
     fn deref(&self) -> &Self::Target {
@@ -70,7 +73,7 @@ impl std::ops::Deref for IntSet {
     }
 }
 
-impl std::ops::DerefMut for IntSet {
+impl core::ops::DerefMut for IntSet {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
@@ -78,7 +81,7 @@ impl std::ops::DerefMut for IntSet {
 
 impl<'a> IntoIterator for &'a IntSet {
     type Item = &'a u64;
-    type IntoIter = std::slice::Iter<'a, u64>;
+    type IntoIter = core::slice::Iter<'a, u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.inner.iter()
@@ -87,14 +90,14 @@ impl<'a> IntoIterator for &'a IntSet {
 
 impl IntoIterator for IntSet {
     type Item = u64;
-    type IntoIter = std::vec::IntoIter<u64>;
+    type IntoIter = alloc::vec::IntoIter<u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.inner.into_iter()
     }
 }
 
-impl std::ops::Deref for TextSet {
+impl core::ops::Deref for TextSet {
     type Target = Vec<String>;
 
     fn deref(&self) -> &Self::Target {
@@ -102,7 +105,7 @@ impl std::ops::Deref for TextSet {
     }
 }
 
-impl std::ops::DerefMut for TextSet {
+impl core::ops::DerefMut for TextSet {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
@@ -110,7 +113,7 @@ impl std::ops::DerefMut for TextSet {
 
 impl<'a> IntoIterator for &'a TextSet {
     type Item = &'a String;
-    type IntoIter = std::slice::Iter<'a, String>;
+    type IntoIter = core::slice::Iter<'a, String>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.inner.iter()
@@ -119,7 +122,7 @@ impl<'a> IntoIterator for &'a TextSet {
 
 impl IntoIterator for TextSet {
     type Item = String;
-    type IntoIter = std::vec::IntoIter<String>;
+    type IntoIter = alloc::vec::IntoIter<String>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.inner.into_iter()

@@ -11,6 +11,8 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::string::String;
 pub mod error;
 pub mod non_empty;
 pub mod non_empty_map;

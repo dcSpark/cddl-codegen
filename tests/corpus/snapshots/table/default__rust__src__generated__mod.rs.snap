@@ -11,10 +11,12 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::collections::BTreeMap;
+use alloc::string::String;
 pub mod error;
 mod extern_interface_check;
 pub mod serialization;
 
-use std::collections::BTreeMap;
 
 pub type Table = BTreeMap<u64, String>;

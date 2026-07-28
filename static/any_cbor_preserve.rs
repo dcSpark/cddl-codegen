@@ -596,9 +596,9 @@ impl PartialEq for AnyCbor {
 }
 impl Eq for AnyCbor {}
 
-impl std::hash::Hash for AnySpecial {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        std::mem::discriminant(self).hash(state);
+impl core::hash::Hash for AnySpecial {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        core::mem::discriminant(self).hash(state);
         match self {
             AnySpecial::Bool(b) => b.hash(state),
             AnySpecial::Null | AnySpecial::Undefined => {}
@@ -611,9 +611,9 @@ impl std::hash::Hash for AnySpecial {
     }
 }
 
-impl std::hash::Hash for AnyCbor {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        std::mem::discriminant(self).hash(state);
+impl core::hash::Hash for AnyCbor {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        core::mem::discriminant(self).hash(state);
         match self {
             AnyCbor::UInt(v, sz) => {
                 v.hash(state);
@@ -660,7 +660,7 @@ fn any_special_ord_rank(s: &AnySpecial) -> u8 {
 }
 
 impl Ord for AnySpecial {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         any_special_ord_rank(self)
             .cmp(&any_special_ord_rank(other))
             .then_with(|| match (self, other) {
@@ -669,12 +669,12 @@ impl Ord for AnySpecial {
                 (AnySpecial::Float(a, sa), AnySpecial::Float(b, sb)) => {
                     a.total_cmp(b).then_with(|| opt_sz_rank(sa).cmp(&opt_sz_rank(sb)))
                 }
-                _ => std::cmp::Ordering::Equal,
+                _ => core::cmp::Ordering::Equal,
             })
     }
 }
 impl PartialOrd for AnySpecial {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
@@ -693,7 +693,7 @@ fn any_cbor_ord_rank(v: &AnyCbor) -> u8 {
 }
 
 impl Ord for AnyCbor {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         any_cbor_ord_rank(self)
             .cmp(&any_cbor_ord_rank(other))
             .then_with(|| match (self, other) {
@@ -720,12 +720,12 @@ impl Ord for AnyCbor {
                     .then_with(|| ia.cmp(ib))
                     .then_with(|| opt_sz_rank(sa).cmp(&opt_sz_rank(sb))),
                 (AnyCbor::Special(a), AnyCbor::Special(b)) => a.cmp(b),
-                _ => std::cmp::Ordering::Equal,
+                _ => core::cmp::Ordering::Equal,
             })
     }
 }
 impl PartialOrd for AnyCbor {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }

@@ -11,6 +11,9 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
 pub mod a;
 pub mod b;
 pub mod error;
@@ -26,7 +29,6 @@ use a::Baz;
 use a::c::foo::Foo;
 use b::bar::{Bar, BarTypedef};
 use qux::Qux;
-use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
 pub struct Everything {

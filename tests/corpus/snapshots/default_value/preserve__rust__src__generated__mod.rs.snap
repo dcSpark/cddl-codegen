@@ -11,6 +11,9 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::borrow::ToOwned;
+use alloc::string::String;
 pub mod error;
 pub mod ordered_hash_map;
 extern crate derivative;

@@ -1,3 +1,12 @@
+// The `static/*.rs` serialization runtime now uses `alloc::` paths (they resolve identically in a
+// std crate, so this is not a no_std build). Several of those files are `include!`d verbatim into
+// this crate's own test harness (`src/tests/any_cbor_tests.rs`, `json_schema_gen_tests.rs`,
+// `ordered_set_runtime_tests.rs`), so the crate that compiles them has to link `alloc`. It is
+// declared at the crate ROOT deliberately: only a root `extern crate` is reachable from nested
+// inline modules, and the included runtime files contain some (`natural_any_cbor_btreemap`).
+extern crate alloc;
+
+pub(crate) mod alloc_import_inject;
 pub(crate) mod api;
 pub(crate) mod cargo_manifest;
 pub(crate) mod cli;

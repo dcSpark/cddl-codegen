@@ -1,5 +1,5 @@
 use super::error::{DeserializeError, DeserializeFailure};
-use std::collections::BTreeMap;
+use alloc::collections::BTreeMap;
 
 /// A map guaranteed to hold at least one entry — the restricted twin of the loose table map for the
 /// CDDL `{+ k => v}` occurrence (`+` / `1*`).

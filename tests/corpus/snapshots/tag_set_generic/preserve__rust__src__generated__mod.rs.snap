@@ -11,12 +11,15 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::string::String;
+use alloc::vec::Vec;
 pub mod error;
 pub mod non_empty;
 pub mod ordered_hash_map;
 extern crate derivative;
 mod extern_interface_check;
-impl std::ops::Deref for NonemptyOsetPoint {
+impl core::ops::Deref for NonemptyOsetPoint {
     type Target = NonEmptyVec<Point>;
 
     fn deref(&self) -> &Self::Target {
@@ -24,7 +27,7 @@ impl std::ops::Deref for NonemptyOsetPoint {
     }
 }
 
-impl std::ops::DerefMut for NonemptyOsetPoint {
+impl core::ops::DerefMut for NonemptyOsetPoint {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
@@ -32,7 +35,7 @@ impl std::ops::DerefMut for NonemptyOsetPoint {
 
 impl<'a> IntoIterator for &'a NonemptyOsetPoint {
     type Item = &'a Point;
-    type IntoIter = std::slice::Iter<'a, Point>;
+    type IntoIter = core::slice::Iter<'a, Point>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.inner.iter()
@@ -41,7 +44,7 @@ impl<'a> IntoIterator for &'a NonemptyOsetPoint {
 
 impl IntoIterator for NonemptyOsetPoint {
     type Item = Point;
-    type IntoIter = std::vec::IntoIter<Point>;
+    type IntoIter = alloc::vec::IntoIter<Point>;
 
     fn into_iter(self) -> Self::IntoIter {
         Vec::<Point>::from(self.inner).into_iter()
@@ -62,7 +65,7 @@ impl TryFrom<Vec<Point>> for NonemptyOsetPoint {
     }
 }
 
-impl std::ops::Deref for NonemptySetText {
+impl core::ops::Deref for NonemptySetText {
     type Target = NonEmptyVec<String>;
 
     fn deref(&self) -> &Self::Target {
@@ -70,7 +73,7 @@ impl std::ops::Deref for NonemptySetText {
     }
 }
 
-impl std::ops::DerefMut for NonemptySetText {
+impl core::ops::DerefMut for NonemptySetText {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
@@ -78,7 +81,7 @@ impl std::ops::DerefMut for NonemptySetText {
 
 impl<'a> IntoIterator for &'a NonemptySetText {
     type Item = &'a String;
-    type IntoIter = std::slice::Iter<'a, String>;
+    type IntoIter = core::slice::Iter<'a, String>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.inner.iter()
@@ -87,7 +90,7 @@ impl<'a> IntoIterator for &'a NonemptySetText {
 
 impl IntoIterator for NonemptySetText {
     type Item = String;
-    type IntoIter = std::vec::IntoIter<String>;
+    type IntoIter = alloc::vec::IntoIter<String>;
 
     fn into_iter(self) -> Self::IntoIter {
         Vec::<String>::from(self.inner).into_iter()
@@ -108,7 +111,7 @@ impl TryFrom<Vec<String>> for NonemptySetText {
     }
 }
 
-impl std::ops::Deref for SetU64 {
+impl core::ops::Deref for SetU64 {
     type Target = Vec<u64>;
 
     fn deref(&self) -> &Self::Target {
@@ -116,7 +119,7 @@ impl std::ops::Deref for SetU64 {
     }
 }
 
-impl std::ops::DerefMut for SetU64 {
+impl core::ops::DerefMut for SetU64 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
@@ -124,7 +127,7 @@ impl std::ops::DerefMut for SetU64 {
 
 impl<'a> IntoIterator for &'a SetU64 {
     type Item = &'a u64;
-    type IntoIter = std::slice::Iter<'a, u64>;
+    type IntoIter = core::slice::Iter<'a, u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.inner.iter()
@@ -133,7 +136,7 @@ impl<'a> IntoIterator for &'a SetU64 {
 
 impl IntoIterator for SetU64 {
     type Item = u64;
-    type IntoIter = std::vec::IntoIter<u64>;
+    type IntoIter = alloc::vec::IntoIter<u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.inner.into_iter()

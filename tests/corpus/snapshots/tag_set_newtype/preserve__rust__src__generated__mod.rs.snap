@@ -11,13 +11,16 @@ expression: content
     clippy::result_large_err
 )]
 
+extern crate alloc;
+use alloc::string::String;
+use alloc::vec::Vec;
 pub mod error;
 pub mod non_empty;
 pub mod ordered_hash_map;
 pub mod ordered_set;
 extern crate derivative;
 mod extern_interface_check;
-impl std::ops::Deref for OptOut {
+impl core::ops::Deref for OptOut {
     type Target = Vec<u64>;
 
     fn deref(&self) -> &Self::Target {
@@ -25,7 +28,7 @@ impl std::ops::Deref for OptOut {
     }
 }
 
-impl std::ops::DerefMut for OptOut {
+impl core::ops::DerefMut for OptOut {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
@@ -33,7 +36,7 @@ impl std::ops::DerefMut for OptOut {
 
 impl<'a> IntoIterator for &'a OptOut {
     type Item = &'a u64;
-    type IntoIter = std::slice::Iter<'a, u64>;
+    type IntoIter = core::slice::Iter<'a, u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.inner.iter()
@@ -42,14 +45,14 @@ impl<'a> IntoIterator for &'a OptOut {
 
 impl IntoIterator for OptOut {
     type Item = u64;
-    type IntoIter = std::vec::IntoIter<u64>;
+    type IntoIter = alloc::vec::IntoIter<u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.inner.into_iter()
     }
 }
 
-impl std::ops::Deref for SingleArmNeset {
+impl core::ops::Deref for SingleArmNeset {
     type Target = NonEmptyOrderedSet<u64>;
 
     fn deref(&self) -> &Self::Target {
@@ -57,7 +60,7 @@ impl std::ops::Deref for SingleArmNeset {
     }
 }
 
-impl std::ops::DerefMut for SingleArmNeset {
+impl core::ops::DerefMut for SingleArmNeset {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
@@ -65,7 +68,7 @@ impl std::ops::DerefMut for SingleArmNeset {
 
 impl<'a> IntoIterator for &'a SingleArmNeset {
     type Item = &'a u64;
-    type IntoIter = std::slice::Iter<'a, u64>;
+    type IntoIter = core::slice::Iter<'a, u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.inner.iter()
@@ -74,7 +77,7 @@ impl<'a> IntoIterator for &'a SingleArmNeset {
 
 impl IntoIterator for SingleArmNeset {
     type Item = u64;
-    type IntoIter = std::vec::IntoIter<u64>;
+    type IntoIter = alloc::vec::IntoIter<u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         Vec::<u64>::from(self.inner).into_iter()
@@ -105,7 +108,7 @@ impl SingleArmNeset {
     }
 }
 
-impl std::ops::Deref for SingleArmSet {
+impl core::ops::Deref for SingleArmSet {
     type Target = OrderedSet<u64>;
 
     fn deref(&self) -> &Self::Target {
@@ -113,7 +116,7 @@ impl std::ops::Deref for SingleArmSet {
     }
 }
 
-impl std::ops::DerefMut for SingleArmSet {
+impl core::ops::DerefMut for SingleArmSet {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
@@ -121,7 +124,7 @@ impl std::ops::DerefMut for SingleArmSet {
 
 impl<'a> IntoIterator for &'a SingleArmSet {
     type Item = &'a u64;
-    type IntoIter = std::slice::Iter<'a, u64>;
+    type IntoIter = core::slice::Iter<'a, u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.inner.iter()
@@ -130,7 +133,7 @@ impl<'a> IntoIterator for &'a SingleArmSet {
 
 impl IntoIterator for SingleArmSet {
     type Item = u64;
-    type IntoIter = std::vec::IntoIter<u64>;
+    type IntoIter = alloc::vec::IntoIter<u64>;
 
     fn into_iter(self) -> Self::IntoIter {
         Vec::<u64>::from(self.inner).into_iter()
@@ -169,7 +172,6 @@ use cbor_encodings::{
     HolderEncoding, OptOutEncoding, PlainNesetRejectEncoding, PlainRejectEncoding,
     PlainTableEncoding, SingleArmNesetEncoding, SingleArmSetEncoding,
 };
-use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
 pub struct Holder {
