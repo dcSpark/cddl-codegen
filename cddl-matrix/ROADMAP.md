@@ -1,8 +1,8 @@
 # CDDL master matrix — roadmap (remaining work + findings)
 
 Read `README.md` first (the model + current state, including the durable gotchas and the
-upstream-oracle-gap state). This doc is strictly the FUTURE state: remaining work, the open-findings
-ledger, and pending decisions. The blow-by-blow of *how* done work landed lives in git history (this
+upstream-oracle-gap state). This doc is strictly the FUTURE state: matrix-side work, the
+open-findings ledger, upstream close-outs, and pending decisions. The blow-by-blow of *how* done work landed lives in git history (this
 doc is actively pruned of it; the project already did the same with the scale report + cold-critique).
 Running the gates is not a roadmap concern either: `check.ts` at the repo root is the self-enforcing
 gate registry + entry point, `tests/README.md` § "Running everything" is the prose overview, each
@@ -38,10 +38,26 @@ Q1–Q6 is answered by a standing script** (`QUERIES.md` § "Definition of done"
 > § "Directional support evidence", § "Upstream oracle gaps") — except **F8–F11, out of scope** (bottom).
 > Only still-open findings are sections below.
 
-## Remaining work
+## Matrix-side work — the model and the projections it renders
 
-The matrix exists to feed **many** consumers; corpus was just the hard flagship. What's left:
+The matrix exists to feed **many** consumers; corpus was just the hard flagship. What is left on the
+matrix's own side — as opposed to in the generator, which is the findings ledger below — is of two
+kinds: a defect in a projection (buildable now) and known incompletenesses of the coverage MODEL
+(deferred, so each names the observable that would reopen it).
 
+- **De-duplicate the role list `query_q1_gaps.ts` renders into `docs/docs/current_capacities.mdx`
+  § "Contextual gaps (supported top-level, unsupported when nested)" — buildable now.** The
+  Unsupported-roles column joins one entry per CONTAINMENT CELL rather than per role, so a construct
+  with several unsupported shapes in one role prints that role once per shape: `memberkey.type1`
+  currently reads `map-key` seven times and `occurrence-target` three, and `grpent.inline_group`
+  reads `occurrence-target` five times. This is published user documentation, and it reads as a
+  rendering bug rather than as information. The Example column has the same root: it shows the FIRST
+  cell's example, which for a multi-cell row illustrates a role the reader may not be looking at.
+  The fix is to group the cells by role — one role name, and either the role's own example or a
+  count — in `query_q1_gaps.ts`, plus a `--write` regeneration of the generated span. Magnitude, on
+  the axis it grows along: the repetition is monotonic in cell enumeration, so every future
+  (feature, role) cell makes an already-listed row longer and less readable — the fixed-value member
+  enumeration alone lengthened rows that were already repeating.
 - **Grammar-derived legality denominator for the role × feature grid.** The grid rendered in
   `tests/corpus/COVERAGE.md` § "Role × feature containment grid" takes its denominator from two
   *observed* sets — the cells the containment relation models, plus the cells the snapshot corpus
@@ -55,15 +71,6 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   spec that broke and can look its cell up in the published grid. The two panics that motivated the
   grid itself do not meet this signal: both sat in cells the corpus exercises and nothing models,
   which the grid now names `·`.
-- **Extern-interface seam sentinels — decide whether they're matrix surface.** `--extern-import`
-  input files carry vendor constructs beyond the two `ext.*` sentinels: the
-  `; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1` header and `; unexported:` records (strictly parsed at
-  the seam; comments to the grammar). They are tool-interchange rather than user-authored CDDL, so
-  rows may be out of scope — but they ARE consumed input surface. A deliberate yes/no belongs
-  here rather than silent omission.
-
-## F4 / F5 follow-ons (only when their consumer exists)
-
 - **Per-VALUE encoding reachability.** A head argument that is fixed by the construct's own definition
   is no longer a judgment call: a prelude construct declares the exact cell its head lands in, and
   `build_matrix.ts` re-derives that from the pinned prelude, so `bigfloat` (tag 5, at every value)
@@ -91,8 +98,13 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   already asserts — wasted authoring work, measured by the author who did it, and growing with the
   number of skewed rows rather than with the number of consumers. The entry records that the case
   exists; it records nobody having paid for it yet, so the signal can still fire.
-- **F4 (tag registry):** deliberately not pinned/enumerated (cddl-codegen is tag-parametric). Revisit only
-  if a *tag-semantic* consumer of the master appears.
+- **Tag registry — deliberately not pinned or enumerated.** cddl-codegen is tag-parametric, so the tag
+  NUMBER is a parameter of the `type2.tag` feature rather than a construct of its own, and the few
+  codegen-distinct tags are already prelude rows; the reasoning is current state in `README.md`
+  § "What is a feature?". *Reopening signal:* a **tag-semantic** consumer of the master appears — one
+  that must emit per-tag behaviour (datetime, bignum, …) rather than a parametric wrap/unwrap. That is
+  the only reader for whom the parametric model under-describes the space, and it is measurable by
+  them the moment they try to key anything off a tag number.
 
 ## Expansion (when relevant)
 
@@ -119,10 +131,8 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   when it correctly rejects the boundary violation, the row lands `class="constraint"` (the rows
   above); when it currently WRONGLY ACCEPTS it, the same enumeration lands the violation as a
   certified `class="over-acceptance"` pin instead, which flips to `class="constraint"` once the fix
-  lands — a worked FULL cycle: `contain.occurrence-target.memberkey.type1.plus_table` was enumerated
-  with an out-of-window empty-map over-acceptance pin while the table-marker-widening bug stood, then
-  promoted to `class="constraint"` (`enforce = yes`) when `+` became a `NonEmptyMap` (`4fa3041`), so
-  both branches of the rule are demonstrated, not just the acceptance side. The same rule applies to DISPATCH variations, not just
+  lands. Both branches have been walked end to end on one row — the worked cycle is in `README.md`
+  § "Gotchas", so it is not retold here. The same rule applies to DISPATCH variations, not just
   enforcement — precedent row: `contain.group-choice-arm.grpent.member.record_array_tagged`
   (`t = [ a: tg // b: tstr ]`, `tg = #6.10([x: uint])`), which pins the TAG head of a struct-level
   tagged record as an array-rep group-choice arm member. The arm discriminant routes a non-embedded
@@ -133,11 +143,15 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
   through every existing gate while mis-dispatching tagged-record arms — this row is what makes
   that mis-mapping fail loudly.
 
-## Findings — open (the ledger of candidate fixes; the matrix's actual payoff)
+## Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)
 
-The durable gotchas and the upstream-oracle-gap state are CURRENT state and live in `README.md`
-(§ "Gotchas", § "Upstream oracle gaps"); this section holds only what is still to do. New findings
-are ledgered here (that's what the probe/gate error messages point at).
+Every entry here is a defect or a missing capability in **this** generator that a probe, gate, or
+fuzzer sweep surfaced — that is what the section means, and what the many `§ findings` citations in
+`src/tests/` and `tests/README.md` resolve to. Two neighbouring classes live elsewhere on purpose:
+what the generator does TODAY, including the boundaries it keeps permanently and the upstream-oracle
+gap state, is current state in `README.md` (§ "Gotchas", § "Upstream oracle gaps"); prunes that wait
+on an external release are § "Upstream close-outs (waiting on external releases)". New findings are
+ledgered here (that's what the probe/gate error messages point at).
 
 - **Say each rejection once, so the count of messages is the count of problems.** A single
   offending construct can report the same rejection twice: `a = [{x: int}]`, `a = [[int]]` and
@@ -159,88 +173,6 @@ are ledgered here (that's what the probe/gate error messages point at).
   makes the number of DISTINCT problems unreadable — three or more copies of one message, or
   duplicates interleaved with genuinely different rejections — reported by someone reading that
   output to fix their own spec.
-
-**Upstream close-outs (waiting on external releases):**
-- When a release ships the `90f66ff` prelude-`number` float fix (README gap #7): prune the
-  fix-provenance notes (README gap #7, the `prelude-number-float-accepts` /
-  `prelude-number-tstr-rejects` fingerprint probes' provenance wording). Separately citable while
-  in the neighborhood: bare floats against `time` (`#6.1(number)`) validate WITHOUT the tag-1
-  wrapper (tag-leniency laxity, pre-existing and unchanged by the fix) — a candidate upstream
-  report, not yet filed. A sibling ruby time-family laxity surfaced by the corpus decode mint:
-  the generator mints calendar-INVALID `tdate`s (`0("5906-11-31t22:32:49-05:59")` — November 31
-  does not exist) and the validator accepts them, while the local-fixes rust oracle rejects
-  (RFC 3339 date validity — arguably the correct reading); repro + impact under "Adjacent
-  observations" in `draft/rust-cddl-named-key-map-gap.md` (local note) — the same
-  candidate-upstream-report disposition, not yet filed.
-- When a release ships the `707c038` float-key/null member-key fix (README gap #10): prune the
-  fix-provenance notes (README gap #10, the `float-key-accepts` / `null-key-rejects` fingerprint
-  probes' provenance wording).
-- When a rust `cddl` release ships the uint-target control-op fix (upstream PR submitted): prune
-  README gap #1 and `draft/rust-cddl-uint-control-op-gap.md`.
-- When a release ships the `773b723` array-sequence fix and the `Cargo.toml` pin moves back to
-  crates.io: prune the fix-provenance notes (README gaps #2/#4, the draft repro table, the vector
-  `reason` provenance).
-- When a release ships the `885c61c` non-uint-endpoint range fix (upstream PR pending — PR material
-  in `draft/rust-cddl-float-range-gap.md`): prune the fix-provenance notes (README gap #3, that
-  draft, and the rangeop vectors' `reason` provenance).
-- When a release ships the `2c7548e` radix-literal lexer fix (upstream PR pending — fix +
-  35-test suite on the fork; `draft/rust-cddl-radix-int-literal-gap.md`): prune the fix-provenance
-  notes (README gap #5, that draft). Separately track the WG spec question the fix spawned
-  (cbor-wg/cddl#33, filed: radix-mantissa floats the unordered ABNF technically derives). Future
-  radix-POSITION rows (occurrence bounds `0x2*0x4`, tag heads `#6.0x20`, …) additionally wait on a
-  ruby oracle fix — ruby corroborates radix in value position only
-  (`draft/radix-oracle-deviations-verdict.md`).
-- `.size` on a signed `int` — semantics CLARIFIED by the RFC author (cbor-wg/cddl#32): a control
-  distributes over `int = uint / nint`, and an undefined application (`.size` on `nint`) is a
-  per-value non-match, so `int .size N` matches exactly the `uint .size N` window. cddl-codegen
-  REJECTS the construct gracefully (the old `i{8N}` mapping mis-enforced the clarified window in
-  both directions, and the rust oracle hard-errors on it, so an aligned implementation would be
-  uncertifiable — pinned by `size_on_signed_int_rejects_gracefully`; scoreboard + detail in
-  `draft/cddl-size-on-int-divergence.md`). Remaining upstream waits: (1) the rust CLI's hard error
-  is a citable OVER-rejection bug — candidate `local-fixes` fork fix + upstream PR; once fixed,
-  supporting `int .size N` as the uint window becomes certifiable (a `ctl.size.int` row becomes
-  mintable) and the rejection can be revisited. (2) When the clarification lands as erratum/spec
-  text, cite it in the `current_capacities.mdx` note.
-- When a ruby `cddl` gem release parses inline/composite type2 controllers (`bytes .cbor [coords]`
-  — gem 0.12.14 exit-65s at parse, so the whole containing spec becomes unjudgeable; repro +
-  upstream steps in `draft/ruby-cddl-inline-composite-control-arg-gap.md`): remove the
-  `ir_conformance_corpus` gate's `RUBY_EXPECTED_FAIL` entries for `cbor_wrapped_group_array` and
-  `cbor_bignint_table` (their stale-ledger guards flip red by themselves once the divergence
-  disappears) and prune that draft.
-  Until then, rows/fixtures needing ruby corroboration for a control-arg construct must name the
-  controller type — same caveat class as the ruby radix-position deviations
-  (`draft/radix-oracle-deviations-verdict.md`).
-- When a release ships the `c2ebf9f` bignum map-key/value-tag fix (upstream PR pending — fix +
-  30-test suite on the fork; README gap #6): prune the fix-provenance notes (README gap #6, the
-  `RUST_ORACLE_SKIP` past-resident note, the two `bignint-*` fingerprint probes' provenance
-  wording).
-- When a rust `cddl` fix ships TAG-typed map-key validation (README gap #8 — OPEN at the pinned
-  `ac1b98e` rev; differential repro, suspected `src/validator/cbor.rs` site, and prune steps in
-  `draft/rust-cddl-tag-map-key-gap.md`, local note; no upstream issue filed yet): re-mint the row
-  it blocks (`--mint-decode-foreign --only=contain.map-key.type2.tag` — its `pinned_reason`
-  disappears once candidates survive the two-oracle gate), re-run the full `verify.ts` in the same
-  change so the row's evidence picks up the corroboration clause, and prune README gap #8 + that
-  draft.
-- When a rust `cddl` fix ships NAMED-RULE / parenthesized-choice map-KEY validation (README gap
-  #11 — OPEN at the pinned `ac1b98e` rev; differential grid, adjacent nested-map-VALUE and
-  multi-entry-composite-array-key observations, and prune steps in
-  `draft/rust-cddl-named-key-map-gap.md`, local note; no upstream issue filed yet): re-mint the
-  corpus decode rows it blocks
-  (`--mint-decode-corpus --only=c_style_enum_map_key.enum_keyed_map,table_enum_key.enum_keyed,table_enum_key.enum_key_holder`
-  — the empty-instance-only rows pick up non-empty vectors, and the pinned/active flip-flop the
-  gap causes stops, once candidates survive the two-oracle gate; if the fix also covers the
-  adjacent observations,
-  re-mint `wasm_nested_alias.passthru_tags_map` and the `composite_map_key` fixture in the same
-  change), and prune README gap #11 + that draft.
-- When a release ships the `3d56d8e` optional-entry/closed-map/JSON-type-domain-key fix (upstream
-  PR pending — fix + regression tests + 21/12-cell differential grid on the fork; README gap #9):
-  prune the fix-provenance notes (README gap #9 and the two `optional-entry`/`closed-map`
-  fingerprint probes' provenance wording). The fork checkout's `future-issues/` files three
-  still-open adjacent map-matching gaps found during that fix (a fourth, the float-key/null
-  copy-paste, is since fork-fixed — README gap #10) — bundle them into the upstream conversation
-  when convenient.
-
-**Bugs / gaps surfaced as findings (candidate cddl-codegen fixes):**
 - **Real incremental choice extension (`/=` type-choice, `//=` group-choice) is a candidate
   feature.** Extending an already-defined ident is rejected gracefully at the `api.rs` pre-scan
   (pinned by `incremental_choice_extension_rejects_gracefully`; the initial-definition-via-`/=`
@@ -351,27 +283,39 @@ are ledgered here (that's what the probe/gate error messages point at).
   the break is specific to the value kinds whose preserve-mode encoding sidecar differs. This
   predates the arm gaining default-profile support (reproduced against the parent commit), and the
   support is what makes it reachable in practice rather than hidden behind an earlier abort.
-  Unpinned, and the reason is itself the gap: the failure lives in the rustfmt/export seam, which
-  `api::generated_strings` never runs, so no in-process test can see it — pinning it needs a
-  disk-write (`generate_to_disk`) vector, which no current robustness layer mints. Reopening signal
-  on the magnitude axis: the count of fixed-value KINDS a consumer cannot use in a preserve crate is
-  2 of the 5 spellable today (bool, null), measurable by anyone generating such a spec.
-- **Enumerate the fixed-value group-choice arm's remaining VALUE KINDS.** The arm is supported in
-  every profile now, but the committed vectors are `uint 0` plus the three kinds probed on delivery
-  (text clean, bool and null broken under preserve — the entry above). Nint and float constants, and
-  the tag-wrapped forms in the ARRAY reps, are unprobed in both directions. This is enumeration work
-  with a known NON-uniform result rather than a speculative sweep, which is what makes it worth
-  rows: two of the four kinds probed so far behave differently from `uint`. Reopening signal: the
-  next kind that a consumer finds differs — the ratio is 1-in-2 so far, so the cost of not
-  enumerating is paid per spec, not per consumer.
+  Severity, for prioritising: 2 of the 5 spellable fixed-value kinds are unusable in a preserve
+  crate. Unpinned, and the reason is itself a gap: the failure lives in the rustfmt/export seam,
+  which `api::generated_strings` never runs, so no in-process test can see it — pinning it needs a
+  disk-write (`generate_to_disk`) vector, which no current robustness layer mints. **Reopening
+  signal**, either half: a consumer who needs `--preserve-encodings` (they must re-emit received
+  bytes unchanged — a ledger or consensus format) holds a spec with ≥1 map-rep group-choice arm whose
+  fixed value is a bool or null, which is a `grep` over a spec and a flag they already have; or a
+  robustness layer that mints disk-write vectors comes to exist, at which point the pin costs one
+  row and the entry should not stay unpinned. Today the evidence is synthetic probes only, and a
+  synthetic probe costs nobody a rewrite.
+- **Enumerate the remaining fixed-value KINDS, in both the arm and the member position.** The kind
+  axis and the position axis are separate cells, but they share one blocker and one reason to be
+  enumerated at all, said here once: the result is known to be NON-uniform (two of the four kinds
+  probed so far behave differently from `uint`), so these are rows with a known payoff rather than a
+  speculative sweep — and FLOAT is blocked in both positions by the same preserve-mode float stub
+  (`stub_preserve_encodings_supports_floats`, plus `tests/corpus/optional_fixed_float.cddl`), so the
+  float half of each waits on that stub retiring, which is its reopening signal. What is buildable
+  now:
+  - **Group-choice ARM kinds.** The arm is supported in every profile, but the committed vectors are
+    `uint 0` plus the three kinds probed on delivery (text clean; bool and null broken under
+    preserve — the entry above). Nint constants and the tag-wrapped forms in the ARRAY reps are
+    unprobed in both directions.
+  - **The NINT member cell.** Held back only while its message rendering was an open defect that a
+    row would have restated rather than discovered; `Key::Nint` landed and that ledger retired, so
+    the nint kind's member-position verdict is now an ordinary unknown that only a cell can carry.
+    The `n*m` marker on the cardinality boundary is omitted rather than deferred — the refusal
+    message names `*` / `+` / `?` / `n*m` from one site, so a fourth row would model the same code
+    path the three markers already reach.
 - **Give the fixed-value member cells a BOUNDARY vector, so their green tests the constant and not
-  just the shape.** The role itself is enumerated: containment rows now cover the four fixed prelude
-  constants and the three literal lexeme kinds in both `role.array-element` and `role.map-value`, the
-  map-value tag-wrapped arms mirroring `contain.array-element.type2.tag.{fixed_null,fixed_bool}`, and
-  both sides of the cardinality boundary (`contain.occurrence-target.type2.value.*` against
-  `contain.array-element.type2.value.bare_exactly_once`). What those cells stand on is
-  generate + round-trip evidence, which exercises the RIGHT constant only — nothing asserts that the
-  WRONG constant is refused. The vector shape is the `value.number.hexfloat` precedent in
+  just the shape.** The cells themselves are grounded (`README.md` § "Gotchas" carries what they
+  establish), and what they stand on is generate + round-trip evidence, which exercises the RIGHT
+  constant only — nothing asserts that the WRONG constant is refused. The vector shape is the
+  `value.number.hexfloat` precedent in
   `tests/decode_conformance/catalog.toml`: `source = "hand"`, `expect = "reject"`,
   `class = "constraint"`, and an `expect_err` substring of the generated decoder's Display, derived
   empirically rather than guessed. **This is buildable now, not deferred: the ordering constraint is
@@ -383,21 +327,11 @@ are ledgered here (that's what the probe/gate error messages point at).
   optional nint member and was confirmed RED before the `Key::Nint` fix; it covers one spelling by
   hand, and what remains is the same assertion as a `class="constraint"` catalog row on each grounded
   cell.
-- **Give the NINT fixed-value member its containment cell.** It was held back only while its message
-  rendering was an open defect that a row would have restated rather than discovered; `Key::Nint`
-  landed and that ledger is retired, so the nint kind's member-position verdict is now an ordinary
-  unknown that only a cell can carry. FLOAT stays held back on the same reasoning, because its own
-  ledger has NOT retired: the preserve leg rides the `stub_preserve_encodings_supports_floats` stub
-  class plus `tests/corpus/optional_fixed_float.cddl`. The `n*m` marker on the cardinality boundary is
-  omitted rather than deferred — the refusal message names `*` / `+` / `?` / `n*m` from one site, so a
-  fourth row would model the same code path the three markers already reach. Reopening signal for the
-  FLOAT half: preserve-mode floats are implemented and that stub retires, at which point the float
-  kind's member-position verdict becomes an unknown a cell must carry.
 - **`undefined` in MEMBER position crashes the generator, while its sibling fixed prelude constants
   do not.** `[v: undefined, x: uint]` and `{ k: undefined, j: uint }` both abort (exit 101) at the
-  prelude-name lookup in `src/utils.rs`, under the default and `--preserve-encodings` profiles alike,
-  whereas `true` / `false` / `null` are unsupported as TOP-LEVEL types yet supported as members — the
-  member-position flip does not reach `undefined`. The abort is a deliberate `TODO` at the
+  prelude-name lookup in `src/utils.rs`, under the default and `--preserve-encodings` profiles alike:
+  the member-position flip that carries `true` / `false` / `null` (`README.md` § "Gotchas") does not
+  reach `undefined`. The abort is a deliberate `TODO` at the
   prelude-name lookup and is role-independent, so it is the same site the top-level fixture
   `tests/matrix_panic/prelude.undefined.cddl` pins; the cells
   `contain.array-element.prelude.undefined` and `contain.map-value.prelude.undefined` are what make
@@ -411,9 +345,9 @@ are ledgered here (that's what the probe/gate error messages point at).
   TOP LEVEL is refused gracefully — member position is strictly worse here.** `[v: h'0102', x: uint]`,
   the unkeyed `[h'0102', x: uint]`, and `{ k: h'0102', j: uint }` all abort (exit 101) on the
   `Ignoring Type2: B16ByteString` catch-all in `src/parsing.rs`, in both profiles, whereas the
-  top-level `x = h'0102'` type exits 1 with a message (`tests/matrix_reject/value.bytes.cddl`). That
-  is the inverse of the `true`/`false`/`null` pattern, where member position is what makes the value
-  usable, so a reader who generalizes from the prelude constants generalizes wrongly. The cells
+  top-level `x = h'0102'` type exits 1 with a message (`tests/matrix_reject/value.bytes.cddl`) — the
+  inverse of the member-position flip, and the reason that flip is written down as a gotcha rather
+  than left to be generalized. The cells
   `contain.array-element.value.bytes` and `contain.map-value.value.bytes` model both positions.
   Candidate cddl-codegen fix: emit the fixed-value member path the uint/text kinds already use (a
   bytes constant carries zero information, like every other fixed kind), or route the catch-all
@@ -421,14 +355,12 @@ are ledgered here (that's what the probe/gate error messages point at).
   signal on the magnitude axis: a spec brought to us contains a byte-string fixed member, i.e. the
   count of members its owner must hand-rewrite reaches 1 — today only synthetic probes reach the
   site.
-- **A bare `any` type-choice arm in a NON-LAST position** (`a = any / tstr`) is a permanent graceful
-  rejection, recorded here so the decision is not re-litigated: a bare `any` accepts every CBOR
-  item, so any arm after it is unreachable dead code
-  ("`any` arm makes later arms unreachable — move it last"). A LAST-position bare `any` arm is
-  supported (forced-backtracking dispatch); a tagged `any` arm (`#6.n(any)`) is not a catch-all and
-  is allowed in any position. Non-last rejection pinned by `tests/robustness/choice_any_arm.cddl`,
-  last-position support by `tests/robustness/choice_last_any_arm.cddl`. The matrix has no
-  containment cell for the shape, which is the coverage gap the fuzzer exists to find.
+- **Enumerate the `any`-arm POSITION variation as containment cells.** The rejection boundary itself
+  is decided and permanent (`README.md` § "Gotchas": non-last bare `any` refused, last-position bare
+  `any` and tagged `#6.n(any)` supported), but the matrix models none of the three positions — the
+  fuzzer is what found the shape, which is exactly the coverage hole the "Intra-alternative variation
+  rows" rule above exists to close. Rows here cost one cell each and make a permanent boundary
+  legible as a verdict instead of as prose.
 - **Three compile/round-trip-class families remaining from the recombination fuzzer's layer-2 sweeps**
   (`recombination_crates_execute`: generation is ok, but the generated crate fails `cargo test`
   under `--emit-tests`, default profile). Generation-outcome catalogs cannot see these, so each
@@ -604,11 +536,6 @@ are ledgered here (that's what the probe/gate error messages point at).
   `emission.preserve = unsupported`), alongside `prelude.number` / `prelude.time` and the two
   float-range wrapper rows `rangeop.{inclusive,exclusive}.float` (the wrapper wraps an f64 member,
   hitting the same native-float-under-preserve `unimplemented!`).
-- Two float-adjacent **deliberate graceful rejections — boundaries to keep, not gaps to close
-  blindly**: `.ne` over a float (the integer min>max exclusion hack has no principled float
-  encoding) and a decimal bound on an integer-primitive head (`uint .le 10.5` — silently flooring
-  it onto the int head would mis-enforce). Both route through `record_rejection`; pinned alongside
-  the float-window enforcement in the `tests/core` `float_bounds` fixtures.
 - **A `@custom_json` type produces a non-compiling json/wasm surface standalone (the same
   can't-compile-standalone class as `dsl_custom`).** `@custom_json` intentionally omits the serde
   derives on the rust type (the user is expected to supply custom json (de)serialize code), but the
@@ -671,6 +598,93 @@ are ledgered here (that's what the probe/gate error messages point at).
   ledgered in `tests/TESTING_ROADMAP.md`; the likely honest fix is parse-time rejection, which
   lands it as a reject row rather than a compile cell).
 
+## Upstream close-outs (waiting on external releases)
+
+Not cddl-codegen work: each entry is a PRUNE that becomes due when an external release ships a fix
+the matrix currently carries fork-pinned provenance for (the gap state itself is current state in
+`README.md` § "Upstream oracle gaps"). They are separated from the findings ledger above because
+nothing here is a candidate fix — the code change already exists upstream or on the fork, and what
+remains is deleting the notes that explain why we do not have it yet.
+
+- When a release ships the `90f66ff` prelude-`number` float fix (README gap #7): prune the
+  fix-provenance notes (README gap #7, the `prelude-number-float-accepts` /
+  `prelude-number-tstr-rejects` fingerprint probes' provenance wording). Separately citable while
+  in the neighborhood: bare floats against `time` (`#6.1(number)`) validate WITHOUT the tag-1
+  wrapper (tag-leniency laxity, pre-existing and unchanged by the fix) — a candidate upstream
+  report, not yet filed. A sibling ruby time-family laxity surfaced by the corpus decode mint:
+  the generator mints calendar-INVALID `tdate`s (`0("5906-11-31t22:32:49-05:59")` — November 31
+  does not exist) and the validator accepts them, while the local-fixes rust oracle rejects
+  (RFC 3339 date validity — arguably the correct reading); repro + impact under "Adjacent
+  observations" in `draft/rust-cddl-named-key-map-gap.md` (local note) — the same
+  candidate-upstream-report disposition, not yet filed.
+- When a release ships the `707c038` float-key/null member-key fix (README gap #10): prune the
+  fix-provenance notes (README gap #10, the `float-key-accepts` / `null-key-rejects` fingerprint
+  probes' provenance wording).
+- When a rust `cddl` release ships the uint-target control-op fix (upstream PR submitted): prune
+  README gap #1 and `draft/rust-cddl-uint-control-op-gap.md`.
+- When a release ships the `773b723` array-sequence fix and the `Cargo.toml` pin moves back to
+  crates.io: prune the fix-provenance notes (README gaps #2/#4, the draft repro table, the vector
+  `reason` provenance).
+- When a release ships the `885c61c` non-uint-endpoint range fix (upstream PR pending — PR material
+  in `draft/rust-cddl-float-range-gap.md`): prune the fix-provenance notes (README gap #3, that
+  draft, and the rangeop vectors' `reason` provenance).
+- When a release ships the `2c7548e` radix-literal lexer fix (upstream PR pending — fix +
+  35-test suite on the fork; `draft/rust-cddl-radix-int-literal-gap.md`): prune the fix-provenance
+  notes (README gap #5, that draft). Separately track the WG spec question the fix spawned
+  (cbor-wg/cddl#33, filed: radix-mantissa floats the unordered ABNF technically derives). Future
+  radix-POSITION rows (occurrence bounds `0x2*0x4`, tag heads `#6.0x20`, …) additionally wait on a
+  ruby oracle fix — ruby corroborates radix in value position only
+  (`draft/radix-oracle-deviations-verdict.md`).
+- `.size` on a signed `int` — semantics CLARIFIED by the RFC author (cbor-wg/cddl#32): a control
+  distributes over `int = uint / nint`, and an undefined application (`.size` on `nint`) is a
+  per-value non-match, so `int .size N` matches exactly the `uint .size N` window. cddl-codegen
+  REJECTS the construct gracefully (the old `i{8N}` mapping mis-enforced the clarified window in
+  both directions, and the rust oracle hard-errors on it, so an aligned implementation would be
+  uncertifiable — pinned by `size_on_signed_int_rejects_gracefully`; scoreboard + detail in
+  `draft/cddl-size-on-int-divergence.md`). Remaining upstream waits: (1) the rust CLI's hard error
+  is a citable OVER-rejection bug — candidate `local-fixes` fork fix + upstream PR; once fixed,
+  supporting `int .size N` as the uint window becomes certifiable (a `ctl.size.int` row becomes
+  mintable) and the rejection can be revisited. (2) When the clarification lands as erratum/spec
+  text, cite it in the `current_capacities.mdx` note.
+- When a ruby `cddl` gem release parses inline/composite type2 controllers (`bytes .cbor [coords]`
+  — gem 0.12.14 exit-65s at parse, so the whole containing spec becomes unjudgeable; repro +
+  upstream steps in `draft/ruby-cddl-inline-composite-control-arg-gap.md`): remove the
+  `ir_conformance_corpus` gate's `RUBY_EXPECTED_FAIL` entries for `cbor_wrapped_group_array` and
+  `cbor_bignint_table` (their stale-ledger guards flip red by themselves once the divergence
+  disappears) and prune that draft.
+  Until then, rows/fixtures needing ruby corroboration for a control-arg construct must name the
+  controller type — same caveat class as the ruby radix-position deviations
+  (`draft/radix-oracle-deviations-verdict.md`).
+- When a release ships the `c2ebf9f` bignum map-key/value-tag fix (upstream PR pending — fix +
+  30-test suite on the fork; README gap #6): prune the fix-provenance notes (README gap #6, the
+  `RUST_ORACLE_SKIP` past-resident note, the two `bignint-*` fingerprint probes' provenance
+  wording).
+- When a rust `cddl` fix ships TAG-typed map-key validation (README gap #8 — OPEN at the pinned
+  `ac1b98e` rev; differential repro, suspected `src/validator/cbor.rs` site, and prune steps in
+  `draft/rust-cddl-tag-map-key-gap.md`, local note; no upstream issue filed yet): re-mint the row
+  it blocks (`--mint-decode-foreign --only=contain.map-key.type2.tag` — its `pinned_reason`
+  disappears once candidates survive the two-oracle gate), re-run the full `verify.ts` in the same
+  change so the row's evidence picks up the corroboration clause, and prune README gap #8 + that
+  draft.
+- When a rust `cddl` fix ships NAMED-RULE / parenthesized-choice map-KEY validation (README gap
+  #11 — OPEN at the pinned `ac1b98e` rev; differential grid, adjacent nested-map-VALUE and
+  multi-entry-composite-array-key observations, and prune steps in
+  `draft/rust-cddl-named-key-map-gap.md`, local note; no upstream issue filed yet): re-mint the
+  corpus decode rows it blocks
+  (`--mint-decode-corpus --only=c_style_enum_map_key.enum_keyed_map,table_enum_key.enum_keyed,table_enum_key.enum_key_holder`
+  — the empty-instance-only rows pick up non-empty vectors, and the pinned/active flip-flop the
+  gap causes stops, once candidates survive the two-oracle gate; if the fix also covers the
+  adjacent observations,
+  re-mint `wasm_nested_alias.passthru_tags_map` and the `composite_map_key` fixture in the same
+  change), and prune README gap #11 + that draft.
+- When a release ships the `3d56d8e` optional-entry/closed-map/JSON-type-domain-key fix (upstream
+  PR pending — fix + regression tests + 21/12-cell differential grid on the fork; README gap #9):
+  prune the fix-provenance notes (README gap #9 and the two `optional-entry`/`closed-map`
+  fingerprint probes' provenance wording). The fork checkout's `future-issues/` files three
+  still-open adjacent map-matching gaps found during that fix (a fourth, the float-key/null
+  copy-paste, is since fork-fixed — README gap #10) — bundle them into the upstream conversation
+  when convenient.
+
 ## wasm-ABI & multifile placement matrices — remaining work
 
 Current state — the grid, the three always-on axes (compile floor, round-trip, rust↔wasm API-surface
@@ -690,103 +704,39 @@ composition-space cross-check that complements this matrix's curated per-shape g
   the root side of that path has no red→green vector). Candidate: a `rootref` mode (the `bholder`
   lands in `lib.cddl`) over the wrapper-minting shape subset, with the same participation-pin idiom
   (`EXPECTED_*` lists) the `anon` mode uses.
-- **Keep BOTH matrix axes honest (periodic).** Grid coverage equals the hand-curated `SHAPES` ×
-  `ROLES` lists in `project_wasm_matrix.ts` — and a hole in *either* axis is silent, not a red cell. A
-  wasm representation not in `SHAPES` is an un-gated shape; equally, an emitter path that places types
-  in a boundary position not in `ROLES` is a silent hole (the E0599 bounded-wrapper-arm bug lived
-  exactly there — it needed the per-variant `tchoice-variant` role to surface, while `bwrap` was a
-  `SHAPES` entry all along). A generator change that gives types a NEW way to cross the wasm boundary,
-  or a NEW position to sit in, must add the shape or role in the same change. The standing questions "which representation, and
-  which boundary position, are we *not* enumerating?" deserve a periodic sweep regardless — and the
-  rule extends to the MULTIFILE matrix's own `SHAPES` list (`project_multifile_matrix.ts`), which
-  has a proven instance: the collection-of-records shape (`[* <record>]`, the only array whose wasm
-  representation needs a generated structural wrapper) was missing from `SHAPES`, so the Array-arm
-  placement class stayed invisible to every gate until review of the Map-arm fix asked what the new
-  alias recursion could reach — now enumerated as the `collrec` cells (all green: `collrec__anon`/
-  `collrec__aliased` under the emission-scope element registration, `collrec__named` once the `Alias`
-  arm stopped minting a structural-wrapper import the named rule's own class subsumes).
-  A SECOND multifile-`SHAPES` instance is on record with a different discovery signature — an
-  adjacent test STEERING AROUND the hole rather than a fix's review: the non-exposable-KEYED table
-  (`{ * <record> => text }`, whose wasm `keys()` names a root-minted keys-list wrapper) was in
-  neither `SHAPES` list while `wasm_collections_index` deliberately used exposable `uint` keys to
-  dodge the then-unfixed keys-list import dangle — a steering comment in a test is a coverage hole
-  wearing a disguise, and grepping for such steering is a cheap arm of the periodic sweep.
-  Enumerated as the `tblrec` cells (red, E0425-pinned) and fixed (`register_root_keys_list` at both
-  `mark_refs` walk arms) in the same change series; all three cells green at HEAD.
-  A THIRD multifile-`SHAPES` instance repeated the steering-comment tell verbatim: every reject-set
-  shape (`rset`/`nerset`/`rseta`/`nerseta`) carried a deliberately-EXPOSABLE element — their own
-  projector comment says so — while a RECORD-element reject rule emits a `try_from(&<Elem>List)`
-  loose source the struct-walk arm only registered under the non-empty bound, leaving a plain
-  `[*] reject` rule cross-module a live E0425 no gate could see, found by fix-review reach-analysis
-  ("which OTHER rule families emit a loose source?") over the restricted-wrapper delivery.
-  Enumerated as the `rsetrec`/`nersetrec`/`rsetarec`/`nersetarec` cells (`rsetrec` red-proven,
-  then fixed by keying the struct-walk gate on `duplicates == Reject`, LOCKSTEP with
-  `generate_reject_ordered_set_type`'s `loose_list` decision); all green at HEAD.
-  A second proven instance on the wasm matrix itself: the alias-to-record shape (`ral = st`) was
-  missing from `SHAPES`, so the group-choice wasm-ctor alias-resolution divergence was un-gated for
-  plain aliases (only its `.cbor`-wrapper sibling `cborwrap` had a cell) until the fix's review
-  asked which other alias shapes the divergent `resolve_alias_shallow` could reach — now enumerated
-  as the `ralias` cells (green). The `collrec` and `ralias` instances were found by review asking
-  "what else can this code path reach?", which is exactly the question the periodic sweep
-  mechanizes; the `tblrec` instance adds the steering-comment tell to it. One near-miss on
-  the multifile half of this rule is on record: `ralias` initially landed only in the wasm
-  projection's `SHAPES`, silently breaking the multifile list's "every self-contained shape with
-  defs" claim until a doc-coherence review caught it — a SECOND such near-miss is the signal to
-  make `project_multifile_matrix.ts --check` assert its `SHAPES` is a superset of the wasm
-  projection's (minus its documented exclusions) instead of relying on review.
-  A first instance on the multifile matrix's MODE axis is also on record (the axes-honesty rule's
-  fourth quadrant — until it, every instance was SHAPES-side or wasm-ROLES-side): all four
-  then-extant reference modes embed the shape from a record-FIELD position, so the
-  group-choice-VARIANT
-  position — whose ctor expands a foreign-scope Record's field types into `new_<variant>` params
-  in both passes, an import class `scope_references` never marked (E0412/E0425) — was invisible to
-  the whole sweep. Its discovery signature is a third tell, distinct from fix-review reach-analysis
-  and steering comments: HAND-PATCHED GENERATED OUTPUT IN A CONSUMER (CML's committed
-  `src/generated/**` carried hand-added `use` lines that every regen deleted — a workaround
-  living in generated output is a coverage hole wearing the same disguise as a steering comment,
-  and grepping consumers' generated-output diffs for hand edits is the corresponding cheap sweep
-  arm). Fixed via the shared `EnumVariant::group_ctor_record_fields` helper (emitters + import
-  walk); the vector is hand-pinned (`tests/multifile` `relay`, test
-  `cross_module_group_choice_ctor`). The mode-axis extension recorded recur-first against a second
-  instance has since had its trigger FIRE: the type-alias-TARGET position (a plain alias rule's
-  `pub type` line naming a cross-scope target — another position `scope_references` never walked,
-  E0412) escaped to a production consumer's regen, discovered not by any sweep tell but as the
-  consumer failure the sweep exists to prevent. The position axis now exists as the `aliased` mode
-  (`bal = <ty>`, every included shape — fixed by the `scope_references` type-alias walk); the
-  `gcvariant` extension over the Record-resolving shapes remains the recorded remainder in
-  `tests/TESTING_ROADMAP.md` ("Multifile reference-POSITION coverage").
-  That mode's first day in production then proved a NEW axis surface: the SHAPES list's
-  EXCLUSIONS. The `extern`/`rawbytes` shapes are excluded because the compile floor cannot build
-  them standalone — but the exclusion bounds the gate, not the generator, and the walk's first
-  consumer regen broke exactly there: a generic-EXTERN instance's alias target is a `Base<Args>`
-  TYPE-EXPRESSION ident, emitted verbatim into the scope's `use` list (invalid Rust, rustfmt
-  abort; feature request 07 — same consumer-failure discovery signature as the `aliased` escape
-  itself). Fixed by decomposing in the walk (base imported at its declaring scope via the
-  single-owner `GenericInstance::extern_base_ident`, arguments walked); the residue is hand-pinned
-  (`tests/extern-generic-scoped`) rather than enumerated, since the constraint forcing the
-  exclusion is the compile floor's, and a generation-only excluded-shapes leg is recorded
-  recur-first in `tests/TESTING_ROADMAP.md` ("Multifile reference-POSITION coverage"). Sweep
-  lesson: an exclusion justified by the gate's execution model is not evidence the generator has
-  nothing to get wrong there — the periodic "what are we not enumerating?" question must read the
-  exclusion comments too, not just hunt missing rows.
-  Two further instances of the hand-patched-consumer-output tell landed together in the
-  wasm-wrapper visibility + rustfmt-skip delivery: CML replace-overlay blocks whose entire payload
-  flipped a wasm tuple field's visibility (retired by the uniform `pub(crate)` policy —
-  `WasmWrapper::push_inner_field`, pinned by `integration_collection_wrapper_fields_are_pub_crate`),
-  and seven hand-placed `#[rustfmt::skip]` blocks working around rust-lang/rustfmt#5703 fatally
-  aborting regen on over-width fields (retired by the generator emitting the skip itself, pinned by
-  `integration_overwidth_wasm_wrapper_field_gets_rustfmt_skip`). The second instance exposed a hole
-  in a dimension none of the matrix axes enumerate — input REALISM (consumer-scale identifier
-  length; every fixture's short names kept the over-width class unreachable) — recorded recur-first
-  in `tests/TESTING_ROADMAP.md` ("Identifier-length realism").
-  A further instance: a consumer's hand `pub use cml_core::Int;` (papering over the alias-walk
-  dangling-name bug) plus a planned multi-block replace-overlay workaround spanning the whole
-  `Int` surface, retired by routing `Int`/`IntError` through `--common-import-override` — the
-  re-export plus the `borrowed_key_types.rs` `int` key-flavor row (pinned by
-  `extern_deps`, `extern_deps_wasm`, and the pure-consumer cell `common_override_wasm_int` for the
-  re-export,
-  `int_key_via_common_import_override_sidecar` and the `int`
-  leg of `workspace_key_requests_derive_effect_and_hard_errors` for the flavor channel).
+- **Keep EVERY matrix axis honest (periodic).** Grid coverage equals the hand-curated lists the
+  projections carry — `SHAPES` × `ROLES` in `project_wasm_matrix.ts`, `SHAPES` × reference MODE in
+  `project_multifile_matrix.ts` — and a hole in ANY of them is silent, not a red cell. A wasm
+  representation not in `SHAPES` is an un-gated shape; an emitter path that places types in a
+  boundary position not in `ROLES`, or a reference position not in the mode list, is an un-gated
+  position. **The standing rule: a generator change that gives types a NEW way to cross the wasm
+  boundary, or a NEW position to sit in, adds the shape/role/mode in the same change.** Beyond that
+  rule the axes need a periodic sweep, and the sweep is worth running as four repeatable TELLS rather
+  than as a re-read of the lists — every hole that has actually bitten (E0412/E0425/E0599 classes,
+  one of them escaping to a production consumer's regen) was found by one of these, never by asking
+  "is this list complete?":
+  - **Fix-review reach analysis** — after a fix, ask which OTHER rule families the changed code path
+    can reach. The shapes it reaches and the grid does not are the missing rows.
+  - **A steering comment in a test** — a test that deliberately picks the easy variant ("uses an
+    exposable key so no wrapper is minted") is a coverage hole wearing a disguise. Grepping for such
+    steering is a cheap sweep arm.
+  - **Hand-patched generated output in a consumer** — hand-added `use` lines, visibility flips, or
+    `#[rustfmt::skip]` blocks living in a consumer's committed `src/generated/**`. Every regen
+    deletes them, so each one is a workaround for a generator hole nobody filed; read the consumer's
+    generated-output diffs for hand edits (read them — never regenerate a consumer to find them).
+  - **The EXCLUSION comments, not just the missing rows** — a shape excluded because the compile
+    floor cannot build it standalone (`extern` / `rawbytes`) bounds the GATE, not the generator, and
+    a consumer regen has already broken inside exactly such an exclusion. An exclusion justified by
+    the gate's execution model is never evidence the generator has nothing to get wrong there.
+  Two residuals are recorded rather than enumerated, both in `tests/TESTING_ROADMAP.md`: the
+  `gcvariant` mode extension over the Record-resolving shapes plus a generation-only leg over the
+  excluded shapes (§ "Multifile reference-POSITION coverage"), and input REALISM — consumer-scale
+  identifier length, a dimension no axis enumerates, which kept an over-width-field class unreachable
+  under every short-named fixture (§ "Identifier-length realism"). One mechanical upgrade is armed:
+  the multifile `SHAPES` list has drifted from the wasm projection's once, caught by doc-coherence
+  review rather than by a gate — a SECOND such near-miss is the signal to make
+  `project_multifile_matrix.ts --check` assert its `SHAPES` is a superset of the wasm projection's
+  (minus its documented exclusions) instead of relying on review.
 - **Third honesty axis — flag-gated EMISSION SURFACES × input mode (periodic, same footing as the
   SHAPES/ROLES rule above).** SHAPES/ROLES cover what types look like and where they sit; a whole
   flag-gated emission surface can still be built against single-file assumptions and break only
@@ -839,8 +789,15 @@ Per the `QUERIES.md` query-map, no consumer query needs these (revisit only if a
   query (Q7) only.
 - **F10 / F11** — note-only (over-acceptance denominator; AST cross-check is weak corroboration).
 
-## Pending decision (needs a human call)
+## Pending decisions (need a human call)
 
+- **Extern-interface seam sentinels — are they matrix surface?** `--extern-import` input files carry
+  vendor constructs beyond the two `ext.*` sentinels: the `; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1`
+  header and `; unexported:` records (strictly parsed at the seam; comments to the grammar). They are
+  tool-interchange rather than user-authored CDDL, so rows may be out of scope — but they ARE consumed
+  input surface, and the `CDDL_CODEGEN` profile's whole premise is that vendor surface rides the same
+  pipeline. A deliberate yes/no belongs here rather than silent omission; a "yes" costs the
+  registration chain in `README.md` § "Registering a new vendor (CDDL_CODEGEN) feature row".
 - **Over-acceptance denominator:** the `class="over-acceptance"` vector class pins each CERTIFIED
   instance (the numerator; rows are enumerated per the "Intra-alternative variation rows" rule as
   instances surface). Still undecided is the DENOMINATOR for any completeness claim about that axis:
@@ -856,10 +813,10 @@ consolidation — are recorded in the code + git history; not re-litigated here.
 Upstream specs churn (IANA registries, the grammar). Refresh with `sources/fetch.sh` (re-fetches + verifies
 against `SHA256SUMS`); a checksum mismatch flags upstream drift to review before re-pinning and regenerating.
 
-Hand-counted prose lists in this doc (e.g. the findings ledger's panic-class and
-compile/round-trip-class family-count headers — cited here count-free on purpose: a hard-coded
-example count is itself this rot class, and one went stale exactly that way) are maintained by
-review: pruning or adding a
+Hand-counted prose lists in this doc — today the findings ledger's layer-2
+compile/round-trip-class family-count header, plus any future sibling; cited here count-free on
+purpose, since a hard-coded example count is itself this rot class and one went stale exactly that
+way — are maintained by review: pruning or adding a
 family must update the count and keep the entry in the list whose framing matches its failure
 stage (generation-failure vs layer-2 compile/round-trip). If a count or a mis-homed entry slips
 through review again, fold these counts into `project_status_headers.ts`'s generated-counter
