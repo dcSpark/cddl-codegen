@@ -72,14 +72,18 @@
     },
     {
       "gate": "corpus_decode_replay",
-      "warm_ms": 636000,
+      "warm_ms": 770000,
       "n": 20,
-      "measured": "2026-07-26",
+      "measured": "2026-07-28",
       "machine": "86216c55",
       "history": [
         {
           "date": "2026-07-26",
           "warm_ms": 636000
+        },
+        {
+          "date": "2026-07-28",
+          "warm_ms": 770000
         }
       ]
     },
@@ -111,14 +115,18 @@
     },
     {
       "gate": "decode_conformance_replay",
-      "warm_ms": 427000,
+      "warm_ms": 525000,
       "n": 20,
-      "measured": "2026-07-26",
+      "measured": "2026-07-28",
       "machine": "86216c55",
       "history": [
         {
           "date": "2026-07-26",
           "warm_ms": 427000
+        },
+        {
+          "date": "2026-07-28",
+          "warm_ms": 525000
         }
       ]
     },
