@@ -559,6 +559,99 @@ fn inline_group_choice_arm_rejects_gracefully() {
     }
 }
 
+/// Every `type2` construct with no member/element representation is rejected BY DESIGN, via a
+/// GRACEFUL `Err`, never a `panic!` — the role-sibling of the rule-body catch-all in `parse_type`.
+/// Each vector below reaches `rust_type_from_type2`'s catch-all and must come back naming its OWN
+/// construct, so a future arm that silently swallows a neighbour's shape fails here rather than
+/// generating something wrong.
+///
+/// Byte-string literals get three vectors (keyed array element, unkeyed array element, map value)
+/// because the three are separate walk paths into the same arm. The `b64'…'` spelling has no vector:
+/// the upstream `cddl` fork's parser rejects it before generation (a `missing definition for rule
+/// b64` parse error), so it cannot reach this seam today — the arm lists it only so the class stays
+/// complete if that gap closes.
+///
+/// The `#` vector's hint is asserted honest by `tests/robustness/any_member.cddl`: the prelude NAME
+/// `any` is supported in exactly the position the grammar sigil is refused in.
+#[test]
+fn unsupported_member_type2_rejects_gracefully() {
+    // (tag, spec, a substring naming the construct, a substring of the honest remedy)
+    let vectors = [
+        (
+            "t2_bytes_elem",
+            "a = [v: h'0102', x: uint]\n",
+            "a byte-string literal",
+            "it is a different spec, not an equivalent one",
+        ),
+        (
+            "t2_bytes_elem_unkeyed",
+            "a = [h'0102', x: uint]\n",
+            "a byte-string literal",
+            "it is a different spec, not an equivalent one",
+        ),
+        (
+            "t2_bytes_map_val",
+            "m = { k: h'0102', j: uint }\n",
+            "a byte-string literal",
+            "it is a different spec, not an equivalent one",
+        ),
+        (
+            "t2_bytes_utf8",
+            "a = [v: 'text', x: uint]\n",
+            "a byte-string literal",
+            "it is a different spec, not an equivalent one",
+        ),
+        (
+            "t2_unwrap",
+            "bar = [uint]\nfoo = [v: ~bar, x: uint]\n",
+            "an unwrap (`~name`)",
+            "inline the referenced rule's definition manually",
+        ),
+        (
+            "t2_any_sigil",
+            "a = [v: #, x: uint]\n",
+            "the `any` type (`#`)",
+            "the prelude name `any` is supported in this position",
+        ),
+        (
+            "t2_major_type",
+            "a = [v: #1, x: uint]\n",
+            "a bare major-type constraint (`#N` / `#N.M`)",
+            "",
+        ),
+        (
+            "t2_choice_from_group",
+            "g = (a: uint, b: uint)\na = [v: &g, x: uint]\n",
+            "a choice-from-group (`&groupname`)",
+            "",
+        ),
+        (
+            "t2_choice_from_inline_group",
+            "a = [v: &(a: 1, b: 2), x: uint]\n",
+            "a choice-from-inline-group (`&( ... )`)",
+            "",
+        ),
+    ];
+    for (tag, spec, construct, remedy) in vectors {
+        for extra in [&[][..], &["--preserve-encodings", "true"][..]] {
+            let msg = expect_graceful_rejection(tag, spec, extra);
+            assert!(
+                msg.contains(construct),
+                "rejection should name `{construct}` ({tag}, {extra:?}), got: {msg}"
+            );
+            // The seam is member/element-only — `parse_type` owns rule bodies — so the wording may
+            // claim the role, and must.
+            assert!(
+                msg.contains("used as a member or element type is unsupported"),
+                "rejection should name the member/element role ({tag}, {extra:?}), got: {msg}"
+            );
+            assert!(
+                msg.contains(remedy),
+                "rejection should carry the honest remedy ({tag}, {extra:?}), got: {msg}"
+            );
+        }
+    }
+}
 /// The CDDL prelude constant `undefined` (major type 7, simple value 23) is rejected BY DESIGN, via
 /// a GRACEFUL `Err`, never a `panic!` — in EVERY position, member and rule-body alike. Unlike
 /// `null`/`true`/`false` it has no `FixedValue`, so there is no value for a member to hold and no

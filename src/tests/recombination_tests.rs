@@ -860,10 +860,19 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
         "should be handled by the alias system instead",
         "float16 / float16-32 / float32-64 (no native Rust f16 / float-choice); pinned by tests/matrix_panic/prelude.float16.cddl and siblings",
     ),
-    (
-        "Ignoring Type2:",
-        "unsupported type2 in MEMBER position (top-level rule bodies now reject gracefully via `record_rejection`; this is the member-side site that still panics); pinned by tests/matrix_panic/contain.array-element.type2.unwrap.cddl and role siblings",
-    ),
+    // (retired when the member-side type2 catch-all became graceful rejections) An unsupported
+    // `type2` in MEMBER / ELEMENT position — a byte-string literal (`h'…'` / `'…'`), an unwrap
+    // (`~name`), a bare major-type constraint (`#N` / `#N.M`), the `any` sigil (`#`), a
+    // choice-from-group (`&g`) or a choice-from-inline-group (`&( … )`) — now records a rejection
+    // naming its OWN construct and continues with an inert placeholder, exactly as the rule-body
+    // catch-all in `parse_type` already did for the same constructs. The conversion was taken whole
+    // rather than per-construct: the class was the unfinished member half of the completed
+    // top-level sweep, so leaving any arm panicking would have re-earned the same finding. Message
+    // identity per construct is pinned by `unsupported_member_type2_rejects_gracefully`, and the
+    // outcome category by tests/robustness/bytes_member.cddl and
+    // tests/robustness/unwrap_member.cddl. The `parse_type` table it mirrors is deliberately a
+    // SEPARATE table (its texts are matrix `code_anchor`s), so the two can be reworded
+    // independently.
     (
         "non-literal tag heads (#6.<type>(...)) are not supported",
         "type-valued tag head (RFC 9682); pinned by tests/matrix_reject/type2.tag_head_type.cddl (PANIC row in the reject catalog)",
@@ -973,16 +982,15 @@ fn recombination_generation_sweep() {
 
     // Vacuity floors — from the EXECUTED artifact, not the inputs. Current baseline, re-measured
     // 2026-07-28 by running this test with --nocapture and reading its own printed tally
-    // (1544 swept / 892 ok / 178 panic / 474 graceful); floors sit under it so real shrinkage
+    // (1544 swept / 892 ok / 106 panic / 546 graceful); floors sit under it so real shrinkage
     // fails loud while ingredient additions don't churn them.
     //
     // The panic column is where this baseline moves, and it moves in ONE direction: every
     // abort-to-rejection conversion migrates a block of compositions panic -> graceful without
     // touching a floor, because the floors bound `ok` and the swept total, and neither changes.
-    // The last re-measurement before this one read 367 panic / 292 graceful; converting the
-    // anonymous-composite, inline-group-arm and bare-fixed-value-occurrence families moved 182 of
-    // those panics to graceful and 7 more to ok (the fixed-value group-choice arm, which became
-    // real support rather than a refusal). So a stale reading here understates how much of the
+    // The reading before this one was 178 panic / 474 graceful; refusing the `undefined` prelude
+    // constant at the name-resolution seam and converting the member-side type2 catch-all whole
+    // moved 72 more compositions across. So a stale reading here understates how much of the
     // sweep is already diagnosed — which is the opposite of alarming, and exactly why nothing
     // fails when it rots. Re-measure when a conversion lands; do not infer it from the floors.
     //

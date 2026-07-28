@@ -206,24 +206,24 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
 | `genericarg.type` | ✅ | Generic type instantiation | `generics.cddl` |
-| `type2.any` | ➖ | Any (#) | bare `#` (any) — Type2 variant unmatched, falls into the catch-all panic  [`Ignoring Type2`] |
+| `type2.any` | ➖ | Any (#) | bare `#` (any) — no storable representation, rejected gracefully in both rule-body and member position (the prelude NAME `any` is supported and is what the message points at)  [`the `any` type (`#`)`] |
 | `type2.array` | ✅ | Array | `array.cddl` |
 | `type2.choice_from_group` | ➖ | Choice from named group (&) | choice-from-group `&groupname` — unmatched  [`Type2::ChoiceFromGroup`] |
 | `type2.choice_from_inline_group` | ➖ | Choice from inline group (&) | choice-from-inline-group `&(...)` — unmatched  [`Type2::ChoiceFromInlineGroup`] |
-| `type2.major` | ➖ | Major-type sigil (#N, #N.n) | major-type sigils `#N` / `#N.n` — Type2::DataMajorType unmatched, catch-all panic  [`Ignoring Type2`] |
-| `type2.major7` | ➖ | Major-type 7 / simple sigil (#7, #7.n) | `#7` / `#7.n` simple/float sigils — unmatched, catch-all panic  [`Ignoring Type2`] |
+| `type2.major` | ➖ | Major-type sigil (#N, #N.n) | major-type sigils `#N` / `#N.n` — no storable representation, rejected gracefully in both rule-body and member position  [`a bare major-type constraint`] |
+| `type2.major7` | ➖ | Major-type 7 / simple sigil (#7, #7.n) | `#7` / `#7.n` simple/float sigils — same bare major-type constraint, rejected gracefully in both rule-body and member position  [`a bare major-type constraint`] |
 | `type2.map` | ✅ | Map | `map_struct.cddl` — canonical = pure struct map; table-style is table.cddl; MIXED struct+table ({a: uint, * k => v}) is unsupported (parsing.rs) |
 | `type2.parenthesized` | ✅ | Parenthesized type | `parenthesized.cddl` — canonical = the fixture isolating `(T)` at type position; nested_group.cddl (the previous cover) contains a parenthesized GROUP RULE, not the type2 production — the old detector conflated the two |
 | `type2.tag` | ✅ | Tagged data item (#6.n) | `tagged.cddl` |
 | `type2.typename` | ✅ | Type reference (with optional generic args) | `type_alias.cddl` |
-| `type2.unwrap` | ➖ | Unwrap (~) | unwrap `~` — Type2::Unwrap unmatched, catch-all panic  [`Type2::Unwrap`] |
+| `type2.unwrap` | ➖ | Unwrap (~) | unwrap `~` — the construct splices a group's contents, so there is no type to store; rejected gracefully in both rule-body and member position, pointing at the one remedy that works (inline the referenced rule by hand)  [`Type2::Unwrap`] |
 | `type2.value` | ➖ | Literal value as a type | a literal used as a top-level type (`answer = 42`) is rejected gracefully; cddl-codegen exposes Fixed only as a struct member, not as a standalone type. A real gap; pinned by `tests/matrix_reject/type2.value.cddl`. Its supported array-element role is the [[cover]] above.  [`a top-level rule whose entire body is a bare fixed value`] — also ✅ @array-element (`fixed_value.cddl`: a literal as a fixed array-element value (`c: 5`)) |
 
 ### `value` (6)
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
-| `value.bytes` | ➖ | Byte-string literal value | byte-string literal (h'..'/b64'..'/'..') as a value — Type2 unmatched (also a rust-parser limitation: ruby/ABNF accept)  [`Ignoring Type2`] |
+| `value.bytes` | ➖ | Byte-string literal value | byte-string literal (h'..'/'..') as a value — the value is fixed by the schema and `FixedValue` has no bytes variant, so it is rejected gracefully in both rule-body and member position; widening to `bytes` is a different spec, not an equivalent one (the b64'..' spelling additionally fails in the rust parser: ruby/ABNF accept)  [`a byte-string literal`] |
 | `value.number` | ➖ | Numeric literal value | top-level numeric-literal type (`version = 5`) is rejected gracefully — same Fixed-type gap; pinned by `tests/matrix_reject/value.number.cddl`. Its supported array-element role is the [[cover]] above.  [`a top-level rule whose entire body is a bare fixed value`] — also ✅ @array-element (`fixed_value.cddl`: numeric literal member (`c: 5`)) |
 | `value.number.bin` | ➕ | Binary integer literal (0b…) | supported, no corpus fixture (cddl-codegen exit 0) |
 | `value.number.hex` | ➕ | Hexadecimal integer literal (0x…) | supported, no corpus fixture (cddl-codegen exit 0) |

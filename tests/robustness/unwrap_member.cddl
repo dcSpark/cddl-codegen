@@ -1,0 +1,13 @@
+; An unwrap (`~name`) in MEMBER position. The construct splices the referenced rule's CONTENTS into
+; the enclosing group, which is a group-level rewrite with no type to store at the member — so it is
+; REJECTED GRACEFULLY at `rust_type_from_type2`'s member/element catch-all, mirroring the rule-body
+; catch-all's refusal of the same construct, and pointing at the one remedy that works: inline the
+; referenced rule's definition by hand.
+;
+; It gets its own catalog row beside `bytes_member.cddl` because the two enter the shared arm from
+; different walk paths (a named-rule reference vs. a literal) and because this shape is the one the
+; retired `"Ignoring Type2:"` panic-class ledger entry named — a row here is what keeps that
+; conversion from silently reverting. Message identity is pinned by
+; `unsupported_member_type2_rejects_gracefully` (src/tests/robustness_tests.rs).
+bar = [uint]
+foo = [v: ~bar, x: uint]
