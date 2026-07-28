@@ -37,7 +37,9 @@ container's closing `}`/`]` (a CDDL comment runs to end of line and swallows the
 illustration parses differently than the doc describes; the warning bullet's deliberate
 counterexamples are allowlisted by exact span text), and enforces
 blank lines before headings in the hand docs. The conventions it backs: gap-tracking prose names its
-pin by exact identifier ("pinned by/tracked by/gated by `name`"), and a *behavioral* claim ("construct
+pin by exact identifier ("pinned by/tracked by/gated by `name`") — the resolvable spelling for a
+test is its bare fn name; a module-qualified `config_tests::name` does not resolve and fails the
+gate — and a *behavioral* claim ("construct
 X panics/rejects") gets a robustness-catalog row FIRST — the panic/reject catalogs flip loudly on a
 behavior change, where prose-only claims rot silently. Those catalogs are **generate-only by
 design**, which bounds what a row discharges: a PANIC row flipped to `ok` asserts that generation
