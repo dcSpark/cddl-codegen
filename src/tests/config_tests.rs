@@ -1634,6 +1634,96 @@ fn the_convergence_warning_fires_only_when_a_consumed_sidecar_changed() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// The committed-state verdict, over hand-written files so each input can be varied one at a time.
+///
+/// Four of these five cases are about NOT firing, which is the property that matters most: a verdict
+/// that fails the build has to be silent on everything it cannot actually read as a broken
+/// workspace, or it is worse than the silence it replaces.
+#[test]
+fn the_committed_verdict_fires_only_on_a_wrapper_the_dependency_does_not_host() {
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_config_verdict_{:016x}",
+        crate::tests::integration_tests::checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    let sidecar = dir.join("gen/ledger/wasm/src/generated/borrowed_collections.rs");
+    let index = dir.join("gen/core/wasm/src/generated/collections.rs");
+    for path in [&sidecar, &index] {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    }
+    let config = config::parse_str(
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\ndeps = [\"core\"]\n",
+        &dir,
+    )
+    .unwrap();
+    let config_path = dir.join("codegen.toml");
+    let verdict = |selected: &[&str]| {
+        config
+            .committed_verdict(
+                &config_path,
+                &selected.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+            )
+            .expect("the verdict is a read, not a validation")
+    };
+    let borrows = |rows: &str| {
+        std::fs::write(
+            &sidecar,
+            format!("pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[{rows}];\n"),
+        )
+        .unwrap();
+    };
+
+    // No sidecar at all: a consumer that has never generated borrows nothing.
+    std::fs::write(&index, "").unwrap();
+    assert_eq!(verdict(&[]), None);
+
+    // Borrowing what the dependency hosts.
+    borrows(r#"("core", "CoreThingList", "[* core_thing]")"#);
+    std::fs::write(
+        &index,
+        "// banner\npub use crate::generated::requested_collections::CoreThingList;\n",
+    )
+    .unwrap();
+    assert_eq!(verdict(&[]), None);
+
+    // A row addressed to a DIFFERENT dependency is not this edge's to satisfy — one sidecar can
+    // name several deps, and only the ones this config draws an edge to are checked here.
+    borrows(
+        r#"("core", "CoreThingList", "[* core_thing]"), ("elsewhere", "GhostList", "[* ghost]")"#,
+    );
+    assert_eq!(verdict(&[]), None);
+
+    // Borrowing what it does not host: the verdict, naming both crates, the wrapper, and the
+    // dependency-alone regen that hosts it.
+    borrows(r#"("core", "MapU64ToCoreThing", "{* uint => core_thing}")"#);
+    let missing = verdict(&[]).expect("an unhosted wrapper is a workspace that does not build");
+    for expected in ["`core`", "`ledger`", "MapU64ToCoreThing"] {
+        assert!(
+            missing.contains(expected),
+            "must carry {expected:?}: {missing}"
+        );
+    }
+    assert!(
+        missing.contains(&format!("--config {} core", config_path.display())),
+        "and the command that settles it: {missing}"
+    );
+
+    // The selection reaches the edge from EITHER end. Naming only the consumer is the subset case
+    // the bracketing warning is structurally blind to — the dependency is not in the run, so
+    // nothing about it is watched — and it is exactly where this must still fire.
+    assert!(verdict(&["ledger"]).is_some());
+    assert!(verdict(&["core"]).is_some());
+
+    // An index that cannot be read as an index contributes nothing rather than failing the build:
+    // the strict reader of that file is the consumer's own run, which hard-errors on it.
+    std::fs::write(&index, "this is not a wrapper index\n").unwrap();
+    let mangled = verdict(&[]).expect("an unreadable index still provides no wrapper");
+    assert!(mangled.contains("MapU64ToCoreThing"));
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 // ---------------------------------------------------------------------------------------------
 // End to end
 // ---------------------------------------------------------------------------------------------
@@ -1672,8 +1762,17 @@ fn a_two_crate_config_generates_a_consumer_that_imports_its_dependency() {
     )
     .unwrap();
 
-    config::generate(&config_path, &[])
-        .unwrap_or_else(|e| panic!("a cold config run must generate: {e}"));
+    // A cold run writes everything and then reports that what it wrote is one pass from converged:
+    // `core` generated before `ledger` had recorded the wrapper it borrows, so `core` does not host
+    // it yet. Everything asserted below is about the files, which are written before the verdict is
+    // reached; the verdict itself is pinned by
+    // [`a_config_run_converges_and_then_repeats_byte_for_byte`].
+    let cold = config::generate(&config_path, &[])
+        .expect_err("a cold run leaves the dependency not hosting the borrowed wrapper");
+    assert!(
+        cold.to_string().contains("does not build"),
+        "the cold run must fail with the committed-state verdict, not something else: {cold}"
+    );
 
     let dep_export = dir.join("gen/core/extern-interface/core/mod.cddl");
     assert!(
@@ -3407,7 +3506,16 @@ fn a_whole_config_generates_what_the_hand_written_flags_generate() {
         }
     }
 
-    config::generate(&config_path, &[]).expect("the config run must generate");
+    // The config run writes every file and then reports that the cold tree it wrote is a pass from
+    // converged — `ledger` borrows a wrapper `core` generated before hearing about. That verdict is
+    // about the workspace rather than about the bytes, and the hand invocations (which are not a
+    // config run) do not reach it; the trees compared below are written either way.
+    let cold = config::generate(&config_path, &[])
+        .expect_err("the cold acceptance workspace is one pass from converged");
+    assert!(
+        cold.to_string().contains("does not build"),
+        "the cold run must fail with the committed-state verdict, not something else: {cold}"
+    );
     for (name, argv) in &hand {
         crate::api::generate_to_disk(&Cli::parse_from(argv)).unwrap_or_else(|e| {
             panic!("the hand-written invocation for `{name}` must generate: {e}")
@@ -3458,10 +3566,15 @@ fn a_whole_config_generates_what_the_hand_written_flags_generate() {
 /// It is deliberately NOT "run 1 equals run 2". A cold workspace cannot converge in one run and is
 /// not supposed to: generation order resolves the two edge directions in the DEPENDENCY's favour, so
 /// on run 1 `core` reads a `borrowed_collections.rs` that does not exist yet and `ledger` writes it
-/// afterwards. That is the documented one-run-stale case, and the convergence check is what reports
-/// it rather than something to engineer away. So the shape asserted is: run 1 warns, run 2 does not,
-/// and run 3 is byte-identical to run 2. A feedback path that genuinely did not converge would fail
-/// at the second or third of those.
+/// afterwards. That is the documented one-run-stale case, and the convergence checks are what report
+/// it rather than something to engineer away. So the shape asserted is: run 1 both warns and returns
+/// the committed-state verdict, run 2 does neither, and run 3 is byte-identical to run 2. A feedback
+/// path that genuinely did not converge would fail at the second or third of those.
+///
+/// Both signals firing on run 1 is the point rather than a redundancy: they say different things,
+/// and only the second is a verdict. The warning is about the RUN ("I rewrote a sidecar `core` had
+/// already read"); the verdict is about the TREE ("`core` does not host what `ledger` borrows"), and
+/// on run 1 both happen to be true of the same cold workspace.
 #[test]
 fn a_config_run_converges_and_then_repeats_byte_for_byte() {
     let dir = std::env::temp_dir().join(format!(
@@ -3498,16 +3611,36 @@ fn a_config_run_converges_and_then_repeats_byte_for_byte() {
     // Run 1, cold: `core` reads a sidecar `ledger` has not written yet, so the run is one behind and
     // says so.
     let cold = config::Convergence::capture(&expanded);
-    config::generate(&config_path, &[]).expect("the cold run must generate");
+    let verdict = config::generate(&config_path, &[])
+        .expect_err("a cold workspace does not build once every file is written");
     assert_eq!(
         cold.stale_crates(),
         ["core".to_owned()].into_iter().collect(),
         "a cold workspace cannot converge in one run: the dependency read a sidecar this run then \
          wrote, and the convergence check is what tells the user to run again"
     );
+    // The verdict names the crate that must change and the wrapper it is missing, and prints the
+    // command that settles it — a DEPENDENCY-alone regen, which is the command a subset run leaves
+    // the user needing and the bracketing warning never says.
+    let verdict = verdict.to_string();
+    for expected in [
+        "does not build",
+        "`core` does not host",
+        "CoreThingList",
+        "`ledger`",
+    ] {
+        assert!(
+            verdict.contains(expected),
+            "the verdict must carry {expected:?}, got: {verdict}"
+        );
+    }
+    assert!(
+        verdict.contains(&format!("--config {} core", config_path.display())),
+        "and must print the dependency-alone regen that hosts it, got: {verdict}"
+    );
     let after_cold = tree_bytes(&dir, &["gen"]);
 
-    // Run 2: every sidecar is in place before anything reads it.
+    // Run 2: every sidecar is in place before anything reads it, so both signals go quiet.
     let warm = config::Convergence::capture(&expanded);
     config::generate(&config_path, &[]).expect("the warm run must generate");
     assert!(
@@ -3535,6 +3668,111 @@ fn a_config_run_converges_and_then_repeats_byte_for_byte() {
              {difference}"
         );
     }
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The case the whole committed-state verdict exists for, on real disk: a **subset** run that adds a
+/// borrow.
+///
+/// This is the one the bracketing [`config::Convergence`] check cannot see, and the test asserts that
+/// blindness rather than assuming it — `stale_crates()` is empty across the subset run, because
+/// `Convergence` watches only sidecars THIS run consumed and the dependency was not in the run.
+/// Before the verdict existed, the whole sequence below printed nothing and exited 0 over a workspace
+/// whose consumer imports a wrapper class no crate defines.
+///
+/// The sequence is: converge a two-crate workspace, add a second borrow to the consumer's spec,
+/// regenerate the consumer ALONE, then follow the verdict's own instruction and watch it clear. That
+/// last step is what makes the message actionable rather than merely alarming.
+#[test]
+fn a_subset_run_that_adds_a_borrow_is_reported_against_the_committed_tree() {
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_config_subset_borrow_{:016x}",
+        crate::tests::integration_tests::checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("specs")).unwrap();
+    std::fs::write(
+        dir.join("specs/core.cddl"),
+        "core_thing = [a: uint, b: text]\n",
+    )
+    .unwrap();
+    let ledger_spec = dir.join("specs/ledger.cddl");
+    std::fs::write(&ledger_spec, "ledger_rec = [l: [* core_thing]]\n").unwrap();
+    let config_path = dir.join("cddl-codegen.toml");
+    std::fs::write(
+        &config_path,
+        format!(
+            "[defaults]\nstatic-dir = \"{}\"\n\n\
+             [crates.core]\ninput = \"specs/core.cddl\"\noutput = \"gen/core\"\n\
+             lib-name = \"core-lib\"\n\n\
+             [crates.ledger]\ninput = \"specs/ledger.cddl\"\noutput = \"gen/ledger\"\n\
+             lib-name = \"ledger-lib\"\ndeps = [\"core\"]\n",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/static"),
+        ),
+    )
+    .unwrap();
+
+    // Converge: run 1 leaves `core` not yet hosting `CoreThingList`, run 2 hosts it.
+    config::generate(&config_path, &[]).expect_err("a cold workspace does not build");
+    config::generate(&config_path, &[]).expect("the second run converges it");
+
+    // Now the case. The consumer's spec gains a map over the dependency's type, so it borrows a
+    // wrapper the dependency has never been asked for, and only the consumer is regenerated.
+    std::fs::write(
+        &ledger_spec,
+        "ledger_rec = [l: [* core_thing], m: {* uint => core_thing}]\n",
+    )
+    .unwrap();
+    let selected = vec!["ledger".to_owned()];
+    let expanded = config::load(&config_path)
+        .unwrap()
+        .expand(&selected)
+        .unwrap();
+    let bracketing = config::Convergence::capture(&expanded);
+    let verdict = config::generate(&config_path, &selected)
+        .expect_err("a subset run that adds a borrow leaves the workspace unbuildable");
+
+    assert!(
+        bracketing.stale_crates().is_empty(),
+        "the bracketing check must be silent here — that blindness is what the verdict exists for, \
+         and a fixture where it fires would not be testing the gap. Stale: {:?}",
+        bracketing.stale_crates()
+    );
+    let verdict = verdict.to_string();
+    for expected in ["`core` does not host", "MapU64ToCoreThing", "`ledger`"] {
+        assert!(
+            verdict.contains(expected),
+            "the verdict must name the crate that must change and what it is missing ({expected:?}), \
+             got: {verdict}"
+        );
+    }
+
+    // The tree really is broken: the consumer compiles an import of a class the dependency's index
+    // does not re-export. This is what makes the verdict a statement about the tree rather than
+    // about the run.
+    let sidecar =
+        std::fs::read_to_string(dir.join("gen/ledger/wasm/src/generated/borrowed_collections.rs"))
+            .unwrap();
+    assert!(sidecar.contains("use core_lib_wasm::collections::MapU64ToCoreThing;"));
+    let index =
+        std::fs::read_to_string(dir.join("gen/core/wasm/src/generated/collections.rs")).unwrap();
+    assert!(!index.contains("MapU64ToCoreThing"));
+
+    // Follow the instruction the verdict printed: a dependency-alone regen, which clears it.
+    assert!(
+        verdict.contains(&format!("--config {} core", config_path.display())),
+        "the verdict must print the command that settles it, got: {verdict}"
+    );
+    config::generate(&config_path, &["core".to_owned()])
+        .expect("the dependency-alone regen the verdict names must converge the workspace");
+    let index =
+        std::fs::read_to_string(dir.join("gen/core/wasm/src/generated/collections.rs")).unwrap();
+    assert!(
+        index.contains("MapU64ToCoreThing"),
+        "the dependency must now host the wrapper, got:\n{index}"
+    );
+    config::generate(&config_path, &[]).expect("and the converged workspace is silent");
 
     let _ = std::fs::remove_dir_all(&dir);
 }

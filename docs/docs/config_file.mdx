@@ -271,13 +271,46 @@ behind). … Re-run `cddl-codegen --config codegen.toml` to converge.
 Run it again and the warning goes away. There is no automatic re-run: a loop needs a divergence bound
 and muddies "run twice = run once = clean run", where the warning makes the two-run case explicit.
 
+### The verdict on the committed tree
+
+The warning above is an *instruction about the run*, and it is bounded by what the run touched: it
+compares the sidecars this run **consumed**, before and after. A run that does not include the
+dependency therefore has nothing to compare — which is precisely the dangerous case. Regenerate one
+crate so that it starts borrowing a new wrapper, and the dependency is left not hosting it while the
+run prints nothing at all.
+
+So there is a second check, and it is a *verdict about the tree*. After generating, over every `deps`
+edge touching this run — the crates you named **and their declared counterparties** — it reads the
+consumer's committed `borrowed_collections.rs` and the dependency's committed `collections.rs`
+wrapper index. Every row of that sidecar compiles to a `use <dep>_wasm::collections::<Name>;` line,
+so a name the index does not re-export is a workspace that does not build. That one **exits nonzero**:
+
+```
+Error: "the committed workspace does not build: `core` does not host `MapU64ToCoreThing` borrowed by
+`ledger`. … Run `cddl-codegen --config codegen.toml core` to host them: a dependency-alone regen
+reads its consumers' committed sidecars, and is always safe."
+```
+
+The two are not two strengths of one signal. "I rewrote a sidecar something had already read" is
+normal, self-clearing, and expected on a first run, so it stays a warning at exit 0. "This tree does
+not build" is neither, and it is true whether or not the dependency was in your run — which is why it
+names the **dependency** to re-run rather than telling you to repeat what you just did.
+
+A consequence worth planning for: the first run of a brand-new workspace exits nonzero, because a
+cold tree genuinely does not build until the dependency has heard what its consumers borrow. The
+command the verdict prints settles it, and so does a second full run.
+
+Both checks read generated files and neither changes one. Nothing about what is generated depends on
+either; the verdict's only effect is the exit code.
+
 :::note Migrating from a script that runs consumers first
 A hand-written `codegen.sh` may well run its crates in the *other* order — consumers before
 dependencies — and accept staleness on the `--extern-import` side instead. Converting it to a config
 flips which of your two edges is the stale one. Nothing is lost: the first run after the flip prints
 the convergence warning, and a second run converges. A brand-new workspace also takes two runs, since
 the sidecars a dependency reads do not exist until its consumers have generated once — a run with no
-sidecar to read says so on stderr and treats the consumer as borrowing nothing.
+sidecar to read says so on stderr and treats the consumer as borrowing nothing, and the first run
+[exits nonzero](#the-verdict-on-the-committed-tree) because the tree it wrote does not build yet.
 :::
 
 Selecting a subset does **not** pull in its dependencies. The unselected dependency's committed output
@@ -855,13 +888,14 @@ orders and no single pass satisfies both. Running the consumer first means the c
 dependency's *previous* output; running the dependency first means the dependency reads the
 consumer's *previous* sidecar. A migrating project is trading one staleness for the other, and the
 observable difference is which failure it can hit: under the config's order, a run in which
-multi-era **adds** a borrow leaves chain not hosting it, and the convergence warning names the crate
-and prints the command that converges it.
+multi-era **adds** a borrow leaves chain not hosting it, and the
+[committed-state verdict](#the-verdict-on-the-committed-tree) names the crate, fails the run, and
+prints the command that converges it.
 
-CML's hand-rolled `check_convergence` covers the same class of staleness, from the other direction
-and against the committed tree rather than against the run. It is not made redundant by the built-in
-check so much as narrowed: the built-in one reports what *this run* left stale, and a standalone
-check of the committed state is still a standalone check.
+CML's hand-rolled `check_convergence` reads the same two files against each other — multi-era's
+`borrowed_collections.rs` against chain's `collections.rs` — and fails the script the same way. The
+built-in verdict is that check generalised to every `deps` edge the config declares, so it covers the
+single-crate regen the script's own comment names as the scenario it guards.
 
 ### What does not move
 
