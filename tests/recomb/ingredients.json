@@ -496,11 +496,19 @@
       "role": "role.array-element"
     },
     {
+      "feature": "prelude.false",
+      "role": "role.array-element"
+    },
+    {
       "feature": "prelude.null",
       "role": "role.array-element"
     },
     {
       "feature": "prelude.true",
+      "role": "role.array-element"
+    },
+    {
+      "feature": "prelude.undefined",
       "role": "role.array-element"
     },
     {
@@ -525,6 +533,10 @@
     },
     {
       "feature": "type2.value",
+      "role": "role.array-element"
+    },
+    {
+      "feature": "value.bytes",
       "role": "role.array-element"
     },
     {
@@ -628,6 +640,18 @@
       "role": "role.map-value"
     },
     {
+      "feature": "prelude.null",
+      "role": "role.map-value"
+    },
+    {
+      "feature": "prelude.true",
+      "role": "role.map-value"
+    },
+    {
+      "feature": "prelude.undefined",
+      "role": "role.map-value"
+    },
+    {
       "feature": "type.choice",
       "role": "role.map-value"
     },
@@ -645,6 +669,22 @@
     },
     {
       "feature": "type2.unwrap",
+      "role": "role.map-value"
+    },
+    {
+      "feature": "type2.value",
+      "role": "role.map-value"
+    },
+    {
+      "feature": "value.bytes",
+      "role": "role.map-value"
+    },
+    {
+      "feature": "value.number",
+      "role": "role.map-value"
+    },
+    {
+      "feature": "value.text",
       "role": "role.map-value"
     },
     {
@@ -673,6 +713,10 @@
     },
     {
       "feature": "type2.map",
+      "role": "role.occurrence-target"
+    },
+    {
+      "feature": "type2.value",
       "role": "role.occurrence-target"
     },
     {
