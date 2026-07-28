@@ -1,0 +1,16 @@
+; The CDDL prelude constant `undefined` (#7.23) in MEMBER position. Unlike its major-type-7
+; siblings `null`/`true`/`false` it has no `FixedValue`, so a member has no value to hold and a rule
+; has no type to name — it is REJECTED GRACEFULLY, in every position, at
+; `IntermediateTypes::new_type`'s unresolved-reserved fallback (the one seam every position funnels
+; through, which is why the message names the TYPE and never the position).
+;
+; It gets a catalog row rather than riding the message pin alone because the row is what catches a
+; regression back to an ABORT: the refusal replaced a `panic!` in `cddl_prelude`, and a future
+; refactor that routes a member around `new_type` would restore it silently. The message text and
+; the rule-body sibling are pinned by
+; `undefined_prelude_rejects_gracefully_in_every_position` (src/tests/robustness_tests.rs).
+;
+; NOT a widening: `any` is the supported way to carry an arbitrary CBOR item (`undefined` included)
+; in this position — see tests/robustness/any_member.cddl — but it does not CONSTRAIN the position
+; to `undefined`, so it is a different spec, which is why this stays a refusal.
+a = [v: undefined, x: uint]

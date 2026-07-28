@@ -115,9 +115,11 @@ pub fn cddl_prelude(name: &str) -> Option<&str> {
         "cbor-any" | // #6.55799(any)
         "eb64url" | // #6.21(any)
         "eb64legacy" | // #6.22(any)
-        "eb16" | // #6.23(any)"),
-        // TODO: nor undefined (yet)
-        "undefined" => panic!("unsupported cddl prelude type: {}", name), // #7.23
+        "eb16" => panic!("unsupported cddl prelude type: {}", name), // #6.23(any)
+        // `undefined` (#7.23) is NOT listed above: it is refused gracefully one level up, at
+        // `IntermediateTypes::new_type`'s unresolved-reserved fallback, which is the only caller
+        // that can reach this arm and the only one holding the handle a rejection needs. Reaching
+        // `_ => None` from here is therefore unreachable in practice, and harmless if it ever were.
         _ => None,
     }
 }
