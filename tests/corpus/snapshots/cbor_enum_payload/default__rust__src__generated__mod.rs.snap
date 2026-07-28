@@ -1,0 +1,39 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+pub mod error;
+mod extern_interface_check;
+pub mod serialization;
+
+#[derive(Clone, Debug)]
+pub struct CborEnumHolder {
+    pub bytes_payload: PayloadEnum,
+    pub tagged_payload: PayloadEnum,
+}
+
+impl CborEnumHolder {
+    pub fn new(bytes_payload: PayloadEnum, tagged_payload: PayloadEnum) -> Self {
+        Self {
+            bytes_payload,
+            tagged_payload,
+        }
+    }
+}
+
+#[derive(Copy, Eq, PartialEq, Ord, PartialOrd, Clone, Debug)]
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
+pub enum PayloadEnum {
+    I0,
+    I1,
+    I2,
+}

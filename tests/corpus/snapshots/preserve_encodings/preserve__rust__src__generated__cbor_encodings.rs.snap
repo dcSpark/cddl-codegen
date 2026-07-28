@@ -82,6 +82,15 @@ pub struct CEncoding {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct CborEnumWrappersEncoding {
+    pub len_encoding: LenEncoding,
+    pub bytes_arm_bytes_encoding: StringEncoding,
+    pub bytes_arm_encoding: Option<cbor_event::Sz>,
+    pub tagged_arm_tag_encoding: Option<cbor_event::Sz>,
+    pub tagged_arm_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct CborInCborEncoding {
     pub len_encoding: LenEncoding,
     pub foo_bytes_bytes_encoding: StringEncoding,

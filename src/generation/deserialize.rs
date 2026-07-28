@@ -1405,7 +1405,26 @@ impl GenerationScope {
                                     target.line(&format!(
                                         "let initial_position = {deserializer_name}.position();"
                                     ));
-                                    let mut variant_final_exprs = config.final_exprs.clone();
+                                    // Two DIFFERENT lists, deliberately kept apart. The per-variant
+                                    // probe closure below is generated with a FRESH config
+                                    // (`make_enum_variant_return_if_deserialized` ->
+                                    // `DeserializeConfig::new(variant.name_as_var())`), so its `Ok`
+                                    // value carries ONLY this enum's own encoding fields — never the
+                                    // exprs a WRAPPING op already pushed into `config.final_exprs`
+                                    // (a `bytes .cbor` payload's `StringEncoding::from(..)`, a tag's
+                                    // `Some(tag_enc)`). So:
+                                    //   - `enc_names` destructures what the closure returns, and is
+                                    //     the match PATTERN: plain identifiers, correct arity;
+                                    //   - `variant_final_exprs` (outer exprs THEN names) is the
+                                    //     returned VALUE, with the outer exprs referenced from
+                                    //     enclosing scope where they are already bound (the
+                                    //     `let {var}_bytes_encoding` above, the `(tag, tag_enc) =>`
+                                    //     arm around us).
+                                    // Prefixing the outer exprs into the pattern too made a call expr
+                                    // illegal in pattern position (E0164) and the arity wrong even
+                                    // when it was legal (E0308) — every wrapped c-style enum under
+                                    // `--preserve-encodings` failed to compile.
+                                    let mut enc_names = Vec::new();
                                     if cli.preserve_encodings {
                                         for enc_var in encoding_fields(
                                             types,
@@ -1414,16 +1433,22 @@ impl GenerationScope {
                                             false,
                                             cli,
                                         ) {
-                                            variant_final_exprs.push(enc_var.field_name);
+                                            enc_names.push(enc_var.field_name);
                                         }
                                     }
+                                    let mut variant_final_exprs = config.final_exprs.clone();
+                                    variant_final_exprs.extend(enc_names.iter().cloned());
                                     for variant in variants {
                                         let mut return_if_deserialized =
                                             make_enum_variant_return_if_deserialized(
                                                 self,
                                                 types,
                                                 variant,
-                                                variant_final_exprs.is_empty(),
+                                                // agrees with the CLOSURE's return arity, not the
+                                                // outer list's: this flag makes the closure body end
+                                                // in `Ok(())`, which only the `()` pattern below
+                                                // matches
+                                                enc_names.is_empty(),
                                                 None,
                                                 target,
                                                 deserializer_name,
@@ -1432,10 +1457,10 @@ impl GenerationScope {
                                         // pattern parens only for a real tuple (>1), mirroring the
                                         // expression side's final_expr and the non-value enum
                                         // dispatch's names_without_outer.len() > 1 check
-                                        let ok_pattern = if variant_final_exprs.len() == 1 {
-                                            variant_final_exprs[0].clone()
+                                        let ok_pattern = if enc_names.len() == 1 {
+                                            enc_names[0].clone()
                                         } else {
-                                            format!("({})", variant_final_exprs.join(", "))
+                                            format!("({})", enc_names.join(", "))
                                         };
                                         return_if_deserialized
                             .line(format!("Ok({}) => return Ok({}),",

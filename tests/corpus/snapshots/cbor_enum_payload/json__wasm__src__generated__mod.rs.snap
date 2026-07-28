@@ -1,0 +1,78 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+pub use cddl_lib::PayloadEnum;
+use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct CborEnumHolder(pub(crate) cddl_lib::CborEnumHolder);
+
+#[wasm_bindgen]
+impl CborEnumHolder {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<CborEnumHolder, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<CborEnumHolder, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn bytes_payload(&self) -> PayloadEnum {
+        self.0.bytes_payload
+    }
+
+    pub fn tagged_payload(&self) -> PayloadEnum {
+        self.0.tagged_payload
+    }
+
+    pub fn new(bytes_payload: PayloadEnum, tagged_payload: PayloadEnum) -> Self {
+        Self(cddl_lib::CborEnumHolder::new(bytes_payload, tagged_payload))
+    }
+}
+
+impl From<cddl_lib::CborEnumHolder> for CborEnumHolder {
+    fn from(native: cddl_lib::CborEnumHolder) -> Self {
+        Self(native)
+    }
+}
+
+impl From<CborEnumHolder> for cddl_lib::CborEnumHolder {
+    fn from(wasm: CborEnumHolder) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::CborEnumHolder> for CborEnumHolder {
+    fn as_ref(&self) -> &cddl_lib::CborEnumHolder {
+        &self.0
+    }
+}
