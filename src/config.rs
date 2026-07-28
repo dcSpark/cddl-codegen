@@ -1328,6 +1328,7 @@ impl Config {
                 // names both flags.
                 crate::api::validate_flag_combinations(&cli)
                     .map_err(|e| format!("[crates.{name}]: {e}"))?;
+                validate_extern_import_stubs(&name, &cli, &derived)?;
                 Ok((name, cli, fragments))
             })
             .collect()
@@ -2427,6 +2428,61 @@ fn argv_fragments(
     }
 
     out
+}
+
+/// Refuse a dependency this crate declares TWICE — once as an `--extern-import` (derived from `deps`,
+/// or written by hand) and once as a physical stub directory in the crate's own input tree.
+///
+/// The generator refuses the same shape (`api::append_extern_imports`), and that check STAYS: it is
+/// what a single-crate command line hits, and there the flag vocabulary is the user's own. But it
+/// runs mid-generation, so in a config run every crate ordered before the consumer is already fully
+/// written to disk when the consumer aborts — and it names `--extern-import <dep>=<path>`, a flag
+/// nobody typed and nothing in the config can be grepped for. Same shape as the cross-flag rules
+/// beside it: the config is the layer that can see the conflict before anything generates, so it
+/// reports it there, against the key that produced the declaration.
+///
+/// It cannot join [`crate::api::validate_flag_combinations`], whose stated contract is that every
+/// rule in it is a pure function of the `Cli` — the property that lets the config run those rules
+/// ahead of the generator at all. This one stats a directory, so one `Cli` passes or fails depending
+/// on what is on disk.
+///
+/// Run over the crates this invocation generates rather than over every crate in the config, unlike
+/// the config-SHAPE validations ([`Config::validate_wasm_reexports`], [`Config::runtime_carrier`]).
+/// Whether a stub directory sits in some crate's input tree is a fact about that tree, not about the
+/// config, and a crate sitting this run out never reads it.
+fn validate_extern_import_stubs(name: &str, cli: &Cli, derived: &Provenance) -> Result<(), String> {
+    // A single-file input has no tree to carry a stub directory — the same gate the generator's
+    // check applies, so the two agree about which shapes are even reachable.
+    if !cli.input.is_dir() {
+        return Ok(());
+    }
+    for dep in cli.extern_import_paths().into_keys() {
+        let stub = cli.input.join(crate::parsing::EXTERN_DEPS_DIR).join(&dep);
+        if !stub.is_dir() {
+            continue;
+        }
+        // The sugar's key when `apply_graph_edges` derived the entry, else the flag-named key a
+        // hand-written sub-table entry carries — the same attribution `argv_fragments` prints.
+        let key = derived
+            .get(&("extern-import", dep.clone()))
+            .copied()
+            .unwrap_or("extern-import");
+        let drop_the_edge = if key == "deps" {
+            format!("drop `{dep}` from `deps`")
+        } else {
+            format!("delete the `{dep}` entry from the `extern-import` sub-table")
+        };
+        return Err(format!(
+            "[crates.{name}].{key}: `{dep}` is declared twice — this crate consumes that \
+             dependency's extern-interface export, and its own input tree hand-declares the same \
+             dependency at {}. A dependency is declared exactly once, never merged: delete the stub \
+             directory to consume the export, or {drop_the_edge} to keep hand-maintaining it. A stub \
+             is the declaration for a dependency that has no export — a hand-written crate, or one \
+             you cannot regenerate.",
+            stub.display(),
+        ));
+    }
+    Ok(())
 }
 
 /// Build one crate's `Cli` through clap, wrapping a rejection with the config key that caused it.
