@@ -55,8 +55,9 @@ fn unit_survives(unit: &str, output: &str) -> bool {
 /// rustfmt-version-bump tripwire — NOT a discovery instrument for fold positions the corpus lacks.
 ///
 /// It both TESTS and DEPENDS ON the `unfold_trailing_markers` pre-pass: the three
-/// `*_rustfmt_folded_tail_*` fixtures are re-folded by the step-2 rustfmt and unfolded again at the
-/// step-3 `preserve` entry, giving that pre-pass sweep coverage across all three block flavors
+/// `*_rustfmt_folded_tail_*` fixtures are re-folded by the sweep's own rustfmt pass (step 1 below)
+/// and unfolded again at the subsequent `preserve` entry, giving that pre-pass sweep coverage
+/// across all three block flavors
 /// (replace / insert / keep) where the delivered unit test covers only replace.
 ///
 /// Error cases are exempt by construction: the 20 `error.txt` cases' `old.rs` are user-malformed
