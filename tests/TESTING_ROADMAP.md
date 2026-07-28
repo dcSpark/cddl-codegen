@@ -217,18 +217,34 @@ in the sections below (the fuzzer escalations, the recur-first residuals), not h
      building on the THIRD instance: mint each alias-classifying root also as an embedded variant
      (`rcN_embed = [e: rcN]` — the matrix probe's embed-holder pattern), scoped to alias roots to
      bound the layer-2 wall-clock cost.
-     The class also has a SEMANTIC flavor beyond the compile one, read-confirmed during the
-     Int-extern alias-reference delivery (tests/corpus/int_alias.cddl): a bare `.cbor` alias root's
-     STANDALONE (de)serialization is the target type's own (`y = bytes .cbor int` → `pub type Y =
-     Int`, whose impls read/write a plain int — the byte-string wrapping exists only at embed
-     sites), so a consumer using the alias type directly gets spec-divergent bytes with no error.
-     No standing layer sees it: the compile gates can't (it compiles), and the decode-conformance
-     corpus leg deliberately validates through synthetic embed holders (`__probe_holder`), which
-     exercise the wrapped path. The mechanical detector, if the embed-site leg above gets built or
-     a consumer hits the flavor first: a standalone-vs-embedded decode differential on
-     alias-classifying roots — decode each such root's spec-derived vectors through the root
-     type's OWN impls beside the holder leg, red where the two accept/byte sets diverge (rather
-     than certifying standalone semantics that the probe holders never witnessed).
+     The class also has a SEMANTIC flavor beyond the compile one — probe-verified in both
+     directions (default profile; first read-confirmed during the Int-extern alias-reference
+     delivery, tests/corpus/int_alias.cddl): a bare `.cbor` alias root's STANDALONE
+     (de)serialization is the target type's own (`y = bytes .cbor int` → `pub type Y = Int`, whose
+     impls read/write a plain int — the byte-string wrapping exists only at embed sites), so the
+     root type's own `to_cbor_bytes` writes spec-divergent bytes AND its `from_cbor_bytes` accepts
+     the bare form while rejecting the spec's actual byte-string form, silently, in a crate that
+     compiles everywhere. The invariant the fix or boundary must express is broader than `.cbor`
+     (its probed neighbours are all safe: bounds auto-wrap, tags force-wrap, root `.default` has
+     no standalone meaning): no wire-affecting property of a type may survive on a root that
+     emits a transparent alias — a detector on the invariant is future-proof against the next
+     encoding op where a `.cbor` spot-fix is not. No standing layer sees the flavor: the compile
+     gates can't (it compiles), the decode-conformance corpus leg deliberately validates through
+     synthetic embed holders (`__probe_holder` — the wrapped path), and `--emit-tests` mints
+     round-trips only for structs, so the embed-site COMPILE leg above cannot see it either —
+     which is why the semantic question must NOT inherit that leg's third-instance trigger: they
+     are different instruments on different failure classes, and this one already has its
+     severity evidence. The mechanical detector: a standalone-vs-embedded decode differential on
+     alias-classifying roots — decode each root's pre-wrap spec-derived vectors (they already
+     exist; the mint wraps them to build holder vectors) through the root type's OWN impls beside
+     the holder leg, red where the accept/byte sets diverge; plain aliases pass by construction.
+     It would go RED today on every `bytes .cbor` alias root, so it cannot land without one of:
+     the fix (force-wrap `.cbor` roots — small in the generator, breaking outside it: transparent
+     call sites, the wasm class, and the documented alias taxonomy all change), a known-bad
+     ledger row, or an explicit boundary re-classification (document standalone impls as the
+     target's and assert exactly that frame difference). Whether any real consumer uses a
+     `bytes .cbor` root standalone is the first question for whoever picks this up — and per
+     AGENTS.md it must not be answered by regenerating a consumer checkout.
    - **`arbitrary`-derived "supported-CDDL" AST generation** — only if recombination plateaus (its
      first sweep surfaced six new panic-class families, so the plateau is not near; re-evaluate when
      a sweep over an extended member-kind/template table stops minting findings).
@@ -845,9 +861,11 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
 - **Three defect classes that no IN-PROCESS test can see, sharing one remedy: extend the corpus's
   INPUT.** `api::generated_strings` is the library API every in-process suite drives — the snapshot
   corpus, the robustness/panic/reject catalogs, `wasm_api_parity`, and
-  `all_supported_constructs_generate_all_profiles`. It returns emitted source as STRINGS: it never
-  runs `export()`'s disk-write path (and so never the rustfmt post-pass whose non-0/3 exit is fatal),
-  and it never hands anything to rustc. So a defect landing at either of those seams — or landing
+  `all_supported_constructs_generate_all_profiles`. It returns emitted source as STRINGS —
+  post-rustfmt (its own doc comment; the merge step formats every emitted file, so a
+  rustfmt-fatal emission IS an in-process generation error) — but it never runs `export()`'s
+  disk-write tail, and it never hands anything to rustc. So a defect landing at either of those
+  seams — or landing
   only under a profile no committed vehicle generates the shape under — is invisible to all of them
   at once, and a catalog row recording `ok` discharges exactly one claim: generation exited 0.
   The remedy for all three is an INPUT extension, not a new layer. `tests/corpus/*.cddl` is the input
@@ -886,8 +904,13 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
     catalog whose whole value is running in seconds on every `cargo test`.
   - ***rustfmt, so the code never reaches rustc at all.*** Not a duplicate of the class above: there
     the emitted crate reached rustc and was rejected, so any compile leg would catch it; here
-    generation itself fails in `export`'s rustfmt post-pass, and a compile leg built on
-    `generated_strings` would stay green on this class while it shipped. Proven instance (since
+    generation itself fails at the rustfmt merge step, so no compile leg can even receive a crate.
+    One premise correction this entry now carries, probed rather than reasoned (an earlier version
+    asserted the opposite on the strength of a dangling doc reference): the rustfmt pass runs
+    IN-PROCESS too — `generated_strings` is post-rustfmt — so any vehicle that generates the shape
+    under the failing profile witnesses this class as a generation error; the residual blindness
+    is the same two-part bound as the siblings' (a vehicle must exist under the failing profile at
+    all, and an `ok`-flip after a fix certifies only generation). Proven instance (since
     fixed on the type-match dispatch sites and given exactly this entry's remedy — promoted into
     `tests/corpus/group_choice_fixed_special.cddl`, whose cells shell the real CLI so the rustfmt
     seam is witnessed for the shape): a bool or null fixed value in a map-representation
@@ -1234,61 +1257,88 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   per-wrapper emission MODE × wrapper shape × reference POSITION, with a per-mode compile floor.**
   The axis: every wrapper a spec implies has an emission MODE (local vs index-deferred vs
   workspace-borrowed under `--workspace-dep` vs requested-hosted under `--wrapper-requests`)
-  crossed with the wrapper-shape space, and no existing honesty rule sweeps it (the wasm-ABI
-  matrix's SHAPES/ROLES cover what types look like and where they sit; the third honesty axis
-  covers flag × input mode; neither enumerates flag × shape). Leg spec: each extern-capable shape
-  probed once per mode (dep index listing its structural name / absent / workspace-dep configured /
-  requested by a consumer sidecar), each probe crossed with reference POSITION (inline-anonymous vs
-  NAMED-rule — the named-rule flavor takes struct-walk arms inline pins never touch), asserting the
-  mode outcome (deferred-import vs local-mint vs borrowed+sidecar-recorded vs hosted+indexed) AND
-  the shape row's IMPLIED COMPANIONS per mode (a table's synthesized keys-list:
-  imported-from-dep vs root-minted vs co-hosted-locally), with a compile floor per mode (wasm32
-  link consumer-side; `cargo check` of the host crate for the requested-hosted mode — one arming
-  instance was observable only there). The user-rule cross-crate cell and the map-side NonEmpty
-  source-routing cell join the leg rather than accreting per-shape hand fixtures. The leg doubles
-  as the regression net for accidental-provider removals — a fix suppressing a walk path other
-  positions silently relied on, a class fix-review reach-analysis asks about ("who else relied on
-  this path?") but only a mode × shape × position compile floor answers mechanically. Arming
-  evidence (the recur-first trigger is met; every instance was found by reading the emitters or
-  reported by a consumer, never by a gate): after the NonEmpty first instance (below), one
-  consumer-reported delivery produced two companion-wrapper cells — NAMED-table ×
-  workspace-borrowed (a synthesized keys-list whose deferred import only the inline-map reference
-  position ever registered: E0412 stranding plus a false criterion-9 shadow warning, entered when
-  an alias-recursion suppression removed the walk route that had been registering the import;
-  pinned by `workspace_dep_named_table_deferred_keys_list`) and requested-hosted ×
-  co-hosted-keys-list (the host importing from root a class it mints itself: E0432; pinned by
-  `workspace_requests_cohosted_keys_list_no_self_import`). Both were companion-wrapper failures at
-  the named/hosted flavor, not primary-shape failures — which is why the leg crosses POSITION and
-  asserts COMPANIONS rather than probing primary shapes alone. Closed context the leg builds on —
-  the NonEmpty defer boundary: `generate_non_empty_array_type` / `generate_non_empty_map_type`
-  consult `try_defer_wrapper`, their loose `try_from`-source mints defer normally (eager
-  decisions, order-independent), and the source's conversion-internal import — invisible to the
-  field walk — is routed at the restricted class's emission scope
+  crossed with the wrapper-shape space, and no existing honesty rule sweeps it — established by
+  enumerating the registries, not by grep (scope: the full check.ts gate registry — no gate
+  generates with any mode flag except `test` via the hand fixtures; `ALL_PROFILES` names no mode;
+  the wasm-ABI/multifile SHAPES×ROLES pass only `--wasm=true`; and the rust↔wasm parity
+  differential scopes out directory-input fixtures, which every dep-owning mode configuration
+  requires — so parity is structurally unable to observe any of it). The ~20 committed mode pins
+  are incident-shaped, not enumeration-shaped: each pins the exact cell of a past escape, and the
+  seam the leg fills is the difference between that list and the grid. Leg spec: each
+  extern-capable shape probed once per mode, crossed with reference POSITION (inline-anonymous vs
+  NAMED-rule declaration vs named-rule REFERENCE from another rule's member — the flavor that
+  takes `set_ref`, which inline pins never touch — plus non-root declaring scopes), asserting the
+  mode outcome AND the shape row's IMPLIED COMPANIONS per mode (a table's synthesized keys-list:
+  imported-from-dep vs root-minted vs co-hosted; a restricted wrapper's loose `try_from` source,
+  list and MAP flavors; nested inner wrappers; the sole-owner structural alias), floored per mode:
+  consumer wasm `cargo check` for local; + wasm32-unknown-unknown link with the dep wasm crate
+  for the deferring modes (duplicate `#[wasm_bindgen]` symbols are visible ONLY at wasm32 link —
+  the `extern_wrapper_index_defers_to_dep` RED leg proves check/test alone cannot see them);
+  `cargo check` of the HOST crate for requested-hosted (one arming instance was observable only
+  there). Two participation facts the grid must encode rather than assume: the grid is NOT a full
+  cross-product — `@duplicates reject` set wrappers can be HOSTED but can never DEFER
+  (`generate_reject_ordered_set_type` consults no defer seam, and no consumer generation path can
+  record a reject borrow — so two consumers of one dep both mint the set class and would
+  duplicate-symbol in one cdylib, the exact class workspace mode closes for lists/maps; inference
+  from call-site enumeration, no fixture), while a reject rule's loose `try_from` SOURCE is
+  defer-capable — "reject wrapper local + loose source deferred" is a live uncelled combination;
+  and the index is NAME-only, flavor-blind (a preserve-flavored `{* k=>v}` derives the same
+  structural name as the non-preserve flavor; the workspace sidecar records flavor, the index has
+  no shape column — unprobed, a probe-then-pin cell, expected symptom a boundary-conversion E0308
+  or silent wrong-container semantics). Arming evidence — the recur-first trigger is over-met,
+  and every instance was found by reading the emitters, reported by a consumer, or found by a
+  probe, never by a gate: (1) NAMED-table × workspace-borrowed (a synthesized keys-list whose
+  deferred import only the inline-map reference position ever registered: E0412 stranding plus a
+  false criterion-9 shadow warning; pinned by `workspace_dep_named_table_deferred_keys_list`);
+  (2) requested-hosted × co-hosted-keys-list (the host importing from root a class it mints
+  itself: E0432; pinned by `workspace_requests_cohosted_keys_list_no_self_import`); (3) a LIVE
+  RED found by probing the named-REFERENCE position under index mode (probe scope: default
+  profile, root scope, array + table flavors; not probed: preserve/json, non-root scopes, the
+  wasm32 link): a user rule whose ident equals a dep-indexed structural name
+  (`idx_foo_list = [* idx_foo]`), referenced ONLY by rule name from a record field, generates at
+  exit 0 with EMPTY stderr and a wasm crate that fails `cargo check` with E0425 (twice, exit
+  101) — the mint side records the deferral, but a named-rule reference routes through the
+  alias-suppression arm and plain `set_ref`, which never consult the deferred map, so no import
+  is ever routed; the same probe's TABLE flavor (`map_u64_to_idx_foo = {* uint => idx_foo}`) is
+  screened by `exists_in_rust`, mints locally, and silently re-exports a name the dep's index
+  also lists — the duplicate-symbol-at-link configuration. Instances (1)–(3) are ALL failures of
+  a companion or a position, never of the primary wrapper — which is why the leg crosses POSITION
+  and asserts COMPANIONS rather than probing primary shapes alone, and why it doubles as the
+  regression net for accidental-provider removals ("who else relied on this walk path?" answered
+  mechanically). Closed context the leg builds on — the NonEmpty defer boundary:
+  `generate_non_empty_array_type` / `generate_non_empty_map_type` consult `try_defer_wrapper`,
+  their loose `try_from`-source mints defer normally, and the source's conversion-internal import
+  is routed at the restricted class's emission scope
   (`register_deferred_non_empty_{list,map}_source`, the same follow-the-class pattern as the R3d
   keys-list registration); pinned by `extern_wrapper_index_defers_to_dep`'s
-  `[+ idx_foo]`/`NonEmptyIdxFooList` cell (whole-wrapper deferral) plus its order-hostile
-  deferred-source cells: the unreferenced named rule `abc_bars = [+ idx_bar]` (walked first, only
-  loose use in another module — RED as duplicate-symbol if the source re-mints, RED as unresolved
-  `IdxBarList` if the import isn't routed) and the inline `only_nb_baz: [+ idx_baz]` twin (no
-  loose use anywhere); the map-side source routing is the same helper pattern but has no dedicated
-  cell until the leg lands. A separate open DECISION rides this entry: USER rules claiming a
-  dep-indexed structural name split by flavor under `--extern-wrapper-index`, and neither flavor is
-  fully right: a rule whose ident EQUALS the structural name passes the shipped name-identity
-  guard for ARRAYS and silently DEFERS — the user's own class is suppressed in favor of the dep's
-  (probed live during the workspace-mode delivery; same-shape so no link error, but the consumer's
-  crate silently stops exporting its own authored class) — while TABLE rules are screened by
-  `exists_in_rust` and stay local, where they duplicate-symbol at link if the dep also ships the
-  name — the CROSS-CRATE flavor of the synthesized-name interaction class, which the shipped
-  in-crate layers cannot see (the duplicate-ident backstop scans one crate's own files;
+  `[+ idx_foo]`/`NonEmptyIdxFooList` cell plus its order-hostile deferred-source cells
+  (`abc_bars = [+ idx_bar]` walked first; the inline `only_nb_baz: [+ idx_baz]` twin); the
+  MAP-side source routing is the same helper pattern but has no dedicated cell in any mode
+  (verified by grepping every committed mode fixture for `{+` — zero hits). The open DECISION
+  riding this entry — USER rules claiming a dep-indexed structural name — is now THREE-way, and
+  the status quo is not a defensible "leave it": one of its branches emits a non-compiling crate
+  at exit 0 with empty stderr, the exact class the repo's honesty invariants exist to make loud.
+  (a) Adopt the workspace guard (warn + keep local — workspace mode already threads real rule
+  provenance via `rule_declared`/`is_synthesized_collection` and warns, pinned by
+  `workspace_dep_defers_to_dep`'s shadowing cell): consistent cross-mode semantics, but converts
+  every such cell into a warned duplicate-symbol link failure when consumer and dep share a
+  cdylib, breaking the one population today's defer serves — a consumer restating a dep-owned
+  rule referenced only inline. (b) Keep the defer but make it honest: consult the deferred map in
+  the named-reference/`set_ref` path (fixing the E0425) and WARN that the authored rule's wasm
+  class is unified with the dep's. (c) Reject the coincidence outright under index mode.
+  Whichever wins needs its own red-first cell, and the table-flavor half (silent local mint of a
+  dep-indexed name) independently deserves the not-in-index-style stderr warning regardless. A
+  defensible first cut that discharges all the arming evidence before the full sweep: the
+  named-reference cell pair above (red-first — it forces the DECISION), the map-side deferred
+  `try_from`-source cell, and a reject-set × deferred-loose-source cell — all on the existing
+  bespoke-harness idiom beside `extern_wrapper_index_defers_to_dep`, reusing the committed
+  `tests/index-dep-crate{,-wasm}` pair, with `run_cached` floors; the sweep proper (table-driven,
+  participation-aware, batched per (mode, floor), compile floors at full tier) follows, since its
+  value — grid completeness — is not a property of any cell subset. (The cross-crate
+  duplicate-symbol flavor of the synthesized-name interaction class stays owned HERE: the
+  duplicate-ident backstop scans one crate's own files and
   `synthesized_name_interaction_sweep` spells no dep-index cells — see `tests/README.md`
-  § "Synthesized-name interaction sweep + duplicate-ident backstop"), so it is owned HERE.
-  Workspace mode already threads real rule provenance (`rule_declared`, from the
-  `RustStructType::{Array,Table}` call sites — reading TRUE authorship via
-  `is_synthesized_collection`, so a table rule's parse-time-synthesized keys-list never
-  masquerades as rule-declared) and warns + keeps the user's class
-  (`workspace_dep_defers_to_dep`'s shadowing cell); the open decision is whether the INDEX path
-  should adopt the same guard — a behavior change to shipped semantics (today's array-flavor defer
-  is at least link-clean), so it needs its own red-first cell, not a drive-by.
+  § "Synthesized-name interaction sweep + duplicate-ident backstop".)
 - **Extern-deps wasm-boundary surface: packaging- and json-gen-gaps beyond the behavioral floor.**
   The split-dep cell (`integration_tests::extern_deps_wasm`, `--extern-wasm-crate`) drives the
   generated wasm crate's cross-crate wrappers behaviorally: `tests/extern-deps-wasm/tests_wasm.rs`
@@ -1818,7 +1868,8 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   claim-semantics boundary again, EXCEPT that here the claim is mechanically checkable, which is
   what separates it from the declined prose-drift class in this section. Proven instance
   (read-caught by a cycle that needed the pin, not by any gate): the `"Anonymous groups not allowed"`
-  entry cited `tests/matrix_panic/contain.array-element.type2.map.cddl`, which actually produces
+  entry cited the then-`tests/matrix_panic/` row for `contain.array-element.type2.map` (the cell has
+  since moved to `tests/matrix_reject/` with the graceful-rejection conversion), which actually produced
   `"TODO: non-table types as types"` — the two anonymous-composite classes split by the composite's
   BRACKET, and the citation named the wrong bracket, so triage following it would land on the wrong
   parse site. Every citation has since been re-derived by RUNNING the named fixture, and the entries
@@ -1851,8 +1902,8 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   `parsing.rs 'Anonymous groups not allowed'`. Every one of them actually reached the
   `"TODO: non-table types as types"` site — the same wrong-BRACKET confusion as the ledger instance,
   authored independently in a different file and a different language. The named site is now gone
-  entirely (those cells reject gracefully), so that text must be rewritten during the matrix
-  re-grounding regardless; what survives the rewrite is the gap, which is that a hand-authored site
+  entirely (those cells reject gracefully) and the notes were rewritten with that re-grounding;
+  what survives the rewrite is the gap, which is that a hand-authored site
   name inside an annotation is checked by nothing. Whether the two instances are ONE detectable class
   is the open question and the reason this is recorded rather than built: the ledger's detector keys
   on a Rust test's `catch_unwind` capture, while a cell note is TOML consumed by TypeScript, so a
@@ -2219,9 +2270,11 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   `#6.n(uint .default 5)` and a range that collapses exactly onto a rust primitive
   `#6.n(uint .le 255)` auto-wrap (pinned by `tests/corpus/tagged_default_inner.cddl` and
   `tests/corpus/tagged_ranged_inner.cddl`); literal-headed range inners — `#6.5(3..10)` — wrap
-  too, pinned by `top_level_ranges` in `tests/core`. (Separately, `foo = undefined` still panics
-  — a distinct gap, unsupported cddl-prelude `#7.23`, not the `Fixed`-member path; ledgered by
-  `tests/matrix_panic/prelude.undefined.cddl`.)
+  too, pinned by `top_level_ranges` in `tests/core`. (Separately, `foo = undefined` is refused
+  gracefully — a distinct gap, unsupported cddl-prelude `#7.23` with no `FixedValue`, not the
+  `Fixed`-member path; pinned by `undefined_prelude_rejects_gracefully_in_every_position` and
+  `tests/matrix_reject/prelude.undefined.cddl`, with the representation deferral ledgered in
+  `cddl-matrix/ROADMAP.md` § findings.)
 - **wasm write-side present-null construction** *(unrequested)*. The read-side three-state
   fidelity gap is closed (presence accessors `has_<field>()` / map `has(key)`; oracle:
   `tests/nullable-wasm/`; read protocols in `docs/docs/wasm_differences.mdx`). The remaining
