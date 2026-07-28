@@ -2144,6 +2144,62 @@ pub fn rust_crate_struct_scope_from_wasm(
     }
 }
 
+/// Push a single-field tuple struct's inner field as `pub(crate)`, guarding the over-width case
+/// that would otherwise abort generation. This is the ONE owner of that visibility literal and of
+/// the `#[rustfmt::skip]` workaround, for BOTH single-field tuple-struct emission sites: every wasm
+/// wrapper (via `WasmWrapper::push_inner_field`) and the rust-crate newtype wrapper under the
+/// default profile (`wrappers.rs`). The two are different crates and different callers, but the
+/// emitted shape — `pub struct <N>(pub(crate) <Type>);` — and therefore the rustfmt hazard are
+/// identical, so the predicate and the fallback shape have one home.
+///
+/// `pub(crate)`, not private: on the wasm side wasm_bindgen ignores non-pub fields so the ABI/API
+/// surface is unchanged, and on both sides hand files (living outside the always-clobbered
+/// generated subtree under the thin-root layout) can reach the wrapped value via `self.0`.
+fn push_overwidth_guarded_tuple_field(s: &mut codegen::Struct, ty: codegen::Type) {
+    // Render the type exactly as it will be emitted, to measure the one-line width of the tuple
+    // field. rustfmt's default max_width is 100; a field line wider than that trips
+    // rust-lang/rustfmt#5703 — rustfmt breaks the line right after the field visibility, leaves
+    // a trailing space, emits `error[internal]: left behind trailing whitespace`, and exits 1.
+    // `rustfmt_generated_string` (export.rs) treats any exit other than 0/3 as fatal, so that
+    // aborts the whole generation. The generator targets default rustfmt config (it never reads
+    // a consumer's rustfmt.toml), so the literal 100 is correct. The predicate is deliberately
+    // `> 100` even though the fatal threshold is a 102-char field line: it is conservative and
+    // also suppresses rustfmt's cosmetic double-space artifact on breakable generic types below
+    // the fatal threshold.
+    let mut rendered_type = String::new();
+    ty.fmt(&mut codegen::Formatter::new(&mut rendered_type))
+        .expect("Type::fmt into a String is infallible");
+    // Field line = 4 (indent) + "pub(crate) " (11) + rendered type + 1 (trailing comma).
+    let field_line_width = 4 + "pub(crate) ".len() + rendered_type.len() + 1;
+    if field_line_width > 100 {
+        // Over-width: freeze the struct with `#[rustfmt::skip]` so rustfmt never gets a chance
+        // to hit #5703. The `codegen` builder has no arbitrary-attribute API, so the citation
+        // comment and the attribute are smuggled verbatim through the struct's macro slot — the
+        // one passthrough that renders its text unwrapped (precedent: the `derivative)]` newline
+        // hack elsewhere in this file). This emits directly above `pub struct <N>`; `rustfmt::skip`
+        // governs the whole item regardless of its position among the attributes. Removable once
+        // the fix PR (#5708) ships and reaches consumers.
+        s.r#macro(
+            "// rustfmt::skip: rustfmt breaks after the field vis leaving trailing whitespace and errors\n\
+             // (rust-lang/rustfmt#5703, fix PR #5708 unmerged). Remove when #5708 ships.\n\
+             #[rustfmt::skip]",
+        );
+        // With the skip in place rustfmt will not lay the field out for us, so we emit the
+        // canonical two-line shape ourselves — header line `pub struct <N>(`, the field on its
+        // own 4-space-indented line with a trailing comma, then `);` — so a future un-skip (when
+        // #5708 ships) is a zero-diff / pure-formatting change. The `codegen` tuple-field emitter
+        // puts the whole field on one line, so the leading newline+indent is smuggled through the
+        // visibility string and the trailing `,\n` through the type name. The scope emits this
+        // struct at column 0, so no extra indentation is added to the continued lines.
+        s.tuple_field(
+            Some("\n    pub(crate)".to_string()),
+            codegen::Type::new(format!("{rendered_type},\n")),
+        );
+    } else {
+        s.tuple_field(Some("pub(crate)".to_string()), ty);
+    }
+}
+
 #[derive(Debug)]
 struct WasmWrapper<'a> {
     ident: &'a RustIdent,
@@ -2187,62 +2243,20 @@ impl<'a> WasmWrapper<'a> {
     }
 
     /// Push the wrapper's single inner tuple field with the uniform wasm-wrapper
-    /// visibility policy. This is the ONE owner of that visibility literal for every
+    /// visibility policy. This is the ONE owner of the wasm side's CALL into that policy for every
     /// generated wasm wrapper (the named `create_base_wasm_wrapper` path and all four
-    /// `collections.rs` wrappers — plain list, non-empty list/map, structural/named map).
+    /// `collections.rs` wrappers — plain list, non-empty list/map, structural/named map); the
+    /// visibility literal itself, and the over-width `#[rustfmt::skip]` workaround around it, live
+    /// in `push_overwidth_guarded_tuple_field` below, shared with the rust-crate newtype site.
     ///
     /// `pub(crate)`, not private: wasm_bindgen ignores non-pub fields so the ABI/API surface is
     /// unchanged, while consumer wasm hand files (living outside the always-clobbered generated
     /// subtree under the thin-root layout) can reach the wrapped native value via `self.0`.
-    /// (The rust-crate bounded-newtype sites in `wrappers.rs` reach the same `pub(crate)` for the
-    /// same reason, but are a different crate and emission shape and stay owned there.)
     fn push_inner_field<T>(&mut self, ty: T) -> &mut Self
     where
         T: Into<codegen::Type>,
     {
-        let ty: codegen::Type = ty.into();
-        // Render the type exactly as it will be emitted, to measure the one-line width of the tuple
-        // field. rustfmt's default max_width is 100; a field line wider than that trips
-        // rust-lang/rustfmt#5703 — rustfmt breaks the line right after the field visibility, leaves
-        // a trailing space, emits `error[internal]: left behind trailing whitespace`, and exits 1.
-        // `rustfmt_generated_string` (export.rs) treats any exit other than 0/3 as fatal, so that
-        // aborts the whole generation. The generator targets default rustfmt config (it never reads
-        // a consumer's rustfmt.toml), so the literal 100 is correct. The predicate is deliberately
-        // `> 100` even though the fatal threshold is a 102-char field line: it is conservative and
-        // also suppresses rustfmt's cosmetic double-space artifact on breakable generic types below
-        // the fatal threshold.
-        let mut rendered_type = String::new();
-        ty.fmt(&mut codegen::Formatter::new(&mut rendered_type))
-            .expect("Type::fmt into a String is infallible");
-        // Field line = 4 (indent) + "pub(crate) " (11) + rendered type + 1 (trailing comma).
-        let field_line_width = 4 + "pub(crate) ".len() + rendered_type.len() + 1;
-        if field_line_width > 100 {
-            // Over-width: freeze the struct with `#[rustfmt::skip]` so rustfmt never gets a chance
-            // to hit #5703. The `codegen` builder has no arbitrary-attribute API, so the citation
-            // comment and the attribute are smuggled verbatim through the struct's macro slot — the
-            // one passthrough that renders its text unwrapped (precedent: the `derivative)]` newline
-            // hack elsewhere in this file). This emits directly above `pub struct <N>`; `rustfmt::skip`
-            // governs the whole item regardless of its position among the attributes. Removable once
-            // the fix PR (#5708) ships and reaches consumers.
-            self.s.r#macro(
-                "// rustfmt::skip: rustfmt breaks after the field vis leaving trailing whitespace and errors\n\
-                 // (rust-lang/rustfmt#5703, fix PR #5708 unmerged). Remove when #5708 ships.\n\
-                 #[rustfmt::skip]",
-            );
-            // With the skip in place rustfmt will not lay the field out for us, so we emit the
-            // canonical two-line shape ourselves — header line `pub struct <N>(`, the field on its
-            // own 4-space-indented line with a trailing comma, then `);` — so a future un-skip (when
-            // #5708 ships) is a zero-diff / pure-formatting change. The `codegen` tuple-field emitter
-            // puts the whole field on one line, so the leading newline+indent is smuggled through the
-            // visibility string and the trailing `,\n` through the type name. The scope emits this
-            // struct at column 0, so no extra indentation is added to the continued lines.
-            self.s.tuple_field(
-                Some("\n    pub(crate)".to_string()),
-                codegen::Type::new(format!("{rendered_type},\n")),
-            );
-        } else {
-            self.s.tuple_field(Some("pub(crate)".to_string()), ty);
-        }
+        push_overwidth_guarded_tuple_field(&mut self.s, ty.into());
         self
     }
 

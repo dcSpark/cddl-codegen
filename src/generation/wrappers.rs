@@ -463,7 +463,10 @@ pub(super) fn generate_wrapper_struct(
         // OUTSIDE the always-clobbered generated subtree — legitimately need field access (e.g. a
         // `RawBytesEncoding` impl on a bounded newtype). In-crate privacy was already bypassable by
         // dropping a hand file inside the scope subtree, so it protected nothing real.
-        // (The wasm-crate wrappers reach the same `pub(crate)` via `WasmWrapper::push_inner_field`.)
+        // (Named-field shape, so it is NOT routed through `push_overwidth_guarded_tuple_field`: the
+        // rustfmt#5703 hazard that helper guards needs a visibility token on a TUPLE field, and a
+        // named field of any width is unaffected. The default profile's tuple shape below does go
+        // through it, as do the wasm-crate wrappers.)
         s.field(
             "pub(crate) inner",
             field_type.for_rust_member(types, false, cli),
@@ -511,9 +514,13 @@ pub(super) fn generate_wrapper_struct(
         }
         Some(enc_fields)
     } else {
-        s.tuple_field(
-            Some("pub(crate)".to_string()),
-            field_type.for_rust_member(types, false, cli),
+        // Same `pub(crate)` reasoning as the preserve-encodings named field above, but emitted as a
+        // single-field tuple struct — the shape that trips rust-lang/rustfmt#5703 once the field
+        // line passes rustfmt's max_width. `push_overwidth_guarded_tuple_field` (mod.rs) owns both
+        // the visibility literal and that workaround for this site and for the wasm wrappers.
+        push_overwidth_guarded_tuple_field(
+            &mut s,
+            codegen::Type::new(field_type.for_rust_member(types, false, cli)),
         );
         None
     };
