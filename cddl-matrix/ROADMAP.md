@@ -368,16 +368,22 @@ ledgered here (that's what the probe/gate error messages point at).
 - **A byte-string literal has no fixed-MEMBER representation, so a spec that pins a member to a
   literal must be hand-rewritten.** `[v: h'0102', x: uint]`, the unkeyed `[h'0102', x: uint]`,
   `{ k: h'0102', j: uint }` and the UTF-8 spelling `[v: 'text', x: uint]` are all refused gracefully
-  (exit 1, naming the construct) in both profiles, as is the rule body `x = h'0102'`
-  (`tests/matrix_reject/value.bytes.cddl`) — position no longer changes the outcome, only the
-  wording. Member identity is pinned by `unsupported_member_type2_rejects_gracefully` and
+  (exit 1, naming the construct) in both profiles, as is the rule body `x = h'0102'` — position no
+  longer changes the outcome, only the wording. Member identity is pinned by
+  `unsupported_member_type2_rejects_gracefully` and
   `tests/robustness/bytes_member.cddl`. The deferred work is the REPRESENTATION: `FixedValue` has no
   bytes variant, so the fixed-member path the uint / text / bool kinds already use — verify on
   deserialize, store nothing — has nothing to verify against. Widening the member to `bytes`
   generates but stops constraining the value, so it is a different spec, not a workaround. The cells
   `contain.array-element.value.bytes` and `contain.map-value.value.bytes` model both positions. NB
-  the `b64'…'` spelling cannot be probed at all: the rust `cddl` parser rejects it before generation
-  (a separate upstream gap, tracked with the other fork divergences). Reopening signal on the
+  two spellings never reach the generator at all — upstream, the rust `cddl` parser rejects `b64'…'`
+  outright and rejects LOWERCASE hex digits inside `h'…'` (`magic = h'cafe'` dies at parse as
+  `Invalid base16 encoding` in every position, though ABNF `HEXDIG` is case-insensitive and the ruby
+  reference accepts it — the evidence class `tests/matrix_reject/value.bytes.cddl` records). That
+  gap caps the represent fork's value: real-world magic constants are typically spelled in lowercase
+  hex, so a `FixedValue::Bytes` delivery generates nothing for them until the fork accepts the
+  spelling — the upstream parser fix is part of the feature's real cost, and belongs in the same
+  delivery or its docs. Reopening signal on the
   magnitude axis: a spec brought to us contains a byte-string fixed member, i.e. the count of members
   its owner must hand-rewrite reaches 1 — today only synthetic probes reach the site.
 - **Enumerate the `any`-arm POSITION variation as containment cells.** The rejection boundary itself

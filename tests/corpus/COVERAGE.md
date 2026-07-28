@@ -223,7 +223,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
-| `value.bytes` | ➖ | Byte-string literal value | byte-string literal (h'..'/'..') as a value — the value is fixed by the schema and `FixedValue` has no bytes variant, so it is rejected gracefully in both rule-body and member position; widening to `bytes` is a different spec, not an equivalent one (the b64'..' spelling additionally fails in the rust parser: ruby/ABNF accept)  [`a byte-string literal`] |
+| `value.bytes` | ➖ | Byte-string literal value | byte-string literal (h'..'/'..') as a value — the value is fixed by the schema and `FixedValue` has no bytes variant, so it is rejected gracefully in both rule-body and member position; widening to `bytes` is a different spec, not an equivalent one (the b64'..' spelling and lowercase hex in h'..' additionally fail in the rust parser before generation: ruby/ABNF accept)  [`a byte-string literal`] |
 | `value.number` | ➖ | Numeric literal value | top-level numeric-literal type (`version = 5`) is rejected gracefully — same Fixed-type gap; pinned by `tests/matrix_reject/value.number.cddl`. Its supported array-element role is the [[cover]] above.  [`a top-level rule whose entire body is a bare fixed value`] — also ✅ @array-element (`fixed_value.cddl`: numeric literal member (`c: 5`)) |
 | `value.number.bin` | ➕ | Binary integer literal (0b…) | supported, no corpus fixture (cddl-codegen exit 0) |
 | `value.number.hex` | ➕ | Hexadecimal integer literal (0x…) | supported, no corpus fixture (cddl-codegen exit 0) |
