@@ -435,6 +435,47 @@ const preludeDefById: Map<string, string> = (() => {
 // a hand-authored `encodings` list to agree with the prelude.
 export const PRELUDE_DEFS: ReadonlyMap<string, string> = preludeDefById;
 
+// The prelude's plain-ALIAS equivalence classes, derived from the same pinned bytes: name -> every
+// prelude name denoting the identical type. An alias is a rule whose body is EXACTLY a bare typename
+// naming another prelude rule (`bytes = bstr`, `text = tstr`, `null = nil`) — two spellings of one
+// construct, so anything true of one is true of the other.
+//
+// The width of this rule is the whole point, and it is deliberately narrow. A CHOICE body is NOT an
+// alias: `float = float16-32 / float64`, `integer = int / bigint` and `bigint = biguint / bignint` are
+// unions whose members encode differently, so folding them into a class would credit a construct for
+// coverage of a sibling it does not share a wire form with — the exact over-credit the per-construct
+// projection exists to remove. Chains (`a = b`, `b = c`) are closed transitively so the relation is a
+// real equivalence rather than one hop.
+export function preludeAliasClasses(): Map<string, Set<string>> {
+  const parent = new Map<string, string>();
+  const find = (x: string): string => {
+    let r = x;
+    while (parent.get(r) !== undefined && parent.get(r) !== r) r = parent.get(r)!;
+    return r;
+  };
+  const union = (a: string, b: string) => {
+    const [ra, rb] = [find(a), find(b)];
+    if (ra !== rb) parent.set(ra, rb);
+  };
+  for (const name of preludeDefById.keys()) parent.set(name, name);
+  for (const [name, body] of preludeDefById) {
+    const t = body.trim();
+    if (/^[A-Za-z][A-Za-z0-9_.-]*$/.test(t) && preludeDefById.has(t)) union(name, t);
+  }
+  const classes = new Map<string, Set<string>>();
+  const byRoot = new Map<string, Set<string>>();
+  for (const name of preludeDefById.keys()) {
+    const r = find(name);
+    if (!byRoot.has(r)) byRoot.set(r, new Set());
+    byRoot.get(r)!.add(name);
+  }
+  // Only multi-member classes are interesting; a singleton is its own trivial class and carries no
+  // information, so returning it would make a vacuity check on the result impossible to fail.
+  for (const members of byRoot.values())
+    if (members.size > 1) for (const m of members) classes.set(m, members);
+  return classes;
+}
+
 // A CBOR control head (`#0`..`#3`, `#6.N(...)`, `#7.N`): its major-type class, or null for a bare `#`
 // (matches `any` — deliberately unresolvable, the floor must not guess).
 function hashHeadClass(tok: string): string | null {

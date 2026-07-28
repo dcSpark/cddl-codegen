@@ -174,7 +174,7 @@ golden vector asserts. Each declared ref is expanded through the master's parent
 (`cddl-matrix/encodings.toml` — a PARENT row names its leaves in `cells`; a leaf ref is itself).
 
 **The fixture floor comes first.** `input.cddl` is what the golden vectors are generated from, so a
-construct it never mentions has nothing asserted about it at all — **35** of the
+construct it never mentions has nothing asserted about it at all — **32** of the
 48 rows are in that position, marked ✗ below, and their whole legal set is
 untested. This matters because coverage is derived as a union over every `kat!` in the file: without
 the floor, a construct would be credited for a cell some *other* construct's vector happened to land
@@ -195,21 +195,34 @@ cell under default flags — the *never emitted* column carries that, from the s
 value where the head argument follows the value: a `uint` reaches `enc.major0.ai27` only at values
 ≥ 2^32, and a `bstr` reaches `enc.major2.ai26` only at lengths ≥ 2^16.
 
-**Scope limit of the floor.** It is `corpus_detect.ts`'s text scan, which matches a construct by
-NAME. A construct the fixture expresses under a synonym or a wider choice type therefore reads ✗:
-`input.cddl` writes `tstr`, so `prelude.text` (its exact prelude alias) is ✗, and it writes `float`,
-so `prelude.float64` is ✗ even though the `fb…` double vectors exist. Read ✗ as *no golden rule names
-this construct*, which is the honest fact, not as *nothing resembling it is asserted anywhere*.
+**Scope limit of the floor — one case, and it is narrower than it looks.** The floor is
+`corpus_detect.ts`'s text scan, which matches a construct by NAME, then corrected for the prelude's
+plain aliases (`bytes = bstr`, `text = tstr`, `null = nil`, derived from the pinned prelude): the
+fixture writing `tstr` credits `prelude.text` too, because they are one construct under two
+spellings. What is NOT corrected is a construct the fixture reaches by writing a **wider type that
+the generator narrows at emission**: `one_float = [v: float]` asserts `fb…` doubles, so
+`prelude.float64`'s cell is exercised in fact, yet no rule names `float64` and it reads ✗. That is a
+claim about what cddl-codegen picks when it emits a union, not about spec structure — not derivable
+from the prelude, and deliberately not guessed. For those rows read ✗ as *no golden rule names this
+construct*, which is the honest fact, not as *nothing resembling it is asserted anywhere*.
 
 Reported, never fatal: this gate's non-zero exit stays reserved for note drift and ➕ (uncovered
 Appendix A vector with no rationale). The coverage this narrows is the same `cellsCovered` behind
 the summary's *emittable but no Appendix A vector lands here* line, which is already a deliberate
-non-failure — failing here would re-litigate that threshold from a different direction. (The two
-counts do not match, and should not: the summary asks whether ANY vector reaches a cell, this asks
-whether one reaches it *for this construct*, so a globally covered cell is still untested here.)
+non-failure — failing here would re-litigate that threshold from a different direction.
 
-- Exercised by `input.cddl`: **13** of 48 (✗ rows below have their full legal set untested)
-- Constructs with at least one untested-and-emittable cell: **39** of 48
+**These totals do not sum to the summary's, and making them agree would be a regression.** The
+summary asks whether ANY vector reaches a cell; this section asks whether one reaches it *for this
+construct*, so a globally covered cell is still untested here. An earlier draft had the two
+agreeing exactly — that was an artifact of crediting every construct for every other construct's
+vectors, and restoring the agreement would mean restoring the over-credit.
+
+- Exercised by `input.cddl`: **16** of 48 (✗ rows below have their full legal set untested)
+- Constructs with at least one untested-and-emittable cell: **38** of 48
+- Both counts are **conservative in one known direction**: a construct the fixture reaches only
+  through a wider type the generator narrows at emission (`float` → the `float64` cell) counts as
+  ✗ here, so *exercised* is a floor and *with gaps* is a ceiling. Cited alone, they overstate the
+  gap by that margin.
 
 | construct | in fixture | legal | covered | never emitted | untested and emittable |
 |-----------|:---------:|-------|---------|---------------|------------------------|
@@ -221,7 +234,7 @@ whether one reaches it *for this construct*, so a globally covered cell is still
 | `prelude.biguint` | ✓ | 1 | 1 | 0 | — |
 | `prelude.bool` | ✓ | 1 | 1 | 0 | — |
 | `prelude.bstr` | ✓ | 6 | 1 | 1 | `enc.major2.ai24`, `enc.major2.ai25`, `enc.major2.ai26`, `enc.major2.ai27` |
-| `prelude.bytes` | ✗ | 6 | 0 | 1 | `enc.major2.ai24`, `enc.major2.ai25`, `enc.major2.ai26`, `enc.major2.ai27`, `enc.major2.imm` |
+| `prelude.bytes` | ✓ | 6 | 1 | 1 | `enc.major2.ai24`, `enc.major2.ai25`, `enc.major2.ai26`, `enc.major2.ai27` |
 | `prelude.cbor-any` | ✗ | 1 | 0 | 0 | `enc.major6.ai25` |
 | `prelude.decfrac` | ✗ | 1 | 0 | 0 | `enc.major6.imm` |
 | `prelude.eb16` | ✗ | 1 | 0 | 0 | `enc.major6.imm` |
@@ -238,13 +251,13 @@ whether one reaches it *for this construct*, so a globally covered cell is still
 | `prelude.int` | ✗ | 10 | 0 | 0 | `enc.major0.ai24`, `enc.major0.ai25`, `enc.major0.ai26`, `enc.major0.ai27`, `enc.major0.imm`, `enc.major1.ai24`, `enc.major1.ai25`, `enc.major1.ai26`, `enc.major1.ai27`, `enc.major1.imm` |
 | `prelude.integer` | ✗ | 15 | 0 | 0 | `enc.major0.ai24`, `enc.major0.ai25`, `enc.major0.ai26`, `enc.major0.ai27`, `enc.major0.imm`, `enc.major1.ai24`, `enc.major1.ai25`, `enc.major1.ai26`, `enc.major1.ai27`, `enc.major1.imm`, `enc.major6.ai24`, `enc.major6.ai25`, `enc.major6.ai26`, `enc.major6.ai27`, `enc.major6.imm` |
 | `prelude.mime-message` | ✗ | 1 | 0 | 0 | `enc.major6.ai24` |
-| `prelude.nil` | ✗ | 1 | 0 | 0 | `enc.major7.simple_imm` |
+| `prelude.nil` | ✓ | 1 | 1 | 0 | — |
 | `prelude.nint` | ✓ | 5 | 4 | 0 | `enc.major1.ai26` |
 | `prelude.null` | ✓ | 1 | 1 | 0 | — |
 | `prelude.number` | ✗ | 13 | 0 | 2 | `enc.major0.ai24`, `enc.major0.ai25`, `enc.major0.ai26`, `enc.major0.ai27`, `enc.major0.imm`, `enc.major1.ai24`, `enc.major1.ai25`, `enc.major1.ai26`, `enc.major1.ai27`, `enc.major1.imm`, `enc.major7.float64` |
 | `prelude.regexp` | ✗ | 1 | 0 | 0 | `enc.major6.ai24` |
 | `prelude.tdate` | ✗ | 1 | 0 | 0 | `enc.major6.imm` |
-| `prelude.text` | ✗ | 6 | 0 | 1 | `enc.major3.ai24`, `enc.major3.ai25`, `enc.major3.ai26`, `enc.major3.ai27`, `enc.major3.imm` |
+| `prelude.text` | ✓ | 6 | 1 | 1 | `enc.major3.ai24`, `enc.major3.ai25`, `enc.major3.ai26`, `enc.major3.ai27` |
 | `prelude.time` | ✗ | 1 | 0 | 0 | `enc.major6.imm` |
 | `prelude.true` | ✗ | 1 | 0 | 0 | `enc.major7.simple_imm` |
 | `prelude.tstr` | ✓ | 6 | 1 | 1 | `enc.major3.ai24`, `enc.major3.ai25`, `enc.major3.ai26`, `enc.major3.ai27` |

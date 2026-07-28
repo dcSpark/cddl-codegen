@@ -91,6 +91,10 @@ for (const f of features)
 // head kinds follow DIFFERENT rules and are deliberately not unified:
 //   `#6.N(...)`  N is the tag NUMBER; the ai follows its magnitude (the head-argument width rule).
 //   `#7.N`       N IS the ai itself (20=false … 25=float16), so it maps directly, with no width rule.
+// Merging these into one "N -> cell" helper reads like obvious cleanup and would silently give EVERY
+// simple/float construct a wrong declared cell: put `#7.20` (false) through the width rule and it
+// lands in `.imm` instead of `.simple_imm`, `#7.25` (float16) in `.imm` instead of `.float16`. That is
+// exactly the defect class this check exists to catch, so the near-duplication is load-bearing.
 // Parametric heads (`type2.tag`'s user-chosen `#6.N`, `type2.major7`'s `#7.N`) are not prelude rules
 // and never reach here — they keep the parent ref, which is the correct claim for them.
 const tagNumberCell = (n: number) =>
