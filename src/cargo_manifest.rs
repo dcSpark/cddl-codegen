@@ -44,9 +44,9 @@
 //! knows every such dep's NAME independently of the flag's value, so it can tombstone one it no
 //! longer wants. Two kinds of entry fall outside it and are assert-only: [`ops_for_static_runtime`],
 //! whose manifest is co-owned with a hand-owned crate the tool cannot speak for, and the
-//! `<package>=<path>` dependency entries [`manifest_dep_ops`] builds for `--json-gen-dep` and
-//! `--wasm-dep`, whose package names exist only inside the flag values — a dropped flag carries no
-//! name to tombstone. Both document the stale-entry consequence where a user meets it.
+//! `<package>=<path>` dependency entries [`manifest_dep_ops`] builds for `--rust-dep`, `--wasm-dep`
+//! and `--json-gen-dep`, whose package names exist only inside the flag values — a dropped flag
+//! carries no name to tombstone. Both document the stale-entry consequence where a user meets it.
 //! An unparseable existing manifest is a hard error naming the file — never a silent clobber,
 //! since a parse failure is exactly the case where the user has content we can't safely preserve.
 
@@ -644,6 +644,17 @@ pub fn ops_for_rust(
         feature_op,
     ));
 
+    // `--rust-dep=<package>=<path>`: the manifest half of the cross-crate references this crate's
+    // RUST pass emits for an extern dependency — `use <dep>::<Type>;` for every imported type
+    // (`--extern-import`), which is written whether or not `--wasm` is on. Only this flag carries
+    // where the named crate lives.
+    //
+    // ASSERT-ONLY, on exactly the terms `ops_for_json_gen` states for the same op on the json-gen
+    // manifest and `ops_for_wasm` on the wasm one: the package name lives only inside the flag
+    // value, so a dropped flag carries no name to tombstone and a stale entry lingers until removed
+    // by hand — documented on the flag rather than left to be discovered.
+    ops.extend(manifest_dep_ops(cli.rust_deps()));
+
     ops.push(version_stamp());
     Ok(ops)
 }
@@ -696,8 +707,8 @@ pub fn ops_for_wasm(cli: &Cli) -> std::io::Result<Vec<(KeyPath, ManifestOp)>> {
     Ok(ops)
 }
 
-/// `[dependencies].<package> = { path = "<path>" }` per entry of a `--wasm-dep` / `--json-gen-dep`
-/// map, as assert-only [`ManifestOp::Set`]s.
+/// `[dependencies].<package> = { path = "<path>" }` per entry of a `--rust-dep` / `--wasm-dep` /
+/// `--json-gen-dep` map, as assert-only [`ManifestOp::Set`]s.
 ///
 /// Built through `toml_edit` rather than a formatted snippet so the path is quoted and escaped by
 /// the TOML writer: unlike every value elsewhere in this file, it is user-supplied at the point of
@@ -1917,6 +1928,114 @@ lto = true
         let without = apply(&wasm_ops(&[]), Some(&with), "wasm/Cargo.toml").unwrap();
         assert!(
             without.contains("other-wasm"),
+            "dropping the flag must LEAVE the entry (nothing names it to tombstone):\n{without}"
+        );
+    }
+
+    // ---- `--rust-dep` -------------------------------------------------------------------------
+
+    /// A rust changeset for the given `--rust-dep` values, through the real IR pipeline (which is
+    /// what `ops_for_rust` needs, unlike its two siblings) over a spec with nothing else in it.
+    fn rust_ops<R>(values: &[&str], f: impl FnOnce(&[(KeyPath, ManifestOp)]) -> R) -> R {
+        let flags: Vec<String> = values.iter().map(|v| format!("--rust-dep={v}")).collect();
+        let flags: Vec<&str> = flags.iter().map(String::as_str).collect();
+        with_manifest_ops("foo = [x: uint]\n", &flags, |rust, _| f(rust))
+    }
+
+    /// The flag's whole visible effect on `rust/Cargo.toml`, mirroring its two siblings on the other
+    /// two manifests: one `[dependencies]` path entry per value, in package-name order rather than
+    /// flag order, beside the entries the change log already writes.
+    #[test]
+    fn rust_dep_writes_a_path_dependency_entry() {
+        // deliberately NOT in sorted order on the command line
+        rust_ops(&["z-crate=../../z/rust", "a-crate=../../a/rust"], |ops| {
+            let out = apply(ops, None, "rust/Cargo.toml").unwrap();
+            let deps = out.parse::<DocumentMut>().unwrap()["dependencies"]
+                .as_table_like()
+                .expect("[dependencies] exists")
+                .iter()
+                .map(|(k, v)| (k.to_owned(), v.to_string().trim().to_owned()))
+                .collect::<Vec<_>>();
+            for (name, path) in [("a-crate", "../../a/rust"), ("z-crate", "../../z/rust")] {
+                assert!(
+                    deps.contains(&(name.to_owned(), format!("{{ path = \"{path}\" }}"))),
+                    "the flag must write a path dep entry, got {deps:?}"
+                );
+            }
+            let flag_keys: Vec<&String> = deps
+                .iter()
+                .map(|(k, _)| k)
+                .filter(|k| *k == "a-crate" || *k == "z-crate")
+                .collect();
+            assert_eq!(
+                flag_keys,
+                vec!["a-crate", "z-crate"],
+                "entries land in package-name order, not flag order"
+            );
+            // the log's own keys are untouched by the addition
+            assert!(out.contains("cbor_event"), "{out}");
+        });
+    }
+
+    /// The convergence contract, asserted separately on this manifest for the reason its wasm twin
+    /// states: "it is the same code path" is exactly the claim a later refactor could quietly
+    /// falsify. Our `path` wins, the user's own fields and comment survive, unrelated keys pass
+    /// through, and re-applying over our own output is a fixed point.
+    #[test]
+    fn rust_dep_converges_on_a_hand_added_entry() {
+        let existing = "\
+[package]
+name = \"demo-lib\"
+
+[dependencies]
+# added by hand before the flag existed
+other = { path = \"../../elsewhere/rust\", optional = true, features = [\"x\"] }
+unrelated = \"1.0\"
+
+[profile.release]
+lto = true
+";
+        rust_ops(&["other=../../other/rust"], |ops| {
+            let first = apply(ops, Some(existing), "rust/Cargo.toml").unwrap();
+            assert_eq!(
+                first.matches("other = ").count(),
+                1,
+                "the flag must converge on the existing entry, not add a second one:\n{first}"
+            );
+            assert!(
+                first.contains(
+                    "other = { path = \"../../other/rust\", optional = true, features = [\"x\"] }"
+                ),
+                "our path must win while the user's own fields survive:\n{first}"
+            );
+            assert!(
+                first.contains("# added by hand before the flag existed"),
+                "the user's comment on the entry must survive:\n{first}"
+            );
+            assert!(first.contains("unrelated = \"1.0\""), "{first}");
+            assert!(first.contains("[profile.release]"), "{first}");
+
+            let second = apply(ops, Some(&first), "rust/Cargo.toml").unwrap();
+            assert_eq!(
+                first, second,
+                "run twice must equal run once for the merged manifest"
+            );
+        });
+    }
+
+    /// The third place a changeset departs from the generated-crate set-or-remove rule, for the same
+    /// forced reason as the first two: dropping the flag leaves the entry behind, because the flag's
+    /// absence carries no package name to tombstone.
+    #[test]
+    fn rust_dep_entry_is_asserted_never_removed() {
+        let with = rust_ops(&["other=../../other/rust"], |ops| {
+            apply(ops, None, "rust/Cargo.toml").unwrap()
+        });
+        let without = rust_ops(&[], |ops| {
+            apply(ops, Some(&with), "rust/Cargo.toml").unwrap()
+        });
+        assert!(
+            without.contains("other"),
             "dropping the flag must LEAVE the entry (nothing names it to tombstone):\n{without}"
         );
     }

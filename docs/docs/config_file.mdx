@@ -154,7 +154,7 @@ json-schema-root = ["cml_chain::byron::ByronAddress"]
 **`<key>=<value>` flags become sub-tables**, which union per key — a later layer overrides only the
 keys it names, exactly as repeated flag occurrences already accumulate. The flags spelled this way
 are `extern-import`, `extern-wasm-crate`, `extern-wrapper-index`, `wrapper-requests`,
-`key-requests`, `json-schema-dep`, `json-gen-dep` and `wasm-dep`:
+`key-requests`, `json-schema-dep`, `json-gen-dep`, `wasm-dep` and `rust-dep`:
 
 ```toml
 [crates.my-extension]
@@ -210,6 +210,7 @@ On the **consumer** (`ledger`), from the dependency's own entry:
 | `--extern-wrapper-index core=gen/core/wasm/src/generated/collections.rs` | the dependency's `output` |
 | `--workspace-dep core` | being in this config is what "co-generated workspace member" means |
 | `--wasm-dep core=../../core/rust` and `--wasm-dep core-wasm=../../core/wasm` | the dependency's `lib-name` verbatim — the cargo **package** names — plus the paths from your wasm crate to its two crates. See [The wasm manifest](#the-wasm-manifest) |
+| `--rust-dep core=../../core/rust` | the same package name, plus the path from your **rust** crate to the dependency's. See [The rust manifest](#the-rust-manifest) |
 
 On the **dependency** (`core`), one pair per consumer, in consumer order:
 
@@ -228,7 +229,8 @@ assumed:
   `--extern-wasm-crate` mapping. The reverse edges go with them, since the sidecars a consumer emits
   exist only because it has a workspace dependency to record. (A `wasm = false` *consumer* still gets
   `--key-requests`: that sidecar is a rust-crate concern and is written in either mode. It gets no
-  `--wasm-dep` at all, having no manifest for one to land in.)
+  `--wasm-dep` at all, having no manifest for one to land in — but it does get `--rust-dep`, which
+  follows the rust crate every run generates rather than the wasm face.)
 
   Worth knowing before you set it: because `--workspace-dep` requires a wasm crate to exist, a
   dependency with `wasm = false` also loses the **map-key-derive channel** that rides on it. If a
@@ -460,9 +462,29 @@ The raw `[crates.<name>.wasm-dep]` sub-table names a crate the config does **not
 overrides a derived package (a vendored checkout, a registry version beside the path). A hand-written
 entry wins per package, silently, like every other sub-table entry.
 
-Two entries a `deps` edge needs are **not** derived, and both are hand edits today: the dependency's
-rust crate in the consumer's own `rust/Cargo.toml`, and — under `[runtime]` — each crate's dependency
-on the shared runtime crate, which `--common-import-override` documents as your line.
+## The rust manifest
+
+`deps` alone derives the `[dependencies]` entry the generated `rust/Cargo.toml` needs, as a
+`--rust-dep` value. An imported dependency's types are emitted into your rust source as
+`use <dep>::<Type>;`, in every flavor — the rust crate is the one crate every run generates — so this
+derivation has no `wasm` gate on either end and contributes exactly one entry per edge: the
+dependency's **rust** package, the only package the rust pass can name.
+
+`wasm-reexports` contributes nothing here, and that asymmetry is the key's meaning rather than an
+omission: it says a dependency's wasm classes ship in your package while your spec references none of
+its types, so no rust line names the crate.
+
+Paths are counted from the consumer's rust directory to the dependency's, following each crate's own
+`package-json` layout, and are always relative, for the reason the wasm ones are.
+
+The raw `[crates.<name>.rust-dep]` sub-table names a crate the config does **not** contain, or
+overrides a derived package. A hand-written entry wins per package, silently, like every other
+sub-table entry.
+
+One entry a `deps` edge needs is still **not** derived and remains a hand edit: under `[runtime]`,
+each crate's dependency on the shared runtime crate, which `--common-import-override` documents as
+your line — an override is a Rust path prefix (`crate::common` is a legal value), so no package name
+can be derived from it.
 
 :::note An umbrella package still needs a hand-written exporter
 Every `[crates.<name>]` table needs an `input`, so a config cannot describe a crate that generates
@@ -637,18 +659,19 @@ standing in.
 
 Absolute paths pass through untouched.
 
-Four right-hand sides are deliberately *not* resolved. Two of them are not paths at all:
+Five right-hand sides are deliberately *not* resolved. Two of them are not paths at all:
 `extern-wasm-crate` names a crate, and `json-schema-dep` names a Rust module path that lands
 verbatim in generated code.
 
-`json-gen-dep` and `wasm-dep` are the other two, and they are the ones worth stating: their
-right-hand sides **are** paths, and are still passed through verbatim. It becomes a cargo *path dependency* in
-`<output>/wasm/json-gen/Cargo.toml` and `<output>/wasm/Cargo.toml` respectively, and cargo resolves
-such a path against the manifest holding it — so rewriting it against the config file's directory
-would point it somewhere cargo never looks. Count each from the crate whose manifest it lands in,
-exactly as you would writing the entry by hand. (For a dependency this config contains you do not
-write either at all: the [threading derivation](#the-published-json-surface) and [the wasm
-manifest](#the-wasm-manifest) compute those relative paths for you.)
+`json-gen-dep`, `wasm-dep` and `rust-dep` are the other three, and they are the ones worth stating:
+their right-hand sides **are** paths, and are still passed through verbatim. Each becomes a cargo
+*path dependency* — in `<output>/wasm/json-gen/Cargo.toml`, `<output>/wasm/Cargo.toml` and
+`<output>/rust/Cargo.toml` respectively — and cargo resolves such a path against the manifest holding
+it, so rewriting it against the config file's directory would point it somewhere cargo never looks.
+Count each from the crate whose manifest it lands in, exactly as you would writing the entry by hand.
+(For a dependency this config contains you do not write any of them at all: the [threading
+derivation](#the-published-json-surface), [the wasm manifest](#the-wasm-manifest) and [the rust
+manifest](#the-rust-manifest) compute those relative paths for you.)
 
 ## Booleans
 
@@ -926,7 +949,8 @@ json-gen manifest. The relative path in those entries is computed for you.
 The same two lines also retire the hand-maintained `cml-cip25-wasm` / `cml-cip36-wasm` entries in
 `multi-era/wasm/Cargo.toml` — the ones under the *"not actual multi-era dependencies but we re-export
 these for the wasm builds"* comment — plus `cml-chain` and `cml-chain-wasm` from the `deps` edge. See
-[The wasm manifest](#the-wasm-manifest).
+[The wasm manifest](#the-wasm-manifest). The `deps` edge also retires the `cml-chain` entry in
+`multi-era/rust/Cargo.toml`, which is [the rust manifest](#the-rust-manifest).
 
 ### The generation order flips
 

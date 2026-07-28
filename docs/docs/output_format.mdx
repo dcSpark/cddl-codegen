@@ -1183,11 +1183,13 @@ Every key falls into one of three categories:
   edition **older than 2021** (e.g. `git checkout -- Cargo.toml` back to a hand-edited `edition =
   "2018"`) will turn every `u64::try_from(...)` in the generated crate into a hard compile error.
 - **Asserted, never removed.** The `[dependencies]` entries named by
-  [`--json-gen-dep`](./command_line_flags) in `wasm/json-gen/Cargo.toml` (and, outside the generated
+  [`--json-gen-dep`](./command_line_flags) in `wasm/json-gen/Cargo.toml`,
+  [`--wasm-dep`](./command_line_flags) in `wasm/Cargo.toml` and
+  [`--rust-dep`](./command_line_flags) in `rust/Cargo.toml` (and, outside the generated
   tree, the static-runtime crate's deps under `--export-static-crate`). These merge field-level like
   any other tool-owned dependency — so an entry you had already added by hand converges on one entry
   rather than duplicating — but dropping the flag **leaves the entry behind** instead of removing it.
-  For `--json-gen-dep` the package name exists only inside the flag value, so a run without the flag
+  For those three flags the package name exists only inside the flag value, so a run without the flag
   has no name to tombstone; for the static-runtime crate the manifest is co-owned with your hand
   code, which may still need a dependency the current flavor does not. Remove one you no longer want
   by hand.

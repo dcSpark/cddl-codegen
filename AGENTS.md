@@ -52,7 +52,8 @@ changing the *runtime behaviour* of generated code usually means editing `static
     same exception class applied to a crate *outside* the output dir — same changeset machinery,
     with a co-owned contract: deps only asserted never removed, package identity seed-only; the
     asserted-never-removed half now also applies INSIDE the output dir, to the `--json-gen-dep`
-    entries in `wasm/json-gen/Cargo.toml` and the `--wasm-dep` entries in `wasm/Cargo.toml` — the tool
+    entries in `wasm/json-gen/Cargo.toml`, the `--wasm-dep` entries in `wasm/Cargo.toml` and the
+    `--rust-dep` entries in `rust/Cargo.toml` — the tool
     cannot tombstone a package name that exists only in a flag value, so a dropped flag leaves a stale
     entry, and the "does not add extern-dep entries to manifests" / "does not touch this manifest"
     contracts those flag families used to state are conditional on those flags now); (2) each generated crate root `src/lib.rs` (rust, wasm,

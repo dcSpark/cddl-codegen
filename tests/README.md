@@ -3060,28 +3060,34 @@ another crate's files, so each derivation is asserted against the flag values a 
 invocation spells — and the derived paths are then walked on real disk, because a path that is
 well-formed and wrong looks identical in an argv assertion. The JSON-threading derivation
 (`--json-schema-dep` + `--json-gen-dep` from `deps ∪ wasm-reexports`) additionally pins that the
-derived cargo path dependency is RELATIVE under all four `package-json` layouts: it is one of the two
-derived paths written into a *committed* manifest, where an absolute value would make the same config
-produce different bytes in a different clone. The wasm-manifest derivation (`--wasm-dep`, from the
-same two edges) pins the same property, plus the asymmetry that is its whole content: a `deps` edge
-contributes BOTH of the dependency's packages (the wasm one for the boundary `use` lines, the rust
-one for a mixed-dep wrapper's inner storage), a `wasm-reexports` edge only the wasm one.
+derived cargo path dependency is RELATIVE under all four `package-json` layouts: it is one of the
+three derived paths written into a *committed* manifest, where an absolute value would make the same
+config produce different bytes in a different clone. The wasm-manifest derivation (`--wasm-dep`, from
+the same two edges) pins the same property, plus the asymmetry that is its whole content: a `deps`
+edge contributes BOTH of the dependency's packages (the wasm one for the boundary `use` lines, the
+rust one for a mixed-dep wrapper's inner storage), a `wasm-reexports` edge only the wasm one. The
+rust-manifest derivation (`--rust-dep`) pins the third: `deps` alone feeds it, one entry per edge,
+and — the leg a wasm-gated derivation would silently drop — under every combination of `wasm` on
+either end of the edge, since the rust crate is the one crate every run generates.
 
 **The compile proof for a config-generated workspace.**
 `a_config_generated_workspace_builds_with_wasm_on` generates a two-crate config with `wasm = true`, a
 `deps` edge and a `[runtime]` table into a scratch directory and `cargo check`s the whole workspace.
 It exists because no manifest-TEXT assertion can see whether a `[dependencies]` path resolves or
 whether the package it names is the one the generated `use` lines need — every derivation test above
-would pass over a workspace that does not build, and before `--wasm-dep` one did not. Its two
-MUTATION legs delete one derived entry each and require the build to fail naming the crate that entry
-provided, which is what stops it passing for a reason other than the one it is about. It is also the
+would pass over a workspace that does not build, and before `--wasm-dep` one did not. Its three
+MUTATION legs delete one derived entry each — two in the consumer's wasm manifest, one in its rust
+manifest — and require the build to fail naming the crate that entry provided, which is what stops it
+passing for a reason other than the one it is about. It is also the
 only place in the suite that builds a config-generated workspace with wasm ON (the `[runtime]`
 compile test runs `wasm = false`, the acceptance test compares bytes without building, and the `deps`
-e2e asserts the generated source references the dependency without compiling it). Three hand edits
-stand between "generated" and "builds" — the workspace `Cargo.toml`, the shared runtime's crate root
-plus each crate's dependency on it, and the dependency's rust package in the CONSUMER's
-`rust/Cargo.toml` — and each is asserted ABSENT before being written, so a tool that starts writing
-one fails there rather than silently making the edit redundant.
+e2e asserts the generated source references the dependency without compiling it). Two hand edits
+stand between "generated" and "builds" — the workspace `Cargo.toml`, and the shared runtime's crate
+root plus each crate's dependency on it — and each is asserted ABSENT before being written, so a tool
+that starts writing one fails there rather than silently making the edit redundant. The third entry a
+`deps` edge needs, the dependency's rust package in the CONSUMER's `rust/Cargo.toml`, was a hand edit
+asserted absent for exactly that reason until `--rust-dep` derived it; it is now asserted PRESENT,
+which is the inversion that assertion was built to force.
 
 **The acceptance proof.** Two tests pin "config = flag expansion, nothing more" at the level of
 emitted bytes rather than at the `Cli` struct.

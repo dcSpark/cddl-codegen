@@ -103,8 +103,9 @@ fn parse_json_schema_dep(s: &str) -> Result<String, String> {
     Ok(s.to_owned())
 }
 
-/// clap value parser body for the two `<cargo-package-name>=<path>` flags — `--json-gen-dep` and
-/// `--wasm-dep`, each of which declares a `[dependencies]` entry in one generated manifest.
+/// clap value parser body for the three `<cargo-package-name>=<path>` flags — `--rust-dep`,
+/// `--wasm-dep` and `--json-gen-dep`, each of which declares a `[dependencies]` entry in one
+/// generated manifest.
 ///
 /// Unlike every other parser in this file, NEITHER side lands in generated rust — both land in a
 /// TOML manifest, as `<name> = { path = "<path>" }`. That changes what each side has to guard
@@ -120,7 +121,7 @@ fn parse_json_schema_dep(s: &str) -> Result<String, String> {
 ///   `toml_edit`, which quotes and escapes it, so it cannot inject structure into the manifest the
 ///   way a verbatim-into-rust value could. The only requirement is non-empty.
 ///
-/// One body rather than two near-identical ones because the two flags differ in exactly three
+/// One body rather than three near-identical ones because the flags differ in exactly three
 /// tokens — their name, the manifest they write, and the package name their example carries — and
 /// every one of those appears in the messages, so a reader still sees which flag rejected them.
 fn parse_manifest_dep(
@@ -168,6 +169,11 @@ fn parse_json_gen_dep(s: &str) -> Result<String, String> {
 /// clap value parser for `--wasm-dep`, whose value is `<cargo-package-name>=<path>`.
 fn parse_wasm_dep(s: &str) -> Result<String, String> {
     parse_manifest_dep(s, "wasm-dep", "wasm/Cargo.toml", "cml-chain-wasm")
+}
+
+/// clap value parser for `--rust-dep`, whose value is `<cargo-package-name>=<path>`.
+fn parse_rust_dep(s: &str) -> Result<String, String> {
+    parse_manifest_dep(s, "rust-dep", "rust/Cargo.toml", "cml-chain")
 }
 
 /// Fold one of the `<cargo-package-name>=<path>` flag lists into `package name -> path`, SORTED by
@@ -453,6 +459,46 @@ pub struct Cli {
         value_name = "PACKAGE=PATH"
     )]
     pub wasm_dep: Vec<String>,
+
+    /// Declare a `[dependencies]` entry in the generated `rust/Cargo.toml`:
+    /// `<cargo-package-name> = { path = "<path>" }`. The third sibling of `--wasm-dep` and
+    /// `--json-gen-dep`, on the one manifest every run writes: it is the half of a cross-crate
+    /// reference the reference itself cannot carry, since a rust path names a crate but never says
+    /// where it lives.
+    ///
+    /// What produces such a reference here is `--extern-import`: an imported dependency's types are
+    /// emitted into this crate's rust source as `use <dep>::<Type>;`, so a `deps` edge needs the
+    /// dependency's RUST package declared here whether or not `--wasm` is on. Without it the name is
+    /// an `E0432` in your own rust build — and, because the wasm crate path-depends on this one,
+    /// in every crate downstream of it too.
+    ///
+    /// The LEFT side is the **cargo package name** (`cml-chain`) — the dashed spelling that goes in a
+    /// manifest, NOT the underscored rust crate name (`cml_chain`) that `--extern-import`'s
+    /// left-hand side takes. Getting the two backwards is the obvious mistake and the resulting
+    /// error does not point at it: a mis-spelled package name is a cargo resolution failure, and a
+    /// missing one is an `E0432` on a crate whose name looks right.
+    ///
+    /// The RIGHT side is written into the manifest VERBATIM, so a relative value means what a cargo
+    /// path dependency always means: relative to the directory holding that manifest, i.e.
+    /// `<output>/rust/`. The tool does not check that the path exists — an unresolvable one is a
+    /// cargo error naming it.
+    ///
+    /// Merge contract: the entry is ASSERTED, never removed — identical to its two siblings', and
+    /// for the identical forced reason. It merges field-level into whatever `[dependencies]` entry
+    /// is already there (so a hand-added entry for the same package converges rather than
+    /// duplicating, with this flag's `path` winning and the user's other fields — a `version`,
+    /// `optional`, `features` — surviving), and dropping the flag LEAVES THE ENTRY BEHIND: the
+    /// flag's absence carries no package name, so there is nothing for the tool to tombstone. Remove
+    /// a no-longer-wanted dependency by hand, as you would in any manifest.
+    ///
+    /// Repeatable; a repeated package name is a hard error. Requires no other flag: the rust crate
+    /// is the one crate every run generates.
+    #[clap(
+        long = "rust-dep",
+        value_parser = parse_rust_dep,
+        value_name = "PACKAGE=PATH"
+    )]
+    pub rust_dep: Vec<String>,
 
     /// Location override for default common types (error, serialization, etc)
     /// This is useful for integrating into an exisitng project that is based on
@@ -836,6 +882,12 @@ impl Cli {
     /// contract as [`Self::json_gen_deps`] directly above, for `wasm/Cargo.toml`.
     pub fn wasm_deps(&self) -> std::collections::BTreeMap<String, String> {
         manifest_deps(&self.wasm_dep, "wasm-dep")
+    }
+
+    /// Parsed `--rust-dep` mappings: `cargo package name -> path`, SORTED by package name. Same
+    /// contract as the two directly above, for `rust/Cargo.toml`.
+    pub fn rust_deps(&self) -> std::collections::BTreeMap<String, String> {
+        manifest_deps(&self.rust_dep, "rust-dep")
     }
 
     /// If someone override the common imports, we don't want to export them

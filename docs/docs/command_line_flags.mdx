@@ -476,6 +476,36 @@ cddl-codegen --input=cml_multi_era.cddl --output=export --lib-name=cml-multi-era
 **In a config file this is derived**, from both edge keys and for different reasons: a `deps` edge contributes both of the dependency's packages (the two reference kinds above), while a `wasm-reexports` edge contributes the wasm one alone — nothing generated names that crate at all, and the entry exists so the npm build ships its classes. Paths are counted from the consumer's wasm directory to the dependency's, following each crate's own `package-json` layout. See [Config file § The wasm manifest](./config_file#the-wasm-manifest). Writing the sub-table by hand stays the way to name a crate the config does **not** contain.
 :::
 
+<br/><br/>
+
+:::info `--rust-dep`
+Declares a `[dependencies]` entry in the generated `rust/Cargo.toml`:
+
+```toml
+<cargo-package-name> = { path = "<path>" }
+```
+
+The third of the three sibling flags — `--json-gen-dep`, `--wasm-dep` and this one — and the one on the manifest **every** run writes. Same value shape, same merge contract, same asserted-never-removed consequence.
+
+What produces a cross-crate reference here is **`--extern-import`**: an imported dependency's types are emitted into your rust source as `use <dep>::<Type>;`. That happens in every flavor, `--wasm` or not, so a consumed dependency needs its **rust** package declared here — and it is the only package the rust pass can name, so this flag contributes one entry per dependency rather than two. Without it the name is an `E0432` in your own rust build, and (because the wasm crate path-depends on the rust one) in every crate downstream of it.
+
+**The left side is the cargo *package* name — the opposite spelling from `--extern-import`'s left side.** A manifest key is dashed (`cml-chain`); the extern-deps directory name and the rust crate name are underscored (`cml_chain`). The accepted charset is cargo's own, `[A-Za-z0-9_-]`; anything else is rejected naming the character.
+
+**The right side is a path, written verbatim, and relative to the manifest**, i.e. counted from `<output>/rust/`. A sibling generated crate is typically `../../<sibling>/rust`. Absolute paths work too; the tool does not check that the path exists — an unresolvable one is a cargo error naming it.
+
+**The entry is asserted, never removed**, on exactly its siblings' terms and for the same forced reason: the package name lives only inside the flag value, so a run without the flag has no name to tombstone. It merges field-level into a hand-added entry for the same package, so the two converge rather than duplicating.
+
+Repeatable. Passing the same **package name** twice is a hard error naming it. Requires no other flag — the rust crate is the one crate every run generates, so there is no flavor in which its manifest goes unwritten.
+
+```bash
+cddl-codegen --input=cml_multi_era.cddl --output=export --lib-name=cml-multi-era \
+  --extern-import=cml_chain=../chain/extern-interface/cml_chain \
+  --rust-dep=cml-chain=../../chain/rust
+```
+
+**In a config file this is derived** from `deps` alone. `wasm-reexports` contributes nothing here, and the asymmetry is that key's meaning rather than an omission: it says a dependency's wasm classes ship in this crate's package while this crate's spec references none of its types, so no rust line names the crate. See [Config file § The rust manifest](./config_file#the-rust-manifest). Writing the sub-table by hand stays the way to name a crate the config does **not** contain.
+:::
+
 :::info `--common-import-override`
 Overrides the location of the static exports (e.g. error.rs, serialization.rs, etc).
 
@@ -564,7 +594,7 @@ Use it when a dependency's wasm bindings live in a **separate** crate — the sp
 
 The mapped wasm crate must **mirror the rust crate's module tree** (as cddl-codegen-generated wasm crates do: thin root + glob re-export), so `dep::sub::Foo` resolves to `dep_wasm::sub::Foo`. It must also provide, for each boundary type, `From<native> for wrapper` / `From<wrapper> for native` (the generated `get`/`add`/`insert` bodies convert with `.into()`, cloning first unless the type is a declared-[`@copy`](./comment_dsl#copy) extern crossing rust→wasm).
 
-The generated wasm `Cargo.toml` then needs **both** dep crates as dependencies (the rust crate for inner storage, the wasm crate for the boundary). Declare them with **`--wasm-dep`** above, or add them by hand — the manifest is **merged**, so keys the tool does not manage pass through untouched and a hand-added dependency survives regeneration either way. The consumer's `rust/Cargo.toml` needs the dep's rust crate too, and that entry is still a hand edit.
+The generated wasm `Cargo.toml` then needs **both** dep crates as dependencies (the rust crate for inner storage, the wasm crate for the boundary). Declare them with **`--wasm-dep`** above, or add them by hand — the manifest is **merged**, so keys the tool does not manage pass through untouched and a hand-added dependency survives regeneration either way. The consumer's `rust/Cargo.toml` needs the dep's rust crate too, for the `use <dep>::<Type>;` lines the rust pass emits; that entry is **`--rust-dep`** below.
 
 The mapping keyed on a `--common-import-override` value also selects the wasm face of the common `Int` (`pub use <wasm-face>::Int;`), falling back to the override crate name when unmapped — see `--common-import-override` above.
 
