@@ -84,6 +84,17 @@ fn per_crate_key_reason(key: &str) -> &'static str {
     }
 }
 
+/// The header `--print-flags` opens with. It says the three things that stop the listing being read
+/// as a command: the left column is a TOML key rather than an argument, nothing is quoted, and the
+/// tool generated nothing. See [`Config::flag_listing`] for why the format is deliberately not
+/// pasteable.
+const PRINT_FLAGS_PREAMBLE: &str = "\
+# The flags each crate WOULD be generated with, and the config key each one comes from.
+# This is a listing, not a command line: the left column is a config key rather than an
+# argument, nothing is shell-quoted, and a copy of it stops being true at the next edit of
+# the config. Nothing was generated.
+";
+
 /// The tables the document may hold at top level. Anything else is a typo or a feature this version
 /// does not have; either way the user must hear about it rather than have the table ignored.
 const TOP_LEVEL_KEYS: &[&str] = &["defaults", "profiles", "crates", "runtime"];
@@ -381,6 +392,23 @@ pub struct CrateEntry {
     pub json_schema_deps: Option<Vec<String>>,
     pub settings: Settings,
 }
+
+/// One argv fragment — a whole flag occurrence (`["--input", "<path>"]`, or the single token of a
+/// switch) tagged with the config key that produced it. The tag exists so a clap rejection can be
+/// reported against the TOML line the user wrote; [`Config::flag_listing`] prints the same tag, which
+/// is what turns "what flags does this config use" into "and which key put each one there".
+type Fragment = (&'static str, Vec<String>);
+
+/// Which config key derived a `<k>=<v>` sub-table entry or an array item that a user could equally
+/// have written by hand, keyed by `(flag name, the entry's own key or value)`.
+///
+/// Needed because the sugar writes its derivations into the same [`Settings`] fields a hand-written
+/// key lands in, and by the time [`argv_fragments`] walks them the two are indistinguishable. Without
+/// this a `deps`-derived `--extern-import` would be tagged `extern-import` — a key the user never
+/// wrote and cannot grep for — in the listing AND in a clap rejection. The threading derivations do
+/// not appear here: a [`DerivedThread`] carries its own key already, because it never merges into a
+/// sub-table.
+type Provenance = BTreeMap<(&'static str, String), &'static str>;
 
 /// One derived JSON-schema thread, as the two flag values it expands to.
 ///
@@ -1022,6 +1050,23 @@ impl Config {
     /// cross-crate flags already document — so `--config c.toml ledger` regenerates one crate against
     /// what `core` last wrote, and fails with the flags' own error if `core` never wrote anything.
     pub fn expand(&self, selected: &[String]) -> Result<Vec<(String, Cli)>, String> {
+        Ok(self
+            .expand_each(selected)?
+            .into_iter()
+            .map(|(name, cli, _)| (name, cli))
+            .collect())
+    }
+
+    /// [`Self::expand`], keeping each invocation's tagged [`Fragment`]s alongside the `Cli` they
+    /// parsed into.
+    ///
+    /// One body for both callers rather than a second expansion path for the listing: a
+    /// `--print-flags` that recomputed the fragments could print a flag list the run does not use,
+    /// which is the one thing an inspection surface must never do.
+    fn expand_each(
+        &self,
+        selected: &[String],
+    ) -> Result<Vec<(String, Cli, Vec<Fragment>)>, String> {
         let ungraphed = self.ungraphed()?;
         // Derived from EVERY crate, never from the selection: which crate can carry the shared
         // runtime is a property of the config, so `--config c.toml ledger` must reject the same
@@ -1055,10 +1100,12 @@ impl Config {
             .map(|name| {
                 let entry = &self.crates[&name];
                 let mut settings = self.merged_settings(entry);
-                self.apply_graph_edges(&name, entry, &mut settings, &ungraphed);
+                let derived = self.apply_graph_edges(&name, entry, &mut settings, &ungraphed);
                 self.apply_runtime(&name, &mut settings, runtime_choice.as_ref());
                 let threads = self.threading(&name, entry, &settings, &ungraphed)?;
-                let cli = build_cli(&name, entry, &settings, &self.base_dir, &threads)?;
+                let fragments =
+                    argv_fragments(entry, &settings, &self.base_dir, &threads, &derived);
+                let cli = build_cli(&name, entry, &self.base_dir, &fragments)?;
                 // The generator's own cross-flag rules, run HERE rather than where the generator
                 // reaches them. They are a pure function of the `Cli`, and every one of them is
                 // reachable from a shared key — `[defaults].json-schema-scripts = true` with one
@@ -1070,9 +1117,45 @@ impl Config {
                 // names both flags.
                 crate::api::validate_flag_combinations(&cli)
                     .map_err(|e| format!("[crates.{name}]: {e}"))?;
-                Ok((name, cli))
+                Ok((name, cli, fragments))
             })
             .collect()
+    }
+
+    /// The flag list each selected crate would be generated with, as text — the whole of
+    /// `--print-flags`.
+    ///
+    /// The expansion behind it is the REAL one ([`Self::expand_each`]), so every validation a run
+    /// performs has already run by the time a line is printed: a config that cannot generate cannot
+    /// be listed either, and it fails with the identical message.
+    ///
+    /// # Why the format is not a command line
+    ///
+    /// The obvious rendering — a copy-pasteable `cddl-codegen --input … --output …` — would be the
+    /// wrong thing to build. A pasted flag list is a snapshot: it is accurate on the day it is
+    /// copied and silently stops being so at the next config edit, which is the exact duplication
+    /// this feature exists to make visible rather than to mint more of. So the listing leads each
+    /// line with the CONFIG KEY, which answers "why is this flag here?" as well as "what is here?",
+    /// and is not a token sequence any shell would accept. Nothing is shell-quoted, for the same
+    /// reason.
+    pub fn flag_listing(&self, selected: &[String]) -> Result<String, String> {
+        let expanded = self.expand_each(selected)?;
+        // Padded to the widest key in THIS listing, so the columns line up without a hard-coded
+        // width that a longer key would silently outgrow.
+        let width = expanded
+            .iter()
+            .flat_map(|(_, _, fragments)| fragments.iter())
+            .map(|(key, _)| key.len())
+            .max()
+            .unwrap_or(0);
+        let mut out = String::from(PRINT_FLAGS_PREAMBLE);
+        for (name, _, fragments) in &expanded {
+            out.push_str(&format!("\n[crates.{name}]\n"));
+            for (key, fragment) in fragments {
+                out.push_str(&format!("  {key:width$}  {}\n", fragment.join(" ")));
+            }
+        }
+        Ok(out)
     }
 
     /// Every JSON-schema thread this crate's document carries, in emission order.
@@ -1228,9 +1311,11 @@ impl Config {
         let mut out: BTreeMap<String, Cli> = BTreeMap::new();
         for (name, entry) in &self.crates {
             let settings = self.merged_settings(entry);
+            let fragments =
+                argv_fragments(entry, &settings, &self.base_dir, &[], &Provenance::new());
             out.insert(
                 name.clone(),
-                build_cli(name, entry, &settings, &self.base_dir, &[])?,
+                build_cli(name, entry, &self.base_dir, &fragments)?,
             );
         }
         Ok(out)
@@ -1461,14 +1546,30 @@ impl Config {
     /// crate's `output` and `lib-name`, and nothing checks that they do.
     ///
     /// A hand-written sub-table entry for the same key always wins, silently: an explicit value is
-    /// the user overriding the sugar for a case it does not cover, not a conflict to report.
+    /// the user overriding the sugar for a case it does not cover, not a conflict to report. The
+    /// returned [`Provenance`] records only the entries this actually wrote, so a hand-written one is
+    /// still attributed to the flag-named key the user typed.
     fn apply_graph_edges(
         &self,
         name: &str,
         entry: &CrateEntry,
         settings: &mut Settings,
         ungraphed: &BTreeMap<String, Cli>,
-    ) {
+    ) -> Provenance {
+        let mut derived = Provenance::new();
+        // Write a sub-table entry only if the merge did not already hold one, recording the config
+        // key that produced it. Spelled out rather than through `Entry::or_insert_with` because the
+        // recording has to happen exactly when the insertion does.
+        macro_rules! derive {
+            ($table:ident, $flag:literal, $key:expr, $value:expr $(,)?) => {{
+                let key: String = $key;
+                if !settings.$table.contains_key(&key) {
+                    settings.$table.insert(key.clone(), $value);
+                    derived.insert(($flag, key), "deps");
+                }
+            }};
+        }
+
         // FORWARD edges: what this crate needs in order to consume each dependency.
         for dep in &entry.deps {
             let dep_entry = &self.crates[dep];
@@ -1478,10 +1579,12 @@ impl Config {
             // The dependency's committed extern-interface export, a sibling of `rust/`/`wasm/` under
             // its `output` (NOT under the `--package-json` nesting — the export is emitted in every
             // mode, including rust-only, so it does not live inside the npm package's crate root).
-            settings
-                .extern_import
-                .entry(key.clone())
-                .or_insert_with(|| join(&dep_entry.output, &format!("extern-interface/{key}")));
+            derive!(
+                extern_import,
+                "extern-import",
+                key.clone(),
+                join(&dep_entry.output, &format!("extern-interface/{key}")),
+            );
 
             // The remaining three are all about the dependency's WASM face, so all three are emitted
             // exactly when it has one. `--workspace-dep` in particular is not optional here: it is a
@@ -1490,22 +1593,27 @@ impl Config {
             if !dep_cli.wasm {
                 continue;
             }
-            settings
-                .extern_wasm_crate
-                .entry(key.clone())
-                .or_insert_with(|| format!("{key}_wasm"));
-            settings
-                .extern_wrapper_index
-                .entry(key.clone())
-                .or_insert_with(|| {
-                    crate_relative(
-                        dep_cli,
-                        &dep_entry.output,
-                        "wasm/src/generated/collections.rs",
-                    )
-                });
+            derive!(
+                extern_wasm_crate,
+                "extern-wasm-crate",
+                key.clone(),
+                format!("{key}_wasm"),
+            );
+            derive!(
+                extern_wrapper_index,
+                "extern-wrapper-index",
+                key.clone(),
+                crate_relative(
+                    dep_cli,
+                    &dep_entry.output,
+                    "wasm/src/generated/collections.rs",
+                ),
+            );
             if !settings.workspace_dep.contains(&key) {
-                settings.workspace_dep.push(key);
+                settings.workspace_dep.push(key.clone());
+                // Keyed by the VALUE rather than by a map key: `--workspace-dep` is an array, and
+                // its items are the only thing distinguishing one occurrence from another.
+                derived.insert(("workspace-dep", key), "deps");
             }
         }
 
@@ -1513,10 +1621,15 @@ impl Config {
         // the wrappers and key derives its consumers borrow are hosted here rather than duplicated
         // per consumer. In consumer-name order; the label is the consumer's library name, which is
         // what the attribution comments the dep emits will carry.
+        //
+        // These are attributed to `deps` like the forward ones, and the key is on the OTHER crate's
+        // table — a reverse edge exists because a consumer declared it. `deps` is still the right
+        // answer to "which key produced this flag"; the label in each value names the consumer whose
+        // table holds it.
         if !ungraphed[name].wasm {
             // Without a wasm crate this crate is never a `--workspace-dep` of anyone, so no consumer
             // emits either sidecar and both derived paths would name files that are never written.
-            return;
+            return derived;
         }
         for (consumer_name, consumer) in &self.crates {
             if !consumer.deps.iter().any(|dep| dep.as_str() == name) {
@@ -1526,26 +1639,30 @@ impl Config {
             let label = normalized(&consumer.lib_name);
             // The rust-side sidecar rides on `--workspace-dep` alone, so a rust-only consumer still
             // emits it; the wasm-side one exists only when the consumer has a wasm crate to record.
-            settings
-                .key_requests
-                .entry(label.clone())
-                .or_insert_with(|| {
-                    crate_relative(
-                        consumer_cli,
-                        &consumer.output,
-                        "rust/src/generated/borrowed_key_types.rs",
-                    )
-                });
+            derive!(
+                key_requests,
+                "key-requests",
+                label.clone(),
+                crate_relative(
+                    consumer_cli,
+                    &consumer.output,
+                    "rust/src/generated/borrowed_key_types.rs",
+                ),
+            );
             if consumer_cli.wasm {
-                settings.wrapper_requests.entry(label).or_insert_with(|| {
+                derive!(
+                    wrapper_requests,
+                    "wrapper-requests",
+                    label,
                     crate_relative(
                         consumer_cli,
                         &consumer.output,
                         "wasm/src/generated/borrowed_collections.rs",
-                    )
-                });
+                    ),
+                );
             }
         }
+        derived
     }
 }
 
@@ -1714,7 +1831,8 @@ fn argv_fragments(
     settings: &Settings,
     base_dir: &Path,
     threads: &[DerivedThread],
-) -> Vec<(&'static str, Vec<String>)> {
+    derived: &Provenance,
+) -> Vec<Fragment> {
     let Settings {
         static_dir,
         export_static_crate,
@@ -1749,7 +1867,7 @@ fn argv_fragments(
         json_gen_dep,
     } = settings;
 
-    let mut out: Vec<(&'static str, Vec<String>)> = Vec::new();
+    let mut out: Vec<Fragment> = Vec::new();
     // A macro rather than a closure so the negated switch below (which pushes a one-token fragment)
     // does not collide with a closure's exclusive borrow of `out`.
     macro_rules! flag {
@@ -1848,8 +1966,17 @@ fn argv_fragments(
     for v in json_schema_root {
         flag!("json-schema-root", "json-schema-root", v.clone());
     }
+    // The config key to report for one entry of a sub-table or array: the sugar's key when
+    // `apply_graph_edges` wrote it, else the flag-named key, which is what a user writing it by hand
+    // typed. Consulted per ENTRY, since one table routinely holds both kinds.
+    let tag = |flag: &'static str, entry_key: &str| -> &'static str {
+        derived
+            .get(&(flag, entry_key.to_owned()))
+            .copied()
+            .unwrap_or(flag)
+    };
     for v in workspace_dep {
-        flag!("workspace-dep", "workspace-dep", v.clone());
+        flag!(tag("workspace-dep", v), "workspace-dep", v.clone());
     }
 
     // `<k>=<v>` sub-tables. The right-hand side is a PATH for the four that name a file the tool
@@ -1857,7 +1984,7 @@ fn argv_fragments(
     macro_rules! path_table {
         ($($tbl:ident => $key:literal),* $(,)?) => {$(
             for (k, v) in $tbl {
-                flag!($key, $key, format!("{k}={}", resolve_path(base_dir, v)));
+                flag!(tag($key, k), $key, format!("{k}={}", resolve_path(base_dir, v)));
             }
         )*};
     }
@@ -1870,7 +1997,11 @@ fn argv_fragments(
     // `extern-wasm-crate`'s right side is a CRATE name and `json-schema-dep`'s is a rust MODULE PATH
     // emitted verbatim into generated code; neither is a filesystem path, so neither resolves.
     for (k, v) in extern_wasm_crate {
-        flag!("extern-wasm-crate", "extern-wasm-crate", format!("{k}={v}"));
+        flag!(
+            tag("extern-wasm-crate", k),
+            "extern-wasm-crate",
+            format!("{k}={v}")
+        );
     }
     // Derived threads come BEFORE the raw sub-table entries, and this is the whole of the ordering
     // story. `--json-schema-dep` is order-significant — flag order is registration order, which
@@ -1906,18 +2037,20 @@ fn argv_fragments(
 }
 
 /// Build one crate's `Cli` through clap, wrapping a rejection with the config key that caused it.
+///
+/// The fragments are passed IN rather than derived here, so the vector clap parses is the same one
+/// `--print-flags` prints — a listing that could differ from the invocation would be worse than no
+/// listing.
 fn build_cli(
     name: &str,
     entry: &CrateEntry,
-    settings: &Settings,
     base_dir: &Path,
-    threads: &[DerivedThread],
+    fragments: &[Fragment],
 ) -> Result<Cli, String> {
     use clap::Parser;
 
-    let fragments = argv_fragments(entry, settings, base_dir, threads);
     let mut argv: Vec<String> = vec!["cddl-codegen".to_owned()];
-    for (_, fragment) in &fragments {
+    for (_, fragment) in fragments {
         argv.extend(fragment.iter().cloned());
     }
     match Cli::try_parse_from(&argv) {
@@ -1961,7 +2094,7 @@ fn build_cli(
                 "--output".to_owned(),
                 output,
             ];
-            for (key, fragment) in &fragments {
+            for (key, fragment) in fragments {
                 // Already in `base`; re-adding them is clap's "cannot be used multiple times", which
                 // would misattribute every rejection to `input`.
                 if matches!(*key, "input" | "output") {
@@ -2108,6 +2241,24 @@ pub fn generate(config_path: &Path, selected: &[String]) -> Result<(), Box<dyn s
     Ok(())
 }
 
+/// `--print-flags`: state what a config expands to, and generate nothing.
+///
+/// The expansion is the same one [`generate`] performs — every path resolution, every derivation and
+/// every validation — so a config that would abort a run aborts this with the identical message. The
+/// only thing that does not happen is the writing: no crate generates, no file is read from any
+/// output tree, and the run exits 0.
+///
+/// This is the only way to see what a config does short of running it: whether a `[defaults]` key
+/// reaches a crate, or a `deps` edge derived the path you expected, is otherwise answerable only by
+/// generating and reading the output tree.
+pub fn print_flags(
+    config_path: &Path,
+    selected: &[String],
+) -> Result<(), Box<dyn std::error::Error>> {
+    print!("{}", load(config_path)?.flag_listing(selected)?);
+    Ok(())
+}
+
 /// The config-mode command line: `cddl-codegen --config <file> [CRATE...]`.
 ///
 /// A SEPARATE clap struct rather than a `--config` field on [`Cli`], because `Cli` makes
@@ -2125,6 +2276,14 @@ pub struct ConfigCli {
     /// Path to the config file.
     #[clap(long = "config", value_parser, value_name = "CONFIG_TOML")]
     pub config: PathBuf,
+
+    /// Print the flags each crate would be generated with, and generate nothing.
+    ///
+    /// Not a generation flag, so it does not collide with [`reject_generation_flags`]: it changes
+    /// what the run DOES rather than what any crate is generated with, which is the same class as
+    /// the positional crate selector.
+    #[clap(long = "print-flags", action = clap::ArgAction::SetTrue)]
+    pub print_flags: bool,
 
     /// Generate only these crates (default: every crate in the config).
     #[clap(value_parser, value_name = "CRATE")]
