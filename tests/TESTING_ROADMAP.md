@@ -1483,7 +1483,7 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   regression-pinned by `export_static_crate_writes_composed_runtime_and_manifest`'s hand-manifest
   leg), and the warm-up dep-universe gate sweeps `ops_for_static_runtime` alongside the other three
   op sets. The RESIDUAL: the mapping from composed runtime files to dep ops (`cbor_event`/`hex`
-  always; `linked-hash-map`/`serde`/`schemars` per flag) is hand-derived from grepping the static
+  always; `hashlink`/`serde`/`schemars` per flag) is hand-derived from grepping the static
   files, and nothing re-checks it — a `static/*.rs` runtime file gaining a reference to a new
   external crate (or to an existing one under a flag combination whose op condition doesn't match)
   would under-assert again, and only the consumer's build would notice. Working rule meanwhile: a

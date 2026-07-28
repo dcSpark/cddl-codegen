@@ -1886,4 +1886,46 @@ mod tests {
         );
         deser_test(&value);
     }
+
+    // Pin 4: the entry view's MATCH shapes. `entry()` hands back a two-variant enum over an occupied
+    // and a vacant half, so code that destructures an entry — rather than going through `or_insert`
+    // — compiles and behaves as it reads. This is the shape hand-written consumers use to accumulate
+    // into a decoded table, so it is exercised here inside a real generated crate rather than left
+    // to a consumer to discover; the occupied arm's in-place `get_mut` must leave the key's wire
+    // position alone for the same reason `or_insert` must.
+    #[test]
+    fn ordered_hash_map_entry_match_shapes() {
+        use crate::generated::ordered_hash_map::Entry;
+        let mut table: OrderedHashMap<u64, u64> = OrderedHashMap::new();
+        table.insert(1, 10);
+        table.insert(2, 11);
+        table.insert(3, 12);
+        match table.entry(2) {
+            Entry::Occupied(mut occupied) => *occupied.get_mut() += 1,
+            Entry::Vacant(_) => panic!("key 2 was inserted above — its entry must be occupied"),
+        }
+        match table.entry(4) {
+            Entry::Occupied(_) => panic!("key 4 was never inserted — its entry must be vacant"),
+            Entry::Vacant(vacant) => {
+                vacant.insert(14);
+            }
+        }
+        let value = WrapperTable::new(table);
+        assert_eq!(
+            value.to_cbor_bytes(),
+            [
+                map_def(4),
+                cbor_int(1, Sz::Inline),
+                cbor_int(10, Sz::Inline),
+                cbor_int(2, Sz::Inline),
+                cbor_int(12, Sz::Inline),
+                cbor_int(3, Sz::Inline),
+                cbor_int(12, Sz::Inline),
+                cbor_int(4, Sz::Inline),
+                cbor_int(14, Sz::Inline),
+            ]
+            .concat()
+        );
+        deser_test(&value);
+    }
 }

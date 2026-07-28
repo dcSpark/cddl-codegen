@@ -63,6 +63,6 @@ its derived view disagree. The rendering reuses the exact runtime fold, so the v
 from the behavior.
 
 Note the logs cover only the *unconditional* keys. Flag/type-conditional dependencies (e.g.
-`linked-hash-map` under `--preserve-encodings`, `hex` for byte wrappers) and the
+`hashlink` under `--preserve-encodings`, `hex` for byte wrappers) and the
 `package.metadata.cddl-codegen.generated-with` version stamp are conditions on the user's input,
 not history, so they live in code: `ops_for_*` in `src/cargo_manifest.rs`.

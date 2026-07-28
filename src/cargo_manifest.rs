@@ -39,10 +39,12 @@
 //! the current live keys — generated, never read at runtime, kept in sync by a drift gate.
 //!
 //! Flag/type-conditional deps in the generated-crate changesets emit **set-or-remove, never
-//! set-or-skip**: e.g. `--preserve-encodings` false emits `Remove(dependencies.linked-hash-map)`,
+//! set-or-skip**: e.g. `--preserve-encodings` false emits `Remove(dependencies.hashlink)`,
 //! so flipping a flag off doesn't strand a stale dep. That rule is available only because the tool
 //! knows every such dep's NAME independently of the flag's value, so it can tombstone one it no
-//! longer wants. Two kinds of entry fall outside it and are assert-only: [`ops_for_static_runtime`],
+//! longer wants — which is also why a dep the tool has stopped using entirely (a renamed backing
+//! crate, say) can carry an UNCONDITIONAL `Remove` forever, the in-code twin of a change-log
+//! tombstone. Two kinds of entry fall outside it and are assert-only: [`ops_for_static_runtime`],
 //! whose manifest is co-owned with a hand-owned crate the tool cannot speak for, and the
 //! `<package>=<path>` dependency entries [`manifest_dep_ops`] builds for `--rust-dep`, `--wasm-dep`
 //! and `--json-gen-dep`, whose package names exist only inside the flag values — a dropped flag
@@ -573,7 +575,16 @@ pub fn ops_for_rust(
     let mut ops = ops_from_log(cli, "manifest_changes/rust.toml")?;
 
     // flag-conditional deps
-    ops.push(dep("linked-hash-map", "\"0.5.3\"", cli.preserve_encodings));
+    ops.push(dep("hashlink", "\"0.12.1\"", cli.preserve_encodings));
+    // Permanent tombstone: `linked-hash-map` was this dep's name before `OrderedHashMap`'s backing
+    // moved to `hashlink`, so it is a key the tool once managed. Unconditional (not set-or-remove —
+    // no flag value can ever bring it back) and kept forever, on the same terms as a change-log
+    // tombstone: a manifest written by any pre-swap tool version converges on regeneration instead
+    // of carrying a dep nothing references.
+    ops.push((
+        key_path(&["dependencies", "linked-hash-map"]),
+        ManifestOp::Remove,
+    ));
     ops.push(dep("derivative", "\"2.2.0\"", cli.preserve_encodings));
     ops.push(dep(
         "serde",
@@ -739,14 +750,14 @@ fn manifest_dep_ops(
 /// conditional deps here are set-or-SKIP, never set-or-remove: this manifest is co-owned with the
 /// target crate's hand code, and the tool cannot know that a dep its current flavor doesn't need
 /// isn't still needed by that hand code — so it only ever asserts the deps it does need
-/// (`cbor_event`/`hex` unconditionally via the log; `linked-hash-map` iff preserve-encodings,
+/// (`cbor_event`/`hex` unconditionally via the log; `hashlink` iff preserve-encodings,
 /// `serde` iff json-serde-derives, `serde_json` iff json-serde-derives OR json-schema-export,
 /// `schemars` iff json-schema-export — mirroring exactly which composed runtime files reference
 /// them). Package identity keys are seed-only (see the log).
 pub fn ops_for_static_runtime(cli: &Cli) -> std::io::Result<Vec<(KeyPath, ManifestOp)>> {
     let mut ops = ops_from_log(cli, "manifest_changes/static_runtime.toml")?;
     if cli.preserve_encodings {
-        ops.push(dep("linked-hash-map", "\"0.5.3\"", true));
+        ops.push(dep("hashlink", "\"0.12.1\"", true));
     }
     if cli.json_serde_derives {
         ops.push(dep(
@@ -915,16 +926,16 @@ anyhow = \"1\"
         let existing = "\
 [dependencies]
 cbor_event = \"2.4.0\"
-linked-hash-map = \"0.5.3\"
+hashlink = \"0.12.1\"
 derivative = \"2.2.0\"
 ";
         // now regenerated WITHOUT the flag: those deps become Remove ops
         let ops = vec![
-            dep("linked-hash-map", "\"0.5.3\"", false),
+            dep("hashlink", "\"0.12.1\"", false),
             dep("derivative", "\"2.2.0\"", false),
         ];
         let out = apply(&ops, Some(existing), "rust/Cargo.toml").unwrap();
-        assert!(!out.contains("linked-hash-map"));
+        assert!(!out.contains("hashlink"));
         assert!(!out.contains("derivative"));
         assert!(out.contains("cbor_event = \"2.4.0\""));
     }
@@ -976,7 +987,10 @@ version = \"3.2.1\"
     // ---- dependency-spec merge --------------------------------------------------------------
 
     /// A user manifest shaped like cardano-multiplatform-lib's `[dependencies]` block — the deps
-    /// whose user-shaped specs a whole-value `Set` used to flatten. Used as the merge BASE.
+    /// whose user-shaped specs a whole-value `Set` used to flatten. Used as the merge BASE. Its
+    /// `linked-hash-map` entry is deliberately the PRE-hashlink shape: this is what a manifest
+    /// generated before the backing swap actually holds, and so is the base the migration test
+    /// below regenerates over.
     fn cml_shaped_manifest() -> &'static str {
         "\
 [dependencies]
@@ -1070,10 +1084,14 @@ linked-hash-map = \"0.5.6\"
 
     #[test]
     fn merge_keeps_compatible_pin() {
-        // user 0.5.6 satisfies ^0.5.3 → kept.
-        let line = merged_dep(cml_shaped_manifest(), "linked-hash-map", "\"0.5.3\"");
-        assert!(line.contains("0.5.6"), "compatible pin not kept: {line}");
-        assert!(!line.contains("0.5.3"), "tool floor leaked in: {line}");
+        // user 0.12.3 satisfies ^0.12.1 → kept.
+        let line = merged_dep(
+            "[dependencies]\nhashlink = \"0.12.3\"\n",
+            "hashlink",
+            "\"0.12.1\"",
+        );
+        assert!(line.contains("0.12.3"), "compatible pin not kept: {line}");
+        assert!(!line.contains("0.12.1"), "tool floor leaked in: {line}");
     }
 
     #[test]
@@ -1202,7 +1220,7 @@ linked-hash-map = \"0.5.6\"
                 &["dependencies", "serde"],
                 "{ version = \"1.0\", features = [\"derive\"] }",
             ),
-            set(&["dependencies", "linked-hash-map"], "\"0.5.3\""),
+            set(&["dependencies", "hashlink"], "\"0.12.1\""),
         ];
         let first = apply(&ops, Some(cml_shaped_manifest()), "rust/Cargo.toml").unwrap();
         let second = apply(&ops, Some(&first), "rust/Cargo.toml").unwrap();
@@ -1224,6 +1242,66 @@ linked-hash-map = \"0.5.6\"
         assert!(
             out.contains("new-dep = \"1.0\""),
             "verbatim write lost: {out}"
+        );
+    }
+
+    /// The tombstone's teeth. Regenerating over a manifest written BEFORE `OrderedHashMap`'s
+    /// backing moved to `hashlink` must both assert the new dep and delete the old one, so a user
+    /// who upgrades the tool converges instead of carrying a dep nothing references any more. The
+    /// changeset comes from the production `ops_for_rust`, not a hand-listed pair, so deleting the
+    /// unconditional `Remove` from it fails here (a hand-rebuilt op pair would assert nothing about
+    /// the real list), at the cost of reading the repo's own change log — same idiom as
+    /// `warmup_manifest_covers_registry_dep_universe`.
+    #[test]
+    fn hashlink_swap_tombstones_the_pre_swap_dep() {
+        use clap::Parser;
+        let ops_for = |extra: &[&str]| {
+            let mut args = vec![
+                "cddl-codegen",
+                "--input",
+                "unused",
+                "--output",
+                "unused",
+                "--static-dir",
+                concat!(env!("CARGO_MANIFEST_DIR"), "/static"),
+            ];
+            args.extend_from_slice(extra);
+            let cli = Cli::parse_from(args);
+            ops_for_rust(&IntermediateTypes::new(), false, &cli).unwrap()
+        };
+
+        let on = apply(
+            &ops_for(&["--preserve-encodings=true"]),
+            Some(cml_shaped_manifest()),
+            "rust/Cargo.toml",
+        )
+        .unwrap();
+        assert!(
+            on.contains("hashlink = "),
+            "the new backing dep must be asserted:\n{on}"
+        );
+        assert!(
+            !on.contains("linked-hash-map"),
+            "the pre-swap dep must be tombstoned:\n{on}"
+        );
+        // Not a vacuous pass: the changeset really was applied to this base.
+        assert!(on.contains("cbor_event"), "changeset not applied:\n{on}");
+
+        // The tombstone is UNCONDITIONAL, unlike the set-or-remove flag deps: with the flag off the
+        // stale dep goes just the same, and no backing dep replaces it.
+        let off = apply(
+            &ops_for(&[]),
+            Some(cml_shaped_manifest()),
+            "rust/Cargo.toml",
+        )
+        .unwrap();
+        assert!(
+            !off.contains("linked-hash-map"),
+            "the tombstone must not be conditional on the flag:\n{off}"
+        );
+        assert!(
+            !off.contains("hashlink"),
+            "hashlink is preserve-encodings-only:\n{off}"
         );
     }
 
