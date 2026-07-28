@@ -1122,7 +1122,7 @@
         "status": "supported"
       },
       {
-        "evidence": "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok",
+        "evidence": "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok",
         "id": "prelude.undefined",
         "status": "unsupported"
       },
@@ -1572,7 +1572,7 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.array-element.prelude.undefined",
         "status": "unsupported"
       },
@@ -1647,7 +1647,7 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.array-element.type2.unwrap",
         "status": "unsupported"
       },
@@ -1682,7 +1682,7 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.array-element.value.bytes",
         "status": "unsupported"
       },
@@ -2277,7 +2277,7 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.map-value.prelude.undefined",
         "status": "unsupported"
       },
@@ -2352,7 +2352,7 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.map-value.type2.unwrap",
         "status": "unsupported"
       },
@@ -2372,7 +2372,7 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok",
+        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.map-value.value.bytes",
         "status": "unsupported"
       },
