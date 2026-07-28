@@ -64,16 +64,20 @@ The matrix exists to feed **many** consumers; corpus was just the hard flagship.
 
 ## F4 / F5 follow-ons (only when their consumer exists)
 
-- **Per-VALUE encoding reachability.** The per-construct section of `tests/golden_hex/COVERAGE.md`
-  answers legality per construct, and its own prose bounds that: a cell is legal for the construct,
-  not necessarily reachable at every value. Argument width follows the value, so `enc.major0.ai27`
-  needs a uint ≥ 2^32 and `enc.major2.ai26` a byte string ≥ 2^16 bytes. Modelling it means a
-  per-(construct, cell) value predicate — a second relation far larger than the parent→leaf one it
-  would sit on — so the column reports the legal remainder and leaves that judgment to whoever acts
-  on it. *Reopening signal:* an author working the *untested and emittable* column hand-dismisses
-  more listed cells as value-unreachable than they can write vectors for. Measured by the person
-  already doing the work, and on the axis this deferral's cost actually grows along — how far the
-  column overstates the actionable set, not how many readers it has.
+- **Per-VALUE encoding reachability.** A head argument that is fixed by the construct's own definition
+  is no longer a judgment call: a prelude construct declares the exact cell its head lands in, and
+  `build_matrix.ts` re-derives that from the pinned prelude, so `bigfloat` (tag 5, at every value)
+  claims `enc.major6.imm` and nothing else. What remains is the case where the argument **follows the
+  value**: `enc.major0.ai27` needs a uint ≥ 2^32, `enc.major2.ai26` a byte string ≥ 2^16 bytes. Those
+  cells are genuinely reachable, just not at every value, and separating the writable ones from the
+  merely-legal ones means a per-(construct, cell) value predicate — a relation far larger than the
+  parent→leaf one it would sit on. So `tests/golden_hex/COVERAGE.md` lists them and says in its own
+  prose that reachability is the reader's call. *Reopening signal:* an author working the *untested
+  and emittable* column hand-dismisses more listed cells as value-unreachable than they can write
+  vectors for. Measured by the person already doing the work, on the axis this deferral's cost grows
+  along — how far the column overstates the actionable set. It is not already met: the width cells
+  are writable up to `ai26` (a 64 KiB literal) and only `ai27` is out of reach, so today an author
+  writes more than they dismiss.
 - **F4 (tag registry):** deliberately not pinned/enumerated (cddl-codegen is tag-parametric). Revisit only
   if a *tag-semantic* consumer of the master appears.
 

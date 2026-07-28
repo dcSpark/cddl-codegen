@@ -115,7 +115,7 @@ profile = "RFC8610"
 title = "tdate"
 desc = "Standard date/time string: CBOR tag 0 wrapping a tstr."
 example = "x = tdate"
-encodings = ["enc.major6"]
+encodings = ["enc.major6.imm"]
 
 [[feature]]
 id = "prelude.time"
@@ -126,7 +126,7 @@ profile = "RFC8610"
 title = "time"
 desc = "Epoch-based date/time: CBOR tag 1 wrapping a number."
 example = "x = time"
-encodings = ["enc.major6"]
+encodings = ["enc.major6.imm"]
 
 [[feature]]
 id = "prelude.number"
@@ -149,7 +149,7 @@ profile = "RFC8610"
 title = "biguint"
 desc = "Unsigned bignum: CBOR tag 2 wrapping a bstr."
 example = "x = biguint"
-encodings = ["enc.major6"]
+encodings = ["enc.major6.imm"]
 
 [[feature]]
 id = "prelude.bignint"
@@ -160,7 +160,7 @@ profile = "RFC8610"
 title = "bignint"
 desc = "Negative bignum: CBOR tag 3 wrapping a bstr."
 example = "x = bignint"
-encodings = ["enc.major6"]
+encodings = ["enc.major6.imm"]
 
 [[feature]]
 id = "prelude.bigint"
@@ -171,7 +171,7 @@ profile = "RFC8610"
 title = "bigint"
 desc = "Arbitrary-precision integer: a biguint or a bignint."
 example = "x = bigint"
-encodings = ["enc.major6"]
+encodings = ["enc.major6.imm"]
 
 [[feature]]
 id = "prelude.integer"
@@ -204,7 +204,7 @@ profile = "RFC8610"
 title = "decfrac"
 desc = "Decimal fraction: CBOR tag 4, an array [exponent (base 10), mantissa]."
 example = "x = decfrac"
-encodings = ["enc.major6"]
+encodings = ["enc.major6.imm"]
 
 [[feature]]
 id = "prelude.bigfloat"
@@ -215,7 +215,7 @@ profile = "RFC8610"
 title = "bigfloat"
 desc = "Bigfloat: CBOR tag 5, an array [exponent (base 2), mantissa]."
 example = "x = bigfloat"
-encodings = ["enc.major6"]
+encodings = ["enc.major6.imm"]
 
 # --- conversion-hint / encoding tag types ---
 [[feature]]
@@ -227,7 +227,7 @@ profile = "RFC8610"
 title = "eb64url"
 desc = "Expected base64url conversion hint: CBOR tag 21."
 example = "x = eb64url"
-encodings = ["enc.major6"]
+encodings = ["enc.major6.imm"]
 
 [[feature]]
 id = "prelude.eb64legacy"
@@ -238,7 +238,7 @@ profile = "RFC8610"
 title = "eb64legacy"
 desc = "Expected base64 conversion hint: CBOR tag 22."
 example = "x = eb64legacy"
-encodings = ["enc.major6"]
+encodings = ["enc.major6.imm"]
 
 [[feature]]
 id = "prelude.eb16"
@@ -249,7 +249,7 @@ profile = "RFC8610"
 title = "eb16"
 desc = "Expected base16 conversion hint: CBOR tag 23."
 example = "x = eb16"
-encodings = ["enc.major6"]
+encodings = ["enc.major6.imm"]
 
 [[feature]]
 id = "prelude.encoded-cbor"
@@ -260,7 +260,7 @@ profile = "RFC8610"
 title = "encoded-cbor"
 desc = "CBOR data item embedded in a byte string: CBOR tag 24."
 example = "x = encoded-cbor"
-encodings = ["enc.major6"]
+encodings = ["enc.major6.ai24"]
 
 [[feature]]
 id = "prelude.uri"
@@ -271,7 +271,7 @@ profile = "RFC8610"
 title = "uri"
 desc = "URI text string: CBOR tag 32."
 example = "x = uri"
-encodings = ["enc.major6"]
+encodings = ["enc.major6.ai24"]
 
 [[feature]]
 id = "prelude.b64url"
@@ -282,7 +282,7 @@ profile = "RFC8610"
 title = "b64url"
 desc = "Base64url-encoded text: CBOR tag 33."
 example = "x = b64url"
-encodings = ["enc.major6"]
+encodings = ["enc.major6.ai24"]
 
 [[feature]]
 id = "prelude.b64legacy"
@@ -293,7 +293,7 @@ profile = "RFC8610"
 title = "b64legacy"
 desc = "Base64-encoded text: CBOR tag 34."
 example = "x = b64legacy"
-encodings = ["enc.major6"]
+encodings = ["enc.major6.ai24"]
 
 [[feature]]
 id = "prelude.regexp"
@@ -304,7 +304,7 @@ profile = "RFC8610"
 title = "regexp"
 desc = "Regular-expression text (PCRE/ECMA): CBOR tag 35."
 example = "x = regexp"
-encodings = ["enc.major6"]
+encodings = ["enc.major6.ai24"]
 
 [[feature]]
 id = "prelude.mime-message"
@@ -315,7 +315,7 @@ profile = "RFC8610"
 title = "mime-message"
 desc = "MIME message text (RFC 2045 et al.): CBOR tag 36."
 example = "x = mime-message"
-encodings = ["enc.major6"]
+encodings = ["enc.major6.ai24"]
 
 [[feature]]
 id = "prelude.cbor-any"
@@ -326,7 +326,7 @@ profile = "RFC8610"
 title = "cbor-any"
 desc = "Self-described CBOR: CBOR tag 55799 wrapping any data item."
 example = "x = cbor-any"
-encodings = ["enc.major6"]
+encodings = ["enc.major6.ai25"]
 
 # --- float types ---
 [[feature]]

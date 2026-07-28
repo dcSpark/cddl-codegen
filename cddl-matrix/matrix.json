@@ -4968,7 +4968,7 @@
       "alt": "#6.0(tstr)",
       "desc": "Standard date/time string: CBOR tag 0 wrapping a tstr.",
       "encodings": [
-        "enc.major6"
+        "enc.major6.imm"
       ],
       "example": "x = tdate",
       "id": "prelude.tdate",
@@ -4981,7 +4981,7 @@
       "alt": "#6.1(number)",
       "desc": "Epoch-based date/time: CBOR tag 1 wrapping a number.",
       "encodings": [
-        "enc.major6"
+        "enc.major6.imm"
       ],
       "example": "x = time",
       "id": "prelude.time",
@@ -5009,7 +5009,7 @@
       "alt": "#6.2(bstr)",
       "desc": "Unsigned bignum: CBOR tag 2 wrapping a bstr.",
       "encodings": [
-        "enc.major6"
+        "enc.major6.imm"
       ],
       "example": "x = biguint",
       "id": "prelude.biguint",
@@ -5022,7 +5022,7 @@
       "alt": "#6.3(bstr)",
       "desc": "Negative bignum: CBOR tag 3 wrapping a bstr.",
       "encodings": [
-        "enc.major6"
+        "enc.major6.imm"
       ],
       "example": "x = bignint",
       "id": "prelude.bignint",
@@ -5035,7 +5035,7 @@
       "alt": "biguint / bignint",
       "desc": "Arbitrary-precision integer: a biguint or a bignint.",
       "encodings": [
-        "enc.major6"
+        "enc.major6.imm"
       ],
       "example": "x = bigint",
       "id": "prelude.bigint",
@@ -5077,7 +5077,7 @@
       "alt": "#6.4([e10: int, m: integer])",
       "desc": "Decimal fraction: CBOR tag 4, an array [exponent (base 10), mantissa].",
       "encodings": [
-        "enc.major6"
+        "enc.major6.imm"
       ],
       "example": "x = decfrac",
       "id": "prelude.decfrac",
@@ -5090,7 +5090,7 @@
       "alt": "#6.5([e2: int, m: integer])",
       "desc": "Bigfloat: CBOR tag 5, an array [exponent (base 2), mantissa].",
       "encodings": [
-        "enc.major6"
+        "enc.major6.imm"
       ],
       "example": "x = bigfloat",
       "id": "prelude.bigfloat",
@@ -5103,7 +5103,7 @@
       "alt": "#6.21(any)",
       "desc": "Expected base64url conversion hint: CBOR tag 21.",
       "encodings": [
-        "enc.major6"
+        "enc.major6.imm"
       ],
       "example": "x = eb64url",
       "id": "prelude.eb64url",
@@ -5116,7 +5116,7 @@
       "alt": "#6.22(any)",
       "desc": "Expected base64 conversion hint: CBOR tag 22.",
       "encodings": [
-        "enc.major6"
+        "enc.major6.imm"
       ],
       "example": "x = eb64legacy",
       "id": "prelude.eb64legacy",
@@ -5129,7 +5129,7 @@
       "alt": "#6.23(any)",
       "desc": "Expected base16 conversion hint: CBOR tag 23.",
       "encodings": [
-        "enc.major6"
+        "enc.major6.imm"
       ],
       "example": "x = eb16",
       "id": "prelude.eb16",
@@ -5142,7 +5142,7 @@
       "alt": "#6.24(bstr)",
       "desc": "CBOR data item embedded in a byte string: CBOR tag 24.",
       "encodings": [
-        "enc.major6"
+        "enc.major6.ai24"
       ],
       "example": "x = encoded-cbor",
       "id": "prelude.encoded-cbor",
@@ -5155,7 +5155,7 @@
       "alt": "#6.32(tstr)",
       "desc": "URI text string: CBOR tag 32.",
       "encodings": [
-        "enc.major6"
+        "enc.major6.ai24"
       ],
       "example": "x = uri",
       "id": "prelude.uri",
@@ -5168,7 +5168,7 @@
       "alt": "#6.33(tstr)",
       "desc": "Base64url-encoded text: CBOR tag 33.",
       "encodings": [
-        "enc.major6"
+        "enc.major6.ai24"
       ],
       "example": "x = b64url",
       "id": "prelude.b64url",
@@ -5181,7 +5181,7 @@
       "alt": "#6.34(tstr)",
       "desc": "Base64-encoded text: CBOR tag 34.",
       "encodings": [
-        "enc.major6"
+        "enc.major6.ai24"
       ],
       "example": "x = b64legacy",
       "id": "prelude.b64legacy",
@@ -5194,7 +5194,7 @@
       "alt": "#6.35(tstr)",
       "desc": "Regular-expression text (PCRE/ECMA): CBOR tag 35.",
       "encodings": [
-        "enc.major6"
+        "enc.major6.ai24"
       ],
       "example": "x = regexp",
       "id": "prelude.regexp",
@@ -5207,7 +5207,7 @@
       "alt": "#6.36(tstr)",
       "desc": "MIME message text (RFC 2045 et al.): CBOR tag 36.",
       "encodings": [
-        "enc.major6"
+        "enc.major6.ai24"
       ],
       "example": "x = mime-message",
       "id": "prelude.mime-message",
@@ -5220,7 +5220,7 @@
       "alt": "#6.55799(any)",
       "desc": "Self-described CBOR: CBOR tag 55799 wrapping any data item.",
       "encodings": [
-        "enc.major6"
+        "enc.major6.ai25"
       ],
       "example": "x = cbor-any",
       "id": "prelude.cbor-any",

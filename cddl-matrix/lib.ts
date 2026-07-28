@@ -430,6 +430,11 @@ const preludeDefById: Map<string, string> = (() => {
   return m;
 })();
 
+// The pinned prelude as name -> RHS. Exported so the master's own drift gate can DERIVE a prelude
+// construct's fixed CBOR head from the same pinned bytes the arm resolver reads, rather than trusting
+// a hand-authored `encodings` list to agree with the prelude.
+export const PRELUDE_DEFS: ReadonlyMap<string, string> = preludeDefById;
+
 // A CBOR control head (`#0`..`#3`, `#6.N(...)`, `#7.N`): its major-type class, or null for a bare `#`
 // (matches `any` — deliberately unresolvable, the floor must not guess).
 function hashHeadClass(tok: string): string | null {
