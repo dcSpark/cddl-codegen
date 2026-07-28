@@ -49,6 +49,16 @@ script = [
 ]
 ```
 
+Note: a group-choice arm that keeps more than one non-fixed field is emitted as a *struct of its
+own*, named after the arm. Such an arm therefore competes for a type name with every rule and every
+other such arm, and a spec that gives one name to two different shapes is rejected with a clean
+error naming both claimants — rename either with `@name`. Two arms that spell out the *identical*
+shape are one type written twice and simply share a single generated struct, so reusing generic arm
+names (`first`/`second`, `key`/`value`) across rules stays fine. An arm slim enough to be inlined
+into its enum variant (at most one non-fixed field) emits no struct at all and so never competes:
+`credential`'s `; @name Script` arm may sit alongside a `script` rule, giving `Credential::Script`
+and `Script` independently.
+
 Note: `@name` does not rename a top-level rule or group — the rule identifier itself is the
 emitted type name, so `foo = uint ; @name bar` is rejected with a clean error. To change the
 emitted type name, rename the `foo` identifier. On a plain group rule the trailing comment

@@ -622,6 +622,26 @@ impl RustStruct {
         &self.variant
     }
 
+    /// Whether `self` and `other` describe the same generated type up to their NAME — same wire
+    /// shape, same fields, same config, same tag.
+    ///
+    /// Used to tell a benign name overlap from a real one when two multi-arm group-choice arms in
+    /// different rules want the same struct ident (generic arm names like `first`/`second` are
+    /// idiomatic and recur across rules). Identical arms are one type that happens to be spelled
+    /// twice, so they share a single generated struct; differing arms are two types demanding one
+    /// name, which is rejected.
+    ///
+    /// Compared through `Debug` rather than a derived `PartialEq`: equality on the IR type tree
+    /// would be a much broader semantic commitment (what `encodings` or a doc comment mean for
+    /// "equal") than this one question needs, and the `Debug` rendering is already the IR's
+    /// structural fingerprint elsewhere (`api::ir_structs_debug`). `ident` is deliberately excluded —
+    /// it is the very thing that differs — and it does not appear in any of the compared fields.
+    pub fn structurally_equivalent(&self, other: &RustStruct) -> bool {
+        let fingerprint =
+            |s: &RustStruct| format!("{:?}", (&s.tag, s.tag_optional, &s.config, &s.variant));
+        fingerprint(self) == fingerprint(other)
+    }
+
     // The following methods are used internally to generate serialize/deserialize code
     // INSIDE of the serialize/deserialize implementations for this specific type.
     // You probably aren't interested in this from outside of that use-case.

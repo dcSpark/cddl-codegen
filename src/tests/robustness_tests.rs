@@ -4253,3 +4253,205 @@ fn open_struct_map_rest_row_front_end() {
         src(&ign_marker)
     );
 }
+
+/// A multi-arm group-choice arm builds its record through the normal registration path, so the arm's
+/// name occupies a Rust struct ident while it is parsed. When that ident is already claimed and the
+/// arm's record SURVIVES parsing (a non-embeddable arm — it is emitted as a real type under that
+/// name), two types demand one name and the spec is rejected GRACEFULLY (`record_rejection` →
+/// drained by `finalize`), never a `panic!` and never a silent winner.
+///
+/// Before this was detected, the loser was decided by rule ORDER: the second claimant's registration
+/// overwrote the first, so the surviving type carried one arm's name and the other's wire shape, and
+/// a spec generated wrong-but-compiling code with no diagnostic. The detection is therefore
+/// order-INDEPENDENT — see `arm_ident_collision` — which the reordered vectors below pin: the same
+/// two claimants must reject whichever of them the topological rule order reaches first.
+///
+/// The EMBEDDABLE counterpart is legal and must keep generating; that is
+/// `embeddable_group_choice_arm_may_share_a_rule_name` below.
+#[test]
+fn group_choice_arm_ident_collision_rejects_gracefully() {
+    // Every arm below carries 2 non-fixed fields, which is what makes it non-embeddable
+    // (`EnumVariant::can_embed_fields` allows at most 1) and so an emitted type of its own.
+    let vectors = [
+        (
+            "arm_vs_rule",
+            // `holder` forces `target` to be parsed BEFORE `second` (the order that used to delete
+            // the `target` enum outright and panic at the first lookup of it).
+            "target = [ ; @name a\n m: uint, tag: 0 //\n ; @name b\n n: uint, tag: 1 ]\n\
+             holder = [ t: target ]\n\
+             second = [ ; @name target\n x: uint, z: uint, tag: 0 //\n ; @name other\n y: holder, tag: 1 ]\n",
+            "rule `second`",
+        ),
+        (
+            "arm_vs_rule_reordered",
+            // Same two claimants, opposite order: `second` is parsed first. Must still reject.
+            "second = [ ; @name target\n x: uint, z: uint, tag: 0 //\n ; @name other\n y: uint, tag: 1 ]\n\
+             holder = [ s: second ]\n\
+             target = [ ; @name a\n m: holder, tag: 0 //\n ; @name b\n n: uint, tag: 1 ]\n",
+            "`Target`",
+        ),
+        (
+            // Neither claimant is a rule ident, so a check that consulted only the rule names would
+            // miss this one and emit `Alpha::Shared` carrying `beta`'s arm shape AND `beta`'s tag.
+            "arm_vs_arm",
+            "alpha = [ ; @name shared\n a: uint, b: uint, tag: 0 //\n ; @name alpha_other\n c: uint, tag: 1 ]\n\
+             holder = [ t: alpha ]\n\
+             beta = [ ; @name shared\n p: text, q: text, tag: 2 //\n ; @name beta_other\n r: holder, tag: 3 ]\n",
+            "rules `alpha` and `beta`",
+        ),
+        (
+            // Both arms in ONE rule: same conflict, phrased for the single-rule case.
+            "same_rule_two_arms",
+            "foo = [ ; @name a\n x: uint, z: uint, tag: 0 //\n ; @name a\n y: text, w: uint, tag: 1 ]\n",
+            "two of its group-choice arms",
+        ),
+        (
+            "arm_vs_own_rule",
+            "foo = [ ; @name foo\n x: uint, z: uint, tag: 0 //\n ; @name other\n y: uint, tag: 1 ]\n",
+            "the same name as the rule itself",
+        ),
+        (
+            // No `@name` anywhere: an arm with no directive is named `{rule}{index}`, which claims an
+            // ident just as an `@name`d one does.
+            "default_arm_name_vs_rule",
+            "second0 = [ ; @name a\n m: uint, tag: 9 //\n ; @name b\n n: uint, tag: 8 ]\n\
+             holder = [ t: second0 ]\n\
+             second = [ x: uint, z: uint, tag: 0 //\n y: holder, w: uint, tag: 1 ]\n",
+            "`Second0`",
+        ),
+    ];
+    for (tag, spec, expected) in vectors {
+        let err = expect_graceful_rejection(tag, spec, &[]);
+        assert!(
+            err.contains(expected),
+            "[{tag}] rejection must name the conflict (`{expected}`), got:\n{err}\nspec:\n{spec}"
+        );
+        assert!(
+            err.contains("Two types cannot share one name"),
+            "[{tag}] rejection must explain the conflict, got:\n{err}"
+        );
+    }
+}
+
+/// An EMBEDDABLE group-choice arm may share a name with a rule: its record is pulled straight back
+/// out (`remove_rust_struct`) and inlined into the enum variant, so it is never emitted under that
+/// name and nothing is contested — only the variant DISPLAY name survives, and that lives in its own
+/// namespace. This shape is shipped public API for consumers (CML spells `credential`'s and `d_rep`'s
+/// arms `@name Script` alongside a `script` rule, generating `Credential::Script` / `DRep::Script`),
+/// so it must keep generating.
+///
+/// It kept generating only by ORDER luck: the arm borrowed the contested ident to build its record
+/// and then DELETED it, so an arm parsed after the rule erased that rule from the IR. Both orders are
+/// asserted here, since a reference edge added anywhere else in the spec can flip which comes first.
+#[test]
+fn embeddable_group_choice_arm_may_share_a_rule_name() {
+    // Each `@name script` arm has exactly ONE non-fixed field, which is what makes it embeddable.
+    let vectors = [
+        (
+            // `script` parsed BEFORE the arm that shares its name (via the `.cbor` edge through
+            // `script_ref`) — the ordering that deleted the `Script` enum.
+            "rule_first",
+            "script_hash = bytes .size 28\n\
+             script_ref = #6.24(bytes .cbor script)\n\
+             script = [ ; @name native\n tag: 0, s: uint //\n ; @name plutus\n tag: 1, s: text ]\n\
+             d_rep = [ ; @name key\n 0, pool: script_ref //\n ; @name script\n 1, script_hash ]\n",
+        ),
+        (
+            // The arm parsed first — the order this shape survived under before the fix.
+            "arm_first",
+            "script_hash = bytes .size 28\n\
+             d_rep = [ ; @name key\n 0, pool: uint //\n ; @name script\n 1, script_hash ]\n\
+             holder = [ d: d_rep ]\n\
+             script = [ ; @name native\n tag: 0, s: holder //\n ; @name plutus\n tag: 1, s: text ]\n",
+        ),
+    ];
+    for (tag, spec) in vectors {
+        let path = std::env::temp_dir().join(format!(
+            "cddl_codegen_{tag}_arm_shadow_{}.cddl",
+            std::process::id()
+        ));
+        std::fs::write(&path, spec).unwrap();
+        let out = crate::api::generated_strings(&Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "arm_shadow_unused",
+        ]));
+        std::fs::remove_file(&path).ok();
+        let src = out
+            .unwrap_or_else(|e| panic!("[{tag}] an embeddable same-named arm must generate: {e}"))
+            .values()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n");
+        // the RULE keeps the contested name, with its own arms
+        assert!(
+            src.contains("pub enum Script {") && src.contains("Native(") && src.contains("Plutus("),
+            "[{tag}] the `script` RULE's enum must survive intact, got:\n{src}"
+        );
+        // the ARM keeps its display name, inlined (not a reference to the rule's type)
+        assert!(
+            src.contains("Script(ScriptHash)"),
+            "[{tag}] the arm's variant must stay named `Script` and carry its OWN field type, got:\n{src}"
+        );
+        // no synthesized registration name may reach the emitted source
+        assert!(
+            !src.contains("GroupChoiceArm"),
+            "[{tag}] the synthesized registration ident must never be emitted, got:\n{src}"
+        );
+    }
+}
+
+/// Generic arm names recur across rules by nature (`first`/`second`, `key`/`value`), so two
+/// non-embeddable arms in different rules routinely want one struct ident. When their records are
+/// STRUCTURALLY IDENTICAL they are one type spelled twice, not two types fighting over a name: they
+/// share the single generated struct, and no rejection fires. `tests/core/input.cddl` relies on this
+/// — `non_overlap_basic_embed_multi_fields`, `non_overlap_basic_embed_mixed` and
+/// `non_overlap_basic_embed_mixed_explicit` all spell a `; @name second` arm as `y: text, z: uint`.
+///
+/// Its counterpart, differing arms under one name, is a real conflict and is rejected — the
+/// `arm_vs_arm` vector of `group_choice_arm_ident_collision_rejects_gracefully`. That pairing is the
+/// whole point: name overlap alone is not the defect, a name carrying two different wire shapes is.
+#[test]
+fn identical_group_choice_arms_in_different_rules_share_one_struct() {
+    const CDDL: &str = "alpha = [ ; @name shared\n a: uint, b: text, tag: 0 //\n \
+                        ; @name alpha_other\n c: uint, d: uint, tag: 1 ]\n\
+                        holder = [ t: alpha ]\n\
+                        beta = [ ; @name shared\n a: uint, b: text, tag: 0 //\n \
+                        ; @name beta_other\n r: holder, s: uint, tag: 3 ]\n";
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_identical_arms_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, CDDL).unwrap();
+    let out = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "identical_arms_unused",
+    ]));
+    std::fs::remove_file(&path).ok();
+    let src = out
+        .expect("structurally identical same-named arms must share a struct, not reject")
+        .values()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n");
+    // exactly ONE struct carries the shared name, and both enums reference it
+    assert_eq!(
+        src.matches("pub struct Shared {").count(),
+        1,
+        "the shared arm must generate exactly one struct, got:\n{src}"
+    );
+    assert!(
+        src.contains("Shared(Shared)"),
+        "both enums must reference the shared struct by name, got:\n{src}"
+    );
+    // and the synthesized registration name never reaches the output
+    assert!(
+        !src.contains("GroupChoiceArm"),
+        "the synthesized registration ident must never be emitted, got:\n{src}"
+    );
+}
