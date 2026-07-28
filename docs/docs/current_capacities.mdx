@@ -237,18 +237,33 @@ Unsupported (in-profile):
 
 ### Contextual gaps (supported top-level, unsupported when nested)
 
-These constructs work as their own rule but are unsupported in the listed nesting roles — an inline anonymous composite must be given a name (a rule or a `; @name`).
+These constructs work as their own rule but are unsupported in the listed nesting role — one row per (construct, role). A role annotated with a shape count is reached by that many distinct unsupported spellings; the Example column shows one of them. For the inline anonymous composites (`type2.map`, `type2.array`) the remedy is to name the composite (a rule or a `; @name`); for the key and occurrence rows the remedy depends on the spelling.
 
-| Construct | Unsupported roles | Example |
-|-----------|-------------------|---------|
+| Construct | Unsupported role | Example |
+|-----------|------------------|---------|
 | `grpent.groupname` | occurrence-target | `m = { * grp }; grp = (k: int)` |
-| `grpent.inline_group` | group-choice-arm, occurrence-target, occurrence-target, occurrence-target, occurrence-target, occurrence-target | `t = [ (uint, tstr) // bytes ]` |
+| `grpent.inline_group` | group-choice-arm | `t = [ (uint, tstr) // bytes ]` |
+| `grpent.inline_group` | occurrence-target (5 shapes) | `a = [* (int, tstr)]` |
 | `grpent.member` | occurrence-target | `a = [uint, + bytes]` |
-| `memberkey.bareword` | occurrence-target, occurrence-target | `multi = { a: uint, 0*1 b: uint }` |
-| `memberkey.type1` | group-choice-arm, map-key, map-key, map-key, map-key, map-key, map-key, map-key, occurrence-target, occurrence-target, occurrence-target | `t = { uint => tstr // b: tstr }` |
-| `memberkey.value` | group-choice-arm, group-choice-arm, map-key, map-key, map-key, map-key | `flt = { 1.5: uint // b: tstr }` |
-| `type2.array` | array-element, cbor-payload, choice-member, map-key, map-value, occurrence-target | `a = [[int]]` |
-| `type2.map` | array-element, cbor-payload, choice-member, generic-arg, group-choice-arm, map-value, occurrence-target | `a = [{x: int, y: uint}]` |
+| `memberkey.bareword` | occurrence-target (2 shapes) | `multi = { a: uint, 0*1 b: uint }` |
+| `memberkey.type1` | group-choice-arm | `t = { uint => tstr // b: tstr }` |
+| `memberkey.type1` | map-key (7 shapes) | `m = { true => uint, 1: uint }` |
+| `memberkey.type1` | occurrence-target (3 shapes) | `m = { 2*3 tstr => uint }` |
+| `memberkey.value` | group-choice-arm (2 shapes) | `flt = { 1.5: uint // b: tstr }` |
+| `memberkey.value` | map-key (4 shapes) | `flt = { 1.5: uint, 1: uint }` |
+| `type2.array` | array-element | `a = [[int]]` |
+| `type2.array` | cbor-payload | `b = bytes .cbor ([uint, uint])` |
+| `type2.array` | choice-member | `t = [int] / [tstr]` |
+| `type2.array` | map-key | `m = { [int] => tstr }` |
+| `type2.array` | map-value | `m = { k: [int], j: uint }` |
+| `type2.array` | occurrence-target | `a = [* [int]]` |
+| `type2.map` | array-element | `a = [{x: int, y: uint}]` |
+| `type2.map` | cbor-payload | `b = bytes .cbor ({a: int, c: uint})` |
+| `type2.map` | choice-member | `t = {a: int, c: uint} / {b: tstr, d: uint}` |
+| `type2.map` | generic-arg | `foo<a> = [a]; bar = foo<{x: int, y: uint}>` |
+| `type2.map` | group-choice-arm | `t = [ {a: int, b: uint} // tstr ]` |
+| `type2.map` | map-value | `m = { outer: { a: int, c: uint } }` |
+| `type2.map` | occurrence-target | `a = [* {x: int, y: uint}]` |
 | `type2.tag` | tag-content | `t = #6.24(#6.25(uint))` |
 
 ### Out of profile (not gaps)
