@@ -466,11 +466,15 @@ pub fn validate_flag_combinations(cli: &Cli) -> Result<(), String> {
     }
     // One package name under two paths is ambiguous, not additive: a manifest holds ONE
     // `[dependencies]` entry per package, so the second value would silently replace the first.
-    // Read off the RAW flag lists rather than `json_gen_deps()`/`wasm_deps()`, whose `BTreeMap`s are
+    // Read off the RAW flag lists rather than the `*_deps()` accessors, whose `BTreeMap`s are
     // exactly where a duplicate would disappear.
+    //
+    // `--rust-dep` joins them here and NOWHERE above: the rust crate is the one crate every run
+    // generates, so there is no flag whose absence leaves its manifest unwritten.
     for (flag, entries) in [
         ("--json-gen-dep", &cli.json_gen_dep),
         ("--wasm-dep", &cli.wasm_dep),
+        ("--rust-dep", &cli.rust_dep),
     ] {
         let mut seen = std::collections::BTreeSet::new();
         for entry in entries {

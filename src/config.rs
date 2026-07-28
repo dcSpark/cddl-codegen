@@ -263,9 +263,12 @@ pub struct Settings {
     /// manifest it lands in (`<output>/wasm/json-gen/Cargo.toml`). See `argv_fragments`.
     #[serde(default)]
     pub json_gen_dep: BTreeMap<String, String>,
-    /// The other one, for `<output>/wasm/Cargo.toml`. Same rule, same reason.
+    /// The second, for `<output>/wasm/Cargo.toml`. Same rule, same reason.
     #[serde(default)]
     pub wasm_dep: BTreeMap<String, String>,
+    /// The third, for `<output>/rust/Cargo.toml`. Same rule, same reason.
+    #[serde(default)]
+    pub rust_dep: BTreeMap<String, String>,
 }
 
 impl Settings {
@@ -309,6 +312,7 @@ impl Settings {
             json_schema_dep,
             json_gen_dep,
             wasm_dep,
+            rust_dep,
         } = over;
 
         // Scalars: a set value replaces, an absent one leaves the earlier layer alone.
@@ -365,6 +369,7 @@ impl Settings {
             json_schema_dep,
             json_gen_dep,
             wasm_dep,
+            rust_dep,
         );
     }
 }
@@ -434,9 +439,14 @@ struct DerivedThread {
     json_gen_dep: Option<String>,
 }
 
-/// One derived `--wasm-dep` entry: a `[dependencies]` line the consumer's generated
-/// `wasm/Cargo.toml` needs. See [`Config::wasm_deps`].
-struct DerivedWasmDep {
+/// One derived manifest `[dependencies]` line, as the flag value it expands to: a `--wasm-dep` for
+/// the consumer's generated `wasm/Cargo.toml` ([`Config::wasm_deps`]), or a `--rust-dep` for its
+/// `rust/Cargo.toml` ([`Config::rust_deps`]).
+///
+/// One struct for both, because the two carry the identical pair — a config key to attribute a clap
+/// rejection to, and a `<package>=<path>` value — and which flag a value belongs to is decided by
+/// the list it is emitted from rather than by anything inside it.
+struct DerivedManifestDep {
     /// The config key that produced it (`deps` or `wasm-reexports`), for attributing a clap
     /// rejection to a TOML line.
     key: &'static str,
@@ -1296,12 +1306,14 @@ impl Config {
                 self.apply_runtime(&name, &mut settings, runtime_choice.as_ref());
                 let threads = self.threading(&name, entry, &settings, &ungraphed)?;
                 let wasm_deps = self.wasm_deps(&name, entry, &settings, &ungraphed)?;
+                let rust_deps = self.rust_deps(&name, entry, &settings, &ungraphed)?;
                 let fragments = argv_fragments(
                     entry,
                     &settings,
                     &self.base_dir,
                     &threads,
                     &wasm_deps,
+                    &rust_deps,
                     &derived,
                 );
                 let cli = build_cli(&name, entry, &self.base_dir, &fragments)?;
@@ -1538,7 +1550,7 @@ impl Config {
         entry: &CrateEntry,
         settings: &Settings,
         ungraphed: &BTreeMap<String, Cli>,
-    ) -> Result<Vec<DerivedWasmDep>, String> {
+    ) -> Result<Vec<DerivedManifestDep>, String> {
         let consumer_cli = &ungraphed[name];
         if !consumer_cli.wasm {
             return Ok(Vec::new());
@@ -1578,11 +1590,62 @@ impl Config {
                          crate must depend on by path: {e}"
                     )
                 })?;
-                out.push(DerivedWasmDep {
+                out.push(DerivedManifestDep {
                     key,
                     value: format!("{package}={path}"),
                 });
             }
+        }
+        Ok(out)
+    }
+
+    /// Every `[dependencies]` entry this crate's generated `rust/Cargo.toml` needs in order to
+    /// resolve the cross-crate names its own RUST pass emits, as `--rust-dep` values.
+    ///
+    /// # Why only `deps`, and why unconditionally
+    ///
+    /// `deps` derives `--extern-import`, and an imported type is emitted into this crate's rust
+    /// source as `use <dep>::<Type>;`. That reference exists in every flavor — the rust crate is the
+    /// one crate every run generates — so unlike [`Self::wasm_deps`] this derivation has no `wasm`
+    /// gate on either end, and it contributes exactly one entry per edge: the dependency's RUST
+    /// package, which is the only package the rust pass can name.
+    ///
+    /// `wasm-reexports` contributes NOTHING here, and that asymmetry is the key's meaning rather
+    /// than an omission: it says a dependency's wasm classes ship in this crate's PACKAGE while this
+    /// crate's spec references none of its types, so no rust line names the crate at all.
+    ///
+    /// A hand-written `[crates.<name>.rust-dep]` entry for the same PACKAGE wins, silently, per
+    /// package — the rule every sub-table derivation in this file follows.
+    fn rust_deps(
+        &self,
+        name: &str,
+        entry: &CrateEntry,
+        settings: &Settings,
+        ungraphed: &BTreeMap<String, Cli>,
+    ) -> Result<Vec<DerivedManifestDep>, String> {
+        let consumer_dir = self.crate_dir(&ungraphed[name], &entry.output, "rust");
+        let mut out = Vec::new();
+        for dep in &entry.deps {
+            // Validated to name a configured crate by the `deps` checks.
+            let dep_entry = &self.crates[dep];
+            // The cargo PACKAGE name: the `--lib-name` verbatim (dashes and all), read off the same
+            // `package.name` the rust manifest's change log writes — the opposite spelling from the
+            // underscored crate name the generated `use` lines carry.
+            let package = dep_entry.lib_name.clone();
+            if settings.rust_dep.contains_key(&package) {
+                continue;
+            }
+            let dep_dir = self.crate_dir(&ungraphed[dep.as_str()], &dep_entry.output, "rust");
+            let path = manifest_relative_path(&consumer_dir, &dep_dir).map_err(|e| {
+                format!(
+                    "[crates.{name}].deps names `{dep}`, whose rust crate this crate's rust crate \
+                     must depend on by path: {e}"
+                )
+            })?;
+            out.push(DerivedManifestDep {
+                key: "deps",
+                value: format!("{package}={path}"),
+            });
         }
         Ok(out)
     }
@@ -1601,6 +1664,7 @@ impl Config {
                 entry,
                 &settings,
                 &self.base_dir,
+                &[],
                 &[],
                 &[],
                 &Provenance::new(),
@@ -2139,7 +2203,8 @@ fn argv_fragments(
     settings: &Settings,
     base_dir: &Path,
     threads: &[DerivedThread],
-    wasm_deps: &[DerivedWasmDep],
+    wasm_deps: &[DerivedManifestDep],
+    rust_deps: &[DerivedManifestDep],
     derived: &Provenance,
 ) -> Vec<Fragment> {
     let Settings {
@@ -2175,6 +2240,7 @@ fn argv_fragments(
         json_schema_dep,
         json_gen_dep,
         wasm_dep,
+        rust_dep,
     } = settings;
 
     let mut out: Vec<Fragment> = Vec::new();
@@ -2350,6 +2416,14 @@ fn argv_fragments(
     }
     for (k, v) in wasm_dep {
         flag!("wasm-dep", "wasm-dep", format!("{k}={v}"));
+    }
+    // `rust-dep`'s right side is a path on exactly the same terms, into `<output>/rust/Cargo.toml`.
+    // Derived before raw, matching the two siblings.
+    for derived_dep in rust_deps {
+        flag!(derived_dep.key, "rust-dep", derived_dep.value.clone());
+    }
+    for (k, v) in rust_dep {
+        flag!("rust-dep", "rust-dep", format!("{k}={v}"));
     }
 
     out
