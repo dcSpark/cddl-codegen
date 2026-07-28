@@ -258,11 +258,14 @@ pub struct Settings {
     pub key_requests: BTreeMap<String, String>,
     #[serde(default)]
     pub json_schema_dep: BTreeMap<String, String>,
-    /// The one sub-table whose right-hand side is a path that is nevertheless NOT resolved against
-    /// the config file: it is a cargo path dependency, which cargo resolves against the manifest it
-    /// lands in (`<output>/wasm/json-gen/Cargo.toml`). See `argv_fragments`.
+    /// One of the two sub-tables whose right-hand side is a path that is nevertheless NOT resolved
+    /// against the config file: it is a cargo path dependency, which cargo resolves against the
+    /// manifest it lands in (`<output>/wasm/json-gen/Cargo.toml`). See `argv_fragments`.
     #[serde(default)]
     pub json_gen_dep: BTreeMap<String, String>,
+    /// The other one, for `<output>/wasm/Cargo.toml`. Same rule, same reason.
+    #[serde(default)]
+    pub wasm_dep: BTreeMap<String, String>,
 }
 
 impl Settings {
@@ -305,6 +308,7 @@ impl Settings {
             key_requests,
             json_schema_dep,
             json_gen_dep,
+            wasm_dep,
         } = over;
 
         // Scalars: a set value replaces, an absent one leaves the earlier layer alone.
@@ -360,6 +364,7 @@ impl Settings {
             key_requests,
             json_schema_dep,
             json_gen_dep,
+            wasm_dep,
         );
     }
 }
@@ -427,6 +432,16 @@ struct DerivedThread {
     json_schema_dep: Option<String>,
     /// `--json-gen-dep` value: `<dep lib-name>-json-schema-gen=<relative path>`.
     json_gen_dep: Option<String>,
+}
+
+/// One derived `--wasm-dep` entry: a `[dependencies]` line the consumer's generated
+/// `wasm/Cargo.toml` needs. See [`Config::wasm_deps`].
+struct DerivedWasmDep {
+    /// The config key that produced it (`deps` or `wasm-reexports`), for attributing a clap
+    /// rejection to a TOML line.
+    key: &'static str,
+    /// `<cargo package name>=<relative path>`.
+    value: String,
 }
 
 /// A parsed config document. Crate iteration is `BTreeMap` order (crate name) — never hash order, so
@@ -1280,8 +1295,15 @@ impl Config {
                 let derived = self.apply_graph_edges(&name, entry, &mut settings, &ungraphed);
                 self.apply_runtime(&name, &mut settings, runtime_choice.as_ref());
                 let threads = self.threading(&name, entry, &settings, &ungraphed)?;
-                let fragments =
-                    argv_fragments(entry, &settings, &self.base_dir, &threads, &derived);
+                let wasm_deps = self.wasm_deps(&name, entry, &settings, &ungraphed)?;
+                let fragments = argv_fragments(
+                    entry,
+                    &settings,
+                    &self.base_dir,
+                    &threads,
+                    &wasm_deps,
+                    &derived,
+                );
                 let cli = build_cli(&name, entry, &self.base_dir, &fragments)?;
                 // The generator's own cross-flag rules, run HERE rather than where the generator
                 // reaches them. They are a pure function of the `Cli`, and every one of them is
@@ -1450,7 +1472,7 @@ impl Config {
                 let dep_dir = self.json_gen_dir(&ungraphed[dep.as_str()], &dep_entry.output);
                 Some(format!(
                     "{package}={}",
-                    json_gen_relative_path(&consumer_dir, &dep_dir).map_err(|e| format!(
+                    manifest_relative_path(&consumer_dir, &dep_dir).map_err(|e| format!(
                         "[crates.{name}].{key} names `{dep}`, whose json-gen crate this crate must \
                          depend on by path: {e}"
                     ))?
@@ -1472,10 +1494,97 @@ impl Config {
     /// expanded `Cli` and never guessed. Note the directory exists in `wasm = false` runs too: the
     /// json-gen crate follows `--json-schema-export`, not the wasm face.
     fn json_gen_dir(&self, cli: &Cli, output: &str) -> PathBuf {
+        self.crate_dir(cli, output, "wasm/json-gen")
+    }
+
+    /// One of a crate's generated cargo crates, resolved against the config file's directory. The
+    /// `--package-json` nesting comes off that crate's OWN expanded `Cli`, never guessed.
+    fn crate_dir(&self, cli: &Cli, output: &str, tail: &str) -> PathBuf {
         PathBuf::from(resolve_path(
             &self.base_dir,
-            &crate_relative(cli, output, "wasm/json-gen"),
+            &crate_relative(cli, output, tail),
         ))
+    }
+
+    /// Every `[dependencies]` entry this crate's generated `wasm/Cargo.toml` needs in order to
+    /// resolve the cross-crate names its own wasm pass emits, as `--wasm-dep` values.
+    ///
+    /// # Why both edge keys feed it, and why they contribute different entries
+    ///
+    /// `deps` means this crate's SPEC references the dependency's types, and the wasm pass writes
+    /// two kinds of reference to such a type: `use <dep>_wasm::…` at the wasm boundary (routed by
+    /// `--extern-wasm-crate`, and by `--extern-wrapper-index` for a borrowed wrapper) and the
+    /// dependency's plain RUST type as the inner storage of any wrapper this crate mints itself.
+    /// Those are two packages, so a `deps` edge contributes both — the dependency's rust package
+    /// unconditionally, its wasm package when it generates one. (A dependency with `wasm = false`
+    /// keeps its rust crate name for both passes, the single-crate convention `--extern-wasm-crate`
+    /// documents, so the rust entry alone is the whole of that edge.)
+    ///
+    /// `wasm-reexports` says the opposite thing: this crate's spec references nothing, and the
+    /// dependency's classes ship in this crate's PACKAGE. No generated line names the dependency at
+    /// all — the entry exists so the npm build bundles those classes, which is precisely the
+    /// hand-written dependency the key is named after. So it contributes the wasm package only, and
+    /// its target is guaranteed to have one by [`Self::validate_wasm_reexports`].
+    ///
+    /// Nothing is derived for a crate with `wasm = false`: it generates no wasm crate and so no
+    /// manifest for an entry to land in — which is what the flag itself refuses.
+    ///
+    /// A hand-written `[crates.<name>.wasm-dep]` entry for the same PACKAGE wins, silently, per
+    /// package: the same rule [`Self::threading`] and [`Self::apply_graph_edges`] follow, for the
+    /// same reason — an explicit value is the user covering a case the sugar does not.
+    fn wasm_deps(
+        &self,
+        name: &str,
+        entry: &CrateEntry,
+        settings: &Settings,
+        ungraphed: &BTreeMap<String, Cli>,
+    ) -> Result<Vec<DerivedWasmDep>, String> {
+        let consumer_cli = &ungraphed[name];
+        if !consumer_cli.wasm {
+            return Ok(Vec::new());
+        }
+        let consumer_dir = self.crate_dir(consumer_cli, &entry.output, "wasm");
+
+        let sources = entry.deps.iter().map(|dep| ("deps", dep)).chain(
+            entry
+                .wasm_reexports
+                .iter()
+                .map(|dep| ("wasm-reexports", dep)),
+        );
+
+        let mut out = Vec::new();
+        for (key, dep) in sources {
+            // Validated to name a configured crate by the `deps` checks / `validate_crate_names`.
+            let dep_entry = &self.crates[dep];
+            let dep_cli = &ungraphed[dep.as_str()];
+            // The cargo PACKAGE names: the `--lib-name` verbatim (dashes and all), and that plus
+            // `-wasm` — read off the same `package.name` the two change logs write, and the opposite
+            // spelling from the underscored crate names the generated `use` lines carry.
+            let mut wanted: Vec<(String, &'static str)> = Vec::new();
+            if key == "deps" {
+                wanted.push((dep_entry.lib_name.clone(), "rust"));
+            }
+            if dep_cli.wasm {
+                wanted.push((format!("{}-wasm", dep_entry.lib_name), "wasm"));
+            }
+            for (package, tail) in wanted {
+                if settings.wasm_dep.contains_key(&package) {
+                    continue;
+                }
+                let dep_dir = self.crate_dir(dep_cli, &dep_entry.output, tail);
+                let path = manifest_relative_path(&consumer_dir, &dep_dir).map_err(|e| {
+                    format!(
+                        "[crates.{name}].{key} names `{dep}`, whose {tail} crate this crate's wasm \
+                         crate must depend on by path: {e}"
+                    )
+                })?;
+                out.push(DerivedWasmDep {
+                    key,
+                    value: format!("{package}={path}"),
+                });
+            }
+        }
+        Ok(out)
     }
 
     /// Every crate's `Cli` as its own table alone describes it — before any cross-crate derivation.
@@ -1488,8 +1597,14 @@ impl Config {
         let mut out: BTreeMap<String, Cli> = BTreeMap::new();
         for (name, entry) in &self.crates {
             let settings = self.merged_settings(entry);
-            let fragments =
-                argv_fragments(entry, &settings, &self.base_dir, &[], &Provenance::new());
+            let fragments = argv_fragments(
+                entry,
+                &settings,
+                &self.base_dir,
+                &[],
+                &[],
+                &Provenance::new(),
+            );
             out.insert(
                 name.clone(),
                 build_cli(name, entry, &self.base_dir, &fragments)?,
@@ -1890,13 +2005,14 @@ fn crate_relative(cli: &Cli, output: &str, tail: &str) -> String {
     }
 }
 
-/// The `--json-gen-dep` path for one thread: from the CONSUMER's json-gen crate directory to the
-/// DEPENDENCY's, RELATIVE.
+/// The path for one derived cargo path dependency: from the manifest's own directory to the
+/// DEPENDENCY crate's, RELATIVE. Shared by `--json-gen-dep` (json-gen manifest) and `--wasm-dep`
+/// (wasm manifest), which face the same question about different pairs of directories.
 ///
-/// Relative is a determinism requirement, not a style choice. Every other derived path in this file
-/// is read by the tool at generation time and never emitted; this one is WRITTEN into a committed
-/// `wasm/json-gen/Cargo.toml`. An absolute value would bake this machine's checkout location into a
-/// file the project commits, so the same config would produce different bytes in a different clone —
+/// Relative is a determinism requirement, not a style choice. Most derived paths in this file are
+/// read by the tool at generation time and never emitted; these are WRITTEN into a committed
+/// `Cargo.toml`. An absolute value would bake this machine's checkout location into a file the
+/// project commits, so the same config would produce different bytes in a different clone —
 /// "same inputs -> same bytes" broken in the most visible way there is. Relative is also simply what
 /// the value MEANS: cargo resolves a path dependency against the manifest holding it.
 ///
@@ -1916,7 +2032,7 @@ fn crate_relative(cli: &Cli, output: &str, tail: &str) -> String {
 /// exactly the location the relative side already denoted, so the derived value is the same one an
 /// absolute `--config` path would have produced — the join is normalized too, which is what makes
 /// the `..` resolvable there.
-fn json_gen_relative_path(from_dir: &Path, to_dir: &Path) -> Result<String, String> {
+fn manifest_relative_path(from_dir: &Path, to_dir: &Path) -> Result<String, String> {
     let from_dir = lexically_normalized(from_dir);
     let to_dir = lexically_normalized(to_dir);
     if let Some(relative) = pathdiff::diff_paths(&to_dir, &from_dir).filter(|p| p.is_relative()) {
@@ -2023,6 +2139,7 @@ fn argv_fragments(
     settings: &Settings,
     base_dir: &Path,
     threads: &[DerivedThread],
+    wasm_deps: &[DerivedWasmDep],
     derived: &Provenance,
 ) -> Vec<Fragment> {
     let Settings {
@@ -2057,6 +2174,7 @@ fn argv_fragments(
         key_requests,
         json_schema_dep,
         json_gen_dep,
+        wasm_dep,
     } = settings;
 
     let mut out: Vec<Fragment> = Vec::new();
@@ -2223,6 +2341,15 @@ fn argv_fragments(
     }
     for (k, v) in json_gen_dep {
         flag!("json-gen-dep", "json-gen-dep", format!("{k}={v}"));
+    }
+    // `wasm-dep`'s right side is a path on exactly the terms `json-gen-dep`'s is, into
+    // `<output>/wasm/Cargo.toml` instead — so it does not resolve here either. Derived before raw,
+    // matching the sibling.
+    for derived_dep in wasm_deps {
+        flag!(derived_dep.key, "wasm-dep", derived_dep.value.clone());
+    }
+    for (k, v) in wasm_dep {
+        flag!("wasm-dep", "wasm-dep", format!("{k}={v}"));
     }
 
     out

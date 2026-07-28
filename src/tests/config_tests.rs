@@ -324,7 +324,7 @@ to-from-bytes-methods = false
 binary-wrappers = true
 preserve-encodings = true
 canonical-form = true
-wasm = false
+wasm = true
 json-serde-derives = true
 emit-tests = true
 emit-tests-conformance = true
@@ -362,6 +362,9 @@ core = "core_json_schema_gen"
 
 [crates.demo.json-gen-dep]
 core-json-schema-gen = "../../../core/wasm/json-gen"
+
+[crates.demo.wasm-dep]
+core-wasm = "../../core/wasm"
 "#,
     );
 
@@ -388,7 +391,7 @@ core-json-schema-gen = "../../../core/wasm/json-gen"
         "--canonical-form",
         "true",
         "--wasm",
-        "false",
+        "true",
         "--json-serde-derives",
         "true",
         "--emit-tests",
@@ -436,6 +439,8 @@ core-json-schema-gen = "../../../core/wasm/json-gen"
         "core=core_json_schema_gen",
         "--json-gen-dep",
         "core-json-schema-gen=../../../core/wasm/json-gen",
+        "--wasm-dep",
+        "core-wasm=../../core/wasm",
     ]);
 
     // Exhaustive on purpose — see the doc comment.
@@ -461,6 +466,7 @@ core-json-schema-gen = "../../../core/wasm/json-gen"
         json_schema_root,
         json_schema_dep,
         json_gen_dep,
+        wasm_dep,
         common_import_override,
         wasm_cbor_json_api_macro,
         wasm_conversions_macro,
@@ -504,6 +510,13 @@ core-json-schema-gen = "../../../core/wasm/json-gen"
         json_gen_dep,
         vec!["core-json-schema-gen=../../../core/wasm/json-gen".to_owned()],
         "a `json-gen-dep` path must reach the flag verbatim, not resolved against the config file"
+    );
+    // The other one, for the same reason and against the other manifest.
+    assert_eq!(wasm_dep, from_flags.wasm_dep);
+    assert_eq!(
+        wasm_dep,
+        vec!["core-wasm=../../core/wasm".to_owned()],
+        "a `wasm-dep` path must reach the flag verbatim, not resolved against the config file"
     );
     assert_eq!(common_import_override, from_flags.common_import_override);
     assert_eq!(
@@ -3058,8 +3071,7 @@ fn wasm_reexports_refuses_a_crate_that_generates_no_wasm_crate() {
          [crates.other]\ninput = \"o.cddl\"\noutput = \"gen/other\"\n"
     ))
     .expand(&["other".to_owned()])
-    .err()
-    .expect("a subset run must reject the same config a full run rejects");
+    .expect_err("a subset run must reject the same config a full run rejects");
     assert!(err.contains("[crates.ledger].wasm-reexports"), "got: {err}");
 
     // Baseline: the same fixture with the named crate generating a wasm crate is accepted, so it is
@@ -3071,6 +3083,407 @@ fn wasm_reexports_refuses_a_crate_that_generates_no_wasm_crate() {
         .contains_key("ledger"),
         "a wasm-generating crate must stay a legal `wasm-reexports` target"
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// The wasm manifest — `--wasm-dep` derived from the same two edges
+// ---------------------------------------------------------------------------------------------
+
+/// The derivation, on CML's own shape: `deps` then `wasm-reexports`, with the two keys contributing
+/// DIFFERENT entries because they state different facts.
+///
+/// A `deps` edge means the spec references the dependency's types, and the wasm pass writes two
+/// kinds of reference to such a type — `use <dep>_wasm::…` at the boundary, and the dependency's
+/// plain rust type as a locally minted wrapper's inner storage — so it contributes both packages.
+/// `wasm-reexports` means nothing generated here names the crate at all and its classes ship in this
+/// package anyway, so it contributes the wasm package alone. That asymmetry is the whole content of
+/// this test: getting it backwards writes an entry nothing needs, or omits one everything does.
+///
+/// The `wasm-reexports` rows are also the point of the key: they are exactly the two lines CML
+/// maintains by hand in `multi-era/wasm/Cargo.toml`, under the comment this key is named after.
+#[test]
+fn wasm_deps_derive_from_deps_then_wasm_reexports() {
+    let by_name = expand_all(CML_SHAPED_SURFACE);
+    assert_eq!(
+        by_name["multi-era"].wasm_dep,
+        vec![
+            "chain=../../chain/rust",
+            "chain-wasm=../../chain/wasm",
+            "cip25-wasm=../../cip25/wasm",
+            "cip36-wasm=../../cip36/wasm",
+        ],
+        "a `deps` edge contributes both of the dependency's packages and a `wasm-reexports` edge \
+         only the wasm one, in deps-then-wasm-reexports order"
+    );
+    for lonely in ["chain", "cip25", "cip36"] {
+        assert!(
+            by_name[lonely].wasm_dep.is_empty(),
+            "`{lonely}` has no edge, so its wasm manifest needs nothing"
+        );
+    }
+}
+
+/// Both derived spellings are the cargo PACKAGE name — the `lib-name` verbatim, dashes and all, and
+/// that plus `-wasm`. The generated `use` lines carry the UNDERSCORED crate names
+/// (`cml_chain_wasm`), so writing either side the other way round is the mistake whose error names
+/// neither cause: a cargo resolution failure, or an `E0433` on a crate whose name looks right.
+#[test]
+fn the_derived_wasm_dep_spellings_are_the_dashed_package_names() {
+    let by_name = expand_all(
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\nlib-name = \"cml-chain\"\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\ndeps = [\"core\"]\n",
+    );
+    assert_eq!(
+        by_name["ledger"].wasm_dep,
+        vec![
+            "cml-chain=../../core/rust",
+            "cml-chain-wasm=../../core/wasm",
+        ]
+    );
+    // and the generated code the entries exist to resolve names the underscored forms
+    assert_eq!(
+        by_name["ledger"].extern_wasm_crate,
+        vec!["cml_chain=cml_chain_wasm"]
+    );
+}
+
+/// **The derived `--wasm-dep` path is RELATIVE**, under every combination of the two crates'
+/// `package-json` settings — the same requirement its `--json-gen-dep` sibling carries, and for the
+/// same reason: it is written into a committed `Cargo.toml`, so an absolute value would bake this
+/// checkout's location into a file the project commits and the same config would produce different
+/// bytes in a different clone.
+///
+/// Both endpoints move with their own crate's `package-json` (which nests the cargo crates one level
+/// down), so all four combinations are counted rather than one.
+#[test]
+fn the_derived_wasm_dep_path_is_relative_in_every_layout() {
+    for (dep_npm, consumer_npm, expected_rust, expected_wasm) in [
+        (false, false, "../../core/rust", "../../core/wasm"),
+        (true, false, "../../core/rust/rust", "../../core/rust/wasm"),
+        (false, true, "../../../core/rust", "../../../core/wasm"),
+        (
+            true,
+            true,
+            "../../../core/rust/rust",
+            "../../../core/rust/wasm",
+        ),
+    ] {
+        let by_name = expand_all(&format!(
+            "[crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\npackage-json = {dep_npm}\n\
+             [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\n\
+             package-json = {consumer_npm}\ndeps = [\"core\"]\n"
+        ));
+        let derived = &by_name["ledger"].wasm_dep;
+        assert_eq!(
+            derived,
+            &vec![
+                format!("core={expected_rust}"),
+                format!("core-wasm={expected_wasm}"),
+            ],
+            "dep package-json={dep_npm}, consumer package-json={consumer_npm}"
+        );
+        for entry in derived {
+            let path = entry
+                .split_once('=')
+                .expect("the flag is <package>=<path>")
+                .1;
+            assert!(
+                std::path::Path::new(path).is_relative(),
+                "a cargo path dependency is resolved against the manifest holding it, and an \
+                 absolute value would make the committed manifest machine-specific; got {path}"
+            );
+        }
+    }
+}
+
+/// `.` and `..` in an `output` are ordinary spellings of an ordinary directory, and the derived
+/// manifest entry must not be able to tell — the same normalization
+/// `a_dot_or_dot_dot_in_an_output_derives_the_same_path_the_plain_spelling_does` pins for the other
+/// manifest, asserted here because this derivation calls the helper on a different pair of
+/// directories and a value that skipped it would be committed just the same.
+#[test]
+fn a_dot_or_dot_dot_in_an_output_derives_the_same_wasm_dep_the_plain_spelling_does() {
+    let derived = |core: &str, ledger: &str| {
+        expand_all(&format!(
+            "[crates.core]\ninput = \"c.cddl\"\noutput = \"{core}\"\n\
+             [crates.ledger]\ninput = \"l.cddl\"\noutput = \"{ledger}\"\ndeps = [\"core\"]\n"
+        ))["ledger"]
+            .wasm_dep
+            .clone()
+    };
+
+    let plain = derived("gen/core", "gen/ledger");
+    assert_eq!(
+        plain,
+        vec![
+            "core=../../core/rust".to_owned(),
+            "core-wasm=../../core/wasm".to_owned(),
+        ],
+        "the baseline the two spellings below must match"
+    );
+    assert_eq!(
+        derived("./gen/core", "gen/ledger"),
+        plain,
+        "a leading `./` must not reach the committed manifest"
+    );
+    assert_eq!(
+        derived("gen/sub/../core", "./gen/./ledger"),
+        plain,
+        "`.` and `..` anywhere in either endpoint resolve before the diff"
+    );
+}
+
+/// The two `wasm = false` positions, which contribute differently because they are different facts.
+///
+/// A `wasm = false` CONSUMER generates no wasm crate, so there is no manifest for an entry to land
+/// in and nothing is derived at all — which is also what the flag itself refuses.
+///
+/// A `wasm = false` DEPENDENCY keeps its rust crate name for both of the consumer's passes (the
+/// single-crate convention `--extern-wasm-crate` documents, and the reason `apply_graph_edges`
+/// derives no `--extern-wasm-crate` for it), so the edge is its rust package alone. It cannot be
+/// reached through `wasm-reexports` at all — that is the refusal above.
+#[test]
+fn a_wasm_false_crate_on_either_end_derives_what_it_can_and_no_more() {
+    let consumer_off = expand_all(
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\nwasm = false\n\
+         deps = [\"core\"]\n",
+    );
+    assert!(
+        consumer_off["ledger"].wasm_dep.is_empty(),
+        "a crate with no wasm crate has no manifest for an entry to land in"
+    );
+
+    let dep_off = expand_all(
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\nwasm = false\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\ndeps = [\"core\"]\n",
+    );
+    assert_eq!(
+        dep_off["ledger"].wasm_dep,
+        vec!["core=../../core/rust"],
+        "a dependency that generates no wasm crate is named by its rust package for both passes"
+    );
+    assert!(
+        dep_off["ledger"].extern_wasm_crate.is_empty(),
+        "and the boundary mapping the second entry would serve is not derived either"
+    );
+}
+
+/// A hand-written `[crates.<name>.wasm-dep]` entry for the same PACKAGE wins, silently and per
+/// package — the rule every sub-table derivation in this file follows. An explicit value is the user
+/// covering a case the sugar does not (a vendored checkout, a registry version beside the path), not
+/// a conflict to report; emitting both would be the flag's own duplicate-package rejection.
+#[test]
+fn a_hand_written_wasm_dep_entry_wins_per_package() {
+    let by_name = expand_all(
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gen/core\"\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gen/ledger\"\ndeps = [\"core\"]\n\
+         [crates.ledger.wasm-dep]\ncore-wasm = \"../../vendor/core-wasm\"\n",
+    );
+    assert_eq!(
+        by_name["ledger"].wasm_dep,
+        vec![
+            // derived: the package the hand entry does not name
+            "core=../../core/rust",
+            // hand-written: emitted under its own key, and NOT also derived
+            "core-wasm=../../vendor/core-wasm",
+        ],
+        "the hand-written package must be taken verbatim and the other still derived"
+    );
+}
+
+/// **The compile proof**: a config-generated workspace with `wasm = true` and a `deps` edge, built.
+///
+/// This is the deliverable, and the reason is that no manifest-text assertion can see it. A
+/// `[dependencies]` entry reads correct whether or not its path resolves and whether or not the
+/// package it names is the one the generated `use` lines need — the derivation tests above assert
+/// exactly those strings, and would all pass over a workspace that does not compile. Before
+/// `--wasm-dep` this one did not: the wasm pass emitted `use <dep>_wasm::…` and
+/// `BTreeMap<own::T, <dep>::T>` into a crate whose manifest never named either package, and nothing
+/// in the suite built such a workspace (the `[runtime]` compile test runs `wasm = false`, the
+/// acceptance test compares bytes without building, and the `deps` e2e asserts the generated SOURCE
+/// references the dependency without compiling it).
+///
+/// The consumer's spec is shaped to need BOTH packages at once: `f`/`l` reach the dependency's types
+/// across the wasm boundary (`depcrate_wasm`), while `mixed` is a wrapper over one of its own types
+/// and one of the dependency's, which no dependency can host, so it is minted here with
+/// `depcrate::Foo` as inner storage. The two mutation legs at the end delete one derived entry each
+/// and require the build to fail, which is what stops this test passing for a reason other than the
+/// one it is about.
+///
+/// Three hand edits stand between "generated" and "builds", and each is a documented tool boundary
+/// rather than an oversight, so each is written here the way a consumer writes it — and asserted to
+/// be absent first, so that a tool that started writing one fails here rather than silently making
+/// the edit redundant:
+///
+/// 1. the workspace `Cargo.toml` (the tool generates crates, not workspaces);
+/// 2. the shared runtime's hand-owned `src/lib.rs`, and each crate's dependency on it
+///    (`--common-import-override` documents that entry as the user's line);
+/// 3. **the dependency's rust package in the CONSUMER's `rust/Cargo.toml`** — the third of the three
+///    manifest entries a `deps` edge needs, which `--wasm-dep` does not write because it owns one
+///    manifest. Asserted rather than merely performed, so the day something derives it this test
+///    says so.
+///
+/// A `[runtime]` table is not decoration here: without one shared runtime each crate defines its own
+/// `Serialize`/`Deserialize`, and a consumer cannot serialize a dependency's type no matter what its
+/// manifest says. That is a flavor fact, independent of every entry under test.
+#[test]
+fn a_config_generated_workspace_builds_with_wasm_on() {
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_config_wasm_dep_e2e_{:016x}",
+        crate::tests::integration_tests::checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("specs")).unwrap();
+    std::fs::write(dir.join("specs/dep.cddl"), "foo = [a: uint, b: text]\n").unwrap();
+    std::fs::write(
+        dir.join("specs/user.cddl"),
+        "own = [z: uint]\nbar = [f: foo, l: [* foo], mixed: {* own => foo}]\n",
+    )
+    .unwrap();
+
+    let config_path = dir.join("codegen.toml");
+    std::fs::write(
+        &config_path,
+        format!(
+            "[defaults]\nstatic-dir = \"{}/static\"\n\n\
+             [runtime]\nexport-static-crate = \"runtime\"\ncommon-import = \"cddl_runtime\"\n\n\
+             [crates.depcrate]\ninput = \"specs/dep.cddl\"\noutput = \"gen/depcrate\"\n\n\
+             [crates.usercrate]\ninput = \"specs/user.cddl\"\noutput = \"gen/usercrate\"\n\
+             deps = [\"depcrate\"]\n",
+            env!("CARGO_MANIFEST_DIR")
+        ),
+    )
+    .unwrap();
+
+    // A cold run leaves the dependency not yet hosting the wrapper its consumer borrows, which the
+    // committed-state verdict reports; the second run is the converged tree this test compiles.
+    let _ = config::generate(&config_path, &[]);
+    config::generate(&config_path, &[]).expect("a warm config run must generate");
+
+    // The entries under test, before anything is built: both of the dependency's packages, by
+    // relative path, in the consumer's WASM manifest.
+    let wasm_manifest =
+        std::fs::read_to_string(dir.join("gen/usercrate/wasm/Cargo.toml")).expect("wasm manifest");
+    for expected in [
+        "depcrate = { path = \"../../depcrate/rust\" }",
+        "depcrate-wasm = { path = \"../../depcrate/wasm\" }",
+    ] {
+        assert!(
+            wasm_manifest.contains(expected),
+            "the derivation must write {expected}:\n{wasm_manifest}"
+        );
+    }
+
+    // Hand edit 2a: the shared runtime's crate root, which the tool never writes (its new-static-file
+    // notice says exactly this).
+    let runtime_src = dir.join("runtime/src");
+    let mut modules: Vec<String> = std::fs::read_dir(&runtime_src)
+        .unwrap()
+        .filter_map(|e| {
+            let name = e.unwrap().file_name().to_string_lossy().into_owned();
+            name.strip_suffix(".rs").map(str::to_owned)
+        })
+        .collect();
+    modules.sort();
+    std::fs::write(
+        runtime_src.join("lib.rs"),
+        modules
+            .iter()
+            .map(|m| format!("pub mod {m};\n"))
+            .collect::<String>(),
+    )
+    .unwrap();
+
+    // Hand edits 2b and 3, each asserted absent first so a tool that starts writing one fails here.
+    let hand_edit = |crate_dir: &str, up: &str, extra: Option<&str>| {
+        let path = dir.join(crate_dir).join("Cargo.toml");
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            !text.contains("cddl_runtime"),
+            "{crate_dir}: the tool does not write the consumer's dependency on the shared runtime \
+             — the --common-import-override docs make that the user's line"
+        );
+        let mut added = format!(
+            "[dependencies]\ncddl_runtime = {{ package = \"cddl-runtime\", path = \"{up}/runtime\" }}\n"
+        );
+        if let Some(extra) = extra {
+            assert!(
+                !text.contains("depcrate = "),
+                "{crate_dir}: the dependency's rust package in the CONSUMER's rust manifest is the \
+                 third entry a `deps` edge needs, and nothing derives it today — if something now \
+                 does, this test's hand edit is stale"
+            );
+            added.push_str(extra);
+        }
+        std::fs::write(&path, text.replacen("[dependencies]\n", &added, 1)).unwrap();
+    };
+    hand_edit("gen/depcrate/rust", "../../..", None);
+    hand_edit("gen/depcrate/wasm", "../../..", None);
+    hand_edit(
+        "gen/usercrate/rust",
+        "../../..",
+        Some("depcrate = { path = \"../../depcrate/rust\" }\n"),
+    );
+    hand_edit("gen/usercrate/wasm", "../../..", None);
+
+    // Hand edit 1: the workspace.
+    std::fs::write(
+        dir.join("Cargo.toml"),
+        "[workspace]\nmembers = [\"runtime\", \"gen/depcrate/rust\", \"gen/depcrate/wasm\", \
+         \"gen/usercrate/rust\", \"gen/usercrate/wasm\"]\nresolver = \"2\"\n",
+    )
+    .unwrap();
+
+    let target_dir = dir.join("target");
+    let check = || {
+        crate::tests::integration_tests::tool_cmd("cargo")
+            .arg("check")
+            .arg("--workspace")
+            .current_dir(&dir)
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap()
+    };
+    let built = check();
+    assert!(
+        built.status.success(),
+        "a config-generated workspace with wasm on must build:\n{}\n{}",
+        String::from_utf8_lossy(&built.stdout),
+        String::from_utf8_lossy(&built.stderr)
+    );
+
+    // The mutation legs: each derived entry is load-bearing, and they are load-bearing for different
+    // references — the wasm package for the boundary `use` lines, the rust package for the mixed-dep
+    // wrapper's inner storage. Deleting either must break the build on the name it carries.
+    let manifest_path = dir.join("gen/usercrate/wasm/Cargo.toml");
+    let intact = std::fs::read_to_string(&manifest_path).unwrap();
+    for (entry, missing_name) in [
+        (
+            "depcrate-wasm = { path = \"../../depcrate/wasm\" }\n",
+            "depcrate_wasm",
+        ),
+        (
+            "depcrate = { path = \"../../depcrate/rust\" }\n",
+            "depcrate",
+        ),
+    ] {
+        std::fs::write(&manifest_path, intact.replace(entry, "")).unwrap();
+        let mutated = check();
+        assert!(
+            !mutated.status.success(),
+            "removing `{entry}` must break the build — if it does not, the derivation is writing an \
+             entry nothing needs"
+        );
+        let stderr = String::from_utf8_lossy(&mutated.stderr);
+        assert!(
+            stderr.contains(missing_name),
+            "the failure must name `{missing_name}`, the crate the removed entry provided, got:\n{stderr}"
+        );
+    }
+    std::fs::write(&manifest_path, &intact).unwrap();
+
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// The two things no generation-time assertion can reach, on real disk: a derived thread **links**,
@@ -3424,6 +3837,17 @@ fn acceptance_hand_invocations(root: &Path) -> Vec<(&'static str, Vec<String>)> 
                     "core-lib-json-schema-gen=../../../core/wasm/json-gen".to_owned(),
                     "--json-gen-dep".to_owned(),
                     "extras-lib-json-schema-gen=../../../extras/wasm/json-gen".to_owned(),
+                    // The wasm manifest entries the same two edges derive, in the same order. A
+                    // `deps` edge contributes BOTH of the dependency's packages (its wasm crate for
+                    // the boundary, its rust crate for a locally minted wrapper's inner storage);
+                    // `wasm-reexports` contributes the wasm one alone, since nothing generated here
+                    // names the crate at all.
+                    "--wasm-dep".to_owned(),
+                    "core-lib=../../core/rust".to_owned(),
+                    "--wasm-dep".to_owned(),
+                    "core-lib-wasm=../../core/wasm".to_owned(),
+                    "--wasm-dep".to_owned(),
+                    "extras-lib-wasm=../../extras/wasm".to_owned(),
                 ],
             ),
         ),

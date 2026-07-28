@@ -154,7 +154,7 @@ json-schema-root = ["cml_chain::byron::ByronAddress"]
 **`<key>=<value>` flags become sub-tables**, which union per key — a later layer overrides only the
 keys it names, exactly as repeated flag occurrences already accumulate. The flags spelled this way
 are `extern-import`, `extern-wasm-crate`, `extern-wrapper-index`, `wrapper-requests`,
-`key-requests`, `json-schema-dep` and `json-gen-dep`:
+`key-requests`, `json-schema-dep`, `json-gen-dep` and `wasm-dep`:
 
 ```toml
 [crates.my-extension]
@@ -209,6 +209,7 @@ On the **consumer** (`ledger`), from the dependency's own entry:
 | `--extern-wasm-crate core=core_wasm` | the dependency's `lib-name` |
 | `--extern-wrapper-index core=gen/core/wasm/src/generated/collections.rs` | the dependency's `output` |
 | `--workspace-dep core` | being in this config is what "co-generated workspace member" means |
+| `--wasm-dep core=../../core/rust` and `--wasm-dep core-wasm=../../core/wasm` | the dependency's `lib-name` verbatim — the cargo **package** names — plus the paths from your wasm crate to its two crates. See [The wasm manifest](#the-wasm-manifest) |
 
 On the **dependency** (`core`), one pair per consumer, in consumer order:
 
@@ -220,12 +221,14 @@ On the **dependency** (`core`), one pair per consumer, in consumer order:
 Two things vary the paths, and both are read from the *other* crate's own settings rather than
 assumed:
 
-- **`wasm = false` on the dependency** derives `--extern-import` and nothing else. The other three are
-  all about a wasm face it does not have — and `--workspace-dep` is not merely pointless without one,
-  it is a hard error without an `--extern-wasm-crate` mapping. The reverse edges go with them, since
-  the sidecars a consumer emits exist only because it has a workspace dependency to record. (A
-  `wasm = false` *consumer* still gets `--key-requests`: that sidecar is a rust-crate concern and is
-  written in either mode.)
+- **`wasm = false` on the dependency** derives `--extern-import`, plus the one `--wasm-dep` naming its
+  rust package (it keeps that crate name for both of your passes, since there is no wasm crate to
+  route the boundary through). The other three are all about a wasm face it does not have — and
+  `--workspace-dep` is not merely pointless without one, it is a hard error without an
+  `--extern-wasm-crate` mapping. The reverse edges go with them, since the sidecars a consumer emits
+  exist only because it has a workspace dependency to record. (A `wasm = false` *consumer* still gets
+  `--key-requests`: that sidecar is a rust-crate concern and is written in either mode. It gets no
+  `--wasm-dep` at all, having no manifest for one to land in.)
 
   Worth knowing before you set it: because `--workspace-dep` requires a wasm crate to exist, a
   dependency with `wasm = false` also loses the **map-key-derive channel** that rides on it. If a
@@ -363,7 +366,9 @@ the spec references them, `wasm-reexports` the ones that exist only because the 
 Crates outside the config drop out on their own — they have no json-gen crate to call.
 
 `wasm-reexports` creates **no** rust/extern edge and **no** generation-order edge. It is a packaging
-fact and nothing else; `deps` is what declares a real dependency.
+fact and nothing else; `deps` is what declares a real dependency. The one other thing it does derive
+is the manifest entry that makes the packaging fact true — see [The wasm
+manifest](#the-wasm-manifest) below.
 
 :::note Why not read the generated `wasm/Cargo.toml`, where the fact already is?
 Because that manifest is co-owned prior output — the tool writes it through a merge, and your
@@ -385,9 +390,10 @@ Each threaded crate expands to **two** flags, both read off that crate's own ent
 The two spellings are opposite on purpose, and writing either the other way round is the mistake whose
 error names neither cause. Deriving them removes the choice.
 
-**The path is relative, and that is a determinism requirement.** It is the only derived path in this
-file that is *written into a committed file* rather than read at generation time — it becomes a cargo
-path dependency in `wasm/json-gen/Cargo.toml`. An absolute value would bake your checkout location
+**The path is relative, and that is a determinism requirement.** It is one of the two derived paths
+in this file that are *written into a committed file* rather than read at generation time (the other
+is [the wasm manifest](#the-wasm-manifest)'s) — it becomes a cargo path dependency in
+`wasm/json-gen/Cargo.toml`. An absolute value would bake your checkout location
 into a file your project commits, so the same config would produce different bytes in a different
 clone. It is counted from the consumer's json-gen directory to the dependency's, and both endpoints
 follow their own crate's `package-json` setting.
@@ -422,6 +428,41 @@ The raw `[crates.<name>.json-schema-dep]` and `[crates.<name>.json-gen-dep]` sub
 only way to thread a crate that is **not** in this config. They union on top of whatever the
 derivation or the override produced; an entry naming a key the derivation would also produce wins,
 silently and per half, like every other hand-written sub-table entry.
+
+## The wasm manifest
+
+The same two edge keys derive the `[dependencies]` entries the generated `wasm/Cargo.toml` needs, as
+`--wasm-dep` values. Without them a config-generated workspace emits `use <dep>_wasm::…` into a crate
+whose manifest never names `<dep>_wasm`, which is a call, an `E0433` and a TODO rather than a
+feature.
+
+The two keys contribute different entries, because they state different facts:
+
+- **`deps`** means your spec references the dependency's types, and the wasm pass writes two kinds of
+  reference to such a type — `use <dep>_wasm::…` at the wasm boundary, and the dependency's plain
+  **rust** type as the inner storage of a wrapper this crate mints itself (a mixed-dep collection is
+  minted here, since no single dependency can host it). So a `deps` edge derives **both** of the
+  dependency's packages. A dependency with `wasm = false` keeps its rust crate name for both passes,
+  so that edge derives the rust entry alone.
+- **`wasm-reexports`** means nothing generated here names the crate at all and its classes ship in
+  your package anyway. So it derives the **wasm** package alone — precisely the lines a project
+  maintains by hand under a comment like *"not actual dependencies but we re-export these for the
+  wasm builds"*, which is what the key is named after.
+
+Paths are counted from the consumer's wasm directory to the dependency's, following each crate's own
+`package-json` layout, and are always relative — the value lands in a committed manifest, so an
+absolute one would make the same config produce different bytes in a different clone.
+
+A crate with `wasm = false` derives nothing here: it generates no wasm crate, so there is no manifest
+for an entry to land in.
+
+The raw `[crates.<name>.wasm-dep]` sub-table names a crate the config does **not** contain, or
+overrides a derived package (a vendored checkout, a registry version beside the path). A hand-written
+entry wins per package, silently, like every other sub-table entry.
+
+Two entries a `deps` edge needs are **not** derived, and both are hand edits today: the dependency's
+rust crate in the consumer's own `rust/Cargo.toml`, and — under `[runtime]` — each crate's dependency
+on the shared runtime crate, which `--common-import-override` documents as your line.
 
 :::note An umbrella package still needs a hand-written exporter
 Every `[crates.<name>]` table needs an `input`, so a config cannot describe a crate that generates
@@ -596,17 +637,18 @@ standing in.
 
 Absolute paths pass through untouched.
 
-Three right-hand sides are deliberately *not* resolved. Two of them are not paths at all:
+Four right-hand sides are deliberately *not* resolved. Two of them are not paths at all:
 `extern-wasm-crate` names a crate, and `json-schema-dep` names a Rust module path that lands
 verbatim in generated code.
 
-`json-gen-dep` is the third and the one worth stating: its right-hand side **is** a path, and is
-still passed through verbatim. It becomes a cargo *path dependency* in
-`<output>/wasm/json-gen/Cargo.toml`, and cargo resolves such a path against the manifest holding it —
-so rewriting it against the config file's directory would point it somewhere cargo never looks.
-Count it from the json-gen crate, exactly as you would writing the entry by hand. (For a dependency
-this config contains you do not write it at all: the
-[threading derivation](#the-published-json-surface) computes that relative path for you.)
+`json-gen-dep` and `wasm-dep` are the other two, and they are the ones worth stating: their
+right-hand sides **are** paths, and are still passed through verbatim. It becomes a cargo *path dependency* in
+`<output>/wasm/json-gen/Cargo.toml` and `<output>/wasm/Cargo.toml` respectively, and cargo resolves
+such a path against the manifest holding it — so rewriting it against the config file's directory
+would point it somewhere cargo never looks. Count each from the crate whose manifest it lands in,
+exactly as you would writing the entry by hand. (For a dependency this config contains you do not
+write either at all: the [threading derivation](#the-published-json-surface) and [the wasm
+manifest](#the-wasm-manifest) compute those relative paths for you.)
 
 ## Booleans
 
@@ -880,6 +922,11 @@ ships without its spec referencing them. The derivation emits `--json-schema-dep
 `deps`-then-`wasm-reexports` order, which is the order the script writes by hand — and it emits
 `--json-gen-dep` alongside, which is what retires the hand-maintained `[dependencies]` entries in the
 json-gen manifest. The relative path in those entries is computed for you.
+
+The same two lines also retire the hand-maintained `cml-cip25-wasm` / `cml-cip36-wasm` entries in
+`multi-era/wasm/Cargo.toml` — the ones under the *"not actual multi-era dependencies but we re-export
+these for the wasm builds"* comment — plus `cml-chain` and `cml-chain-wasm` from the `deps` edge. See
+[The wasm manifest](#the-wasm-manifest).
 
 ### The generation order flips
 

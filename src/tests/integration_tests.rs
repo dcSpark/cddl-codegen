@@ -9944,6 +9944,127 @@ fn json_gen_dep_input_contract() {
     );
 }
 
+/// The cheap (no nested cargo) halves of `--wasm-dep`'s input contract, item for item with
+/// `json_gen_dep_input_contract` directly above — the two flags are one move on two manifests, and
+/// the value they carry answers to one set of rules. The success direction is the nested-cargo
+/// `a_config_generated_workspace_builds_with_wasm_on`.
+///
+/// 1. Without `--wasm` there is no wasm crate and no manifest for the entry to land in, so the flag
+///    would silently do nothing.
+/// 2. A repeated PACKAGE NAME is ambiguous rather than additive: a manifest holds one
+///    `[dependencies]` entry per package, so the second path would silently replace the first.
+/// 3. The package-name side becomes a `[dependencies]` key, so it carries cargo's package-name
+///    charset — and the DASHED spelling, the opposite of the underscored crate name
+///    `--extern-wasm-crate` takes. The PATH side deliberately carries no charset rule at all: it is
+///    written through `toml_edit`, which quotes and escapes it.
+#[test]
+fn wasm_dep_input_contract() {
+    use clap::Parser;
+
+    let base = || crate::cli::Cli {
+        input: std::path::PathBuf::from("tests/json-extern/input.cddl"),
+        output: std::path::PathBuf::from("unused"),
+        wasm: true,
+        ..Default::default()
+    };
+
+    // 1. requires --wasm
+    let cli = crate::cli::Cli {
+        wasm: false,
+        wasm_dep: vec!["dep-wasm=../../dep/wasm".to_owned()],
+        ..base()
+    };
+    let err = crate::api::with_types(&cli, |_, _| ())
+        .expect_err("--wasm-dep without --wasm should be rejected");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("--wasm-dep") && msg.contains("--wasm=true"),
+        "rejection message should name both flags, got: {msg}"
+    );
+
+    // 2. a repeated PACKAGE NAME is rejected, and the message names it
+    let cli = crate::cli::Cli {
+        wasm_dep: vec![
+            "dep-wasm=../first".to_owned(),
+            "other-wasm=../other".to_owned(),
+            "dep-wasm=../second".to_owned(),
+        ],
+        ..base()
+    };
+    let err = crate::api::with_types(&cli, |_, _| ())
+        .expect_err("a repeated --wasm-dep package name should be rejected");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("--wasm-dep") && msg.contains("\"dep-wasm\""),
+        "rejection message should name the repeated package, got: {msg}"
+    );
+
+    // baseline: two DISTINCT packages are accepted — which is also the ordinary shape of one edge,
+    // since a dependency contributes its rust crate and its wasm crate.
+    let cli = crate::cli::Cli {
+        wasm_dep: vec![
+            "dep=../../dep/rust".to_owned(),
+            "dep-wasm=../../dep/wasm".to_owned(),
+        ],
+        ..base()
+    };
+    assert!(
+        crate::api::with_types(&cli, |_, _| ()).is_ok(),
+        "distinct --wasm-dep packages should be accepted"
+    );
+
+    // 3. the value parser: shape and charset.
+    let parse = |value: &str| {
+        crate::cli::Cli::try_parse_from([
+            "cddl-codegen",
+            "--input=tests/json-extern/input.cddl",
+            "--output=unused",
+            value,
+        ])
+    };
+    let ok = parse("--wasm-dep=cml-chain-wasm=../../../chain/wasm")
+        .expect("a dashed package name and a relative path must be accepted");
+    assert_eq!(
+        ok.wasm_deps().into_iter().collect::<Vec<_>>(),
+        vec![(
+            "cml-chain-wasm".to_owned(),
+            "../../../chain/wasm".to_owned()
+        )],
+        "dashes must NOT be normalised here — the left side is already the cargo package name"
+    );
+    assert!(
+        parse("--wasm-dep=dep=/abs/path with spaces/wasm").is_ok(),
+        "the path side takes any non-empty value: it is quoted by the TOML writer, not spliced"
+    );
+    let err = parse("--wasm-dep=cml_chain::wasm=../dep")
+        .expect_err("a rust module path on the package side must be rejected")
+        .to_string();
+    assert!(
+        err.contains("invalid character ':'") && err.contains("CARGO PACKAGE NAME"),
+        "the charset rejection should name the character and the side's real type, got: {err}"
+    );
+    let err = parse("--wasm-dep=some-package")
+        .expect_err("a value with no `=` must be rejected")
+        .to_string();
+    assert!(
+        err.contains("--wasm-dep value must be <cargo_package_name>=<path>"),
+        "the missing-separator rejection should name the flag and its shape, got: {err}"
+    );
+    for (value, what) in [
+        ("--wasm-dep==../dep", "an empty package name"),
+        ("--wasm-dep=dep=", "an empty path"),
+    ] {
+        let err = parse(value)
+            .err()
+            .unwrap_or_else(|| panic!("{what} must be rejected"))
+            .to_string();
+        assert!(
+            err.contains("non-empty"),
+            "the {what} rejection should say so, got: {err}"
+        );
+    }
+}
+
 /// The SUCCESS direction of `--json-gen-dep`, and the one thing no manifest-text assertion can
 /// reach: **cargo resolves the path the flag wrote**. Two generated crates in a scratch directory,
 /// the consumer threading the dependency with `--json-schema-dep` (the call) and `--json-gen-dep`

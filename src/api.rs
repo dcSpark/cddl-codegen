@@ -453,22 +453,38 @@ pub fn validate_flag_combinations(cli: &Cli) -> Result<(), String> {
                 .to_owned(),
         );
     }
+    // A `--wasm-dep` entry is a `[dependencies]` key in the wasm crate's manifest; without --wasm
+    // that crate is never generated and neither is its manifest, so the flag would silently do
+    // nothing (the same rule its `--json-gen-dep` sibling above carries, on the other manifest).
+    if !cli.wasm_dep.is_empty() && !cli.wasm {
+        return Err(
+            "--wasm-dep requires --wasm=true: the entry is written into the wasm crate's \
+             `Cargo.toml`, so without it there is no crate and no manifest for the dependency to \
+             land in"
+                .to_owned(),
+        );
+    }
     // One package name under two paths is ambiguous, not additive: a manifest holds ONE
     // `[dependencies]` entry per package, so the second value would silently replace the first.
-    // Read off the RAW flag list rather than `json_gen_deps()`, whose `BTreeMap` is exactly where a
-    // duplicate would disappear.
-    let mut seen_json_gen_deps = std::collections::BTreeSet::new();
-    for entry in &cli.json_gen_dep {
-        let name = entry
-            .split_once('=')
-            .map_or(entry.as_str(), |(name, _)| name)
-            .trim();
-        if !seen_json_gen_deps.insert(name) {
-            return Err(format!(
-                "--json-gen-dep package name {name:?} was passed more than once: a manifest holds \
-                 one `[dependencies]` entry per package, so a second path under one name would \
-                 silently replace the first rather than adding anything"
-            ));
+    // Read off the RAW flag lists rather than `json_gen_deps()`/`wasm_deps()`, whose `BTreeMap`s are
+    // exactly where a duplicate would disappear.
+    for (flag, entries) in [
+        ("--json-gen-dep", &cli.json_gen_dep),
+        ("--wasm-dep", &cli.wasm_dep),
+    ] {
+        let mut seen = std::collections::BTreeSet::new();
+        for entry in entries {
+            let name = entry
+                .split_once('=')
+                .map_or(entry.as_str(), |(name, _)| name)
+                .trim();
+            if !seen.insert(name) {
+                return Err(format!(
+                    "{flag} package name {name:?} was passed more than once: a manifest holds \
+                     one `[dependencies]` entry per package, so a second path under one name would \
+                     silently replace the first rather than adding anything"
+                ));
+            }
         }
     }
     Ok(())

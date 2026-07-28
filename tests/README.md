@@ -1820,6 +1820,15 @@ scratch directory, threads the second to the first with `--json-schema-dep` *and
 and builds and runs the consumer's json-gen crate — the only layer that can see whether cargo
 actually resolves the path the flag wrote, since the manifest text reads correct either way.
 
+**`--wasm-dep` (the same move on `wasm/Cargo.toml`) is pinned the same three ways**, deliberately as
+parallel siblings rather than one parameterized test: "it is the same code path" is exactly the claim
+a later refactor could quietly falsify. `wasm_dep_writes_a_path_dependency_entry`,
+`wasm_dep_converges_on_a_hand_added_entry` and `wasm_dep_entry_is_asserted_never_removed` in
+`cargo_manifest.rs` mirror their json-gen counterparts above; `wasm_dep_input_contract` mirrors the
+input contract (requires `--wasm`, not `--json-schema-export`). Its success direction is the
+nested-cargo `a_config_generated_workspace_builds_with_wasm_on` in `config_tests.rs` — see the config
+section below, since the derivation is where the flag is actually used.
+
 What these layers cannot see — a collision whose loser has no row and whose `schema_id`s match, a
 cross-crate collision between two `add_schemas` calls whose `schema_id`s match, a name schemars
 percent-encodes, and the conditions under which the emitted closure check silently skips — is
@@ -3051,9 +3060,28 @@ another crate's files, so each derivation is asserted against the flag values a 
 invocation spells — and the derived paths are then walked on real disk, because a path that is
 well-formed and wrong looks identical in an argv assertion. The JSON-threading derivation
 (`--json-schema-dep` + `--json-gen-dep` from `deps ∪ wasm-reexports`) additionally pins that the
-derived cargo path dependency is RELATIVE under all four `package-json` layouts: it is the one
-derived path written into a *committed* manifest, where an absolute value would make the same config
-produce different bytes in a different clone.
+derived cargo path dependency is RELATIVE under all four `package-json` layouts: it is one of the two
+derived paths written into a *committed* manifest, where an absolute value would make the same config
+produce different bytes in a different clone. The wasm-manifest derivation (`--wasm-dep`, from the
+same two edges) pins the same property, plus the asymmetry that is its whole content: a `deps` edge
+contributes BOTH of the dependency's packages (the wasm one for the boundary `use` lines, the rust
+one for a mixed-dep wrapper's inner storage), a `wasm-reexports` edge only the wasm one.
+
+**The compile proof for a config-generated workspace.**
+`a_config_generated_workspace_builds_with_wasm_on` generates a two-crate config with `wasm = true`, a
+`deps` edge and a `[runtime]` table into a scratch directory and `cargo check`s the whole workspace.
+It exists because no manifest-TEXT assertion can see whether a `[dependencies]` path resolves or
+whether the package it names is the one the generated `use` lines need — every derivation test above
+would pass over a workspace that does not build, and before `--wasm-dep` one did not. Its two
+MUTATION legs delete one derived entry each and require the build to fail naming the crate that entry
+provided, which is what stops it passing for a reason other than the one it is about. It is also the
+only place in the suite that builds a config-generated workspace with wasm ON (the `[runtime]`
+compile test runs `wasm = false`, the acceptance test compares bytes without building, and the `deps`
+e2e asserts the generated source references the dependency without compiling it). Three hand edits
+stand between "generated" and "builds" — the workspace `Cargo.toml`, the shared runtime's crate root
+plus each crate's dependency on it, and the dependency's rust package in the CONSUMER's
+`rust/Cargo.toml` — and each is asserted ABSENT before being written, so a tool that starts writing
+one fails there rather than silently making the edit redundant.
 
 **The acceptance proof.** Two tests pin "config = flag expansion, nothing more" at the level of
 emitted bytes rather than at the `Cli` struct.
