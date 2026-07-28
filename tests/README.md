@@ -720,7 +720,7 @@ literals, which 64-bit host builds can never see.
 ### Hand-vector suites (`tests/<dir>/tests.rs`) — the assertions no other layer can make
 
 Each fixture dir's `tests.rs` is appended into the generated crate and `cargo test`ed, so it runs
-against a real generated API with real wire bytes. That makes it the only home for four assertion
+against a real generated API with real wire bytes. That makes it the only home for five assertion
 shapes, each of which a snapshot, a compile gate and a round-trip mint all structurally miss. Write
 new hand vectors in these shapes; a vector that merely EXERCISES the code certifies nothing.
 
@@ -749,6 +749,19 @@ new hand vectors in these shapes; a vector that merely EXERCISES the code certif
    its serialize side in the same change, and review walks the suite's assert list against the type's
    new field list. (Mutation scoring cannot substitute: a generator mutant breaking the new behaviour
    dies to any OTHER fixture asserting the same arm.)
+5. **Pin a re-exposed dependency's behavior at the wire, decode→MUTATE→re-serialize.** Round-trip
+   suites never mutate between decode and re-serialize, so semantics a third-party type contributes
+   through our public surface — a `Deref` target's mutation-order behavior, an entry API's
+   position side effects — are exercised by no other layer, and a dependency swap or version bump
+   that changes them passes every compile gate and round-trip while silently rewriting consumers'
+   re-serialized bytes. Exemplars: the `ordered_hash_map_*` pins in
+   `tests/preserve-encodings/tests.rs` (insert-overwrite moves to back; `or_insert` keeps position;
+   `from_iter` duplicate keys; entry match shapes), written and committed green against the
+   incumbent backing BEFORE the linked-hash-map→hashlink swap, so the swap had to reproduce bytes
+   rather than bless new ones. When to write these: any change to the version floor or identity of
+   a dependency whose types the generated public API re-exposes lands pins of the incumbent's
+   consumer-reachable behavior first, in their own commit (the full working rule and its trigger
+   ledger live in `TESTING_ROADMAP.md` § Standing-system residuals).
 
 `tests/recursive-collection-ref/` exists purely to run one hand suite across two profiles rather
 than to add a shape: a nominal reference to a collection typedef, generated under BOTH the default
