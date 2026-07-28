@@ -124,14 +124,18 @@
     },
     {
       "gate": "feature_corpus_roundtrips_nondefault_profiles",
-      "warm_ms": 319000,
+      "warm_ms": 386000,
       "n": 20,
-      "measured": "2026-07-26",
+      "measured": "2026-07-28",
       "machine": "86216c55",
       "history": [
         {
           "date": "2026-07-26",
           "warm_ms": 319000
+        },
+        {
+          "date": "2026-07-28",
+          "warm_ms": 386000
         }
       ]
     },
@@ -495,14 +499,18 @@
     },
     {
       "gate": "rust_oracle_fingerprint",
-      "warm_ms": 10000,
+      "warm_ms": 12000,
       "n": 20,
-      "measured": "2026-07-26",
+      "measured": "2026-07-28",
       "machine": "86216c55",
       "history": [
         {
           "date": "2026-07-26",
           "warm_ms": 10000
+        },
+        {
+          "date": "2026-07-28",
+          "warm_ms": 12000
         }
       ]
     },
