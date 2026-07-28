@@ -28,12 +28,12 @@ declared exactly once, so **declaring it both ways is refused during config expa
 crate generates:
 
 ```
-Error: "[crates.multi-era].deps: `cml_chain` is declared twice — this crate consumes that
-dependency's extern-interface export, and its own input tree hand-declares the same dependency at
-<repo>/specs/multiera/_CDDL_CODEGEN_EXTERN_DEPS_DIR_/cml_chain. A dependency is declared exactly
-once, never merged: delete the stub directory to consume the export, or drop `cml_chain` from
-`deps` to keep hand-maintaining it. A stub is the declaration for a dependency that has no export —
-a hand-written crate, or one you cannot regenerate."
+Error: --config codegen.toml: [crates.multi-era].deps: `cml_chain` is declared twice — this crate
+consumes that dependency's extern-interface export, and its own input tree hand-declares the same
+dependency at <repo>/specs/multiera/_CDDL_CODEGEN_EXTERN_DEPS_DIR_/cml_chain. A dependency is
+declared exactly once, never merged: delete the stub directory to consume the export, or drop
+`cml_chain` from `deps` to keep hand-maintaining it. A stub is the declaration for a dependency that
+has no export — a hand-written crate, or one you cannot regenerate.
 ```
 
 That deletion, the diff it produces, and the five classes every line of that diff must fall into are
@@ -41,7 +41,9 @@ That deletion, the diff it produces, and the five classes every line of that dif
 against the script as it stands.** Then the config is a flag-set change with no seam change in it.
 
 The refusal was reproduced on the fixture by creating the stub directory beside a `deps` edge; the
-message above is that run's output with the fixture path replaced.
+message above is that run's output with the fixture paths replaced. (Every error a config run
+prints opens with `--config <path>:` and renders verbatim — quotes and line breaks intact — so what
+you see is what is quoted here, not a `Debug`-escaped version of it.)
 
 ## The config
 
@@ -78,11 +80,9 @@ output = "chain"
 lib-name = "cml-chain"
 profiles = ["encoded"]
 json-schema-scripts = true
-
 # chain's spec references the built-in `int` (DeltaCoin), whose wasm face must resolve through
 # cml_core_wasm. Not a `deps` edge: cml_core is hand-written and this config does not generate it.
-[crates.chain.extern-wasm-crate]
-cml_core = "cml_core_wasm"
+extern-wasm-crate = { cml_core = "cml_core_wasm" }
 
 [crates.cip25]
 input = "specs/cip25.cddl"
@@ -96,10 +96,7 @@ input = "specs/cip36"
 output = "cip36"
 lib-name = "cml-cip36"
 profiles = ["encoded"]
-
-[crates.cip36.extern-wasm-crate]
-cml_crypto = "cml_crypto_wasm"
-cml_chain = "cml_chain_wasm"
+extern-wasm-crate = { cml_crypto = "cml_crypto_wasm", cml_chain = "cml_chain_wasm" }
 
 [crates.multi-era]
 input = "specs/multiera"
@@ -118,10 +115,18 @@ json-schema-root = [
 
 Two mechanical traps this file already avoids, both worth keeping in mind when editing it:
 
-- **A `[crates.<name>.<sub-table>]` header ends its parent table.** Every crate's plain keys are
-  written before its sub-tables here for that reason.
+- **A `[crates.<name>.<sub-table>]` header ends its parent table** — and it does so SILENTLY: a key
+  written after such a header parses as a mapping entry, not as the crate key you meant, with no
+  error. The mappings above are spelled as inline tables for that reason; the two spellings expand
+  identically (pinned by `an_inline_sub_table_expands_exactly_as_the_header_spelling_does`), and the
+  inline one keeps a crate's block contiguous.
 - **`json-schema-root` concatenates across layers rather than replacing**, so it is safe per-crate
   but must never go in `[defaults]` unless every crate wants the entry.
+
+An editor can check this file as you write it: the tool's repository ships a JSON Schema for the
+config at `docs/editor/cddl-codegen-config.schema.json` (drift-gated against the key set), and
+`docs/docs/config_file.mdx` § "Editor support" shows the one-line taplo / Even Better TOML wiring —
+against the pinned checkout, that is `$WORK/docs/editor/cddl-codegen-config.schema.json`.
 
 ## What each part of the script becomes
 
@@ -136,7 +141,7 @@ Two mechanical traps this file already avoids, both worth keeping in mind when e
 | `EXTERN_WASM_MULTIERA`, `WRAPPER_REQUESTS_CHAIN` | `deps = ["chain"]`, both directions |
 | `JSON_SCHEMA_DEP_MULTIERA` | `deps` + `wasm-reexports` |
 | `JSON_ROOTS_*` | per-crate `json-schema-root` |
-| `check_convergence` | the built-in committed-state verdict |
+| `check_convergence` | the built-in committed-state verdict (its own exit code, 2 — see below) |
 | `EXTERN_WASM_BYRON` and the `named byron` line | unchanged — still a separate invocation |
 
 ### `flavor-from`, and what declaring it asserts
@@ -148,15 +153,16 @@ crate generated at another. cip25 sets neither, so **the derivation has no answe
 config**:
 
 ```
-Error: "`[runtime].export-static-crate` cannot write one runtime for these crates: they disagree on
-`preserve-encodings` (`false` in `cip25`, `true` in `chain`, `cip36`, `multi-era`); `canonical-form`
-(`false` in `cip25`, `true` in `chain`, `cip36`, `multi-era`), and a shared runtime must match them
-EXACTLY. … Give every crate the same value, or accept the gap explicitly with
-`[runtime].flavor-from = \"<crate>\"`."
+Error: --config codegen.toml: `[runtime].export-static-crate` cannot write one runtime for these
+crates: they disagree on `preserve-encodings` (`false` in `cip25`, `true` in `chain`, `cip36`,
+`multi-era`); `canonical-form` (`false` in `cip25`, `true` in `chain`, `cip36`, `multi-era`), and a
+shared runtime must match them EXACTLY. … Give every crate the same value, or accept the gap
+explicitly with `[runtime].flavor-from = "<crate>"`.
 ```
 
 (Reproduced on the fixture by deleting the `flavor-from` line; the crate names are the fixture's,
-which are CML's.)
+which are CML's, and the `…` elides the message's middle passage on why a flavor mismatch is a
+correctness problem rather than a style one.)
 
 `flavor-from = "chain"` is the script's existing comment turned into a declaration — the comment on
 the `--export-static-crate` line already says cip25's reduced flavor would export a runtime the
@@ -209,6 +215,10 @@ Three of those are new relative to the script and are worth expecting in the dif
 - **The label is normalised.** The reverse edges are keyed `cml_multi_era` where the script writes
   `cml-multi-era`, and that label lands in chain's `/// Generated at the request of: …` attribution
   comments. Expect a comment-only diff there.
+
+In the `--print-flags` listing the two reverse rows appear under `[chain]` tagged
+`deps (from [crates.multi-era])` rather than bare `deps` — chain's own table has no `deps` key, and
+the tag names the line of this file that produced them.
 
 ### The JSON surface
 
@@ -307,21 +317,22 @@ CML's opt-in `byron` pass generates a second spec set into the multi-era crate. 
 table, for two independent reasons, both reproduced on the fixture:
 
 ```
-Error: "[crates.byron] and [crates.multi-era] both have the library name `cml_multi_era`. …
-Give one of them its own `lib-name`."
+Error: --config codegen.toml: [crates.byron] and [crates.multi-era] both have the library name
+`cml_multi_era`. … Give one of them its own `lib-name`.
 ```
 
 and, once given a distinct `lib-name`:
 
 ```
-Error: "[crates.byron] and [crates.multi-era] both generate into `<repo>/multi-era`. A crate's
-output is regenerated as a whole, so whichever ran second would erase the other's generated tree
-while leaving its crate root behind — and the run would report success. Give each crate its own
-`output`."
+Error: --config codegen.toml: [crates.byron] and [crates.multi-era] both generate into
+`<repo>/multi-era`. A crate's output is regenerated as a whole, so whichever ran second would erase
+the other's generated tree while leaving its crate root behind — and the run would report success.
+Give each crate its own `output`.
 ```
 
 It cannot be appended to the `--config` command either, since `--config` refuses any generation flag
-beside it. So it stays its own `cddl-codegen` invocation in the wrapper script, with its flags
+beside it (`--static-dir` is the one exception, and it is a tool location, not a crate fact). So it
+stays its own `cddl-codegen` invocation in the wrapper script, with its flags
 written out in full — `--print-flags` on the config is how you keep that hand-written invocation
 honest, on the day you copy it.
 
@@ -363,10 +374,16 @@ Two checks report what the order cannot settle, and they are not two strengths o
   re-run out.
 - **The committed-state verdict** — over every `deps` edge touching the run, it reads the consumer's
   committed `borrowed_collections.rs` against the dependency's committed `collections.rs` wrapper
-  index, and **exits nonzero** naming the dependency to re-run. That is CML's own
+  index, and **exits 2** naming the dependency to re-run. The exit code is part of the contract
+  (`docs/docs/config_file.mdx` documents 0/1/2): 1 means the run itself failed, 2 means the run did
+  exactly what it was asked and the committed tree is what needs the named regen — so a wrapper or
+  CI step can tell the two apart, which `check_convergence`'s exit 1 never could. That is CML's own
   `check_convergence` generalised: the same two files, the same failure, the same one-line fix. It
   can be deleted from the wrapper script once `deps = ["chain"]` is in place — and **not before**,
-  because the verdict is computed from `deps` edges alone.
+  because the verdict is computed from `deps` edges alone. The routine case it fires on — edit
+  multi-era's spec so it borrows something new, regenerate only multi-era — is also expressible as
+  one command that never trips it: `--config codegen.toml --with-deps multi-era` closes the
+  selection over `deps` and regenerates chain with it, in generation order.
 
 ## The wrapper script shrinks; it does not disappear
 
@@ -380,7 +397,8 @@ deciding whether to migrate should count on keeping a script:
 - **`cargo fmt --all` and `clippy.sh`**, including the check-only policy and the long explanation of
   why a `clippy --fix` under `src/generated/` is reverted by the next regen.
 - **The dirty-tree warning**, the `want`/`named` crate selection wrappers (a config takes positional
-  crate names, but `byron` is not one of them), and the "review with git" epilogue.
+  crate names, plus `--with-deps` to pull in what a named crate depends on — but `byron` is not one
+  of them), and the "review with git" epilogue.
 - **The byron invocation**, per the section above.
 
 ### `--static-dir` is the one path the config does not resolve
@@ -421,7 +439,7 @@ Two are **not** derivable and remain hand edits:
   manifest, `cml-core-wasm` in every wasm one. `--common-import-override` takes a Rust *path prefix*
   (`crate::common` is a legal value), so no cargo package name follows from it.
 
-Both are pinned as assert-**absent** by `config_tests::a_config_generated_workspace_builds_with_wasm_on`,
+Both are pinned as assert-**absent** by `a_config_generated_workspace_builds_with_wasm_on`,
 so the day either becomes derivable that test fails loudly rather than passing quietly.
 
 Two properties of the merge shape what the migration diff looks like:
@@ -450,7 +468,12 @@ keep multi-era's chain stub, and write the whole edge as raw sub-tables:
 What that costs, verified by reading the code and by expanding such a config on the fixture:
 
 - Every row of the derivation becomes a hand-maintained value that two crate tables must agree
-  about — which is the duplication the feature exists to remove.
+  about — which is the duplication the feature exists to remove. One row is load-bearing beyond
+  duplication: **keep `workspace-dep = ["cml_chain"]` in the hand-spelled set.** A hand-written
+  `extern-wrapper-index` WITHOUT the matching `workspace-dep` is the one shape that sits outside
+  every convergence instrument the run has (recorded with a reproduction in
+  `tests/TESTING_ROADMAP.md`, Operational watches) — the run exits 0 a pass behind and the next run
+  changes bytes over an unchanged tree.
 - **The committed-state verdict disappears**, because it iterates `deps` edges. `check_convergence`
   must stay in the script until `deps` lands.
 - The convergence *pass* still works: it is captured off the expanded invocations rather than off
@@ -469,7 +492,9 @@ the seam first and write `deps`.
 Everything above is either a read of CML's committed tree or a fixture run. Before executing:
 
 1. **Commit or stash CML's tree, and re-check `git status` immediately before the regen.**
-   Generation clobbers `src/generated/**`.
+   Generation clobbers `src/generated/**`, and it is not transactional across crates: a failure
+   partway through names the crates the run had already rewritten, and `git checkout` is the undo —
+   which is only an undo if the tree was committed.
 2. **Do the extern-seam migration first**, per `CML_MIGRATION.md` § "The multi-era edge, measured",
    and commit it.
 3. **Run `cddl-codegen --config codegen.toml --print-flags` and diff it against the invocations
@@ -500,5 +525,12 @@ Everything above is either a read of CML's committed tree or a fixture run. Befo
   that an omitted `static-dir` resolves against the process CWD.
 - **By reading cddl-codegen's source**: that the committed-state verdict iterates `deps` edges only,
   and that the convergence capture reads the expanded invocations rather than the edges.
+- **Re-captured after the 2026-07-28 review-implementation series** (which changed error rendering,
+  gave the verdict exit code 2, and added `--with-deps` and the `--static-dir` exception): all four
+  refusal messages quoted above are the current binary's output on minimal fixtures, path-genericized
+  only — the earlier `Debug`-escaped renderings (`\"` inside quoted messages) no longer occur. The
+  config block above was extracted verbatim and re-expanded through `--print-flags` at the same rev:
+  exit 0, four crates, the reverse edges tagged `deps (from [crates.multi-era])`, and the inline
+  `extern-wasm-crate` spellings reaching the flag.
 - **Not verified, by design**: anything about CML's build. No crate here was compiled, no npm
   package was built, and CML was never regenerated.
