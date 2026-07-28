@@ -971,15 +971,27 @@ fn recombination_generation_sweep() {
         findings.join("\n\n")
     );
 
-    // Vacuity floors — from the EXECUTED artifact, not the inputs. Current baseline
-    // (1544 swept / 885 ok / 367 panic / 292 graceful); floors sit under it so real shrinkage
-    // fails loud while ingredient additions don't churn them. (Generic INSTANTIATION in bare member
-    // position moved panic -> ok when the `TypeGroupname` group-entry arm was routed through
-    // `generic_instance_or_new_type` — see tests/corpus/generic_call_member.cddl. Earlier, fixed BOOL
-    // literals in member position moved panic -> ok when the deserialize `FixedValue::Bool` arm
-    // landed — tests/corpus/fixed_bool_member.cddl — and the `[coords] / tstr` choice-arm and the
-    // `gen<[coords]>` generic-arg shapes moved panic -> ok when member-position array-of-plain-group
-    // promotion landed.)
+    // Vacuity floors — from the EXECUTED artifact, not the inputs. Current baseline, re-measured
+    // 2026-07-28 by running this test with --nocapture and reading its own printed tally
+    // (1544 swept / 892 ok / 178 panic / 474 graceful); floors sit under it so real shrinkage
+    // fails loud while ingredient additions don't churn them.
+    //
+    // The panic column is where this baseline moves, and it moves in ONE direction: every
+    // abort-to-rejection conversion migrates a block of compositions panic -> graceful without
+    // touching a floor, because the floors bound `ok` and the swept total, and neither changes.
+    // The last re-measurement before this one read 367 panic / 292 graceful; converting the
+    // anonymous-composite, inline-group-arm and bare-fixed-value-occurrence families moved 182 of
+    // those panics to graceful and 7 more to ok (the fixed-value group-choice arm, which became
+    // real support rather than a refusal). So a stale reading here understates how much of the
+    // sweep is already diagnosed — which is the opposite of alarming, and exactly why nothing
+    // fails when it rots. Re-measure when a conversion lands; do not infer it from the floors.
+    //
+    // Earlier panic -> ok movements, kept because each names the fixture that owns the shape:
+    // generic INSTANTIATION in bare member position, when the `TypeGroupname` group-entry arm was
+    // routed through `generic_instance_or_new_type` — tests/corpus/generic_call_member.cddl; fixed
+    // BOOL literals in member position, when the deserialize `FixedValue::Bool` arm landed —
+    // tests/corpus/fixed_bool_member.cddl; and the `[coords] / tstr` choice-arm and `gen<[coords]>`
+    // generic-arg shapes, when member-position array-of-plain-group promotion landed.
     assert!(
         comps.len() >= 1400,
         "only {} compositions swept (floor 1400) — the composer rotted or ingredients went missing",
