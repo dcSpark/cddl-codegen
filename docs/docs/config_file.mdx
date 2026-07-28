@@ -818,6 +818,26 @@ cannot leave the first crate's output half-migrated on disk.
   hoist it to `[runtime].export-static-crate` and let the config
   [derive the carrier](#one-shared-runtime-crate).
 
+### Generation itself is not transactional across crates
+
+What is checked up front is the **config**. Once the first crate starts generating, the run is a
+sequence of independent regenerations, and a crate whose CDDL spec fails to generate stops the run
+where it stands: the crates ordered before it are on disk in their regenerated form, the failing
+crate's own output may be partly written, and the crates after it are untouched. This is not a
+rollback the tool can perform — each crate's output is a committed directory it clobbers in place.
+
+So the failure says exactly that instead, naming the crate that failed and listing the crates the run
+had already finished:
+
+```
+[crates.ledger] failed to generate: <the spec's own error>
+1 crate was already regenerated in this run before this failure: core. Generation is not
+transactional across crates: ...
+```
+
+Generated output is committed, which is what makes the undo ordinary: `git checkout` on the listed
+crates' output directories restores them.
+
 ## `--config` cannot be mixed with generation flags
 
 Passing any generation flag alongside `--config` is a hard error naming the flag. There is no

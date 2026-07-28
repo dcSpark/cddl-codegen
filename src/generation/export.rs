@@ -682,6 +682,12 @@ impl GenerationScope {
                 cli.output.join("scripts/json-ts-types.js"),
             )?;
         }
+        // LOCKSTEP: `--package-json` nests the cargo crates one level down, under `<output>/rust/`;
+        // without it they sit directly under `<output>`. `config::crate_relative` duplicates THIS
+        // rule on purpose — a config derives cross-crate flag values naming ANOTHER crate's
+        // generated files, so it has to know where that crate's emitter put them, and the rule is
+        // code rather than a string so no constant can carry it for both. Change both together: a
+        // disagreement type-checks and produces derived paths one directory away from the files.
         let rust_dir = if cli.package_json {
             if cli.json_schema_export {
                 std::fs::copy(
@@ -767,7 +773,7 @@ impl GenerationScope {
         }
         if cli.json_schema_export {
             manifest_ops.push((
-                "wasm/json-gen/Cargo.toml",
+                crate::generation::layout::JSON_GEN_MANIFEST,
                 crate::cargo_manifest::ops_for_json_gen(cli)?,
             ));
         }
@@ -1073,7 +1079,9 @@ impl GenerationScope {
         // sibling of `rust/`/`wasm/`.
         let extern_interface_files =
             crate::generation::extern_interface::extern_interface_files(types, cli);
-        let extern_interface_dir = cli.output.join("extern-interface");
+        let extern_interface_dir = cli
+            .output
+            .join(crate::generation::layout::EXTERN_INTERFACE_DIR);
         if extern_interface_dir.exists() {
             std::fs::remove_dir_all(&extern_interface_dir)?;
         }
@@ -1414,7 +1422,7 @@ impl GenerationScope {
                 s
             };
             out.insert(
-                "rust/src/generated/borrowed_key_types.rs".to_owned(),
+                crate::generation::layout::RUST_BORROWED_KEY_TYPES.to_owned(),
                 rustfmt_generated_string(&sidecar)?.into_owned(),
             );
         }
@@ -1720,7 +1728,7 @@ impl GenerationScope {
                 collections.push_str(&format!("pub use {path};\n"));
             }
             out.insert(
-                "wasm/src/generated/collections.rs".to_owned(),
+                crate::generation::layout::WASM_COLLECTIONS_INDEX.to_owned(),
                 rustfmt_generated_string(&collections)?.into_owned(),
             );
 
@@ -1773,7 +1781,7 @@ impl GenerationScope {
                 }
                 sidecar.push_str("];\n");
                 out.insert(
-                    "wasm/src/generated/borrowed_collections.rs".to_owned(),
+                    crate::generation::layout::WASM_BORROWED_COLLECTIONS.to_owned(),
                     rustfmt_generated_string(&sidecar)?.into_owned(),
                 );
             }
@@ -1797,11 +1805,11 @@ impl GenerationScope {
             // promise rests on the opposite: `--json-schema-root` tells users that a dependency they
             // add here by hand (to reach another crate's type) survives regeneration.
             out.insert(
-                "wasm/json-gen/Cargo.toml".to_owned(),
+                crate::generation::layout::JSON_GEN_MANIFEST.to_owned(),
                 crate::cargo_manifest::apply(
                     &crate::cargo_manifest::ops_for_json_gen(cli)?,
                     None,
-                    "wasm/json-gen/Cargo.toml",
+                    crate::generation::layout::JSON_GEN_MANIFEST,
                 )
                 .map_err(std::io::Error::other)?,
             );

@@ -37,6 +37,12 @@
 //! whose CWD is a different checkout silently generates with THAT checkout's runtime).
 
 use crate::cli::Cli;
+// The generated layout, from the emitter that writes it rather than re-spelled here — see
+// `generation::layout` for why every one of these is a shared fact and not a local string.
+use crate::generation::layout::{
+    EXTERN_INTERFACE_DIR, JSON_GEN_DIR, JSON_GEN_PACKAGE_SUFFIX, RUST_BORROWED_KEY_TYPES,
+    WASM_BORROWED_COLLECTIONS, WASM_COLLECTIONS_INDEX, WASM_PACKAGE_SUFFIX,
+};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -1291,6 +1297,32 @@ impl Config {
         merged
     }
 
+    /// The settings a crate is GENERATED under: [`Self::merged_settings`] folded through the
+    /// cross-crate derivations, in the order that produces them.
+    ///
+    /// One body rather than two, because the second reader is the committed-state VERDICT
+    /// ([`Self::committed_verdict`]) and what it reads has to be what the run wrote. Its two inputs —
+    /// the `wrapper-requests` sidecar path and the `extern-wrapper-index` path — are written by
+    /// [`Self::apply_graph_edges`] and overridable by hand, so a verdict that folded its own copy of
+    /// the pipeline would answer about paths no run ever used from the first moment the two copies
+    /// disagreed, and would keep answering confidently. Sharing the body makes them the same paths by
+    /// construction rather than by inspection.
+    ///
+    /// The returned [`Provenance`] records only what the derivation itself wrote; a caller that
+    /// prints no flag listing can drop it.
+    fn graphed_settings(
+        &self,
+        name: &str,
+        entry: &CrateEntry,
+        ungraphed: &BTreeMap<String, Cli>,
+        runtime_choice: Option<&RuntimeChoice>,
+    ) -> (Settings, Provenance) {
+        let mut settings = self.merged_settings(entry);
+        let derived = self.apply_graph_edges(name, entry, &mut settings, ungraphed);
+        self.apply_runtime(name, &mut settings, runtime_choice);
+        (settings, derived)
+    }
+
     /// The committed-state convergence VERDICT: does the workspace on disk, as it now stands, hold
     /// the collection wrappers its own sidecars ask for?
     ///
@@ -1332,13 +1364,18 @@ impl Config {
         selected: &[String],
     ) -> Result<Option<String>, String> {
         let ungraphed = self.ungraphed()?;
+        let runtime_choice = self.runtime_carrier(&ungraphed)?;
         // Both paths live in a crate's GRAPHED settings, which is also what makes a hand-written
         // `[crates.<n>.wrapper-requests]` / `.extern-wrapper-index` override honoured: the check
         // reads whatever file the run itself would have read, never a path re-guessed here.
+        //
+        // Literally the run's own pipeline ([`Self::graphed_settings`]), not a re-derivation of it —
+        // including the `[runtime]` fold, which touches neither of these two keys today and which
+        // this check therefore does not depend on having. That is the point of sharing the body: it
+        // does not have to depend on it.
         let graphed = |name: &str, entry: &CrateEntry| {
-            let mut settings = self.merged_settings(entry);
-            self.apply_graph_edges(name, entry, &mut settings, &ungraphed);
-            settings
+            self.graphed_settings(name, entry, &ungraphed, runtime_choice.as_ref())
+                .0
         };
 
         let mut missing: BTreeMap<&String, BTreeMap<&String, BTreeSet<String>>> = BTreeMap::new();
@@ -1559,9 +1596,8 @@ impl Config {
             .into_iter()
             .map(|name| {
                 let entry = &self.crates[&name];
-                let mut settings = self.merged_settings(entry);
-                let derived = self.apply_graph_edges(&name, entry, &mut settings, &ungraphed);
-                self.apply_runtime(&name, &mut settings, runtime_choice.as_ref());
+                let (settings, derived) =
+                    self.graphed_settings(&name, entry, &ungraphed, runtime_choice.as_ref());
                 let threads = self.threading(&name, entry, &settings, &ungraphed)?;
                 let wasm_deps = self.wasm_deps(&name, entry, &settings, &ungraphed)?;
                 let rust_deps = self.rust_deps(&name, entry, &settings, &ungraphed)?;
@@ -1737,7 +1773,7 @@ impl Config {
             // The cargo PACKAGE name, which is the `--lib-name` verbatim (dashes and all) plus the
             // suffix — the opposite spelling from the rust lib path above. Read off the same
             // `package.name` the json-gen manifest's change log writes.
-            let package = format!("{}-json-schema-gen", dep_entry.lib_name);
+            let package = format!("{}{JSON_GEN_PACKAGE_SUFFIX}", dep_entry.lib_name);
             let json_gen_dep = if settings.json_gen_dep.contains_key(&package) {
                 None
             } else {
@@ -1766,7 +1802,7 @@ impl Config {
     /// expanded `Cli` and never guessed. Note the directory exists in `wasm = false` runs too: the
     /// json-gen crate follows `--json-schema-export`, not the wasm face.
     fn json_gen_dir(&self, cli: &Cli, output: &str) -> PathBuf {
-        self.crate_dir(cli, output, "wasm/json-gen")
+        self.crate_dir(cli, output, JSON_GEN_DIR)
     }
 
     /// One of a crate's generated cargo crates, resolved against the config file's directory. The
@@ -1837,7 +1873,10 @@ impl Config {
                 wanted.push((dep_entry.lib_name.clone(), "rust"));
             }
             if dep_cli.wasm {
-                wanted.push((format!("{}-wasm", dep_entry.lib_name), "wasm"));
+                wanted.push((
+                    format!("{}{WASM_PACKAGE_SUFFIX}", dep_entry.lib_name),
+                    "wasm",
+                ));
             }
             for (package, tail) in wanted {
                 if settings.wasm_dep.contains_key(&package) {
@@ -1916,6 +1955,11 @@ impl Config {
     /// `lib-name`, `wasm`, `package-json`, and the runtime flavor axes) out of the OTHER crate's
     /// finished `Cli` rather than re-deriving clap's defaults — reading them back is what stops a
     /// default drifting between the two places it would otherwise be written.
+    ///
+    /// Deliberately NOT [`Self::graphed_settings`], and it is the one place that distinction is not a
+    /// duplication: this is the INPUT the graph derivations read, so folding them in here would ask
+    /// each crate's derived values to be known before they are derived. It answers "what does this
+    /// table alone say?", which is a different question from "what is this crate generated with?".
     fn ungraphed(&self) -> Result<BTreeMap<String, Cli>, String> {
         let mut out: BTreeMap<String, Cli> = BTreeMap::new();
         for (name, entry) in &self.crates {
@@ -2207,7 +2251,7 @@ impl Config {
                 extern_import,
                 "extern-import",
                 key.clone(),
-                join(&dep_entry.output, &format!("extern-interface/{key}")),
+                join(&dep_entry.output, &format!("{EXTERN_INTERFACE_DIR}/{key}")),
                 own_deps(),
             );
 
@@ -2229,11 +2273,7 @@ impl Config {
                 extern_wrapper_index,
                 "extern-wrapper-index",
                 key.clone(),
-                crate_relative(
-                    dep_cli,
-                    &dep_entry.output,
-                    "wasm/src/generated/collections.rs",
-                ),
+                crate_relative(dep_cli, &dep_entry.output, WASM_COLLECTIONS_INDEX),
                 own_deps(),
             );
             if !settings.workspace_dep.contains(&key) {
@@ -2272,11 +2312,7 @@ impl Config {
                 key_requests,
                 "key-requests",
                 label.clone(),
-                crate_relative(
-                    consumer_cli,
-                    &consumer.output,
-                    "rust/src/generated/borrowed_key_types.rs",
-                ),
+                crate_relative(consumer_cli, &consumer.output, RUST_BORROWED_KEY_TYPES),
                 from_consumer(),
             );
             if consumer_cli.wasm {
@@ -2284,11 +2320,7 @@ impl Config {
                     wrapper_requests,
                     "wrapper-requests",
                     label,
-                    crate_relative(
-                        consumer_cli,
-                        &consumer.output,
-                        "wasm/src/generated/borrowed_collections.rs",
-                    ),
+                    crate_relative(consumer_cli, &consumer.output, WASM_BORROWED_COLLECTIONS),
                     from_consumer(),
                 );
             }
@@ -2337,6 +2369,10 @@ fn join(output: &str, tail: &str) -> String {
 /// every derived path into a crate depends on the OTHER crate's `package-json` value — which is read
 /// off its expanded `Cli`, never guessed.
 fn crate_relative(cli: &Cli, output: &str, tail: &str) -> String {
+    // LOCKSTEP: this is the emitter's `--package-json` nesting rule, restated for the crate reading
+    // ANOTHER crate's output — `GenerationScope::export`'s `rust_dir`, which is where the one-level-
+    // down decision is actually made. It is code rather than a string, so no constant in
+    // `generation::layout` can carry it for both sites. Change both together.
     if cli.package_json {
         join(output, &format!("rust/{tail}"))
     } else {
@@ -3084,7 +3120,12 @@ pub fn generate(
             );
         }
     }
-    let generate_pass =
+    // What this run has already rewritten on disk, in the order it rewrote it — the whole of what a
+    // mid-run failure has to report (see [`mid_run_failure`]). Carried ACROSS the passes because the
+    // convergence pass is part of the same run: a failure there has the first pass's crates behind it
+    // too. A crate re-run by that pass is not listed twice; it is one directory either way.
+    let mut regenerated: Vec<String> = Vec::new();
+    let mut generate_pass =
         |names: Option<&BTreeSet<String>>| -> Result<(), Box<dyn std::error::Error>> {
             for (name, cli) in &expanded {
                 if names.is_some_and(|names| !names.contains(name)) {
@@ -3098,7 +3139,11 @@ pub fn generate(
                     cli.input.display(),
                     cli.output.display()
                 );
-                crate::api::generate_to_disk(cli)?;
+                crate::api::generate_to_disk(cli)
+                    .map_err(|e| mid_run_failure(name, &e, &regenerated))?;
+                if !regenerated.iter().any(|done| done == name) {
+                    regenerated.push(name.clone());
+                }
             }
             Ok(())
         };
@@ -3186,10 +3231,45 @@ pub fn generate(
 /// several configs, or a wrapper script that picked the path.
 ///
 /// Not applied to a per-crate GENERATION failure: that error is about a CDDL spec, and prefixing it
-/// with a TOML path would name the wrong document. The per-crate banner printed before it is what
-/// says which crate was running.
+/// with a TOML path would name the wrong document. [`mid_run_failure`] is that error's own wrapper,
+/// and it names the crate rather than the config for the same reason.
 fn about_the_config(config_path: &Path, error: impl std::fmt::Display) -> String {
     format!("--config {}: {error}", config_path.display())
+}
+
+/// A per-crate generation failure, plus what the run had already rewritten when it happened.
+///
+/// Generation is not transactional across crates, and cannot be made so cheaply: each crate's output
+/// is a committed directory the tool clobbers in place, so by the time the Nth crate fails, the N-1
+/// before it are on disk in their new form. The bare error names a CDDL spec and nothing else, which
+/// leaves the question a caller actually has — "what state is my tree in now?" — answerable only by
+/// knowing the generation order and reading `git status`. The run knows the answer exactly; this is
+/// where it says so.
+///
+/// It promises no more than that. The listed crates FINISHED regenerating; the failing crate's own
+/// output may be partly written, since the failure can come from anywhere in its pass. The remedy is
+/// not stated as a tool feature but as what committed output already gives you.
+fn mid_run_failure(name: &str, error: impl std::fmt::Display, regenerated: &[String]) -> String {
+    let already = if regenerated.is_empty() {
+        "No crate finished regenerating before this failure".to_owned()
+    } else {
+        format!(
+            "{} crate{} already regenerated in this run before this failure: {}",
+            regenerated.len(),
+            if regenerated.len() == 1 {
+                " was"
+            } else {
+                "s were"
+            },
+            regenerated.join(", "),
+        )
+    };
+    format!(
+        "[crates.{name}] failed to generate: {error}\n{already}. Generation is not transactional \
+         across crates: the crates ordered before this one are on disk in their regenerated form, \
+         and `{name}`'s own output may be partly written. Generated output is committed, so \
+         `git checkout` is the undo."
+    )
 }
 
 /// `--with-deps`: resolve the command line's crate selection into the one the run uses.
