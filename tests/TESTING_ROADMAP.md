@@ -452,7 +452,12 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   AGENTS.md "parallel per-kind siblings, not one generic detector" rule), distinctly worded like the
   table-side coexistence rejection above.
 - **An emission branch whose generated OUTPUT no fixture exercises is invisible to every gate —
-  it can rot to uncompilable and hide behavioral bugs in both directions.** Proven instance
+  it can rot to uncompilable and hide behavioral bugs in both directions.** First of a family of
+  three, each recorded separately below because each needs a different detector, and all three
+  answering "a fixture exists, so why did it not witness this?" with a different mode: NEVER
+  EXECUTED (here), EXECUTED BUT UNASSERTED ("Value-anchor rot on field addition"), and EXECUTED
+  AGAINST THE WRONG SHAPE ("A fixture that models an OBSOLETE user contract stays green while the
+  real contract path is broken"). Proven instance
   (plan-review-caught during the cbor_event 3.2.0 upgrade, not by any gate): the
   nullable-`Special` null-peek (the `Optional`-with-Special arm in `generation/deserialize.rs`)
   had ZERO checked-in output — no snapshot, export, or suite fixture contained its emission — and
@@ -489,8 +494,9 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   (a nested cargo run per mutant) that it earns its cost only once the class has recurred.
 - **Value-anchor rot on field addition: a delivery that grows an existing type's fields leaves the
   type's existing hand-vector sweeps decoding the new data but asserting nothing about it — the
-  EXECUTED-but-unasserted sibling of the never-executed emission-branch class above.** Proven
-  instance (review-caught, not by any gate): the float presence-field delivery gave
+  EXECUTED-but-unasserted member of the fixture-blindness family, whose never-executed first
+  member is "An emission branch whose generated OUTPUT no fixture exercises is invisible to every
+  gate".** Proven instance (review-caught, not by any gate): the float presence-field delivery gave
   `array_opt_fields` (`tests/core`) real `x`/`z` presence fields, and the fixture's existing decode
   sweep — which already fed x/z-present bytes through `from_cbor_bytes`, and whose own comment
   states the discipline ("decode-accepts alone proved nothing — pin every field") — kept passing
@@ -741,8 +747,9 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   encode/compare path is the trigger to build that boundary-vector sweep as a corpus/matrix
   axis rather than hand-pinning per instance.
 - **A fixture that models an OBSOLETE user contract stays green while the real contract path is
-  broken — the executed-but-wrong-shape sibling of the never-executed emission-branch class
-  above.** Proven instance (consumer-reported, not by any gate): every raw-bytes fixture appended
+  broken — the wrong-shape member of the fixture-blindness family headed by "An emission branch
+  whose generated OUTPUT no fixture exercises is invisible to every gate".** Proven instance
+  (consumer-reported, not by any gate): every raw-bytes fixture appended
   the user-supplied `_CDDL_CODEGEN_RAW_BYTES_TYPE_` definition INTO `rust/src/generated/mod.rs` —
   the pre-thin-root layout no real user can have (that subtree is clobbered every regen) — so bare
   references resolved locally and all raw-bytes gates stayed green while the extern re-export glue
@@ -1552,9 +1559,10 @@ that a recursive emitter's OVERLOADABLE parameter reaches every leaf it emits".
   control. What is NOT enumerated is the directive axis at that position: one directive stands in
   for thirteen, and the exclusion set is asserted through the classifier's exhaustive destructuring
   (a new `RuleMetadata` field fails to compile until classified) rather than through a cell per
-  directive. Note this axis is orthogonal to the reachability sweep in the entry above: that sweep
-  treats "multi-choice type rule" as ONE shape and would place the directive at rule position, where
-  it works — so it can never see this. Fold the arm axis in when that sweep is built; until then the
+  directive. Note this axis is orthogonal to the reachability sweep of "A rule-position directive is
+  SILENTLY DROPPED on every rule shape or spelling whose parse path does not carry it to a marking
+  site": that sweep treats "multi-choice type rule" as ONE shape and would place the directive at
+  rule position, where it works — so it can never see this. Fold the arm axis in when that sweep is built; until then the
   classifier's compile-time forcing function is the load-bearing part, and losing it (e.g. replacing
   the destructuring with a hand list) is the regression to watch for.
   Reopening signal for building the enumeration early: a directive whose rejection at this position
