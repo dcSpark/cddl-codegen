@@ -290,8 +290,22 @@ wrapper, since a wrapper owned by one `deps` dependency defers unconditionally);
 the pass adds to an index was *requested* by a consumer, which makes it all-one-dep-owned and so
 never an ownerless name. The sidecars themselves depend only on a crate's own spec and its
 dependencies' `extern-interface/` exports, neither of which the pass touches — so they are already
-final when it starts. The convergence warning below is that reasoning kept as a measurement rather
-than an assumption.
+final when it starts.
+
+That last step is where **export non-transitivity** does the work, and it is what keeps the argument
+true at any `deps` depth: [a dependency's own deps never travel through its
+export](integration-other.mdx), so a crate's sidecars are a function of its own spec and its
+**direct** dependencies' exports, however long the chain above it runs. In `app → mid → core`, the
+pass re-runs `mid`, and `mid`'s own sidecars cannot move — nothing `core` gained in the pass reaches
+`app` through `mid`'s export. Make exports transitive and this is the argument that has been
+invalidated; a fixpoint loop would be required, and this pass would be one iteration of it.
+
+The convergence warning below is that reasoning kept as a measurement rather than an assumption.
+What it measures is the **sidecar** channel, across every crate in the run — not only the crates the
+pass re-runs, so the measurement still covers a dependency sitting below a re-run middle crate. The
+wrapper-index channel is deliberately *not* watched: the pass rewrites an index by design (hosting
+the requested wrappers is its purpose), so an instrument watching it would fire on every successful
+convergence. That channel is covered by the argument above, whose bound is export non-transitivity.
 
 ### The convergence warning
 

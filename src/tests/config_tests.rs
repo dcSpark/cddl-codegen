@@ -5187,3 +5187,381 @@ fn a_subset_run_that_adds_a_borrow_is_reported_against_the_committed_tree() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// **A `deps` chain two edges deep converges in one invocation** — `app → mid → core`, with a real
+/// borrow on BOTH edges.
+///
+/// Every other on-disk config fixture stops at a single edge, and a single edge cannot distinguish
+/// the two claims the convergence pass rests on. At depth 1 the pass re-runs only pure dependencies:
+/// crates that consume a sidecar and write none. At depth 2 the pass re-runs a crate that is BOTH —
+/// `mid` reads `app`'s request sidecars and writes its own for `core` — which is the only shape where
+/// one pass could leave a crate a pass behind, and the only shape where the residual check has a
+/// second channel to measure.
+///
+/// The chain is legal precisely because exports are NOT transitive (`integration-other.mdx`: "a
+/// dependency's own deps never travel through its export"), so `app` references `mid`'s own types and
+/// never `core`'s. That is the same invariant the one-pass argument in `config::generate` rests on,
+/// which is why this fixture is its test rather than merely a bigger example.
+#[test]
+fn a_two_edge_dependency_chain_converges_in_one_invocation() {
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_config_chain_{:016x}",
+        crate::tests::integration_tests::checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("specs")).unwrap();
+    std::fs::write(
+        dir.join("specs/core.cddl"),
+        "core_thing = [a: uint, b: text]\n",
+    )
+    .unwrap();
+    // Each level defines a type of its OWN and borrows a wrapper over the level below it, so both
+    // edges carry a payload rather than merely existing.
+    std::fs::write(
+        dir.join("specs/mid.cddl"),
+        "mid_thing = [c: uint]\nmid_rec = [l: [* core_thing], k: {* core_thing => uint}]\n",
+    )
+    .unwrap();
+    let app_spec = dir.join("specs/app.cddl");
+    std::fs::write(
+        &app_spec,
+        "app_rec = [l: [* mid_thing], k: {* mid_thing => uint}]\n",
+    )
+    .unwrap();
+    let config_path = dir.join("cddl-codegen.toml");
+    std::fs::write(
+        &config_path,
+        format!(
+            "[defaults]\nstatic-dir = \"{}\"\n\n\
+             [crates.core]\ninput = \"specs/core.cddl\"\noutput = \"gen/core\"\n\
+             lib-name = \"core-lib\"\n\n\
+             [crates.mid]\ninput = \"specs/mid.cddl\"\noutput = \"gen/mid\"\n\
+             lib-name = \"mid-lib\"\ndeps = [\"core\"]\n\n\
+             [crates.app]\ninput = \"specs/app.cddl\"\noutput = \"gen/app\"\n\
+             lib-name = \"app-lib\"\ndeps = [\"mid\"]\n",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/static"),
+        ),
+    )
+    .unwrap();
+    let expanded = config::load(&config_path).unwrap().expand(&[]).unwrap();
+    assert_eq!(
+        expanded.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+        vec!["core", "mid", "app"],
+        "the chain must generate dependencies-first, or the fixture is not testing the order the \
+         convergence pass compensates for"
+    );
+
+    // (1) One cold invocation, exit 0.
+    let cold = config::Convergence::capture(&expanded);
+    config::generate(&config_path, &[], None).expect(
+        "one cold run over a two-edge chain must converge inside the invocation and exit 0",
+    );
+    assert_eq!(
+        cold.stale_crates(),
+        ["core".to_owned(), "mid".to_owned()].into_iter().collect(),
+        "both levels that host a borrow must be re-run: `core` because `mid` asked it for one, and \
+         `mid` — the crate that is consumer AND dependency at once, which depth 1 cannot produce — \
+         because `app` did"
+    );
+    let notes = cold.rerun_notes();
+    assert_eq!(
+        notes.len(),
+        2,
+        "the pass announces one line per re-run crate: {notes:?}"
+    );
+    assert!(
+        notes[0].contains("re-running `core`") && notes[1].contains("re-running `mid`"),
+        "and it announces them in generation order, dependencies first: {notes:?}"
+    );
+    let after_first = tree_bytes(&dir, &["gen"]);
+
+    // (2) The honest-fixture guard, at BOTH levels: each dependency's wrapper index hosts what the
+    // level above it borrows, which it can only do having been generated after that borrow was
+    // recorded. Without this the test would pass over a chain whose edges carry no payload.
+    let core_index =
+        std::fs::read_to_string(dir.join("gen/core/wasm/src/generated/collections.rs")).unwrap();
+    assert!(
+        core_index.contains("CoreThingList") && core_index.contains("MapCoreThingToU64"),
+        "`core` must host both wrappers `mid` borrows:\n{core_index}"
+    );
+    let mid_index =
+        std::fs::read_to_string(dir.join("gen/mid/wasm/src/generated/collections.rs")).unwrap();
+    assert!(
+        mid_index.contains("MidThingList"),
+        "and `mid` — itself a consumer — must host what `app` borrows from it:\n{mid_index}"
+    );
+    let mid_sidecar =
+        std::fs::read_to_string(dir.join("gen/mid/wasm/src/generated/borrowed_collections.rs"))
+            .unwrap();
+    assert!(
+        mid_sidecar.contains("use core_lib_wasm::collections::CoreThingList;"),
+        "`mid` must be the one asking `core` for it:\n{mid_sidecar}"
+    );
+    let app_sidecar =
+        std::fs::read_to_string(dir.join("gen/app/wasm/src/generated/borrowed_collections.rs"))
+            .unwrap();
+    assert!(
+        app_sidecar.contains("use mid_lib_wasm::collections::MidThingList;"),
+        "and `app` the one asking `mid`:\n{app_sidecar}"
+    );
+    // The other sidecar channel, at both levels: each level's map is keyed ON the type below it, so
+    // `borrowed_key_types.rs` carries a real row and `--key-requests` has something to satisfy.
+    for (consumer, dep, borrowed) in [
+        ("mid", "core_lib", "core_thing"),
+        ("app", "mid_lib", "mid_thing"),
+    ] {
+        let keys = std::fs::read_to_string(dir.join(format!(
+            "gen/{consumer}/rust/src/generated/borrowed_key_types.rs"
+        )))
+        .unwrap();
+        assert!(
+            keys.contains(&format!("(\"{dep}\", \"{borrowed}\"")),
+            "`{consumer}` must record the key type it borrows from `{dep}`, or the key channel of \
+             this chain carries nothing:\n{keys}"
+        );
+    }
+
+    // (3) Run 2 changes nothing, anywhere in the tree, and consumes no sidecar this run rewrote.
+    let warm = config::Convergence::capture(&expanded);
+    config::generate(&config_path, &[], None).expect("the second run must generate");
+    assert!(
+        warm.stale_crates().is_empty(),
+        "a settled chain must consume no sidecar this run rewrites — one still moving at depth 2 is \
+         the feedback path one extra pass cannot bound. Stale: {:?}",
+        warm.stale_crates()
+    );
+    assert_eq!(
+        warm.warning(&config_path, &[]),
+        None,
+        "and the residual warning must be silent over a settled chain"
+    );
+    let after_second = tree_bytes(&dir, &["gen"]);
+    if let Some(difference) =
+        first_tree_difference("first run", &after_first, "second run", &after_second)
+    {
+        panic!(
+            "one cold run must settle a two-edge chain, so the next one changes nothing, but \
+             {difference}"
+        );
+    }
+
+    // (4) And the fixed point is a fixed point rather than a two-cycle.
+    config::generate(&config_path, &[], None).expect("the repeat run must generate");
+    let after_third = tree_bytes(&dir, &["gen"]);
+    if let Some(difference) =
+        first_tree_difference("second run", &after_second, "third run", &after_third)
+    {
+        panic!("a converged chain must stay converged, but {difference}");
+    }
+
+    // (5) The residual instrument's BREADTH, on the one reachable shape where it comes apart from
+    // the set of re-run crates. A settled chain whose TOP crate gains a borrow leaves `mid` a pass
+    // behind (`app`'s sidecar moved under it) while `core` is not — `mid`'s own sidecar did not move,
+    // because `mid`'s spec and `core`'s export are both unchanged. So the pass re-runs `{mid}` alone,
+    // and an instrument narrowed to the re-run crates would stop watching the `mid → core` edge
+    // across exactly the pass that rewrites `mid`. The unrestricted capture the residual check uses
+    // keeps watching it, which is what makes the measurement cover the whole sidecar channel rather
+    // than the part of it the pass happens to touch.
+    std::fs::write(
+        &app_spec,
+        "app_rec = [l: [* mid_thing], k: {* mid_thing => uint}, m: {* uint => mid_thing}]\n",
+    )
+    .unwrap();
+    let incremental = config::Convergence::capture(&expanded);
+    config::generate(&config_path, &[], None)
+        .expect("a settled chain whose top crate gains a borrow must converge in one run");
+    assert_eq!(
+        incremental.stale_crates(),
+        ["mid".to_owned()].into_iter().collect(),
+        "only the middle crate is a pass behind here — `core` reads a sidecar that did not move"
+    );
+    assert_eq!(
+        incremental.watched_crates(),
+        ["core".to_owned(), "mid".to_owned()].into_iter().collect(),
+        "but the check WATCHES both, and that gap is the point: the residual capture is taken over \
+         every consumed sidecar, so the `mid → core` edge stays measured across a pass that re-runs \
+         `mid` and not `core`"
+    );
+    // The narrowed instrument spelled out, so the gap above is a comparison rather than a claim: a
+    // capture restricted to the re-run crates is a capture over those crates' expansion, and it sees
+    // one edge where the unrestricted one sees two.
+    let only_rerun = config::load(&config_path)
+        .unwrap()
+        .expand(&["mid".to_owned()])
+        .unwrap();
+    assert_eq!(
+        config::Convergence::capture(&only_rerun).watched_crates(),
+        ["mid".to_owned()].into_iter().collect(),
+        "a capture narrowed to the re-run crates watches only what `mid` consumes — the `mid → core` \
+         edge is absent from it, which is what the residual check must not be"
+    );
+    let mid_index =
+        std::fs::read_to_string(dir.join("gen/mid/wasm/src/generated/collections.rs")).unwrap();
+    assert!(
+        mid_index.contains("MapU64ToMidThing"),
+        "and the incremental run must really have settled the new borrow:\n{mid_index}"
+    );
+    let settled = tree_bytes(&dir, &["gen"]);
+    config::generate(&config_path, &[], None).expect("the run after it must generate");
+    if let Some(difference) = first_tree_difference(
+        "incremental run",
+        &settled,
+        "run after it",
+        &tree_bytes(&dir, &["gen"]),
+    ) {
+        panic!("an incremental chain run must settle in one invocation too, but {difference}");
+    }
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// **A diamond converges in one invocation too** — `top → {left, right} → core`, a borrow on all
+/// four edges.
+///
+/// The chain fixture establishes depth; this one establishes FAN, which is a different risk. Two
+/// consumers ask `core` for the same wrapper on the same run, and one consumer borrows from two
+/// dependencies at once — so the convergence pass re-runs three crates whose requests interleave,
+/// and `core`'s index must end up hosting one shared class rather than racing between its two
+/// requesters.
+#[test]
+fn a_diamond_dependency_graph_converges_in_one_invocation() {
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_config_diamond_{:016x}",
+        crate::tests::integration_tests::checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("specs")).unwrap();
+    std::fs::write(
+        dir.join("specs/core.cddl"),
+        "core_thing = [a: uint, b: text]\n",
+    )
+    .unwrap();
+    // Both middles borrow the SAME wrapper from `core`; `top` borrows one from each middle.
+    std::fs::write(
+        dir.join("specs/left.cddl"),
+        "left_thing = [x: uint]\nleft_rec = [l: [* core_thing]]\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("specs/right.cddl"),
+        "right_thing = [y: uint]\nright_rec = [r: [* core_thing]]\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("specs/top.cddl"),
+        "top_rec = [l: [* left_thing], r: [* right_thing]]\n",
+    )
+    .unwrap();
+    let config_path = dir.join("cddl-codegen.toml");
+    std::fs::write(
+        &config_path,
+        format!(
+            "[defaults]\nstatic-dir = \"{}\"\n\n\
+             [crates.core]\ninput = \"specs/core.cddl\"\noutput = \"gen/core\"\n\
+             lib-name = \"core-lib\"\n\n\
+             [crates.left]\ninput = \"specs/left.cddl\"\noutput = \"gen/left\"\n\
+             lib-name = \"left-lib\"\ndeps = [\"core\"]\n\n\
+             [crates.right]\ninput = \"specs/right.cddl\"\noutput = \"gen/right\"\n\
+             lib-name = \"right-lib\"\ndeps = [\"core\"]\n\n\
+             [crates.top]\ninput = \"specs/top.cddl\"\noutput = \"gen/top\"\n\
+             lib-name = \"top-lib\"\ndeps = [\"left\", \"right\"]\n",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/static"),
+        ),
+    )
+    .unwrap();
+    let expanded = config::load(&config_path).unwrap().expand(&[]).unwrap();
+    assert_eq!(
+        expanded.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+        vec!["core", "left", "right", "top"],
+        "the diamond must generate dependencies-first with the name tie-break"
+    );
+
+    // (1) One cold invocation, exit 0, and every crate that hosts a borrow is re-run.
+    let cold = config::Convergence::capture(&expanded);
+    config::generate(&config_path, &[], None)
+        .expect("one cold run over a diamond must converge inside the invocation and exit 0");
+    assert_eq!(
+        cold.stale_crates(),
+        ["core".to_owned(), "left".to_owned(), "right".to_owned()]
+            .into_iter()
+            .collect(),
+        "`core` is asked by both middles and each middle by `top`, so three crates are a pass behind"
+    );
+    let notes = cold.rerun_notes();
+    assert_eq!(
+        notes.len(),
+        3,
+        "one announced line per re-run crate: {notes:?}"
+    );
+    let after_first = tree_bytes(&dir, &["gen"]);
+
+    // (2) The honest-fixture guard on all four edges: one shared class in `core`'s index, and each
+    // middle hosting what `top` borrows from it.
+    let core_index =
+        std::fs::read_to_string(dir.join("gen/core/wasm/src/generated/collections.rs")).unwrap();
+    assert!(
+        core_index.contains("CoreThingList"),
+        "`core` must host the wrapper both middles borrow:\n{core_index}"
+    );
+    for (crate_name, wrapper) in [("left", "LeftThingList"), ("right", "RightThingList")] {
+        let index = std::fs::read_to_string(dir.join(format!(
+            "gen/{crate_name}/wasm/src/generated/collections.rs"
+        )))
+        .unwrap();
+        assert!(
+            index.contains(wrapper),
+            "`{crate_name}` must host what `top` borrows from it:\n{index}"
+        );
+        let sidecar = std::fs::read_to_string(dir.join(format!(
+            "gen/{crate_name}/wasm/src/generated/borrowed_collections.rs"
+        )))
+        .unwrap();
+        assert!(
+            sidecar.contains("use core_lib_wasm::collections::CoreThingList;"),
+            "and it must be one of the two asking `core` for the shared one:\n{sidecar}"
+        );
+    }
+    let top_sidecar =
+        std::fs::read_to_string(dir.join("gen/top/wasm/src/generated/borrowed_collections.rs"))
+            .unwrap();
+    for import in [
+        "use left_lib_wasm::collections::LeftThingList;",
+        "use right_lib_wasm::collections::RightThingList;",
+    ] {
+        assert!(
+            top_sidecar.contains(import),
+            "`top` must borrow from BOTH of its dependencies ({import}):\n{top_sidecar}"
+        );
+    }
+
+    // (3) Run 2 changes nothing, and (4) run 3 confirms the fixed point.
+    let warm = config::Convergence::capture(&expanded);
+    config::generate(&config_path, &[], None).expect("the second run must generate");
+    assert!(
+        warm.stale_crates().is_empty(),
+        "a settled diamond must consume no sidecar this run rewrites. Stale: {:?}",
+        warm.stale_crates()
+    );
+    assert_eq!(
+        warm.warning(&config_path, &[]),
+        None,
+        "and the residual warning must be silent over a settled diamond"
+    );
+    let after_second = tree_bytes(&dir, &["gen"]);
+    if let Some(difference) =
+        first_tree_difference("first run", &after_first, "second run", &after_second)
+    {
+        panic!(
+            "one cold run must settle a diamond, so the next one changes nothing, but {difference}"
+        );
+    }
+    config::generate(&config_path, &[], None).expect("the repeat run must generate");
+    let after_third = tree_bytes(&dir, &["gen"]);
+    if let Some(difference) =
+        first_tree_difference("second run", &after_second, "third run", &after_third)
+    {
+        panic!("a converged diamond must stay converged, but {difference}");
+    }
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

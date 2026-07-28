@@ -2824,6 +2824,13 @@ fn build_cli(
 /// residual DIAGNOSTIC: a sidecar still moving afterwards would be a feedback path the fixed pass
 /// did not bound, and the warning is what says so. It changes no output byte in either role; what it
 /// decides is which crates run again, never what any of them generates.
+///
+/// What it measures is the SIDECAR channel, in both roles and across every crate in the run. The
+/// other cross-crate channel — a dependency's `collections.rs` wrapper index, which the convergence
+/// pass legitimately rewrites, since hosting the requested wrappers is the whole point of the pass —
+/// is deliberately NOT watched: an instrument that fired on every successful convergence would
+/// measure nothing. That channel is bounded by the argument at [`generate`]'s convergence pass
+/// instead.
 pub struct Convergence {
     /// `(the crate that read it, the sidecar's path, its bytes before the run)`. `None` for bytes
     /// means the file did not exist — a workspace whose consumer has never generated, which converges
@@ -2838,19 +2845,15 @@ impl Convergence {
     /// `[crates.<n>.wrapper-requests]` entry pointing at a crate in this run is watched exactly like
     /// a derived one. A sidecar whose owner is NOT in this run cannot change, so it never fires and
     /// needs no special case.
+    ///
+    /// There is deliberately no restricted form. Both of [`generate`]'s two questions watch EVERY
+    /// consumed sidecar, including those of crates the convergence pass does not re-run: a sidecar
+    /// moving under a crate that was not re-run is precisely the feedback path the one-pass argument
+    /// claims is unreachable, so an instrument narrowed to the re-run crates could not see the thing
+    /// it exists to measure.
     pub fn capture(expanded: &[(String, Cli)]) -> Self {
-        Self::capture_within(expanded, None)
-    }
-
-    /// [`Self::capture`] restricted to `only` — the crates the convergence pass is about to re-run,
-    /// so the residual check watches exactly the sidecars that pass consumes rather than every
-    /// sidecar the whole invocation did.
-    fn capture_within(expanded: &[(String, Cli)], only: Option<&BTreeSet<String>>) -> Self {
         let mut entries = Vec::new();
         for (name, cli) in expanded {
-            if only.is_some_and(|only| !only.contains(name)) {
-                continue;
-            }
             let consumed = cli
                 .wrapper_requests()
                 .into_values()
@@ -2867,6 +2870,24 @@ impl Convergence {
     /// The crates whose consumed sidecars differ now from when they read them.
     pub fn stale_crates(&self) -> BTreeSet<String> {
         self.stale_entries().map(|(name, _)| name.clone()).collect()
+    }
+
+    /// The crates this capture is WATCHING, whether or not their sidecars moved — the instrument's
+    /// breadth, as opposed to [`Self::stale_crates`]'s findings.
+    ///
+    /// Exposed so a test can assert the residual check is not narrowed to the crates the convergence
+    /// pass re-runs. On any graph two edges deep the two sets come apart (a middle crate can be
+    /// re-run while the crate below it is not), and it is exactly there that a narrowed instrument
+    /// would stop measuring the sidecar channel.
+    ///
+    /// Test-only API: the run itself never asks the question, so it is `#[cfg(test)]` rather than a
+    /// shipped accessor with no shipped caller.
+    #[cfg(test)]
+    pub fn watched_crates(&self) -> BTreeSet<String> {
+        self.entries
+            .iter()
+            .map(|(name, _, _)| name.clone())
+            .collect()
     }
 
     /// `(the crate that read it, the sidecar that moved under it)` for every changed entry — what
@@ -3014,9 +3035,23 @@ pub fn generate(
     // own bodies), so the narrowing is covered by this argument rather than being a third input to
     // it — nothing this pass adds to a dependency can change what a consumer needs from it.
     //
+    // The argument is bounded by export NON-TRANSITIVITY, and it is worth naming the invariant it
+    // rests on rather than leaving it implicit: "a dependency's own deps never travel through its
+    // export" (`docs/docs/integration-other.mdx`, the extern-import chapter's closing statement). It
+    // is what keeps "a crate's sidecars are a function of its own spec and its DIRECT dependencies'
+    // exports" true no matter how deep the `deps` graph runs — a chain `app → mid → core` re-runs
+    // `mid` in this pass, and `mid`'s own sidecars cannot move because nothing `core` gained here
+    // reaches `app` through `mid`'s export. Make exports transitive and this argument is the proof
+    // that has been invalidated: a fixpoint loop would then be required, and this pass would be
+    // exactly one iteration of it.
+    // (Pinned end to end by `a_two_edge_dependency_chain_converges_in_one_invocation` and
+    // `a_diamond_dependency_graph_converges_in_one_invocation`.)
+    //
     // The residual convergence check below is what states that reasoning as a measurement rather
-    // than an assumption: it is captured AROUND this pass, so a sidecar that did move again would
-    // print the warning instead of being assumed away.
+    // than an assumption: it is captured AROUND this pass — over EVERY crate's consumed sidecars,
+    // not only the re-run crates' — so a sidecar that did move again would print the warning instead
+    // of being assumed away. The unrestricted capture is what makes that true at depth ≥ 2, where a
+    // re-run middle crate sits above a dependency that is not itself re-run.
     let stale = first.stale_crates();
     let residual = if stale.is_empty() {
         first
@@ -3024,7 +3059,7 @@ pub fn generate(
         for note in first.rerun_notes() {
             println!("{note}");
         }
-        let residual = Convergence::capture_within(&expanded, Some(&stale));
+        let residual = Convergence::capture(&expanded);
         generate_pass(Some(&stale))?;
         residual
     };
